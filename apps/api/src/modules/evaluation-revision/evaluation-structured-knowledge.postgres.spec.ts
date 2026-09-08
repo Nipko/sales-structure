@@ -182,7 +182,7 @@ const url = process.env.PARALLLY_ISOLATION_TEST_URL;
             { id: 'faq', function: { name: 'search_faqs', arguments: JSON.stringify({ query: 'retour' }) } },
             { id: 'policy', function: { name: 'get_policy', arguments: JSON.stringify({ type: 'return' }) } },
         ] }).mockResolvedValue({ content: 'Información consultada.' });
-        const response = await f.service.test(tenantId, 'agent', { message: 'Consulta las preguntas y la política de cambios' });
+        const response = await f.service.test(tenantId, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', { message: 'Consulta las preguntas y la política de cambios' });
         expect(response.debug.runtimeError).toBeUndefined();
         expect(response.debug.toolCalls.map((row: any) => row.result)).toEqual([
             { faqs: [expect.objectContaining({ answer: 'FAQ française' })] },

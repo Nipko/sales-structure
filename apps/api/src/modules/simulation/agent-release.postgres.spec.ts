@@ -7,6 +7,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AgentConfigurationRevisionStore, operationalConfigurationBody, operationalConfigurationHash, type RevisionQuery } from '../persona/agent-configuration-revision';
 import { AgentPublicationStore } from '../persona/agent-publication-store';
 import { evaluationSnapshot, sealEvaluationSnapshot } from '../conversations/agent-evaluation-snapshot';
+import { evaluationKnowledgeFixture } from '../conversations/__fixtures__/evaluation-knowledge.fixture';
 import { revisionHash, sealRevision } from '../evaluation-revision/evaluation-revision';
 import { AgentReleaseStore } from './agent-release-store';
 import { releaseReviewEvidence } from './agent-release-contract';
@@ -41,6 +42,7 @@ const url=process.env.AGENT_RELEASE_TEST_DATABASE_URL;
             regional:new RegionalProfileService({} as any,{} as any).compose(tenantId,{}),vertical:{es:null,en:null,pt:null,fr:null}};
         snapshot.structuredKnowledgeInputs=sealStructuredKnowledgeCapture({version:1,tenantId,sourceSchema:schema,capturedAt:snapshot.capturedAt,
             faqs:{state:'present',rows:[]},policies:{state:'present',rows:[]}});
+        snapshot.knowledgeInputs=evaluationKnowledgeFixture(tenantId,agentId,schema);
         snapshot.manifest=sealRevision(tenantId,[{key:'fixture.transaction_test',state:'present',hash:revisionHash('synthetic')}],[]);sealEvaluationSnapshot(snapshot);
         return {tenantId,agentId,actor,requestKey:randomUUID(),snapshot,scenarios:structuredClone(sourceScenarios)};
     };

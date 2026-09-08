@@ -11,6 +11,8 @@ import { AGENT_RELEASE_QUEUE, assertReleaseActor, assertReleaseIds, assertReleas
     type ReleaseActor, type RequestAgentRelease, type ReviewAgentRelease } from './agent-release-contract';
 import { assertReviewedRegressionScenarios, regressionAppliesToSnapshot } from '../quality/regressions/quality-regression-runtime';
 import { resolveTenantSubscriptionAccess } from '../../common/utils/subscription-entitlement.util';
+import type { AgentEvaluationSnapshot } from '../conversations/agent-evaluation-snapshot';
+import { hasAgentSourceFence, withAgentSourceFence } from '../../common/utils/agent-source-fence';
 
 export interface AgentReleaseJob {tenantId:string;agentId:string;candidateId:string;evaluationId:string}
 /** One frozen configuration and dependency revision for all assigned channels.
@@ -32,10 +34,31 @@ export class AgentReleaseService {
         if(prior)return this.read(tenantId,agentId,prior.id,actor);
         await this.budget.prepare(tenantId);await this.evals.listScenarios(tenantId);
         const snapshot=await this.tests.captureSnapshot(tenantId,agentId,{configurationRevisionId:body.configurationRevisionId});
-        const scenarios=(await this.evals.listScenarios(tenantId)).filter(scenario=>snapshot.releaseScope?.channels
-            .some(channel=>regressionAppliesToSnapshot(scenario,snapshot,channel)));
-        await this.tests.assertSnapshotCurrent(snapshot,tenantId,agentId);
-        const candidate=await this.prisma.transactionInTenantSchema(schema,q=>this.store.create(q,schema,{tenantId,agentId,actor,requestKey:body.requestKey,snapshot,scenarios}));
+        let scenarios:any[];
+        try{
+            scenarios=(await this.evals.listScenarios(tenantId)).filter(scenario=>snapshot.releaseScope?.channels
+                .some(channel=>regressionAppliesToSnapshot(scenario,snapshot,channel)));
+            await this.tests.assertSnapshotExecutable(snapshot,tenantId,agentId);
+        }catch(error){await this.tests.releaseSnapshot(snapshot);throw error;}
+        let candidate:any,saveBodyRejected=false;
+        try{
+            candidate=await this.prisma.transactionInTenantSchema(schema,async q=>{
+                try{return await this.store.create(q,schema,{tenantId,agentId,actor,requestKey:body.requestKey,snapshot,scenarios});}
+                catch(error){saveBodyRejected=true;throw error;}
+            });
+        }catch(error){
+            // A rejected callback never reaches COMMIT, including partial channel
+            // inserts rolled back by the transaction. No candidate owns this usage.
+            if(saveBodyRejected){await this.tests.releaseSnapshot(snapshot);throw error;}
+            // A rejected transaction promise can mean COMMIT succeeded but its
+            // acknowledgement was lost. Never revoke a possibly persisted usage.
+            try{candidate=await this.prisma.transactionInTenantSchema(schema,q=>this.store.findRequest(q,agentId,actor,body.requestKey,body.configurationRevisionId));}
+            catch{/* Unknown ownership remains bounded by the durable usage TTL. */}
+            if(!candidate){this.logger.warn('Agent release save outcome unknown; knowledge usage retained until durable expiry');throw error;}
+        }
+        // A concurrent identical request may have persisted another capture.
+        // The winning request owns its reference; this unused one is ours to close.
+        if(!sameKnowledgeUsage(snapshot,candidate.agent_snapshot))await this.tests.releaseSnapshot(snapshot);
         await this.dispatch(tenantId,agentId,candidate.id).catch(()=>this.logger.warn('Agent release saved; evaluation queue dispatch deferred'));
         return this.read(tenantId,agentId,candidate.id,actor);
     }
@@ -104,28 +127,41 @@ export class AgentReleaseService {
         const access=await resolveTenantSubscriptionAccess(this.prisma,job.tenantId,'write');
         if(!access.allowed)return {ok:false,deferred:true,reason:'subscription_entitlement_unavailable'};
         const schema=await this.prisma.getTenantSchemaName(job.tenantId);
-        let claimed:any;
+        let claimed:any,capturedSnapshot:AgentEvaluationSnapshot|undefined;
         try {
-            claimed=await this.prisma.transactionInTenantSchema(schema,q=>this.store.claim(q,schema,job.tenantId,job.agentId,job.candidateId,job.evaluationId));
+            claimed=await this.prisma.transactionInTenantSchema(schema,async q=>{
+                await q('SELECT pg_advisory_xact_lock_shared(hashtextextended($1,0))::text',[`agent-privacy:${schema}`]);
+                const before=await this.store.read(q,job.agentId,job.candidateId);
+                // claim can reject a retired source before returning a lease;
+                // invalidation then removes the persisted reference entirely.
+                if(before?.candidate.agent_snapshot)capturedSnapshot=structuredClone(before.candidate.agent_snapshot);
+                return this.store.claim(q,schema,job.tenantId,job.agentId,job.candidateId,job.evaluationId);
+            });
             if(!claimed)return {ok:false,skipped:true};
+            const executionSnapshot:AgentEvaluationSnapshot=structuredClone(claimed.candidate.agent_snapshot);
+            capturedSnapshot=executionSnapshot;
             const authority={...job,leaseToken:claimed.leaseToken};
-            const checkpoint=(extra:any={})=>this.prisma.transactionInTenantSchema(schema,q=>this.store.checkpoint(q,schema,{...authority,...extra}));
-            await this.tests.assertSnapshotCurrent(claimed.candidate.agent_snapshot,job.tenantId,job.agentId);
+            const checkpoint=(extra:any={})=>Object.keys(extra).length===0&&hasAgentSourceFence(this.prisma,schema)
+                ?withAgentSourceFence(this.prisma,schema,q=>this.store.assertExecutionLease(q,authority))
+                :this.prisma.transactionInTenantSchema(schema,q=>this.store.checkpoint(q,schema,{...authority,...extra}));
+            await this.tests.assertSnapshotExecutable(executionSnapshot,job.tenantId,job.agentId);
             const result=await this.evals.runGateV2(job.tenantId,job.agentId,{
-                agentSnapshot:claimed.candidate.agent_snapshot,scenarios:claimed.candidate.scenarios,
+                agentSnapshot:structuredClone(executionSnapshot),scenarios:claimed.candidate.scenarios,
                 channelType:claimed.evaluation.channel_type,previousResults:claimed.evaluation.results,
                 threshold:8,k:3,passPolicy:'all',trigger:'release_candidate',
                 assertExecutionAuthority:()=>checkpoint().then(()=>undefined),
                 beforeModelUnits:async units=>{await checkpoint();await this.budget.consumeBudget(job.tenantId,units);},
                 onScenarioCompleted:results=>checkpoint({results}).then(()=>undefined),
             });
-            await this.tests.assertSnapshotCurrent(claimed.candidate.agent_snapshot,job.tenantId,job.agentId);
+            await this.tests.assertSnapshotExecutable(executionSnapshot,job.tenantId,job.agentId);
             await checkpoint({status:'completed',results:result.scenarios,evidence:result.releaseEvidence,runId:result.runId});
+            await this.releaseCompletedSnapshot(schema,job,executionSnapshot);
             return {ok:true};
         }catch(error){
             const code=releaseErrorCode(error);
             if(['agent_release_revision_changed','agent_release_source_changed'].includes(code)) {
                 await this.prisma.transactionInTenantSchema(schema,q=>this.store.invalidate(q,job.agentId,job.candidateId,code));
+                if(capturedSnapshot)await this.tests.releaseSnapshot(capturedSnapshot);
                 return {ok:false,invalidated:true,reason:code};
             }
             if(!claimed||code==='agent_release_lease_lost')return {ok:false,skipped:true,reason:code};
@@ -135,12 +171,30 @@ export class AgentReleaseService {
             return {ok:false,deferred:true,reason:code};
         }
     }
+    private async releaseCompletedSnapshot(schema:string,job:AgentReleaseJob,snapshot:AgentEvaluationSnapshot):Promise<void>{
+        try{
+            const complete=await this.prisma.transactionInTenantSchema(schema,async q=>{
+                const data=await this.store.read(q,job.agentId,job.candidateId);
+                return !!data&&['evaluated','approved','rejected'].includes(data.candidate.status)
+                    &&sameKnowledgeUsage(snapshot,data.candidate.agent_snapshot)
+                    &&data.evaluations.length===snapshot.releaseScope?.channels.length
+                    &&snapshot.releaseScope.channels.every(channel=>data.evaluations.some(row=>row.channel_type===channel&&row.status==='completed'));
+            });
+            if(complete)await this.tests.releaseSnapshot(snapshot);
+        }catch{/* Completion remains durable; ambiguous cleanup is retried by usage expiry. */
+            this.logger.warn('Agent release completed; knowledge cleanup deferred to durable expiry');
+        }
+    }
+}
+function sameKnowledgeUsage(left:AgentEvaluationSnapshot,right?:AgentEvaluationSnapshot|null):boolean{
+    return !!left.knowledgeInputs?.usage?.token&&left.tenantId===right?.tenantId&&left.agentId===right.agentId
+        &&left.knowledgeInputs.usage.token===right.knowledgeInputs?.usage?.token;
 }
 /** Never persist provider exception bodies, SQL or arbitrary customer text as a status. */
 export function releaseErrorCode(error:any):string{
     const code=String(error?.response?.error||error?.message||'').replace(/^agent_runtime_failed:/,'');
     if(code==='eval_autorun_budget_exhausted'||code==='agent_release_lease_lost')return code;
-    if(/regression_|agent_release_invalidated/.test(code))return 'agent_release_source_changed';
+    if(/regression_|agent_release_invalidated|evaluation_knowledge_|llm_source_authority_unavailable/.test(code))return 'agent_release_source_changed';
     if(/evaluation_dependencies_changed|evaluation_revision_changed|evaluation_revision_dependency|agent_.*(integrity_mismatch|configuration_changed|revision_changed)|snapshot_.*mismatch/.test(code))return 'agent_release_revision_changed';
     return 'agent_release_evaluation_unavailable';
 }

@@ -71,7 +71,7 @@ const url = process.env.PARALLLY_ISOLATION_TEST_URL;
     });
 
     it('captures canonical facts in four languages and consumes them without consulting those readers again', async () => {
-        const snapshot = await fixture.service.captureSnapshot(tenantId, 'agent');
+        const snapshot = await fixture.service.captureSnapshot(tenantId, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
         expect(snapshot.contextInputs).toMatchObject({ businessHours: { timezone: 'America/Mexico_City' },
             business: { companyName: 'Captured shop', phone: '+525555555555' }, regional: { operatingCurrency: { value: 'MXN' } } });
         expect(snapshot.contextInputs!.vertical.fr).toMatchObject({ serviceNoun: 'vêtement', businessGoals: ['Vender con información precisa'] });
@@ -82,7 +82,7 @@ const url = process.env.PARALLLY_ISOLATION_TEST_URL;
         const regional = jest.spyOn(fixture.regionalProfile, 'resolve').mockRejectedValue(new Error('regional_source_read_forbidden'));
         try {
             jest.spyOn(fixture.languageDetector, 'detect').mockReturnValue('fr');
-            const response = await fixture.service.test(tenantId, 'agent', { message: 'Bonjour' }, { agentSnapshot: snapshot });
+            const response = await fixture.service.test(tenantId, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', { message: 'Bonjour' }, { agentSnapshot: snapshot });
             expect(response.debug.runtimeError).toBeUndefined();
             expect(response.debug.turnContext).toMatchObject({ timezone: 'America/Mexico_City', business: { companyName: 'Captured shop' },
                 verticalContext: { serviceNoun: 'vêtement' }, regional: { operatingCountry: 'MX', currency: 'MXN' } });
@@ -93,10 +93,10 @@ const url = process.env.PARALLLY_ISOLATION_TEST_URL;
     });
 
     it.each(['tenant', 'business'])('keeps the global guard when captured %s facts change later', async source => {
-        const snapshot = await fixture.service.captureSnapshot(tenantId, 'agent');
+        const snapshot = await fixture.service.captureSnapshot(tenantId, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
         if (source === 'tenant') await client.$executeRawUnsafe("UPDATE public.tenants SET operating_country='BR' WHERE id=$1::uuid", tenantId);
         else await query("UPDATE companies SET name='Changed shop' WHERE id=$1::uuid", [companyId]);
-        await expect(fixture.service.test(tenantId, 'agent', { message: 'hola' }, { agentSnapshot: snapshot }))
+        await expect(fixture.service.test(tenantId, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', { message: 'hola' }, { agentSnapshot: snapshot }))
             .rejects.toThrow(`evaluation_dependencies_changed:${source === 'tenant' ? 'public.tenants' : 'tenant.companies'}`);
         expect(fixture.llmRouter.execute).not.toHaveBeenCalled();
     });
@@ -108,13 +108,13 @@ const url = process.env.PARALLLY_ISOLATION_TEST_URL;
             await client.$executeRawUnsafe("UPDATE public.tenants SET operating_country='BR' WHERE id=$1::uuid", tenantId);
             return captured;
         });
-        await expect(fixture.service.captureSnapshot(tenantId, 'agent')).rejects.toThrow('evaluation_dependencies_changed:public.tenants');
+        await expect(fixture.service.captureSnapshot(tenantId, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')).rejects.toThrow('evaluation_dependencies_changed:public.tenants');
         expect(fixture.llmRouter.execute).not.toHaveBeenCalled();
     });
 
     it('records an empty business identity and invalidates it when the first company is added', async () => {
         await query('TRUNCATE companies');
-        const snapshot = await fixture.service.captureSnapshot(tenantId, 'agent');
+        const snapshot = await fixture.service.captureSnapshot(tenantId, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
         expect(snapshot.contextInputs?.business).toBeNull();
         await query("INSERT INTO companies(id,name) VALUES($1::uuid,'First shop')", [companyId]);
         await expect(fixture.service.assertSnapshotCurrent(snapshot)).rejects.toThrow('evaluation_dependencies_changed:tenant.companies');
@@ -122,7 +122,7 @@ const url = process.env.PARALLLY_ISOLATION_TEST_URL;
 
     it('reads verified legacy business columns without repairing the source schema', async () => {
         await query('ALTER TABLE companies DROP COLUMN phone');
-        const snapshot = await fixture.service.captureSnapshot(tenantId, 'agent');
+        const snapshot = await fixture.service.captureSnapshot(tenantId, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
         expect(snapshot.contextInputs?.business).toMatchObject({ companyName: 'Captured shop' });
         expect(snapshot.contextInputs?.business?.phone).toBeUndefined();
         expect(await query("SELECT column_name FROM information_schema.columns WHERE table_schema=$1 AND table_name='companies' AND column_name='phone'", [schema])).toEqual([]);
@@ -130,7 +130,7 @@ const url = process.env.PARALLLY_ISOLATION_TEST_URL;
 
     it('does not treat a missing business table or a stale Redis template as valid captured data', async () => {
         await query('DROP TABLE companies');
-        await expect(fixture.service.captureSnapshot(tenantId, 'agent')).rejects.toThrow('evaluation_business_source_unavailable');
+        await expect(fixture.service.captureSnapshot(tenantId, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')).rejects.toThrow('evaluation_business_source_unavailable');
         expect(fixture.llmRouter.execute).not.toHaveBeenCalled();
         const prismaOnly = { tenant: { findUnique: async () => ({ settings: {}, industry: null }) } };
         const stale = { getJson: jest.fn().mockResolvedValue({ industry: 'seguros', subType: 'general' }), setJson: jest.fn() };

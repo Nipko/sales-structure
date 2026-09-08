@@ -116,7 +116,9 @@ export class AgentTurnSessionStore {
         session.evaluationDataSourceAuthority = input.evaluationDataSourceAuthority;
         session.afterDependencyRead = input.afterDependencyRead;
         session.trace = new AgentTurnTrace();
-        this.sessions.set(id, { session, expires: Date.now() + 3600_000 });
+        const corpusExpiry = Date.parse(input.snapshot.knowledgeInputs?.usage?.expiresAt || '');
+        this.sessions.set(id, { session, expires: Math.min(Date.now() + 3600_000,
+            Number.isFinite(corpusExpiry) ? corpusExpiry : Infinity) });
         return session;
     }
 }

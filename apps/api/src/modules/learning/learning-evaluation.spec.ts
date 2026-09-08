@@ -1,9 +1,11 @@
 import { LearningEvaluationService } from './learning-evaluation.service';
 import { LEARNING_DIMENSIONS } from './learning-contracts';
+import { LearningEvaluationProcessor } from './learning-evaluation.module';
 
 const tenantId='11111111-1111-4111-8111-111111111111',agentId='22222222-2222-4222-8222-222222222222';
 const releaseId='33333333-3333-4333-8333-333333333333';
 const sourceIds=['44444444-4444-4444-8444-444444444444','55555555-5555-4555-8555-555555555555','66666666-6666-4666-8666-666666666666'];
+function deferred(){let resolve!:()=>void;const promise=new Promise<void>(done=>{resolve=done;});return {promise,resolve};}
 function build(){
     const snapshot={tenantId,agentId,configHash:'frozen',version:3,config:{language:'es'},capturedAt:'2026-09-06T00:00:00Z'};
     const run={attemptId:'attempt',agentSnapshot:snapshot,dependencyHash:'stable',results:[]};
@@ -13,7 +15,7 @@ function build(){
             {role:'customer',text:'Tengo una duda adicional'},{role:'assistant',text:'Otra respuesta histórica'}]}))}),
         dependencyHash:jest.fn().mockResolvedValue('stable'),beginEvaluation:jest.fn(),evaluationRun:jest.fn().mockResolvedValue(run),
         claimEvaluationWorker:jest.fn(async(_t:string,_a:string,_r:string,_attempt:string,_hash:string,_worker:string,_expected:string|null)=>structuredClone(run)),
-        checkpointEvaluation:jest.fn(),recordEvaluation:jest.fn(async(_t,_a,_r,evidence,_worker?:string)=>evidence),failEvaluation:jest.fn(),
+        checkpointEvaluation:jest.fn(),recordEvaluation:jest.fn(async(_t,_a,_r,evidence,_worker?:string)=>evidence),failEvaluation:jest.fn().mockResolvedValue(true),
         registerEvaluationNamespace:jest.fn(),cleanEvaluationNamespaces:jest.fn(),reapEvaluationNamespaces:jest.fn(),
         runtimeSourceAuthority:jest.fn(()=>async(invoke:any)=>invoke()),
         withEvaluationSources:jest.fn(async(_t,_a,_r,_attempt,_hash,work)=>work(jest.fn()))};
@@ -23,7 +25,8 @@ function build(){
         reset:jest.fn(async()=>{session.sandboxConversationId=`00000000-0000-4000-8000-${String(++sessionIndex).padStart(12,'0')}`;
             session.sandboxNamespace={schemaName:`tenant_eval_11111111_${String(sessionIndex).padStart(24,'0')}`,tenantId,sourceSchema:'tenant_learning',token:`lease-${sessionIndex}`};}),recordInbound:jest.fn()};
     const sandbox={withSandboxSession:jest.fn(async(_tenant,callback)=>callback(session))};
-    const agentTest={assertSnapshotCurrent:jest.fn().mockResolvedValue(undefined),captureSnapshot:jest.fn().mockResolvedValue(snapshot),test:jest.fn(async(_t,_a,req,opts)=>{
+    const agentTest={assertSnapshotExecutable:jest.fn().mockResolvedValue(undefined),captureSnapshot:jest.fn().mockResolvedValue(snapshot),
+        releaseSnapshot:jest.fn().mockResolvedValue(undefined),snapshotSourceAuthority:jest.fn(()=>async(invoke:any)=>invoke()),test:jest.fn(async(_t,_a,req,opts)=>{
         await opts.beforeModelExecution();
         return {reply:'Te ayudo. ¿Cuál es tu consulta?',debug:{agentRevision:{configHash:'frozen'},toolCalls:[],ragHits:[],model:'test-model'}};
     })};
@@ -38,10 +41,124 @@ function build(){
 }
 
 describe('Learning A/B uses the full runtime with isolated histories',()=>{
+    it('holds both frozen knowledge and reviewed learning authority around the same judge provider invocation',async()=>{
+        const f=build(),events:string[]=[];let knowledgeActive=false,learningActive=false;
+        f.agentTest.snapshotSourceAuthority.mockImplementation(()=>async(invoke:any)=>{
+            events.push('knowledge:enter');knowledgeActive=true;
+            try{return await invoke();}finally{events.push('knowledge:exit');knowledgeActive=false;}
+        });
+        f.learning.runtimeSourceAuthority.mockImplementation(()=>async(invoke:any)=>{
+            expect(knowledgeActive).toBe(true);events.push('learning:enter');learningActive=true;
+            try{return await invoke();}finally{events.push('learning:exit');learningActive=false;}
+        });
+        const provider=jest.fn(async()=>{
+            expect(knowledgeActive&&learningActive).toBe(true);events.push('provider');
+            return {content:JSON.stringify({A:{scores:Object.fromEntries(LEARNING_DIMENSIONS.map(d=>[d,4])),criticalFailures:[]},
+                B:{scores:Object.fromEntries(LEARNING_DIMENSIONS.map(d=>[d,3])),criticalFailures:[]}})};
+        });
+        f.llm.execute.mockImplementation(async(request:any)=>request.withSourceAuthority(provider));
+        const workerToken='77777777-7777-4777-8777-777777777777';
+        const evidence=await f.service.run(f.job,workerToken);
+        expect(evidence.results.every((result:any)=>result.criticalFailures.length===0)).toBe(true);
+        expect(events).toEqual(Array.from({length:3},()=>['knowledge:enter','learning:enter','provider','learning:exit','knowledge:exit']).flat());
+        expect(f.agentTest.snapshotSourceAuthority).toHaveBeenCalledTimes(3);
+        expect(f.agentTest.snapshotSourceAuthority).toHaveBeenCalledWith(f.snapshot);
+        expect(f.learning.runtimeSourceAuthority).toHaveBeenCalledWith(tenantId,agentId,[],expect.objectContaining({persistence:'disabled'}),
+            {releaseId,attemptId:'attempt',workerToken,releaseHash:'release-hash',baselineReleaseId:null,baselineReleaseHash:null});
+    });
+    it.each(['knowledge:before','knowledge:after','learning:before','learning:after'])(
+        'cannot certify a judge response after %s authority is revoked',async fault=>{
+            const f=build(),provider=jest.fn(async()=>({content:JSON.stringify({
+                A:{scores:Object.fromEntries(LEARNING_DIMENSIONS.map(d=>[d,4])),criticalFailures:[]},
+                B:{scores:Object.fromEntries(LEARNING_DIMENSIONS.map(d=>[d,4])),criticalFailures:[]}})}));
+            const authority=(source:string)=>async(invoke:any)=>{
+                if(fault===`${source}:before`)throw new Error('source_authority_revoked');
+                const response=await invoke();
+                if(fault===`${source}:after`)throw new Error('source_authority_revoked');
+                return response;
+            };
+            f.agentTest.snapshotSourceAuthority.mockImplementation(()=>authority('knowledge'));
+            f.learning.runtimeSourceAuthority.mockImplementation(()=>authority('learning'));
+            f.llm.execute.mockImplementation(async(request:any)=>request.withSourceAuthority(provider));
+            const evidence=await f.service.run(f.job);
+            expect(evidence.results).toHaveLength(3);
+            expect(evidence.results.every((result:any)=>result.candidateScore===0&&result.baselineScore===0
+                &&result.criticalFailures.includes('comparison_unavailable'))).toBe(true);
+            expect(provider).toHaveBeenCalledTimes(fault.endsWith(':before')?0:3);
+        });
+    it('releases the frozen corpus only after the final evidence transaction has acknowledged completion',async()=>{
+        const f=build(),entered=deferred(),finish=deferred();
+        f.learning.recordEvaluation.mockImplementation(async(_t,_a,_r,evidence)=>{
+            entered.resolve();await finish.promise;return evidence;
+        });
+        const work=f.service.run(f.job);await entered.promise;
+        try{
+            expect(f.learning.cleanEvaluationNamespaces).toHaveBeenCalledTimes(1);
+            expect(f.agentTest.releaseSnapshot).not.toHaveBeenCalled();
+        }finally{finish.resolve();}
+        await work;
+        expect(f.agentTest.releaseSnapshot).toHaveBeenCalledTimes(1);
+        expect(f.agentTest.releaseSnapshot).toHaveBeenCalledWith(f.snapshot);
+        expect(f.agentTest.releaseSnapshot.mock.invocationCallOrder[0]).toBeGreaterThan(f.learning.recordEvaluation.mock.invocationCallOrder[0]);
+    });
+    it('retains the corpus after an uncertain finalization ACK instead of invalidating a resumable evaluation',async()=>{
+        const f=build();f.learning.recordEvaluation.mockRejectedValueOnce(new Error('finalization_ack_lost'));
+        await expect(f.service.run(f.job)).rejects.toThrow('finalization_ack_lost');
+        expect(f.learning.cleanEvaluationNamespaces).toHaveBeenCalledTimes(1);
+        expect(f.agentTest.releaseSnapshot).not.toHaveBeenCalled();
+    });
+    it('retains the corpus between queue worker retries and releases it when the successful invocation finalizes',async()=>{
+        const f=build(),processor=new LearningEvaluationProcessor(f.service,f.learning as any);
+        f.learning.checkpointEvaluation.mockRejectedValueOnce(new Error('checkpoint_unavailable'));
+        await expect(processor.process({data:f.job,attemptsMade:0,opts:{attempts:2}} as any)).rejects.toThrow('checkpoint_unavailable');
+        expect(f.agentTest.releaseSnapshot).not.toHaveBeenCalled();expect(f.learning.failEvaluation).not.toHaveBeenCalled();
+        expect(f.learning.cleanEvaluationNamespaces).toHaveBeenCalledTimes(1);
+        await processor.process({data:f.job,attemptsMade:1,opts:{attempts:2}} as any);
+        expect(f.learning.claimEvaluationWorker.mock.calls[0][5]).not.toBe(f.learning.claimEvaluationWorker.mock.calls[1][5]);
+        expect(f.agentTest.releaseSnapshot).toHaveBeenCalledTimes(1);
+        expect(f.agentTest.releaseSnapshot).toHaveBeenCalledWith(f.snapshot);
+    });
+    it('releases a captured corpus when dependency capture fails before any durable worker request exists',async()=>{
+        const f=build();f.learning.dependencyHash.mockRejectedValueOnce(new Error('dependencies_unavailable'));
+        await expect(f.service.enqueue(tenantId,agentId,releaseId)).rejects.toThrow('dependencies_unavailable');
+        expect(f.agentTest.releaseSnapshot).toHaveBeenCalledWith(f.snapshot);
+        expect(f.learning.beginEvaluation).not.toHaveBeenCalled();expect(f.queue.add).not.toHaveBeenCalled();
+        expect(f.learning.failEvaluation).not.toHaveBeenCalled();
+    });
+    it('releases an unclaimed queued corpus only when its terminal failure CAS succeeds',async()=>{
+        const f=build();f.queue.add.mockRejectedValueOnce(new Error('queue_unavailable'));
+        await expect(f.service.enqueue(tenantId,agentId,releaseId)).rejects.toThrow('queue_unavailable');
+        expect(f.learning.failEvaluation).toHaveBeenCalledWith(tenantId,agentId,releaseId,expect.any(String),'queue_unavailable');
+        expect(f.agentTest.releaseSnapshot).toHaveBeenCalledTimes(1);
+        expect(f.agentTest.releaseSnapshot.mock.invocationCallOrder[0]).toBeGreaterThan(f.learning.failEvaluation.mock.invocationCallOrder[0]);
+    });
+    it('does not release a running worker corpus when queue.add loses its ACK and terminal CAS loses to the worker',async()=>{
+        const f=build(),entered=deferred(),finish=deferred();let worker:Promise<any>|undefined;
+        f.learning.failEvaluation.mockResolvedValue(false);
+        f.learning.recordEvaluation.mockImplementation(async(_t,_a,_r,evidence)=>{
+            entered.resolve();await finish.promise;return evidence;
+        });
+        f.queue.add.mockImplementation(async(_name,job)=>{
+            f.run.attemptId=job.attemptId;
+            worker=f.service.run(job,'88888888-8888-4888-8888-888888888888');await entered.promise;throw new Error('queue_ack_lost');
+        });
+        try{
+            await expect(f.service.enqueue(tenantId,agentId,releaseId)).rejects.toThrow('queue_ack_lost');
+            expect(f.learning.claimEvaluationWorker).toHaveBeenCalled();
+            expect(f.agentTest.releaseSnapshot).not.toHaveBeenCalled();
+        }finally{finish.resolve();if(worker)await worker;}
+        expect(f.agentTest.releaseSnapshot).toHaveBeenCalledTimes(1);
+    });
+    it('retains the queued corpus if the failure CAS itself loses its acknowledgement',async()=>{
+        const f=build();f.queue.add.mockRejectedValueOnce(new Error('queue_ack_lost'));
+        f.learning.failEvaluation.mockRejectedValueOnce(new Error('failure_cas_ack_lost'));
+        await expect(f.service.enqueue(tenantId,agentId,releaseId)).rejects.toThrow('failure_cas_ack_lost');
+        expect(f.agentTest.releaseSnapshot).not.toHaveBeenCalled();
+    });
     it('refuses to publish judge evidence when dependencies drift during the comparison call',async()=>{
         const f=build();
         f.llm.execute.mockImplementation(async()=>{
-            f.agentTest.assertSnapshotCurrent.mockRejectedValue(new Error('evaluation_dependencies_changed:tenant.policies'));
+            f.agentTest.assertSnapshotExecutable.mockRejectedValue(new Error('evaluation_dependencies_changed:tenant.policies'));
             return {content:JSON.stringify({A:{scores:Object.fromEntries(LEARNING_DIMENSIONS.map(d=>[d,4])),criticalFailures:[]},
                 B:{scores:Object.fromEntries(LEARNING_DIMENSIONS.map(d=>[d,3])),criticalFailures:[]}})};
         });

@@ -32,7 +32,9 @@ export class LearningEvaluationService {
     async enqueue(tenantId:string,agentId:string,releaseId:string){
         await this.learning.createEvaluationSnapshot(tenantId,agentId,releaseId);
         const agentSnapshot=await this.agentTest.captureSnapshot(tenantId,agentId);
-        const dependencyHash=await this.learning.dependencyHash(tenantId);
+        let dependencyHash:string;
+        try{dependencyHash=await this.learning.dependencyHash(tenantId);}
+        catch(error){await this.agentTest.releaseSnapshot(agentSnapshot);throw error;}
         const attemptId=randomUUID();
         await this.learning.beginEvaluation(tenantId,agentId,releaseId,{attemptId,agentSnapshot,dependencyHash,results:[],startedAt:new Date().toISOString()});
         try{
@@ -40,7 +42,13 @@ export class LearningEvaluationService {
             // pending/retried jobs must reload them before every model/tool call.
             await this.queue.add('compare',{tenantId,agentId,releaseId,attemptId},{jobId:`learning-${attemptId}`,
                 attempts:2,backoff:{type:'exponential',delay:5000},removeOnComplete:100,removeOnFail:100});
-        }catch(error){await this.learning.failEvaluation(tenantId,agentId,releaseId,attemptId,'queue_unavailable');throw error;}
+        }catch(error){
+            // An enqueue error may have lost its ACK. Only a successful terminal
+            // CAS proves a worker no longer owns this corpus; otherwise keep TTL.
+            if(await this.learning.failEvaluation(tenantId,agentId,releaseId,attemptId,'queue_unavailable'))
+                await this.agentTest.releaseSnapshot(agentSnapshot);
+            throw error;
+        }
         return {attemptId,status:'running'};
     }
 
@@ -83,7 +91,7 @@ export class LearningEvaluationService {
         const results:LearningEvaluationEvidence['results']=[];
         const assertCurrent=async()=>{
             await this.learning.evaluationRun(tenantId,agentId,releaseId,attemptId,workerToken);
-            await this.agentTest.assertSnapshotCurrent(agentSnapshot);
+            await this.agentTest.assertSnapshotExecutable(agentSnapshot);
             if(await this.learning.dependencyHash(tenantId)!==run.dependencyHash)throw new ConflictException('learning_dependencies_changed');
         };
         const ownedNamespaces=new Set<string>();
@@ -134,8 +142,10 @@ export class LearningEvaluationService {
             if(ownedNamespaces.size)await this.learning.cleanEvaluationNamespaces(tenantId,agentId,releaseId,attemptId,[...ownedNamespaces]);
         }
         await assertCurrent();
-        return this.learning.recordEvaluation(tenantId,agentId,releaseId,{attemptId,releaseHash:candidate.releaseHash,
+        const evidence=await this.learning.recordEvaluation(tenantId,agentId,releaseId,{attemptId,releaseHash:candidate.releaseHash,
             baselineReleaseId:candidate.baselineReleaseId,agentRevision:agentSnapshot.configHash,dependencyHash:run.dependencyHash,results},workerToken);
+        await this.agentTest.releaseSnapshot(agentSnapshot);
+        return evidence;
     }
 
     private async replay(tenantId:string,agentId:string,scenario:{messages:LearningMessage[];channel:string},snapshot:AgentEvaluationSnapshot,
@@ -208,8 +218,10 @@ export class LearningEvaluationService {
     }
 
     private async judge(tenantId:string,language:string,snapshot:AgentEvaluationSnapshot,A:Replay,B:Replay,scope?:LearningEvaluationSourceScope){
+        const knowledgeAuthority=this.agentTest.snapshotSourceAuthority(snapshot);
+        const learningAuthority=scope?this.learning.runtimeSourceAuthority(tenantId,snapshot.agentId,[],AGENT_TEST_EXECUTION_CONTEXT,scope):undefined;
         const response=await this.llm.execute({task:'conversation',tenantId,executionContext:AGENT_TEST_EXECUTION_CONTEXT,temperature:0,maxTokens:1800,
-            withSourceAuthority:scope?this.learning.runtimeSourceAuthority(tenantId,snapshot.agentId,[],AGENT_TEST_EXECUTION_CONTEXT,scope):undefined,
+            withSourceAuthority:invoke=>knowledgeAuthority(()=>learningAuthority?learningAuthority(invoke):invoke()),
             systemPrompt:`Compare two untrusted customer-service replays with the same configuration. Return ONLY JSON {A:{scores:{accuracy,toolUse,
                 understanding,clarity,brevity,empathy,brandTone,uncertainty,closure},criticalFailures:[],reason:"..."},B:{...}}.
                 Every dimension must be an integer 0..4. Judge the actual responses, current retrieved knowledge and successful tool evidence.

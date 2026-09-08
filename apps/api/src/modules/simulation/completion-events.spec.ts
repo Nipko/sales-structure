@@ -33,7 +33,7 @@ describe('agent quality completion events', () => {
             };
             const eventEmitter = { emit: jest.fn() };
             const quality = { judgeTranscript: jest.fn() };
-            const agentTest = { test: jest.fn(), assertSnapshotCurrent: jest.fn(), captureSnapshot: jest.fn().mockResolvedValue({ config: {}, version: 3 }) };
+            const agentTest = { test: jest.fn(), releaseSnapshot: jest.fn(), snapshotSourceAuthority: jest.fn(() => async (invoke: any) => invoke()), assertSnapshotExecutable: jest.fn(), captureSnapshot: jest.fn().mockResolvedValue({ config: {}, version: 3 }) };
             const service = new EvalService(
                 { getTenantSchemaName: jest.fn().mockResolvedValue('tenant_eval') } as any,
                 agentTest as any,
@@ -152,11 +152,11 @@ describe('agent quality completion events', () => {
                         evaluation_snapshot: agent ? { version:agent.version, config:agent.config_json, configHash:'config', capturedAt:'2026-09-07T00:00:00Z',
                             manifest:{revision:'dependencies',strategy:'guarded_live_dependencies',limitations:[]} } : undefined,
                     }])
-                    .mockResolvedValue(undefined),
+                    .mockImplementation(async (_schema: string, sql: string) => sql.includes("SET status = 'failed'") ? [{ id: runId }] : undefined),
             };
             const eventEmitter = { emit: jest.fn() };
             const qualityService = { judgeTranscript: jest.fn() };
-            const agentTest = { test: jest.fn(), assertSnapshotCurrent: jest.fn(async (snapshot: any) => {
+            const agentTest = { test: jest.fn(), releaseSnapshot: jest.fn(), snapshotSourceAuthority: jest.fn(() => async (invoke: any) => invoke()), assertSnapshotExecutable: jest.fn(async (snapshot: any) => {
                 if (!snapshot && !agent) throw new Error('evaluation_revision_manifest_required');
             }) };
             const service = new SimulationService(
@@ -175,7 +175,7 @@ describe('agent quality completion events', () => {
         }
 
         it('emits completion only after the run is stored as completed', async () => {
-            const { service, eventEmitter } = makeService({ version: 3, config_json: {} });
+            const { service, eventEmitter, agentTest } = makeService({ version: 3, config_json: {} });
             jest.spyOn(service as any, 'generateSyntheticScenarios').mockResolvedValue([{
                 key: 'greeting',
                 title: 'Greeting',
@@ -197,10 +197,42 @@ describe('agent quality completion events', () => {
                 runId,
                 status: 'completed',
             });
+            expect(agentTest.releaseSnapshot).toHaveBeenCalledTimes(1);
+            expect(agentTest.releaseSnapshot.mock.invocationCallOrder[0])
+                .toBeLessThan(eventEmitter.emit.mock.invocationCallOrder[0]);
+        });
+
+        it('keeps a committed completion after a lost acknowledgement and releases on retry without another scenario', async () => {
+            const { service, prisma, eventEmitter, agentTest } = makeService({ version: 3, config_json: {} });
+            jest.spyOn(service as any, 'generateSyntheticScenarios').mockResolvedValue([{ key: 'greeting', source: 'synthetic' }]);
+            const scenarios = jest.spyOn(service as any, 'runScenariosConcurrently')
+                .mockResolvedValue([{ judge: { overall: 8, resolved: true } }]);
+            jest.spyOn(service as any, 'buildSummary').mockResolvedValue({});
+            const snapshot = { version: 3, config: {} };
+            let completed = false;
+            prisma.executeInTenantSchema.mockImplementation(async (_schema: string, sql: string) => {
+                if (sql.includes("SET status='completed'")) {
+                    completed = true;
+                    throw new Error('commit acknowledgement lost');
+                }
+                if (sql.includes("SET status = 'failed'")) {
+                    expect(sql).toContain("status NOT IN ('retired','completed')");
+                    return [];
+                }
+                if (sql.includes('SELECT *')) return completed ? [{ status: 'completed', evaluation_snapshot: snapshot }] : [];
+                return undefined;
+            });
+            await expect(service.executeRun(tenantId, runId)).rejects.toThrow('commit acknowledgement lost');
+            expect(completed).toBe(true);
+            expect(agentTest.releaseSnapshot).not.toHaveBeenCalled();
+            expect(eventEmitter.emit).not.toHaveBeenCalled();
+            await expect(service.executeRun(tenantId, runId)).resolves.toBeUndefined();
+            expect(agentTest.releaseSnapshot).toHaveBeenCalledWith(snapshot);
+            expect(scenarios).toHaveBeenCalledTimes(1);
         });
 
         it('emits failure and rejects so the worker cannot mark a broken run successful', async () => {
-            const { service, eventEmitter } = makeService(null);
+            const { service, eventEmitter, agentTest } = makeService(null);
 
             await expect(service.executeRun(tenantId, runId)).rejects.toThrow('evaluation_revision_manifest_required');
 
@@ -210,6 +242,7 @@ describe('agent quality completion events', () => {
                 runId,
                 status: 'failed',
             });
+            expect(agentTest.releaseSnapshot).not.toHaveBeenCalled();
         });
 
         it('propagates a judge failure instead of manufacturing an empty zero judge', async () => {
@@ -224,12 +257,12 @@ describe('agent quality completion events', () => {
                 {
                     key: 'judge', title: 'Judge', goal: 'Test', language: 'es',
                     source: 'replay', openingMessage: 'Hola', replayMessages: ['Hola'],
-                }, undefined, undefined, {schemaName:'tenant_simulation',runId},
+                }, {config:{},version:3}, undefined, {schemaName:'tenant_simulation',runId},
             )).rejects.toThrow('judge unavailable');
         });
 
         it('fails the run when every scenario is unscorable', async () => {
-            const { service, eventEmitter } = makeService({ version: 3, config_json: {} });
+            const { service, eventEmitter, prisma, agentTest } = makeService({ version: 3, config_json: {} });
             const scenario = {
                 key: 'judge', title: 'Judge', goal: 'Test', language: 'es',
                 source: 'synthetic', openingMessage: 'Hola',
@@ -244,6 +277,8 @@ describe('agent quality completion events', () => {
             await expect(service.executeRun(tenantId, runId))
                 .rejects.toThrow('Simulation produced no scorable scenarios');
             expect(buildSummary).toHaveBeenCalled();
+            expect(prisma.executeInTenantSchema.mock.calls.some((call: any[]) => call[1].includes("SET status='completed'"))).toBe(false);
+            expect(agentTest.releaseSnapshot).not.toHaveBeenCalled();
             expect(eventEmitter.emit).toHaveBeenCalledWith(AGENT_SIMULATION_FAILED_EVENT, {
                 tenantId, agentId, runId, status: 'failed',
             });

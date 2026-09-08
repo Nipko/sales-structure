@@ -36,10 +36,18 @@ export class EvalGateProcessor extends WorkerHost {
         // Old queued jobs are upgraded once; new ones identify an immutable request.
         const revision = job.data.revision || await this.state.request(tenantId, agentId);
         const request = await this.state.get(tenantId, agentId, revision);
-        if (!request || request.status === 'completed') return { ok: true, skipped: true, reason: 'superseded_or_completed' };
+        if (!request) return { ok: true, skipped: true, reason: 'superseded_or_completed' };
+        if (request.status === 'completed') {
+            // Replay terminal cleanup after a lost completion acknowledgement.
+            await this.state.update(tenantId,agentId,revision,'completed');
+            return { ok: true, skipped: true, reason: 'superseded_or_completed' };
+        }
         if (request.status === 'invalidated') return { ok: false, skipped: true, reason: 'evaluation_invalidated' };
         if (request.status === 'budget_deferred' && new Date(request.next_attempt_at).getTime() > Date.now()) return { ok: false, deferred: true };
         try {
+            // A captured reference has a fixed lifetime. A new attempt cannot
+            // renew it or silently switch this durable request to today's corpus.
+            await this.state.assertExecutable(tenantId,agentId,request.agent_snapshot);
             // Keep stale applicable approvals visible to the source guard. Removing
             // review_required here would silently turn an invalid regression into absence.
             const scenarios = (request.scenarios || await this.evals.listScenarios(tenantId))
@@ -64,6 +72,16 @@ export class EvalGateProcessor extends WorkerHost {
         } catch (error: any) {
             const current=await this.state.get(tenantId,agentId,revision);
             if(!current||current.status==='invalidated')return {ok:false,skipped:true,reason:'evaluation_invalidated_or_superseded'};
+            if(current.status==='completed'){
+                await this.state.update(tenantId,agentId,revision,'completed');
+                return {ok:true,skipped:true,reason:'completion_ack_recovered'};
+            }
+            const response=typeof error?.getResponse==='function'?error.getResponse():error?.response;
+            const code=String(response?.error||error?.message||'').replace(/^agent_runtime_failed:/,'');
+            if(/^(evaluation_knowledge_|llm_source_authority_unavailable$|evaluation_dependencies_changed|evaluation_revision_(?:integrity_mismatch|manifest_required)$|agent_snapshot_)/.test(code)){
+                await this.state.update(tenantId,agentId,revision,'invalidated','evaluation_source_unavailable');
+                return {ok:false,skipped:true,reason:'evaluation_source_unavailable'};
+            }
             const budget = error.message === 'eval_autorun_budget_exhausted';
             await this.state.update(tenantId, agentId, revision, budget ? 'budget_deferred' : 'failed', String(error.message || error));
             if (budget) return { ok: false, deferred: true, reason: error.message };

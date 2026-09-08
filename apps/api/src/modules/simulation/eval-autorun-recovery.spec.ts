@@ -1,6 +1,7 @@
 import { EvalAutorunListener } from './eval-autorun.listener';
 import { EvalGateProcessor } from './eval-gate.processor';
 import { EvalAutorunStateService } from './eval-autorun-state.service';
+import { ConflictException } from '@nestjs/common';
 
 describe('durable evaluation autorun', () => {
     const request = { tenantId: 'tenant', agentId: 'agent', revision: 'revision' };
@@ -23,7 +24,7 @@ describe('durable evaluation autorun', () => {
     function processor(row: any) {
         const prisma = { tenant: { findUnique: jest.fn().mockResolvedValue({ isInternal: true }) } };
         const evals = { runGateV2: jest.fn(), listScenarios: jest.fn() };
-        const state = { get: jest.fn().mockResolvedValue(row), update: jest.fn(async(_tenant,_agent,_revision,status)=>{if(row)row.status=status;}), consumeBudget: jest.fn() };
+        const state = { get: jest.fn().mockResolvedValue(row), assertExecutable:jest.fn(), update: jest.fn(async(_tenant,_agent,_revision,status)=>{if(row)row.status=status;}), consumeBudget: jest.fn() };
         return { service: new EvalGateProcessor(evals as any, prisma as any, state as any), evals, state };
     }
 
@@ -77,6 +78,48 @@ describe('durable evaluation autorun', () => {
         evals.runGateV2.mockRejectedValue(new Error('eval_autorun_budget_exhausted'));
         await expect(service.process({ data: request } as any)).resolves.toMatchObject({ ok: false, deferred: true });
         expect(state.update).toHaveBeenLastCalledWith('tenant', 'agent', 'revision', 'budget_deferred', 'eval_autorun_budget_exhausted');
+    });
+
+    it.each(['evaluation_knowledge_lease_lost','evaluation_knowledge_usage_lost','evaluation_knowledge_integrity_mismatch'])(
+        'invalidates %s before scenarios, budget or model and does not recover it again',async code=>{
+            const row={status:'failed',agent_snapshot:{knowledgeInputs:{usage:{token:'old-copy'}}},scenarios:null};
+            const {service,evals,state}=processor(row);state.assertExecutable.mockRejectedValue(new Error(code));
+            expect(await service.process({data:request} as any)).toMatchObject({ok:false,skipped:true,reason:'evaluation_source_unavailable'});
+            expect(row.status).toBe('invalidated');expect(evals.listScenarios).not.toHaveBeenCalled();
+            expect(evals.runGateV2).not.toHaveBeenCalled();expect(state.consumeBudget).not.toHaveBeenCalled();
+            expect(await service.process({data:request} as any)).toMatchObject({reason:'evaluation_invalidated'});
+            expect(state.assertExecutable).toHaveBeenCalledTimes(1);
+        });
+    it.each([new Error('agent_runtime_failed:llm_source_authority_unavailable'),
+        new Error('agent_runtime_failed:evaluation_knowledge_usage_lost'),
+        new ConflictException({error:'evaluation_knowledge_lease_lost'})])('invalidates source failures wrapped by runtime or Nest without retrying the captured copy',async error=>{
+        const row={status:'pending',agent_snapshot:{},scenarios:[]};const {service,evals,state}=processor(row);
+        evals.runGateV2.mockRejectedValue(error);
+        expect(await service.process({data:request} as any)).toMatchObject({reason:'evaluation_source_unavailable'});
+        expect(state.update).toHaveBeenLastCalledWith('tenant','agent','revision','invalidated','evaluation_source_unavailable');
+        expect(row.status).toBe('invalidated');
+    });
+    it('keeps provider outages retryable instead of mistaking them for source revocation',async()=>{
+        const row={status:'pending',agent_snapshot:{},scenarios:[]};const {service,evals,state}=processor(row);
+        evals.runGateV2.mockRejectedValue(new Error('provider_temporarily_unavailable'));
+        await expect(service.process({data:request} as any)).rejects.toThrow('provider_temporarily_unavailable');
+        expect(state.update).toHaveBeenLastCalledWith('tenant','agent','revision','failed','provider_temporarily_unavailable');
+    });
+    it('recovers an acknowledged completed row after the completion write loses its ACK',async()=>{
+        const row={status:'pending',agent_snapshot:{},scenarios:[]};const {service,state}=processor(row);
+        let lost=false;state.update.mockImplementation(async(_tenant,_agent,_revision,status)=>{
+            row.status=status;
+            if(status==='completed'&&!lost){lost=true;throw new Error('completion_ack_lost');}
+        });
+        expect(await service.process({data:request} as any)).toMatchObject({ok:true,reason:'completion_ack_recovered'});
+        expect(row.status).toBe('completed');expect(state.update.mock.calls.some(call=>call[3]==='failed')).toBe(false);
+    });
+    it('retries only terminal cleanup for a completed queued job, without checking its now-released source',async()=>{
+        const row={status:'completed',agent_snapshot:{},scenarios:[]};const {service,state,evals}=processor(row);
+        state.assertExecutable.mockRejectedValue(new Error('evaluation_knowledge_usage_lost'));
+        expect(await service.process({data:request} as any)).toMatchObject({ok:true,skipped:true});
+        expect(state.update).toHaveBeenCalledWith('tenant','agent','revision','completed');
+        expect(state.assertExecutable).not.toHaveBeenCalled();expect(evals.runGateV2).not.toHaveBeenCalled();
     });
 
     it('releases no model work when the atomic daily budget refuses its increment', async () => {

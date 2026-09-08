@@ -1,4 +1,5 @@
 import { agentTurnFixture } from './__fixtures__/agent-turn.fixture';
+import { evaluationKnowledgeFixture } from './__fixtures__/evaluation-knowledge.fixture';
 import { AGENT_TEST_EXECUTION_CONTEXT } from '../../common/types/execution-context';
 import { LLMRouterService } from '../ai/router/llm-router.service';
 import { BusinessInfoService } from '../business-info/business-info.service';
@@ -96,6 +97,7 @@ describe('Agent Test no-business-write execution', () => {
 
     it('runs real read paths without DDL/cache/events while accounting provider cost and quota', async () => {
         const redis = buildRedis();
+        const replica = evaluationKnowledgeFixture(TENANT_ID, AGENT_ID, SCHEMA);
         const config = {
             language: 'es-CO', persona: { name: 'Prueba', role: 'Asistente' }, behavior: {},
             rag: { enabled: true, topK: 3, similarityThreshold: 0 },
@@ -103,6 +105,21 @@ describe('Agent Test no-business-write execution', () => {
             llm: { temperature: 0 },
         };
         const prisma = {
+            $transaction: jest.fn(async (work: any) => work({
+                $executeRawUnsafe: jest.fn(async (sql: string) => {
+                    if (!['SET TRANSACTION READ ONLY', "SET LOCAL TIME ZONE 'UTC'"].includes(sql))
+                        throw new Error(`unexpected replica write: ${sql}`);
+                    return 0;
+                }),
+                $queryRawUnsafe: jest.fn(async (sql: string) => {
+                    if (sql.includes('__eval_namespace') || sql.includes('__eval_knowledge_usages')) return [{ '?column?': 1 }];
+                    if (sql.includes('__eval_knowledge_capture')) return [{ integrity_hash: replica.integrityHash }];
+                    if (sql.includes('pg_class')) return replica.lease.tables.map(name => ({ name, kind: 'r' }));
+                    const table = replica.lease.tables.find(name => sql.includes(`"${name}" r`));
+                    if (table) return [replica.collections[table as keyof typeof replica.collections]];
+                    throw new Error(`unexpected replica read: ${sql}`);
+                }),
+            })),
             $executeRawUnsafe: writerTrap('prisma.$executeRawUnsafe'),
             $queryRawUnsafe: jest.fn(async (sql: string) => {
                 if (sql.includes('agent_personas')) return [{ id: AGENT_ID, config_json: config }];
@@ -215,6 +232,8 @@ describe('Agent Test no-business-write execution', () => {
         const { service } = agentTurnFixture({ personaService: persona, llmRouter: router, knowledgeService: knowledge,
             businessInfoService: businessInfo, tenantsService: tenants, throttle, redis, eventEmitter,
             prisma: { ...prisma, tenant: { findUnique: jest.fn().mockResolvedValue({ settings: {} }) } },
+            evaluationKnowledge: { capture: jest.fn().mockResolvedValue(replica), assertExecutable: jest.fn(), release: jest.fn(),
+                dataSourceAuthority: jest.fn(() => async (invoke: any) => invoke()) },
         });
 
         const result = await service.test(TENANT_ID, AGENT_ID, { message: '¿Cuál es el horario?' });
@@ -222,6 +241,8 @@ describe('Agent Test no-business-write execution', () => {
 
         expect(result.reply).toBe('Respuesta de prueba');
         expect(result.debug.ragHits).toHaveLength(1);
+        expect(prisma.executeInTenantSchema.mock.calls.filter(([,sql]) => sql.includes('<=>'))
+            .every(([schema]) => schema === replica.lease.schemaName)).toBe(true);
         expect(provider.generate).toHaveBeenCalled();
         expect(ensurePersona).not.toHaveBeenCalled();
         expect(ensureBusiness).not.toHaveBeenCalled();

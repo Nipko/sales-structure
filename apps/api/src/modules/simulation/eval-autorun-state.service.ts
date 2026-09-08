@@ -2,6 +2,8 @@ import { Injectable, Optional, ConflictException, ForbiddenException, NotFoundEx
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { AgentTestService } from '../conversations/agent-test.service';
+import type { AgentEvaluationSnapshot } from '../conversations/agent-evaluation-snapshot';
+import { hasAgentSourceFence } from '../../common/utils/agent-source-fence';
 import { assertReviewedRegressionScenarios, regressionCaseIds } from '../quality/regressions/quality-regression-runtime';
 
 /** PostgreSQL is the request authority; BullMQ is a recoverable delivery mechanism. */
@@ -36,6 +38,9 @@ export class EvalAutorunStateService {
         if (!this.agentTest) throw new Error('evaluation_revision_service_unavailable');
         const snapshot = await this.agentTest.captureSnapshot(tenantId, agentId);
         const revision = randomUUID();
+        // A lost UPSERT acknowledgement can still leave this exact snapshot in
+        // use. Superseded references and uncertain requests retain their fixed
+        // durable TTL; never release either from an unverified write outcome.
         await this.prisma.executeInTenantSchema(schema, `INSERT INTO eval_autorun_requests (agent_id, revision, agent_snapshot, next_attempt_at)
             VALUES ($1::uuid, $2::uuid, $3::jsonb, NOW() + INTERVAL '30 seconds')
             ON CONFLICT (agent_id) DO UPDATE SET revision = EXCLUDED.revision, agent_snapshot = EXCLUDED.agent_snapshot,
@@ -51,12 +56,27 @@ export class EvalAutorunStateService {
         return rows?.[0] || null;
     }
 
+    async assertExecutable(tenantId: string, agentId: string, snapshot: AgentEvaluationSnapshot): Promise<void> {
+        if (!this.agentTest) throw new Error('evaluation_revision_service_unavailable');
+        await this.agentTest.assertSnapshotExecutable(snapshot, tenantId, agentId);
+    }
+
     async update(tenantId: string, agentId: string, revision: string, status: string, error?: string, scenarios?: any[], results?: any[]): Promise<void> {
         const schema = await this.schema(tenantId);
-        await this.prisma.transactionInTenantSchema(schema,async query=>{
+        const terminalSnapshot = await this.prisma.transactionInTenantSchema(schema,async query=>{
         await query(`SELECT pg_advisory_xact_lock_shared(hashtextextended($1,0))::text`,[`agent-privacy:${schema}`]);
         const rows=await query<any[]>(`SELECT scenarios,results,agent_snapshot,status FROM eval_autorun_requests WHERE agent_id=$1::uuid AND revision=$2::uuid FOR UPDATE`,[agentId,revision]);
-        if(!rows[0]||rows[0].status==='invalidated')return; // A late worker cannot recreate a retired checkpoint.
+        if(!rows[0])return;
+        // Completion is also terminal: a lost COMMIT ACK or delayed worker must
+        // not turn completed evidence into a recoverable failed/running request.
+        if(['completed','invalidated'].includes(rows[0].status))return rows[0].agent_snapshot;
+        const invalidate=async(reason:string)=>{
+            await query(`UPDATE eval_autorun_requests SET status='invalidated',error=$3,
+                agent_snapshot='{}'::jsonb,scenarios=NULL,results='[]'::jsonb,regression_case_ids='{}'::uuid[],updated_at=NOW()
+                WHERE agent_id=$1::uuid AND revision=$2::uuid`,[agentId,revision,reason.slice(0,1000)]);
+            return rows[0].agent_snapshot;
+        };
+        if(status==='invalidated')return invalidate(error||'evaluation_source_unavailable');
         const definitions=scenarios||rows[0].scenarios||[];
         let ids:string[]=[];
         try{
@@ -65,10 +85,7 @@ export class EvalAutorunStateService {
             await assertReviewedRegressionScenarios(query,definitions,agentId);
         }catch(error){
             if(!(error instanceof ConflictException||error instanceof ForbiddenException||error instanceof NotFoundException))throw error;
-            await query(`UPDATE eval_autorun_requests SET status='invalidated',error='regression_source_unavailable',
-                agent_snapshot='{}'::jsonb,scenarios=NULL,results='[]'::jsonb,regression_case_ids='{}'::uuid[],updated_at=NOW()
-                WHERE agent_id=$1::uuid AND revision=$2::uuid`,[agentId,revision]);
-            return;
+            return invalidate('regression_source_unavailable');
         }
         await query(`UPDATE eval_autorun_requests SET status = $3, error = $4,
             scenarios = COALESCE($5::jsonb, scenarios), results = COALESCE($6::jsonb, results), updated_at = NOW(),
@@ -77,7 +94,15 @@ export class EvalAutorunStateService {
                 WHEN $3 = 'failed' THEN NOW() + INTERVAL '5 minutes' ELSE next_attempt_at END
             WHERE agent_id = $1::uuid AND revision = $2::uuid`,
             [agentId, revision, status, error?.slice(0, 1000) || null, scenarios ? JSON.stringify(scenarios) : null, results ? JSON.stringify(results) : null,ids]);
+        return status==='completed'?rows[0].agent_snapshot:undefined;
         });
+        // Cleanup never holds the request row or the privacy transaction. A
+        // nested source user defers release to its outer owner/durable expiry.
+        // An uncertain transaction outcome throws above and retains the TTL.
+        if(terminalSnapshot?.knowledgeInputs && !hasAgentSourceFence(this.prisma,schema)) {
+            try { await this.agentTest?.releaseSnapshot(terminalSnapshot); }
+            catch { /* Durable expiry remains the fallback; terminal state is committed. */ }
+        }
     }
 
     async consumeBudget(tenantId: string, units: number): Promise<void> {

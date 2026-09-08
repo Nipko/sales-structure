@@ -1,5 +1,5 @@
 import { IsolatedEvalNamespace, type EvalNamespaceLease } from '../simulation/isolated-eval-namespace';
-import { HttpException, HttpStatus, Injectable, NotFoundException, Optional } from '@nestjs/common';
+import { HttpException, HttpStatus, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { CONVERSATIONAL_CHANNELS, type NormalizedMessage, type TestAgentRequest, type TestAgentResponse } from '@parallext/shared';
 import { AGENT_TEST_EXECUTION_CONTEXT } from '../../common/types/execution-context';
@@ -13,6 +13,7 @@ import { ConversationsService } from './conversations.service';
 import { AgentEvaluationSnapshot, evaluationSnapshot, sealEvaluationSnapshot } from './agent-evaluation-snapshot';
 import { resolveEvaluationSnapshot } from './agent-evaluation-snapshot';
 import { EvaluationRevisionService } from '../evaluation-revision/evaluation-revision.service';
+import { EvaluationKnowledgeService } from '../evaluation-revision/evaluation-knowledge.service';
 import { revisionHash } from '../evaluation-revision/evaluation-revision';
 import { McpClientService } from '../mcp/mcp-client.service';
 import { VerticalIntegrationsService } from '../vertical-integrations/vertical-integrations.service';
@@ -39,6 +40,7 @@ export interface AgentTestExecutionOptions {
 @Injectable()
 export class AgentTestService {
     private readonly sessions = new AgentTurnSessionStore();
+    private readonly logger = new Logger(AgentTestService.name);
     constructor(
         private readonly personaService: PersonaService,
         private readonly tenantsService: TenantsService,
@@ -49,10 +51,12 @@ export class AgentTestService {
         @Optional() private readonly revisions?: EvaluationRevisionService,
         @Optional() private readonly mcp?: McpClientService,
         @Optional() private readonly integrations?: VerticalIntegrationsService,
+        @Optional() private readonly knowledge?: EvaluationKnowledgeService,
     ) {}
 
     async captureSnapshot(tenantId: string, agentId: string, options?:{configurationRevisionId:string}): Promise<AgentEvaluationSnapshot> {
         if (!this.revisions || !this.mcp || !this.integrations) throw new Error('evaluation_revision_service_unavailable');
+        if (!this.knowledge) throw new Error('evaluation_knowledge_service_unavailable');
         const manifest = await this.revisions.capture(tenantId);
         let agent = await this.personaService.getAgent(tenantId, agentId, AGENT_TEST_EXECUTION_CONTEXT);
         if (!agent) throw new NotFoundException('Agent not found');
@@ -92,15 +96,41 @@ export class AgentTestService {
         snapshot.runtimeInputsHash = revisionHash(snapshot.runtimeInputs);
         snapshot.contextInputs = await this.runtime.captureEvaluationContext(tenantId, snapshot.config);
         snapshot.structuredKnowledgeInputs = await this.revisions.captureStructuredKnowledge(tenantId);
-        sealEvaluationSnapshot(snapshot);
-        await this.assertSnapshotCurrent(snapshot);
-        return snapshot;
+        snapshot.knowledgeInputs = await this.knowledge.capture(tenantId, agentId);
+        try {
+            sealEvaluationSnapshot(snapshot);
+            await this.assertSnapshotExecutable(snapshot);
+            return snapshot;
+        } catch (error) {
+            await this.releaseSnapshot(snapshot);
+            throw error;
+        }
     }
 
     async assertSnapshotCurrent(snapshot?: AgentEvaluationSnapshot, tenantId = snapshot?.tenantId, agentId = snapshot?.agentId): Promise<void> {
         if (!snapshot || !this.revisions) throw new Error('evaluation_revision_manifest_required');
         resolveEvaluationSnapshot(snapshot,tenantId!,agentId!);
         await this.revisions.assertCurrent(snapshot.manifest);
+    }
+
+    async assertSnapshotExecutable(snapshot: AgentEvaluationSnapshot, tenantId = snapshot.tenantId, agentId = snapshot.agentId): Promise<void> {
+        await this.assertSnapshotCurrent(snapshot, tenantId, agentId);
+        if (!this.knowledge) throw new Error('evaluation_knowledge_service_unavailable');
+        await this.knowledge.assertExecutable(snapshot);
+    }
+
+    /** Outside source-use fences. Cleanup failure cannot replace the original
+     * result; the durable registry and scheduled expiry remain recoverable. */
+    async releaseSnapshot(snapshot?: AgentEvaluationSnapshot): Promise<void> {
+        if (!snapshot?.knowledgeInputs || !this.knowledge) return;
+        try { await this.knowledge.release(snapshot); }
+        catch { this.logger.warn('Evaluation knowledge release deferred to durable expiry cleanup.'); }
+    }
+
+    snapshotSourceAuthority(snapshot: AgentEvaluationSnapshot): import('../ai/interfaces/llm-source-authority').LLMSourceAuthority {
+        if (!this.knowledge) throw new Error('evaluation_knowledge_service_unavailable');
+        const authority = this.knowledge.dataSourceAuthority(snapshot);
+        return invoke => authority(invoke, response => response.usage);
     }
 
     async test(tenantId: string, agentId: string, req: TestAgentRequest, options?: AgentTestExecutionOptions): Promise<TestAgentResponse> {
@@ -111,10 +141,13 @@ export class AgentTestService {
             ? this.sessions.getSnapshot(req.runtimeSessionId, tenantId, agentId)
             : await this.captureSnapshot(tenantId, agentId,req.configurationRevisionId!==undefined
                 ?{configurationRevisionId:req.configurationRevisionId}:undefined)));
+        const ownsSnapshot = !options?.agentSnapshot && !req.runtimeSessionId;
+        let sessionRetained = false;
+        try {
         if(req.configurationRevisionId!==undefined&&snapshot.configurationRevisionId!==req.configurationRevisionId)
             throw new Error('agent_test_session_configuration_revision_changed');
         resolveEvaluationSnapshot(snapshot,tenantId,agentId);
-        await this.assertSnapshotCurrent(snapshot);
+        await this.assertSnapshotExecutable(snapshot);
         if (options?.learningReleaseId !== undefined) {
             snapshot.learningReleaseId = options.learningReleaseId;
             snapshot.learningReleaseHash = null; // The immutable candidate validates its own hash at retrieval.
@@ -137,7 +170,12 @@ export class AgentTestService {
             await this.namespaces.assertOwned(namespace);
         }
         const schemaName = namespace?.schemaName || sourceSchema;
-        const assertNamespace = async () => { if (namespace) await this.namespaces!.assertOwned(namespace); await this.assertSnapshotCurrent(snapshot); };
+        const assertNamespace = async () => { if (namespace) await this.namespaces!.assertOwned(namespace); await this.assertSnapshotExecutable(snapshot); };
+        const knowledgeAuthority = this.knowledge!.dataSourceAuthority(snapshot);
+        const learningAuthority = evaluationSource
+            ? this.learning!.runtimeDataSourceAuthority(tenantId, agentId, [], AGENT_TEST_EXECUTION_CONTEXT, evaluationSource) : undefined;
+        const sourceAuthority: import('../ai/interfaces/external-source-authority').ExternalSourceAuthority =
+            (invoke, usage) => knowledgeAuthority(() => learningAuthority ? learningAuthority(invoke, usage) : invoke(), usage);
         const session = this.sessions.resolve({
             id: options?.sandboxConversationId || req.runtimeSessionId,
             tenantId, agentId, channelType, contactId, schemaName, snapshot,
@@ -146,14 +184,15 @@ export class AgentTestService {
             executionContext: AGENT_TEST_EXECUTION_CONTEXT,
             sandboxNamespace: namespace,
             learningEvaluationSource:options?.learningEvaluationSource,
-            evaluationSourceAuthority:evaluationSource?this.learning!.runtimeSourceAuthority(tenantId,agentId,[],AGENT_TEST_EXECUTION_CONTEXT,evaluationSource):undefined,
-            evaluationDataSourceAuthority:evaluationSource?this.learning!.runtimeDataSourceAuthority(tenantId,agentId,[],AGENT_TEST_EXECUTION_CONTEXT,evaluationSource):undefined,
+            evaluationSourceAuthority:invoke => sourceAuthority(invoke, response => response.usage),
+            evaluationDataSourceAuthority:sourceAuthority,
             history: (req.conversationHistory || []).map(row => ({ ...row })),
             beforeToolExecution: async () => { await assertNamespace(); await options?.beforeToolExecution?.(); },
             beforeModelExecution: async () => { await assertNamespace(); await options?.beforeModelExecution?.(); },
             afterDependencyRead: assertNamespace,
             disableTools: options?.disableTools ?? req.options?.disableTools,
         });
+        sessionRetained = true;
         session.busy = true;
         try {
             const message = { id: options?.sandboxInboundMessageId || randomUUID(), channelAccountId: 'agent-test', conversationId: session.conversationId, direction: 'inbound', status: 'pending', tenantId, channelType, contactId, content: { type: 'text', text: req.message },
@@ -184,6 +223,10 @@ export class AgentTestService {
             session.busy = false;
             // Same provider accounting as live, with no customer analytics or deliveries.
             for (let call = 0; call < session.trace.providerCalls; call++) await this.throttle.incrementAiMessageCount(tenantId);
+        }
+        } catch (error) {
+            if (ownsSnapshot && !sessionRetained) await this.releaseSnapshot(snapshot);
+            throw error;
         }
     }
 }

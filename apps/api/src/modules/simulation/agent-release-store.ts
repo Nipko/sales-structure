@@ -90,8 +90,25 @@ export class AgentReleaseStore {
         await query("UPDATE agent_release_candidates SET status='evaluating',version=version+1,updated_at=NOW() WHERE id=$1::uuid",[candidateId]);
         return {...data,evaluation,leaseToken:token};
     }
-    /** Every checkpoint and model budget reservation renews the same expiring authority.
-     * A worker that lost its lease can never commit the replacement worker's results. */
+    /** Read authority inside an already protected source use without renewing it.
+     * The database wall clock advances even while that outer transaction stays open. */
+    async assertExecutionLease(query:RevisionQuery,input:{tenantId:string;agentId:string;candidateId:string;evaluationId:string;leaseToken:string}):Promise<void>{
+        assertReleaseIds(input.tenantId,input.agentId,input.candidateId,input.evaluationId,input.leaseToken);
+        if(!(await query<any[]>('SELECT id FROM public.tenants WHERE id=$1::uuid AND schema_name=current_schema()',[input.tenantId]))[0])
+            throw new NotFoundException({error:'tenant_not_found'});
+        const data=await this.read(query,input.agentId,input.candidateId);
+        if(!data)conflict('agent_release_invalidated');
+        this.assertCandidate(data.candidate,input.tenantId);
+        const evaluation=(await query<any[]>(`SELECT *,lease_until>clock_timestamp() AS lease_valid FROM agent_release_evaluations
+            WHERE id=$1::uuid AND candidate_id=$2::uuid`,[input.evaluationId,input.candidateId]))[0];
+        if(data.candidate.status!=='evaluating'||!evaluation||evaluation.status!=='running'
+            ||evaluation.lease_token!==input.leaseToken||!evaluation.lease_valid)conflict('agent_release_lease_lost');
+        // The outer source fence already protects the case currently in use.
+        // Check all other provenance without adding row locks, renewing the
+        // worker lease or opening another source transaction behind erasure.
+        await assertReviewedRegressionScenarios(query,data.candidate.scenarios,input.agentId,undefined,{lockRows:false});
+    }
+    /** Renew only outside a source-use fence, where updates keep their own transaction. */
     async checkpoint(query:RevisionQuery,schema:string,input:{tenantId:string;agentId:string;candidateId:string;evaluationId:string;leaseToken:string;
         results?:any[];evidence?:any;runId?:string;status?:'completed'|'failed'|'budget_deferred';error?:string}):Promise<any>{
         assertReleaseIds(input.tenantId,input.agentId,input.candidateId,input.evaluationId,input.leaseToken);

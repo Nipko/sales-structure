@@ -45,7 +45,7 @@ const connection=process.env.PARALLLY_ISOLATION_TEST_URL;
         await sql('CREATE TRIGGER revise_replay AFTER INSERT OR UPDATE OR DELETE ON messages FOR EACH ROW EXECUTE FUNCTION revise_replay_source()');
         const redis={get:async()=>null,set:async()=>undefined};
         agentTest={captureSnapshot:jest.fn(async()=>({version:1,config:{language:'fr'},configHash:'config',manifest:{revision:'full',strategy:'guarded_live_dependencies',limitations:[]}})),
-            assertSnapshotCurrent:jest.fn(),test:jest.fn(async(_t:any,_a:any,_input:any,opts:any)=>{
+            releaseSnapshot: jest.fn(), snapshotSourceAuthority: jest.fn(() => async (invoke: any) => invoke()), assertSnapshotExecutable:jest.fn(),test:jest.fn(async(_t:any,_a:any,_input:any,opts:any)=>{
                 await opts.beforeModelExecution?.();return {reply:'Bonjour',debug:{toolCalls:[]}};
             })};
         quality={judgeTranscript:jest.fn(async()=>judge)};queue={add:jest.fn(async()=>({}))};
@@ -61,7 +61,7 @@ const connection=process.env.PARALLLY_ISOLATION_TEST_URL;
         await sql('INSERT INTO contacts(id) VALUES($1::uuid)',[contactId]);
         await sql(`INSERT INTO conversations(id,contact_id,agent_id,channel_type) VALUES($1::uuid,$2::uuid,$3::uuid,'web_widget')`,[conversationId,contactId,agentId]);
         await sql(`INSERT INTO messages(id,conversation_id,direction,content_text) VALUES($1::uuid,$2::uuid,'inbound','Mon texte privé')`,[messageId,conversationId]);
-        agentTest.test.mockClear();quality.judgeTranscript.mockClear();queue.add.mockClear();
+        agentTest.test.mockClear();agentTest.releaseSnapshot.mockClear();quality.judgeTranscript.mockClear();queue.add.mockClear();
     });
     afterAll(async()=>{
         if(!db)return;
@@ -157,12 +157,34 @@ const connection=process.env.PARALLLY_ISOLATION_TEST_URL;
         await expect((service as any).runScenario(tenantId,agentId,'web_widget',copy[0],{},undefined,{schemaName:schema,runId})).rejects.toThrow('simulation_replay_source_unavailable');
         expect(agentTest.test).toHaveBeenCalledTimes(before);
     });
+
+    it('collects root and baseline snapshots before retirement clears them, then releases outside the privacy transaction',async()=>{
+        const parent=await start();
+        const [{scenario_definitions}]=await sql('SELECT scenario_definitions FROM simulation_runs WHERE id=$1::uuid',[parent.runId]);
+        await sql("UPDATE simulation_runs SET status='completed',results=$2::jsonb WHERE id=$1::uuid",[parent.runId,JSON.stringify(scenario_definitions)]);
+        const child=await start({baselineRunId:parent.runId});
+        const before=await sql('SELECT evaluation_snapshot FROM simulation_runs WHERE id=ANY($1::uuid[]) ORDER BY id',[[parent.runId,child.runId]]);
+        const release=agentTest.releaseSnapshot.getMockImplementation();
+        agentTest.releaseSnapshot.mockImplementation(async()=>{
+            await db.$transaction(async tx=>{
+                const rows=await tx.$queryRawUnsafe('SELECT pg_try_advisory_xact_lock(hashtextextended($1,0)) AS acquired',`agent-privacy:${schema}`) as any[];
+                expect(rows[0].acquired).toBe(true);
+            });
+        });
+        try {
+            await service.retireRun(tenantId,parent.runId);
+            expect(agentTest.releaseSnapshot.mock.calls.map((call:any[])=>call[0])).toEqual(expect.arrayContaining(before.map(row=>row.evaluation_snapshot)));
+            expect(agentTest.releaseSnapshot).toHaveBeenCalledTimes(2);
+            const after=await sql('SELECT status,evaluation_snapshot FROM simulation_runs WHERE id=ANY($1::uuid[])',[[parent.runId,child.runId]]);
+            expect(after.every(row=>row.status==='retired'&&row.evaluation_snapshot===null)).toBe(true);
+        } finally { agentTest.releaseSnapshot.mockImplementation(release); }
+    });
     it('validates retries before reusing successful results and never exposes stale text in summaries/get',async()=>{
         const {runId}=await start();const [run]=await sql('SELECT * FROM simulation_runs WHERE id=$1::uuid',[runId]);
         const def=run.scenario_definitions[0];const {revisionHash}=require('../evaluation-revision/evaluation-revision');
         const completed={...def,scenarioHash:revisionHash(def),transcript:[],judge,turns:1,latencyMs:1};
         await sql('UPDATE messages SET content_text=$2 WHERE id=$1::uuid',[messageId,'changed']);
-        await expect((service as any).runScenariosConcurrently(tenantId,agentId,'web_widget',[def],undefined,undefined,[completed],undefined,{schemaName:schema,runId})).rejects.toThrow('simulation_replay_source_unavailable');
+        await expect((service as any).runScenariosConcurrently(tenantId,agentId,'web_widget',[def],{},undefined,[completed],undefined,{schemaName:schema,runId})).rejects.toThrow('simulation_replay_source_unavailable');
         expect(agentTest.test).not.toHaveBeenCalled();
         expect(JSON.stringify(await service.listRuns(tenantId))).not.toContain('Mon texte privé');
     });

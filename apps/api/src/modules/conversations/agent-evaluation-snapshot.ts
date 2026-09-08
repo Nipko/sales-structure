@@ -5,6 +5,7 @@ import type { AgentConfigurationBody } from '../persona/agent-configuration-revi
 import { assertRevisionIntegrity, revisionHash, sealRevision, type EvaluationRevisionManifest } from '../evaluation-revision/evaluation-revision';
 import { resolveEvaluationTurnContext, type EvaluationTurnContextInputs } from './evaluation-turn-context';
 import { resolveStructuredKnowledgeCapture, type StructuredKnowledgeCapture } from '../evaluation-revision/evaluation-structured-knowledge';
+import { resolveKnowledgeReplica, type EvaluationKnowledgeReplica } from '../evaluation-revision/evaluation-knowledge-replica';
 
 function canonicalJson(value: unknown): string {
     if (Array.isArray(value)) return '[' + value.map(canonicalJson).join(',') + ']';
@@ -41,6 +42,8 @@ export interface AgentEvaluationSnapshot {
     runtimeInputsHash?: string;
     contextInputs?: EvaluationTurnContextInputs;
     structuredKnowledgeInputs?: StructuredKnowledgeCapture;
+    /** Owned database corpus reference; model args/public DTOs cannot supply it. */
+    knowledgeInputs?: EvaluationKnowledgeReplica;
 }
 export function evaluationSnapshot(tenantId: string, agentId: string, agent: { version?: number; config_json?: unknown }, capturedAt = new Date().toISOString()): AgentEvaluationSnapshot {
     if (!agent?.config_json || typeof agent.config_json !== 'object') throw new Error('agent_config_snapshot_unavailable');
@@ -56,6 +59,7 @@ function frozenDependencies(snapshot: AgentEvaluationSnapshot) {
         {key:'frozen.runtime_inputs',state:'present' as const,hash:revisionHash(snapshot.runtimeInputs)},
         {key:'frozen.turn_context',state:'present' as const,hash:revisionHash(snapshot.contextInputs)},
         {key:'frozen.structured_knowledge',state:'present' as const,hash:revisionHash(snapshot.structuredKnowledgeInputs)},
+        {key:'frozen.knowledge_replica',state:'present' as const,hash:revisionHash(snapshot.knowledgeInputs)},
         {key:'frozen.learning_selection',state:'present' as const,hash:revisionHash({id:snapshot.learningReleaseId,hash:snapshot.learningReleaseHash})},
         ...(snapshot.releaseScope?[{key:'frozen.release_scope',state:'present' as const,hash:revisionHash(snapshot.releaseScope)}]:[]),
         ...(snapshot.configurationRevisionId?[{key:'frozen.configuration_revision',state:'present' as const,
@@ -79,6 +83,10 @@ export function resolveEvaluationSnapshot(snapshot: AgentEvaluationSnapshot, ten
         assertRevisionIntegrity(snapshot.manifest);
         resolveEvaluationTurnContext(snapshot.contextInputs, tenantId);
         resolveStructuredKnowledgeCapture(snapshot.structuredKnowledgeInputs, tenantId);
+        const knowledge = resolveKnowledgeReplica(snapshot.knowledgeInputs, tenantId);
+        if (!knowledge.management || knowledge.usage?.agentId !== agentId
+            || knowledge.lease.sourceSchema !== snapshot.structuredKnowledgeInputs!.sourceSchema)
+            throw new Error('agent_snapshot_knowledge_scope_mismatch');
         if (snapshot.manifest.dependencies.some(item=>item.key==='frozen.release_scope') !== !!snapshot.releaseScope)
             throw new Error('agent_snapshot_release_scope_integrity_mismatch');
         if (snapshot.manifest.dependencies.some(item=>item.key==='frozen.configuration_revision') !== !!snapshot.configurationRevisionId

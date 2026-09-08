@@ -537,9 +537,9 @@ export class EvalService {
                 // between initialization and capture must not disappear from the run.
                 if(!opts?.scenarios)await this.listScenarios(tenantId);
                 snapshot = opts?.agentSnapshot || await this.agentTest.captureSnapshot(tenantId, agentId);
-                await this.agentTest.assertSnapshotCurrent(snapshot, tenantId, agentId);
+                await this.agentTest.assertSnapshotExecutable(snapshot, tenantId, agentId);
                 const availableScenarios = opts?.scenarios || await this.listScenarios(tenantId);
-                await this.agentTest.assertSnapshotCurrent(snapshot, tenantId, agentId);
+                await this.agentTest.assertSnapshotExecutable(snapshot, tenantId, agentId);
                 const applicable = availableScenarios.filter(scenario=>regressionAppliesToSnapshot(scenario,snapshot!,channelType));
                 if(applicable.some(scenario=>scenario.regressionBlocked))throw new Error('reviewed_regression_source_changed');
                 const scenarios=applicable.filter(scenario=>(scenario.seedState||'active')==='active'
@@ -557,7 +557,7 @@ export class EvalService {
                     await opts?.onScenarioCompleted?.(out);
                     activeScenario = undefined;
                 }
-                await this.agentTest.assertSnapshotCurrent(snapshot, tenantId, agentId);
+                await this.agentTest.assertSnapshotExecutable(snapshot, tenantId, agentId);
                 const avgScore = out.length ? Math.round((out.reduce((sum, row) => sum + row.score, 0) / out.length) * 100) / 100 : 0;
                 const passed = out.length > 0 && out.every(row => row.passed);
                 const releaseEvidence = sealReleaseRun({agentId,dependencyRevision:snapshot.manifest?.revision||'',
@@ -583,6 +583,11 @@ export class EvalService {
                     status: 'failed', error: String(error.message || error) }, opts?.trigger || 'manual');
                 this.emitRunEvent(AGENT_EVAL_FAILED_EVENT, tenantId, agentId, 'failed',runId);
                 throw error;
+            } finally {
+                // External release/learning producers own their snapshot across
+                // channels and retries. This gate releases only its own capture,
+                // after every reviewed-source callback has unwound.
+                if (snapshot && !opts?.agentSnapshot) await this.agentTest.releaseSnapshot(snapshot);
             }
         });
     }
@@ -626,6 +631,8 @@ export class EvalService {
     /** One scenario run: judge score + (if expectedActions) verified DB side-effects. */
     private async runScenarioWithActions(tenantId: string, agentId: string, schema: string, sc: any, threshold: number, hasActions: boolean, snapshot?: AgentEvaluationSnapshot, channelType = 'web_widget', assertLease?: () => Promise<void>, beforeModelUnits?: (units: number) => Promise<void>) {
         assertScenarioMessages(sc.messages);
+        if (!snapshot) throw new Error('evaluation_revision_manifest_required');
+        await this.agentTest.assertSnapshotExecutable(snapshot, tenantId, agentId);
         const reviewedSource=sc;
         return this.withOwnedSandboxSession(tenantId, schema, assertLease || (async () => {}), async session => {
             await session.reset(channelType, snapshot);
@@ -662,10 +669,11 @@ export class EvalService {
             let transcript = lines.join('\n');
             if (sc.criteria) transcript += `\n\n[Criterio esperado para esta conversación: ${sc.criteria}]`;
             await beforeModelUnits?.(1);
-            await this.agentTest.assertSnapshotCurrent(snapshot);
+            await this.agentTest.assertSnapshotExecutable(snapshot);
             const judge = await withReviewedRegressionScenarios(this.prisma,schema,[reviewedSource],agentId,channelType,
-                ()=>this.quality.judgeTranscript(tenantId, transcript, AGENT_TEST_EXECUTION_CONTEXT));
-            await this.agentTest.assertSnapshotCurrent(snapshot);
+                ()=>this.quality.judgeTranscript(tenantId, transcript, AGENT_TEST_EXECUTION_CONTEXT,
+                    this.agentTest.snapshotSourceAuthority(snapshot)));
+            await this.agentTest.assertSnapshotExecutable(snapshot);
             const score = judge.overall;
 
             let actionsPassed = true;

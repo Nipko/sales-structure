@@ -73,7 +73,7 @@ describe('versioned multilingual eval infrastructure', () => {
 
     it('has one contact-scoped verifier for every mutating sandbox family', () => {
         expect(Object.keys(EVAL_EFFECT_VERIFIERS).sort()).toEqual([
-            'appointments', 'catalog_orders', 'class_bookings', 'enrollments',
+            'appointments', 'catalog_orders', 'class_bookings', 'enrollments', 'pets',
             'photo_sessions', 'property_bookings', 'repair_orders', 'resource_rentals',
             'restaurant_orders', 'service_requests', 'tour_bookings',
         ]);
@@ -94,7 +94,7 @@ describe('versioned multilingual eval infrastructure', () => {
         const { service, prisma, namespaces, lease } = buildService();
         prisma.executeInTenantSchema.mockResolvedValue([{ id: '11111111-1111-4111-8111-111111111111' }]);
         const agentTest = { captureSnapshot: jest.fn().mockResolvedValue({ config: {}, capturedAt: '2026-09-07T12:00:00Z' }),
-            assertSnapshotCurrent: jest.fn(), test: jest.fn() };
+            releaseSnapshot: jest.fn(), snapshotSourceAuthority: jest.fn(() => async (invoke: any) => invoke()), assertSnapshotExecutable: jest.fn(), test: jest.fn() };
         if (fail) agentTest.test.mockRejectedValue(new Error('provider unavailable'));
         else agentTest.test.mockResolvedValue({ reply: 'Hello', debug: { toolCalls: [] } });
         (service as any).agentTest = agentTest;
@@ -133,7 +133,7 @@ describe('versioned multilingual eval infrastructure', () => {
         prisma.executeInTenantSchema.mockResolvedValue([{id:'11111111-1111-4111-8111-111111111111'}]);
         const snapshot={agentId:'agent',config:{},configHash:'config',capturedAt:'2026-09-07T12:00:00Z',manifest:{revision:'revision'}};
         const test=jest.fn().mockResolvedValue({reply:'Hello',debug:{toolCalls:[]}});
-        (service as any).agentTest={captureSnapshot:jest.fn().mockResolvedValue(snapshot),assertSnapshotCurrent:jest.fn(),test};
+        (service as any).agentTest={captureSnapshot:jest.fn().mockResolvedValue(snapshot),releaseSnapshot: jest.fn(), snapshotSourceAuthority: jest.fn(() => async (invoke: any) => invoke()), assertSnapshotExecutable:jest.fn(),test};
         (service as any).quality={judgeTranscript:jest.fn().mockResolvedValue({overall:9,resolved:true,flags:[]})};
         const options:any={agentSnapshot:snapshot,scenarios:[{key:'greeting',messages:['hello']}],channelType:'telegram'};
         const first=await service.runGateV2('tenant-id','agent',options);expect(test).toHaveBeenCalledTimes(1);
@@ -147,7 +147,7 @@ describe('versioned multilingual eval infrastructure', () => {
         const initial={key:'initial',messages:['hello']},added={key:'added_before_capture',messages:['A new failure']};
         jest.spyOn(service,'listScenarios').mockResolvedValueOnce([initial]).mockResolvedValueOnce([initial,added]);
         (service as any).agentTest={captureSnapshot:jest.fn().mockResolvedValue({agentId:'agent',config:{},configHash:'config',manifest:{revision:'revision'}}),
-            assertSnapshotCurrent:jest.fn()};
+            releaseSnapshot: jest.fn(), snapshotSourceAuthority: jest.fn(() => async (invoke: any) => invoke()), assertSnapshotExecutable:jest.fn()};
         const run=jest.spyOn(service as any,'runPassK').mockImplementation(async(...args:any[])=>({key:args[3].key,score:9,passed:true}));
         jest.spyOn(service as any,'persistRun').mockResolvedValue(undefined);
         const result=await service.runGateV2('tenant-id','agent');
@@ -157,8 +157,8 @@ describe('versioned multilingual eval infrastructure', () => {
     it('cleans its namespace when a provider fails and rejects missing sandbox infrastructure', async () => {
         const {service,prisma,namespaces,lease}=buildService();
         prisma.executeInTenantSchema.mockResolvedValue([{id:'11111111-1111-4111-8111-111111111111'}]);
-        (service as any).agentTest={test:jest.fn().mockRejectedValue(new Error('provider unavailable'))};
-        await expect((service as any).runScenarioWithActions('tenant-id','agent','tenant_schema',{messages:['hola']},7,false)).rejects.toThrow('provider unavailable');
+        (service as any).agentTest={assertSnapshotExecutable:jest.fn(),test:jest.fn().mockRejectedValue(new Error('provider unavailable'))};
+        await expect((service as any).runScenarioWithActions('tenant-id','agent','tenant_schema',{messages:['hola']},7,false,{config:{}})).rejects.toThrow('provider unavailable');
         expect(namespaces.dispose).toHaveBeenCalledTimes(1);expect(namespaces.dispose).toHaveBeenCalledWith(lease);
         (service as any).namespaces=undefined;prisma.executeInTenantSchema.mockClear();
         await expect(service.withSandboxSession('tenant-id',async session=>session.reset('telegram'))).rejects.toThrow('canonical_sandbox_not_available');

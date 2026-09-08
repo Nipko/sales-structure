@@ -270,8 +270,8 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
         const f=agentTurnFixture({toolExecutor:executor});
         f.personaService.getAgent.mockResolvedValue({version:1,config_json:{language,industry:'retail',tools:{},rag:{enabled:false},llm:{}}});
         publishTools(f,['enroll_student','book_class']);
-        const snapshot=await f.service.captureSnapshot(tenantId,'agent');
-        const session:AgentTurnSession={id:randomUUID(),tenantId,agentId:'agent',channelType:'telegram',contactId,conversationId,schemaName:lease.schemaName,
+        const snapshot=await f.service.captureSnapshot(tenantId,'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
+        const session:AgentTurnSession={id:randomUUID(),tenantId,agentId:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',channelType:'telegram',contactId,conversationId,schemaName:lease.schemaName,
             snapshot,sandboxNamespace:lease,mode:'sandbox',executionContext:AGENT_TEST_EXECUTION_CONTEXT,state:new EphemeralTurnState(),metadata:{},history:[],lastMessageAt:new Date().toISOString(),trace:new AgentTurnTrace()};
         const q=(sql:string,params:any[]=[])=>prisma.executeInTenantSchema(lease.schemaName,sql,params);
         const writer=(name:string,args:any)=>({id:randomUUID(),function:{name,arguments:JSON.stringify(args)}});
@@ -313,8 +313,8 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
             {id:'create',type:'tool',config:{tool:'enroll_student',args:{cohortId,studentName:'Eval',studentEmail:'{{ email }}'},saveAs:'enrollment'}},
         ]}]);
         publishTools(f,['enroll_student','book_class']);
-        const snapshot=await f.service.captureSnapshot(tenantId,'agent');
-        const session:AgentTurnSession={id:randomUUID(),tenantId,agentId:'agent',channelType:'telegram',contactId,conversationId,schemaName:lease.schemaName,
+        const snapshot=await f.service.captureSnapshot(tenantId,'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
+        const session:AgentTurnSession={id:randomUUID(),tenantId,agentId:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',channelType:'telegram',contactId,conversationId,schemaName:lease.schemaName,
             snapshot,sandboxNamespace:lease,mode:'sandbox',executionContext:AGENT_TEST_EXECUTION_CONTEXT,state:new EphemeralTurnState(),metadata:{},history:[],lastMessageAt:new Date().toISOString(),trace:new AgentTurnTrace()};
         const q=(sql:string,params:any[]=[])=>prisma.executeInTenantSchema(lease.schemaName,sql,params);
         const turn=async(text:string)=>{
@@ -341,15 +341,15 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
         f.tenantsService.getSchemaName.mockResolvedValue(source);
         (f.service as any).namespaces=namespaces;
         publishTools(f,['enroll_student']);
-        const snapshot=await f.service.captureSnapshot(tenantId,'agent');
+        const snapshot=await f.service.captureSnapshot(tenantId,'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
         const recorder=Object.assign(Object.create(EvalService.prototype),{prisma});
         const options={evalMode:true,sandboxNamespace:lease,sandboxContactId:contactId,sandboxConversationId:conversationId,agentSnapshot:snapshot};
-        await expect(f.service.test(tenantId,'agent',{message:'Quiero una matricula'},options)).rejects.toThrow('eval_sandbox_inbound_required');
+        await expect(f.service.test(tenantId,'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',{message:'Quiero una matricula'},options)).rejects.toThrow('eval_sandbox_inbound_required');
         let sessionId:string|undefined;
         const run=async(message:string)=>{
             const sandboxInboundMessageId=await recorder.recordSandboxInbound(lease.schemaName,conversationId,message);
             f.llmRouter.execute.mockResolvedValueOnce({content:'',toolCalls:[{id:randomUUID(),function:{name:'enroll_student',arguments:JSON.stringify({cohortId,studentName:'Eval'})}}]});
-            const response=await f.service.test(tenantId,'agent',{message,channelType:'telegram',runtimeSessionId:sessionId},{...options,sandboxInboundMessageId});
+            const response=await f.service.test(tenantId,'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',{message,channelType:'telegram',runtimeSessionId:sessionId},{...options,sandboxInboundMessageId});
             sessionId=response.debug.runtimeSessionId;expect(response.debug.runtimeError).toBeUndefined();
             return {response,sandboxInboundMessageId};
         };

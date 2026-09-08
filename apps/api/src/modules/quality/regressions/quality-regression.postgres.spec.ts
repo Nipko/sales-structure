@@ -116,7 +116,7 @@ const deferred=()=>{let resolve!:()=>void;const promise=new Promise<void>(done=>
         const entered=deferred(),release=deferred();
         const use=withReviewedRegressionScenarios(prisma,schema,[scenario],agentId,'web_widget',async()=>{entered.resolve();await release.promise;return 'done';});
         await entered.promise;let erased=false;
-        const erasing=(compliance as any).eraseCustomerMemory(schema,contactId).then(()=>{erased=true;});
+        const erasing=(compliance as any).eraseCustomerMemory(schema, contactId, tenantId).then(()=>{erased=true;});
         await new Promise(done=>setTimeout(done,50));expect(erased).toBe(false);
         release.resolve();await use;await erasing;
         for(const table of ['quality_regression_cases','quality_regression_revisions','quality_regression_reviews','eval_runs','eval_autorun_requests'])
@@ -172,7 +172,7 @@ const deferred=()=>{let resolve!:()=>void;const promise=new Promise<void>(done=>
         await execute(`UPDATE messages SET content_text='A corrected request' WHERE id=$1::uuid`,[inboundId]);
         metrics=await missionMetrics(prisma,schema,agentId,new Date(Date.now()-86400000).toISOString(),new Date(Date.now()+86400000).toISOString());
         expect(metrics.unobserved_turns).toBe(1);
-        await (compliance as any).eraseCustomerMemory(schema,contactId);
+        await (compliance as any).eraseCustomerMemory(schema, contactId, tenantId);
         await recorder.observe({kind:'final'});
         for(const table of ['agent_mission_turns','agent_mission_steps','agent_mission_instances'])expect(await execute(`SELECT * FROM ${table}`)).toHaveLength(0);
     });

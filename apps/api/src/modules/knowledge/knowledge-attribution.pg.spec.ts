@@ -122,7 +122,7 @@ integration('Knowledge attribution on real PostgreSQL', () => {
         await service.recordResponseAttribution(tenantId, conversationId, '[Article: Conditions]', [source]);
         await service.submitFeedback(tenantId, { conversationId, documentId, rating: 1, query: 'Private query', comment: 'Private comment' });
         const compliance = new ComplianceService(prisma);
-        await (compliance as any).eraseCustomerMemory(schema, contactId);
+        await (compliance as any).eraseCustomerMemory(schema, contactId, tenantId);
         expect(await execute(`SELECT id FROM kb_retrieval_log`)).toEqual([]);
         expect(await execute(`SELECT id FROM kb_unanswered_queries`)).toEqual([]);
         expect(await execute(`SELECT query,comment,message_id FROM kb_feedback`)).toEqual([{ query: null, comment: null, message_id: null }]);

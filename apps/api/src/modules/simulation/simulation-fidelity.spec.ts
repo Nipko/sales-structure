@@ -14,12 +14,13 @@ import { evaluationSnapshot } from '../conversations/agent-evaluation-snapshot';
 import { revisionHash } from '../evaluation-revision/evaluation-revision';
 
 const replayRun={schemaName:'test_schema',runId:'test_run'};
+const frozenSnapshot = evaluationSnapshot('tenant', 'agent', {version:1,config_json:{language:'fr'}});
 const scenario = (key: string) => ({ key, title: key, source: 'replay', language: 'fr', goal: 'support', openingMessage: 'bonjour', replayMessages: ['bonjour', 'oui'] });
 const judge = { overall: 8, resolved: true, tone: 8, accuracy: 8, empathy: 8, resolution: 8, flags: [] };
 
 function simulation() {
     const prisma = { executeInTenantSchema: jest.fn().mockResolvedValue([]),transactionInTenantSchema:jest.fn(async(_schema:any,work:any)=>work(async()=>[])) };
-    const agentTest = { assertSnapshotCurrent: jest.fn().mockResolvedValue(undefined), test: jest.fn().mockResolvedValue({ reply: 'Comment puis-je vous aider?', debug: { toolCalls: [] } }) };
+    const agentTest = { releaseSnapshot: jest.fn(), snapshotSourceAuthority: jest.fn(() => async (invoke: any) => invoke()), assertSnapshotExecutable: jest.fn().mockResolvedValue(undefined), test: jest.fn().mockResolvedValue({ reply: 'Comment puis-je vous aider?', debug: { toolCalls: [] } }) };
     const llm = { execute: jest.fn() };
     const quality = { judgeTranscript: jest.fn().mockResolvedValue(judge) };
     const service = new SimulationService(prisma as any, {} as any, llm as any, {} as any, quality as any, agentTest as any, {} as any, { emit: jest.fn() } as any);
@@ -38,14 +39,14 @@ describe('simulation execution fidelity', () => {
     it('reruns a previous result when its customer script changed under the same scenario key',async()=>{
         const f=simulation();const old=scenario('same');const changed={...old,replayMessages:['Nouvelle demande']};
         const previous={...old,scenarioHash:revisionHash(old),transcript:[],turns:1,latencyMs:1,judge};
-        const results=await (f.service as any).runScenariosConcurrently('tenant','agent','telegram',[changed],undefined,undefined,[previous],undefined,replayRun);
+        const results=await (f.service as any).runScenariosConcurrently('tenant','agent','telegram',[changed],frozenSnapshot,undefined,[previous],undefined,replayRun);
         expect(f.agentTest.test).toHaveBeenCalledTimes(1);
         expect(results[0]).not.toBe(previous);expect(results[0].scenarioHash).toBe(revisionHash(changed));
     });
     it('never grades a runtime failure as a successful customer-service answer', async () => {
         const { service, agentTest, quality } = simulation();
         agentTest.test.mockResolvedValue({ reply: 'Disculpa, hubo un problema.', debug: { runtimeError: 'provider unavailable', toolCalls: [] } } as any);
-        const results = await (service as any).runScenariosConcurrently('tenant', 'agent', 'telegram', [scenario('failed')],undefined,undefined,[],undefined,replayRun);
+        const results = await (service as any).runScenariosConcurrently('tenant', 'agent', 'telegram', [scenario('failed')],frozenSnapshot,undefined,[],undefined,replayRun);
         expect(results[0]).toMatchObject({ judge: null, error: 'agent_runtime_failed:provider unavailable' });
         expect(quality.judgeTranscript).not.toHaveBeenCalled();
     });
@@ -68,7 +69,7 @@ describe('simulation execution fidelity', () => {
         const synthetic = { ...scenario('broken'), source: 'synthetic',replayMessages:undefined };
         const good = { ...scenario('done'), scenarioHash: revisionHash(scenario('done')), transcript: [], turns: 1, latencyMs: 1, judge };
         const reset = jest.fn(); const checkpoint = jest.fn();
-        const result = await (service as any).runScenariosConcurrently('tenant', 'agent', 'telegram', [scenario('done'), synthetic], undefined, { reset, recordInbound: jest.fn() }, [good], checkpoint,replayRun);
+        const result = await (service as any).runScenariosConcurrently('tenant', 'agent', 'telegram', [scenario('done'), synthetic], frozenSnapshot, { reset, recordInbound: jest.fn() }, [good], checkpoint,replayRun);
         expect(result[0]).toBe(good);
         expect(result[1]).toMatchObject({ error: 'customer_simulator_failed:provider timeout', judge: null, turns: 1 });
         expect(result[1].transcript).toHaveLength(2);
@@ -80,8 +81,9 @@ describe('simulation execution fidelity', () => {
     it('keeps simulator failure distinct from the explicit end token', async () => {
         const { service, llm } = simulation();
         llm.execute.mockResolvedValueOnce({ content: '[FIN]' }).mockResolvedValueOnce({ content: '' });
-        await expect((service as any).nextCustomerMessage('tenant', scenario('one'), [])).resolves.toBe('[FIN]');
-        await expect((service as any).nextCustomerMessage('tenant', scenario('one'), [])).rejects.toThrow('customer_simulator_failed');
+        const authority = async (invoke: any) => invoke();
+        await expect((service as any).nextCustomerMessage('tenant', scenario('one'), [], authority)).resolves.toBe('[FIN]');
+        await expect((service as any).nextCustomerMessage('tenant', scenario('one'), [], authority)).rejects.toThrow('customer_simulator_failed');
         expect(llm.execute.mock.calls[0][0].systemPrompt).toContain('idioma fr');
     });
 

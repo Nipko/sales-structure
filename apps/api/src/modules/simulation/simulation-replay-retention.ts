@@ -1,10 +1,13 @@
 import { disposeOwnedEvalNamespace, type EvalNamespaceLease } from './isolated-eval-namespace';
+import type { AgentEvaluationSnapshot } from '../conversations/agent-evaluation-snapshot';
 
 export type SimulationReplayQuery = <T = any[]>(sql: string, params?: any[]) => Promise<T>;
 
 /** Caller holds the exclusive agent-privacy fence. Clear every copy, including baseline descendants. */
 export async function retireSimulationReplayRuns(query: SimulationReplayQuery, input: {
     runIds?: string[]; contactIds?: string[]; legacy?: boolean;
+    /** Collect only. The owner releases these AFTER this transaction/fence commits. */
+    retiredSnapshots?: AgentEvaluationSnapshot[];
 }): Promise<number> {
     const columns = await query<any[]>(`SELECT column_name FROM information_schema.columns
         WHERE table_schema=current_schema() AND table_name='simulation_runs'`);
@@ -17,7 +20,9 @@ export async function retireSimulationReplayRuns(query: SimulationReplayQuery, i
                 OR EXISTS(SELECT 1 FROM jsonb_array_elements(COALESCE(results,'[]'::jsonb)) s
                     WHERE s->>'source'='replay' OR s->>'key' LIKE 'replay:%')
             UNION SELECT r.id FROM simulation_runs r JOIN affected a ON r.baseline_run_id=a.id
-        ) DELETE FROM simulation_runs WHERE id IN (SELECT id FROM affected) RETURNING id`);
+        ) DELETE FROM simulation_runs WHERE id IN (SELECT id FROM affected)
+            RETURNING id,${names.has('evaluation_snapshot')?'evaluation_snapshot':'NULL AS evaluation_snapshot'}`);
+        for (const row of removed) if (row.evaluation_snapshot) input.retiredSnapshots?.push(row.evaluation_snapshot);
         return removed.length;
     }
     const rows = await query<any[]>(`WITH RECURSIVE affected(id) AS (
@@ -29,7 +34,8 @@ export async function retireSimulationReplayRuns(query: SimulationReplayQuery, i
                     WHERE s->>'source'='replay' OR s->>'key' LIKE 'replay:%')))
         UNION
         SELECT r.id FROM simulation_runs r JOIN affected a ON r.baseline_run_id=a.id
-    ) SELECT id,${names.has('replay_namespace_leases')?'replay_namespace_leases':'NULL AS replay_namespace_leases'}
+    ) SELECT id,${names.has('replay_namespace_leases')?'replay_namespace_leases':'NULL AS replay_namespace_leases'},
+        ${names.has('evaluation_snapshot')?'evaluation_snapshot':'NULL AS evaluation_snapshot'}
         FROM simulation_runs WHERE id IN (SELECT id FROM affected) AND status<>'retired' FOR UPDATE`,
     [input.runIds || [], input.contactIds || [], !!input.legacy]);
     if (!rows.length) return 0;
@@ -44,6 +50,7 @@ export async function retireSimulationReplayRuns(query: SimulationReplayQuery, i
         avg_score=NULL,resolved_rate=NULL,error='simulation_replay_source_unavailable',
         retired_at=COALESCE(retired_at,NOW()),completed_at=COALESCE(completed_at,NOW())
         WHERE id=ANY($1::uuid[])`, [rows.map(row=>row.id)]);
+    for (const row of rows) if (row.evaluation_snapshot) input.retiredSnapshots?.push(row.evaluation_snapshot);
     return rows.length;
 }
 

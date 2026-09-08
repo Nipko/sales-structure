@@ -148,7 +148,7 @@ const deferred = () => { let resolve!: () => void; const promise = new Promise<v
     });
     it('erases derived receipts and prevents commands from recreating them for an erased contact', async () => {
         const row = await create();
-        await (new ComplianceService(prisma) as any).eraseCustomerMemory(schema, contactId);
+        await (new ComplianceService(prisma) as any).eraseCustomerMemory(schema, contactId, tenantId);
         expect(await q('SELECT command_key FROM pet_command_receipts')).toEqual([]);
         await expect(create()).rejects.toThrow('contact_erased');
         await expect(pets.update(schema, row.id, { name: 'After erasure' }, options())).rejects.toThrow('contact_erased');

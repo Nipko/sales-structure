@@ -263,6 +263,7 @@ export class AIToolExecutorService {
              */
             jurisdiction?: string | null;
             knowledgeSearch?: {
+                evaluationKnowledge?: import('../evaluation-revision/evaluation-knowledge-replica').EvaluationKnowledgeReplica;
                 similarityThreshold?: number; language?: string;
                 rerank?: boolean; rerankTopN?: number;
                 agentId?: string | null; audience?: 'customer' | 'internal';
@@ -1132,7 +1133,7 @@ export class AIToolExecutorService {
                     .fail(schemaName, controlDecision, 'tool_execution_failed')
                     .catch(() => undefined);
             }
-            if(error instanceof LLMSourceAuthorityUnavailable)throw error;
+            if(error instanceof LLMSourceAuthorityUnavailable || (toolName === 'search_knowledge_base' && opts?.knowledgeSearch?.evaluationKnowledge))throw error;
             if (error instanceof ServedAgentAuthorityError) return {
                 error: error.code, persisted: false, controlBlocked: true,
                 message: 'The agent configuration changed. Reload it and prepare a new proposal before executing this action.',
@@ -2598,13 +2599,14 @@ export class AIToolExecutorService {
         executionContext?: ServiceExecutionContext,
         /** Operating country, so regulated sources of other countries stay out. */
         jurisdiction?: string | null,
-        settings?: { similarityThreshold?: number; language?: string; rerank?: boolean; rerankTopN?: number; agentId?: string | null; audience?: 'customer' | 'internal' },
+        settings?: { similarityThreshold?: number; language?: string; rerank?: boolean; rerankTopN?: number; agentId?: string | null; audience?: 'customer' | 'internal'; evaluationKnowledge?: import('../evaluation-revision/evaluation-knowledge-replica').EvaluationKnowledgeReplica },
         conversationId?: string,
         withDataSourceAuthority?:import('../ai/interfaces/external-source-authority').ExternalSourceAuthority,
     ): Promise<any> {
         try {
             const hasKnowledge = await this.knowledgeService.tenantHasKnowledge(tenantId, executionContext, {
                 agentId: settings?.agentId, audience: settings?.audience, jurisdiction,
+                evaluationKnowledge: settings?.evaluationKnowledge,
             });
             // "El negocio no cargó base de conocimiento" y "la búsqueda no
             // encontró nada" son respuestas distintas, y ninguna de las dos es
@@ -2644,7 +2646,7 @@ export class AIToolExecutorService {
             // Un RAG caído devolvía `{chunks: []}`, indistinguible de "no hay
             // nada sobre eso" — así el agente contestaba de memoria sobre una
             // política que no pudo leer.
-            if(e instanceof LLMSourceAuthorityUnavailable)throw e;
+            if(e instanceof LLMSourceAuthorityUnavailable || settings?.evaluationKnowledge)throw e;
             this.logger.warn(`[Tool] search_knowledge_base failed: ${e.message}`);
             return readFailed(TOOL_READ_ERROR_CODES.READ_FAILED, {
                 message: 'No pude consultar la base de conocimiento en este momento.',

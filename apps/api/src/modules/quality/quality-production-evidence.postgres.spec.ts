@@ -140,7 +140,7 @@ const deferred = () => { let resolve!: () => void; const promise = new Promise<v
         judge.execute.mockImplementation(async()=>{entered.resolve();await release.promise;return {content:JSON.stringify({...result,flags:['private derived detail']})};});
         const scoring=service.scoreConversation(tenantId,conversationId);await entered.promise;
         let erased=false;
-        const erasing=(compliance as any).eraseCustomerMemory(schema,contactId).then(()=>{erased=true;});
+        const erasing=(compliance as any).eraseCustomerMemory(schema, contactId, tenantId).then(()=>{erased=true;});
         await new Promise(done=>setTimeout(done,40));expect(erased).toBe(false);
         release.resolve();await scoring;await erasing;
         expect(await sql('SELECT id FROM conversation_quality_scores')).toHaveLength(0);
@@ -149,7 +149,7 @@ const deferred = () => { let resolve!: () => void; const promise = new Promise<v
         expect(judge.execute).toHaveBeenCalledTimes(1);
     });
     it('does not send any transcript after erasure wins first',async () => {
-        await (compliance as any).eraseCustomerMemory(schema,contactId);
+        await (compliance as any).eraseCustomerMemory(schema, contactId, tenantId);
         expect((await service.scoreConversation(tenantId,conversationId)).status).toBe('erased');
         expect(judge.execute).not.toHaveBeenCalled();
     });
@@ -197,7 +197,7 @@ const deferred = () => { let resolve!: () => void; const promise = new Promise<v
             await execute(`INSERT INTO messages VALUES(gen_random_uuid(),$1::uuid,'inbound','Pregunta',NOW()),(gen_random_uuid(),$1::uuid,'outbound','Respuesta',NOW())`,[conversationId]);
             expect((await runtime.scoreConversation(tenantId,conversationId)).status).toBe('scored');
             expect((await runtime.getQualitySummary(tenantId,'2020-01-01','2100-01-01')).scored).toBe(1);
-            await (new ComplianceService(adapter) as any).eraseCustomerMemory(bootstrap,contactId);
+            await (new ComplianceService(adapter) as any).eraseCustomerMemory(bootstrap, contactId, tenantId);
             expect(await execute('SELECT id FROM conversation_quality_scores')).toHaveLength(0);
             expect((await runtime.scoreConversation(tenantId,conversationId)).status).toBe('erased');
         } finally {

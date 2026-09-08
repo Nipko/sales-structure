@@ -633,11 +633,12 @@ export class LearningService {
 
     async failEvaluation(tenantId:string,agentId:string,releaseId:string,attemptId:string,reason:string,workerToken?:string){
         const schema=await this.schema(tenantId);
-        await this.prisma.executeInTenantSchema(schema,`UPDATE learning_releases SET evaluation_status='failed',
+        const updated=await this.prisma.executeInTenantSchema<any[]>(schema,`UPDATE learning_releases SET evaluation_status='failed',
             evaluation=evaluation||$4::jsonb WHERE id=$1::uuid AND agent_id=$2::uuid AND status='candidate'
             AND evaluation_status='running' AND evaluation->>'attemptId'=$3
-            AND (evaluation->>'workerToken') IS NOT DISTINCT FROM $5::text`,
+            AND (evaluation->>'workerToken') IS NOT DISTINCT FROM $5::text RETURNING id`,
             [releaseId,agentId,attemptId,JSON.stringify({error:reason,passed:false,completedAt:new Date().toISOString()}),workerToken??null]);
+        return updated.length>0;
     }
 
     /** Only the server-side full-runtime evaluation module calls this method. */

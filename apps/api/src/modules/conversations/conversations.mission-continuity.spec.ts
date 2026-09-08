@@ -26,10 +26,10 @@ async function fixture(language: string) {
         if (name === 'check_availability') return { available: true, slots: [{ time: '10:00', endTime: '10:30' }] };
         throw new Error(`Unexpected business command: ${name}`);
     });
-    const snapshot = await f.service.captureSnapshot('tenant', 'agent');
+    const snapshot = await f.service.captureSnapshot('tenant', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
     let id: string | undefined;
     const turn = async (message: string) => {
-        const result = await f.service.test('tenant', 'agent', { message, channelType: 'telegram', runtimeSessionId: id }, { agentSnapshot: snapshot });
+        const result = await f.service.test('tenant', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', { message, channelType: 'telegram', runtimeSessionId: id }, { agentSnapshot: snapshot });
         id = result.debug.runtimeSessionId;
         expect(result.debug.runtimeError).toBeUndefined();
         return result;

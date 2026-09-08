@@ -3,6 +3,7 @@ import type { PrismaService } from '../../prisma/prisma.service';
 import { revisionHash as qualityHash } from '../../evaluation-revision/evaluation-revision';
 import { REGRESSION_PREFIX } from './quality-regression-contracts';
 import { assertRegressionCaseSource, type RegressionQuery } from './quality-regression-source';
+import { withAgentSourceFence } from '../../../common/utils/agent-source-fence';
 
 const CASE_KEY=/^quality_regression:([a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}):([1-9]\d*)$/i;
 export function regressionCaseIds(scenarios:any[]):string[] {
@@ -19,12 +20,13 @@ export function regressionCaseIds(scenarios:any[]):string[] {
 }
 
 /** A caller-controlled origin/key is never authority to execute a reviewed case. */
-export async function assertReviewedRegressionScenarios(query:RegressionQuery,scenarios:any[],agentId:string,channelType?:string):Promise<void>{
+export async function assertReviewedRegressionScenarios(query:RegressionQuery,scenarios:any[],agentId:string,channelType?:string,
+    options?:{lockRows?:boolean}):Promise<void>{
     const ids=regressionCaseIds(scenarios);
     if(!ids.length)return;
     if(!(await query<any[]>(`SELECT to_regclass('quality_regression_cases')::text AS name`))[0]?.name)
         throw new ConflictException({error:'regression_review_unavailable'});
-    const rows=await query<any[]>(`SELECT * FROM quality_regression_cases WHERE id=ANY($1::uuid[]) AND agent_id=$2::uuid FOR SHARE`,[ids,agentId]);
+    const rows=await query<any[]>(`SELECT * FROM quality_regression_cases WHERE id=ANY($1::uuid[]) AND agent_id=$2::uuid${options?.lockRows===false?'':' FOR SHARE'}`,[ids,agentId]);
     for(const scenario of scenarios.filter(item=>ids.includes(item.regressionCaseId))){
         const row=rows.find(item=>item.id===scenario.regressionCaseId);
         const {id:_displayId,regressionApprovedHash,...definition}=scenario;
@@ -43,13 +45,12 @@ export async function assertReviewedRegressionScenarios(query:RegressionQuery,sc
 export async function withReviewedRegressionScenarios<T>(prisma:PrismaService,schema:string,scenarios:any[],agentId:string,
     channelType:string,work:()=>Promise<T>):Promise<T>{
     if(!regressionCaseIds(scenarios).length)return work();
-    return prisma.transactionInTenantSchema(schema,async query=>{
-        await query(`SELECT pg_advisory_xact_lock_shared(hashtextextended($1,0))::text`,[`agent-privacy:${schema}`]);
+    return withAgentSourceFence(prisma,schema,async query=>{
         await assertReviewedRegressionScenarios(query,scenarios,agentId,channelType);
         const result=await work();
         await assertReviewedRegressionScenarios(query,scenarios,agentId,channelType);
         return result;
-    },{timeout:120_000});
+    });
 }
 
 export async function fetchReviewedRegressionScenarios(query:RegressionQuery):Promise<any[]>{

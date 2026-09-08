@@ -51,10 +51,10 @@ describe('canonical eval fixtures', () => {
     it('agrees with the actual turn core about the captured timezone', async () => {
         const f = agentTurnFixture();
         f.prisma.tenant.findUnique.mockResolvedValue({ settings: { businessHours: { timezone: 'Pacific/Auckland', is247: true } } });
-        const captured = await f.service.captureSnapshot('tenant', 'agent');
+        const captured = await f.service.captureSnapshot('tenant', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
         const fixture = resolveCanonicalEvalFixtures(captured);
         expect(fixture.status).toBe('ready');
-        const response = await f.service.test('tenant', 'agent', { message: 'hola' }, { agentSnapshot: captured });
+        const response = await f.service.test('tenant', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', { message: 'hola' }, { agentSnapshot: captured });
         expect(response.debug.turnContext.timezone).toBe(fixture.status === 'ready' ? fixture.timezone : 'unexpected_block');
     });
     it.each(['America/Bogota', 'Pacific/Auckland', 'America/Los_Angeles', 'Europe/Paris'])('uses future civil weekdays and enough configured duration in %s', timezone => {

@@ -7,6 +7,7 @@ import { eraseSimulationContactReplays } from '../simulation/simulation-replay-r
 import { eraseContactRegressionArtifacts } from '../quality/regressions/quality-regression-retention';
 import { eraseOperationalContactNotices } from '../operational-notices/operational-notice-erasure';
 import { eraseContactMissionEvidence } from '../quality/mission-evidence';
+import { retireKnowledgeReplicasInTransaction } from '../evaluation-revision/evaluation-knowledge-lifecycle';
 
 @Injectable()
 export class ComplianceService {
@@ -214,7 +215,7 @@ export class ComplianceService {
         // Publish the erasure tombstone before redacting the transcript. The memory
         // extractor checks it again under the same lock immediately before commit.
         try {
-            const counts = await this.eraseCustomerMemory(schemaName, contactId);
+            const counts = await this.eraseCustomerMemory(schemaName, contactId, tenantId);
             erasedTables.push('customer_memories', 'customer_memory_facts');
             totalRecords += counts;
         } catch (err: any) {
@@ -340,7 +341,7 @@ export class ComplianceService {
         return { erasedTables, failedTables, completed: failedTables.length === 0, totalRecordsAffected: totalRecords };
     }
 
-    private async eraseCustomerMemory(schema: string, contactId: string): Promise<number> {
+    private async eraseCustomerMemory(schema: string, contactId: string, tenantId: string): Promise<number> {
         await this.prisma.executeInTenantSchema(schema,
             `CREATE TABLE IF NOT EXISTS customer_memory_erasure (
                 contact_id UUID PRIMARY KEY, erased_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
@@ -348,6 +349,12 @@ export class ComplianceService {
             // Same first lock as ToolExecutionControl transactions: a request,
             // finalizer or approval notification cannot cross the erasure boundary.
             await query(`SELECT pg_advisory_xact_lock(hashtextextended($1,0))::text`,[`agent-privacy:${schema}`]);
+            // Retire copies in the source erasure transaction, so no retained
+            // evaluation corpus can outlive a committed privacy revocation.
+            await retireKnowledgeReplicasInTransaction({
+                $queryRawUnsafe: (sql, ...params) => query<any[]>(sql, params),
+                $executeRawUnsafe: (sql, ...params) => query(sql, params),
+            }, tenantId, schema);
             // Keep the unified family stable until all tombstones and derived
             // deletions commit, including first identity INSERTs and merges.
             await query(`LOCK TABLE contact_identities IN SHARE MODE`);

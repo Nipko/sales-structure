@@ -11,6 +11,7 @@ import { assertRevisionIntegrity, sealRevision } from '../../evaluation-revision
 import { RegionalProfileService } from '../../tenants/regional-profile.service';
 import { sealStructuredKnowledgeCapture } from '../../evaluation-revision/evaluation-structured-knowledge';
 import { AGENT_TEST_EXECUTION_CONTEXT } from '../../../common/types/execution-context';
+import { evaluationKnowledgeFixture } from './evaluation-knowledge.fixture';
 
 /** Real orchestration/engines/guards; only I/O boundaries are substitutes. */
 export function agentTurnFixture(overrides: Record<string, any> = {}) {
@@ -69,9 +70,15 @@ export function agentTurnFixture(overrides: Record<string, any> = {}) {
         (...args: any[]) => deps.businessInfoService.getPrimary(...args));
     deps.procedureEngine = overrides.procedureEngine || new ProcedureEngineService(deps.prisma, deps.redis, deps.toolExecutor);
     deps.promptAssembler = overrides.promptAssembler || new PromptAssemblerService(deps.personaService);
+    deps.evaluationKnowledge = overrides.evaluationKnowledge || {
+        capture: jest.fn(async (tenantId: string, agentId: string) => evaluationKnowledgeFixture(tenantId, agentId,
+            await deps.tenantsService.getSchemaName(tenantId, AGENT_TEST_EXECUTION_CONTEXT))),
+        assertExecutable: jest.fn().mockResolvedValue(undefined), release: jest.fn().mockResolvedValue(undefined),
+        dataSourceAuthority: jest.fn(() => async (invoke: () => Promise<any>) => invoke()),
+    };
     const runtime = Object.assign(Object.create(ConversationsService.prototype), deps) as ConversationsService;
     const service = new AgentTestService(deps.personaService, deps.tenantsService, deps.throttle, runtime, deps.learning, undefined,
-        deps.revisions, deps.mcp, deps.integrations);
+        deps.revisions, deps.mcp, deps.integrations, deps.evaluationKnowledge);
     return { ...deps, runtime, service, contract };
 }
 

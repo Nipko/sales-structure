@@ -13,7 +13,7 @@ describe('Frozen factual context in the operational evaluation core', () => {
             metadata: { secret: 'never-capture-this' }, id: 'private-row', logoUrl: 'private-logo' });
         f.verticalTurnContext.resolve.mockImplementation(async (input: { language: string }) => ({ industry: 'retail', subType: 'moda',
             customerNoun: `customer-${input.language}`, businessGoals: ['Captured objective'] }));
-        const snapshot = await f.service.captureSnapshot('tenant', 'agent');
+        const snapshot = await f.service.captureSnapshot('tenant', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
         expect(JSON.stringify(snapshot.contextInputs)).not.toContain('never-capture-this');
         expect(JSON.stringify(snapshot.contextInputs)).not.toContain('private-row');
         expect(snapshot.contextInputs?.businessHours?.timezone).toBe('America/Mexico_City');
@@ -23,7 +23,7 @@ describe('Frozen factual context in the operational evaluation core', () => {
         }
         jest.spyOn(f.regionalProfile, 'resolve').mockRejectedValue(new Error('regional_source_forbidden'));
         jest.spyOn(f.languageDetector, 'detect').mockReturnValue(language);
-        const response = await f.service.test('tenant', 'agent', { message: 'Information please' }, { agentSnapshot: snapshot });
+        const response = await f.service.test('tenant', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', { message: 'Information please' }, { agentSnapshot: snapshot });
         expect(response.debug.runtimeError).toBeUndefined();
         expect(response.debug.turnContext).toMatchObject({ language, timezone: 'America/Mexico_City',
             regional: { operatingCountry: 'MX' }, business: { companyName: 'Captured shop' },
@@ -40,35 +40,35 @@ describe('Frozen factual context in the operational evaluation core', () => {
     });
 
     it('keeps an explicitly empty identity empty and detaches returned debug data between turns', async () => {
-        const f = agentTurnFixture(), snapshot = await f.service.captureSnapshot('tenant', 'agent');
+        const f = agentTurnFixture(), snapshot = await f.service.captureSnapshot('tenant', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
         expect(snapshot.contextInputs?.business).toBeNull();
-        const first = await f.service.test('tenant', 'agent', { message: 'hola' }, { agentSnapshot: snapshot });
+        const first = await f.service.test('tenant', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', { message: 'hola' }, { agentSnapshot: snapshot });
         first.debug.turnContext.verticalContext!.industry = 'tampered';
         f.businessInfoService.getPrimary.mockResolvedValue({ companyName: 'New live shop' });
-        const next = await f.service.test('tenant', 'agent', { message: 'hola', runtimeSessionId: first.debug.runtimeSessionId });
+        const next = await f.service.test('tenant', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', { message: 'hola', runtimeSessionId: first.debug.runtimeSessionId });
         expect(next.debug.turnContext.business).toBeUndefined();
         expect(next.debug.turnContext.verticalContext?.industry).toBe('retail');
     });
 
     it.each(['contextInputs', 'businessHours', 'business', 'regional', 'vertical', 'fr', 'activeObjectPolicy'])
     ('rejects missing %s before the model even when resealed by a test fixture', async field => {
-        const f = agentTurnFixture(), snapshot = await f.service.captureSnapshot('tenant', 'agent');
+        const f = agentTurnFixture(), snapshot = await f.service.captureSnapshot('tenant', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
         if (field === 'contextInputs') delete snapshot.contextInputs;
         else if (field === 'fr') delete (snapshot.contextInputs!.vertical as any).fr;
         else delete (snapshot.contextInputs as any)[field];
         sealEvaluationSnapshot(snapshot);
-        await expect(f.service.test('tenant', 'agent', { message: 'hola' }, { agentSnapshot: snapshot }))
+        await expect(f.service.test('tenant', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', { message: 'hola' }, { agentSnapshot: snapshot }))
             .rejects.toThrow('agent_snapshot_context_inputs_required');
         expect(f.llmRouter.execute).not.toHaveBeenCalled();
     });
 
     it('binds context contents to the manifest and rejects another tenant regional profile', async () => {
-        const f = agentTurnFixture(), snapshot = await f.service.captureSnapshot('tenant', 'agent');
+        const f = agentTurnFixture(), snapshot = await f.service.captureSnapshot('tenant', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
         snapshot.contextInputs!.business = { companyName: 'Changed' };
-        await expect(f.service.test('tenant', 'agent', { message: 'hola' }, { agentSnapshot: snapshot }))
+        await expect(f.service.test('tenant', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', { message: 'hola' }, { agentSnapshot: snapshot }))
             .rejects.toThrow('frozen_dependencies_integrity_mismatch');
         snapshot.contextInputs!.regional.tenantId = 'other'; sealEvaluationSnapshot(snapshot);
-        await expect(f.service.test('tenant', 'agent', { message: 'hola' }, { agentSnapshot: snapshot }))
+        await expect(f.service.test('tenant', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', { message: 'hola' }, { agentSnapshot: snapshot }))
             .rejects.toThrow('agent_snapshot_context_inputs_required');
         expect(f.llmRouter.execute).not.toHaveBeenCalled();
     });
@@ -78,14 +78,14 @@ describe('Frozen factual context in the operational evaluation core', () => {
         const reader = source === 'tenant' ? f.prisma.tenant.findUnique : source === 'business'
             ? f.businessInfoService.captureForEvaluation : f.verticalTurnContext.resolve;
         reader.mockRejectedValue(new Error('synthetic_context_failure'));
-        await expect(f.service.captureSnapshot('tenant', 'agent')).rejects.toThrow('synthetic_context_failure');
+        await expect(f.service.captureSnapshot('tenant', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')).rejects.toThrow('synthetic_context_failure');
         expect(f.llmRouter.execute).not.toHaveBeenCalled();
     });
 
     it('rejects a change detected by the final global manifest guard', async () => {
         const f = agentTurnFixture();
         f.revisions.assertCurrent.mockRejectedValue(new Error('evaluation_dependencies_changed:public.tenants'));
-        await expect(f.service.captureSnapshot('tenant', 'agent')).rejects.toThrow('evaluation_dependencies_changed:public.tenants');
+        await expect(f.service.captureSnapshot('tenant', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')).rejects.toThrow('evaluation_dependencies_changed:public.tenants');
         expect(f.businessInfoService.captureForEvaluation).toHaveBeenCalled();
         expect(f.llmRouter.execute).not.toHaveBeenCalled();
     });

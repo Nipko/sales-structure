@@ -18,6 +18,7 @@ import { CONVERSATIONAL_CHANNELS } from '@parallext/shared';
 import { AgentEvaluationSnapshot } from '../conversations/agent-evaluation-snapshot';
 import { EvalService, EvalSandboxSession } from './eval.service';
 import { auditTurnClaim } from '../../common/utils/outcome-claim.util';
+import type { LLMSourceAuthority } from '../ai/interfaces/llm-source-authority';
 
 export const SIMULATION_QUEUE = 'agent-simulation';
 export const AGENT_SIMULATION_COMPLETED_EVENT = 'agent.simulation.completed';
@@ -147,10 +148,12 @@ export class SimulationService {
         await this.prisma.executeInTenantSchema(schemaName, 'ALTER TABLE simulation_runs ADD COLUMN IF NOT EXISTS replay_authority JSONB');
         await this.prisma.executeInTenantSchema(schemaName, 'ALTER TABLE simulation_runs ADD COLUMN IF NOT EXISTS retired_at TIMESTAMPTZ');
         await this.prisma.executeInTenantSchema(schemaName, 'ALTER TABLE simulation_runs ADD COLUMN IF NOT EXISTS replay_namespace_leases JSONB');
+        const retiredSnapshots: AgentEvaluationSnapshot[] = [];
         await this.prisma.transactionInTenantSchema(schemaName, async query => {
             await query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))::text', ['agent-privacy:' + schemaName]);
-            await retireSimulationReplayRuns(query, {legacy:true});
+            await retireSimulationReplayRuns(query, {legacy:true,retiredSnapshots});
         });
+        for (const snapshot of retiredSnapshots) await this.agentTest.releaseSnapshot(snapshot);
         await this.redis.set(cacheKey, '1', 86400);
     }
 
@@ -175,6 +178,13 @@ export class SimulationService {
 
         const requestedCount = Math.min(Math.max(Number(input.count) || 50, 1), MAX_COUNT);
         const runId = randomUUID();
+        let persistenceAttempted = false;
+        try {
+        await this.agentTest.assertSnapshotExecutable(snapshot, tenantId, agentId);
+        // Once persistence is attempted, a failed acknowledgement or an empty
+        // recovery read cannot prove that COMMIT will never become visible.
+        // Keep the bounded reference for the durable owner or expiry cleanup.
+        persistenceAttempted = true;
         await this.prisma.transactionInTenantSchema(schemaName, async query => {
             await query('SELECT pg_advisory_xact_lock_shared(hashtextextended($1,0))::text', ['agent-privacy:' + schemaName]);
             let scenarios: ScenarioDef[] | null = null, authorities: ReplayAuthority[] = [];
@@ -212,11 +222,15 @@ export class SimulationService {
         );
 
         } catch (error: any) {
-            await this.prisma.executeInTenantSchema(schemaName, `UPDATE simulation_runs SET status = 'failed', error = $2 WHERE id = $1::uuid AND status<>'retired'`, [runId, 'simulation_enqueue_failed']);
+            await this.prisma.executeInTenantSchema(schemaName, `UPDATE simulation_runs SET status = 'failed', error = $2 WHERE id = $1::uuid AND status='pending'`, [runId, 'simulation_enqueue_failed']);
             throw error;
         }
         this.logger.log(`[Sim] Enqueued run ${runId} (tenant=${tenantId}, agent=${agentId}, source=${source})`);
         return { runId };
+        } catch (error) {
+            if (!persistenceAttempted) await this.agentTest.releaseSnapshot(snapshot);
+            throw error;
+        }
     }
 
     async listRuns(tenantId: string, limit = 20): Promise<any[]> {
@@ -240,10 +254,12 @@ export class SimulationService {
     async retireRun(tenantId:string,runId:string):Promise<{retired:boolean}> {
         const schemaName=await this.prisma.getTenantSchemaName(tenantId);
         await this.ensureTables(schemaName);
+        const retiredSnapshots: AgentEvaluationSnapshot[] = [];
         await this.prisma.transactionInTenantSchema(schemaName,async query=>{
             await query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))::text',['agent-privacy:'+schemaName]);
-            await retireSimulationReplayRuns(query,{runIds:[runId]});
+            await retireSimulationReplayRuns(query,{runIds:[runId],retiredSnapshots});
         });
+        for (const snapshot of retiredSnapshots) await this.agentTest.releaseSnapshot(snapshot);
         return {retired:true};
     }
 
@@ -275,13 +291,16 @@ export class SimulationService {
             return;
         }
 
-        if (run.status === 'completed' || run.status === 'retired') return;
+        if (run.status === 'completed' || run.status === 'retired') {
+            await this.agentTest.releaseSnapshot(run.evaluation_snapshot);
+            return;
+        }
         try {
             const agentId: string = run.agent_id;
             const channelType: string = run.channel_type || 'web_widget';
             if (!(CONVERSATIONAL_CHANNELS as readonly string[]).includes(channelType)) throw new Error('unsupported_conversational_channel');
             const snapshot: AgentEvaluationSnapshot = run.evaluation_snapshot;
-            await this.agentTest.assertSnapshotCurrent(snapshot, tenantId, agentId);
+            await this.agentTest.assertSnapshotExecutable(snapshot, tenantId, agentId);
             const personaVersion = snapshot.version;
             const personaSnapshot = structuredClone(snapshot.config);
 
@@ -302,10 +321,11 @@ export class SimulationService {
                     tenantId,
                     run.vertical || personaSnapshot.industry || null,
                     requestedCount || 50,
+                    this.agentTest.snapshotSourceAuthority(snapshot),
                 );
             }
             if (!scenarios.length) throw new Error('Simulation produced no scenarios');
-            await this.agentTest.assertSnapshotCurrent(snapshot);
+            await this.agentTest.assertSnapshotExecutable(snapshot);
 
             await withSimulationReplayRun(this.prisma,schemaName,runId,async(query,current)=>{
                 current.scenario_definitions=scenarios;
@@ -331,7 +351,7 @@ export class SimulationService {
 
 
             // 3. Aggregate + regression diff.
-            await this.agentTest.assertSnapshotCurrent(snapshot, tenantId, agentId);
+            await this.agentTest.assertSnapshotExecutable(snapshot, tenantId, agentId);
             const summary = await this.buildSummary(schemaName, results, baselineRunId);
             summary.agentRevision = { version: snapshot.version, configHash: snapshot.configHash, capturedAt: snapshot.capturedAt,
                 dependencyRevision: snapshot.manifest!.revision, strategy: snapshot.manifest!.strategy, limitations: snapshot.manifest!.limitations };
@@ -346,6 +366,8 @@ export class SimulationService {
                 ? Math.round((scored.filter((r) => r.judge?.resolved).length / results.length) * 10000) / 100
                 : 0;
 
+            if (!scored.length) throw new Error('Simulation produced no scorable scenarios');
+            if (scored.length !== results.length) throw new Error('Simulation has unscorable scenarios');
             await withSimulationReplayRun(this.prisma,schemaName,runId,async(query,current)=>{
                 current.results=results;
                 await assertSimulationReplayRun(query,current,true);
@@ -354,20 +376,22 @@ export class SimulationService {
                     [runId,JSON.stringify(results),JSON.stringify(summary),avgScore,resolvedRate]);
             },{commit:true});
 
-            if (!scored.length) throw new Error('Simulation produced no scorable scenarios');
-            if (scored.length !== results.length) throw new Error('Simulation has unscorable scenarios');
+            await this.agentTest.releaseSnapshot(snapshot);
             this.logger.log(
                 `[Sim] Run ${runId} completed: ${scored.length}/${results.length} scored, avg=${avgScore}, resolved=${resolvedRate}%`,
             );
             this.emitRunEvent(AGENT_SIMULATION_COMPLETED_EVENT, tenantId, agentId, runId, 'completed');
         } catch (err: any) {
             this.logger.error(`[Sim] Run ${runId} failed`);
-            await this.prisma.executeInTenantSchema(
+            const failed = await this.prisma.executeInTenantSchema<any[]>(
                 schemaName,
-                `UPDATE simulation_runs SET status = 'failed', error = $2, completed_at = NOW() WHERE id = $1::uuid AND status<>'retired'`,
+                `UPDATE simulation_runs SET status = 'failed', error = $2, completed_at = NOW()
+                    WHERE id = $1::uuid AND status NOT IN ('retired','completed') RETURNING id`,
                 [runId, 'simulation_execution_failed'],
             );
-            this.emitRunEvent(AGENT_SIMULATION_FAILED_EVENT, tenantId, run.agent_id, runId, 'failed');
+            // A commit acknowledgement can be lost after completion persisted.
+            // The retry reads that terminal row and releases its reference.
+            if (failed?.length) this.emitRunEvent(AGENT_SIMULATION_FAILED_EVENT, tenantId, run.agent_id, runId, 'failed');
             if (err instanceof SimulationReplayUnavailable) throw err;
             if (run.scenario_source==='replay' || run.replay_authority?.length) throw new Error('simulation_execution_failed');
             throw err;
@@ -403,7 +427,9 @@ export class SimulationService {
         tenantId: string,
         vertical: string | null,
         count: number,
+        withSourceAuthority: LLMSourceAuthority,
     ): Promise<ScenarioDef[]> {
+        if (!withSourceAuthority) throw new Error('evaluation_source_authority_required');
         const n = Math.min(Math.max(count, 1), MAX_COUNT);
         const verticalLine = vertical
             ? `El negocio pertenece a la industria/vertical: "${vertical}".`
@@ -441,6 +467,7 @@ Los mensajes deben sonar como personas reales de Latinoamérica escribiendo por 
                 maxTokens: Math.min(8000, 800 + n * 160),
                 tenantId,
                 executionContext: AGENT_TEST_EXECUTION_CONTEXT,
+                withSourceAuthority,
             });
             raw = res.content || '';
         } catch (err: any) {
@@ -481,6 +508,7 @@ Los mensajes deben sonar como personas reales de Latinoamérica escribiendo por 
         previous: ScenarioResult[] = [], checkpoint?: (results: ScenarioResult[]) => Promise<void>,
         replayRun?: {schemaName:string;runId:string},
     ): Promise<ScenarioResult[]> {
+        if (!snapshot) throw new Error('evaluation_revision_manifest_required');
         const results: ScenarioResult[] = new Array(scenarios.length);
         let cursor = 0;
 
@@ -490,6 +518,7 @@ Los mensajes deben sonar como personas reales de Latinoamérica escribiendo por 
                 if (idx >= scenarios.length) break;
                 try {
                     const scenarioHash = revisionHash(scenarios[idx]);
+                    await this.agentTest.assertSnapshotExecutable(snapshot, tenantId, agentId);
                     const completed = previous.find(r => r.key === scenarios[idx].key && (r as any).scenarioHash === scenarioHash && isScoredScenario(r));
                     if (completed) {
                         if (isReplayDefinition(completed)) {
@@ -531,6 +560,8 @@ Los mensajes deben sonar como personas reales de Latinoamérica escribiendo por 
         snapshot?: AgentEvaluationSnapshot, session?: EvalSandboxSession,
         replayRun?: {schemaName:string;runId:string},
     ): Promise<ScenarioResult> {
+        if (!snapshot) throw new Error('evaluation_revision_manifest_required');
+        await this.agentTest.assertSnapshotExecutable(snapshot, tenantId, agentId);
         const startedAt = Date.now();
         const transcript: Array<{ role: 'customer' | 'agent'; content: string }> = [];
         const history: Array<{ role: 'user' | 'assistant'; content: string }> = [];
@@ -590,9 +621,9 @@ Los mensajes deben sonar como personas reales de Latinoamérica escribiendo por 
             for (let turn = 0; turn < MAX_TURNS; turn++) {
                 await askAgent(customerMsg);
                 if (turn === MAX_TURNS - 1) break;
-                await this.agentTest.assertSnapshotCurrent(snapshot);
-                const next = await this.nextCustomerMessage(tenantId, scenario, transcript);
-                await this.agentTest.assertSnapshotCurrent(snapshot);
+                await this.agentTest.assertSnapshotExecutable(snapshot);
+                const next = await this.nextCustomerMessage(tenantId, scenario, transcript, this.agentTest.snapshotSourceAuthority(snapshot));
+                await this.agentTest.assertSnapshotExecutable(snapshot);
                 if (next === '[FIN]') break;
                 customerMsg = next;
             }
@@ -602,9 +633,10 @@ Los mensajes deben sonar como personas reales de Latinoamérica escribiendo por 
             .map((t) => `${t.role === 'customer' ? 'Cliente' : 'Agente'}: ${t.content}`)
             .join('\n');
 
-        await this.agentTest.assertSnapshotCurrent(snapshot);
-        const judge = await useSource(()=>this.qualityService.judgeTranscript(tenantId, transcriptText, AGENT_TEST_EXECUTION_CONTEXT));
-        await this.agentTest.assertSnapshotCurrent(snapshot);
+        await this.agentTest.assertSnapshotExecutable(snapshot);
+        const judge = await useSource(()=>this.qualityService.judgeTranscript(tenantId, transcriptText, AGENT_TEST_EXECUTION_CONTEXT,
+            this.agentTest.snapshotSourceAuthority(snapshot)));
+        await this.agentTest.assertSnapshotExecutable(snapshot);
 
         return {
             ...scenario,
@@ -627,7 +659,9 @@ Los mensajes deben sonar como personas reales de Latinoamérica escribiendo por 
         tenantId: string,
         scenario: ScenarioDef,
         transcript: Array<{ role: 'customer' | 'agent'; content: string }>,
+        withSourceAuthority: LLMSourceAuthority,
     ): Promise<string> {
+        if (!withSourceAuthority) throw new Error('evaluation_source_authority_required');
         const persona = scenario.personaDescription || 'Un cliente típico de Latinoamérica';
         const systemPrompt = `Estás simulando ser un CLIENTE real escribiendo por chat a un negocio en Latinoamérica.
 Tu perfil: ${persona}
@@ -659,6 +693,7 @@ Reglas:
                 maxTokens: 200,
                 tenantId,
                 executionContext: AGENT_TEST_EXECUTION_CONTEXT,
+                withSourceAuthority,
             });
             const next = (res.content || '').trim();
             if (!next) throw new Error('empty_customer_message');

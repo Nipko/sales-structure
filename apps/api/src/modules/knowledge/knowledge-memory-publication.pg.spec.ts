@@ -152,7 +152,7 @@ integration('Knowledge and memory publication with real PostgreSQL + pgvector',(
         const entered=deferred(),release=deferred();
         router.execute.mockImplementation(async()=>{entered.resolve();await release.promise;return{content:JSON.stringify({facts:[correction]})};});
         const pending=extract();await entered.promise;
-        try{await (compliance as any).eraseCustomerMemory(schema,contactId);}finally{release.resolve();await pending;}
+        try{await (compliance as any).eraseCustomerMemory(schema, contactId, tenantId);}finally{release.resolve();await pending;}
         expect(await execute('SELECT id FROM customer_memory_facts')).toEqual([]);expect(await execute('SELECT contact_id FROM customer_memories')).toEqual([]);
         expect((await execute('SELECT contact_id FROM customer_memory_erasure')).map(row=>row.contact_id).sort()).toEqual([contactId,siblingId].sort());
         expect(await currentMemory()).toBeNull();expect(await currentMemory(siblingId)).toBeNull();
@@ -165,11 +165,11 @@ integration('Knowledge and memory publication with real PostgreSQL + pgvector',(
         await execute(`CREATE FUNCTION refuse_synthetic_memory_erasure() RETURNS trigger LANGUAGE plpgsql AS $$BEGIN RAISE EXCEPTION 'synthetic erasure failure'; END$$`);
         await execute('CREATE TRIGGER refuse_synthetic_memory_erasure BEFORE DELETE ON customer_memory_facts FOR EACH ROW EXECUTE FUNCTION refuse_synthetic_memory_erasure()');
         try{
-            await expect((compliance as any).eraseCustomerMemory(schema,contactId)).rejects.toThrow('synthetic erasure failure');
+            await expect((compliance as any).eraseCustomerMemory(schema, contactId, tenantId)).rejects.toThrow('synthetic erasure failure');
             expect(await execute('SELECT contact_id FROM customer_memory_erasure')).toEqual([]);
             expect((await currentMemory())?.facts).toEqual(['Prefiere teléfono']);
         }finally{await execute('DROP TRIGGER refuse_synthetic_memory_erasure ON customer_memory_facts');await execute('DROP FUNCTION refuse_synthetic_memory_erasure()');}
-        await (compliance as any).eraseCustomerMemory(schema,contactId);
+        await (compliance as any).eraseCustomerMemory(schema, contactId, tenantId);
         expect(await execute('SELECT id FROM customer_memory_facts')).toEqual([]);expect(await execute('SELECT contact_id FROM customer_memories')).toEqual([]);
     });
     it('does not publish a stale contact-owned snapshot after identity resolution and a profile correction',async()=>{
@@ -207,7 +207,7 @@ integration('Knowledge and memory publication with real PostgreSQL + pgvector',(
         await identity.approveMerge(tenantId,suggestionId,contactId);
         expect((await currentMemory())?.facts).toContain('Vive en Medellín');
         expect(await execute('SELECT id FROM customer_memory_facts WHERE owner_id=$1::uuid',[removedProfileId])).toEqual([]);
-        await (compliance as any).eraseCustomerMemory(schema,contactId);
+        await (compliance as any).eraseCustomerMemory(schema, contactId, tenantId);
         expect(await execute('SELECT id FROM customer_memory_facts')).toEqual([]);
     });
     it('does not select a conflicting profile attribute during merge and requires a later customer clarification',async()=>{
@@ -265,7 +265,7 @@ integration('Knowledge and memory publication with real PostgreSQL + pgvector',(
             const actualIdentity=new IdentityService(adapter,{get:async()=>schema} as any,{} as any);
             await actualIdentity.approveMerge(tenantId,suggestionId,contactId);
             expect((await execute('SELECT status FROM merge_suggestions'))[0].status).toBe('approved');
-            await (new ComplianceService(adapter) as any).eraseCustomerMemory(schema,contactId);
+            await (new ComplianceService(adapter) as any).eraseCustomerMemory(schema, contactId, tenantId);
             expect(await execute('SELECT id FROM customer_memory_facts')).toEqual([]);
         }finally{(knowledge as any).prisma=previous;await client.$disconnect();}
     });

@@ -21,6 +21,7 @@ import { ConversationsGateway } from './conversations.gateway';
 import { HandoffService } from '../handoff/handoff.service';
 import { KnowledgeService } from '../knowledge/knowledge.service';
 import { knowledgeHitToContext } from '../knowledge/knowledge-contracts';
+import { resolveKnowledgeReplica } from '../evaluation-revision/evaluation-knowledge-replica';
 import { LeadScoringService } from '../crm/services/lead-scoring/lead-scoring.service';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { NurturingService } from '../automation/nurturing.service';
@@ -3219,8 +3220,11 @@ export class ConversationsService {
         // the LLM prioritizes the directive over RAG content. But RAG is still
         // available in context so the LLM can enrich pricing/policy answers naturally.
         try {
+            const evaluationKnowledge = session ? resolveKnowledgeReplica(session.snapshot.knowledgeInputs, tenantId) : undefined;
+            if (evaluationKnowledge && evaluationKnowledge.usage?.agentId !== session!.agentId) throw new Error('agent_snapshot_knowledge_scope_mismatch');
             const hasKnowledge = await this.knowledgeService.tenantHasKnowledge(tenantId, executionContext, {
                 agentId: resolvedAgentId, audience: 'customer', jurisdiction: regional?.operatingCountry.value,
+                evaluationKnowledge,
             });
             const ragConfig = config.rag;
             const ragEnabled = ragConfig?.enabled !== false;
@@ -3252,6 +3256,7 @@ export class ConversationsService {
                         executionContext,
                         agentId: resolvedAgentId,
                         withDataSourceAuthority:session?.evaluationDataSourceAuthority,
+                        evaluationKnowledge,
                         audience: 'customer',
                         // Regulated sources are filtered by the tenant's operating
                         // country, not by language. Two countries sharing a
@@ -3282,7 +3287,7 @@ export class ConversationsService {
                 }
             }
         } catch (ragError: any) {
-            if(ragError instanceof LLMSourceAuthorityUnavailable)throw ragError;
+            if(session || ragError instanceof LLMSourceAuthorityUnavailable)throw ragError;
             this.logger.warn(`RAG search failed (non-fatal): ${ragError.message}`);
         }
 

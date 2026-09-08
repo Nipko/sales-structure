@@ -463,6 +463,19 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
             expect(await statusOf(arrived.row.messageId!)).toBe('delivered');
         });
 
+        it('never lets a late delivery erase a rejection the provider already reported', async () => {
+            const rejected = await accepted('wamid.REJECTED');
+            await expect(apply(rejected.receipt, 'failed', 'wa_131047')).resolves.toMatchObject({ applied: true });
+            // `failed` has no rank, so a later `delivered` compared against -1 and
+            // overwrote it — the mirror of the refusal just above, which the code
+            // spelled out in one direction and not the other.
+            await expect(apply(rejected.receipt, 'delivered')).resolves.toMatchObject(
+                { applied: false, reason: 'already_failed', status: 'failed' });
+            await expect(apply(rejected.receipt, 'read')).resolves.toMatchObject(
+                { applied: false, reason: 'already_failed' });
+            expect(await statusOf(rejected.row.messageId!)).toBe('failed');
+        });
+
         it('ignores a receipt it does not know and one whose words were erased', async () => {
             await expect(apply('wamid.NEVER-SEEN', 'delivered'))
                 .resolves.toMatchObject({ applied: false, reason: 'unknown_receipt' });

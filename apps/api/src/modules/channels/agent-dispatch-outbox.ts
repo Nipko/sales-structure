@@ -663,7 +663,8 @@ export type DispatchProviderStatus = (typeof DISPATCH_PROVIDER_STATUSES)[number]
 
 export interface DispatchStatusResult {
     readonly applied: boolean;
-    readonly reason: 'applied' | 'unknown_receipt' | 'not_newer' | 'already_delivered' | 'redacted';
+    readonly reason: 'applied' | 'unknown_receipt' | 'not_newer' | 'already_delivered'
+        | 'already_failed' | 'redacted';
     readonly messageId: string | null;
     readonly status: string | null;
 }
@@ -707,6 +708,12 @@ export async function applyDispatchProviderStatus(query: DispatchOutboxQuery, sc
         if (MESSAGE_STATUS_RANK[current] >= MESSAGE_STATUS_RANK.delivered) {
             return { applied: false, reason: 'already_delivered', messageId: String(row.message_id), status: current };
         }
+    } else if (current === 'failed') {
+        // The same rule read the other way round. A provider does not deliver
+        // what it rejected, and `failed` has no rank, so a later `delivered`
+        // compared against -1 and quietly erased a recorded rejection — the
+        // exact asymmetry the refusal above exists to prevent.
+        return { applied: false, reason: 'already_failed', messageId: String(row.message_id), status: current };
     } else if ((MESSAGE_STATUS_RANK[input.status] ?? -1) <= (MESSAGE_STATUS_RANK[current] ?? -1)) {
         return { applied: false, reason: 'not_newer', messageId: String(row.message_id), status: current };
     }

@@ -34,6 +34,35 @@ describe('shared agent assessment', () => {
         const result = await service.getAssessment(TENANT, AGENT);
         expect(result.tasks.find(task => task.key === 'knowledge')?.status).toBe('unknown');
     });
+    it('says every task in the one vocabulary the surfaces share', async () => {
+        const { service } = harness();
+        const assessment = await service.getAssessment(TENANT, AGENT);
+        // Three screens reading one status and inventing three labels is what
+        // this replaces, so the word has to arrive with the task.
+        for (const task of assessment.tasks) {
+            expect(['unknown', 'pending', 'prepared', 'tested', 'operating', 'degraded'])
+                .toContain(task.state);
+        }
+        // Running on the template's mission is pending, not broken and not done.
+        expect(assessment.tasks.find(task => task.key === 'mission')?.state).toBe('pending');
+    });
+
+    it('never rolls a whole agent up to operating while a part could not be read', async () => {
+        const { service } = harness({ unknown: true });
+        const assessment = await service.getAssessment(TENANT, AGENT);
+        expect(assessment.tasks.find(task => task.key === 'knowledge')?.state).toBe('unknown');
+        // An unreadable table is not an empty table, and it is not a pass either.
+        expect(assessment.state).toBe('unknown');
+    });
+
+    it('marks a channel whose projection could not be read as unknown, not as ready', async () => {
+        const { service, capabilities } = harness();
+        capabilities.resolve.mockRejectedValue(new Error('composer unavailable'));
+        const assessment = await service.getAssessment(TENANT, AGENT);
+        expect(assessment.channels.every(channel => channel.state === 'unknown')).toBe(true);
+        expect(assessment.state).toBe('unknown');
+    });
+
     it('does not widen the template when a saved mission requests an unsupported intent', async () => {
         const { service } = harness({ mission: { version: 1, objective: 'Sell everything', intentKeys: ['unregistered_wire_transfer'], successCriteria: [], handoffConditions: [] } });
         const result = await service.getAssessment(TENANT, AGENT);

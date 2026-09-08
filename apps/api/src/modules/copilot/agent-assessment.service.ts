@@ -1,5 +1,7 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { createHash } from 'crypto';
+import { operationalStateFromCheck, operationalStateFromQuality, rollUpOperationalState,
+    type AgentOperationalState } from '@parallext/shared';
 import {
     AGENT_SETUP_TASK_CHECKS, buildDomainContractDraft, isAgentAccountBusinessHours, isAgentMissionV1, type AgentAssessment,
     type AgentMissionV1, type AgentSetupTask, type AgentQualityCheck, findGuidedTourForQualityCode,
@@ -82,8 +84,24 @@ export class AgentAssessmentService {
         };
         const unsupportedIntents = definition.intentKeys.filter(key => !domain.intents.some(intent => intent.key === key));
         const checks = overview.preparation.dimensions.flatMap(dimension => dimension.checks);
-        const tasks: AgentSetupTask[] = [{ key: 'mission', status: saved !== undefined && (!isAgentMissionV1(saved) || unsupportedIntents.length) ? 'fail' : configured ? 'pass' : 'warning', checks: [],
-            href: `/admin/agent/${agent.id}`, tourId: null, dependsOn: [] }];
+        // Every task carries the shared word as well as its own status, and it
+        // is derived here rather than in each screen — three surfaces reading one
+        // status and inventing three labels is exactly what this replaces.
+        const withState = (task: Omit<AgentSetupTask, 'state'>, override?: AgentOperationalState): AgentSetupTask => ({
+            ...task,
+            state: override ?? operationalStateFromCheck(task.status, {
+                // A task whose checks could not be read is unknown, whatever the
+                // aggregate says: an unreadable source is not a passing one.
+                sourceAvailable: !task.checks.some(check =>
+                    (check as any)?.evidence?.sourceAvailability === 'unavailable'),
+            }) ?? 'unknown',
+        });
+        const tasks: AgentSetupTask[] = [withState({ key: 'mission', status: saved !== undefined && (!isAgentMissionV1(saved) || unsupportedIntents.length) ? 'fail' : configured ? 'pass' : 'warning', checks: [],
+            href: `/admin/agent/${agent.id}`, tourId: null, dependsOn: [] },
+            // `warning` on this task means "running on the template's mission",
+            // not "something broke". Everywhere else warning is "revisar", which
+            // is why the shared word is stated here instead of derived.
+            configured ? undefined : 'pending')];
         const defaults: Record<string, { href: string; tourId: AgentSetupTask['tourId']; dependsOn: AgentSetupTask['key'][] }> = {
             channel: { href: '/admin/channels', tourId: 'connect_channel', dependsOn: ['agent'] },
             agent: { href: `/admin/agent/${agent.id}`, tourId: 'agent_handoff_rules', dependsOn: ['mission'] },
@@ -97,27 +115,42 @@ export class AgentAssessmentService {
             const relevant = checks.filter(check => codes.includes(check.code));
             if (key === 'appointments' && relevant.every(check => check.status === 'not_applicable')) continue;
             const firstPending = relevant.find(check => ['fail', 'warning', 'unknown'].includes(check.status));
-            tasks.push({ key: key as AgentSetupTask['key'], status: setupTaskStatus(relevant), checks: relevant,
+            tasks.push(withState({ key: key as AgentSetupTask['key'], status: setupTaskStatus(relevant), checks: relevant,
                 ...defaults[key], href: firstPending?.href ?? defaults[key].href,
                 tourId: firstPending?.code === 'test_drive_permissions' ? null : findGuidedTourForQualityCode(firstPending?.code)?.id ?? defaults[key].tourId,
-                ...(key === 'channel' ? { channelType: preferredChannel } : {}) });
+                ...(key === 'channel' ? { channelType: preferredChannel } : {}) }));
         }
         const catalog = getVerticalCatalog(industry, subType);
         if (catalog) {
             const relevant = checks.filter(check => check.href === catalog.route && check.code.startsWith('tool_'));
-            tasks.push({ key: 'catalog', status: setupTaskStatus(relevant), checks: relevant, href: catalog.route, tourId: null, dependsOn: ['mission'] });
+            tasks.push(withState({ key: 'catalog', status: setupTaskStatus(relevant), checks: relevant, href: catalog.route, tourId: null, dependsOn: ['mission'] }));
         }
-        tasks.push({ key: 'tests', status: overview.tested.status === 'ready' && !overview.tested.stale ? 'pass' : 'warning', checks: [],
-            href: `/admin/agent/${agent.id}/test`, tourId: 'run_agent_tests', dependsOn: ['mission', 'agent', 'knowledge'] });
+        tasks.push(withState({ key: 'tests', status: overview.tested.status === 'ready' && !overview.tested.stale ? 'pass' : 'warning', checks: [],
+            href: `/admin/agent/${agent.id}/test`, tourId: 'run_agent_tests', dependsOn: ['mission', 'agent', 'knowledge'] }));
         const requiredTests = domain.intents.filter(intent => definition.intentKeys.includes(intent.key)).map(intent => ({
             intentKey: intent.key, toolPlan: [...intent.toolPlan], terminalStates: [...intent.states], confirmation: intent.confirmation,
             fallback: intent.fallback, evidence: 'not_verified' as const,
             unavailableTools: intent.toolPlan.filter(tool => channels.some(channel => !channel.contract?.publishedTools.includes(tool))),
         }));
+        // A channel whose projection could not be read is unknown, not ready.
+        const statedChannels = channels.map(channel => ({
+            ...channel,
+            state: channel.status === 'unavailable' ? ('unknown' as const)
+                : channel.contract?.degraded ? ('degraded' as const)
+                    : channel.contract ? ('prepared' as const) : ('pending' as const),
+        }));
         const assessment: AgentAssessment = {
             version: 1, revision: '', generatedAt: new Date().toISOString(), agent: overview.agent, overview,
             mission: { source: configured ? 'configured' : 'template_derived', templateId: agent.template_id ?? null, profileId: domain.profileId, definition, availableIntentKeys: domain.intents.map(intent => intent.key), unsupportedIntents },
-            channels, tasks, nextTask: tasks.find(task => !['pass', 'not_applicable'].includes(task.status))?.key ?? null, requiredTests,
+            channels: statedChannels, tasks, nextTask: tasks.find(task => !['pass', 'not_applicable'].includes(task.status))?.key ?? null, requiredTests,
+            // The two rules that make the shared word worth having: nothing
+            // unreadable becomes "operating", and one broken part is never
+            // averaged away by the green ones around it.
+            state: rollUpOperationalState([
+                operationalStateFromQuality(overview.status),
+                ...tasks.map(task => task.state),
+                ...statedChannels.map(channel => channel.state),
+            ]),
             configuration: { persona: { name: text(config.persona?.name), role: text(config.persona?.role), greeting: text(config.persona?.greeting), fallbackMessage: text(config.persona?.fallbackMessage),
                 personality: { tone: text(config.persona?.personality?.tone), formality: text(config.persona?.personality?.formality) } },
                 behavior: { rules: strings(config.behavior?.rules), forbiddenTopics: strings(config.behavior?.forbiddenTopics), handoffTriggers: strings(config.behavior?.handoffTriggers) },
@@ -137,6 +170,9 @@ export class AgentAssessmentService {
     private noAgent(): AgentAssessment {
         return { version: 1, revision: 'no_agent', generatedAt: new Date().toISOString(), agent: null, overview: null,
             mission: { source: 'not_configured', templateId: null, profileId: null, definition: null, availableIntentKeys: [], unsupportedIntents: [] }, channels: [],
-            tasks: [{ key: 'agent', status: 'fail', checks: [], href: '/admin/agent', tourId: null, dependsOn: [] }], nextTask: 'agent', requiredTests: [], configuration: null };
+            // No agent at all is `pending`, not `unknown`: the answer is known
+            // and it is that nothing has been created yet.
+            tasks: [{ key: 'agent', status: 'fail', state: 'pending', checks: [], href: '/admin/agent', tourId: null, dependsOn: [] }],
+            state: 'pending', nextTask: 'agent', requiredTests: [], configuration: null };
     }
 }

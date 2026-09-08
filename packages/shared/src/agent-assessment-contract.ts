@@ -1,4 +1,5 @@
 import type { AgentQualityCheck, AgentQualityOverview, AgentQualityCheckStatus } from './agent-quality-contract';
+import type { AgentOperationalState } from './agent-operational-state';
 import type { EffectiveCapabilityContract } from './effective-capability-contract';
 import type { GuidedTourId } from './guided-tour-contract';
 import type { GuidedTourStartDetail } from './guided-tour-contract';
@@ -27,6 +28,10 @@ export type AgentSetupTaskKey = 'mission' | 'channel' | 'agent' | 'business' | '
 export interface AgentSetupTask {
     key: AgentSetupTaskKey;
     status: AgentQualityCheckStatus;
+    /** The same task in the one vocabulary every surface renders. `status` stays
+     *  because Salud and the editor already read it; this is the projection so
+     *  three screens stop saying three different words about one task. */
+    state: AgentOperationalState;
     checks: AgentQualityCheck[];
     href: string;
     tourId: GuidedTourId | null;
@@ -49,8 +54,16 @@ export interface AgentAssessment {
         unsupportedIntents: string[];
     };
     /** One immutable runtime projection per assigned channel, or an explicit preview. */
-    channels: Array<{ channelType: string | null; scope: 'assigned' | 'preview'; contract: EffectiveCapabilityContract | null; status: 'known' | 'unavailable' }>;
+    channels: Array<{ channelType: string | null; scope: 'assigned' | 'preview'; contract: EffectiveCapabilityContract | null; status: 'known' | 'unavailable';
+        /** `unknown` when the projection could not be read: a channel nobody
+         *  could look at is not a channel that is ready. */
+        state: AgentOperationalState }>;
     tasks: AgentSetupTask[];
+    /** What the agent as a whole is doing, rolled up from the parts above under
+     *  the two rules that make the word mean anything: a part nobody could read
+     *  never lets the whole be called operating, and one broken part is never
+     *  averaged away by the green ones around it. */
+    state: AgentOperationalState;
     nextTask: AgentSetupTaskKey | null;
     requiredTests: Array<{
         intentKey: string;

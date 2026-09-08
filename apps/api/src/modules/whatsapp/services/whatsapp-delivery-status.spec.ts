@@ -94,4 +94,40 @@ describe('WhatsApp delivery status reaches the conversation record', () => {
         h.prisma.transactionInTenantSchema.mockRejectedValue(new Error('schema unavailable'));
         await expect(run(h.service, [{ id: 'wamid.G', status: 'delivered' }])).resolves.toBeUndefined();
     });
+
+    describe('a payload that carries messages and statuses at once', () => {
+        function eventHarness() {
+            const h = harness();
+            Object.assign(h.service, {
+                redis: { acquireLock: jest.fn(async () => true), del: jest.fn(async () => 1) },
+                complianceService: { detectOptOut: jest.fn(() => false) },
+                inboundQueue: { enqueue: jest.fn(async () => undefined) },
+                resolveAccessTokenAndMarkRead: jest.fn(),
+            });
+            return h;
+        }
+
+        const value = {
+            metadata: { phone_number_id: 'phone-1' },
+            contacts: [{ wa_id: '57300', profile: { name: 'Ana' } }],
+            messages: [{ id: 'wamid.IN', from: '57300', type: 'text', text: { body: 'hola' } }],
+            statuses: [{ id: 'wamid.OUT', status: 'delivered', recipient_id: '57300' }],
+        };
+
+        it('applies the statuses instead of dropping them behind the messages', async () => {
+            const h = eventHarness();
+            await h.service.processMessageEvent('phone-1', value);
+            // Statuses used to be read only on the branch where `messages` was
+            // empty, so Meta batching both in one `value` lost every receipt.
+            expect(h.prisma.transactionInTenantSchema).toHaveBeenCalledTimes(1);
+            expect((h.service as any).inboundQueue.enqueue).toHaveBeenCalledTimes(1);
+        });
+
+        it('still queues the customer message when the status write is unavailable', async () => {
+            const h = eventHarness();
+            h.prisma.transactionInTenantSchema.mockRejectedValue(new Error('schema unavailable'));
+            await h.service.processMessageEvent('phone-1', value);
+            expect((h.service as any).inboundQueue.enqueue).toHaveBeenCalledTimes(1);
+        });
+    });
 });

@@ -7,7 +7,7 @@ import { WhatsappConnectionService } from './whatsapp-connection.service';
 import { WhatsAppAdapter } from '../../channels/whatsapp/whatsapp.adapter';
 import { RedisService } from '../../redis/redis.service';
 import * as crypto from 'crypto';
-import { applyDispatchProviderStatus, DISPATCH_PROVIDER_STATUSES, type DispatchProviderStatus } from '../../channels/agent-dispatch-outbox';
+import { parseMetaDeliveryStatuses, recordChannelDeliveryStatuses } from '../../channels/channel-delivery-status';
 
 @Injectable()
 export class WhatsappWebhookService {
@@ -211,72 +211,39 @@ export class WhatsappWebhookService {
    *
    * Only rejections used to be handled, and they were looked up in
    * `messages.external_id` — which holds OUR deduplication identity, never the
-   * wamid — so nothing was ever found. The provider id lives on the dispatch
-   * row, and the whole lifecycle now lands: an acceptance is `sent`, and only
-   * Meta can say `delivered` or `read`.
+   * wamid — so nothing was ever found. The lookup, the ranking and the legacy
+   * fallback now live in `channel-delivery-status`, shared with the internal
+   * endpoint the deployed WhatsApp worker calls: one rule, one place.
    */
   private async recordDeliveryStatuses(phoneNumberId: string, statuses: any[] | undefined): Promise<void> {
-    const events = (statuses || [])
-      .map((entry: any) => ({
-        providerMessageId: String(entry?.id || ''),
-        status: String(entry?.status || '').toLowerCase(),
-        recipient: entry?.recipient_id,
-        error: entry?.errors?.[0] || null,
-      }))
-      .filter(event => event.providerMessageId
-        && DISPATCH_PROVIDER_STATUSES.includes(event.status as DispatchProviderStatus));
-    for (const event of events.filter(entry => entry.status === 'failed')) {
-      const error = event.error || {};
-      this.logger.error(
-        `[WA] Meta RECHAZÓ el mensaje ${event.providerMessageId} a ${event.recipient || 'desconocido'} ` +
-        `(phone_number_id ${phoneNumberId}): code=${error.code ?? '?'} title="${error.title ?? ''}" ` +
-        `details="${error.error_data?.details ?? error.message ?? ''}"`,
-      );
-    }
-    if (!events.length) return;
-
-    // Marcar en la bandeja. Sin tenant resuelto no se puede, pero el log de
-    // arriba ya salió: el diagnóstico nunca depende de que esto funcione.
-    try {
-      const tenantId = await this.resolveTenantId(phoneNumberId);
-      if (!tenantId) return;
-      const schemaName = await this.prisma.getTenantSchemaName(tenantId);
-      if (!schemaName) return;
-      for (const event of events) {
-        // One transaction per event: they arrive out of order and repeated, and
-        // each decides on its own whether it is newer than what is recorded.
-        await this.prisma.transactionInTenantSchema(schemaName, query =>
-          applyDispatchProviderStatus(query, schemaName, {
-            providerMessageId: event.providerMessageId,
-            status: event.status as DispatchProviderStatus,
-            errorCode: event.error?.code != null ? `wa_${event.error.code}` : null,
-          })).catch((error: any) =>
-          this.logger.debug(`[WA] estado ${event.status} no aplicado: ${error?.message}`));
-      }
-      // Legacy producers still identify an outbound by the provider id they
-      // stored themselves; keep marking those rejected rather than lose them.
-      const failedIds = events.filter(event => event.status === 'failed').map(event => event.providerMessageId);
-      if (failedIds.length) {
-        await this.prisma.executeInTenantSchema(
-          schemaName,
-          `UPDATE messages SET status = 'failed'
-            WHERE external_id = ANY($1::text[]) AND direction = 'outbound' AND status <> 'failed'`,
-          [failedIds],
-        );
-      }
-    } catch (e: any) {
-      this.logger.warn(`[WA] no se pudo aplicar el estado del mensaje: ${e.message}`);
-    }
+    await recordChannelDeliveryStatuses(
+      parseMetaDeliveryStatuses(statuses),
+      { channelType: 'whatsapp', channelAccountId: phoneNumberId },
+      {
+        store: this.prisma,
+        logger: this.logger,
+        resolveSchema: async () => {
+          const tenantId = await this.resolveTenantId(phoneNumberId);
+          if (!tenantId) return null;
+          return (await this.prisma.getTenantSchemaName(tenantId)) || null;
+        },
+      },
+    );
   }
 
   private async processMessageEvent(phoneNumberId: string, value: any) {
      this.logger.log(`Processing message event for phone_number_id: ${phoneNumberId}`);
 
+     // Statuses first, and unconditionally. This used to run only on the branch
+     // where the payload carried no `messages`, so a batch that mixed customer
+     // messages with delivery receipts — which Meta is free to send — silently
+     // dropped every receipt in it.
+     await this.recordDeliveryStatuses(phoneNumberId, value?.statuses);
+
      // Say WHY we stop. A status/read receipt carries no `messages`, and this
      // early return used to be silent — indistinguishable in the logs from a
      // customer message being dropped.
      if (!value?.messages || value.messages.length === 0) {
-         await this.recordDeliveryStatuses(phoneNumberId, value?.statuses);
          this.logger.log(
              `No messages in payload for ${phoneNumberId} ` +
              `(statuses=${value?.statuses?.length ?? 0}) — nothing to process`,

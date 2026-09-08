@@ -4,6 +4,10 @@ import { IChannelAdapter } from '../channel-gateway.service';
 import { NormalizedMessage, ChannelType } from '@parallext/shared';
 import { v4 as uuid } from 'uuid';
 import { toWhatsAppFormatting } from '../../../common/utils/channel-text-format.util';
+import {
+    classifyProviderResponse, classifyTransportFailure,
+    type StrictDispatchOutcome, type StrictDispatchRequest, type StrictDispatchTransport,
+} from '../strict-dispatch-transport';
 
 /**
  * WhatsApp Cloud API adapter
@@ -20,12 +24,90 @@ import { toWhatsAppFormatting } from '../../../common/utils/channel-text-format.
  * with their own placeholder format.
  */
 @Injectable()
-export class WhatsAppAdapter implements IChannelAdapter {
+export class WhatsAppAdapter implements IChannelAdapter, StrictDispatchTransport {
     readonly channelType: ChannelType = 'whatsapp';
     private readonly logger = new Logger(WhatsAppAdapter.name);
     private readonly apiUrl = 'https://graph.facebook.com/v25.0';
 
     constructor(private configService: ConfigService) {}
+
+    /**
+     * One remote effect, one classified outcome.
+     *
+     * Deliberately separate from the methods above: those throw a bare Error and
+     * the gateway turns every one of them into null, so a rejected number and a
+     * lost connection become the same thing. Here a Flow that timed out is never
+     * quietly replaced by a text message either — any fallback has to be its own
+     * admitted item, after a rejection somebody actually observed.
+     */
+    async sendStrict(request: StrictDispatchRequest, accessToken: string): Promise<StrictDispatchOutcome> {
+        let body: Record<string, any>;
+        try { body = this.strictBody(request); }
+        catch (error: any) {
+            // A payload this adapter cannot express is a definite refusal, and
+            // retrying an unchangeable payload would only burn the budget.
+            return { kind: 'rejected', errorCode: String(error?.message || 'unsupported_payload'), retryable: false };
+        }
+        let response: Response;
+        try {
+            response = await fetch(`${this.apiUrl}/${request.channelAccountId}/messages`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ messaging_product: 'whatsapp', recipient_type: 'individual',
+                    to: request.to, ...body }),
+                signal: AbortSignal.timeout(10_000),
+            });
+        } catch (error) {
+            // No answer at all. The request may still have been processed.
+            return classifyTransportFailure(error);
+        }
+        let data: any = null;
+        try { data = await response.json(); } catch { data = null; }
+        return classifyProviderResponse(response.status, data?.messages?.[0]?.id,
+            data?.error?.code != null ? `wa_${data.error.code}` : null);
+    }
+
+    /** Build the body for exactly one effect. No caption riding on an image. */
+    private strictBody(request: StrictDispatchRequest): Record<string, any> {
+        const payload = request.payload || {};
+        if (request.itemKind === 'text' || request.itemKind === 'payment_link') {
+            const text = String(payload.text ?? '');
+            if (!text.trim()) throw new Error('empty_text_payload');
+            return { type: 'text', text: { body: toWhatsAppFormatting(text) } };
+        }
+        if (request.itemKind === 'media') {
+            const mediaUrl = String(payload.mediaUrl ?? '');
+            if (!mediaUrl.trim()) throw new Error('empty_media_payload');
+            const requested = String(payload.mediaType ?? 'image');
+            const type = ['image', 'document', 'audio', 'video'].includes(requested) ? requested : 'image';
+            const media: Record<string, any> = { link: mediaUrl };
+            // A caption is its own dispatch item with its own receipt; attaching
+            // it here would put two effects behind one acceptance again.
+            if (type === 'document' && payload.filename) media.filename = String(payload.filename);
+            return { type, [type]: media };
+        }
+        const flowId = String(payload.flowId ?? '');
+        const flowToken = String(payload.flowToken ?? '');
+        if (!flowId.trim() || !flowToken.trim()) throw new Error('incomplete_flow_payload');
+        const interactive: Record<string, any> = {
+            type: 'flow',
+            body: { text: toWhatsAppFormatting(String(payload.text ?? '')).slice(0, 1024) },
+            action: { name: 'flow', parameters: {
+                flow_message_version: '3', flow_token: flowToken, flow_id: flowId,
+                flow_cta: String(payload.flowCta || 'Agendar').slice(0, 20),
+                mode: payload.flowMode === 'draft' ? 'draft' : 'published',
+                flow_action: 'navigate',
+                flow_action_payload: {
+                    screen: String(payload.initialScreen || 'SERVICE_SELECTION'),
+                    ...(payload.initialData && Object.keys(payload.initialData).length
+                        ? { data: payload.initialData } : {}),
+                },
+            } },
+        };
+        if (payload.headerText) interactive.header = { type: 'text', text: String(payload.headerText).slice(0, 60) };
+        if (payload.footerText) interactive.footer = { text: String(payload.footerText).slice(0, 60) };
+        return { type: 'interactive', interactive };
+    }
 
     /**
      * Mark a message as read (blue checks) via Meta API.

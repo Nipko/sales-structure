@@ -19,6 +19,8 @@ Los canales de entrega asíncrona incluidos son WhatsApp, Instagram, Messenger, 
 
 El envío de plantillas de correo devuelve un booleano que no distingue ausencia de plantilla de un fallo SMTP después de un posible envío. Por ello la ruta durable no intenta un correo alternativo después de `false` o una excepción: registra reconciliación sin duplicar mensajes. Los llamadores anteriores conservan su comportamiento de fallback.
 
+Desde `e8cea802`, las imágenes y enlaces aprobados de Web Chat comprueban también la autoridad operativa de la propuesta en la misma transacción del mensaje y su recibo. Los recibos ya guardados no se revocan por publicar otra configuración. Los fallos locales que revierten la transacción se registran mediante CAS después del rollback, conservando el límite de recuperación y sin convertir un resultado confirmado en un fallo por perder el ACK. Pruebas y límites en [Autoridad del agente en entregas aprobadas](approved-webchat-agent-authority.md); las demás rutas de entrega todavía requieren su propio control de versión.
+
 ## Evidencia
 
 - 12 casos con PostgreSQL 17.11 desechable: transacción de finalización/evento, cola por referencias, envío único, borrado, fallo previo al envío, timeout del proveedor, handoff parcialmente comprometido, URL de pago verificada, lease vencido, cambio de conversación, exclusión mutua con borrado y servicio de handoff real con éxito/error/resultado SMTP falso.

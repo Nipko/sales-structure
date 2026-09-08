@@ -1,4 +1,5 @@
 import { ConversationsService } from './conversations.service';
+import { outboundDedupeId } from '../../common/utils/provider-message-id.util';
 
 /**
  * What a replay of an interrupted turn is owed.
@@ -77,6 +78,7 @@ describe('recovering a turn from its ledger', () => {
             sendPaymentLink: jest.fn(async (_t: string, _m: any, url: string) => { sends.push({ kind: 'payment_link', url }); }),
             sendMedia: jest.fn(async (_t: string, _m: any, url: string, caption?: string) => { sends.push({ kind: 'media', url, caption }); }),
             dispatchReplyThroughOutbox: jest.fn().mockResolvedValue(false),
+            sendCollectedFlow: jest.fn(async (_t: string, _m: any, flow: any) => { sends.push({ kind: 'flow', flowId: flow.flowId }); }),
             resumeOwnedDispatchBatch: jest.fn().mockResolvedValue(false),
         });
         const message: any = {
@@ -189,6 +191,66 @@ describe('recovering a turn from its ledger', () => {
         expect(service.dispatchReplyThroughOutbox).not.toHaveBeenCalled();
         expect(ledger.recordResult).not.toHaveBeenCalled();
         expect(service.recordAgentSignal).toHaveBeenCalledWith(tenantId, 'learning_provenance_refused');
+    });
+
+    // The interactive form used to leave through its own path straight from the
+    // booking engine, so it was the one effect of a turn with no durable record:
+    // a crash after the enqueue and before the state was written sent the form
+    // a second time, and a replay could not tell that it had already gone.
+    const storedFlow = {
+        flowId: '9911', flowToken: 'tok-1', text: 'Elegi el servicio',
+        headerText: null, footerText: null, flowCta: 'Agendar',
+        flowMode: 'published' as const, initialScreen: null, initialData: null,
+    };
+
+    it('carries a form-only turn through the durable path, words or no words', async () => {
+        const { service, message } = fixture({ state: 'open', attempts: 1, envelope: null, writers: [] },
+            { duplicate: false });
+        service.dispatchReplyThroughOutbox = jest.fn().mockResolvedValue(true);
+        service.generateResponse = jest.fn(async (...args: any[]) => {
+            const sink = args[args.length - 1];
+            sink.flow = { ...storedFlow };
+            return '';
+        });
+
+        await service.runTurn(message);
+
+        expect(service.dispatchReplyThroughOutbox).toHaveBeenCalledWith(expect.objectContaining({
+            chunks: [], flow: expect.objectContaining({ flowId: '9911', flowToken: 'tok-1' }),
+        }));
+        expect(service.sendResponse).not.toHaveBeenCalled();
+    });
+
+    it('records the form in the ledger so a replay does not produce a second one', async () => {
+        const { service, message, ledger } = fixture({ state: 'open', attempts: 1, envelope: null, writers: [] },
+            { duplicate: false });
+        service.generateResponse = jest.fn(async (...args: any[]) => {
+            args[args.length - 1].flow = { ...storedFlow };
+            return '';
+        });
+        await service.runTurn(message);
+
+        expect(ledger.recordResult).toHaveBeenCalledWith('tenant_recovery', expect.objectContaining({
+            envelope: expect.objectContaining({ text: '', flow: expect.objectContaining({ flowId: '9911' }) }),
+        }));
+    });
+
+    it('sends the recovered form once through the old path, and never asks the engine again', async () => {
+        const { service, message } = fixture({
+            state: 'result_recorded', attempts: 2, writers: [],
+            envelope: { text: '', chunks: [], paymentLinks: [], media: [], learningFootprints: [], flow: storedFlow },
+        });
+        await service.runTurn(message);
+
+        expect(service.generateResponse).not.toHaveBeenCalled();
+        expect(service.sendCollectedFlow).toHaveBeenCalledTimes(1);
+        expect(service.sendCollectedFlow).toHaveBeenCalledWith('11111111-1111-4111-8111-111111111111',
+            message, expect.objectContaining({ flowId: '9911', flowToken: 'tok-1' }));
+        // Recorded in the history like the link and the pictures are, with the
+        // same dedupe identifier the other legacy effects use.
+        expect(service.saveAiMessage).toHaveBeenCalledWith(
+            '11111111-1111-4111-8111-111111111111', conversationId, 'Elegi el servicio', 'whatsapp',
+            outboundDedupeId(message, 'flow-history', 0));
     });
 
     it('stamps the turn as finished in PostgreSQL, not only in Redis', async () => {

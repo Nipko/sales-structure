@@ -292,6 +292,20 @@ interface TurnEffectSink {
      * rather than inferring it from the words.
      */
     writers: TurnWriterRecord[];
+    /**
+     * The interactive form this turn decided to send instead of words.
+     *
+     * Flow left through its own path straight from the booking engine, so it
+     * was the one effect of a turn with no durable record and no recovery: a
+     * crash after the enqueue and before the state persisted sent the form
+     * again, and a replay could not tell that it had already gone.
+     */
+    flow?: {
+        flowId: string; flowToken: string; text: string;
+        headerText?: string | null; footerText?: string | null; flowCta?: string | null;
+        flowMode?: 'published' | 'draft' | null; initialScreen?: string | null;
+        initialData?: Record<string, unknown> | null;
+    };
 }
 
 // Directive templates for an operation the SERVER executed after the customer
@@ -1050,9 +1064,13 @@ export class ConversationsService {
                 entry.caption === undefined ? { url: entry.url } : { url: entry.url, caption: entry.caption }));
             turnEffects.learningFootprints = recoveredEnvelope.learningFootprints;
             turnEffects.writers.push(...(priorTurn?.writers ?? []));
+            if (recoveredEnvelope.flow) turnEffects.flow = recoveredEnvelope.flow as TurnEffectSink['flow'];
         }
-        let response = recoveredEnvelope?.text
-            || resumedReply
+        // A recovered envelope IS the answer, empty text included: a turn whose
+        // whole output was an interactive form has no words, and falling through
+        // to the model here would produce a second one.
+        let response = recoveredEnvelope ? recoveredEnvelope.text
+            : resumedReply
             || await this.generateResponse(
                 tenantId,
                 conversation,
@@ -1096,12 +1114,15 @@ export class ConversationsService {
         let deliveryChunks = recoveredEnvelope?.chunks.length
             ? [...recoveredEnvelope.chunks]
             : (response ? this.splitResponseIntoChunks(response) : []);
-        if (response && !recoveredEnvelope && !isErrorFallback(response) && this.turnLedger && priorTurn) {
+        if (turnEffects.flow && !turnEffects.flow.flowId) delete turnEffects.flow;
+        if ((response || turnEffects.flow) && !recoveredEnvelope && !isErrorFallback(response || '')
+            && this.turnLedger && priorTurn) {
             const stored = await this.turnLedger.recordResult(schemaName, {
                 inboundMessageId: ledgerInboundId,
                 envelope: {
-                    text: response,
+                    text: response || '',
                     chunks: deliveryChunks,
+                    ...(turnEffects.flow ? { flow: { ...turnEffects.flow } } : {}),
                     paymentLinks: [...new Set(turnEffects.paymentLinks)],
                     media: turnEffects.media.map(entry =>
                         entry.caption === undefined ? { url: entry.url } : { url: entry.url, caption: entry.caption }),
@@ -1145,12 +1166,19 @@ export class ConversationsService {
             }).catch(() => {});
         }
 
+        // A turn can produce an interactive form and no words at all. It used to
+        // leave through its own path from inside the booking engine, which made
+        // it the one effect of a turn with no durable record: a crash after the
+        // enqueue and before the state was written sent the form a second time.
+        const turnHasEffects = !!response || !!turnEffects.flow
+            || turnEffects.paymentLinks.length > 0 || turnEffects.media.length > 0;
+
         // 7. Send Response via Channel Gateway
         // NOTE: Never block responses to inbound messages. If a customer writes,
         // we always respond. Opt-out blocking only applies to proactive outbound
         // (broadcasts, automations, reminders) — not to conversation replies.
-        if (response) {
-            if (draftMode) {
+        if (turnHasEffects) {
+            if (draftMode && response) {
                 // Draft-for-approval (WS3 #6): a human reviews/edits/sends in the
                 // console instead of the AI replying directly. Store the suggestion
                 // and notify the inbox; the customer gets nothing until approval.
@@ -1171,12 +1199,20 @@ export class ConversationsService {
                     chunks, operationalScope: turnScope, gapMs: CHUNK_GAP_MS,
                     paymentLinks: turnEffects.paymentLinks, media: turnEffects.media,
                     learningFootprints: turnEffects.learningFootprints,
+                    flow: turnEffects.flow,
                 });
                 if (this.turnLedger && priorTurn) {
                     await this.turnLedger.recordDelivery(schemaName, ledgerInboundId, durable ? 'durable' : 'legacy');
                 }
                 if (!durable) {
                     this.logger.log(`[Pipeline] Sending response via outbound queue (${chunks.length} bubble(s))...`);
+                    if (turnEffects.flow) {
+                        await this.sendCollectedFlow(tenantId, normalizedMsg, turnEffects.flow);
+                        await this.saveAiMessage(
+                            tenantId, conversation.id, turnEffects.flow.text, normalizedMsg.channelType,
+                            outboundDedupeId(normalizedMsg, 'flow-history', 0),
+                        );
+                    }
                     const turnPmid = providerMessageId(normalizedMsg) || normalizedMsg.id || '';
                     for (let i = 0; i < chunks.length; i++) {
                         await this.sendResponse(tenantId, chunks[i], normalizedMsg, i * CHUNK_GAP_MS, `reply:${i}`);
@@ -3007,12 +3043,29 @@ export class ConversationsService {
                         // The submitted form belongs to this exact mission and
                         // revision; an older form cannot populate another task.
                         const flowToken = engineResult.state.flowToken!;
-                        await this.sendFlow(tenantId, msg, engineResult.flowMessage, flowCfg, flowToken);
-                        await this.saveAiMessage(tenantId, conversation.id, engineResult.flowMessage.body, msg.channelType);
+                        if (effectSink) {
+                            // Handed up with the turn's other effects so the same
+                            // record covers it. Sending from here made Flow the one
+                            // effect with no durable identity: a crash between the
+                            // enqueue and the state write sent the form twice.
+                            effectSink.flow = {
+                                flowId: flowCfg.flowId, flowToken,
+                                text: engineResult.flowMessage.body,
+                                headerText: engineResult.flowMessage.headerText ?? null,
+                                footerText: engineResult.flowMessage.footerText ?? null,
+                                flowCta: engineResult.flowMessage.flowCta || flowCfg.flowCta,
+                                flowMode: flowCfg.flowMode,
+                                initialScreen: engineResult.flowMessage.initialScreen ?? null,
+                                initialData: engineResult.flowMessage.initialData ?? null,
+                            };
+                        } else {
+                            await this.sendFlow(tenantId, msg, engineResult.flowMessage, flowCfg, flowToken);
+                            await this.saveAiMessage(tenantId, conversation.id, engineResult.flowMessage.body, msg.channelType);
+                        }
                         this.throttle.incrementAiMessageCount(tenantId).catch(() => {});
-                        this.logger.log(`[Pipeline] WhatsApp Flow sent (flow_id=${flowCfg.flowId}) — bypassing LLM`);
+                        this.logger.log(`[Pipeline] WhatsApp Flow produced (flow_id=${flowCfg.flowId}) — bypassing LLM`);
                         await observeMission({kind:'final',state:'flow_enqueued'});
-                        return ''; // Flow already enqueued; caller sends no extra text.
+                        return ''; // Flow carries the turn; caller sends no extra text.
                     }
 
                     // ═══ PHASE 3: EXPRESS — LLM voices the engine's output naturally ═══
@@ -5518,6 +5571,27 @@ export class ConversationsService {
         return true;
     }
 
+    /** Re-send a collected form through the same transport `sendFlow` uses. */
+    private async sendCollectedFlow(tenantId: string, inboundMsg: NormalizedMessage,
+        flow: NonNullable<TurnEffectSink['flow']>): Promise<void> {
+        const outbound: OutboundMessage = {
+            tenantId,
+            channelType: inboundMsg.channelType,
+            channelAccountId: inboundMsg.channelAccountId,
+            to: inboundMsg.contactId,
+            content: { type: 'text', text: flow.text },
+            metadata: {
+                flowId: flow.flowId, flowToken: flow.flowToken,
+                flowCta: flow.flowCta ?? undefined, flowMode: flow.flowMode ?? undefined,
+                headerText: flow.headerText ?? undefined, footerText: flow.footerText ?? undefined,
+                initialScreen: flow.initialScreen ?? undefined, initialData: flow.initialData ?? undefined,
+                inboundTs: this.inboundTs(inboundMsg),
+            },
+        };
+        const accessToken = await this.resolveAccessToken(tenantId, inboundMsg.channelType, inboundMsg.channelAccountId);
+        await this.outboundQueue.enqueue(outbound, accessToken);
+    }
+
     private async dispatchReplyThroughOutbox(input: {
         tenantId: string; schemaName: string; conversation: any; inboundMsg: NormalizedMessage;
         inboundMessageId?: string; chunks: readonly string[];
@@ -5528,12 +5602,15 @@ export class ConversationsService {
         media?: readonly { url: string; caption?: string }[];
         /** Learned examples this reply derives from, or empty when it uses none. */
         learningFootprints?: readonly RuntimeLearningFootprint[];
+        /** An interactive form, which can be the whole of what a turn produced. */
+        flow?: TurnEffectSink['flow'];
     }): Promise<boolean> {
         const { tenantId, conversation, inboundMsg } = input;
         const contactId = String(conversation?.contact_id || '');
         if (!this.dispatchOutbox || !this.dispatchRollout || !input.operationalScope
             || !input.inboundMessageId || !PERSISTED_ID.test(input.inboundMessageId)
-            || !PERSISTED_ID.test(contactId) || !input.chunks.length) return false;
+            || !PERSISTED_ID.test(contactId)
+            || !(input.chunks.length || input.flow || input.paymentLinks?.length || input.media?.length)) return false;
         const binding = {
             conversationId: String(conversation.id), contactId,
             inboundMessageId: input.inboundMessageId,
@@ -5570,6 +5647,7 @@ export class ConversationsService {
                 textChunks: [...input.chunks],
                 paymentLinks: [...new Set(input.paymentLinks || [])],
                 media: (input.media || []).map(entry => ({ url: entry.url, caption: entry.caption })),
+                ...(input.flow ? { flow: { ...input.flow } } : {}),
             });
             prepared = await this.dispatchOutbox.prepare(tenantId, {
                 binding, items,

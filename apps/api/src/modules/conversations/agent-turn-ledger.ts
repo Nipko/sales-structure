@@ -86,6 +86,8 @@ export interface TurnEnvelope {
     readonly paymentLinks: readonly string[];
     readonly media: readonly { url: string; caption?: string }[];
     readonly learningFootprints: readonly RuntimeLearningFootprint[];
+    /** The interactive form a turn can send instead of words. */
+    readonly flow?: Record<string, any> | null;
 }
 
 /** One business effect this turn already produced. Identity, not description. */
@@ -139,12 +141,16 @@ function normaliseEnvelope(value: any): TurnEnvelope | null {
                 : { url: String(entry.url), caption: String(entry.caption) }))
         : [];
     const learningFootprints = Array.isArray(value.learningFootprints) ? value.learningFootprints : [];
+    const flow = value.flow && typeof value.flow === 'object' && !Array.isArray(value.flow)
+        && typeof value.flow.flowId === 'string' && typeof value.flow.flowToken === 'string'
+        ? Object.freeze({ ...value.flow }) : null;
     return Object.freeze({
         text: value.text,
         chunks: Object.freeze(chunks.map(String)),
         paymentLinks: Object.freeze(paymentLinks.map(String)),
         media: Object.freeze(media),
         learningFootprints: Object.freeze(learningFootprints),
+        flow,
     }) as TurnEnvelope;
 }
 
@@ -254,6 +260,10 @@ export async function recordTurnResult(query: TurnLedgerQuery, schema: string, i
 }): Promise<TurnLedgerRow> {
     if (!UUID.test(input.inboundMessageId || '')) fail('turn_ledger_inbound_invalid');
     if (!input.envelope || typeof input.envelope.text !== 'string') fail('turn_ledger_envelope_invalid');
+    // A turn that produced nothing at all has nothing to recover, and recording
+    // it would let a replay adopt an empty answer as the final one.
+    if (!input.envelope.text && !input.envelope.chunks.length && !input.envelope.paymentLinks.length
+        && !input.envelope.media.length && !input.envelope.flow) fail('turn_ledger_envelope_empty');
     const rows = await query<any[]>(
         `UPDATE "${schema}".agent_turn_ledger
             SET envelope = $2::jsonb, writers = $3::jsonb, agent_id = $4::uuid,

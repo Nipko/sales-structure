@@ -801,6 +801,8 @@
     "saveChanges": "Enregistrer",
     "errorSaving": "Erreur lors de l'enregistrement",
     "connectionError": "Erreur de connexion",
+    "loadFailed": "Nous n avons pas pu lire cette information",
+    "loadFailedHint": "Ce qui suit peut etre incomplet. Ne supposez pas quun reglage manque : relancez la requete.",
     "noData": "Aucune donnee disponible",
     "unknown": "Inconnu",
     "due": "Échéance",
@@ -4103,6 +4105,12 @@
     "instagramTitle": "Instagram DM",
     "credentialExpiring": "Identifiants expirent dans {days} j",
     "credentialNeedsReauth": "Reconnecter : identifiants expires",
+    "statusUnknown": "Statut inconnu",
+    "overviewUnavailable": "Nous n avons pas pu lire l etat de vos canaux",
+    "overviewUnavailableHint": "Nous ne supposerons pas qu ils sont deconnectes. Relancez la requete.",
+    "retry": "Reessayer",
+    "credentialUnknown": "Non verifie",
+    "credentialUnknownHint": "Nous n avons pas pu lire les identifiants de ce canal. Il envoie peut-etre normalement ; reessayez.",
     "credentialHint": "Le canal apparait connecte, mais ses identifiants ne permettent plus d'envoyer. Reconnectez le canal pour reautoriser."
   },
   "agent": {

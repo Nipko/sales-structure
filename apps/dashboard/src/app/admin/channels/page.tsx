@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useTranslations } from "next-intl";
 import { HelpPanel } from "@/components/ui/help-panel";
+import { LoadFailureNotice } from "@/components/ui/load-failure";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useTenant } from "@/contexts/TenantContext";
@@ -18,7 +19,28 @@ import {
     CheckCircle,
     AlertCircle,
     ArrowRight,
+    HelpCircle,
 } from "lucide-react";
+
+/**
+ * Mirrors `resolveCredentialHealth` in the API
+ * (`apps/api/src/modules/channels/channel-credential-health.util.ts`), which is
+ * what `/channels/overview` returns in `credentialStatus`. `unknown` outranks
+ * `expiring` there on purpose: "we could not read the credential" is a warning
+ * a tenant has to see, not a green light. This screen used to drop it.
+ */
+type ChannelCredentialHealth = 'ok' | 'expiring' | 'unknown' | 'missing' | 'error' | 'revoked' | 'expired';
+
+const CREDENTIAL_HEALTH_RANK: Record<ChannelCredentialHealth, number> = {
+    ok: 0, expiring: 1, unknown: 2, missing: 3, error: 4, revoked: 5, expired: 6,
+};
+
+/** An unrecognised status is `unknown`, never `ok`: we did not verify it. */
+function asCredentialHealth(value: unknown): ChannelCredentialHealth {
+    return typeof value === 'string' && value in CREDENTIAL_HEALTH_RANK
+        ? value as ChannelCredentialHealth
+        : 'unknown';
+}
 
 const channels = [
     {
@@ -65,48 +87,68 @@ export default function ChannelsOverviewPage() {
     const [accountCounts, setAccountCounts] = useState<Record<string, number>>({});
     // Credential health per channel: a channel can be "connected" and still be
     // unable to send (expired/revoked token), which used to be invisible here.
-    const [credHealth, setCredHealth] = useState<Record<string, { status: string; days: number | null }>>({});
-    const [loading, setLoading] = useState(true);
+    const [credHealth, setCredHealth] = useState<Record<string, { status: ChannelCredentialHealth; days: number | null }>>({});
+    // A failed read is its own state. It used to collapse into the initial
+    // empty list, so a network blip painted every channel "Desconectado" —
+    // the one word that makes a tenant go looking for a connection that never
+    // broke. An unreadable overview is not an empty overview.
+    const [status, setStatus] = useState<"loading" | "ready" | "unavailable">("loading");
+    const [reloadToken, setReloadToken] = useState(0);
 
     useEffect(() => {
+        let current = true;
         async function load() {
+            setStatus("loading");
             try {
                 const res = await api.fetch("/channels/overview");
                 const list = res?.data || res;
-                if (Array.isArray(list)) {
-                    setConnectedChannels(list.map((ch: any) => ch.channel_type || ch.channelType));
-                    const counts: Record<string, number> = {};
-                    const health: Record<string, { status: string; days: number | null }> = {};
-                    for (const ch of list) {
-                        const type = ch.channel_type || ch.channelType;
-                        if (type) {
-                            counts[type] = (counts[type] || 0) + 1;
-                            const st = ch.credentialStatus;
-                            // Keep the worst status across accounts of the same type.
-                            if (st && st !== 'ok' && st !== 'unknown') {
-                                health[type] = { status: st, days: ch.credentialDaysToExpiry ?? null };
-                            }
-                        }
+                // A response we cannot parse tells us nothing about the account
+                // either, so it takes the same unreadable path as a rejection.
+                if (!Array.isArray(list)) throw new Error("channel_overview_malformed");
+                const counts: Record<string, number> = {};
+                const health: Record<string, { status: ChannelCredentialHealth; days: number | null }> = {};
+                for (const ch of list) {
+                    const type = ch.channel_type || ch.channelType;
+                    if (!type) continue;
+                    counts[type] = (counts[type] || 0) + 1;
+                    const st = asCredentialHealth(ch.credentialStatus);
+                    // Worst-first, because a healthy sibling account must never
+                    // hide an expired one. The previous version just kept the
+                    // last row it saw, which is account order, not severity.
+                    const worse = !health[type] || CREDENTIAL_HEALTH_RANK[st] > CREDENTIAL_HEALTH_RANK[health[type].status];
+                    if (st !== 'ok' && worse) {
+                        health[type] = { status: st, days: ch.credentialDaysToExpiry ?? null };
                     }
-                    setAccountCounts(counts);
-                    setCredHealth(health);
                 }
+                if (!current) return;
+                setConnectedChannels(list.map((ch: any) => ch.channel_type || ch.channelType));
+                setAccountCounts(counts);
+                setCredHealth(health);
+                setStatus("ready");
             } catch (err) {
                 console.error("Failed to load channel overview", err);
-            } finally {
-                setLoading(false);
+                if (!current) return;
+                // Drop the stale readings: showing last minute's answer next to
+                // a "we could not read this" notice is worse than showing none.
+                setConnectedChannels([]);
+                setAccountCounts({});
+                setCredHealth({});
+                setStatus("unavailable");
             }
         }
         load();
-    }, [activeTenantId]);
+        return () => { current = false; };
+    }, [activeTenantId, reloadToken]);
 
-    if (loading) {
+    if (status === "loading") {
         return (
             <div className="p-8 text-center text-[var(--text-secondary)]">
                 {t('loading')}
             </div>
         );
     }
+
+    const unavailable = status === "unavailable";
 
     return (
         <div className="mx-auto max-w-[960px]">
@@ -132,6 +174,18 @@ export default function ChannelsOverviewPage() {
                 mediaKey="channels"
                 tourId="connect_channel"
             />
+
+            {/* The read failed. Say so where the answer would have been, and
+                offer the only useful action, instead of letting every card
+                below quietly assert something we never verified. */}
+            {unavailable && (
+                <LoadFailureNotice
+                    className="mb-6"
+                    title={t('overviewUnavailable')}
+                    hint={t('overviewUnavailableHint')}
+                    onRetry={() => setReloadToken((token) => token + 1)}
+                />
+            )}
 
             {/* Channel Cards Grid */}
             <div id={guidedTourAnchorId("channel-cards")} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -169,36 +223,53 @@ export default function ChannelsOverviewPage() {
                                     </p>
                                 </div>
 
-                                {/* Status Badge */}
+                                {/* Status Badge. Three states, not two: an
+                                    unreadable overview must not borrow the word
+                                    "Desconectado", which claims we looked. */}
                                 <div
                                     className={cn(
                                         "flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold border",
-                                        isConnected
-                                            ? "bg-[rgba(0,214,143,0.1)] text-[var(--success)] border-[rgba(0,214,143,0.2)]"
-                                            : "bg-[rgba(152,152,176,0.1)] text-[var(--text-secondary)] border-[rgba(152,152,176,0.15)]"
+                                        unavailable
+                                            ? "bg-[rgba(255,170,0,0.12)] text-[var(--warning)] border-[rgba(255,170,0,0.25)]"
+                                            : isConnected
+                                                ? "bg-[rgba(0,214,143,0.1)] text-[var(--success)] border-[rgba(0,214,143,0.2)]"
+                                                : "bg-[rgba(152,152,176,0.1)] text-[var(--text-secondary)] border-[rgba(152,152,176,0.15)]"
                                     )}
+                                    title={unavailable ? t('overviewUnavailableHint') : undefined}
                                 >
-                                    {isConnected ? <CheckCircle size={14} /> : <AlertCircle size={14} />}
-                                    {isConnected ? t('connected') : t('disconnected')}
+                                    {unavailable
+                                        ? <HelpCircle size={14} aria-hidden="true" />
+                                        : isConnected
+                                            ? <CheckCircle size={14} aria-hidden="true" />
+                                            : <AlertCircle size={14} aria-hidden="true" />}
+                                    {unavailable ? t('statusUnknown') : isConnected ? t('connected') : t('disconnected')}
                                 </div>
 
                                 {/* Credential health: "connected" is not the same as
                                     "able to send". An expired or revoked token kept
-                                    showing a green badge while replies silently failed. */}
+                                    showing a green badge while replies silently failed,
+                                    and so did `unknown` — the API's own word for a
+                                    credential table it could not read. */}
                                 {isConnected && credHealth[ch.key] && (
                                     <div
                                         className={cn(
                                             "flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold border",
-                                            credHealth[ch.key].status === 'expiring'
+                                            credHealth[ch.key].status === 'expiring' || credHealth[ch.key].status === 'unknown'
                                                 ? "bg-[rgba(255,170,0,0.12)] text-[var(--warning)] border-[rgba(255,170,0,0.25)]"
                                                 : "bg-[rgba(255,71,87,0.12)] text-[var(--danger)] border-[rgba(255,71,87,0.25)]"
                                         )}
-                                        title={t('credentialHint')}
+                                        title={credHealth[ch.key].status === 'unknown'
+                                            ? t('credentialUnknownHint')
+                                            : t('credentialHint')}
                                     >
-                                        <AlertCircle size={12} />
-                                        {credHealth[ch.key].status === 'expiring'
-                                            ? t('credentialExpiring', { days: credHealth[ch.key].days ?? 0 })
-                                            : t('credentialNeedsReauth')}
+                                        {credHealth[ch.key].status === 'unknown'
+                                            ? <HelpCircle size={12} aria-hidden="true" />
+                                            : <AlertCircle size={12} aria-hidden="true" />}
+                                        {credHealth[ch.key].status === 'unknown'
+                                            ? t('credentialUnknown')
+                                            : credHealth[ch.key].status === 'expiring'
+                                                ? t('credentialExpiring', { days: credHealth[ch.key].days ?? 0 })
+                                                : t('credentialNeedsReauth')}
                                     </div>
                                 )}
 

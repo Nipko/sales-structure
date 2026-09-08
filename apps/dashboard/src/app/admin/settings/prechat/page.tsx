@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { MessageSquare, Plus, X, Save, GripVertical, Smartphone } from "lucide-react";
 import { HelpPanel } from "@/components/ui/help-panel";
 import { PageHeader } from "@/components/ui/page-header";
+import { LoadFailureNotice } from "@/components/ui/load-failure";
 
 interface PrechatField { key: string; label: string; type: string; required: boolean; options: string; map_to: string; }
 interface PrechatConfig { is_active: boolean; greeting_message: string; fields: PrechatField[]; }
@@ -28,6 +29,7 @@ export default function PrechatPage() {
     const { activeTenantId } = useTenant();
     const [config, setConfig] = useState<PrechatConfig>(defaultConfig());
     const [loading, setLoading] = useState(true);
+    const [loadFailed, setLoadFailed] = useState(false);
     const [saving, setSaving] = useState(false);
     const [toast, setToast] = useState<string | null>(null);
 
@@ -67,7 +69,13 @@ export default function PrechatPage() {
                         : [],
                 });
             }
-        } catch { /* first time — no form yet */ }
+            setLoadFailed(false);
+        } catch {
+            // The old comment asserted that a rejection means "first time, no
+            // form yet". It does not: a failed read renders the blank builder,
+            // and saving it replaces a live pre-chat form with an empty one.
+            setLoadFailed(true);
+        }
         setLoading(false);
     }
 
@@ -117,6 +125,16 @@ export default function PrechatPage() {
     }
 
     if (loading) return <div className="p-8 text-center text-neutral-500">{tc("loading")}</div>;
+
+    // No blank editor over an unread configuration: Save would overwrite it.
+    if (loadFailed) {
+        return (
+            <div className="max-w-[900px] mx-auto">
+                <PageHeader title={t("title")} subtitle={t("subtitle")} icon={MessageSquare} />
+                <LoadFailureNotice onRetry={() => { void loadConfig(); }} />
+            </div>
+        );
+    }
 
     return (
         <div className="max-w-[1100px] space-y-6">

@@ -801,6 +801,8 @@
     "saveChanges": "Salvar alteracoes",
     "errorSaving": "Erro ao salvar",
     "connectionError": "Erro de conexao",
+    "loadFailed": "Nao conseguimos ler esta informacao",
+    "loadFailedHint": "O que voce ve abaixo pode estar incompleto. Nao suponha que falta configuracao: tente a consulta novamente.",
     "noData": "Sem dados disponiveis",
     "unknown": "Desconhecido",
     "due": "Vence",
@@ -4103,6 +4105,12 @@
     "instagramTitle": "Instagram DM",
     "credentialExpiring": "Credenciais expiram em {days} d",
     "credentialNeedsReauth": "Reconectar: credenciais expiradas",
+    "statusUnknown": "Estado desconhecido",
+    "overviewUnavailable": "Nao conseguimos ler o estado dos seus canais",
+    "overviewUnavailableHint": "Nao vamos supor que estao desconectados. Tente a consulta novamente.",
+    "retry": "Tentar novamente",
+    "credentialUnknown": "Sem verificar",
+    "credentialUnknownHint": "Nao conseguimos ler as credenciais deste canal. Ele pode estar enviando normalmente; tente novamente.",
     "credentialHint": "O canal aparece conectado, mas suas credenciais nao permitem enviar mensagens. Reconecte o canal para reautorizar."
   },
   "agent": {

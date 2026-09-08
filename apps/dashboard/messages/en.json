@@ -801,6 +801,8 @@
     "saveChanges": "Save changes",
     "errorSaving": "Error saving",
     "connectionError": "Connection error",
+    "loadFailed": "We could not read this information",
+    "loadFailedHint": "What you see below may be incomplete. Do not assume something is unconfigured: try the request again.",
     "noData": "No data available",
     "unknown": "Unknown",
     "due": "Due",
@@ -4103,6 +4105,12 @@
     "instagramTitle": "Instagram DM",
     "credentialExpiring": "Credentials expire in {days} d",
     "credentialNeedsReauth": "Reconnect: credentials expired",
+    "statusUnknown": "Status unknown",
+    "overviewUnavailable": "We could not read the status of your channels",
+    "overviewUnavailableHint": "We will not assume they are disconnected. Try the request again.",
+    "retry": "Retry",
+    "credentialUnknown": "Not verified",
+    "credentialUnknownHint": "We could not read this channel credentials. It may be sending normally; try again.",
     "credentialHint": "The channel shows as connected, but its credentials can no longer send messages. Reconnect the channel to re-authorise."
   },
   "agent": {

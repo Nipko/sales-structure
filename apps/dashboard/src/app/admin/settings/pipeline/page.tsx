@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useTranslations, useLocale } from "next-intl";
 import { api } from "@/lib/api";
 import { useTenant } from "@/contexts/TenantContext";
@@ -12,6 +12,7 @@ import {
 import { usePlanLimits } from "@/hooks/usePlanLimits";
 import { UpgradeBanner } from "@/components/ui/upgrade-banner";
 import { HelpPanel } from "@/components/ui/help-panel";
+import { LoadFailureNotice } from "@/components/ui/load-failure";
 
 interface PipelineStage {
     id?: string;
@@ -49,6 +50,7 @@ export default function PipelineSettingsPage() {
     const locale = useLocale();
     const [stages, setStages] = useState<PipelineStage[]>([]);
     const [loading, setLoading] = useState(true);
+    const [loadFailed, setLoadFailed] = useState(false);
     const [saving, setSaving] = useState(false);
     const [dirty, setDirty] = useState(false);
     const [dragIdx, setDragIdx] = useState<number | null>(null);
@@ -92,12 +94,17 @@ export default function PipelineSettingsPage() {
         }
     };
 
-    useEffect(() => {
+    // Loading the stock stages on failure was the worst version of this bug:
+    // the defaults render as if they were the tenant's saved pipeline, and the
+    // Save button one scroll below then writes them over the real one.
+    const loadStages = useCallback(() => {
         if (!activeTenantId) return;
         setLoading(true);
+        setLoadFailed(false);
         api.fetch(`/crm/pipeline-stages/${activeTenantId}`)
             .then((res: any) => {
-                const data = res?.data || [];
+                if (!Array.isArray(res?.data)) throw new Error('pipeline_stages_unavailable');
+                const data = res.data;
                 if (data.length > 0) {
                     setStages(data.map((s: any, i: number) => ({
                         ...s,
@@ -109,9 +116,11 @@ export default function PipelineSettingsPage() {
                     setStages(DEFAULT_STAGES);
                 }
             })
-            .catch(() => setStages(DEFAULT_STAGES))
+            .catch(() => { setStages([]); setLoadFailed(true); })
             .finally(() => setLoading(false));
     }, [activeTenantId]);
+
+    useEffect(() => { loadStages(); }, [loadStages]);
 
     useEffect(() => {
         if (!activeTenantId) return;
@@ -217,6 +226,17 @@ export default function PipelineSettingsPage() {
                 {Array.from({ length: 5 }).map((_, i) => (
                     <div key={i} className="skeleton h-14 w-full rounded-xl" />
                 ))}
+            </div>
+        );
+    }
+
+    // No editor until we know what we would be editing: an empty board that can
+    // be saved is a way to lose a configuration, not a degraded view of it.
+    if (loadFailed) {
+        return (
+            <div className="max-w-[800px] mx-auto">
+                <PageHeader title={t("title")} subtitle={t("subtitle")} icon={Settings} />
+                <LoadFailureNotice onRetry={loadStages} />
             </div>
         );
     }

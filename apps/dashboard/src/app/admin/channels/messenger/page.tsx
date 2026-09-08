@@ -15,9 +15,11 @@ import {
     User,
     LogOut,
     Loader2,
+    HelpCircle,
 } from "lucide-react";
 import { DisconnectChannelModal } from "@/components/ui/disconnect-channel-modal";
 import { HelpPanel } from "@/components/ui/help-panel";
+import { LoadFailureNotice } from "@/components/ui/load-failure";
 
 declare global {
     interface Window {
@@ -66,6 +68,7 @@ export default function MessengerSetupPage() {
     const { activeTenantId } = useTenant();
 
     const [status, setStatus] = useState<any>(null);
+    const [statusUnavailable, setStatusUnavailable] = useState(false);
     const [config, setConfig] = useState<{ webhookUrl?: string; verifyToken?: string } | null>(null);
 
     const [loading, setLoading] = useState(true);
@@ -110,8 +113,14 @@ export default function MessengerSetupPage() {
         try {
             const statusRes = await api.fetch("/channels/messenger/status");
             setStatus(statusRes);
+            setStatusUnavailable(false);
         } catch (e) {
+            // Unread is not disconnected: this used to show the red pill and the
+            // "connect with Facebook" call to action to a tenant whose page was
+            // already linked.
             console.error("Failed to load Messenger status", e);
+            setStatus(null);
+            setStatusUnavailable(true);
         }
         try {
             const configRes = await api.fetch("/channels/messenger/config");
@@ -257,13 +266,19 @@ export default function MessengerSetupPage() {
                 <div
                     className={cn(
                         "flex items-center gap-2 px-4 py-2 rounded-full text-[13px] font-semibold border",
-                        isConnected
-                            ? "bg-[rgba(0,214,143,0.1)] text-[var(--success)] border-[rgba(0,214,143,0.2)]"
-                            : "bg-[rgba(255,71,87,0.1)] text-[var(--danger)] border-[rgba(255,71,87,0.2)]"
+                        statusUnavailable
+                            ? "bg-[rgba(255,170,0,0.12)] text-[var(--warning)] border-[rgba(255,170,0,0.25)]"
+                            : isConnected
+                                ? "bg-[rgba(0,214,143,0.1)] text-[var(--success)] border-[rgba(0,214,143,0.2)]"
+                                : "bg-[rgba(255,71,87,0.1)] text-[var(--danger)] border-[rgba(255,71,87,0.2)]"
                     )}
                 >
-                    {isConnected ? <CheckCircle size={16} /> : <AlertCircle size={16} />}
-                    {isConnected ? t("connected") : t("disconnected")}
+                    {statusUnavailable
+                        ? <HelpCircle size={16} aria-hidden="true" />
+                        : isConnected
+                            ? <CheckCircle size={16} aria-hidden="true" />
+                            : <AlertCircle size={16} aria-hidden="true" />}
+                    {statusUnavailable ? t("statusUnknown") : isConnected ? t("connected") : t("disconnected")}
                 </div>
             </div>
 
@@ -273,6 +288,12 @@ export default function MessengerSetupPage() {
                 tips={tHelp.raw("channelsMessenger.tips") as string[]}
                 mediaKey="channelsMessenger"
             />
+
+            {/* Said once, above a page whose every section reads from the status
+                request that failed. */}
+            {statusUnavailable && (
+                <LoadFailureNotice className="mb-6" onRetry={() => { void loadData(); }} />
+            )}
 
             {/* Alert Message */}
             {message.text && (

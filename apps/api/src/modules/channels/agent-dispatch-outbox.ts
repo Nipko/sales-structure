@@ -302,6 +302,54 @@ export async function prepareDispatchBatch(query: DispatchOutboxQuery, schema: s
 }
 
 /**
+ * The canonical question: does a batch already own the answer to this inbound?
+ *
+ * It must be answerable before anything else a turn decides, and independently
+ * of any rollout switch. A batch that committed keeps the reply forever: if the
+ * switch is later turned off, or a lost COMMIT acknowledgement makes a producer
+ * believe nothing was written, the only thing standing between the customer and
+ * two copies of the same answer is this lookup.
+ *
+ * `null` means no batch exists. It never means "could not tell": an unreadable
+ * answer throws, so a caller cannot mistake uncertainty for absence.
+ *
+ * The recorded payload wins, but the binding is checked rather than trusted: a
+ * batch describing another conversation, contact, channel, account or recipient
+ * is a conflict to refuse, not a result to deliver.
+ */
+export async function readDispatchBatchForInbound(query: DispatchOutboxQuery, schema: string,
+    binding: DispatchBinding): Promise<DispatchRow[] | null> {
+    if (!SCHEMA.test(schema) || !validBinding(binding)) fail('dispatch_invalid_reference');
+    const [tables] = await query<any[]>(
+        'SELECT current_schema() AS schema, to_regclass($1)::text AS outbox',
+        [`${schema}.agent_dispatch_outbox`]);
+    if (tables?.schema !== schema) fail('dispatch_invalid_reference');
+    // A tenant that never took this path has no table, and therefore no batch.
+    if (!tables.outbox) return null;
+    const rows = await query<any[]>(
+        `SELECT * FROM agent_dispatch_outbox WHERE inbound_message_id = $1::uuid ORDER BY item_index`,
+        [binding.inboundMessageId]);
+    if (!rows.length) return null;
+    const mapped = rows.map(mapRow);
+    if (new Set(rows.map(row => String(row.batch_id))).size !== 1) fail('dispatch_batch_conflict');
+    // Contiguous from zero: a gap means a partially recorded result, which must
+    // not be delivered as if it were the whole answer.
+    if (mapped.some((row, index) => row.itemIndex !== index)) fail('dispatch_batch_conflict');
+    for (const row of mapped) {
+        // A redacted row keeps no binding to compare; erasure already removed it,
+        // and the batch still owns the reply so nothing is sent a second time.
+        if (row.redacted) continue;
+        const stored = row.binding!;
+        if (stored.conversationId !== binding.conversationId || stored.contactId !== binding.contactId
+            || stored.inboundMessageId !== binding.inboundMessageId
+            || stored.channelType !== binding.channelType
+            || stored.channelAccountId !== binding.channelAccountId
+            || stored.recipient !== binding.recipient) fail('dispatch_batch_binding_changed');
+    }
+    return mapped;
+}
+
+/**
  * Read one row without applying any guard meant for a new admission. An accepted
  * receipt must stay consultable: it is what tells a recovered job to stop.
  */

@@ -1011,7 +1011,7 @@ export class ConversationsService {
                 // transaction and answers true; otherwise this tenant and channel
                 // keep the two independent writes they have today.
                 const durable = await this.dispatchReplyThroughOutbox({
-                    tenantId, conversation, inboundMsg: normalizedMsg, inboundMessageId,
+                    tenantId, schemaName, conversation, inboundMsg: normalizedMsg, inboundMessageId,
                     chunks, operationalScope: turnScope, gapMs: CHUNK_GAP_MS,
                 });
                 if (!durable) {
@@ -5215,7 +5215,7 @@ export class ConversationsService {
      * authorities, exactly as the dispatch plan requires.
      */
     private async dispatchReplyThroughOutbox(input: {
-        tenantId: string; conversation: any; inboundMsg: NormalizedMessage;
+        tenantId: string; schemaName: string; conversation: any; inboundMsg: NormalizedMessage;
         inboundMessageId?: string; chunks: readonly string[];
         operationalScope?: ServedAgentAuthority; gapMs: number;
     }): Promise<boolean> {
@@ -5224,20 +5224,37 @@ export class ConversationsService {
         if (!this.dispatchOutbox || !this.dispatchRollout || !input.operationalScope
             || !input.inboundMessageId || !PERSISTED_ID.test(input.inboundMessageId)
             || !PERSISTED_ID.test(contactId) || !input.chunks.length) return false;
+        const binding = {
+            conversationId: String(conversation.id), contactId,
+            inboundMessageId: input.inboundMessageId,
+            channelType: inboundMsg.channelType,
+            channelAccountId: inboundMsg.channelAccountId,
+            recipient: inboundMsg.contactId,
+        };
+        const publish = (dispatchId: string, delayMs: number) =>
+            this.outboundQueue.enqueueDispatch(tenantId, dispatchId, delayMs)
+                .catch(error => { this.logger.warn(
+                    `[Dispatch] publish deferred to recovery for ${dispatchId}: ${error?.message}`); });
+
+        // Ownership is decided BEFORE the switch, and the switch never revokes
+        // it. A batch that committed keeps this reply even if the switch was
+        // turned off since, and a lost COMMIT acknowledgement is exactly the case
+        // where the previous attempt believed nothing was written. Asking first
+        // is the only thing between the customer and two copies of one answer.
+        const existing = await this.dispatchOutbox.findBatchForInbound(tenantId, input.schemaName, binding);
+        if (existing) {
+            // Finish what a previous attempt started rather than starting again.
+            await this.dispatchOutbox.publishBatch(tenantId, existing, publish, input.gapMs);
+            this.logger.log(`[Dispatch] reply for ${conversation.id} already owned by its batch (${existing.length} item(s))`);
+            return true;
+        }
         if (!(await this.dispatchRollout.enabledFor(tenantId, inboundMsg.channelType).catch(() => false))) return false;
 
         let prepared;
         try {
             const items = buildDispatchItems({ textChunks: [...input.chunks] });
             prepared = await this.dispatchOutbox.prepare(tenantId, {
-                binding: {
-                    conversationId: String(conversation.id), contactId,
-                    inboundMessageId: input.inboundMessageId,
-                    channelType: inboundMsg.channelType,
-                    channelAccountId: inboundMsg.channelAccountId,
-                    recipient: inboundMsg.contactId,
-                },
-                items,
+                binding, items,
                 operationalScope: input.operationalScope,
                 // Messaging turns do not collect learning provenance yet, so none
                 // is recorded. Claiming an empty footprint is honest; inventing
@@ -5245,19 +5262,21 @@ export class ConversationsService {
                 learningFootprints: [],
             });
         } catch (error: any) {
-            // Nothing committed, so the old path still owes the customer a reply.
+            // The exception is ambiguous: `prepare` may have committed and lost
+            // its acknowledgement. Ask again under the batch identity before
+            // even considering the old path, which would send a second copy.
+            const recovered = await this.dispatchOutbox.findBatchForInbound(tenantId, input.schemaName, binding);
+            if (recovered) {
+                await this.dispatchOutbox.publishBatch(tenantId, recovered, publish, input.gapMs);
+                this.logger.warn(`[Dispatch] prepare reported ${error?.message} but its batch exists — recovered`);
+                return true;
+            }
+            // Only a demonstrated absence releases the reply to the old path.
             this.logger.error(`[Dispatch] durable path unavailable for ${conversation.id}: ${error?.message}`);
             return false;
         }
 
-        for (const row of prepared.rows) {
-            await this.outboundQueue.enqueueDispatch(tenantId, row.id, row.itemIndex * input.gapMs)
-                .catch(error => this.logger.warn(
-                    `[Dispatch] publish deferred to recovery for ${row.id}: ${error?.message}`));
-        }
-        // Marked after publication: a crash before this republishes the same
-        // deterministic ids, while marking first could hide a lost publish.
-        await this.dispatchOutbox.markQueued(tenantId, prepared.rows.map(row => row.id)).catch(() => {});
+        await this.dispatchOutbox.publishBatch(tenantId, prepared.rows, publish, input.gapMs);
         this.logger.log(`[Dispatch] reply for ${conversation.id} committed as ${prepared.rows.length} durable item(s)`);
         return true;
     }

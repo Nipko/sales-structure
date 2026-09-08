@@ -2,7 +2,8 @@ import { randomUUID } from 'crypto';
 import { PrismaClient } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AgentDispatchOutboxStore } from './agent-dispatch-outbox.store';
-import { DISPATCH_MAX_ATTEMPTS, DISPATCH_OUTBOX_DDL, type DispatchBinding, type DispatchItem } from './agent-dispatch-outbox';
+import { DISPATCH_MAX_ATTEMPTS, DISPATCH_OUTBOX_DDL, redactDispatchOutbox,
+    type DispatchBinding, type DispatchItem } from './agent-dispatch-outbox';
 import { operationalConfigurationHash } from '../persona/agent-configuration-revision';
 import { createRuntimeLearningFootprint } from '../learning/learning-runtime-footprint';
 import { learningSnapshotHash, type RuntimeLearningExample } from '../learning/learning-contracts';
@@ -137,6 +138,103 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
             await expect(store.prepare(tenantId, { binding, items,
                 operationalScope: { ...(await scope()), tenantId: randomUUID() } as any }))
                 .rejects.toMatchObject({ code: 'dispatch_authority_required' });
+        });
+    });
+
+    describe('deciding who owns the answer to an inbound', () => {
+        it('answers null before anything was prepared, and the batch afterwards', async () => {
+            const binding = await fixture();
+            await expect(store.findBatchForInbound(tenantId, schema, binding)).resolves.toBeNull();
+            const { rows } = await prepare(binding);
+            const found = await store.findBatchForInbound(tenantId, schema, binding);
+            expect(found!.map(row => row.id)).toEqual(rows.map(row => row.id));
+        });
+
+        it('refuses a batch that describes a different binding rather than delivering it', async () => {
+            const binding = await fixture();
+            await prepare(binding);
+            for (const changed of [
+                { ...binding, conversationId: (await fixture()).conversationId },
+                { ...binding, contactId: (await fixture()).contactId },
+                { ...binding, channelType: 'telegram' },
+                { ...binding, channelAccountId: 'phone-2' },
+                { ...binding, recipient: '+573009999999' },
+            ]) {
+                expect(await reason(store.findBatchForInbound(tenantId, schema, changed)))
+                    .toMatch(/dispatch_batch_binding_changed|dispatch_batch_conflict/);
+            }
+        });
+
+        it('refuses a batch whose items are not contiguous from zero', async () => {
+            const binding = await fixture();
+            const { rows } = await prepare(binding);
+            // A gap means a partially recorded result; delivering it as the whole
+            // answer would drop an effect silently.
+            await sql('UPDATE agent_dispatch_outbox SET item_index=1 WHERE id=$1::uuid', [rows[0].id]);
+            expect(await reason(store.findBatchForInbound(tenantId, schema, binding)))
+                .toBe('dispatch_batch_conflict');
+            await sql('UPDATE agent_dispatch_outbox SET item_index=0 WHERE id=$1::uuid', [rows[0].id]);
+            // Two batch ids for one inbound is the other shape of the same fault.
+            await sql(`INSERT INTO agent_dispatch_outbox(batch_id,conversation_id,contact_id,inbound_message_id,
+                channel_type,channel_account_id,recipient,item_index,item_kind,payload,state)
+                VALUES(gen_random_uuid(),$1::uuid,$2::uuid,$3::uuid,'whatsapp','phone-1','+573000000000',
+                1,'text','{"text":"otro"}'::jsonb,'prepared')`,
+            [binding.conversationId, binding.contactId, binding.inboundMessageId]);
+            expect(await reason(store.findBatchForInbound(tenantId, schema, binding)))
+                .toBe('dispatch_batch_conflict');
+        });
+
+        it('still owns the reply after erasure removed the words', async () => {
+            const binding = await fixture();
+            await prepare(binding);
+            await prisma.transactionInTenantSchema(schema, (query: any) =>
+                redactDispatchOutbox(query, schema, { contactIds: [binding.contactId] }));
+            const found = await store.findBatchForInbound(tenantId, schema, binding);
+            expect(found).toHaveLength(1);
+            expect(found![0].redacted).toBe(true);
+        });
+
+        it('refuses a schema that does not belong to the tenant', async () => {
+            const binding = await fixture();
+            expect(await reason(store.findBatchForInbound(randomUUID(), schema, binding)))
+                .toBe('dispatch_tenant_unavailable');
+            expect(await reason(store.findBatchForInbound(tenantId, 'public', binding)))
+                .toBe('dispatch_tenant_unavailable');
+        });
+    });
+
+    describe('publishing a batch', () => {
+        it('publishes only rows with work left and marks them after publishing', async () => {
+            const binding = await fixture();
+            const { rows } = await prepare(binding);
+            const published: [string, number][] = [];
+            let markedAt = -1;
+            const spy = jest.spyOn(store, 'markQueued');
+            spy.mockImplementation(async (tenant: string, ids: readonly string[]) => {
+                markedAt = published.length; return ids.length;
+            });
+            const count = await store.publishBatch(tenantId, rows,
+                async (id, delay) => { published.push([id, delay]); }, 1200);
+            expect(count).toBe(1);
+            expect(published).toEqual([[rows[0].id, 0]]);
+            // Marked only after every publish attempt: a crash before the mark
+            // republishes the same deterministic ids, which is the safe direction.
+            expect(markedAt).toBe(published.length);
+            spy.mockRestore();
+        });
+
+        it('publishes nothing for a batch already sent or redacted', async () => {
+            const binding = await fixture();
+            const { rows } = await prepare(binding);
+            const lease = randomUUID();
+            await store.admit(tenantId, rows[0].id, { leaseSeconds: 60 });
+            await sql("UPDATE agent_dispatch_outbox SET state='sent', receipt='wamid.X', lease_token=NULL, lease_expires_at=NULL WHERE id=$1::uuid", [rows[0].id]);
+            const published: string[] = [];
+            expect(await store.publishBatch(tenantId,
+                (await store.findBatchForInbound(tenantId, schema, binding))!,
+                async id => { published.push(id); })).toBe(0);
+            expect(published).toEqual([]);
+            expect(lease).toBeTruthy();
         });
     });
 

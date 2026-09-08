@@ -14,18 +14,27 @@ const inboundMsg: any = { tenantId, conversationId, channelType: 'whatsapp',
     content: { type: 'text', text: 'Hola' } };
 
 describe('ConversationsService durable reply producer', () => {
-    function harness(options: { enabled?: boolean; prepareFails?: boolean; publishFails?: boolean } = {}) {
+    function harness(options: { enabled?: boolean; prepareFails?: boolean; publishFails?: boolean;
+        lookupFails?: boolean; existingBatch?: any[]; prepareError?: string } = {}) {
         const service: any = Object.create(ConversationsService.prototype);
         const rows = [
             { id: 'd-0', itemIndex: 0, messageId: 'm-0' },
             { id: 'd-1', itemIndex: 1, messageId: 'm-1' },
         ];
-        const dispatchOutbox = {
+        const dispatchOutbox: any = {
             prepare: jest.fn(async (_tenantId: string, _input: any) => {
-                if (options.prepareFails) throw new Error('outbox unavailable');
+                if (options.prepareFails) throw new Error(options.prepareError || 'outbox unavailable');
                 return { schemaName, batchId: 'b-1', rows };
             }),
             markQueued: jest.fn(async () => rows.length),
+            findBatchForInbound: jest.fn(async () => {
+                if (options.lookupFails) throw new Error('outbox unreadable');
+                return options.existingBatch ?? null;
+            }),
+            publishBatch: jest.fn(async (tenantId: string, batch: any[], publish: any, gap: number) => {
+                for (const row of batch) await publish(row.id, row.itemIndex * gap);
+                return batch.length;
+            }),
         };
         const dispatchRollout = { enabledFor: jest.fn(async () => options.enabled === true) };
         const outboundQueue = { enqueueDispatch: jest.fn(async () => {
@@ -39,9 +48,67 @@ describe('ConversationsService durable reply producer', () => {
     }
 
     const run = (service: any, over: any = {}) => service.dispatchReplyThroughOutbox({
-        tenantId, conversation: { id: conversationId, contact_id: contactId },
+        tenantId, schemaName, conversation: { id: conversationId, contact_id: contactId },
         inboundMsg, inboundMessageId, chunks: ['Primero', 'Después'],
         operationalScope: scope, gapMs: 1200, ...over,
+    });
+
+    describe('a batch that already exists owns the reply', () => {
+        const batch = [
+            { id: 'd-0', itemIndex: 0, state: 'prepared', redacted: false },
+            { id: 'd-1', itemIndex: 1, state: 'prepared', redacted: false },
+        ];
+
+        it('keeps the reply even when the switch has since been turned off', async () => {
+            // Ownership is decided before the switch is consulted, and the switch
+            // never revokes it: otherwise a replay would answer a second time.
+            const h = harness({ enabled: false, existingBatch: batch });
+            await expect(run(h.service)).resolves.toBe(true);
+            expect(h.dispatchOutbox.prepare).not.toHaveBeenCalled();
+            expect(h.dispatchRollout.enabledFor).not.toHaveBeenCalled();
+            expect(h.dispatchOutbox.publishBatch).toHaveBeenCalledTimes(1);
+        });
+
+        it('finishes what the previous attempt started instead of starting again', async () => {
+            const h = harness({ enabled: true, existingBatch: batch });
+            await expect(run(h.service)).resolves.toBe(true);
+            expect(h.outboundQueue.enqueueDispatch.mock.calls).toEqual([
+                [tenantId, 'd-0', 0], [tenantId, 'd-1', 1200],
+            ]);
+        });
+
+        it('recovers a batch whose prepare lost its acknowledgement, never falling back', async () => {
+            // The classic lost COMMIT ACK: prepare threw, the rows are there.
+            const h = harness({ enabled: true, prepareFails: true });
+            h.dispatchOutbox.findBatchForInbound
+                .mockResolvedValueOnce(null)      // before prepare: nothing yet
+                .mockResolvedValueOnce(batch);    // after the ambiguous failure
+            await expect(run(h.service)).resolves.toBe(true);
+            expect(h.dispatchOutbox.publishBatch).toHaveBeenCalledTimes(1);
+        });
+
+        it('fails closed when ownership cannot be determined', async () => {
+            // Reading "no batch" out of an unreadable answer is how a duplicate
+            // happens. The turn fails and is retried instead.
+            const h = harness({ enabled: true, lookupFails: true });
+            await expect(run(h.service)).rejects.toThrow('outbox unreadable');
+            expect(h.dispatchOutbox.prepare).not.toHaveBeenCalled();
+        });
+
+        it('fails closed when the post-failure lookup cannot answer either', async () => {
+            const h = harness({ enabled: true, prepareFails: true });
+            h.dispatchOutbox.findBatchForInbound
+                .mockResolvedValueOnce(null)
+                .mockRejectedValueOnce(new Error('outbox unreadable'));
+            await expect(run(h.service)).rejects.toThrow('outbox unreadable');
+        });
+
+        it('releases the reply to the old path only on a demonstrated absence', async () => {
+            const h = harness({ enabled: true, prepareFails: true });
+            h.dispatchOutbox.findBatchForInbound.mockResolvedValue(null);
+            await expect(run(h.service)).resolves.toBe(false);
+            expect(h.dispatchOutbox.findBatchForInbound).toHaveBeenCalledTimes(2);
+        });
     });
 
     it('takes the durable path only when the switch names this tenant and channel', async () => {
@@ -72,14 +139,14 @@ describe('ConversationsService durable reply producer', () => {
             .toEqual([['text', 'Primero'], ['text', 'Después']]);
     });
 
-    it('publishes each item on its own, staggered, and marks them only afterwards', async () => {
+    it('publishes each item on its own, staggered', async () => {
         const h = harness({ enabled: true });
         await run(h.service);
         expect(h.outboundQueue.enqueueDispatch.mock.calls).toEqual([
             [tenantId, 'd-0', 0], [tenantId, 'd-1', 1200],
         ]);
-        const publishOrder = h.outboundQueue.enqueueDispatch.mock.invocationCallOrder;
-        expect(Math.max(...publishOrder)).toBeLessThan(h.dispatchOutbox.markQueued.mock.invocationCallOrder[0]);
+        // Marking after publication is the store's guarantee; see its own suite.
+        expect(h.dispatchOutbox.publishBatch).toHaveBeenCalledTimes(1);
     });
 
     it('keeps the batch when publishing fails, leaving recovery to republish it', async () => {

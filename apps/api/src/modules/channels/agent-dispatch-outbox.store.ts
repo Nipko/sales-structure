@@ -7,7 +7,8 @@ import { RedisService } from '../redis/redis.service';
 import {
     DISPATCH_OUTBOX_DDL, DispatchOutboxError,
     admitDispatch, expireDispatchLeases, markDispatchQueued, prepareDispatchBatch,
-    readDispatchRow, readPendingDispatch, recordDispatchPreflightFailure, settleDispatch,
+    readDispatchBatchForInbound, readDispatchRow, readPendingDispatch,
+    recordDispatchPreflightFailure, settleDispatch,
     type DispatchBinding, type DispatchItem, type DispatchOutcome, type DispatchRow,
 } from './agent-dispatch-outbox';
 import {
@@ -89,6 +90,47 @@ export class AgentDispatchOutboxStore {
             });
         });
         return { schemaName: schema, ...result };
+    }
+
+    /**
+     * Does a batch already own the answer to this inbound?
+     *
+     * Deliberately does NOT bootstrap: a tenant that never took this path has no
+     * table and therefore no batch, and creating one on every ordinary turn would
+     * make the question expensive for everybody. It also deliberately does not
+     * consult the rollout switch — a batch that committed keeps the reply even
+     * after the switch is turned off, which is the whole point of asking.
+     *
+     * Throws when it cannot tell. A caller must never read uncertainty as "no".
+     */
+    async findBatchForInbound(tenantId: string, schemaName: string,
+        binding: DispatchBinding): Promise<DispatchRow[] | null> {
+        // The caller supplies the schema it already resolved for this turn, so
+        // asking does not add a lifecycle lookup to every ordinary message. It is
+        // not trusted: the privacy fence below re-checks tenant, schema and
+        // current_schema() together before anything is read.
+        if (!/^tenant_[a-z0-9_]+$/.test(schemaName)) throw new DispatchOutboxError('dispatch_tenant_unavailable');
+        return this.prisma.transactionInTenantSchema(schemaName, async query => {
+            await this.privacy(query, schemaName, tenantId);
+            return readDispatchBatchForInbound(query, schemaName, binding);
+        });
+    }
+
+    /**
+     * Publish everything in a batch that still has work, and mark it queued.
+     * Used both by a fresh batch and by one recovered from a previous attempt,
+     * so an interrupted turn finishes instead of being answered twice.
+     */
+    async publishBatch(tenantId: string, rows: readonly DispatchRow[],
+        publish: (dispatchId: string, delayMs: number) => Promise<void>, gapMs = 0): Promise<number> {
+        const pending = rows.filter(row => !row.redacted
+            && ['prepared', 'queued', 'failed'].includes(row.state));
+        for (const row of pending) {
+            await publish(row.id, row.itemIndex * gapMs).catch(() => undefined);
+        }
+        if (!pending.length) return 0;
+        await this.markQueued(tenantId, pending.map(row => row.id)).catch(() => undefined);
+        return pending.length;
     }
 
     async read(tenantId: string, dispatchId: string): Promise<DispatchRow | null> {

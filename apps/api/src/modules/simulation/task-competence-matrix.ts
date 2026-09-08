@@ -6,6 +6,8 @@ import { TOOL_POLICY_REGISTRY } from '../conversations/tool-policy-registry';
 import { CORE_PREREQUISITES } from '../conversations/tool-task-dependencies';
 import { EVAL_WRITER_SANDBOX_FAMILIES } from '../conversations/agent-test-tool-policy';
 import { CANONICAL_EVAL_TOOL_FAMILIES } from './isolated-eval-namespace';
+import { certifyProfile, type CertificationScope, type ProfileCertification } from './agent-certification';
+import type { AgentReleaseRunEvidence } from './agent-release-policy';
 
 /** Setup effects cannot establish that the task's own committing operation succeeded. */
 export function hasPositiveTaskAssertion(toolPlan: readonly string[], scenario: Pick<EvalScenarioSeed, 'expectedActions'>): boolean {
@@ -21,9 +23,30 @@ export function hasPositiveTaskAssertion(toolPlan: readonly string[], scenario: 
     });
 }
 
-/** Declared coverage, deliberately separate from a tenant's execution results or certification. */
-export function buildTaskCompetenceMatrix(profileId?: string) {
+/**
+ * Declared coverage, deliberately separate from a tenant's execution results.
+ *
+ * The certification half is no longer a literal. Called without evidence this
+ * still answers "not loaded" and zero, which is the honest reading of a
+ * catalogue nobody has exercised; called with runs it computes a state per
+ * profile from them. The difference matters because a hard-coded zero would go
+ * on saying zero after the runs existed.
+ */
+export function buildTaskCompetenceMatrix(profileId?: string, execution?: {
+    scope: CertificationScope;
+    evidence: readonly AgentReleaseRunEvidence[];
+}) {
     const ids = listCanonicalSubtypeExperienceProfileIds().sort();
+    const computed = new Map<string, ProfileCertification>();
+    const certificationFor = (id: string) => {
+        if (!execution) return { certified: false, evidence: 'not_loaded' as const };
+        const found = computed.get(id)
+            ?? certifyProfile({ profileId: id, scope: execution.scope, evidence: execution.evidence });
+        computed.set(id, found);
+        return { certified: found.state === 'certified', evidence: found.state,
+            requiredCases: found.requiredCases, verifiedCases: found.verifiedCases,
+            reasons: found.reasons };
+    };
     if (profileId && !ids.includes(profileId)) throw new Error('canonical_profile_required');
     const profiles = (profileId ? [profileId] : ids).map(id => {
         const [industry, subtype] = id.split('/');
@@ -37,7 +60,7 @@ export function buildTaskCompetenceMatrix(profileId?: string) {
             requiredConfiguration: profile.capability.readiness.requirements,
             unresolvedContract: domain.unresolved,
             // A shared tool, a passing generic probe or a selectable profile is not profile-specific evidence.
-            certification: { certified: false, evidence: 'not_loaded' as const },
+            certification: certificationFor(id),
             tasks: domain.intents.map(intent => {
                 const tools = [...new Set([...intent.toolPlan, ...intent.toolPlan.flatMap(name => CORE_PREREQUISITES[name] || [])])].map(name => {
                     const policy = TOOL_POLICY_REGISTRY[name];
@@ -65,7 +88,10 @@ export function buildTaskCompetenceMatrix(profileId?: string) {
                 if (tools.some(tool => !tool.registered)) gaps.push('tool_not_registered');
                 if (intent.commits && tools.filter(tool => tool.effect === 'write' || tool.commitsBusiness).some(tool => !tool.effectVerifier)) gaps.push('effect_verifier_missing');
                 if (intent.commits && scenarios.some(scenario => !scenario.positiveAssertions)) gaps.push('positive_task_case_missing');
-                gaps.push('profile_execution_evidence_missing');
+                // Only while the profile has not been shown to do the work. It
+                // used to be pushed unconditionally, so the gap could never clear
+                // however many runs existed.
+                if (certificationFor(id).certified !== true) gaps.push('profile_execution_evidence_missing');
                 return { key: intent.key, description: intent.description, commits: intent.commits,
                     confirmation: intent.confirmation, fallback: intent.fallback, states: intent.states,
                     requiredSlots: intent.slots.filter(slot => slot.required).map(slot => ({ key: slot.key, type: slot.type,
@@ -88,5 +114,6 @@ export function buildTaskCompetenceMatrix(profileId?: string) {
             tasksMissingPositiveCases: tasks.filter(task => task.gaps.includes('positive_task_case_missing')).length,
             tasksMissingVerifiers: tasks.filter(task => task.gaps.includes('effect_verifier_missing')).length,
             unregisteredTools: [...new Set(tasks.flatMap(task => task.tools.filter(tool => !tool.registered).map(tool => tool.name)))].sort(),
-            certifiedProfiles: 0 }, profiles, compatibilityProfiles };
+            certifiedProfiles: profiles.filter(profile => profile.certification.certified === true).length },
+        profiles, compatibilityProfiles };
 }

@@ -566,9 +566,15 @@ export class EvalService {
                 await this.agentTest.assertSnapshotExecutable(snapshot, tenantId, agentId);
                 const avgScore = out.length ? Math.round((out.reduce((sum, row) => sum + row.score, 0) / out.length) * 100) / 100 : 0;
                 const passed = out.length > 0 && out.every(row => row.passed);
+                // Sealed with the models that actually answered. Certification is
+                // per model, and evidence that cannot name one proves nothing
+                // about any of them.
+                const servedModels = [...new Set(out.flatMap((row: any) =>
+                    (Array.isArray(row.runs) ? row.runs : []).flatMap((attempt: any) =>
+                        Array.isArray(attempt?.models) ? attempt.models : [])))].sort();
                 const releaseEvidence = sealReleaseRun({agentId,dependencyRevision:snapshot.manifest?.revision||'',
                     configHash:snapshot.configHash,channelType,status:'completed',k,passPolicy,threshold,
-                    scenarios,results:out});
+                    models:servedModels,scenarios,results:out});
                 const releaseReadiness = assessAgentRelease({agentId,dependencyRevision:snapshot.manifest?.revision||'',
                     configHash:snapshot.configHash,scope:snapshot.releaseScope,runs:[releaseEvidence]});
                 const result = { runId, passed, avgScore, threshold, k, passPolicy, total: out.length, scenarios: out,
@@ -648,6 +654,10 @@ export class EvalService {
             const history: Array<{ role: 'user' | 'assistant'; content: string }> = [];
             const lines: string[] = [];
             const observedToolCalls: Array<{ name: string; result: unknown }> = [];
+            // Which model actually answered. A run that cannot say proves nothing
+            // about any model, and the runtime router can fall back mid-scenario,
+            // so this is collected per turn rather than declared once.
+            const servingModels = new Set<string>();
             for (const msg of sc.messages) {
                 await assertLease?.();
                 const res = await withReviewedRegressionScenarios(this.prisma,schema,[reviewedSource],agentId,channelType,async()=>{
@@ -666,6 +676,9 @@ export class EvalService {
                 });
                 if (res?.debug?.runtimeError) throw new Error(`agent_runtime_failed:${res.debug.runtimeError}`);
                 const reply = res?.reply || '';
+                if (typeof res?.debug?.model === 'string' && res.debug.model.trim()) {
+                    servingModels.add(res.debug.model.trim());
+                }
                 for (const call of res?.debug?.toolCalls || []) {
                     observedToolCalls.push({ name: call.name, result: call.result });
                 }
@@ -698,6 +711,7 @@ export class EvalService {
             // aggregate score. Bound storage and disclose any shortened sample.
             const transcriptTruncated=history.some(row=>row.content.length>8_000);
             return { score, passed: score >= threshold && actionsPassed, resolved: !!judge.resolved, flags: judge.flags || [], actionChecks,
+                model: [...servingModels].sort().join('+') || null, models: [...servingModels].sort(),
                 fixtureAssumptions: ['synthetic_A2_for_appointment_readers'],
                 transcript:history.map(row=>({...row,content:row.content.slice(0,8_000)})),transcriptTruncated };
         });

@@ -21,6 +21,9 @@ export interface AgentReleaseRunEvidence {
     k: number;
     passPolicy: string;
     threshold: number;
+    /** Every model that answered during this run. Certification is per model:
+     *  a run that cannot name one proves nothing about any of them. */
+    models?: string[];
     scenarios: any[];
     results: any[];
     evidenceHash: string;
@@ -34,14 +37,16 @@ export function releaseRunContext(row:Pick<AgentReleaseRunEvidence,'agentId'|'de
     return revisionHash({agentId:row.agentId,dependencyRevision:row.dependencyRevision,configHash:row.configHash,
         channelType:row.channelType,k:row.k,passPolicy:row.passPolicy,threshold:row.threshold});
 }
-function validEvidence(row: AgentReleaseRunEvidence): boolean {
+/** Shared with the certification report: two definitions of "this run counts"
+ *  would eventually disagree, and the disagreement would look like a pass. */
+export function evidenceIsValid(row: AgentReleaseRunEvidence): boolean {
     if (!row || row.version !== 1 || !row.evidenceHash) return false;
     const {evidenceHash,...body}=row;
     return revisionHash(body) === evidenceHash && row.status==='completed' && row.passPolicy==='all'
         && Number.isInteger(row.k) && row.k>=1 && row.k<=5 && Number.isFinite(row.threshold) && row.threshold>=7 && row.threshold<=10
         && Array.isArray(row.scenarios) && Array.isArray(row.results);
 }
-const scenarioDefinition = (scenario:any) => revisionHash({messages:scenario.messages,criteria:scenario.criteria||'',expectedActions:scenario.expectedActions||[]});
+export const releaseScenarioDefinition = (scenario:any) => revisionHash({messages:scenario.messages,criteria:scenario.criteria||'',expectedActions:scenario.expectedActions||[]});
 /** Only an intact managed task case may be omitted for a deliberately narrower mission.
  * Custom or edited regressions and universal safety cases always remain applicable. */
 export function scenarioAppliesToMission(scenario:any,scope?:AgentReleaseScope):boolean {
@@ -55,9 +60,9 @@ export function scenarioAppliesToMission(scenario:any,scope?:AgentReleaseScope):
     if(!(EVAL_LANGUAGES as readonly string[]).includes(language))return true;
     const variants=(language==='es'?[null,'tu','usted','vos']:[null]) as Array<AddressForm|null>;
     return !variants.some(addressForm=>composeSubtypeEvalPack({industry,subtype,language,addressForm})
-        .some(expected=>expected.key===scenario.managedSeedKey && scenarioDefinition(expected)===scenarioDefinition(scenario)));
+        .some(expected=>expected.key===scenario.managedSeedKey && releaseScenarioDefinition(expected)===releaseScenarioDefinition(scenario)));
 }
-function scenarioPassed(scenario:any,row:AgentReleaseRunEvidence):boolean {
+export function releaseScenarioPassed(scenario:any,row:AgentReleaseRunEvidence):boolean {
     const matches=row.results.filter(result=>result.key===scenario.key);
     if(matches.length!==1)return false;
     const result=matches[0];
@@ -95,10 +100,10 @@ export function assessAgentRelease(input:{agentId:string;dependencyRevision:stri
     }
     const current=input.runs.filter(row=>row?.agentId===input.agentId&&row.dependencyRevision===input.dependencyRevision&&row.configHash===input.configHash);
     for(const row of current) {
-        if(!validEvidence(row)) {add('run_evidence_invalid',{channel:row.channelType});continue;}
-        if(row.scenarios.some(scenario=>!scenarioPassed(scenario,row)))add('executed_regression_failed',{channel:row.channelType});
+        if(!evidenceIsValid(row)) {add('run_evidence_invalid',{channel:row.channelType});continue;}
+        if(row.scenarios.some(scenario=>!releaseScenarioPassed(scenario,row)))add('executed_regression_failed',{channel:row.channelType});
     }
-    const valid=current.filter(validEvidence);
+    const valid=current.filter(evidenceIsValid);
     let requiredCases=0,verifiedCases=0;
     for(const language of EVAL_LANGUAGES) {
         const variants=new Map<string,{definitions:Set<string>;actions:any[]}>();
@@ -107,7 +112,7 @@ export function assessAgentRelease(input:{agentId:string;dependencyRevision:stri
                 const task=domain.intents.find(intent=>scenario.key.startsWith(`intent_${intent.key}_`));
                 if(task&&!mission.includes(task.key))continue;
                 const existing=variants.get(scenario.key)||{definitions:new Set<string>(),actions:[...(scenario.expectedActions||[])]};
-                existing.definitions.add(scenarioDefinition(scenario));variants.set(scenario.key,existing);
+                existing.definitions.add(releaseScenarioDefinition(scenario));variants.set(scenario.key,existing);
             }
         }
         for(const channel of [...new Set(channels)].filter(channel=>(CONVERSATIONAL_CHANNELS as readonly string[]).includes(channel))) {
@@ -115,7 +120,7 @@ export function assessAgentRelease(input:{agentId:string;dependencyRevision:stri
                 requiredCases++;
                 const proven=valid.filter(row=>row.channelType===channel).some(row=>row.scenarios.some(scenario=>
                     scenario.profileId===scope.profileId && scenario.language===language && scenario.managedSeedKey===key
-                    && expected.definitions.has(scenarioDefinition(scenario)) && scenarioPassed(scenario,row)));
+                    && expected.definitions.has(releaseScenarioDefinition(scenario)) && releaseScenarioPassed(scenario,row)));
                 if(proven)verifiedCases++;else add('required_scenario_unproven',{channel,language,scenario:key});
             }
         }

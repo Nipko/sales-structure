@@ -1,3 +1,5 @@
+import { releaseRunContext, sealReleaseRun } from './agent-release-policy';
+import { revisionHash } from '../evaluation-revision/evaluation-revision';
 import { composeSubtypeEvalPack, CONVERSATIONAL_CHANNELS, EVAL_LANGUAGES, listCanonicalSubtypeExperienceProfileIds } from '@parallext/shared';
 import { buildTaskCompetenceMatrix, hasPositiveTaskAssertion } from './task-competence-matrix';
 
@@ -51,5 +53,38 @@ describe('profile-specific competence coverage', () => {
     });
     it('rejects unknown profiles instead of falling back to another profile', () => {
         expect(() => buildTaskCompetenceMatrix('salud/unknown')).toThrow('canonical_profile_required');
+    });
+
+    /**
+     * The number used to be a literal, so it could never say anything but zero.
+     * These two assertions are the pair that matters: it still says zero for a
+     * catalogue nobody exercised, and it moves when the runs exist.
+     */
+    it('counts certified profiles from evidence instead of reporting a constant', () => {
+        const profileId = 'salud/dental';
+        const scope = { channels: ['web_widget'], models: ['gpt-4o-mini'] };
+        const evidence = EVAL_LANGUAGES.map(language => {
+            const [industry, subtype] = profileId.split('/');
+            const seeds = composeSubtypeEvalPack({ industry, subtype, language });
+            const scenarios = seeds.map(seed => ({ key: seed.key, managedSeedKey: seed.key, profileId, language,
+                messages: seed.messages, criteria: seed.criteria, expectedActions: seed.expectedActions }));
+            const body = { agentId: 'agent-1', dependencyRevision: 'a'.repeat(64), configHash: 'b'.repeat(64),
+                channelType: 'web_widget', status: 'completed', k: 1, passPolicy: 'all', threshold: 8,
+                models: ['gpt-4o-mini'] };
+            const contextHash = releaseRunContext(body as any);
+            return sealReleaseRun({ ...body, scenarios, results: scenarios.map(scenario => ({
+                key: scenario.key, contextHash, scenarioHash: revisionHash(scenario), passed: true, k: 1, passes: 1,
+                runs: [{ passed: true, flags: [], score: 9, models: ['gpt-4o-mini'],
+                    actionChecks: (scenario.expectedActions || []).map(() => ({ ok: true })) }],
+            })) } as any);
+        });
+
+        expect(buildTaskCompetenceMatrix(profileId).summary.certifiedProfiles).toBe(0);
+        const executed = buildTaskCompetenceMatrix(profileId, { scope, evidence });
+        expect(executed.summary.certifiedProfiles).toBe(1);
+        expect(executed.profiles[0].certification).toMatchObject({ certified: true, evidence: 'certified' });
+        // And the gap that could never clear now clears.
+        expect(executed.profiles[0].tasks.every(task =>
+            !task.gaps.includes('profile_execution_evidence_missing'))).toBe(true);
     });
 });

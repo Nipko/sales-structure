@@ -25,9 +25,11 @@ const TABLES = {
         document_a: 'uuid', document_b: 'uuid', updated_at: 'timestamptz' },
     knowledge_conflict_decisions: { id: 'uuid', case_id: 'uuid', revision: 'integer', decision: 'text', scope: 'jsonb' },
 } as const;
-type Table = keyof typeof TABLES;
+export type KnowledgeReplicaTable = keyof typeof TABLES;
+type Table = KnowledgeReplicaTable;
 type Collection = { state: 'present' | 'absent'; rows: number; hash: string };
-type Transaction = { $queryRawUnsafe(sql: string, ...params: any[]): Promise<any[]>; $executeRawUnsafe(sql: string, ...params: any[]): Promise<any> };
+export type KnowledgeReplicaTransaction = { $queryRawUnsafe(sql: string, ...params: any[]): Promise<any[]>; $executeRawUnsafe(sql: string, ...params: any[]): Promise<any> };
+type Transaction = KnowledgeReplicaTransaction;
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
 const NAMESPACE = /^tenant_eval_[a-f0-9]{8}_[a-f0-9]{24}$/;
 const SOURCE = /^tenant_[a-z0-9_]{1,56}$/;
@@ -44,7 +46,7 @@ export function knowledgeReplicaSlotName(tenantId: string, slot: number): string
     const suffix = createHash('sha256').update(`knowledge-replica:v1:${tenantId}:${slot}`).digest('hex').slice(0, 24);
     return `tenant_eval_${tenantId.replace(/-/g, '').slice(0, 8)}_${suffix}`;
 }
-export interface KnowledgeReplicaUsage { token: string; agentId: string }
+export interface KnowledgeReplicaUsage { token: string; agentId: string; expiresAt?: string }
 export interface KnowledgeReplicaAllocation { slot: number; sourceRevision: string; usage: KnowledgeReplicaUsage }
 const COMPATIBLE_TYPES: Readonly<Record<string, readonly string[]>> = {
     text: ['text', 'varchar'], uuid: ['uuid'], 'uuid[]': ['_uuid'], integer: ['int4'], boolean: ['bool'],
@@ -81,7 +83,8 @@ export function resolveKnowledgeReplica(input: EvaluationKnowledgeReplica | unde
         || (input.management && (!Number.isInteger(input.management.slot) || input.management.slot < 0
             || input.management.slot >= KNOWLEDGE_REPLICA_SLOTS || !HASH.test(input.management.sourceRevision)
             || input.management.reservedBytes !== KNOWLEDGE_REPLICA_SLOT_BYTES))
-        || (input.usage && (!input.management || !UUID.test(input.usage.token) || typeof input.usage.agentId !== 'string' || !input.usage.agentId))
+        || (input.usage && (!input.management || !UUID.test(input.usage.token) || !UUID.test(input.usage.agentId)
+            || (input.usage.expiresAt !== undefined && !Number.isFinite(Date.parse(input.usage.expiresAt)))))
         || !Array.isArray(input.lease.tables)
         || (Object.keys(TABLES) as Table[]).some(table => {
             const value = input.collections?.[table];
@@ -93,6 +96,73 @@ export function resolveKnowledgeReplica(input: EvaluationKnowledgeReplica | unde
     const { integrityHash, usage, ...body } = input;
     if (revisionHash(body) !== integrityHash) throw new EvaluationKnowledgeUnavailable('evaluation_knowledge_integrity_mismatch');
     return structuredClone(input);
+}
+
+/** Exact projected revision, including absence and selected column structure.
+ * Must run in the SAME repeatable-read transaction used for copy/reuse. */
+export async function knowledgeSourceRevision(tx: Transaction, sourceSchema: string): Promise<string> {
+    return (await knowledgeSourceProof(tx, sourceSchema)).revision;
+}
+
+async function knowledgeSourceProof(tx: Transaction, sourceSchema: string): Promise<{ revision: string; collections: Record<Table, Collection> }> {
+    if (!SOURCE.test(sourceSchema) || sourceSchema.startsWith('tenant_eval_'))
+        throw new EvaluationKnowledgeUnavailable('evaluation_knowledge_tenant_unavailable');
+    const relations = await tx.$queryRawUnsafe(`SELECT c.relname::text AS name,c.relkind::text AS kind
+        FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+        WHERE n.nspname=$1 AND c.relname=ANY($2::text[]) ORDER BY c.relname`, sourceSchema, Object.keys(TABLES));
+    if (relations.some(row => !['r', 'p'].includes(row.kind)))
+        throw new EvaluationKnowledgeUnavailable('evaluation_knowledge_relation_unsupported');
+    const columns = await tx.$queryRawUnsafe(`SELECT c.relname::text AS table_name,a.attname::text AS name,
+        t.typname::text AS type,tn.nspname::text AS type_schema,a.atttypmod AS modifier,a.attnotnull AS required,
+        a.attgenerated::text AS generated,COALESCE(pg_get_expr(d.adbin,d.adrelid),'') AS default_expression,
+        (a.attcollation=0 OR a.attcollation='pg_catalog.default'::regcollation) AS default_collation
+        FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid JOIN pg_namespace n ON n.oid=c.relnamespace
+        JOIN pg_type t ON t.oid=a.atttypid JOIN pg_namespace tn ON tn.oid=t.typnamespace
+        LEFT JOIN pg_attrdef d ON d.adrelid=c.oid AND d.adnum=a.attnum
+        WHERE n.nspname=$1 AND c.relname=ANY($2::text[]) AND a.attnum>0 AND NOT a.attisdropped
+        ORDER BY c.relname,a.attname`, sourceSchema, Object.keys(TABLES));
+    const present = (table: Table) => relations.some(row => row.name === table);
+    const predicate = (table: Table): string => table === 'knowledge_documents' ? "s.status='ready'"
+        : table === 'faqs' ? 's.is_published=true' : table === 'policies' ? 's.is_active=true'
+        : table === 'knowledge_embeddings' ? present('knowledge_documents')
+            ? `EXISTS(SELECT 1 FROM "${sourceSchema}".knowledge_documents d WHERE d.id=s.document_id AND d.status='ready')` : 'false'
+        : table === 'knowledge_conflict_cases' ? present('knowledge_documents')
+            ? `EXISTS(SELECT 1 FROM "${sourceSchema}".knowledge_documents d WHERE (d.id=s.document_a OR d.id=s.document_b) AND d.status='ready')` : 'false'
+        : table === 'knowledge_conflict_decisions' ? present('knowledge_conflict_cases') && present('knowledge_documents')
+            ? `EXISTS(SELECT 1 FROM "${sourceSchema}".knowledge_conflict_cases c JOIN "${sourceSchema}".knowledge_documents d
+                ON (d.id=c.document_a OR d.id=c.document_b) AND d.status='ready' WHERE c.id=s.case_id)` : 'false'
+        : 'true';
+    const revision: Record<string, unknown> = {};
+    const collections = {} as Record<Table, Collection>;
+    let bytes = 0;
+    for (const table of Object.keys(TABLES) as Table[]) {
+        if (!present(table)) {
+            revision[table] = { state: 'absent' };
+            collections[table] = { state: 'absent', rows: 0, hash: revisionHash(null) }; continue;
+        }
+        const structure: unknown[] = [];
+        const projection = Object.entries(TABLES[table]).map(([name, type]) => {
+            const column = columns.find(row => row.table_name === table && row.name === name);
+            if (!column && ((table === 'companies' && name !== 'id') || (table === 'knowledge_embeddings' && name === 'search_tsv'))) {
+                structure.push({ name, absent: true }); return `NULL::${type} AS "${name}"`;
+            }
+            if (!column || column.type_schema !== (type.startsWith('public.vector') ? 'public' : 'pg_catalog')
+                || !COMPATIBLE_TYPES[type]?.includes(column.type) || column.default_collation !== true)
+                throw new EvaluationKnowledgeUnavailable('evaluation_knowledge_column_unsupported');
+            structure.push(column); return `s."${name}"`;
+        }).join(',');
+        const rows = await tx.$queryRawUnsafe(`SELECT COUNT(*)::integer AS rows,
+            COALESCE(SUM(octet_length(to_jsonb(r)::text)),0)::text AS bytes,
+            encode(sha256(convert_to(COALESCE(string_agg(encode(sha256(convert_to(to_jsonb(r)::text,'UTF8')),'hex'),',' ORDER BY id),''),'UTF8')),'hex') AS hash
+            FROM (SELECT ${projection} FROM "${sourceSchema}"."${table}" s WHERE ${predicate(table)} LIMIT $1) r`, MAX_ROWS + 1);
+        bytes += Number(rows[0].bytes);
+        if (rows[0].rows > MAX_ROWS || bytes > MAX_BYTES)
+            throw new EvaluationKnowledgeUnavailable('evaluation_knowledge_capacity_exceeded');
+        revision[table] = { state: 'present', kind: relations.find(row => row.name === table).kind,
+            structure, rows: rows[0].rows, hash: rows[0].hash };
+        collections[table] = { state: 'present', rows: rows[0].rows, hash: rows[0].hash };
+    }
+    return { revision: revisionHash({ version: 1, projections: revision }), collections };
 }
 
 async function signature(tx: Transaction, schema: string, table: Table): Promise<Collection> {
@@ -110,6 +180,14 @@ async function signature(tx: Transaction, schema: string, table: Table): Promise
  * accounts, caches, model requests or source-table repairs are involved. */
 export async function captureKnowledgeReplica(prisma: PrismaService, tenantId: string, ttlMs = 3600_000,
     allocation?: KnowledgeReplicaAllocation): Promise<EvaluationKnowledgeReplica> {
+    return prisma.$transaction(tx => captureKnowledgeReplicaInTransaction(tx as Transaction, tenantId, ttlMs, allocation),
+        { isolationLevel: 'RepeatableRead', timeout: 60_000 });
+}
+
+/** Internal transaction port for the lifecycle coordinator. It does not open a
+ * second transaction or acquire a second source privacy fence. */
+export async function captureKnowledgeReplicaInTransaction(tx: Transaction, tenantId: string, ttlMs = 3600_000,
+    allocation?: KnowledgeReplicaAllocation): Promise<EvaluationKnowledgeReplica> {
     if (!UUID.test(tenantId) || !Number.isInteger(ttlMs) || ttlMs < 1000 || ttlMs > 3600_000)
         throw new EvaluationKnowledgeUnavailable('evaluation_knowledge_capture_scope_invalid');
     if (allocation && (!HASH.test(allocation.sourceRevision) || !UUID.test(allocation.usage?.token) || !UUID.test(allocation.usage?.agentId)))
@@ -119,13 +197,18 @@ export async function captureKnowledgeReplica(prisma: PrismaService, tenantId: s
     const token = randomUUID();
     let namespaceCreated = false;
     try {
-        return await prisma.$transaction(async (tx: Transaction) => {
+        return await (async () => {
             await tx.$executeRawUnsafe('SET LOCAL search_path TO pg_catalog, public');
             await tx.$executeRawUnsafe("SET LOCAL TIME ZONE 'UTC'");
             const owners = await tx.$queryRawUnsafe('SELECT schema_name FROM public.tenants WHERE id=$1::uuid', tenantId);
             const sourceSchema = owners[0]?.schema_name;
             if (owners.length !== 1 || !SOURCE.test(sourceSchema) || sourceSchema.startsWith('tenant_eval_'))
                 throw new EvaluationKnowledgeUnavailable('evaluation_knowledge_tenant_unavailable');
+            // A slot label supplied by another internal caller is not evidence
+            // of the copied revision. Verify it inside this same MVCC snapshot.
+            const sourceProof = allocation ? await knowledgeSourceProof(tx, sourceSchema) : undefined;
+            if (allocation && sourceProof!.revision !== allocation.sourceRevision)
+                throw new EvaluationKnowledgeUnavailable('evaluation_knowledge_source_revision_changed');
             const relations = await tx.$queryRawUnsafe(`SELECT c.relname::text AS name,c.relkind::text AS kind
                 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
                 WHERE n.nspname=$1 AND c.relname=ANY($2::text[])`, sourceSchema, Object.keys(TABLES));
@@ -200,6 +283,11 @@ export async function captureKnowledgeReplica(prisma: PrismaService, tenantId: s
                 await tx.$executeRawUnsafe(`INSERT INTO "${schema}"."${table}" ${projection}`);
                 collections[table] = await signature(tx, schema, table);
             }
+            // Compare the actual copied projection with its MVCC source proof.
+            // This also fails closed if concurrent DDL changes a composite row
+            // descriptor used by the optional legacy identity projection.
+            if (sourceProof && revisionHash(collections) !== revisionHash(sourceProof.collections))
+                throw new EvaluationKnowledgeUnavailable('evaluation_knowledge_source_projection_changed');
             if (collections.knowledge_embeddings.state === 'present') {
                 await tx.$executeRawUnsafe(`CREATE INDEX ON "${schema}".knowledge_embeddings(document_id)`);
                 await tx.$executeRawUnsafe(`CREATE INDEX ON "${schema}".knowledge_embeddings USING gin(search_tsv)`);
@@ -222,7 +310,7 @@ export async function captureKnowledgeReplica(prisma: PrismaService, tenantId: s
                     allocation.usage.token, allocation.usage.agentId, replica.lease.expiresAt);
             }
             return allocation ? { ...replica, usage: { ...allocation.usage } } : replica;
-        }, { isolationLevel: 'RepeatableRead', timeout: 60_000 });
+        })();
     } catch (error) {
         if (error instanceof EvaluationKnowledgeUnavailable) throw error;
         if (allocation && !namespaceCreated && ['42P06', '23505'].includes(String((error as any)?.meta?.code)))
@@ -237,11 +325,21 @@ export async function captureKnowledgeReplica(prisma: PrismaService, tenantId: s
 export async function knowledgeReplicaSchema(prisma: PrismaService, input: EvaluationKnowledgeReplica, tenantId: string,
     executionContext?: ServiceExecutionContext): Promise<string> {
     if (!persistenceDisabled(executionContext)) throw new EvaluationKnowledgeUnavailable('evaluation_knowledge_readonly_required');
-    const replica = resolveKnowledgeReplica(input, tenantId), schema = replica.lease.schemaName;
     try {
-        await prisma.$transaction(async (tx: Transaction) => {
+        return await prisma.$transaction(async (tx: Transaction) => {
             await tx.$executeRawUnsafe('SET TRANSACTION READ ONLY');
             await tx.$executeRawUnsafe("SET LOCAL TIME ZONE 'UTC'");
+            return assertKnowledgeReplicaInTransaction(tx, input, tenantId);
+        }, { isolationLevel: 'RepeatableRead', timeout: 30_000 });
+    } catch (error) {
+        if (error instanceof EvaluationKnowledgeUnavailable) throw error;
+        throw new EvaluationKnowledgeUnavailable('evaluation_knowledge_read_failed');
+    }
+}
+
+/** Reuses a coordinator-owned MVCC view; never opens another connection. */
+export async function assertKnowledgeReplicaInTransaction(tx: Transaction, input: EvaluationKnowledgeReplica, tenantId: string): Promise<string> {
+    const replica = resolveKnowledgeReplica(input, tenantId), schema = replica.lease.schemaName;
             const owner = await tx.$queryRawUnsafe(`SELECT 1 FROM "${schema}".__eval_namespace
                 WHERE tenant_id=$1::uuid AND owner_token=$2::uuid AND source_schema=$3 AND expires_at>clock_timestamp()
                     AND EXISTS(SELECT 1 FROM public.tenants t WHERE t.id=$1::uuid AND t.schema_name=$3)`,
@@ -252,7 +350,9 @@ export async function knowledgeReplicaSchema(prisma: PrismaService, input: Evalu
             if (replica.management) {
                 if (!replica.usage) throw new EvaluationKnowledgeUnavailable('evaluation_knowledge_usage_required');
                 const usages = await tx.$queryRawUnsafe(`SELECT 1 FROM "${schema}".__eval_knowledge_usages
-                    WHERE token=$1::uuid AND agent_id=$2::uuid AND expires_at>clock_timestamp()`, replica.usage.token, replica.usage.agentId);
+                    WHERE token=$1::uuid AND agent_id=$2::uuid AND expires_at>clock_timestamp()
+                    AND ($3::timestamptz IS NULL OR expires_at=$3::timestamptz)`,
+                    replica.usage.token, replica.usage.agentId, replica.usage.expiresAt ?? null);
                 if (usages.length !== 1) throw new EvaluationKnowledgeUnavailable('evaluation_knowledge_usage_lost');
             }
             const relations = await tx.$queryRawUnsafe(`SELECT c.relname::text AS name,c.relkind::text AS kind
@@ -265,15 +365,13 @@ export async function knowledgeReplicaSchema(prisma: PrismaService, input: Evalu
                     || revisionHash(await signature(tx, schema, table)) !== revisionHash(expected))
                     throw new EvaluationKnowledgeUnavailable('evaluation_knowledge_content_changed');
             }
-        }, { isolationLevel: 'RepeatableRead', timeout: 30_000 });
         return schema;
-    } catch (error) {
-        if (error instanceof EvaluationKnowledgeUnavailable) throw error;
-        throw new EvaluationKnowledgeUnavailable('evaluation_knowledge_read_failed');
-    }
 }
 
 export async function disposeKnowledgeReplica(prisma: PrismaService, input: EvaluationKnowledgeReplica): Promise<void> {
     const replica = resolveKnowledgeReplica(input, input?.lease?.tenantId);
+    // Managed copies can have several snapshot owners. The lifecycle manager
+    // releases one usage; this low-level whole-copy operation cannot do that.
+    if (replica.management) throw new EvaluationKnowledgeUnavailable('evaluation_knowledge_managed_release_required');
     await isolatedEvalNamespaceForPrisma(prisma).dispose(replica.lease);
 }

@@ -9,6 +9,7 @@ import { KNOWLEDGE_CONFLICT_SCHEMA } from '../kb-health/knowledge-conflict.schem
 import { AGENT_TEST_EXECUTION_CONTEXT } from '../../common/types/execution-context';
 import { captureKnowledgeReplica, disposeKnowledgeReplica, knowledgeReplicaSchema, resolveKnowledgeReplica,
     knowledgeReplicaSlotName, KNOWLEDGE_REPLICA_SLOTS, KNOWLEDGE_REPLICA_SLOT_BYTES,
+    knowledgeSourceRevision,
     type EvaluationKnowledgeReplica } from './evaluation-knowledge-replica';
 import { EvaluationRevisionService } from './evaluation-revision.service';
 import { revisionHash } from './evaluation-revision';
@@ -27,6 +28,7 @@ const url = process.env.KNOWLEDGE_MEMORY_TEST_DATABASE_URL;
     const sql = (statement: string, ...params: any[]) => client.$queryRawUnsafe(statement, ...params) as Promise<any[]>;
     const local = (statement: string, params: any[] = []) => prisma.executeInTenantSchema<any[]>(schema, statement, params);
     const capture = async (connection = prisma) => { const copy = await captureKnowledgeReplica(connection, tenantId); replicas.push(copy); return copy; };
+    const currentSourceRevision = () => client.$transaction(tx => knowledgeSourceRevision(tx as any, schema), { isolationLevel: 'RepeatableRead' });
     const scope = { agentId, audience: 'customer' as const, jurisdiction: 'CO' };
     const search = (replica?: EvaluationKnowledgeReplica, language = 'es', query = 'consultas lunes') => knowledge.searchRelevant(tenantId, query, 10,
         { ...scope, executionContext: AGENT_TEST_EXECUTION_CONTEXT, evaluationKnowledge: replica, similarityThreshold: 0.1, language });
@@ -77,7 +79,12 @@ const url = process.env.KNOWLEDGE_MEMORY_TEST_DATABASE_URL;
         await sql(`INSERT INTO "${schema}".companies(id,name,about,is_primary,metadata) VALUES($1::uuid,'Synthetic business',$2,true,'{"private":"supplier"}')`, businessId, textB);
         sourceReader.mockClear(); embedding.mockClear(); cache.get.mockClear(); cache.set.mockClear();
     });
-    afterEach(async () => { for (const replica of replicas) await disposeKnowledgeReplica(prisma, replica); });
+    afterEach(async () => { for (const replica of replicas) {
+        // These allocation-primitive tests intentionally bypass the lifecycle
+        // registry. Explicit test cleanup owns the whole disposable namespace.
+        if (replica.management) await isolatedEvalNamespaceForPrisma(prisma).dispose(replica.lease);
+        else await disposeKnowledgeReplica(prisma, replica);
+    } });
     afterAll(async () => {
         if (!client) return;
         try {
@@ -264,7 +271,7 @@ const url = process.env.KNOWLEDGE_MEMORY_TEST_DATABASE_URL;
 
     it('records a managed capture and requires its own unexpired usage before reading', async () => {
         const usage = { token: randomUUID(), agentId };
-        const copy = await captureKnowledgeReplica(prisma, tenantId, 3600_000, { slot: 0, sourceRevision: revisionHash('synthetic-source'), usage });
+        const copy = await captureKnowledgeReplica(prisma, tenantId, 3600_000, { slot: 0, sourceRevision: await currentSourceRevision(), usage });
         replicas.push(copy);
         expect(copy.lease.schemaName).toBe(knowledgeReplicaSlotName(tenantId, 0));
         expect(copy.management).toMatchObject({ slot: 0, reservedBytes: KNOWLEDGE_REPLICA_SLOT_BYTES });
@@ -285,8 +292,8 @@ const url = process.env.KNOWLEDGE_MEMORY_TEST_DATABASE_URL;
     });
 
     it('lets exactly one concurrent capture own a slot and preserves it after the other capture fails', async () => {
-        const allocate = () => captureKnowledgeReplica(prisma, tenantId, 3600_000,
-            { slot: 1, sourceRevision: revisionHash('same-source'), usage: { token: randomUUID(), agentId } });
+        const allocate = async () => captureKnowledgeReplica(prisma, tenantId, 3600_000,
+            { slot: 1, sourceRevision: await currentSourceRevision(), usage: { token: randomUUID(), agentId } });
         const results = await Promise.allSettled([allocate(), allocate()]);
         const winners = results.filter((result): result is PromiseFulfilledResult<EvaluationKnowledgeReplica> => result.status === 'fulfilled');
         replicas.push(...winners.map(result => result.value));

@@ -12,9 +12,9 @@ describe('evaluation read inventory coverage', () => {
         expect(names.sort()).toEqual([...AGENT_TEST_SAFE_TOOL_NAMES].sort());
         for (const group of EVALUATION_TOOL_READ_GROUPS) expect(group.readers.length).toBeGreaterThan(0);
     });
-    it('accounts separately for all domain writers and the availability reader added by the namespace adapter', () => {
+    it('accounts separately for all domain writers and the three guarded readers added by the namespace adapter', () => {
         const extra = [...CANONICAL_EVAL_TOOLS].filter(tool => !AGENT_TEST_SAFE_TOOL_NAMES.includes(tool));
-        expect(extra.sort()).toEqual(['check_availability', ...Object.keys(CANONICAL_EVAL_TOOL_FAMILIES)].sort());
+        expect(extra.sort()).toEqual(['check_availability', 'get_appointment_details', 'list_customer_appointments', ...Object.keys(CANONICAL_EVAL_TOOL_FAMILIES)].sort());
         expect(EVALUATION_CONTEXT_READS.find(port => port.port === 'canonical_commands')?.boundary).toBe('owned_namespace');
     });
     it('does not silently narrow the pilot projection if the canonical service reader adds a field or predicate', () => {

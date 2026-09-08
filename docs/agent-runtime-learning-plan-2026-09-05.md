@@ -2,6 +2,22 @@
 
 Ampliación del análisis del 5 de septiembre de 2026. Checkout `b1e87c71`. Complementa `docs/assist-agent-experience-audit-2026-09-05.md` y modifica el orden de implementación: la confiabilidad del runtime pasa a formar parte del camino crítico de la configuración asistida.
 
+La ejecución posterior, sus commits, pruebas y frentes pendientes se mantienen en [Registro de implementación](agent-platform-implementation-progress.md). Este documento conserva el diagnóstico inicial; los avances no convierten la cobertura declarada en certificación por perfil, idioma o canal.
+
+El registro y la corrección de mascotas amplían C/E/G/H con comandos atómicos, escenarios por perfil y evidencia de ficha/recibo. Su implementación y los límites pendientes de consentimiento declarativo, privacidad clínica y piloto se detallan en [Auditoría de mascotas](audits/2026-09-07/pet-command-lifecycle.md).
+
+E2 ya integra identidad, horarios, región, plantilla multilingüe y política de exposición como contexto capturado en el núcleo de evaluación. El manifiesto integral sigue vigente; catálogo/RAG, proveedores y tráfico concurrente todavía limitan la reproducibilidad completa. Evidencia y siguientes pasos en [Captura de contexto del núcleo](audits/2026-09-07/evaluation-core-context-capture.md).
+
+Las colecciones completas de FAQs y políticas ya están integradas en los lectores del runtime, conservando búsqueda PostgreSQL e invalidación global. Corrige ranking y desempate de FAQs; no completa todavía RAG ni catálogo. Pruebas y límites en [Captura de conocimiento estructurado](audits/2026-09-07/evaluation-structured-knowledge-capture.md).
+
+Los escenarios canónicos y comandos de agenda en evaluación ya usan los horarios efectivos capturados y exigen una zona válida bajo lease, sin volver a la región pública del tenant. El reloj global sigue vivo. Evidencia en [Contexto temporal de evaluación](audits/2026-09-07/evaluation-temporal-context.md).
+
+La réplica relacional de RAG y su opción interna de lectura ya tienen evidencia con PostgreSQL/pgvector; sus consumidores todavía no la crean ni seleccionan automáticamente. La siguiente integración, todavía pendiente de validación, incluye ciclo de vida, presupuesto, slots/referencias de uso, snapshot y retiro de fuentes. Alcance exacto en [Réplica de conocimiento](audits/2026-09-07/evaluation-knowledge-replica.md).
+
+Aprendizaje desde Inbox y durante el runtime ya liga mensajes/versiones exactos, valida fuentes antes y después de cada intento de proveedor, controla workers por CAS y retira copias temporales con recuperación. Simulation Replay también conserva autorización evaluativa, fuentes/baselines y leases de copias; el fence compartido de fuente evita abrir una segunda transacción anidada detrás de un borrado. Estas guardas no repiten writers ni convierten una respuesta declarada exitosa en prueba operacional. Evidencia en [Fuentes de aprendizaje](audits/2026-09-07/learning-runtime-source-authority.md), [Retención del evaluador](audits/2026-09-07/learning-evaluation-retention.md) y [Replay autorizado](audits/2026-09-07/simulation-replay-source-authority.md).
+
+La consolidación automotriz y los comandos de mascotas amplían las familias canónicas verificadas en PostgreSQL. Sus packs y lectores no acreditan todavía conversaciones completas con un modelo, identidad real por OTP ni entrega del proveedor. Permanecen en el plan E3 la publicación HTTP, promoción/piloto/rollback integral, y las demás fronteras de efectos y despacho diferido; también la evaluación bajo tráfico, los usuarios nuevos y los pilotos externos. El diagnóstico que sigue corresponde a la base inicial indicada arriba, no a una nueva auditoría del estado posterior a esas correcciones.
+
 ## Dictamen
 
 Parallly tiene una arquitectura con piezas valiosas para construir agentes competentes: contexto por turno, persona por conexión, conocimiento híbrido, contratos efectivos de capacidades, autorización central, ledger de herramientas, objetos operativos activos, motores de reservas y procedimientos, y mecanismos de evaluación. **La principal brecha es la coherencia entre esas piezas a lo largo de una tarea completa.**
@@ -297,6 +313,8 @@ Separar desarrollo, validación y conjunto reservado por conversación, contacto
 Las métricas de selección deben incluir fallos, abandonos y casos difíciles. No promover una versión porque subió el promedio al excluir los escenarios que fallaron. Conservar ejemplos de buenas negativas y recuperación, y un dataset aparte de errores conocidos.
 
 El retiro de una fuente debe invalidar los ejemplos dependientes cuando su verdad o permiso cambie. El borrado del contacto requiere propagar el borrado o anonimización acordada a memorias, embeddings, ejemplos, datasets y otros derivados identificables. Diseñar el linaje desde la ingesta.
+
+La validación posterior del 7 de septiembre amplía este requisito a **cada salida externa y cada reintento**, incluidos embeddings, reranking y consultas de memoria con texto histórico. Una fuente retirada debe invalidar la evaluación aunque una capa de búsqueda normalmente tolere errores. La implementación y sus pruebas se detallan en [Fuentes en salidas externas](audits/2026-09-07/learning-external-source-authority.md). Continúan el presupuesto completo de esos intentos, el deadline por tarea, todas las trazas derivadas y la validación de mejora semántica; este avance no certifica por sí solo el aprendizaje.
 
 ## 6. Validación de competencia y naturalidad
 

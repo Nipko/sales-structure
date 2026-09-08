@@ -1,0 +1,968 @@
+diff --git a/apps/api/src/modules/conversations/conversations.service.ts b/apps/api/src/modules/conversations/conversations.service.ts
+index 4381947d..e6f6be57 100644
+--- a/apps/api/src/modules/conversations/conversations.service.ts
++++ b/apps/api/src/modules/conversations/conversations.service.ts
+@@ -1,6 +1,9 @@
+ import { isCanonicalConsentRecovery, canonicalConsentRecoveryDirective } from './canonical-consent-recovery';
+ import { servedAgentAuthority, type ServedAgentAuthority } from '../persona/served-agent-authority';
+ import { LearningService } from '../learning/learning.service';
++import { WidgetAgentReplyStore, type WidgetAgentReplyReceipt } from '../widget/widget-agent-reply.store';
++import { createAgentReplyProvenanceCollector, createAgentReplySourceAuthority,
++    type AgentReplyProvenanceCollector } from './agent-reply-provenance';
+ import type { RuntimeLearningExample } from '../learning/learning-contracts';
+ import { LLMSourceAuthorityUnavailable } from '../ai/interfaces/llm-source-authority';
+ import { learningRecoveryMessages } from './learning-recovery-messages';
+@@ -418,6 +421,7 @@ export class ConversationsService {
+         private verticalTurnContext?: VerticalTurnContextService,
+         private turnCapabilityComposer?: TurnCapabilityComposerService,
+         @Optional() private readonly learning?: LearningService,
++        @Optional() private readonly widgetAgentReplies?: WidgetAgentReplyStore,
+     ) {}
+ 
+     /**
+@@ -1919,6 +1923,7 @@ export class ConversationsService {
+         session?: AgentTurnSession,
+         resolvedAgentVersion?: number,
+         operationalScope?: ServedAgentAuthority,
++        replyProvenance?: AgentReplyProvenanceCollector,
+     ): Promise<string> {
+         const draftMode = config.behavior?.draftMode === true;
+         const executionContext = session?.executionContext || (draftMode ? DRAFT_EXECUTION_CONTEXT : undefined);
+@@ -1960,7 +1965,8 @@ export class ConversationsService {
+             } : Reflect.get(target, key, receiver),
+         });
+         const toolExecutor = missionExecutor('tool');
+-        const llmRouter = session ? sessionLlmRouter(this.llmRouter, session) : this.llmRouter;
++        const llmRouter = session ? sessionLlmRouter(this.llmRouter, session)
++            : replyProvenance ? this.replySourceRouter(operationalScope!.schemaName, replyProvenance) : this.llmRouter;
+         const bookingEngine = this.bookingEngine.forExecution({ redis: cache as RedisService, toolExecutor: missionExecutor('booking') });
+         const procedureEngine = session ? this.procedureEngine.forExecution({ redis: cache as RedisService, toolExecutor: missionExecutor('procedure'),
+             definitions: {
+@@ -3246,6 +3252,7 @@ export class ConversationsService {
+                     tenantId,
+                     turnContext.regional?.operatingCountry,
+                     session,
++                    replyProvenance,
+                 );
+                 const ragResults = await this.knowledgeService.searchRelevant(
+                     tenantId, searchQuery, topK,
+@@ -3334,12 +3341,15 @@ export class ConversationsService {
+         // the live user turn — otherwise it would be duplicated in the prompt.
+         // Reverse back to chronological order (oldest→newest) for the builders below.
+         const historyDesc = session ? [...session.history].reverse().slice(0, 30).map((row, i) => ({ id: String(i), direction: row.role === 'user' ? 'inbound' : 'outbound', content_text: row.content })) : await this.prisma.executeInTenantSchema<any[]>(schemaName,
+-            `SELECT id, direction, content_text FROM messages WHERE conversation_id = $1::uuid
++            `SELECT id, direction, content_text, metadata FROM messages WHERE conversation_id = $1::uuid
+                AND ($2::uuid IS NULL OR id <> $2::uuid)
++               ${replyProvenance ? "AND content_type<>'redacted' AND content_text IS NOT NULL AND BTRIM(content_text)<>''" : ''}
+              ORDER BY created_at DESC, id DESC LIMIT 30`,
+             [conversation.id, inboundMessageId || null],
+         );
+         let history = (historyDesc || []).reverse();
++        if (replyProvenance) history = await this.widgetHistoryWithProvenance(
++            tenantId, schemaName, conversation.id, history, replyProvenance);
+ 
+         // The tail of the customer's PREVIOUS conversation, when this one was
+         // opened because the old one had been auto-resolved. Prepended so the
+@@ -3347,7 +3357,10 @@ export class ConversationsService {
+         // about the booking it made for them last week.
+         const carriedContext = (conversation.metadata as any)?.carriedContext;
+         if (Array.isArray(carriedContext) && carriedContext.length && history.length <= carriedContext.length) {
+-            history = [...carriedContext, ...history];
++            // Old carried AI text has no private source receipt. Keep customer
++            // context and canonical active objects, without inventing provenance.
++            const carried = replyProvenance ? carriedContext.filter(row => row.direction === 'inbound') : carriedContext;
++            history = [...carried, ...history];
+             this.logger.log(`[Pipeline] Prepended ${carriedContext.length} carried message(s) from the previous conversation`);
+         }
+ 
+@@ -3477,6 +3490,9 @@ export class ConversationsService {
+             // attempt. Keep earlier examples too: generated tool-loop prose may
+             // still derive from them after the visible style selection changes.
+             const executeLearningModel:LLMRouterService['execute']=async request=>{
++                // Monotonic across attempts and guardrail rewrites, including
++                // examples whose later revocation forces this turn to stop.
++                replyProvenance?.addExamples([...learningFootprint.values()]);
+                 if(session?.learningEvaluationSource&&(!this.learning||!resolvedAgentId))throw new LLMSourceAuthorityUnavailable();
+                 const withSourceAuthority=!learningSuppressed&&(learningFootprint.size||session?.learningEvaluationSource)&&this.learning&&resolvedAgentId
+                     ?this.learning.runtimeSourceAuthority(tenantId,resolvedAgentId,[...learningFootprint.values()],executionContext,session?.learningEvaluationSource):undefined;
+@@ -3484,7 +3500,7 @@ export class ConversationsService {
+                     return await llmRouter.execute({...request,withSourceAuthority,
+                         ...(learningSuppressed?{systemPrompt,cacheableSystemPromptChars:cachePrefixChars,tools:undefined,task:'conversation' as const}:{})});
+                 }catch(error){
+-                    if(!(error instanceof LLMSourceAuthorityUnavailable)||session)throw error;
++                    if(!(error instanceof LLMSourceAuthorityUnavailable)||session||replyProvenance)throw error;
+                     learningSuppressed=true;learningFootprint.clear();turnContext.learningExamples=[];
+                     currentMessages.splice(0,currentMessages.length,...learningRecoveryMessages(messages,executedToolsThisTurn,userLanguage));
+                     ({systemPrompt,cachePrefixChars}=this.promptAssembler.assembleWithCacheBoundary(config,turnContext,bizHours));
+@@ -4252,6 +4268,31 @@ export class ConversationsService {
+      * using recent history (cheap tier). Self-contained questions pass through
+      * unchanged so we don't add latency where it isn't needed.
+      */
++    /** Only private server receipts can authorize AI history as a new source. */
++    private async widgetHistoryWithProvenance(tenantId: string, schemaName: string, conversationId: string,
++        rows: any[], provenance: AgentReplyProvenanceCollector): Promise<any[]> {
++        if (!this.widgetAgentReplies) throw new Error('widget_agent_reply_unavailable');
++        const outboundIds = rows.filter(row => row.direction === 'outbound' && row.id).map(row => row.id);
++        if (!outboundIds.length) return rows.filter(row => row.direction === 'inbound');
++        const inherited = await this.widgetAgentReplies.historyFootprints(tenantId, schemaName, conversationId, outboundIds);
++        provenance.addInherited(inherited.footprints);
++        const trusted = new Set(inherited.trustedMessageIds);
++        return rows.filter(row => row.direction === 'inbound' || trusted.has(row.id) || row.metadata?.source === 'agent');
++    }
++
++    /** Wrap every attempt, including auxiliary calls and provider fallbacks. */
++    private replySourceRouter(schemaName: string, provenance: AgentReplyProvenanceCollector): LLMRouterService {
++        const authority = createAgentReplySourceAuthority(this.prisma, schemaName, provenance);
++        return new Proxy(this.llmRouter, {
++            get: (target, key, receiver) => key === 'execute'
++                ? (request: Parameters<LLMRouterService['execute']>[0]) => target.execute({ ...request,
++                    withSourceAuthority: invoke => authority(
++                        () => request.withSourceAuthority ? request.withSourceAuthority(invoke) : invoke(),
++                        response => response.usage),
++                }) : Reflect.get(target, key, receiver),
++        });
++    }
++
+     private async rewriteSearchQuery(
+         userText: string,
+         schemaName: string,
+@@ -4259,6 +4300,7 @@ export class ConversationsService {
+         tenantId: string,
+         operatingCountry?: string | null,
+         session?: AgentTurnSession,
++        replyProvenance?: AgentReplyProvenanceCollector,
+     ): Promise<string> {
+         // Una confirmación no tiene nada que expandir.
+         //
+@@ -4287,10 +4329,13 @@ export class ConversationsService {
+         // which happens later in the pipeline). Skip the current inbound (OFFSET 1).
+         let recent = '';
+         try {
+-            const rows = session ? [...session.history].reverse().slice(0, 5).map(row => ({ direction: row.role === 'user' ? 'inbound' : 'outbound', content_text: row.content })) : await this.prisma.executeInTenantSchema<any[]>(schemaName,
+-                `SELECT direction, content_text FROM messages
+-                 WHERE conversation_id = $1::uuid ORDER BY created_at DESC LIMIT 5 OFFSET 1`,
++            let rows: any[] = session ? [...session.history].reverse().slice(0, 5).map(row => ({ direction: row.role === 'user' ? 'inbound' : 'outbound', content_text: row.content })) : await this.prisma.executeInTenantSchema<any[]>(schemaName,
++                `SELECT id, direction, content_text, metadata FROM messages
++                 WHERE conversation_id = $1::uuid
++                 ${replyProvenance ? "AND content_type<>'redacted' AND content_text IS NOT NULL AND BTRIM(content_text)<>''" : ''}
++                 ORDER BY created_at DESC LIMIT 5 OFFSET 1`,
+                 [conversationId]);
++            if (replyProvenance) rows = await this.widgetHistoryWithProvenance(tenantId, schemaName, conversationId, rows, replyProvenance);
+             if (!rows?.length) return userText; // no prior context → nothing to resolve
+             recent = rows.reverse()
+                 .map(m => `${m.direction === 'inbound' ? 'Cliente' : 'Agente'}: ${(m.content_text || '').slice(0, 200)}`)
+@@ -4301,7 +4346,8 @@ export class ConversationsService {
+         if (!recent) return userText;
+ 
+         try {
+-            const resp = await (session ? sessionLlmRouter(this.llmRouter, session) : this.llmRouter).execute({
++            const resp = await (session ? sessionLlmRouter(this.llmRouter, session)
++                : replyProvenance ? this.replySourceRouter(schemaName, replyProvenance) : this.llmRouter).execute({
+                 task: 'conversation',
+                 messages: [{
+                     role: 'user',
+@@ -4956,44 +5002,38 @@ export class ConversationsService {
+         return messages[lang] || messages.es;
+     }
+ 
+-    async processWidgetMessage(
+-        tenantId: string,
+-        schemaName: string,
+-        conversationId: string,
+-        contactId: string,
+-        text: string,
+-        options?: { allowHumanHandoff?: boolean; inboundMessageId?: string },
+-    ): Promise<string | null> {
+-        let reply = '';
+-        for await (const chunk of this.streamWidgetMessage(
+-            tenantId, schemaName, conversationId, contactId, text,
+-            options?.inboundMessageId, options,
+-        )) reply += chunk;
+-        return reply || null;
+-    }
+-
+     /**
+-     * The widget uses the same domain turn as messaging. Only a validated final
+-     * answer reaches the transport: partial model text can precede tool results
+-     * and must never become a customer-visible promise of an uncommitted action.
++     * Run the common domain turn and admit its final answer locally. The gateway
++     * receives only a durable reference, never text it can independently save.
+      */
+-    async *streamWidgetMessage(
++    async processWidgetMessage(
+         tenantId: string,
+         schemaName: string,
+         conversationId: string,
+         contactId: string,
+         text: string,
+-        inboundMessageId?: string,
+-        options?: { allowHumanHandoff?: boolean; channelAccountId?: string },
+-    ): AsyncGenerator<string, void, unknown> {
++        options?: { allowHumanHandoff?: boolean; channelAccountId?: string; inboundMessageId?: string },
++    ): Promise<WidgetAgentReplyReceipt | null> {
++        const inboundMessageId = options?.inboundMessageId;
++        if (!inboundMessageId || !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(inboundMessageId))
++            throw new Error('widget_inbound_identity_required');
++        if (!this.widgetAgentReplies) throw new Error('widget_agent_reply_unavailable');
+         const entitlement = await resolveTenantSubscriptionAccess(this.prisma, tenantId, 'write');
+-        if (!entitlement.allowed) return;
++        if (!entitlement.allowed) return null;
+         const expectedSchema = await this.tenantSchema(tenantId);
+         if (expectedSchema !== schemaName) throw new Error('widget_tenant_scope_mismatch');
+         const channelAccountId = options?.channelAccountId || 'widget';
++        const binding = { conversationId, contactId, inboundMessageId, channelAccountId };
++        // Accepted/redacted receipts precede new configuration and quota checks.
++        // A replay is never a new generation under the latest agent's authority.
++        const previousReceipt = await this.widgetAgentReplies.lookup(tenantId, binding);
++        if (previousReceipt) return previousReceipt;
+         const personaResolution = await this.personaService.resolvePersonaForChannel(tenantId, 'web_widget', channelAccountId);
+         const config = personaResolution.config;
+-        if (!config) return;
++        if (!config) return null;
++        const operationalScope = servedAgentAuthority(tenantId, schemaName, personaResolution);
++        if (!operationalScope) throw new Error('widget_agent_reply_authority_required');
++        const replyProvenance = createAgentReplyProvenanceCollector(operationalScope);
+         const draftMode = config.behavior?.draftMode === true;
+         const lockKey = 'lock:conv:' + conversationId;
+         let lockToken: string | null = null;
+@@ -5020,19 +5060,20 @@ export class ConversationsService {
+             const conversation = conversations?.[0];
+             if (!conversation || (conversation.channel_account_id !== 'widget' && conversation.channel_account_id !== channelAccountId))
+                 throw new Error('widget_conversation_scope_mismatch');
+-            if (conversation.status === 'waiting_human' || conversation.status === 'with_human') return;
++            if (conversation.status === 'waiting_human' || conversation.status === 'with_human') return null;
+             const plan = await this.throttle.getPlanFeatures(tenantId);
+-            if (plan.widget !== true) return;
+-            const replyKey = inboundMessageId ? 'widget:reply:' + tenantId + ':' + inboundMessageId : null;
+-            if (replyKey) {
+-                const cached = await this.redis.get(replyKey);
+-                if (cached) {
+-                    const previous = JSON.parse(cached);
+-                    if (previous.conversationId === conversationId && previous.contactId === contactId) {
+-                        if (previous.text && !draftMode) yield previous.text;
+-                        return;
+-                    }
+-                }
++            if (plan.widget !== true) return null;
++            const concurrentReceipt = await this.widgetAgentReplies.lookup(tenantId, binding);
++            if (concurrentReceipt) return concurrentReceipt;
++            const replyKey = 'widget:reply:' + tenantId + ':' + inboundMessageId;
++            const cached = await this.redis.get(replyKey);
++            if (cached) {
++                const previous = JSON.parse(cached);
++                if (previous.conversationId === conversationId && previous.contactId === contactId && previous.draft === true)
++                    return null;
++                // Legacy text has no provable agent/source revision. Neither
++                // relabel it nor regenerate a turn that may have run writers.
++                throw new Error('widget_legacy_reply_requires_review');
+             }
+             const contacts = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+                 'SELECT * FROM contacts WHERE id = $1::uuid LIMIT 1', [contactId],
+@@ -5085,7 +5126,7 @@ export class ConversationsService {
+                                 conversation.updated_at || conversation.created_at, businessHours,
+                                 inboundMessageId, personaResolution.agentId ?? undefined,
+                                 undefined,personaResolution.version ?? undefined,
+-                                servedAgentAuthority(tenantId, schemaName, personaResolution),
++                                operationalScope, replyProvenance,
+                             );
+                             if (!reply || isErrorFallback(reply)) {
+                                 await this.throttle.incrementAiMessageCount(tenantId, -1).catch(() => {});
+@@ -5096,13 +5137,14 @@ export class ConversationsService {
+             }
+             if (reply && draftMode) {
+                 await this.persistDraft(tenantId, schemaName, conversationId, reply, contact.name, inboundMessageId);
+-            }
+-            if (replyKey && reply && !isErrorFallback(reply)) {
+                 await this.redis.set(replyKey, JSON.stringify({
+-                    conversationId, contactId, text: draftMode ? null : reply, draft: draftMode,
++                    conversationId, contactId, draft: true,
+                 }), 86400);
++                return null;
+             }
+-            if (reply && !draftMode) yield reply;
++            if (!reply?.trim()) return null;
++            return await this.widgetAgentReplies.commit({ tenantId, schemaName, ...binding,
++                operationalScope, learningFootprints: [...replyProvenance.getFootprints()], text: reply });
+         } finally {
+             clearInterval(heartbeat);
+             await this.redis.releaseLockToken(lockKey, token).catch(() => {});
+diff --git a/apps/api/src/modules/conversations/conversations.widget-containment.spec.ts b/apps/api/src/modules/conversations/conversations.widget-containment.spec.ts
+index 1757a2e1..1f4ca3e8 100644
+--- a/apps/api/src/modules/conversations/conversations.widget-containment.spec.ts
++++ b/apps/api/src/modules/conversations/conversations.widget-containment.spec.ts
+@@ -1,14 +1,29 @@
+ import { ConversationsService } from './conversations.service';
++import { randomUUID } from 'crypto';
++import type { WidgetAgentReplyReceipt } from '../widget/widget-agent-reply.store';
+ 
+-async function collect(stream: AsyncGenerator<string, void, unknown>): Promise<string> {
+-    let output = '';
+-    for await (const chunk of stream) output += chunk;
+-    return output;
++const storedTexts = new Map<string, string>();
++async function collect(pending: Promise<WidgetAgentReplyReceipt | null>): Promise<string> {
++    const receipt = await pending;
++    return receipt?.status === 'stored' ? receipt.messages.map(ref => storedTexts.get(ref.messageId) || '').join('') : '';
+ }
+ 
+ describe('ConversationsService widget containment', () => {
+     function makeService(overrides: Record<string, any> = {}) {
+         const service: any = Object.create(ConversationsService.prototype);
++        const receipts = new Map<string, WidgetAgentReplyReceipt>();
++        const widgetAgentReplies = {
++            lookup: jest.fn(async (_tenant: string, input: any) => receipts.get(input.inboundMessageId) || null),
++            commit: jest.fn(async (input: any): Promise<WidgetAgentReplyReceipt> => {
++                const messageId = randomUUID();
++                storedTexts.set(messageId, input.text);
++                const receipt: WidgetAgentReplyReceipt = { status: 'stored',
++                    messages: [{ tenantId: input.tenantId, conversationId: input.conversationId, messageId }] };
++                receipts.set(input.inboundMessageId, receipt);
++                return receipt;
++            }),
++            historyFootprints: jest.fn(async () => ({ footprints: [], trustedMessageIds: [] })),
++        };
+         const redis = {
+             acquireLockToken: jest.fn().mockResolvedValue('lock-token'),
+             renewLockToken: jest.fn().mockResolvedValue(true),
+@@ -25,9 +40,9 @@ describe('ConversationsService widget containment', () => {
+                     { id: 'old-1', direction: 'inbound', content_text: 'previous question' },
+                 ];
+                 if (sql.includes('SELECT * FROM conversations')) {
+-                    return [{ id: 'conversation-1', contact_id: 'contact-1', channel_account_id: 'widget', status: 'active', updated_at: new Date() }];
++                    return [{ id: '20000000-0000-4000-8000-000000000002', contact_id: '30000000-0000-4000-8000-000000000003', channel_account_id: 'widget', status: 'active', updated_at: new Date() }];
+                 }
+-                if (sql.includes('SELECT * FROM contacts')) return [{ id: 'contact-1', name: 'Alice', external_id: 'widget_alice' }];
++                if (sql.includes('SELECT * FROM contacts')) return [{ id: '30000000-0000-4000-8000-000000000003', name: 'Alice', external_id: 'widget_alice' }];
+                 if (sql.includes('SELECT * FROM leads')) return [{ id: 'lead-1' }];
+                 return [];
+             }),
+@@ -69,11 +84,13 @@ describe('ConversationsService widget containment', () => {
+             redis,
+             prisma,
+             throttle,
++            widgetAgentReplies,
+             llmRouter,
+             personaService: {
+                 resolvePersonaForChannel: jest.fn().mockResolvedValue({
+                     agentId: '11111111-1111-4111-8111-111111111111',
+                     version: 3,
++                    operationalHash: 'a'.repeat(64),
+                     config: {
+                         language: 'en',
+                         hours: { timezone: 'Europe/Paris' },
+@@ -107,7 +124,7 @@ describe('ConversationsService widget containment', () => {
+             ].map((day) => [day, { enabled: false }])),
+         });
+         service.buildQuotaFallbackMessage = jest.fn().mockResolvedValue('quota fallback');
+-        return { service: service as ConversationsService, redis, prisma, throttle, llmRouter };
++        return { service: service as ConversationsService, redis, prisma, throttle, llmRouter, widgetAgentReplies };
+     }
+ 
+     it('fails closed without calling the provider when the conversation lock is unavailable', async () => {
+@@ -115,9 +132,7 @@ describe('ConversationsService widget containment', () => {
+             redis: { acquireLockToken: jest.fn().mockRejectedValue(new Error('redis unavailable')) },
+         });
+ 
+-        await expect(collect(service.streamWidgetMessage(
+-            'tenant-1', 'tenant_1', 'conversation-1', 'contact-1', 'hello', 'inbound-1',
+-        ))).rejects.toThrow('conversation_locked');
++        await expect(collect(service.processWidgetMessage('10000000-0000-4000-8000-000000000001', 'tenant_1', '20000000-0000-4000-8000-000000000002', '30000000-0000-4000-8000-000000000003', 'hello', { inboundMessageId: '40000000-0000-4000-8000-000000000004' }))).rejects.toThrow('conversation_locked');
+         expect(throttle.getPlanFeatures).not.toHaveBeenCalled();
+         expect(llmRouter.executeStream).not.toHaveBeenCalled();
+     });
+@@ -125,30 +140,30 @@ describe('ConversationsService widget containment', () => {
+     it('delegates to the shared domain coordinator with contact, channel and inbound identity', async () => {
+         const { service, prisma, throttle, llmRouter, redis } = makeService();
+ 
+-        await expect(collect(service.streamWidgetMessage(
+-            'tenant-1', 'tenant_1', 'conversation-1', 'contact-1', 'current question', 'inbound-1',
+-        ))).resolves.toBe('safe reply');
++        await expect(collect(service.processWidgetMessage('10000000-0000-4000-8000-000000000001', 'tenant_1', '20000000-0000-4000-8000-000000000002', '30000000-0000-4000-8000-000000000003', 'current question', { inboundMessageId: '40000000-0000-4000-8000-000000000004' }))).resolves.toBe('safe reply');
+ 
+         expect((service as any).generateResponse).toHaveBeenCalledWith(
+-            'tenant-1', expect.objectContaining({ id: 'conversation-1' }),
++            '10000000-0000-4000-8000-000000000001', expect.objectContaining({ id: '20000000-0000-4000-8000-000000000002' }),
+             expect.objectContaining({ channelType: 'web_widget', channelAccountId: 'widget', content: { type: 'text', text: 'current question' } }),
+-            expect.anything(), expect.objectContaining({ id: 'contact-1' }), { id: 'lead-1' },
++            expect.anything(), expect.objectContaining({ id: '30000000-0000-4000-8000-000000000003' }), { id: 'lead-1' },
+             expect.any(Date), expect.objectContaining({ timezone: 'Europe/Paris' }),
+-            'inbound-1', '11111111-1111-4111-8111-111111111111', undefined, 3,
++            '40000000-0000-4000-8000-000000000004', '11111111-1111-4111-8111-111111111111', undefined, 3,
++            expect.objectContaining({ kind: 'agent', version: 3, operationalHash: 'a'.repeat(64) }),
++            expect.objectContaining({ addExamples: expect.any(Function), getFootprints: expect.any(Function) }),
+         );
+         expect(llmRouter.executeStream).not.toHaveBeenCalled();
+-        expect(throttle.incrementAiMessageCount).toHaveBeenCalledWith('tenant-1');
+-        expect(redis.releaseLockToken).toHaveBeenCalledWith('lock:conv:conversation-1', 'lock-token');
++        expect(throttle.incrementAiMessageCount).toHaveBeenCalledWith('10000000-0000-4000-8000-000000000001');
++        expect(redis.releaseLockToken).toHaveBeenCalledWith('lock:conv:20000000-0000-4000-8000-000000000002', 'lock-token');
+         expect(prisma.executeInTenantSchema.mock.calls[0][1]).toContain('contact_id = $2::uuid AND channel_type = $3');
+     });
+ 
+     it('uses the current widget connection for persona routing and rejects a different conversation account', async () => {
+         const { service, prisma } = makeService();
+-        await collect(service.streamWidgetMessage('tenant-1', 'tenant_1', 'conversation-1', 'contact-1', 'hello', 'inbound-1', { channelAccountId: 'wgt_current' }));
+-        expect((service as any).personaService.resolvePersonaForChannel).toHaveBeenCalledWith('tenant-1', 'web_widget', 'wgt_current');
++        await collect(service.processWidgetMessage('10000000-0000-4000-8000-000000000001', 'tenant_1', '20000000-0000-4000-8000-000000000002', '30000000-0000-4000-8000-000000000003', 'hello', { inboundMessageId: '40000000-0000-4000-8000-000000000004', ...{ channelAccountId: 'wgt_current' } }));
++        expect((service as any).personaService.resolvePersonaForChannel).toHaveBeenCalledWith('10000000-0000-4000-8000-000000000001', 'web_widget', 'wgt_current');
+         expect((service as any).generateResponse.mock.calls[0][2].channelAccountId).toBe('wgt_current');
+-        prisma.executeInTenantSchema.mockResolvedValueOnce([{ id: 'conversation-1', contact_id: 'contact-1', channel_account_id: 'wgt_other' }]);
+-        await expect(collect(service.streamWidgetMessage('tenant-1', 'tenant_1', 'conversation-1', 'contact-1', 'hello', 'inbound-2', { channelAccountId: 'wgt_current' }))).rejects.toThrow('widget_conversation_scope_mismatch');
++        prisma.executeInTenantSchema.mockResolvedValueOnce([{ id: '20000000-0000-4000-8000-000000000002', contact_id: '30000000-0000-4000-8000-000000000003', channel_account_id: 'wgt_other' }]);
++        await expect(collect(service.processWidgetMessage('10000000-0000-4000-8000-000000000001', 'tenant_1', '20000000-0000-4000-8000-000000000002', '30000000-0000-4000-8000-000000000003', 'hello', { inboundMessageId: '40000000-0000-4000-8000-000000000005', ...{ channelAccountId: 'wgt_current' } }))).rejects.toThrow('widget_conversation_scope_mismatch');
+         expect((service as any).generateResponse).toHaveBeenCalledTimes(1);
+     });
+ 
+@@ -159,9 +174,7 @@ describe('ConversationsService widget containment', () => {
+             },
+         });
+ 
+-        await expect(collect(service.streamWidgetMessage(
+-            'tenant-1', 'tenant_1', 'conversation-1', 'contact-1', 'hello', 'inbound-1',
+-        ))).resolves.toBe('quota fallback');
++        await expect(collect(service.processWidgetMessage('10000000-0000-4000-8000-000000000001', 'tenant_1', '20000000-0000-4000-8000-000000000002', '30000000-0000-4000-8000-000000000003', 'hello', { inboundMessageId: '40000000-0000-4000-8000-000000000004' }))).resolves.toBe('quota fallback');
+         expect(throttle.incrementAiMessageCount).not.toHaveBeenCalled();
+         expect(llmRouter.executeStream).not.toHaveBeenCalled();
+         expect(prisma.executeInTenantSchema.mock.calls.some(
+@@ -174,9 +187,7 @@ describe('ConversationsService widget containment', () => {
+         const handoff = (service as any).handoffService;
+         handoff.shouldHandoff.mockReturnValue('human_requested');
+ 
+-        await expect(collect(service.streamWidgetMessage(
+-            'tenant-1', 'tenant_1', 'conversation-1', 'contact-1', 'human please', 'inbound-1',
+-        ))).resolves.toContain('cannot transfer');
++        await expect(collect(service.processWidgetMessage('10000000-0000-4000-8000-000000000001', 'tenant_1', '20000000-0000-4000-8000-000000000002', '30000000-0000-4000-8000-000000000003', 'human please', { inboundMessageId: '40000000-0000-4000-8000-000000000004' }))).resolves.toContain('cannot transfer');
+ 
+         expect(handoff.executeHandoff).not.toHaveBeenCalled();
+         expect(llmRouter.executeStream).not.toHaveBeenCalled();
+@@ -186,7 +197,7 @@ describe('ConversationsService widget containment', () => {
+         const executeInTenantSchema = jest.fn(async (_schema: string, sql: string) => {
+             if (sql.includes('SELECT id, direction, content_text FROM messages')) return [];
+             if (sql.includes('SELECT * FROM conversations')) {
+-                return [{ id: 'conversation-1', channel_account_id: 'widget', contact_id: 'contact-1', status: 'with_human' }];
++                return [{ id: '20000000-0000-4000-8000-000000000002', channel_account_id: 'widget', contact_id: '30000000-0000-4000-8000-000000000003', status: 'with_human' }];
+             }
+             return [];
+         });
+@@ -194,9 +205,7 @@ describe('ConversationsService widget containment', () => {
+             prisma: { executeInTenantSchema },
+         });
+ 
+-        await expect(collect(service.streamWidgetMessage(
+-            'tenant-1', 'tenant_1', 'conversation-1', 'contact-1', 'human follow-up', 'inbound-1',
+-        ))).resolves.toBe('');
++        await expect(collect(service.processWidgetMessage('10000000-0000-4000-8000-000000000001', 'tenant_1', '20000000-0000-4000-8000-000000000002', '30000000-0000-4000-8000-000000000003', 'human follow-up', { inboundMessageId: '40000000-0000-4000-8000-000000000004' }))).resolves.toBe('');
+ 
+         expect(executeInTenantSchema.mock.calls.some(
+             (call: any[]) => String(call[1]).includes('SELECT * FROM conversations'),
+@@ -212,10 +221,7 @@ describe('ConversationsService widget containment', () => {
+         const handoff = (service as any).handoffService;
+         handoff.shouldHandoff.mockReturnValue('human_requested');
+ 
+-        const output = await collect(service.streamWidgetMessage(
+-            'tenant-1', 'tenant_1', 'conversation-1', 'contact-1', 'human please', 'inbound-1',
+-            { allowHumanHandoff: true },
+-        ));
++        const output = await collect(service.processWidgetMessage('10000000-0000-4000-8000-000000000001', 'tenant_1', '20000000-0000-4000-8000-000000000002', '30000000-0000-4000-8000-000000000003', 'human please', { inboundMessageId: '40000000-0000-4000-8000-000000000004', ...{ allowHumanHandoff: true } }));
+ 
+         expect(output).toContain('support team');
+         expect(handoff.executeHandoff).toHaveBeenCalledTimes(1);
+@@ -233,19 +239,17 @@ describe('ConversationsService widget containment', () => {
+             },
+         });
+ 
+-        await expect(collect(service.streamWidgetMessage(
+-            'tenant-1', 'tenant_1', 'conversation-1', 'contact-1', 'hello', 'inbound-1',
+-        ))).resolves.toBe('quota fallback');
+-        expect(incrementAiMessageCount).toHaveBeenNthCalledWith(1, 'tenant-1');
+-        expect(incrementAiMessageCount).toHaveBeenNthCalledWith(2, 'tenant-1', -1);
++        await expect(collect(service.processWidgetMessage('10000000-0000-4000-8000-000000000001', 'tenant_1', '20000000-0000-4000-8000-000000000002', '30000000-0000-4000-8000-000000000003', 'hello', { inboundMessageId: '40000000-0000-4000-8000-000000000004' }))).resolves.toBe('quota fallback');
++        expect(incrementAiMessageCount).toHaveBeenNthCalledWith(1, '10000000-0000-4000-8000-000000000001');
++        expect(incrementAiMessageCount).toHaveBeenNthCalledWith(2, '10000000-0000-4000-8000-000000000001', -1);
+         expect(llmRouter.executeStream).not.toHaveBeenCalled();
+     });
+ 
+     it('reuses the finalized inbound reply without repeating tools or usage', async () => {
+         const { service, redis, throttle } = makeService();
+-        const run = () => collect(service.streamWidgetMessage('tenant-1', 'tenant_1', 'conversation-1', 'contact-1', 'book', 'inbound-1'));
++        const run = () => collect(service.processWidgetMessage('10000000-0000-4000-8000-000000000001', 'tenant_1', '20000000-0000-4000-8000-000000000002', '30000000-0000-4000-8000-000000000003', 'book', { inboundMessageId: '40000000-0000-4000-8000-000000000004' }));
+         await run();
+-        redis.get.mockResolvedValue(JSON.stringify({ conversationId: 'conversation-1', contactId: 'contact-1', text: 'safe reply' }));
++        redis.get.mockResolvedValue(JSON.stringify({ conversationId: '20000000-0000-4000-8000-000000000002', contactId: '30000000-0000-4000-8000-000000000003', text: 'safe reply' }));
+         expect(await run()).toBe('safe reply');
+         expect((service as any).generateResponse).toHaveBeenCalledTimes(1);
+         expect(throttle.incrementAiMessageCount).toHaveBeenCalledTimes(1);
+@@ -254,7 +258,7 @@ describe('ConversationsService widget containment', () => {
+     it('rejects mismatched tenant scope before reading the conversation', async () => {
+         const { service, prisma } = makeService();
+         (service as any).tenantSchema.mockResolvedValue('tenant_other');
+-        await expect(collect(service.streamWidgetMessage('tenant-1', 'tenant_1', 'conversation-1', 'contact-1', 'hello', 'inbound-1'))).rejects.toThrow('widget_tenant_scope_mismatch');
++        await expect(collect(service.processWidgetMessage('10000000-0000-4000-8000-000000000001', 'tenant_1', '20000000-0000-4000-8000-000000000002', '30000000-0000-4000-8000-000000000003', 'hello', { inboundMessageId: '40000000-0000-4000-8000-000000000004' }))).rejects.toThrow('widget_tenant_scope_mismatch');
+         expect(prisma.executeInTenantSchema).not.toHaveBeenCalled();
+     });
+ 
+@@ -264,7 +268,7 @@ describe('ConversationsService widget containment', () => {
+         const persona = await internal.personaService.resolvePersonaForChannel();
+         persona.config.behavior = { draftMode: true };
+         internal.handoffService.shouldHandoff.mockReturnValue('human_requested');
+-        expect(await collect(service.streamWidgetMessage('tenant-1', 'tenant_1', 'conversation-1', 'contact-1', 'human please', 'inbound-1'))).toBe('');
++        expect(await collect(service.processWidgetMessage('10000000-0000-4000-8000-000000000001', 'tenant_1', '20000000-0000-4000-8000-000000000002', '30000000-0000-4000-8000-000000000003', 'human please', { inboundMessageId: '40000000-0000-4000-8000-000000000004' }))).toBe('');
+         expect(internal.handoffService.executeHandoff).not.toHaveBeenCalled();
+         expect(prisma.executeInTenantSchema.mock.calls.some((call: any[]) => call[1].includes('pendingDraft'))).toBe(true);
+         expect(internal.eventEmitter.emit).toHaveBeenCalledWith('draft.suggested', expect.objectContaining({ text: 'safe reply' }));
+diff --git a/apps/api/src/modules/widget/widget-delivery.module.ts b/apps/api/src/modules/widget/widget-delivery.module.ts
+index c5c5dedc..b32f0d37 100644
+--- a/apps/api/src/modules/widget/widget-delivery.module.ts
++++ b/apps/api/src/modules/widget/widget-delivery.module.ts
+@@ -1,6 +1,7 @@
+ import { Module } from '@nestjs/common';
+ import { WidgetMessageStore } from './widget-message-store.service';
++import { WidgetAgentReplyStore } from './widget-agent-reply.store';
+ 
+ /** Dependency leaf: no gateway, conversations runtime or channel queue imports. */
+-@Module({providers:[WidgetMessageStore],exports:[WidgetMessageStore]})
++@Module({providers:[WidgetMessageStore,WidgetAgentReplyStore],exports:[WidgetMessageStore,WidgetAgentReplyStore]})
+ export class WidgetDeliveryModule {}
+diff --git a/apps/api/src/modules/widget/widget.gateway.ts b/apps/api/src/modules/widget/widget.gateway.ts
+index 3d8405b2..1cb32424 100644
+--- a/apps/api/src/modules/widget/widget.gateway.ts
++++ b/apps/api/src/modules/widget/widget.gateway.ts
+@@ -14,7 +14,6 @@ import {
+ } from '@nestjs/websockets';
+ import { Logger, Optional, UsePipes, ValidationPipe } from '@nestjs/common';
+ import { OnEvent } from '@nestjs/event-emitter';
+-import { randomUUID } from 'crypto';
+ import { Server, Socket } from 'socket.io';
+ import { WidgetService } from './widget.service';
+ import { PrismaService } from '../prisma/prisma.service';
+@@ -314,32 +313,22 @@ export class WidgetGateway implements OnGatewayConnection, OnGatewayDisconnect,
+         inboundMessageId?: string,
+     ): Promise<void> {
+         client.emit('widget:typing', { isTyping: true });
+-        const messageId = randomUUID();
+-        let full = '';
+-
+         try {
+-            for await (const chunk of this.conversations.streamWidgetMessage(
+-                tenantId, schemaName, conversationId, contactId, text, inboundMessageId,
++            const receipt = await this.conversations.processWidgetMessage(
++                tenantId, schemaName, conversationId, contactId, text,
+                 {
++                    inboundMessageId,
+                     channelAccountId: (client as any).widgetSession?.widget_id,
+                     allowHumanHandoff: hasWidgetCapability(
+                         (client as any).widgetCapabilities as WidgetCapabilitySnapshot | undefined,
+                         'human_handoff',
+                     ),
+                 },
+-            )) {
+-                if (!chunk) continue;
+-                full += chunk;
+-            }
+-
+-            // Nothing streamed (no persona, conversation handled by a human, or empty
+-            // reply) → stay silent: no bubble, no sound, no persisted message.
+-            if (full.trim()) {
+-                if(!this.messages)throw new Error('widget_delivery_unavailable');
+-                const stored=await this.messages.persist(tenantId,{conversationId,contactId,content:{type:'text',text:full},
+-                    source:'ai',dedupeId:inboundMessageId?`reply:${inboundMessageId}`:messageId});
+-                await this.syncClient(client,false,stored.id);
+-            }
++            );
++            // Text and private provenance were committed together by the core.
++            // Session authorization is checked again while reading/emitting IDs.
++            for (const reference of receipt?.status === 'stored' ? receipt.messages : [])
++                await this.syncClient(client, false, reference.messageId);
+         } catch (err: any) {
+             this.logger.warn(`Widget AI stream failed: ${err.message}`);
+             client.emit('widget:error', { code: 'assistant_turn_failed', message: 'Failed to process message' });
+diff --git a/apps/api/src/modules/widget/widget-agent-reply.store.ts b/apps/api/src/modules/widget/widget-agent-reply.store.ts
+new file mode 100644
+index 00000000..53866e38
+--- /dev/null
++++ b/apps/api/src/modules/widget/widget-agent-reply.store.ts
+@@ -0,0 +1,168 @@
++import { Injectable } from '@nestjs/common';
++import { randomUUID } from 'crypto';
++import { hasAgentSourceFence } from '../../common/utils/agent-source-fence';
++import { PrismaService } from '../prisma/prisma.service';
++import { assertServedAgentConnectionAuthority, validServedAgentAuthority, type ServedAgentAuthority } from '../persona/served-agent-authority';
++import { assertRuntimeLearningFootprint, type RuntimeLearningFootprint } from '../learning/learning-runtime-footprint';
++import { WidgetMessageStore, type WidgetMessageQuery, type WidgetMessageReference } from './widget-message-store.service';
++import { WIDGET_AGENT_REPLY_DDL } from './widget-agent-reply-retention';
++import { readWidgetAgentHistoryFootprints } from './widget-agent-history-footprints';
++
++const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
++export interface WidgetAgentReplyBinding {
++    conversationId:string;contactId:string;inboundMessageId:string;channelAccountId:string;
++}
++export interface WidgetAgentReplyReceipt {
++    status:'stored'|'redacted';messages:WidgetMessageReference[];
++}
++/** Internal turn result. Never deserialize an HTTP body into this authority. */
++export interface WidgetAgentReplyInput extends WidgetAgentReplyBinding {
++    tenantId:string;schemaName:string;operationalScope:ServedAgentAuthority;
++    learningFootprints:RuntimeLearningFootprint[];text:string;
++}
++
++@Injectable()
++export class WidgetAgentReplyStore {
++    private readonly initialized=new Map<string,Promise<void>>();
++    constructor(private readonly prisma:PrismaService,private readonly messages:WidgetMessageStore){}
++
++    async lookup(tenantId:string,input:WidgetAgentReplyBinding):Promise<WidgetAgentReplyReceipt|null>{
++        this.validateBinding(tenantId,input);
++        const schema=await this.prepare(tenantId);
++        return this.prisma.transactionInTenantSchema(schema,async query=>{
++            await this.privacy(query,schema,tenantId);
++            return this.existing(query,schema,tenantId,input);
++        });
++    }
++
++    async historyFootprints(tenantId:string,schemaName:string,conversationId:string,messageIds:string[]){
++        if(!UUID.test(tenantId)||!UUID.test(conversationId)||!Array.isArray(messageIds)||messageIds.some(id=>!UUID.test(id)))
++            throw new Error('widget_agent_reply_invalid_binding');
++        const schema=await this.prepare(tenantId,schemaName);
++        return this.prisma.transactionInTenantSchema(schema,async query=>{
++            await this.privacy(query,schema,tenantId);
++            await this.messages.assertConversation(query,schema,tenantId,conversationId);
++            return readWidgetAgentHistoryFootprints(query,schema,tenantId,conversationId,messageIds);
++        });
++    }
++
++    async commit(input:WidgetAgentReplyInput):Promise<WidgetAgentReplyReceipt>{
++        input=structuredClone(input);
++        this.validateBinding(input.tenantId,input);
++        const schema=await this.prepare(input.tenantId,input.schemaName);
++        // NOWAIT avoids an inversion with message edits (message row -> revision
++        // trigger -> conversation). Only a definite local rollback is retried.
++        for(let attempt=0;;attempt++){
++            try{
++                const receipt=await this.prisma.transactionInTenantSchema(schema,async query=>{
++                    await this.privacy(query,schema,input.tenantId);
++                    const prior=await this.existing(query,schema,input.tenantId,input);
++                    if(prior)return prior;
++                    if(!validServedAgentAuthority(input.operationalScope,schema,input.tenantId))throw new Error('widget_agent_reply_authority_required');
++                    if(typeof input.text!=='string'||!input.text.trim()||input.text.length>32000)throw new Error('widget_agent_reply_invalid_text');
++                    await assertServedAgentConnectionAuthority(query,schema,input.operationalScope,'web_widget',input.channelAccountId);
++                    await query('LOCK TABLE contact_identities IN SHARE MODE');
++                    const target=await query<any[]>(`SELECT id FROM conversations WHERE id=$1::uuid AND contact_id=$2::uuid
++                        AND channel_type='web_widget' FOR UPDATE NOWAIT`,[input.conversationId,input.contactId]);
++                    if(!target[0])throw new Error('widget_agent_reply_invalid_binding');
++                    const raced=await this.existing(query,schema,input.tenantId,input);
++                    if(raced)return raced;
++                    const rows=await query<any[]>(input.operationalScope.kind==='agent'
++                        ?'SELECT config_json FROM agent_personas WHERE id=$1::uuid'
++                        :'SELECT config_json FROM persona_config WHERE is_active=true ORDER BY version DESC LIMIT 1',
++                        input.operationalScope.kind==='agent'?[input.operationalScope.agentId]:[]);
++                    if(rows[0]?.config_json?.behavior?.draftMode===true)throw new Error('widget_agent_reply_draft_not_deliverable');
++                    if(!Array.isArray(input.learningFootprints)
++                        ||(input.operationalScope.kind==='agent'&&!input.learningFootprints.some(group=>group?.agentId===(input.operationalScope as any).agentId)))
++                        throw new Error('widget_agent_reply_learning_provenance_required');
++                    const footprints=structuredClone(input.learningFootprints);
++                    for(const footprint of [...footprints].sort((a,b)=>String(a.agentId).localeCompare(String(b.agentId))))
++                        await assertRuntimeLearningFootprint(query,schema,{tenantId:input.tenantId,agentId:footprint?.agentId},footprint,{mode:'admission'});
++                    await this.assertBinding(query,schema,input.tenantId,input,true);
++                    const sources=await this.sources(query,footprints);
++                    const message=await this.messages.persistWithQuery(query,schema,input.tenantId,{
++                        conversationId:input.conversationId,contactId:input.contactId,channelAccountId:input.channelAccountId,
++                        source:'ai',content:{type:'text',text:input.text},dedupeId:`normal-agent-reply:${input.inboundMessageId}`});
++                    const replyId=randomUUID();
++                    await query(`INSERT INTO widget_agent_replies(id,conversation_id,contact_id,inbound_message_id,channel_account_id,
++                        operational_scope,learning_footprint,message_id,status) VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5,$6::jsonb,$7::jsonb,$8::uuid,'stored')`,
++                        [replyId,input.conversationId,input.contactId,input.inboundMessageId,input.channelAccountId,
++                            JSON.stringify(input.operationalScope),JSON.stringify(footprints),message.id]);
++                    for(const source of sources)await query(`INSERT INTO widget_agent_reply_sources(reply_id,source_id,source_contact_id)
++                        VALUES($1::uuid,$2::uuid,$3::uuid)`,[replyId,source.id,source.source_contact_id]);
++                    return {status:'stored' as const,messages:[{tenantId:input.tenantId,conversationId:input.conversationId,messageId:message.id}]};
++                });
++                for(const reference of receipt.messages)this.messages.publish(reference);
++                return receipt;
++            }catch(error:any){
++                if((error?.meta?.code||error?.code)!=='55P03'||attempt>=2)throw error;
++                await new Promise(resolve=>setTimeout(resolve,25*(attempt+1)));
++            }
++        }
++    }
++
++    private async existing(query:WidgetMessageQuery,schema:string,tenantId:string,input:WidgetAgentReplyBinding):Promise<WidgetAgentReplyReceipt|null>{
++        const [row]=await query<any[]>('SELECT * FROM widget_agent_replies WHERE inbound_message_id=$1::uuid',[input.inboundMessageId]);
++        if(!row)return null;
++        // No content or original identity is returned for an erasure tombstone.
++        // It must not become a cache miss that permits another generation.
++        await this.messages.assertConversation(query,schema,tenantId,input.conversationId,input.contactId);
++        if(row.status==='redacted')return {status:'redacted',messages:[]};
++        if(row.status!=='stored'||row.conversation_id!==input.conversationId||row.contact_id!==input.contactId
++            ||row.channel_account_id!==input.channelAccountId)throw new Error('widget_agent_reply_receipt_binding_changed');
++        await this.assertBinding(query,schema,tenantId,input,false);
++        const [message]=await query<any[]>(`SELECT id FROM messages WHERE id=$1::uuid AND conversation_id=$2::uuid
++            AND direction='outbound' AND content_type='text' AND status<>'redacted'`,[row.message_id,input.conversationId]);
++        if(!message)throw new Error('widget_agent_reply_receipt_unavailable');
++        return {status:'stored',messages:[{tenantId,conversationId:input.conversationId,messageId:row.message_id}]};
++    }
++    private async assertBinding(query:WidgetMessageQuery,schema:string,tenantId:string,input:WidgetAgentReplyBinding,fresh:boolean){
++        const binding=await this.messages.assertConversation(query,schema,tenantId,input.conversationId,input.contactId);
++        // Exact widget IDs prevent a legacy generic alias from bypassing routing
++        // to a more specific agent for this operational connection.
++        if(input.channelAccountId!==binding.widget_id)throw new Error('widget_agent_reply_channel_changed');
++        if(fresh&&['waiting_human','with_human','closed','resolved','archived'].includes(binding.status))throw new Error('widget_agent_reply_conversation_unavailable');
++        const rows=await query<any[]>(`SELECT id FROM messages WHERE id=$1::uuid AND conversation_id=$2::uuid
++            AND direction='inbound' ${fresh?'FOR SHARE NOWAIT':''}`,[input.inboundMessageId,input.conversationId]);
++        if(!rows[0])throw new Error('widget_agent_reply_inbound_unavailable');
++    }
++    private async sources(query:WidgetMessageQuery,footprints:RuntimeLearningFootprint[]){
++        const releaseIds=[...new Set(footprints.flatMap(group=>group.entries.map(entry=>entry.releaseId)))].sort();
++        if(!releaseIds.length)return [];
++        const releases=await query<any[]>('SELECT snapshot FROM learning_releases WHERE id=ANY($1::uuid[]) ORDER BY id',[releaseIds]);
++        const ids=[...new Set(releases.flatMap(row=>[...row.snapshot.examples,...row.snapshot.heldout].map((source:any)=>source.source_id)))].sort();
++        const sources=await query<any[]>('SELECT id,source_contact_id FROM learning_sources WHERE id=ANY($1::uuid[]) ORDER BY id',[ids]);
++        if(sources.length!==ids.length)throw new Error('widget_agent_reply_source_changed');
++        return sources;
++    }
++    private validateBinding(tenantId:string,input:WidgetAgentReplyBinding){
++        if(!input||![tenantId,input.conversationId,input.contactId,input.inboundMessageId].every(id=>UUID.test(id))
++            ||typeof input.channelAccountId!=='string'||!input.channelAccountId.trim()||input.channelAccountId.length>300)
++            throw new Error('widget_agent_reply_invalid_binding');
++    }
++    private privacy(query:WidgetMessageQuery,schema:string,tenantId:string){
++        return (async()=>{
++            await query('SELECT pg_advisory_xact_lock_shared(hashtextextended($1,0))::text',[`agent-privacy:${schema}`]);
++            if(!(await query<any[]>('SELECT id FROM public.tenants WHERE id=$1::uuid AND schema_name=$2 AND current_schema()=$2 AND is_active=true FOR SHARE',[tenantId,schema]))[0])
++                throw new Error('widget_agent_reply_tenant_unavailable');
++        })();
++    }
++    private async prepare(tenantId:string,expectedSchema?:string):Promise<string>{
++        if(expectedSchema&&hasAgentSourceFence(this.prisma,expectedSchema))throw new Error('widget_agent_reply_nested_source_fence');
++        const schema=await this.messages.assertAvailable(tenantId);
++        if(!/^tenant_[a-z0-9_]+$/.test(schema)||schema.startsWith('tenant_eval_')||(expectedSchema&&schema!==expectedSchema))
++            throw new Error('widget_agent_reply_tenant_unavailable');
++        if(hasAgentSourceFence(this.prisma,schema))throw new Error('widget_agent_reply_nested_source_fence');
++        if(!this.initialized.has(schema)){
++            const initialize=this.prisma.transactionInTenantSchema(schema,async query=>{
++                await query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))::text',[`widget-agent-reply-bootstrap:${schema}`]);
++                if(!(await query<any[]>('SELECT id FROM public.tenants WHERE id=$1::uuid AND schema_name=$2 AND current_schema()=$2 AND is_active=true FOR SHARE',[tenantId,schema]))[0])
++                    throw new Error('widget_agent_reply_tenant_unavailable');
++                for(const statement of WIDGET_AGENT_REPLY_DDL)await query(statement);
++            }).catch(error=>{this.initialized.delete(schema);throw error;});
++            this.initialized.set(schema,initialize);
++        }
++        await this.initialized.get(schema);
++        return schema;
++    }
++}
+diff --git a/apps/api/src/modules/widget/widget-agent-reply.postgres.spec.ts b/apps/api/src/modules/widget/widget-agent-reply.postgres.spec.ts
+new file mode 100644
+index 00000000..78890ab6
+--- /dev/null
++++ b/apps/api/src/modules/widget/widget-agent-reply.postgres.spec.ts
+@@ -0,0 +1,210 @@
++import { randomUUID } from 'crypto';
++import { readFileSync } from 'fs';
++import { join } from 'path';
++import { PrismaClient } from '@prisma/client';
++import { PrismaService } from '../prisma/prisma.service';
++import { WidgetMessageStore } from './widget-message-store.service';
++import { WidgetAgentReplyStore, type WidgetAgentReplyInput } from './widget-agent-reply.store';
++import { operationalConfigurationHash } from '../persona/agent-configuration-revision';
++import { revisionHash } from '../evaluation-revision/evaluation-revision';
++import { createRuntimeLearningFootprint } from '../learning/learning-runtime-footprint';
++import { learningSnapshotHash, type RuntimeLearningExample } from '../learning/learning-contracts';
++import { learningInboxEvidence, readLearningInboxSource } from '../learning/learning-inbox-source';
++import { redactWidgetAgentReplies } from './widget-agent-reply-retention';
++
++const databaseUrl=process.env.PARALLLY_ISOLATION_TEST_URL;
++(databaseUrl?describe:describe.skip)('normal Web Chat reply admission with Prisma and PostgreSQL',()=>{
++    const tenantId=randomUUID(),agentId=randomUUID(),schema=`tenant_widget_reply_${randomUUID().replace(/-/g,'')}`;
++    const widgetId=`wgt_${randomUUID()}`,widgetConfigId=randomUUID();
++    let client:PrismaClient,prisma:PrismaService,messages:WidgetMessageStore,store:WidgetAgentReplyStore;
++    let input:WidgetAgentReplyInput;
++    const relay={publish:jest.fn()};
++    const sql=(statement:string,params:any[]=[])=>prisma.executeInTenantSchema<any[]>(schema,statement,params);
++    const config={get:()=> 'synthetic-widget-jwt-secret-32-characters',getOrThrow:()=> 'synthetic-widget-jwt-secret-32-characters'};
++    beforeAll(async()=>{
++        const url=new URL(databaseUrl!);
++        if(!['localhost','127.0.0.1'].includes(url.hostname)||url.pathname!=='/parallly_eval_isolation')throw new Error('disposable_database_required');
++        client=new PrismaClient({datasourceUrl:databaseUrl});
++        await client.$executeRawUnsafe(`CREATE SCHEMA "${schema}"`);
++        await client.$executeRawUnsafe('INSERT INTO public.tenants(id,schema_name,is_active) VALUES($1::uuid,$2,true)',tenantId,schema);
++        prisma=Object.create(PrismaService.prototype);prisma.$transaction=client.$transaction.bind(client);
++        const ddl=readFileSync(join(__dirname,'../../../prisma/tenant-schema.sql'),'utf8');
++        const base=ddl.slice(ddl.indexOf('-- ---- Contacts ----'),ddl.indexOf('-- ---- Central AI Tool Authority')).replaceAll('{{SCHEMA_NAME}}',schema);
++        for(const statement of (prisma as any).splitSqlStatements(base))await client.$executeRawUnsafe(statement);
++        await sql('ALTER TABLE conversations ADD COLUMN qa_revision BIGINT NOT NULL DEFAULT 0');
++        const fn=ddl.indexOf('CREATE OR REPLACE FUNCTION "{{SCHEMA_NAME}}".qa_message_revision()');
++        const end=ddl.indexOf('CREATE OR REPLACE TRIGGER qa_conversation_revision',fn);
++        const trigger=ddl.indexOf('CREATE OR REPLACE TRIGGER qa_message_revision',end);
++        await sql(ddl.slice(fn,end).replaceAll('{{SCHEMA_NAME}}',schema));
++        await sql(ddl.slice(trigger,ddl.indexOf(';',trigger)+1).replaceAll('{{SCHEMA_NAME}}',schema));
++        await sql('CREATE TABLE contact_identities(contact_id UUID,customer_profile_id UUID)');
++        await sql('CREATE TABLE customer_memory_erasure(contact_id UUID PRIMARY KEY)');
++        await sql(`CREATE TABLE agent_personas(id UUID PRIMARY KEY,name TEXT,config_json JSONB,channels TEXT[],channel_bindings TEXT[],
++            schedule_mode TEXT,is_active BOOLEAN,is_default BOOLEAN,version INTEGER)`);
++        await sql('CREATE TABLE persona_config(config_json JSONB,is_active BOOLEAN,version INTEGER)');
++        await sql(`CREATE TABLE learning_sources(id UUID PRIMARY KEY,agent_id UUID,source_kind TEXT,status TEXT,
++            source_contact_id UUID,source_conversation_id UUID,channel TEXT,transcript JSONB,source_evidence JSONB)`);
++        await sql('CREATE TABLE learning_examples(id UUID PRIMARY KEY,source_id UUID,agent_id UUID,status TEXT)');
++        await sql('CREATE TABLE learning_releases(id UUID PRIMARY KEY,agent_id UUID,status TEXT,snapshot JSONB,snapshot_hash TEXT,example_ids UUID[])');
++        const publicDDL=readFileSync(join(__dirname,'widget.service.ts'),'utf8');
++        for(const table of ['widget_configs','widget_sessions']){
++            const start=publicDDL.indexOf(`CREATE TABLE IF NOT EXISTS public.${table}`);
++            await client.$executeRawUnsafe(publicDDL.slice(start,publicDDL.indexOf('`',start)));
++        }
++        await client.$executeRawUnsafe(`INSERT INTO public.widget_configs(id,tenant_id,widget_id,allowed_domains,locale)
++            VALUES($1::uuid,$2::uuid,$3,ARRAY['example.test'],'en')`,widgetConfigId,tenantId,widgetId);
++        messages=new WidgetMessageStore(prisma,{} as any,relay as any,{} as any,config as any);
++        // Only entitlement/plan lookup is stubbed. Admission tenant, routing,
++        // session/contact, source, inbound and receipt checks use real SQL.
++        jest.spyOn(messages,'assertAvailable').mockResolvedValue(schema);
++        store=new WidgetAgentReplyStore(prisma,messages);
++    });
++    beforeEach(async()=>{
++        jest.restoreAllMocks();relay.publish.mockClear();
++        jest.spyOn(messages,'assertAvailable').mockResolvedValue(schema);
++        await sql('DELETE FROM agent_personas');await sql('DELETE FROM persona_config');
++        await sql(`INSERT INTO agent_personas VALUES($1::uuid,'Alex','{"persona":{"name":"Alex"}}',ARRAY['web_widget'],
++            '{}'::text[],'24_7',true,true,1)`,[agentId]);
++        input=await freshInput();
++    });
++    afterAll(async()=>{
++        if(!client)return;
++        try{
++            if(!/^tenant_widget_reply_[a-f\d]{32}$/.test(schema))throw new Error('invalid_cleanup_scope');
++            await client.$executeRawUnsafe('DELETE FROM public.widget_sessions WHERE tenant_id=$1::uuid',tenantId);
++            await client.$executeRawUnsafe('DELETE FROM public.widget_configs WHERE tenant_id=$1::uuid',tenantId);
++            await client.$executeRawUnsafe(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
++            await client.$executeRawUnsafe('DELETE FROM public.tenants WHERE id=$1::uuid AND schema_name=$2',tenantId,schema);
++        }finally{await client.$disconnect();}
++    });
++    async function freshInput():Promise<WidgetAgentReplyInput>{
++        const conversationId=randomUUID(),contactId=randomUUID(),sessionId=randomUUID(),inboundMessageId=randomUUID();
++        await sql("INSERT INTO contacts(id,external_id,channel_type) VALUES($1::uuid,$2,'web_widget')",[contactId,`widget_${sessionId}`]);
++        await sql(`INSERT INTO conversations(id,contact_id,channel_type,channel_account_id,metadata)
++            VALUES($1::uuid,$2::uuid,'web_widget',$3,$4::jsonb)`,[conversationId,contactId,widgetId,JSON.stringify({widgetSessionId:sessionId})]);
++        await client.$executeRawUnsafe(`INSERT INTO public.widget_sessions(id,widget_config_id,tenant_id,visitor_id,token,contact_id,conversation_id,last_seen_at)
++            VALUES($1::uuid,$2::uuid,$3::uuid,$4,$5,$6::uuid,$7::uuid,NOW())`,sessionId,widgetConfigId,tenantId,randomUUID(),randomUUID(),contactId,conversationId);
++        await sql(`INSERT INTO messages(id,conversation_id,direction,content_type,content_text)
++            VALUES($1::uuid,$2::uuid,'inbound','text','Help me')`,[inboundMessageId,conversationId]);
++        const [agent]=await sql('SELECT * FROM agent_personas WHERE id=$1::uuid',[agentId]);
++        return {tenantId,schemaName:schema,conversationId,contactId,inboundMessageId,channelAccountId:widgetId,text:'A final answer',
++            operationalScope:{tenantId,schemaName:schema,kind:'agent',agentId,version:1,operationalHash:operationalConfigurationHash(agent)},
++            learningFootprints:[createRuntimeLearningFootprint(tenantId,agentId,[])]};
++    }
++    async function learningGroup(target=input,sourceAgent=agentId,inbox=false){
++        const sourceIds=[randomUUID(),randomUUID()],exampleId=randomUUID(),releaseId=randomUUID();
++        let evidence:any=null,transcript:any[]=[];
++        if(inbox){
++            await sql("INSERT INTO messages(conversation_id,direction,content_text) VALUES($1::uuid,'outbound','Earlier reviewed answer')",[target.conversationId]);
++            const source=await readLearningInboxSource((text,params)=>prisma.executeInTenantSchema(schema,text,params),target.conversationId);
++            transcript=source.messages;evidence=learningInboxEvidence(sourceAgent,source,transcript);
++        }
++        for(const id of sourceIds)await sql(`INSERT INTO learning_sources VALUES($1::uuid,$2::uuid,$3,'active',$4::uuid,$5::uuid,
++            'web_widget',$6::jsonb,$7::jsonb)`,[id,sourceAgent,inbox?'inbox':'file',inbox?target.contactId:null,
++                inbox?target.conversationId:null,JSON.stringify(transcript),JSON.stringify(evidence)]);
++        await sql("INSERT INTO learning_examples VALUES($1::uuid,$2::uuid,$3::uuid,'approved')",[exampleId,sourceIds[0],sourceAgent]);
++        const frozen={id:exampleId,source_id:sourceIds[0],kind:'brand_style',intent:'general',response_pattern:'Be helpful.',rationale:'Reviewed.',facts_required:[]};
++        const snapshot={examples:[frozen],heldout:[{source_id:sourceIds[1]}]},hash=learningSnapshotHash(snapshot);
++        await sql("INSERT INTO learning_releases VALUES($1::uuid,$2::uuid,'published',$3::jsonb,$4,$5::uuid[])",[releaseId,sourceAgent,JSON.stringify(snapshot),hash,[exampleId]]);
++        const example:RuntimeLearningExample={id:exampleId,releaseId,releaseHash:hash,situation:frozen.intent,responsePattern:frozen.response_pattern,
++            rationale:frozen.rationale,factsRequired:[],authority:'style_only'};
++        return {sourceIds,releaseId,footprint:createRuntimeLearningFootprint(tenantId,sourceAgent,[example])};
++    }
++    const count=async()=>Number((await sql('SELECT COUNT(*) AS count FROM widget_agent_replies WHERE inbound_message_id=$1::uuid',[input.inboundMessageId]))[0].count);
++
++    it('atomically stores one final message and private receipt, then returns the same accepted reference after publication',async()=>{
++        expect(await store.lookup(tenantId,input)).toBeNull();
++        const first=await store.commit(input);
++        expect(first.status).toBe('stored');expect(first.messages).toHaveLength(1);
++        const [message]=await sql('SELECT * FROM messages WHERE id=$1::uuid',[first.messages[0].messageId]);
++        expect(message.content_text).toBe(input.text);expect(message.status).toBe('pending');
++        await sql('UPDATE agent_personas SET version=2,is_active=false');
++        expect(await store.lookup(tenantId,input)).toEqual(first);expect(await store.commit(input)).toEqual(first);
++        expect(await count()).toBe(1);expect(relay.publish).toHaveBeenCalled();
++    });
++    it.each(['version','config','inactive','routing','draft'] as const)('blocks new local admission after %s changes',async change=>{
++        if(change==='version')await sql('UPDATE agent_personas SET version=2');
++        if(change==='config')await sql(`UPDATE agent_personas SET config_json='{"persona":{"name":"Updated"}}'`);
++        if(change==='inactive')await sql('UPDATE agent_personas SET is_active=false');
++        if(change==='routing')await sql(`INSERT INTO agent_personas VALUES($1::uuid,'Other','{"persona":{"name":"Other"}}','{}',
++            ARRAY[$2],'24_7',true,false,1)`,[randomUUID(),`web_widget:${widgetId}`]);
++        if(change==='draft'){
++            await sql(`UPDATE agent_personas SET config_json='{"behavior":{"draftMode":true}}'`);
++            const [agent]=await sql('SELECT * FROM agent_personas');
++            (input.operationalScope as any).operationalHash=operationalConfigurationHash(agent);
++        }
++        await expect(store.commit(input)).rejects.toThrow();expect(await count()).toBe(0);expect(relay.publish).not.toHaveBeenCalled();
++    });
++    it.each(['missing_scope','foreign_tenant','missing_group','foreign_inbound','foreign_contact','generic_alias'] as const)('rejects %s before writing',async change=>{
++        if(change==='missing_scope')(input as any).operationalScope=undefined;
++        if(change==='foreign_tenant')(input.operationalScope as any).tenantId=randomUUID();
++        if(change==='missing_group')input.learningFootprints=[];
++        if(change==='foreign_inbound')input.inboundMessageId=(await freshInput()).inboundMessageId;
++        if(change==='foreign_contact')input.contactId=randomUUID();
++        if(change==='generic_alias')input.channelAccountId='widget';
++        await expect(store.commit(input)).rejects.toThrow();expect(await count()).toBe(0);
++    });
++    it('guards and indexes inherited groups from another agent including every heldout source',async()=>{
++        const current=await learningGroup(),inherited=await learningGroup(input,randomUUID());
++        input.learningFootprints=[current.footprint,inherited.footprint];
++        const result=await store.commit(input);
++        const refs=await sql('SELECT source_id FROM widget_agent_reply_sources WHERE reply_id=(SELECT id FROM widget_agent_replies WHERE inbound_message_id=$1::uuid)',[input.inboundMessageId]);
++        expect(refs.map(row=>row.source_id).sort()).toEqual([...current.sourceIds,...inherited.sourceIds].sort());
++        const history=await store.historyFootprints(tenantId,schema,input.conversationId,[result.messages[0].messageId]);
++        expect(history.trustedMessageIds).toEqual([result.messages[0].messageId]);expect(history.footprints).toHaveLength(2);
++    });
++    it('denies a historical source withdrawn before new admission while preserving the accepted original receipt',async()=>{
++        const inherited=await learningGroup(input,randomUUID());input.learningFootprints.push(inherited.footprint);
++        const original=await store.commit(input);
++        await sql("UPDATE learning_sources SET status='withdrawn' WHERE id=$1::uuid",[inherited.sourceIds[1]]);
++        const next={...input,inboundMessageId:randomUUID()};
++        await sql("INSERT INTO messages(id,conversation_id,direction,content_text) VALUES($1::uuid,$2::uuid,'inbound','Next')",[next.inboundMessageId,input.conversationId]);
++        await expect(store.commit(next)).rejects.toThrow();expect(await store.lookup(tenantId,input)).toEqual(original);
++    });
++    it('uses a target conversation writer lock before validating that same conversation as a learning source',async()=>{
++        input.learningFootprints=[(await learningGroup(input,agentId,true)).footprint];
++        const result=await store.commit(input);
++        expect(result.status).toBe('stored');expect(await count()).toBe(1);
++        expect(await store.commit(input)).toEqual(result);
++    });
++    it('deduplicates simultaneous processes using database admission, without relying on a Redis mutex',async()=>{
++        const other=new WidgetAgentReplyStore(prisma,messages);
++        const results=await Promise.all([store.commit(input),other.commit(input)]);
++        expect(results[0]).toEqual(results[1]);expect(await count()).toBe(1);
++    });
++    it('rolls back message, source index and receipt together when SQL fails',async()=>{
++        input.learningFootprints=[(await learningGroup()).footprint];
++        const persist=messages.persistWithQuery.bind(messages);
++        jest.spyOn(messages,'persistWithQuery').mockImplementationOnce(async(query,...args)=>{
++            await persist(query,...args);await query('SELECT 1/0');throw new Error('unreachable');
++        });
++        await expect(store.commit(input)).rejects.toThrow();expect(await count()).toBe(0);
++        expect(await sql("SELECT id FROM messages WHERE conversation_id=$1::uuid AND direction='outbound'",[input.conversationId])).toEqual([]);
++        expect(relay.publish).not.toHaveBeenCalled();expect((await store.commit(input)).status).toBe('stored');
++    });
++    it('recovers a lost COMMIT acknowledgement by receipt lookup, without another write or current-version guard',async()=>{
++        await store.lookup(tenantId,input);
++        const transact=prisma.transactionInTenantSchema.bind(prisma);
++        jest.spyOn(prisma,'transactionInTenantSchema').mockImplementationOnce(async(target,work,options)=>{
++            await transact(target,work,options);throw new Error('synthetic_commit_ack_lost');
++        });
++        await expect(store.commit(input)).rejects.toThrow('synthetic_commit_ack_lost');
++        await sql('UPDATE agent_personas SET version=2');
++        expect((await store.lookup(tenantId,input))?.status).toBe('stored');expect(await count()).toBe(1);
++    });
++    it('keeps redacted inbound identity terminal without reviving content or requiring the old source',async()=>{
++        const group=await learningGroup();input.learningFootprints=[group.footprint];
++        const result=await store.commit(input);
++        await prisma.transactionInTenantSchema(schema,query=>redactWidgetAgentReplies(query,schema,{sourceIds:[group.sourceIds[1]]}));
++        expect(await store.lookup(tenantId,input)).toEqual({status:'redacted',messages:[]});
++        expect(await store.commit(input)).toEqual({status:'redacted',messages:[]});
++        expect((await sql('SELECT content_text,status FROM messages WHERE id=$1::uuid',[result.messages[0].messageId]))[0]).toEqual({content_text:null,status:'redacted'});
++        expect(await count()).toBe(1);
++    });
++    it('accepts a genuine legacy persona with an explicit empty source list',async()=>{
++        await sql('DELETE FROM agent_personas');const body={persona:{name:'Legacy'}};
++        await sql("INSERT INTO persona_config VALUES($1::jsonb,true,1)",[JSON.stringify(body)]);
++        input.operationalScope={tenantId,schemaName:schema,kind:'legacy',legacyConfigHash:revisionHash(body)};input.learningFootprints=[];
++        expect((await store.commit(input)).status).toBe('stored');
++    });
++});

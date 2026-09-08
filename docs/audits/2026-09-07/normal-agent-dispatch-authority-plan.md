@@ -2,6 +2,8 @@
 
 Fecha: 2026-09-07. Estado: **integración de salida normal pendiente; prerrequisito de fuentes implementado por separado**. `54379f90` registra la [procedencia de aprendizaje y guard en la misma conexión](runtime-learning-footprint.md), con lectura integrada; la admisión todavía no tiene consumidores de mensajes ni outbox.
 
+Actualización del 8 de septiembre: `1f704ddc` incorpora retención/borrado de respuestas derivadas Widget; `735a0511`, colector acumulado y lector privado de procedencia histórica. Ambos bloques están validados por separado. La integración normal core/Gateway/store está preservada como parche de seis archivos, **sin activar**: primero se debe resolver un recibo canónico de handoff ligado al inbound y completar la aceptación integrada y las carreras de admisión. [Traspaso para Claude, evidencia y recuperación del borrador](../../handoffs/2026-09-08/claude-execution-handoff.md). La secuencia y los criterios de este plan siguen vigentes.
+
 Esta revisión es de solo lectura de la salida normal. No modifica transporte, no invoca proveedores y no añade evidencia de ejecución. Las líneas citadas corresponden al árbol de trabajo inspeccionado; el guard de conexión está en el bloque de aprobación/routing que se registra por separado. Los tests enumerados abajo son referencias existentes o criterios propuestos, no una certificación nueva.
 
 ## 1. Hallazgos comprobados
@@ -126,4 +128,4 @@ Tests nuevos propuestos, usando PostgreSQL/Prisma real para transacciones y un t
 
 Referencias de tests existentes que deben conservarse o ampliarse: `widget/widget-delivery.postgres.spec.ts`, `conversations/conversations.widget-containment.spec.ts`, `channels/outbound-queue.processor.entitlement.spec.ts`, `channels/outbound-approved-effect.spec.ts`, `channels/outbound-operational-notice.spec.ts`, `tenant-payments/payment-agent-authority.postgres.spec.ts`, `ai/router/llm-source-authority.spec.ts` y `conversations/agent-turn-source-authority.spec.ts`. `conversations/media-delivery-dedupe.spec.ts` comprueba forma de código; no sustituye carreras, fallos parciales ni ACK perdido.
 
-Las pruebas de integración de salida enumeradas aquí siguen pendientes. La extracción de fuentes tiene evidencia propia en `54379f90`, sin consumidores ni receipts de mensajes. La siguiente entrega debe declarar por canal y tipo de ítem qué admisión/receipt está probado; conectar funciones o añadir campos no basta para dar por cerrada esta frontera.
+Las pruebas de integración de salida enumeradas aquí siguen pendientes. La extracción de fuentes tiene evidencia propia en `54379f90`; retención/borrado y procedencia histórica se incorporan en `1f704ddc` y `735a0511`. Todavía no hay productor normal integrado de recibos: el borrador y sus bloqueos se detallan en el traspaso. La siguiente entrega debe declarar por canal y tipo de ítem qué admisión/receipt está probado; conectar funciones o añadir campos no basta para dar por cerrada esta frontera.

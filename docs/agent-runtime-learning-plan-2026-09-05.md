@@ -4,6 +4,8 @@ Ampliación del análisis del 5 de septiembre de 2026. Checkout `b1e87c71`. Comp
 
 La ejecución posterior, sus commits, pruebas y frentes pendientes se mantienen en [Registro de implementación](agent-platform-implementation-progress.md). Este documento conserva el diagnóstico inicial; los avances no convierten la cobertura declarada en certificación por perfil, idioma o canal.
 
+El 8 de septiembre se cierra la última tanda por solicitud del usuario y se prepara la continuación por Claude. `1f704ddc` incorpora retención/borrado de respuestas derivadas Widget (14 suites / 220 casos, 97 PostgreSQL); `735a0511`, procedencia acumulada y lector privado de historial (13 suites / 228 casos, 86 PostgreSQL). TypeScript API pasa en ambos índices exactos y no hay casos omitidos. Las baterías se solapan. La integración core/Gateway/store sigue pendiente: está preservada como parche verificado, sin activar, y requiere resolver el recibo durable de handoff y su aceptación integrada. [Traspaso, límites y siguiente entrega](handoffs/2026-09-08/claude-execution-handoff.md). El plan integral permanece abierto.
+
 La reconciliación de inventario quedó registrada en `e398be7b`. La matriz conserva 76 perfiles, 268 tareas, 146 transaccionales, 32 tareas sin positivo propio, 10 sin verificador y **cero perfiles certificados**. Los avances siguientes no reducen el alcance original ni completan E2/E3.
 
 El registro y la corrección de mascotas amplían C/E/G/H con comandos atómicos, escenarios por perfil y evidencia de ficha/recibo. Su implementación y los límites pendientes de consentimiento declarativo, privacidad clínica y piloto se detallan en [Auditoría de mascotas](audits/2026-09-07/pet-command-lifecycle.md).

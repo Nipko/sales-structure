@@ -1,0 +1,41 @@
+{
+  "status": "DRAFT_NOT_ACTIVATED",
+  "capturedFrom": "1f704ddc8dcc0e1c2996b6cbd20ad107063e74f9",
+  "files": [
+    {
+      "path": "apps/api/src/modules/conversations/conversations.service.ts",
+      "sha256": "1d620e0b4c9e1db2352ba38fbe365633c8bee1847dc7da1636f71895a7b6bcea",
+      "normalizedSha256": "1d620e0b4c9e1db2352ba38fbe365633c8bee1847dc7da1636f71895a7b6bcea"
+    },
+    {
+      "path": "apps/api/src/modules/conversations/conversations.widget-containment.spec.ts",
+      "sha256": "dc3a8b8f4e18c2ade9f898a4e98d6539b07b77ad47fb0836bed3386a800f7427",
+      "normalizedSha256": "5a6503ce1b9f9988d9a6865589070e551e5eadb89c846e20585ae6d01885e10f"
+    },
+    {
+      "path": "apps/api/src/modules/widget/widget-delivery.module.ts",
+      "sha256": "e9ef8c159929ab2b5494380632e9c421f08002e7b5751349812c664960dea3ac",
+      "normalizedSha256": "e9ef8c159929ab2b5494380632e9c421f08002e7b5751349812c664960dea3ac"
+    },
+    {
+      "path": "apps/api/src/modules/widget/widget.gateway.ts",
+      "sha256": "8632e5d6680594afefe04bcecc713f53397d9fd7f376e2b2eb4301574a37ede9",
+      "normalizedSha256": "6a07616d2adf31c63b88b89d29f9dd6d47662ff4b4d0ca0f0f5c3a0b44097106"
+    },
+    {
+      "path": "apps/api/src/modules/widget/widget-agent-reply.store.ts",
+      "sha256": "926de8453e2e0634d4657f3b3eb5ab611d675cdea07907a55d2c570073bae572",
+      "normalizedSha256": "926de8453e2e0634d4657f3b3eb5ab611d675cdea07907a55d2c570073bae572"
+    },
+    {
+      "path": "apps/api/src/modules/widget/widget-agent-reply.postgres.spec.ts",
+      "sha256": "4550ca74ecfbd425e404be8cb946ce2bb99f205e39c3c7e95b3f70d3f7ddeb1e",
+      "normalizedSha256": "4550ca74ecfbd425e404be8cb946ce2bb99f205e39c3c7e95b3f70d3f7ddeb1e"
+    }
+  ],
+  "patchSha256": "39d4cf1e5cf2bcb6c1a6884706c19b7153982a794dd44bdb573845cdb7d2f55a",
+  "knownBlockers": [
+    "Handoff needs an inbound-bound durable receipt before a deterministic notice may bypass active conversation gating.",
+    "Core/Gateway integration acceptance and concurrent publication/source retirement tests remain required."
+  ]
+}

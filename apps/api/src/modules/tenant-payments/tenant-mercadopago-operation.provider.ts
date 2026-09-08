@@ -9,6 +9,8 @@ import {
     type RefundProviderRequest,
 } from '../conversations/payment-operation.service';
 import { TenantPaymentsService } from './tenant-payments.service';
+import type { PaymentAgentExecution } from './payment-agent-authority';
+import { ServedAgentAuthorityError } from '../persona/served-agent-authority';
 
 /**
  * Historical class name kept for Nest wiring compatibility. The underlying
@@ -52,7 +54,7 @@ export class TenantMercadoPagoOperationProvider implements PaymentOperationProvi
         };
     }
 
-    async createPaymentLink(input: PaymentLinkProviderRequest) {
+    async createPaymentLink(input: PaymentLinkProviderRequest, execution?: PaymentAgentExecution) {
         // Re-check immediately before the provider effect to close the window in
         // which an order could change after the first ownership check.
         let owned;
@@ -87,7 +89,7 @@ export class TenantMercadoPagoOperationProvider implements PaymentOperationProvi
                 description: input.description,
                 canonicalReference: owned.canonicalReference,
                 idempotencyKey: input.idempotencyKey,
-            });
+            }, execution);
         } catch (error) {
             throw this.classifyProviderFailure(error);
         }
@@ -150,6 +152,7 @@ export class TenantMercadoPagoOperationProvider implements PaymentOperationProvi
 
     private classifyProviderFailure(error: unknown): PaymentProviderCallError {
         if (error instanceof PaymentProviderCallError) return error;
+        if (error instanceof ServedAgentAuthorityError) return new PaymentProviderCallError('known_no_effect', error.code, error);
 
         const structurallyAmbiguous = (error as any)?.ambiguous;
         const status = error instanceof HttpException ? error.getStatus() : undefined;

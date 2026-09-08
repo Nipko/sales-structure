@@ -1,6 +1,9 @@
 import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { persistenceDisabled, type ServiceExecutionContext } from '../../common/types/execution-context';
 import { PrismaService } from '../prisma/prisma.service';
+import { randomUUID } from 'crypto';
+import { assertServedAgentAuthority, validServedAgentAuthority, ServedAgentAuthorityError, type ServedAgentAuthority } from '../persona/served-agent-authority';
+import { assertPaymentAuthorityBinding } from './payment-agent-authority';
 import {
     parsePaymentReference,
     type TenantPaymentProvider,
@@ -229,9 +232,13 @@ export class TenantPaymentStoreService {
         description: string;
         resourceSnapshot: Record<string, unknown>;
         expiresAt?: Date;
-    }): Promise<{ intent: TenantPaymentIntent; created: boolean }> {
+    }, operationalScope?: ServedAgentAuthority): Promise<{ intent: TenantPaymentIntent; created: boolean }> {
         const schemaName = await this.ensureForTenant(input.tenantId);
         return this.prisma.transactionInTenantSchema(schemaName, async query => {
+            await assertServedAgentAuthority(query, schemaName, operationalScope);
+            // Server metadata always wins over any caller-supplied snapshot keys.
+            const { operationalAuthority: _untrustedAuthority, dispatchAdmission: _untrustedAdmission, ...snapshot } = input.resourceSnapshot;
+            if (operationalScope) Object.assign(snapshot, {operationalAuthority:operationalScope,dispatchAdmission:null});
             const target = parsePaymentReference(input.canonicalReference);
             if (target?.target.table === 'orders') {
                 // The catalogue cancellation command takes the same privacy and order
@@ -263,7 +270,7 @@ export class TenantPaymentStoreService {
                     input.amountCents,
                     input.currency,
                     input.description.slice(0, 250),
-                    JSON.stringify(input.resourceSnapshot),
+                    JSON.stringify(snapshot),
                     input.expiresAt?.toISOString() ?? null,
                 ],
             );
@@ -281,6 +288,7 @@ export class TenantPaymentStoreService {
             );
             const row = existing[0];
             if (!row) throw new ServiceUnavailableException('tenant_payment_intent_conflict');
+            assertPaymentAuthorityBinding(row.resource_snapshot?.operationalAuthority, operationalScope);
             const intent = this.mapIntent(row);
             if (intent.provider !== input.provider
                 || intent.contactId !== input.contactId
@@ -311,7 +319,7 @@ export class TenantPaymentStoreService {
                       RETURNING *`,
                     [
                         intent.id,
-                        JSON.stringify(input.resourceSnapshot),
+                        JSON.stringify(snapshot),
                         input.expiresAt?.toISOString() ?? null,
                     ],
                 );
@@ -321,6 +329,35 @@ export class TenantPaymentStoreService {
                 throw new ServiceUnavailableException('tenant_payment_intent_retry_conflict');
             }
             return { intent, created: false };
+        });
+    }
+
+    /** COMMIT is the acceptance point for this one provider attempt. The returned
+     * token is granted only to the winning invocation, never replayed to a retry.
+     * No transaction remains open during network work. A crash after this commit
+     * is uncertain even if the provider never received the POST. */
+    async admitAgentCreation(tenantId: string, intentId: string, operationalScope: ServedAgentAuthority): Promise<string> {
+        const schemaName = await this.ensureForTenant(tenantId);
+        if (!validServedAgentAuthority(operationalScope, schemaName, tenantId)) throw new ServedAgentAuthorityError();
+        return this.prisma.transactionInTenantSchema(schemaName, async query => {
+            await assertServedAgentAuthority(query, schemaName, operationalScope);
+            const [row] = await query<IntentRow[]>('SELECT * FROM tenant_payment_intents WHERE id=$1::uuid FOR UPDATE', [intentId]);
+            if (!row) throw new ServiceUnavailableException('tenant_payment_intent_unavailable');
+            assertPaymentAuthorityBinding(row.resource_snapshot?.operationalAuthority, operationalScope);
+            if (row.status !== 'pending' || row.provider_link_id || row.provider_transaction_id
+                || row.resource_snapshot?.dispatchAdmission) {
+                throw new ServiceUnavailableException('payment_link_reconciliation_required');
+            }
+            const [{ now }] = await query<Array<{now:string}>>('SELECT clock_timestamp()::text AS now');
+            if (!now || !Number.isFinite(Date.parse(now))) throw new Error('payment_admission_clock_unavailable');
+            if (row.expires_at && new Date(row.expires_at).getTime() <= Date.parse(now)) {
+                throw new ServiceUnavailableException('payment_link_expired_before_submission');
+            }
+            const admissionId = randomUUID();
+            await query(`UPDATE tenant_payment_intents SET resource_snapshot=jsonb_set(resource_snapshot,'{dispatchAdmission}',$2::jsonb),
+                last_error='payment_dispatch_admitted_awaiting_receipt',updated_at=NOW()
+                WHERE id=$1::uuid`, [intentId, JSON.stringify({version:1,admissionId,admittedAt:now,operationalAuthority:operationalScope})]);
+            return admissionId;
         });
     }
 

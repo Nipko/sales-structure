@@ -470,6 +470,7 @@ export class AIToolExecutorService {
             const evalWriterAllowed = opts?.evalMode === true
                 && (canonicalSandbox ? CANONICAL_EVAL_TOOLS.has(toolName) : canEvalExecuteWriter(toolName, contactId));
             if (VERSION_GUARDED_TOOLS.has(toolName) && !evalWriterAllowed
+                && !persistenceDisabled(opts?.executionContext)
                 && !validServedAgentAuthority(opts.operationalScope, schemaName, tenantId)) {
                 return { error: 'agent_operational_authority_required', persisted: false, controlBlocked: true };
             }
@@ -806,6 +807,7 @@ export class AIToolExecutorService {
                         contactId,
                         controlDecision.ledgerId,
                         preparedPaymentLink,
+                        operationalScope,
                     );
 
                 case 'get_payment_status':

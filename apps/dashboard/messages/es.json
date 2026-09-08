@@ -13990,13 +13990,14 @@
       "reconciliation_required": "Requiere decisión"
     },
     "errors": {
-      "notReconcilable": "Este efecto ya se resolvió por otra vía y su estado cambió. Actualiza la cola: no se puede decidir dos veces sobre lo mismo.",
+      "notReconcilable": "Otra persona resolvió este efecto antes y su estado ya cambió. Nada de lo que escribiste se aplicó: recarga la cola para ver el estado vigente.",
       "redacted": "Este efecto fue borrado por privacidad. Sus palabras no pueden reenviarse bajo ninguna evidencia.",
       "attemptsExhausted": "Este efecto agotó sus intentos. Ya no puede reintentarse; regístralo como entregado o como no entregado.",
       "receiptRequired": "Para cerrarlo como entregado hace falta el identificador que devolvió el proveedor.",
       "evidenceRequired": "Hace falta escribir qué comprobaste. Sin evidencia la decisión no queda registrada.",
       "invalidRollout": "La configuración fue rechazada: revisa los canales y las empresas seleccionadas.",
-      "unavailable": "No pudimos verificar esta información. Actualiza o vuelve a intentar; no se interpreta como éxito ni como ausencia de datos."
+      "unavailable": "No pudimos verificar esta información. Actualiza o vuelve a intentar; no se interpreta como éxito ni como ausencia de datos.",
+      "reload": "Recargar la cola"
     },
     "blocked": {
       "settled": "Este efecto ya tiene una decisión registrada.",
@@ -14063,7 +14064,8 @@
         "within": "dentro del plazo",
         "nearing": "acercándose al plazo",
         "breaching": "fuera del plazo"
-      }
+      },
+      "colFailure": "Fallo del proveedor"
     },
     "detail": {
       "selectRow": "Selecciona un efecto de la cola para ver su detalle.",
@@ -14074,7 +14076,7 @@
       "account": "Cuenta del canal",
       "recipient": "Destinatario (parcial)",
       "receipt": "Recibo del proveedor",
-      "errorCode": "Último código",
+      "errorCode": "Fallo del proveedor",
       "lease": "Token de arrendamiento",
       "none": "—",
       "redacted": "Este efecto fue borrado por privacidad: puede cerrarse, pero nunca reenviarse.",
@@ -14084,7 +14086,8 @@
       "evidenceHelp": "Escribe dónde y cómo lo verificaste. Queda registrado junto a la decisión. Hasta 500 caracteres.",
       "receiptInput": "Recibo del proveedor",
       "receiptHelp": "El identificador del mensaje tal como lo devuelve el proveedor.",
-      "review": "Revisar la decisión"
+      "review": "Revisar la decisión",
+      "errorCodeHelp": "Es el fallo que dejó el efecto en duda, no la nota de la decisión: se conserva tal cual después de resolverlo."
     },
     "resolutions": {
       "delivered": {
@@ -14111,6 +14114,24 @@
         "confirm": "Reintentar el envío",
         "done": "Registrado: el efecto vuelve a la cola de envío."
       }
+    },
+    "recorded": {
+      "title": "Decisión registrada: {decision}",
+      "durable": "Quedó guardada junto al efecto, en la misma transacción que el cambio de estado, con su autor y su evidencia completa.",
+      "author": "Autor",
+      "actorWithRole": "{actor} · {role}",
+      "transition": "Estado",
+      "transitionValue": "{from} → {to}",
+      "evidence": "Evidencia",
+      "reference": "Registro"
+    },
+    "export": {
+      "title": "Copias al registro de la plataforma",
+      "help": "Nada se pierde mientras una copia espera: la decisión, su autor y su evidencia ya están guardados junto al efecto. Esto sólo pone al día el registro de auditoría de la plataforma, que es donde se busca quién resolvió qué.",
+      "run": "Poner al día el registro",
+      "done": "{attempted} copias intentadas; quedan {remaining} pendientes.",
+      "empty": "No había copias pendientes.",
+      "failed": "No pudimos poner al día el registro. Las decisiones siguen guardadas junto a cada efecto; vuelve a intentarlo."
     }
   },
   "agentPublications": {

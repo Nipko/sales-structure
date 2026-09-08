@@ -3,19 +3,18 @@ import * as path from "node:path";
 import {
     DISPATCH_MAX_ATTEMPTS,
     DISPATCH_STATES,
-    asQueueRow,
-    dispatchErrorKind,
+    asDispatchState,
     dispatchResolutionBlock,
     dispatchSlaState,
-    dispatchStateFromRefusal,
     isDispatchResolvable,
     isDispatchRolloutInert,
     prepareDispatchResolution,
     prepareDispatchRollout,
+    readDispatchRefusal,
     settleQueueRow,
     sortDispatchQueue,
-    type DispatchQueueRow,
     type DispatchReconciliationEntry,
+    type DispatchResolutionRecord,
 } from "./dispatch-operations";
 import { ROLE_KEYS, canAccessPath } from "./roles";
 import { NAVIGATION_ROUTES, resolveNavigationRoute } from "./navigation-contract";
@@ -29,6 +28,7 @@ const API = read("lib/api.ts");
 function entry(overrides: Partial<DispatchReconciliationEntry> = {}): DispatchReconciliationEntry {
     return {
         id: "11111111-1111-4111-8111-111111111111",
+        state: "reconciliation_required",
         conversationId: "22222222-2222-4222-8222-222222222222",
         inboundMessageId: "33333333-3333-4333-8333-333333333333",
         channelType: "whatsapp",
@@ -37,7 +37,7 @@ function entry(overrides: Partial<DispatchReconciliationEntry> = {}): DispatchRe
         itemKind: "text",
         itemIndex: 0,
         attempts: 1,
-        errorCode: null,
+        errorCode: "provider_timeout",
         receipt: null,
         settledLeaseToken: null,
         redacted: false,
@@ -48,8 +48,25 @@ function entry(overrides: Partial<DispatchReconciliationEntry> = {}): DispatchRe
     };
 }
 
-const row = (overrides: Partial<DispatchQueueRow> = {}): DispatchQueueRow =>
-    ({ ...asQueueRow(entry()), ...overrides });
+const row = (overrides: Partial<DispatchReconciliationEntry> = {}): DispatchReconciliationEntry =>
+    ({ ...entry(), ...overrides });
+
+function record(overrides: Partial<DispatchResolutionRecord> = {}): DispatchResolutionRecord {
+    return {
+        id: "66666666-6666-4666-8666-666666666666",
+        dispatchId: "11111111-1111-4111-8111-111111111111",
+        resolution: "retry",
+        evidence: "No request in the provider log for that window",
+        actorId: "77777777-7777-4777-8777-777777777777",
+        actorRole: "super_admin",
+        previousState: "reconciliation_required",
+        previousErrorCode: "provider_timeout",
+        newState: "failed",
+        receipt: null,
+        createdAt: "2026-09-08T10:30:00.000Z",
+        ...overrides,
+    };
+}
 
 describe("an uncertain effect is only decided once", () => {
     const settledStates = DISPATCH_STATES.filter(state => state !== "reconciliation_required");
@@ -67,21 +84,109 @@ describe("an uncertain effect is only decided once", () => {
         }
     });
 
+    it("reads the state off the entry instead of assuming the listing's one", () => {
+        // The listing only returns `reconciliation_required`, but it says so
+        // now. An assumption that happens to be right is still the wrong thing
+        // to decide an irreversible action on.
+        expect(isDispatchResolvable(entry())).toBe(true);
+        expect(isDispatchResolvable(entry({ state: "sent" }))).toBe(false);
+    });
+
     it("stops offering a decision the moment the server settles the row", () => {
         const pending = row();
         expect(isDispatchResolvable(pending)).toBe(true);
         const settled = settleQueueRow(pending, {
-            id: pending.id, state: "sent", attempts: 1, receipt: "wamid.abc", errorCode: "delivered:seen at provider",
+            id: pending.id, state: "sent", attempts: 1, receipt: "wamid.abc",
+            errorCode: "provider_timeout",
+            resolution: record({ resolution: "delivered", newState: "sent", receipt: "wamid.abc" }),
         });
         expect(isDispatchResolvable(settled)).toBe(false);
         expect(settled.receipt).toBe("wamid.abc");
+        // The decision no longer writes over the provider failure, so the
+        // reason this row needed a person stays readable after it is closed.
+        expect(settled.errorCode).toBe("provider_timeout");
     });
 
     it("adopts the state a refusal reports, so a second decision is not offered", () => {
-        expect(dispatchStateFromRefusal({ error: "dispatch_not_reconcilable:suppressed" })).toBe("suppressed");
-        expect(dispatchStateFromRefusal({ errorCode: "dispatch_not_reconcilable:sent" })).toBe("sent");
-        expect(dispatchStateFromRefusal({ error: "dispatch_not_reconcilable:not_a_state" })).toBeNull();
-        expect(dispatchStateFromRefusal({ error: "dispatch_redacted" })).toBeNull();
+        expect(readDispatchRefusal({ errorCode: "dispatch_not_reconcilable:suppressed" }).state).toBe("suppressed");
+        expect(readDispatchRefusal({ error: "dispatch_not_reconcilable:sent" }).state).toBe("sent");
+        expect(readDispatchRefusal({ errorCode: "dispatch_not_reconcilable:not_a_state" }).state).toBeNull();
+        expect(readDispatchRefusal({ errorCode: "dispatch_redacted" }).state).toBeNull();
+    });
+});
+
+describe("a row somebody else settled is a race, not a bad form", () => {
+    it("reads 409 as a conflict and keeps the state the code names", () => {
+        const refusal = readDispatchRefusal({
+            httpStatus: 409, errorCode: "dispatch_not_reconcilable:suppressed", error: "Error 409",
+        });
+        expect(refusal).toEqual({ kind: "notReconcilable", conflict: true, state: "suppressed" });
+    });
+
+    it("is a conflict on the status alone, even with nothing to parse", () => {
+        // The status is the fact: somebody else got there first. Without this
+        // the operator would read "we could not verify this" and try again.
+        expect(readDispatchRefusal({ httpStatus: 409, error: "Error 409" }))
+            .toEqual({ kind: "notReconcilable", conflict: true, state: null });
+    });
+
+    it("never marks a validation refusal as a conflict", () => {
+        for (const code of ["dispatch_resolution_evidence_required", "dispatch_receipt_required",
+            "dispatch_redacted", "dispatch_attempts_exhausted"]) {
+            expect(readDispatchRefusal({ httpStatus: 400, errorCode: code }).conflict).toBe(false);
+        }
+    });
+
+    it("offers the reload that is the only useful answer to a conflict", () => {
+        expect(PAGE).toContain("resolveConflict");
+        expect(PAGE).toContain('t("errors.reload")');
+        const messages = JSON.parse(fs.readFileSync(path.resolve(ROOT, "../messages/es.json"), "utf8"));
+        expect(typeof messages.dispatchOperations.errors.reload).toBe("string");
+    });
+});
+
+describe("the decision that was recorded is shown, not just that it worked", () => {
+    it("names the state transition with labels, never a raw database value", () => {
+        const decision = record();
+        expect(asDispatchState(decision.previousState)).toBe("reconciliation_required");
+        expect(asDispatchState(decision.newState)).toBe("failed");
+        // A value with no label is returned as null so the screen prints the
+        // raw string instead of asking for a translation key that is not there.
+        expect(asDispatchState("something_else")).toBeNull();
+        expect(asDispatchState(null)).toBeNull();
+    });
+
+    it("keeps the whole evidence the server stored, not a truncated copy", () => {
+        const decision = record({ evidence: "x".repeat(500) });
+        expect(decision.evidence).toHaveLength(500);
+    });
+
+    it("shows the author, the transition and the evidence on the screen", () => {
+        expect(PAGE).toContain("result.data!.resolution");
+        for (const key of ["recorded.title", "recorded.durable", "recorded.author",
+            "recorded.actorWithRole", "recorded.transitionValue", "recorded.evidence", "recorded.reference"]) {
+            expect(PAGE).toContain(key);
+        }
+        expect(PAGE).toContain("decision.actorId");
+        expect(PAGE).toContain("decision.evidence");
+    });
+
+    it("shows the provider failure without calling it the decision's note", () => {
+        // `error_code` used to be overwritten by the evidence. It is not any
+        // more, so the queue can show the failure that opened each row.
+        expect(PAGE).toContain('t("queue.colFailure")');
+        expect(PAGE).toContain('t("detail.errorCodeHelp")');
+        const messages = JSON.parse(fs.readFileSync(path.resolve(ROOT, "../messages/es.json"), "utf8"));
+        expect(messages.dispatchOperations.detail.errorCodeHelp).toMatch(/decisión/i);
+    });
+
+    it("never reaches the payload or the unmasked recipient the answer carries", () => {
+        // The resolve endpoint answers the whole dispatch row, which carries
+        // both. The receipt type names neither, and neither does the screen.
+        expect(PAGE).not.toMatch(/\.binding\b/);
+        const lib = read("lib/dispatch-operations.ts");
+        expect(lib).not.toMatch(/\bpayload\??\s*:/);
+        expect(lib).not.toMatch(/\bbinding\??\s*:/);
     });
 });
 
@@ -116,19 +221,26 @@ describe("what a resolution demands before it is offered", () => {
 });
 
 describe("refusals become explanations, never raw codes", () => {
-    // The controller raises BadRequestException(code), so the stable code
-    // arrives as the message and `errorCode` says "Bad Request".
+    // Reconciliation answers `{ error: code }`, so the code arrives in
+    // `errorCode`; the rollout PUT still raises the code as an exception
+    // message, so it arrives in `error` with `errorCode` saying "Bad Request".
+    // Both shapes reach this screen and both have to be read.
     it.each([
-        [{ error: "dispatch_not_reconcilable:suppressed", errorCode: "Bad Request" }, "notReconcilable"],
-        [{ error: "dispatch_redacted", errorCode: "Bad Request" }, "redacted"],
-        [{ error: "dispatch_attempts_exhausted", errorCode: "Bad Request" }, "attemptsExhausted"],
-        [{ error: "dispatch_receipt_required", errorCode: "Bad Request" }, "receiptRequired"],
-        [{ error: "dispatch_resolution_evidence_required", errorCode: "Bad Request" }, "evidenceRequired"],
+        [{ httpStatus: 409, errorCode: "dispatch_not_reconcilable:suppressed" }, "notReconcilable"],
+        [{ httpStatus: 400, errorCode: "dispatch_redacted" }, "redacted"],
+        [{ httpStatus: 400, errorCode: "dispatch_attempts_exhausted" }, "attemptsExhausted"],
+        [{ httpStatus: 400, errorCode: "dispatch_receipt_required" }, "receiptRequired"],
+        [{ httpStatus: 400, errorCode: "dispatch_resolution_evidence_required" }, "evidenceRequired"],
         [{ error: "dispatch_rollout_unsupported_channel:email", errorCode: "Bad Request" }, "invalidRollout"],
         [{ error: "Error de conexión" }, "unavailable"],
-        [{ errorCode: "dispatch_redacted" }, "redacted"],
+        [{ error: "Error 500", errorCode: "Internal Server Error" }, "unavailable"],
     ])("maps %j", (envelope, expected) => {
-        expect(dispatchErrorKind(envelope)).toBe(expected);
+        expect(readDispatchRefusal(envelope).kind).toBe(expected);
+    });
+
+    it("carries the status POST refusals arrive with", () => {
+        // Without this the 409 is indistinguishable from a 400 on the client.
+        expect(API).toMatch(/method: "POST",[\s\S]{0,300}?httpStatus: res\.status/);
     });
 });
 
@@ -208,12 +320,27 @@ describe("the dispatch surface is wired and reachable", () => {
             "disableDispatchRollout:",
             "getDispatchReconciliation:",
             "resolveDispatchReconciliation:",
+            "exportDispatchResolutions:",
         ]) {
             expect(API).toContain(method);
         }
         expect(PAGE).toContain("api.getDispatchRollout()");
         expect(PAGE).toContain("api.disableDispatchRollout()");
         expect(PAGE).toContain("api.resolveDispatchReconciliation(");
+        expect(PAGE).toContain("api.exportDispatchResolutions(");
+    });
+
+    it("explains that a pending audit copy loses nothing", () => {
+        // The decision, its author and its evidence commit in the tenant's own
+        // schema; only the platform-wide copy is being caught up here. An
+        // operator who does not know that reads a pending copy as a lost one.
+        expect(API).toContain("/export");
+        for (const key of ["export.title", "export.help", "export.run", "export.failed"]) {
+            expect(PAGE).toContain(key);
+        }
+        const messages = JSON.parse(fs.readFileSync(path.resolve(ROOT, "../messages/es.json"), "utf8"));
+        expect(messages.dispatchOperations.export.help).toMatch(/nada se pierde/i);
+        expect(messages.dispatchOperations.export.failed).toMatch(/siguen guardadas/i);
     });
 
     it("shows no message body and no unmasked recipient", () => {

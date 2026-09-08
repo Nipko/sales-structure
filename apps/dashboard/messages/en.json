@@ -13990,13 +13990,14 @@
       "reconciliation_required": "Needs a decision"
     },
     "errors": {
-      "notReconcilable": "This effect was already settled elsewhere and its state changed. Refresh the queue: the same effect cannot be decided twice.",
+      "notReconcilable": "Somebody else resolved this effect first and its state has already changed. Nothing you wrote was applied: reload the queue to see where it stands.",
       "redacted": "This effect was erased for privacy. Its words cannot be resent under any evidence.",
       "attemptsExhausted": "This effect has spent its attempts. It can no longer be retried; record it as delivered or as not delivered.",
       "receiptRequired": "Closing it as delivered needs the identifier the provider returned.",
       "evidenceRequired": "Write down what you checked. Without evidence the decision is not recorded.",
       "invalidRollout": "The configuration was refused: check the selected channels and accounts.",
-      "unavailable": "We could not verify this. Refresh or try again; it is not read as success nor as an absence of data."
+      "unavailable": "We could not verify this. Refresh or try again; it is not read as success nor as an absence of data.",
+      "reload": "Reload the queue"
     },
     "blocked": {
       "settled": "This effect already has a recorded decision.",
@@ -14063,7 +14064,8 @@
         "within": "within the deadline",
         "nearing": "approaching the deadline",
         "breaching": "past the deadline"
-      }
+      },
+      "colFailure": "Provider failure"
     },
     "detail": {
       "selectRow": "Select an effect from the queue to see its detail.",
@@ -14074,7 +14076,7 @@
       "account": "Channel account",
       "recipient": "Recipient (partial)",
       "receipt": "Provider receipt",
-      "errorCode": "Last code",
+      "errorCode": "Provider failure",
       "lease": "Lease token",
       "none": "—",
       "redacted": "This effect was erased for privacy: it can be closed, but never resent.",
@@ -14084,7 +14086,8 @@
       "evidenceHelp": "Write where and how you verified it. It is recorded next to the decision. Up to 500 characters.",
       "receiptInput": "Provider receipt",
       "receiptHelp": "The message identifier exactly as the provider returns it.",
-      "review": "Review the decision"
+      "review": "Review the decision",
+      "errorCodeHelp": "The failure that left this effect in doubt, not the note from the decision: it stays as it was after you resolve it."
     },
     "resolutions": {
       "delivered": {
@@ -14111,6 +14114,24 @@
         "confirm": "Retry the send",
         "done": "Recorded: the effect returns to the sending queue."
       }
+    },
+    "recorded": {
+      "title": "Decision recorded: {decision}",
+      "durable": "It was stored next to the effect, in the same transaction as the state change, with its author and the whole evidence.",
+      "author": "Author",
+      "actorWithRole": "{actor} · {role}",
+      "transition": "State",
+      "transitionValue": "{from} → {to}",
+      "evidence": "Evidence",
+      "reference": "Record"
+    },
+    "export": {
+      "title": "Copies into the platform log",
+      "help": "Nothing is lost while a copy waits: the decision, its author and its evidence are already stored next to the effect. This only catches up the platform-wide audit log, which is where anyone looks for who resolved what.",
+      "run": "Catch up the log",
+      "done": "{attempted} copies attempted; {remaining} still pending.",
+      "empty": "There were no copies pending.",
+      "failed": "We could not catch up the log. The decisions are still stored next to each effect; try again."
     }
   },
   "agentPublications": {

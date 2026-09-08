@@ -13990,13 +13990,14 @@
       "reconciliation_required": "Precisa de decisão"
     },
     "errors": {
-      "notReconcilable": "Este efeito já foi resolvido por outra via e o seu estado mudou. Atualize a fila: não se decide duas vezes sobre o mesmo.",
+      "notReconcilable": "Outra pessoa resolveu este efeito antes e o estado já mudou. Nada do que você escreveu foi aplicado: recarregue a fila para ver o estado atual.",
       "redacted": "Este efeito foi apagado por privacidade. As suas palavras não podem ser reenviadas sob nenhuma evidência.",
       "attemptsExhausted": "Este efeito esgotou as suas tentativas. Já não pode ser repetido; registe-o como entregue ou como não entregue.",
       "receiptRequired": "Para fechar como entregue é preciso o identificador devolvido pelo provedor.",
       "evidenceRequired": "Escreva o que verificou. Sem evidência a decisão não fica registada.",
       "invalidRollout": "A configuração foi recusada: reveja os canais e as empresas selecionadas.",
-      "unavailable": "Não conseguimos verificar esta informação. Atualize ou tente de novo; não se interpreta como sucesso nem como ausência de dados."
+      "unavailable": "Não conseguimos verificar esta informação. Atualize ou tente de novo; não se interpreta como sucesso nem como ausência de dados.",
+      "reload": "Recarregar a fila"
     },
     "blocked": {
       "settled": "Este efeito já tem uma decisão registada.",
@@ -14063,7 +14064,8 @@
         "within": "dentro do prazo",
         "nearing": "a aproximar-se do prazo",
         "breaching": "fora do prazo"
-      }
+      },
+      "colFailure": "Falha do provedor"
     },
     "detail": {
       "selectRow": "Selecione um efeito da fila para ver o seu detalhe.",
@@ -14074,7 +14076,7 @@
       "account": "Conta do canal",
       "recipient": "Destinatário (parcial)",
       "receipt": "Recibo do provedor",
-      "errorCode": "Último código",
+      "errorCode": "Falha do provedor",
       "lease": "Token de arrendamento",
       "none": "—",
       "redacted": "Este efeito foi apagado por privacidade: pode ser fechado, mas nunca reenviado.",
@@ -14084,7 +14086,8 @@
       "evidenceHelp": "Escreva onde e como o verificou. Fica registado junto à decisão. Até 500 caracteres.",
       "receiptInput": "Recibo do provedor",
       "receiptHelp": "O identificador da mensagem tal como o provedor o devolve.",
-      "review": "Rever a decisão"
+      "review": "Rever a decisão",
+      "errorCodeHelp": "É a falha que deixou o efeito em dúvida, não a nota da decisão: ela permanece igual depois de resolver."
     },
     "resolutions": {
       "delivered": {
@@ -14111,6 +14114,24 @@
         "confirm": "Tentar o envio de novo",
         "done": "Registado: o efeito volta à fila de envio."
       }
+    },
+    "recorded": {
+      "title": "Decisão registrada: {decision}",
+      "durable": "Ficou guardada junto ao efeito, na mesma transação da mudança de estado, com seu autor e a evidência completa.",
+      "author": "Autor",
+      "actorWithRole": "{actor} · {role}",
+      "transition": "Estado",
+      "transitionValue": "{from} → {to}",
+      "evidence": "Evidência",
+      "reference": "Registro"
+    },
+    "export": {
+      "title": "Cópias para o registro da plataforma",
+      "help": "Nada se perde enquanto uma cópia espera: a decisão, seu autor e sua evidência já estão guardados junto ao efeito. Isto apenas atualiza o registro de auditoria da plataforma, que é onde se procura quem resolveu o quê.",
+      "run": "Atualizar o registro",
+      "done": "{attempted} cópias tentadas; faltam {remaining} pendentes.",
+      "empty": "Não havia cópias pendentes.",
+      "failed": "Não conseguimos atualizar o registro. As decisões continuam guardadas junto a cada efeito; tente de novo."
     }
   },
   "agentPublications": {

@@ -15,7 +15,7 @@ import type { OperationalNotice, OperationalNoticeList, NoticeReviewRequest } fr
 import type { DiscardAgentDraftRequest } from '@parallext/shared';
 import type { AgentReleaseDetail, AgentReleaseListItem, AgentReleaseRequest, AgentReleaseReviewRequest } from './agent-release-review';
 import type { AgentPublicationHistory, AgentPublicationReceipt, PublishAgentConfigurationRequest, RollbackAgentConfigurationRequest } from './agent-publication';
-import type { DispatchReconciliationQueue, DispatchResolution, DispatchResolutionReceipt, DispatchRolloutRequest, DispatchRolloutState } from './dispatch-operations';
+import type { DispatchReconciliationQueue, DispatchResolution, DispatchResolutionExport, DispatchResolutionReceipt, DispatchRolloutRequest, DispatchRolloutState } from './dispatch-operations';
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.parallly-chat.cloud/api/v1";
 
@@ -625,6 +625,11 @@ export const api = {
     resolveDispatchReconciliation: (tenantId: string, dispatchId: string,
         body: { resolution: DispatchResolution; evidence: string; receipt?: string }) =>
         apiPost<DispatchResolutionReceipt>(`/dispatch-rollout/reconciliation/${tenantId}/${dispatchId}`, body),
+    // La decisión ya está guardada junto al efecto cuando esto corre: acá sólo
+    // se ponen al día las copias al registro global que una exportación previa
+    // no completó.
+    exportDispatchResolutions: (tenantId: string) =>
+        apiPost<DispatchResolutionExport>(`/dispatch-rollout/reconciliation/${tenantId}/export`, {}),
 
     // --- Auth ---
     login: (email: string, password: string) =>
@@ -2824,6 +2829,9 @@ async function apiGet<T = any>(endpoint: string): Promise<ApiEnvelope<T>> {
     }
 }
 
+// `httpStatus` viaja igual que en `apiGet`: hay refusals donde el código no
+// alcanza y el estado sí — un 409 significa que otra persona llegó primero, y
+// eso no se puede presentar como un formulario mal llenado.
 async function apiPost<T = any>(endpoint: string, body: any): Promise<ApiEnvelope<T>> {
     try {
         const res = await authFetch(endpoint, {
@@ -2831,7 +2839,7 @@ async function apiPost<T = any>(endpoint: string, body: any): Promise<ApiEnvelop
             body: JSON.stringify(body),
         });
         const json = await res.json();
-        if (!res.ok) return { success: false, error: json.message || `Error ${res.status}`, errorCode: json.error, fields: readFieldErrors(json) };
+        if (!res.ok) return { success: false, httpStatus: res.status, error: json.message || `Error ${res.status}`, errorCode: json.error, fields: readFieldErrors(json) };
         return json;
     } catch (err) {
         return { success: false, error: "Error de conexión" };

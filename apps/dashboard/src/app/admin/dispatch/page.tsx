@@ -2,28 +2,28 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
-import { AlertTriangle, CheckCircle2, Loader2, PowerOff, RefreshCw, Search, Send, ShieldAlert } from "lucide-react";
+import { AlertTriangle, CheckCircle2, FileClock, Loader2, PowerOff, RefreshCw, Search, Send, ShieldAlert, Signature } from "lucide-react";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { ConfirmStep } from "@/components/ui/confirm-step";
 import {
     DISPATCH_RESOLUTIONS,
     DISPATCH_ROLLOUT_CHANNELS,
-    asQueueRow,
+    asDispatchState,
     dispatchAgeParts,
-    dispatchErrorKind,
     dispatchResolutionBlock,
     dispatchSlaState,
-    dispatchStateFromRefusal,
     isDispatchResolvable,
     isDispatchRolloutInert,
     prepareDispatchResolution,
     prepareDispatchRollout,
+    readDispatchRefusal,
     settleQueueRow,
     sortDispatchQueue,
-    type DispatchQueueRow,
     type DispatchReconciliationBacklog,
+    type DispatchReconciliationEntry,
     type DispatchResolution,
+    type DispatchResolutionRecord,
     type DispatchRolloutState,
 } from "@/lib/dispatch-operations";
 
@@ -72,7 +72,7 @@ export default function DispatchOperationsPage() {
     const [tenants, setTenants] = useState<TenantOption[]>([]);
     const [queueTenant, setQueueTenant] = useState("");
     const [search, setSearch] = useState("");
-    const [rows, setRows] = useState<DispatchQueueRow[]>([]);
+    const [rows, setRows] = useState<DispatchReconciliationEntry[]>([]);
     const [backlog, setBacklog] = useState<DispatchReconciliationBacklog>(EMPTY_BACKLOG);
     const [slaSeconds, setSlaSeconds] = useState(3600);
     const [queueLoading, setQueueLoading] = useState(false);
@@ -86,7 +86,16 @@ export default function DispatchOperationsPage() {
     const [resolveConfirm, setResolveConfirm] = useState(false);
     const [resolveBusy, setResolveBusy] = useState(false);
     const [resolveError, setResolveError] = useState("");
+    const [resolveConflict, setResolveConflict] = useState(false);
     const [resolveNotice, setResolveNotice] = useState("");
+    // The decisions made from this screen, by the effect they closed. They are
+    // durable server-side; holding them here is only so the operator can read
+    // back what was recorded instead of a line saying the request worked.
+    const [decisions, setDecisions] = useState<Record<string, DispatchResolutionRecord>>({});
+
+    const [exportBusy, setExportBusy] = useState(false);
+    const [exportNotice, setExportNotice] = useState("");
+    const [exportError, setExportError] = useState("");
 
     const mounted = useRef(true);
     const queueGeneration = useRef(0);
@@ -105,7 +114,7 @@ export default function DispatchOperationsPage() {
         const [state, list] = await Promise.all([api.getDispatchRollout(), api.getTenants()]);
         if (!mounted.current) return;
         if (state.success && state.data) applyRollout(state.data);
-        else setRolloutError(t(`errors.${dispatchErrorKind(state)}`));
+        else setRolloutError(t(`errors.${readDispatchRefusal(state).kind}`));
         if (list.success && Array.isArray(list.data)) {
             setTenants((list.data as any[]).map(row => ({ id: String(row.id), name: String(row.name ?? row.id) })));
         }
@@ -121,16 +130,19 @@ export default function DispatchOperationsPage() {
         setQueueError("");
         setSelectedId(null);
         setResolveConfirm(false);
+        setResolveError("");
+        setResolveConflict(false);
         const result = await api.getDispatchReconciliation(tenantId, { search: term.trim() || undefined, limit: 100 });
         if (!mounted.current || generation !== queueGeneration.current) return;
         if (result.success && result.data) {
-            setRows(sortDispatchQueue((result.data.entries ?? []).map(asQueueRow)));
+            // Each entry states its own state now, so nothing is assumed here.
+            setRows(sortDispatchQueue(result.data.entries ?? []));
             setBacklog(result.data.backlog ?? EMPTY_BACKLOG);
             setSlaSeconds(Number(result.data.slaSeconds) || 3600);
         } else {
             setRows([]);
             setBacklog(EMPTY_BACKLOG);
-            setQueueError(t(`errors.${dispatchErrorKind(result)}`));
+            setQueueError(t(`errors.${readDispatchRefusal(result).kind}`));
         }
         setQueueLoaded(true);
         setQueueLoading(false);
@@ -156,13 +168,37 @@ export default function DispatchOperationsPage() {
             applyRollout(result.data);
             setRolloutNotice(t(mode === "disable" ? "rollout.disabledNotice" : "rollout.savedNotice"));
         } else {
-            setRolloutError(t(`errors.${dispatchErrorKind(result)}`));
+            setRolloutError(t(`errors.${readDispatchRefusal(result).kind}`));
         }
         setRolloutConfirm(null);
         setRolloutBusy(false);
     };
 
+    /**
+     * Catch up the copies of decisions that never reached the platform log.
+     *
+     * Nothing is lost while they wait: the decision, its author and its
+     * evidence commit with the state change, in the tenant's own schema. This
+     * only re-runs the copy, so it never reports more than it did.
+     */
+    const drainResolutionExports = async () => {
+        if (!queueTenant) return;
+        setExportBusy(true);
+        setExportNotice("");
+        setExportError("");
+        const result = await api.exportDispatchResolutions(queueTenant);
+        if (!mounted.current) return;
+        if (result.success && result.data) {
+            const { attempted = 0, remaining = 0 } = result.data;
+            setExportNotice(attempted === 0 ? t("export.empty") : t("export.done", { attempted, remaining }));
+        } else {
+            setExportError(t("export.failed"));
+        }
+        setExportBusy(false);
+    };
+
     const selected = rows.find(row => row.id === selectedId) ?? null;
+    const decision = selected ? decisions[selected.id] ?? null : null;
     const block = selected
         ? dispatchResolutionBlock(selected, { resolution, evidence, receipt })
         : "settled" as const;
@@ -171,6 +207,7 @@ export default function DispatchOperationsPage() {
         if (!selected || !queueTenant) return;
         setResolveBusy(true);
         setResolveError("");
+        setResolveConflict(false);
         setResolveNotice("");
         try {
             const body = prepareDispatchResolution(selected, { resolution, evidence, receipt });
@@ -179,6 +216,9 @@ export default function DispatchOperationsPage() {
             if (result.success && result.data) {
                 const settled = settleQueueRow(selected, result.data);
                 setRows(current => current.map(row => (row.id === settled.id ? settled : row)));
+                // The decision is a durable record with an author, not a
+                // fire-and-forget request: show what was written down.
+                setDecisions(current => ({ ...current, [settled.id]: result.data!.resolution }));
                 setBacklog(current => ({
                     total: Math.max(0, current.total - 1),
                     oldestAgeSeconds: current.oldestAgeSeconds,
@@ -191,9 +231,13 @@ export default function DispatchOperationsPage() {
             } else {
                 // A refusal that names the real state is the truth about this
                 // row: apply it so no second decision is offered on it.
-                const state = dispatchStateFromRefusal(result);
-                if (state) setRows(current => current.map(row => (row.id === selected.id ? { ...row, state } : row)));
-                setResolveError(t(`errors.${dispatchErrorKind(result)}`));
+                const refusal = readDispatchRefusal(result);
+                if (refusal.state) {
+                    const state = refusal.state;
+                    setRows(current => current.map(row => (row.id === selected.id ? { ...row, state } : row)));
+                }
+                setResolveConflict(refusal.conflict);
+                setResolveError(t(`errors.${refusal.kind}`));
             }
         } catch (thrown: any) {
             // The only throw here is the local verdict refusing to build a
@@ -208,6 +252,12 @@ export default function DispatchOperationsPage() {
     const age = (seconds: number) => {
         const { hours, minutes } = dispatchAgeParts(seconds);
         return t("queue.age", { hours, minutes });
+    };
+
+    /** A state the screen can name, or the raw value rather than a wrong label. */
+    const stateLabel = (value: string) => {
+        const state = asDispatchState(value);
+        return state ? t(`states.${state}`) : value;
     };
 
     return (
@@ -403,7 +453,11 @@ export default function DispatchOperationsPage() {
                             {t("queue.tenant")}
                         </label>
                         <select id="dispatch-queue-tenant" className={FIELD} value={queueTenant}
-                            onChange={event => { setQueueTenant(event.target.value); setRows([]); setQueueLoaded(false); setBacklog(EMPTY_BACKLOG); }}>
+                            onChange={event => {
+                                setQueueTenant(event.target.value); setRows([]); setQueueLoaded(false);
+                                setBacklog(EMPTY_BACKLOG); setDecisions({});
+                                setExportNotice(""); setExportError("");
+                            }}>
                             <option value="">{t("queue.selectTenant")}</option>
                             {tenants.map(tenant => <option key={tenant.id} value={tenant.id}>{tenant.name}</option>)}
                         </select>
@@ -448,6 +502,24 @@ export default function DispatchOperationsPage() {
                     </div>
                 )}
 
+                {queueTenant && (
+                    <div className="mt-4 rounded-lg border border-border bg-muted/40 p-4">
+                        <h3 className="text-sm font-semibold text-foreground">{t("export.title")}</h3>
+                        <p className="mt-1 max-w-3xl text-sm text-muted-foreground">{t("export.help")}</p>
+                        <button type="button" className={cn(BUTTON, "mt-3")} disabled={exportBusy}
+                            onClick={() => void drainResolutionExports()}>
+                            {exportBusy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                                : <FileClock className="h-4 w-4" aria-hidden="true" />}
+                            {t("export.run")}
+                        </button>
+                        <p aria-live="polite" className="sr-only">{exportNotice}</p>
+                        {exportNotice && <p className="mt-3 text-sm text-muted-foreground">{exportNotice}</p>}
+                        {exportError && (
+                            <p role="alert" className="mt-3 text-sm text-red-600 dark:text-red-400">{exportError}</p>
+                        )}
+                    </div>
+                )}
+
                 {queueLoading && <p role="status" className="mt-4 text-sm text-muted-foreground">{t("loading")}</p>}
 
                 {queueLoaded && !queueLoading && !queueError && rows.length === 0 && (
@@ -466,6 +538,7 @@ export default function DispatchOperationsPage() {
                                         <th scope="col" className="py-2 pr-3 font-medium text-muted-foreground">{t("queue.colAge")}</th>
                                         <th scope="col" className="py-2 pr-3 font-medium text-muted-foreground">{t("queue.colBinding")}</th>
                                         <th scope="col" className="py-2 pr-3 font-medium text-muted-foreground">{t("queue.colItem")}</th>
+                                        <th scope="col" className="py-2 pr-3 font-medium text-muted-foreground">{t("queue.colFailure")}</th>
                                         <th scope="col" className="py-2 pr-3 font-medium text-muted-foreground">{t("queue.colAttempts")}</th>
                                         <th scope="col" className="py-2 font-medium text-muted-foreground">{t("queue.colState")}</th>
                                     </tr>
@@ -498,6 +571,13 @@ export default function DispatchOperationsPage() {
                                                 </td>
                                                 <td className="py-2 pr-3 text-muted-foreground">
                                                     {t(`itemKinds.${row.itemKind}`)} · #{row.itemIndex}
+                                                </td>
+                                                {/* The provider failure that opened the row. A decision no
+                                                    longer writes over it, so it stays readable afterwards. */}
+                                                <td className="py-2 pr-3 text-muted-foreground">
+                                                    <span className="block max-w-[14rem] truncate" title={row.errorCode ?? undefined}>
+                                                        {row.errorCode ?? t("detail.none")}
+                                                    </span>
                                                 </td>
                                                 <td className="py-2 pr-3 tabular-nums text-muted-foreground">{row.attempts}</td>
                                                 <td className="py-2">
@@ -538,20 +618,73 @@ export default function DispatchOperationsPage() {
                                             </div>
                                         ))}
                                     </dl>
+                                    {selected.errorCode && (
+                                        <p className="mt-2 text-xs text-muted-foreground">{t("detail.errorCodeHelp")}</p>
+                                    )}
                                     {selected.redacted && (
                                         <p className="mt-3 rounded-lg border border-border bg-muted p-3 text-sm text-muted-foreground">
                                             {t("detail.redacted")}
                                         </p>
                                     )}
 
-                                    {resolveError && <p role="alert" className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-700 dark:text-red-300">{resolveError}</p>}
+                                    {/* A row somebody else settled answers 409. That is a race, not a
+                                        form to correct, so it reads as one and offers the only useful
+                                        action: read the queue again. */}
+                                    {resolveError && (
+                                        <div role="alert" className={cn("mt-3 rounded-lg border p-3 text-sm", resolveConflict
+                                            ? "border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-200"
+                                            : "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300")}>
+                                            <p>{resolveError}</p>
+                                            {resolveConflict && (
+                                                <button type="button" className={cn(BUTTON, "mt-2")} disabled={queueLoading}
+                                                    onClick={() => void loadQueue(queueTenant, search)}>
+                                                    <RefreshCw className="h-4 w-4" aria-hidden="true" />
+                                                    {t("errors.reload")}
+                                                </button>
+                                            )}
+                                        </div>
+                                    )}
                                     <p aria-live="polite" className="sr-only">{resolveNotice}</p>
-                                    {resolveNotice && <p className="mt-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-700 dark:text-emerald-300">{resolveNotice}</p>}
+
+                                    {/* What was written down, not just that the request came back:
+                                        the decision commits with the state change it authorises, so
+                                        its author, its evidence and the transition are facts now. */}
+                                    {decision && (
+                                        <div className="mt-3 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3">
+                                            <p className="flex items-center gap-2 text-sm font-medium text-emerald-700 dark:text-emerald-300">
+                                                <Signature className="h-4 w-4 shrink-0" aria-hidden="true" />
+                                                {t("recorded.title", { decision: t(`resolutions.${decision.resolution}.label`) })}
+                                            </p>
+                                            <p className="mt-1 text-xs text-muted-foreground">{t("recorded.durable")}</p>
+                                            <dl className="mt-2 space-y-1 text-xs">
+                                                {([
+                                                    ["recorded.author", decision.actorRole
+                                                        ? t("recorded.actorWithRole", { actor: decision.actorId, role: decision.actorRole })
+                                                        : decision.actorId],
+                                                    ["recorded.transition", t("recorded.transitionValue", {
+                                                        from: stateLabel(decision.previousState),
+                                                        to: stateLabel(decision.newState),
+                                                    })],
+                                                    ["recorded.evidence", decision.evidence],
+                                                    ["recorded.reference", decision.id],
+                                                ] as const).map(([key, value]) => (
+                                                    <div key={key} className="grid grid-cols-[6rem_minmax(0,1fr)] gap-2">
+                                                        <dt className="text-muted-foreground">{t(key)}</dt>
+                                                        <dd className="whitespace-pre-wrap break-words text-foreground">{value}</dd>
+                                                    </div>
+                                                ))}
+                                            </dl>
+                                        </div>
+                                    )}
 
                                     {!isDispatchResolvable(selected) ? (
-                                        <p className="mt-4 rounded-lg border border-border bg-muted p-3 text-sm text-muted-foreground">
-                                            {t("detail.alreadySettled", { state: t(`states.${selected.state}`) })}
-                                        </p>
+                                        // The card above already says what was decided and by whom;
+                                        // this is for a row settled somewhere else.
+                                        !decision && (
+                                            <p className="mt-4 rounded-lg border border-border bg-muted p-3 text-sm text-muted-foreground">
+                                                {t("detail.alreadySettled", { state: t(`states.${selected.state}`) })}
+                                            </p>
+                                        )
                                     ) : (
                                         <div className="mt-4 space-y-4">
                                             <fieldset>

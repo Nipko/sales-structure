@@ -13990,13 +13990,14 @@
       "reconciliation_required": "Décision requise"
     },
     "errors": {
-      "notReconcilable": "Cet effet a déjà été réglé autrement et son état a changé. Actualisez la file : on ne décide pas deux fois du même effet.",
+      "notReconcilable": "Quelqu'un d'autre a résolu cet effet avant vous et son état a déjà changé. Rien de ce que vous avez écrit n'a été appliqué : rechargez la file pour voir l'état actuel.",
       "redacted": "Cet effet a été effacé pour raisons de confidentialité. Ses mots ne peuvent être renvoyés sous aucune preuve.",
       "attemptsExhausted": "Cet effet a épuisé ses tentatives. Il ne peut plus être relancé ; enregistrez-le comme livré ou comme non livré.",
       "receiptRequired": "Le clôturer comme livré exige l'identifiant renvoyé par le fournisseur.",
       "evidenceRequired": "Écrivez ce que vous avez vérifié. Sans preuve, la décision n'est pas enregistrée.",
       "invalidRollout": "La configuration a été refusée : vérifiez les canaux et les comptes sélectionnés.",
-      "unavailable": "Nous n'avons pas pu vérifier cette information. Actualisez ou réessayez ; cela ne vaut ni succès ni absence de données."
+      "unavailable": "Nous n'avons pas pu vérifier cette information. Actualisez ou réessayez ; cela ne vaut ni succès ni absence de données.",
+      "reload": "Recharger la file"
     },
     "blocked": {
       "settled": "Cet effet a déjà une décision enregistrée.",
@@ -14063,7 +14064,8 @@
         "within": "dans le délai",
         "nearing": "proche du délai",
         "breaching": "au-delà du délai"
-      }
+      },
+      "colFailure": "Échec du fournisseur"
     },
     "detail": {
       "selectRow": "Sélectionnez un effet de la file pour voir son détail.",
@@ -14074,7 +14076,7 @@
       "account": "Compte du canal",
       "recipient": "Destinataire (partiel)",
       "receipt": "Reçu du fournisseur",
-      "errorCode": "Dernier code",
+      "errorCode": "Échec du fournisseur",
       "lease": "Jeton de bail",
       "none": "—",
       "redacted": "Cet effet a été effacé pour confidentialité : il peut être clôturé, jamais renvoyé.",
@@ -14084,7 +14086,8 @@
       "evidenceHelp": "Écrivez où et comment vous l'avez vérifié. C'est enregistré avec la décision. 500 caractères maximum.",
       "receiptInput": "Reçu du fournisseur",
       "receiptHelp": "L'identifiant du message tel que le fournisseur le renvoie.",
-      "review": "Revoir la décision"
+      "review": "Revoir la décision",
+      "errorCodeHelp": "C'est l'échec qui a laissé cet effet en suspens, pas la note de la décision : il est conservé tel quel après la résolution."
     },
     "resolutions": {
       "delivered": {
@@ -14111,6 +14114,24 @@
         "confirm": "Réessayer l'envoi",
         "done": "Enregistré : l'effet retourne dans la file d'envoi."
       }
+    },
+    "recorded": {
+      "title": "Décision enregistrée : {decision}",
+      "durable": "Elle a été enregistrée avec l'effet, dans la même transaction que le changement d'état, avec son auteur et l'intégralité de la preuve.",
+      "author": "Auteur",
+      "actorWithRole": "{actor} · {role}",
+      "transition": "État",
+      "transitionValue": "{from} → {to}",
+      "evidence": "Preuve",
+      "reference": "Enregistrement"
+    },
+    "export": {
+      "title": "Copies vers le journal de la plateforme",
+      "help": "Rien n'est perdu pendant qu'une copie attend : la décision, son auteur et sa preuve sont déjà enregistrés avec l'effet. Ceci ne fait que mettre à jour le journal d'audit de la plateforme, là où l'on cherche qui a résolu quoi.",
+      "run": "Mettre le journal à jour",
+      "done": "{attempted} copies tentées ; il en reste {remaining}.",
+      "empty": "Aucune copie n'était en attente.",
+      "failed": "Nous n'avons pas pu mettre le journal à jour. Les décisions restent enregistrées avec chaque effet ; réessayez."
     }
   },
   "agentPublications": {

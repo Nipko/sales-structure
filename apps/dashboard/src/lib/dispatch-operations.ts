@@ -57,6 +57,15 @@ export interface DispatchRolloutRequest {
  */
 export interface DispatchReconciliationEntry {
     id: string;
+    /**
+     * What the server says this row is, not what the client deduces it must be.
+     *
+     * The listing only returns `reconciliation_required`, so the surface used
+     * to assume it and carry the state itself. The entry states it now, and an
+     * assumption that happens to be right is still the wrong thing to decide an
+     * irreversible action on.
+     */
+    state: DispatchState;
     conversationId: string | null;
     inboundMessageId: string;
     channelType: string;
@@ -87,34 +96,73 @@ export interface DispatchReconciliationQueue {
     slaSeconds: number;
 }
 
-/** What `POST reconciliation/:tenantId/:dispatchId` answers with. */
+/**
+ * The decision itself, as the server recorded it.
+ *
+ * It is a row in the tenant schema written in the same transaction as the
+ * state change it authorises — not a log line written afterwards that could
+ * fail silently. So the screen can state that the decision is durable, who
+ * signed it and what it turned the effect into, instead of only that the
+ * request came back without an error.
+ */
+export interface DispatchResolutionRecord {
+    id: string;
+    dispatchId: string;
+    resolution: DispatchResolution;
+    evidence: string;
+    actorId: string;
+    actorRole: string | null;
+    /** Free-form on the wire; `asDispatchState` decides if it can be labelled. */
+    previousState: string;
+    /** The provider failure the decision replaced — kept, not overwritten. */
+    previousErrorCode: string | null;
+    newState: string;
+    receipt: string | null;
+    createdAt: string;
+}
+
+/**
+ * What `POST reconciliation/:tenantId/:dispatchId` answers with.
+ *
+ * The endpoint answers the whole dispatch row plus the decision, and that row
+ * carries the payload and the unmasked recipient. This type names only the
+ * fields the queue is allowed to use, so nothing that must not be shown can be
+ * reached from the screen by accident.
+ */
 export interface DispatchResolutionReceipt {
     id: string;
     state: DispatchState;
     attempts: number;
     receipt: string | null;
+    /** Still the provider failure that opened the row; never the decision. */
     errorCode: string | null;
+    resolution: DispatchResolutionRecord;
+}
+
+/** What the audit-copy drain answers with. */
+export interface DispatchResolutionExport {
+    attempted: number;
+    remaining: number;
 }
 
 /**
- * A queue row as the screen holds it.
+ * Adopt what the server said about a row a decision was just made on.
  *
- * The API only ever lists rows in `reconciliation_required`, so it does not
- * repeat the state in each entry. The screen must carry it anyway: once a
- * decision commits, the row in front of the operator describes a reality that
- * no longer exists, and offering a second irreversible decision on it is the
- * exact mistake this queue exists to prevent. So a settled row keeps its place
- * in the list with the state the server returned, and stops being actionable.
+ * The listing states each row's state, so nothing is inferred here; this is
+ * only the update afterwards. It matters because the row in front of the
+ * operator now describes a reality that is gone, and offering a second
+ * irreversible decision on it is the exact mistake this queue exists to
+ * prevent.
  */
-export interface DispatchQueueRow extends DispatchReconciliationEntry {
-    state: DispatchState;
-}
-
-export const asQueueRow = (entry: DispatchReconciliationEntry): DispatchQueueRow =>
-    ({ ...entry, state: "reconciliation_required" });
-
-export const settleQueueRow = (row: DispatchQueueRow, receipt: DispatchResolutionReceipt): DispatchQueueRow =>
+export const settleQueueRow = (
+    row: DispatchReconciliationEntry, receipt: DispatchResolutionReceipt,
+): DispatchReconciliationEntry =>
     ({ ...row, state: receipt.state, attempts: receipt.attempts, receipt: receipt.receipt, errorCode: receipt.errorCode });
+
+/** A state the screen has a label for, or null so it never prints a raw value. */
+export const asDispatchState = (value: unknown): DispatchState | null =>
+    typeof value === "string" && (DISPATCH_STATES as readonly string[]).includes(value)
+        ? value as DispatchState : null;
 
 /** Why a resolution is not on offer. `null` means it is. */
 export type DispatchResolutionBlock =
@@ -139,7 +187,7 @@ export interface DispatchResolutionInput {
  * been decided.
  */
 export function dispatchResolutionBlock(
-    row: Pick<DispatchQueueRow, "state" | "redacted" | "attempts">,
+    row: Pick<DispatchReconciliationEntry, "state" | "redacted" | "attempts">,
     input: DispatchResolutionInput,
 ): DispatchResolutionBlock | null {
     if (row.state !== "reconciliation_required") return "settled";
@@ -157,12 +205,12 @@ export function dispatchResolutionBlock(
 }
 
 /** Any resolution at all, for deciding whether the row shows actions. */
-export const isDispatchResolvable = (row: Pick<DispatchQueueRow, "state">): boolean =>
+export const isDispatchResolvable = (row: Pick<DispatchReconciliationEntry, "state">): boolean =>
     row.state === "reconciliation_required";
 
 /** The body the API accepts. Built only from a verdict that allowed it. */
 export function prepareDispatchResolution(
-    row: Pick<DispatchQueueRow, "state" | "redacted" | "attempts">,
+    row: Pick<DispatchReconciliationEntry, "state" | "redacted" | "attempts">,
     input: DispatchResolutionInput,
 ): { resolution: DispatchResolution; evidence: string; receipt?: string } {
     const block = dispatchResolutionBlock(row, input);
@@ -173,14 +221,7 @@ export function prepareDispatchResolution(
         : { resolution: input.resolution, evidence };
 }
 
-/**
- * Fixed categories only: a refusal is translated, never printed raw.
- *
- * The dispatch controller raises `BadRequestException(code)`, so the stable
- * code arrives as the message rather than in `errorCode` — reading only one of
- * the two would show "Bad Request" to an operator holding an irreversible
- * decision.
- */
+/** Fixed categories only: a refusal is translated, never printed raw. */
 export type DispatchErrorKind =
     | "notReconcilable"
     | "redacted"
@@ -190,10 +231,20 @@ export type DispatchErrorKind =
     | "invalidRollout"
     | "unavailable";
 
-export function dispatchErrorKind(envelope: Pick<ApiEnvelope<unknown>, "error" | "errorCode">): DispatchErrorKind {
-    const code = [envelope.errorCode, envelope.error]
-        .find(value => typeof value === "string" && value.startsWith("dispatch_")) ?? "";
-    if (code.startsWith("dispatch_not_reconcilable")) return "notReconcilable";
+export interface DispatchRefusal {
+    kind: DispatchErrorKind;
+    /**
+     * Somebody else settled this row between the read and the decision. It is
+     * a race, not a malformed request, and the only useful answer is to reload
+     * — so it cannot be shown as one more validation complaint about a form
+     * the operator filled in correctly.
+     */
+    conflict: boolean;
+    /** The state the refusal reports the row is really in, when it names one. */
+    state: DispatchState | null;
+}
+
+function refusalKind(code: string): DispatchErrorKind {
     if (code === "dispatch_redacted") return "redacted";
     if (code === "dispatch_attempts_exhausted") return "attemptsExhausted";
     if (code === "dispatch_receipt_required") return "receiptRequired";
@@ -202,14 +253,31 @@ export function dispatchErrorKind(envelope: Pick<ApiEnvelope<unknown>, "error" |
     return "unavailable";
 }
 
-/** The state a refusal reports the row is really in, when it says so. */
-export function dispatchStateFromRefusal(
-    envelope: Pick<ApiEnvelope<unknown>, "error" | "errorCode">,
-): DispatchState | null {
+/**
+ * What a refused request actually said, in the three terms the screen needs.
+ *
+ * Two endpoints on this page report a refusal in two shapes, and both are
+ * read. Reconciliation answers `{ error: code }`, so the stable code arrives
+ * in `errorCode`; the rollout `PUT` still raises the code as an exception
+ * message, so it arrives in `error` and `errorCode` says "Bad Request".
+ * Reading one field only would show an operator holding an irreversible
+ * decision the words "Bad Request".
+ *
+ * A 409 is a conflict whatever the body says: the status alone is the fact
+ * that somebody else got there first.
+ */
+export function readDispatchRefusal(
+    envelope: Pick<ApiEnvelope<unknown>, "error" | "errorCode" | "httpStatus">,
+): DispatchRefusal {
     const code = [envelope.errorCode, envelope.error]
-        .find(value => typeof value === "string" && value.startsWith("dispatch_not_reconcilable:")) ?? "";
-    const state = code.slice("dispatch_not_reconcilable:".length);
-    return (DISPATCH_STATES as readonly string[]).includes(state) ? state as DispatchState : null;
+        .find(value => typeof value === "string" && value.startsWith("dispatch_")) ?? "";
+    const conflict = envelope.httpStatus === 409 || code.startsWith("dispatch_not_reconcilable");
+    return {
+        kind: conflict ? "notReconcilable" : refusalKind(code),
+        conflict,
+        state: code.startsWith("dispatch_not_reconcilable:")
+            ? asDispatchState(code.slice("dispatch_not_reconcilable:".length)) : null,
+    };
 }
 
 export type DispatchSlaState = "within" | "nearing" | "breaching";
@@ -222,7 +290,9 @@ export function dispatchSlaState(ageSeconds: number, slaSeconds: number): Dispat
 }
 
 /** Oldest first, exactly like the queue: the longest uncertainty is the worst. */
-export const sortDispatchQueue = (rows: readonly DispatchQueueRow[]): DispatchQueueRow[] =>
+export const sortDispatchQueue = (
+    rows: readonly DispatchReconciliationEntry[],
+): DispatchReconciliationEntry[] =>
     [...rows].sort((a, b) => b.ageSeconds - a.ageSeconds || a.id.localeCompare(b.id));
 
 /**

@@ -34,7 +34,19 @@ export class KnowledgeConflictService {
     }
 
     private source(kind: ConflictSourceKind, row: any): ConflictSource {
-        const date = (input: any) => input && Number.isFinite(new Date(input).getTime()) ? new Date(input).toISOString().slice(0,10) : null;
+        // The calendar date the database holds, not a re-timezoned one. A policy
+        // keeps `effective_from` as a naive TIMESTAMP written by the database's
+        // own NOW(), and `new Date('2026-09-08T22:44:24')` reads a string with no
+        // offset as LOCAL time, which shifts it a day forward west of UTC —
+        // while `conflictSourceVisible` compares it against a date computed in
+        // UTC. A policy effective right now then reads as not yet effective for
+        // the last hours of every day, and its conflicts vanish from review.
+        const date = (input: any) => {
+            if (!input) return null;
+            const day = typeof input === 'string' ? /^(\d{4}-\d{2}-\d{2})/.exec(input) : null;
+            if (day) return day[1];
+            return Number.isFinite(new Date(input).getTime()) ? new Date(input).toISOString().slice(0, 10) : null;
+        };
         const revision = `${row.version ?? 1}:${row.updated_at ? new Date(row.updated_at).toISOString() : 'unknown'}`;
         const text = kind === 'document' ? row.content_text : kind === 'faq' ? `${row.question}\n${row.answer}` : kind === 'policy' ? row.content :
             ['name','about','address','city','country','phone','email','website'].filter(key => row[key]).map(key => `${key}: ${row[key]}`).join('\n');

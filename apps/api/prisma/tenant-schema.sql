@@ -5064,3 +5064,36 @@ CREATE INDEX IF NOT EXISTS idx_widget_agent_replies_conversation ON "{{SCHEMA_NA
 CREATE INDEX IF NOT EXISTS idx_widget_agent_reply_sources_source ON "{{SCHEMA_NAME}}"."widget_agent_reply_sources"(source_id,reply_id);
 CREATE INDEX IF NOT EXISTS idx_widget_agent_reply_sources_contact ON "{{SCHEMA_NAME}}"."widget_agent_reply_sources"(source_contact_id,reply_id);
 -- END WIDGET AGENT REPLY PROVENANCE
+
+-- BEGIN CANONICAL HANDOFF RECEIPT
+-- One inbound transfers a conversation at most once. The UNIQUE inbound makes
+-- recovering the customer notice free of a repeated transfer, and the from_status
+-- CHECK keeps a receipt an attestation that the agent still owned the
+-- conversation when the turn started. No cascading FK: erasure removes the words
+-- and this row must survive as the deduplication fact.
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_handoff_receipts" (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    conversation_id UUID NOT NULL,
+    contact_id UUID NOT NULL,
+    inbound_message_id UUID NOT NULL UNIQUE,
+    channel_type TEXT NOT NULL,
+    channel_account_id TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    from_status TEXT NOT NULL,
+    to_status TEXT NOT NULL,
+    notice_kind TEXT NOT NULL,
+    notice_language TEXT NOT NULL,
+    trace_id TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT agent_handoff_receipts_to_status
+        CHECK (to_status IN ('waiting_human','with_human')),
+    CONSTRAINT agent_handoff_receipts_from_status
+        CHECK (from_status NOT IN ('waiting_human','with_human','resolved','archived','closed')),
+    CONSTRAINT agent_handoff_receipts_notice_kind
+        CHECK (notice_kind IN ('queue_head','transferring','inbox_notice','none')),
+    CONSTRAINT agent_handoff_receipts_notice_language
+        CHECK (notice_language IN ('es','en','pt','fr'))
+);
+CREATE INDEX IF NOT EXISTS idx_agent_handoff_receipts_conversation
+    ON "{{SCHEMA_NAME}}"."agent_handoff_receipts"(conversation_id, created_at DESC);
+-- END CANONICAL HANDOFF RECEIPT

@@ -7,7 +7,11 @@ describe('HandoffService structured handoff', () => {
     const contactId = '33333333-3333-4333-8333-333333333333';
 
     function makeHarness() {
+        // Status, resolution flag and internal note now commit as one transition.
+        const transition = jest.fn().mockResolvedValue([]);
         const prisma: any = {
+            transactionInTenantSchema: jest.fn().mockImplementation(
+                async (_schema: string, callback: any) => callback(transition)),
             getTenantSchemaName: jest.fn().mockResolvedValue(schemaName),
             tenant: {
                 findUnique: jest.fn().mockImplementation(async (args: any) => (
@@ -79,7 +83,7 @@ describe('HandoffService structured handoff', () => {
             { runExclusive: jest.fn() } as any,
         );
         jest.spyOn(service as any, 'tryAutoAssign').mockResolvedValue(null);
-        return { service, prisma, redis, events, llm, aiResolution };
+        return { service, prisma, redis, events, llm, aiResolution, transition };
     }
 
     it('persists and emits the structured summary while preserving the legacy string', async () => {
@@ -103,11 +107,11 @@ describe('HandoffService structured handoff', () => {
             'human_request',
         );
 
-        const persistenceCall = h.prisma.executeInTenantSchema.mock.calls.find((call: any[]) =>
-            String(call[1]).includes('handoff_summary = $3::jsonb'));
+        const persistenceCall = h.transition.mock.calls.find((call: any[]) =>
+            String(call[0]).includes('handoff_summary = $3::jsonb'));
         expect(persistenceCall).toBeDefined();
-        const metadataHandoff = JSON.parse(persistenceCall[2][1]);
-        const structured = JSON.parse(persistenceCall[2][2]);
+        const metadataHandoff = JSON.parse(persistenceCall[1][1]);
+        const structured = JSON.parse(persistenceCall[1][2]);
         expect(metadataHandoff.summary).toEqual(expect.any(String));
         expect(metadataHandoff.structuredSummary).toEqual(structured);
         expect(structured).toMatchObject({

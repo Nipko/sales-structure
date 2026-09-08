@@ -18,6 +18,14 @@ import {
 } from '@parallext/shared';
 import { handoffAgentI18n } from './handoff-i18n';
 import {
+    HANDOFF_RECEIPT_DDL,
+    readHandoffReceipt,
+    recordHandoffReceipt,
+    type HandoffReceipt,
+    type HandoffReceiptLookup,
+    type HandoffReceiptRequest,
+} from './handoff-receipt';
+import {
     buildDeterministicHandoffSummary,
     formatLegacyHandoffSummary,
     HandoffMessageEvidence,
@@ -41,6 +49,24 @@ export interface HandoffResult {
     summary: string;
     structuredSummary: StructuredHandoffSummary;
     reason: string;
+    /**
+     * Present only when the caller asked for one. It is the durable authority a
+     * deterministic notice needs to reach a conversation a person now owns; the
+     * `handoffId` above is a Redis lookup key and never serves that purpose.
+     */
+    receipt?: HandoffReceipt;
+}
+
+/** Everything the transition transaction may do besides its own statements. */
+export interface HandoffDeliveryOptions {
+    beforeSideEffect?: () => Promise<void>;
+    awaitNotifications?: boolean;
+    /**
+     * Bind this transfer to the exact inbound that caused it. Only callers that
+     * already persisted that inbound can supply it; the rest keep today's
+     * behaviour and simply produce no receipt.
+     */
+    receipt?: HandoffReceiptRequest;
 }
 
 export interface HandoffEscalatedEvent {
@@ -69,6 +95,7 @@ interface AutoAssignment {
 export class HandoffService {
     private readonly logger = new Logger(HandoffService.name);
     private readonly handoffSchemaReady = new Set<string>();
+    private readonly handoffReceiptSchemaReady = new Set<string>();
 
     constructor(
         private prisma: PrismaService,
@@ -194,10 +221,14 @@ export class HandoffService {
         conversationId: string,
         message: NormalizedMessage,
         reason: string,
-        delivery?: { beforeSideEffect?: () => Promise<void>; awaitNotifications?: boolean },
+        delivery?: HandoffDeliveryOptions,
     ): Promise<HandoffResult> {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
         await this.ensureStructuredHandoffColumns(schemaName);
+        // Lazy DDL is hoisted above the transition transaction: neither the
+        // resolution columns nor the receipt table may be created inside it.
+        await this.aiResolutionService.ensureResolutionColumns(schemaName);
+        if (delivery?.receipt) await this.ensureHandoffReceiptTable(schemaName);
         // Tenant language drives the email template variant (fallback 'es').
         // These are agent/admin-facing notifications, so tenant language is the
         // right choice. TODO(i18n): for customer-facing emails use the
@@ -227,44 +258,61 @@ export class HandoffService {
         const handoffTriggeredAt = structuredSummary.generatedAt;
 
         await delivery?.beforeSideEffect?.();
-        // 2. Update conversation status to waiting_human
-        await this.prisma.executeInTenantSchema(schemaName,
-            `UPDATE conversations
-             SET status = 'waiting_human',
-                 metadata = jsonb_set(
-                     COALESCE(metadata, '{}'::jsonb),
-                     '{handoff}',
-                     $2::jsonb
-                 ),
-                 handoff_summary = $3::jsonb,
-                 handoff_trace_id = $4,
-                 handoff_summary_generated_at = $5::timestamptz,
-                 updated_at = NOW()
-             WHERE id = $1::uuid`,
-            [conversationId, JSON.stringify({
-                reason,
-                summary,
-                structuredSummary,
-                traceId: structuredSummary.traceId,
-                startedAt: handoffTriggeredAt,
-                contactId: message.contactId,
-            }), JSON.stringify(structuredSummary), structuredSummary.traceId, structuredSummary.generatedAt],
-        );
-
-        // 2b. Mark conversation as handed off for AI resolution tracking
-        await this.aiResolutionService.ensureResolutionColumns(schemaName);
-        await this.prisma.executeInTenantSchema(schemaName,
-            `UPDATE conversations SET was_handed_off = true, handoff_at = NOW() WHERE id = $1::uuid`,
-            [conversationId],
-        );
-
-        // 3. Create internal note documenting the handoff
+        // 2. The transition itself.
+        //
+        // Status, resolution flag, note and — when the caller asked for one —
+        // the durable receipt now commit together. They used to be three
+        // independent statements, so a failure between them could leave a
+        // conversation transferred with no note, or a receipt describing a
+        // transition that never happened. The receipt runs FIRST and inside the
+        // same transaction because it must observe, under the conversation row
+        // lock, the status the conversation still had before this update.
         const i18n = handoffAgentI18n(lang);
-        await this.prisma.executeInTenantSchema(schemaName,
-            `INSERT INTO internal_notes (conversation_id, agent_id, content, created_at)
-             VALUES ($1::uuid, NULL, $2, NOW())`,
-            [conversationId, i18n.noteText(reason, summary)],
-        );
+        const receipt = await this.prisma.transactionInTenantSchema(schemaName, async (query) => {
+            const recorded = delivery?.receipt
+                ? await recordHandoffReceipt(query, schemaName, {
+                    ...delivery.receipt,
+                    conversationId,
+                    toStatus: 'waiting_human',
+                    reason,
+                    traceId: structuredSummary.traceId,
+                })
+                : undefined;
+            await query(
+                `UPDATE conversations
+                 SET status = 'waiting_human',
+                     metadata = jsonb_set(
+                         COALESCE(metadata, '{}'::jsonb),
+                         '{handoff}',
+                         $2::jsonb
+                     ),
+                     handoff_summary = $3::jsonb,
+                     handoff_trace_id = $4,
+                     handoff_summary_generated_at = $5::timestamptz,
+                     updated_at = NOW()
+                 WHERE id = $1::uuid`,
+                [conversationId, JSON.stringify({
+                    reason,
+                    summary,
+                    structuredSummary,
+                    traceId: structuredSummary.traceId,
+                    startedAt: handoffTriggeredAt,
+                    contactId: message.contactId,
+                }), JSON.stringify(structuredSummary), structuredSummary.traceId, structuredSummary.generatedAt],
+            );
+            // 2b. Mark conversation as handed off for AI resolution tracking
+            await query(
+                `UPDATE conversations SET was_handed_off = true, handoff_at = NOW() WHERE id = $1::uuid`,
+                [conversationId],
+            );
+            // 3. Create internal note documenting the handoff
+            await query(
+                `INSERT INTO internal_notes (conversation_id, agent_id, content, created_at)
+                 VALUES ($1::uuid, NULL, $2, NOW())`,
+                [conversationId, i18n.noteText(reason, summary)],
+            );
+            return recorded;
+        });
 
         // 4. Get contact info for notifications
         const contactInfo = await this.prisma.executeInTenantSchema<any[]>(schemaName,
@@ -423,7 +471,72 @@ export class HandoffService {
             summary,
             structuredSummary,
             reason,
+            receipt,
         };
+    }
+
+    /**
+     * Bootstrap the receipt table outside any privacy or transition transaction.
+     * Ownership is checked by the callers that already resolved this schema for
+     * the tenant; no DDL may run once the transition transaction is open.
+     */
+    private async ensureHandoffReceiptTable(schemaName: string): Promise<void> {
+        if (this.handoffReceiptSchemaReady.has(schemaName)) return;
+        for (const statement of HANDOFF_RECEIPT_DDL) {
+            await this.prisma.executeInTenantSchema(schemaName, statement);
+        }
+        this.handoffReceiptSchemaReady.add(schemaName);
+    }
+
+    /**
+     * Recover the receipt of a transfer already performed for this exact inbound.
+     *
+     * A caller uses this BEFORE deciding to escalate: a receipt means the
+     * transfer happened, so the notice is reproduced from it and the transfer is
+     * never repeated. Null means this inbound never transferred the conversation.
+     */
+    async lookupHandoffReceipt(tenantId: string, lookup: HandoffReceiptLookup): Promise<HandoffReceipt | null> {
+        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
+        await this.ensureHandoffReceiptTable(schemaName);
+        return this.prisma.transactionInTenantSchema(schemaName,
+            (query) => readHandoffReceipt(query, schemaName, lookup));
+    }
+
+    /**
+     * Escalate once for this inbound, or recover what a previous attempt already
+     * recorded. The two-step shape is deliberate: a concurrent turn that lost the
+     * unique index rolls its whole transition back, so notes, assignment and
+     * notifications are never repeated to obtain a notice that already exists.
+     */
+    async executeHandoffOnce(
+        tenantId: string,
+        conversationId: string,
+        message: NormalizedMessage,
+        reason: string,
+        request: HandoffReceiptRequest,
+        delivery?: Omit<HandoffDeliveryOptions, 'receipt'>,
+    ): Promise<HandoffReceipt> {
+        const lookup: HandoffReceiptLookup = {
+            conversationId, contactId: request.contactId, inboundMessageId: request.inboundMessageId,
+        };
+        const existing = await this.lookupHandoffReceipt(tenantId, lookup);
+        if (existing) return existing;
+        try {
+            const result = await this.executeHandoff(tenantId, conversationId, message, reason,
+                { ...delivery, receipt: request });
+            if (!result.receipt) throw new Error('handoff_receipt_unavailable');
+            return result.receipt;
+        } catch (error) {
+            // A concurrent turn can win either the unique inbound index or the
+            // conversation row lock: the loser then sees a status a receipt may
+            // not transition out of. Both are the same fact — somebody else
+            // already transferred this inbound — and its receipt is canonical.
+            // Our own transition rolled back whole, so nothing was repeated.
+            // Any error that leaves no receipt behind is a genuine failure.
+            const recorded = await this.lookupHandoffReceipt(tenantId, lookup).catch(() => null);
+            if (recorded) return recorded;
+            throw error;
+        }
     }
 
     /**

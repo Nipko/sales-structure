@@ -1,14 +1,47 @@
 import { ConversationsService } from './conversations.service';
+import { randomUUID } from 'crypto';
+import type { WidgetAgentReplyReceipt } from '../widget/widget-agent-reply.store';
+import { handoffNoticeText } from '../handoff/handoff-notice';
+import type { HandoffReceipt } from '../handoff/handoff-receipt';
 
-async function collect(stream: AsyncGenerator<string, void, unknown>): Promise<string> {
-    let output = '';
-    for await (const chunk of stream) output += chunk;
-    return output;
+const storedTexts = new Map<string, string>();
+async function collect(pending: Promise<WidgetAgentReplyReceipt | null>): Promise<string> {
+    const receipt = await pending;
+    return receipt?.status === 'stored' ? receipt.messages.map(ref => storedTexts.get(ref.messageId) || '').join('') : '';
 }
 
 describe('ConversationsService widget containment', () => {
     function makeService(overrides: Record<string, any> = {}) {
         const service: any = Object.create(ConversationsService.prototype);
+        const receipts = new Map<string, WidgetAgentReplyReceipt>();
+        const widgetAgentReplies = {
+            lookup: jest.fn(async (_tenant: string, input: any) => receipts.get(input.inboundMessageId) || null),
+            commit: jest.fn(async (input: any): Promise<WidgetAgentReplyReceipt> => {
+                const messageId = randomUUID();
+                storedTexts.set(messageId, input.text);
+                const receipt: WidgetAgentReplyReceipt = { status: 'stored',
+                    messages: [{ tenantId: input.tenantId, conversationId: input.conversationId, messageId }] };
+                receipts.set(input.inboundMessageId, receipt);
+                return receipt;
+            }),
+            historyFootprints: jest.fn(async () => ({ footprints: [], trustedMessageIds: [] })),
+            // Mirrors the store: the sentence comes from the receipt, never from
+            // the caller, and the turn's own answer precedes it when it exists.
+            commitHandoffNotice: jest.fn(async (input: any): Promise<WidgetAgentReplyReceipt | null> => {
+                const handoff = handoffReceipts.get(input.inboundMessageId);
+                if (!handoff) throw new Error('widget_agent_reply_handoff_receipt_required');
+                const text = [input.precedingText, handoffNoticeText(handoff.noticeKind, handoff.noticeLanguage)]
+                    .filter(Boolean).join('\n\n');
+                if (!text) return null;
+                const messageId = randomUUID();
+                storedTexts.set(messageId, text);
+                const receipt: WidgetAgentReplyReceipt = { status: 'stored',
+                    messages: [{ tenantId: input.tenantId, conversationId: input.conversationId, messageId }] };
+                receipts.set(input.inboundMessageId, receipt);
+                return receipt;
+            }),
+        };
+        const handoffReceipts = new Map<string, HandoffReceipt>();
         const redis = {
             acquireLockToken: jest.fn().mockResolvedValue('lock-token'),
             renewLockToken: jest.fn().mockResolvedValue(true),
@@ -25,9 +58,9 @@ describe('ConversationsService widget containment', () => {
                     { id: 'old-1', direction: 'inbound', content_text: 'previous question' },
                 ];
                 if (sql.includes('SELECT * FROM conversations')) {
-                    return [{ id: 'conversation-1', contact_id: 'contact-1', channel_account_id: 'widget', status: 'active', updated_at: new Date() }];
+                    return [{ id: '20000000-0000-4000-8000-000000000002', contact_id: '30000000-0000-4000-8000-000000000003', channel_account_id: 'widget', status: 'active', updated_at: new Date() }];
                 }
-                if (sql.includes('SELECT * FROM contacts')) return [{ id: 'contact-1', name: 'Alice', external_id: 'widget_alice' }];
+                if (sql.includes('SELECT * FROM contacts')) return [{ id: '30000000-0000-4000-8000-000000000003', name: 'Alice', external_id: 'widget_alice' }];
                 if (sql.includes('SELECT * FROM leads')) return [{ id: 'lead-1' }];
                 return [];
             }),
@@ -69,11 +102,13 @@ describe('ConversationsService widget containment', () => {
             redis,
             prisma,
             throttle,
+            widgetAgentReplies,
             llmRouter,
             personaService: {
                 resolvePersonaForChannel: jest.fn().mockResolvedValue({
                     agentId: '11111111-1111-4111-8111-111111111111',
                     version: 3,
+                    operationalHash: 'a'.repeat(64),
                     config: {
                         language: 'en',
                         hours: { timezone: 'Europe/Paris' },
@@ -85,6 +120,22 @@ describe('ConversationsService widget containment', () => {
             handoffService: {
                 shouldHandoff: jest.fn().mockReturnValue(null),
                 executeHandoff: jest.fn(),
+                // One transfer per inbound; a repeat recovers what it recorded.
+                executeHandoffOnce: jest.fn(async (_tenant: string, conversationId: string,
+                    _message: any, reason: string, request: any): Promise<HandoffReceipt> => {
+                    const existing = handoffReceipts.get(request.inboundMessageId);
+                    if (existing) return existing;
+                    const receipt = Object.freeze({
+                        id: randomUUID(), conversationId, contactId: request.contactId,
+                        inboundMessageId: request.inboundMessageId, channelType: 'web_widget',
+                        channelAccountId: 'widget', reason, fromStatus: 'active', toStatus: 'waiting_human',
+                        noticeKind: request.noticeKind, noticeLanguage: request.noticeLanguage, traceId: null,
+                    }) as HandoffReceipt;
+                    handoffReceipts.set(request.inboundMessageId, receipt);
+                    return receipt;
+                }),
+                lookupHandoffReceipt: jest.fn(async (_tenant: string, lookup: any) =>
+                    handoffReceipts.get(lookup.inboundMessageId) || null),
             },
             languageDetector: { detect: jest.fn().mockReturnValue('en') },
             promptAssembler: {
@@ -107,7 +158,7 @@ describe('ConversationsService widget containment', () => {
             ].map((day) => [day, { enabled: false }])),
         });
         service.buildQuotaFallbackMessage = jest.fn().mockResolvedValue('quota fallback');
-        return { service: service as ConversationsService, redis, prisma, throttle, llmRouter };
+        return { service: service as ConversationsService, redis, prisma, throttle, llmRouter, widgetAgentReplies };
     }
 
     it('fails closed without calling the provider when the conversation lock is unavailable', async () => {
@@ -115,9 +166,7 @@ describe('ConversationsService widget containment', () => {
             redis: { acquireLockToken: jest.fn().mockRejectedValue(new Error('redis unavailable')) },
         });
 
-        await expect(collect(service.streamWidgetMessage(
-            'tenant-1', 'tenant_1', 'conversation-1', 'contact-1', 'hello', 'inbound-1',
-        ))).rejects.toThrow('conversation_locked');
+        await expect(collect(service.processWidgetMessage('10000000-0000-4000-8000-000000000001', 'tenant_1', '20000000-0000-4000-8000-000000000002', '30000000-0000-4000-8000-000000000003', 'hello', { inboundMessageId: '40000000-0000-4000-8000-000000000004' }))).rejects.toThrow('conversation_locked');
         expect(throttle.getPlanFeatures).not.toHaveBeenCalled();
         expect(llmRouter.executeStream).not.toHaveBeenCalled();
     });
@@ -125,30 +174,30 @@ describe('ConversationsService widget containment', () => {
     it('delegates to the shared domain coordinator with contact, channel and inbound identity', async () => {
         const { service, prisma, throttle, llmRouter, redis } = makeService();
 
-        await expect(collect(service.streamWidgetMessage(
-            'tenant-1', 'tenant_1', 'conversation-1', 'contact-1', 'current question', 'inbound-1',
-        ))).resolves.toBe('safe reply');
+        await expect(collect(service.processWidgetMessage('10000000-0000-4000-8000-000000000001', 'tenant_1', '20000000-0000-4000-8000-000000000002', '30000000-0000-4000-8000-000000000003', 'current question', { inboundMessageId: '40000000-0000-4000-8000-000000000004' }))).resolves.toBe('safe reply');
 
         expect((service as any).generateResponse).toHaveBeenCalledWith(
-            'tenant-1', expect.objectContaining({ id: 'conversation-1' }),
+            '10000000-0000-4000-8000-000000000001', expect.objectContaining({ id: '20000000-0000-4000-8000-000000000002' }),
             expect.objectContaining({ channelType: 'web_widget', channelAccountId: 'widget', content: { type: 'text', text: 'current question' } }),
-            expect.anything(), expect.objectContaining({ id: 'contact-1' }), { id: 'lead-1' },
+            expect.anything(), expect.objectContaining({ id: '30000000-0000-4000-8000-000000000003' }), { id: 'lead-1' },
             expect.any(Date), expect.objectContaining({ timezone: 'Europe/Paris' }),
-            'inbound-1', '11111111-1111-4111-8111-111111111111', undefined, 3,
+            '40000000-0000-4000-8000-000000000004', '11111111-1111-4111-8111-111111111111', undefined, 3,
+            expect.objectContaining({ kind: 'agent', version: 3, operationalHash: 'a'.repeat(64) }),
+            expect.objectContaining({ addExamples: expect.any(Function), getFootprints: expect.any(Function) }),
         );
         expect(llmRouter.executeStream).not.toHaveBeenCalled();
-        expect(throttle.incrementAiMessageCount).toHaveBeenCalledWith('tenant-1');
-        expect(redis.releaseLockToken).toHaveBeenCalledWith('lock:conv:conversation-1', 'lock-token');
+        expect(throttle.incrementAiMessageCount).toHaveBeenCalledWith('10000000-0000-4000-8000-000000000001');
+        expect(redis.releaseLockToken).toHaveBeenCalledWith('lock:conv:20000000-0000-4000-8000-000000000002', 'lock-token');
         expect(prisma.executeInTenantSchema.mock.calls[0][1]).toContain('contact_id = $2::uuid AND channel_type = $3');
     });
 
     it('uses the current widget connection for persona routing and rejects a different conversation account', async () => {
         const { service, prisma } = makeService();
-        await collect(service.streamWidgetMessage('tenant-1', 'tenant_1', 'conversation-1', 'contact-1', 'hello', 'inbound-1', { channelAccountId: 'wgt_current' }));
-        expect((service as any).personaService.resolvePersonaForChannel).toHaveBeenCalledWith('tenant-1', 'web_widget', 'wgt_current');
+        await collect(service.processWidgetMessage('10000000-0000-4000-8000-000000000001', 'tenant_1', '20000000-0000-4000-8000-000000000002', '30000000-0000-4000-8000-000000000003', 'hello', { inboundMessageId: '40000000-0000-4000-8000-000000000004', ...{ channelAccountId: 'wgt_current' } }));
+        expect((service as any).personaService.resolvePersonaForChannel).toHaveBeenCalledWith('10000000-0000-4000-8000-000000000001', 'web_widget', 'wgt_current');
         expect((service as any).generateResponse.mock.calls[0][2].channelAccountId).toBe('wgt_current');
-        prisma.executeInTenantSchema.mockResolvedValueOnce([{ id: 'conversation-1', contact_id: 'contact-1', channel_account_id: 'wgt_other' }]);
-        await expect(collect(service.streamWidgetMessage('tenant-1', 'tenant_1', 'conversation-1', 'contact-1', 'hello', 'inbound-2', { channelAccountId: 'wgt_current' }))).rejects.toThrow('widget_conversation_scope_mismatch');
+        prisma.executeInTenantSchema.mockResolvedValueOnce([{ id: '20000000-0000-4000-8000-000000000002', contact_id: '30000000-0000-4000-8000-000000000003', channel_account_id: 'wgt_other' }]);
+        await expect(collect(service.processWidgetMessage('10000000-0000-4000-8000-000000000001', 'tenant_1', '20000000-0000-4000-8000-000000000002', '30000000-0000-4000-8000-000000000003', 'hello', { inboundMessageId: '40000000-0000-4000-8000-000000000005', ...{ channelAccountId: 'wgt_current' } }))).rejects.toThrow('widget_conversation_scope_mismatch');
         expect((service as any).generateResponse).toHaveBeenCalledTimes(1);
     });
 
@@ -159,9 +208,7 @@ describe('ConversationsService widget containment', () => {
             },
         });
 
-        await expect(collect(service.streamWidgetMessage(
-            'tenant-1', 'tenant_1', 'conversation-1', 'contact-1', 'hello', 'inbound-1',
-        ))).resolves.toBe('quota fallback');
+        await expect(collect(service.processWidgetMessage('10000000-0000-4000-8000-000000000001', 'tenant_1', '20000000-0000-4000-8000-000000000002', '30000000-0000-4000-8000-000000000003', 'hello', { inboundMessageId: '40000000-0000-4000-8000-000000000004' }))).resolves.toBe('quota fallback');
         expect(throttle.incrementAiMessageCount).not.toHaveBeenCalled();
         expect(llmRouter.executeStream).not.toHaveBeenCalled();
         expect(prisma.executeInTenantSchema.mock.calls.some(
@@ -174,11 +221,10 @@ describe('ConversationsService widget containment', () => {
         const handoff = (service as any).handoffService;
         handoff.shouldHandoff.mockReturnValue('human_requested');
 
-        await expect(collect(service.streamWidgetMessage(
-            'tenant-1', 'tenant_1', 'conversation-1', 'contact-1', 'human please', 'inbound-1',
-        ))).resolves.toContain('cannot transfer');
+        await expect(collect(service.processWidgetMessage('10000000-0000-4000-8000-000000000001', 'tenant_1', '20000000-0000-4000-8000-000000000002', '30000000-0000-4000-8000-000000000003', 'human please', { inboundMessageId: '40000000-0000-4000-8000-000000000004' }))).resolves.toContain('cannot transfer');
 
         expect(handoff.executeHandoff).not.toHaveBeenCalled();
+        expect(handoff.executeHandoffOnce).not.toHaveBeenCalled();
         expect(llmRouter.executeStream).not.toHaveBeenCalled();
     });
 
@@ -186,7 +232,7 @@ describe('ConversationsService widget containment', () => {
         const executeInTenantSchema = jest.fn(async (_schema: string, sql: string) => {
             if (sql.includes('SELECT id, direction, content_text FROM messages')) return [];
             if (sql.includes('SELECT * FROM conversations')) {
-                return [{ id: 'conversation-1', channel_account_id: 'widget', contact_id: 'contact-1', status: 'with_human' }];
+                return [{ id: '20000000-0000-4000-8000-000000000002', channel_account_id: 'widget', contact_id: '30000000-0000-4000-8000-000000000003', status: 'with_human' }];
             }
             return [];
         });
@@ -194,9 +240,7 @@ describe('ConversationsService widget containment', () => {
             prisma: { executeInTenantSchema },
         });
 
-        await expect(collect(service.streamWidgetMessage(
-            'tenant-1', 'tenant_1', 'conversation-1', 'contact-1', 'human follow-up', 'inbound-1',
-        ))).resolves.toBe('');
+        await expect(collect(service.processWidgetMessage('10000000-0000-4000-8000-000000000001', 'tenant_1', '20000000-0000-4000-8000-000000000002', '30000000-0000-4000-8000-000000000003', 'human follow-up', { inboundMessageId: '40000000-0000-4000-8000-000000000004' }))).resolves.toBe('');
 
         expect(executeInTenantSchema.mock.calls.some(
             (call: any[]) => String(call[1]).includes('SELECT * FROM conversations'),
@@ -212,13 +256,10 @@ describe('ConversationsService widget containment', () => {
         const handoff = (service as any).handoffService;
         handoff.shouldHandoff.mockReturnValue('human_requested');
 
-        const output = await collect(service.streamWidgetMessage(
-            'tenant-1', 'tenant_1', 'conversation-1', 'contact-1', 'human please', 'inbound-1',
-            { allowHumanHandoff: true },
-        ));
+        const output = await collect(service.processWidgetMessage('10000000-0000-4000-8000-000000000001', 'tenant_1', '20000000-0000-4000-8000-000000000002', '30000000-0000-4000-8000-000000000003', 'human please', { inboundMessageId: '40000000-0000-4000-8000-000000000004', ...{ allowHumanHandoff: true } }));
 
         expect(output).toContain('support team');
-        expect(handoff.executeHandoff).toHaveBeenCalledTimes(1);
+        expect(handoff.executeHandoffOnce).toHaveBeenCalledTimes(1);
         expect(llmRouter.executeStream).not.toHaveBeenCalled();
     });
 
@@ -233,19 +274,17 @@ describe('ConversationsService widget containment', () => {
             },
         });
 
-        await expect(collect(service.streamWidgetMessage(
-            'tenant-1', 'tenant_1', 'conversation-1', 'contact-1', 'hello', 'inbound-1',
-        ))).resolves.toBe('quota fallback');
-        expect(incrementAiMessageCount).toHaveBeenNthCalledWith(1, 'tenant-1');
-        expect(incrementAiMessageCount).toHaveBeenNthCalledWith(2, 'tenant-1', -1);
+        await expect(collect(service.processWidgetMessage('10000000-0000-4000-8000-000000000001', 'tenant_1', '20000000-0000-4000-8000-000000000002', '30000000-0000-4000-8000-000000000003', 'hello', { inboundMessageId: '40000000-0000-4000-8000-000000000004' }))).resolves.toBe('quota fallback');
+        expect(incrementAiMessageCount).toHaveBeenNthCalledWith(1, '10000000-0000-4000-8000-000000000001');
+        expect(incrementAiMessageCount).toHaveBeenNthCalledWith(2, '10000000-0000-4000-8000-000000000001', -1);
         expect(llmRouter.executeStream).not.toHaveBeenCalled();
     });
 
     it('reuses the finalized inbound reply without repeating tools or usage', async () => {
         const { service, redis, throttle } = makeService();
-        const run = () => collect(service.streamWidgetMessage('tenant-1', 'tenant_1', 'conversation-1', 'contact-1', 'book', 'inbound-1'));
+        const run = () => collect(service.processWidgetMessage('10000000-0000-4000-8000-000000000001', 'tenant_1', '20000000-0000-4000-8000-000000000002', '30000000-0000-4000-8000-000000000003', 'book', { inboundMessageId: '40000000-0000-4000-8000-000000000004' }));
         await run();
-        redis.get.mockResolvedValue(JSON.stringify({ conversationId: 'conversation-1', contactId: 'contact-1', text: 'safe reply' }));
+        redis.get.mockResolvedValue(JSON.stringify({ conversationId: '20000000-0000-4000-8000-000000000002', contactId: '30000000-0000-4000-8000-000000000003', text: 'safe reply' }));
         expect(await run()).toBe('safe reply');
         expect((service as any).generateResponse).toHaveBeenCalledTimes(1);
         expect(throttle.incrementAiMessageCount).toHaveBeenCalledTimes(1);
@@ -254,7 +293,7 @@ describe('ConversationsService widget containment', () => {
     it('rejects mismatched tenant scope before reading the conversation', async () => {
         const { service, prisma } = makeService();
         (service as any).tenantSchema.mockResolvedValue('tenant_other');
-        await expect(collect(service.streamWidgetMessage('tenant-1', 'tenant_1', 'conversation-1', 'contact-1', 'hello', 'inbound-1'))).rejects.toThrow('widget_tenant_scope_mismatch');
+        await expect(collect(service.processWidgetMessage('10000000-0000-4000-8000-000000000001', 'tenant_1', '20000000-0000-4000-8000-000000000002', '30000000-0000-4000-8000-000000000003', 'hello', { inboundMessageId: '40000000-0000-4000-8000-000000000004' }))).rejects.toThrow('widget_tenant_scope_mismatch');
         expect(prisma.executeInTenantSchema).not.toHaveBeenCalled();
     });
 
@@ -264,8 +303,9 @@ describe('ConversationsService widget containment', () => {
         const persona = await internal.personaService.resolvePersonaForChannel();
         persona.config.behavior = { draftMode: true };
         internal.handoffService.shouldHandoff.mockReturnValue('human_requested');
-        expect(await collect(service.streamWidgetMessage('tenant-1', 'tenant_1', 'conversation-1', 'contact-1', 'human please', 'inbound-1'))).toBe('');
+        expect(await collect(service.processWidgetMessage('10000000-0000-4000-8000-000000000001', 'tenant_1', '20000000-0000-4000-8000-000000000002', '30000000-0000-4000-8000-000000000003', 'human please', { inboundMessageId: '40000000-0000-4000-8000-000000000004' }))).toBe('');
         expect(internal.handoffService.executeHandoff).not.toHaveBeenCalled();
+        expect(internal.handoffService.executeHandoffOnce).not.toHaveBeenCalled();
         expect(prisma.executeInTenantSchema.mock.calls.some((call: any[]) => call[1].includes('pendingDraft'))).toBe(true);
         expect(internal.eventEmitter.emit).toHaveBeenCalledWith('draft.suggested', expect.objectContaining({ text: 'safe reply' }));
     });

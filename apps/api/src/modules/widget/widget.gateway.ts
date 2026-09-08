@@ -14,7 +14,6 @@ import {
 } from '@nestjs/websockets';
 import { Logger, Optional, UsePipes, ValidationPipe } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
-import { randomUUID } from 'crypto';
 import { Server, Socket } from 'socket.io';
 import { WidgetService } from './widget.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -314,32 +313,22 @@ export class WidgetGateway implements OnGatewayConnection, OnGatewayDisconnect, 
         inboundMessageId?: string,
     ): Promise<void> {
         client.emit('widget:typing', { isTyping: true });
-        const messageId = randomUUID();
-        let full = '';
-
         try {
-            for await (const chunk of this.conversations.streamWidgetMessage(
-                tenantId, schemaName, conversationId, contactId, text, inboundMessageId,
+            const receipt = await this.conversations.processWidgetMessage(
+                tenantId, schemaName, conversationId, contactId, text,
                 {
+                    inboundMessageId,
                     channelAccountId: (client as any).widgetSession?.widget_id,
                     allowHumanHandoff: hasWidgetCapability(
                         (client as any).widgetCapabilities as WidgetCapabilitySnapshot | undefined,
                         'human_handoff',
                     ),
                 },
-            )) {
-                if (!chunk) continue;
-                full += chunk;
-            }
-
-            // Nothing streamed (no persona, conversation handled by a human, or empty
-            // reply) → stay silent: no bubble, no sound, no persisted message.
-            if (full.trim()) {
-                if(!this.messages)throw new Error('widget_delivery_unavailable');
-                const stored=await this.messages.persist(tenantId,{conversationId,contactId,content:{type:'text',text:full},
-                    source:'ai',dedupeId:inboundMessageId?`reply:${inboundMessageId}`:messageId});
-                await this.syncClient(client,false,stored.id);
-            }
+            );
+            // Text and private provenance were committed together by the core.
+            // Session authorization is checked again while reading/emitting IDs.
+            for (const reference of receipt?.status === 'stored' ? receipt.messages : [])
+                await this.syncClient(client, false, reference.messageId);
         } catch (err: any) {
             this.logger.warn(`Widget AI stream failed: ${err.message}`);
             client.emit('widget:error', { code: 'assistant_turn_failed', message: 'Failed to process message' });

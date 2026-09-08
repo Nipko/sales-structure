@@ -1,6 +1,10 @@
 import { isCanonicalConsentRecovery, canonicalConsentRecoveryDirective } from './canonical-consent-recovery';
 import { servedAgentAuthority, type ServedAgentAuthority } from '../persona/served-agent-authority';
 import { LearningService } from '../learning/learning.service';
+import { WidgetAgentReplyStore, type WidgetAgentReplyReceipt } from '../widget/widget-agent-reply.store';
+import { createAgentReplyProvenanceCollector, createAgentReplySourceAuthority,
+    type AgentReplyProvenanceCollector } from './agent-reply-provenance';
+import { handoffNoticeLanguage, type HandoffNoticeKind } from '../handoff/handoff-notice';
 import type { RuntimeLearningExample } from '../learning/learning-contracts';
 import { LLMSourceAuthorityUnavailable } from '../ai/interfaces/llm-source-authority';
 import { learningRecoveryMessages } from './learning-recovery-messages';
@@ -244,6 +248,9 @@ const HANDOFF_MSG: Record<string, {
 };
 const handoffText = (lang?: string) => HANDOFF_MSG[(lang || 'es').slice(0, 2).toLowerCase()] || HANDOFF_MSG.es;
 
+/** A persisted row identifier, never a provider message id. */
+const PERSISTED_ID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+
 // Directive templates for an operation the SERVER executed after the customer
 // confirmed. Deterministic layer, so i18n'd here like HANDOFF_MSG. The failure
 // wording is deliberate: the model is told not to claim success, because the
@@ -418,6 +425,7 @@ export class ConversationsService {
         private verticalTurnContext?: VerticalTurnContextService,
         private turnCapabilityComposer?: TurnCapabilityComposerService,
         @Optional() private readonly learning?: LearningService,
+        @Optional() private readonly widgetAgentReplies?: WidgetAgentReplyStore,
     ) {}
 
     /**
@@ -1919,6 +1927,7 @@ export class ConversationsService {
         session?: AgentTurnSession,
         resolvedAgentVersion?: number,
         operationalScope?: ServedAgentAuthority,
+        replyProvenance?: AgentReplyProvenanceCollector,
     ): Promise<string> {
         const draftMode = config.behavior?.draftMode === true;
         const executionContext = session?.executionContext || (draftMode ? DRAFT_EXECUTION_CONTEXT : undefined);
@@ -1960,7 +1969,8 @@ export class ConversationsService {
             } : Reflect.get(target, key, receiver),
         });
         const toolExecutor = missionExecutor('tool');
-        const llmRouter = session ? sessionLlmRouter(this.llmRouter, session) : this.llmRouter;
+        const llmRouter = session ? sessionLlmRouter(this.llmRouter, session)
+            : replyProvenance ? this.replySourceRouter(operationalScope!.schemaName, replyProvenance) : this.llmRouter;
         const bookingEngine = this.bookingEngine.forExecution({ redis: cache as RedisService, toolExecutor: missionExecutor('booking') });
         const procedureEngine = session ? this.procedureEngine.forExecution({ redis: cache as RedisService, toolExecutor: missionExecutor('procedure'),
             definitions: {
@@ -2503,7 +2513,10 @@ export class ConversationsService {
             const reason = `capability_denied_intent:${blockedOperation}`;
             try {
                 if (!allowHumanHandoff) throw new Error('human_delivery_unavailable');
-                await this.handoffService.executeHandoff(tenantId, conversation.id, msg, reason);
+                // The transferring sentence below is this turn's own text, so the
+                // receipt adds no second announcement.
+                await this.escalateWithinTurn(tenantId, conversation, msg, reason, 'none',
+                    userLanguage, inboundMessageId, replyProvenance);
                 this.analyticsService.trackEvent({
                     tenantId,
                     eventType: 'handoff_triggered',
@@ -2698,12 +2711,10 @@ export class ConversationsService {
                     if (deniedResult.handoff) {
                         try {
                             if (!allowHumanHandoff) throw new Error('human_delivery_unavailable');
-                            await this.handoffService.executeHandoff(
-                                tenantId,
-                                conversation.id,
-                                msg,
-                                deniedResult.handoffReason || 'booking_unavailable',
-                            );
+                            // The engine text explains the refusal, not the transfer.
+                            await this.escalateWithinTurn(tenantId, conversation, msg,
+                                deniedResult.handoffReason || 'booking_unavailable', 'transferring',
+                                userLanguage, inboundMessageId, replyProvenance);
                         } catch (e: any) {
                             this.logger.warn(`[Booking] authority handoff failed: ${e.message}`);
                             engineProducedText = handoffText(userLanguage).unavailable;
@@ -2812,9 +2823,9 @@ export class ConversationsService {
                         if (!engineProducedText) engineProducedText = handoffText(userLanguage).transferring;
                         try {
                             if (!allowHumanHandoff) throw new Error('human_delivery_unavailable');
-                            await this.handoffService.executeHandoff(
-                                tenantId, conversation.id, msg, engineResult.handoffReason || 'booking_unavailable',
-                            );
+                            await this.escalateWithinTurn(tenantId, conversation, msg,
+                                engineResult.handoffReason || 'booking_unavailable', 'none',
+                                userLanguage, inboundMessageId, replyProvenance);
                         } catch (e: any) {
                             this.logger.warn(`[Booking] handoff failed: ${e.message}`);
                             engineProducedText = handoffText(userLanguage).unavailable;
@@ -2894,9 +2905,9 @@ export class ConversationsService {
                         if (!engineProducedText) engineProducedText = handoffText(userLanguage).transferring;
                         try {
                             if (!allowHumanHandoff) throw new Error('human_delivery_unavailable');
-                            await this.handoffService.executeHandoff(
-                                tenantId, conversation.id, msg, procResult.handoffReason || `Procedimiento: ${procResult.procedureName || ''}`,
-                            );
+                            await this.escalateWithinTurn(tenantId, conversation, msg,
+                                procResult.handoffReason || `Procedimiento: ${procResult.procedureName || ''}`, 'none',
+                                userLanguage, inboundMessageId, replyProvenance);
                         } catch (e: any) {
                             this.logger.warn(`[Procedure] handoff failed: ${e.message}`);
                             engineProducedText = handoffText(userLanguage).unavailable;
@@ -3246,6 +3257,7 @@ export class ConversationsService {
                     tenantId,
                     turnContext.regional?.operatingCountry,
                     session,
+                    replyProvenance,
                 );
                 const ragResults = await this.knowledgeService.searchRelevant(
                     tenantId, searchQuery, topK,
@@ -3334,12 +3346,15 @@ export class ConversationsService {
         // the live user turn — otherwise it would be duplicated in the prompt.
         // Reverse back to chronological order (oldest→newest) for the builders below.
         const historyDesc = session ? [...session.history].reverse().slice(0, 30).map((row, i) => ({ id: String(i), direction: row.role === 'user' ? 'inbound' : 'outbound', content_text: row.content })) : await this.prisma.executeInTenantSchema<any[]>(schemaName,
-            `SELECT id, direction, content_text FROM messages WHERE conversation_id = $1::uuid
+            `SELECT id, direction, content_text, metadata FROM messages WHERE conversation_id = $1::uuid
                AND ($2::uuid IS NULL OR id <> $2::uuid)
+               ${replyProvenance ? "AND content_type<>'redacted' AND content_text IS NOT NULL AND BTRIM(content_text)<>''" : ''}
              ORDER BY created_at DESC, id DESC LIMIT 30`,
             [conversation.id, inboundMessageId || null],
         );
         let history = (historyDesc || []).reverse();
+        if (replyProvenance) history = await this.widgetHistoryWithProvenance(
+            tenantId, schemaName, conversation.id, history, replyProvenance);
 
         // The tail of the customer's PREVIOUS conversation, when this one was
         // opened because the old one had been auto-resolved. Prepended so the
@@ -3347,7 +3362,10 @@ export class ConversationsService {
         // about the booking it made for them last week.
         const carriedContext = (conversation.metadata as any)?.carriedContext;
         if (Array.isArray(carriedContext) && carriedContext.length && history.length <= carriedContext.length) {
-            history = [...carriedContext, ...history];
+            // Old carried AI text has no private source receipt. Keep customer
+            // context and canonical active objects, without inventing provenance.
+            const carried = replyProvenance ? carriedContext.filter(row => row.direction === 'inbound') : carriedContext;
+            history = [...carried, ...history];
             this.logger.log(`[Pipeline] Prepended ${carriedContext.length} carried message(s) from the previous conversation`);
         }
 
@@ -3477,6 +3495,9 @@ export class ConversationsService {
             // attempt. Keep earlier examples too: generated tool-loop prose may
             // still derive from them after the visible style selection changes.
             const executeLearningModel:LLMRouterService['execute']=async request=>{
+                // Monotonic across attempts and guardrail rewrites, including
+                // examples whose later revocation forces this turn to stop.
+                replyProvenance?.addExamples([...learningFootprint.values()]);
                 if(session?.learningEvaluationSource&&(!this.learning||!resolvedAgentId))throw new LLMSourceAuthorityUnavailable();
                 const withSourceAuthority=!learningSuppressed&&(learningFootprint.size||session?.learningEvaluationSource)&&this.learning&&resolvedAgentId
                     ?this.learning.runtimeSourceAuthority(tenantId,resolvedAgentId,[...learningFootprint.values()],executionContext,session?.learningEvaluationSource):undefined;
@@ -3484,7 +3505,7 @@ export class ConversationsService {
                     return await llmRouter.execute({...request,withSourceAuthority,
                         ...(learningSuppressed?{systemPrompt,cacheableSystemPromptChars:cachePrefixChars,tools:undefined,task:'conversation' as const}:{})});
                 }catch(error){
-                    if(!(error instanceof LLMSourceAuthorityUnavailable)||session)throw error;
+                    if(!(error instanceof LLMSourceAuthorityUnavailable)||session||replyProvenance)throw error;
                     learningSuppressed=true;learningFootprint.clear();turnContext.learningExamples=[];
                     currentMessages.splice(0,currentMessages.length,...learningRecoveryMessages(messages,executedToolsThisTurn,userLanguage));
                     ({systemPrompt,cachePrefixChars}=this.promptAssembler.assembleWithCacheBoundary(config,turnContext,bizHours));
@@ -3906,7 +3927,10 @@ export class ConversationsService {
                         conversationId: conversation.id, contactId: conversation.contact_id || undefined,
                         data: { reason: postToolHandoff, afterIntake: true },
                     }).catch(() => {});
-                    await this.handoffService.executeHandoff(tenantId, conversation.id, msg, postToolHandoff);
+                    // The intake answer says nothing about the transfer, so the
+                    // receipt appends the deterministic transferring sentence.
+                    await this.escalateWithinTurn(tenantId, conversation, msg, postToolHandoff, 'transferring',
+                        userLanguage, inboundMessageId, replyProvenance);
                 } catch (e: any) {
                     // Nunca romper el turno por la escalada: el cliente ya recibió su
                     // respuesta y el intake quedó guardado.
@@ -3945,9 +3969,9 @@ export class ConversationsService {
                             contactId: conversation.contact_id || undefined,
                             data: { reason: 'agent_promised_handoff' },
                         }).catch(() => {});
-                        await this.handoffService.executeHandoff(
-                            tenantId, conversation.id, msg, 'agent_promised_handoff',
-                        );
+                        // The promise the model already made is the announcement.
+                        await this.escalateWithinTurn(tenantId, conversation, msg, 'agent_promised_handoff',
+                            'none', userLanguage, inboundMessageId, replyProvenance);
                     }
                 } catch (e: any) {
                     // Igual que arriba: la escalada no puede romper el turno.
@@ -4252,6 +4276,31 @@ export class ConversationsService {
      * using recent history (cheap tier). Self-contained questions pass through
      * unchanged so we don't add latency where it isn't needed.
      */
+    /** Only private server receipts can authorize AI history as a new source. */
+    private async widgetHistoryWithProvenance(tenantId: string, schemaName: string, conversationId: string,
+        rows: any[], provenance: AgentReplyProvenanceCollector): Promise<any[]> {
+        if (!this.widgetAgentReplies) throw new Error('widget_agent_reply_unavailable');
+        const outboundIds = rows.filter(row => row.direction === 'outbound' && row.id).map(row => row.id);
+        if (!outboundIds.length) return rows.filter(row => row.direction === 'inbound');
+        const inherited = await this.widgetAgentReplies.historyFootprints(tenantId, schemaName, conversationId, outboundIds);
+        provenance.addInherited(inherited.footprints);
+        const trusted = new Set(inherited.trustedMessageIds);
+        return rows.filter(row => row.direction === 'inbound' || trusted.has(row.id) || row.metadata?.source === 'agent');
+    }
+
+    /** Wrap every attempt, including auxiliary calls and provider fallbacks. */
+    private replySourceRouter(schemaName: string, provenance: AgentReplyProvenanceCollector): LLMRouterService {
+        const authority = createAgentReplySourceAuthority(this.prisma, schemaName, provenance);
+        return new Proxy(this.llmRouter, {
+            get: (target, key, receiver) => key === 'execute'
+                ? (request: Parameters<LLMRouterService['execute']>[0]) => target.execute({ ...request,
+                    withSourceAuthority: invoke => authority(
+                        () => request.withSourceAuthority ? request.withSourceAuthority(invoke) : invoke(),
+                        response => response.usage),
+                }) : Reflect.get(target, key, receiver),
+        });
+    }
+
     private async rewriteSearchQuery(
         userText: string,
         schemaName: string,
@@ -4259,6 +4308,7 @@ export class ConversationsService {
         tenantId: string,
         operatingCountry?: string | null,
         session?: AgentTurnSession,
+        replyProvenance?: AgentReplyProvenanceCollector,
     ): Promise<string> {
         // Una confirmación no tiene nada que expandir.
         //
@@ -4287,10 +4337,13 @@ export class ConversationsService {
         // which happens later in the pipeline). Skip the current inbound (OFFSET 1).
         let recent = '';
         try {
-            const rows = session ? [...session.history].reverse().slice(0, 5).map(row => ({ direction: row.role === 'user' ? 'inbound' : 'outbound', content_text: row.content })) : await this.prisma.executeInTenantSchema<any[]>(schemaName,
-                `SELECT direction, content_text FROM messages
-                 WHERE conversation_id = $1::uuid ORDER BY created_at DESC LIMIT 5 OFFSET 1`,
+            let rows: any[] = session ? [...session.history].reverse().slice(0, 5).map(row => ({ direction: row.role === 'user' ? 'inbound' : 'outbound', content_text: row.content })) : await this.prisma.executeInTenantSchema<any[]>(schemaName,
+                `SELECT id, direction, content_text, metadata FROM messages
+                 WHERE conversation_id = $1::uuid
+                 ${replyProvenance ? "AND content_type<>'redacted' AND content_text IS NOT NULL AND BTRIM(content_text)<>''" : ''}
+                 ORDER BY created_at DESC LIMIT 5 OFFSET 1`,
                 [conversationId]);
+            if (replyProvenance) rows = await this.widgetHistoryWithProvenance(tenantId, schemaName, conversationId, rows, replyProvenance);
             if (!rows?.length) return userText; // no prior context → nothing to resolve
             recent = rows.reverse()
                 .map(m => `${m.direction === 'inbound' ? 'Cliente' : 'Agente'}: ${(m.content_text || '').slice(0, 200)}`)
@@ -4301,7 +4354,8 @@ export class ConversationsService {
         if (!recent) return userText;
 
         try {
-            const resp = await (session ? sessionLlmRouter(this.llmRouter, session) : this.llmRouter).execute({
+            const resp = await (session ? sessionLlmRouter(this.llmRouter, session)
+                : replyProvenance ? this.replySourceRouter(schemaName, replyProvenance) : this.llmRouter).execute({
                 task: 'conversation',
                 messages: [{
                     role: 'user',
@@ -4956,44 +5010,38 @@ export class ConversationsService {
         return messages[lang] || messages.es;
     }
 
+    /**
+     * Run the common domain turn and admit its final answer locally. The gateway
+     * receives only a durable reference, never text it can independently save.
+     */
     async processWidgetMessage(
         tenantId: string,
         schemaName: string,
         conversationId: string,
         contactId: string,
         text: string,
-        options?: { allowHumanHandoff?: boolean; inboundMessageId?: string },
-    ): Promise<string | null> {
-        let reply = '';
-        for await (const chunk of this.streamWidgetMessage(
-            tenantId, schemaName, conversationId, contactId, text,
-            options?.inboundMessageId, options,
-        )) reply += chunk;
-        return reply || null;
-    }
-
-    /**
-     * The widget uses the same domain turn as messaging. Only a validated final
-     * answer reaches the transport: partial model text can precede tool results
-     * and must never become a customer-visible promise of an uncommitted action.
-     */
-    async *streamWidgetMessage(
-        tenantId: string,
-        schemaName: string,
-        conversationId: string,
-        contactId: string,
-        text: string,
-        inboundMessageId?: string,
-        options?: { allowHumanHandoff?: boolean; channelAccountId?: string },
-    ): AsyncGenerator<string, void, unknown> {
+        options?: { allowHumanHandoff?: boolean; channelAccountId?: string; inboundMessageId?: string },
+    ): Promise<WidgetAgentReplyReceipt | null> {
+        const inboundMessageId = options?.inboundMessageId;
+        if (!inboundMessageId || !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(inboundMessageId))
+            throw new Error('widget_inbound_identity_required');
+        if (!this.widgetAgentReplies) throw new Error('widget_agent_reply_unavailable');
         const entitlement = await resolveTenantSubscriptionAccess(this.prisma, tenantId, 'write');
-        if (!entitlement.allowed) return;
+        if (!entitlement.allowed) return null;
         const expectedSchema = await this.tenantSchema(tenantId);
         if (expectedSchema !== schemaName) throw new Error('widget_tenant_scope_mismatch');
         const channelAccountId = options?.channelAccountId || 'widget';
+        const binding = { conversationId, contactId, inboundMessageId, channelAccountId };
+        // Accepted/redacted receipts precede new configuration and quota checks.
+        // A replay is never a new generation under the latest agent's authority.
+        const previousReceipt = await this.widgetAgentReplies.lookup(tenantId, binding);
+        if (previousReceipt) return previousReceipt;
         const personaResolution = await this.personaService.resolvePersonaForChannel(tenantId, 'web_widget', channelAccountId);
         const config = personaResolution.config;
-        if (!config) return;
+        if (!config) return null;
+        const operationalScope = servedAgentAuthority(tenantId, schemaName, personaResolution);
+        if (!operationalScope) throw new Error('widget_agent_reply_authority_required');
+        const replyProvenance = createAgentReplyProvenanceCollector(operationalScope);
         const draftMode = config.behavior?.draftMode === true;
         const lockKey = 'lock:conv:' + conversationId;
         let lockToken: string | null = null;
@@ -5020,19 +5068,20 @@ export class ConversationsService {
             const conversation = conversations?.[0];
             if (!conversation || (conversation.channel_account_id !== 'widget' && conversation.channel_account_id !== channelAccountId))
                 throw new Error('widget_conversation_scope_mismatch');
-            if (conversation.status === 'waiting_human' || conversation.status === 'with_human') return;
+            if (conversation.status === 'waiting_human' || conversation.status === 'with_human') return null;
             const plan = await this.throttle.getPlanFeatures(tenantId);
-            if (plan.widget !== true) return;
-            const replyKey = inboundMessageId ? 'widget:reply:' + tenantId + ':' + inboundMessageId : null;
-            if (replyKey) {
-                const cached = await this.redis.get(replyKey);
-                if (cached) {
-                    const previous = JSON.parse(cached);
-                    if (previous.conversationId === conversationId && previous.contactId === contactId) {
-                        if (previous.text && !draftMode) yield previous.text;
-                        return;
-                    }
-                }
+            if (plan.widget !== true) return null;
+            const concurrentReceipt = await this.widgetAgentReplies.lookup(tenantId, binding);
+            if (concurrentReceipt) return concurrentReceipt;
+            const replyKey = 'widget:reply:' + tenantId + ':' + inboundMessageId;
+            const cached = await this.redis.get(replyKey);
+            if (cached) {
+                const previous = JSON.parse(cached);
+                if (previous.conversationId === conversationId && previous.contactId === contactId && previous.draft === true)
+                    return null;
+                // Legacy text has no provable agent/source revision. Neither
+                // relabel it nor regenerate a turn that may have run writers.
+                throw new Error('widget_legacy_reply_requires_review');
             }
             const contacts = await this.prisma.executeInTenantSchema<any[]>(schemaName,
                 'SELECT * FROM contacts WHERE id = $1::uuid LIMIT 1', [contactId],
@@ -5059,8 +5108,11 @@ export class ConversationsService {
                     reply = widgetHandoffUnavailableText(language);
                 } else {
                     try {
-                        await this.handoffService.executeHandoff(tenantId, conversationId, msg, handoffReason);
-                        reply = handoffText(language).queueHead;
+                        // The queue notice is not composed here. It belongs to the
+                        // receipt, so a retry reproduces it without transferring
+                        // again, and so the admission below can prove it is owed.
+                        await this.escalateWithinTurn(tenantId, conversation, msg, handoffReason,
+                            'queue_head', language, inboundMessageId, replyProvenance);
                     } catch {
                         reply = handoffText(language).unavailable;
                     }
@@ -5085,7 +5137,7 @@ export class ConversationsService {
                                 conversation.updated_at || conversation.created_at, businessHours,
                                 inboundMessageId, personaResolution.agentId ?? undefined,
                                 undefined,personaResolution.version ?? undefined,
-                                servedAgentAuthority(tenantId, schemaName, personaResolution),
+                                operationalScope, replyProvenance,
                             );
                             if (!reply || isErrorFallback(reply)) {
                                 await this.throttle.incrementAiMessageCount(tenantId, -1).catch(() => {});
@@ -5096,17 +5148,70 @@ export class ConversationsService {
             }
             if (reply && draftMode) {
                 await this.persistDraft(tenantId, schemaName, conversationId, reply, contact.name, inboundMessageId);
-            }
-            if (replyKey && reply && !isErrorFallback(reply)) {
                 await this.redis.set(replyKey, JSON.stringify({
-                    conversationId, contactId, text: draftMode ? null : reply, draft: draftMode,
+                    conversationId, contactId, draft: true,
                 }), 86400);
+                return null;
             }
-            if (reply && !draftMode) yield reply;
+            // Any of the escalation points above may have transferred the
+            // conversation during this turn. Its receipt — not the conversation
+            // status, which a person could also have changed — is what says this
+            // turn owes the customer a notice, and what authorizes admitting the
+            // answer it had already produced into a conversation now owned by a
+            // person. One indexed read decides between the two admissions.
+            const handoff = await this.handoffService.lookupHandoffReceipt(tenantId,
+                { conversationId, contactId, inboundMessageId });
+            if (handoff) {
+                try {
+                    return await this.widgetAgentReplies.commitHandoffNotice({ tenantId, schemaName, ...binding,
+                        operationalScope, learningFootprints: [...replyProvenance.getFootprints()],
+                        precedingText: reply?.trim() ? reply : undefined });
+                } catch (error: any) {
+                    // Somebody handed the conversation back inside this turn, so
+                    // the transfer notice would now be false. Fall through and
+                    // admit only what the turn itself produced.
+                    if (error?.message !== 'widget_agent_reply_handoff_no_longer_active') throw error;
+                }
+            }
+            if (!reply?.trim()) return null;
+            return await this.widgetAgentReplies.commit({ tenantId, schemaName, ...binding,
+                operationalScope, learningFootprints: [...replyProvenance.getFootprints()], text: reply });
         } finally {
             clearInterval(heartbeat);
             await this.redis.releaseLockToken(lockKey, token).catch(() => {});
         }
+    }
+
+    /**
+     * Escalate to a person from inside a turn.
+     *
+     * Six places in `generateResponse` can transfer a conversation after the turn
+     * has already produced words for the customer, plus the direct trigger in the
+     * Web Chat entry point. On the Web Chat core all of them bind the transfer to
+     * the inbound that caused it, so the local admission can still deliver that
+     * answer and the deterministic notice once a person owns the conversation,
+     * and so a retry recovers the notice instead of transferring a second time.
+     *
+     * Other channels keep the unbound transfer: their outbound path has no local
+     * admission that a human-owned status could reject, and binding them needs
+     * their own inbound-persistence inventory. `noticeKind` says what the
+     * customer still has to be told; `none` is for a turn whose own text already
+     * announced the transfer.
+     */
+    private async escalateWithinTurn(
+        tenantId: string, conversation: any, msg: NormalizedMessage, reason: string,
+        noticeKind: HandoffNoticeKind, language?: string,
+        inboundMessageId?: string, replyProvenance?: AgentReplyProvenanceCollector,
+    ): Promise<void> {
+        const contactId = String(conversation?.contact_id || '');
+        if (!replyProvenance || !inboundMessageId
+            || !PERSISTED_ID.test(inboundMessageId) || !PERSISTED_ID.test(contactId)) {
+            await this.handoffService.executeHandoff(tenantId, conversation.id, msg, reason);
+            return;
+        }
+        await this.handoffService.executeHandoffOnce(tenantId, conversation.id, msg, reason, {
+            contactId, inboundMessageId, noticeKind, noticeLanguage: handoffNoticeLanguage(language),
+        });
     }
 
     /** A persisted suggestion is the only output of a draft turn. */

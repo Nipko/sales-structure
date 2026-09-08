@@ -186,6 +186,14 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
                 .rejects.toBeInstanceOf(HandoffReceiptBindingChanged);
             expect(await sql('SELECT id FROM agent_handoff_receipts')).toHaveLength(0);
         });
+
+        it('truncates a long reason instead of aborting a transfer over evidence', async () => {
+            const f = await fixture();
+            const receipt = await tx(query => recordHandoffReceipt(query, schema,
+                request(f, { reason: `Procedimiento: ${'n'.repeat(900)}` })));
+            expect(receipt.reason).toHaveLength(500);
+            expect(receipt.reason.startsWith('Procedimiento: ')).toBe(true);
+        });
     });
 
     describe('one transfer per inbound', () => {

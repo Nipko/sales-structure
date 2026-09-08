@@ -155,9 +155,13 @@ export async function recordHandoffReceipt(query: HandoffReceiptQuery, schema: s
         || ![input.conversationId, input.contactId, input.inboundMessageId].every(id => UUID.test(String(id)))
         || !isHandoffNoticeKind(input.noticeKind)
         || !HANDOFF_HUMAN_STATUSES.includes(input.toStatus)
-        || typeof input.reason !== 'string' || !input.reason.trim() || input.reason.length > MAX_REASON) {
+        || typeof input.reason !== 'string' || !input.reason.trim()) {
         throw new HandoffReceiptBindingChanged();
     }
+    // The reason is evidence, not authority. A long one (a procedure name, an
+    // approved tool label) is truncated rather than allowed to abort a transfer
+    // the customer is already waiting on.
+    const reason = input.reason.slice(0, MAX_REASON);
     const language = handoffNoticeLanguage(input.noticeLanguage);
     const [conversation] = await query<any[]>(
         `SELECT id, contact_id, channel_type, channel_account_id, status
@@ -181,7 +185,7 @@ export async function recordHandoffReceipt(query: HandoffReceiptQuery, schema: s
          ON CONFLICT (inbound_message_id) DO NOTHING RETURNING *`,
         [input.conversationId, input.contactId, input.inboundMessageId,
             String(conversation.channel_type), String(conversation.channel_account_id),
-            input.reason, fromStatus, input.toStatus, input.noticeKind, language,
+            reason, fromStatus, input.toStatus, input.noticeKind, language,
             input.traceId === undefined || input.traceId === null ? null : String(input.traceId).slice(0, 128)]);
     if (!inserted) throw new HandoffReceiptAlreadyRecorded();
     return mapReceipt(inserted);

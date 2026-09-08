@@ -157,7 +157,7 @@ Aparte de eso hay que anotar dos correcciones que sólo aparecieron al **dejar d
 
 El recuento de partida decía "16 suites rojas" y una lista de trabajo previa contaba además ocho suites PostgreSQL como si fallaran. No fallaban: estaban **omitidas** por falta de variable de entorno, que en el JSON de Jest es `numPendingTestSuites` y no `numFailedTestSuites`. Ahora corren.
 
-Resultado de la suite completa con las tres instancias desechables levantadas y las dos bases limpias: **540/540 suites, 5.754 pruebas, cero fallidas y cero omitidas** (partida : 498/524 y 5.370/23; inicio de esta tanda: 514/537, 5.585/20 y 105 omitidas). La condición 9 de la directiva queda cerrada.
+Resultado de la suite completa con las tres instancias desechables levantadas y las dos bases limpias: **540/540 suites, 5.754 pruebas, cero fallidas y cero omitidas** (partida `7c613864`: 498/524 y 5.370/23; inicio de esta tanda `ec430c54`: 514/537, 5.585/20 y 105 omitidas). La condición 9 de la directiva queda cerrada.
 
 ### Frentes abiertos al cierre del 8 de septiembre
 

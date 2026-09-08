@@ -84,4 +84,16 @@ Variables (credenciales sintéticas, sólo loopback): `PARALLLY_ISOLATION_TEST_U
 
 Cada suite comprueba por su cuenta que el host sea loopback y que el nombre de la base termine en `_eval_isolation`, y limpia los esquemas que crea. Esa comprobación es deliberada: impide que una corrida apunte a una instancia compartida o productiva.
 
+## Resultado
+
+| | Suites | Pruebas | Omitidas |
+| --- | --- | --- | --- |
+| `7c613864` (partida) | 498/524, **19 en rojo** | 5.370 pasan, 23 fallan | — |
+| `ec430c54` (inicio de esta tanda) | 514/537, **16 en rojo** | 5.585 pasan, 20 fallan | 105 |
+| Hoy | **540/540** | **5.754 pasan, 0 fallan** | **0** |
+
+Las omitidas importan tanto como las rojas: eran 105 pruebas de ocho suites PostgreSQL que no corrían por falta de variable de entorno, y una suite omitida no es una suite aprobada. Hoy corren todas.
+
+Comando: `npx jest --maxWorkers=2` desde `apps/api`, con las variables de arriba y las tres instancias desechables levantadas, después de soltar `public.tenants` y `public.users` de las dos bases para que ningún orden previo pudiera esconder una colisión.
+
 **Una trampa del entorno, anotada porque cuesta una hora encontrarla.** Los contenedores corren dentro de WSL y la VM de WSL se apaga sola cuando ningún cliente `wsl.exe` está conectado, llevándose el demonio de Docker y los contenedores con él. Desde Windows eso se ve como un relay de localhost intermitente: la conexión funciona justo después de crear los contenedores y deja de funcionar un minuto más tarde. Se sostiene manteniendo una sesión WSL abierta mientras dura la validación. Es una particularidad de esta máquina, no del repositorio.

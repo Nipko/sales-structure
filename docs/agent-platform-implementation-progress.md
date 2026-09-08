@@ -157,6 +157,8 @@ Aparte de eso hay que anotar dos correcciones que sólo aparecieron al **dejar d
 
 El recuento de partida decía "16 suites rojas" y una lista de trabajo previa contaba además ocho suites PostgreSQL como si fallaran. No fallaban: estaban **omitidas** por falta de variable de entorno, que en el JSON de Jest es `numPendingTestSuites` y no `numFailedTestSuites`. Ahora corren.
 
+Resultado de la suite completa con las tres instancias desechables levantadas y las dos bases limpias: **540/540 suites, 5.754 pruebas, cero fallidas y cero omitidas** (partida : 498/524 y 5.370/23; inicio de esta tanda: 514/537, 5.585/20 y 105 omitidas). La condición 9 de la directiva queda cerrada.
+
 ### Frentes abiertos al cierre del 8 de septiembre
 
 - Aprendizaje: replay/juez, retiro de copias y recuperación periódica tienen evidencia en `learning-evaluation-retention.md`; el ownership del worker, en `learning-worker-ownership.md`; embeddings, búsqueda/memoria históricas y reintentos de SDK, en `learning-external-source-authority.md`. `54379f90` añade procedencia serializable y verificación sobre la misma conexión; `1f704ddc` incorpora borrado de derivados Widget y `735a0511` prepara acumulación/lectura de historia. La admisión de mensajes normales sigue sin consumidor activo: core/Gateway/store están preservados como borrador con bloqueos explícitos en el traspaso para Claude. Continúan particiones de proceso/cola, otras salidas externas y despacho diferido, retiro de todas las trazas/caches, costo/deadline integral y medición semántica de la mejora. No incluye proveedor externo ni certificación por perfil.

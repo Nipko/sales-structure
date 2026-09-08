@@ -11,6 +11,7 @@ import { LLMSourceAuthorityUnavailable, type LLMSourceAuthority } from '../ai/in
 import type { LLMResponse } from '../ai/interfaces/illm-provider.interface';
 import type { ExternalSourceAuthority } from '../ai/interfaces/external-source-authority';
 import { LEARNING_SCHEMA } from './learning-schema';
+import { assertRuntimeLearningFootprint, createRuntimeLearningFootprint } from './learning-runtime-footprint';
 import { assertLearningInboxSource, learningInboxEvidence, readLearningInboxSource, retireLearningSources,
     LearningInboxSourceUnavailable, type LearningInboxEvidence, type LearningSourceQuery } from './learning-inbox-source';
 import {
@@ -805,10 +806,13 @@ export class LearningService {
         const scope=evaluation?structuredClone(evaluation):undefined;
         const preview=executionContext?.persistence==='disabled' && ['agent_test','evaluation'].includes(executionContext.mode);
         return async<T>(invoke:()=>Promise<T>,usage?:(result:T)=>LLMResponse['usage'])=>{
-            if(!selected.length&&!scope)return invoke();
             let response:T|undefined;
             let providerError:unknown;
             try{
+                const footprint=createRuntimeLearningFootprint(tenantId,agentId,selected);
+                // Explicit absence of learning retains the existing no-DB path;
+                // the private scope and projection shape are still validated.
+                if(!footprint.entries.length&&!scope)return invoke();
                 const schema=await this.schema(tenantId);
                 return await withAgentSourceFence(this.prisma,schema,async query=>{
                     const check=async()=>{
@@ -816,20 +820,8 @@ export class LearningService {
                             if(!preview)throw new LLMSourceAuthorityUnavailable();
                             await this.assertEvaluationSourceScope(query,schema,tenantId,agentId,scope);
                         }
-                        for(const releaseId of new Set(selected.map(e=>e.releaseId))){
-                            const [release]=await query<any[]>(`SELECT * FROM learning_releases WHERE id=$1::uuid AND agent_id=$2::uuid`,[releaseId,agentId]);
-                            if(!release || !(release.status==='published'||(preview&&release.status==='candidate'))
-                                || learningSnapshotHash(release.snapshot)!==release.snapshot_hash)throw new LLMSourceAuthorityUnavailable();
-                            await this.assertReleaseSourcesAvailable(schema,release,query,false);
-                            for(const example of selected.filter(e=>e.releaseId===releaseId)){
-                                const frozen=release.snapshot.examples.find((e:any)=>e.id===example.id && ['brand_style','operational_pattern'].includes(e.kind));
-                                if(!frozen)throw new LLMSourceAuthorityUnavailable();
-                                const expected:RuntimeLearningExample={id:frozen.id,releaseId:release.id,releaseHash:release.snapshot_hash,
-                                    situation:frozen.intent,responsePattern:frozen.response_pattern,rationale:frozen.rationale,
-                                    factsRequired:frozen.facts_required,authority:'style_only'};
-                                if(learningSnapshotHash(expected)!==learningSnapshotHash(example))throw new LLMSourceAuthorityUnavailable();
-                            }
-                        }
+                        await assertRuntimeLearningFootprint(query,schema,{tenantId,agentId},footprint,
+                            {mode:'readonly',allowCandidate:preview});
                     };
                     await check();
                     try{response=await invoke();}catch(error){providerError=error;throw error;}

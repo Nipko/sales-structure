@@ -26,6 +26,8 @@ const connection=process.env.PARALLLY_ISOLATION_TEST_URL;
         prisma=Object.create(PrismaService.prototype);
         (prisma as any).$transaction=db.$transaction.bind(db);
         (prisma as any).getTenantSchemaName=async()=>schema;
+        await db.$executeRawUnsafe('CREATE TABLE IF NOT EXISTS public.tenants(id uuid PRIMARY KEY,schema_name text)');
+        await db.$executeRawUnsafe('INSERT INTO public.tenants(id,schema_name) VALUES($1::uuid,$2)',tenantId,schema);
         await db.$executeRawUnsafe(`CREATE SCHEMA "${schema}"`);
         await sql('CREATE TABLE contacts(id uuid PRIMARY KEY,name text,phone text,email text)');
         await sql('CREATE TABLE contact_identities(contact_id uuid,customer_profile_id uuid)');
@@ -36,7 +38,7 @@ const connection=process.env.PARALLLY_ISOLATION_TEST_URL;
         await sql('CREATE TABLE customer_memory_erasure(contact_id uuid PRIMARY KEY,erased_at timestamptz DEFAULT NOW())');
         await sql(`CREATE TABLE learning_sources(id uuid PRIMARY KEY,agent_id uuid,source_kind text,status text,
             source_contact_id uuid,source_conversation_id uuid,channel text,transcript jsonb,source_evidence jsonb)`);
-        await sql('CREATE TABLE learning_examples(id uuid PRIMARY KEY,source_id uuid,status text)');
+        await sql('CREATE TABLE learning_examples(id uuid PRIMARY KEY,source_id uuid,agent_id uuid NOT NULL,status text)');
         await sql(`CREATE TABLE learning_releases(id uuid PRIMARY KEY,agent_id uuid,status text,snapshot jsonb,
             snapshot_hash text,example_ids uuid[])`);
         await sql(`CREATE FUNCTION revise_replay_source() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
@@ -65,8 +67,11 @@ const connection=process.env.PARALLLY_ISOLATION_TEST_URL;
     });
     afterAll(async()=>{
         if(!db)return;
-        if(!/^tenant_replay_[a-f\d]{32}$/.test(schema))throw new Error('invalid_cleanup_scope');
-        await db.$executeRawUnsafe(`DROP SCHEMA "${schema}" CASCADE`);await db.$disconnect();
+        try{
+            if(!/^tenant_replay_[a-f\d]{32}$/.test(schema))throw new Error('invalid_cleanup_scope');
+            await db.$executeRawUnsafe(`DROP SCHEMA "${schema}" CASCADE`);
+            await db.$executeRawUnsafe('DELETE FROM public.tenants WHERE id=$1::uuid AND schema_name=$2',tenantId,schema);
+        }finally{await db.$disconnect();}
     });
     /** A real active source and published style release; no Learning method is mocked. */
     const learningAuthority=async(kind:'file'|'inbox'='file')=>{
@@ -85,7 +90,7 @@ const connection=process.env.PARALLLY_ISOLATION_TEST_URL;
         await sql(`INSERT INTO learning_sources(id,agent_id,source_kind,status,source_contact_id,source_conversation_id,channel,transcript,source_evidence)
             VALUES($1::uuid,$2::uuid,$3,'active',$4::uuid,$5::uuid,'web_widget',$6::jsonb,$7::jsonb)`,
             [sourceId,agentId,kind,sourceContact,sourceConversation,JSON.stringify(transcript),JSON.stringify(evidence)]);
-        await sql("INSERT INTO learning_examples(id,source_id,status) VALUES($1::uuid,$2::uuid,'approved')",[exampleId,sourceId]);
+        await sql("INSERT INTO learning_examples(id,source_id,agent_id,status) VALUES($1::uuid,$2::uuid,$3::uuid,'approved')",[exampleId,sourceId,agentId]);
         const frozen={id:exampleId,source_id:sourceId,kind:'brand_style',intent:'general',response_pattern:'A concise, courteous answer',rationale:'Reviewed style',facts_required:[]};
         const snapshot={examples:[frozen],heldout:[]},hash=learningSnapshotHash(snapshot);
         await sql(`INSERT INTO learning_releases(id,agent_id,status,snapshot,snapshot_hash,example_ids)

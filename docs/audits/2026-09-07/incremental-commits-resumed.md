@@ -38,6 +38,10 @@
 | `c0ed2dc6` | Admisión que comprueba autoridad de conexión, fuentes y binding en la misma conexión que escribe el permiso; fallo de preflight acotado | API TypeScript sobre el índice; 6 suites / 47 casos, dos suites PostgreSQL |
 | `7ed373be` | El worker entrega una fila con un solo intento admitido; BullMQ transporta dos identificadores, sin payload ni destinatario | API TypeScript sobre el índice; 10 suites / 107 casos |
 | `3e7f78db` | Recuperación de pendientes con marca posterior a la publicación, retiro de permisos vencidos y borrado que alcanza el outbox | API TypeScript sobre el índice; 10 suites / 141 casos, cuatro suites PostgreSQL |
+| `a850726c` | División de un turno en efectos remotos: caption como ítem propio con recibo propio, enlace de pago aparte, Flow sin fallback; transporte estricto de Messenger | API TypeScript sobre el índice; 9 suites / 78 casos |
+| `6dd0294c` | Historia y dispatch en una sola transacción, con estado que sigue al resultado real; interruptor de despliegue apagado por defecto | API TypeScript sobre el índice; 9 suites / 119 casos, tres suites PostgreSQL |
+| `36570a4b` | La respuesta del modelo toma el camino durable cuando el interruptor la habilita; sin él, el camino actual queda intacto | API TypeScript sobre el índice; 10 suites / 128 casos, tres suites PostgreSQL |
+| `d0ab788c` | El fixture de la carrera de borrado responde la consulta de tablas del outbox | API TypeScript sobre el índice; 2 suites / 9 casos |
 
 Las cifras se solapan entre bloques y no se suman como cobertura nueva. Los controles de proveedor usan respuestas sintéticas; las pruebas PostgreSQL se ejecutan en las bases desechables locales de evaluación.
 
@@ -65,6 +69,6 @@ El prerrequisito de fuentes quedó registrado en `54379f90`, con [contrato y evi
 
 El bloqueo que mantenía el borrador fuera del árbol quedó resuelto: `64dc8d75` construye el recibo canónico de handoff y `d2ffdf41` integra los seis archivos del parche —verificados contra su manifiesto antes de aplicarlos— con la admisión autorizada por ese recibo; `02dc2e9e` añade su aceptación. El parche se conserva archivado como evidencia histórica. [Evidencia, los siete puntos de escalada y los límites](../2026-09-08/normal-widget-admission-and-handoff-receipt.md). Sigue sin aumentar el número de perfiles certificados.
 
-Los bloques 2 y 3 del plan de despacho quedan construidos y validados: outbox durable, transporte estricto, admisión con guardas y recuperación ([evidencia y límites](../2026-09-08/normal-dispatch-outbox.md)). **Ningún productor crea filas todavía**, así que no hay tráfico por ese camino y el comportamiento actual no cambia; migrar `sendResponse` y la historia, y partir medios/enlaces/Flow en ítems propios, son los pasos siguientes. El transporte de una respuesta normal tampoco se condujo de extremo a extremo con Socket.IO real.
+Los bloques 2 y 3 del plan de despacho quedan construidos y validados: outbox durable, transporte estricto, admisión con guardas y recuperación ([evidencia y límites](../2026-09-08/normal-dispatch-outbox.md)). El productor de la respuesta del modelo, la atomicidad de la historia y la división de efectos también quedan construidos, **detrás de un interruptor apagado por defecto**: nada cambia en producción hasta que alguien escriba `platform_settings.dispatch.normalOutbox`. La suite completa de la API se comparó contra un worktree limpio de `7c613864`: **cero suites nuevas en rojo** (16 en rojo hoy, 19 entonces; 5.520 pruebas pasan frente a 5.370). El transporte de una respuesta normal tampoco se condujo de extremo a extremo con Socket.IO real.
 
 No hubo push, despliegue ni migraciones de tenants operativos. Los cambios ajenos a este plan permanecen en el directorio de trabajo.

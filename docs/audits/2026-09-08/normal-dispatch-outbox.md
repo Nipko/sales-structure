@@ -11,6 +11,10 @@
 | `c0ed2dc6` | Admisión con autoridad de conexión, fuentes y binding en la misma conexión que escribe el permiso; fallo de preflight acotado | TypeScript API pasa. 6 suites / 47 pruebas, dos suites PostgreSQL |
 | `7ed373be` | El worker entrega una fila con un solo intento admitido; BullMQ transporta dos identificadores | TypeScript API pasa. 10 suites / 107 pruebas |
 | `3e7f78db` | Recuperación de pendientes, retiro de permisos vencidos y borrado que alcanza el outbox | TypeScript API pasa. 10 suites / 141 pruebas, cuatro suites PostgreSQL |
+| `a850726c` | División de un turno en efectos: caption como ítem propio, enlace de pago aparte, Flow sin fallback; transporte estricto de Messenger | TypeScript API pasa. 9 suites / 78 pruebas |
+| `6dd0294c` | Historia y dispatch en una sola transacción, con estado que sigue al resultado real; interruptor de despliegue apagado por defecto | TypeScript API pasa. 9 suites / 119 pruebas, tres suites PostgreSQL |
+| `36570a4b` | La respuesta del modelo toma el camino durable cuando el interruptor lo habilita | TypeScript API pasa. 10 suites / 128 pruebas, tres suites PostgreSQL |
+| `d0ab788c` | El fixture de la carrera de borrado responde la consulta de tablas del outbox | TypeScript API sobre el índice; 2 suites / 9 casos |
 
 Los conteos se solapan entre bloques; no sumarlos como cobertura nueva.
 
@@ -60,9 +64,32 @@ La pasada de recuperación republica lo que la cola nunca recibió, con los mism
 
 El borrado por contacto y el retiro de fuentes de aprendizaje alcanzan el outbox bajo el mismo fence exclusivo que las copias de Web Chat: se limpian palabras y destinatario de un ítem aún no enviado y la fila sobrevive, porque si no un job recuperado repoblaría el payload y entregaría lo borrado. Un tenant sin la tabla es un no-op; un outbox sin su índice de fuentes es una migración parcial y falla atómicamente.
 
+## Historia, interruptor y productor
+
+**Historia y dispatch confirman juntos.** Eran dos escrituras independientes, así que un fallo podía dejar una sola; y la fila de historia decía `delivered` **antes** de haber enviado nada, con lo cual el registro era una afirmación y no un hecho. Ahora se escribe `pending` junto a su efecto, pasa a `delivered` solo cuando un proveedor emite recibo, y a `failed` solo ante un rechazo definitivo. **Un resultado incierto se queda en `pending` a propósito**: llamarlo fallido sería tan falso como llamarlo entregado cuando el proveedor pudo haber actuado.
+
+El índice de deduplicación se **comprueba** en lugar de intentarse: una sentencia fallida aborta la transacción entera, así que el catch-y-reintento que `saveAiMessage` puede permitirse —cada uno de sus inserts es su propia transacción— aquí no tendría con qué recuperarse. Un esquema con el índice atrasado pierde esa segunda línea de defensa, nunca la respuesta.
+
+**El interruptor está apagado por defecto** (`platform_settings`, clave `dispatch.normalOutbox`): lista explícita de canales y lista opcional de tenants piloto. Encender el interruptor maestro solo no cambia nada, y cualquier valor ilegible o malformado significa apagado, porque fallar abierto pondría entrega no probada frente a clientes.
+
+**El productor es únicamente la respuesta del modelo.** Avisos de citas, texto de handoff, fallbacks de cuota y automatizaciones conservan sus productores y sus autoridades. La vuelta atrás está acotada por lo confirmado: antes del COMMIT de `prepare`, cualquier cosa devuelve falso y el camino actual sigue debiendo la respuesta; después del COMMIT ese lote es dueño de la respuesta y una publicación fallida se recupera, nunca se reenvía por el camino viejo, que la entregaría dos veces.
+
+**Los turnos de mensajería no recogen procedencia de aprendizaje todavía**, así que no se registra ninguna. Un footprint vacío es el valor honesto; inventarlo haría parecer que el borrado por release alcanzó esas palabras. El borrado **por contacto** sí las alcanza. Cerrar el hueco exige que el colector de procedencia funcione fuera de Web Chat, donde hoy además filtra el historial por recibos que las respuestas de mensajería no tienen.
+
+## Regresión medida contra el commit de partida
+
+La suite completa de la API se ejecutó en un worktree limpio de `7c613864` y sobre este árbol, con las mismas bases desechables:
+
+| | Suites | Pruebas |
+| --- | --- | --- |
+| `7c613864` (partida) | 498/524, **19 en rojo** | 5.370 pasan, 23 fallan |
+| Este árbol | 512/535, **16 en rojo** | 5.520 pasan, 20 fallan |
+
+**Cero suites nuevas en rojo.** Las 16 que siguen fallando ya fallaban en el commit de partida y no son de este trabajo. La comparación también aisló la única regresión introducida —el fixture de `tool-control-erasure-race`, corregido en `d0ab788c`— y confirmó que `conversations.widget-containment` estaba en rojo antes y ahora pasa.
+
 ## Límites explícitos
 
-- **Ningún productor crea filas todavía.** No hay tráfico por este camino y el comportamiento actual no cambia: Conversations sigue encolando el job `send` heredado. Migrar `sendResponse`, la historia y los caches/replay es el paso siguiente del plan.
+- **Nada cambia en producción.** El interruptor está apagado, apagado para todo canal no listado, y apagado cuando la configuración no se puede leer, así que el productor devuelve falso en todas partes hasta que alguien lo escriba deliberadamente.
 - Solo WhatsApp tiene transporte estricto. Instagram, Messenger, Telegram y correo se rechazan explícitamente si alguna vez reciben una fila.
 - Medios, enlaces y Flow como ítems separados —con la división de imagen y caption y el fallback de Flow solo tras un rechazo demostrado— no están implementados.
 - No se prometió exactly-once remoto. Un resultado desconocido exige conciliación y puede dejar un mensaje sin enviar.

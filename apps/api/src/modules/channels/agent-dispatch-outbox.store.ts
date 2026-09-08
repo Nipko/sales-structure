@@ -7,7 +7,7 @@ import { RedisService } from '../redis/redis.service';
 import {
     DISPATCH_OUTBOX_DDL, DispatchOutboxError,
     admitDispatch, expireDispatchLeases, markDispatchQueued, prepareDispatchBatch,
-    readDispatchBatchForInbound, readDispatchRow, readPendingDispatch,
+    readDispatchBatchForInbound, readDispatchRow, readNextDispatchInBatch, readPendingDispatch,
     recordDispatchPreflightFailure, settleDispatch,
     type DispatchBinding, type DispatchItem, type DispatchOutcome, type DispatchRow,
 } from './agent-dispatch-outbox';
@@ -123,14 +123,26 @@ export class AgentDispatchOutboxStore {
      */
     async publishBatch(tenantId: string, rows: readonly DispatchRow[],
         publish: (dispatchId: string, delayMs: number) => Promise<void>, gapMs = 0): Promise<number> {
-        const pending = rows.filter(row => !row.redacted
-            && ['prepared', 'queued', 'failed'].includes(row.state));
-        for (const row of pending) {
-            await publish(row.id, row.itemIndex * gapMs).catch(() => undefined);
-        }
-        if (!pending.length) return 0;
-        await this.markQueued(tenantId, pending.map(row => row.id)).catch(() => undefined);
-        return pending.length;
+        // Only the head. Publishing later items would park them behind the
+        // predecessor guard and churn the queue; the worker chains the rest as
+        // each effect actually arrives, which is what orders the reply.
+        const head = [...rows]
+            .filter(row => !row.redacted && ['prepared', 'queued', 'failed'].includes(row.state))
+            .sort((left, right) => left.itemIndex - right.itemIndex)[0];
+        if (!head) return 0;
+        await publish(head.id, 0).catch(() => undefined);
+        void gapMs;
+        await this.markQueued(tenantId, [head.id]).catch(() => undefined);
+        return 1;
+    }
+
+    /** The next effect of this batch, if the one just delivered has a successor. */
+    async nextInBatch(tenantId: string, dispatchId: string): Promise<DispatchRow | null> {
+        const schema = await this.schemaFor(tenantId);
+        return this.prisma.transactionInTenantSchema(schema, async query => {
+            await this.privacy(query, schema, tenantId);
+            return readNextDispatchInBatch(query, schema, dispatchId);
+        });
     }
 
     async read(tenantId: string, dispatchId: string): Promise<DispatchRow | null> {

@@ -15,6 +15,7 @@ import { resolveTenantSubscriptionAccess } from '../../common/utils/subscription
 import { AgentDispatchOutboxStore } from './agent-dispatch-outbox.store';
 import { DISPATCH_TERMINAL_STATES } from './agent-dispatch-outbox';
 import { transportNotAvailable } from './strict-dispatch-transport';
+import { OutboundQueueService } from './outbound-queue.service';
 
 export const OUTBOUND_QUEUE = 'outbound-messages';
 
@@ -35,6 +36,17 @@ export type OutboundJobData = { outbound: OutboundMessage; approvalEffect?: neve
 })
 export class OutboundQueueProcessor extends WorkerHost {
     private readonly logger = new Logger(OutboundQueueProcessor.name);
+    private outboundQueue?: OutboundQueueService;
+
+    /**
+     * Wired by the module after construction rather than injected.
+     *
+     * Adding any further constructor dependency to this WorkerHost — the queue
+     * service, or even ModuleRef — closes a resolution cycle through
+     * @nestjs/bullmq's own providers and the container never settles. The module
+     * already wires adapters into the gateway the same way.
+     */
+    attachQueue(queue: OutboundQueueService): void { this.outboundQueue = queue; }
 
     constructor(
         private channelGateway: ChannelGatewayService,
@@ -142,6 +154,16 @@ export class OutboundQueueProcessor extends WorkerHost {
             const code = String(error?.code || error?.message || 'admission_failed');
             if (code.startsWith('dispatch_terminal:')) return `dispatch:${code}`;
             if (code === 'dispatch_lease_active') return 'dispatch:lease_held_elsewhere';
+            if (code === 'dispatch_awaiting_predecessor') {
+                // A stray or early job. The chain below is what normally brings
+                // this item back; parking briefly keeps it as a safety net.
+                await job.moveToDelayed(Date.now() + 2000, token);
+                throw new DelayedError();
+            }
+            if (code === 'dispatch_predecessor_failed') {
+                // A caption whose picture never arrived describes nothing.
+                return preflight('predecessor_not_delivered', { permanent: true });
+            }
             if (code === 'dispatch_not_available_yet') {
                 // The durable schedule says later. Wait for it rather than
                 // completing the job and losing the work to a retained id.
@@ -166,6 +188,9 @@ export class OutboundQueueProcessor extends WorkerHost {
                 await this.dispatchOutbox.settle(tenantId, dispatchId, admitted.leaseToken,
                     { kind: 'sent', receipt: outcome.receipt });
                 await this.throttle.recordUsage(tenantId, 'outbound').catch(() => {});
+                // Chain the next effect only now that this one actually arrived.
+                // Order is enforced here, not by a delay somebody guessed.
+                await this.chainNext(tenantId, dispatchId);
                 return `dispatch:sent:${outcome.receipt}`;
             }
             if (outcome.kind === 'unknown') {
@@ -189,6 +214,24 @@ export class OutboundQueueProcessor extends WorkerHost {
             // acceptance we observed but could not write down.
             this.logger.error(`[Dispatch] ${dispatchId} outcome not recorded (${outcome.kind}): ${error?.message}`);
             return `dispatch:outcome_unrecorded:${outcome.kind}`;
+        }
+    }
+
+    /**
+     * Publish the next effect of a batch, once this one has arrived.
+     *
+     * Never fatal: the effect that just went out is already recorded, and the
+     * recovery pass republishes the head of any batch still holding work.
+     */
+    private async chainNext(tenantId: string, dispatchId: string): Promise<void> {
+        try {
+            const next = await this.dispatchOutbox!.nextInBatch(tenantId, dispatchId);
+            if (!next) return;
+            const queue = this.outboundQueue;
+            if (!queue) throw new Error('outbound_queue_unavailable');
+            await queue.enqueueDispatch(tenantId, next.id);
+        } catch (error: any) {
+            this.logger.warn(`[Dispatch] chain after ${dispatchId} deferred to recovery: ${error?.message}`);
         }
     }
 

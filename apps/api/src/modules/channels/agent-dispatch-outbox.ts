@@ -48,6 +48,8 @@ export const DISPATCH_TERMINAL_STATES: readonly DispatchState[] =
 /** A row here is eligible for a new admission, subject to attempts and time. */
 export const DISPATCH_AVAILABLE_STATES: readonly DispatchState[] =
     Object.freeze(['prepared', 'queued', 'failed']);
+/** The effect actually reached its destination. */
+export const DISPATCH_ARRIVED_STATES: readonly DispatchState[] = Object.freeze(['sent', 'stored']);
 
 /**
  * Bootstrap outside any privacy or admission transaction. No cascading contact
@@ -353,6 +355,23 @@ export async function readDispatchBatchForInbound(query: DispatchOutboxQuery, sc
 }
 
 /**
+ * The next effect of a batch, once this one has arrived. Chaining from the
+ * worker is what actually orders a reply; the admission guard is the net that
+ * catches an early or duplicated job.
+ */
+export async function readNextDispatchInBatch(query: DispatchOutboxQuery, schema: string,
+    dispatchId: string): Promise<DispatchRow | null> {
+    if (!SCHEMA.test(schema) || !UUID.test(String(dispatchId))) fail('dispatch_invalid_reference');
+    const [row] = await query<any[]>(
+        `SELECT next.* FROM agent_dispatch_outbox current
+         JOIN agent_dispatch_outbox next ON next.batch_id = current.batch_id
+            AND next.item_index = current.item_index + 1
+         WHERE current.id = $1::uuid AND next.redacted_at IS NULL
+            AND next.state IN ('prepared','queued','failed')`, [dispatchId]);
+    return row ? mapRow(row) : null;
+}
+
+/**
  * Read one row without applying any guard meant for a new admission. An accepted
  * receipt must stay consultable: it is what tells a recovered job to stop.
  */
@@ -401,6 +420,27 @@ export async function admitDispatch(query: DispatchOutboxQuery, schema: string, 
         fail('dispatch_attempts_exhausted');
     }
     if (row.waiting_backoff === true) fail('dispatch_not_available_yet');
+    // Order is a durable property, not a hope about delays.
+    //
+    // Staggering publication by index cannot survive two workers, a slow first
+    // provider or a retry: the caption could overtake its own picture. So an item
+    // is admitted only once the one before it has actually arrived.
+    //
+    // The policy when the predecessor finished WITHOUT arriving is explicit by
+    // kind. A text item directly after a media item is that media's caption: its
+    // words describe something the customer never received, so it is refused
+    // rather than sent into a void. Every other item — a further bubble, a
+    // canonical payment link, a Flow — is still true on its own and proceeds.
+    if (Number(row.item_index) > 0) {
+        const [previous] = await query<any[]>(
+            `SELECT state, item_kind FROM agent_dispatch_outbox
+             WHERE batch_id = $1::uuid AND item_index = $2`, [row.batch_id, Number(row.item_index) - 1]);
+        if (!previous) fail('dispatch_batch_conflict');
+        if (!DISPATCH_ARRIVED_STATES.includes(previous.state)) {
+            if (!DISPATCH_TERMINAL_STATES.includes(previous.state)) fail('dispatch_awaiting_predecessor');
+            if (row.item_kind === 'text' && previous.item_kind === 'media') fail('dispatch_predecessor_failed');
+        }
+    }
     const [admitted] = await query<any[]>(
         `UPDATE agent_dispatch_outbox SET state='admitted', lease_token=$2::uuid,
             lease_expires_at=NOW() + make_interval(secs => $3::double precision), attempts=attempts+1,
@@ -485,11 +525,23 @@ export async function readPendingDispatch(query: DispatchOutboxQuery, schema: st
     limit = 100): Promise<DispatchRow[]> {
     if (!SCHEMA.test(schema) || !Number.isInteger(limit) || limit < 1 || limit > 1000)
         fail('dispatch_invalid_reference');
+    // Only the head of each batch: publishing a later item would just park it
+    // behind the predecessor guard, and the worker chains the rest itself.
+    //
+    // The head is the lowest-index row still capable of work — including one
+    // whose permission is in flight, which is precisely why the batch must yield
+    // nothing rather than offering the item behind it.
     const rows = await query<any[]>(
-        `SELECT * FROM agent_dispatch_outbox
-         WHERE state IN ('prepared','queued','failed') AND redacted_at IS NULL AND available_at <= NOW()
-         ORDER BY available_at, id LIMIT $1`, [limit]);
-    return rows.map(mapRow);
+        `WITH head AS (
+            SELECT DISTINCT ON (batch_id) * FROM agent_dispatch_outbox
+            WHERE redacted_at IS NULL AND state IN ('prepared','queued','failed','admitted')
+            ORDER BY batch_id, item_index)
+         SELECT * FROM head
+         WHERE state IN ('prepared','queued','failed') AND available_at <= NOW()
+         ORDER BY available_at, id
+         LIMIT $1`, [limit]);
+    return rows.map(mapRow).sort((left, right) =>
+        left.availableAt.getTime() - right.availableAt.getTime() || left.id.localeCompare(right.id));
 }
 
 /**

@@ -4,7 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import {
     DISPATCH_MAX_ATTEMPTS, DISPATCH_OUTBOX_DDL, DispatchOutboxError,
     admitDispatch, expireDispatchLeases, markDispatchQueued, prepareDispatchBatch, readDispatchRow,
-    readPendingDispatch, redactDispatchOutbox, settleDispatch,
+    readNextDispatchInBatch, readPendingDispatch, redactDispatchOutbox, settleDispatch,
     type DispatchBinding, type DispatchItem,
 } from './agent-dispatch-outbox';
 
@@ -143,8 +143,28 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
             const admitted = await admit(rows[0].id);
             expect(admitted).toMatchObject({ state: 'admitted', attempts: 1 });
             expect(await code(admit(rows[0].id))).toBe('dispatch_lease_active');
-            // The other item of the same batch is independent.
+            // The next item waits: a caption must never overtake its picture.
+            expect(await code(admit(rows[1].id))).toBe('dispatch_awaiting_predecessor');
+        });
+
+        it('admits the next item only once the one before it actually arrived', async () => {
+            const { rows } = await prepare(await fixture());
+            const lease = randomUUID();
+            await admit(rows[0].id, lease);
+            expect(await code(admit(rows[1].id))).toBe('dispatch_awaiting_predecessor');
+            await tx(query => settleDispatch(query, schema,
+                { dispatchId: rows[0].id, leaseToken: lease, outcome: { kind: 'sent', receipt: 'wamid.IMG' } }));
             expect((await admit(rows[1].id)).state).toBe('admitted');
+        });
+
+        it('refuses a caption whose picture finished without arriving', async () => {
+            const { rows } = await prepare(await fixture());
+            const lease = randomUUID();
+            await admit(rows[0].id, lease);
+            await tx(query => settleDispatch(query, schema, { dispatchId: rows[0].id, leaseToken: lease,
+                outcome: { kind: 'suppressed', errorCode: 'wa_131053' } }));
+            // Its words describe something the customer never received.
+            expect(await code(admit(rows[1].id))).toBe('dispatch_predecessor_failed');
         });
 
         it('sends an expired permission to reconciliation instead of granting a new one', async () => {
@@ -247,11 +267,27 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
             const { rows } = await prepare(await fixture());
             const lease = randomUUID();
             await admit(rows[0].id, lease);
-            expect((await tx(query => readPendingDispatch(query, schema))).map(row => row.id)).toEqual([rows[1].id]);
+            // Only the head of a batch is listed: publishing a later item would
+            // just park it behind the predecessor guard.
+            expect(await tx(query => readPendingDispatch(query, schema))).toHaveLength(0);
             await tx(query => settleDispatch(query, schema,
                 { dispatchId: rows[0].id, leaseToken: lease, outcome: { kind: 'failed', errorCode: 'net', retryInSeconds: 0 } }));
-            expect((await tx(query => readPendingDispatch(query, schema))).map(row => row.id).sort())
-                .toEqual([rows[0].id, rows[1].id].sort());
+            expect((await tx(query => readPendingDispatch(query, schema))).map(row => row.id))
+                .toEqual([rows[0].id]);
+            const second = randomUUID();
+            await admit(rows[0].id, second);
+            await tx(query => settleDispatch(query, schema, { dispatchId: rows[0].id,
+                leaseToken: second, outcome: { kind: 'sent', receipt: 'wamid.HEAD' } }));
+            // Head delivered: the next effect becomes the batch head.
+            expect((await tx(query => readPendingDispatch(query, schema))).map(row => row.id))
+                .toEqual([rows[1].id]);
+        });
+
+        it('offers the next effect of a batch once this one arrived', async () => {
+            const { rows } = await prepare(await fixture());
+            expect(await tx(query => readNextDispatchInBatch(query, schema, rows[0].id)))
+                .toMatchObject({ id: rows[1].id, itemIndex: 1 });
+            expect(await tx(query => readNextDispatchInBatch(query, schema, rows[1].id))).toBeNull();
         });
 
         it('marks published rows as queued without granting any permission', async () => {
@@ -326,9 +362,13 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
             await admit(rows[0].id, uncertain);
             await tx(query => settleDispatch(query, schema, { dispatchId: rows[0].id, leaseToken: uncertain,
                 outcome: { kind: 'reconciliation_required', errorCode: 'ack_lost' } }));
+            // The caption may only be admitted after its picture arrived, so the
+            // refusal under test is recorded on an arrived predecessor.
+            await sql("UPDATE agent_dispatch_outbox SET state='sent', receipt='wamid.IMG' WHERE id=$1::uuid", [rows[0].id]);
             await admit(rows[1].id, refused);
             await tx(query => settleDispatch(query, schema, { dispatchId: rows[1].id, leaseToken: refused,
                 outcome: { kind: 'suppressed', errorCode: 'wa_131047' } }));
+            await sql("UPDATE agent_dispatch_outbox SET state='reconciliation_required', receipt=NULL WHERE id=$1::uuid", [rows[0].id]);
             // Claiming failure for an uncertain attempt would be as wrong as
             // claiming delivery: the provider may well have acted.
             expect((await history(binding.conversationId)).map(message => message.status))

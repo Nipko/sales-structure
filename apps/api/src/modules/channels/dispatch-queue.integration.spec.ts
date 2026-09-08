@@ -98,6 +98,8 @@ const ready = !!databaseUrl && !!redisUrl;
         service = new OutboundQueueService(queue as any,
             { getPriority: jest.fn(async () => 1), getMaxPendingJobs: jest.fn(async () => Infinity) } as any,
             { incr: jest.fn(), expire: jest.fn() } as any);
+        // The module wires this in production; the test does the same explicitly.
+        processor.attachQueue(service);
         worker = new Worker(queueName, async (job, token) => processor.process(job as any, token),
             { connection, concurrency: 1 });
         await worker.waitUntilReady();
@@ -240,6 +242,91 @@ const ready = !!databaseUrl && !!redisUrl;
         expect(['delayed', 'waiting', 'active']).toContain(await jobState(dispatchId));
         expect(sendStrict).not.toHaveBeenCalled();
     }, 30_000);
+
+    describe('order of the effects in one batch', () => {
+        const picture: DispatchItem[] = [
+            { kind: 'media', payload: { mediaUrl: 'https://example.test/a.jpg' } },
+            { kind: 'text', payload: { text: 'La foto del producto' } },
+            { kind: 'payment_link', payload: { text: 'https://checkout.test/abc' } },
+        ];
+
+        async function batchOf(items: DispatchItem[]) {
+            const contactId = randomUUID(), conversationId = randomUUID(), inboundMessageId = randomUUID();
+            await sql("INSERT INTO contacts VALUES($1::uuid,'Cliente sintético')", [contactId]);
+            await sql("INSERT INTO conversations VALUES($1::uuid,$2::uuid,'whatsapp','active')", [conversationId, contactId]);
+            await sql(`INSERT INTO messages(id,conversation_id,direction,content_type,content_text,status)
+                VALUES($1::uuid,$2::uuid,'inbound','text','Hola','delivered')`, [inboundMessageId, conversationId]);
+            const [agent] = await sql('SELECT * FROM agent_personas WHERE id=$1::uuid', [agentId]);
+            const { rows } = await store.prepare(tenantId, {
+                binding: { conversationId, contactId, inboundMessageId, channelType: 'whatsapp',
+                    channelAccountId: 'phone-1', recipient: '+573000000000' },
+                items, operationalScope: { kind: 'agent', tenantId, schemaName: schema, agentId, version: 1,
+                    operationalHash: operationalConfigurationHash(agent) } as any });
+            return rows;
+        }
+
+        it('delivers every effect in order by chaining, never by a guessed delay', async () => {
+            const rows = await batchOf(picture);
+            outcomes = [
+                { kind: 'accepted', receipt: 'wamid.IMG' },
+                { kind: 'accepted', receipt: 'wamid.CAP' },
+                { kind: 'accepted', receipt: 'wamid.PAY' },
+            ];
+            // Only the head is published; the worker chains the rest.
+            await store.publishBatch(tenantId, rows, (id, delay) => service.enqueueDispatch(tenantId, id, delay));
+            await settleQueue(120);
+            expect(sendStrict.mock.calls.map(call => call[0].itemKind)).toEqual(['media', 'text', 'payment_link']);
+            for (const [index, receipt] of ['wamid.IMG', 'wamid.CAP', 'wamid.PAY'].entries()) {
+                expect(await rowOf(rows[index].id)).toMatchObject({ state: 'sent', receipt });
+            }
+        }, 30_000);
+
+        it('refuses a caption whose picture never arrived, and stops the batch there', async () => {
+            const rows = await batchOf(picture);
+            outcomes = [{ kind: 'rejected', errorCode: 'wa_131053', retryable: false }];
+            await store.publishBatch(tenantId, rows, (id, delay) => service.enqueueDispatch(tenantId, id, delay));
+            await settleQueue(120);
+            expect(await rowOf(rows[0].id)).toMatchObject({ state: 'suppressed' });
+            // The caption describes something the customer never received.
+            expect(sendStrict).toHaveBeenCalledTimes(1);
+
+            await service.enqueueDispatch(tenantId, rows[1].id);
+            await settleQueue(120);
+            expect(await rowOf(rows[1].id)).toMatchObject(
+                { state: 'suppressed', error_code: 'predecessor_not_delivered' });
+            expect(sendStrict).toHaveBeenCalledTimes(1);
+        }, 30_000);
+
+        it('parks an item published before its predecessor arrived', async () => {
+            const rows = await batchOf(picture);
+            outcomes = [{ kind: 'accepted', receipt: 'wamid.LATER' }];
+            // A stray job for item 1 while item 0 has not been sent yet.
+            await service.enqueueDispatch(tenantId, rows[1].id);
+            await new Promise(resolve => setTimeout(resolve, 500));
+            expect(sendStrict).not.toHaveBeenCalled();
+            expect(['delayed', 'waiting', 'active']).toContain(await jobState(rows[1].id));
+            // Untouched: no permission was granted, so no attempt was spent.
+            expect(await rowOf(rows[1].id)).toMatchObject({ state: 'prepared', attempts: 0 });
+        }, 30_000);
+
+        it('still delivers a later bubble whose predecessor was refused, when it stands alone', async () => {
+            const rows = await batchOf([
+                { kind: 'text', payload: { text: 'Primero' } },
+                { kind: 'text', payload: { text: 'Después' } },
+            ]);
+            outcomes = [
+                { kind: 'rejected', errorCode: 'wa_131047', retryable: false },
+                { kind: 'accepted', receipt: 'wamid.SECOND' },
+            ];
+            await store.publishBatch(tenantId, rows, (id, delay) => service.enqueueDispatch(tenantId, id, delay));
+            await settleQueue(120);
+            expect(await rowOf(rows[0].id)).toMatchObject({ state: 'suppressed' });
+            // A further bubble is true on its own; only a caption depends.
+            await service.enqueueDispatch(tenantId, rows[1].id);
+            await settleQueue(120);
+            expect(await rowOf(rows[1].id)).toMatchObject({ state: 'sent', receipt: 'wamid.SECOND' });
+        }, 30_000);
+    });
 
     it('never lets DelayedError be swallowed as an unrecorded outcome', () => {
         // The settle-failure handler returns instead of throwing; a DelayedError

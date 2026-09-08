@@ -79,9 +79,15 @@ export class ChannelsModule implements OnModuleInit {
         private smsAdapter: SmsAdapter,
         private emailAdapter: EmailAdapter,
         private widgetAdapter: WidgetChannelAdapter,
+        private outboundProcessor: OutboundQueueProcessor,
+        private outboundQueueService: OutboundQueueService,
     ) {}
 
     onModuleInit() {
+        // The worker chains the next effect of a batch through the queue service.
+        // Wired here, not injected: another constructor dependency on the
+        // WorkerHost closes a cycle through @nestjs/bullmq and never resolves.
+        this.outboundProcessor.attachQueue(this.outboundQueueService);
         this.gateway.registerAdapter(this.whatsappAdapter);
         this.gateway.registerAdapter(this.instagramAdapter);
         this.gateway.registerAdapter(this.messengerAdapter);

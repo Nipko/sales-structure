@@ -8,6 +8,9 @@ import { LanguageDetectorService } from '../language-detector.service';
 import { LLMRouterService } from '../../ai/router/llm-router.service';
 import { authorityFor } from './tool-authority.fixture';
 import { assertRevisionIntegrity, sealRevision } from '../../evaluation-revision/evaluation-revision';
+import { RegionalProfileService } from '../../tenants/regional-profile.service';
+import { sealStructuredKnowledgeCapture } from '../../evaluation-revision/evaluation-structured-knowledge';
+import { AGENT_TEST_EXECUTION_CONTEXT } from '../../../common/types/execution-context';
 
 /** Real orchestration/engines/guards; only I/O boundaries are substitutes. */
 export function agentTurnFixture(overrides: Record<string, any> = {}) {
@@ -58,6 +61,12 @@ export function agentTurnFixture(overrides: Record<string, any> = {}) {
         ...overrides,
     };
     deps.bookingEngine = overrides.bookingEngine || new BookingEngineService(deps.prisma, deps.redis, deps.toolExecutor);
+    deps.regionalProfile = overrides.regionalProfile || new RegionalProfileService(deps.prisma, deps.redis);
+    if (!deps.revisions.captureStructuredKnowledge) deps.revisions.captureStructuredKnowledge = jest.fn(async (tenantId: string) =>
+        sealStructuredKnowledgeCapture({ version: 1, tenantId, sourceSchema: await deps.tenantsService.getSchemaName(tenantId, AGENT_TEST_EXECUTION_CONTEXT),
+            capturedAt: new Date().toISOString(), faqs: { state: 'present', rows: [] }, policies: { state: 'present', rows: [] } }));
+    if (!deps.businessInfoService.captureForEvaluation) deps.businessInfoService.captureForEvaluation = jest.fn(
+        (...args: any[]) => deps.businessInfoService.getPrimary(...args));
     deps.procedureEngine = overrides.procedureEngine || new ProcedureEngineService(deps.prisma, deps.redis, deps.toolExecutor);
     deps.promptAssembler = overrides.promptAssembler || new PromptAssemblerService(deps.personaService);
     const runtime = Object.assign(Object.create(ConversationsService.prototype), deps) as ConversationsService;

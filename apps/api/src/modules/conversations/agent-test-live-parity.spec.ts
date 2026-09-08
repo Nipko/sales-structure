@@ -49,6 +49,7 @@ describe('Agent Test uses operational engines, context and output guards', () =>
         const f = agentTurnFixture();
         const procedure = { id: '11111111-1111-4111-8111-111111111111', name: 'Support', status: 'active', version: 1,
             trigger: { keywords: ['soporte'] }, steps: [{ id: 'ask', type: 'ask', next: 'done', config: { field: 'detail', question: 'Describe el problema.' } }, { id: 'done', type: 'message', config: { text: 'Gracias por el detalle.' } }] };
+        f.revisions.captureProcedures.mockResolvedValue([procedure]);
         f.prisma.executeInTenantSchema.mockImplementation(async (_schema: string, sql: string) => {
             if (sql.includes('to_regclass')) return [{ reg: 'procedures' }];
             if (sql.includes('FROM procedures')) return [procedure];

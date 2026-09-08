@@ -3,6 +3,7 @@ export { CANONICAL_EVAL_TOOLS } from '../simulation/isolated-eval-namespace';
 import type { AIToolExecutorService } from './ai-tool-executor.service';
 import type { LLMRouterService } from '../ai/router/llm-router.service';
 import type { AgentTurnSession } from './agent-turn-session';
+import { resolveStructuredKnowledgeCapture } from '../evaluation-revision/evaluation-structured-knowledge';
 import { agentTestBlockedToolResult, isAgentTestSafeToolName } from './agent-test-tool-policy';
 
 export function sessionCanExecute(session: AgentTurnSession, name: string): boolean {
@@ -20,6 +21,8 @@ export function sessionToolExecutor(executor: AIToolExecutorService, session: Ag
             await session.beforeToolExecution?.();
             if (schemaName !== session.schemaName || tenantId !== session.tenantId || contactId !== session.contactId
                 || (conversationId && conversationId !== session.conversationId)) throw new Error('runtime_tool_scope_mismatch');
+            const structuredKnowledgeInputs = ['search_faqs', 'get_policy'].includes(name)
+                ? resolveStructuredKnowledgeCapture(session.snapshot?.structuredKnowledgeInputs, tenantId) : undefined;
             if (!sessionCanExecute(session, name)) result = session.mode === 'sandbox' && CANONICAL_EVAL_TOOLS.has(name) ? { error: 'canonical_sandbox_not_available', persisted: false, controlBlocked: true } : agentTestBlockedToolResult(name);
             else result = await executor.execute(schemaName, tenantId, contactId, name, args, conversationId, {
                 ...options,
@@ -29,6 +32,7 @@ export function sessionToolExecutor(executor: AIToolExecutorService, session: Ag
                 evalMode: !!session.sandboxNamespace,
                 sandboxNamespace: session.sandboxNamespace,
                 executionState: session.state,
+                structuredKnowledgeInputs,
                 channelType: session.channelType,
             });
             await session.afterDependencyRead?.();

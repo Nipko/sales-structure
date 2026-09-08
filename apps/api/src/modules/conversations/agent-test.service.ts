@@ -88,6 +88,8 @@ export class AgentTestService {
             llmSpendUsdCents:await this.throttle.getLlmSpendUsdCents(tenantId),
             mcpDiscoveredCount:mcp.discoveredCount, mcpApprovedCount:mcp.approvedCount};
         snapshot.runtimeInputsHash = revisionHash(snapshot.runtimeInputs);
+        snapshot.contextInputs = await this.runtime.captureEvaluationContext(tenantId, snapshot.config);
+        snapshot.structuredKnowledgeInputs = await this.revisions.captureStructuredKnowledge(tenantId);
         sealEvaluationSnapshot(snapshot);
         await this.assertSnapshotCurrent(snapshot);
         return snapshot;
@@ -119,6 +121,7 @@ export class AgentTestService {
         const contactId = resolveAgentTestContactId(options?.sandboxContactId);
         if (options?.evalMode && (contactId !== EVAL_SANDBOX_CONTACT_ID || !options.sandboxConversationId)) throw new Error('eval_sandbox_identity_required');
         const sourceSchema = await this.tenantsService.getSchemaName(tenantId, AGENT_TEST_EXECUTION_CONTEXT);
+        if (snapshot.structuredKnowledgeInputs!.sourceSchema !== sourceSchema) throw new Error('evaluation_structured_knowledge_schema_mismatch');
         const namespace = options?.sandboxNamespace;
         if (namespace && !/^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(options?.sandboxInboundMessageId || '')) throw new Error('eval_sandbox_inbound_required');
         if (options?.sandboxInboundMessageId && !namespace) throw new Error('eval_namespace_scope_mismatch');

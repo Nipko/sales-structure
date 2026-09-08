@@ -147,6 +147,11 @@ export class RegionalProfileService {
         await this.redis.del(`regional:${tenantId}`).catch(() => undefined);
     }
 
+    /** A failed source read cannot become a frozen fallback profile. */
+    async captureForEvaluation(tenantId: string): Promise<TenantRegionalProfileV1> {
+        return this.build(tenantId, true);
+    }
+
     /**
      * La región con la que se puede normalizar un teléfono — o `null`.
      *
@@ -176,7 +181,7 @@ export class RegionalProfileService {
         }
     }
 
-    private async build(tenantId: string): Promise<TenantRegionalProfileV1> {
+    private async build(tenantId: string, strict = false): Promise<TenantRegionalProfileV1> {
         let tenant: any = null;
         try {
             tenant = await this.prisma.tenant.findUnique({
@@ -190,8 +195,10 @@ export class RegionalProfileService {
                 },
             });
         } catch (error: any) {
+            if (strict) throw new Error('evaluation_regional_source_unavailable');
             this.logger.warn(`[Regional] tenant read failed for ${tenantId}: ${error?.message}`);
         }
+        if (strict && !tenant) throw new Error('evaluation_regional_source_unavailable');
         return this.compose(tenantId, tenant);
     }
 

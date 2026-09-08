@@ -343,6 +343,8 @@ describe('Agent Test no-business-write execution', () => {
         // `not_authorised` y la prueba pasaría sin ejercitar el gate.
         const opts = {
             authority: authorityFor('search_faqs', 'get_policy', 'create_appointment'),
+            operationalScope: { kind: 'agent' as const, tenantId: TENANT_ID, schemaName: SCHEMA,
+                agentId: AGENT_ID, version: 1, operationalHash: 'a'.repeat(64) },
             readOnly: true,
             executionContext: AGENT_TEST_EXECUTION_CONTEXT,
         };

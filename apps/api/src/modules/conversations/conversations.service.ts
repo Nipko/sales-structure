@@ -38,7 +38,9 @@ import { AgentTurnSession } from './agent-turn-session';
 import { sessionCanExecute, sessionLlmRouter, sessionToolExecutor } from './agent-turn-adapters';
 import { restoreBookingMission } from './booking-state-continuity';
 import { resolveEvaluationSnapshot } from './agent-evaluation-snapshot';
-import { DRAFT_EXECUTION_CONTEXT } from '../../common/types/execution-context';
+import { AGENT_TEST_EXECUTION_CONTEXT, DRAFT_EXECUTION_CONTEXT } from '../../common/types/execution-context';
+import { EVALUATION_CONTEXT_LANGUAGES, evaluationContextLanguage, projectBusinessTurnContext,
+    resolveEvaluationTurnContext, type EvaluationTurnContextInputs } from './evaluation-turn-context';
 import { isAgentTestSafeToolName } from './agent-test-tool-policy';
 import { buildTrustedPriceCorpus } from './trusted-price-context';
 import {
@@ -98,7 +100,7 @@ import {
     CONTROL_ERRORS_REQUIRING_HUMAN,
     ToolExecutionControlService,
 } from './tool-execution-control.service';
-import { ActiveOperationsContextService } from './active-operations-context.service';
+import { ActiveOperationsContextService, tenantActiveObjectPolicyContext } from './active-operations-context.service';
 import { ToolRetrievalService } from './tool-retrieval.service';
 import { EmotionService } from './emotion.service';
 import { resolveTenantSubscriptionAccess } from '../../common/utils/subscription-entitlement.util';
@@ -1295,8 +1297,9 @@ export class ConversationsService {
     }
 
     private async loadTenantBusinessHours(tenantId: string, session?: AgentTurnSession): Promise<any | null> {
+        if (session) return resolveEvaluationTurnContext(session.snapshot.contextInputs, tenantId).businessHours;
         const cacheKey = `biz_hours:${tenantId}`;
-        const cache = session?.state || this.redis;
+        const cache = this.redis;
         const cached = await cache.getJson(cacheKey);
         if (cached) return cached;
 
@@ -1861,6 +1864,28 @@ export class ConversationsService {
      * Orchestrate the LLM call using the Router and Persona System Prompt.
      * Includes smart history truncation to stay within context window limits.
      */
+    /** Captured between the revision service's initial and final dependency checks.
+     * Every source read is uncached/read-only; failures cannot become empty facts.
+     * The global manifest remains required until all other ports are isolated. */
+    async captureEvaluationContext(tenantId: string, config: TenantConfig): Promise<EvaluationTurnContextInputs> {
+        if (!this.regionalProfile || !this.verticalTurnContext) throw new Error('evaluation_context_services_unavailable');
+        const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true, industry: true } });
+        if (!tenant) throw new Error('evaluation_context_tenant_unavailable');
+        const [regional, identity, verticalEntries] = await Promise.all([
+            this.regionalProfile.captureForEvaluation(tenantId),
+            this.businessInfoService.captureForEvaluation(tenantId, AGENT_TEST_EXECUTION_CONTEXT),
+            Promise.all(EVALUATION_CONTEXT_LANGUAGES.map(async language => [language,
+                await this.verticalTurnContext!.resolve({ tenantId, language, toolsConfig: config.tools,
+                    executionContext: AGENT_TEST_EXECUTION_CONTEXT }) || null] as const)),
+        ]);
+        return resolveEvaluationTurnContext({ version: 1, tenantId,
+            businessHours: (tenant.settings as any)?.businessHours ?? null,
+            regional, business: projectBusinessTurnContext(identity),
+            activeObjectPolicy: tenantActiveObjectPolicyContext(tenant),
+            vertical: Object.fromEntries(verticalEntries) as EvaluationTurnContextInputs['vertical'],
+        }, tenantId);
+    }
+
     /** Shared turn entry for previews and evaluations. Transport remains outside the core. */
     async executeAgentTurn(message: NormalizedMessage, session: AgentTurnSession): Promise<string> {
         if (message.tenantId !== session.tenantId || message.channelType !== session.channelType) throw new Error('runtime_session_scope_mismatch');
@@ -1893,6 +1918,7 @@ export class ConversationsService {
     ): Promise<string> {
         const draftMode = config.behavior?.draftMode === true;
         const executionContext = session?.executionContext || (draftMode ? DRAFT_EXECUTION_CONTEXT : undefined);
+        const evaluationContext = session ? resolveEvaluationTurnContext(session.snapshot.contextInputs, tenantId) : null;
         const draftAgent = draftMode && !session && resolvedAgentId
             ? (await this.prisma.executeInTenantSchema<any[]>(await this.tenantSchema(tenantId),
                 'SELECT id, version FROM agent_personas WHERE id=$1::uuid AND is_active=true', [resolvedAgentId]))[0]
@@ -2061,7 +2087,8 @@ export class ConversationsService {
         // a Colombian literal. `America/Bogota` was the last resort in four
         // separate places, so a Mexican restaurant computed "hoy" and "mañana"
         // in Bogota time and told guests the wrong day.
-        const regional = await this.regionalProfile?.resolve(tenantId, executionContext).catch(() => null);
+        const regional = evaluationContext ? evaluationContext.regional
+            : await this.regionalProfile?.resolve(tenantId, executionContext).catch(() => null);
         const tz = bizHours?.timezone
             || config.hours?.timezone
             || regional?.timezone.value
@@ -2139,6 +2166,7 @@ export class ConversationsService {
                 schemaName,
                 contactId: contact.id,
                 config: config as any,
+                ...(evaluationContext ? { fallbackPolicyContext: evaluationContext.activeObjectPolicy } : {}),
                 timezone: tz,
                 now,
             });
@@ -2147,27 +2175,15 @@ export class ConversationsService {
         // Business identity — the "who we are" data the agent uses to answer
         // questions about the company. Cached in Redis inside BusinessInfoService.
         try {
-            const businessIdentity = await this.businessInfoService.getPrimary(tenantId, executionContext);
-            if (businessIdentity) {
-                turnContext.business = {
-                    companyName: businessIdentity.companyName,
-                    industry: businessIdentity.industry,
-                    about: businessIdentity.about,
-                    phone: businessIdentity.phone,
-                    email: businessIdentity.email,
-                    website: businessIdentity.website,
-                    address: businessIdentity.address,
-                    city: businessIdentity.city,
-                    country: businessIdentity.country,
-                    socialLinks: businessIdentity.socialLinks,
-                };
-            }
+            const business = evaluationContext ? evaluationContext.business
+                : projectBusinessTurnContext(await this.businessInfoService.getPrimary(tenantId, executionContext));
+            if (business) turnContext.business = business;
         } catch (e: any) {
             this.logger.warn(`Business identity lookup failed (non-fatal): ${e.message}`);
         }
 
         // 3.5 Vertical context — inject industry-specific terminology for the LLM
-        try {
+        if (!session) try {
             const cacheKey = `vertical:${tenantId}`;
             let verticalConfig = await cache.getJson<any>(cacheKey);
             if (!verticalConfig) {
@@ -2300,7 +2316,9 @@ export class ConversationsService {
         // above remains as a compatibility fallback for hand-built specs where
         // this optional provider is absent; production always replaces it with
         // this contract-backed projection.
-        try {
+        if (evaluationContext) {
+            turnContext.verticalContext = evaluationContext.vertical[evaluationContextLanguage(userLanguage)] || undefined;
+        } else try {
             const sharedVerticalContext = await this.verticalTurnContext?.resolve({
                 tenantId,
                 language: userLanguage,

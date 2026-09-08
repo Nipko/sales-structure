@@ -578,7 +578,10 @@ export class EffectiveCapabilityService {
             }
         }
 
-        const regional = this.regionalProfile
+        // The shared core already resolved both values (or captured them for
+        // evaluation). Only resolve a missing fallback; do not re-read facts
+        // that cannot affect this decision.
+        const regional = (input.operatingCountry == null || input.jurisdiction == null) && this.regionalProfile
             ? await this.regionalProfile.resolve(input.tenantId, input.executionContext).catch(() => null)
             : null;
 

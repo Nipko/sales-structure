@@ -1465,7 +1465,7 @@ export class VerticalsService {
         const settings = (tenant.settings as any) || {};
         let provisioningState = settings.verticalProvisioning;
         let mayPublishCurrentManifest = this.hasCompletedCurrentProvisioning(provisioningState);
-        const cached = await this.redis.getJson<TenantVerticalConfig>(cacheKey);
+        const cached = persistenceDisabled(executionContext) ? null : await this.redis.getJson<TenantVerticalConfig>(cacheKey);
         const storedConfig = settings.verticalConfig as TenantVerticalConfig | undefined;
         let config = storedConfig || cached || undefined;
 

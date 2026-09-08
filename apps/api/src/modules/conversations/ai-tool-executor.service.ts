@@ -229,6 +229,7 @@ export class AIToolExecutorService {
             operationalScope?: ServedAgentAuthority;
             evalMode?: boolean;
             sandboxNamespace?: EvalNamespaceLease;
+            structuredKnowledgeInputs?:import('../evaluation-revision/evaluation-structured-knowledge').StructuredKnowledgeCapture;
             executionState?: { get(key: string): Promise<string | null> };
             missionScope?: import('@parallext/shared').MissionExecutionScopeV1;
             channelType?: string;
@@ -674,10 +675,10 @@ export class AIToolExecutorService {
                         {source:'agent',expectedVersion:args.catalogTerms?.orderVersion,expectedTermsHash:args.catalogTermsHash,reason:args.reason,operationalScope}),refundPerformed:false };
 
                 case 'search_faqs':
-                    return this.searchFaqs(tenantId, args.query, args.limit, opts?.executionContext);
+                    return this.searchFaqs(tenantId, args.query, args.limit, opts?.executionContext, opts?.structuredKnowledgeInputs);
 
                 case 'get_policy':
-                    return this.getPolicy(tenantId, args.type as PolicyType, opts?.executionContext);
+                    return this.getPolicy(tenantId, args.type as PolicyType, opts?.executionContext, opts?.structuredKnowledgeInputs);
 
                 case 'search_knowledge_base':
                     return this.searchKnowledgeBase(
@@ -1776,8 +1777,9 @@ export class AIToolExecutorService {
         query: string,
         limit = 3,
         executionContext?: ServiceExecutionContext,
+        captured?:import('../evaluation-revision/evaluation-structured-knowledge').StructuredKnowledgeCapture,
     ): Promise<any> {
-        const faqs = await this.faqsService.search(tenantId, query, limit, executionContext);
+        const faqs = await this.faqsService.search(tenantId, query, limit, executionContext, captured);
         // View counts are analytics writes, so introspection skips them.
         if (!persistenceDisabled(executionContext)) {
             for (const f of faqs) this.faqsService.incrementViews(tenantId, f.id);
@@ -1796,8 +1798,9 @@ export class AIToolExecutorService {
         tenantId: string,
         type: PolicyType,
         executionContext?: ServiceExecutionContext,
+        captured?:import('../evaluation-revision/evaluation-structured-knowledge').StructuredKnowledgeCapture,
     ): Promise<any> {
-        const policy = await this.policiesService.getActive(tenantId, type, executionContext);
+        const policy = await this.policiesService.getActive(tenantId, type, executionContext, captured);
         if (!policy) return { error: `No ${type} policy is configured for this business.` };
         return {
             type: policy.type,

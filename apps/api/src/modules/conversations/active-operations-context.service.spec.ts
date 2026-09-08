@@ -3,6 +3,7 @@ import {
     ActiveOperationsContextService,
     classifyActiveObjectStatus,
     resolveActiveOperationsLoaders,
+    tenantActiveObjectPolicyContext,
 } from './active-operations-context.service';
 import {
     ACTIVE_OBJECT_EXPOSURE_POLICY,
@@ -24,6 +25,26 @@ function turn(): TurnContext {
 }
 
 describe('ActiveOperationsContextService', () => {
+    it('keeps a legacy exposure policy sensitive even when the prompt template is canonicalized', async () => {
+        const tenant = { industry: 'legacy_domain', settings: { verticalConfig: { subtype: 'legacy_subtype' } } };
+        const fallbackPolicyContext = tenantActiveObjectPolicyContext(tenant);
+        expect(fallbackPolicyContext).toEqual({ industry: 'legacy_domain', subtype: 'legacy_subtype' });
+        const appointment = { kind: 'appointment', id: 'a', status: 'confirmed', statusClass: 'active', source: 'appointments' } as ActiveObjectContextItemV1;
+        expect(filterActiveObjectsForPrompt([appointment], fallbackPolicyContext)).toEqual([]);
+        const service = new ActiveOperationsContextService({ tenant: { findUnique: jest.fn().mockResolvedValue(tenant) } } as any);
+        expect(await (service as any).resolvePolicyContext({ tenantId: 'tenant', config: {} })).toEqual(fallbackPolicyContext);
+    });
+    it.each([{ industry: 'retail', subtype: 'moda' }, null])('uses the captured fallback policy without a tenant read: %j', async fallbackPolicyContext => {
+        const prisma = { tenant: { findUnique: jest.fn().mockRejectedValue(new Error('tenant_policy_read_forbidden')) },
+            executeInTenantSchema: jest.fn().mockResolvedValue([]) };
+        const service = new ActiveOperationsContextService(prisma as any);
+        expect(await service.load({ tenantId: 'tenant', schemaName: 'tenant_fixture', contactId: CONTACT_ID,
+            config: {}, fallbackPolicyContext })).toEqual({ failures: [] });
+        expect(prisma.tenant.findUnique).not.toHaveBeenCalled();
+        const resolvePolicy = service as any;
+        expect(await resolvePolicy.resolvePolicyContext({ config: { industry: 'salud' }, fallbackPolicyContext }))
+            .toMatchObject({ industry: 'salud' });
+    });
     it('has an exhaustive per-kind exposure policy and keeps sensitive records tool-only at A2+', () => {
         expect(Object.keys(ACTIVE_OBJECT_EXPOSURE_POLICY).sort())
             .toEqual([...ACTIVE_OBJECT_KINDS].sort());

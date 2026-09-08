@@ -12,6 +12,8 @@ import { AgentReleaseStore } from './agent-release-store';
 import { releaseReviewEvidence } from './agent-release-contract';
 import { releaseRunContext, sealReleaseRun } from './agent-release-policy';
 import { invalidateRegressionArtifacts } from '../quality/regressions/quality-regression-retention';
+import { RegionalProfileService } from '../tenants/regional-profile.service';
+import { sealStructuredKnowledgeCapture } from '../evaluation-revision/evaluation-structured-knowledge';
 
 const url=process.env.AGENT_RELEASE_TEST_DATABASE_URL;
 (url?describe:describe.skip)('Release request, lease and human review transactions on disposable PostgreSQL',()=>{
@@ -35,6 +37,10 @@ const url=process.env.AGENT_RELEASE_TEST_DATABASE_URL;
         snapshot.releaseScope={profileId:'education/capacitacion',intentKeys:['ask_question'],missionConfigured:true,channels,languages:[...EVAL_LANGUAGES]};
         snapshot.mcpTools=[];snapshot.mcpToolsHash=revisionHash([]);snapshot.procedures=[];snapshot.proceduresHash=revisionHash([]);
         snapshot.runtimeInputs={providerHealth:{},planFeatures:{},llmSpendUsdCents:0,mcpDiscoveredCount:0,mcpApprovedCount:0};snapshot.runtimeInputsHash=revisionHash(snapshot.runtimeInputs);
+        snapshot.contextInputs={version:1,tenantId,businessHours:null,business:null,activeObjectPolicy:{},
+            regional:new RegionalProfileService({} as any,{} as any).compose(tenantId,{}),vertical:{es:null,en:null,pt:null,fr:null}};
+        snapshot.structuredKnowledgeInputs=sealStructuredKnowledgeCapture({version:1,tenantId,sourceSchema:schema,capturedAt:snapshot.capturedAt,
+            faqs:{state:'present',rows:[]},policies:{state:'present',rows:[]}});
         snapshot.manifest=sealRevision(tenantId,[{key:'fixture.transaction_test',state:'present',hash:revisionHash('synthetic')}],[]);sealEvaluationSnapshot(snapshot);
         return {tenantId,agentId,actor,requestKey:randomUUID(),snapshot,scenarios:structuredClone(sourceScenarios)};
     };

@@ -4,6 +4,8 @@ import { LLMRouterService } from '../ai/router/llm-router.service';
 import { buildDomainContractDraft, EVAL_LANGUAGES, isAgentMissionV1, listCanonicalSubtypeExperienceProfileIds, type ProcedureDefinition } from '@parallext/shared';
 import type { AgentReleaseScope } from '../simulation/agent-release-policy';
 import { evaluationArtifactHash } from './evaluation-artifact';
+import { captureStructuredKnowledge } from './evaluation-structured-knowledge';
+import { serviceCatalogCaptureDatabase } from './evaluation-service-catalog-capture';
 import { assertRevisionIntegrity, EVALUATION_OUTPUT_TABLES, revisionHash, revisionIgnoredColumns,
     sealRevision, type EvaluationDependency, type EvaluationRevisionManifest } from './evaluation-revision';
 
@@ -20,6 +22,10 @@ const safeIdentifier = (name: string): string => {
 @Injectable()
 export class EvaluationRevisionService {
     constructor(private readonly prisma: PrismaService, private readonly router: LLMRouterService) {}
+
+    captureStructuredKnowledge(tenantId: string) {
+        return captureStructuredKnowledge(serviceCatalogCaptureDatabase(this.prisma), tenantId);
+    }
 
     /** Values are frozen inside the private snapshot; manifest guards catch a concurrent tenant/agent edit. */
     async captureAgentReleaseScope(tenantId:string,agent:any):Promise<AgentReleaseScope> {

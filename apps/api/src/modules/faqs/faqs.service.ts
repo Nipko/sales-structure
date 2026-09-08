@@ -7,6 +7,7 @@ import type { FAQ } from '@parallext/shared';
 import type { ServiceExecutionContext } from '../../common/types/execution-context';
 import { persistenceDisabled } from '../../common/types/execution-context';
 import { AGENT_QUALITY_DEPENDENCIES_UPDATED } from '../quality/agent-quality-events';
+import { structuredKnowledgeRelation, type StructuredKnowledgeCapture } from '../evaluation-revision/evaluation-structured-knowledge';
 
 /**
  * Plegado de diacríticos para la búsqueda de FAQs.
@@ -179,24 +180,26 @@ export class FaqsService {
         query: string,
         limit = 5,
         executionContext?: ServiceExecutionContext,
+        captured?: StructuredKnowledgeCapture,
     ): Promise<FAQ[]> {
-        const schemaName = persistenceDisabled(executionContext)
+        const frozen = captured ? structuredKnowledgeRelation(captured, tenantId, 'faqs', 3, executionContext) : null;
+        const schemaName = frozen ? null : persistenceDisabled(executionContext)
             ? await this.tenantsService.getSchemaName(tenantId, executionContext)
             : await this.ensureSchema(tenantId);
         const fold = (expr: string) => `translate(${expr}, '${FOLD_FROM}', '${FOLD_TO}')`;
         const rows = await this.prisma.$queryRawUnsafe(
             `SELECT id, question, answer, category, tags, order_index, is_published, views, created_at, updated_at,
                     ts_rank(search_tsv, plainto_tsquery('simple', $1)) AS rank
-             FROM "${schemaName}"."faqs"
+             FROM ${frozen?.relation || `"${schemaName}"."faqs"`}
              WHERE is_published = true
                AND (search_tsv @@ plainto_tsquery('simple', $1)
                     OR question ILIKE '%' || $1 || '%'
                     OR answer ILIKE '%' || $1 || '%'
                     OR ${fold('question')} ILIKE '%' || ${fold('$1')} || '%'
                     OR ${fold('answer')} ILIKE '%' || ${fold('$1')} || '%')
-             ORDER BY rank DESC, order_index ASC
+             ORDER BY rank DESC NULLS LAST, order_index ASC, id ASC
              LIMIT $2`,
-            query, limit,
+            query, limit, ...(frozen ? [frozen.json] : []),
         ) as any[];
         return rows.map(this.rowToFaq);
     }

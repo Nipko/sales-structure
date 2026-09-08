@@ -4,7 +4,7 @@
  * `schema` means the explicit selected schema: source in preview, namespace
  * in a canonical evaluation. No source customer data is cloned into fixtures.
  */
-export const EVALUATION_READER_INVENTORY_VERSION = 1 as const;
+export const EVALUATION_READER_INVENTORY_VERSION = 3 as const;
 export interface EvaluationToolReadGroup {
     tools: readonly string[];
     readers: readonly string[];
@@ -20,8 +20,8 @@ export const EVALUATION_TOOL_READ_GROUPS: readonly EvaluationToolReadGroup[] = [
     group(['search_products','get_product','check_stock'], ['AIToolExecutor.searchProducts/getProduct/checkStock'], ['products']),
     group(['list_my_catalog_orders','get_catalog_order'], ['CatalogOrderCommands.listOwned/getOwned'], ['orders','order_items','contacts','customer_memory_erasure']),
     group(['list_active_offers'], ['AIToolExecutor.listActiveOffers'], ['commercial_offers','courses'], ['wall_clock']),
-    group(['search_faqs'], ['FaqsService.search/readSchema'], ['faqs'], ['source_schema_by_tenantId']),
-    group(['get_policy'], ['PoliciesService.getActive'], ['policies'], ['source_schema_by_tenantId']),
+    group(['search_faqs'], ['FaqsService.search/structuredKnowledgeRelation'], ['faqs'], ['sealed_eligible_collection','PostgreSQL_recordset_search']),
+    group(['get_policy'], ['PoliciesService.getActive/structuredKnowledgeRelation'], ['policies'], ['sealed_eligible_collection','PostgreSQL_recordset_query']),
     group(['search_knowledge_base'], ['KnowledgeService.tenantHasKnowledge/searchRelevant','KnowledgeConflictService.annotations'],
         ['knowledge_documents','knowledge_embeddings','knowledge_conflict_cases','knowledge_conflict_decisions'],
         ['source_schema_by_tenantId','embedding_provider','reranker_router','CURRENT_DATE']),
@@ -59,11 +59,11 @@ export const EVALUATION_TOOL_READ_GROUPS: readonly EvaluationToolReadGroup[] = [
 export const EVALUATION_CONTEXT_READS = [
     { port: 'snapshot.capture', boundary: 'source_then_sealed', readers: 'Persona.getAgent/readConfigurationRevision; Revision.captureAgentReleaseScope/captureProcedures; Learning.getPublishedReleaseSnapshot; MCP.listPublishableTools; VerticalIntegrations.getAllHealth; Throttle.getPlanFeatures/getLlmSpendUsdCents', sources: 'agent_personas, agent_configuration_revisions, procedures, learning releases/sources/examples/erasure, public.tenants/settings, public.billing_plans, MCP configs/approvals, provider health + Redis spend' },
     { port: 'session.identity_history_state', boundary: 'session_and_namespace', readers: 'executeAgentTurn; AgentTurnSession; loadBookingState/loadToolContext/missionFocus; Procedure.forExecution; rewriteSearchQuery/history', sources: 'synthetic contact/conversation; caller scenario history; session metadata/cache; namespace messages + tool ledger + consent' },
-    { port: 'core.business_hours', boundary: 'source_then_session_cache', readers: 'Conversations.loadTenantBusinessHours', sources: 'public.tenants.settings.businessHours (overrides agent config hours)' },
-    { port: 'core.regional', boundary: 'source_readonly', readers: 'RegionalProfile.resolve/build', sources: 'public.tenants operating identity/settings + static country packs' },
-    { port: 'core.business', boundary: 'source_readonly', readers: 'BusinessInfo.getPrimaryWithoutWrites', sources: 'source companies; public tenant schema resolution' },
-    { port: 'core.vertical', boundary: 'source_readonly_and_session_cache', readers: 'legacy vertical/bizgoals context; VerticalTurnContext.resolve; Verticals.getVerticalConfig', sources: 'public.tenants settings/industry/business context + shared subtype contracts' },
-    { port: 'core.active_objects', boundary: 'namespace_plus_source_policy', readers: 'ActiveOperationsContext.populateTurnContext/load/resolvePolicyContext', sources: 'selected schema contacts/owned operational tables; public.tenants.settings vertical fallback' },
+    { port: 'core.business_hours', boundary: 'source_then_sealed', readers: 'Conversations.captureEvaluationContext/loadTenantBusinessHours', sources: 'snapshot.contextInputs.businessHours from public.tenants.settings; explicit absence, no per-turn tenant/cache lookup; global manifest retained' },
+    { port: 'core.regional', boundary: 'source_then_sealed', readers: 'RegionalProfile.captureForEvaluation/build; Conversations.generateResponse', sources: 'snapshot.contextInputs.regional from strict tenant read + country packs; country/jurisdiction passed to capability resolver, no regional fallback when both supplied; global manifest retained' },
+    { port: 'core.business', boundary: 'source_then_sealed', readers: 'BusinessInfo.captureForEvaluation/getPrimaryWithoutWrites; projectBusinessTurnContext', sources: 'snapshot.contextInputs.business from canonical companies projection; missing column legacy fallback only, no Redis/DDL; global manifest retained' },
+    { port: 'core.vertical', boundary: 'source_then_sealed', readers: 'Conversations.captureEvaluationContext; VerticalTurnContext.resolve; Verticals.getVerticalConfig', sources: 'snapshot.contextInputs.vertical in es/en/pt/fr from tenant settings/industry/goals + subtype contracts; readonly bypasses Redis, no legacy per-turn reads; global manifest retained' },
+    { port: 'core.active_objects', boundary: 'namespace_plus_sealed_policy', readers: 'ActiveOperationsContext.populateTurnContext/load/resolvePolicyContext; tenantActiveObjectPolicyContext', sources: 'selected schema contacts/owned operational tables; configured agent policy wins, otherwise snapshot.contextInputs.activeObjectPolicy preserves raw tenant industry/subtype including unknown values; no per-turn tenant policy lookup' },
     { port: 'core.memory', boundary: 'namespace_plus_embedding_provider', readers: 'CustomerMemory.getMemory/retrieveFacts/resolveOwner/conflicted facts', sources: 'selected schema customer_memory_facts/customer_memory_erasure/contact_identities; live embedding credentials/model' },
     { port: 'capability.plan', boundary: 'source_readonly', readers: 'EffectiveCapability.resolve; Throttle.getPlanFeatures/getTenantPlan; PaymentOperation.getRuntimeCapability', sources: 'public.tenants plan/overrides + billing_plans; snapshot plan used only by core LLM routing, not all capability resolution' },
     { port: 'capability.readiness', boundary: 'namespace_readonly', readers: 'VerticalReadiness.evaluate/countRows', sources: 'READINESS table predicates in selected schema; evaluation bypasses production Redis after this fix' },

@@ -968,7 +968,8 @@
       "organizations": "Organizações",
       "attribution": "Atribuição",
       "managed": "Gerenciados",
-      "fiscalAdmin": "Faturação eletrônica"
+      "fiscalAdmin": "Faturação eletrônica",
+      "dispatchOperations": "Entrega e reconciliação"
     },
     "planLocked": "Não incluído no seu plano",
     "expandSidebar": "Expandir",
@@ -13958,5 +13959,254 @@
     "reviewedAgent": "Agentes desta revisão: {agent}",
     "reviewReference": "Ver responsável pela revisão",
     "reviewer": "Referência do responsável: {reference}"
+  },
+  "dispatchOperations": {
+    "title": "Entrega e reconciliação",
+    "subtitle": "O interruptor da entrega durável, o seu alcance por empresa e canal, e a fila de efeitos cujo resultado ninguém conhece ainda.",
+    "scopeNote": "Esta tela é da plataforma: decide como as respostas saem para todas as empresas e nunca é a preferência de uma conta. Nunca mostra o texto da mensagem nem o destinatário completo.",
+    "refresh": "Atualizar",
+    "loading": "Carregando…",
+    "cancel": "Cancelar",
+    "channels": {
+      "whatsapp": "WhatsApp",
+      "messenger": "Messenger",
+      "instagram": "Instagram",
+      "telegram": "Telegram"
+    },
+    "itemKinds": {
+      "text": "Texto",
+      "media": "Mídia",
+      "payment_link": "Link de pagamento",
+      "flow": "Formulário"
+    },
+    "states": {
+      "prepared": "Preparado",
+      "queued": "Na fila",
+      "admitted": "Admitido",
+      "sent": "Enviado",
+      "stored": "Guardado",
+      "suppressed": "Anulado",
+      "failed": "Falhou",
+      "reconciliation_required": "Precisa de decisão"
+    },
+    "errors": {
+      "notReconcilable": "Este efeito já foi resolvido por outra via e o seu estado mudou. Atualize a fila: não se decide duas vezes sobre o mesmo.",
+      "redacted": "Este efeito foi apagado por privacidade. As suas palavras não podem ser reenviadas sob nenhuma evidência.",
+      "attemptsExhausted": "Este efeito esgotou as suas tentativas. Já não pode ser repetido; registe-o como entregue ou como não entregue.",
+      "receiptRequired": "Para fechar como entregue é preciso o identificador devolvido pelo provedor.",
+      "evidenceRequired": "Escreva o que verificou. Sem evidência a decisão não fica registada.",
+      "invalidRollout": "A configuração foi recusada: reveja os canais e as empresas selecionadas.",
+      "unavailable": "Não conseguimos verificar esta informação. Atualize ou tente de novo; não se interpreta como sucesso nem como ausência de dados."
+    },
+    "blocked": {
+      "settled": "Este efeito já tem uma decisão registada.",
+      "redacted": "Um efeito apagado por privacidade não pode ser repetido.",
+      "attemptsExhausted": "Este efeito esgotou as suas tentativas: a repetição seria recusada.",
+      "evidenceRequired": "Escreva o que verificou antes de continuar (até 500 caracteres).",
+      "receiptRequired": "Escreva o identificador devolvido pelo provedor."
+    },
+    "rollout": {
+      "title": "Alcance da entrega durável",
+      "help": "Enquanto está desligada, cada canal mantém o caminho que já tinha. Ligá-la muda por onde saem as respostas reais das empresas alcançadas.",
+      "on": "Ligada",
+      "off": "Desligada",
+      "enabledLabel": "Ligar a entrega durável",
+      "enabledHelp": "É preciso escolher também pelo menos um canal migrado; caso contrário fica ligada sem efeito.",
+      "channels": "Canais alcançados",
+      "channelsHelp": "Só os canais cujo adaptador implementa o transporte estrito podem tomar o caminho novo.",
+      "channelMigrated": "Adaptador migrado: pode tomar o caminho novo.",
+      "channelNotMigrated": "Sem transporte estrito: se o escolher, é ignorado.",
+      "tenants": "Empresas alcançadas",
+      "tenantsHelp": "Sem nenhuma selecionada, alcança todas as empresas. Selecione algumas para fazer um piloto.",
+      "noTenants": "Não há empresas para listar.",
+      "unknownTenant": "Empresa fora da lista ({id})",
+      "invalidChannels": "Canais não suportados: {channels}",
+      "invalidTenants": "Identificadores de empresa inválidos: {ids}",
+      "save": "Guardar o alcance",
+      "killSwitch": "Desligar para todos",
+      "none": "nenhum",
+      "allTenants": "todas as empresas",
+      "someTenants": "{count} empresas",
+      "confirmSaveTitle": "Confirmar a mudança de alcance",
+      "confirmSaveBody": "A partir de guardar, as respostas sairão pelo caminho durável nestes canais: {channels}. Alcance: {tenants}. A mudança é imediata.",
+      "confirmSave": "Guardar o alcance",
+      "confirmDisableTitle": "Desligar a entrega durável para todos",
+      "confirmDisableBody": "Todos os canais voltam de imediato ao caminho que tinham antes, para todas as empresas. O alcance guardado fica vazio.",
+      "confirmDisable": "Desligar agora",
+      "savedNotice": "Alcance guardado. Já está em efeito.",
+      "disabledNotice": "A entrega durável ficou desligada para todas as empresas.",
+      "inert": "Está ligada e não faz nada: nenhum canal escolhido tem transporte estrito. O silêncio parece igual a um piloto que funciona.",
+      "ignored": "Canais escolhidos que são ignorados por não estarem migrados: {channels}"
+    },
+    "queue": {
+      "title": "Fila de reconciliação",
+      "help": "Cada linha é um efeito que pode ter chegado ao cliente ou não, e só uma pessoa a olhar para o provedor pode dizê-lo. Ordenados do mais antigo ao mais recente.",
+      "tenant": "Empresa",
+      "selectTenant": "Selecione uma empresa",
+      "search": "Procurar",
+      "searchPlaceholder": "Identificador exato",
+      "searchHelp": "Procura pela correspondência exata do recibo do provedor, do identificador do efeito, da mensagem recebida ou da conversa.",
+      "load": "Ver a fila",
+      "backlogTotal": "Efeitos sem decisão",
+      "backlogOldest": "O mais antigo",
+      "backlogBreaching": "Fora do prazo de {hours} h",
+      "empty": "Não há efeitos à espera de decisão.",
+      "age": "{hours} h {minutes} min",
+      "tableCaption": "Efeitos à espera de decisão, do mais antigo ao mais recente.",
+      "colAge": "Espera",
+      "colBinding": "Canal e destinatário",
+      "colItem": "Peça",
+      "colAttempts": "Tentativas",
+      "colState": "Estado",
+      "noRecipient": "Destinatário indisponível",
+      "sla": {
+        "within": "dentro do prazo",
+        "nearing": "a aproximar-se do prazo",
+        "breaching": "fora do prazo"
+      }
+    },
+    "detail": {
+      "selectRow": "Selecione um efeito da fila para ver o seu detalhe.",
+      "title": "Detalhe do efeito",
+      "reference": "Identificador",
+      "conversation": "Conversa",
+      "inbound": "Mensagem recebida",
+      "account": "Conta do canal",
+      "recipient": "Destinatário (parcial)",
+      "receipt": "Recibo do provedor",
+      "errorCode": "Último código",
+      "lease": "Token de arrendamento",
+      "none": "—",
+      "redacted": "Este efeito foi apagado por privacidade: pode ser fechado, mas nunca reenviado.",
+      "alreadySettled": "Já tem uma decisão registada ({state}). Atualize a fila para ver o estado vigente.",
+      "decision": "O que verificou",
+      "evidence": "Evidência (obrigatória)",
+      "evidenceHelp": "Escreva onde e como o verificou. Fica registado junto à decisão. Até 500 caracteres.",
+      "receiptInput": "Recibo do provedor",
+      "receiptHelp": "O identificador da mensagem tal como o provedor o devolve.",
+      "review": "Rever a decisão"
+    },
+    "resolutions": {
+      "delivered": {
+        "label": "Chegou mesmo",
+        "help": "Encontrou a mensagem no provedor. Fecha-se com o seu recibo e nada é enviado.",
+        "confirmTitle": "Registar que a mensagem chegou",
+        "confirmBody": "O efeito fica fechado como enviado com o recibo que escreveu e o histórico é atualizado. Nada será enviado ao cliente. Esta decisão não pode ser desfeita.",
+        "confirm": "Chegou, fechar",
+        "done": "Registado: a mensagem chegou."
+      },
+      "not_delivered": {
+        "label": "Não chegou e não se reenvia",
+        "help": "Verificou que não chegou e decide não tentar de novo.",
+        "confirmTitle": "Fechar sem enviar nada",
+        "confirmBody": "O efeito fica anulado e a mensagem é marcada como falhada no histórico. O cliente não receberá nada. Esta decisão não pode ser desfeita.",
+        "confirm": "Fechar sem enviar",
+        "done": "Registado: o efeito fica anulado."
+      },
+      "retry": {
+        "label": "Não chegou, tentar de novo",
+        "help": "Verificou que não chegou e autoriza uma nova tentativa.",
+        "confirmTitle": "Autorizar um novo envio",
+        "confirmBody": "Será enviada uma mensagem real a um cliente real. Faça-o só se verificou que a primeira não chegou: o silêncio não é essa verificação.",
+        "confirm": "Tentar o envio de novo",
+        "done": "Registado: o efeito volta à fila de envio."
+      }
+    }
+  },
+  "agentPublications": {
+    "title": "Publicar a configuração do agente",
+    "intro": "Que configuração atende hoje os seus clientes, como se publica um candidato aprovado e como voltar atrás. Aqui não se lê a configuração: isso é o editor.",
+    "openWorkspace": "Publicar e ver histórico",
+    "back": "Voltar ao editor",
+    "refresh": "Atualizar",
+    "loading": "Carregando…",
+    "cancel": "Cancelar",
+    "accessRequired": "Publicar exige acesso de administrador.",
+    "selectTenant": "Selecione uma conta para ver os seus agentes.",
+    "readOnly": "Está a ver o histórico sem permissão para publicar.",
+    "reloadRequired": "Outra pessoa mudou esta configuração enquanto a via. Carregue-a de novo antes de decidir: os valores no ecrã já não descrevem o que está a atender.",
+    "reload": "Carregar de novo",
+    "publishNotice": "Publicado. A versão operacional ficou em {version}.",
+    "rollbackNotice": "Voltou atrás. A versão operacional ficou em {version}.",
+    "replayNotice": "Este pedido já tinha sido aplicado; não se repetiu. A versão operacional é {version}.",
+    "kinds": {
+      "publish": "Publicação",
+      "rollback": "Volta atrás"
+    },
+    "current": {
+      "title": "O que está a atender agora",
+      "version": "Versão operacional",
+      "hash": "Impressão da configuração",
+      "head": "Última publicação",
+      "headValue": "{kind} {reference} · {when}",
+      "noHead": "Ainda não há nenhuma publicação registada.",
+      "bodiesNote": "O histórico diz o que aconteceu e quando, nunca o que a configuração dizia: isso lê-se no editor."
+    },
+    "publish": {
+      "title": "Publicar um candidato aprovado",
+      "help": "Só se pode publicar um candidato já aprovado na revisão, e só enquanto a sua evidência e a configuração vigente continuarem a ser as que foram aprovadas.",
+      "candidate": "Candidato aprovado",
+      "candidateHelp": "Listam-se apenas os candidatos com revisão aprovada.",
+      "candidateOption": "Candidato {reference} · revisão {version}",
+      "noCandidate": "Sem candidato selecionado",
+      "activation": "Conexões",
+      "activationPreserve": "Manter como está",
+      "activationActivate": "Ativar o agente ao publicar",
+      "activationPreserveHelp": "Publica a configuração sem mudar se o agente está ativo.",
+      "activationActivateHelp": "Além de publicar, deixa o agente ativo nas conexões que declara.",
+      "evidence": "Evidência aprovada {reference} · revisão {version}",
+      "action": "Publicar este candidato",
+      "confirmTitle": "Confirmar a publicação",
+      "confirmBodyPreserve": "A configuração aprovada passa a ser a que atende os seus clientes, como versão {version}. O estado de ativação do agente não muda. Pode voltar atrás enquanto mais ninguém a modificar.",
+      "confirmBodyActivate": "A configuração aprovada passa a ser a que atende os seus clientes, como versão {version}, e o agente fica ativo nas suas conexões. Pode voltar atrás enquanto mais ninguém a modificar.",
+      "confirm": "Publicar"
+    },
+    "publishBlocked": {
+      "adminRequired": "Publicar exige acesso de administrador.",
+      "reloadRequired": "Os dados no ecrã não coincidem entre si. Carregue de novo antes de publicar.",
+      "candidateNotApproved": "Escolha um candidato com a revisão aprovada.",
+      "candidateChanged": "A configuração ou as fontes do candidato mudaram depois de o aprovar. Prepare uma avaliação vigente e aprove-a de novo.",
+      "evidenceMissing": "Este candidato não tem disponível a evidência da sua aprovação."
+    },
+    "rollback": {
+      "title": "Voltar à configuração anterior",
+      "help": "Restaura exatamente o que a última publicação substituiu. Só é possível enquanto ninguém tiver tocado na configuração operacional desde então.",
+      "action": "Voltar atrás",
+      "confirmTitle": "Confirmar a volta atrás",
+      "confirmBody": "Restaura-se a configuração que a publicação {reference} substituiu, como versão {version}. Os seus clientes passam a receber essa configuração de imediato.",
+      "confirm": "Voltar atrás"
+    },
+    "rollbackBlocked": {
+      "adminRequired": "Voltar atrás exige acesso de administrador.",
+      "reloadRequired": "Os dados no ecrã não coincidem entre si. Carregue de novo antes de voltar atrás.",
+      "noPublication": "Ainda não há nenhuma publicação para a qual voltar.",
+      "headIsRollback": "A última operação já foi uma volta atrás. Publique um candidato aprovado para avançar.",
+      "configurationDiverged": "A configuração operacional mudou depois da última publicação, por isso não há nada consistente para onde voltar. Publique um candidato aprovado."
+    },
+    "history": {
+      "title": "Histórico de publicações",
+      "help": "O que se publicou, o que substituiu e quem o pediu. As configurações não são mostradas aqui de propósito.",
+      "empty": "Ainda não há publicações registadas para este agente.",
+      "caption": "Publicações e voltas atrás deste agente, da mais recente à mais antiga.",
+      "colWhen": "Quando",
+      "colKind": "Operação",
+      "colVersion": "Versão",
+      "colHashes": "Impressão antes → depois",
+      "colRequestedBy": "Pedido por",
+      "rollbackOf": "volta sobre {reference}",
+      "versionRange": "{from} → {to}"
+    },
+    "errors": {
+      "conflict": "Outra pessoa mudou esta configuração. Carregue-a de novo e reveja antes de decidir outra vez.",
+      "assignmentConflict": "Outro agente ativo já atende uma destas conexões. Liberte essa conexão antes de publicar.",
+      "adminRequired": "Esta operação exige acesso de administrador.",
+      "scopeInvalid": "A conta ou o agente deste ecrã não são válidos. Entre de novo pela lista de agentes.",
+      "scopeMismatch": "O pedido mistura duas identidades diferentes e foi recusado. Carregue o ecrã de novo.",
+      "subscriptionRestricted": "A subscrição desta conta não permite publicar agora. Reveja o estado da faturação.",
+      "evidenceStale": "A evidência da avaliação já não descreve o mundo atual. Prepare uma avaliação vigente antes de publicar.",
+      "notFound": "Não encontrámos a conta, o agente ou o candidato deste pedido.",
+      "requestInvalid": "O pedido foi recusado pela sua forma. Carregue o ecrã de novo e tente outra vez.",
+      "unavailable": "Não conseguimos verificar esta informação. Atualize ou tente de novo; não se interpreta como sucesso nem como ausência de dados."
+    }
   }
 }

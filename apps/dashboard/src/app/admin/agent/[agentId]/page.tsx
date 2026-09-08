@@ -132,6 +132,7 @@ export default function AgentEditorPage() {
   const tLearning = useTranslations("agentLearning");
   const tReleases = useTranslations('agentReleases');
   const tRegressions = useTranslations("qualityRegressions");
+  const tPublications = useTranslations("agentPublications");
   const { activeTenantId } = useTenant();
   const params = useParams();
   const router = useRouter();
@@ -619,6 +620,7 @@ export default function AgentEditorPage() {
         action={
           <div className="flex flex-wrap items-center gap-2">
             <Link href={`/admin/agent/${agentId}/releases`} className="rounded-lg border px-3 py-2 text-sm font-medium">{tReleases('openWorkspace')}</Link>
+            <Link href={`/admin/agent/${agentId}/publications`} className="rounded-lg border px-3 py-2 text-sm font-medium">{tPublications('openWorkspace')}</Link>
             <Link href={`/admin/agent/${agentId}/learning`} className="rounded-lg border px-3 py-2 text-sm font-medium">{tLearning('openWorkspace')}</Link>
             <Link href={`/admin/agent/${agentId}/regressions`} className="rounded-lg border px-3 py-2 text-sm font-medium">{tRegressions('openWorkspace')}</Link>
             <Link

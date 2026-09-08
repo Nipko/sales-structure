@@ -968,7 +968,8 @@
       "organizations": "Organizations",
       "attribution": "Attribution",
       "managed": "Managed",
-      "fiscalAdmin": "Electronic invoicing"
+      "fiscalAdmin": "Electronic invoicing",
+      "dispatchOperations": "Dispatch & reconciliation"
     },
     "planLocked": "Not included in your plan",
     "expandSidebar": "Expand",
@@ -13958,5 +13959,254 @@
     "reviewedAgent": "Agents covered by this review: {agent}",
     "reviewReference": "View review author",
     "reviewer": "Reviewer reference: {reference}"
+  },
+  "dispatchOperations": {
+    "title": "Dispatch & reconciliation",
+    "subtitle": "The durable dispatch switch, its scope per account and channel, and the queue of effects whose outcome nobody knows yet.",
+    "scopeNote": "This is a platform screen: it decides how replies leave the system for every account, and is never one account's preference. It never shows message text or a full recipient.",
+    "refresh": "Refresh",
+    "loading": "Loading…",
+    "cancel": "Cancel",
+    "channels": {
+      "whatsapp": "WhatsApp",
+      "messenger": "Messenger",
+      "instagram": "Instagram",
+      "telegram": "Telegram"
+    },
+    "itemKinds": {
+      "text": "Text",
+      "media": "Media",
+      "payment_link": "Payment link",
+      "flow": "Form"
+    },
+    "states": {
+      "prepared": "Prepared",
+      "queued": "Queued",
+      "admitted": "Admitted",
+      "sent": "Sent",
+      "stored": "Stored",
+      "suppressed": "Suppressed",
+      "failed": "Failed",
+      "reconciliation_required": "Needs a decision"
+    },
+    "errors": {
+      "notReconcilable": "This effect was already settled elsewhere and its state changed. Refresh the queue: the same effect cannot be decided twice.",
+      "redacted": "This effect was erased for privacy. Its words cannot be resent under any evidence.",
+      "attemptsExhausted": "This effect has spent its attempts. It can no longer be retried; record it as delivered or as not delivered.",
+      "receiptRequired": "Closing it as delivered needs the identifier the provider returned.",
+      "evidenceRequired": "Write down what you checked. Without evidence the decision is not recorded.",
+      "invalidRollout": "The configuration was refused: check the selected channels and accounts.",
+      "unavailable": "We could not verify this. Refresh or try again; it is not read as success nor as an absence of data."
+    },
+    "blocked": {
+      "settled": "This effect already has a recorded decision.",
+      "redacted": "An effect erased for privacy cannot be retried.",
+      "attemptsExhausted": "This effect has spent its attempts: a retry would be refused.",
+      "evidenceRequired": "Write what you checked before continuing (up to 500 characters).",
+      "receiptRequired": "Write the identifier the provider returned."
+    },
+    "rollout": {
+      "title": "Durable dispatch scope",
+      "help": "While it is off, every channel keeps the path it already had. Turning it on changes where the real replies of the accounts in scope leave from.",
+      "on": "On",
+      "off": "Off",
+      "enabledLabel": "Turn the durable dispatch on",
+      "enabledHelp": "At least one migrated channel must also be chosen, or it stays on with no effect.",
+      "channels": "Channels in scope",
+      "channelsHelp": "Only channels whose adapter implements the strict transport can take the new path.",
+      "channelMigrated": "Migrated adapter: can take the new path.",
+      "channelNotMigrated": "No strict transport: choosing it is ignored.",
+      "tenants": "Accounts in scope",
+      "tenantsHelp": "With none selected it reaches every account. Select some to run a pilot.",
+      "noTenants": "No accounts to list.",
+      "unknownTenant": "Account outside the list ({id})",
+      "invalidChannels": "Unsupported channels: {channels}",
+      "invalidTenants": "Invalid account identifiers: {ids}",
+      "save": "Save the scope",
+      "killSwitch": "Turn off for everyone",
+      "none": "none",
+      "allTenants": "every account",
+      "someTenants": "{count} accounts",
+      "confirmSaveTitle": "Confirm the scope change",
+      "confirmSaveBody": "From the moment you save, replies leave through the durable path on these channels: {channels}. Scope: {tenants}. The change takes effect at once.",
+      "confirmSave": "Save the scope",
+      "confirmDisableTitle": "Turn the durable dispatch off for everyone",
+      "confirmDisableBody": "Every channel returns immediately to the path it had before, for every account. The saved scope is emptied.",
+      "confirmDisable": "Turn off now",
+      "savedNotice": "Scope saved. It is already in effect.",
+      "disabledNotice": "The durable dispatch is now off for every account.",
+      "inert": "It is on and does nothing: no chosen channel has a strict transport. Silence looks exactly like a working pilot.",
+      "ignored": "Chosen channels ignored because they are not migrated: {channels}"
+    },
+    "queue": {
+      "title": "Reconciliation queue",
+      "help": "Each row is an effect that may or may not have reached the customer, and only a person looking at the provider can say which. Oldest first.",
+      "tenant": "Account",
+      "selectTenant": "Select an account",
+      "search": "Search",
+      "searchPlaceholder": "Exact identifier",
+      "searchHelp": "Matches the exact provider receipt, effect identifier, inbound message or conversation.",
+      "load": "Show the queue",
+      "backlogTotal": "Effects awaiting a decision",
+      "backlogOldest": "Oldest one",
+      "backlogBreaching": "Past the {hours} h deadline",
+      "empty": "No effects are waiting for a decision.",
+      "age": "{hours} h {minutes} min",
+      "tableCaption": "Effects awaiting a decision, oldest first.",
+      "colAge": "Waiting",
+      "colBinding": "Channel and recipient",
+      "colItem": "Item",
+      "colAttempts": "Attempts",
+      "colState": "State",
+      "noRecipient": "Recipient unavailable",
+      "sla": {
+        "within": "within the deadline",
+        "nearing": "approaching the deadline",
+        "breaching": "past the deadline"
+      }
+    },
+    "detail": {
+      "selectRow": "Select an effect from the queue to see its detail.",
+      "title": "Effect detail",
+      "reference": "Identifier",
+      "conversation": "Conversation",
+      "inbound": "Inbound message",
+      "account": "Channel account",
+      "recipient": "Recipient (partial)",
+      "receipt": "Provider receipt",
+      "errorCode": "Last code",
+      "lease": "Lease token",
+      "none": "—",
+      "redacted": "This effect was erased for privacy: it can be closed, but never resent.",
+      "alreadySettled": "It already has a recorded decision ({state}). Refresh the queue to see the current state.",
+      "decision": "What you checked",
+      "evidence": "Evidence (required)",
+      "evidenceHelp": "Write where and how you verified it. It is recorded next to the decision. Up to 500 characters.",
+      "receiptInput": "Provider receipt",
+      "receiptHelp": "The message identifier exactly as the provider returns it.",
+      "review": "Review the decision"
+    },
+    "resolutions": {
+      "delivered": {
+        "label": "It did arrive",
+        "help": "You found the message at the provider. It is closed with its receipt and nothing is sent.",
+        "confirmTitle": "Record that the message did arrive",
+        "confirmBody": "The effect is closed as sent with the receipt you wrote and the history is updated. Nothing will be sent to the customer. This decision cannot be undone.",
+        "confirm": "It arrived, close it",
+        "done": "Recorded: the message arrived."
+      },
+      "not_delivered": {
+        "label": "It did not arrive, do not resend",
+        "help": "You verified it did not arrive and decide not to try again.",
+        "confirmTitle": "Close without sending anything",
+        "confirmBody": "The effect is suppressed and the message is marked as failed in the history. The customer will receive nothing. This decision cannot be undone.",
+        "confirm": "Close without sending",
+        "done": "Recorded: the effect is suppressed."
+      },
+      "retry": {
+        "label": "It did not arrive, retry",
+        "help": "You verified it did not arrive and authorise another attempt.",
+        "confirmTitle": "Authorise another send",
+        "confirmBody": "A real message will be sent to a real customer. Do this only if you verified the first one did not arrive: silence is not that verification.",
+        "confirm": "Retry the send",
+        "done": "Recorded: the effect returns to the sending queue."
+      }
+    }
+  },
+  "agentPublications": {
+    "title": "Publish the agent configuration",
+    "intro": "Which configuration serves your customers today, how an approved candidate is published, and how to go back. Configurations are not read here: that is the editor.",
+    "openWorkspace": "Publish and view history",
+    "back": "Back to the editor",
+    "refresh": "Refresh",
+    "loading": "Loading…",
+    "cancel": "Cancel",
+    "accessRequired": "Publishing requires administrator access.",
+    "selectTenant": "Select an account to see its agents.",
+    "readOnly": "You are viewing the history without permission to publish.",
+    "reloadRequired": "Someone else changed this configuration while you were looking at it. Load it again before deciding: the values on screen no longer describe what is serving.",
+    "reload": "Load again",
+    "publishNotice": "Published. The operational version is now {version}.",
+    "rollbackNotice": "Rolled back. The operational version is now {version}.",
+    "replayNotice": "This request had already been applied; it was not repeated. The operational version is {version}.",
+    "kinds": {
+      "publish": "Publication",
+      "rollback": "Rollback"
+    },
+    "current": {
+      "title": "What is serving right now",
+      "version": "Operational version",
+      "hash": "Configuration fingerprint",
+      "head": "Last publication",
+      "headValue": "{kind} {reference} · {when}",
+      "noHead": "No publication has been recorded yet.",
+      "bodiesNote": "The history says what happened and when, never what the configuration said: that is read in the editor."
+    },
+    "publish": {
+      "title": "Publish an approved candidate",
+      "help": "Only a candidate already approved in review can be published, and only while its evidence and the live configuration are still the ones that were approved.",
+      "candidate": "Approved candidate",
+      "candidateHelp": "Only candidates with an approved review are listed.",
+      "candidateOption": "Candidate {reference} · revision {version}",
+      "noCandidate": "No candidate selected",
+      "activation": "Connections",
+      "activationPreserve": "Leave as it is",
+      "activationActivate": "Activate the agent on publication",
+      "activationPreserveHelp": "Publishes the configuration without changing whether the agent is active.",
+      "activationActivateHelp": "Publishes and leaves the agent active on the connections it declares.",
+      "evidence": "Approved evidence {reference} · revision {version}",
+      "action": "Publish this candidate",
+      "confirmTitle": "Confirm the publication",
+      "confirmBodyPreserve": "The approved configuration becomes the one serving your customers, as version {version}. The agent's activation state does not change. It can be rolled back while nobody else modifies it.",
+      "confirmBodyActivate": "The approved configuration becomes the one serving your customers, as version {version}, and the agent is left active on its connections. It can be rolled back while nobody else modifies it.",
+      "confirm": "Publish"
+    },
+    "publishBlocked": {
+      "adminRequired": "Publishing requires administrator access.",
+      "reloadRequired": "The values on screen do not agree with each other. Load again before publishing.",
+      "candidateNotApproved": "Choose a candidate whose review was approved.",
+      "candidateChanged": "The candidate's configuration or sources changed after it was approved. Prepare a current evaluation and approve it again.",
+      "evidenceMissing": "This candidate has no approval evidence available."
+    },
+    "rollback": {
+      "title": "Return to the previous configuration",
+      "help": "Restores exactly what the last publication replaced. Only possible while nobody has touched the operational configuration since then.",
+      "action": "Roll back",
+      "confirmTitle": "Confirm the rollback",
+      "confirmBody": "The configuration that publication {reference} replaced is restored, as version {version}. Your customers start receiving that configuration immediately.",
+      "confirm": "Roll back"
+    },
+    "rollbackBlocked": {
+      "adminRequired": "Rolling back requires administrator access.",
+      "reloadRequired": "The values on screen do not agree with each other. Load again before rolling back.",
+      "noPublication": "There is no publication to return to yet.",
+      "headIsRollback": "The last operation was already a rollback. Publish an approved candidate to move forward.",
+      "configurationDiverged": "The operational configuration changed after the last publication, so there is nothing consistent to return to. Publish an approved candidate."
+    },
+    "history": {
+      "title": "Publication history",
+      "help": "What was published, what it replaced and who asked for it. Configurations are deliberately not shown here.",
+      "empty": "No publications have been recorded for this agent yet.",
+      "caption": "Publications and rollbacks for this agent, newest first.",
+      "colWhen": "When",
+      "colKind": "Operation",
+      "colVersion": "Version",
+      "colHashes": "Fingerprint before → after",
+      "colRequestedBy": "Requested by",
+      "rollbackOf": "returns over {reference}",
+      "versionRange": "{from} → {to}"
+    },
+    "errors": {
+      "conflict": "Someone else changed this configuration. Load it again and review before deciding once more.",
+      "assignmentConflict": "Another active agent already serves one of these connections. Free that connection before publishing.",
+      "adminRequired": "This operation requires administrator access.",
+      "scopeInvalid": "The account or agent of this screen is not valid. Enter again from the agent list.",
+      "scopeMismatch": "The request mixed two different identities and was refused. Load the screen again.",
+      "subscriptionRestricted": "This account's subscription does not allow publishing right now. Check the billing status.",
+      "evidenceStale": "The evaluation evidence no longer describes today's world. Prepare a current evaluation before publishing.",
+      "notFound": "We could not find the account, the agent or the candidate of this request.",
+      "requestInvalid": "The request was refused because of its shape. Load the screen again and try once more.",
+      "unavailable": "We could not verify this. Refresh or try again; it is not read as success nor as an absence of data."
+    }
   }
 }

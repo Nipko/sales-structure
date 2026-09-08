@@ -14,6 +14,8 @@ import type { ToolApprovalItem } from "@/lib/tool-approvals";
 import type { OperationalNotice, OperationalNoticeList, NoticeReviewRequest } from './operational-notices';
 import type { DiscardAgentDraftRequest } from '@parallext/shared';
 import type { AgentReleaseDetail, AgentReleaseListItem, AgentReleaseRequest, AgentReleaseReviewRequest } from './agent-release-review';
+import type { AgentPublicationHistory, AgentPublicationReceipt, PublishAgentConfigurationRequest, RollbackAgentConfigurationRequest } from './agent-publication';
+import type { DispatchReconciliationQueue, DispatchResolution, DispatchResolutionReceipt, DispatchRolloutRequest, DispatchRolloutState } from './dispatch-operations';
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.parallly-chat.cloud/api/v1";
 
@@ -596,6 +598,34 @@ export const api = {
     getAgentRelease: (tenantId: string, agentId: string, candidateId: string) => apiGet<AgentReleaseDetail>(`/agent-releases/${tenantId}/agents/${agentId}/${candidateId}`),
     prepareAgentRelease: (tenantId: string, agentId: string, body: AgentReleaseRequest) => apiPost<AgentReleaseDetail>(`/agent-releases/${tenantId}/agents/${agentId}`, body),
     reviewAgentRelease: (tenantId: string, agentId: string, candidateId: string, body: AgentReleaseReviewRequest) => apiPost<AgentReleaseDetail>(`/agent-releases/${tenantId}/agents/${agentId}/${candidateId}/review`, body),
+
+    // Publication of an approved candidate, and its rollback. Both are
+    // compare-and-swap: the body carries what the caller believes is serving,
+    // so a stale expectation answers 409 instead of overwriting somebody else.
+    getAgentPublications: (tenantId: string, agentId: string, limit = 20) =>
+        apiGet<AgentPublicationHistory>(`/agent-publications/${tenantId}/agents/${agentId}?limit=${limit}`),
+    publishAgentConfiguration: (tenantId: string, agentId: string, candidateId: string, body: PublishAgentConfigurationRequest) =>
+        apiPost<AgentPublicationReceipt>(`/agent-publications/${tenantId}/agents/${agentId}/candidates/${candidateId}`, body),
+    rollbackAgentConfiguration: (tenantId: string, agentId: string, body: RollbackAgentConfigurationRequest) =>
+        apiPost<AgentPublicationReceipt>(`/agent-publications/${tenantId}/agents/${agentId}/rollback`, body),
+
+    // --- Durable dispatch rollout, kill switch and reconciliation (super_admin,
+    //     platform-wide). How replies leave the system is never a tenant setting,
+    //     so these carry no active-tenant context: the queue is read per tenant
+    //     from an explicit picker. ---
+    getDispatchRollout: () => apiGet<DispatchRolloutState>(`/dispatch-rollout`),
+    setDispatchRollout: (body: DispatchRolloutRequest) => apiPut<DispatchRolloutState>(`/dispatch-rollout`, body),
+    disableDispatchRollout: () => apiPost<DispatchRolloutState>(`/dispatch-rollout/disable`, {}),
+    getDispatchReconciliation: (tenantId: string, params?: { search?: string; limit?: number }) => {
+        const query = new URLSearchParams();
+        if (params?.search) query.set("search", params.search);
+        query.set("limit", String(params?.limit ?? 50));
+        return apiGet<DispatchReconciliationQueue>(`/dispatch-rollout/reconciliation/${tenantId}?${query}`);
+    },
+    resolveDispatchReconciliation: (tenantId: string, dispatchId: string,
+        body: { resolution: DispatchResolution; evidence: string; receipt?: string }) =>
+        apiPost<DispatchResolutionReceipt>(`/dispatch-rollout/reconciliation/${tenantId}/${dispatchId}`, body),
+
     // --- Auth ---
     login: (email: string, password: string) =>
         apiPost("/auth/login", { email, password }),

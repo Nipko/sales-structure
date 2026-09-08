@@ -71,6 +71,10 @@ const NAVIGATION_ROUTE_DEFINITIONS = [
   { id: "agentLearning", pattern: "/admin/agent/:agentId/learning", titleKey: "agentLearning.openWorkspace", scope: "tenant", parentId: "agentDetail" },
   { id: "agentRegressions", pattern: "/admin/agent/:agentId/regressions", titleKey: "qualityRegressions.openWorkspace", scope: "tenant", parentId: "agentDetail" },
   { id: "agentReleases", pattern: "/admin/agent/:agentId/releases", titleKey: "agentReleases.openWorkspace", scope: "tenant", parentId: "agentDetail" },
+  // Publication is the step after an approved candidate, so it sits beside the
+  // review workspace rather than inside the editor: the editor reads a
+  // configuration, this decides which one customers get.
+  { id: "agentPublications", pattern: "/admin/agent/:agentId/publications", titleKey: "agentPublications.openWorkspace", scope: "tenant", parentId: "agentDetail" },
   { id: "agentQuality", pattern: "/admin/agent/quality", titleKey: "nav.items.agentQuality", scope: "tenant" },
   { id: "agentSimulation", pattern: "/admin/agent/simulation", titleKey: "nav.items.agentSimulation", scope: "tenant", parentId: "agents" },
   { id: "procedures", pattern: "/admin/procedures", titleKey: "nav.items.procedures", scope: "tenant" },
@@ -191,6 +195,9 @@ const NAVIGATION_ROUTE_DEFINITIONS = [
   { id: "platformTenants", pattern: "/admin/tenants", titleKey: "nav.items.tenants", scope: "platform" },
   { id: "platformTenantDetail", pattern: "/admin/tenants/:tenantId", titleKey: "navigation.routes.platformTenantDetail", scope: "platform", parentId: "platformTenants", dynamicTitleParam: "tenantId" },
   { id: "platformOps", pattern: "/admin/ops", titleKey: "nav.items.ops", scope: "platform" },
+  // How replies leave the system is a platform decision, never a tenant's own
+  // setting, so this lives outside any tenant scope and picks its tenant.
+  { id: "platformDispatch", pattern: "/admin/dispatch", titleKey: "nav.items.dispatchOperations", scope: "platform" },
   { id: "platformIntegrationOutbox", pattern: "/admin/ops/integrations", titleKey: "nav.items.integrationOutbox", scope: "platform", parentId: "platformOps" },
   { id: "platformOpsAlerts", pattern: "/admin/ops/alerts", titleKey: "topbar.breadcrumbs.alerts", scope: "platform", parentId: "platformOps" },
   { id: "platformIncidents", pattern: "/admin/incidents", titleKey: "nav.items.incidents", scope: "platform" },

@@ -968,7 +968,8 @@
       "organizations": "Organisations",
       "attribution": "Attribution",
       "managed": "Gérés",
-      "fiscalAdmin": "Facturation électronique"
+      "fiscalAdmin": "Facturation électronique",
+      "dispatchOperations": "Envoi et réconciliation"
     },
     "planLocked": "Non inclus dans votre offre",
     "expandSidebar": "Agrandir",
@@ -13958,5 +13959,254 @@
     "reviewedAgent": "Agents concernés par cet examen : {agent}",
     "reviewReference": "Voir l’auteur de l’examen",
     "reviewer": "Référence du responsable : {reference}"
+  },
+  "dispatchOperations": {
+    "title": "Envoi et réconciliation",
+    "subtitle": "L'interrupteur de l'envoi durable, sa portée par compte et par canal, et la file des effets dont personne ne connaît encore le résultat.",
+    "scopeNote": "Cet écran relève de la plateforme : il décide comment les réponses sortent pour tous les comptes et n'est jamais la préférence d'un compte. Il n'affiche jamais le texte du message ni le destinataire complet.",
+    "refresh": "Actualiser",
+    "loading": "Chargement…",
+    "cancel": "Annuler",
+    "channels": {
+      "whatsapp": "WhatsApp",
+      "messenger": "Messenger",
+      "instagram": "Instagram",
+      "telegram": "Telegram"
+    },
+    "itemKinds": {
+      "text": "Texte",
+      "media": "Média",
+      "payment_link": "Lien de paiement",
+      "flow": "Formulaire"
+    },
+    "states": {
+      "prepared": "Préparé",
+      "queued": "En file",
+      "admitted": "Admis",
+      "sent": "Envoyé",
+      "stored": "Enregistré",
+      "suppressed": "Annulé",
+      "failed": "Échoué",
+      "reconciliation_required": "Décision requise"
+    },
+    "errors": {
+      "notReconcilable": "Cet effet a déjà été réglé autrement et son état a changé. Actualisez la file : on ne décide pas deux fois du même effet.",
+      "redacted": "Cet effet a été effacé pour raisons de confidentialité. Ses mots ne peuvent être renvoyés sous aucune preuve.",
+      "attemptsExhausted": "Cet effet a épuisé ses tentatives. Il ne peut plus être relancé ; enregistrez-le comme livré ou comme non livré.",
+      "receiptRequired": "Le clôturer comme livré exige l'identifiant renvoyé par le fournisseur.",
+      "evidenceRequired": "Écrivez ce que vous avez vérifié. Sans preuve, la décision n'est pas enregistrée.",
+      "invalidRollout": "La configuration a été refusée : vérifiez les canaux et les comptes sélectionnés.",
+      "unavailable": "Nous n'avons pas pu vérifier cette information. Actualisez ou réessayez ; cela ne vaut ni succès ni absence de données."
+    },
+    "blocked": {
+      "settled": "Cet effet a déjà une décision enregistrée.",
+      "redacted": "Un effet effacé pour confidentialité ne peut pas être relancé.",
+      "attemptsExhausted": "Cet effet a épuisé ses tentatives : la relance serait refusée.",
+      "evidenceRequired": "Écrivez ce que vous avez vérifié avant de continuer (500 caractères maximum).",
+      "receiptRequired": "Écrivez l'identifiant renvoyé par le fournisseur."
+    },
+    "rollout": {
+      "title": "Portée de l'envoi durable",
+      "help": "Tant qu'il est éteint, chaque canal garde le chemin qu'il avait déjà. L'allumer change par où sortent les réponses réelles des comptes concernés.",
+      "on": "Actif",
+      "off": "Éteint",
+      "enabledLabel": "Allumer l'envoi durable",
+      "enabledHelp": "Il faut aussi choisir au moins un canal migré, sinon il reste allumé sans effet.",
+      "channels": "Canaux concernés",
+      "channelsHelp": "Seuls les canaux dont l'adaptateur implémente le transport strict peuvent prendre le nouveau chemin.",
+      "channelMigrated": "Adaptateur migré : peut prendre le nouveau chemin.",
+      "channelNotMigrated": "Sans transport strict : le choisir revient à l'ignorer.",
+      "tenants": "Comptes concernés",
+      "tenantsHelp": "Sans sélection, la portée couvre tous les comptes. Sélectionnez-en quelques-uns pour un pilote.",
+      "noTenants": "Aucun compte à lister.",
+      "unknownTenant": "Compte hors de la liste ({id})",
+      "invalidChannels": "Canaux non pris en charge : {channels}",
+      "invalidTenants": "Identifiants de compte non valides : {ids}",
+      "save": "Enregistrer la portée",
+      "killSwitch": "Éteindre pour tout le monde",
+      "none": "aucun",
+      "allTenants": "tous les comptes",
+      "someTenants": "{count} comptes",
+      "confirmSaveTitle": "Confirmer le changement de portée",
+      "confirmSaveBody": "Dès l'enregistrement, les réponses sortiront par le chemin durable sur ces canaux : {channels}. Portée : {tenants}. Le changement est immédiat.",
+      "confirmSave": "Enregistrer la portée",
+      "confirmDisableTitle": "Éteindre l'envoi durable pour tout le monde",
+      "confirmDisableBody": "Tous les canaux reviennent immédiatement au chemin qu'ils avaient, pour tous les comptes. La portée enregistrée est vidée.",
+      "confirmDisable": "Éteindre maintenant",
+      "savedNotice": "Portée enregistrée. Elle est déjà en vigueur.",
+      "disabledNotice": "L'envoi durable est désormais éteint pour tous les comptes.",
+      "inert": "Il est allumé et ne fait rien : aucun canal choisi n'a de transport strict. Le silence ressemble exactement à un pilote qui fonctionne.",
+      "ignored": "Canaux choisis ignorés parce qu'ils ne sont pas migrés : {channels}"
+    },
+    "queue": {
+      "title": "File de réconciliation",
+      "help": "Chaque ligne est un effet qui a pu atteindre le client ou non, et seule une personne consultant le fournisseur peut le dire. Du plus ancien au plus récent.",
+      "tenant": "Compte",
+      "selectTenant": "Sélectionnez un compte",
+      "search": "Rechercher",
+      "searchPlaceholder": "Identifiant exact",
+      "searchHelp": "Recherche la correspondance exacte du reçu du fournisseur, de l'identifiant de l'effet, du message entrant ou de la conversation.",
+      "load": "Voir la file",
+      "backlogTotal": "Effets sans décision",
+      "backlogOldest": "Le plus ancien",
+      "backlogBreaching": "Au-delà du délai de {hours} h",
+      "empty": "Aucun effet n'attend de décision.",
+      "age": "{hours} h {minutes} min",
+      "tableCaption": "Effets en attente de décision, du plus ancien au plus récent.",
+      "colAge": "Attente",
+      "colBinding": "Canal et destinataire",
+      "colItem": "Élément",
+      "colAttempts": "Tentatives",
+      "colState": "État",
+      "noRecipient": "Destinataire indisponible",
+      "sla": {
+        "within": "dans le délai",
+        "nearing": "proche du délai",
+        "breaching": "au-delà du délai"
+      }
+    },
+    "detail": {
+      "selectRow": "Sélectionnez un effet de la file pour voir son détail.",
+      "title": "Détail de l'effet",
+      "reference": "Identifiant",
+      "conversation": "Conversation",
+      "inbound": "Message entrant",
+      "account": "Compte du canal",
+      "recipient": "Destinataire (partiel)",
+      "receipt": "Reçu du fournisseur",
+      "errorCode": "Dernier code",
+      "lease": "Jeton de bail",
+      "none": "—",
+      "redacted": "Cet effet a été effacé pour confidentialité : il peut être clôturé, jamais renvoyé.",
+      "alreadySettled": "Une décision est déjà enregistrée ({state}). Actualisez la file pour voir l'état en vigueur.",
+      "decision": "Ce que vous avez vérifié",
+      "evidence": "Preuve (obligatoire)",
+      "evidenceHelp": "Écrivez où et comment vous l'avez vérifié. C'est enregistré avec la décision. 500 caractères maximum.",
+      "receiptInput": "Reçu du fournisseur",
+      "receiptHelp": "L'identifiant du message tel que le fournisseur le renvoie.",
+      "review": "Revoir la décision"
+    },
+    "resolutions": {
+      "delivered": {
+        "label": "Il est bien arrivé",
+        "help": "Vous avez trouvé le message chez le fournisseur. Il est clôturé avec son reçu et rien n'est envoyé.",
+        "confirmTitle": "Enregistrer que le message est arrivé",
+        "confirmBody": "L'effet est clôturé comme envoyé avec le reçu que vous avez saisi et l'historique est mis à jour. Rien ne sera envoyé au client. Cette décision est irréversible.",
+        "confirm": "Il est arrivé, clôturer",
+        "done": "Enregistré : le message est arrivé."
+      },
+      "not_delivered": {
+        "label": "Il n'est pas arrivé, ne pas renvoyer",
+        "help": "Vous avez vérifié qu'il n'est pas arrivé et décidez de ne pas réessayer.",
+        "confirmTitle": "Clôturer sans rien envoyer",
+        "confirmBody": "L'effet est annulé et le message est marqué comme échoué dans l'historique. Le client ne recevra rien. Cette décision est irréversible.",
+        "confirm": "Clôturer sans envoyer",
+        "done": "Enregistré : l'effet est annulé."
+      },
+      "retry": {
+        "label": "Il n'est pas arrivé, réessayer",
+        "help": "Vous avez vérifié qu'il n'est pas arrivé et autorisez une nouvelle tentative.",
+        "confirmTitle": "Autoriser un nouvel envoi",
+        "confirmBody": "Un message réel sera envoyé à un client réel. Ne le faites que si vous avez vérifié que le premier n'est pas arrivé : le silence n'est pas cette vérification.",
+        "confirm": "Réessayer l'envoi",
+        "done": "Enregistré : l'effet retourne dans la file d'envoi."
+      }
+    }
+  },
+  "agentPublications": {
+    "title": "Publier la configuration de l'agent",
+    "intro": "Quelle configuration sert vos clients aujourd'hui, comment publier un candidat approuvé et comment revenir en arrière. On ne lit pas la configuration ici : c'est le rôle de l'éditeur.",
+    "openWorkspace": "Publier et voir l'historique",
+    "back": "Retour à l'éditeur",
+    "refresh": "Actualiser",
+    "loading": "Chargement…",
+    "cancel": "Annuler",
+    "accessRequired": "Publier exige un accès administrateur.",
+    "selectTenant": "Sélectionnez un compte pour voir ses agents.",
+    "readOnly": "Vous consultez l'historique sans autorisation de publier.",
+    "reloadRequired": "Quelqu'un d'autre a modifié cette configuration pendant que vous la consultiez. Rechargez-la avant de décider : les valeurs à l'écran ne décrivent plus ce qui sert.",
+    "reload": "Recharger",
+    "publishNotice": "Publié. La version opérationnelle est désormais {version}.",
+    "rollbackNotice": "Retour effectué. La version opérationnelle est désormais {version}.",
+    "replayNotice": "Cette demande avait déjà été appliquée ; elle n'a pas été répétée. La version opérationnelle est {version}.",
+    "kinds": {
+      "publish": "Publication",
+      "rollback": "Retour arrière"
+    },
+    "current": {
+      "title": "Ce qui sert en ce moment",
+      "version": "Version opérationnelle",
+      "hash": "Empreinte de la configuration",
+      "head": "Dernière publication",
+      "headValue": "{kind} {reference} · {when}",
+      "noHead": "Aucune publication n'est encore enregistrée.",
+      "bodiesNote": "L'historique dit ce qui s'est passé et quand, jamais ce que disait la configuration : cela se lit dans l'éditeur."
+    },
+    "publish": {
+      "title": "Publier un candidat approuvé",
+      "help": "Seul un candidat déjà approuvé en revue peut être publié, et seulement tant que sa preuve et la configuration en vigueur restent celles qui ont été approuvées.",
+      "candidate": "Candidat approuvé",
+      "candidateHelp": "Seuls les candidats dont la revue a été approuvée sont listés.",
+      "candidateOption": "Candidat {reference} · révision {version}",
+      "noCandidate": "Aucun candidat sélectionné",
+      "activation": "Connexions",
+      "activationPreserve": "Laisser tel quel",
+      "activationActivate": "Activer l'agent à la publication",
+      "activationPreserveHelp": "Publie la configuration sans changer si l'agent est actif.",
+      "activationActivateHelp": "Publie et laisse l'agent actif sur les connexions qu'il déclare.",
+      "evidence": "Preuve approuvée {reference} · révision {version}",
+      "action": "Publier ce candidat",
+      "confirmTitle": "Confirmer la publication",
+      "confirmBodyPreserve": "La configuration approuvée devient celle qui sert vos clients, en version {version}. L'état d'activation de l'agent ne change pas. Un retour arrière reste possible tant que personne d'autre ne la modifie.",
+      "confirmBodyActivate": "La configuration approuvée devient celle qui sert vos clients, en version {version}, et l'agent reste actif sur ses connexions. Un retour arrière reste possible tant que personne d'autre ne la modifie.",
+      "confirm": "Publier"
+    },
+    "publishBlocked": {
+      "adminRequired": "Publier exige un accès administrateur.",
+      "reloadRequired": "Les valeurs à l'écran ne concordent pas entre elles. Rechargez avant de publier.",
+      "candidateNotApproved": "Choisissez un candidat dont la revue a été approuvée.",
+      "candidateChanged": "La configuration ou les sources du candidat ont changé après son approbation. Préparez une évaluation à jour et approuvez-la de nouveau.",
+      "evidenceMissing": "Ce candidat n'a aucune preuve d'approbation disponible."
+    },
+    "rollback": {
+      "title": "Revenir à la configuration précédente",
+      "help": "Restaure exactement ce que la dernière publication a remplacé. Possible seulement tant que personne n'a touché à la configuration opérationnelle depuis.",
+      "action": "Revenir en arrière",
+      "confirmTitle": "Confirmer le retour arrière",
+      "confirmBody": "La configuration que la publication {reference} avait remplacée est restaurée, en version {version}. Vos clients reçoivent cette configuration immédiatement.",
+      "confirm": "Revenir en arrière"
+    },
+    "rollbackBlocked": {
+      "adminRequired": "Revenir en arrière exige un accès administrateur.",
+      "reloadRequired": "Les valeurs à l'écran ne concordent pas entre elles. Rechargez avant de revenir en arrière.",
+      "noPublication": "Il n'y a encore aucune publication vers laquelle revenir.",
+      "headIsRollback": "La dernière opération était déjà un retour arrière. Publiez un candidat approuvé pour avancer.",
+      "configurationDiverged": "La configuration opérationnelle a changé après la dernière publication : il n'y a donc rien de cohérent vers quoi revenir. Publiez un candidat approuvé."
+    },
+    "history": {
+      "title": "Historique des publications",
+      "help": "Ce qui a été publié, ce que cela a remplacé et qui l'a demandé. Les configurations ne sont volontairement pas affichées ici.",
+      "empty": "Aucune publication n'est encore enregistrée pour cet agent.",
+      "caption": "Publications et retours arrière de cet agent, du plus récent au plus ancien.",
+      "colWhen": "Quand",
+      "colKind": "Opération",
+      "colVersion": "Version",
+      "colHashes": "Empreinte avant → après",
+      "colRequestedBy": "Demandé par",
+      "rollbackOf": "revient sur {reference}",
+      "versionRange": "{from} → {to}"
+    },
+    "errors": {
+      "conflict": "Quelqu'un d'autre a modifié cette configuration. Rechargez-la et vérifiez avant de décider de nouveau.",
+      "assignmentConflict": "Un autre agent actif sert déjà l'une de ces connexions. Libérez cette connexion avant de publier.",
+      "adminRequired": "Cette opération exige un accès administrateur.",
+      "scopeInvalid": "Le compte ou l'agent de cet écran n'est pas valide. Entrez de nouveau depuis la liste des agents.",
+      "scopeMismatch": "La demande mélangeait deux identités différentes et a été refusée. Rechargez l'écran.",
+      "subscriptionRestricted": "L'abonnement de ce compte ne permet pas de publier pour le moment. Vérifiez l'état de la facturation.",
+      "evidenceStale": "La preuve de l'évaluation ne décrit plus le monde actuel. Préparez une évaluation à jour avant de publier.",
+      "notFound": "Nous n'avons pas trouvé le compte, l'agent ou le candidat de cette demande.",
+      "requestInvalid": "La demande a été refusée en raison de sa forme. Rechargez l'écran et réessayez.",
+      "unavailable": "Nous n'avons pas pu vérifier cette information. Actualisez ou réessayez ; cela ne vaut ni succès ni absence de données."
+    }
   }
 }

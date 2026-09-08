@@ -20,6 +20,9 @@ import { PersonaService, type PersonaResolution } from '../persona/persona.servi
 import { LLMRouterService } from '../ai/router/llm-router.service';
 import { ChannelGatewayService } from '../channels/channel-gateway.service';
 import { OutboundQueueService } from '../channels/outbound-queue.service';
+import { AgentDispatchOutboxStore } from '../channels/agent-dispatch-outbox.store';
+import { DispatchRolloutService } from '../channels/dispatch-rollout.service';
+import { buildDispatchItems } from '../channels/dispatch-items';
 import { ChannelTokenService } from '../channels/channel-token.service';
 import { ConversationsGateway } from './conversations.gateway';
 import { HandoffService } from '../handoff/handoff.service';
@@ -426,6 +429,8 @@ export class ConversationsService {
         private turnCapabilityComposer?: TurnCapabilityComposerService,
         @Optional() private readonly learning?: LearningService,
         @Optional() private readonly widgetAgentReplies?: WidgetAgentReplyStore,
+        @Optional() private readonly dispatchOutbox?: AgentDispatchOutboxStore,
+        @Optional() private readonly dispatchRollout?: DispatchRolloutService,
     ) {}
 
     /**
@@ -939,6 +944,7 @@ export class ConversationsService {
             personaResolution,
         );
         this.logger.log(`[Pipeline] Generating AI response...`);
+        const turnScope = servedAgentAuthority(tenantId, schemaName, personaResolution);
         const response = resumedReply
             || await this.generateResponse(
                 tenantId,
@@ -952,7 +958,7 @@ export class ConversationsService {
                 inboundMessageId,
                 personaResolution.agentId ?? undefined,
                 undefined,personaResolution.version ?? undefined,
-                servedAgentAuthority(tenantId, schemaName, personaResolution),
+                turnScope,
             );
 
         // Persist the decision BEFORE any of it goes out, so a crash between the
@@ -1001,14 +1007,23 @@ export class ConversationsService {
                 // are staggered so they arrive in order with a brief pause.
                 const chunks = this.splitResponseIntoChunks(response);
                 const CHUNK_GAP_MS = 1200;
-                this.logger.log(`[Pipeline] Sending response via outbound queue (${chunks.length} bubble(s))...`);
-                const turnPmid = providerMessageId(normalizedMsg) || normalizedMsg.id || '';
-                for (let i = 0; i < chunks.length; i++) {
-                    await this.sendResponse(tenantId, chunks[i], normalizedMsg, i * CHUNK_GAP_MS, `reply:${i}`);
-                    await this.saveAiMessage(
-                        tenantId, conversation.id, chunks[i], normalizedMsg.channelType,
-                        turnPmid ? `out:${turnPmid}:reply:${i}` : undefined,
-                    );
+                // The durable path records the bubbles and their history in one
+                // transaction and answers true; otherwise this tenant and channel
+                // keep the two independent writes they have today.
+                const durable = await this.dispatchReplyThroughOutbox({
+                    tenantId, conversation, inboundMsg: normalizedMsg, inboundMessageId,
+                    chunks, operationalScope: turnScope, gapMs: CHUNK_GAP_MS,
+                });
+                if (!durable) {
+                    this.logger.log(`[Pipeline] Sending response via outbound queue (${chunks.length} bubble(s))...`);
+                    const turnPmid = providerMessageId(normalizedMsg) || normalizedMsg.id || '';
+                    for (let i = 0; i < chunks.length; i++) {
+                        await this.sendResponse(tenantId, chunks[i], normalizedMsg, i * CHUNK_GAP_MS, `reply:${i}`);
+                        await this.saveAiMessage(
+                            tenantId, conversation.id, chunks[i], normalizedMsg.channelType,
+                            turnPmid ? `out:${turnPmid}:reply:${i}` : undefined,
+                        );
+                    }
                 }
                 this.logger.log(`[Pipeline] Response sent and saved`);
             }
@@ -5180,6 +5195,71 @@ export class ConversationsService {
             clearInterval(heartbeat);
             await this.redis.releaseLockToken(lockKey, token).catch(() => {});
         }
+    }
+
+    /**
+     * Deliver the model's reply through the durable outbox, when this tenant and
+     * channel have actually been switched to it.
+     *
+     * Returns false to mean "not this one" — no gate, no persisted inbound, no
+     * scope, or a result this cannot express — and the caller keeps the path it
+     * has today. The switch is off by default and off for everything unlisted,
+     * so until somebody writes the setting this always returns false.
+     *
+     * Once `prepare` has COMMITTED there is no falling back: that batch owns the
+     * reply, and a later failure is recovered from those rows rather than sent
+     * again through the old path, which would deliver it twice.
+     *
+     * Only the model's own reply comes here. Appointment notices, handoff text,
+     * fallbacks and automations keep their own producers and their own
+     * authorities, exactly as the dispatch plan requires.
+     */
+    private async dispatchReplyThroughOutbox(input: {
+        tenantId: string; conversation: any; inboundMsg: NormalizedMessage;
+        inboundMessageId?: string; chunks: readonly string[];
+        operationalScope?: ServedAgentAuthority; gapMs: number;
+    }): Promise<boolean> {
+        const { tenantId, conversation, inboundMsg } = input;
+        const contactId = String(conversation?.contact_id || '');
+        if (!this.dispatchOutbox || !this.dispatchRollout || !input.operationalScope
+            || !input.inboundMessageId || !PERSISTED_ID.test(input.inboundMessageId)
+            || !PERSISTED_ID.test(contactId) || !input.chunks.length) return false;
+        if (!(await this.dispatchRollout.enabledFor(tenantId, inboundMsg.channelType).catch(() => false))) return false;
+
+        let prepared;
+        try {
+            const items = buildDispatchItems({ textChunks: [...input.chunks] });
+            prepared = await this.dispatchOutbox.prepare(tenantId, {
+                binding: {
+                    conversationId: String(conversation.id), contactId,
+                    inboundMessageId: input.inboundMessageId,
+                    channelType: inboundMsg.channelType,
+                    channelAccountId: inboundMsg.channelAccountId,
+                    recipient: inboundMsg.contactId,
+                },
+                items,
+                operationalScope: input.operationalScope,
+                // Messaging turns do not collect learning provenance yet, so none
+                // is recorded. Claiming an empty footprint is honest; inventing
+                // one would make release-scoped erasure look like it applied.
+                learningFootprints: [],
+            });
+        } catch (error: any) {
+            // Nothing committed, so the old path still owes the customer a reply.
+            this.logger.error(`[Dispatch] durable path unavailable for ${conversation.id}: ${error?.message}`);
+            return false;
+        }
+
+        for (const row of prepared.rows) {
+            await this.outboundQueue.enqueueDispatch(tenantId, row.id, row.itemIndex * input.gapMs)
+                .catch(error => this.logger.warn(
+                    `[Dispatch] publish deferred to recovery for ${row.id}: ${error?.message}`));
+        }
+        // Marked after publication: a crash before this republishes the same
+        // deterministic ids, while marking first could hide a lost publish.
+        await this.dispatchOutbox.markQueued(tenantId, prepared.rows.map(row => row.id)).catch(() => {});
+        this.logger.log(`[Dispatch] reply for ${conversation.id} committed as ${prepared.rows.length} durable item(s)`);
+        return true;
     }
 
     /**

@@ -27,6 +27,9 @@ export interface CrmSyncJob {
     payload: any;
 }
 
+/** The CRM note is one paragraph and its transcript is the next. */
+const NOTE_SEPARATOR = String.fromCharCode(10);
+
 @Injectable()
 export class ExternalCrmService {
     private readonly logger = new Logger(ExternalCrmService.name);
@@ -130,30 +133,54 @@ export class ExternalCrmService {
         ]);
     }
 
-    @OnEvent('handoff.escalated')
-    async onHandoffEscalated(payload: { tenantId: string; conversation: any; contact: any; lastMessages: any[] }) {
-        const summary = (payload.lastMessages ?? [])
-            .slice(-5)
-            .map((m: any) => `[${m.direction}] ${m.content?.slice(0, 200)}`)
-            .join('\n');
+    // One destination, one event. A transfer used to announce itself once to
+    // all six consumers, so a single failure among them re-announced it to
+    // the five that had already succeeded.
+    @OnEvent('handoff.escalated.crm')
+    async onHandoffEscalated(payload: {
+        tenantId: string; conversationId?: string; contactId?: string | null;
+        channelType?: string | null; contactName?: string; reason?: string;
+        summary?: string; lastMessage?: string; handoffReceiptId?: string | null;
+    }) {
+        // This handler read `payload.conversation`, `payload.contact` and
+        // `payload.lastMessages`, none of which the event has ever carried: the
+        // note reached the CRM attached to no contact, on no channel, with an
+        // empty transcript. What the event does carry is the summary the
+        // transfer already generated.
+        // A note that names no contact lands nowhere a person will find it, and
+        // every one written until now named none: the handler read fields the
+        // event does not have.
+        if (!payload?.tenantId || !payload.contactId) {
+            this.logger.warn(`Handoff note not pushed: the escalation carried no contact`);
+            return;
+        }
+        const summary = payload.summary || payload.lastMessage || '';
+        const reasonNote = payload.reason ? ` (${payload.reason})` : '';
+        const body = summary
+            ? `Handoff a agente humano${reasonNote}.` + NOTE_SEPARATOR + summary
+            : `Handoff a agente humano${reasonNote}.`;
         await this.enqueueForAllConnections(payload.tenantId, [
             {
                 entity: 'activity',
                 operation: 'pushActivity',
                 payload: this.mapActivity({
-                    contactId: payload.contact?.id,
+                    contactId: payload.contactId,
                     type: 'note',
-                    body: `Handoff a agente humano. Últimos mensajes:\n${summary}`,
+                    body,
                     occurredAt: new Date(),
-                    channel: payload.conversation?.channel_type,
+                    channel: payload.channelType ?? undefined,
                 }),
             },
-        ]);
+        ], payload.handoffReceiptId ? `handoff-${payload.handoffReceiptId}` : undefined);
     }
 
     private async enqueueForAllConnections(
         tenantId: string,
         jobs: Array<Omit<CrmSyncJob, 'tenantId' | 'connectionId' | 'provider'>>,
+        /** Stable across attempts, so a retried announcement enqueues once.
+         *  No ':' in it — BullMQ rejects that in a job id and the dedupe dies
+         *  silently, which is how a duplicate delivery got shipped before. */
+        dedupeKey?: string,
     ) {
         const conns = await this.prisma.crmConnection.findMany({
             where: { tenantId, status: 'active' },
@@ -166,7 +193,13 @@ export class ExternalCrmService {
                 await this.queue.add(
                     `${conn.provider}:${job.entity}:${job.operation}`,
                     { tenantId, connectionId: conn.id, provider: conn.provider, ...job },
-                    { attempts: 3, backoff: { type: 'exponential', delay: 5_000 }, removeOnComplete: 100, removeOnFail: 200 },
+                    {
+                        attempts: 3, backoff: { type: 'exponential', delay: 5_000 },
+                        removeOnComplete: 100, removeOnFail: 200,
+                        ...(dedupeKey
+                            ? { jobId: `${dedupeKey}-${conn.id}-${job.entity}-${job.operation}` }
+                            : {}),
+                    },
                 );
             }
         }

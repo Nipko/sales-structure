@@ -57,7 +57,7 @@ describe('HandoffService structured handoff', () => {
             del: jest.fn().mockResolvedValue(undefined),
             get: jest.fn(),
         };
-        const events = { emit: jest.fn().mockReturnValue(true) };
+        const events = { emit: jest.fn().mockReturnValue(true), emitAsync: jest.fn().mockResolvedValue([]) };
         const email = { send: jest.fn().mockResolvedValue(undefined) };
         const templates = { renderAndSend: jest.fn() };
         const llm = {
@@ -124,14 +124,20 @@ describe('HandoffService structured handoff', () => {
         expect(result.summary).toEqual(expect.any(String));
         expect(result.structuredSummary).toEqual(structured);
 
-        expect(h.events.emit).toHaveBeenCalledWith('handoff.escalated', expect.objectContaining({
-            tenantId,
-            schemaName,
-            conversationId,
-            summary: result.summary,
-            structuredSummary: structured,
-            traceId: 'request-trace-1',
-        }));
+        // One event per destination. The single `handoff.escalated` used to
+        // reach six consumers at once, so a failure in any of them re-announced
+        // the transfer to the five that had already succeeded.
+        for (const destination of ['inbox', 'crm', 'webhooks', 'push', 'slack', 'sms']) {
+            expect(h.events.emitAsync).toHaveBeenCalledWith(`handoff.escalated.${destination}`,
+                expect.objectContaining({
+                    tenantId,
+                    schemaName,
+                    conversationId,
+                    summary: result.summary,
+                    structuredSummary: structured,
+                    traceId: 'request-trace-1',
+                }));
+        }
         const cached = JSON.parse(h.redis.set.mock.calls[0][1]);
         expect(cached.summary).toBe(result.summary);
         expect(cached.structuredSummary).toEqual(structured);

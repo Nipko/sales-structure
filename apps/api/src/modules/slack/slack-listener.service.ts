@@ -14,7 +14,10 @@ export class SlackListenerService {
         private readonly prisma: PrismaService,
     ) {}
 
-    @OnEvent('handoff.escalated')
+    // One destination, one event. A transfer used to announce itself once to
+    // all six consumers, so a single failure among them re-announced it to
+    // the five that had already succeeded.
+    @OnEvent('handoff.escalated.slack')
     async onHandoff(event: { tenantId: string; reason?: string; contactName?: string }) {
         if (!event?.tenantId) return;
         const who = event.contactName || 'Un cliente';

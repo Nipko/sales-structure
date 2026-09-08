@@ -5144,6 +5144,40 @@ CREATE INDEX IF NOT EXISTS idx_agent_turn_ledger_unsettled
     ON "{{SCHEMA_NAME}}"."agent_turn_ledger"(updated_at) WHERE state <> 'settled';
 -- END AGENT TURN LEDGER
 
+-- BEGIN AGENT HANDOFF EFFECTS
+-- One row per handoff effect and destination. The receipt carried a single
+-- `effects` object whose `announced` key was one boolean covering a fan-out to
+-- six consumers, so a single failing consumer re-announced the transfer to the
+-- five that had already succeeded. `admitted` is permission for exactly ONE
+-- attempt and commits before the external call; an admitted lease that runs out
+-- does not become available again, because the effect may have happened.
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_handoff_effects" (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    receipt_id UUID NOT NULL,
+    destination TEXT NOT NULL,
+    state TEXT NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    lease_token UUID,
+    lease_expires_at TIMESTAMPTZ,
+    receipt TEXT,
+    error_code TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT agent_handoff_effects_identity UNIQUE (receipt_id, destination),
+    CONSTRAINT agent_handoff_effects_state
+        CHECK (state IN ('prepared','admitted','accepted','rejected','unknown')),
+    CONSTRAINT agent_handoff_effects_destination
+        CHECK (destination IN ('assignment','cache','inbox','crm','webhooks','push','slack','sms','email')),
+    CONSTRAINT agent_handoff_effects_attempts CHECK (attempts >= 0),
+    CONSTRAINT agent_handoff_effects_lease
+        CHECK ((state = 'admitted') = (lease_token IS NOT NULL AND lease_expires_at IS NOT NULL))
+);
+CREATE INDEX IF NOT EXISTS idx_agent_handoff_effects_receipt
+    ON "{{SCHEMA_NAME}}"."agent_handoff_effects"(receipt_id, destination);
+CREATE INDEX IF NOT EXISTS idx_agent_handoff_effects_unsettled
+    ON "{{SCHEMA_NAME}}"."agent_handoff_effects"(updated_at) WHERE state NOT IN ('accepted','unknown');
+-- END AGENT HANDOFF EFFECTS
+
 -- BEGIN NORMAL DISPATCH OUTBOX
 -- One row per remote effect, never per call: a Messenger image and its caption
 -- are two POSTs and one receipt cannot describe both. The row is the only thing

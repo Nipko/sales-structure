@@ -32,7 +32,9 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
             releaseLockToken: jest.fn().mockResolvedValue(undefined) };
         const events = { emit: jest.fn().mockReturnValue(true), emitAsync: jest.fn().mockResolvedValue([]) };
         const email = { send: jest.fn().mockResolvedValue(undefined) };
-        const templates = { renderAndSend: jest.fn().mockResolvedValue(true) };
+        // The bounded attempt, not a boolean: a durable transfer has to be able
+        // to tell "not configured" from "accepted, and then the socket died".
+        const templates = { renderAndPrepare: jest.fn().mockResolvedValue(async () => 'smtp-message-id') };
         // No provider call: the deterministic summary fallback is exercised.
         const llm = { execute: jest.fn().mockRejectedValue(new Error('provider unavailable')) };
         const aiResolution = { ensureResolutionColumns: jest.fn().mockResolvedValue(undefined) };
@@ -40,8 +42,26 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
             templates as any, llm as any, aiResolution as any, { runExclusive: jest.fn() } as any);
         // Routing has its own tables and evidence; this suite is about the receipt.
         jest.spyOn(service as any, 'tryAutoAssign').mockResolvedValue(null);
-        return { service, redis, events };
+        /** Which consumers were told, by name. One aggregate count could not say. */
+        const announced = () => events.emitAsync.mock.calls
+            .map(call => String(call[0])).filter(name => name.startsWith('handoff.escalated.')).sort();
+        return { service, redis, events, templates, announced };
     }
+
+    const ALL_DESTINATIONS = ['crm', 'inbox', 'push', 'slack', 'sms', 'webhooks']
+        .map(name => `handoff.escalated.${name}`).sort();
+    /** How many times each destination was attempted. The number that matters. */
+    const attemptsByDestination = async (receiptId: string) => Object.fromEntries(
+        (await sql('SELECT destination, state, attempts FROM agent_handoff_effects WHERE receipt_id=$1::uuid',
+            [receiptId])).map((row: any) => [row.destination, Number(row.attempts)]));
+    /** A crash right after the transition: the receipt exists, nothing else ran. */
+    const forgetEveryEffect = (receiptId: string) => sql(
+        `UPDATE agent_handoff_effects SET state='prepared', attempts=0, receipt=NULL,
+             error_code=NULL, lease_token=NULL, lease_expires_at=NULL WHERE receipt_id=$1::uuid`, [receiptId]);
+    const forgetEffect = (receiptId: string, destination: string) => sql(
+        `UPDATE agent_handoff_effects SET state='prepared', attempts=0, receipt=NULL,
+             error_code=NULL, lease_token=NULL, lease_expires_at=NULL
+           WHERE receipt_id=$1::uuid AND destination=$2`, [receiptId, destination]);
 
     function inboundMessage(conversationId: string, contactExternalId: string): any {
         return {
@@ -247,7 +267,7 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
     describe('escalating through the service', () => {
         it('transfers once and reproduces the notice without repeating the transfer', async () => {
             const f = await fixture();
-            const { service, redis, events } = serviceFor(prisma);
+            const { service, redis, announced } = serviceFor(prisma);
             const message = inboundMessage(f.conversationId, f.externalId);
             const first = await service.executeHandoffOnce(tenantId, f.conversationId, message, 'explicit_request',
                 { contactId: f.contactId, inboundMessageId: f.inboundMessageId, noticeKind: 'queue_head', noticeLanguage: 'es' });
@@ -260,7 +280,9 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
             // The transfer itself ran exactly once: one note, one cache write, one event.
             expect(await sql('SELECT id FROM internal_notes')).toHaveLength(1);
             expect(redis.set).toHaveBeenCalledTimes(1);
-            expect(events.emit).toHaveBeenCalledTimes(1);
+            // Each consumer heard once, and the list is what proves it: one
+            // aggregate count cannot tell six announcements from one repeated.
+            expect(announced()).toEqual(ALL_DESTINATIONS);
             const [conversation] = await sql('SELECT status, was_handed_off FROM conversations WHERE id=$1::uuid',
                 [f.conversationId]);
             expect(conversation).toMatchObject({ status: 'waiting_human', was_handed_off: true });
@@ -282,13 +304,13 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
             expect(left.inboundMessageId).toBe(right.inboundMessageId);
             expect(await sql('SELECT id FROM agent_handoff_receipts')).toHaveLength(1);
             expect(await sql('SELECT id FROM internal_notes')).toHaveLength(1);
-            const transfers = owners.reduce((total, owner) => total + owner.events.emit.mock.calls.length, 0);
-            expect(transfers).toBe(1);
+            const announcements = owners.flatMap(owner => owner.announced());
+            expect(announcements.sort()).toEqual(ALL_DESTINATIONS);
         });
 
         it('finishes the effects a crashed transfer never reached, repeating none', async () => {
             const f = await fixture();
-            const { service, redis, events } = serviceFor(prisma);
+            const { service, redis, events, announced } = serviceFor(prisma);
             const message = inboundMessage(f.conversationId, f.externalId);
             const request = { contactId: f.contactId, inboundMessageId: f.inboundMessageId,
                 noticeKind: 'queue_head' as const, noticeLanguage: 'es' as const };
@@ -298,13 +320,14 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
             // every later attempt return at once, so nobody was ever told.
             const first = await service.executeHandoffOnce(tenantId, f.conversationId, message, 'explicit_request', request);
             await sql("UPDATE agent_handoff_receipts SET effects='{}'::jsonb WHERE id=$1::uuid", [first.id]);
+            await forgetEveryEffect(first.id);
             await sql('DELETE FROM internal_notes');
-            redis.set.mockClear(); events.emit.mockClear();
+            redis.set.mockClear(); events.emitAsync.mockClear();
 
             const resumed = await service.executeHandoffOnce(tenantId, f.conversationId, message, 'explicit_request', request);
             expect(resumed.id).toBe(first.id);
             expect(redis.set).toHaveBeenCalledTimes(1);
-            expect(events.emit).toHaveBeenCalledTimes(1);
+            expect(announced()).toEqual(ALL_DESTINATIONS);
             // The transition itself is never repeated: no second internal note.
             expect(await sql('SELECT id FROM internal_notes')).toHaveLength(0);
             expect(await sql('SELECT id FROM agent_handoff_receipts')).toHaveLength(1);
@@ -314,7 +337,7 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
 
         it('resumes only the phase that is missing, and never re-announces', async () => {
             const f = await fixture();
-            const { service, redis, events } = serviceFor(prisma);
+            const { service, redis, events, templates, announced } = serviceFor(prisma);
             const message = inboundMessage(f.conversationId, f.externalId);
             const request = { contactId: f.contactId, inboundMessageId: f.inboundMessageId,
                 noticeKind: 'queue_head' as const, noticeLanguage: 'es' as const };
@@ -322,16 +345,22 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
 
             // Crash after the announcement but before the notification settled.
             await sql(`UPDATE agent_handoff_receipts SET effects = effects - 'notified' WHERE id=$1::uuid`, [first.id]);
-            redis.set.mockClear(); events.emit.mockClear();
+            await forgetEffect(first.id, 'email');
+            redis.set.mockClear(); events.emitAsync.mockClear(); templates.renderAndPrepare.mockClear();
             await service.executeHandoffOnce(tenantId, f.conversationId, message, 'explicit_request', request);
             // Ringing the inbox twice for one transfer is the repeat that matters.
-            expect(events.emit).not.toHaveBeenCalled();
+            expect(announced()).toEqual([]);
             expect(redis.set).not.toHaveBeenCalled();
+            // Only the destination that never settled ran again, and the
+            // attempt counters say so per destination rather than in aggregate.
+            expect(await attemptsByDestination(first.id)).toEqual({
+                assignment: 1, cache: 1, inbox: 1, crm: 1, webhooks: 1, push: 1, slack: 1, sms: 1, email: 1,
+            });
         });
 
         it('does everything exactly once when nothing crashed', async () => {
             const f = await fixture();
-            const { service, redis, events } = serviceFor(prisma);
+            const { service, redis, announced } = serviceFor(prisma);
             const message = inboundMessage(f.conversationId, f.externalId);
             const request = { contactId: f.contactId, inboundMessageId: f.inboundMessageId,
                 noticeKind: 'queue_head' as const, noticeLanguage: 'es' as const };
@@ -339,8 +368,69 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
             await service.executeHandoffOnce(tenantId, f.conversationId, message, 'explicit_request', request);
             await service.executeHandoffOnce(tenantId, f.conversationId, message, 'explicit_request', request);
             expect(redis.set).toHaveBeenCalledTimes(1);
-            expect(events.emit).toHaveBeenCalledTimes(1);
+            expect(announced()).toEqual(ALL_DESTINATIONS);
             expect(await sql('SELECT id FROM internal_notes')).toHaveLength(1);
+            const [receipt] = await sql('SELECT id FROM agent_handoff_receipts');
+            expect(await attemptsByDestination(receipt.id)).toEqual({
+                assignment: 1, cache: 1, inbox: 1, crm: 1, webhooks: 1, push: 1, slack: 1, sms: 1, email: 1,
+            });
+        });
+
+        it('retries only the consumer that failed, and tells the others nothing twice', async () => {
+            const f = await fixture();
+            const { service, events, announced } = serviceFor(prisma);
+            const message = inboundMessage(f.conversationId, f.externalId);
+            const request = { contactId: f.contactId, inboundMessageId: f.inboundMessageId,
+                noticeKind: 'queue_head' as const, noticeLanguage: 'es' as const };
+            // Slack is down for the first transfer only. Under the old aggregate
+            // flag this is what re-announced the transfer to all six.
+            events.emitAsync.mockImplementation(async (name: string) =>
+                name === 'handoff.escalated.slack' ? Promise.reject(new Error('slack_unreachable')) : []);
+
+            const first = await service.executeHandoffOnce(tenantId, f.conversationId, message, 'explicit_request', request);
+            expect(await attemptsByDestination(first.id)).toMatchObject({ inbox: 1, slack: 1, sms: 1 });
+            const [failed] = await sql(
+                "SELECT state, error_code FROM agent_handoff_effects WHERE receipt_id=$1::uuid AND destination='slack'",
+                [first.id]);
+            expect(failed).toMatchObject({ state: 'rejected', error_code: 'slack_unreachable' });
+
+            events.emitAsync.mockClear();
+            events.emitAsync.mockResolvedValue([]);
+            await service.executeHandoffOnce(tenantId, f.conversationId, message, 'explicit_request', request);
+
+            expect(announced()).toEqual(['handoff.escalated.slack']);
+            expect(await attemptsByDestination(first.id)).toMatchObject({ inbox: 1, slack: 2, sms: 1 });
+        });
+
+        it('records a notification nobody can vouch for as uncertain, and never sends a second', async () => {
+            const f = await fixture();
+            const { service, templates } = serviceFor(prisma);
+            const message = inboundMessage(f.conversationId, f.externalId);
+            const request = { contactId: f.contactId, inboundMessageId: f.inboundMessageId,
+                noticeKind: 'queue_head' as const, noticeLanguage: 'es' as const };
+            // Who receives it is not what this test is about; that there IS a
+            // recipient is, because the classification only matters once the
+            // transport was actually asked to send something.
+            jest.spyOn(service as any, 'resolveHandoffFallbackRecipient').mockResolvedValue(
+                { email: 'owner@example.test', slug: 'handoff_notification_unassigned' });
+            // The server took the message and the socket died before it said so.
+            templates.renderAndPrepare.mockResolvedValue(async () => {
+                throw new Error('smtp_deadline_outcome_unknown');
+            });
+
+            const first = await service.executeHandoffOnce(tenantId, f.conversationId, message, 'explicit_request', request);
+            const [email] = await sql(
+                "SELECT state, error_code, attempts FROM agent_handoff_effects WHERE receipt_id=$1::uuid AND destination='email'",
+                [first.id]);
+            expect(email).toMatchObject({ state: 'unknown', error_code: 'smtp_deadline_outcome_unknown', attempts: 1 });
+
+            templates.renderAndPrepare.mockClear();
+            await service.executeHandoffOnce(tenantId, f.conversationId, message, 'explicit_request', request);
+            expect(templates.renderAndPrepare).not.toHaveBeenCalled();
+            const [after] = await sql(
+                "SELECT attempts FROM agent_handoff_effects WHERE receipt_id=$1::uuid AND destination='email'",
+                [first.id]);
+            expect(Number(after.attempts)).toBe(1);
         });
 
         it('reports no receipt for an inbound that never transferred the conversation', async () => {

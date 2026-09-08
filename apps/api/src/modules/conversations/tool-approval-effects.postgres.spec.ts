@@ -147,11 +147,18 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
     it.each(['success','template_timeout','provider_false'])('uses actual canonical handoff and lazy schema preparation: %s',async(outcome)=>{
         const {reference}=await complete('create_insurance_claim',{success:true,shouldHandoff:true});
         const redis:any={get:async()=>null,set:async()=>{},del:async()=>{}};
-        const events=new EventEmitter2();const notified=jest.fn(async()=>{});events.on('handoff.escalated',notified);
+        const events=new EventEmitter2();const notified=jest.fn(async()=>{});
+        // One event per destination now: an aggregate flag could not say which of
+        // six consumers had run, so a failure in one re-announced to all.
+        for(const destination of ['inbox','crm','webhooks','push','slack','sms'])
+            events.on(`handoff.escalated.${destination}`,notified);
         const localPrisma={...prisma,$queryRaw:async()=>[],$queryRawUnsafe:async()=>[],user:{findFirst:async()=>null},
             tenant:{findUnique:async(args:any)=>args.select.billingEmail ? {billingEmail:'synthetic@example.test'} : prisma.tenant.findUnique(args)}};
         const fallback=jest.fn(async()=>{if(outcome==='provider_false')throw new Error('timeout');});
-        const templates={renderAndSend:async()=>{if(outcome==='template_timeout')throw new Error('timeout');return outcome!=='provider_false';}};
+        const templates={renderAndPrepare:async()=>{
+            if(outcome==='template_timeout')throw new Error('timeout');
+            return async()=>{if(outcome==='provider_false')throw new Error('smtp_acceptance_unverified');return 'smtp-id';};
+        }};
         const canonical=new HandoffService(localPrisma as any,redis,events,{send:fallback} as any,templates as any,
             {execute:async()=>({content:'{}'})} as any,new AiResolutionService(prisma,redis),{} as any);
         const realService=new ToolApprovalEffectsService(prisma,queue as any,canonical);
@@ -161,6 +168,6 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
         expect(fallback).not.toHaveBeenCalled();
         expect((await scoped('SELECT status,was_handed_off FROM conversations WHERE id=$1::uuid',[conversation]))[0]).toEqual({status:'waiting_human',was_handed_off:true});
         expect(await scoped('SELECT content FROM internal_notes WHERE conversation_id=$1::uuid',[conversation])).toHaveLength(1);
-        expect(notified).toHaveBeenCalledTimes(1);
+        expect(notified).toHaveBeenCalledTimes(6);
     },15000);
 });

@@ -51,7 +51,10 @@ export class PushListenerService {
         }
     }
 
-    @OnEvent('handoff.escalated')
+    // One destination, one event. A transfer used to announce itself once to
+    // all six consumers, so a single failure among them re-announced it to
+    // the five that had already succeeded.
+    @OnEvent('handoff.escalated.push')
     async onHandoff(event: {
         tenantId: string;
         conversationId: string;

@@ -13,6 +13,8 @@
 | `f586d383` | La búsqueda, reranking, embeddings y memoria conservan la revocación de fuente y evitan reutilizar la caché compartida bajo esa autoridad | API TypeScript sobre el índice; 6 suites / 76 casos, incluidos los 7 de routing mencionados arriba |
 | `4ecbb4b8` | Doce herramientas comprueban la versión operativa en la transacción del efecto; el runtime transmite su procedencia y las propuestas pendientes rechazan una configuración distinta | API TypeScript sobre el índice; 12 suites / 156 casos, incluidos PostgreSQL, aprobaciones, recibos anteriores y bootstrap de API |
 | `a70995f7` | Captura y sella contexto del negocio, región, configuración de horarios, contexto vertical, FAQs y políticas; los lectores usan esos inputs privados en evaluación | API TypeScript sobre el índice; 21 suites / 289 casos verificados por bloques, con 65 casos PostgreSQL/Prisma y bootstrap |
+| `6625a535` | Los escenarios y comandos aislados usan los horarios y la zona capturados; un lease o zona inválidos detienen la evaluación | API TypeScript sobre el índice; 9 suites / 152 casos, incluidos 37 con PostgreSQL/Prisma |
+| `6925009c` | Aprendizaje conserva autoridad de Inbox, revisión por intento, recuperación sin repetir herramientas, propiedad de workers y retiro de copias de evaluación; estado visible en cuatro idiomas | API y dashboard TypeScript sobre el índice; 14 suites / 188 casos API y 2 suites / 27 casos dashboard |
 
 Las cifras se solapan entre bloques y no se suman como cobertura nueva. Los controles de proveedor usan respuestas sintéticas; las pruebas PostgreSQL se ejecutan en las bases desechables locales de evaluación.
 
@@ -26,7 +28,7 @@ La integración de contexto se probó además con el commit anterior de autorida
 
 ## Trabajo que continúa
 
-Este registro no declara concluido el plan de plataforma. La integración temporal de evaluaciones, el ciclo de aprendizaje, Replay, los ciclos de vehículos y mascotas y la réplica RAG tienen cambios locales que se separan en bloques posteriores. La extensión reciente de slots y referencias de uso de la réplica RAG permanece fuera de los bloques validados hasta tener sus propias pruebas. Congelar la configuración de horarios todavía no congela el reloj ni completa la integración temporal del sandbox.
+Este registro no declara concluido el plan de plataforma. La integración temporal de evaluaciones y la autoridad de fuentes de aprendizaje ya están registradas. Replay, los ciclos de vehículos y mascotas y la réplica RAG tienen cambios locales que se separan en bloques posteriores. La extensión reciente de slots y referencias de uso de la réplica RAG permanece fuera de los bloques validados hasta tener sus propias pruebas. Congelar la configuración de horarios no congela el reloj de la plataforma.
 
 El conjunto de herramientas protegido del commit de runtime contiene doce comandos de citas, gimnasio, educación, taller y catálogo. Los cambios locales amplían ese conjunto junto con los comandos canónicos de vehículos y mascotas: esa ampliación debe registrarse con sus implementaciones y pruebas, no sólo con los nombres del conjunto. La publicación HTTP del agente sigue pendiente.
 

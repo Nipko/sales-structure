@@ -41,15 +41,12 @@ describe('la matriz de tareas se calcula, no se transcribe', () => {
         expect(summary.withoutOwnNegative).toEqual([]);
     });
 
-    it('enumera exactamente qué tareas comprometen algo que la evaluación no puede verificar', () => {
-        // El hueco real, con nombre, y ya no es una lista larga: cancelar una
-        // cita, reprogramarla y agendar una prueba de manejo ya corrían por el
-        // adaptador aislado y sólo faltaba que el registro de writers lo dijera.
-        // Queda cotizar una póliza, que escribe `insurance_quotes` — una tabla
-        // que el namespace arrendado todavía no copia ni limpia.
-        const kinds = [...new Set(summary.withoutVerifier.map(entry => entry.split('/')[2]))].sort();
-        expect(kinds).toEqual(['quote_policy']);
-        expect(summary.withoutVerifier).toHaveLength(5);
+    it('ninguna tarea compromete algo que la evaluación no pueda verificar', () => {
+        // Eran 51 cuando la matriz empezó a calcularse: 41 porque el registro de
+        // writers no decía lo que el adaptador aislado ya hacía —cancelar,
+        // reprogramar, agendar una prueba de manejo— y 5 porque cotizar una
+        // póliza escribe una tabla que el namespace arrendado no copiaba.
+        expect(summary.withoutVerifier).toEqual([]);
     });
 
     it('separa lo que no tiene verificador de lo que no debe tenerlo', () => {

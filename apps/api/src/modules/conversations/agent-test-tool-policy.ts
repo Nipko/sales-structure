@@ -90,6 +90,18 @@ export const EVAL_WRITER_SANDBOX_FAMILIES: Readonly<Record<string, EvalWriterSan
      * tenant, ni siquiera para el contacto sandbox — una cancelación mal
      * dirigida ahí borraría la cita de un cliente de verdad.
      */
+    /**
+     * Cotizar una póliza escribe una fila propia, no toca la póliza vigente ni
+     * ningún siniestro, y el namespace arrendado ya copia `insurance_plans` para
+     * que la cotización se calcule contra el plan real en vez de fallar por un
+     * plan ausente. `canonicalOnly`, como el resto: una cotización en el schema
+     * real quedaría en la bandeja de un asesor como si un cliente la hubiera
+     * pedido.
+     */
+    insurance_quotes: Object.freeze({
+        status: 'audited', tools: Object.freeze(['calculate_quote']),
+        table: 'insurance_quotes', contactColumn: 'contact_id', canonicalOnly: true, verifierAudited: true,
+    }),
     appointment_transitions: Object.freeze({
         status: 'audited',
         tools: Object.freeze(['cancel_appointment', 'reschedule_appointment', 'schedule_test_drive']),

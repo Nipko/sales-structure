@@ -73,7 +73,8 @@ describe('versioned multilingual eval infrastructure', () => {
 
     it('has one contact-scoped verifier for every mutating sandbox family', () => {
         expect(Object.keys(EVAL_EFFECT_VERIFIERS).sort()).toEqual([
-            'appointment_transitions', 'appointments', 'catalog_orders', 'class_bookings', 'enrollments', 'pets',
+            'appointment_transitions', 'appointments', 'catalog_orders', 'class_bookings', 'enrollments',
+            'insurance_quotes', 'pets',
             'photo_sessions', 'property_bookings', 'repair_orders', 'resource_rentals',
             'restaurant_orders', 'service_requests', 'tour_bookings',
         ]);

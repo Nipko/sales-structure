@@ -14,6 +14,9 @@ import { SmsAlertService } from './sms-alert.service';
 import { AlertConfigService } from './alert-config.service';
 import { SentryStatsService } from './sentry-stats.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
+import {
+    DISPATCH_RECONCILIATION_SLA_SECONDS, readDispatchBacklog,
+} from '../channels/agent-dispatch-outbox';
 import { PAYMENT_PROVIDER_NAMES, PaymentProviderName } from '../billing/types/provider-types';
 import { SubscriptionStatus } from '../billing/types/subscription-status.enum';
 import * as os from 'os';
@@ -581,6 +584,135 @@ export class PlatformMonitorService implements OnModuleInit {
         } catch (e: any) {
             this.logger.debug(`SLA breach check skipped: ${e.message}`);
         }
+    }
+
+    // ── Uncertain outbound effects waiting for a person — every 15 minutes ──
+
+    /**
+     * A dispatch row lands in `reconciliation_required` when an attempt was
+     * authorized and nobody can say what came back: the lease expired, or the
+     * provider answered something the adapter could not read as accepted or
+     * refused. The row is deliberately NOT retried — a retry could be the second
+     * copy the customer receives — so the only thing that closes it is a person
+     * deciding delivered / not_delivered / retry.
+     *
+     * Which makes this backlog invisible to every other check here: the queue job
+     * completed, the tenant is up, no provider is down, nothing failed. The count
+     * has existed behind an endpoint since the outbox shipped, and an endpoint
+     * nobody opens is not a monitor.
+     */
+    @Cron('11,26,41,56 * * * *')
+    async checkDispatchBacklogCron() {
+        // Corre en UNA sola instancia: la API y el worker cargan el mismo
+        // AppModule con ScheduleModule, asi que sin esto el cuerpo se
+        // ejecuta dos veces. Ver CronLockService.
+        await this.cronLock.runExclusive(
+            'platform-monitor.checkDispatchBacklog',
+            600,
+            () => this.checkDispatchBacklog(),
+        );
+    }
+
+    async checkDispatchBacklog() {
+        try {
+            const cfg = await this.alertConfig.get();
+            const tenants = await this.prisma.tenant.findMany({
+                where: { isActive: true },
+                select: { id: true, name: true, schemaName: true },
+            });
+
+            let total = 0;
+            let overdue = 0;
+            let oldestSeconds = 0;
+            const byTenant: Array<{ name: string; total: number; overdue: number }> = [];
+            for (const t of tenants) {
+                // The outbox itself refuses eval namespaces, so anything counted
+                // in one would be harness fixtures paging a human at 3AM.
+                if (t.schemaName.startsWith('tenant_eval_')) continue;
+                try {
+                    // The primitive, not AgentDispatchOutboxStore.backlog(): the
+                    // store bootstraps the table before reading, and a monitor
+                    // must not run DDL across every tenant schema to ask a
+                    // question. readDispatchBacklog answers 0 for a tenant that
+                    // never took this path, which is the honest answer.
+                    const backlog = await this.prisma.transactionInTenantSchema(
+                        t.schemaName,
+                        (query) => readDispatchBacklog(query, t.schemaName),
+                    );
+                    total += backlog.total;
+                    overdue += backlog.breachingSla;
+                    oldestSeconds = Math.max(oldestSeconds, backlog.oldestAgeSeconds);
+                    if (backlog.total > 0) {
+                        byTenant.push({ name: t.name, total: backlog.total, overdue: backlog.breachingSla });
+                    }
+                } catch {
+                    // A schema that is missing, mid-migration or unreadable is one
+                    // tenant's problem; the sweep still has to cover the rest.
+                }
+            }
+
+            const slaMinutes = Math.round(DISPATCH_RECONCILIATION_SLA_SECONDS / 60);
+            // Names and counts only. The reconciliation entries carry a masked
+            // recipient and a receipt, and neither belongs in an email that fans
+            // out to every super_admin.
+            const ranked = byTenant.sort((a, b) => (b.overdue - a.overdue) || (b.total - a.total));
+            const list = ranked
+                .slice(0, 5)
+                .map((x) => `<li><b>${this.escapeHtml(x.name)}</b> — ${x.total} sin resolver`
+                    + `${x.overdue > 0 ? `, ${x.overdue} fuera de plazo` : ''}</li>`)
+                .join('');
+            const rest = ranked.length > 5 ? `<li>y ${ranked.length - 5} tenant(s) más</li>` : '';
+            const where = `<ul style="margin:6px 0 6px 18px;list-style:disc;">${list}${rest}</ul>`;
+
+            // `> 0` además del umbral: un umbral mal puesto en 0 desde el panel
+            // no puede convertirse en una alerta crítica que dice "0 efectos".
+            if (overdue > 0 && overdue >= cfg.dispatchReconciliation.overdue) {
+                await this.alert(
+                    'dispatch:reconciliation:overdue',
+                    `${overdue} efecto(s) de salida sin resolver hace más de ${slaMinutes} min`,
+                    `<b>${overdue}</b> envío(s) del agente quedaron autorizados sin que nadie pueda decir si llegaron,`
+                    + ` y ya pasaron el plazo de <b>${slaMinutes} min</b>. El más antiguo espera hace`
+                    + ` <b>${this.durationLabel(oldestSeconds)}</b>.<br>`
+                    + ` El sistema <b>no los reintenta a propósito</b>: un reintento puede ser la segunda copia que`
+                    + ` recibe el cliente. Hasta que una persona los marque como entregados, no entregados o para`
+                    + ` reintento, hay clientes esperando una respuesta que quizá nunca salió.<br>`
+                    // No hay pantalla todavía: el único consumidor es el endpoint
+                    // super_admin, así que la alerta lo nombra en vez de mandar a
+                    // buscar una vista que no existe.
+                    + ` <b>Dónde mirar:</b> <code>GET /api/v1/dispatch-rollout/reconciliation/{tenantId}</code>`
+                    + ` (super_admin).${where}`,
+                    overdue,
+                );
+            } else {
+                await this.incidents.resolveByKey('dispatch:reconciliation:overdue');
+            }
+
+            if (total > 0 && total >= cfg.dispatchReconciliation.backlog) {
+                await this.alert(
+                    'dispatch:reconciliation:backlog',
+                    `${total} efectos de salida esperando una decisión`,
+                    `Hay <b>${total}</b> envíos del agente con resultado desconocido esperando que alguien los cierre`
+                    + ` (umbral: ${cfg.dispatchReconciliation.backlog}), de los cuales <b>${overdue}</b> ya pasaron el`
+                    + ` plazo de ${slaMinutes} min.<br>`
+                    + ` Uno suelto es operación normal —se resuelve en minutos—; este volumen significa que algo los`
+                    + ` está generando más rápido de lo que se resuelven, o que nadie está mirando la cola.<br>`
+                    + ` <b>Qué revisar:</b> timeouts del proveedor del canal y leases que vencen antes de que la`
+                    + ` respuesta llegue.${where}`,
+                    total,
+                );
+            } else {
+                await this.incidents.resolveByKey('dispatch:reconciliation:backlog');
+            }
+        } catch (e: any) {
+            this.logger.debug(`Dispatch backlog check skipped: ${e.message}`);
+        }
+    }
+
+    /** Seconds → short human duration for alert bodies. */
+    private durationLabel(seconds: number): string {
+        if (seconds < 3600) return `${Math.max(1, Math.round(seconds / 60))} min`;
+        if (seconds < 48 * 3600) return `${Math.round(seconds / 3600)} h`;
+        return `${Math.round(seconds / 86400)} día(s)`;
     }
 
     // ── Hourly admin email refresh ──
@@ -1583,6 +1715,13 @@ export class PlatformMonitorService implements OnModuleInit {
             // Se creó algo real —una reserva, un cobro— y el cliente nunca supo
             // los detalles. Sólo una persona puede cerrar esa conversación.
             'agent:commit_then_failure',
+            // Misma familia: un envío autorizado del que nadie sabe si llegó, y
+            // que el sistema no reintenta para no duplicarlo. Pasada una hora ya
+            // no es una operación en curso, es un cliente esperando. La clave no
+            // termina en ':critical' a propósito — nombra la condición, no su
+            // nivel, porque su gemela ('...:backlog') mide otra cosa (volumen),
+            // no el mismo número con otro umbral.
+            'dispatch:reconciliation:overdue',
         ];
         if (key.endsWith(':critical') || CRITICAL_KEYS.includes(key)) {
             return 'critical';
@@ -1697,6 +1836,7 @@ export class PlatformMonitorService implements OnModuleInit {
         await this.checkRiskSignals();
         await this.checkSlaBreaches();
         await this.checkRecurringEngine();
+        await this.checkDispatchBacklog();
     }
 
     // ── Manual status (for /health/detailed or admin API) ──

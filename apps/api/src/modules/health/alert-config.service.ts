@@ -16,6 +16,12 @@ export interface AlertConfig {
     pgbouncer: { warnSec: number; critSec: number };
     sentryErrors: { warn: number; crit: number };
     slaBreaches: { warn: number; crit: number };
+    /**
+     * Uncertain outbound effects waiting for a person. Two different quantities,
+     * not two levels of one: `backlog` counts everything queued for a decision,
+     * `overdue` only what already crossed DISPATCH_RECONCILIATION_SLA_SECONDS.
+     */
+    dispatchReconciliation: { backlog: number; overdue: number };
     queueDepth: Record<string, { warn: number; crit: number }>;
     /** Alert when a queue's failed count is greater than its own threshold. */
     queueFailedByQueue: Record<string, number>;
@@ -37,6 +43,12 @@ export const ALERT_CONFIG_DEFAULTS: AlertConfig = {
     pgbouncer: { warnSec: 5, critSec: 20 },
     sentryErrors: { warn: 50, crit: 200 },
     slaBreaches: { warn: 10, crit: 30 },
+    // A row lands here only when an attempt was authorized and its outcome is
+    // unknowable, which is rare by design; a handful across the whole platform
+    // is a person's afternoon, twenty at once is something systemic. Age is the
+    // harder line: the SLA is already an hour, so the first row that crosses it
+    // is the incident and there is no volume that makes it acceptable.
+    dispatchReconciliation: { backlog: 20, overdue: 1 },
     queueDepth: {
         // La cola de ENTRANTES faltaba, y es la que el propio platform-monitor
         // llama "la más importante de la plataforma": un backlog acá significa
@@ -111,6 +123,7 @@ export class AlertConfigService {
             pgbouncer: { ...base.pgbouncer, ...(p.pgbouncer || {}) },
             sentryErrors: { ...base.sentryErrors, ...(p.sentryErrors || {}) },
             slaBreaches: { ...base.slaBreaches, ...(p.slaBreaches || {}) },
+            dispatchReconciliation: { ...base.dispatchReconciliation, ...(p.dispatchReconciliation || {}) },
             queueDepth: qd,
             queueFailedByQueue: qf,
             queueFailed: num(p.queueFailed, base.queueFailed),

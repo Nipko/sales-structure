@@ -12,15 +12,22 @@ import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { TenantNotificationSmsService } from '../sms-credits/tenant-notification-sms.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { resolveTenantSubscriptionAccess } from '../../common/utils/subscription-entitlement.util';
+import { AgentDispatchOutboxStore } from './agent-dispatch-outbox.store';
+import { DISPATCH_TERMINAL_STATES } from './agent-dispatch-outbox';
+import { transportNotAvailable } from './strict-dispatch-transport';
 
 export const OUTBOUND_QUEUE = 'outbound-messages';
 
 /** Per-tenant pending-jobs counter key (queue-depth backpressure). */
 export const pendingJobsKey = (tenantId: string) => `outbound:pending:${tenantId}`;
 
-export type OutboundJobData = { outbound: OutboundMessage; approvalEffect?: never; operationalNotice?: never }
-    | { outbound?: never; approvalEffect: ApprovedEffectReference; operationalNotice?: never }
-    | { outbound?: never; approvalEffect?: never; operationalNotice: OperationalNoticeReference };
+/** Two identifiers, never a payload or a recipient: the outbox row is the record. */
+export interface DispatchJobReference { tenantId: string; dispatchId: string }
+
+export type OutboundJobData = { outbound: OutboundMessage; approvalEffect?: never; operationalNotice?: never; dispatch?: never }
+    | { outbound?: never; approvalEffect: ApprovedEffectReference; operationalNotice?: never; dispatch?: never }
+    | { outbound?: never; approvalEffect?: never; operationalNotice: OperationalNoticeReference; dispatch?: never }
+    | { outbound?: never; approvalEffect?: never; operationalNotice?: never; dispatch: DispatchJobReference };
 
 @Processor(OUTBOUND_QUEUE, {
     concurrency: 5,
@@ -38,6 +45,7 @@ export class OutboundQueueProcessor extends WorkerHost {
         private prisma: PrismaService,
         @Optional() @Inject(APPROVED_EFFECT_DELIVERY) private approvalEffects?: ApprovedEffectDeliveryPort,
         @Optional() @Inject(OPERATIONAL_NOTICE_DELIVERY) private operationalNotices?: OperationalNoticeDeliveryPort,
+        @Optional() private dispatchOutbox?: AgentDispatchOutboxStore,
     ) {
         super();
     }
@@ -57,7 +65,106 @@ export class OutboundQueueProcessor extends WorkerHost {
         return `outbound:sent:${jobId}`;
     }
 
+    /**
+     * Deliver one dispatch row: at most one remote effect, at most one attempt.
+     *
+     * Everything before the admission is preparation and may not touch a
+     * provider. The permission is granted in a short transaction that commits
+     * before the request goes out, and what came back is recorded against that
+     * exact lease. A retry re-enters here and re-admits — the outbox, not BullMQ,
+     * is what bounds how many attempts this row can ever get.
+     */
+    private async processDispatch(reference: DispatchJobReference, job: Job<OutboundJobData>, token?: string): Promise<string> {
+        const { tenantId, dispatchId } = reference;
+        if (!this.dispatchOutbox) throw new Error('dispatch_outbox_unavailable');
+        const existing = await this.dispatchOutbox.read(tenantId, dispatchId);
+        if (!existing) return 'dispatch:missing';
+        // A recovered job whose row already reached a terminal state must never
+        // produce a second effect. An accepted receipt is read, not re-earned.
+        if (DISPATCH_TERMINAL_STATES.includes(existing.state)) return `dispatch:${existing.state}`;
+
+        const preflight = async (errorCode: string, options?: { permanent?: boolean; retryInSeconds?: number }) => {
+            const row = await this.dispatchOutbox!.failPreflight(tenantId, dispatchId, { errorCode, ...options });
+            this.logger.warn(`[Dispatch] ${dispatchId} ${row.state} (${errorCode}) attempts=${row.attempts}`);
+            return `dispatch:${row.state}:${errorCode}`;
+        };
+
+        const entitlement = await resolveTenantSubscriptionAccess(this.prisma, tenantId, 'write');
+        if (!entitlement.allowed) {
+            return preflight(`subscription_${entitlement.error ?? 'restricted'}`,
+                { permanent: entitlement.restrictionLevel !== 'unavailable' });
+        }
+        // A throttled tenant consumes no attempt: re-schedule instead.
+        if (await this.throttle.isOverLimit(tenantId, 'outbound')) {
+            await job.moveToDelayed(Date.now() + 60_000, token);
+            throw new DelayedError();
+        }
+        const transport = this.channelGateway.getStrictTransport(existing.binding!.channelType as any);
+        if (!transport) {
+            // Explicit refusal, never a silent fall back to the loose gateway.
+            const refusal = transportNotAvailable(existing.binding!.channelType);
+            return preflight(refusal.kind === 'rejected' ? refusal.errorCode : 'transport_not_migrated',
+                { permanent: true });
+        }
+        let accessToken: string;
+        try {
+            accessToken = (await this.channelToken.getChannelToken(tenantId,
+                existing.binding!.channelType as any, existing.binding!.channelAccountId)).accessToken;
+        } catch (error: any) {
+            return preflight(`channel_credentials_unavailable:${String(error?.message || '').slice(0, 60)}`);
+        }
+
+        let admitted;
+        try {
+            admitted = await this.dispatchOutbox.admit(tenantId, dispatchId);
+        } catch (error: any) {
+            const code = String(error?.code || error?.message || 'admission_failed');
+            if (code.startsWith('dispatch_terminal:')) return `dispatch:${code}`;
+            if (code === 'dispatch_lease_active') return 'dispatch:lease_held_elsewhere';
+            if (code === 'dispatch_not_available_yet') return 'dispatch:waiting_backoff';
+            // The scope, the routing, the sources or the binding no longer hold.
+            // A later attempt cannot make this payload admissible again.
+            return preflight(code, { permanent: true });
+        }
+
+        // COMMITTED. From here the request may go out exactly once, with no
+        // tenant or agent lock held and no business transaction open.
+        const outcome = await transport.sendStrict({
+            itemKind: admitted.row.itemKind, to: admitted.row.binding!.recipient,
+            channelAccountId: admitted.row.binding!.channelAccountId, payload: admitted.row.payload!,
+        }, accessToken);
+
+        try {
+            if (outcome.kind === 'accepted') {
+                await this.dispatchOutbox.settle(tenantId, dispatchId, admitted.leaseToken,
+                    { kind: 'sent', receipt: outcome.receipt });
+                await this.throttle.recordUsage(tenantId, 'outbound').catch(() => {});
+                return `dispatch:sent:${outcome.receipt}`;
+            }
+            if (outcome.kind === 'unknown') {
+                // The provider may have acted. Never another POST for this item.
+                await this.dispatchOutbox.settle(tenantId, dispatchId, admitted.leaseToken,
+                    { kind: 'reconciliation_required', errorCode: outcome.errorCode });
+                this.logger.error(`[Dispatch] ${dispatchId} outcome unknown (${outcome.errorCode}) — reconciliation required`);
+                return `dispatch:reconciliation_required:${outcome.errorCode}`;
+            }
+            const settled = await this.dispatchOutbox.settle(tenantId, dispatchId, admitted.leaseToken,
+                { kind: outcome.retryable ? 'failed' : 'suppressed', errorCode: outcome.errorCode });
+            if (settled.state === 'failed') throw new Error(`dispatch_retryable:${outcome.errorCode}`);
+            return `dispatch:${settled.state}:${outcome.errorCode}`;
+        } catch (error: any) {
+            if (String(error?.message || '').startsWith('dispatch_retryable:')) throw error;
+            // Recording the outcome failed. The row keeps its live permission, so
+            // no other worker can send this item; when the lease lapses it becomes
+            // a reconciliation, which is the honest state — especially after an
+            // acceptance we observed but could not write down.
+            this.logger.error(`[Dispatch] ${dispatchId} outcome not recorded (${outcome.kind}): ${error?.message}`);
+            return `dispatch:outcome_unrecorded:${outcome.kind}`;
+        }
+    }
+
     async process(job: Job<OutboundJobData>, token?: string): Promise<string | null> {
+        if (job.data.dispatch) return this.processDispatch(job.data.dispatch, job, token);
         if (job.data.operationalNotice) {
             const reference=job.data.operationalNotice;
             if (!this.operationalNotices) throw new Error('operational_notice_delivery_unavailable');
@@ -233,6 +340,12 @@ export class OutboundQueueProcessor extends WorkerHost {
 
     @OnWorkerEvent('failed')
     onFailed(job: Job<OutboundJobData>, error: Error) {
+        if (job.data.dispatch) {
+            // The row carries the durable state; the job is only work.
+            this.logger.error({ msg: 'Dispatch job failed', jobId: job.id, ...job.data.dispatch,
+                attempt: job.attemptsMade, error: error.message });
+            return;
+        }
         if (job.data.operationalNotice) {
             this.logger.error({ msg:'Operational notice job failed', jobId:job.id, ...job.data.operationalNotice, attempt:job.attemptsMade });
             return;

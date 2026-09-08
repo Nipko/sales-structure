@@ -19,6 +19,33 @@ export class OutboundQueueService {
         private redis: RedisService,
     ) {}
 
+    /**
+     * Publish a reference to a dispatch row the outbox already committed.
+     *
+     * Deliberately unlike `enqueue` below: there, dropping the jobId and adding
+     * again is right, because Redis is the only record and losing the job means
+     * losing the reply. Here the row IS the record, so an add that fails keeps
+     * its deterministic identity and the row is recovered from the database
+     * instead. Redis carries no payload and no recipient — only two ids.
+     */
+    async enqueueDispatch(tenantId: string, dispatchId: string, delayMs?: number): Promise<void> {
+        const jobId = sanitizeJobId(`dispatch-${dispatchId}`);
+        const existing = await this.outboundQueue.getJob(jobId);
+        if (existing) {
+            if (await existing.getState() === 'failed') await existing.retry();
+            return;
+        }
+        await this.outboundQueue.add('dispatch', { dispatch: { tenantId, dispatchId } }, {
+            jobId,
+            priority: await this.throttle.getPriority(tenantId),
+            attempts: 3,
+            backoff: { type: 'exponential', delay: 5000 },
+            ...(delayMs && delayMs > 0 ? { delay: delayMs } : {}),
+            removeOnComplete: { age: 3600 },
+            removeOnFail: { age: 86400 },
+        });
+    }
+
     /** References only. Failure must keep its deterministic identity, never fall back to an unkeyed send. */
     async enqueueApprovedEffect(reference: ApprovedEffectReference): Promise<void> {
         const jobId = sanitizeJobId(`approval-effect-${reference.ticketId}-${reference.effectId}`);

@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { NormalizedMessage, ChannelType, OutboundMessage } from '@parallext/shared';
 import { WebhookTapService } from './webhook-tap.service';
 import { channelSafeImageUrl } from '../../common/utils/media-url.util';
+import type { StrictDispatchTransport } from './strict-dispatch-transport';
 
 /**
  * Abstract interface that all channel adapters must implement.
@@ -56,6 +57,17 @@ export class ChannelGatewayService {
      */
     getAdapter(channelType: ChannelType): IChannelAdapter | undefined {
         return this.adapters.get(channelType);
+    }
+
+    /**
+     * The strict transport for a channel, or undefined when its adapter has not
+     * been migrated. Undefined is a refusal, never an invitation to fall back to
+     * `sendMessage`: that method turns every failure into null, which is exactly
+     * what the durable dispatch states exist to distinguish.
+     */
+    getStrictTransport(channelType: ChannelType): StrictDispatchTransport | undefined {
+        const adapter = this.adapters.get(channelType) as Partial<StrictDispatchTransport> | undefined;
+        return typeof adapter?.sendStrict === 'function' ? adapter as StrictDispatchTransport : undefined;
     }
 
     /**

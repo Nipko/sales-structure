@@ -147,7 +147,13 @@ describe('independent paused procedure missions', () => {
         const old = h.state()!;
         const younger = { ...old, procedureId: h.definitions[1].id, collected: {}, currentStepId: 'order', awaitingField: 'orderId', expiresAt: new Date(Date.now() + 100_000).toISOString() };
         h.setState({ ...old, expiresAt: '2020-01-01T00:00:00Z', suspendedMissions: [younger] });
-        expect(await h.getState()).toMatchObject({ ...younger, pausedAt: expect.any(String), suspendedMissions: [] });
+        // `updatedAt` se sella al restaurar y no es lo que mide este caso: entró
+        // por el spread y sólo coincidía cuando las dos marcas caían en el mismo
+        // milisegundo. Lo que no puede moverse es la retención, y eso se afirma
+        // explícitamente abajo, antes y después de un turno ajeno.
+        expect(await h.getState()).toMatchObject({
+            ...younger, pausedAt: expect.any(String), updatedAt: expect.any(String), suspendedMissions: [],
+        });
         expect(h.state()?.expiresAt).toBe(younger.expiresAt);
         await h.turn('unrelated');
         expect(h.state()?.expiresAt).toBe(younger.expiresAt);

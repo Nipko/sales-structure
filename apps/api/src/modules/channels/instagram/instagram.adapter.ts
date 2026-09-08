@@ -4,6 +4,10 @@ import { ConfigService } from '@nestjs/config';
 import { IChannelAdapter } from '../channel-gateway.service';
 import { NormalizedMessage, ChannelType } from '@parallext/shared';
 import { v4 as uuid } from 'uuid';
+import {
+    classifyTransportFailure, metaGraphAnswer, metaGraphClassifier,
+    type StrictDispatchOutcome, type StrictDispatchRequest, type StrictDispatchTransport,
+} from '../strict-dispatch-transport';
 
 /**
  * Instagram DM Adapter
@@ -16,12 +20,72 @@ import { v4 as uuid } from 'uuid';
  * API: https://graph.facebook.com/v21.0/{ig-user-id}/messages
  */
 @Injectable()
-export class InstagramAdapter implements IChannelAdapter {
+export class InstagramAdapter implements IChannelAdapter, StrictDispatchTransport {
     readonly channelType: ChannelType = 'instagram';
     private readonly logger = new Logger(InstagramAdapter.name);
     private readonly apiUrl = 'https://graph.instagram.com/v21.0';
 
     constructor(private configService: ConfigService) { }
+
+    /**
+     * One POST, one classified outcome.
+     *
+     * Instagram DMs answer with the same Graph envelope as Messenger — an id or
+     * an `error` object, never both — so the classification is shared. What is
+     * NOT shared is the path: the sender is the Instagram user id, which arrives
+     * as the dispatch row's `channelAccountId` rather than a fixed `me`.
+     *
+     * `sendMediaMessage` above is what this replaces for durable dispatch: it
+     * takes a caption it never sends, so a caller who passed one believed it had
+     * been delivered. Here a caption is its own dispatch item with its own
+     * receipt, and refusing to accept one in this call is what keeps that true.
+     */
+    async sendStrict(request: StrictDispatchRequest, accessToken: string): Promise<StrictDispatchOutcome> {
+        const igUserId = String(request.channelAccountId || '').trim();
+        if (!igUserId) {
+            return { kind: 'rejected', errorCode: 'instagram_account_missing', retryable: false };
+        }
+        let message: Record<string, any>;
+        try { message = this.strictMessage(request); }
+        catch (error: any) {
+            return { kind: 'rejected', errorCode: String(error?.message || 'unsupported_payload'), retryable: false };
+        }
+        let response: Response;
+        try {
+            response = await fetch(`${this.apiUrl}/${encodeURIComponent(igUserId)}/messages`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ recipient: { id: request.to }, message }),
+                signal: AbortSignal.timeout(10_000),
+            });
+        } catch (error) { return classifyTransportFailure(error); }
+        let data: any = null;
+        try { data = await response.json(); } catch { data = null; }
+        return metaGraphClassifier(metaGraphAnswer(response.status, data, 'message_id'));
+    }
+
+    private strictMessage(request: StrictDispatchRequest): Record<string, any> {
+        const payload = request.payload || {};
+        if (request.itemKind === 'text' || request.itemKind === 'payment_link') {
+            const text = String(payload.text ?? '');
+            if (!text.trim()) throw new Error('empty_text_payload');
+            return { text: toPlainText(text) };
+        }
+        if (request.itemKind === 'media') {
+            const mediaUrl = String(payload.mediaUrl ?? '');
+            if (!mediaUrl.trim()) throw new Error('empty_media_payload');
+            // Instagram DMs accept image, video and audio attachments; a
+            // document has no representation, so it is refused rather than
+            // silently downgraded to a picture the customer cannot open.
+            const requested = String(payload.mediaType ?? 'image');
+            if (!['image', 'video', 'audio'].includes(requested)) {
+                throw new Error(`unsupported_media_type:${requested}`);
+            }
+            // No caption here on purpose: that is the second effect.
+            return { attachment: { type: requested, payload: { url: mediaUrl, is_reusable: true } } };
+        }
+        throw new Error('unsupported_item_kind:flow');
+    }
 
     /**
      * Verify webhook subscription (same Meta verification pattern)

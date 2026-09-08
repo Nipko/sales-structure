@@ -88,8 +88,10 @@ describe('what one Meta answer proves', () => {
     });
 
     it('refuses an unmigrated channel explicitly instead of degrading it', () => {
-        expect(transportNotAvailable('telegram'))
-            .toEqual({ kind: 'rejected', errorCode: 'transport_not_migrated:telegram', retryable: false });
+        // Telegram used to be the example here and is migrated now; email is
+        // the remaining channel with no strict transport.
+        expect(transportNotAvailable('email'))
+            .toEqual({ kind: 'rejected', errorCode: 'transport_not_migrated:email', retryable: false });
     });
 
     it('reads the Messenger receipt from its own field', () => {

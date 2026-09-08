@@ -124,6 +124,64 @@ export const metaGraphClassifier: ProviderClassifier = answer => {
     return rejected(label, false);
 };
 
+/**
+ * Telegram Bot API status codes that document a refusal in which the message
+ * was NOT sent. Telegram answers every call with `ok`, and `ok: false` is its
+ * own statement that it did not act — but only for the client-error family.
+ */
+const TELEGRAM_PERMANENT_CODES = new Set<number>([
+    400, // Bad Request — malformed chat_id, unparseable entities, bad media URL
+    401, // Unauthorized — bot token revoked or wrong
+    403, // Forbidden — blocked by the user, kicked from the chat, cannot initiate
+    404, // Not Found — unknown method or token
+    409, // Conflict — webhook and getUpdates both active
+]);
+
+/**
+ * Telegram Bot API.
+ *
+ * The contract is `ok`: a successful call carries `result` and an unsuccessful
+ * one carries `error_code` with a `description`. That is what separates a
+ * refusal from silence here, the same role the Graph error envelope plays for
+ * Meta. Two cases deliberately do not become rejections: a 429, which is a
+ * documented rate limit and therefore the one code that invites another
+ * attempt; and any 5xx, because Telegram does not promise that a failed
+ * response means the update was not processed — calling that a refusal would
+ * invite exactly the duplicate the outbox exists to prevent.
+ */
+export const telegramClassifier: ProviderClassifier = answer => {
+    const receipt = typeof answer.receipt === 'string' ? answer.receipt.trim() : '';
+    if (receipt) return { kind: 'accepted', receipt };
+    if (!answer.bodyReadable) return unknown(`unreadable_body_http_${answer.status}`);
+    // `ok: true` with no message id: something exists and cannot be named.
+    if (!answer.error) return unknown('receipt_missing');
+
+    const raw = answer.error.code;
+    const code = typeof raw === 'string' ? Number(raw) : raw;
+    if (typeof code !== 'number' || !Number.isFinite(code)) return unknown(`unclassified_http_${answer.status}`);
+    const label = `telegram_${code}`;
+    if (code === 429) return rejected(label, true);
+    if (TELEGRAM_PERMANENT_CODES.has(code)) return rejected(label, false);
+    return unknown(label);
+};
+
+/** Read a Bot API answer, tolerating a body that is not the documented shape. */
+export function telegramAnswer(status: number, body: any): ProviderAnswer {
+    const readable = body !== null && body !== undefined && typeof body === 'object';
+    const id = readable ? body?.result?.message_id : undefined;
+    return {
+        status,
+        receipt: typeof id === 'number' || typeof id === 'string' ? String(id) : null,
+        // `ok: false` is the error envelope; `error_code` may be absent on an
+        // edge failure, and the status line stands in for it when it is.
+        error: readable && body.ok === false
+            ? { code: body.error_code ?? status, subcode: null, isTransient: null,
+                message: typeof body.description === 'string' ? body.description : null }
+            : null,
+        bodyReadable: readable,
+    };
+}
+
 /** No answer arrived. Never a rejection: the request may have been processed. */
 export function classifyTransportFailure(error: unknown): StrictDispatchOutcome {
     const name = (error as any)?.name;

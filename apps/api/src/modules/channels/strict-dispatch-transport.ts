@@ -44,6 +44,7 @@ export interface StrictDispatchTransport {
 // Classification lives in `provider-error-classification.ts`: what an answer
 // proves depends on the provider's own contract, not on the status line alone.
 export {
-    classifyTransportFailure, metaGraphAnswer, metaGraphClassifier, transportNotAvailable,
+    classifyTransportFailure, metaGraphAnswer, metaGraphClassifier,
+    telegramAnswer, telegramClassifier, transportNotAvailable,
     type ProviderAnswer, type ProviderClassifier,
 } from './provider-error-classification';

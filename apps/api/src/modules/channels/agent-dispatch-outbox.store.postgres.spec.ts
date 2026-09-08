@@ -42,8 +42,12 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
         await sql('CREATE TABLE contacts(id UUID PRIMARY KEY, name TEXT)');
         await sql(`CREATE TABLE conversations(id UUID PRIMARY KEY, contact_id UUID REFERENCES contacts(id),
             channel_type TEXT, status TEXT DEFAULT 'active')`);
-        await sql(`CREATE TABLE messages(id UUID PRIMARY KEY, conversation_id UUID REFERENCES conversations(id),
-            direction TEXT, content_text TEXT)`);
+        await sql(`CREATE TABLE messages(id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            conversation_id UUID REFERENCES conversations(id), direction TEXT, content_type TEXT,
+            content_text TEXT, media_url TEXT, status TEXT, external_id TEXT,
+            created_at TIMESTAMPTZ DEFAULT NOW())`);
+        await sql(`CREATE UNIQUE INDEX uidx_messages_external_id ON messages(external_id)
+            WHERE external_id IS NOT NULL`);
         await sql(`CREATE TABLE agent_personas(id UUID PRIMARY KEY,name TEXT,config_json JSONB,channels TEXT[],
             channel_bindings TEXT[],schedule_mode TEXT,is_active BOOLEAN,is_default BOOLEAN,version INTEGER)`);
         await sql('CREATE TABLE persona_config(config_json JSONB,is_active BOOLEAN,version INTEGER)');
@@ -88,7 +92,8 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
         const contactId = randomUUID(), conversationId = randomUUID(), inboundMessageId = randomUUID();
         await sql("INSERT INTO contacts VALUES($1::uuid,'Cliente sintético')", [contactId]);
         await sql("INSERT INTO conversations VALUES($1::uuid,$2::uuid,'whatsapp','active')", [conversationId, contactId]);
-        await sql("INSERT INTO messages VALUES($1::uuid,$2::uuid,'inbound','Hola')", [inboundMessageId, conversationId]);
+        await sql(`INSERT INTO messages(id,conversation_id,direction,content_type,content_text,status)
+            VALUES($1::uuid,$2::uuid,'inbound','text','Hola','delivered')`, [inboundMessageId, conversationId]);
         return { conversationId, contactId, inboundMessageId,
             channelType: 'whatsapp', channelAccountId: 'phone-1', recipient: '+573000000000' };
     }

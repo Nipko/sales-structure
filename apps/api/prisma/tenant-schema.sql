@@ -5129,6 +5129,7 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_dispatch_outbox" (
     error_code TEXT,
     receipt TEXT,
     settled_lease_token UUID,
+    message_id UUID,
     redacted_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),

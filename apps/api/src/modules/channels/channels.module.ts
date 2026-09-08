@@ -18,6 +18,7 @@ import { OutboundQueueProcessor, OUTBOUND_QUEUE } from './outbound-queue.process
 import { OutboundQueueService } from './outbound-queue.service';
 import { AgentDispatchOutboxStore } from './agent-dispatch-outbox.store';
 import { DispatchRecoveryService } from './dispatch-recovery.service';
+import { DispatchRolloutService } from './dispatch-rollout.service';
 import { ChannelTokenService } from './channel-token.service';
 import { ChannelManagementController } from './channel-management.controller';
 import { InstagramTokenRefreshService } from './instagram-token-refresh.service';
@@ -60,12 +61,13 @@ import { SmsCreditsModule } from '../sms-credits/sms-credits.module';
         OutboundQueueService,
         AgentDispatchOutboxStore,
         DispatchRecoveryService,
+        DispatchRolloutService,
         ChannelTokenService,
         InstagramTokenRefreshService,
         WhatsappTokenHealthService,
         WebhookTapService,
     ],
-    exports: [ChannelGatewayService, WhatsAppAdapter, SmsAdapter, EmailAdapter, EmailChannelService, OutboundQueueService, ChannelTokenService, WebhookTapService, AgentDispatchOutboxStore],
+    exports: [ChannelGatewayService, WhatsAppAdapter, SmsAdapter, EmailAdapter, EmailChannelService, OutboundQueueService, ChannelTokenService, WebhookTapService, AgentDispatchOutboxStore, DispatchRolloutService],
 })
 export class ChannelsModule implements OnModuleInit {
     constructor(

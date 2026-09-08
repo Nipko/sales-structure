@@ -77,6 +77,7 @@ export const DISPATCH_OUTBOX_DDL: readonly string[] = Object.freeze([
         error_code TEXT,
         receipt TEXT,
         settled_lease_token UUID,
+        message_id UUID,
         redacted_at TIMESTAMPTZ,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -129,6 +130,8 @@ export interface DispatchItem {
 
 export interface DispatchRow {
     readonly id: string;
+    /** The history row this effect was recorded as, in the same transaction. */
+    readonly messageId: string | null;
     readonly batchId: string;
     readonly itemIndex: number;
     readonly itemKind: DispatchItemKind;
@@ -152,6 +155,7 @@ function mapRow(row: any): DispatchRow {
     const redacted = row.redacted_at !== null && row.redacted_at !== undefined;
     return Object.freeze({
         id: String(row.id),
+        messageId: row.message_id ? String(row.message_id) : null,
         batchId: String(row.batch_id),
         itemIndex: Number(row.item_index),
         itemKind: row.item_kind,
@@ -172,6 +176,19 @@ function mapRow(row: any): DispatchRow {
         operationalScope: row.operational_scope || {},
         learningFootprint: Array.isArray(row.learning_footprint) ? row.learning_footprint : null,
     });
+}
+
+/** What the inbox shows for one effect. A Flow is recorded by its body text. */
+function historyContent(item: DispatchItem): { contentType: string; text: string | null; mediaUrl: string | null } {
+    const payload = item.payload || {};
+    if (item.kind === 'media') {
+        const requested = String(payload.mediaType ?? 'image');
+        return {
+            contentType: ['image', 'document', 'audio', 'video'].includes(requested) ? requested : 'image',
+            text: null, mediaUrl: String(payload.mediaUrl ?? '') || null,
+        };
+    }
+    return { contentType: 'text', text: String(payload.text ?? '') || null, mediaUrl: null };
 }
 
 function validBinding(binding: DispatchBinding): boolean {
@@ -233,18 +250,47 @@ export async function prepareDispatchBatch(query: DispatchOutboxQuery, schema: s
     if (sources.some(source => !UUID.test(String(source.id))
         || (source.sourceContactId != null && !UUID.test(String(source.sourceContactId))))) fail('dispatch_invalid_batch');
     const rows: DispatchRow[] = [];
-    const [{ batch_id: batchId }] = await query<any[]>('SELECT gen_random_uuid() AS batch_id');
+    const [identifiers] = await query<any[]>(
+        `SELECT gen_random_uuid() AS batch_id, to_regclass($1)::text AS dedupe_index`,
+        [`${schema}.uidx_messages_external_id`]);
+    const batchId = identifiers.batch_id, dedupeIndex = !!identifiers.dedupe_index;
     for (const [index, item] of input.items.entries()) {
+        // History and dispatch commit together. They used to be two independent
+        // writes, so a failure could leave one of them; and the history row said
+        // 'delivered' before anything had been sent. It now says 'pending' until
+        // a provider actually accepts the effect it describes.
+        const externalId = `out:dispatch:${input.binding.inboundMessageId}:${index}`;
+        const content = historyContent(item);
+        const columns = `INSERT INTO messages(conversation_id, direction, content_type, content_text, media_url,
+                status, external_id, created_at)
+             VALUES($1::uuid,'outbound',$2,$3,$4,'pending',$5,NOW())`;
+        const values = [input.binding.conversationId, content.contentType, content.text, content.mediaUrl, externalId];
+        // uidx_messages_external_id is PARTIAL, and Postgres only matches a
+        // partial index when ON CONFLICT repeats its predicate. It is checked
+        // rather than attempted: a failed statement aborts the whole
+        // transaction, so there is no catching it and trying again in here. A
+        // schema whose index lagged the deploy loses this second line of
+        // defence, never the reply — the outbox identity is the first line, and
+        // re-preparing the same inbound returns before ever reaching this.
+        const [message] = await query<any[]>(
+            dedupeIndex ? `${columns} ON CONFLICT ("external_id") WHERE "external_id" IS NOT NULL DO NOTHING RETURNING id`
+                : `${columns} RETURNING id`,
+            values);
+        const [{ id: messageId }] = message
+            ? [message]
+            : await query<any[]>('SELECT id FROM messages WHERE external_id=$1 AND conversation_id=$2::uuid',
+                [externalId, input.binding.conversationId]);
+        if (!messageId) fail('dispatch_history_unavailable');
         const [inserted] = await query<any[]>(
             `INSERT INTO agent_dispatch_outbox(batch_id, conversation_id, contact_id, inbound_message_id,
                 channel_type, channel_account_id, recipient, item_index, item_kind, payload,
-                operational_scope, learning_footprint, state)
-             VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5,$6,$7,$8,$9,$10::jsonb,$11::jsonb,$12::jsonb,'prepared')
+                operational_scope, learning_footprint, message_id, state)
+             VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5,$6,$7,$8,$9,$10::jsonb,$11::jsonb,$12::jsonb,$13::uuid,'prepared')
              RETURNING *`,
             [batchId, input.binding.conversationId, input.binding.contactId, input.binding.inboundMessageId,
                 input.binding.channelType, input.binding.channelAccountId, input.binding.recipient,
                 index, item.kind, JSON.stringify(item.payload),
-                JSON.stringify(input.operationalScope), JSON.stringify(footprint)]);
+                JSON.stringify(input.operationalScope), JSON.stringify(footprint), messageId]);
         for (const source of sources) {
             await query(`INSERT INTO agent_dispatch_outbox_sources(dispatch_id, source_id, source_contact_id)
                 VALUES($1::uuid,$2::uuid,$3::uuid)`,
@@ -337,6 +383,14 @@ export async function settleDispatch(query: DispatchOutboxQuery, schema: string,
     if (row.state === 'sent' && row.settled_lease_token === input.leaseToken) return mapRow(row);
     if (row.state !== 'admitted' || row.lease_token !== input.leaseToken) fail('dispatch_lease_lost');
     const outcome = input.outcome;
+    // The history row follows the real outcome, not the hope. It was written
+    // 'pending' at prepare; only an accepted receipt makes it delivered, and a
+    // definitely refused effect is marked failed rather than left looking sent.
+    const markHistory = async (status: string) => {
+        if (!row.message_id) return;
+        await query(`UPDATE messages SET status=$2 WHERE id=$1::uuid AND status<>'redacted'`,
+            [row.message_id, status]);
+    };
     if (outcome.kind === 'sent') {
         if (typeof outcome.receipt !== 'string' || !outcome.receipt.trim() || outcome.receipt.length > 300)
             fail('dispatch_receipt_required');
@@ -344,6 +398,7 @@ export async function settleDispatch(query: DispatchOutboxQuery, schema: string,
             `UPDATE agent_dispatch_outbox SET state='sent', receipt=$2, error_code=NULL,
                 settled_lease_token=lease_token, lease_token=NULL, lease_expires_at=NULL, updated_at=NOW()
              WHERE id=$1::uuid RETURNING *`, [input.dispatchId, outcome.receipt.trim()]);
+        await markHistory('delivered');
         return mapRow(sent);
     }
     const errorCode = String(outcome.errorCode || 'unknown').slice(0, 120);
@@ -358,12 +413,16 @@ export async function settleDispatch(query: DispatchOutboxQuery, schema: string,
                 available_at=NOW() + make_interval(secs => $4::double precision), updated_at=NOW()
              WHERE id=$1::uuid RETURNING *`,
             [input.dispatchId, errorCode, exhausted ? 'suppressed' : 'failed', exhausted ? 0 : delay]);
+        if (exhausted) await markHistory('failed');
         return mapRow(failed);
     }
     const [settled] = await query<any[]>(
         `UPDATE agent_dispatch_outbox SET state=$3, error_code=$2, settled_lease_token=lease_token,
             lease_token=NULL, lease_expires_at=NULL, updated_at=NOW() WHERE id=$1::uuid RETURNING *`,
         [input.dispatchId, errorCode, outcome.kind]);
+    // An uncertain outcome stays 'pending' on purpose: claiming failure would be
+    // as wrong as claiming delivery when the provider may well have acted.
+    if (outcome.kind === 'suppressed') await markHistory('failed');
     return mapRow(settled);
 }
 

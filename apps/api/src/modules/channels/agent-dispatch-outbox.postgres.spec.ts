@@ -49,8 +49,12 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
         await sql('CREATE TABLE contacts(id UUID PRIMARY KEY, name TEXT)');
         await sql(`CREATE TABLE conversations(id UUID PRIMARY KEY, contact_id UUID REFERENCES contacts(id),
             channel_type TEXT, status TEXT DEFAULT 'active')`);
-        await sql(`CREATE TABLE messages(id UUID PRIMARY KEY, conversation_id UUID REFERENCES conversations(id),
-            direction TEXT, content_text TEXT)`);
+        await sql(`CREATE TABLE messages(id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            conversation_id UUID REFERENCES conversations(id), direction TEXT, content_type TEXT,
+            content_text TEXT, media_url TEXT, status TEXT, external_id TEXT,
+            created_at TIMESTAMPTZ DEFAULT NOW())`);
+        await sql(`CREATE UNIQUE INDEX uidx_messages_external_id ON messages(external_id)
+            WHERE external_id IS NOT NULL`);
         for (const statement of DISPATCH_OUTBOX_DDL) await sql(statement);
     });
 
@@ -76,7 +80,8 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
         await sql("INSERT INTO contacts VALUES($1::uuid,'Cliente sintético')", [contactId]);
         await sql("INSERT INTO conversations VALUES($1::uuid,$2::uuid,'whatsapp','active')",
             [conversationId, contactId]);
-        await sql(`INSERT INTO messages VALUES($1::uuid,$2::uuid,'inbound','Necesito ayuda')`,
+        await sql(`INSERT INTO messages(id,conversation_id,direction,content_type,content_text,status)
+            VALUES($1::uuid,$2::uuid,'inbound','text','Necesito ayuda','delivered')`,
             [inboundMessageId, conversationId]);
         return { conversationId, contactId, inboundMessageId,
             channelType: 'whatsapp', channelAccountId: 'wa-main', recipient: '+573000000000' };
@@ -281,6 +286,73 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
             expect(refused.reason).toBeInstanceOf(DispatchOutboxError);
             expect(refused.reason.code).toBe('dispatch_lease_active');
             expect((await tx(query => readDispatchRow(query, schema, dispatchId)))!.attempts).toBe(1);
+        });
+    });
+
+    describe('the history the customer conversation shows', () => {
+        const history = (conversationId: string) => sql(
+            `SELECT content_type, content_text, media_url, status, external_id FROM messages
+             WHERE conversation_id=$1::uuid AND direction='outbound' ORDER BY external_id`, [conversationId]);
+
+        it('records each effect as pending, in the same transaction as its row', async () => {
+            const binding = await fixture();
+            const { rows } = await prepare(binding);
+            // Written 'pending', not 'delivered'. Saving history has never been
+            // proof of sending, and the previous path claimed otherwise.
+            await expect(history(binding.conversationId)).resolves.toEqual([
+                { content_type: 'image', content_text: null, media_url: 'https://example.test/a.jpg',
+                    status: 'pending', external_id: `out:dispatch:${binding.inboundMessageId}:0` },
+                { content_type: 'text', content_text: 'La foto del producto', media_url: null,
+                    status: 'pending', external_id: `out:dispatch:${binding.inboundMessageId}:1` },
+            ]);
+            expect(rows.map(row => row.messageId).every(Boolean)).toBe(true);
+        });
+
+        it('marks it delivered only when a provider accepted it', async () => {
+            const binding = await fixture();
+            const { rows } = await prepare(binding);
+            const lease = randomUUID();
+            await admit(rows[0].id, lease);
+            await tx(query => settleDispatch(query, schema,
+                { dispatchId: rows[0].id, leaseToken: lease, outcome: { kind: 'sent', receipt: 'wamid.OK' } }));
+            expect((await history(binding.conversationId)).map(message => message.status))
+                .toEqual(['delivered', 'pending']);
+        });
+
+        it('leaves an uncertain outcome pending and marks a definite refusal failed', async () => {
+            const binding = await fixture();
+            const { rows } = await prepare(binding);
+            const uncertain = randomUUID(), refused = randomUUID();
+            await admit(rows[0].id, uncertain);
+            await tx(query => settleDispatch(query, schema, { dispatchId: rows[0].id, leaseToken: uncertain,
+                outcome: { kind: 'reconciliation_required', errorCode: 'ack_lost' } }));
+            await admit(rows[1].id, refused);
+            await tx(query => settleDispatch(query, schema, { dispatchId: rows[1].id, leaseToken: refused,
+                outcome: { kind: 'suppressed', errorCode: 'wa_131047' } }));
+            // Claiming failure for an uncertain attempt would be as wrong as
+            // claiming delivery: the provider may well have acted.
+            expect((await history(binding.conversationId)).map(message => message.status))
+                .toEqual(['pending', 'failed']);
+        });
+
+        it('still records the reply when the deduplication index lags the deploy', async () => {
+            const binding = await fixture();
+            await sql('DROP INDEX IF EXISTS uidx_messages_external_id');
+            try {
+                const { rows } = await prepare(binding);
+                expect(rows.map(row => row.messageId).every(Boolean)).toBe(true);
+                expect(await history(binding.conversationId)).toHaveLength(2);
+            } finally {
+                await sql(`CREATE UNIQUE INDEX uidx_messages_external_id ON messages(external_id)
+                    WHERE external_id IS NOT NULL`);
+            }
+        });
+
+        it('re-preparing the same inbound reuses its history rather than duplicating it', async () => {
+            const binding = await fixture();
+            await prepare(binding);
+            await prepare(binding);
+            expect(await history(binding.conversationId)).toHaveLength(2);
         });
     });
 

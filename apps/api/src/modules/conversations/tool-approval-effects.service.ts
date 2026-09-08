@@ -8,7 +8,7 @@ import { HandoffService } from '../handoff/handoff.service';
 import { OutboundQueueService } from '../channels/outbound-queue.service';
 import { ApprovalEffectSuppressed, type ApprovedEffectDeliveryPort, type ApprovedEffectReference, type ApprovedEffectTransport } from '../channels/approved-effect-delivery.port';
 import { approvedEffectDescriptors, approvalMediaItems } from './tool-approval-effects.contracts';
-import { assertServedAgentAuthority, validServedAgentAuthority, ServedAgentAuthorityError } from '../persona/served-agent-authority';
+import { assertServedAgentAuthority, assertServedAgentConnectionAuthority, validServedAgentAuthority, ServedAgentAuthorityError } from '../persona/served-agent-authority';
 import { revisionHash } from '../evaluation-revision/evaluation-revision';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -198,7 +198,8 @@ export class ToolApprovalEffectsService implements ApprovedEffectDeliveryPort {
             let authorityError = this.widgetAuthorityError(before, schema, reference.tenantId);
             // No effect/ticket/ledger/conversation row locks before tenant/agent.
             if (!authorityError) {
-                try { await assertServedAgentAuthority(query, schema, before.operational_scope); }
+                try { await assertServedAgentConnectionAuthority(query, schema, before.operational_scope,
+                    before.channel_type, before.channel_account_id); }
                 catch (error) {
                     if (!(error instanceof ServedAgentAuthorityError)) throw error;
                     authorityError = error.code;
@@ -268,23 +269,18 @@ export class ToolApprovalEffectsService implements ApprovedEffectDeliveryPort {
 
     private widgetAuthorityHash(row: any): string {
         return revisionHash({scope:row.operational_scope ?? null,draft:row.draft_review ?? null,
-            agentId:row.draft_review ? null : row.expected_agent_id ?? null,
-            ledger:row.execution_ledger_id,kind:row.kind,channel:row.channel_type,ledgerChannel:row.ledger_channel_type});
+            ledger:row.execution_ledger_id,kind:row.kind,channel:row.channel_type,account:row.channel_account_id,
+            ledgerChannel:row.ledger_channel_type});
     }
 
     private widgetAuthorityError(row: any, schema: string, tenantId: string): string | null {
         const scope = row.operational_scope, draft = row.draft_review;
         if (!validServedAgentAuthority(scope,schema,tenantId)) return 'approval_effect_authority_required';
-        if (scope.kind === 'legacy') return draft || row.expected_agent_id ? 'approval_effect_authority_mismatch' : null;
-        // Conversation attribution keeps the first served version for analytics.
-        // An exact draft origin belongs to this proposal and takes precedence.
+        if (scope.kind === 'legacy') return draft ? 'approval_effect_authority_mismatch' : null;
+        // The ledger's server-owned scope is this proposal's origin. Conversation
+        // attribution retains its first agent for analytics, even after another
+        // agent legitimately serves and receives approval for a new action.
         if (draft) return draft.agentId === scope.agentId && draft.agentVersion === scope.version ? null : 'approval_effect_authority_mismatch';
-        // Policy approval resume resolves this persisted agent ID, then checks
-        // the full operational scope. Its historical attribution version is not
-        // the version of this new proposal.
-        if (row.expected_agent_id && row.expected_agent_id !== scope.agentId)
-            return 'approval_effect_authority_mismatch';
-        if (!draft && !row.expected_agent_id) return 'approval_effect_authority_required';
         return null;
     }
 
@@ -331,7 +327,6 @@ export class ToolApprovalEffectsService implements ApprovedEffectDeliveryPort {
             l.request_payload->'operationalScope' AS operational_scope,l.request_payload->'draftReview' AS draft_review,
             l.conversation_id AS ledger_conversation_id,l.channel_type AS ledger_channel_type,
             c.contact_id AS conversation_contact_id,c.channel_type,c.channel_account_id,c.status AS conversation_status,
-            to_jsonb(c)->>'agent_persona_id' AS expected_agent_id,
             contact.external_id,contact.channel_type AS contact_channel_type,
             EXISTS(SELECT 1 FROM customer_memory_erasure erased WHERE erased.contact_id=t.contact_id) AS erased
             FROM tool_approval_effects e JOIN tool_approval_tickets t ON t.id=e.ticket_id

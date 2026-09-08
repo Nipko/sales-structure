@@ -1,5 +1,7 @@
 import { operationalConfigurationHash, type RevisionQuery } from './agent-configuration-revision';
 import { revisionHash } from '../evaluation-revision/evaluation-revision';
+import { ConflictException } from '@nestjs/common';
+import { readServingPersona } from './serving-persona';
 
 /** Server-owned provenance. Never accepted in an HTTP DTO or model/tool args. */
 export type ServedAgentAuthority = Readonly<{ tenantId: string; schemaName: string } & (
@@ -61,4 +63,27 @@ export async function assertServedAgentAuthority(query: RevisionQuery, schema: s
     const [agent] = await query<any[]>('SELECT * FROM agent_personas WHERE id=$1::uuid FOR SHARE', [scope.agentId]);
     if (!agent || agent.is_active !== true || Number(agent.version) !== scope.version
         || operationalConfigurationHash(agent) !== scope.operationalHash) throw new ServedAgentAuthorityError();
+}
+
+/** A deferred delivery must still belong to the agent selected for its exact
+ * connection. Another agent can gain a higher routing priority without changing
+ * the original agent's own version/hash. Keep this short transaction local: the
+ * table lock also covers legacy creation paths that do not lock the tenant row.
+ * Take it before agent row locks to avoid inversion with INSERT/UPDATE. */
+export async function assertServedAgentConnectionAuthority(query: RevisionQuery, schema: string,
+    scope: ServedAgentAuthority, channelType: string, accountId?: string): Promise<void> {
+    if (!validServedAgentAuthority(scope,schema)) throw new ServedAgentAuthorityError();
+    await query('SELECT pg_advisory_xact_lock_shared(hashtextextended($1,0))::text', [`agent-privacy:${schema}`]);
+    if (!(await query<any[]>('SELECT id FROM public.tenants WHERE id=$1::uuid AND schema_name=$2 AND is_active=true FOR SHARE',
+        [scope.tenantId,schema]))[0]) throw new ServedAgentAuthorityError();
+    await query('LOCK TABLE agent_personas IN SHARE MODE');
+    await assertServedAgentAuthority(query,schema,scope);
+    let selected;
+    try { selected=await readServingPersona(query,channelType,accountId); }
+    catch (error) {
+        if (error instanceof ConflictException) throw new ServedAgentAuthorityError();
+        throw error;
+    }
+    if (!sameServedAgentAuthority(scope,servedAgentAuthority(scope.tenantId,schema,selected)))
+        throw new ServedAgentAuthorityError();
 }

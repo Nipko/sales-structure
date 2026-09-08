@@ -81,6 +81,7 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
         await scoped('CREATE TABLE payment_operation_ledger(id UUID PRIMARY KEY,execution_ledger_id UUID,operation_kind TEXT,status TEXT,response_payload JSONB)');
         await scoped(`CREATE TABLE agent_personas(id UUID PRIMARY KEY,name TEXT,config_json JSONB,channels TEXT[],channel_bindings TEXT[],
             schedule_mode TEXT,is_active BOOLEAN,is_default BOOLEAN,version INTEGER)`);
+        await scoped('CREATE TABLE persona_config(config_json JSONB,is_active BOOLEAN,version INTEGER)');
         await scoped('ALTER TABLE conversations ADD COLUMN IF NOT EXISTS agent_persona_id UUID');
         await scoped('ALTER TABLE conversations ADD COLUMN IF NOT EXISTS agent_config_version INTEGER');
         await scoped('ALTER TABLE conversations ADD COLUMN IF NOT EXISTS agent_attribution_conflicted BOOLEAN DEFAULT false');
@@ -89,8 +90,10 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
         relay.publish.mockReset();
         session = await service.createSession(widget, { visitorId: `visitor_${randomUUID()}` });
         binding = await store.ensureConversation(credentials());
+        await scoped('DELETE FROM agent_personas WHERE id<>$1::uuid',[servedAgentId]);
         await scoped(`INSERT INTO agent_personas VALUES($1::uuid,'Alex','{"persona":{"name":"Alex"}}'::jsonb,ARRAY['web_widget'],
-            ARRAY['web_widget:owned'],'24_7',true,true,1) ON CONFLICT(id) DO UPDATE SET version=1,is_active=true,config_json=EXCLUDED.config_json`,[servedAgentId]);
+            ARRAY['web_widget:owned'],'24_7',true,true,1) ON CONFLICT(id) DO UPDATE SET version=1,is_active=true,config_json=EXCLUDED.config_json,
+            channels=EXCLUDED.channels,channel_bindings=EXCLUDED.channel_bindings,is_default=EXCLUDED.is_default`,[servedAgentId]);
     });
     afterAll(async () => {
         if (!pool) return;
@@ -284,6 +287,60 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
         expect(await localEffects().deliver(reference,{prepare:jest.fn()})).toBe('effect:stored');
         expect(await history()).toHaveLength(1);
         expect((await scoped('SELECT agent_config_version FROM conversations WHERE id=$1::uuid',[binding.conversation_id]))[0].agent_config_version).toBe(1);
+    });
+
+    const connectionAgentSql=`INSERT INTO agent_personas VALUES($1::uuid,'Bea','{"persona":{"name":"Bea"}}'::jsonb,
+        '{}'::text[],$2::text[],'24_7',true,false,1)`;
+    it.each(['draft','policy'])('stores a new %s approval from the connection owner while preserving another historical agent',async mode=>{
+        const currentId=randomUUID();
+        await scoped(connectionAgentSql,[currentId,[`web_widget:${widget.widget_id}`]]);
+        const scope=await currentScope(currentId);
+        const payload={operationalScope:scope,...(mode==='draft'?{draftReview:{agentId:currentId,agentVersion:1}}:{})};
+        const {reference}=await complete('send_product_image',approvedMedia,payload);
+        const transport={prepare:jest.fn()};
+        expect(await localEffects().deliver(reference,transport)).toBe('effect:stored');
+        expect(await history()).toHaveLength(1);
+        expect((await scoped('SELECT agent_persona_id FROM conversations WHERE id=$1::uuid',[binding.conversation_id]))[0].agent_persona_id).toBe(servedAgentId);
+        await scoped('UPDATE agent_personas SET version=2 WHERE id=$1::uuid',[currentId]);
+        expect(await localEffects().deliver(reference,transport)).toBe('effect:stored');
+        expect(await history()).toHaveLength(1);expect(transport.prepare).not.toHaveBeenCalled();
+    });
+
+    it('suppresses a pending generic-agent delivery after an exact connection owner supersedes it without changing the original revision',async()=>{
+        const scope=await currentScope();
+        const {reference}=await complete('send_product_image',approvedMedia,{operationalScope:scope});
+        await scoped(connectionAgentSql,[randomUUID(),[`web_widget:${widget.widget_id}`]]);
+        expect(await currentScope()).toEqual(scope);
+        expect(await localEffects().deliver(reference,{prepare:jest.fn()})).toBe('effect:suppressed');
+        expect(await history()).toHaveLength(0);
+        expect(await effectState(reference.effectId)).toMatchObject({error_code:'agent_operational_revision_changed'});
+    });
+
+    it('serializes a new higher-priority owner inserted without a tenant lock behind local delivery',async()=>{
+        const {reference}=await complete('send_product_image',approvedMedia);
+        const creator=await pool.connect(),newId=randomUUID();
+        let creation:Promise<any>|undefined,blocked=false;
+        const original=store.persistWithQuery.bind(store);
+        const persist=jest.spyOn(store,'persistWithQuery').mockImplementation(async(query,s,tenant,input)=>{
+            const ownerPid=(await query<any[]>('SELECT pg_backend_pid() AS pid'))[0].pid;
+            await creator.query('BEGIN');await creator.query(`SET LOCAL search_path TO "${schema}",public`);
+            await creator.query("SET LOCAL lock_timeout='4s'");
+            const waitingPid=(await creator.query('SELECT pg_backend_pid() AS pid')).rows[0].pid;
+            creation=(async()=>{await creator.query(connectionAgentSql,[newId,[`web_widget:${widget.widget_id}`]]);await creator.query('COMMIT');})();
+            void creation.catch(()=>undefined);
+            const deadline=Date.now()+2000;
+            while(Date.now()<deadline){
+                if((await q('SELECT pg_blocking_pids($1::int) AS blockers',[waitingPid]))[0].blockers.includes(ownerPid)){blocked=true;break;}
+                await new Promise(resolve=>setTimeout(resolve,10));
+            }
+            return original(query,s,tenant,input);
+        });
+        try{
+            expect(await localEffects().deliver(reference,{prepare:jest.fn()})).toBe('effect:stored');
+            await creation;expect(blocked).toBe(true);
+            expect(await localEffects().deliver(reference,{prepare:jest.fn()})).toBe('effect:stored');
+            expect(await history()).toHaveLength(1);
+        }finally{persist.mockRestore();await creation?.catch(()=>undefined);await creator.query('ROLLBACK');creator.release();}
     });
 
     it('preserves a canonical payment operation when a new link delivery is suppressed, and keeps accepted receipts after publication',async()=>{

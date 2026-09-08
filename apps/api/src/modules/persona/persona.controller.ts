@@ -533,17 +533,22 @@ export class PersonaController {
         const settings = (tenant?.settings as any) || {};
         const schema = tenant?.schemaName;
 
-        let hasPersona = false;
-        let hasConversations = false;
-        let hasKnowledge = false;
-        let hasTeam = false;
-        let hasAutomation = false;
-        let hasTemplates = false;
-        let hasAnyChannel = false;
+        let hasPersona: boolean | undefined = false;
+        let hasConversations: boolean | undefined = false;
+        // `undefined` is "not known here", which is what the onboarding
+        // contract demands in writing and what this endpoint used to spell
+        // `false`. A false here claims the account cannot receive a single
+        // message, and one unreadable count then sent a working tenant back to
+        // the setup card with Agent Health hidden.
+        let hasKnowledge: boolean | undefined = false;
+        let hasTeam: boolean | undefined = false;
+        let hasAutomation: boolean | undefined = false;
+        let hasTemplates: boolean | undefined = false;
+        let hasAnyChannel: boolean | undefined = false;
         // Los tipos de canal con al menos una conexión activa. El asistente lo
         // usa para no ofrecer conectar lo que ya está conectado.
         let connectedChannelTypes: string[] = [];
-        let hasBusinessAbout = false;
+        let hasBusinessAbout: boolean | undefined = false;
         // El catálogo REAL de la vertical, que no es la base de conocimiento.
         //
         // El checklist relabelaba el paso "base de conocimiento" por industria
@@ -574,27 +579,39 @@ export class PersonaController {
         if (schema) {
             try {
                 const checks = await Promise.allSettled([
-                    this.prisma.$queryRawUnsafe(`SELECT COUNT(*)::int AS c FROM "${schema}".agent_personas WHERE is_active = true`).catch(() => [{ c: 0 }]),
-                    this.prisma.$queryRawUnsafe(`SELECT COUNT(*)::int AS c FROM "${schema}".conversations LIMIT 1`).catch(() => [{ c: 0 }]),
+                    this.prisma.$queryRawUnsafe(`SELECT COUNT(*)::int AS c FROM "${schema}".agent_personas WHERE is_active = true`).catch(() => null),
+                    this.prisma.$queryRawUnsafe(`SELECT COUNT(*)::int AS c FROM "${schema}".conversations LIMIT 1`).catch(() => null),
                     this.prisma.$queryRawUnsafe(`SELECT COUNT(*)::int AS c FROM "${schema}".knowledge_resources LIMIT 1`)
                         .catch(() => this.prisma.$queryRawUnsafe(`SELECT COUNT(*)::int AS c FROM "${schema}".knowledge_documents WHERE status != 'deleted' LIMIT 1`)
-                        .catch(() => [{ c: 0 }])),
-                    this.prisma.$queryRawUnsafe(`SELECT COUNT(*)::int AS c FROM users WHERE tenant_id = $1::uuid AND is_active = true`, tenantId).catch(() => [{ c: 0 }]),
-                    this.prisma.$queryRawUnsafe(`SELECT COUNT(*)::int AS c FROM "${schema}".automation_rules WHERE active = true LIMIT 1`).catch(() => [{ c: 0 }]),
-                    this.prisma.$queryRawUnsafe(`SELECT COUNT(*)::int AS c FROM "${schema}".email_templates LIMIT 1`).catch(() => [{ c: 0 }]),
-                    this.prisma.$queryRawUnsafe(`SELECT COUNT(*)::int AS c FROM channel_accounts WHERE tenant_id = $1::uuid AND is_active = true`, tenantId).catch(() => [{ c: 0 }]),
-                    this.prisma.$queryRawUnsafe(`SELECT COUNT(*)::int AS c FROM "${schema}".companies WHERE is_primary = true AND about IS NOT NULL AND btrim(about) != ''`).catch(() => [{ c: 0 }]),
+                        .catch(() => null)),
+                    this.prisma.$queryRawUnsafe(`SELECT COUNT(*)::int AS c FROM users WHERE tenant_id = $1::uuid AND is_active = true`, tenantId).catch(() => null),
+                    this.prisma.$queryRawUnsafe(`SELECT COUNT(*)::int AS c FROM "${schema}".automation_rules WHERE active = true LIMIT 1`).catch(() => null),
+                    this.prisma.$queryRawUnsafe(`SELECT COUNT(*)::int AS c FROM "${schema}".email_templates LIMIT 1`).catch(() => null),
+                    this.prisma.$queryRawUnsafe(`SELECT COUNT(*)::int AS c FROM channel_accounts WHERE tenant_id = $1::uuid AND is_active = true`, tenantId).catch(() => null),
+                    this.prisma.$queryRawUnsafe(`SELECT COUNT(*)::int AS c FROM "${schema}".companies WHERE is_primary = true AND about IS NOT NULL AND btrim(about) != ''`).catch(() => null),
                 ]);
 
-                const val = (r: PromiseSettledResult<any>) => r.status === 'fulfilled' ? Number((r.value as any[])?.[0]?.c || 0) : 0;
-                hasPersona = val(checks[0]) > 0;
-                hasConversations = val(checks[1]) > 0;
-                hasKnowledge = val(checks[2]) > 0;
-                hasTeam = val(checks[3]) > 1;
-                hasAutomation = val(checks[4]) > 0;
-                hasTemplates = val(checks[5]) > 0;
-                hasAnyChannel = val(checks[6]) > 0;
-                hasBusinessAbout = val(checks[7]) > 0;
+                // A count that could not be read is `null`, and a flag derived
+                // from it is `undefined`. Collapsing both to zero is what let a
+                // database hiccup tell an operating tenant to connect its first
+                // channel.
+                const count = (r: PromiseSettledResult<any>): number | null => {
+                    if (r.status !== 'fulfilled' || r.value === null) return null;
+                    const rows = r.value as any[];
+                    return Number(rows?.[0]?.c ?? 0);
+                };
+                const over = (r: PromiseSettledResult<any>, floor = 0): boolean | undefined => {
+                    const value = count(r);
+                    return value === null ? undefined : value > floor;
+                };
+                hasPersona = over(checks[0]);
+                hasConversations = over(checks[1]);
+                hasKnowledge = over(checks[2]);
+                hasTeam = over(checks[3], 1);
+                hasAutomation = over(checks[4]);
+                hasTemplates = over(checks[5]);
+                hasAnyChannel = over(checks[6]);
+                hasBusinessAbout = over(checks[7]);
 
                 // QUÉ canales están conectados, no solo cuántos. El asistente
                 // dibujaba siempre el panel de conexión de WhatsApp porque su
@@ -602,7 +619,7 @@ export class PersonaController {
                 // sesión: un admin con WhatsApp ya en vivo veía el selector de
                 // ruta y podía lanzar un segundo Embedded Signup sobre su
                 // número en producción.
-                if (hasAnyChannel) {
+                if (hasAnyChannel === true) {
                     const typeRows = (await this.prisma.$queryRawUnsafe(
                         `SELECT DISTINCT channel_type FROM channel_accounts WHERE tenant_id = $1::uuid AND is_active = true`,
                         tenantId,
@@ -643,11 +660,19 @@ export class PersonaController {
                     const filter = catalog.activeFilter ? `WHERE ${catalog.activeFilter}` : '';
                     const rows = (await this.prisma.$queryRawUnsafe(
                         `SELECT COUNT(*)::int AS c FROM "${schema}".${catalog.table} ${filter} LIMIT 1`,
-                    ).catch(() => [{ c: 0 }])) as any[];
-                    hasVerticalCatalog = Number(rows?.[0]?.c || 0) > 0;
+                    ).catch(() => null)) as any[];
+                    // `null` here already means "this vertical has no catalogue
+                    // of its own", so an unreadable one has to stay null too
+                    // rather than claim the shelf is empty.
+                    hasVerticalCatalog = rows === null ? null : Number(rows?.[0]?.c || 0) > 0;
                 }
             } catch {
-                // If schema doesn't exist yet, all default to false
+                // Not "everything is missing": nobody could look. The onboarding
+                // guide has an unknown branch precisely for this, and answering
+                // `false` here bypassed it.
+                hasPersona = undefined; hasConversations = undefined; hasKnowledge = undefined;
+                hasTeam = undefined; hasAutomation = undefined; hasTemplates = undefined;
+                hasAnyChannel = undefined; hasBusinessAbout = undefined;
             }
         }
 

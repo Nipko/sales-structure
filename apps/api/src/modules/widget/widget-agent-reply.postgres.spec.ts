@@ -19,6 +19,7 @@ const databaseUrl=process.env.PARALLLY_ISOLATION_TEST_URL;
     const tenantId=randomUUID(),agentId=randomUUID(),schema=`tenant_widget_reply_${randomUUID().replace(/-/g,'')}`;
     const widgetId=`wgt_${randomUUID()}`,widgetConfigId=randomUUID();
     let client:PrismaClient,prisma:PrismaService,messages:WidgetMessageStore,store:WidgetAgentReplyStore;
+    let second:PrismaClient,racer:PrismaService;
     let input:WidgetAgentReplyInput;
     const relay={publish:jest.fn()};
     const sql=(statement:string,params:any[]=[])=>prisma.executeInTenantSchema<any[]>(schema,statement,params);
@@ -30,6 +31,8 @@ const databaseUrl=process.env.PARALLLY_ISOLATION_TEST_URL;
         await client.$executeRawUnsafe(`CREATE SCHEMA "${schema}"`);
         await client.$executeRawUnsafe('INSERT INTO public.tenants(id,schema_name,is_active) VALUES($1::uuid,$2,true)',tenantId,schema);
         prisma=Object.create(PrismaService.prototype);prisma.$transaction=client.$transaction.bind(client);
+        second=new PrismaClient({datasourceUrl:databaseUrl});
+        racer=Object.create(PrismaService.prototype);racer.$transaction=second.$transaction.bind(second);
         const ddl=readFileSync(join(__dirname,'../../../prisma/tenant-schema.sql'),'utf8');
         const base=ddl.slice(ddl.indexOf('-- ---- Contacts ----'),ddl.indexOf('-- ---- Central AI Tool Authority')).replaceAll('{{SCHEMA_NAME}}',schema);
         for(const statement of (prisma as any).splitSqlStatements(base))await client.$executeRawUnsafe(statement);
@@ -78,8 +81,22 @@ const databaseUrl=process.env.PARALLLY_ISOLATION_TEST_URL;
             await client.$executeRawUnsafe('DELETE FROM public.widget_configs WHERE tenant_id=$1::uuid',tenantId);
             await client.$executeRawUnsafe(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
             await client.$executeRawUnsafe('DELETE FROM public.tenants WHERE id=$1::uuid AND schema_name=$2',tenantId,schema);
-        }finally{await client.$disconnect();}
+        }finally{await client.$disconnect();await second?.$disconnect();}
     });
+    /** Hold a real second transaction open, then release it, so the admission
+     * has to wait on the same locks it takes in production. */
+    function racing(statements:[string,any[]][]){
+        let started:()=>void,release:()=>void;
+        const ready=new Promise<void>(resolve=>{started=resolve;});
+        const gate=new Promise<void>(resolve=>{release=resolve;});
+        const done=racer.transactionInTenantSchema(schema,async query=>{
+            for(const [statement,params] of statements)await query(statement,params);
+            started();await gate;
+        });
+        return {ready,done,release:()=>release()};
+    }
+    /** Let the admission reach the lock the racing transaction already holds. */
+    const settle=()=>new Promise(resolve=>setTimeout(resolve,150));
     async function freshInput():Promise<WidgetAgentReplyInput>{
         const conversationId=randomUUID(),contactId=randomUUID(),sessionId=randomUUID(),inboundMessageId=randomUUID();
         await sql("INSERT INTO contacts(id,external_id,channel_type) VALUES($1::uuid,$2,'web_widget')",[contactId,`widget_${sessionId}`]);
@@ -209,6 +226,143 @@ const databaseUrl=process.env.PARALLLY_ISOLATION_TEST_URL;
         await sql("INSERT INTO persona_config VALUES($1::jsonb,true,1)",[JSON.stringify(body)]);
         input.operationalScope={tenantId,schemaName:schema,kind:'legacy',legacyConfigHash:revisionHash(body)};input.learningFootprints=[];
         expect((await store.commit(input)).status).toBe('stored');
+    });
+
+    describe('a failure around the commit boundary',()=>{
+        it('rolls the message, receipt and source index back together',async()=>{
+            const group=await learningGroup();input.learningFootprints=[group.footprint];
+            const sourceRows=async()=>(await sql('SELECT reply_id FROM widget_agent_reply_sources')).length;
+            const before=await sourceRows();
+            const persist=messages.persistWithQuery.bind(messages);
+            let inserted='';
+            jest.spyOn(messages,'persistWithQuery').mockImplementation(async(...args:any[])=>{
+                const message=await (persist as any)(...args);inserted=message.id;
+                throw new Error('injected failure after the message insert');
+            });
+            await expect(store.commit(input)).rejects.toThrow('injected failure after the message insert');
+            expect(inserted).not.toBe('');
+            expect(await sql('SELECT id FROM messages WHERE id=$1::uuid',[inserted])).toHaveLength(0);
+            expect(await count()).toBe(0);
+            expect(await sourceRows()).toBe(before);
+        });
+
+        it('recovers a commit the caller saw fail, without storing the reply twice',async()=>{
+            // Publication happens after COMMIT. Losing it looks to the caller
+            // exactly like a lost COMMIT acknowledgement, and the retry must find
+            // the accepted receipt rather than admit a second message.
+            jest.spyOn(messages,'publish').mockImplementationOnce(()=>{throw new Error('relay unavailable');});
+            await expect(store.commit(input)).rejects.toThrow('relay unavailable');
+            expect(await count()).toBe(1);
+            const recovered=await store.commit(input);
+            expect(recovered.status).toBe('stored');
+            expect(await count()).toBe(1);
+            expect(await sql('SELECT id FROM messages WHERE conversation_id=$1::uuid AND direction=$2',
+                [input.conversationId,'outbound'])).toHaveLength(1);
+        });
+    });
+
+    describe('changes that commit while the admission is already waiting',()=>{
+        it('refuses a version published during the admission',async()=>{
+            const blocker=racing([['UPDATE agent_personas SET version=2 WHERE id=$1::uuid',[agentId]]]);
+            try{
+                await blocker.ready;
+                const admission=store.commit(input);
+                await settle();blocker.release();await blocker.done;
+                await expect(admission).rejects.toThrow('agent_operational_revision_changed');
+                expect(await count()).toBe(0);
+            }finally{blocker.release();await blocker.done;}
+        });
+
+        it('refuses a connection whose serving agent changed during the admission',async()=>{
+            const blocker=racing([[`INSERT INTO agent_personas VALUES($1::uuid,'Other','{"persona":{"name":"Other"}}','{}',
+                ARRAY[$2],'24_7',true,false,1)`,[randomUUID(),`web_widget:${widgetId}`]]]);
+            try{
+                await blocker.ready;
+                const admission=store.commit(input);
+                await settle();blocker.release();await blocker.done;
+                await expect(admission).rejects.toThrow('agent_operational_revision_changed');
+                expect(await count()).toBe(0);
+            }finally{blocker.release();await blocker.done;}
+        });
+
+        it('refuses a holdout source retired during the admission, behind the privacy fence',async()=>{
+            const group=await learningGroup();input.learningFootprints=[group.footprint];
+            const blocker=racing([
+                ['SELECT pg_advisory_xact_lock(hashtextextended($1,0))::text',[`agent-privacy:${schema}`]],
+                ["UPDATE learning_sources SET status='retired' WHERE id=$1::uuid",[group.sourceIds[1]]],
+            ]);
+            try{
+                await blocker.ready;
+                // The admission takes the SHARED privacy lock first, so it cannot
+                // cross an erasure already queued ahead of it on the same fence.
+                const admission=store.commit(input);
+                await settle();blocker.release();await blocker.done;
+                await expect(admission).rejects.toThrow();
+                expect(await count()).toBe(0);
+            }finally{blocker.release();await blocker.done;}
+        });
+
+        it('still admits when the racing transaction changed nothing this reply depends on',async()=>{
+            const other=await freshInput();
+            const blocker=racing([['UPDATE conversations SET summary=$2 WHERE id=$1::uuid',[other.conversationId,'unrelated']]]);
+            try{
+                await blocker.ready;
+                const admission=store.commit(input);
+                await settle();blocker.release();await blocker.done;
+                expect((await admission).status).toBe('stored');
+                expect(await count()).toBe(1);
+            }finally{blocker.release();await blocker.done;}
+        });
+
+        it('gives up bounded rather than queueing behind an edit of its own conversation',async()=>{
+            // NOWAIT is deliberate: waiting here inverts with the message edit
+            // path (message row -> revision trigger -> conversation). The turn
+            // must fail whole and admit nothing, never half-store and never hang.
+            const blocker=racing([['UPDATE conversations SET summary=$2 WHERE id=$1::uuid',[input.conversationId,'edited']]]);
+            try{
+                await blocker.ready;
+                await expect(store.commit(input)).rejects.toMatchObject({meta:{code:'55P03'}});
+                expect(await count()).toBe(0);
+            }finally{blocker.release();await blocker.done;}
+            // The refusal poisons nothing: the same reply is admitted afterwards.
+            expect((await store.commit(input)).status).toBe('stored');
+            expect(await count()).toBe(1);
+        });
+    });
+
+    describe('what the next turn may read back',()=>{
+        const history=(target=input,ids:string[]=[])=>store.historyFootprints(tenantId,schema,target.conversationId,ids);
+
+        it('inherits the provenance of an earlier reply and trusts only that message',async()=>{
+            const group=await learningGroup();input.learningFootprints=[group.footprint];
+            const stored=await store.commit(input);
+            const messageId=stored.messages[0].messageId;
+            await expect(history(input,[messageId])).resolves.toEqual({
+                footprints:[group.footprint],trustedMessageIds:[messageId]});
+        });
+
+        it('treats an outbound message with no receipt as untracked, never as proof of no learning',async()=>{
+            const [row]=await sql(`INSERT INTO messages(conversation_id,direction,content_type,content_text)
+                VALUES($1::uuid,'outbound','text','Legacy answer with no receipt') RETURNING id`,[input.conversationId]);
+            await expect(history(input,[row.id])).resolves.toEqual({footprints:[],trustedMessageIds:[]});
+        });
+
+        it('blocks the earlier text when erasure lands between reading it and reading its provenance',async()=>{
+            const group=await learningGroup();input.learningFootprints=[group.footprint];
+            const stored=await store.commit(input);
+            const messageId=stored.messages[0].messageId;
+            // The turn already selected this text. Erasure commits before the
+            // provenance read, so the read must stop the turn rather than report
+            // an absent receipt, which would silently launder the same words.
+            await prisma.transactionInTenantSchema(schema,query=>redactWidgetAgentReplies(query,schema,{contactIds:[input.contactId]}));
+            await expect(history(input,[messageId])).rejects.toThrow();
+        });
+
+        it('refuses a message that belongs to another conversation',async()=>{
+            const other=await freshInput();other.learningFootprints=input.learningFootprints;
+            const stored=await store.commit(other);
+            await expect(history(input,[stored.messages[0].messageId])).rejects.toThrow();
+        });
     });
 
     describe('a turn that transferred the conversation itself',()=>{

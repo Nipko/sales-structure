@@ -24,7 +24,8 @@ describe('ConversationsService widget containment', () => {
                 receipts.set(input.inboundMessageId, receipt);
                 return receipt;
             }),
-            historyFootprints: jest.fn(async () => ({ footprints: [], trustedMessageIds: [] })),
+            historyFootprints: jest.fn(async (): Promise<{ footprints: any[]; trustedMessageIds: string[] }> =>
+                ({ footprints: [], trustedMessageIds: [] })),
             // Mirrors the store: the sentence comes from the receipt, never from
             // the caller, and the turn's own answer precedes it when it exists.
             commitHandoffNotice: jest.fn(async (input: any): Promise<WidgetAgentReplyReceipt | null> => {
@@ -160,6 +161,48 @@ describe('ConversationsService widget containment', () => {
         service.buildQuotaFallbackMessage = jest.fn().mockResolvedValue('quota fallback');
         return { service: service as ConversationsService, redis, prisma, throttle, llmRouter, widgetAgentReplies };
     }
+
+    describe('what the model is allowed to read back', () => {
+        const collector = () => ({ addInherited: jest.fn(), addExamples: jest.fn(), getFootprints: () => [] });
+        const window = () => ([
+            { id: 'in-1', direction: 'inbound', content_text: 'a question', metadata: {} },
+            { id: 'trusted-1', direction: 'outbound', content_text: 'an answer with a receipt', metadata: { source: 'ai' } },
+            { id: 'untracked-1', direction: 'outbound', content_text: 'legacy answer', metadata: { source: 'ai' } },
+            { id: 'human-1', direction: 'outbound', content_text: 'a person replied here', metadata: { source: 'agent' } },
+        ]);
+
+        it('keeps inbound turns, human messages and only the outbound text a receipt covers', async () => {
+            const { service, widgetAgentReplies } = makeService();
+            widgetAgentReplies.historyFootprints.mockResolvedValue({ footprints: [], trustedMessageIds: ['trusted-1'] });
+            const provenance = collector();
+            const kept = await (service as any).widgetHistoryWithProvenance(
+                'tenant-x', 'tenant_1', 'conversation-x', window(), provenance);
+            // An untracked outbound message is history nobody can attribute; it
+            // never becomes a new source under this turn's agent revision.
+            expect(kept.map((row: any) => row.id)).toEqual(['in-1', 'trusted-1', 'human-1']);
+            expect(provenance.addInherited).toHaveBeenCalledWith([]);
+        });
+
+        it('reads no provenance when the window holds no outbound message', async () => {
+            const { service, widgetAgentReplies } = makeService();
+            const provenance = collector();
+            const kept = await (service as any).widgetHistoryWithProvenance('tenant-x', 'tenant_1', 'conversation-x',
+                window().filter(row => row.direction === 'inbound'), provenance);
+            expect(kept.map((row: any) => row.id)).toEqual(['in-1']);
+            expect(widgetAgentReplies.historyFootprints).not.toHaveBeenCalled();
+            expect(provenance.addInherited).not.toHaveBeenCalled();
+        });
+
+        it('stops the turn when a receipt inside the window was erased', async () => {
+            const { service, widgetAgentReplies } = makeService();
+            // Erasure between reading the text and reading its provenance must
+            // block those words, not report them as history without learning.
+            widgetAgentReplies.historyFootprints.mockRejectedValue(new Error('agent_source_authority_unavailable'));
+            await expect((service as any).widgetHistoryWithProvenance(
+                'tenant-x', 'tenant_1', 'conversation-x', window(), collector()))
+                .rejects.toThrow('agent_source_authority_unavailable');
+        });
+    });
 
     it('fails closed without calling the provider when the conversation lock is unavailable', async () => {
         const { service, throttle, llmRouter } = makeService({

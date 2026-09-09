@@ -15,7 +15,7 @@ import {
 
 type TaskType = 'conversation' | 'tool_calling';
 
-interface ModelConfig {
+export interface ModelConfig {
     id: string;
     provider: string;
     tier: ModelTier;
@@ -31,6 +31,12 @@ interface ModelConfig {
 // Rates are USD per 1k tokens (provider list price / 1000), input vs output
 // separated because output is typically 3-5× input. Update when providers
 // change pricing. costPer1kTokens is a rough blended figure for display only.
+/**
+ * The one catalogue. Anything that needs to know what a model costs — the
+ * router at runtime, a certification plan that has to state a maximum spend
+ * before anyone authorises it — reads THIS, because a second copy of a price
+ * list is a price list that will be wrong on the day it matters.
+ */
 const MODEL_REGISTRY: ModelConfig[] = [
     // Tier 1 — Premium (best quality, reserved for enterprise/custom plans)
     { id: 'claude-sonnet-4-6', provider: 'anthropic', tier: 'tier_1_premium', costPer1kTokens: 0.009, costInPer1k: 0.003, costOutPer1k: 0.015, maxContextTokens: 1000000, supportsTools: true },
@@ -45,6 +51,10 @@ const MODEL_REGISTRY: ModelConfig[] = [
     // Tier 4 — Budget (cheapest available)
     { id: 'deepseek-chat', provider: 'deepseek', tier: 'tier_4_budget', costPer1kTokens: 0.000685, costInPer1k: 0.00027, costOutPer1k: 0.0011, maxContextTokens: 64000, supportsTools: true },
 ];
+
+/** Read-only view of the catalogue for callers outside the router. */
+export const LLM_MODEL_CATALOGUE: readonly Readonly<ModelConfig>[] =
+    Object.freeze(MODEL_REGISTRY.map(model => Object.freeze({ ...model })));
 
 // Task-based fallback chains ordered by cost-effectiveness.
 // Conversation: natural tone + low cost. Gemini included (no tools needed).

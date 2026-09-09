@@ -90,15 +90,30 @@ export function evidenceModels(row: AgentReleaseRunEvidence): readonly string[] 
     return [...observed].sort();
 }
 
+/** One required case: the definitions that count as it, and what it costs to run. */
+export interface RequiredScenario {
+    /** Every rendering of this case; evidence must match one of them exactly. */
+    readonly definitions: Set<string>;
+    /**
+     * Customer messages in the longest rendering, which is how many turns — and
+     * therefore how many model calls — running this case once takes.
+     */
+    readonly turns: number;
+}
+
 /**
  * The scenario keys a profile owes in one language, collapsed across the
  * address forms Spanish renders the same case in.
+ *
+ * Composing a pack is expensive and the plan needs the same universe this does,
+ * so both read THIS. A second walk of the packs would be a second definition of
+ * what a profile owes, and the two would drift the first time a pack changed.
  */
-function requiredScenarios(profileId: string, language: string,
-    intentKeys?: readonly string[]): Map<string, Set<string>> {
+export function requiredScenarios(profileId: string, language: string,
+    intentKeys?: readonly string[]): Map<string, RequiredScenario> {
     const [industry, subtype] = profileId.split('/');
     const domain = buildDomainContractDraft(industry, subtype);
-    const variants = new Map<string, Set<string>>();
+    const variants = new Map<string, { definitions: Set<string>; turns: number }>();
     const forms = (language === 'es' ? [null, 'tu', 'usted', 'vos'] : [null]) as Array<AddressForm | null>;
     for (const addressForm of forms) {
         for (const scenario of composeSubtypeEvalPack({ industry, subtype, language, addressForm })) {
@@ -106,9 +121,10 @@ function requiredScenarios(profileId: string, language: string,
                 const task = domain.intents.find(intent => scenario.key.startsWith(`intent_${intent.key}_`));
                 if (task && !intentKeys.includes(task.key)) continue;
             }
-            const definitions = variants.get(scenario.key) || new Set<string>();
-            definitions.add(releaseScenarioDefinition(scenario));
-            variants.set(scenario.key, definitions);
+            const entry = variants.get(scenario.key) || { definitions: new Set<string>(), turns: 0 };
+            entry.definitions.add(releaseScenarioDefinition(scenario));
+            entry.turns = Math.max(entry.turns, Array.isArray(scenario.messages) ? scenario.messages.length : 0);
+            variants.set(scenario.key, entry);
         }
     }
     return variants;
@@ -158,7 +174,7 @@ export function certifyProfile(input: {
             for (const model of models) {
                 const servingModel = valid.filter(row => row.channelType === channel
                     && evidenceModels(row).includes(model));
-                for (const [key, definitions] of variants) {
+                for (const [key, required] of variants) {
                     requiredCases++;
                     byLanguage[language] ??= { required: 0, verified: 0 };
                     byChannel[channel] ??= { required: 0, verified: 0 };
@@ -169,7 +185,7 @@ export function certifyProfile(input: {
                     const proven = servingModel.some(row => row.scenarios.some((scenario: any) =>
                         scenario.profileId === input.profileId && scenario.language === language
                         && scenario.managedSeedKey === key
-                        && definitions.has(releaseScenarioDefinition(scenario))
+                        && required.definitions.has(releaseScenarioDefinition(scenario))
                         && releaseScenarioPassed(scenario, row)));
                     if (proven) {
                         verifiedCases++;

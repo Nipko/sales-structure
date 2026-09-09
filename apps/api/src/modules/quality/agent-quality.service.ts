@@ -23,7 +23,7 @@ import {
     resolveCredentialHealth,
     worstCredentialHealth,
     type ChannelCredentialHealth,
-} from '../channels/channel-credential-health.util';
+} from '@parallext/shared';
 
 const PRODUCTION_DAYS = 30;
 const MINIMUM_PRODUCTION_SAMPLE = 20;

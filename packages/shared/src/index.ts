@@ -16,6 +16,7 @@ export * from './automation-trigger-contract';
 export * from './agent-quality-contract';
 export * from './agent-assessment-contract';
 export * from './agent-operational-state';
+export * from './channel-credential-health';
 export * from './agent-configuration-contract';
 export * from './agent-draft-contract';
 export * from './agent-release-subject';

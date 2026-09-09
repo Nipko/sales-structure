@@ -1,5 +1,7 @@
 "use client";
 
+import { asCredentialHealth, CREDENTIAL_HEALTH_RANK,
+    type ChannelCredentialHealth } from '@parallext/shared';
 import { useState, useEffect } from "react";
 import { useTranslations } from "next-intl";
 import { HelpPanel } from "@/components/ui/help-panel";
@@ -22,25 +24,7 @@ import {
     HelpCircle,
 } from "lucide-react";
 
-/**
- * Mirrors `resolveCredentialHealth` in the API
- * (`apps/api/src/modules/channels/channel-credential-health.util.ts`), which is
- * what `/channels/overview` returns in `credentialStatus`. `unknown` outranks
- * `expiring` there on purpose: "we could not read the credential" is a warning
- * a tenant has to see, not a green light. This screen used to drop it.
- */
-type ChannelCredentialHealth = 'ok' | 'expiring' | 'unknown' | 'missing' | 'error' | 'revoked' | 'expired';
 
-const CREDENTIAL_HEALTH_RANK: Record<ChannelCredentialHealth, number> = {
-    ok: 0, expiring: 1, unknown: 2, missing: 3, error: 4, revoked: 5, expired: 6,
-};
-
-/** An unrecognised status is `unknown`, never `ok`: we did not verify it. */
-function asCredentialHealth(value: unknown): ChannelCredentialHealth {
-    return typeof value === 'string' && value in CREDENTIAL_HEALTH_RANK
-        ? value as ChannelCredentialHealth
-        : 'unknown';
-}
 
 const channels = [
     {

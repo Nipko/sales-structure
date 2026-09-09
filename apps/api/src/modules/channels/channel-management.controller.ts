@@ -25,7 +25,7 @@ import {
     isCredentialFailure,
     resolveCredentialHealth,
     type ChannelCredentialRecord,
-} from './channel-credential-health.util';
+} from '@parallext/shared';
 
 @ApiTags('channel-management')
 @Controller('channels')

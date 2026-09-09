@@ -11,6 +11,11 @@
  *
  * Pure functions, no DI: both the quality service and the channels controller
  * feed it the same facts and get the same answer.
+ *
+ * It lives in the shared package because the dashboard needs the same answer
+ * and, while this was inside `apps/api`, the Canales page carried a hand-copied
+ * union and rank table — a second copy of the definition whose entire purpose is
+ * being the only one, which is exactly the split described above growing back.
  */
 
 export type ChannelCredentialHealth =
@@ -37,7 +42,7 @@ export const NON_TOKEN_PLACEHOLDERS = new Set(['', 'encrypted_ref', 'credential_
 export const EXPIRY_WARNING_MS = 7 * 86_400_000;
 
 /** Worst-first ranking. `ok` is the only value that means "nothing to do". */
-const HEALTH_RANK: Record<ChannelCredentialHealth, number> = {
+export const CREDENTIAL_HEALTH_RANK: Record<ChannelCredentialHealth, number> = {
     ok: 0,
     expiring: 1,
     unknown: 2,
@@ -155,7 +160,13 @@ export function isCredentialWarning(health: ChannelCredentialHealth): boolean {
 export function worstCredentialHealth(values: readonly ChannelCredentialHealth[]): ChannelCredentialHealth {
     let worst: ChannelCredentialHealth | null = null;
     for (const value of values) {
-        if (worst === null || HEALTH_RANK[value] > HEALTH_RANK[worst]) worst = value;
+        if (worst === null || CREDENTIAL_HEALTH_RANK[value] > CREDENTIAL_HEALTH_RANK[worst]) worst = value;
     }
     return worst ?? 'missing';
+}
+
+/** Read an untrusted value as a health, defaulting to "nobody could tell". */
+export function asCredentialHealth(value: unknown): ChannelCredentialHealth {
+    return typeof value === 'string' && value in CREDENTIAL_HEALTH_RANK
+        ? value as ChannelCredentialHealth : 'unknown';
 }

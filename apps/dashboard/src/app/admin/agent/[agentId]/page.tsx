@@ -802,7 +802,7 @@ export default function AgentEditorPage() {
                   const isAssigned = assignedBindings.includes(key);
                   const owner = getBindingOwner(key);
                   return (
-                    <button key={key} type="button" onClick={() => toggleBinding(key)} className={chipCls(isAssigned)}>
+                    <button key={key} type="button" aria-pressed={isAssigned} onClick={() => toggleBinding(key)} className={chipCls(isAssigned)}>
                       <Icon size={16} className={meta.color} />
                       <span className={labelCls(isAssigned)}>{meta.label}</span>
                       <span className="text-[11px] text-neutral-400 truncate max-w-[130px]">· {a.displayName || a.accountId}</span>
@@ -819,7 +819,7 @@ export default function AgentEditorPage() {
               const isAssigned = assignedChannels.includes(ch);
               const owner = getChannelOwner(ch);
               return [(
-                <button key={ch} type="button" onClick={() => toggleChannel(ch)} className={chipCls(isAssigned)}>
+                <button key={ch} type="button" aria-pressed={isAssigned} onClick={() => toggleChannel(ch)} className={chipCls(isAssigned)}>
                   <Icon size={16} className={meta.color} />
                   <span className={labelCls(isAssigned)}>{meta.label}</span>
                   {isAssigned && <CheckCircle size={14} className="text-indigo-500" />}

@@ -12829,6 +12829,17 @@
     "deleteError": "Erreur lors de la suppression"
   },
   "productTour": {
+    "stepStatus": {
+      "done": "Déjà fait",
+      "pending": "Il reste à faire"
+    },
+    "outcome": {
+      "confirmed": "C'est fait. Nous avons vérifié à l'écran les {total} points de ce parcours.",
+      "incomplete": "Parcours terminé. Nous avons confirmé {done} points sur {total} ; les autres ne sont toujours pas configurés.",
+      "unverified": "Parcours terminé. Nous avons confirmé {done} points sur {total} ; nous n'avons pas pu vérifier le reste, nous ne le considérons donc pas comme fait.",
+      "walkthrough": "Parcours terminé. Nous vous avons montré où se trouve chaque chose ; ce guide ne peut pas vérifier si la configuration a été faite."
+    },
+    "resumed": "Nous avons repris le parcours là où vous l'aviez laissé.",
     "finishFormFirst": "Enregistrez ou fermez le formulaire en cours avant de continuer. Cette étape sera conservée.",
     "agent": {
       "title": "Votre agent IA",

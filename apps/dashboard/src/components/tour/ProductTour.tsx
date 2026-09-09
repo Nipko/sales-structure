@@ -14,25 +14,33 @@ import { usePathname, useRouter } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { Onborda, OnbordaProvider, useOnborda } from "onborda";
 import type { CardComponentProps, Step } from "onborda";
-import { X, ArrowRight, ArrowLeft, Compass } from "lucide-react";
+import { X, ArrowRight, ArrowLeft, Compass, CheckCircle2, CircleDashed } from "lucide-react";
 import {
     GUIDED_TOUR_IDS,
     GUIDED_TOUR_START_EVENT,
     canRoleRunGuidedTour,
     getGuidedTour,
     isGuidedTourId,
+    summarizeGuidedTourOutcome,
     type GuidedTourId,
+    type GuidedTourStepStatus,
 } from "@parallext/shared";
 import { useAuth } from "@/contexts/AuthContext";
 import { useRole } from "@/hooks/useRole";
 import {
     buildGuidedTourSteps,
+    clearGuidedTourResume,
+    evaluateGuidedTourStep,
     getGuidedTourStepDefinitions,
     guidedTourEntryRoute,
     planGuidedTourRun,
+    readGuidedTourResume,
+    saveGuidedTourResume,
     shouldRunGuidedTourInPlace,
+    type GuidedTourConditionProbe,
     type GuidedTourContext as GuidedTourStepContext,
     type GuidedTourRunPlan,
+    type GuidedTourStepDefinition,
 } from "@/lib/guided-tours";
 import { resolveNavigationDisplayLabel } from "@/lib/navigation-contract";
 import {
@@ -167,7 +175,41 @@ function isAnchorPresent(selector: string): boolean {
     return Boolean(element && element.getClientRects().length);
 }
 
-type PreparedStep = Step & { prepareSelector?: string; tourRoute?: string; optional?: boolean };
+type PreparedStep = Step & {
+    prepareSelector?: string;
+    tourRoute?: string;
+    optional?: boolean;
+    completedWhen?: GuidedTourStepDefinition["completedWhen"];
+};
+
+/**
+ * Cada cuánto se vuelve a leer la condición del paso en curso.
+ *
+ * La persona llena el campo MIENTRAS el recorrido lo está señalando, así que un
+ * único chequeo al entrar al paso dejaría la insignia mintiendo hasta el final.
+ * Es la misma cadencia con la que el guardián vigila los anclajes.
+ */
+const CONDITION_POLL_MS = 700;
+
+/** Controles con texto: las casillas se excluyen porque un `value` vacío no dice nada. */
+const CONDITION_FIELD_SELECTOR = 'input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]), textarea, select';
+
+/**
+ * El sondeo contra la pantalla real. Sólo consulta: un recorrido nunca escribe,
+ * y acá no hay nada que pudiera hacerlo aunque se quisiera.
+ */
+const domConditionProbe: GuidedTourConditionProbe = {
+    fieldValues(selector, within) {
+        const anchor = document.querySelector<HTMLElement>(selector);
+        // Sin anclaje en pantalla no hay "vacío": hay "no lo vimos".
+        if (!anchor || !anchor.getClientRects().length) return null;
+        const fields = anchor.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(
+            within ?? CONDITION_FIELD_SELECTOR,
+        );
+        return Array.from(fields).map((field) => field.value ?? "");
+    },
+    exists: (selector) => isAnchorPresent(selector),
+};
 
 /** Open only UI controls declared by the tour. A visible form is never dismissed. */
 async function prepareStep(step: Pick<PreparedStep, "selector" | "prepareSelector">): Promise<boolean> {
@@ -515,6 +557,14 @@ export function TourLauncher() {
 /** Un recorrido tal como se va a mostrar: pasos ya traducidos y filtrados. */
 type GuidedTourRegistry = ReadonlyArray<{ tour: string; steps: Step[] }>;
 
+/** Una corrida en curso. `tourId` y `context` viajan para poder retomarla. */
+type GuidedRun = {
+    tourId: GuidedTourId;
+    context: GuidedTourStepContext;
+    steps: Step[];
+    index: number;
+};
+
 /**
  * Aviso breve y NO bloqueante: "este recorrido no se puede mostrar acá".
  *
@@ -556,22 +606,41 @@ function GuidedTourNotice({ text, onDismiss }: { text: string; onDismiss: () => 
  * en una tarjeta que no tapa la pantalla ni bloquea los clicks de abajo.
  */
 function GuidedTaskCard({
-    steps, index, onIndexChange, onClose,
+    steps, index, onIndexChange, onClose, onStatus,
 }: {
     steps: Step[];
     index: number;
     onIndexChange: (next: number) => void;
     onClose: () => void;
+    /** Lo que la pantalla dijo de este paso; `null` = el paso no afirma nada. */
+    onStatus: (index: number, status: GuidedTourStepStatus | null) => void;
 }) {
     const t = useTranslations("productTour");
     const step = steps[index];
     const selector = step?.selector;
     const cardRef = useRef<HTMLDivElement>(null);
+    const [status, setStatus] = useState<GuidedTourStepStatus | null>(null);
 
     useEffect(() => {
         if (selector) spotlightAnchor(selector);
         cardRef.current?.focus({ preventScroll: true });
     }, [selector]);
+
+    // Observar, no actuar: un paso ya resuelto se marca y se sigue mostrando.
+    // Saltearlo en silencio dejaría a la persona sin saber por qué el recorrido
+    // pasó de largo justo por lo que había venido a arreglar.
+    useEffect(() => {
+        const current = steps[index] as PreparedStep | undefined;
+        if (!current) return;
+        const read = () => {
+            const next = evaluateGuidedTourStep(current, domConditionProbe);
+            setStatus(next);
+            onStatus(index, next);
+        };
+        read();
+        const timer = window.setInterval(read, CONDITION_POLL_MS);
+        return () => window.clearInterval(timer);
+    }, [index, steps, onStatus]);
 
     if (!step) return null;
     const isLast = index + 1 >= steps.length;
@@ -601,6 +670,21 @@ function GuidedTaskCard({
                 </button>
             </div>
             <p className="mb-3 text-[13px] leading-relaxed text-muted-foreground">{step.content}</p>
+            {(status === "done" || status === "pending") && (
+                <p
+                    role="status"
+                    className={`mb-3 inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] font-medium ${
+                        status === "done"
+                            ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400"
+                            : "bg-neutral-100 text-neutral-600 dark:bg-white/5 dark:text-neutral-400"
+                    }`}
+                >
+                    {status === "done"
+                        ? <CheckCircle2 size={13} aria-hidden />
+                        : <CircleDashed size={13} aria-hidden />}
+                    {t(status === "done" ? "stepStatus.done" : "stepStatus.pending")}
+                </p>
+            )}
             <div className="flex items-center justify-between">
                 <span className="text-[12px] tabular-nums text-muted-foreground">{index + 1} / {steps.length}</span>
                 <div className="flex items-center gap-2">
@@ -646,13 +730,27 @@ export function GuidedTourRunner({ tours }: { tours: GuidedTourRegistry }) {
     const capabilities = useRole();
     const { role } = capabilities;
     const { setContext, setPlan } = useContext(GuidedTourRuntimeContext);
+    const { user } = useAuth();
     const tRoot = useTranslations();
     const tTour = useTranslations("productTour");
     const [notice, setNotice] = useState<string | null>(null);
-    const [mobileRun, setMobileRun] = useState<{ steps: Step[]; index: number } | null>(null);
+    const [mobileRun, setMobileRun] = useState<GuidedRun | null>(null);
     const movingRef = useRef(false);
     const runRef = useRef(0);
     const noticeTimerRef = useRef<number | null>(null);
+    /**
+     * Lo que la pantalla dijo, paso por paso, durante ESTA corrida. Es lo único
+     * con lo que el cierre puede distinguir "te lo mostramos" de "lo vimos
+     * hecho": inventar la diferencia sería el defecto que esto viene a cerrar.
+     */
+    const statusesRef = useRef(new Map<number, GuidedTourStepStatus>());
+    const resumedRef = useRef(false);
+    /** `sessionStorage` puede lanzar con sólo nombrarlo; el recorrido no depende de él. */
+    const storage = useMemo(() => {
+        if (typeof window === "undefined") return null;
+        try { return window.sessionStorage; } catch { return null; }
+    }, []);
+    const resumeScope = `${user?.id ?? "anon"}:${user?.tenantId ?? "none"}`;
 
     const showNotice = useCallback((text: string) => {
         setNotice(text);
@@ -706,97 +804,173 @@ export function GuidedTourRunner({ tours }: { tours: GuidedTourRegistry }) {
         return () => window.clearInterval(timer);
     }, [closeOnborda, currentStep, currentTour, isOnbordaVisible, setCurrentStep]);
 
-    useEffect(() => {
-        const handler = (event: Event) => {
-            const runtime = latestRef.current;
-            const detail = (event as CustomEvent<unknown>).detail as
-                { tourId?: unknown; signalId?: unknown; agentId?: unknown; channelType?: unknown; verticalCatalogRoute?: unknown } | undefined;
-            if (!detail || !isGuidedTourId(detail.tourId)) return;
-            const tourId = detail.tourId;
-            const tour = getGuidedTour(tourId);
-            if (!tour || !canRoleRunGuidedTour(tour, runtime.role)) return;
+    /**
+     * Arranca una corrida. `resumeAt` es el único parámetro que separa el
+     * arranque normal de retomar tras una recarga: todo lo demás —permiso,
+     * ruta, plan, anclajes— se vuelve a verificar igual, porque lo guardado en
+     * la pestaña no es evidencia de nada sobre la pantalla de ahora.
+     */
+    const startGuidedRun = useCallback((
+        detail: { tourId?: unknown; agentId?: unknown; channelType?: unknown; verticalCatalogRoute?: unknown } | undefined,
+        options: { resumeAt?: number } = {},
+    ) => {
+        const runtime = latestRef.current;
+        if (!detail || !isGuidedTourId(detail.tourId)) return;
+        const tourId = detail.tourId;
+        const tour = getGuidedTour(tourId);
+        if (!tour || !canRoleRunGuidedTour(tour, runtime.role)) return;
 
-            const capability = GUIDED_TOUR_CAPABILITY[tourId];
-            if (capability && !runtime.capabilities[capability]) return;
+        const capability = GUIDED_TOUR_CAPABILITY[tourId];
+        if (capability && !runtime.capabilities[capability]) return;
 
-            const agentId = typeof detail.agentId === "string" && detail.agentId ? detail.agentId : null;
-            const stepContext: GuidedTourStepContext = {
-                agentId,
-                channelType: typeof detail.channelType === "string" ? detail.channelType : null,
-                verticalCatalogRoute: typeof detail.verticalCatalogRoute === "string" ? detail.verticalCatalogRoute : null,
-            };
-            runtime.setContext(stepContext);
+        const agentId = typeof detail.agentId === "string" && detail.agentId ? detail.agentId : null;
+        const stepContext: GuidedTourStepContext = {
+            agentId,
+            channelType: typeof detail.channelType === "string" ? detail.channelType : null,
+            verticalCatalogRoute: typeof detail.verticalCatalogRoute === "string" ? detail.verticalCatalogRoute : null,
+        };
+        runtime.setContext(stepContext);
 
-            const definitions = getGuidedTourStepDefinitions(tourId, stepContext);
-            if (definitions.length === 0) return;
-            const selectors = definitions.map((definition) => definition.selector);
-            const originRoute = runtime.pathname;
-            const entryRoute = guidedTourEntryRoute(tourId, stepContext);
-            // Dentro del asistente de puesta en marcha el recorrido corre donde
-            // está la persona: pedir ayuda no puede significar que te expulsen
-            // del formulario a medio llenar.
-            const inPlace = shouldRunGuidedTourInPlace(tourId, originRoute) || hasOpenTourForm();
-            const runId = ++runRef.current;
-            setMobileRun(null);
+        const definitions = getGuidedTourStepDefinitions(tourId, stepContext);
+        if (definitions.length === 0) return;
+        const selectors = definitions.map((definition) => definition.selector);
+        const originRoute = runtime.pathname;
+        const entryRoute = guidedTourEntryRoute(tourId, stepContext);
+        // Dentro del asistente de puesta en marcha el recorrido corre donde
+        // está la persona: pedir ayuda no puede significar que te expulsen
+        // del formulario a medio llenar.
+        const inPlace = shouldRunGuidedTourInPlace(tourId, originRoute) || hasOpenTourForm();
+        const runId = ++runRef.current;
+        setMobileRun(null);
+        statusesRef.current = new Map();
 
-            const giveUp = (navigated: boolean) => {
-                if (navigated) runtime.router.push(originRoute);
-                window.dispatchEvent(new Event(PRODUCT_TOUR_CLOSED_EVENT));
-                runtime.showNotice(runtime.tTour("unavailable.body"));
-            };
-
-            void (async () => {
-                const mustNavigate = !inPlace && originRoute !== entryRoute;
-                if (mustNavigate) {
-                    runtime.router.push(entryRoute);
-                    const arrived = await waitForRoute(entryRoute);
-                    if (runId !== runRef.current) return;
-                    if (!arrived) {
-                        giveUp(true);
-                        return;
-                    }
-                }
-                await waitForAnchorsToSettle(selectors);
-                if (runId !== runRef.current) return;
-
-                const currentRoute = mustNavigate ? entryRoute : originRoute;
-                const plan = planGuidedTourRun(tourId, stepContext, {
-                    currentRoute,
-                    // Protected flows retain their current page and draft.
-                    inPlace,
-                    isPresent: isAnchorPresent,
-                });
-                const firstKept = plan.stepIndexes.length > 0 ? definitions[plan.stepIndexes[0]] : undefined;
-                // Arrancar en un paso que no está en pantalla es exactamente el
-                // caso que dejaba el anillo sobre el elemento equivocado.
-                if (firstKept && !isAnchorPresent(firstKept.selector) && firstKept.prepareSelector) {
-                    await prepareStep(firstKept);
-                }
-                if (!firstKept || !isAnchorPresent(firstKept.selector)) {
-                    giveUp(mustNavigate);
-                    return;
-                }
-
-                // Guided tasks stay interactive on every viewport. A non-modal card
-                // lets the user type, use keyboard navigation and save real forms.
-                closeOnborda();
-                const steps = buildGuidedTourSteps(tourId, stepContext, (key) => runtime.tRoot(key), plan);
-                setMobileRun({ steps, index: 0 });
-            })();
+        const giveUp = (navigated: boolean) => {
+            if (navigated) runtime.router.push(originRoute);
+            window.dispatchEvent(new Event(PRODUCT_TOUR_CLOSED_EVENT));
+            runtime.showNotice(runtime.tTour("unavailable.body"));
         };
 
+        void (async () => {
+            // Retomar NO vuelve a la ruta de entrada: la recarga ya dejó a la
+            // persona en la pantalla donde estaba el paso, y empujarla al
+            // principio del recorrido sería perder exactamente lo que se guardó.
+            const resuming = options.resumeAt !== undefined;
+            const mustNavigate = !inPlace && !resuming && originRoute !== entryRoute;
+            if (mustNavigate) {
+                runtime.router.push(entryRoute);
+                const arrived = await waitForRoute(entryRoute);
+                if (runId !== runRef.current) return;
+                if (!arrived) {
+                    giveUp(true);
+                    return;
+                }
+            }
+            await waitForAnchorsToSettle(selectors);
+            if (runId !== runRef.current) return;
+
+            const currentRoute = mustNavigate ? entryRoute : originRoute;
+            const plan = planGuidedTourRun(tourId, stepContext, {
+                currentRoute,
+                // Protected flows retain their current page and draft.
+                inPlace,
+                isPresent: isAnchorPresent,
+            });
+            // El plan se rehace contra la pantalla de ahora y puede quedar más
+            // corto que el de antes de la recarga; el índice guardado se acota
+            // en vez de dejar la tarjeta apuntando al vacío.
+            const index = Math.min(Math.max(options.resumeAt ?? 0, 0), Math.max(plan.stepIndexes.length - 1, 0));
+            const opening = plan.stepIndexes.length > 0 ? definitions[plan.stepIndexes[index]] : undefined;
+            // Arrancar en un paso que no está en pantalla es exactamente el
+            // caso que dejaba el anillo sobre el elemento equivocado.
+            if (opening && !isAnchorPresent(opening.selector) && opening.prepareSelector) {
+                await prepareStep(opening);
+            }
+            if (!opening || !isAnchorPresent(opening.selector)) {
+                giveUp(mustNavigate);
+                return;
+            }
+
+            // Guided tasks stay interactive on every viewport. A non-modal card
+            // lets the user type, use keyboard navigation and save real forms.
+            closeOnborda();
+            const steps = buildGuidedTourSteps(tourId, stepContext, (key) => runtime.tRoot(key), plan);
+            setMobileRun({ tourId, context: stepContext, steps, index });
+            if (resuming) runtime.showNotice(runtime.tTour("resumed"));
+        })();
+    }, [closeOnborda]);
+
+    useEffect(() => {
+        const handler = (event: Event) => {
+            startGuidedRun((event as CustomEvent<unknown>).detail as Parameters<typeof startGuidedRun>[0]);
+        };
         window.addEventListener(GUIDED_TOUR_START_EVENT, handler);
         return () => {
             window.removeEventListener(GUIDED_TOUR_START_EVENT, handler);
             runRef.current += 1;
         };
+    }, [startGuidedRun]);
+
+    /**
+     * Retomar tras una recarga.
+     *
+     * Sólo cuando la sesión ya sabe quién es la persona: leer el registro con
+     * `role` todavía en null descartaría un recorrido perfectamente válido, y
+     * como la lectura consume la marca no habría segunda oportunidad. Se intenta
+     * una sola vez, y la ruta guardada tiene que ser la que hay ahora: retomar
+     * sobre otra pantalla sería abrir una guía encima de otra tarea.
+     */
+    useEffect(() => {
+        if (!storage || !role || resumedRef.current || mobileRun) return;
+        resumedRef.current = true;
+        const record = readGuidedTourResume(storage, { scope: resumeScope, route: pathname, role });
+        if (!record) return;
+        startGuidedRun({ tourId: record.tourId, ...record.context }, { resumeAt: record.stepIndex });
+    }, [mobileRun, pathname, resumeScope, role, startGuidedRun, storage]);
+
+    // La marca de retomar se reescribe en cada paso y muere con la corrida: si
+    // la persona cerró el recorrido, volver a cargar no debe resucitarlo.
+    useEffect(() => {
+        if (!storage) return;
+        if (!mobileRun) {
+            clearGuidedTourResume(storage);
+            return;
+        }
+        saveGuidedTourResume(storage, {
+            tourId: mobileRun.tourId,
+            stepIndex: mobileRun.index,
+            route: pathname,
+            scope: resumeScope,
+            context: mobileRun.context,
+        });
+    }, [mobileRun, pathname, resumeScope, storage]);
+
+    const recordStatus = useCallback((index: number, status: GuidedTourStepStatus | null) => {
+        if (status) statusesRef.current.set(index, status);
     }, []);
 
+    /**
+     * El cierre dice qué se comprobó, no cuántas tarjetas se pasaron.
+     *
+     * Un paso que la persona nunca llegó a ver cuenta como `unknown`, no como
+     * ausencia: haber cerrado en el paso 2 de 5 no es evidencia de nada sobre
+     * los otros tres, y "confirmado" tiene que exigir haberlos mirado.
+     */
     const closeMobileRun = useCallback(() => {
+        const run = mobileRun;
         setMobileRun(null);
         window.dispatchEvent(new Event(PRODUCT_TOUR_CLOSED_EVENT));
         requestQualityHealthRefresh();
-    }, []);
+        if (!run) return;
+        const statuses = run.steps.flatMap((step, index) => (
+            (step as PreparedStep).completedWhen
+                ? [statusesRef.current.get(index) ?? "unknown" as GuidedTourStepStatus]
+                : []
+        ));
+        const summary = summarizeGuidedTourOutcome(statuses);
+        showNotice(summary.checked === 0
+            ? tTour("outcome.walkthrough")
+            : tTour(`outcome.${summary.outcome}`, { done: summary.done, total: summary.checked }));
+    }, [mobileRun, showNotice, tTour]);
 
     const moveMobileRun = useCallback(async (next: number) => {
         const run = mobileRun;
@@ -830,6 +1004,7 @@ export function GuidedTourRunner({ tours }: { tours: GuidedTourRegistry }) {
                     index={mobileRun.index}
                     onIndexChange={moveMobileRun}
                     onClose={closeMobileRun}
+                    onStatus={recordStatus}
                 />
             )}
             {notice && <GuidedTourNotice text={notice} onDismiss={() => setNotice(null)} />}

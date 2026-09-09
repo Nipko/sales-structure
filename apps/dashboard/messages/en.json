@@ -12829,6 +12829,17 @@
     "deleteError": "Error deleting entry"
   },
   "productTour": {
+    "stepStatus": {
+      "done": "Already done",
+      "pending": "Still to do"
+    },
+    "outcome": {
+      "confirmed": "Done. We checked all {total} points of this tour on screen.",
+      "incomplete": "Tour finished. We confirmed {done} of {total} points; the rest are still not set up.",
+      "unverified": "Tour finished. We confirmed {done} of {total} points; we could not check the rest, so we are not assuming it is done.",
+      "walkthrough": "Tour finished. We showed you where everything is; this guide cannot check whether it was set up."
+    },
+    "resumed": "We picked the tour up where you left it.",
     "finishFormFirst": "Save or close the form you are editing before continuing. We will keep this step.",
     "agent": {
       "title": "Your AI agent",

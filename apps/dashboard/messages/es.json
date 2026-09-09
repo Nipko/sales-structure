@@ -12829,6 +12829,17 @@
     "deleteError": "Error al eliminar"
   },
   "productTour": {
+    "stepStatus": {
+      "done": "Ya está listo",
+      "pending": "Todavía falta"
+    },
+    "outcome": {
+      "confirmed": "Listo. Comprobamos en pantalla los {total} puntos de este recorrido.",
+      "incomplete": "Recorrido terminado. Comprobamos {done} de {total} puntos; los demás siguen sin completar.",
+      "unverified": "Recorrido terminado. Comprobamos {done} de {total} puntos; del resto no pudimos verificar nada, así que no lo damos por hecho.",
+      "walkthrough": "Recorrido terminado. Te mostramos dónde está cada cosa; esta guía no puede verificar si quedó configurado."
+    },
+    "resumed": "Retomamos el recorrido donde lo habías dejado.",
     "finishFormFirst": "Guarda o cierra el formulario que estás editando antes de continuar. Conservamos este paso.",
     "agent": {
       "title": "Tu agente de IA",

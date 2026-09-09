@@ -12829,6 +12829,17 @@
     "deleteError": "Erro ao excluir"
   },
   "productTour": {
+    "stepStatus": {
+      "done": "Já está pronto",
+      "pending": "Ainda falta"
+    },
+    "outcome": {
+      "confirmed": "Pronto. Verificamos na tela os {total} pontos deste roteiro.",
+      "incomplete": "Roteiro concluído. Confirmamos {done} de {total} pontos; os demais continuam sem configurar.",
+      "unverified": "Roteiro concluído. Confirmamos {done} de {total} pontos; o resto não conseguimos verificar, então não damos como feito.",
+      "walkthrough": "Roteiro concluído. Mostramos onde fica cada coisa; este guia não consegue verificar se ficou configurado."
+    },
+    "resumed": "Retomamos o roteiro de onde você parou.",
     "finishFormFirst": "Salve ou feche o formulário que está editando antes de continuar. Manteremos esta etapa.",
     "agent": {
       "title": "Seu agente de IA",

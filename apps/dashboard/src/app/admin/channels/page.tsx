@@ -211,6 +211,10 @@ export default function ChannelsOverviewPage() {
                                     unreadable overview must not borrow the word
                                     "Desconectado", which claims we looked. */}
                                 <div
+                                    // The three states the badge already tells apart,
+                                    // said in something other than a colour: a guided
+                                    // tour can read this, a class name it cannot.
+                                    data-channel-status={unavailable ? "unknown" : isConnected ? "connected" : "disconnected"}
                                     className={cn(
                                         "flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold border",
                                         unavailable

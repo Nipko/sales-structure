@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
     Building2,
     MessageSquare,
@@ -44,6 +44,7 @@ import { useTranslations, useLocale } from "next-intl";
 import { useVerticalTerms } from "@/hooks/useVerticalTerms";
 import { useRole } from "@/hooks/useRole";
 import { DataSourceBadge } from "@/hooks/useApiData";
+import { LoadFailureNotice } from "@/components/ui/load-failure";
 import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { HelpPanel } from "@/components/ui/help-panel";
@@ -88,6 +89,7 @@ export default function AdminDashboard() {
     const { user, verticalConfig } = useAuth();
     const { canAccess, canManageChannels, role, isSuperAdmin, impersonating } = useRole();
     const t = useTranslations("dashboard");
+    const tc = useTranslations("common");
     const tSetup = useTranslations("setupWizard");
     const tVw = useTranslations("verticalWelcome");
     const tHelp = useTranslations("help");
@@ -161,14 +163,17 @@ export default function AdminDashboard() {
     const APPOINTMENT_INDUSTRIES = ['salud', 'moda_belleza', 'restaurantes'];
     const PIPELINE_INDUSTRIES = ['inmobiliaria', 'automotriz', 'technology', 'finanzas', 'servicios_profesionales'];
 
-    const [overview, setOverview] = useState<Record<string, number>>({
-        leadsToday: 0, leadsHot: 0, messagesProcessed: 0, llmCostToday: 0,
-    });
+    // Starts empty, not zeroed. The cards already render "—" for a value they
+    // do not have; seeding them with zeros meant a failed read displayed "0
+    // leads hoy · 0 mensajes procesados" as this account's day.
+    const [overview, setOverview] = useState<Record<string, number>>({});
+    const [overviewState, setOverviewState] = useState<"loading" | "ready" | "unavailable">("loading");
     const [activity, setActivity] = useState<any[]>([]);
     const [modelUsage, setModelUsage] = useState<any[]>([]);
     const [verticalAppointments, setVerticalAppointments] = useState<any[]>([]);
     const [verticalLeads, setVerticalLeads] = useState<any[]>([]);
     const [verticalLoading, setVerticalLoading] = useState(false);
+    const [detailsState, setDetailsState] = useState<"loading" | "ready" | "unavailable">("loading");
     const [isLive, setIsLive] = useState(false);
     // Una sola guía por pantalla. `null` = todavía no se sabe: mostrar un aviso y
     // retirarlo medio segundo después es peor que mostrarlo un momento más tarde.
@@ -291,49 +296,74 @@ export default function AdminDashboard() {
         loadPlatformStats();
     }, [user?.role]);
 
-    useEffect(() => {
-        async function loadOverview() {
-            if (!user?.tenantId) return;
+    /**
+     * Two reads, and one `isLive` between them.
+     *
+     * `getCommercialOverview` fills the KPI cards; `getOverviewStats` fills the
+     * activity feed and the model usage bars. Only the first one set `isLive`,
+     * and the second's failure was `console.error` and nothing else — so the
+     * ordinary case of one succeeding and the other not painted a green "En
+     * vivo" pill on cards next to "Sin actividad reciente", a sentence about
+     * the tenant's account produced by a request that never came back.
+     *
+     * The details read now has a state of its own, and the badge reports the
+     * worse of the two rather than the first.
+     */
+    const loadOverview = useCallback(async () => {
+        if (!user?.tenantId) return;
+        setDetailsState("loading");
+        setOverviewState("loading");
 
-            const result = await api.getCommercialOverview(user.tenantId);
-            if (result.success && result.data) {
-                setOverview({
-                    ...result.data,
-                    leadsToday:        result.data.leadsToday ?? 0,
-                    leadsHot:          result.data.leadsHot ?? 0,
-                    messagesProcessed: result.data.messagesProcessed ?? 0,
-                    llmCostToday:      result.data.llmCostToday ?? 0,
-                });
-                setIsLive(true);
-            }
-            // Load dashboard details (activity + model usage)
-            try {
-                const dashResult = await api.getOverviewStats(user.tenantId);
-                if (dashResult.success && dashResult.data) {
-                    if (Array.isArray(dashResult.data.recentActivity)) {
-                        setActivity(dashResult.data.recentActivity.map((a: any) => ({
-                            tenant: a.tenant_name || a.tenant || t('system'),
-                            event: a.event || a.description || a.event_type || '',
-                            time: a.created_at ? formatTimeAgo(a.created_at) : a.time || '',
-                            type: a.type || a.event_type || 'conversation',
-                        })));
-                    }
-                    if (Array.isArray(dashResult.data.modelUsage)) {
-                        const total = dashResult.data.modelUsage.reduce((s: number, m: any) => s + (m.requests || m.count || 0), 0) || 1;
-                        setModelUsage(dashResult.data.modelUsage.map((m: any, i: number) => ({
-                            model: m.model || m.llm_model || t('unknown'),
-                            tier: m.tier || t('tierN', { n: i + 1 }),
-                            requests: m.requests || m.count || 0,
-                            pct: Math.round(((m.requests || m.count || 0) / total) * 100),
-                            colorClass: modelBarColors[i % modelBarColors.length],
-                        })));
-                    }
-                }
-            } catch (err) {
-                console.error('Failed to load dashboard details:', err);
-            }
+        const result = await api.getCommercialOverview(user.tenantId).catch(() => null);
+        if (!result?.success || !result.data) {
+            setOverview({});
+            setOverviewState("unavailable");
+        } else {
+            setOverview({
+                ...result.data,
+                leadsToday:        result.data.leadsToday ?? 0,
+                leadsHot:          result.data.leadsHot ?? 0,
+                messagesProcessed: result.data.messagesProcessed ?? 0,
+                llmCostToday:      result.data.llmCostToday ?? 0,
+            });
+            setIsLive(true);
+            setOverviewState("ready");
         }
-        loadOverview();
+        // Load dashboard details (activity + model usage)
+        try {
+            const dashResult = await api.getOverviewStats(user.tenantId);
+            if (!dashResult.success || !dashResult.data) throw new Error("overview_stats_read_failed");
+            if (Array.isArray(dashResult.data.recentActivity)) {
+                setActivity(dashResult.data.recentActivity.map((a: any) => ({
+                    tenant: a.tenant_name || a.tenant || t('system'),
+                    event: a.event || a.description || a.event_type || '',
+                    time: a.created_at ? formatTimeAgo(a.created_at) : a.time || '',
+                    type: a.type || a.event_type || 'conversation',
+                })));
+            }
+            if (Array.isArray(dashResult.data.modelUsage)) {
+                const total = dashResult.data.modelUsage.reduce((s: number, m: any) => s + (m.requests || m.count || 0), 0) || 1;
+                setModelUsage(dashResult.data.modelUsage.map((m: any, i: number) => ({
+                    model: m.model || m.llm_model || t('unknown'),
+                    tier: m.tier || t('tierN', { n: i + 1 }),
+                    requests: m.requests || m.count || 0,
+                    pct: Math.round(((m.requests || m.count || 0) / total) * 100),
+                    colorClass: modelBarColors[i % modelBarColors.length],
+                })));
+            }
+            setDetailsState("ready");
+        } catch (err) {
+            console.error('Failed to load dashboard details:', err);
+            setActivity([]);
+            setModelUsage([]);
+            setDetailsState("unavailable");
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [user?.tenantId]);
+
+    useEffect(() => {
+        void loadOverview();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     // Load vertical-specific data
@@ -430,7 +460,9 @@ export default function AdminDashboard() {
     // Muestra un hero guiado en vez de un panel de puros ceros. Se calla mientras
     // la puesta en marcha no tiene ni un canal: tres tarjetas de "explorá" sobre
     // una cuenta que todavía no puede recibir un mensaje sólo agregan ruido.
-    const isEmptyTenant = user?.role !== "super_admin" && isLive && activity.length === 0
+    // The hero needs both reads: "nothing has happened yet" is not something an
+    // unread activity feed can establish.
+    const isEmptyTenant = user?.role !== "super_admin" && isLive && detailsState === "ready" && activity.length === 0
         && !setupCardOnly && !guideSilent
         && (overview.messagesProcessed ?? 0) === 0 && (overview.leadsToday ?? 0) === 0;
     const emptyActions = [
@@ -498,7 +530,7 @@ export default function AdminDashboard() {
                         {tVw(vt.industry !== 'otro' && tVw.has(vt.industry) ? vt.industry : 'default', { name: user?.firstName || "Admin" })}
                     </p>
                 </div>
-                <DataSourceBadge state={isLive ? "live" : "unverified"} />
+                <DataSourceBadge state={(overviewState === "unavailable" || detailsState === "unavailable") ? "unavailable" : isLive ? "live" : "unverified"} />
             </div>
 
             <HelpPanel
@@ -700,7 +732,9 @@ export default function AdminDashboard() {
                                             style={stat.colorHex ? { color: stat.colorHex } : undefined}
                                         >
                                             <ArrowUpRight size={14} />
-                                            {isLive ? t("live") : t("loading")}
+                                            {/* Not "Cargando" forever: once the read
+                                                has failed, nothing is loading. */}
+                                            {isLive ? t("live") : overviewState === "unavailable" ? tc("unknown") : t("loading")}
                                         </p>
                                     </div>
                                     <div
@@ -845,7 +879,9 @@ export default function AdminDashboard() {
                                         {item.time}
                                     </span>
                                 </div>
-                            )) : (
+                            )) : detailsState === "unavailable" ? (
+                                <LoadFailureNotice onRetry={() => { void loadOverview(); }} />
+                            ) : (
                                 <div className="py-5 text-center text-xs text-neutral-500 dark:text-neutral-400">
                                     {t("noActivity")}
                                 </div>
@@ -883,7 +919,9 @@ export default function AdminDashboard() {
                                         />
                                     </div>
                                 </div>
-                            )) : (
+                            )) : detailsState === "unavailable" ? (
+                                <LoadFailureNotice onRetry={() => { void loadOverview(); }} />
+                            ) : (
                                 <div className="py-5 text-center text-xs text-neutral-500 dark:text-neutral-400">
                                     {t('noModelUsage')}
                                 </div>

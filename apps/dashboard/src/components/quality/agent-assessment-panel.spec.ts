@@ -24,7 +24,7 @@ const assessment = (hasAgent: boolean): AgentAssessment => ({ version: 1, revisi
     // `pending` and not `unknown`: this fixture describes an account that was
     // read successfully and has nothing configured yet, which is a known answer.
     // `unknown` is reserved for the case where nobody could look.
-    state: 'pending' });
+    tools: [], state: 'pending' });
 
 describe('mission guidance distinguishes a missing mission from a missing agent', () => {
     it.each(['es', 'en', 'pt', 'fr'])('keeps the existing agent editable when its mission is missing in %s', locale => {

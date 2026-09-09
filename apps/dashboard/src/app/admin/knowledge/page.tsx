@@ -3,6 +3,7 @@
 import { KnowledgeConflictsPanel } from '@/components/knowledge/KnowledgeConflictsPanel';
 import { PageHeader } from "@/components/ui/page-header";
 import { HelpPanel } from "@/components/ui/help-panel";
+import { LoadFailureNotice } from "@/components/ui/load-failure";
 import { guidedTourAnchorId } from "@/lib/guided-tours";
 import { UpgradeBanner, UpgradeModal } from "@/components/ui/upgrade-banner";
 import { usePlanLimits } from "@/hooks/usePlanLimits";
@@ -97,6 +98,11 @@ export default function KnowledgePage() {
     // Documents
     const [documents, setDocuments] = useState<KBDocument[]>([]);
     const [loadingDocs, setLoadingDocs] = useState(true);
+    // Each of the three reads below had its own `.catch(() => [])`, so a
+    // rejected library came back as an empty one. "Tu base de conocimiento está
+    // vacía" then explains why the agent is not answering, and the owner starts
+    // re-uploading documents that are already there.
+    const [libraryUnavailable, setLibraryUnavailable] = useState(false);
 
     // Search
     const [searchQuery, setSearchQuery] = useState("");
@@ -176,20 +182,29 @@ export default function KnowledgePage() {
     }, []);
 
     // Load documents
-    useEffect(() => {
+    const loadLibrary = useCallback(() => {
         if (!activeTenantId) return;
         setLoadingDocs(true);
 
+        const FAILED = Symbol("failed");
+        const orFailed = (promise: Promise<unknown>) => promise.catch(() => FAILED as unknown);
+
         Promise.all([
-            api.fetch("/knowledge/documents").catch(() => []),
-            api.fetch(`/knowledge/resources/${activeTenantId}`).catch(() => []),
-            api.fetch("/knowledge/documents/categories").catch(() => []),
+            orFailed(api.fetch("/knowledge/documents")),
+            orFailed(api.fetch(`/knowledge/resources/${activeTenantId}`)),
+            orFailed(api.fetch("/knowledge/documents/categories")),
         ]).then(([docs, res, cats]) => {
+            // The library count gates the empty state and the plan-limit bar,
+            // so only the two reads that feed it decide whether it is unknown.
+            // Categories are a filter: losing them narrows nothing.
+            setLibraryUnavailable(docs === FAILED || res === FAILED);
             if (Array.isArray(docs)) setDocuments(docs);
             if (Array.isArray(res)) setResources(res);
             if (Array.isArray(cats)) setCategories(cats);
         }).finally(() => setLoadingDocs(false));
     }, [activeTenantId]);
+
+    useEffect(() => { loadLibrary(); }, [loadLibrary]);
 
     // Load analytics when tab changes
     useEffect(() => {
@@ -807,7 +822,10 @@ export default function KnowledgePage() {
                         </div>
                     ))}
 
-                    {totalDocs === 0 && !loadingDocs && (
+                    {libraryUnavailable && !loadingDocs && (
+                        <LoadFailureNotice onRetry={loadLibrary} />
+                    )}
+                    {totalDocs === 0 && !loadingDocs && !libraryUnavailable && (
                         <div className="rounded-[14px] border border-dashed border-border bg-card px-6 py-10 text-center">
                             <BookOpen size={30} className="mx-auto text-muted-foreground mb-3" />
                             <p className="text-sm font-semibold text-foreground">{t("empty.libraryTitle")}</p>

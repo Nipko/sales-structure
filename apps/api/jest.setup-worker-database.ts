@@ -1,10 +1,12 @@
+import { SHARED_URL_VARS, workerDatabaseName } from './jest.global-setup';
+
 /**
  * Point this worker's suites at this worker's database.
  *
- * `jest.global-setup.js` made one database per worker. This runs inside the
- * worker, before any spec is loaded, and rewrites every shared database URL to
- * the copy that belongs to it — so a spec keeps reading the same environment
- * variable it always read, and no spec has to know that workers exist.
+ * `jest.global-setup.ts` made one database per worker and provisioned it. This
+ * runs inside the worker, before any spec is loaded, and rewrites every shared
+ * database URL to the copy that belongs to it — so a spec keeps reading the same
+ * environment variable it always read, and no spec has to know workers exist.
  *
  * Left alone on purpose:
  *   · `PARALLLY_PGBOUNCER_TEST_URL` and `PARALLLY_PGBOUNCER_DIRECT_URL`, which
@@ -14,14 +16,12 @@
  *     because its migrations iterate `public.tenants` and touch every schema
  *     named there.
  */
-const { SHARED_URL_VARS, workerDatabaseName } = require('./jest.global-setup');
-
 const worker = Math.max(1, Number(process.env.JEST_WORKER_ID) || 1);
 
 for (const variable of SHARED_URL_VARS) {
     const value = process.env[variable];
     if (!value) continue;
-    let parsed;
+    let parsed: URL;
     try { parsed = new URL(value); } catch { continue; }
     if (!['127.0.0.1', 'localhost'].includes(parsed.hostname)) continue;
     const name = decodeURIComponent(parsed.pathname.replace(/^\//, ''));

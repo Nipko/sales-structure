@@ -3,7 +3,7 @@ import { Client } from 'pg';
 import {
     TURN_LEDGER_DDL, TurnLedgerError,
     openTurnLedger, readTurnLedger, recordTurnDelivery, recordTurnHandoff,
-    recordTurnResult, redactTurnLedger, settleTurnLedger,
+    recordTurnResult, redactPendingDrafts, redactTurnLedger, settleTurnLedger,
     type TurnBinding, type TurnEnvelope,
 } from './agent-turn-ledger';
 
@@ -197,5 +197,45 @@ integration('the durable record of a turn', () => {
         } finally {
             await query(`DROP SCHEMA IF EXISTS "${empty}" CASCADE`);
         }
+    });
+
+    describe('the draft a person was one click from sending', () => {
+        const withdrawn = randomUUID(), untouched = randomUUID();
+        const draft = (releaseId: string) => JSON.stringify({
+            pendingDraft: { text: 'Te ayudo con eso.', learningReleaseIds: [releaseId] },
+        });
+
+        it('takes back only the draft whose release was withdrawn', async () => {
+            await query(`CREATE TABLE IF NOT EXISTS "${schema}".conversations(
+                id UUID PRIMARY KEY, metadata JSONB, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
+            const gone = randomUUID(), kept = randomUUID(), anonymous = randomUUID();
+            await query(`INSERT INTO "${schema}".conversations(id, metadata)
+                VALUES ($1::uuid,$4::jsonb),($2::uuid,$5::jsonb),($3::uuid,'{"pendingDraft":{"text":"sin origen"}}'::jsonb)`,
+            [gone, kept, anonymous, draft(withdrawn), draft(untouched)]);
+
+            expect(await redactPendingDrafts(query, schema, { releaseIds: [withdrawn] })).toBe(1);
+            const metadata = async (id: string) =>
+                (await query<any[]>(`SELECT metadata FROM "${schema}".conversations WHERE id=$1::uuid`, [id]))[0].metadata;
+            expect(await metadata(gone)).not.toHaveProperty('pendingDraft');
+            // A draft from a release nobody withdrew stays, and so does one with
+            // no provenance at all: erasing a person's pending work because an
+            // unrelated release was retracted costs more than the window is worth.
+            expect(await metadata(kept)).toHaveProperty('pendingDraft');
+            expect(await metadata(anonymous)).toHaveProperty('pendingDraft');
+        });
+
+        it('answers zero for a conversations table with nowhere to hold a draft', async () => {
+            // This runs inside the caller's exclusive privacy fence, so a throw
+            // here would roll back the WHOLE withdrawal of the release — one
+            // under-provisioned tenant would make every retraction impossible.
+            const bare = `${schema}_bare`;
+            await query(`CREATE SCHEMA IF NOT EXISTS "${bare}"`);
+            try {
+                await query(`CREATE TABLE "${bare}".conversations(id UUID PRIMARY KEY)`);
+                expect(await redactPendingDrafts(query, bare, { releaseIds: [withdrawn] })).toBe(0);
+            } finally {
+                await query(`DROP SCHEMA IF EXISTS "${bare}" CASCADE`);
+            }
+        });
     });
 });

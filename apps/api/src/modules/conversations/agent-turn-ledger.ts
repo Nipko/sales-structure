@@ -387,9 +387,21 @@ export async function redactPendingDrafts(query: TurnLedgerQuery, schema: string
     const releaseIds = [...new Set(scope.releaseIds || [])];
     if (releaseIds.some(id => !UUID.test(id))) fail('turn_ledger_release_invalid');
     if (!releaseIds.length) return 0;
+    // A `conversations` without the metadata column holds no draft to reach, and
+    // an erasure must not fail because there was nothing to erase — the same rule
+    // the ledger above follows for a missing table. It matters more here: this
+    // runs inside the caller's exclusive privacy fence, so throwing would roll
+    // back the WHOLE withdrawal of the release rather than this one statement,
+    // and one under-provisioned tenant would make every retraction impossible.
+    const columns = await query<any[]>(
+        `SELECT column_name FROM information_schema.columns
+          WHERE table_schema = $1 AND table_name = 'conversations'`, [schema]);
+    const names = new Set(columns.map(column => String(column.column_name)));
+    if (!names.has('metadata')) return 0;
     const rows = await query<any[]>(
-        `UPDATE conversations
-            SET metadata = COALESCE(metadata,'{}'::jsonb) - 'pendingDraft', updated_at = NOW()
+        `UPDATE "${schema}".conversations
+            SET metadata = COALESCE(metadata,'{}'::jsonb) - 'pendingDraft'
+                ${names.has('updated_at') ? ', updated_at = NOW()' : ''}
           WHERE metadata ? 'pendingDraft'
             AND EXISTS (
                 SELECT 1 FROM jsonb_array_elements_text(

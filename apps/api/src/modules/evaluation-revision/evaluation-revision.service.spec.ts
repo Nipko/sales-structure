@@ -54,11 +54,12 @@ describe('complete guarded evaluation revision',()=>{
         await expect(f.service.assertCurrent(manifest)).resolves.toBeUndefined();
         const release=f.query.mock.calls.find(call=>call[0].includes('"learning_releases"'))!;
         // `evaluation_namespaces` guarda los leases de los namespaces aislados
-        // que la propia evaluación toma y devuelve. Es contabilidad de la
-        // corrida, igual que `evaluation`: si contara, cada evaluación
+        // que la propia evaluación toma y devuelve, y `evaluation_deadline_at`
+        // la cota de reloj que el intento se sella a sí mismo. Es contabilidad
+        // de la corrida, igual que `evaluation`: si contara, cada evaluación
         // invalidaría su propia corrida al anotarse. Ninguna columna de negocio
         // entra acá, y eso lo fija la línea de abajo.
-        expect(release[1]).toEqual(['evaluation','evaluation_status','evaluation_namespaces','updated_at']);
+        expect(release[1]).toEqual(['evaluation','evaluation_status','evaluation_namespaces','evaluation_deadline_at','updated_at']);
         expect(revisionIgnoredColumns('services')).toEqual([]);
     });
     it('distinguishes an unavailable dependency from verified absence without leaking SQL or secrets',async()=>{

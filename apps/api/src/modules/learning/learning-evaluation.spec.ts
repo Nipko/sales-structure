@@ -1,5 +1,6 @@
+import { ConflictException } from '@nestjs/common';
 import { LearningEvaluationService } from './learning-evaluation.service';
-import { LEARNING_DIMENSIONS } from './learning-contracts';
+import { LEARNING_DIMENSIONS, LEARNING_EVALUATION_BUDGET_EXHAUSTED, LEARNING_EVALUATION_DEADLINE_EXCEEDED } from './learning-contracts';
 import { LearningEvaluationProcessor } from './learning-evaluation.module';
 
 const tenantId='11111111-1111-4111-8111-111111111111',agentId='22222222-2222-4222-8222-222222222222';
@@ -17,6 +18,8 @@ function build(){
         claimEvaluationWorker:jest.fn(async(_t:string,_a:string,_r:string,_attempt:string,_hash:string,_worker:string,_expected:string|null)=>structuredClone(run)),
         checkpointEvaluation:jest.fn(),recordEvaluation:jest.fn(async(_t,_a,_r,evidence,_worker?:string)=>evidence),failEvaluation:jest.fn().mockResolvedValue(true),
         registerEvaluationNamespace:jest.fn(),cleanEvaluationNamespaces:jest.fn(),reapEvaluationNamespaces:jest.fn(),
+        reapExpiredEvaluations:jest.fn(),abandonEvaluation:jest.fn().mockResolvedValue(true),
+        consumeEvaluationUnits:jest.fn().mockResolvedValue(1),
         runtimeSourceAuthority:jest.fn(()=>async(invoke:any)=>invoke()),
         withEvaluationSources:jest.fn(async(_t,_a,_r,_attempt,_hash,work)=>work(jest.fn()))};
     let sessionIndex=0;
@@ -300,5 +303,75 @@ describe('Learning A/B uses the full runtime with isolated histories',()=>{
                 expect(replay.turns[1].database.before).toEqual(replay.turns[1].database.after);
             }
         }
+    });
+});
+
+describe('An evaluation attempt runs inside a cost ceiling and a wall clock',()=>{
+    const ceiling=(code:string)=>new ConflictException({error:code});
+    it('charges a unit before every model invocation, including the comparison itself',async()=>{
+        const f=build();await f.service.run(f.job);
+        // Three cases, two arms, two customer turns each, and one judge call per
+        // case. The judge is counted because it is the same money: an evaluator
+        // whose ceiling only watches the replay is bounding two thirds of what
+        // it spends.
+        expect(f.agentTest.test).toHaveBeenCalledTimes(12);
+        expect(f.llm.execute).toHaveBeenCalledTimes(3);
+        expect(f.learning.consumeEvaluationUnits).toHaveBeenCalledTimes(15);
+        for(const call of f.learning.consumeEvaluationUnits.mock.calls) expect(call).toEqual([tenantId,agentId,releaseId,'attempt',1]);
+        // Authority first, then the money: a run that has already lost its claim
+        // must not pay on the way out.
+        const judgeCharge=f.learning.consumeEvaluationUnits.mock.invocationCallOrder.at(-1)!;
+        expect(judgeCharge).toBeLessThan(f.llm.execute.mock.invocationCallOrder.at(-1)!);
+        expect(f.learning.evaluationRun.mock.invocationCallOrder.filter(order=>order<judgeCharge).length).toBeGreaterThan(0);
+    });
+    it.each([LEARNING_EVALUATION_BUDGET_EXHAUSTED,LEARNING_EVALUATION_DEADLINE_EXCEEDED])(
+        'stops the whole attempt on %s instead of charging it to one case',async code=>{
+            // Both ceilings are reached part way through the first case, after
+            // temporary copies of heldout material already exist: the run has to
+            // stop AND still dispose of what it made.
+            const f=build();
+            let reached=0;
+            if(code===LEARNING_EVALUATION_BUDGET_EXHAUSTED)
+                f.learning.consumeEvaluationUnits.mockImplementation(async()=>{if(++reached>=3)throw ceiling(code);return reached;});
+            else f.learning.evaluationRun.mockImplementation(async()=>{if(++reached>=5)throw ceiling(code);return f.run;});
+            await expect(f.service.run(f.job)).rejects.toMatchObject({response:{error:code}});
+            // The reason the loop has to end here: a ceiling recorded as this
+            // case's failure would let the run walk the other two and finish
+            // with a verdict assembled out of cases it never actually ran.
+            expect(f.agentTest.test.mock.calls.length).toBeLessThan(12);
+            expect(f.learning.recordEvaluation).not.toHaveBeenCalled();
+            expect(f.learning.checkpointEvaluation).not.toHaveBeenCalled();
+            expect(f.learning.cleanEvaluationNamespaces.mock.calls[0][4].length).toBeGreaterThan(0);
+        });
+    it('recognizes a ceiling that the replayed runtime swallowed into a runtime error',async()=>{
+        const f=build();
+        // The runtime catches provider faults and reports a string instead of
+        // throwing. Without reading the code out of it, an exhausted budget
+        // reads as an ordinary incomplete replay and the release lands looking
+        // like a candidate that was judged and lost.
+        f.agentTest.test.mockResolvedValueOnce({reply:'',debug:{agentRevision:{configHash:'frozen'},toolCalls:[],ragHits:[],
+            runtimeError:`agent_runtime_failed:${LEARNING_EVALUATION_BUDGET_EXHAUSTED}`,model:'test-model'}} as any);
+        await expect(f.service.run(f.job)).rejects.toMatchObject({response:{error:LEARNING_EVALUATION_BUDGET_EXHAUSTED}});
+        expect(f.learning.recordEvaluation).not.toHaveBeenCalled();
+    });
+    it('cannot land evidence for an attempt whose clock ran out during the last case',async()=>{
+        const f=build();
+        f.learning.recordEvaluation.mockRejectedValueOnce(ceiling(LEARNING_EVALUATION_DEADLINE_EXCEEDED));
+        await expect(f.service.run(f.job)).rejects.toMatchObject({response:{error:LEARNING_EVALUATION_DEADLINE_EXCEEDED}});
+        expect(f.agentTest.releaseSnapshot).not.toHaveBeenCalled();
+    });
+    it('reaps attempts that ran out of time before recovery re-dispatches anything',async()=>{
+        const f=build();
+        const queue={getJob:jest.fn().mockResolvedValue(null),add:jest.fn()};
+        const prisma={tenant:{findMany:jest.fn().mockResolvedValue([{id:tenantId,schemaName:'tenant_learning',isActive:true}])},
+            executeInTenantSchema:jest.fn(async(_schema:string,sql:string)=>sql.includes('to_regclass')?[{relation:'learning_releases'}]
+                :[{id:releaseId,agent_id:agentId,attempt_id:'attempt',worker_token:null}])};
+        const service=new LearningEvaluationService(f.learning as any,f.agentTest as any,f.sandbox as any,f.llm as any,queue as any,prisma as any);
+        await service.recoverQueuedEvaluations();
+        expect(f.learning.reapExpiredEvaluations).toHaveBeenCalledWith(tenantId);
+        // Order matters: an attempt past its deadline cannot land a result, so
+        // handing it to a fresh worker only burns another run to reach the same
+        // wall, and leaves the release sitting as a candidate with no answer.
+        expect(f.learning.reapExpiredEvaluations.mock.invocationCallOrder[0]).toBeLessThan(queue.add.mock.invocationCallOrder[0]);
     });
 });

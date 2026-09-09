@@ -13,6 +13,68 @@ export interface LearningEvaluationSourceScope {
     namespace?:EvalNamespaceLease;
 }
 
+/**
+ * The two ways an evaluation attempt stops without ever having been judged on
+ * its merits. They are separate codes because they answer different operator
+ * questions: one says the run cost more than it was allowed to, the other says
+ * it took longer than it was allowed to.
+ */
+export const LEARNING_EVALUATION_BUDGET_EXHAUSTED = 'learning_evaluation_budget_exhausted';
+export const LEARNING_EVALUATION_DEADLINE_EXCEEDED = 'learning_evaluation_deadline_exceeded';
+/** The closed vocabulary of `learning_evaluation_budget.outcome`. */
+export const LEARNING_EVALUATION_ABANDONMENT: Readonly<Record<string, 'budget_exhausted' | 'deadline_exceeded'>> = {
+    [LEARNING_EVALUATION_BUDGET_EXHAUSTED]: 'budget_exhausted',
+    [LEARNING_EVALUATION_DEADLINE_EXCEEDED]: 'deadline_exceeded',
+};
+
+/**
+ * Recognize an abandonment wherever it surfaced.
+ *
+ * A ceiling can be reached three levels down — inside the replayed turn, whose
+ * runtime catches provider faults and reports them as a `runtimeError` string
+ * rather than a thrown exception. `eval.service.ts` meets the same problem by
+ * rethrowing that string behind an `agent_runtime_failed:` prefix, so both
+ * shapes are read here: an exception (Nest puts the code in `response.error`)
+ * and a bare message that a runtime already flattened.
+ */
+export function learningAbandonmentReason(error: unknown): string | null {
+    const raw = typeof error === 'string' ? error
+        : String((error as any)?.response?.error || (error as any)?.message || '');
+    const code = raw.replace(/^agent_runtime_failed:/, '');
+    return Object.keys(LEARNING_EVALUATION_ABANDONMENT).find(known => code.includes(known)) ?? null;
+}
+
+/**
+ * The two ceilings on one evaluation attempt, read when the attempt is claimed
+ * and then frozen with it, so moving the environment never enlarges a run
+ * already in flight.
+ *
+ * A unit is one model invocation, charged before the call — the same currency
+ * `EvalAutorunStateService.consumeBudget` already spends, so the two evaluators
+ * are counted in the same words. The arithmetic behind the default: a release
+ * replays at most 20 heldout cases against two releases, segmentation caps an
+ * episode near eight messages, and each turn costs a main call plus its
+ * auxiliary ones, which lands a legitimate worst case around 600 units with one
+ * judge call per case on top. 2000 leaves that threefold headroom while still
+ * bounding the one shape in the replay that has no bound of its own: a tool
+ * loop that refuses to terminate.
+ *
+ * The deadline is absolute, not a renewable lease. Liveness is already covered
+ * — the sandbox lease dies with the process and queue recovery reaps an attempt
+ * whose job is gone — so what was missing is the bound that a worker which is
+ * alive and looping cannot renew its way past.
+ */
+export function learningEvaluationCeilings(): { units: number; minutes: number } {
+    const bound = (raw: string | undefined, fallback: number) => {
+        const value = Number(raw);
+        return Number.isFinite(value) && value > 0 ? Math.floor(value) : fallback;
+    };
+    return {
+        units: bound(process.env.LEARNING_EVALUATION_ATTEMPT_MODEL_UNITS, 2000),
+        minutes: bound(process.env.LEARNING_EVALUATION_ATTEMPT_MINUTES, 45),
+    };
+}
+
 export const LEARNING_DIMENSIONS = [
     'accuracy', 'toolUse', 'understanding', 'clarity', 'brevity', 'empathy', 'brandTone', 'uncertainty', 'closure',
 ] as const;

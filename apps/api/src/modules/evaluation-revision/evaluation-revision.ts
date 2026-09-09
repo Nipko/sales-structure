@@ -43,6 +43,11 @@ export function assertRevisionIntegrity(manifest?: EvaluationRevisionManifest): 
 /** Output/telemetry tables do not feed the agent. Everything else is included by default, including new catalogs. */
 export const EVALUATION_OUTPUT_TABLES = new Set([
     'simulation_runs', 'eval_runs', 'eval_autorun_requests', 'eval_autorun_budget', 'eval_scenarios',
+    // The learning evaluator's own spend ledger, for the same reason as
+    // `eval_autorun_budget`: charging a unit is the run writing about itself,
+    // and if that counted as a dependency every charge would invalidate the run
+    // that made it.
+    'learning_evaluation_budget',
     'agent_release_candidates', 'agent_release_evaluations', 'agent_release_reviews',
     'agent_config_proposals', 'conversation_traces', 'turn_traces', 'conversation_quality_scores',
     'agent_quality_snapshots', 'agent_quality_signals', 'analytics_events', 'daily_metrics',
@@ -59,7 +64,11 @@ export const EVALUATION_OUTPUT_TABLES = new Set([
 
 /** Retrieval counters and evaluation bookkeeping cannot invalidate their own run. Business fields stay included. */
 export function revisionIgnoredColumns(table: string): readonly string[] {
-    if (table === 'learning_releases') return ['evaluation', 'evaluation_status', 'evaluation_namespaces', 'updated_at'];
+    // `evaluation_deadline_at` is stamped by the attempt that is about to be
+    // captured against this very revision: counting it would make every
+    // evaluation change the dependencies it was just measured on.
+    if (table === 'learning_releases')
+        return ['evaluation', 'evaluation_status', 'evaluation_namespaces', 'evaluation_deadline_at', 'updated_at'];
     if (['knowledge_documents', 'knowledge_embeddings', 'knowledge_resources', 'knowledge_chunks', 'faqs'].includes(table))
         return ['query_frequency', 'last_accessed_at', 'access_count', 'views', 'view_count', 'retrieval_count'];
     return [];

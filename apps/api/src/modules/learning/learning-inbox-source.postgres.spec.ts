@@ -62,7 +62,7 @@ const databaseUrl=process.env.LEARNING_EVIDENCE_TEST_DATABASE_URL;
         await learning.ensureTables(schema);
     });
     beforeEach(async()=>{
-        await sql(`TRUNCATE learning_sources,learning_releases,contacts,agent_personas,customer_memory_erasure,
+        await sql(`TRUNCATE learning_sources,learning_releases,learning_evaluation_budget,contacts,agent_personas,customer_memory_erasure,
             contact_identities,tool_execution_ledger,leads,opt_out_records,deletion_requests CASCADE`);
         await sql("INSERT INTO contacts VALUES($1::uuid,'Ana','+573101234567','ana@example.test'),($2::uuid,'Beatriz',NULL,NULL)",[contactId,otherContact]);
         await sql("INSERT INTO agent_personas VALUES($1::uuid,'{}'::jsonb)",[agentId]);
@@ -654,5 +654,121 @@ const databaseUrl=process.env.LEARNING_EVIDENCE_TEST_DATABASE_URL;
         const queue={getJob:jest.fn(),add:jest.fn()};
         await new LearningEvaluationService(learning,{} as any,{} as any,llm as any,queue as any,prisma).recoverQueuedEvaluations();
         expect(await exists(copy.lease)).toHaveLength(0);expect(queue.getJob).not.toHaveBeenCalled();expect(queue.add).not.toHaveBeenCalled();
+    });
+
+    const ledger=async(attemptId:string)=>(await sql('SELECT * FROM learning_evaluation_budget WHERE attempt_id=$1::uuid',[attemptId]))[0];
+    const expire=(releaseId:string)=>sql("UPDATE learning_releases SET evaluation_deadline_at=clock_timestamp()-interval '1 second' WHERE id=$1::uuid",[releaseId]);
+
+    it('opens the ledger with the attempt and freezes the ceiling it was claimed under',async()=>{
+        const {source,example}=await imported();
+        const releaseId=await published(source,example),attemptId=randomUUID();
+        await sql("UPDATE learning_releases SET status='candidate' WHERE id=$1::uuid",[releaseId]);
+        process.env.LEARNING_EVALUATION_ATTEMPT_MODEL_UNITS='3';
+        process.env.LEARNING_EVALUATION_ATTEMPT_MINUTES='30';
+        try{
+            await learning.beginEvaluation(tenantId,agentId,releaseId,{attemptId,results:[]});
+            expect(await ledger(attemptId)).toMatchObject({release_id:releaseId,agent_id:agentId,units_used:0,units_max:3,outcome:null});
+            const [release]=await sql('SELECT evaluation_deadline_at>NOW() AS pending FROM learning_releases WHERE id=$1::uuid',[releaseId]);
+            expect(release.pending).toBe(true);
+            // Raising the environment ceiling afterwards must not enlarge a run
+            // already in flight: the allowance belongs to the attempt, not to
+            // whatever the process happens to be configured with right now.
+            process.env.LEARNING_EVALUATION_ATTEMPT_MODEL_UNITS='999';
+            expect(await learning.consumeEvaluationUnits(tenantId,agentId,releaseId,attemptId,3)).toBe(3);
+            await expect(learning.consumeEvaluationUnits(tenantId,agentId,releaseId,attemptId,1))
+                .rejects.toMatchObject({response:{error:'learning_evaluation_budget_exhausted'}});
+            expect((await ledger(attemptId)).units_used).toBe(3);
+        }finally{
+            delete process.env.LEARNING_EVALUATION_ATTEMPT_MODEL_UNITS;
+            delete process.env.LEARNING_EVALUATION_ATTEMPT_MINUTES;
+        }
+    });
+    it('compares the running total against the ceiling, so two workers cannot both fit under it',async()=>{
+        const {source,example}=await imported();const copy=await evaluationCopy(source,example);
+        await sql('INSERT INTO learning_evaluation_budget(attempt_id,release_id,agent_id,units_max) VALUES($1::uuid,$2::uuid,$3::uuid,3)',
+            [copy.attemptId,copy.releaseId,agentId]);
+        const charge=()=>learning.consumeEvaluationUnits(tenantId,agentId,copy.releaseId,copy.attemptId,2);
+        // Both ask for two against an allowance of three. A read-then-write
+        // would let both through — each reads zero — and the attempt would spend
+        // four. One statement that adds and compares in the same breath cannot.
+        const outcomes=await Promise.allSettled([charge(),charge()]);
+        expect(outcomes.filter(result=>result.status==='fulfilled')).toHaveLength(1);
+        expect(outcomes.filter(result=>result.status==='rejected')).toHaveLength(1);
+        expect((await ledger(copy.attemptId)).units_used).toBe(2);
+    });
+    it('refuses every write and every provider reply once the attempt clock has run out',async()=>{
+        const {source,example}=await imported();const copy=await evaluationCopy(source,example);
+        const snapshot={examples:[],heldout:[{source_id:source.id}]};copy.hash=learningSnapshotHash(snapshot);
+        await sql("UPDATE learning_releases SET snapshot=$2::jsonb,snapshot_hash=$3,example_ids='{}',evaluation=evaluation||$4::jsonb WHERE id=$1::uuid",
+            [copy.releaseId,JSON.stringify(snapshot),copy.hash,JSON.stringify({dependencyHash:'dep',agentSnapshot:{configHash:'config'}})]);
+        const evidence={attemptId:copy.attemptId,releaseHash:copy.hash,baselineReleaseId:null,agentRevision:'config',dependencyHash:'dep',
+            results:[{sourceId:source.id,candidateCompleted:true,baselineCompleted:true,candidateScore:90,baselineScore:80,criticalFailures:[],traceHash:'trace'}]};
+        // Control: a deadline still ahead changes nothing at all.
+        await sql("UPDATE learning_releases SET evaluation_deadline_at=NOW()+interval '1 hour' WHERE id=$1::uuid",[copy.releaseId]);
+        await learning.checkpointEvaluation(tenantId,agentId,copy.releaseId,copy.attemptId,evidence.results,copy.hash);
+
+        await expire(copy.releaseId);
+        const deadline={response:{error:'learning_evaluation_deadline_exceeded'}};
+        await expect(learning.evaluationRun(tenantId,agentId,copy.releaseId,copy.attemptId)).rejects.toMatchObject(deadline);
+        await expect(learning.claimEvaluationWorker(tenantId,agentId,copy.releaseId,copy.attemptId,copy.hash,randomUUID(),null)).rejects.toMatchObject(deadline);
+        await expect(learning.checkpointEvaluation(tenantId,agentId,copy.releaseId,copy.attemptId,[{private:'late trace'}],copy.hash)).rejects.toMatchObject(deadline);
+        await expect(learning.recordEvaluation(tenantId,agentId,copy.releaseId,evidence)).rejects.toMatchObject(deadline);
+        expect((await sql('SELECT evaluation_status,evaluation FROM learning_releases'))[0])
+            .toMatchObject({evaluation_status:'running',evaluation:{results:evidence.results}});
+        const invoke=jest.fn();
+        await expect(learning.runtimeSourceAuthority(tenantId,agentId,[],AGENT_TEST_EXECUTION_CONTEXT,{...scopeOf(copy),namespace:undefined})(invoke))
+            .rejects.toBeInstanceOf(LLMSourceAuthorityUnavailable);
+        expect(invoke).not.toHaveBeenCalled();
+    });
+    it('discards a reply from a provider call that outlived the deadline it started under',async()=>{
+        const {source,example}=await imported();const copy=await evaluationCopy(source,example);
+        await sql("UPDATE learning_releases SET evaluation_deadline_at=NOW()+interval '1 hour' WHERE id=$1::uuid",[copy.releaseId]);
+        const usage={promptTokens:10,completionTokens:4,totalTokens:14};
+        // The clock runs while the model is answering, and the fence reads it
+        // again on the way out. The words exist; the attempt no longer has the
+        // authority to keep them.
+        await expect(learning.runtimeSourceAuthority(tenantId,agentId,[],AGENT_TEST_EXECUTION_CONTEXT,{...scopeOf(copy),namespace:undefined})(async()=>{
+            await expire(copy.releaseId);
+            return {content:'Reply that arrived past the deadline',usage,finishReason:'stop'};
+        })).rejects.toMatchObject({message:'llm_source_authority_unavailable',usage});
+    });
+    it('records an abandoned attempt as a state, with what it had already spent',async()=>{
+        const {source,example}=await imported();const copy=await evaluationCopy(source,example);
+        const current=randomUUID();
+        await learning.claimEvaluationWorker(tenantId,agentId,copy.releaseId,copy.attemptId,copy.hash,current,null);
+        await sql('INSERT INTO learning_evaluation_budget(attempt_id,release_id,agent_id,units_max) VALUES($1::uuid,$2::uuid,$3::uuid,10)',
+            [copy.attemptId,copy.releaseId,agentId]);
+        await learning.consumeEvaluationUnits(tenantId,agentId,copy.releaseId,copy.attemptId,4);
+        // A superseded worker cannot seal a ledger the replacement is still
+        // spending from.
+        expect(await learning.abandonEvaluation(tenantId,agentId,copy.releaseId,copy.attemptId,'learning_evaluation_budget_exhausted',randomUUID())).toBe(false);
+        expect(await ledger(copy.attemptId)).toMatchObject({units_used:4,outcome:null});
+
+        expect(await learning.abandonEvaluation(tenantId,agentId,copy.releaseId,copy.attemptId,'learning_evaluation_budget_exhausted',current)).toBe(true);
+        expect((await sql('SELECT evaluation_status,evaluation FROM learning_releases'))[0]).toMatchObject({evaluation_status:'failed',
+            evaluation:{error:'learning_evaluation_budget_exhausted',abandoned:'budget_exhausted',passed:false}});
+        // Cost accounting that only counts the runs that finished understates
+        // exactly the runs that cost the most.
+        expect(await ledger(copy.attemptId)).toMatchObject({units_used:4,outcome:'budget_exhausted'});
+        await expect(learning.consumeEvaluationUnits(tenantId,agentId,copy.releaseId,copy.attemptId,1))
+            .rejects.toMatchObject({response:{error:'learning_evaluation_budget_exhausted'}});
+        expect((await learning.list(tenantId,agentId)).releases[0].evaluation)
+            .toMatchObject({error:'learning_evaluation_budget_exhausted',abandoned:'budget_exhausted'});
+    });
+    it('ends attempts whose worker never came back, and leaves the ones still inside their clock',async()=>{
+        const {source,example}=await imported();
+        const late=await evaluationCopy(source,example),running=await evaluationCopy(source,example);
+        for(const copy of [late,running])await sql('INSERT INTO learning_evaluation_budget(attempt_id,release_id,agent_id,units_used,units_max) VALUES($1::uuid,$2::uuid,$3::uuid,7,10)',
+            [copy.attemptId,copy.releaseId,agentId]);
+        await expire(late.releaseId);
+        await sql("UPDATE learning_releases SET evaluation_deadline_at=NOW()+interval '1 hour' WHERE id=$1::uuid",[running.releaseId]);
+        const queue={getJob:jest.fn(async()=>undefined),add:jest.fn()};
+        await new LearningEvaluationService(learning,{} as any,{} as any,llm as any,queue as any,prisma).recoverQueuedEvaluations();
+        expect((await sql('SELECT evaluation_status,evaluation FROM learning_releases WHERE id=$1::uuid',[late.releaseId]))[0])
+            .toMatchObject({evaluation_status:'failed',evaluation:{error:'learning_evaluation_deadline_exceeded',abandoned:'deadline_exceeded'}});
+        expect(await ledger(late.attemptId)).toMatchObject({units_used:7,outcome:'deadline_exceeded'});
+        // And the reaper does not touch a run that still has time left.
+        expect((await sql('SELECT evaluation_status FROM learning_releases WHERE id=$1::uuid',[running.releaseId]))[0].evaluation_status).toBe('running');
+        expect(queue.add.mock.calls.map(call=>call[1].attemptId)).toEqual([running.attemptId]);
     });
 });

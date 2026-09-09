@@ -4745,6 +4745,28 @@ ALTER TABLE "{{SCHEMA_NAME}}"."learning_releases" ADD COLUMN IF NOT EXISTS evalu
 -- necesita: sin ellas el rollback falla con 42703.
 ALTER TABLE "{{SCHEMA_NAME}}"."learning_releases" ADD COLUMN IF NOT EXISTS retired_by VARCHAR(100);
 ALTER TABLE "{{SCHEMA_NAME}}"."learning_releases" ADD COLUMN IF NOT EXISTS retired_at TIMESTAMPTZ;
+-- Cota de reloj del intento en curso: la sella la base al reclamar el intento y
+-- no se renueva. Vive en la fila de la release porque es la fila que toda
+-- escritura ya bloquea, así que el vencimiento lo decide la misma autoridad y
+-- la misma transacción que decide si este worker sigue siendo el dueño.
+ALTER TABLE "{{SCHEMA_NAME}}"."learning_releases" ADD COLUMN IF NOT EXISTS evaluation_deadline_at TIMESTAMPTZ;
+
+-- Lo que un intento puede gastar y lo que gastó. A propósito NO es un contador
+-- dentro de `learning_releases.evaluation`: ese blob se reemplaza entero al
+-- finalizar, así que las corridas más caras —las que se abandonan a mitad— son
+-- justo las que un blob perdería. `units_max` queda congelado por intento para
+-- que subir el techo del entorno no agrande una corrida ya en vuelo, y
+-- `outcome` es el estado que lee un operador para saber por qué una release
+-- sigue siendo candidata: NULL mientras corre, después una sola palabra.
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."learning_evaluation_budget" (
+        attempt_id UUID PRIMARY KEY, release_id UUID NOT NULL, agent_id UUID NOT NULL,
+        budget_day DATE NOT NULL DEFAULT CURRENT_DATE,
+        units_used INTEGER NOT NULL DEFAULT 0 CHECK (units_used >= 0),
+        units_max INTEGER NOT NULL CHECK (units_max > 0),
+        outcome VARCHAR(40) CHECK (outcome IN ('evaluated','failed','budget_exhausted','deadline_exceeded')),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
+
+CREATE INDEX IF NOT EXISTS idx_learning_evaluation_budget_release ON "{{SCHEMA_NAME}}"."learning_evaluation_budget"(release_id, created_at DESC);
 -- END LEARNING TABLES
 
 -- Durable approved-command delivery stores references and outcomes only.

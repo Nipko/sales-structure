@@ -8,8 +8,13 @@ const tenant='11111111-1111-4111-8111-111111111111',agent='22222222-2222-4222-82
 const releaseId='33333333-3333-4333-8333-333333333333',exampleId='44444444-4444-4444-8444-444444444444';
 const sourceIds=['55555555-5555-4555-8555-555555555555','66666666-6666-4666-8666-666666666666','77777777-7777-4777-8777-777777777777'];
 const scores=()=>Object.fromEntries(LEARNING_DIMENSIONS.map(key=>[key,4]));
+// Matched on the table and the whole-row projection, not on the exact select
+// list: the authority statement also asks the database whether the attempt's
+// deadline has passed, and pinning the projection here only makes the fixture
+// brittle without testing anything.
+const releaseSelect=(sql:string)=>sql.trimStart().startsWith('SELECT *')&&sql.includes('FROM learning_releases');
 function build(){
-    const query=jest.fn(async(_sql:string,_params:any[]=[])=>_sql.includes('SELECT * FROM learning_releases')?[release()]:[{id:exampleId}] as any[]);
+    const query=jest.fn(async(_sql:string,_params:any[]=[])=>releaseSelect(_sql)?[release()]:[{id:exampleId}] as any[]);
     const prisma={getTenantSchemaName:jest.fn().mockResolvedValue('tenant_learning'),
         executeInTenantSchema:jest.fn((_schema:string,sql:string,params:any[])=>query(sql,params)),
         transactionInTenantSchema:jest.fn((_schema:string,callback:any)=>callback(query))};
@@ -77,7 +82,7 @@ describe('Learning publication safety',()=>{
         const {service,query}=build();jest.spyOn(service as any,'loadRelease').mockResolvedValue(release());
         jest.spyOn(service as any,'assertReleaseSourcesAvailable').mockResolvedValue(undefined);
         await expect(service.recordEvaluation(tenant,agent,releaseId,{...evidence(),attemptId:'old'})).rejects.toThrow();
-        query.mockImplementation(async sql=>sql.includes('SELECT * FROM learning_releases')?[{...release(),status:'retired'}]:[]);
+        query.mockImplementation(async sql=>releaseSelect(sql)?[{...release(),status:'retired'}]:[]);
         await expect(service.recordEvaluation(tenant,agent,releaseId,evidence())).rejects.toBeInstanceOf(ConflictException);
     });
     it('never treats the absence of a source row as a valid release',async()=>{

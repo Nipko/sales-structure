@@ -17,13 +17,18 @@ import { assertLearningContactsAllowed, assertLearningInboxSource, learningInbox
     readLearningInboxSource, retireLearningSources,
     LearningInboxSourceUnavailable, type LearningInboxEvidence, type LearningSourceQuery } from './learning-inbox-source';
 import {
-    LEARNING_DIMENSIONS, claimsCompletedOperation, learningExclusions, learningHash, learningSnapshotHash, learningSplit,
+    LEARNING_DIMENSIONS, LEARNING_EVALUATION_ABANDONMENT, LEARNING_EVALUATION_BUDGET_EXHAUSTED, LEARNING_EVALUATION_DEADLINE_EXCEEDED,
+    claimsCompletedOperation, learningEvaluationCeilings, learningExclusions, learningHash, learningSnapshotHash, learningSplit,
     learningTextSimilarity, normalizeLearningText, sanitizeLearningText, segmentLearningConversation,
     type LearningFileImport, type LearningJudgment, type LearningMessage, type LearningReview,
     type RuntimeLearningExample, type RuntimeLearningQuery, type LearningEvaluationEvidence, type LearningEvaluationSourceScope,
 } from './learning-contracts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+// Expiry is decided by the database clock inside the very statement that reads
+// the row, so a worker cannot outlive its deadline by disagreeing about the
+// time, and cannot slip a write in between the check and the write.
+const EVALUATION_EXPIRED = `evaluation_deadline_at IS NOT NULL AND evaluation_deadline_at<=clock_timestamp() AS evaluation_expired`;
 const MAX_IMPORT_CHARS = 200_000;
 // Prisma cannot deserialize pgvector via SELECT e.*; embeddings stay in SQL comparisons.
 const EXAMPLE_COLUMNS = ['id','source_id','agent_id','kind','intent','episode','content_hash','response_pattern',
@@ -234,7 +239,15 @@ export class LearningService {
             completedCases:(release.evaluation.results||[]).filter((r:any)=>r.candidateCompleted&&r.baselineCompleted).length,
             failedCases:(release.evaluation.results||[]).filter((r:any)=>!r.candidateCompleted||!r.baselineCompleted||r.criticalFailures?.length||
                 r.candidateScore<70||r.candidateScore<r.baselineScore-5).length,
-            error:release.evaluation.error?'learning_evaluation_unavailable':undefined,
+            // A failure reason can be a provider exception body, so it stays
+            // opaque by default. The two ceilings are the exception: they are
+            // server-issued codes with no borrowed text in them, and collapsing
+            // them here is what left "why is this release still a candidate?"
+            // without an answer.
+            error:release.evaluation.error
+                ?(LEARNING_EVALUATION_ABANDONMENT[release.evaluation.error]?release.evaluation.error:'learning_evaluation_unavailable')
+                :undefined,
+            abandoned:release.evaluation.error?LEARNING_EVALUATION_ABANDONMENT[release.evaluation.error]??null:null,
         }:null}));
         return { examples: examples.filter(example=>example.split==='train').map(example=>({...example,
             sourceAvailability:availability.get(example.source_id)||'changed'})), releases:publicReleases, coverage };
@@ -600,10 +613,107 @@ export class LearningService {
     async beginEvaluation(tenantId:string,agentId:string,releaseId:string,run:any){
         const schema=await this.schema(tenantId);
         await this.createEvaluationSnapshot(tenantId,agentId,releaseId);
+        const ceilings=learningEvaluationCeilings();
+        // The deadline comes from the database clock, not this process: the node
+        // that stamps the attempt is not necessarily the node that runs it, and
+        // a worker must never be able to grant itself more time by disagreeing
+        // about what time it is.
         const claimed=await this.prisma.executeInTenantSchema<any[]>(schema,`UPDATE learning_releases
-            SET evaluation_status='running',evaluation=$3::jsonb WHERE id=$1::uuid AND agent_id=$2::uuid
-            AND status='candidate' AND evaluation_status<>'running' RETURNING id`,[releaseId,agentId,JSON.stringify(run)]);
+            SET evaluation_status='running',evaluation=$3::jsonb,evaluation_deadline_at=NOW()+make_interval(mins=>$4::int)
+            WHERE id=$1::uuid AND agent_id=$2::uuid
+            AND status='candidate' AND evaluation_status<>'running' RETURNING id`,[releaseId,agentId,JSON.stringify(run),ceilings.minutes]);
         if(!claimed.length)throw new ConflictException({error:'learning_evaluation_in_progress'});
+        // Opening the ledger here freezes this attempt's ceiling. If this write
+        // is the one that is lost, the first charge recreates the row rather
+        // than failing the run — an unopened ledger is not evidence of spend.
+        if(UUID.test(run?.attemptId??''))await this.prisma.executeInTenantSchema(schema,`INSERT INTO learning_evaluation_budget
+            (attempt_id,release_id,agent_id,units_max) VALUES($1::uuid,$2::uuid,$3::uuid,$4::int)
+            ON CONFLICT (attempt_id) DO NOTHING`,[run.attemptId,releaseId,agentId,ceilings.units]);
+    }
+
+    /**
+     * Charge model invocations against this attempt's ceiling, atomically.
+     *
+     * One statement, so two workers racing over the same attempt cannot both
+     * pass the same remaining allowance; a read-then-write would let both. The
+     * charge happens BEFORE the provider call, because a ceiling that counts
+     * what already came back does not bound anything. `units_max` is read from
+     * the stored row and never from `EXCLUDED`, so a ceiling raised in the
+     * environment does not retroactively enlarge a run already in flight, and a
+     * sealed `outcome` refuses further spend: ending the attempt is what stops
+     * the money, not the worker noticing that it ended.
+     */
+    async consumeEvaluationUnits(tenantId:string,agentId:string,releaseId:string,attemptId:string,units:number){
+        if(!UUID.test(attemptId)||!Number.isInteger(units)||units<1)throw new BadRequestException({error:'invalid_learning_evaluation_units'});
+        const schema=await this.schema(tenantId);
+        const ceiling=learningEvaluationCeilings().units;
+        const charged=await this.prisma.executeInTenantSchema<any[]>(schema,`INSERT INTO learning_evaluation_budget
+            (attempt_id,release_id,agent_id,units_used,units_max)
+            SELECT $1::uuid,$2::uuid,$3::uuid,$4::int,$5::int WHERE $4::int<=$5::int
+            ON CONFLICT (attempt_id) DO UPDATE SET units_used=learning_evaluation_budget.units_used+EXCLUDED.units_used,updated_at=NOW()
+            WHERE learning_evaluation_budget.outcome IS NULL
+              AND learning_evaluation_budget.units_used+EXCLUDED.units_used<=learning_evaluation_budget.units_max
+            RETURNING units_used`,[attemptId,releaseId,agentId,units,ceiling]);
+        if(!charged.length)throw new ConflictException({error:LEARNING_EVALUATION_BUDGET_EXHAUSTED});
+        return charged[0].units_used as number;
+    }
+
+    /** Close the ledger with how the attempt ended. Never with free text: the
+     * caller's reason may be a provider exception body. */
+    private async sealEvaluationBudget(query:LearningSourceQuery,attemptId:string,outcome:string){
+        await query(`UPDATE learning_evaluation_budget SET outcome=$2,updated_at=NOW()
+            WHERE attempt_id=$1::uuid AND outcome IS NULL`,[attemptId,outcome]);
+    }
+
+    /**
+     * End an attempt that reached a ceiling, as a state rather than a silence.
+     *
+     * The release turns terminal and the ledger closes in ONE transaction, so
+     * an attempt can never be recorded as abandoned while its ledger still
+     * accepts charges. The ledger is only sealed when the release CAS actually
+     * won: a superseded worker arriving late must not seal the ledger out from
+     * under the replacement that now owns the same attempt.
+     */
+    async abandonEvaluation(tenantId:string,agentId:string,releaseId:string,attemptId:string,reason:string,workerToken?:string){
+        const outcome=LEARNING_EVALUATION_ABANDONMENT[reason];
+        if(!outcome)throw new BadRequestException({error:'invalid_learning_abandonment'});
+        const schema=await this.schema(tenantId);
+        return this.prisma.transactionInTenantSchema(schema,async query=>{
+            const updated=await query<any[]>(`UPDATE learning_releases SET evaluation_status='failed',
+                evaluation=COALESCE(evaluation,'{}'::jsonb)||$4::jsonb WHERE id=$1::uuid AND agent_id=$2::uuid AND status='candidate'
+                AND evaluation_status='running' AND evaluation->>'attemptId'=$3
+                AND (evaluation->>'workerToken') IS NOT DISTINCT FROM $5::text RETURNING id`,
+                [releaseId,agentId,attemptId,JSON.stringify({error:reason,passed:false,abandoned:outcome,completedAt:new Date().toISOString()}),workerToken??null]);
+            if(!updated.length)return false;
+            await this.sealEvaluationBudget(query,attemptId,outcome);
+            return true;
+        });
+    }
+
+    /**
+     * Abandon every attempt whose wall clock ran out, without needing to know
+     * which worker held it.
+     *
+     * A crashed worker leaves nobody to notice its own deadline, and a worker
+     * that is alive but wedged will not notice it either. The deadline itself is
+     * the authority here — no write path can land a result past it — so the
+     * reaper does not have to match a worker token to be safe.
+     */
+    async reapExpiredEvaluations(tenantId:string){
+        const schema=await this.schema(tenantId);
+        const expired=await this.prisma.executeInTenantSchema<any[]>(schema,`UPDATE learning_releases SET evaluation_status='failed',
+            evaluation=COALESCE(evaluation,'{}'::jsonb)||jsonb_build_object('error',$1::text,'passed',false,
+                'abandoned',$2::text,'completedAt',to_char(NOW() AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'))
+            WHERE status='candidate' AND evaluation_status='running'
+              AND evaluation_deadline_at IS NOT NULL AND evaluation_deadline_at<=clock_timestamp()
+            RETURNING id,evaluation->>'attemptId' AS attempt_id`,
+            [LEARNING_EVALUATION_DEADLINE_EXCEEDED,LEARNING_EVALUATION_ABANDONMENT[LEARNING_EVALUATION_DEADLINE_EXCEEDED]]);
+        for(const row of expired){
+            if(!row.attempt_id)continue;
+            await this.prisma.executeInTenantSchema(schema,`UPDATE learning_evaluation_budget SET outcome=$2,updated_at=NOW()
+                WHERE attempt_id=$1::uuid AND outcome IS NULL`,[row.attempt_id,LEARNING_EVALUATION_ABANDONMENT[LEARNING_EVALUATION_DEADLINE_EXCEEDED]]);
+        }
+        return expired.length;
     }
 
     /** The same complete dependency manifest used by tests, gates and simulations. */
@@ -614,10 +724,14 @@ export class LearningService {
 
     async evaluationRun(tenantId:string,agentId:string,releaseId:string,attemptId:string,workerToken?:string){
         const schema=await this.schema(tenantId);
-        const release=await this.loadRelease(schema,agentId,releaseId);
+        const release=await this.loadRelease(schema,agentId,releaseId,true);
         if(release.status!=='candidate'||release.evaluation_status!=='running'||release.evaluation?.attemptId!==attemptId
             ||(workerToken!==undefined&&release.evaluation?.workerToken!==workerToken))
             throw new ConflictException({error:'learning_evaluation_superseded'});
+        // Named separately from a takeover: an attempt that ran out of time and
+        // an attempt that was replaced are different answers to the same
+        // question, and the worker only stops promptly if it is told which.
+        if(release.evaluation_expired)throw new ConflictException({error:LEARNING_EVALUATION_DEADLINE_EXCEEDED});
         await this.assertReleaseSourcesAvailable(schema,release);
         return release.evaluation;
     }
@@ -630,10 +744,15 @@ export class LearningService {
         const schema=await this.schema(tenantId);
         return this.prisma.transactionInTenantSchema(schema,async query=>{
             await query('SELECT pg_advisory_xact_lock_shared(hashtextextended($1,0))::text',[`agent-privacy:${schema}`]);
-            const [release]=await query<any[]>('SELECT * FROM learning_releases WHERE id=$1::uuid AND agent_id=$2::uuid FOR UPDATE',[releaseId,agentId]);
+            const [release]=await query<any[]>(`SELECT *,${EVALUATION_EXPIRED} FROM learning_releases
+                WHERE id=$1::uuid AND agent_id=$2::uuid FOR UPDATE`,[releaseId,agentId]);
             if(!release||release.status!=='candidate'||release.evaluation_status!=='running'||release.evaluation?.attemptId!==attemptId
                 ||release.snapshot_hash!==releaseHash||learningSnapshotHash(release.snapshot)!==releaseHash)
                 throw new ConflictException({error:'learning_evaluation_superseded'});
+            // A restart is exactly the case a deadline exists for: without this,
+            // a worker that comes back hours later takes the attempt over and
+            // resumes spending on a run whose time was up long ago.
+            if(release.evaluation_expired)throw new ConflictException({error:LEARNING_EVALUATION_DEADLINE_EXCEEDED});
             if((release.evaluation?.workerToken??null)!==expectedWorkerToken&&release.evaluation?.workerToken!==workerToken)
                 throw new ConflictException({error:'learning_worker_changed'});
             await this.assertReleaseSourcesAvailable(schema,release,query);
@@ -670,11 +789,17 @@ export class LearningService {
         const schema=await this.schema(tenantId);
         return this.prisma.transactionInTenantSchema(schema,async query=>{
             await query(`SELECT pg_advisory_xact_lock_shared(hashtextextended($1,0))::text`,[`agent-privacy:${schema}`]);
-            const [release]=await query<any[]>(`SELECT * FROM learning_releases WHERE id=$1::uuid AND agent_id=$2::uuid FOR UPDATE`,[releaseId,agentId]);
+            const [release]=await query<any[]>(`SELECT *,${EVALUATION_EXPIRED} FROM learning_releases
+                WHERE id=$1::uuid AND agent_id=$2::uuid FOR UPDATE`,[releaseId,agentId]);
             if(!release||release.status!=='candidate'||release.evaluation_status!=='running'||release.evaluation?.attemptId!==attemptId
                 ||(release.evaluation?.workerToken??null)!==(workerToken??null)
                 ||release.snapshot_hash!==releaseHash||learningSnapshotHash(release.snapshot)!==releaseHash)
                 throw new ConflictException({error:'learning_evaluation_superseded'});
+            // Every checkpoint, every temporary copy and the final evidence pass
+            // through here holding this row's lock, so this one predicate is
+            // what makes an expired attempt unable to land a result — the same
+            // authority and the same transaction that refuse a superseded one.
+            if(release.evaluation_expired)throw new ConflictException({error:LEARNING_EVALUATION_DEADLINE_EXCEEDED});
             await this.assertReleaseSourcesAvailable(schema,release,query);
             if(validateBaseline&&release.baseline_release_id){
                 const [baseline]=await query<any[]>('SELECT * FROM learning_releases WHERE id=$1::uuid AND agent_id=$2::uuid FOR SHARE',
@@ -723,12 +848,18 @@ export class LearningService {
 
     async failEvaluation(tenantId:string,agentId:string,releaseId:string,attemptId:string,reason:string,workerToken?:string){
         const schema=await this.schema(tenantId);
-        const updated=await this.prisma.executeInTenantSchema<any[]>(schema,`UPDATE learning_releases SET evaluation_status='failed',
-            evaluation=evaluation||$4::jsonb WHERE id=$1::uuid AND agent_id=$2::uuid AND status='candidate'
-            AND evaluation_status='running' AND evaluation->>'attemptId'=$3
-            AND (evaluation->>'workerToken') IS NOT DISTINCT FROM $5::text RETURNING id`,
-            [releaseId,agentId,attemptId,JSON.stringify({error:reason,passed:false,completedAt:new Date().toISOString()}),workerToken??null]);
-        return updated.length>0;
+        // The ledger closes with the release or not at all: a terminal attempt
+        // whose ledger stayed open would still accept charges from a worker that
+        // has not noticed it lost.
+        return this.prisma.transactionInTenantSchema(schema,async query=>{
+            const updated=await query<any[]>(`UPDATE learning_releases SET evaluation_status='failed',
+                evaluation=evaluation||$4::jsonb WHERE id=$1::uuid AND agent_id=$2::uuid AND status='candidate'
+                AND evaluation_status='running' AND evaluation->>'attemptId'=$3
+                AND (evaluation->>'workerToken') IS NOT DISTINCT FROM $5::text RETURNING id`,
+                [releaseId,agentId,attemptId,JSON.stringify({error:reason,passed:false,completedAt:new Date().toISOString()}),workerToken??null]);
+            if(updated.length&&UUID.test(attemptId))await this.sealEvaluationBudget(query,attemptId,'failed');
+            return updated.length>0;
+        });
     }
 
     /** Only the server-side full-runtime evaluation module calls this method. */
@@ -750,6 +881,9 @@ export class LearningService {
             WHERE id=$1::uuid AND agent_id=$2::uuid AND status='candidate' AND evaluation_status='running'
             AND evaluation->>'attemptId'=$5 RETURNING id`,[releaseId,agentId,passed?'passed':'failed',JSON.stringify(evaluation),evidence.attemptId]);
         if(!updated.length)throw new ConflictException({error:'learning_evaluation_superseded'});
+        // `evaluated` regardless of the verdict: the ledger records how the
+        // attempt ended, not whether the candidate won.
+        await this.sealEvaluationBudget(query,evidence.attemptId,'evaluated');
         return evaluation;
         },true,workerToken);
     }
@@ -806,9 +940,13 @@ export class LearningService {
         });
     }
 
-    private async loadRelease(schema:string,agentId:string,releaseId:string){
+    /** `withDeadline` is opt-in because `rollback` reads through here without
+     * `ensureTables`, and naming a column a lagging tenant lacks is how the
+     * retraction path broke with 42703 the last time. */
+    private async loadRelease(schema:string,agentId:string,releaseId:string,withDeadline=false){
         if(!UUID.test(releaseId)||!UUID.test(agentId)) throw new BadRequestException({error:'invalid_learning_release'});
-        const rows=await this.prisma.executeInTenantSchema<any[]>(schema,`SELECT * FROM learning_releases WHERE id=$1::uuid AND agent_id=$2::uuid`,[releaseId,agentId]);
+        const rows=await this.prisma.executeInTenantSchema<any[]>(schema,`SELECT *${withDeadline?`,${EVALUATION_EXPIRED}`:''}
+            FROM learning_releases WHERE id=$1::uuid AND agent_id=$2::uuid`,[releaseId,agentId]);
         if(!rows.length) throw new BadRequestException({error:'learning_release_not_found'});
         if(learningSnapshotHash(rows[0].snapshot)!==rows[0].snapshot_hash) throw new ConflictException({error:'learning_release_snapshot_changed'});
         return rows[0];
@@ -953,9 +1091,13 @@ export class LearningService {
      * No conversation row locks are retained across the external request.
      */
     private async assertEvaluationSourceScope(query:LearningSourceQuery,schema:string,tenantId:string,agentId:string,scope:LearningEvaluationSourceScope){
-        const [release]=await query<any[]>('SELECT * FROM learning_releases WHERE id=$1::uuid AND agent_id=$2::uuid',[scope.releaseId,agentId]);
+        // The fence runs again after the provider answers, so the deadline read
+        // here is also what discards a reply that arrived past it: the model may
+        // have spoken, but an expired attempt does not get to keep the words.
+        const [release]=await query<any[]>(`SELECT *,${EVALUATION_EXPIRED} FROM learning_releases
+            WHERE id=$1::uuid AND agent_id=$2::uuid`,[scope.releaseId,agentId]);
         if(!release||release.status!=='candidate'||release.evaluation_status!=='running'||release.evaluation?.attemptId!==scope.attemptId
-            ||(release.evaluation?.workerToken??null)!==(scope.workerToken??null)
+            ||(release.evaluation?.workerToken??null)!==(scope.workerToken??null)||release.evaluation_expired
             ||release.snapshot_hash!==scope.releaseHash||learningSnapshotHash(release.snapshot)!==scope.releaseHash
             ||release.baseline_release_id!==scope.baselineReleaseId)throw new LLMSourceAuthorityUnavailable();
         await this.assertReleaseSourcesAvailable(schema,release,query,false);

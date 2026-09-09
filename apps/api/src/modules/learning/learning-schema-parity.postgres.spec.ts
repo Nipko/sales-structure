@@ -31,8 +31,14 @@ import { LEARNING_SCHEMA } from './learning-schema';
 const connection = process.env.LEARNING_EVIDENCE_TEST_DATABASE_URL;
 const integration = connection ? describe : describe.skip;
 
-const TABLES = ['learning_sources', 'learning_examples', 'learning_releases', 'learning_reviews'];
-const MIGRATION = '20260908210000_provision_learning_tables';
+const TABLES = ['learning_sources', 'learning_examples', 'learning_releases', 'learning_reviews', 'learning_evaluation_budget'];
+// In deploy order. A second migration is not a replacement for the first: the
+// aged tenant needs both applied, in sequence, to reach the shape the bootstrap
+// constant produces in one pass.
+const MIGRATIONS = ['20260908210000_provision_learning_tables', '20260908220000_bound_learning_evaluation_cost_and_deadline'];
+const WIDENED = ['evaluation_deadline_at', 'evaluation_namespaces', 'retired_at', 'retired_by', 'source_evidence'];
+const migrations = () => MIGRATIONS.map(name =>
+    readFileSync(resolve(__dirname, `../../../prisma/migrations/${name}/migration.sql`), 'utf8'));
 
 integration('the three definitions of the learning tables agree', () => {
     const suffix = randomUUID().replace(/-/g, '');
@@ -80,7 +86,7 @@ integration('the three definitions of the learning tables agree', () => {
         const tenantId = randomUUID();
         await q('INSERT INTO public.tenants(id, schema_name) VALUES($1::uuid,$2)', [tenantId, schemas.migrated]);
         try {
-            await q(readFileSync(resolve(__dirname, `../../../prisma/migrations/${MIGRATION}/migration.sql`), 'utf8'));
+            for (const migration of migrations()) await q(migration);
         } finally {
             await q('DELETE FROM public.tenants WHERE id=$1::uuid', [tenantId]);
         }
@@ -153,22 +159,26 @@ integration('the three definitions of the learning tables agree', () => {
         try {
             await q(`SET search_path TO "${aged}", public`);
             for (const sql of LEARNING_SCHEMA) if (!/^\s*ALTER TABLE/.test(sql)) await q(sql);
+            // A table added after the tenant was created is the other half of
+            // the same case: an aged tenant does not have it, and the bootstrap
+            // constant cannot be used to pretend it does. Dropping it here is
+            // what makes the migration prove it reaches such a tenant, rather
+            // than no-opping over a table the constant just built.
+            await q('DROP TABLE learning_evaluation_budget');
             await q('SET search_path TO public');
             const before = (await q(
                 `SELECT column_name FROM information_schema.columns
-                 WHERE table_schema=$1 AND column_name IN
-                   ('retired_by','retired_at','evaluation_namespaces','source_evidence')`, [aged])).length;
+                 WHERE table_schema=$1 AND column_name = ANY($2)`, [aged, WIDENED])).length;
             expect(before).toBe(0);
 
             await q('INSERT INTO public.tenants(id, schema_name) VALUES($1::uuid,$2)', [tenantId, aged]);
-            await q(readFileSync(resolve(__dirname, `../../../prisma/migrations/${MIGRATION}/migration.sql`), 'utf8'));
+            for (const migration of migrations()) await q(migration);
 
             const widened = (await q(
                 `SELECT column_name FROM information_schema.columns
                  WHERE table_schema=$1 AND table_name IN ('learning_releases','learning_sources')
-                   AND column_name IN ('retired_by','retired_at','evaluation_namespaces','source_evidence')
-                 ORDER BY column_name`, [aged])).map(row => row.column_name);
-            expect(widened).toEqual(['evaluation_namespaces', 'retired_at', 'retired_by', 'source_evidence']);
+                   AND column_name = ANY($2) ORDER BY column_name`, [aged, WIDENED])).map(row => row.column_name);
+            expect(widened).toEqual([...WIDENED].sort());
 
             // And it lands on the same shape as every other path, so an aged
             // tenant is not left one migration behind for the next reader.

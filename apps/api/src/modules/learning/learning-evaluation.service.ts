@@ -14,7 +14,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { EVAL_SANDBOX_CONTACT_ID,EVAL_WRITER_SANDBOX_FAMILIES } from '../conversations/agent-test-tool-policy';
 import { LLMRouterService } from '../ai/router/llm-router.service';
 import { LearningService } from './learning.service';
-import { LEARNING_DIMENSIONS, learningHash, learningSnapshotHash, sanitizeLearningText, type LearningEvaluationEvidence, type LearningEvaluationSourceScope, type LearningMessage } from './learning-contracts';
+import { LEARNING_DIMENSIONS, learningAbandonmentReason, learningHash, learningSnapshotHash, sanitizeLearningText, type LearningEvaluationEvidence, type LearningEvaluationSourceScope, type LearningMessage } from './learning-contracts';
 import { captureLearningLedger,verifyLearningOperation,type LearningOperationScope } from './learning-operation-evidence';
 
 export const LEARNING_EVALUATION_QUEUE = 'learning-evaluation';
@@ -62,6 +62,12 @@ export class LearningEvaluationService {
                 const tables=await this.prisma.executeInTenantSchema<any[]>(tenant.schemaName,`SELECT to_regclass($1)::text AS relation`,[`${tenant.schemaName}.learning_releases`]);
                 if(!tables[0]?.relation)continue;
                 await this.learning.reapEvaluationNamespaces(tenant.id);
+                // Before re-enqueueing anything: an attempt whose clock ran out
+                // is not waiting for a worker, it is over. Re-dispatching it
+                // would hand a fresh worker an attempt that can no longer land a
+                // result, and the release would sit as a candidate forever with
+                // nothing on record saying why.
+                await this.learning.reapExpiredEvaluations(tenant.id);
                 if(!tenant.isActive)continue;
                 const requests=await this.prisma.executeInTenantSchema<any[]>(tenant.schemaName,`SELECT id,agent_id,evaluation->>'attemptId' AS attempt_id,evaluation->>'workerToken' AS worker_token
                     FROM learning_releases WHERE status='candidate' AND evaluation_status='running'`);
@@ -109,19 +115,23 @@ export class LearningEvaluationService {
             };
             const copy=(text:string)=>this.learning.withEvaluationSources(tenantId,agentId,releaseId,attemptId,candidate.releaseHash,
                 async()=>session.recordInbound(text),false,workerToken);
+            // One model invocation, charged before it happens. Authority first,
+            // then the money: the order `AgentReleaseService` already uses, so a
+            // run that has lost its claim never spends on the way out.
+            const charge=async(units:number)=>{await this.learning.consumeEvaluationUnits(tenantId,agentId,releaseId,attemptId,units);};
             for(const scenario of candidate.cases){
                 if(results.some(result=>result.sourceId===scenario.sourceId))continue;
                 await assertCurrent();
                 const guard=async()=>{await session.assertLease();await assertCurrent();};
-                const baseline=await this.replay(tenantId,agentId,scenario,agentSnapshot,candidate.baselineReleaseId,session,guard,{register,copy,sourceScope});
-                const treatment=await this.replay(tenantId,agentId,scenario,agentSnapshot,releaseId,session,guard,{register,copy,sourceScope});
+                const baseline=await this.replay(tenantId,agentId,scenario,agentSnapshot,candidate.baselineReleaseId,session,guard,charge,{register,copy,sourceScope});
+                const treatment=await this.replay(tenantId,agentId,scenario,agentSnapshot,releaseId,session,guard,charge,{register,copy,sourceScope});
                 const criticalFailures=[...baseline.failures.map(f=>`baseline:${f}`),...treatment.failures.map(f=>`candidate:${f}`)];
                 if(JSON.stringify(baseline.turns.map(t=>t.model))!==JSON.stringify(treatment.turns.map(t=>t.model)))
                     criticalFailures.push('model_routing_changed');
                 let candidateScore=0,baselineScore=0,judgment:any=null;
                 if(baseline.completed&&treatment.completed){
                     try{
-                        await guard();
+                        await guard();await charge(1);
                         // Rotate A/B labels deterministically to avoid a position preference.
                         const candidateFirst=parseInt(learningHash(scenario.sourceId).slice(0,2),16)%2===0;
                         judgment=await this.judge(tenantId,scenario.language,agentSnapshot,candidateFirst?treatment:baseline,candidateFirst?baseline:treatment,sourceScope);
@@ -130,7 +140,13 @@ export class LearningEvaluationService {
                         candidateScore=score(candidateFirst?'A':'B');baselineScore=score(candidateFirst?'B':'A');
                         criticalFailures.push(...judgment.A.criticalFailures.map((f:string)=>`${candidateFirst?'candidate':'baseline'}:${f}`),
                             ...judgment.B.criticalFailures.map((f:string)=>`${candidateFirst?'baseline':'candidate'}:${f}`));
-                    }catch{criticalFailures.push('comparison_unavailable');}
+                    }catch(error){
+                        // A ceiling is not one unavailable comparison. Recording
+                        // it as one would let the loop walk the remaining cases
+                        // and finish with a verdict built from nothing.
+                        if(learningAbandonmentReason(error))throw error;
+                        criticalFailures.push('comparison_unavailable');
+                    }
                 }
                 const traces={baseline,treatment,judgment};
                 results.push({sourceId:scenario.sourceId,candidateCompleted:treatment.completed,baselineCompleted:baseline.completed,
@@ -149,7 +165,11 @@ export class LearningEvaluationService {
     }
 
     private async replay(tenantId:string,agentId:string,scenario:{messages:LearningMessage[];channel:string},snapshot:AgentEvaluationSnapshot,
-        releaseId:string|null,session:EvalSandboxSession,guard:()=>Promise<void>,sourceIO?:{register():Promise<void>;copy(text:string):Promise<string>;sourceScope:LearningEvaluationSourceScope}):Promise<Replay>{
+        releaseId:string|null,session:EvalSandboxSession,guard:()=>Promise<void>,
+        // Required, unlike `sourceIO`: a replay that could be constructed
+        // without a way to charge would be a way to call the model for free.
+        charge:(units:number)=>Promise<void>,
+        sourceIO?:{register():Promise<void>;copy(text:string):Promise<string>;sourceScope:LearningEvaluationSourceScope}):Promise<Replay>{
         const replay:Replay={completed:false,failures:[],turns:[]};
         const history:Array<{role:'user'|'assistant';content:string}>=[];
         try{
@@ -167,8 +187,16 @@ export class LearningEvaluationService {
                     sandboxNamespace:session.sandboxNamespace,sandboxInboundMessageId,
                     learningEvaluationSource:sourceIO?{...sourceIO.sourceScope,namespace:session.sandboxNamespace}:undefined,
                     sandboxContactId:session.sandboxContactId,sandboxConversationId:session.sandboxConversationId,
-                    beforeToolExecution:guard,beforeModelExecution:guard});
+                    beforeToolExecution:guard,beforeModelExecution:async()=>{await guard();await charge(1);}});
                 const debug=response.debug as any;
+                // The replayed runtime catches its own provider faults and hands
+                // back a `runtimeError` string instead of throwing, so a ceiling
+                // reached inside the turn would be flattened into an ordinary
+                // incomplete replay. Read the code out before that text is
+                // dropped, or the run keeps walking cases it can no longer pay
+                // for and ends up looking like a candidate that failed on merit.
+                const abandoned=learningAbandonmentReason(debug.runtimeError);
+                if(abandoned)throw new ConflictException({error:abandoned});
                 if(debug.runtimeError||!response.reply?.trim())throw new Error('runtime_incomplete');
                 if(debug.agentRevision?.configHash!==snapshot.configHash)throw new Error('agent_snapshot_changed');
                 const calls=debug.toolCalls||[];
@@ -193,7 +221,12 @@ export class LearningEvaluationService {
                 history.push({role:'user',content:message.text},{role:'assistant',content:response.reply});
             }
             replay.completed=replay.turns.length>0;
-        }catch(error:any){replay.failures.push(String(error.message||'runtime_failed').slice(0,160));}
+        }catch(error:any){
+            // Everything else is evidence about this case; a ceiling is a fact
+            // about the whole attempt and has to leave the loop.
+            if(learningAbandonmentReason(error))throw error;
+            replay.failures.push(String(error.message||'runtime_failed').slice(0,160));
+        }
         return replay;
     }
 

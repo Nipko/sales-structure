@@ -46,4 +46,27 @@ export const LEARNING_SCHEMA = [
     // widening is what reaches it.
     `ALTER TABLE learning_releases ADD COLUMN IF NOT EXISTS retired_by VARCHAR(100)`,
     `ALTER TABLE learning_releases ADD COLUMN IF NOT EXISTS retired_at TIMESTAMPTZ`,
+    // The wall-clock bound of the attempt currently running, stamped by the
+    // database when the attempt is claimed and never renewed. It lives on the
+    // release row because that row is the one every write path already locks:
+    // a deadline checked anywhere else would be a second opinion, and the whole
+    // point is that the expiry is decided by the same authority, in the same
+    // transaction, that decides whether this worker still owns the attempt.
+    `ALTER TABLE learning_releases ADD COLUMN IF NOT EXISTS evaluation_deadline_at TIMESTAMPTZ`,
+    // What one attempt is allowed to spend, and what it did spend. Deliberately
+    // NOT a counter inside `learning_releases.evaluation`: that blob is replaced
+    // wholesale when the evaluation finalizes, so the runs that cost the most —
+    // the ones abandoned half way — are exactly the ones whose cost a blob
+    // would lose. `units_max` is frozen per attempt so raising the environment
+    // ceiling never retroactively enlarges a run already in flight, and
+    // `outcome` is the state an operator reads to learn why a release is still
+    // a candidate: NULL while the attempt runs, then one closed word.
+    `CREATE TABLE IF NOT EXISTS learning_evaluation_budget (
+        attempt_id UUID PRIMARY KEY, release_id UUID NOT NULL, agent_id UUID NOT NULL,
+        budget_day DATE NOT NULL DEFAULT CURRENT_DATE,
+        units_used INTEGER NOT NULL DEFAULT 0 CHECK (units_used >= 0),
+        units_max INTEGER NOT NULL CHECK (units_max > 0),
+        outcome VARCHAR(40) CHECK (outcome IN ('evaluated','failed','budget_exhausted','deadline_exceeded')),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`,
+    `CREATE INDEX IF NOT EXISTS idx_learning_evaluation_budget_release ON learning_evaluation_budget(release_id, created_at DESC)`,
 ] as const;

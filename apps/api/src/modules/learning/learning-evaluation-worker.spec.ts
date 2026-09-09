@@ -1,4 +1,6 @@
+import { ConflictException } from '@nestjs/common';
 import { LearningEvaluationProcessor } from './learning-evaluation.module';
+import { LEARNING_EVALUATION_BUDGET_EXHAUSTED, LEARNING_EVALUATION_DEADLINE_EXCEEDED } from './learning-contracts';
 
 describe('Learning queue failure belongs to its exact worker invocation',()=>{
     it('keeps a retryable failure running and marks only the last invocation as failed',async()=>{
@@ -24,5 +26,38 @@ describe('Learning queue failure belongs to its exact worker invocation',()=>{
         rejectOld(new Error('old process failed'));await rejected;
         expect(learning.failEvaluation.mock.calls[0][5]).toBe(evaluation.run.mock.calls[0][1]);
         expect(learning.failEvaluation.mock.calls[0][5]).not.toBe(evaluation.run.mock.calls[1][1]);
+    });
+});
+
+describe('A ceiling ends the attempt as a named state, not as one more retry',()=>{
+    const data={tenantId:'tenant',agentId:'agent',releaseId:'release',attemptId:'attempt'};
+    const build=(code:string)=>{
+        const evaluation={run:jest.fn().mockRejectedValue(new ConflictException({error:code}))};
+        const learning={failEvaluation:jest.fn(),abandonEvaluation:jest.fn().mockResolvedValue(true)};
+        return {evaluation,learning,processor:new LearningEvaluationProcessor(evaluation as any,learning as any)};
+    };
+    it.each([LEARNING_EVALUATION_BUDGET_EXHAUSTED,LEARNING_EVALUATION_DEADLINE_EXCEEDED])(
+        'does not spend the remaining queue attempt on %s',async code=>{
+            const h=build(code);
+            // With retries still available: a budget or a deadline is a fact
+            // about this attempt, so the second run would reach the identical
+            // wall after paying for the trip.
+            expect(await h.processor.process({data,attemptsMade:0,opts:{attempts:2}} as any)).toEqual({abandoned:code,passed:false});
+            expect(h.evaluation.run).toHaveBeenCalledTimes(1);
+            expect(h.learning.failEvaluation).not.toHaveBeenCalled();
+            expect(h.learning.abandonEvaluation).toHaveBeenCalledWith('tenant','agent','release','attempt',code,h.evaluation.run.mock.calls[0][1]);
+        });
+    it('tells an abandoned attempt apart from a run that failed on its merits',async()=>{
+        const h=build(LEARNING_EVALUATION_DEADLINE_EXCEEDED);
+        await h.processor.process({data,attemptsMade:1,opts:{attempts:2}} as any);
+        const other={run:jest.fn().mockRejectedValue(new Error('provider unavailable'))},
+            learning={failEvaluation:jest.fn(),abandonEvaluation:jest.fn()};
+        const processor=new LearningEvaluationProcessor(other as any,learning as any);
+        await expect(processor.process({data,attemptsMade:1,opts:{attempts:2}} as any)).rejects.toThrow('provider unavailable');
+        // The two paths write different things, which is the whole point: an
+        // operator asking why a release is still a candidate gets "it ran out of
+        // time" from one and the provider fault from the other.
+        expect(learning.abandonEvaluation).not.toHaveBeenCalled();
+        expect(learning.failEvaluation).toHaveBeenCalledWith('tenant','agent','release','attempt','provider unavailable',expect.any(String));
     });
 });

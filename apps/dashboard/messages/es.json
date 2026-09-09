@@ -730,7 +730,9 @@
       "concurrentEdit": "Alguien más cambió la configuración de cobros mientras editabas. Recargá la página y volvé a intentar.",
       "credentialUnreadable": "No pudimos leer las credenciales guardadas. Volvé a ingresarlas.",
       "unsupportedProvider": "Ese proveedor de cobros no está soportado."
-    }
+    },
+    "configUnavailable": "No pudimos leer tu configuración de cobros",
+    "configUnavailableHint": "No asumiremos que no tienes una pasarela conectada. Reintenta antes de cargar credenciales: guardar desde acá podría cambiar el medio de cobro activo."
   },
   "emailVerification": {
     "message": "Tu correo {email} todavía no está verificado. Puedes explorar y probar; verifícalo para publicar, enviar, conectar integraciones, cobrar o exportar.",

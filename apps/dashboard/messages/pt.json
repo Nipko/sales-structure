@@ -730,7 +730,9 @@
       "concurrentEdit": "Outra pessoa alterou a configuração de cobranças enquanto você editava. Recarregue a página e tente de novo.",
       "credentialUnreadable": "Não conseguimos ler as credenciais salvas. Insira-as novamente.",
       "unsupportedProvider": "Esse provedor de cobrança não é suportado."
-    }
+    },
+    "configUnavailable": "Não conseguimos ler a sua configuração de cobranças",
+    "configUnavailableHint": "Não vamos supor que não há gateway conectado. Tente novamente antes de inserir credenciais: salvar daqui poderia trocar o meio de cobrança ativo."
   },
   "emailVerification": {
     "message": "Seu e-mail {email} ainda não foi verificado. Você pode explorar e testar; verifique-o para publicar, enviar, conectar integrações, cobrar ou exportar.",

@@ -730,7 +730,9 @@
       "concurrentEdit": "Quelqu'un d'autre a modifié la configuration des paiements pendant votre édition. Rechargez la page et réessayez.",
       "credentialUnreadable": "Nous n'avons pas pu lire les identifiants enregistrés. Saisissez-les à nouveau.",
       "unsupportedProvider": "Ce prestataire de paiement n'est pas pris en charge."
-    }
+    },
+    "configUnavailable": "Nous n'avons pas pu lire votre configuration de paiement",
+    "configUnavailableHint": "Nous ne supposerons pas qu'aucune passerelle n'est connectée. Réessayez avant de saisir des identifiants : enregistrer d'ici pourrait changer le moyen de paiement actif."
   },
   "emailVerification": {
     "message": "Votre e-mail {email} n’est pas encore vérifié. Vous pouvez explorer et tester ; vérifiez-le pour publier, envoyer, connecter des intégrations, encaisser ou exporter.",

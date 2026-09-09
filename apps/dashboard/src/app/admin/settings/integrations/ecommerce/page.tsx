@@ -14,6 +14,7 @@ import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { api } from "@/lib/api";
 import { PageHeader } from "@/components/ui/page-header";
+import { LoadFailureNotice } from "@/components/ui/load-failure";
 import { ShoppingBag, Save, Loader2, RefreshCw, AlertTriangle, CheckCircle } from "lucide-react";
 
 type Provider = "shopify" | "woocommerce";
@@ -41,6 +42,10 @@ export default function EcommerceIntegrationPage() {
     const tc = useTranslations("common");
 
     const [form, setForm] = useState<Config>(EMPTY);
+    // `/ecommerce/config` answering nothing looked identical whether the store
+    // was never connected or the request failed, and `handleSave` PUTs the
+    // whole form — so a Save from a failed read wiped the saved access token.
+    const [unavailable, setUnavailable] = useState(false);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [syncing, setSyncing] = useState(false);
@@ -53,6 +58,9 @@ export default function EcommerceIntegrationPage() {
             api.fetch("/ecommerce/config").catch(() => null),
             api.fetch("/ecommerce/products?limit=1").catch(() => null),
         ]);
+        // A rejection is `null`; "no store configured yet" is a response with
+        // no payload. Only the first one is unreadable.
+        setUnavailable(cfg === null);
         if (cfg?.data) setForm({ ...EMPTY, ...cfg.data });
         // Cuántos productos hay de verdad: es la única prueba de que la
         // conexión sirve para algo, y es lo que el agente va a poder mostrar.
@@ -63,6 +71,7 @@ export default function EcommerceIntegrationPage() {
     useEffect(() => { load(); }, []);
 
     async function handleSave() {
+        if (unavailable) return;
         if (!form.shopUrl.trim()) {
             setFeedback({ type: "err", text: t("missingShopUrl") });
             return;
@@ -81,6 +90,7 @@ export default function EcommerceIntegrationPage() {
     }
 
     async function handleSync() {
+        if (unavailable) return;
         setSyncing(true);
         setFeedback(null);
         const res = await api.fetch("/ecommerce/sync", { method: "POST" }).catch(() => null);
@@ -101,6 +111,9 @@ export default function EcommerceIntegrationPage() {
         <div className="max-w-2xl space-y-6">
             <PageHeader title={t("title")} subtitle={t("subtitle")} icon={ShoppingBag} />
 
+            {/* Not "no store connected": nobody managed to ask. */}
+            {unavailable && <LoadFailureNotice onRetry={() => { void load(); }} />}
+
             {feedback && (
                 <div className={`flex items-start gap-2 p-3 rounded-lg text-sm border ${feedback.type === "ok"
                     ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/20"
@@ -110,6 +123,7 @@ export default function EcommerceIntegrationPage() {
                 </div>
             )}
 
+            {!unavailable && (
             <div className="bg-card border border-border rounded-xl p-5 space-y-4">
                 <div>
                     <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">{t("provider")}</label>
@@ -206,6 +220,7 @@ export default function EcommerceIntegrationPage() {
                     </div>
                 </div>
             </div>
+            )}
 
             <p className="text-xs text-muted-foreground">{t("footnote")}</p>
         </div>

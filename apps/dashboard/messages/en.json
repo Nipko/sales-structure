@@ -730,7 +730,9 @@
       "concurrentEdit": "Someone else changed the payment settings while you were editing. Reload the page and try again.",
       "credentialUnreadable": "We could not read the stored credentials. Please enter them again.",
       "unsupportedProvider": "That payment provider is not supported."
-    }
+    },
+    "configUnavailable": "We could not read your payment settings",
+    "configUnavailableHint": "We will not assume no gateway is connected. Retry before entering credentials: saving from here could switch the active payment rail."
   },
   "emailVerification": {
     "message": "Your email {email} is not verified yet. You can explore and test; verify it to publish, send, connect integrations, collect payments, or export.",

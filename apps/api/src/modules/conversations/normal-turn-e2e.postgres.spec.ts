@@ -102,37 +102,30 @@ const ready = !!databaseUrl && !!redisUrl;
  * the status writer and the socket are the production objects.
  *
  * ─────────────────────────────────────────────────────────────────────────────
- * THE PGBOUNCER LEG — AN EXPLICIT GAP, NOT A SILENT OMISSION
+ * THE PGBOUNCER LEG — HERE, AND IN THE SUITE BESIDE IT
  * ─────────────────────────────────────────────────────────────────────────────
- * There is no PgBouncer image on this machine and pulling one is out of scope,
- * so the proxy itself is NOT in this run. What PgBouncer constrains, and what is
- * reproducible without it, is asserted directly in
- * `transaction-scoped pooling semantics`:
+ * The proxy is not in THIS run: a second hop in front of every statement would
+ * slow eighteen end-to-end cases for a property that is about the connection,
+ * not about the turn. What PgBouncer constrains is asserted directly here —
  *
- *   STANDS IN FOR THE PROXY
- *     · no session state is assumed across statements — the tenant `search_path`
- *       is set with `SET LOCAL` and demonstrably does not survive its transaction;
- *     · no multi-statement string can travel this path — the same primitive the
- *       turn uses refuses one;
- *     · nothing on the path leaves a session-scoped advisory lock behind, which
- *       is what would deadlock on a connection handed to the next client;
- *     · no connection is assumed to survive between calls — two successive calls
- *       are observed on different backends and the path still holds.
+ *   · no session state is assumed across statements: the tenant `search_path` is
+ *     set with `SET LOCAL` and demonstrably does not survive its transaction;
+ *   · no multi-statement string can travel this path — the same primitive the
+ *     turn uses refuses one;
+ *   · nothing on the path leaves a session-scoped advisory lock behind, which is
+ *     what would deadlock on a connection handed to the next client;
+ *   · no connection is assumed to survive between calls.
  *
- *   DOES **NOT** STAND IN FOR THE PROXY
- *     · Prisma's named prepared statements under transaction pooling (the
- *       `pgbouncer=true` connection-string contract) — the one failure mode that
- *       genuinely needs the proxy in front;
- *     · `server_reset_query` behaviour, pool exhaustion, queueing latency and
- *       `max_client_conn` back-pressure;
- *     · the `DIRECT_DATABASE_URL` split used by migrations.
+ * — and the same four are proven THROUGH a real proxy, together with the proxy's
+ * own behaviour, in `prisma/pgbouncer-transaction-pooling.postgres.spec.ts`:
+ * `edoburu/pgbouncer` in transaction mode with a pool of one, where a plain
+ * `SET`, a temporary table and a session advisory lock are each shown to travel
+ * from one client to the next, `SET LOCAL` is shown not to, twenty-five callers
+ * queue past one server connection rather than being refused, and the
+ * prepared-statement contract behind `?pgbouncer=true` is exercised.
  *
- * Running the real leg needs: a `pgbouncer` image (e.g. `edoburu/pgbouncer`) or
- * the package installed in the eval container, a `pgbouncer.ini` in transaction
- * mode pointing at 55437 with a `userlist.txt`, a published port (e.g. 55438),
- * and this suite re-pointed at
- * `postgresql://postgres:…@127.0.0.1:55438/parallly_eval_isolation?pgbouncer=true`
- * while DDL keeps using the direct 55437 URL.
+ * What neither covers: `max_client_conn` back-pressure at its ceiling, and the
+ * typed Prisma client used for global tables.
  */
 (ready ? describe : describe.skip)('the normal turn, end to end, through the real machinery', () => {
     jest.setTimeout(240_000);

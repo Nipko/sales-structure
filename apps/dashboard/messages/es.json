@@ -11790,6 +11790,44 @@
       "pay": "Cobrar una compra acordada"
     }
   },
+  "agentOperationalState": {
+    "srPrefix": "Estado:",
+    "legendTitle": "Qué significa cada estado",
+    "states": {
+      "unknown": {
+        "label": "Desconocido",
+        "meaning": "No pudimos leerlo. No es que falte: es que ahora mismo no tenemos con qué afirmar nada, ni a favor ni en contra."
+      },
+      "pending": {
+        "label": "Pendiente",
+        "meaning": "Lo leímos y falta hacerlo. Sabemos qué es y dónde se configura."
+      },
+      "prepared": {
+        "label": "Preparado",
+        "meaning": "Está configurado, pero todavía nadie lo probó."
+      },
+      "tested": {
+        "label": "Probado",
+        "meaning": "Se probó y pasó. Todavía no hay evidencia de conversaciones reales."
+      },
+      "operating": {
+        "label": "Operativo",
+        "meaning": "Está funcionando y hay evidencia de uso real, no solo configuración."
+      },
+      "degraded": {
+        "label": "Deteriorado",
+        "meaning": "Algo que venía funcionando dejó de hacerlo. Necesita que una persona lo revise."
+      }
+    },
+    "agent": {
+      "unknown": "No podemos decir en qué estado está el agente: alguna de sus partes no se pudo leer, y no vamos a llamar operativo a lo que nadie pudo mirar.",
+      "pending": "El agente todavía no está listo para atender: queda configuración por hacer.",
+      "prepared": "El agente está configurado de punta a punta, pero todavía no se probó.",
+      "tested": "El agente pasó las pruebas. Falta evidencia de conversaciones reales para decir que está operando.",
+      "operating": "El agente está atendiendo, con evidencia de uso real que lo respalda.",
+      "degraded": "Algo que venía funcionando se rompió. Una parte deteriorada no se compensa con las que están bien: revísala antes de seguir."
+    }
+  },
   "agentAssessment": {
     "title": "Misión y preparación del agente",
     "sources": {
@@ -11800,7 +11838,30 @@
     "next": "Siguiente paso",
     "details": "Revisar dependencias y pruebas",
     "testEvidence": "Hay {count} escenarios de misión por comprobar. Un puntaje general no certifica cada escenario.",
-    "capabilityEvidence": "Se observaron {count} herramientas publicadas entre los canales evaluados. Publicación no significa resultado comprobado."
+    "capabilityEvidence": "Se observaron {count} herramientas publicadas entre los canales evaluados. Publicación no significa resultado comprobado.",
+    "tasksTitle": "Pasos de puesta en marcha",
+    "channelsTitle": "Conexiones evaluadas",
+    "channelPreview": "vista previa",
+    "channelUnspecified": "Conexión sin identificar",
+    "channelTypes": {
+      "whatsapp": "WhatsApp",
+      "instagram": "Instagram",
+      "messenger": "Messenger",
+      "telegram": "Telegram",
+      "web_widget": "Chat web",
+      "email": "Correo"
+    },
+    "testsTitle": "Escenarios de misión",
+    "toolsTitle": "Herramientas",
+    "toolsInState": "{count} en este estado",
+    "capabilityDegraded": "Alguna conexión reporta su contrato deteriorado. No contamos herramientas publicadas hasta que se revise.",
+    "capabilityNoChannels": "Todavía no hay conexiones asignadas a este agente, así que no hay herramientas publicadas que observar.",
+    "evidence": {
+      "not_verified": "sin comprobar",
+      "verified": "comprobado",
+      "failed": "falló",
+      "stale": "evidencia de una versión anterior"
+    }
   },
   "qualityHealth": {
     "title": "Salud de tus agentes",

@@ -11790,6 +11790,44 @@
       "pay": "Collect payment for an agreed purchase"
     }
   },
+  "agentOperationalState": {
+    "srPrefix": "Status:",
+    "legendTitle": "What each state means",
+    "states": {
+      "unknown": {
+        "label": "Unknown",
+        "meaning": "We could not read it. It is not missing: right now we have nothing to base a claim on, either way."
+      },
+      "pending": {
+        "label": "Pending",
+        "meaning": "We read it and it still has to be done. We know what it is and where to set it up."
+      },
+      "prepared": {
+        "label": "Prepared",
+        "meaning": "It is configured, but nobody has tested it yet."
+      },
+      "tested": {
+        "label": "Tested",
+        "meaning": "It was tested and passed. There is still no evidence from real conversations."
+      },
+      "operating": {
+        "label": "Operating",
+        "meaning": "It is working, with evidence of real use behind it, not only configuration."
+      },
+      "degraded": {
+        "label": "Degraded",
+        "meaning": "Something that was working stopped. It needs a person to look at it."
+      }
+    },
+    "agent": {
+      "unknown": "We cannot say what state the agent is in: one of its parts could not be read, and we will not call operating something nobody could look at.",
+      "pending": "The agent is not ready to serve yet: there is configuration left to do.",
+      "prepared": "The agent is configured end to end, but it has not been tested yet.",
+      "tested": "The agent passed its tests. Evidence from real conversations is still missing before we can say it is operating.",
+      "operating": "The agent is serving, backed by evidence of real use.",
+      "degraded": "Something that was working broke. One degraded part is not averaged away by the healthy ones: review it before going on."
+    }
+  },
   "agentAssessment": {
     "title": "Agent mission and readiness",
     "sources": {
@@ -11800,7 +11838,30 @@
     "next": "Next step",
     "details": "Review dependencies and tests",
     "testEvidence": "There are {count} mission scenarios to verify. An overall score does not certify each scenario.",
-    "capabilityEvidence": "We observed {count} published tools across the assessed channels. Publication does not prove a successful result."
+    "capabilityEvidence": "We observed {count} published tools across the assessed channels. Publication does not prove a successful result.",
+    "tasksTitle": "Setup steps",
+    "channelsTitle": "Assessed connections",
+    "channelPreview": "preview",
+    "channelUnspecified": "Unidentified connection",
+    "channelTypes": {
+      "whatsapp": "WhatsApp",
+      "instagram": "Instagram",
+      "messenger": "Messenger",
+      "telegram": "Telegram",
+      "web_widget": "Web chat",
+      "email": "Email"
+    },
+    "testsTitle": "Mission scenarios",
+    "toolsTitle": "Tools",
+    "toolsInState": "{count} in this state",
+    "capabilityDegraded": "One of the connections reports a degraded contract. We are not counting published tools until it is reviewed.",
+    "capabilityNoChannels": "No connections are assigned to this agent yet, so there are no published tools to observe.",
+    "evidence": {
+      "not_verified": "not verified",
+      "verified": "verified",
+      "failed": "failed",
+      "stale": "evidence from an earlier version"
+    }
   },
   "qualityHealth": {
     "title": "Your agents' health",

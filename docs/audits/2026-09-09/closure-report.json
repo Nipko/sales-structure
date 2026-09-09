@@ -1,12 +1,17 @@
 {
   "version": 1,
-  "revision": "1deec8d9c8069a840b79b171dcacb792aac60b77",
-  "generatedAt": "2026-09-09T17:37:36.270Z",
+  "revision": "5b5ae63f916531c4746c2610116f0188ca7bc25c",
+  "generatedAt": "2026-09-09T20:11:44.349Z",
   "finished": false,
   "counts": {
     "aceptada": 3,
     "bloqueada": 15,
     "abierta": 7
+  },
+  "provenance": {
+    "derived": 8,
+    "executed_evidence": 3,
+    "declared": 14
   },
   "contradictions": [],
   "gates": {
@@ -61,6 +66,8 @@
       "openLabel": "10 familias sin comando ligado y 3 sin cobro ligado",
       "gates": [],
       "status": "abierta",
+      "provenance": "derived",
+      "artefact": null,
       "evidence": "Inventario calculado de 15 familias (`terms-binding-inventory.ts`). Cita y matrícula ligan comando y cobro; el pedido de catálogo pasó a cobrar desde `orders.catalog_terms` y a rechazar la fila que no acordó nada. Sin comando ligado: `appointment_transitions`, `repair_orders`, `class_bookings`, `insurance_quotes`, `property_bookings`, `tour_bookings`, `restaurant_orders`, `service_requests`, `photo_sessions`, `resource_rentals`. Sin cobro ligado: `property_bookings`, `tour_bookings`, `restaurant_orders`.",
       "commits": [
         "a806ef62",
@@ -75,6 +82,8 @@
         1
       ],
       "status": "bloqueada",
+      "provenance": "declared",
+      "artefact": null,
       "evidence": "Comando, retención, settlement, avisos durables y revisión sin reenvío implementados y probados con PostgreSQL. La conciliación contra un proveedor real no puede correrse sin su cuenta.",
       "commits": []
     },
@@ -86,6 +95,8 @@
         1
       ],
       "status": "bloqueada",
+      "provenance": "declared",
+      "artefact": null,
       "evidence": "Propuesta, consentimiento, aprobación humana y entrega durable probados con PostgreSQL y Socket.IO. La entrega real necesita un canal conectado.",
       "commits": []
     },
@@ -97,6 +108,8 @@
         1
       ],
       "status": "bloqueada",
+      "provenance": "declared",
+      "artefact": null,
       "evidence": "Transacciones, lectores, promoción y restauración única comprobadas contra PostgreSQL.",
       "commits": []
     },
@@ -108,6 +121,8 @@
         1
       ],
       "status": "bloqueada",
+      "provenance": "executed_evidence",
+      "artefact": "docs/audits/2026-09-09/order-sensitivity-runs.md",
       "evidence": "El turno completo corre de punta a punta sobre PostgreSQL, Valkey, BullMQ y Socket.IO reales, con crash en cada frontera, una erasure en vuelo y los primitivos a través de un PgBouncer real en modo transacción.",
       "commits": []
     },
@@ -117,6 +132,8 @@
       "openLabel": "0 familias bloqueadas",
       "gates": [],
       "status": "aceptada",
+      "provenance": "derived",
+      "artefact": null,
       "evidence": "Las 15 familias del registro tienen writer canónico auditado, con id de inbound compartido con el runtime y el ledger. Cero bloqueadas.",
       "commits": []
     },
@@ -128,6 +145,8 @@
         1
       ],
       "status": "bloqueada",
+      "provenance": "declared",
+      "artefact": null,
       "evidence": "Árbitro, dueño por puerto, consentimiento por misión, corrección y reanudación probados en los cuatro idiomas del contrato (es/en/pt/fr).",
       "commits": []
     },
@@ -137,6 +156,8 @@
       "openLabel": "10 familias cuyo writer ejecuta sin que le muestren lo acordado",
       "gates": [],
       "status": "abierta",
+      "provenance": "derived",
+      "artefact": null,
       "evidence": "Ciclos de agenda y de mascotas con recibos atómicos comprobados. El cierre de esta fila es el mismo que el de A1.",
       "commits": []
     },
@@ -148,6 +169,8 @@
         2
       ],
       "status": "abierta",
+      "provenance": "derived",
+      "artefact": null,
       "evidence": "Contratos MCP y dependencias base implementados. La cobertura por tarea la decide H1: 0 perfiles certificados de 76.",
       "commits": []
     },
@@ -159,6 +182,8 @@
         3
       ],
       "status": "bloqueada",
+      "provenance": "declared",
+      "artefact": null,
       "evidence": "Muestreo, revisión humana con CAS y anotaciones RAG implementados. No se certifica veracidad global y el propio informe lo dice; una revisión de muestra necesita personas.",
       "commits": []
     },
@@ -168,6 +193,8 @@
       "openLabel": "calidad semántica bajo carga sin dataset, umbrales ni números publicados",
       "gates": [],
       "status": "abierta",
+      "provenance": "declared",
+      "artefact": null,
       "evidence": "CAS, recuperación, fusión de identidad y borrado comprobados con pgvector real. Disponibilidad bajo carga está medida; calidad semántica bajo carga no, y una no es la otra.",
       "commits": []
     },
@@ -179,6 +206,8 @@
         3
       ],
       "status": "bloqueada",
+      "provenance": "declared",
+      "artefact": null,
       "evidence": "Atribución observable y diagnóstico técnico probados. No equivalen a veracidad ni a entailment, y el informe lo dice.",
       "commits": []
     },
@@ -188,6 +217,8 @@
       "openLabel": "0 tareas sin caso positivo propio o sin verificador de efecto",
       "gates": [],
       "status": "aceptada",
+      "provenance": "derived",
+      "artefact": null,
       "evidence": "76 perfiles, 268 tareas, 146 que comprometen al negocio, y cero tareas sin caso positivo propio o sin verificador fuera de las 5 declaradas: `file_claim` en las cinco subtipos de seguros existe para probar que el escalón de identidad la rechaza, así que no hay efecto que verificar y un \"positivo\" sería el agente haciendo lo que no debe. Certificar estas tareas es H1.",
       "commits": []
     },
@@ -197,6 +228,8 @@
       "openLabel": "lectores comerciales sin congelar y sin evaluación bajo tráfico concurrente",
       "gates": [],
       "status": "abierta",
+      "provenance": "declared",
+      "artefact": null,
       "evidence": "Núcleo, FAQs, políticas, temporalidad, réplica RAG administrada, jueces y retención integrados.",
       "commits": []
     },
@@ -209,6 +242,8 @@
         1
       ],
       "status": "bloqueada",
+      "provenance": "declared",
+      "artefact": null,
       "evidence": "Outbox durable, transporte estricto, recuperación, reconciliación con actor y evidencia, pantalla de operador y alerta real. El interruptor sigue apagado por defecto: encenderlo es una activación.",
       "commits": []
     },
@@ -220,6 +255,8 @@
         2
       ],
       "status": "abierta",
+      "provenance": "derived",
+      "artefact": null,
       "evidence": "Assessment común implementado y probado; su cierre es la certificación de tareas reales (H1).",
       "commits": []
     },
@@ -229,6 +266,8 @@
       "openLabel": "0 defectos en la tabla de resolución y 0 derivaciones sin traspaso declarado",
       "gates": [],
       "status": "aceptada",
+      "provenance": "derived",
+      "artefact": null,
       "evidence": "Cada blocker y cada recomendación del assessment tiene resolución declarada, con prueba de cobertura que falla al aparecer un código sin ella; el universo lo produce el código que emite los códigos, no un barrido de texto. Las 8 operaciones que Assist no ejecuta declaran requisitos no secretos, preparación, pantalla exacta y qué releer al volver.",
       "commits": [
         "37411849",
@@ -243,6 +282,8 @@
         3
       ],
       "status": "bloqueada",
+      "provenance": "declared",
+      "artefact": null,
       "evidence": "Recorridos por tareas verificadas implementados y con pruebas de accesibilidad automáticas. Las sesiones moderadas necesitan personas.",
       "commits": []
     },
@@ -254,6 +295,8 @@
         3
       ],
       "status": "bloqueada",
+      "provenance": "declared",
+      "artefact": null,
       "evidence": "Un solo vocabulario de seis estados proyectado y mostrado en el tablero. La validación visual necesita personas.",
       "commits": []
     },
@@ -263,6 +306,8 @@
       "openLabel": "7 lugares donde las palabras del agente descansan sin alcance completo",
       "gates": [],
       "status": "abierta",
+      "provenance": "derived",
+      "artefact": null,
       "evidence": "20 lugares inventariados con barrido del árbol de fuentes, cada uno diciendo qué lo alcanza y por qué. Abiertos: `eval_runs`, `simulation_runs`, `agent_release_evidence`, `quality_regression_cases`, `handoff_summary`, `quality_scores`, `outbound_queue_job`.",
       "commits": [
         "d366baf3"
@@ -276,6 +321,8 @@
         3
       ],
       "status": "bloqueada",
+      "provenance": "declared",
+      "artefact": null,
       "evidence": "Curación y revisión en cuatro idiomas implementadas. La revisión humana de muestra necesita personas.",
       "commits": []
     },
@@ -287,6 +334,8 @@
         1
       ],
       "status": "bloqueada",
+      "provenance": "declared",
+      "artefact": null,
       "evidence": "Comparación por runtime y evidencia en seis familias; publicación gradual y retiro implementados.",
       "commits": []
     },
@@ -298,7 +347,9 @@
         2
       ],
       "status": "bloqueada",
-      "evidence": "Ejecutor durable construido: 2 tablas, arriendo con `clock_timestamp()`, resultado escrito una sola vez, reintento como intento nuevo, presupuesto y deadline verificados antes de entregar trabajo, invalidación por definición de escenario y por autoridad del agente, y el reporte alimentado desde esas filas. El manifiesto de costo por modelo está calculado. Ejecutarlo necesita una credencial y un techo de gasto autorizado.",
+      "provenance": "executed_evidence",
+      "artefact": "docs/audits/2026-09-09/certification-manifest.md",
+      "evidence": "Ejecutor durable construido: 3 tablas, arriendo con `clock_timestamp()`, resultado escrito una sola vez, reintento como intento nuevo, presupuesto y deadline verificados antes de entregar trabajo, invalidación por definición de escenario y por autoridad del agente, y el reporte alimentado desde esas filas. El manifiesto de costo por modelo está calculado. Ejecutarlo necesita una credencial y un techo de gasto autorizado.",
       "commits": [
         "e1ac3943",
         "4ec45699"
@@ -312,6 +363,8 @@
         2
       ],
       "status": "bloqueada",
+      "provenance": "declared",
+      "artefact": null,
       "evidence": "Regresiones desde QA y ledger, linaje, identidad de misión y denominadores implementados; un resultado desconocido conserva ese estado y no se inventa tasa. Sus denominadores se llenan con la corrida de H1.",
       "commits": []
     },
@@ -325,6 +378,8 @@
         3
       ],
       "status": "bloqueada",
+      "provenance": "executed_evidence",
+      "artefact": "docs/audits/2026-09-09/adversarial-validation.md",
       "evidence": "Harness local construido: corpus generado y estratificado desde el catálogo con verificadores de resultado, sujetos sintéticos ejecutados, 2 tablas de intentos y revisión ciega, y una negativa a enunciar comparación cuando falta el otro sujeto. Correr una alternativa necesita su cuenta.",
       "commits": [
         "aaf41d62"

@@ -39,6 +39,22 @@ const { CERTIFICATION_LEDGER_DDL } = api('modules/simulation/certification-ledge
 const { CONVERSATIONAL_CHANNELS, EVAL_LANGUAGES } = require(path.join(root, 'packages/shared/src/index.ts'));
 
 const revision = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
+
+/**
+ * `--check` regenerates in memory and fails when the committed artefact does not
+ * correspond to HEAD. Every artefact in this directory had been generated one or
+ * two commits earlier than the one it claimed to describe, and nothing noticed.
+ */
+const CHECK = process.argv.includes('--check');
+function verifyArtifact(file, next) {
+    const stored = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : null;
+    const strip = value => String(value ?? '').replace(/"generatedAt": "[^"]*"/g, '');
+    if (stored === null || strip(stored) !== strip(next)) {
+        console.error(path.basename(file) + ' is stale for ' + revision);
+        process.exit(1);
+    }
+}
+const emit = (file, next) => { if (CHECK) verifyArtifact(file, next); else fs.writeFileSync(file, next); };
 const channels = [...CONVERSATIONAL_CHANNELS];
 
 /** The key each provider's models are reached with. Names only. */
@@ -101,7 +117,7 @@ const manifest = {
         .filter(Boolean),
 };
 
-fs.writeFileSync(path.join(__dirname, 'certification-manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
+emit(path.join(__dirname, 'certification-manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
 
 const usd = cents => `US$${(cents / 100).toFixed(2)}`;
 const cheapest = perModel[0];
@@ -208,8 +224,9 @@ const lines = [
     'Para actualizar: `node docs/audits/2026-09-09/generate-certification-manifest.cjs` desde la raíz.',
     '',
 ];
-fs.writeFileSync(path.join(__dirname, 'certification-manifest.md'), lines.join('\n'));
-process.stdout.write(JSON.stringify({
+emit(path.join(__dirname, 'certification-manifest.md'), lines.join('\n'));
+if (CHECK) { console.log('artifacts match ' + revision); }
+else process.stdout.write(JSON.stringify({
     models: perModel.length,
     cheapest: { model: cheapest.model, cents: cheapest.maxCostUsdCents },
     dearest: { model: dearest.model, cents: dearest.maxCostUsdCents },

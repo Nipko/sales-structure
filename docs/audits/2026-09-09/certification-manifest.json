@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "revision": "e1ac3943d89ff6182e86244424e84c234d083c67",
+  "revision": "5b5ae63f916531c4746c2610116f0188ca7bc25c",
   "generatedFrom": [
     "modules/simulation/certification-plan.ts",
     "modules/simulation/certification-ledger.ts",
@@ -116,6 +116,7 @@
   },
   "ledgerTables": [
     "agent_certification_runs",
+    "agent_certification_subjects",
     "agent_certification_cases",
     "uidx_certification_case_attempt",
     "idx_certification_case_claimable"

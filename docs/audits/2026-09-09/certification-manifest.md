@@ -5,7 +5,7 @@ Generado por `docs/audits/2026-09-09/generate-certification-manifest.cjs`. **Nin
 `requiredScenarios` que exige el reporte de certificación, y cuyas tarifas salen del catálogo del propio
 router. La cifra que se pide autorizar y la que se factura no pueden ser dos listas de precios distintas.
 
-Revisión: `e1ac3943d89ff6182e86244424e84c234d083c67`. **Este documento no contiene ni requiere ningún secreto**: las variables se
+Revisión: `5b5ae63f916531c4746c2610116f0188ca7bc25c`. **Este documento no contiene ni requiere ningún secreto**: las variables se
 nombran, no se leen.
 
 ## Qué se pide
@@ -46,7 +46,7 @@ Se necesita **una** de ellas: la del proveedor del modelo elegido. Ninguna va a 
 
 ## Dónde aterriza la evidencia
 
-Tablas del ledger, creadas por `ensureCertificationLedger`: `agent_certification_runs`, `agent_certification_cases`, `uidx_certification_case_attempt`, `idx_certification_case_claimable`.
+Tablas del ledger, creadas por `ensureCertificationLedger`: `agent_certification_runs`, `agent_certification_subjects`, `agent_certification_cases`, `uidx_certification_case_attempt`, `idx_certification_case_claimable`.
 
 Cada caso guarda identidad estable, hash de definición del escenario, modelo realmente servido, canal,
 idioma, intento, costo, latencia, transcript, tools, verificación y estado. El reporte se calcula desde

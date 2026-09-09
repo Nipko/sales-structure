@@ -43,6 +43,22 @@ const { FAMILY_TERMS_BINDINGS, familiesWithUnboundCharge, familiesWithUnboundCom
 const { CONVERSATIONAL_CHANNELS } = require(path.join(root, 'packages/shared/src/index.ts'));
 
 const revision = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
+
+/**
+ * `--check` regenerates in memory and fails when the committed artefact does not
+ * correspond to HEAD. Every artefact in this directory had been generated one or
+ * two commits earlier than the one it claimed to describe, and nothing noticed.
+ */
+const CHECK = process.argv.includes('--check');
+function verifyArtifact(file, next) {
+    const stored = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : null;
+    const strip = value => String(value ?? '').replace(/"generatedAt": "[^"]*"/g, '');
+    if (stored === null || strip(stored) !== strip(next)) {
+        console.error(path.basename(file) + ' is stale for ' + revision);
+        process.exit(1);
+    }
+}
+const emit = (file, next) => { if (CHECK) verifyArtifact(file, next); else fs.writeFileSync(file, next); };
 const matrix = buildTaskCompetenceMatrix();
 const plan = planCertificationRun({ channels: [...CONVERSATIONAL_CHANNELS], models: ['gpt-4.1-mini'] });
 const channels = buildChannelCertificationMatrix(channelCertificationRuntime());
@@ -86,7 +102,7 @@ const state = {
     },
 };
 
-fs.writeFileSync(path.join(__dirname, 'closure-state.json'), JSON.stringify(state, null, 2) + '\n');
+emit(path.join(__dirname, 'closure-state.json'), JSON.stringify(state, null, 2) + '\n');
 
 const list = values => (values.length ? values.map(value => `\`${value}\``).join(', ') : '—');
 const markdown = [
@@ -146,8 +162,9 @@ const markdown = [
     'Para actualizar: `node docs/audits/2026-09-09/generate-closure-state.cjs` desde la raíz.',
     '',
 ];
-fs.writeFileSync(path.join(__dirname, 'closure-state.md'), markdown.join('\n'));
-process.stdout.write(JSON.stringify({
+emit(path.join(__dirname, 'closure-state.md'), markdown.join('\n'));
+if (CHECK) { console.log('artifacts match ' + revision); }
+else process.stdout.write(JSON.stringify({
     taskMatrix: state.taskMatrix,
     plan: { cases: plan.totals.requiredCases, calls: plan.totals.modelCalls, cents: plan.totals.maxCostUsdCents },
     channels: { certified: channelSummary.certified, operating: channelSummary.operating, implemented: channelSummary.implemented },

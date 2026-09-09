@@ -231,7 +231,15 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
         await inbound(confirmation);
         const beforeUpdate=await captureLearningLedger(prisma,evidenceScope);
         const updated=await invoke('update_pet',{...args,_control:{confirmationToken:challenge.confirmationToken}});
-        expect(updated.error).toBeUndefined();expect(updated.success).toBe(true);
+        // The gate reads the LATEST inbound to decide whether this was confirmed,
+        // so the precondition is pinned in the same assertion as the outcome: a
+        // `confirmation_required` here means one of the two, and the message
+        // says which instead of leaving it to be guessed.
+        const latestInbound=(await q("SELECT content_text FROM messages WHERE conversation_id=$1::uuid "
+            +"AND direction='inbound' ORDER BY created_at DESC, id DESC LIMIT 1",[conversationId]))[0]?.content_text;
+        expect(`${updated.error??'ok'} | último entrante: ${latestInbound}`)
+            .toBe(`ok | último entrante: ${confirmation}`);
+        expect(updated.success).toBe(true);
         expect(await verifyLearningOperation(prisma,evidenceScope,{name:'update_pet',result:updated},beforeUpdate))
             .toMatchObject({status:'verified',effect:'committed',table:'pets'});
         expect((await verifyExpectedEffects({expected:[{kind:'db_effect',type:'row_count',table:'pets',family:'pets',count:1},

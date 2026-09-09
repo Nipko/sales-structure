@@ -64,7 +64,18 @@ const url=process.env.AGENT_RELEASE_TEST_DATABASE_URL;
                 transcript:[{role:'user',content:'Synthetic question'},{role:'assistant',content:`Synthetic reply ${row.language}`}],transcriptTruncated:false}))}));
         return {status:'completed',results,evidence:sealReleaseRun({...evidence,results}),runId:randomUUID()};
     };
-    const evaluate=async(id:string)=>{for(const channel of (await read(id))!.candidate.channels){const work=await claim(id,channel);await checkpoint(work,completed(work));}return (await read(id))!;};
+    // `claim` returns null for four different reasons and two tests below rely
+    // on exactly that, so the null stays. It is only HERE, where the caller has
+    // just created the candidate and a claim must succeed, that a null is a
+    // defect — and it used to die on `work.candidate` three lines later, which
+    // says nothing. It has happened once, under a loaded parallel run; the next
+    // time it should leave behind the state that caused it.
+    const evaluate=async(id:string)=>{for(const channel of (await read(id))!.candidate.channels){
+        const work=await claim(id,channel);
+        if(!work){const after=await read(id);throw new Error('agent_release claim returned null for '
+            +`${channel}: candidate=${after?.candidate?.status??'absent'} evaluation=`
+            +JSON.stringify(after?.evaluations?.find(row=>row.channel_type===channel)??null));}
+        await checkpoint(work,completed(work));}return (await read(id))!;};
     const reviewBody=(data:any)=>{const evidence=releaseReviewEvidence(data.candidate,data.evaluations);return {expectedVersion:data.candidate.version,evidenceHash:evidence.evidenceHash,
         requestKey:randomUUID(),decision:'approve' as const,checks:{objective:true,instructions:true,facts:true,tools:true,style:true,limits:true},sampleHashes:evidence.sampleHashes};};
     const review=(id:string,body:any,current=async()=>{})=>tx(q=>store.review(q,schema,{tenantId,agentId,candidateId:id,actor,body},current));

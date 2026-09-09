@@ -11,12 +11,16 @@ import { PlatformStorageService } from './platform-storage.service';
 import { IncidentService, IncidentSeverity } from './incident.service';
 import { TelegramAlertService } from './telegram-alert.service';
 import { SmsAlertService } from './sms-alert.service';
-import { AlertConfigService } from './alert-config.service';
+import { AlertConfigService, type AlertConfig } from './alert-config.service';
 import { SentryStatsService } from './sentry-stats.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import {
     DISPATCH_RECONCILIATION_SLA_SECONDS, readDispatchBacklog,
 } from '../channels/agent-dispatch-outbox';
+import {
+    DISPATCH_LATENCY_BUCKETS_MS, DISPATCH_LATENCY_OPERATIONS, DISPATCH_LATENCY_WINDOW_MINUTES,
+    readDispatchLatency,
+} from '../channels/dispatch-latency';
 import { PAYMENT_PROVIDER_NAMES, PaymentProviderName } from '../billing/types/provider-types';
 import { SubscriptionStatus } from '../billing/types/subscription-status.enum';
 import * as os from 'os';
@@ -739,9 +743,66 @@ export class PlatformMonitorService implements OnModuleInit {
             } else {
                 await this.incidents.resolveByKey('dispatch:outbox:stalled');
             }
+
+            await this.checkDispatchLatency(cfg);
         } catch (e: any) {
             this.logger.debug(`Dispatch backlog check skipped: ${e.message}`);
         }
+    }
+
+    /**
+     * The fifth SLO of the dispatch runbook, which nothing was measuring.
+     *
+     * The load harness produced the numbers the objective is written from, and
+     * production produced none: the closest signals were PgBouncer wait time,
+     * which is a different quantity, and the depth of `outbound-messages`, which
+     * only rises after the latency has already degraded.
+     *
+     * Two honesty rules the alert must keep. First, `p95UpperBoundMs` is the
+     * ceiling of the bucket the 95th sample fell into, not a latency the system
+     * saw — comparing it against a threshold that is itself a bucket edge stays
+     * sound, and the body says which number it is. Second, no samples is not
+     * zero latency: a path nothing exercised has not met its SLO, it has not
+     * been tested, and an alert that resolves on silence would say the opposite.
+     */
+    private async checkDispatchLatency(cfg: AlertConfig): Promise<void> {
+        const breached: string[] = [];
+        let measured = false;
+        for (const operation of DISPATCH_LATENCY_OPERATIONS) {
+            const summary = await readDispatchLatency(this.redis, operation);
+            // Below the sample floor the percentile is noise, so this operation
+            // says nothing this pass.
+            if (summary.samples < cfg.dispatchLatency.minSamples) continue;
+            measured = true;
+            const label = summary.overflowed
+                ? `por encima de ${DISPATCH_LATENCY_BUCKETS_MS[DISPATCH_LATENCY_BUCKETS_MS.length - 1]} ms`
+                : `≤ ${summary.p95UpperBoundMs} ms`;
+            if (summary.overflowed || (summary.p95UpperBoundMs ?? 0) > cfg.dispatchLatency.p95Ms) {
+                breached.push(`<li><b>${operation}</b> — p95 ${label} sobre ${summary.samples} muestras</li>`);
+            }
+        }
+        // Nothing measured at all: leave whatever the last real measurement
+        // concluded standing. Resolving here would close an incident because
+        // traffic stopped, which is the opposite of what silence means.
+        if (!measured) return;
+        if (!breached.length) {
+            await this.incidents.resolveByKey('dispatch:latency:p95');
+            return;
+        }
+        await this.alert(
+            'dispatch:latency:p95',
+            `Los pasos durables del despacho pasaron ${cfg.dispatchLatency.p95Ms} ms de p95`,
+            `El objetivo es <b>p95 &lt; ${cfg.dispatchLatency.p95Ms} ms</b> para admitir y para registrar el`
+            + ` resultado de un envío, medido dentro del worker en los últimos`
+            + ` ${DISPATCH_LATENCY_WINDOW_MINUTES} min.<br>`
+            + ` El número es el <b>techo del intervalo</b> donde cayó la muestra 95, no una latencia observada:`
+            + ` sirve para comparar contra el umbral, no para citarlo como medición.<br>`
+            + ` <b>Qué revisar:</b> espera en PgBouncer, contención de locks por tenant y el tamaño de las`
+            + ` transacciones de admisión. Cuando esto sube, la profundidad de <code>outbound-messages</code>`
+            + ` todavía no se movió.`
+            + `<ul style="margin:6px 0 6px 18px;list-style:disc;">${breached.join('')}</ul>`,
+            cfg.dispatchLatency.p95Ms,
+        );
     }
 
     /** Seconds → short human duration for alert bodies. */

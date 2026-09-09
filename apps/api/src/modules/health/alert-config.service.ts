@@ -22,6 +22,12 @@ export interface AlertConfig {
      * `overdue` only what already crossed DISPATCH_RECONCILIATION_SLA_SECONDS.
      */
     dispatchReconciliation: { backlog: number; overdue: number; stalled: number };
+    /**
+     * p95 ceiling in milliseconds for the two durable steps of a dispatch, and
+     * the fewest samples an alert may be raised on. A percentile over four
+     * requests is noise, not a signal about the path.
+     */
+    dispatchLatency: { p95Ms: number; minSamples: number };
     queueDepth: Record<string, { warn: number; crit: number }>;
     /** Alert when a queue's failed count is greater than its own threshold. */
     queueFailedByQueue: Record<string, number>;
@@ -52,6 +58,11 @@ export const ALERT_CONFIG_DEFAULTS: AlertConfig = {
     // published. One is already a customer waiting on a reply nothing is going
     // to send, so the threshold is the first row, like `overdue`.
     dispatchReconciliation: { backlog: 20, overdue: 1, stalled: 1 },
+    // 500 ms is the runbook's objective, chosen with margin over what the load
+    // harness measured (178 ms admit / 104 ms settle at 360 concurrent attempts
+    // on 24 vCPU without PgBouncer). It is also a bucket edge, which is what
+    // keeps the comparison against a bucketed p95 sound.
+    dispatchLatency: { p95Ms: 500, minSamples: 50 },
     queueDepth: {
         // La cola de ENTRANTES faltaba, y es la que el propio platform-monitor
         // llama "la más importante de la plataforma": un backlog acá significa
@@ -127,6 +138,7 @@ export class AlertConfigService {
             sentryErrors: { ...base.sentryErrors, ...(p.sentryErrors || {}) },
             slaBreaches: { ...base.slaBreaches, ...(p.slaBreaches || {}) },
             dispatchReconciliation: { ...base.dispatchReconciliation, ...(p.dispatchReconciliation || {}) },
+            dispatchLatency: { ...base.dispatchLatency, ...(p.dispatchLatency || {}) },
             queueDepth: qd,
             queueFailedByQueue: qf,
             queueFailed: num(p.queueFailed, base.queueFailed),

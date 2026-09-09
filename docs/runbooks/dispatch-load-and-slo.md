@@ -131,7 +131,10 @@ Un `agent_dispatch_outbox` en `prepared`, `queued` o `failed` con `available_at`
 
 - **Objetivo:** p95 < 500 ms para `admit` y para `settle`, medido dentro del worker.
 - **Base:** medido, con margen deliberado. Sin contención: 3 ms. Con 360 intentos simultáneos sobre 12 conexiones: 178 ms y 104 ms de p95. Los 500 ms dejan sitio para PgBouncer y para una VPS más chica que estas 24 vCPU; **no está medido a través de PgBouncer**, que es la diferencia más grande entre esta máquina y producción.
-- **Quién lo vigila: NADIE.** No hay métrica de latencia de despacho. Lo más cercano es `pgbouncer` (`warnSec 5 / critSec 20`), que mide otra cosa, y la profundidad de `outbound-messages`, que sube *después* de que la latencia ya se degradó. **Un contador de duración alrededor de `admit`/`settle` en `OutboundQueueProcessor` sería el camino más barato.**
+- **Quién lo vigila:** `dispatch:latency:p95` en `platform-monitor.service.ts`, mismo cron, severidad *warning*, umbral `dispatchLatency.p95Ms = 500` con piso `minSamples = 50`. La medición vive en `dispatch-latency.ts` y la escribe `AgentDispatchOutboxStore` alrededor de las dos transacciones durables (nunca alrededor de la escritura de telemetría, y nunca en el camino que lanza). Es un histograma de intervalos fijos por operación y por minuto, con expiración de una hora: como máximo 120 hashes pequeños para toda la plataforma, sin importar el tráfico, que es lo que le permite estar en el camino caliente.
+- **Lo que el número NO es:** un p95 por intervalos es el **techo del intervalo** donde cayó la muestra 95, no una latencia que el sistema haya visto. El campo se llama `p95UpperBoundMs` justamente para que no se cite como medición; la comparación contra el umbral sigue siendo válida porque 500 ms es también un borde de intervalo. Los números citados arriba (3 ms / 178 ms / 104 ms) siguen viniendo del harness, que sí usa rango exacto.
+- **Silencio ≠ éxito:** por debajo de `minSamples` no se concluye nada y el incidente vigente **no se cierra**. Un camino que nadie ejerció no cumplió su objetivo: no fue probado.
+- **Sigue sin medirse a través de PgBouncer**, que es la diferencia más grande entre esta máquina y producción. Eso ahora lo responde la propia serie en producción, no el harness.
 
 ### Resumen de cobertura
 
@@ -141,7 +144,7 @@ Un `agent_dispatch_outbox` en `prepared`, `queued` o `failed` con `available_at`
 | Duplicación | 0 | Sí (harness) | **ninguna** — garantía estructural |
 | Backlog de reconciliación | < 20 | No (razonado) | `dispatch:reconciliation:backlog` |
 | Edad de reconciliación | < 1 h | Tramo mecánico sí, tramo humano no | `dispatch:reconciliation:overdue` (critical) |
-| Latencia admisión/settle | p95 < 500 ms | Sí (sin PgBouncer) | **ninguna** |
+| Latencia admisión/settle | p95 < 500 ms | Sí (harness, sin PgBouncer) + serie en producción por intervalos | `dispatch:latency:p95` |
 
 ## Los tres hallazgos del harness, y cómo quedaron
 

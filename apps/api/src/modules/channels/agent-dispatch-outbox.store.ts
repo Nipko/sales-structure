@@ -4,6 +4,7 @@ import { hasAgentSourceFence } from '../../common/utils/agent-source-fence';
 import { PrismaService } from '../prisma/prisma.service';
 import { resolveReadyTenantContext } from '../../common/utils/tenant-lifecycle.util';
 import { RedisService } from '../redis/redis.service';
+import { recordDispatchLatency } from './dispatch-latency';
 import {
     DISPATCH_OUTBOX_DDL, DispatchOutboxError,
     admitDispatch, expireDispatchLeases, markDispatchQueued, prepareDispatchBatch,
@@ -198,6 +199,9 @@ export class AgentDispatchOutboxStore {
         const schema = await this.schemaFor(tenantId);
         const leaseToken = randomUUID();
         const leaseSeconds = options?.leaseSeconds ?? 120;
+        // Around the transaction only: the SLO is about the durable step, and
+        // including the recorder's own write would measure the measurement.
+        const startedAt = Date.now();
         const row = await this.prisma.transactionInTenantSchema(schema, async query => {
             await this.privacy(query, schema, tenantId);
             const current = await readDispatchRow(query, schema, dispatchId);
@@ -226,6 +230,10 @@ export class AgentDispatchOutboxStore {
             if (!conversation) throw new DispatchOutboxError('dispatch_binding_changed');
             return admitDispatch(query, schema, { dispatchId, leaseToken, leaseSeconds });
         });
+        // Only a granted permission is timed. A refused admission is a different
+        // event with a different distribution, and folding the two together
+        // would let a burst of cheap rejections hide a slow admission path.
+        await recordDispatchLatency(this.redis, 'admit', Date.now() - startedAt);
         return { schemaName: schema, leaseToken, row };
     }
 
@@ -233,10 +241,17 @@ export class AgentDispatchOutboxStore {
     async settle(tenantId: string, dispatchId: string, leaseToken: string,
         outcome: DispatchOutcome): Promise<DispatchRow> {
         const schema = await this.schemaFor(tenantId);
-        return this.prisma.transactionInTenantSchema(schema, async query => {
+        const startedAt = Date.now();
+        const row = await this.prisma.transactionInTenantSchema(schema, async query => {
             await this.privacy(query, schema, tenantId);
             return settleDispatch(query, schema, { dispatchId, leaseToken, outcome });
         });
+        // Timed after it committed, and never on the throwing path: a settle that
+        // failed is the reconciliation the outbox already reports, not a latency
+        // sample. Recording it would make the distribution look better the more
+        // often the write broke.
+        await recordDispatchLatency(this.redis, 'settle', Date.now() - startedAt);
+        return row;
     }
 
     /** The uncertain effects waiting for a person, oldest first. */

@@ -150,6 +150,18 @@ export class RedisService implements OnModuleDestroy {
         await this.client.expire(key, seconds);
     }
 
+    // ---- Hash operations ----
+    // One key per counter set instead of one key per counter: a bucketed
+    // histogram written per minute is a hash of ten fields, not ten keys.
+
+    async hincrBy(key: string, field: string, by: number): Promise<number> {
+        return this.client.hincrby(key, field, by);
+    }
+
+    async hgetall(key: string): Promise<Record<string, string>> {
+        return this.client.hgetall(key);
+    }
+
     // ---- List operations ----
 
     async rpush(key: string, value: string): Promise<number> {

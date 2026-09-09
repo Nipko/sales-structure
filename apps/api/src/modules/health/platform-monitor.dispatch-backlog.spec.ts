@@ -22,7 +22,27 @@ type Backlog =
 
 interface TenantFixture { name: string; schemaName: string; backlog: Backlog }
 
-function createMonitor(tenants: TenantFixture[]) {
+/** Bucketed latency samples the monitor will fold, keyed exactly as production writes them. */
+function latencyHashes(byOperation: Partial<Record<'admit' | 'settle', Record<string, number>>>) {
+    const hgetall = jest.fn(async (key: string) => {
+        const operation = key.split(':')[2] as 'admit' | 'settle';
+        // Everything in the newest minute; the window folding has its own test.
+        if (!key.endsWith(NOW_MINUTE)) return {};
+        const buckets = byOperation[operation];
+        if (!buckets) return {};
+        return Object.fromEntries(Object.entries(buckets).map(([k, v]) => [k, String(v)]));
+    });
+    return { hgetall };
+}
+
+const NOW_MINUTE = (() => {
+    const now = new Date();
+    return `${now.getUTCFullYear()}${String(now.getUTCMonth() + 1).padStart(2, '0')}`
+        + `${String(now.getUTCDate()).padStart(2, '0')}${String(now.getUTCHours()).padStart(2, '0')}`
+        + `${String(now.getUTCMinutes()).padStart(2, '0')}`;
+})();
+
+function createMonitor(tenants: TenantFixture[], redis: any = {}) {
     const alerts: Array<{ key: string; subject: string; html: string; value: number }> = [];
     const resolved: string[] = [];
     const executedSql: string[] = [];
@@ -59,7 +79,7 @@ function createMonitor(tenants: TenantFixture[]) {
     const alertConfig = { get: jest.fn(async () => ALERT_CONFIG_DEFAULTS) };
 
     const monitor = new PlatformMonitorService(
-        {} as any, {} as any, prisma as any, {} as any, {} as any,
+        redis as any, {} as any, prisma as any, {} as any, {} as any,
         incidents as any, {} as any, {} as any, alertConfig as any, {} as any,
         {} as any, {} as any, {} as any, {} as any, {} as any, {} as any,
         {} as any, {} as any,
@@ -191,6 +211,49 @@ describe('PlatformMonitorService — uncertain dispatch effects', () => {
         expect(counting).toContain("state = 'reconciliation_required'");
         expect(counting).toContain("state IN ('prepared','queued','failed')");
         expect(counting).toContain('available_at <');
+    });
+
+    it('measures the two durable steps, which nothing was measuring', async () => {
+        // The objective exists in the runbook and the load harness produced the
+        // numbers behind it. Production produced none: PgBouncer wait time is a
+        // different quantity and queue depth only rises after the fact.
+        const { monitor, alerts } = createMonitor(
+            [quiet('Hotel Amazonas', 'tenant_amazonas')],
+            latencyHashes({ admit: { '10': 100 }, settle: { '2500': 60 } }),
+        );
+
+        await monitor.checkDispatchBacklog();
+
+        const latency = alerts.find(a => a.key === 'dispatch:latency:p95')!;
+        expect(latency).toBeDefined();
+        // Only the one that crossed is named; `admit` at ≤10 ms is fine.
+        expect(latency.html).toContain('settle');
+        expect(latency.html).not.toMatch(/<li><b>admit<\/b>/);
+        // The body has to say the number is a ceiling, not an observation.
+        expect(latency.html).toContain('techo del intervalo');
+    });
+
+    it('does not close the latency incident because traffic stopped', async () => {
+        // Silence is not success: a path nothing exercised has not met its SLO,
+        // it has not been tested.
+        const { monitor, resolved } = createMonitor(
+            [quiet('Hotel Amazonas', 'tenant_amazonas')],
+            latencyHashes({ admit: { '10': 3 } }),
+        );
+
+        await monitor.checkDispatchBacklog();
+        expect(resolved).not.toContain('dispatch:latency:p95');
+    });
+
+    it('closes it when enough samples came back under the objective', async () => {
+        const { monitor, alerts, resolved } = createMonitor(
+            [quiet('Hotel Amazonas', 'tenant_amazonas')],
+            latencyHashes({ admit: { '50': 80 }, settle: { '100': 90 } }),
+        );
+
+        await monitor.checkDispatchBacklog();
+        expect(alerts.map(a => a.key)).not.toContain('dispatch:latency:p95');
+        expect(resolved).toContain('dispatch:latency:p95');
     });
 
     it('classifies the overdue one as critical and the plain backlog as a warning', () => {

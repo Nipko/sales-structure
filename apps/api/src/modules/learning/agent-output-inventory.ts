@@ -263,6 +263,20 @@ export const AGENT_OUTPUT_STORES: readonly AgentOutputStore[] = Object.freeze([
     }),
 
     store({
+        id: 'certification_cases',
+        store: 'agent_certification_cases.transcript',
+        sources: ['modules/simulation/certification-ledger.ts'],
+        carriesProvenance: false,
+        reachedByRetraction: 'by_design',
+        reachedByContactErasure: 'by_design',
+        status: 'accepted',
+        rationale: 'A certification case is the agent answering an evaluation pack inside an isolated fixture: the '
+            + 'customer is synthetic and there is no contact to erase or release to withdraw. What makes that true '
+            + 'rather than hopeful is the contract of the executor itself — a case names a profile and a scenario key, never '
+            + 'a contact — and the fixtures it runs against are per-profile and disposable. A run whose subject were a '
+            + 'real conversation would be a different table and would belong in the fan-outs above.',
+    }),
+    store({
         id: 'learning_corpus',
         store: 'learning_sources.transcript, learning_examples.episode / response_pattern, learning_reviews.snapshot',
         sources: ['modules/learning/learning.service.ts', 'modules/learning/learning-inbox-source.ts'],
@@ -288,17 +302,18 @@ export const AGENT_OUTPUT_STORES: readonly AgentOutputStore[] = Object.freeze([
     }),
     store({
         id: 'benchmark_attempts',
-        store: 'the frozen benchmark corpus and the attempt transcripts summarised against it',
-        sources: ['modules/simulation/agent-benchmark.ts'],
+        store: 'benchmark_attempts.transcript, and the frozen corpus it is scored against',
+        sources: ['modules/simulation/agent-benchmark.ts', 'modules/simulation/benchmark-harness.ts'],
         carriesProvenance: false,
-        reachedByRetraction: 'no',
-        reachedByContactErasure: 'no',
-        status: 'open',
-        rationale: 'Attempts carry a transcript of what a subject said. Nothing persists them yet — the module validates '
-            + 'and summarises attempts it is handed — so there is no store to reach today, and the moment a runner '
-            + 'persists them there will be one.',
-        remedy: 'Give the attempt ledger a release id and a contact id when it is built, so both keys reach it from the '
-            + 'first row rather than being retrofitted onto a corpus that already exists.',
+        reachedByRetraction: 'by_design',
+        reachedByContactErasure: 'by_design',
+        status: 'accepted',
+        rationale: 'This row used to say the store did not exist yet and asked, when it was built, for a release id '
+            + 'and a contact id so neither key would have to be retrofitted. The store exists now and needs neither, '
+            + 'which is a better answer than the one that was asked for: the corpus is generated from the catalogue '
+            + 'and frozen by hash, so every customer message in it was written by the evaluation packs rather than by '
+            + 'a person, and the transcript is a subject answering those. There is no customer in it to reach. The '
+            + 'blind review stores a label and a score rather than the words, so a reviewer holds no second copy.',
     }),
 
     // ── Deferred sends ───────────────────────────────────────────────────────

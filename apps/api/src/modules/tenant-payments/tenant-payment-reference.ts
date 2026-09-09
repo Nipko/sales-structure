@@ -1,5 +1,6 @@
 import { enrollmentPriceSql, enrollmentCurrencySql } from '../education/enrollment-terms';
 import { appointmentAgreedPriceSql, appointmentAgreedCurrencySql } from '../appointments/appointment-service-terms';
+import { catalogAgreedAmountSql, catalogAgreedCurrencySql } from '../orders/catalog-order-contract';
 
 export type TenantPaymentProvider = 'mercadopago' | 'wompi';
 
@@ -24,8 +25,13 @@ export interface PaymentReferenceTarget {
 export const PAYMENT_REFERENCE_TARGETS: Record<string, PaymentReferenceTarget> = {
     order: {
         table: 'orders',
-        amountExpression: 'target.total_amount',
-        currencyExpression: 'target.currency',
+        // The AGREED total, from the snapshot the writer already stored, not
+        // `total_amount`. The two agree for every order the canonical writer
+        // created — and where they do not, the difference is precisely a row
+        // whose amount nobody agreed to, which is the row that must not be
+        // charged rather than the one that must.
+        amountExpression: catalogAgreedAmountSql(),
+        currencyExpression: catalogAgreedCurrencySql(),
         rejectedStatuses: ['cancelled', 'refunded', 'paid'],
         description: entityId => `Pago de pedido ${entityId.slice(0, 8)}`,
     },

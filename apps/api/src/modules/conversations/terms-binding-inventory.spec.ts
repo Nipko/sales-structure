@@ -3,6 +3,7 @@ import { FAMILY_TERMS_BINDINGS, TERMS_BINDING, declaredFamilies,
     familiesWithUnboundCharge, familiesWithUnboundCommand } from './terms-binding-inventory';
 import { appointmentAgreedPriceSql, appointmentPriceSql } from '../appointments/appointment-service-terms';
 import { enrollmentPriceSql } from '../education/enrollment-terms';
+import { catalogAgreedAmountSql } from '../orders/catalog-order-contract';
 
 /**
  * The inventory has to track the registry, or it becomes a document.
@@ -42,7 +43,7 @@ describe('which families bind what the customer agreed to', () => {
     it('states the gap as a list, because that is the whole point', () => {
         const unboundCharge = familiesWithUnboundCharge().map(row => row.family).sort();
         const unboundCommand = familiesWithUnboundCommand().map(row => row.family).sort();
-        expect(unboundCharge).toEqual(['catalog_orders', 'property_bookings', 'restaurant_orders', 'tour_bookings']);
+        expect(unboundCharge).toEqual(['property_bookings', 'restaurant_orders', 'tour_bookings']);
         expect(unboundCommand).toEqual(['appointment_transitions', 'class_bookings',
             'insurance_quotes', 'photo_sessions', 'property_bookings', 'repair_orders', 'resource_rentals',
             'restaurant_orders', 'service_requests', 'tour_bookings'].sort());
@@ -51,7 +52,7 @@ describe('which families bind what the customer agreed to', () => {
             + `${unboundCommand.length} without a bound command, ${unboundCharge.length} without a bound charge`);
     });
 
-    it('the two families that do bind the charge refuse a price nobody agreed to', () => {
+    it('the families that do bind the charge refuse a price nobody agreed to', () => {
         // Not prose: the SQL itself. Both read the stored snapshot and yield
         // NULL when there is none, which is what makes the reference unpayable
         // rather than payable at today's catalogue price.
@@ -59,6 +60,11 @@ describe('which families bind what the customer agreed to', () => {
         expect(appointmentAgreedPriceSql()).toContain('NULLIF');
         expect(appointmentAgreedPriceSql()).not.toContain('service.price');
         expect(enrollmentPriceSql()).toContain('NULLIF');
+        // The catalogue order reads the stored snapshot, refuses a cancellation
+        // snapshot, and never mentions the live column it used to charge from.
+        expect(catalogAgreedAmountSql()).toContain("catalog_terms->>'totalAmountCents'");
+        expect(catalogAgreedAmountSql()).toContain("'create'");
+        expect(catalogAgreedAmountSql()).not.toContain('total_amount');
     });
 
     it('keeps the display price and the charged price as two different questions', () => {

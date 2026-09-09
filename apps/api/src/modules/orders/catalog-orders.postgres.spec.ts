@@ -5,7 +5,8 @@ import { PrismaClient } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { OrdersService } from './orders.service';
 import { InventoryService } from '../inventory/inventory.service';
-import { catalogHash } from './catalog-order-contract';
+import { catalogHash, ordersWithoutAgreedTermsSql } from './catalog-order-contract';
+import { PAYMENT_REFERENCE_TARGETS } from '../tenant-payments/tenant-payment-reference';
 import { TenantPaymentStoreService } from '../tenant-payments/tenant-payment-store.service';
 import { AIToolExecutorService } from '../conversations/ai-tool-executor.service';
 import { ToolExecutionControlService } from '../conversations/tool-execution-control.service';
@@ -231,6 +232,48 @@ integration('Catalog integrity through real PostgreSQL and Prisma', () => {
         const row=await orders.createOrder(tenantId,input({status:'paid'}));
         expect(row).toMatchObject({status:'paid',paymentStatus:'pending'});
         await expect(orders.catalogCommands().cancellationTerms(schema,row.id,contactId)).rejects.toThrow('catalog_cancellation_review_required');
+    });
+    it('charges the total the customer agreed to, and refuses a row that agreed to none',async()=>{
+        const target=PAYMENT_REFERENCE_TARGETS.order;
+        const payable=async(id:string)=>(await query(
+            `SELECT ${target.amountExpression} AS amount, ${target.currencyExpression} AS currency
+               FROM orders target WHERE target.id=$1::uuid`,[id]))[0];
+
+        // Positive: the till reads the snapshot the writer stored, not the live
+        // column beside it. Two units at 12,35 each.
+        const row=await orders.createOrder(tenantId,input());
+        const stored=(await query('SELECT catalog_terms FROM orders WHERE id=$1::uuid',[row.id]))[0].catalog_terms;
+        expect(stored.totalAmountCents).toBe('2470');
+        expect(await payable(row.id)).toEqual({amount:expect.anything(),currency:'COP'});
+        expect(Number((await payable(row.id)).amount)).toBe(24.70);
+
+        // Negative, and the point of the change: the live column moves and the
+        // charge does not follow it. Nobody agreed to the new number.
+        await query('UPDATE orders SET total_amount=999999 WHERE id=$1::uuid',[row.id]);
+        expect(Number((await payable(row.id)).amount)).toBe(24.70);
+
+        // Negative: a row with no accepted terms — a legacy order, or one
+        // inserted around the writer — is not payable at all. Charging it at
+        // whatever `total_amount` says would be charging a number the customer
+        // never saw, and refusing is the direction to err in.
+        const legacy=randomUUID();
+        await query(`INSERT INTO orders(id,contact_id,status,total_amount,currency,version)
+            VALUES($1::uuid,$2::uuid,'pending',50,'COP',1)`,[legacy,contactId]);
+        expect(await payable(legacy)).toEqual({amount:null,currency:null});
+
+        // And a cancellation snapshot is not a sale: charging from one would be
+        // taking the amount quoted for undoing the order.
+        const cancelled=randomUUID();
+        await query(`INSERT INTO orders(id,contact_id,status,total_amount,currency,version,catalog_terms)
+            VALUES($1::uuid,$2::uuid,'pending',50,'COP',1,$3::jsonb)`,
+        [cancelled,contactId,JSON.stringify({version:1,action:'cancel',orderId:cancelled,orderVersion:1,
+            status:'pending',paymentStatus:'pending',currency:'COP',totalAmountCents:'5000'})]);
+        expect(await payable(cancelled)).toEqual({amount:null,currency:null});
+
+        // How many live rows that refusal would bite, as a number rather than a
+        // worry: the two just inserted.
+        expect((await query(ordersWithoutAgreedTermsSql()))[0]).toEqual({orphans:2});
+        await query('DELETE FROM orders WHERE id=ANY($1::uuid[])',[[legacy,cancelled,row.id]]);
     });
     it('serializes concurrent stock adjustments without losing audit movements',async()=>{
         await Promise.all(Array.from({length:8},()=>inventory.adjustStock(tenantId,productId,{type:'in',quantity:1,reason:'Synthetic intake'})));

@@ -62,10 +62,11 @@ export const FAMILY_TERMS_BINDINGS: readonly FamilyTermsBinding[] = Object.freez
             + 'stored hash no longer matches; enrollmentPriceSql returns NULL for a legacy row.',
     }),
     entry({
-        family: 'catalog_orders', command: 'bound', charge: 'none', legacyRows: 'fails_open',
-        evidence: 'The agent must supply the catalog terms hash and the accepted terms are stored in the dedicated '
-            + 'orders.catalog_terms column — which nothing reads back. The charge takes target.total_amount, a live '
-            + 'column, so the snapshot is written and then ignored at the till.',
+        family: 'catalog_orders', command: 'bound', charge: 'bound', legacyRows: 'fails_closed',
+        evidence: 'The agent must supply the catalog terms hash and the accepted terms are stored in '
+            + 'orders.catalog_terms; the charge now reads that snapshot through catalogAgreedAmountSql, which yields '
+            + 'NULL for a row that agreed to nothing and refuses a cancellation snapshot outright. The live '
+            + 'total_amount beside it can move without the charge following, which is the whole point.',
     }),
     entry({
         family: 'repair_orders', command: 'partial', charge: 'not_applicable', legacyRows: 'not_applicable',

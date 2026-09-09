@@ -113,3 +113,44 @@ export function catalogActionError(error: unknown): Record<string, unknown> {
         ...(['catalog_prescription_review_required','catalog_cancellation_review_required','catalog_stock_reconciliation_required'].includes(code) ? { shouldHandoff: true } : {}),
         message: 'No order action was completed. Use the current catalog/order evidence to explain the problem and the next safe step. Do not claim payment, dispatch, refund or medical approval.' };
 }
+
+/**
+ * The amount a CHARGE may take for a catalogue order: the one the customer
+ * agreed to, or none.
+ *
+ * `orders.catalog_terms` already stored the accepted terms — every order the
+ * canonical writer creates carries them — and nothing ever read them back. The
+ * till took `orders.total_amount`, a live column, so the snapshot was written
+ * and then ignored at exactly the moment it was supposed to matter. That is the
+ * same defect appointments had, and it is fixed the same way: the money path
+ * reads the snapshot and yields NULL when there is none, which makes a legacy
+ * or hand-inserted row unpayable rather than payable at a number nobody agreed.
+ *
+ * The `action` guard is not decoration. A cancellation carries its own terms
+ * shape, and charging from one would be charging the amount quoted for undoing
+ * the sale.
+ *
+ * Cents to currency units, because that is what the reference compares against
+ * and what the provider is asked for.
+ */
+export function catalogAgreedAmountSql(order = 'target'): string {
+    if (!/^[a-z_]+$/.test(order)) throw new Error('invalid_sql_alias');
+    return `(CASE WHEN ${order}.catalog_terms->>'action' = 'create'`
+        + ` THEN NULLIF(${order}.catalog_terms->>'totalAmountCents','')::numeric / 100 END)`;
+}
+export function catalogAgreedCurrencySql(order = 'target'): string {
+    if (!/^[a-z_]+$/.test(order)) throw new Error('invalid_sql_alias');
+    return `(CASE WHEN ${order}.catalog_terms->>'action' = 'create'`
+        + ` THEN ${order}.catalog_terms->>'currency' END)`;
+}
+
+/**
+ * How many live orders predate the binding, so failing closed is a number
+ * somebody can see rather than a surprise at the till. The sibling families
+ * answer the same question the same way.
+ */
+export function ordersWithoutAgreedTermsSql(): string {
+    return `SELECT count(*)::int AS orphans FROM orders
+             WHERE COALESCE(catalog_terms->>'action','') <> 'create'
+               AND status NOT IN ('cancelled', 'refunded', 'paid')`;
+}

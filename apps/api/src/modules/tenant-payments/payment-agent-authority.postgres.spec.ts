@@ -56,7 +56,7 @@ const deferred=()=>{let resolve!:()=>void;const promise=new Promise<void>(done=>
         await client.$executeRawUnsafe(`CREATE SCHEMA "${schema}"`);
         await client.$executeRawUnsafe('INSERT INTO public.tenants(id,schema_name,is_active) VALUES($1::uuid,$2,true)',tenantId,schema);
         await q('CREATE TABLE agent_personas(id UUID PRIMARY KEY,name TEXT,config_json JSONB,channels TEXT[],channel_bindings TEXT[],schedule_mode TEXT,is_active BOOLEAN,is_default BOOLEAN,version INT,updated_at TIMESTAMPTZ)');
-        await q('CREATE TABLE orders(id UUID PRIMARY KEY,contact_id UUID,status TEXT,payment_status TEXT,total_amount NUMERIC,currency TEXT,updated_at TIMESTAMPTZ)');
+        await q('CREATE TABLE orders(id UUID PRIMARY KEY,contact_id UUID,status TEXT,payment_status TEXT,total_amount NUMERIC,currency TEXT,catalog_terms JSONB,updated_at TIMESTAMPTZ)');
         await q('CREATE TABLE customer_memory_erasure(contact_id UUID PRIMARY KEY)');
         await q('CREATE TABLE tool_execution_ledger(id UUID PRIMARY KEY)');
         store=new TenantPaymentStoreService(prisma);await store.ensureForTenant(tenantId);
@@ -66,7 +66,11 @@ const deferred=()=>{let resolve!:()=>void;const promise=new Promise<void>(done=>
         afterQuery=undefined;loseAdmissionCommitAck=false;rail='wompi';
         await q('TRUNCATE tenant_payment_attempts,tenant_payment_intents,orders,agent_personas,tool_execution_ledger CASCADE');
         await q("INSERT INTO agent_personas VALUES($1::uuid,'Agent','{}','{}','{}','always',true,false,1,NOW())",[agentId]);
-        await q("INSERT INTO orders VALUES($1::uuid,$2::uuid,'pending','pending',100,'COP',NOW())",[orderId,contactId]);
+        // The order carries the terms the customer accepted, because the charge
+        // reads those and not the live column. A fixture without them is a row
+        // nobody agreed to, and the resolver is right to refuse it.
+        await q("INSERT INTO orders VALUES($1::uuid,$2::uuid,'pending','pending',100,'COP',$3::jsonb,NOW())",
+            [orderId,contactId,JSON.stringify({version:1,action:'create',currency:'COP',totalAmountCents:'10000',items:[],notes:''})]);
         scope=await liveScope();
         wompi={createAndVerifyPaymentLink:jest.fn(async(input:any)=>({id:'provider-'+input.intentId,url:'https://example.test/checkout',expiresAt:input.expiresAt})),
             getAndValidatePaymentLink:jest.fn(async(input:any)=>({url:'https://example.test/checkout',active:true,expiresAt:input.expectedExpiresAt}))};

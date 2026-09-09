@@ -281,12 +281,18 @@ const nextJson = JSON.stringify(state, null, 2) + '\n';
 const CHECK = process.argv.includes('--check');
 if (CHECK) {
     const stored = fs.existsSync(jsonPath) ? JSON.parse(fs.readFileSync(jsonPath, 'utf8')) : null;
-    const strip = value => value && JSON.stringify({ ...value, generatedAt: undefined });
-    if (!stored || stored.revision !== revision || strip(stored) !== strip(state)) {
-        process.stderr.write(`closure-report.json is stale: stored=${stored?.revision ?? 'missing'} head=${revision}\n`);
+    // Content, not the label. The revision and the timestamp change on every
+    // commit, so comparing them would make this impossible to satisfy: the
+    // artefact is regenerated, committed, and that commit moves HEAD past the
+    // revision it just recorded. What goes stale is the CONTENT — a counter that
+    // moved because somebody closed a gap, a row that changed status — and that
+    // is what this compares. The stored revision is printed so drift is visible.
+    const strip = value => value && JSON.stringify({ ...value, generatedAt: undefined, revision: undefined });
+    if (!stored || strip(stored) !== strip(state)) {
+        console.error(`closure-report.json is stale: regenerate it (stored at ${stored?.revision ?? 'missing'})`);
         process.exit(1);
     }
-    process.stdout.write(`closure-report.json matches ${revision}\n`);
+    console.log(`closure-report.json content matches the code (generated at ${stored.revision})`);
     process.exit(0);
 }
 fs.writeFileSync(jsonPath, nextJson);

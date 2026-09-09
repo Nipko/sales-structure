@@ -52,7 +52,16 @@ const revision = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encodin
 const CHECK = process.argv.includes('--check');
 function verifyArtifact(file, next) {
     const stored = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : null;
-    const strip = value => String(value ?? '').replace(/"generatedAt": "[^"]*"/g, '');
+    // Content, not the label. The revision and the timestamp change on every
+    // commit, so comparing them would make the check impossible to satisfy: the
+    // artefact is regenerated, committed, and the commit that carries it moves
+    // HEAD past the revision it recorded. What goes stale is the CONTENT — a
+    // counter that moved because somebody closed a gap — and that is what this
+    // compares. The stored revision is printed so the drift is visible.
+    const strip = value => String(value ?? '')
+        .replace(/"generatedAt": "[^"]*"/g, '')
+        .replace(/"revision": "[a-f0-9]{7,40}"/g, '')
+        .replace(/[a-f0-9]{40}/g, '');
     if (stored === null || strip(stored) !== strip(next)) {
         console.error(path.basename(file) + ' is stale for ' + revision);
         process.exit(1);
@@ -163,7 +172,7 @@ const markdown = [
     '',
 ];
 emit(path.join(__dirname, 'closure-state.md'), markdown.join('\n'));
-if (CHECK) { console.log('artifacts match ' + revision); }
+if (CHECK) { console.log(path.basename(__filename) + ': content matches the code'); }
 else process.stdout.write(JSON.stringify({
     taskMatrix: state.taskMatrix,
     plan: { cases: plan.totals.requiredCases, calls: plan.totals.modelCalls, cents: plan.totals.maxCostUsdCents },

@@ -1,6 +1,6 @@
 /*
- * Fails when any generated artefact in this directory does not correspond to
- * HEAD.
+ * Fails when any generated artefact in this directory no longer reflects the
+ * code it was generated from.
  *
  * Every one of them had been generated one or two commits before the revision
  * it claimed to describe, and nothing noticed — which is the failure mode of a
@@ -29,4 +29,4 @@ if (failed) {
     console.error(`${failed} artefacto(s) desactualizado(s). Regenerá con los mismos scripts sin --check.`);
     process.exit(1);
 }
-console.log('todos los artefactos corresponden a HEAD');
+console.log('todos los artefactos reflejan el codigo actual');

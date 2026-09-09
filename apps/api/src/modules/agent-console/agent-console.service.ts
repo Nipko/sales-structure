@@ -288,7 +288,11 @@ export class AgentConsoleService {
         msgParams.push(limit + 1);
         const messages = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
-            `SELECT id, content_text as content, content_type as type, direction as sender, created_at, metadata
+            // `status` travels with the message: an outbound row the provider
+            // refused is written `failed`, and without this column the console
+            // could only warn at the moment of sending — one reload and the
+            // reply that never left looked ordinary again.
+            `SELECT id, content_text as content, content_type as type, direction as sender, status, created_at, metadata
        FROM messages
        WHERE conversation_id = $1::uuid ${beforeClause}
        ORDER BY created_at DESC

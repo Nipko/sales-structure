@@ -646,6 +646,9 @@ export default function InboxPage() {
                             id: m.id,
                             content: m.content_text || m.content || '',
                             direction: isInbound ? 'inbound' : 'outbound',
+                            // From the row, so the warning survives a reload. Only
+                            // an outbound message has a delivery state at all.
+                            deliveryState: isInbound ? undefined : agentReplyDeliveryNotice(m.status).state,
                             senderLabel: isInbound ? t('client') : (isHumanAgent ? t('agent') : 'IA'),
                             senderName: isInbound ? selectedConv.contactName : (isHumanAgent ? t('agent') : 'IA'),
                             timestamp: (m.timestamp || m.created_at) ? formatTime(m.timestamp || m.created_at) : '',
@@ -732,6 +735,7 @@ export default function InboxPage() {
                 id: message.id,
                 content: message.content_text || message.content || '',
                 direction: isInbound ? 'inbound' : 'outbound',
+                deliveryState: isInbound ? undefined : agentReplyDeliveryNotice(message.status).state,
                 senderLabel: isInbound ? t('client') : (isHumanAgent ? t('agent') : 'IA'),
                 senderName: isInbound ? t('client') : (isHumanAgent ? t('agent') : 'IA'),
                 timestamp: (message.timestamp || message.created_at) ? formatTime(message.timestamp || message.created_at) : new Date().toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }),

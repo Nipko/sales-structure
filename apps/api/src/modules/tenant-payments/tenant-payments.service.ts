@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { createHash, randomBytes, timingSafeEqual } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
+import { agreedTermsRefusalKey, countAgreedTermsOrphans, isMissingAgreedTermsRefusal } from './agreed-terms-orphans';
 import { RedisService } from '../redis/redis.service';
 import { WhatsappCryptoService } from '../whatsapp/services/whatsapp-crypto.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
@@ -782,6 +783,28 @@ export class TenantPaymentsService {
         });
     }
 
+    /**
+     * The dry run an operator has to be able to ask for before a deploy: how
+     * many live orders and appointments would stop being payable, in which
+     * states, and which ones by id. No personal data crosses the boundary.
+     */
+    async agreedTermsOrphans(tenantId: string) {
+        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
+        if (!schemaName) return null;
+        return this.prisma.transactionInTenantSchema(schemaName, query =>
+            countAgreedTermsOrphans(((sql: string, params: any[] = []) => query(sql, params)) as any));
+    }
+
+    /** How many charges this tenant has been refused for want of agreed terms. */
+    async agreedTermsRefusals(tenantId: string): Promise<Record<string, number>> {
+        const out: Record<string, number> = {};
+        for (const kind of ['order', 'appointment']) {
+            const value = await this.redis.get?.(agreedTermsRefusalKey(tenantId, kind)).catch(() => null);
+            out[kind] = Number(value ?? 0) || 0;
+        }
+        return out;
+    }
+
     async getRuntimeCapability(tenantId: string, executionContext?: ServiceExecutionContext): Promise<{
         configured: boolean;
         ready: boolean;
@@ -1522,7 +1545,19 @@ export class TenantPaymentsService {
             if (!row
                 || !Number.isSafeInteger(amountCents)
                 || amountCents <= 0
-                || !/^[A-Z]{3}$/.test(currency)) return null;
+                || !/^[A-Z]{3}$/.test(currency)) {
+                // One refusal here means something very different from the
+                // others: the row exists and nobody recorded what the customer
+                // agreed to, so a real person is holding a link that will not
+                // work. Returning a bare `null` for that made it look exactly
+                // like a typo in a reference. It is counted and named now, so an
+                // alert can watch one key instead of a log nobody greps.
+                if (isMissingAgreedTermsRefusal(row, parsed.kind)) {
+                    this.logger.warn(`[tenant-payments] ${parsed.canonicalReference} refused: no agreed terms recorded`);
+                    await this.redis.incr?.(agreedTermsRefusalKey(tenantId, parsed.kind)).catch(() => undefined);
+                }
+                return null;
+            }
             if (!includeTerminal && (
                 !['pending', 'failed'].includes(paymentStatus)
                 || parsed.target.rejectedStatuses.includes(resourceStatus)

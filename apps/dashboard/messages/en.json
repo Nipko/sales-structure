@@ -1783,7 +1783,11 @@
     "tagsLabel": "Tags",
     "notAvailable": "N/A",
     "viewContact": "View {noun}",
-    "estimatedValueAmount": "${amount} COP"
+    "estimatedValueAmount": "${amount} COP",
+    "notDelivered": "Not delivered",
+    "notConfirmed": "Unconfirmed",
+    "sendNotDelivered": "Your reply was saved, but the channel did not accept it. The customer does not have it yet.",
+    "sendNotConfirmed": "Your reply was saved, but we could not confirm it left through the channel."
   },
   "smsNotificationsIntegration": {
     "title": "SMS alerts",

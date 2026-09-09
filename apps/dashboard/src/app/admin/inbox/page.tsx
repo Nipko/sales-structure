@@ -12,6 +12,7 @@ import { approvalEventMatches } from "@/lib/tool-approvals";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
 import { useTranslations } from "next-intl";
+import { agentReplyDeliveryNotice } from "@/lib/agent-reply-delivery";
 import { DataSourceBadge } from "@/hooks/useApiData";
 import { cn } from "@/lib/utils";
 import { isSupervisor } from "@/lib/roles";
@@ -1177,6 +1178,10 @@ export default function InboxPage() {
         setMessages(prev => [...prev, {
             id: optimisticId,
             direction: 'outbound',
+            // Until the API answers, this bubble is a hope, not a fact. The
+            // server writes the row `pending` and settles it on what the
+            // provider actually did.
+            deliveryState: 'pending' as const,
             content,
             senderLabel: t('agent'),
             senderName: user?.firstName || t('agent'),
@@ -1188,7 +1193,17 @@ export default function InboxPage() {
         // API call
         try {
             if (activeTenantId && selectedConv?.id) {
-                await api.sendMessage(activeTenantId, selectedConv.id, content);
+                const result = await api.sendMessage(activeTenantId, selectedConv.id, content);
+                // A 200 means the reply was SAVED, not that it left. The send
+                // runs inline after the row is written and its failure used to
+                // reach only the server log, so an expired token or a provider
+                // 500 left the agent looking at an ordinary bubble while the
+                // customer waited. The row now says what happened; this is where
+                // the person who typed it gets told.
+                const delivery = agentReplyDeliveryNotice((result as any)?.data?.status);
+                setMessages(prev => prev.map(message => message.id === optimisticId
+                    ? { ...message, deliveryState: delivery.state } : message));
+                if (delivery.noticeKey) showInboxError(t(delivery.noticeKey));
                 // Draft-for-approval (#6): the agent replied — clear any pending AI draft.
                 const convId = selectedConv.id;
                 setDraftsByConv(prev => { const n = { ...prev }; delete n[convId]; return n; });
@@ -1970,6 +1985,18 @@ export default function InboxPage() {
                                                 <ChannelIcon channel={selectedConv.channel} size={14} />
                                                 <span className="opacity-50">{safeDate(msg.timestamp)}</span>
                                             </div>
+                                            {/* Said in words, not in a colour: a reply the
+                                                provider refused looks exactly like one it took
+                                                unless somebody writes it down. */}
+                                            {!isInbound && (msg.deliveryState === 'failed' || msg.deliveryState === 'pending') && (
+                                                <div role="status" className={cn(
+                                                    "text-[10px] mb-1 flex gap-1 items-center pr-1 justify-end",
+                                                    msg.deliveryState === 'failed' ? "text-red-500" : "text-amber-500",
+                                                )}>
+                                                    <AlertCircle size={10} aria-hidden="true" />
+                                                    {t(msg.deliveryState === 'failed' ? 'notDelivered' : 'notConfirmed')}
+                                                </div>
+                                            )}
 
                                             {/* Bubble */}
                                             <div className={cn(

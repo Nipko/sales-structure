@@ -1783,7 +1783,11 @@
     "tagsLabel": "Tags",
     "notAvailable": "N/D",
     "viewContact": "Ver {noun}",
-    "estimatedValueAmount": "${amount} COP"
+    "estimatedValueAmount": "${amount} COP",
+    "notDelivered": "Não foi entregue",
+    "notConfirmed": "Sem confirmação",
+    "sendNotDelivered": "Sua resposta foi salva, mas o canal não a aceitou. O cliente ainda não a recebeu.",
+    "sendNotConfirmed": "Sua resposta foi salva, mas não conseguimos confirmar que saiu pelo canal."
   },
   "smsNotificationsIntegration": {
     "title": "Avisos por SMS",

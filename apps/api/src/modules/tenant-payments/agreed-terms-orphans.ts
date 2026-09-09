@@ -1,5 +1,6 @@
 import { appointmentsWithoutAgreedTermsSql } from '../appointments/appointment-service-terms';
 import { ordersWithoutAgreedTermsSql } from '../orders/catalog-order-contract';
+import { commitmentOrphansSql } from '../conversations/commitment-proposal';
 
 /**
  * The rows that predate the terms binding, counted before a deploy meets them.
@@ -26,7 +27,9 @@ import { ordersWithoutAgreedTermsSql } from '../orders/catalog-order-contract';
 
 export type OrphanQuery = <R = any[]>(sql: string, params?: any[]) => Promise<R>;
 
-export const AGREED_TERMS_FAMILIES = ['catalog_orders', 'appointments'] as const;
+export const AGREED_TERMS_FAMILIES = [
+    'catalog_orders', 'appointments', 'property_bookings', 'tour_bookings', 'restaurant_orders',
+] as const;
 export type AgreedTermsFamily = (typeof AGREED_TERMS_FAMILIES)[number];
 
 export interface AgreedTermsOrphanFamily {
@@ -59,6 +62,21 @@ export interface AgreedTermsOrphanReport {
 
 const SAMPLE = 20;
 
+/**
+ * The three families the shared commitment gate closed read their acceptance
+ * from `commitment_proposals` rather than from a column of their own, so their
+ * orphan query is the same query with a different table. Writing it three times
+ * would be three chances to forget the `accepted_at IS NOT NULL`.
+ */
+const commitmentDetail = (table: string, liveStates: readonly string[]) => `
+    SELECT target.id::text AS id, target.status, target.created_at
+      FROM ${table} target
+     WHERE NOT EXISTS (
+         SELECT 1 FROM commitment_proposals p
+          WHERE p.consumed_entity_id = target.id AND p.accepted_at IS NOT NULL)
+       AND target.status NOT IN (${liveStates.map(state => `'${state}'`).join(', ')})
+     ORDER BY target.created_at DESC`;
+
 const FAMILY_SQL: Record<AgreedTermsFamily, { table: string; count: string; detail: string }> = {
     catalog_orders: {
         table: 'orders',
@@ -77,6 +95,21 @@ const FAMILY_SQL: Record<AgreedTermsFamily, { table: string; count: string; deta
                   WHERE NOT (metadata ? 'serviceTerms')
                     AND status NOT IN ('cancelled', 'no_show', 'completed', 'expired')
                   ORDER BY created_at DESC`,
+    },
+    property_bookings: {
+        table: 'property_bookings',
+        count: commitmentOrphansSql('property_bookings', ['cancelled', 'refunded', 'expired']),
+        detail: commitmentDetail('property_bookings', ['cancelled', 'refunded', 'expired']),
+    },
+    tour_bookings: {
+        table: 'tour_bookings',
+        count: commitmentOrphansSql('tour_bookings', ['cancelled', 'refunded', 'expired']),
+        detail: commitmentDetail('tour_bookings', ['cancelled', 'refunded', 'expired']),
+    },
+    restaurant_orders: {
+        table: 'food_orders',
+        count: commitmentOrphansSql('food_orders', ['cancelled', 'refunded']),
+        detail: commitmentDetail('food_orders', ['cancelled', 'refunded']),
     },
 };
 
@@ -142,7 +175,10 @@ export function isMissingAgreedTermsRefusal(
     row: { amount?: unknown; currency?: unknown } | undefined, kind: string,
 ): boolean {
     if (!row) return false;
-    if (!['order', 'appointment'].includes(kind)) return false;
+    // Every payable kind whose amount comes from an acceptance. A family that
+    // still charges from a live column cannot be refused for missing one, and
+    // saying so would turn an ordinary not-found into a false alarm.
+    if (!['order', 'appointment', 'property', 'tour', 'food'].includes(kind)) return false;
     // The row exists and its agreed amount is absent: that is the snapshot
     // missing, not a status or an ownership problem.
     return row.amount === null || row.amount === undefined;

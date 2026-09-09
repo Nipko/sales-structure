@@ -5329,7 +5329,8 @@ CREATE INDEX IF NOT EXISTS idx_agent_dispatch_resolutions_unexported
 -- BEGIN AGENT CERTIFICATION LEDGER
 -- El ejecutor de certificación y el arnés de benchmark guardan aquí lo que
 -- ejecutan: un run, un sujeto por perfil, un caso por escenario, y los
--- intentos y revisiones ciegas del benchmark. Generado desde las constantes
+-- intentos y revisiones ciegas del benchmark, y la propuesta que el cliente
+-- aceptó antes de que el negocio se comprometiera. Generado desde las constantes
 -- DDL que ejecuta el runtime (prisma/generate-certification-schema.cjs), para que
 -- el bootstrap perezoso, este archivo y la migración no puedan divergir.
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_certification_runs" (
@@ -5429,4 +5430,29 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."benchmark_reviews" (
     );
 CREATE UNIQUE INDEX IF NOT EXISTS uidx_benchmark_review
         ON "{{SCHEMA_NAME}}"."benchmark_reviews" (corpus_hash, task_key, blind_label, reviewer_id);
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."commitment_proposals" (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        proposal_hash TEXT NOT NULL,
+        family TEXT NOT NULL,
+        action TEXT NOT NULL,
+        contact_id UUID NOT NULL,
+        conversation_id UUID,
+        inbound_message_id UUID,
+        idempotency_key TEXT,
+        proposal JSONB NOT NULL,
+        amount_cents NUMERIC,
+        currency TEXT,
+        accepted_at TIMESTAMPTZ,
+        consumed_entity_id UUID,
+        consumed_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CONSTRAINT commitment_proposals_action
+            CHECK (action IN ('create','cancel','reschedule','quote','approve','update'))
+    );
+CREATE UNIQUE INDEX IF NOT EXISTS uidx_commitment_proposal_key
+        ON "{{SCHEMA_NAME}}"."commitment_proposals" (idempotency_key) WHERE idempotency_key IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_commitment_proposal_entity
+        ON "{{SCHEMA_NAME}}"."commitment_proposals" (consumed_entity_id) WHERE consumed_entity_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_commitment_proposal_contact
+        ON "{{SCHEMA_NAME}}"."commitment_proposals" (contact_id);
 -- END AGENT CERTIFICATION LEDGER

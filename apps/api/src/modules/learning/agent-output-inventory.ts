@@ -265,7 +265,7 @@ export const AGENT_OUTPUT_STORES: readonly AgentOutputStore[] = Object.freeze([
     store({
         id: 'certification_cases',
         store: 'agent_certification_cases.transcript',
-        sources: ['modules/simulation/certification-ledger.ts'],
+        sources: ['modules/simulation/certification-ledger.ts', 'modules/simulation/certification-runner.ts'],
         carriesProvenance: false,
         reachedByRetraction: 'by_design',
         reachedByContactErasure: 'by_design',
@@ -303,7 +303,8 @@ export const AGENT_OUTPUT_STORES: readonly AgentOutputStore[] = Object.freeze([
     store({
         id: 'benchmark_attempts',
         store: 'benchmark_attempts.transcript, and the frozen corpus it is scored against',
-        sources: ['modules/simulation/agent-benchmark.ts', 'modules/simulation/benchmark-harness.ts'],
+        sources: ['modules/simulation/agent-benchmark.ts', 'modules/simulation/benchmark-harness.ts',
+            'modules/simulation/benchmark.service.ts'],
         carriesProvenance: false,
         reachedByRetraction: 'by_design',
         reachedByContactErasure: 'by_design',

@@ -45,10 +45,11 @@ describe('which families bind what the customer agreed to', () => {
     it('states the gap as a list, because that is the whole point', () => {
         const unboundCharge = familiesWithUnboundCharge().map(row => row.family).sort();
         const unboundCommand = familiesWithUnboundCommand().map(row => row.family).sort();
-        expect(unboundCharge).toEqual(['property_bookings', 'restaurant_orders', 'tour_bookings']);
-        expect(unboundCommand).toEqual(['appointment_transitions', 'class_bookings',
-            'insurance_quotes', 'photo_sessions', 'property_bookings', 'repair_orders', 'resource_rentals',
-            'restaurant_orders', 'service_requests', 'tour_bookings'].sort());
+        // Zero, and that is the whole point of the shared commitment gate: the
+        // list used to be ten and three, and closing it family by family would
+        // have produced ten different ideas of what "changed" means.
+        expect(unboundCharge).toEqual([]);
+        expect(unboundCommand).toEqual([]);
         // eslint-disable-next-line no-console
         console.log(`[terms-binding] ${FAMILY_TERMS_BINDINGS.length} families; `
             + `${unboundCommand.length} without a bound command, ${unboundCharge.length} without a bound charge`);

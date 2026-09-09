@@ -19,6 +19,11 @@ import {
 } from '../../common/conversation/intent-normalizer';
 import { RegionalProfileService } from '../tenants/regional-profile.service';
 import { appointmentServiceTermsHash, appointmentTermsReviewResult } from '../appointments/appointment-service-terms';
+import { commitmentFamilyForTool } from './commitment-families';
+import {
+    commitmentProposalHash, commitmentReviewResult, ensureCommitmentProposals,
+    type CommitmentProposal,
+} from './commitment-proposal';
 import { getToolPolicy, type ToolPolicy } from './tool-policy-registry';
 import { reviewedMcpPolicy } from '../mcp/mcp-execution-policy';
 import type { McpToolApproval } from '../mcp/mcp-tool-approval';
@@ -1177,6 +1182,7 @@ export class ToolExecutionControlService {
                 canonicalArgs,
                 latestInbound.id,
                 needsConfirmation,
+                await this.buildCommitment(request, latestInbound.id),
             );
         }
         if (!ledger
@@ -1221,6 +1227,27 @@ export class ToolExecutionControlService {
             if (!approval.allowed) return approval;
             ledger = approval.ledger;
         }
+
+        // ── The terms the customer agreed to ────────────────────────────────
+        //
+        // The ledger already refuses when the ARGUMENTS change, when the agent's
+        // revision changes and when the confirmation does not answer this
+        // challenge. None of that covers the catalogue: the model can send the
+        // same propertyId and the same dates while the nightly rate, the
+        // cancellation rule or the deposit moved underneath, and the customer
+        // said yes to the old ones.
+        //
+        // So the proposal is rebuilt here, from the same catalogue, and compared
+        // with the one recorded when the challenge was issued. One gate for
+        // every family: eleven bespoke terms modules would have been eleven
+        // different ideas of what "changed" means.
+        // The message the LEDGER was opened for, not the latest one. The
+        // customer answering "sí" is itself a new inbound message, so rebuilding
+        // the proposal against the latest one changed the authority and made
+        // every confirmed booking look like terms that had moved.
+        const commitment = await this.resolveCommitment(
+            request, ledger, String(ledger.request_source_message_id ?? latestInbound.id));
+        if (commitment.blocked) return commitment.blocked;
 
         const executionLeaseToken = randomUUID();
         const acquired = await this.query<ExecutionLedgerRow[]>(
@@ -1316,7 +1343,12 @@ export class ToolExecutionControlService {
               RETURNING id`,
             [decision.ledgerId, status, JSON.stringify(result ?? {}), decision.executionLeaseToken],
         );
-        if (updated[0]) return;
+        if (updated[0]) {
+            if (status === 'succeeded') {
+                await this.linkCommitment(schemaName, await this.loadLedger(schemaName, decision.ledgerId), result);
+            }
+            return;
+        }
 
         const current = await this.loadLedger(schemaName, decision.ledgerId);
         const reconciled = await this.failClosedExpiredExecution(schemaName, current);
@@ -1610,6 +1642,147 @@ export class ToolExecutionControlService {
         return sameTurn[0] || null;
     }
 
+    /**
+     * Builds the proposal for this call, or `null` when the tool commits nothing.
+     *
+     * A family with no builder is not gated, which is why the spec requires one
+     * for every committing family in the registry: a vertical added without one
+     * would silently opt out of the whole contract.
+     */
+    private async buildCommitment(
+        request: ToolExecutionControlRequest, inboundMessageId: string,
+    ): Promise<CommitmentProposal | null> {
+        const family = commitmentFamilyForTool(request.toolName);
+        if (!family) return null;
+        // Ask whether the tables exist before reading them. This runs inside the
+        // transaction the write is using, where a query against a missing table
+        // aborts every statement after it — and catching the error does not
+        // help, because the COMMIT fails anyway. `to_regclass` returns NULL
+        // instead of failing, which is the whole reason it is the first thing
+        // asked.
+        const present = await this.query<any[]>(request.schemaName,
+            `SELECT ${family.reads.map((_, index) => `to_regclass($${index + 1})::text AS t${index}`).join(', ')}`,
+            family.reads.map(table => `${request.schemaName}.${table}`));
+        if (!present?.[0] || family.reads.some((_, index) => !present[0][`t${index}`])) return null;
+        const parts = await family.build(
+            ((sql: string, params: any[] = []) => this.query(request.schemaName, sql, params)) as any,
+            (request.args ?? {}) as Record<string, any>, request.contactId);
+        if (!parts) return null;
+        return {
+            version: 1, family: family.family, action: family.action,
+            resources: parts.resources, window: parts.window, price: parts.price,
+            conditions: parts.conditions, contactId: request.contactId,
+            authority: {
+                agentId: (request.operationalScope as any)?.agentId ?? null,
+                agentRevision: (request.operationalScope as any)?.revision
+                    ?? (request.operationalScope as any)?.configHash ?? null,
+                inboundMessageId,
+            },
+        };
+    }
+
+    /**
+     * Compares the terms now against the terms the customer was shown, and
+     * records the acceptance when they match.
+     *
+     * The recorded row is what a charge reads later, which is why it is written
+     * here rather than by each writer: eleven writers writing their own snapshot
+     * is eleven chances for one of them to forget.
+     */
+    private async resolveCommitment(
+        request: ToolExecutionControlRequest, ledger: ExecutionLedgerRow, inboundMessageId: string,
+    ): Promise<{ blocked?: ToolExecutionControlDecision }> {
+        const family = commitmentFamilyForTool(request.toolName);
+        if (!family) return {};
+        const shown = ledger.request_payload?.commitmentProposal as CommitmentProposal | undefined;
+        const current = await this.buildCommitment(request, inboundMessageId);
+        const shownHash = commitmentProposalHash(shown);
+        const currentHash = commitmentProposalHash(current);
+
+        // A ledger with no recorded proposal was opened before this gate
+        // existed. Refusing it would break every conversation already in flight
+        // at the moment of a rolling restart, which is precisely what
+        // expand-contract forbids — so it is allowed through, and NO acceptance
+        // is recorded. That is the whole point: the row it creates has no proof
+        // that anybody agreed to a price, so it stays unpayable and shows up in
+        // the orphan report for a person to reconfirm. Inventing an acceptance
+        // here to make the number look clean would be inventing consent.
+        if (!shownHash) return {};
+
+        if (!currentHash || shownHash !== currentHash) {
+            return {
+                blocked: {
+                    allowed: false,
+                    result: current
+                        ? commitmentReviewResult(family.family, current)
+                        : {
+                            error: 'commitment_terms_unavailable', family: family.family,
+                            persisted: false, retryable: false, requiresConfirmation: true,
+                            message: 'No pude releer los términos exactos de lo que se te ofreció. '
+                                + 'Volvé a pedirlos antes de confirmar. No se creó ni se cobró nada.',
+                        },
+                },
+            };
+        }
+        await ensureCommitmentProposals(
+            ((sql: string, params: any[] = []) => this.query(request.schemaName, sql, params)) as any);
+        await this.query(request.schemaName,
+            `INSERT INTO commitment_proposals
+                (proposal_hash, family, action, contact_id, conversation_id, inbound_message_id,
+                 idempotency_key, proposal, amount_cents, currency, accepted_at)
+             VALUES ($1,$2,$3,$4::uuid,$5::uuid,$6::uuid,$7,$8::jsonb,$9,$10,NOW())
+             -- The unique index is partial, and PostgreSQL will not infer a
+             -- partial index unless the statement repeats its predicate.
+             -- Without this the insert fails with "no unique or exclusion
+             -- constraint matching the ON CONFLICT specification" and takes the
+             -- whole write down with it.
+             ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING`,
+            [currentHash, family.family, family.action, request.contactId, request.conversationId,
+                inboundMessageId, ledger.idempotency_key, JSON.stringify(current),
+                current!.price ? current!.price.amountCents : null,
+                current!.price ? current!.price.currency : null]);
+        return {};
+    }
+
+    /**
+     * Links the accepted proposal to the row the writer produced.
+     *
+     * Until this runs the proposal is an acceptance with nothing behind it, and
+     * a charge cannot find it — which is the correct state for a write that
+     * failed.
+     */
+    private async linkCommitment(
+        schemaName: string, ledger: ExecutionLedgerRow, result: Record<string, unknown>,
+    ): Promise<void> {
+        if (!ledger?.idempotency_key) return;
+        // No recorded proposal means there is nothing to link, and — more
+        // importantly — nothing to ask the database. This runs inside the
+        // completion transaction, where a failed statement poisons everything
+        // after it: catching the error is not enough, because the COMMIT fails
+        // anyway. So a tenant without the table is never queried at all.
+        if (!ledger.request_payload?.commitmentProposal) return;
+        const entityId = this.commitmentEntityId(result);
+        if (!entityId) return;
+        await this.query(schemaName,
+            `UPDATE commitment_proposals SET consumed_entity_id = $2::uuid, consumed_at = NOW()
+              WHERE idempotency_key = $1 AND consumed_entity_id IS NULL`,
+            [ledger.idempotency_key, entityId]);
+    }
+
+    /** The id of the row a writer produced, wherever it put it. */
+    private commitmentEntityId(result: Record<string, unknown>): string | null {
+        const candidates = [
+            (result as any)?.id, (result as any)?.booking?.id, (result as any)?.order?.id,
+            (result as any)?.appointment?.id, (result as any)?.request?.id, (result as any)?.quote?.id,
+            (result as any)?.rental?.id, (result as any)?.session?.id, (result as any)?.bookingId,
+        ];
+        for (const candidate of candidates) {
+            const text = String(candidate ?? '').toLowerCase();
+            if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(text)) return text;
+        }
+        return null;
+    }
+
     private async createOrLoadLedger(
         request: ToolExecutionControlRequest,
         assurance: VerticalAssuranceLevel,
@@ -1618,6 +1791,7 @@ export class ToolExecutionControlService {
         canonicalArgs: string,
         sourceMessageId: string,
         needsConfirmation: boolean,
+        commitmentProposal?: CommitmentProposal | null,
     ): Promise<ExecutionLedgerRow | null> {
         const inserted = await this.query<ExecutionLedgerRow[]>(
             request.schemaName,
@@ -1637,7 +1811,12 @@ export class ToolExecutionControlService {
                 needsConfirmation ? 'awaiting_confirmation' : 'ready',
                 sourceMessageId,
                 JSON.stringify({ args: JSON.parse(canonicalArgs), ...(request.draftScope ? { draftReview: request.draftScope } : {}),
-                    ...(request.operationalScope ? { operationalScope: request.operationalScope } : {}) }),
+                    ...(request.operationalScope ? { operationalScope: request.operationalScope } : {}),
+                    // The terms as they stood when the customer was challenged.
+                    // Recorded with the ledger row so the comparison later is
+                    // against what was SHOWN, not against a second read of the
+                    // catalogue that may already have moved.
+                    ...(commitmentProposal ? { commitmentProposal } : {}) }),
                 request.channelType || null,
             ],
         );

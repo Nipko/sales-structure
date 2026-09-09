@@ -14,6 +14,7 @@ require(path.join(root, 'node_modules/tsconfig-paths')).register({
 });
 const { CERTIFICATION_LEDGER_DDL } = require(path.join(root, 'apps/api/src/modules/simulation/certification-ledger.ts'));
 const { BENCHMARK_LEDGER_DDL } = require(path.join(root, 'apps/api/src/modules/simulation/benchmark-harness.ts'));
+const { COMMITMENT_PROPOSAL_DDL } = require(path.join(root, 'apps/api/src/modules/conversations/commitment-proposal.ts'));
 
 // The constants create objects unqualified, relying on search_path. Both the
 // template and the migration have to name the schema, so the identifier right
@@ -23,7 +24,7 @@ const qualify = (sql, prefix) => sql
     .replace(/ON ([a-z_]+) \(/g, (_m, name) => `ON ${prefix}"${name}" (`)
     .replace(/ON ([a-z_]+)\(/g, (_m, name) => `ON ${prefix}"${name}"(`);
 
-const statements = [...CERTIFICATION_LEDGER_DDL, ...BENCHMARK_LEDGER_DDL]
+const statements = [...CERTIFICATION_LEDGER_DDL, ...BENCHMARK_LEDGER_DDL, ...COMMITMENT_PROPOSAL_DDL]
     // Comments inside the DDL are for the reader of the TypeScript; the SQL
     // artefacts carry their own prose and keeping both would be two copies.
     .map(sql => sql.replace(/\/\*\*[\s\S]*?\*\//g, '').replace(/^\s*\n/gm, ''));
@@ -31,7 +32,8 @@ const statements = [...CERTIFICATION_LEDGER_DDL, ...BENCHMARK_LEDGER_DDL]
 const templateBlock = ['-- BEGIN AGENT CERTIFICATION LEDGER',
     '-- El ejecutor de certificación y el arnés de benchmark guardan aquí lo que',
     '-- ejecutan: un run, un sujeto por perfil, un caso por escenario, y los',
-    '-- intentos y revisiones ciegas del benchmark. Generado desde las constantes',
+    '-- intentos y revisiones ciegas del benchmark, y la propuesta que el cliente',
+    '-- aceptó antes de que el negocio se comprometiera. Generado desde las constantes',
     '-- DDL que ejecuta el runtime (prisma/generate-certification-schema.cjs), para que',
     '-- el bootstrap perezoso, este archivo y la migración no puedan divergir.',
     ...statements.map(sql => `${qualify(sql, '"{{SCHEMA_NAME}}".').trim()};`),

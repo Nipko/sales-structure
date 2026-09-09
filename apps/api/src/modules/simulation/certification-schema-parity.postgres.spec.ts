@@ -4,6 +4,7 @@ import { resolve } from 'path';
 import { Client } from 'pg';
 import { CERTIFICATION_LEDGER_DDL } from './certification-ledger';
 import { BENCHMARK_LEDGER_DDL } from './benchmark-harness';
+import { COMMITMENT_PROPOSAL_DDL } from '../conversations/commitment-proposal';
 
 /**
  * Tres definiciones de las mismas tablas.
@@ -26,7 +27,7 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
 const integration = connection ? describe : describe.skip;
 
 const TABLES = ['agent_certification_runs', 'agent_certification_subjects', 'agent_certification_cases',
-    'benchmark_attempts', 'benchmark_reviews'];
+    'benchmark_attempts', 'benchmark_reviews', 'commitment_proposals'];
 
 integration('the three definitions of the certification tables agree', () => {
     const suffix = randomUUID().replace(/-/g, '');
@@ -50,7 +51,7 @@ integration('the three definitions of the certification tables agree', () => {
 
         // 1. What the runtime executes itself the first time a tenant needs it.
         await q(`SET search_path TO "${schemas.bootstrap}"`);
-        for (const sql of [...CERTIFICATION_LEDGER_DDL, ...BENCHMARK_LEDGER_DDL]) await q(sql);
+        for (const sql of [...CERTIFICATION_LEDGER_DDL, ...BENCHMARK_LEDGER_DDL, ...COMMITMENT_PROPOSAL_DDL]) await q(sql);
         await q('SET search_path TO public');
 
         // 2. The checked-in definition of a brand new tenant.
@@ -136,7 +137,18 @@ integration('the three definitions of the certification tables agree', () => {
             '../../../prisma/migrations/20260909120000_add_agent_certification_ledger/migration.sql'), 'utf8');
         // Expand-contract: this deploy may only add. A DROP, an ALTER or a write
         // here would run against code that has not restarted yet.
-        expect(migration).not.toMatch(/\bDROP\b|\bALTER\b|\bUPDATE\b|\bDELETE\b|\bINSERT INTO\b/i);
-        expect((migration.match(/CREATE TABLE IF NOT EXISTS/g) ?? []).length).toBe(5);
+        //
+        // Matched as STATEMENTS, not as words: the proposal table's CHECK lists
+        // `'update'` as one of its allowed actions, and a bare word match called
+        // that a destructive migration.
+        const statements = migration
+            .replace(/CHECK \([^)]*\)/gi, '')
+            .split(/;|\bEXECUTE format\(\$ddl\$/i)
+            .map(part => part.trim());
+        for (const statement of statements) {
+            expect(statement).not.toMatch(/^\s*(DROP|ALTER|UPDATE|DELETE|INSERT INTO|TRUNCATE)\b/i);
+        }
+        expect(migration).not.toMatch(/\bDROP\s+(TABLE|COLUMN|INDEX)\b|\bALTER\s+TABLE\b/i);
+        expect((migration.match(/CREATE TABLE IF NOT EXISTS/g) ?? []).length).toBe(6);
     });
 });

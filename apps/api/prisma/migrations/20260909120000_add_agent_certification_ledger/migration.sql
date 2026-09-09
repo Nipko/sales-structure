@@ -133,6 +133,39 @@ BEGIN
             CREATE UNIQUE INDEX IF NOT EXISTS uidx_benchmark_review
                         ON %s."benchmark_reviews" (corpus_hash, task_key, blind_label, reviewer_id)
         $ddl$, target);
+        EXECUTE format($ddl$
+            CREATE TABLE IF NOT EXISTS %s."commitment_proposals" (
+                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                        proposal_hash TEXT NOT NULL,
+                        family TEXT NOT NULL,
+                        action TEXT NOT NULL,
+                        contact_id UUID NOT NULL,
+                        conversation_id UUID,
+                        inbound_message_id UUID,
+                        idempotency_key TEXT,
+                        proposal JSONB NOT NULL,
+                        amount_cents NUMERIC,
+                        currency TEXT,
+                        accepted_at TIMESTAMPTZ,
+                        consumed_entity_id UUID,
+                        consumed_at TIMESTAMPTZ,
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        CONSTRAINT commitment_proposals_action
+                            CHECK (action IN ('create','cancel','reschedule','quote','approve','update'))
+                    )
+        $ddl$, target);
+        EXECUTE format($ddl$
+            CREATE UNIQUE INDEX IF NOT EXISTS uidx_commitment_proposal_key
+                        ON %s."commitment_proposals" (idempotency_key) WHERE idempotency_key IS NOT NULL
+        $ddl$, target);
+        EXECUTE format($ddl$
+            CREATE INDEX IF NOT EXISTS idx_commitment_proposal_entity
+                        ON %s."commitment_proposals" (consumed_entity_id) WHERE consumed_entity_id IS NOT NULL
+        $ddl$, target);
+        EXECUTE format($ddl$
+            CREATE INDEX IF NOT EXISTS idx_commitment_proposal_contact
+                        ON %s."commitment_proposals" (contact_id)
+        $ddl$, target);
     END LOOP;
 END
 $agent_certification_backfill$;

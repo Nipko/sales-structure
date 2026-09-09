@@ -51,10 +51,11 @@ export const FAMILY_TERMS_BINDINGS: readonly FamilyTermsBinding[] = Object.freez
             + 'catalogue price the customer never saw.',
     }),
     entry({
-        family: 'appointment_transitions', command: 'partial', charge: 'not_applicable', legacyRows: 'fails_closed',
-        evidence: 'schedule_test_drive asserts the terms and a test-drive edit re-asserts the stored ones; plain '
-            + 'cancel_appointment and reschedule_appointment accept no expectedTermsHash, so a reschedule across a '
-            + 'price change is not caught. A transition charges nothing itself.',
+        family: 'appointment_transitions', command: 'bound', charge: 'not_applicable', legacyRows: 'fails_closed',
+        evidence: 'schedule_test_drive asserts its own service terms; cancel_appointment and reschedule_appointment go '
+            + 'through the shared commitment gate, which rebuilds the appointment, its service and the state it was in '
+            + 'when the customer was told what would happen, so a transition across a change is refused. A transition '
+            + 'charges nothing itself.',
     }),
     entry({
         family: 'enrollments', command: 'bound', charge: 'bound', legacyRows: 'fails_closed',
@@ -69,18 +70,22 @@ export const FAMILY_TERMS_BINDINGS: readonly FamilyTermsBinding[] = Object.freez
             + 'total_amount beside it can move without the charge following, which is the whole point.',
     }),
     entry({
-        family: 'repair_orders', command: 'partial', charge: 'not_applicable', legacyRows: 'not_applicable',
+        family: 'repair_orders', command: 'bound', charge: 'not_applicable', legacyRows: 'not_applicable',
         evidence: 'approve_repair and cancel_repair_order take an expectedTermsHash and store the acceptance; '
-            + 'create_repair_order takes none. repair_orders is not a payable kind.',
+            + 'create_repair_order now goes through the shared commitment gate, which binds the vehicle and the '
+            + 'diagnosis-before-quote condition. repair_orders is not a payable kind.',
     }),
     entry({
-        family: 'class_bookings', command: 'none', charge: 'not_applicable', legacyRows: 'not_applicable',
-        evidence: 'bookClass takes no accepted terms and stores none, so a price or cancellation rule that changed '
-            + 'between the quote and the booking is not caught. Not a payable kind.',
+        family: 'class_bookings', command: 'bound', charge: 'not_applicable', legacyRows: 'not_applicable',
+        evidence: 'The shared commitment gate rebuilds the class from fitness_classes and binds its schedule, its '
+            + 'capacity, the credits it costs and whether it has been cancelled, so a class that moved day or got '
+            + 'more expensive in credits is refused. A seat is not a payable kind.',
     }),
     entry({
-        family: 'insurance_quotes', command: 'none', charge: 'not_applicable', legacyRows: 'not_applicable',
-        evidence: 'calculate_quote stores no accepted terms; a quote is not itself a payable kind.',
+        family: 'insurance_quotes', command: 'bound', charge: 'not_applicable', legacyRows: 'not_applicable',
+        evidence: 'The shared commitment gate binds the plan, the premium floor the customer repeats back, the rest of '
+            + 'the range, the deductible, what it covers and excludes and the age band. A quote is a number the '
+            + 'customer will hold us to even though nothing is charged, so it is frozen like a price.',
     }),
     entry({
         family: 'pets', command: 'not_applicable', charge: 'not_applicable', legacyRows: 'not_applicable',
@@ -88,38 +93,41 @@ export const FAMILY_TERMS_BINDINGS: readonly FamilyTermsBinding[] = Object.freez
             + 'which is a different guarantee from an accepted quote.',
     }),
     entry({
-        family: 'property_bookings', command: 'none', charge: 'none', legacyRows: 'fails_open',
-        evidence: 'No accepted terms are demanded or stored. The charge reads night_price, cleaning_fee and currency '
-            + 'from the booking row, which are frozen at write time and never updated afterwards — so the amount is '
-            + 'stable, but it is what the SYSTEM computed, not what the guest was shown: a tariff edit between the '
-            + 'availability answer and the booking moves the price with nothing to catch it.',
+        family: 'property_bookings', command: 'bound', charge: 'bound', legacyRows: 'fails_closed',
+        evidence: 'The shared commitment gate rebuilds the stay from the property and refuses when the nightly rate, '
+            + 'the cleaning fee, the dates, the guest count or the deposit policy moved since the guest was told. The '
+            + 'charge reads the accepted proposal, so a booking with no acceptance behind it is not payable at all '
+            + 'instead of payable at a number the system computed on its own.',
     }),
     entry({
-        family: 'tour_bookings', command: 'none', charge: 'none', legacyRows: 'fails_open',
-        evidence: 'No accepted terms are demanded or stored. The charge reads the unit and total price frozen on the '
-            + 'booking row, so the amount does not drift after the write; what is missing is upstream, that nothing '
-            + 'proves the traveller was quoted those numbers before the row existed.',
+        family: 'tour_bookings', command: 'bound', charge: 'bound', legacyRows: 'fails_closed',
+        evidence: 'The shared commitment gate binds the package, the unit price, the party size, the departure, the '
+            + 'cancellation policy and the child discount. The charge reads the accepted proposal behind amount_due, '
+            + 'so the deposit still works and a booking nobody agreed to is not payable.',
     }),
     entry({
-        family: 'restaurant_orders', command: 'none', charge: 'none', legacyRows: 'fails_open',
-        evidence: 'No accepted terms; the charge reads target.total, frozen at write time. The writer recalculates '
-            + 'that total from the menu rather than trusting the model, which protects the arithmetic but not the '
-            + 'agreement: a price edit between the menu the customer read and the order moves it silently.',
+        family: 'restaurant_orders', command: 'bound', charge: 'bound', legacyRows: 'fails_closed',
+        evidence: 'The shared commitment gate binds every menu item, its quantity and its unit price, so a price edit '
+            + 'between the menu the customer read and the order is refused rather than applied silently. The writer '
+            + 'still recalculates the total from the menu, which protects the arithmetic; the gate protects the '
+            + 'agreement, and the charge reads the accepted proposal.',
     }),
     entry({
-        family: 'service_requests', command: 'none', charge: 'not_applicable', legacyRows: 'not_applicable',
-        evidence: 'A request for a visit commits no price and stores no accepted terms; the quote comes later, '
-            + 'from a person. Not a payable kind.',
+        family: 'service_requests', command: 'bound', charge: 'not_applicable', legacyRows: 'not_applicable',
+        evidence: 'The shared commitment gate binds the service, the visit window, its duration and the list price the '
+            + 'customer was told it usually costs — as a CONDITION, not a price, because the binding amount comes from '
+            + 'the quote a person writes after the visit. Not a payable kind.',
     }),
     entry({
-        family: 'photo_sessions', command: 'none', charge: 'not_applicable', legacyRows: 'not_applicable',
-        evidence: 'A quote request commits no price and stores no accepted terms; the photographer answers with '
-            + 'one afterwards. Not a payable kind.',
+        family: 'photo_sessions', command: 'bound', charge: 'not_applicable', legacyRows: 'not_applicable',
+        evidence: 'The shared commitment gate binds the service and the session date. No price: the photographer '
+            + 'answers with one afterwards, and freezing a zero would put a zero in a till.',
     }),
     entry({
-        family: 'resource_rentals', command: 'none', charge: 'not_applicable', legacyRows: 'not_applicable',
-        evidence: 'Neither the pet boarding nor the vehicle rental demands accepted terms. The vehicle rental is born '
-            + 'pending_review and a person sets the price, so there is no agreed amount for a charge to bind to yet.',
+        family: 'resource_rentals', command: 'bound', charge: 'not_applicable', legacyRows: 'not_applicable',
+        evidence: 'The shared commitment gate binds both tools against their own catalogue — the vehicle for a rental, '
+            + 'the service for a pet boarding — with the window and the vehicle status. Still not payable: the row is '
+            + 'born pending_review and a person sets the price, so there is no agreed amount to bind a charge to.',
     }),
     entry({
         family: 'insurance_claims', command: 'not_applicable', charge: 'not_applicable', legacyRows: 'not_applicable',

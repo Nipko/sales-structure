@@ -124,7 +124,7 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
             // A clinic with no catalogue is not an error, and a report that dies
             // on the first missing table says nothing about the rest.
             expect(rows.total).toBe(0);
-            expect(rows.families).toHaveLength(2);
+            expect(rows.families).toHaveLength(5);
             await client.query(`DROP SCHEMA IF EXISTS "${bare}" CASCADE`);
         } finally { client.release(); }
     }, 120000);
@@ -137,7 +137,9 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
         expect(isMissingAgreedTermsRefusal({ amount: null }, 'appointment')).toBe(true);
         expect(isMissingAgreedTermsRefusal({ amount: 10, currency: 'COP' }, 'order')).toBe(false);
         expect(isMissingAgreedTermsRefusal(undefined, 'order')).toBe(false);
-        // A family that never bound its terms cannot be refused for missing them.
-        expect(isMissingAgreedTermsRefusal({ amount: null }, 'tour')).toBe(false);
+        // A family that still charges from a live column cannot be refused for
+        // missing an acceptance; one that does not is exactly what this catches.
+        expect(isMissingAgreedTermsRefusal({ amount: null }, 'enrollment')).toBe(false);
+        expect(isMissingAgreedTermsRefusal({ amount: null }, 'tour')).toBe(true);
     });
 });

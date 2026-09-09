@@ -71,8 +71,17 @@ export interface AgentAssessment {
         terminalStates: string[];
         confirmation: string;
         fallback: string;
-        /** Aggregate scores cannot establish that a specific intent passed. */
-        evidence: 'not_verified';
+        /**
+         * Whether THIS task was proven, under the version being assessed.
+         *
+         * Aggregate scores cannot establish that a specific intent passed, which
+         * is why this was a hard-coded `not_verified` — but a literal can never
+         * say anything else either. `stale` is evidence from an older revision
+         * of the agent: the configuration that passed is not the one on screen.
+         */
+        evidence: 'not_verified' | 'verified' | 'failed' | 'stale';
+        /** The same answer in the vocabulary every surface shares. */
+        state: AgentOperationalState;
         unavailableTools: string[];
     }>;
     /** Whitelisted configuration for review; secrets and customer data never enter Assist. */

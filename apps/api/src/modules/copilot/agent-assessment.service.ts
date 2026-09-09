@@ -2,6 +2,7 @@ import { ConflictException, Injectable, NotFoundException } from '@nestjs/common
 import { createHash } from 'crypto';
 import { operationalStateFromCheck, operationalStateFromQuality, rollUpOperationalState,
     type AgentOperationalState } from '@parallext/shared';
+import { intentEvidence, readSealedRunEvidence } from '../simulation/agent-release-evidence';
 import {
     AGENT_SETUP_TASK_CHECKS, buildDomainContractDraft, isAgentAccountBusinessHours, isAgentMissionV1, type AgentAssessment,
     type AgentMissionV1, type AgentSetupTask, type AgentQualityCheck, findGuidedTourForQualityCode,
@@ -127,11 +128,21 @@ export class AgentAssessmentService {
         }
         tasks.push(withState({ key: 'tests', status: overview.tested.status === 'ready' && !overview.tested.stale ? 'pass' : 'warning', checks: [],
             href: `/admin/agent/${agent.id}/test`, tourId: 'run_agent_tests', dependsOn: ['mission', 'agent', 'knowledge'] }));
-        const requiredTests = domain.intents.filter(intent => definition.intentKeys.includes(intent.key)).map(intent => ({
+        // What was actually proven for each task, instead of a literal that could
+        // only ever say "not verified". Evidence from an older revision of the
+        // agent is reported as stale: the configuration that passed is not the
+        // one being assessed.
+        const sealedRuns = await this.prisma.transactionInTenantSchema(schema, query =>
+            readSealedRunEvidence(query, schema, agent.id)).catch(() => []);
+        const requiredTests = domain.intents.filter(intent => definition.intentKeys.includes(intent.key)).map(intent => {
+            const evidence = intentEvidence(intent.key, Number(agent.version) || null, sealedRuns);
+            return {
             intentKey: intent.key, toolPlan: [...intent.toolPlan], terminalStates: [...intent.states], confirmation: intent.confirmation,
-            fallback: intent.fallback, evidence: 'not_verified' as const,
+            fallback: intent.fallback, evidence,
+            state: (evidence === 'verified' ? 'tested' : evidence === 'failed' ? 'degraded'
+                : evidence === 'stale' ? 'degraded' : 'pending') as AgentOperationalState,
             unavailableTools: intent.toolPlan.filter(tool => channels.some(channel => !channel.contract?.publishedTools.includes(tool))),
-        }));
+            }; });
         // A channel whose projection could not be read is unknown, not ready.
         const statedChannels = channels.map(channel => ({
             ...channel,

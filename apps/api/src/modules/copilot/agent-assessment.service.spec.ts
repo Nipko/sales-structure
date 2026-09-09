@@ -3,13 +3,17 @@ import { AgentAssessmentService } from './agent-assessment.service';
 
 const TENANT = '11111111-1111-4111-8111-111111111111';
 const AGENT = '22222222-2222-4222-8222-222222222222';
-function harness(options: { missing?: boolean; drift?: boolean; unknown?: boolean; mission?: any } = {}) {
+function harness(options: { missing?: boolean; drift?: boolean; unknown?: boolean; mission?: any; runs?: any[] } = {}) {
     const query = jest.fn(async (_schema, sql, params) => sql.startsWith('SELECT version') ? [{ version: options.drift ? 3 : 2 }] : options.missing ? [] : [{
         id: AGENT, version: 2, template_id: 'restaurant', channels: ['whatsapp', 'telegram'], channel_bindings: [],
         config_json: { persona: { role: 'Atender pedidos', name: 'Luna', secret: 'NEVER EXPOSE' },
             tools: { restaurants: { enabled: true, token: 'SECRET TOKEN' } }, mission: options.mission },
     }]);
+    const evalRows = options.runs ?? [];
     const prisma = { getTenantSchemaName: jest.fn().mockResolvedValue('tenant_test'), executeInTenantSchema: query,
+        transactionInTenantSchema: jest.fn(async (_schema: string, work: any) => work(async (sql: string) =>
+            sql.includes('to_regclass') ? [{ name: options.runs ? 'tenant_test.eval_runs' : null }]
+                : sql.includes('FROM eval_runs') ? evalRows : [])),
         tenant: { findUnique: jest.fn().mockResolvedValue({ industry: 'restaurantes', settings: { verticalConfig: { subType: 'casual_dining' } } }) } };
     const check = (code: string, status = 'pass') => ({ code, status, evidence: status === 'unknown' ? { sourceAvailability: 'unavailable' } : {}, dimension: 'business_scope', critical: true, weight: 1 });
     const overview = { agent: { id: AGENT, version: 2, name: 'Luna' }, preparation: { dimensions: [{ checks: [check('persona_identity'), check('knowledge_coverage', options.unknown ? 'unknown' : 'pass'), check('tool_appointments', 'not_applicable')] }] }, tested: { status: 'ready', stale: false } };
@@ -26,7 +30,10 @@ describe('shared agent assessment', () => {
         expect(capabilities.resolve).toHaveBeenCalledWith(expect.objectContaining({ tenantId: TENANT, agentId: AGENT, channelType: 'whatsapp', role: 'tenant_agent' }));
         expect(capabilities.resolve).toHaveBeenCalledWith(expect.objectContaining({ channelType: 'telegram' }));
         expect(assessment.mission.source).toBe('template_derived');
+        // Nothing has been run, so nothing is verified — but it is now the
+        // answer to a question rather than a constant.
         expect(assessment.requiredTests.every(test => test.evidence === 'not_verified')).toBe(true);
+        expect(assessment.requiredTests.every(test => test.state === 'pending')).toBe(true);
         expect(JSON.stringify(assessment.configuration)).not.toMatch(/SECRET|NEVER EXPOSE/);
     });
     it('keeps unavailable knowledge unknown even when other preparation checks pass', async () => {

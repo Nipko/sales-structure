@@ -9,12 +9,14 @@ import {
   useSyncExternalStore,
   type CSSProperties,
 } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
 import { ChevronRight, Compass, Loader2, Send, Sparkles } from "lucide-react";
 import {
+  AGENT_HANDOFF_RETURN_PARAM,
   GUIDED_TOUR_START_EVENT,
+  getAgentOperation,
   isGuidedTourId,
   type GuidedTourId,
   type GuidedTourStartDetail,
@@ -144,6 +146,8 @@ function TenantHelpAssistant() {
   const t = useTranslations("helpAssistant");
   const locale = useLocale();
   const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const {
     canEditAgent,
     canEditKnowledge,
@@ -256,6 +260,34 @@ function TenantHelpAssistant() {
     window.addEventListener("parallly:open-copilot", handler);
     return () => window.removeEventListener("parallly:open-copilot", handler);
   }, [resetToGenericContext]);
+
+  /**
+   * The return leg of a handoff.
+   *
+   * When Assist cannot do something itself — connect a channel, grant a role,
+   * publish, configure a payment rail — it sends the person to the screen that
+   * owns the decision, carrying `?assistOp=<operation>`. Coming back to a fresh
+   * chat would lose why they went, and Assist would have to guess whether it
+   * worked. So the marker reopens this conversation with the question already
+   * typed, and the answer comes from re-reading the assessment rather than from
+   * assuming the trip succeeded.
+   *
+   * The parameter is stripped on the way in: a reload, or a link the person
+   * shares, must not reopen the chat for a trip that already happened.
+   */
+  useEffect(() => {
+    const marker = searchParams.get(AGENT_HANDOFF_RETURN_PARAM);
+    if (!marker) return;
+    const operation = getAgentOperation(marker);
+    if (!operation || operation.availability !== "route_to_screen") return;
+    const next = new URLSearchParams(searchParams.toString());
+    next.delete(AGENT_HANDOFF_RETURN_PARAM);
+    router.replace(`${pathname}${next.size ? `?${next.toString()}` : ""}`, { scroll: false });
+    setIntro("done");
+    resetToGenericContext();
+    setChatInput(t("chat.handoff.checkResult", { operation: marker }));
+    setOpen(true);
+  }, [searchParams, pathname, router, resetToGenericContext, t]);
 
   useEffect(() => {
     const handler = (event: Event) => {

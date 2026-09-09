@@ -28,7 +28,8 @@ const deferred = () => { let resolve!: () => void; const promise = new Promise<v
         await client.$executeRawUnsafe(`CREATE SCHEMA "${schema}"`);
         await client.$executeRawUnsafe('INSERT INTO public.tenants(id,schema_name,is_active) VALUES($1::uuid,$2,true)', tenantId, schema);
         await q('CREATE TABLE contacts(id UUID PRIMARY KEY,name TEXT)');
-        await q('CREATE TABLE conversations(id UUID PRIMARY KEY,contact_id UUID,metadata JSONB)');
+        await q('CREATE TABLE conversations(id UUID PRIMARY KEY,contact_id UUID,metadata JSONB,'
+            + 'handoff_summary TEXT,handoff_summary_generated_at TIMESTAMPTZ)');
         await q('CREATE TABLE contact_identities(contact_id UUID,customer_profile_id UUID)');
         await q('CREATE TABLE customer_memory_erasure(contact_id UUID PRIMARY KEY,erased_at TIMESTAMPTZ DEFAULT NOW())');
         await q('CREATE TABLE customer_memory_facts(id UUID,owner_kind TEXT,owner_id UUID,source_contact_id UUID)');

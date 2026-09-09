@@ -9358,6 +9358,9 @@
           "showMe": "Mostrar onde"
         },
         "showMeWhere": "Onde eu corrijo isso?"
+      },
+      "handoff": {
+        "checkResult": "Voltei de {operation}. Você pode verificar como ficou?"
       }
     },
     "faqs": {

@@ -27,8 +27,12 @@ const deferred = () => { let resolve!: () => void; const promise = new Promise<v
         pool=new(require('pg').Pool)({ connectionString:connection });
         await pool.query(`CREATE SCHEMA "${schema}"`);
         for (const statement of [
+            // `handoff_summary` is part of the real conversations table and the
+            // erasure clears it. A fixture that leaves it out is not a smaller
+            // table, it is a different one, and it fails the code under test.
             `CREATE TABLE conversations(id UUID PRIMARY KEY,contact_id UUID,status TEXT DEFAULT 'resolved',resolution_type TEXT DEFAULT 'ai_resolved',was_handed_off BOOLEAN DEFAULT false,
-                agent_persona_id UUID,agent_config_version INTEGER,agent_attribution_conflicted BOOLEAN DEFAULT false,metadata JSONB DEFAULT '{}',created_at TIMESTAMPTZ DEFAULT NOW())`,
+                agent_persona_id UUID,agent_config_version INTEGER,agent_attribution_conflicted BOOLEAN DEFAULT false,metadata JSONB DEFAULT '{}',
+                handoff_summary TEXT,handoff_summary_generated_at TIMESTAMPTZ,created_at TIMESTAMPTZ DEFAULT NOW())`,
             `CREATE TABLE messages(id UUID PRIMARY KEY,conversation_id UUID REFERENCES conversations(id),direction TEXT,content_text TEXT,created_at TIMESTAMPTZ DEFAULT NOW())`,
             `CREATE TABLE agent_personas(id UUID PRIMARY KEY,version INTEGER,config_json JSONB)`,
             `CREATE TABLE contact_identities(contact_id UUID,customer_profile_id UUID)`,
@@ -179,7 +183,8 @@ const deferred = () => { let resolve!: () => void; const promise = new Promise<v
             // The original base schema has neither resolution_type nor
             // was_handed_off. Their historical ALTERs run much later.
             for (const statement of [
-                `CREATE TABLE conversations(id UUID PRIMARY KEY,contact_id UUID,status TEXT DEFAULT 'active',metadata JSONB DEFAULT '{}',created_at TIMESTAMPTZ DEFAULT NOW())`,
+                `CREATE TABLE conversations(id UUID PRIMARY KEY,contact_id UUID,status TEXT DEFAULT 'active',metadata JSONB DEFAULT '{}',
+                    handoff_summary TEXT,handoff_summary_generated_at TIMESTAMPTZ,created_at TIMESTAMPTZ DEFAULT NOW())`,
                 `CREATE TABLE messages(id UUID PRIMARY KEY,conversation_id UUID,direction TEXT,content_text TEXT,created_at TIMESTAMPTZ DEFAULT NOW())`,
                 `CREATE TABLE contact_identities(contact_id UUID,customer_profile_id UUID)`,
                 `CREATE TABLE customer_memory_facts(id UUID,owner_kind TEXT,owner_id UUID,source_contact_id UUID)`,

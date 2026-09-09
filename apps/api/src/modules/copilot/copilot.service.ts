@@ -29,6 +29,7 @@ import {
     AGENT_CONFIGURATION_PATHS,
     AGENT_OPERATION_REGISTRY,
     misleadingAssistOperations,
+    routedAgentOperations,
     CAPABILITY_EXCLUSION_TEXT,
 } from '@parallext/shared';
 
@@ -1188,7 +1189,7 @@ Reglas estrictas:
         // What Assist will never do, stated to the model from the same registry
         // the API enforces. Without it the model invents a capability or an
         // apology; with it, it names the screen that owns the decision.
-        const routedOperations = AGENT_OPERATION_REGISTRY.filter(operation => operation.availability === 'route_to_screen');
+        const routedOperations = routedAgentOperations();
         // A write that cannot move the check the person was sent to fix is worse
         // than no write: they apply it, the banner stays red, and the next thing
         // they distrust is the assessment. Both pairs are declared in the
@@ -1198,7 +1199,12 @@ Reglas estrictas:
             .join(' ');
         const contentOperationContext = canCreateContent
             ? `12. **CREACIÓN ASISTIDA:** con propose_content_object puedes preparar la creación de: ${creatableOperations.join(', ')}. Solo prepara una propuesta para revisión; nada se crea hasta que la persona la aplique. Nunca afirmes haber creado algo desde este chat. Usa el texto que dio el dueño: no inventes precios, duraciones ni redacción legal; si falta un dato, pídelo.
-Estas NO las hace Assist —deriva a la pantalla que las decide—: ${routedOperations.map(operation => `${operation.key} → ${operation.route} (${operation.reason})`).join('; ')}.
+Estas NO las hace Assist —deriva a la pantalla que las decide—: ${routedOperations.map(operation => {
+                const asks = operation.requirements.map(requirement => requirement.choices?.length
+                    ? `${requirement.key} (${requirement.choices.join('|')})`
+                    : requirement.key).join(', ');
+                return `${operation.key} → ${operation.route} (${operation.reason}${asks ? `; preguntá antes: ${asks}` : ''})`;
+            }).join('; ')}. Antes de derivar, preguntá los datos NO secretos que figuran arriba y nunca pidas tokens, claves ni contraseñas: ese es el motivo por el que la pantalla es de la persona y no tuya.
 Y estas creaciones NO cierran el punto de calidad que lo parece; no las ofrezcas como el arreglo de ese punto: ${misleading}`
             : '';
 

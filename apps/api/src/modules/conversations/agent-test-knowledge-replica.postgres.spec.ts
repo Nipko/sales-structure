@@ -305,7 +305,7 @@ const REGISTRY = 'public.evaluation_knowledge_usages';
         const contactId=randomUUID(),factId=randomUUID();
         for(const ddl of [
             'contact_identities(contact_id uuid,customer_profile_id uuid)',
-            'conversations(id uuid PRIMARY KEY,contact_id uuid,metadata jsonb)',
+            'conversations(id uuid PRIMARY KEY,contact_id uuid,metadata jsonb,handoff_summary text,handoff_summary_generated_at timestamptz)',
             'customer_memory_facts(id uuid,owner_kind text,owner_id uuid,source_contact_id uuid)',
             'customer_memories(contact_id uuid)',
         ]) await client.$executeRawUnsafe(`CREATE TABLE "${schema}".${ddl}`);
@@ -343,7 +343,8 @@ const REGISTRY = 'public.evaluation_knowledge_usages';
         for (const statement of [
             `CREATE TABLE "${schema}".contacts(id uuid PRIMARY KEY)`,
             `CREATE TABLE "${schema}".conversations(id uuid PRIMARY KEY,contact_id uuid,channel_type text,qa_revision bigint,
-                agent_persona_id uuid,agent_config_version integer,agent_attribution_conflicted boolean,was_handed_off boolean)`,
+                agent_persona_id uuid,agent_config_version integer,agent_attribution_conflicted boolean,was_handed_off boolean,
+                handoff_summary text,handoff_summary_generated_at timestamptz)`,
             `CREATE TABLE "${schema}".messages(id uuid PRIMARY KEY,conversation_id uuid,direction text,content_text text,created_at timestamptz DEFAULT now())`,
             `CREATE TABLE "${schema}".customer_memory_erasure(contact_id uuid PRIMARY KEY)`,
             `CREATE TABLE "${schema}".tool_execution_ledger(id uuid PRIMARY KEY,conversation_id uuid,contact_id uuid,tool_name text,

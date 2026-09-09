@@ -19,7 +19,8 @@ const databaseUrl = process.env.LEARNING_EVIDENCE_TEST_DATABASE_URL;
     const sql = (text: string, params: any[] = [], target = schema) => prisma.executeInTenantSchema<any[]>(target,text,params);
     async function bootstrap(target: string) {
         await sql('CREATE TABLE contacts(id UUID PRIMARY KEY,name TEXT,phone TEXT,email TEXT)',[],target);
-        await sql(`CREATE TABLE conversations(id UUID PRIMARY KEY,contact_id UUID REFERENCES contacts(id),metadata JSONB DEFAULT '{}')`,[],target);
+        await sql(`CREATE TABLE conversations(id UUID PRIMARY KEY,contact_id UUID REFERENCES contacts(id),metadata JSONB DEFAULT '{}',
+            handoff_summary TEXT,handoff_summary_generated_at TIMESTAMPTZ)`,[],target);
         await sql(`CREATE TABLE messages(id UUID PRIMARY KEY,conversation_id UUID REFERENCES conversations(id),
             direction TEXT,content_type TEXT,content_text TEXT,media_url TEXT,media_mime_type TEXT,caption TEXT,
             metadata JSONB,status TEXT,external_id TEXT)`,[],target);

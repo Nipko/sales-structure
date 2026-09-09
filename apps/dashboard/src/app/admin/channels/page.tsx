@@ -6,7 +6,7 @@ import { useState, useEffect } from "react";
 import { useTranslations } from "next-intl";
 import { HelpPanel } from "@/components/ui/help-panel";
 import { LoadFailureNotice } from "@/components/ui/load-failure";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { useTenant } from "@/contexts/TenantContext";
 import { usePlanLimits } from "@/hooks/usePlanLimits";
@@ -67,6 +67,17 @@ export default function ChannelsOverviewPage() {
     const { activeTenantId } = useTenant();
     const { getChannelAccountLimit } = usePlanLimits();
     const router = useRouter();
+    const searchParams = useSearchParams();
+    /**
+     * Parallly Assist sends people here already knowing which channel they came
+     * to connect (`?type=whatsapp`). Landing on a grid of four and hunting for
+     * the right card is the round trip that made the handoff worth building, so
+     * the named card is marked and scrolled to. Nothing is opened for them: the
+     * connection is theirs to make.
+     */
+    const focusedChannel = channels.some((ch) => ch.key === searchParams.get("type"))
+        ? searchParams.get("type")
+        : null;
     const [connectedChannels, setConnectedChannels] = useState<string[]>([]);
     const [accountCounts, setAccountCounts] = useState<Record<string, number>>({});
     // Credential health per channel: a channel can be "connected" and still be
@@ -187,7 +198,16 @@ export default function ChannelsOverviewPage() {
                             id={ch.key === "whatsapp"
                                 ? guidedTourAnchorId("channel-card-whatsapp")
                                 : guidedTourAnchorId(`channel-card-${ch.key}`)}
-                            className="rounded-xl border border-border bg-card overflow-hidden cursor-pointer transition-all duration-150 hover:-translate-y-0.5 hover:shadow-[0_8px_24px_rgba(0,0,0,0.3)]"
+                            data-channel-focus={focusedChannel === ch.key ? "true" : undefined}
+                            ref={focusedChannel === ch.key
+                                ? (node) => node?.scrollIntoView({ block: "center" })
+                                : undefined}
+                            className={cn(
+                                "rounded-xl border bg-card overflow-hidden cursor-pointer transition-all duration-150 hover:-translate-y-0.5 hover:shadow-[0_8px_24px_rgba(0,0,0,0.3)]",
+                                focusedChannel === ch.key
+                                    ? "border-[var(--primary)] ring-2 ring-[var(--primary)]"
+                                    : "border-border",
+                            )}
                             onClick={() => router.push(ch.href)}
                         >
                             {/* Card Top */}

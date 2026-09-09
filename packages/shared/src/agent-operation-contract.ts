@@ -130,10 +130,48 @@ export interface AgentExecutableOperation extends AgentOperationCommon {
     sideEffects: 'tenant_record_only';
 }
 
+/**
+ * A non-secret fact Assist may collect in the chat before opening the screen.
+ *
+ * "Non-secret" is the whole boundary and it is structural: a requirement whose
+ * value would be a token, a key or a password cannot be declared here, because
+ * the screens that need those are exactly the ones this list keeps Assist out
+ * of. What is collected is the shape of the decision — which channel, which
+ * provider, which role — so the person lands on the right screen already
+ * knowing what they came to do.
+ */
+export interface AgentHandoffRequirement {
+    readonly key: string;
+    readonly kind: 'choice' | 'text';
+    /** Exhaustive for `choice`. Anything else is refused rather than passed on. */
+    readonly choices?: readonly string[];
+    readonly optional?: boolean;
+    /**
+     * Query parameter this value is carried into the screen as. Omitted when the
+     * screen does not read one — which is a fact about the screen and is stated
+     * rather than faked with a parameter nothing honours.
+     */
+    readonly param?: string;
+}
+
 export interface AgentRoutedOperation extends AgentOperationCommon {
     key: AgentRoutedOperationKey;
     availability: 'route_to_screen';
     reason: AgentOperationRouteReason;
+    /** What Assist gathers before sending the person anywhere. May be empty. */
+    readonly requirements: readonly AgentHandoffRequirement[];
+    /**
+     * Quality check codes that must already be resolved for the screen to be
+     * worth opening. Sending somebody to publish an agent with no channel is a
+     * round trip that ends where it started.
+     */
+    readonly readiness: readonly string[];
+    /**
+     * What Assist re-reads when the person comes back, to report what actually
+     * happened instead of assuming it worked. A quality check code, or
+     * `assessment` for the whole thing.
+     */
+    readonly resultCheck: string;
 }
 
 export type AgentOperationDefinition = AgentExecutableOperation | AgentRoutedOperation;
@@ -192,7 +230,15 @@ export const AGENT_OPERATION_REGISTRY: readonly AgentOperationDefinition[] = Obj
         domain: 'channels',
         availability: 'route_to_screen',
         reason: 'oauth_round_trip_required',
-        target: { module: 'channels', service: 'ChannelManagementService', method: 'connect', table: 'channel_accounts' },
+        // The controller demands an `accessToken`, which is why this is a route
+        // and not an operation. Which channel is not a secret, so Assist asks.
+        requirements: [
+            { key: 'channelType', kind: 'choice', param: 'type',
+                choices: ['whatsapp', 'instagram', 'messenger', 'telegram', 'web_chat'] },
+        ],
+        readiness: [],
+        resultCheck: 'channel_connection',
+        target: { module: 'channels', service: 'ChannelManagementController', method: 'connect', table: 'public.channel_accounts' },
         roles: ['super_admin', 'tenant_admin'],
         route: '/admin/channels',
     },
@@ -201,7 +247,14 @@ export const AGENT_OPERATION_REGISTRY: readonly AgentOperationDefinition[] = Obj
         domain: 'roles',
         availability: 'route_to_screen',
         reason: 'privilege_decision',
-        target: { module: 'auth', service: 'AuthService', method: 'updateUser', table: 'public.users' },
+        // Which role is the decision itself, so it is gathered and then handed
+        // over rather than applied: naming it does not grant it.
+        requirements: [
+            { key: 'role', kind: 'choice', choices: ['tenant_admin', 'tenant_supervisor', 'tenant_agent'] },
+        ],
+        readiness: [],
+        resultCheck: 'human_handoff_route',
+        target: { module: 'auth', service: 'AuthController', method: 'updateUser', table: 'public.users' },
         roles: ['super_admin', 'tenant_admin'],
         route: '/admin/users',
     },
@@ -210,7 +263,12 @@ export const AGENT_OPERATION_REGISTRY: readonly AgentOperationDefinition[] = Obj
         domain: 'publication',
         availability: 'route_to_screen',
         reason: 'customer_facing_decision',
-        target: { module: 'persona', service: 'AgentPublicationService', method: 'publish', table: 'agent_publications' },
+        requirements: [],
+        // Publishing an agent that nothing reaches, or that never escalates,
+        // is a round trip back to where the person started.
+        readiness: ['agent_active', 'channel_assignment', 'handoff_triggers', 'fallback_message'],
+        resultCheck: 'assessment',
+        target: { module: 'persona', service: 'AgentPublicationService', method: 'publish', table: 'agent_publication_events' },
         roles: ['super_admin', 'tenant_admin'],
         route: '/admin/agent',
     },
@@ -219,7 +277,13 @@ export const AGENT_OPERATION_REGISTRY: readonly AgentOperationDefinition[] = Obj
         domain: 'payments',
         availability: 'route_to_screen',
         reason: 'credentials_required',
-        target: { module: 'tenant-payments', service: 'TenantPaymentsService', method: 'saveConfig', table: 'public.tenants' },
+        // `setConfig` takes accessToken, privateKey, webhookSecret and
+        // eventsSecret. None of them can appear here: the provider is the only
+        // part of that call Assist is allowed to know.
+        requirements: [{ key: 'provider', kind: 'choice', choices: ['mercadopago', 'wompi'] }],
+        readiness: [],
+        resultCheck: 'assessment',
+        target: { module: 'tenant-payments', service: 'TenantPaymentsService', method: 'setConfig', table: 'tenant_payment_provider_configs' },
         roles: ['super_admin', 'tenant_admin'],
         route: '/admin/settings/integrations/payments',
     },
@@ -230,6 +294,11 @@ export const AGENT_OPERATION_REGISTRY: readonly AgentOperationDefinition[] = Obj
         domain: 'agenda',
         availability: 'route_to_screen',
         reason: 'outward_facing_effect',
+        requirements: [],
+        // A booking screen with no service and no availability has nothing to
+        // book, and the two checks that say so are the ones to fix first.
+        readiness: ['tool_appointments'],
+        resultCheck: 'tool_appointments',
         target: { module: 'appointments', service: 'AppointmentsService', method: 'create', table: 'appointments' },
         roles: ['super_admin', 'tenant_admin', 'tenant_supervisor', 'tenant_agent'],
         route: '/admin/appointments',
@@ -241,6 +310,9 @@ export const AGENT_OPERATION_REGISTRY: readonly AgentOperationDefinition[] = Obj
         domain: 'agenda',
         availability: 'route_to_screen',
         reason: 'destructive_replacement',
+        requirements: [],
+        readiness: [],
+        resultCheck: 'tool_appointments',
         target: { module: 'appointments', service: 'AppointmentsService', method: 'saveAvailability', table: 'availability_slots' },
         roles: ['super_admin', 'tenant_admin', 'tenant_supervisor'],
         route: '/admin/appointments',
@@ -251,6 +323,9 @@ export const AGENT_OPERATION_REGISTRY: readonly AgentOperationDefinition[] = Obj
         domain: 'catalogue',
         availability: 'route_to_screen',
         reason: 'outward_facing_effect',
+        requirements: [],
+        readiness: [],
+        resultCheck: 'assessment',
         target: { module: 'catalog', service: 'CatalogService', method: 'createCampaign', table: 'campaigns' },
         roles: ['super_admin', 'tenant_admin', 'tenant_supervisor'],
         route: '/admin/catalog/campaigns',
@@ -263,6 +338,11 @@ export const AGENT_OPERATION_REGISTRY: readonly AgentOperationDefinition[] = Obj
         domain: 'catalogue',
         availability: 'route_to_screen',
         reason: 'commercial_commitment',
+        requirements: [],
+        // An offer is bound to a course or a campaign that must already exist,
+        // so the catalogue check is what says the screen has anything to offer.
+        readiness: ['tool_catalog'],
+        resultCheck: 'tool_offers',
         target: { module: 'catalog', service: 'CatalogService', method: 'createOffer', table: 'commercial_offers' },
         roles: ['super_admin', 'tenant_admin', 'tenant_supervisor'],
         route: '/admin/catalog/offers',
@@ -534,4 +614,112 @@ export interface AgentOperationAvailability {
     availability: 'executable' | 'blocked' | 'route_to_screen';
     route: string;
     reason: AgentOperationAvailabilityReason | null;
+}
+
+// ─── Handoff to the screen that owns the decision ───────────────────────────
+
+/**
+ * A route is not a handoff. "Andá a Canales" leaves the person to work out what
+ * they came for, and Assist to guess afterwards whether it worked.
+ *
+ * A handoff is the four things the directive asks for, in one object: the
+ * non-secret requirements gathered, the readiness that says the screen is worth
+ * opening at all, the exact link with what the screen can honour already filled
+ * in, and the check to re-read when they come back — so the answer is what
+ * actually changed rather than an assumption that it did.
+ */
+export const AGENT_HANDOFF_RETURN_PARAM = 'assistOp' as const;
+
+export interface AgentHandoffRefusal {
+    /** Declared, absent, and not optional. */
+    readonly missing: readonly string[];
+    /** Supplied, and not one of the declared choices — or not a string at all. */
+    readonly invalid: readonly string[];
+    /** Supplied and not declared. Never forwarded: the link carries only what is declared. */
+    readonly unknown: readonly string[];
+}
+
+export interface AgentHandoffPlan {
+    readonly operation: AgentRoutedOperationKey;
+    /** The screen, with the declared parameters that it honours already set. */
+    readonly href: string;
+    /** Everything gathered, including what no parameter carries, for the chat to keep. */
+    readonly collected: Readonly<Record<string, string>>;
+    /** Check codes that are not resolved yet, so the screen would be a round trip. */
+    readonly readiness: readonly string[];
+    /** What to re-read when the person comes back. */
+    readonly resultCheck: string;
+    readonly reason: AgentOperationRouteReason;
+}
+
+/**
+ * Builds the handoff, or says exactly why it cannot.
+ *
+ * `unresolvedReadiness` is passed in rather than looked up: this file knows
+ * which codes matter and has no way to know their status, and inventing a
+ * status here would be the same mistake as a screen that assumes its own
+ * preconditions.
+ */
+export function buildAgentHandoff(
+    key: string,
+    collected: Record<string, unknown> = {},
+    unresolvedReadiness: readonly string[] = [],
+): { ok: true; plan: AgentHandoffPlan } | { ok: false; refusal: AgentHandoffRefusal } {
+    const definition = getAgentOperation(key);
+    if (!definition || definition.availability !== 'route_to_screen') {
+        return { ok: false, refusal: { missing: [], invalid: [], unknown: [key] } };
+    }
+    const declared = new Map(definition.requirements.map(requirement => [requirement.key, requirement]));
+    const missing: string[] = [];
+    const invalid: string[] = [];
+    const unknown = Object.keys(collected).filter(field => !declared.has(field));
+    const accepted: Record<string, string> = {};
+    for (const requirement of definition.requirements) {
+        const raw = collected[requirement.key];
+        if (raw === undefined || raw === null || `${raw}`.trim() === '') {
+            if (!requirement.optional) missing.push(requirement.key);
+            continue;
+        }
+        if (typeof raw !== 'string') { invalid.push(requirement.key); continue; }
+        const value = raw.trim();
+        // A free-text value is bounded here rather than at the screen: it goes
+        // into a URL, and a URL nobody bounded is a URL somebody will overflow.
+        if (value.length > 120) { invalid.push(requirement.key); continue; }
+        if (requirement.kind === 'choice' && !(requirement.choices ?? []).includes(value)) {
+            invalid.push(requirement.key);
+            continue;
+        }
+        accepted[requirement.key] = value;
+    }
+    if (missing.length || invalid.length) return { ok: false, refusal: { missing, invalid, unknown } };
+
+    const params: string[] = [];
+    for (const requirement of definition.requirements) {
+        const value = accepted[requirement.key];
+        if (requirement.param && value !== undefined) {
+            params.push(`${requirement.param}=${encodeURIComponent(value)}`);
+        }
+    }
+    // The return marker is always carried, even when the screen honours no
+    // parameter of its own: it is what lets the person come back to the same
+    // conversation instead of starting it again.
+    params.push(`${AGENT_HANDOFF_RETURN_PARAM}=${encodeURIComponent(definition.key)}`);
+    const href = `${definition.route}${definition.route.includes('?') ? '&' : '?'}${params.join('&')}`;
+    return {
+        ok: true,
+        plan: {
+            operation: definition.key,
+            href,
+            collected: Object.freeze({ ...accepted }),
+            readiness: Object.freeze(definition.readiness.filter(code => unresolvedReadiness.includes(code))),
+            resultCheck: definition.resultCheck,
+            reason: definition.reason,
+        },
+    };
+}
+
+/** Every routed operation, for a UI or a prompt that has to list them. */
+export function routedAgentOperations(): readonly AgentRoutedOperation[] {
+    return Object.freeze(AGENT_OPERATION_REGISTRY
+        .filter((definition): definition is AgentRoutedOperation => definition.availability === 'route_to_screen'));
 }

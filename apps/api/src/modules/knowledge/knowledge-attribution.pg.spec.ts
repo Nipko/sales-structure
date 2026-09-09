@@ -40,7 +40,8 @@ integration('Knowledge attribution on real PostgreSQL', () => {
         await pool.query(`CREATE SCHEMA "${schema}"`);
         for (const statement of [
             `CREATE TABLE contacts(id UUID PRIMARY KEY)`,
-            `CREATE TABLE conversations(id UUID PRIMARY KEY,contact_id UUID,metadata JSONB DEFAULT '{}'::jsonb)`,
+            `CREATE TABLE conversations(id UUID PRIMARY KEY,contact_id UUID,metadata JSONB DEFAULT '{}'::jsonb,
+                handoff_summary TEXT,handoff_summary_generated_at TIMESTAMPTZ)`,
             `CREATE TABLE messages(id UUID PRIMARY KEY,conversation_id UUID)`,
             `CREATE TABLE contact_identities(contact_id UUID,customer_profile_id UUID)`,
             `CREATE TABLE customer_memory_facts(id UUID,owner_kind TEXT,owner_id UUID,source_contact_id UUID)`,

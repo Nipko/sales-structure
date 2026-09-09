@@ -1,3 +1,5 @@
+import * as fs from 'fs';
+import * as path from 'path';
 import { EVAL_WRITER_SANDBOX_FAMILIES } from './agent-test-tool-policy';
 import { FAMILY_TERMS_BINDINGS, TERMS_BINDING, declaredFamilies,
     familiesWithUnboundCharge, familiesWithUnboundCommand } from './terms-binding-inventory';
@@ -65,6 +67,33 @@ describe('which families bind what the customer agreed to', () => {
         expect(catalogAgreedAmountSql()).toContain("catalog_terms->>'totalAmountCents'");
         expect(catalogAgreedAmountSql()).toContain("'create'");
         expect(catalogAgreedAmountSql()).not.toContain('total_amount');
+    });
+
+    it('proves the three unbound charges are at least frozen, not live catalogue reads', () => {
+        // The distinction the evidence makes, checked instead of asserted. If a
+        // writer ever starts updating one of these money columns after the row
+        // exists, the amount would drift after the customer saw it and the
+        // evidence above would quietly become false.
+        const src = (file: string) =>
+            fs.readFileSync(path.resolve(__dirname, '..', ...file.split('/')), 'utf8');
+        const writers = [
+            ['vacation-rental/properties.service.ts', /UPDATE property_bookings[\s\S]{0,200}?SET([\s\S]{0,200}?)WHERE/g,
+                ['night_price', 'cleaning_fee', 'total_price', 'currency', 'amount_due']],
+            ['tours/tours.service.ts', /UPDATE tour_bookings[\s\S]{0,200}?SET([\s\S]{0,200}?)WHERE/g,
+                ['unit_price', 'total_price', 'currency', 'amount_due']],
+            ['restaurants/restaurants.service.ts', /UPDATE food_orders[\s\S]{0,200}?SET([\s\S]{0,200}?)WHERE/g,
+                ['total', 'currency']],
+        ] as const;
+        const drifting: string[] = [];
+        for (const [file, pattern, columns] of writers) {
+            const text = src(file);
+            for (const match of text.matchAll(pattern)) {
+                for (const column of columns) {
+                    if (new RegExp(`\b${column}\s*=`).test(match[1])) drifting.push(`${file}: ${column}`);
+                }
+            }
+        }
+        expect({ drifting }).toEqual({ drifting: [] });
     });
 
     it('keeps the display price and the charged price as two different questions', () => {

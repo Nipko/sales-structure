@@ -89,18 +89,22 @@ export const FAMILY_TERMS_BINDINGS: readonly FamilyTermsBinding[] = Object.freez
     }),
     entry({
         family: 'property_bookings', command: 'none', charge: 'none', legacyRows: 'fails_open',
-        evidence: 'No accepted terms are demanded or stored, and the charge reads the live night price, cleaning fee '
-            + 'and currency from the booking row.',
+        evidence: 'No accepted terms are demanded or stored. The charge reads night_price, cleaning_fee and currency '
+            + 'from the booking row, which are frozen at write time and never updated afterwards — so the amount is '
+            + 'stable, but it is what the SYSTEM computed, not what the guest was shown: a tariff edit between the '
+            + 'availability answer and the booking moves the price with nothing to catch it.',
     }),
     entry({
         family: 'tour_bookings', command: 'none', charge: 'none', legacyRows: 'fails_open',
-        evidence: 'No accepted terms are demanded or stored, and the charge reads the live unit and total price '
-            + 'from the booking row, so a tariff edit between the quote and the payment moves the amount.',
+        evidence: 'No accepted terms are demanded or stored. The charge reads the unit and total price frozen on the '
+            + 'booking row, so the amount does not drift after the write; what is missing is upstream, that nothing '
+            + 'proves the traveller was quoted those numbers before the row existed.',
     }),
     entry({
         family: 'restaurant_orders', command: 'none', charge: 'none', legacyRows: 'fails_open',
-        evidence: 'No accepted terms; the charge reads target.total. The writer does recalculate the total from the '
-            + 'menu rather than trusting the model, which protects the arithmetic but not the agreement.',
+        evidence: 'No accepted terms; the charge reads target.total, frozen at write time. The writer recalculates '
+            + 'that total from the menu rather than trusting the model, which protects the arithmetic but not the '
+            + 'agreement: a price edit between the menu the customer read and the order moves it silently.',
     }),
     entry({
         family: 'service_requests', command: 'none', charge: 'not_applicable', legacyRows: 'not_applicable',

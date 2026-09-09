@@ -1,10 +1,11 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { createHash, randomUUID } from 'crypto';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { AGENT_CONFIGURATION_PATHS, buildDomainContractDraft, isAgentAccountBusinessHours, isAgentMissionV1, type AgentConfigurationChange, type AgentConfigurationProposal, type AppliedAgentConfiguration } from '@parallext/shared';
+import { AGENT_CONFIGURATION_PATHS, CONVERSATIONAL_CHANNELS, buildDomainContractDraft, isAgentAccountBusinessHours, isAgentMissionV1, type AgentConfigurationChange, type AgentConfigurationProposal, type AppliedAgentConfiguration, type AppliedDraftVerification, type AppliedDraftVerificationReason, type AppliedDraftVerificationState, type ConversationalChannelType, type SavedAgentDraft } from '@parallext/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { PersonaService } from '../persona/persona.service';
 import { AgentAssessmentService } from './agent-assessment.service';
+import { AgentTestService } from '../conversations/agent-test.service';
 import { TurnCapabilityComposerService } from '../conversations/turn-capability-composer.service';
 import { staticToolsForAgentConfig, TOOL_SUBPERMISSION_RULES } from '../conversations/agent-tool-registry';
 import { PAYMENT_CREATE_TOOLS, PAYMENT_STATUS_TOOLS } from '../conversations/tools/payment-tools';
@@ -39,15 +40,25 @@ function boundedStrings(value: unknown, required: boolean): value is string[] {
     return Array.isArray(value) && value.length <= 20 && (!required || value.length > 0)
         && value.every(item => typeof item === 'string' && item.trim().length > 0 && item.length <= 1500);
 }
+/**
+ * A greeting is the least loaded probe there is: it exercises prompt assembly,
+ * the persona and the model round-trip without steering the agent into a task
+ * whose failure would say more about the tenant's data than about this edit.
+ */
+const VERIFICATION_PROBE: Record<string, string> = { es: 'Hola', en: 'Hello', pt: 'Olá', fr: 'Bonjour' };
+/** An apply already committed must never wait on a provider that stopped answering. */
+const VERIFICATION_TIMEOUT_MS = 15_000;
 
 /** Proposals never execute an effect. Applying locks the exact proposal and agent together. */
 @Injectable()
 export class AgentConfigurationService {
+    private readonly logger = new Logger(AgentConfigurationService.name);
     constructor(private readonly prisma: PrismaService, private readonly persona: PersonaService,
         private readonly assessment: AgentAssessmentService, private readonly events: EventEmitter2,
         private readonly capabilities: TurnCapabilityComposerService = null as any,
         private readonly tenants: TenantsService = null as any,
-        private readonly drafts: AgentDraftService = null as any) {}
+        private readonly drafts: AgentDraftService = null as any,
+        private readonly tests: AgentTestService = null as any) {}
 
     private authorize(actor: { id: string; role: string }, agentId?: string): void {
         if (!['tenant_admin', 'super_admin'].includes(actor.role)) throw new ForbiddenException('Agent configuration requires an administrator');
@@ -234,9 +245,72 @@ export class AgentConfigurationService {
                 if (!result.replay) this.events.emit('agent.version.updated', { tenantId, agentId: result.proposal.agent_id, changed: 'assist_account_hours', proposalId });
             }
         } catch { verified = false; }
-        const assessment = await this.assessment.getAssessment(tenantId, result.proposal.agent_id).catch(() => null);
+        const [assessment, draftVerification] = await Promise.all([
+            this.assessment.getAssessment(tenantId, result.proposal.agent_id).catch(() => null),
+            this.verifyAppliedDraft(tenantId, result.proposal.agent_id, result.draft),
+        ]);
         return { proposal: this.publicProposal(result.proposal), assessment, assessmentScope: 'operational', draft: result.draft,
-            verification: verified && (result.draft || assessment) ? 'verified' : 'unavailable' };
+            draftVerification, verification: verified && (result.draft || assessment) ? 'verified' : 'unavailable' };
+    }
+    /**
+     * Exercise the revision that was just written, so the receipt carries
+     * evidence about the edited configuration and not only the operational
+     * assessment — which describes the configuration this edit did not touch.
+     *
+     * Inline rather than queued. The question this answers ("did that break
+     * anything?") belongs in the response the person is already waiting for; a
+     * queued run would land somewhere they would have to go looking for it, and
+     * the change is already live in their draft by then. Inlining is bounded on
+     * both sides: the apply has committed before this starts, every failure
+     * becomes a reported state instead of an exception, and a provider that
+     * stops answering is abandoned at VERIFICATION_TIMEOUT_MS.
+     *
+     * Nothing is recorded. A greeting that came back is not release evidence,
+     * and storing it beside the sealed runs would let it pass for proof that a
+     * mission task works; `AgentAssessment.requiredTests` stays the only durable
+     * answer to that question.
+     */
+    private async verifyAppliedDraft(tenantId: string, agentId: string, draft?: SavedAgentDraft): Promise<AppliedDraftVerification> {
+        const checkedAt = new Date().toISOString();
+        const revisionId = draft?.savedRevision.id ?? null;
+        const evidence = (state: AppliedDraftVerificationState, reason: AppliedDraftVerificationReason | null): AppliedDraftVerification =>
+            ({ scope: 'applied_draft', state, reason, revisionId, revisionHash: draft?.savedRevision.bodyHash ?? null, checkedAt });
+        if (!draft) return evidence('not_applicable', 'account_scope');
+        if (!this.tests) return evidence('unavailable', 'runner_unavailable');
+        // Only the current draft may be selected for a server-side run, and that
+        // pointer was re-read inside the commit. A revision the draft has already
+        // moved past would be exercised as somebody else's configuration.
+        if (draft.workspace.evaluationRevisionId !== revisionId) return evidence('unavailable', 'revision_changed');
+        const body = draft.savedRevision.body;
+        const channelType = CONVERSATIONAL_CHANNELS.includes(body.channels[0]) ? body.channels[0] as ConversationalChannelType : undefined;
+        const language = typeof body.configJson.language === 'string' ? body.configJson.language : 'es';
+        let timer: NodeJS.Timeout | undefined;
+        try {
+            // `disableTools` keeps this inside the blocked-tool branch of
+            // `sessionCanExecute`, so no tool ever reaches a real executor.
+            const run = this.tests.test(tenantId, agentId, { message: VERIFICATION_PROBE[language] ?? VERIFICATION_PROBE.es,
+                configurationRevisionId: revisionId!, ...(channelType ? { channelType } : {}) }, { disableTools: true });
+            // The race abandons whichever side loses; an abandoned rejection must not surface as unhandled.
+            run.catch(() => undefined);
+            const result = await Promise.race([run, new Promise<never>((_, reject) => {
+                timer = setTimeout(() => reject(new Error('verification_timed_out')), VERIFICATION_TIMEOUT_MS);
+            })]);
+            return typeof result?.reply === 'string' && result.reply.trim() ? evidence('verified', null) : evidence('failed', 'empty_reply');
+        } catch (error: any) {
+            this.logger.warn(`Applied draft verification unavailable for agent ${agentId}: ${error?.message || error}`);
+            return evidence('unavailable', this.verificationReason(error));
+        } finally { if (timer) clearTimeout(timer); }
+    }
+    private verificationReason(error: any): AppliedDraftVerificationReason {
+        const detail = `${error?.response?.error ?? ''} ${error?.message ?? error ?? ''}`;
+        if (detail.includes('verification_timed_out')) return 'timed_out';
+        if (detail.includes('quota')) return 'quota_exhausted';
+        if (detail.includes('revision_changed') || detail.includes('configuration_changed')) return 'revision_changed';
+        // Everything else is reported coarsely on purpose: an unconfigured
+        // provider, a provider error and an unexecutable snapshot are not
+        // distinguishable from here, and naming one would put a cause in the
+        // receipt that nothing established.
+        return 'run_failed';
     }
     private proposalDigest(row: any): string {
         return hash({ agentId: row.agent_id, agentName: row.agent_name, expectedVersion: row.expected_version, targetScope: row.target_scope,

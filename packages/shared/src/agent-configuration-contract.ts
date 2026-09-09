@@ -53,11 +53,69 @@ export interface AgentConfigurationProposal {
     appliedVersion?: number;
     appliedDraftRevision?: string;
 }
+export type AppliedDraftVerificationState =
+    /**
+     * The applied revision itself ran the real turn pipeline with tools disabled
+     * and answered. It is a smoke check of the edited configuration, not proof
+     * that each mission task passes — task-level proof stays in
+     * `AgentAssessment.requiredTests`, which only counts sealed release runs.
+     */
+    | 'verified'
+    /** The run happened and produced no usable answer: the edit is saved and does not reply. */
+    | 'failed'
+    /** No run was possible here. Nothing was proven, so it can never be reported as `verified`. */
+    | 'unavailable'
+    /** There is no draft to exercise: the proposal changed tenant account settings. */
+    | 'not_applicable';
+
+export type AppliedDraftVerificationReason =
+    | 'account_scope'
+    | 'runner_unavailable'
+    | 'revision_changed'
+    | 'quota_exhausted'
+    | 'timed_out'
+    | 'empty_reply'
+    /**
+     * The run could not complete: no provider configured, a provider error, a
+     * snapshot that is no longer executable. Deliberately coarse — the apply
+     * path cannot tell those apart, and naming one of them would put a cause in
+     * a receipt that nothing established.
+     */
+    | 'run_failed';
+
+/**
+ * Evidence about the configuration that was just applied.
+ *
+ * `assessmentScope: 'operational'` marks the assessment as describing the
+ * configuration that keeps serving customers — the one the edit did not touch.
+ * This is the other half, and the only field in the receipt that answers "did
+ * that break anything?". It carries the revision it was produced against so it
+ * expires on its own: the moment the draft moves past `revisionId`, this says
+ * nothing about the current draft.
+ */
+export interface AppliedDraftVerification {
+    /** Never 'operational'. Evidence here is about the edited revision alone. */
+    scope: 'applied_draft';
+    state: AppliedDraftVerificationState;
+    revisionId: string | null;
+    revisionHash: string | null;
+    reason: AppliedDraftVerificationReason | null;
+    checkedAt: string;
+}
+
 export interface AppliedAgentConfiguration {
     proposal: AgentConfigurationProposal;
     assessment: AgentAssessment | null;
+    /**
+     * Whether the apply itself finished cleanly — caches invalidated, the saved
+     * draft or the operational assessment readable. It says nothing about how
+     * the agent behaves: `draftVerification` is the field that answers that, and
+     * neither value here may be read as behavioural evidence.
+     */
     verification: 'verified' | 'unavailable';
     /** Operational assessment must never be presented as evidence for the edited draft. */
     assessmentScope: 'operational';
+    /** Scoped to the applied revision, so it is never confused with `assessment`. */
+    draftVerification: AppliedDraftVerification;
     draft?: SavedAgentDraft;
 }

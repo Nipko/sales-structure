@@ -624,7 +624,10 @@ export class PlatformMonitorService implements OnModuleInit {
             let total = 0;
             let overdue = 0;
             let oldestSeconds = 0;
+            let stalled = 0;
+            let stalledOldestSeconds = 0;
             const byTenant: Array<{ name: string; total: number; overdue: number }> = [];
+            const stalledByTenant: Array<{ name: string; stalled: number }> = [];
             for (const t of tenants) {
                 // The outbox itself refuses eval namespaces, so anything counted
                 // in one would be harness fixtures paging a human at 3AM.
@@ -642,9 +645,12 @@ export class PlatformMonitorService implements OnModuleInit {
                     total += backlog.total;
                     overdue += backlog.breachingSla;
                     oldestSeconds = Math.max(oldestSeconds, backlog.oldestAgeSeconds);
+                    stalled += backlog.stalled;
+                    stalledOldestSeconds = Math.max(stalledOldestSeconds, backlog.stalledOldestAgeSeconds);
                     if (backlog.total > 0) {
                         byTenant.push({ name: t.name, total: backlog.total, overdue: backlog.breachingSla });
                     }
+                    if (backlog.stalled > 0) stalledByTenant.push({ name: t.name, stalled: backlog.stalled });
                 } catch {
                     // A schema that is missing, mid-migration or unreadable is one
                     // tenant's problem; the sweep still has to cover the rest.
@@ -702,6 +708,36 @@ export class PlatformMonitorService implements OnModuleInit {
                 );
             } else {
                 await this.incidents.resolveByKey('dispatch:reconciliation:backlog');
+            }
+
+            // The third SLO of the dispatch runbook, and the one that had no
+            // watcher at all. Queue depth cannot cover it: a row whose job was
+            // never published has nothing in BullMQ to count, so the graph reads
+            // normal while a customer waits for a reply that will never be sent.
+            if (stalled > 0 && stalled >= cfg.dispatchReconciliation.stalled) {
+                const stalledList = stalledByTenant
+                    .sort((a, b) => b.stalled - a.stalled)
+                    .slice(0, 5)
+                    .map((x) => `<li><b>${this.escapeHtml(x.name)}</b> — ${x.stalled} sin publicar</li>`)
+                    .join('');
+                const stalledRest = stalledByTenant.length > 5
+                    ? `<li>y ${stalledByTenant.length - 5} tenant(s) más</li>` : '';
+                await this.alert(
+                    'dispatch:outbox:stalled',
+                    `${stalled} envío(s) del agente listos y sin trabajo que los saque`,
+                    `<b>${stalled}</b> fila(s) del outbox quedaron disponibles para enviarse y nadie las tomó.`
+                    + ` La más antigua espera hace <b>${this.durationLabel(stalledOldestSeconds)}</b>.<br>`
+                    + ` Esto <b>no</b> es lo mismo que la cola de reconciliación: aquellas esperan que una persona`
+                    + ` decida, éstas esperan a un worker. Y no aparecen en la profundidad de`
+                    + ` <code>outbound-messages</code>, porque una fila sin job publicado no existe para BullMQ:`
+                    + ` el tablero se ve normal mientras el cliente espera una respuesta que ya se generó.<br>`
+                    + ` <b>Qué revisar:</b> workers de <code>outbound-messages</code> vivos, Valkey alcanzable, y el`
+                    + ` barrido de recuperación corriendo.`
+                    + `<ul style="margin:6px 0 6px 18px;list-style:disc;">${stalledList}${stalledRest}</ul>`,
+                    stalled,
+                );
+            } else {
+                await this.incidents.resolveByKey('dispatch:outbox:stalled');
             }
         } catch (e: any) {
             this.logger.debug(`Dispatch backlog check skipped: ${e.message}`);

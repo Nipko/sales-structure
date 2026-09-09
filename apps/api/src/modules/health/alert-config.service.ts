@@ -21,7 +21,7 @@ export interface AlertConfig {
      * not two levels of one: `backlog` counts everything queued for a decision,
      * `overdue` only what already crossed DISPATCH_RECONCILIATION_SLA_SECONDS.
      */
-    dispatchReconciliation: { backlog: number; overdue: number };
+    dispatchReconciliation: { backlog: number; overdue: number; stalled: number };
     queueDepth: Record<string, { warn: number; crit: number }>;
     /** Alert when a queue's failed count is greater than its own threshold. */
     queueFailedByQueue: Record<string, number>;
@@ -48,7 +48,10 @@ export const ALERT_CONFIG_DEFAULTS: AlertConfig = {
     // is a person's afternoon, twenty at once is something systemic. Age is the
     // harder line: the SLA is already an hour, so the first row that crosses it
     // is the incident and there is no volume that makes it acceptable.
-    dispatchReconciliation: { backlog: 20, overdue: 1 },
+    // `stalled` counts a third thing entirely: rows whose job was never
+    // published. One is already a customer waiting on a reply nothing is going
+    // to send, so the threshold is the first row, like `overdue`.
+    dispatchReconciliation: { backlog: 20, overdue: 1, stalled: 1 },
     queueDepth: {
         // La cola de ENTRANTES faltaba, y es la que el propio platform-monitor
         // llama "la más importante de la plataforma": un backlog acá significa

@@ -14,7 +14,7 @@ import { PlatformMonitorService } from './platform-monitor.service';
  */
 
 type Backlog =
-    | { total: number; oldest: number; breaching: number }
+    | { total: number; oldest: number; breaching: number; stalled?: number; stalledOldest?: number }
     /** Tenant never took this path: the table does not exist. */
     | 'no-table'
     /** Schema missing, mid-migration, or the connection died. */
@@ -48,7 +48,10 @@ function createMonitor(tenants: TenantFixture[]) {
                     }];
                 }
                 if (backlog === 'no-table') throw new Error('relation does not exist');
-                return [{ total: backlog.total, oldest: backlog.oldest, breaching: backlog.breaching }];
+                return [{
+                    total: backlog.total, oldest: backlog.oldest, breaching: backlog.breaching,
+                    stalled: backlog.stalled ?? 0, stalled_oldest: backlog.stalledOldest ?? 0,
+                }];
             });
         }),
     };
@@ -86,6 +89,7 @@ describe('PlatformMonitorService — uncertain dispatch effects', () => {
         expect(resolved).toEqual(expect.arrayContaining([
             'dispatch:reconciliation:overdue',
             'dispatch:reconciliation:backlog',
+            'dispatch:outbox:stalled',
         ]));
     });
 
@@ -116,17 +120,87 @@ describe('PlatformMonitorService — uncertain dispatch effects', () => {
     it('will not page anyone about zero effects if a threshold is misconfigured to 0', async () => {
         const { monitor, alerts } = createMonitor([quiet('Hotel Amazonas', 'tenant_amazonas')]);
         (monitor as any).alertConfig.get = jest.fn(async () => ({
-            ...ALERT_CONFIG_DEFAULTS, dispatchReconciliation: { backlog: 0, overdue: 0 },
+            ...ALERT_CONFIG_DEFAULTS, dispatchReconciliation: { backlog: 0, overdue: 0, stalled: 0 },
         }));
 
         await monitor.checkDispatchBacklog();
         expect(alerts).toEqual([]);
     });
 
+    it('sees a row whose job was never published, which queue depth cannot', async () => {
+        // Nothing waiting for a person, so both reconciliation incidents close —
+        // and a reply the customer will never receive is still sitting there.
+        // BullMQ has no job to count for it, so every queue graph reads normal.
+        const { monitor, alerts, resolved } = createMonitor([
+            { name: 'Hotel Amazonas', schemaName: 'tenant_amazonas',
+                backlog: { total: 0, oldest: 0, breaching: 0, stalled: 3, stalledOldest: 3600 } },
+        ]);
+
+        await monitor.checkDispatchBacklog();
+
+        expect(alerts.map(a => a.key)).toEqual(['dispatch:outbox:stalled']);
+        expect(alerts[0].value).toBe(3);
+        expect(alerts[0].html).toContain('1 h');
+        expect(alerts[0].html).toContain('Hotel Amazonas');
+        expect(resolved).toEqual(expect.arrayContaining([
+            'dispatch:reconciliation:overdue', 'dispatch:reconciliation:backlog',
+        ]));
+    });
+
+    it('keeps the two failures apart instead of adding them into one number', async () => {
+        // One is waiting for a person to decide, the other for a worker to run.
+        // Same table, opposite actions.
+        const { monitor, alerts } = createMonitor([
+            { name: 'Hotel Amazonas', schemaName: 'tenant_amazonas',
+                backlog: { total: 2, oldest: 7200, breaching: 2, stalled: 4, stalledOldest: 900 } },
+        ]);
+
+        await monitor.checkDispatchBacklog();
+
+        const stalled = alerts.find(a => a.key === 'dispatch:outbox:stalled')!;
+        const overdue = alerts.find(a => a.key === 'dispatch:reconciliation:overdue')!;
+        expect(stalled.value).toBe(4);
+        expect(overdue.value).toBe(2);
+        expect(stalled.html).toContain('outbound-messages');
+    });
+
+    it('adds up stalled rows across tenants and names the worst first', async () => {
+        const { monitor, alerts } = createMonitor([
+            { name: 'Clínica Sur', schemaName: 'tenant_sur',
+                backlog: { total: 0, oldest: 0, breaching: 0, stalled: 1, stalledOldest: 700 } },
+            { name: 'Hotel Amazonas', schemaName: 'tenant_amazonas',
+                backlog: { total: 0, oldest: 0, breaching: 0, stalled: 6, stalledOldest: 3600 } },
+            quiet('Taller Norte', 'tenant_norte'),
+        ]);
+
+        await monitor.checkDispatchBacklog();
+
+        const stalled = alerts.find(a => a.key === 'dispatch:outbox:stalled')!;
+        expect(stalled.value).toBe(7);
+        expect(stalled.html.indexOf('Hotel Amazonas')).toBeLessThan(stalled.html.indexOf('Clínica Sur'));
+        expect(stalled.html).not.toContain('Taller Norte');
+    });
+
+    it('asks for both numbers in one pass over the table', async () => {
+        const { monitor, executedSql } = createMonitor([quiet('Hotel Amazonas', 'tenant_amazonas')]);
+        await monitor.checkDispatchBacklog();
+        const counting = executedSql.find(sql => sql.includes('agent_dispatch_outbox'))!;
+        // A second transaction per tenant would double the PgBouncer churn to
+        // ask a question the same scan already answers.
+        expect(executedSql.filter(sql => sql.includes('FROM agent_dispatch_outbox'))).toHaveLength(1);
+        expect(counting).toContain("state = 'reconciliation_required'");
+        expect(counting).toContain("state IN ('prepared','queued','failed')");
+        expect(counting).toContain('available_at <');
+    });
+
     it('classifies the overdue one as critical and the plain backlog as a warning', () => {
         const { monitor } = createMonitor([]);
         expect((monitor as any).severityFromKey('dispatch:reconciliation:overdue')).toBe('critical');
         expect((monitor as any).severityFromKey('dispatch:reconciliation:backlog')).toBe('warning');
+        // A stalled row has not been sent and is still recoverable the moment a
+        // worker returns; the overdue one may already have reached the customer
+        // and only a person can settle it. Urgency is not the same thing.
+        expect((monitor as any).severityFromKey('dispatch:outbox:stalled')).toBe('warning');
     });
 
     it('names the tenants behind the pile, worst first', async () => {

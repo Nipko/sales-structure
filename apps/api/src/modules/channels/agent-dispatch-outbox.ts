@@ -851,6 +851,18 @@ export interface DispatchReconciliationBacklog {
     readonly oldestAgeSeconds: number;
     /** Rows past the operational deadline; what an alert should count. */
     readonly breachingSla: number;
+    /**
+     * Rows still waiting for a worker long after they became available.
+     *
+     * A different failure from `total`, and the one nothing was watching: those
+     * rows are waiting for a PERSON to decide, these are waiting for a job that
+     * was never published or was published and lost. Queue depth cannot see
+     * them — a row with no job in BullMQ is invisible to it — and it is exactly
+     * the mode the outbox exists to make recoverable, so the row sits there
+     * holding an unsent reply while every dashboard reads normal.
+     */
+    readonly stalled: number;
+    readonly stalledOldestAgeSeconds: number;
 }
 
 const maskRecipient = (value: unknown): string | null => {
@@ -906,6 +918,17 @@ export async function readDispatchReconciliation(query: DispatchOutboxQuery, sch
     return rows.map(mapReconciliation);
 }
 
+/**
+ * How long an available row may sit before it counts as stalled.
+ *
+ * The queue publishes a job as the row becomes available and the recovery
+ * sweep runs on its own schedule, so a row still waiting after ten minutes is
+ * not slow — it is a row whose job was never published, or was published and
+ * lost. Ten minutes is comfortably longer than any normal retry backoff and
+ * short enough that a person still has the context to act on it.
+ */
+export const DISPATCH_STALLED_AFTER_SECONDS = 600;
+
 export async function readDispatchBacklog(query: DispatchOutboxQuery,
     schema: string): Promise<DispatchReconciliationBacklog> {
     if (!SCHEMA.test(schema)) fail('dispatch_invalid_reference');
@@ -913,17 +936,31 @@ export async function readDispatchBacklog(query: DispatchOutboxQuery,
         'SELECT current_schema() AS schema, to_regclass($1)::text AS outbox',
         [`${schema}.agent_dispatch_outbox`]);
     if (tables?.schema !== schema) fail('dispatch_invalid_reference');
-    if (!tables.outbox) return { total: 0, oldestAgeSeconds: 0, breachingSla: 0 };
+    if (!tables.outbox) return { total: 0, oldestAgeSeconds: 0, breachingSla: 0, stalled: 0, stalledOldestAgeSeconds: 0 };
+    // Two SLOs, one pass. The monitor already opens a transaction per tenant and
+    // a second one would double the PgBouncer churn to ask a question the same
+    // scan answers. The rows are disjoint — a row is either waiting for a person
+    // or waiting for a worker — so the FILTERs cannot double count.
     const [row] = await query<any[]>(
-        `SELECT COUNT(*)::int AS total,
-                COALESCE(MAX(EXTRACT(EPOCH FROM (NOW() - updated_at))), 0) AS oldest,
-                COUNT(*) FILTER (WHERE updated_at < NOW() - make_interval(secs => $1::double precision))::int AS breaching
-         FROM agent_dispatch_outbox WHERE state = 'reconciliation_required'`,
-        [DISPATCH_RECONCILIATION_SLA_SECONDS]);
+        `SELECT COUNT(*) FILTER (WHERE state = 'reconciliation_required')::int AS total,
+                COALESCE(MAX(EXTRACT(EPOCH FROM (NOW() - updated_at)))
+                    FILTER (WHERE state = 'reconciliation_required'), 0) AS oldest,
+                COUNT(*) FILTER (WHERE state = 'reconciliation_required'
+                    AND updated_at < NOW() - make_interval(secs => $1::double precision))::int AS breaching,
+                COUNT(*) FILTER (WHERE state IN ('prepared','queued','failed')
+                    AND available_at < NOW() - make_interval(secs => $2::double precision))::int AS stalled,
+                COALESCE(MAX(EXTRACT(EPOCH FROM (NOW() - available_at)))
+                    FILTER (WHERE state IN ('prepared','queued','failed')
+                        AND available_at < NOW() - make_interval(secs => $2::double precision)), 0) AS stalled_oldest
+         FROM agent_dispatch_outbox
+         WHERE state IN ('reconciliation_required','prepared','queued','failed')`,
+        [DISPATCH_RECONCILIATION_SLA_SECONDS, DISPATCH_STALLED_AFTER_SECONDS]);
     return {
         total: Number(row?.total ?? 0),
         oldestAgeSeconds: Math.max(0, Math.round(Number(row?.oldest ?? 0))),
         breachingSla: Number(row?.breaching ?? 0),
+        stalled: Number(row?.stalled ?? 0),
+        stalledOldestAgeSeconds: Math.max(0, Math.round(Number(row?.stalled_oldest ?? 0))),
     };
 }
 

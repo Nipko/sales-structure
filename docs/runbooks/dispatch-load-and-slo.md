@@ -104,7 +104,9 @@ Cinco objetivos. Cada uno dice de dónde sale y **quién lo mira**.
 Un `agent_dispatch_outbox` en `prepared`, `queued` o `failed` con `available_at` en el pasado es una respuesta que el cliente está esperando. **Objetivo: 0 filas con más de 10 minutos en ese estado.** Diez minutos son cinco pasadas de `dispatch-recovery` (`*/2`), suficiente margen para un despliegue.
 
 - **Base:** medido indirectamente. En las cinco corridas de caos ninguna fila quedó fuera de un estado terminal; el corte de Valkey de 1500 ms se recuperó por completo en 3,15 s incluyendo la pasada. No se midió el comportamiento con la pasada de recuperación caída.
-- **Quién lo vigila: NADIE.** `checkDispatchBacklog` cuenta **sólo** `reconciliation_required`. `queue:outbound-messages:*` mira la profundidad de BullMQ (warn 500 / crit 2000), que es otra cosa: una fila sin job publicado es invisible para las dos. Es el hueco de observabilidad más grande del camino, y es exactamente el modo de fallo que el outbox existe para volver recuperable. **Cerrarlo pide una consulta análoga a `readDispatchBacklog` sobre los estados disponibles con `available_at < NOW() - 10 min`.**
+- **Quién lo vigila:** `dispatch:outbox:stalled` en `platform-monitor.service.ts`, mismo cron `11,26,41,56 * * * *`, severidad *warning*, umbral `dispatchReconciliation.stalled = 1` (la primera fila ya es un cliente esperando). `readDispatchBacklog` cuenta ahora los dos estados en **una sola pasada** por la tabla: `reconciliation_required` (espera a una persona) y `prepared/queued/failed` con `available_at < NOW() - DISPATCH_STALLED_AFTER_SECONDS` (espera a un worker). Son conjuntos disjuntos y se reportan como dos incidentes distintos, nunca sumados.
+- **Por qué la profundidad de la cola no alcanzaba:** `queue:outbound-messages:*` mira BullMQ (warn 500 / crit 2000). Una fila **sin job publicado** no existe para BullMQ, así que el tablero se veía normal mientras la respuesta ya generada no salía. Era el hueco de observabilidad más grande del camino y justo el modo de fallo que el outbox existe para volver recuperable.
+- **Severidad *warning* a propósito:** la fila no se envió y se recupera sola en cuanto vuelve un worker. La reconciliación vencida es crítica porque puede que el efecto **sí** haya ocurrido y sólo una persona puede cerrarla.
 
 ### 2. Duplicación — 0 efectos remotos repetidos
 
@@ -135,7 +137,7 @@ Un `agent_dispatch_outbox` en `prepared`, `queued` o `failed` con `available_at`
 
 | SLO | Objetivo | ¿Medido? | Alerta |
 | --- | --- | --- | --- |
-| Pérdida | 0 filas > 10 min sin estado terminal | Indirecto | **ninguna** |
+| Pérdida | 0 filas > 10 min sin estado terminal | Indirecto | `dispatch:outbox:stalled` |
 | Duplicación | 0 | Sí (harness) | **ninguna** — garantía estructural |
 | Backlog de reconciliación | < 20 | No (razonado) | `dispatch:reconciliation:backlog` |
 | Edad de reconciliación | < 1 h | Tramo mecánico sí, tramo humano no | `dispatch:reconciliation:overdue` (critical) |

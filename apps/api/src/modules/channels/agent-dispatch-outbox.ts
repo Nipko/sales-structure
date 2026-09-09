@@ -964,6 +964,71 @@ export async function readDispatchBacklog(query: DispatchOutboxQuery,
     };
 }
 
+/**
+ * How long a settled row keeps the words it carried.
+ *
+ * The payload is a COPY. `messages` holds the customer-facing history; this
+ * column exists only so an unsent effect can still be sent, and a row in a
+ * terminal state can never be sent again — so past this window it is a second
+ * copy of somebody's message, and their recipient address, kept for no reason
+ * anybody can name. Nothing pruned it: the table grew forever and every message
+ * the agent ever sent stayed in it, reachable only by an erasure that names
+ * that specific contact.
+ *
+ * Thirty days is long enough for the operational questions that actually get
+ * asked of a settled row — "did this go out, when, and with what receipt" —
+ * which the row keeps answering afterwards, because retention redacts the
+ * content and never deletes the row. The audit line survives; the copy does not.
+ */
+export const DISPATCH_PAYLOAD_RETENTION_DAYS = 30;
+
+/**
+ * States whose content may be dropped once it is old enough.
+ *
+ * `reconciliation_required` is deliberately absent even though it is settled:
+ * that is the queue a person works from, and they need the recipient and the
+ * payload to go and look at the provider. `failed` is absent because it is
+ * retryable — the row is waiting for its next attempt, not finished. `admitted`
+ * holds a live permission.
+ */
+const DISPATCH_REDACTABLE_STATES = ['sent', 'stored', 'suppressed'] as const;
+
+/**
+ * Drop the content of terminal rows older than the retention window.
+ *
+ * Uses the same shape erasure does — `redacted_at` set, content columns nulled —
+ * because the table's own CHECK constraint was written for exactly that: a row
+ * is either redacted or complete, and there is no third state where half the
+ * columns are gone. Reusing it means a retained row and an erased row are
+ * indistinguishable to every reader, which is the honest outcome: neither has
+ * the words any more.
+ *
+ * Bounded per call so one enormous tenant cannot hold the sweep.
+ */
+export async function redactSettledDispatchOutbox(query: DispatchOutboxQuery, schema: string,
+    options: { olderThanDays?: number; limit?: number } = {}): Promise<number> {
+    if (!SCHEMA.test(schema)) fail('dispatch_invalid_reference');
+    const days = Number.isFinite(options.olderThanDays) && (options.olderThanDays as number) > 0
+        ? Math.trunc(options.olderThanDays as number) : DISPATCH_PAYLOAD_RETENTION_DAYS;
+    const limit = Math.min(Math.max(Math.trunc(options.limit ?? 500) || 500, 1), 5000);
+    const [tables] = await query<any[]>(
+        'SELECT current_schema() AS schema, to_regclass($1)::text AS outbox',
+        [`${schema}.agent_dispatch_outbox`]);
+    if (tables?.schema !== schema) fail('dispatch_invalid_reference');
+    if (!tables.outbox) return 0;
+    const redacted = await query<any[]>(
+        `UPDATE agent_dispatch_outbox SET redacted_at=NOW(), payload=NULL, recipient=NULL,
+                conversation_id=NULL, contact_id=NULL, learning_footprint=NULL
+         WHERE id IN (
+             SELECT id FROM agent_dispatch_outbox
+              WHERE redacted_at IS NULL AND state = ANY($1::text[])
+                AND updated_at < NOW() - make_interval(days => $2::int)
+              ORDER BY updated_at LIMIT $3::int)
+         RETURNING id`,
+        [[...DISPATCH_REDACTABLE_STATES], days, limit]);
+    return redacted.length;
+}
+
 export const DISPATCH_RESOLUTIONS = ['delivered', 'not_delivered', 'retry'] as const;
 export type DispatchResolution = (typeof DISPATCH_RESOLUTIONS)[number];
 

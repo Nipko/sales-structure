@@ -1,3 +1,4 @@
+import 'reflect-metadata';
 import { DispatchRecoveryService } from './dispatch-recovery.service';
 
 const tenantA = '11111111-1111-4111-8111-111111111111';
@@ -6,7 +7,7 @@ const rowOf = (id: string) => ({ id, state: 'prepared' } as any);
 
 describe('DispatchRecoveryService', () => {
     function harness(over: { pending?: Record<string, any[]>; expired?: Record<string, any[]>;
-        failing?: string; } = {}) {
+        failing?: string; redacted?: Record<string, number>; } = {}) {
         const order: string[] = [];
         const outbox = {
             expireLeases: jest.fn(async (tenantId: string) => {
@@ -20,6 +21,11 @@ describe('DispatchRecoveryService', () => {
             }),
             markQueued: jest.fn(async (tenantId: string, ids: string[]) => {
                 order.push(`marked:${tenantId}:${ids.join(',')}`); return ids.length;
+            }),
+            redactSettled: jest.fn(async (tenantId: string, options: any) => {
+                order.push(`redact:${tenantId}:${options?.limit}`);
+                if (over.failing === tenantId) throw new Error('schema unavailable');
+                return over.redacted?.[tenantId] ?? 0;
             }),
         };
         const queue = { enqueueDispatch: jest.fn(async (tenantId: string, dispatchId: string) => {
@@ -70,5 +76,32 @@ describe('DispatchRecoveryService', () => {
         await h.service.recoverPendingDispatchCron();
         expect(h.cronLock.runExclusive).toHaveBeenCalledWith('dispatch-recovery.recoverPending', 110,
             expect.any(Function), { prefer: 'worker' });
+    });
+    describe('retention', () => {
+        it('drops the words of settled rows in every tenant, bounded per tenant', async () => {
+            // Nothing was ever dropping them: the payload is a copy of a message
+            // `messages` already holds, kept so an unsent effect could still be
+            // sent — and a terminal row can never be sent again.
+            const h = harness({ redacted: { [tenantA]: 12, [tenantB]: 3 } });
+            await expect(h.service.redactSettled()).resolves.toEqual({ redacted: 15 });
+            expect(h.order.filter(entry => entry.startsWith('redact:')))
+                .toEqual([`redact:${tenantA}:2000`, `redact:${tenantB}:2000`]);
+        });
+
+        it('keeps sweeping when one tenant cannot be read', async () => {
+            const h = harness({ failing: tenantA, redacted: { [tenantB]: 4 } });
+            await expect(h.service.redactSettled()).resolves.toEqual({ redacted: 4 });
+        });
+
+        it('runs daily and on one instance, apart from the two-minute recovery pass', async () => {
+            const h = harness();
+            await h.service.redactSettledDispatchCron();
+            expect(h.cronLock.runExclusive).toHaveBeenCalledWith('dispatch-recovery.redactSettled',
+                3600, expect.any(Function), { prefer: 'worker' });
+            // Recovery runs every two minutes and has to stay short; a retention
+            // sweep that misses a day costs nothing.
+            expect(Reflect.getMetadata('SCHEDULE_CRON_OPTIONS',
+                DispatchRecoveryService.prototype.redactSettledDispatchCron)).toMatchObject({ cronTime: '40 4 * * *' });
+        });
     });
 });

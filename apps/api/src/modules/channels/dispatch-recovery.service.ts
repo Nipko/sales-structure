@@ -24,6 +24,8 @@ export class DispatchRecoveryService {
     private readonly logger = new Logger(DispatchRecoveryService.name);
     /** Bounded per tenant per pass, so one large backlog cannot starve the rest. */
     private static readonly PER_TENANT_LIMIT = 200;
+    /** Higher than the recovery bound: this pass is daily and does no I/O beyond the write. */
+    private static readonly RETENTION_LIMIT = 2000;
 
     constructor(
         private readonly prisma: PrismaService,
@@ -38,6 +40,45 @@ export class DispatchRecoveryService {
     async recoverPendingDispatchCron(): Promise<void> {
         await this.cronLock.runExclusive('dispatch-recovery.recoverPending', 110,
             () => this.recoverPending(), { prefer: 'worker' });
+    }
+
+    /**
+     * Nothing was ever dropping the words a settled row carried.
+     *
+     * The payload is a copy: `messages` holds the history a person reads, and
+     * this column exists only so an unsent effect can still be sent. A terminal
+     * row can never be sent again, so past the window it is a second copy of
+     * somebody's message and their address, kept for no reason — reachable only
+     * by an erasure naming that exact contact, and meanwhile the table grows
+     * forever and the backlog check scans all of it every fifteen minutes.
+     *
+     * Daily and off the recovery pass on purpose: recovery runs every two
+     * minutes and must stay short, and a retention sweep that misses a day
+     * costs nothing.
+     */
+    @Cron('40 4 * * *')
+    async redactSettledDispatchCron(): Promise<void> {
+        await this.cronLock.runExclusive('dispatch-recovery.redactSettled', 3600,
+            () => this.redactSettled(), { prefer: 'worker' });
+    }
+
+    async redactSettled(): Promise<{ redacted: number }> {
+        let redacted = 0;
+        const tenants = await this.prisma.tenant.findMany({
+            where: { isActive: true }, select: { id: true },
+        });
+        for (const tenant of tenants) {
+            try {
+                const count = await this.outbox.redactSettled(tenant.id,
+                    { limit: DispatchRecoveryService.RETENTION_LIMIT });
+                redacted += count;
+                if (count) this.logger.log(`[Dispatch] redacted ${count} settled row(s) for tenant ${tenant.id}`);
+            } catch (error: any) {
+                // One tenant's schema must not stop the sweep, exactly as above.
+                this.logger.warn(`[Dispatch] retention skipped tenant ${tenant.id}: ${error?.message}`);
+            }
+        }
+        return { redacted };
     }
 
     async recoverPending(): Promise<{ republished: number; reconciled: number }> {

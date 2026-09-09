@@ -12,6 +12,7 @@ import {
     readNextDispatchInBatch, readPendingDispatch, recordDispatchPreflightFailure,
     markDispatchResolutionExported, readUnexportedDispatchResolutions,
     resolveDispatchReconciliation, settleDispatch,
+    redactSettledDispatchOutbox,
     type DispatchReconciliationBacklog, type DispatchReconciliationEntry, type DispatchResolution,
     type DispatchResolutionRecord,
     type DispatchBinding, type DispatchItem, type DispatchOutcome, type DispatchRow,
@@ -262,6 +263,20 @@ export class AgentDispatchOutboxStore {
             await this.privacy(query, schema, tenantId);
             return readDispatchReconciliation(query, schema, options);
         });
+    }
+
+    /**
+     * Drop the content of terminal rows past the retention window.
+     *
+     * Deliberately NOT inside the privacy fence the erasure paths take. Those
+     * hold it exclusively so a retraction cannot interleave with a turn; this is
+     * a scheduled sweep over rows nothing can send any more, and blocking every
+     * turn of a tenant for it would trade a real cost for no guarantee.
+     */
+    async redactSettled(tenantId: string, options: { olderThanDays?: number; limit?: number } = {}): Promise<number> {
+        const schema = await this.schemaFor(tenantId);
+        return this.prisma.transactionInTenantSchema(schema, query =>
+            redactSettledDispatchOutbox(query, schema, options));
     }
 
     /** How big the backlog is and how old, for an alert to act on. */

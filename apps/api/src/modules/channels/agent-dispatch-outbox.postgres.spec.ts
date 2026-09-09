@@ -5,7 +5,7 @@ import {
     DISPATCH_MAX_ATTEMPTS, DISPATCH_OUTBOX_DDL, DispatchOutboxError,
     admitDispatch, applyDispatchProviderStatus, expireDispatchLeases, markDispatchQueued,
     prepareDispatchBatch, readDispatchRow,
-    readNextDispatchInBatch, readPendingDispatch, redactDispatchOutbox, settleDispatch,
+    readNextDispatchInBatch, readPendingDispatch, redactDispatchOutbox, redactSettledDispatchOutbox, settleDispatch,
     type DispatchBinding, type DispatchItem,
 } from './agent-dispatch-outbox';
 import { ensureSyntheticGlobalTables } from '../../common/__fixtures__/synthetic-global-tables';
@@ -482,6 +482,79 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
             const { binding, receipt } = await accepted('wamid.ERASED');
             await tx(query => redactDispatchOutbox(query, schema, { contactIds: [binding.contactId] }));
             await expect(apply(receipt, 'delivered')).resolves.toMatchObject({ applied: false, reason: 'redacted' });
+        });
+    });
+
+    describe('retention', () => {
+        /** Ages a row past the window without waiting a month for it. */
+        const age = (id: string, days: number) => tx(query => query(
+            `UPDATE agent_dispatch_outbox SET updated_at = NOW() - make_interval(days => $2::int) WHERE id=$1::uuid`,
+            [id, days]));
+
+        const settled = async (receipt: string) => {
+            const binding = await fixture();
+            const { rows } = await prepare(binding);
+            const lease = randomUUID();
+            await admit(rows[0].id, lease);
+            await tx(query => settleDispatch(query, schema,
+                { dispatchId: rows[0].id, leaseToken: lease, outcome: { kind: 'sent', receipt } }));
+            return { binding, rows };
+        };
+
+        it('drops the words of a settled row once they are old, and keeps the row', async () => {
+            // The payload is a COPY: `messages` holds the history a person reads,
+            // and this column exists only so an unsent effect can still be sent.
+            // A sent row can never be sent again, so past the window it is a
+            // second copy of somebody's message kept for no reason — and nothing
+            // was dropping it, so the table grew forever.
+            const { rows } = await settled('wamid.OLD');
+            await age(rows[0].id, 45);
+            expect(await tx(query => redactSettledDispatchOutbox(query, schema))).toBe(1);
+            const row = await tx(query => readDispatchRow(query, schema, rows[0].id));
+            // What an operator still asks of a settled row — did it go out, when,
+            // with what receipt — survives. The copy does not.
+            expect(row).toMatchObject({ state: 'sent', receipt: 'wamid.OLD', redacted: true, payload: null, binding: null });
+        });
+
+        it('leaves a row that is still young', async () => {
+            const { rows } = await settled('wamid.RECENT');
+            await age(rows[0].id, 3);
+            expect(await tx(query => redactSettledDispatchOutbox(query, schema))).toBe(0);
+            expect(await tx(query => readDispatchRow(query, schema, rows[0].id))).toMatchObject({ redacted: false });
+        });
+
+        it('never touches a row waiting for a person or for another attempt', async () => {
+            // `reconciliation_required` is the queue somebody works from: they
+            // need the recipient and the payload to go and look at the provider.
+            const binding = await fixture();
+            const { rows } = await prepare(binding);
+            const lease = randomUUID();
+            await admit(rows[0].id, lease);
+            await tx(query => settleDispatch(query, schema, { dispatchId: rows[0].id, leaseToken: lease,
+                outcome: { kind: 'reconciliation_required', errorCode: 'http_504' } }));
+            await age(rows[0].id, 400);
+            // And a prepared row has not been sent at all.
+            await age(rows[1].id, 400);
+            expect(await tx(query => redactSettledDispatchOutbox(query, schema))).toBe(0);
+            expect(await tx(query => readDispatchRow(query, schema, rows[0].id)))
+                .toMatchObject({ state: 'reconciliation_required', redacted: false });
+            expect(await tx(query => readDispatchRow(query, schema, rows[1].id))).toMatchObject({ redacted: false });
+        });
+
+        it('is bounded, and does not redact anything twice', async () => {
+            const first = await settled('wamid.A'), second = await settled('wamid.B');
+            await age(first.rows[0].id, 60);
+            await age(second.rows[0].id, 60);
+            expect(await tx(query => redactSettledDispatchOutbox(query, schema, { limit: 1 }))).toBe(1);
+            expect(await tx(query => redactSettledDispatchOutbox(query, schema, { limit: 5 }))).toBe(1);
+            // Already redacted rows are not counted again on the next pass, so a
+            // daily sweep does not report work it is not doing.
+            expect(await tx(query => redactSettledDispatchOutbox(query, schema, { limit: 5 }))).toBe(0);
+        });
+
+        it('refuses a schema it was not pointed at', async () => {
+            expect(await code(tx(query => redactSettledDispatchOutbox(query, 'not a schema'))))
+                .toBe('dispatch_invalid_reference');
         });
     });
 

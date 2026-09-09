@@ -5,6 +5,7 @@ import { APPROVAL_EFFECTS_EVENT } from './tool-approval-effects.contracts';
 import { HandoffService } from '../handoff/handoff.service';
 import { AiResolutionService } from '../analytics/ai-resolution.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { isDisposableDatabaseUrl } from '../../common/__fixtures__/disposable-database';
 
 const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
 (connection ? describe : describe.skip)('durable approval delivery against disposable PostgreSQL', () => {
@@ -25,7 +26,7 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
     const scoped = (sql: string, params: any[] = []) => tx(schema, (query: any) => query(sql, params));
     beforeAll(async () => {
         const url = new URL(connection!);
-        if (!['127.0.0.1','localhost'].includes(url.hostname) || !url.pathname.startsWith('/parallly_eval_isolation')) throw new Error('disposable_eval_database_required');
+        if (!['127.0.0.1','localhost'].includes(url.hostname) || !isDisposableDatabaseUrl(url)) throw new Error('disposable_eval_database_required');
         pool = new (require('pg').Pool)({ connectionString: connection });
         await q(`CREATE SCHEMA "${schema}"`);
         await q('INSERT INTO public.tenants(id,schema_name,is_active) VALUES($1::uuid,$2,true)',[tenantId,schema]);

@@ -12,6 +12,7 @@ import { WidgetService } from '../widget/widget.service';
 import { WidgetMessageStore } from '../widget/widget-message-store.service';
 import { eraseOperationalContactNotices } from './operational-notice-erasure';
 import { noticeReceiptEvidence } from './operational-notice-review.contracts';
+import { isDisposableDatabaseUrl } from '../../common/__fixtures__/disposable-database';
 
 const connection=process.env.PARALLLY_ISOLATION_TEST_URL;
 (connection?describe:describe.skip)('operational notices and canonical waitlists on disposable PostgreSQL',()=>{
@@ -27,7 +28,7 @@ const connection=process.env.PARALLLY_ISOLATION_TEST_URL;
     const q=(sql:string,params:any[]=[])=>prisma.executeInTenantSchema(schema,sql,params);
     beforeAll(async()=>{
         const url=new URL(connection!);
-        if(!['127.0.0.1','localhost'].includes(url.hostname)||!url.pathname.startsWith('/parallly_eval_isolation'))throw new Error('disposable_database_required');
+        if(!['127.0.0.1','localhost'].includes(url.hostname)||!isDisposableDatabaseUrl(url))throw new Error('disposable_database_required');
         pool=new(require('pg').Pool)({connectionString:connection});
         await raw(`CREATE SCHEMA "${schema}"`);
         await raw('INSERT INTO public.tenants(id,schema_name,is_active) VALUES($1::uuid,$2,true)',[tenantId,schema]);

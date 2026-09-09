@@ -11,6 +11,7 @@ import { ensureMissionEvidence, MissionTurnRecorder } from '../mission-evidence'
 import { missionMetrics } from '../mission-metrics';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
+import { isDisposableDatabaseUrl } from '../../../common/__fixtures__/disposable-database';
 
 const connection=process.env.PARALLLY_ISOLATION_TEST_URL;
 const deferred=()=>{let resolve!:()=>void;const promise=new Promise<void>(done=>{resolve=done;});return{promise,resolve};};
@@ -36,7 +37,7 @@ const deferred=()=>{let resolve!:()=>void;const promise=new Promise<void>(done=>
     }
     beforeAll(async()=>{
         const url=new URL(connection!);
-        if(!['127.0.0.1','localhost'].includes(url.hostname)||!url.pathname.startsWith('/parallly_eval_isolation'))throw new Error('disposable_database_required');
+        if(!['127.0.0.1','localhost'].includes(url.hostname)||!isDisposableDatabaseUrl(url))throw new Error('disposable_database_required');
         pool=new(require('pg').Pool)({connectionString:connection});await pool.query(`CREATE SCHEMA "${schema}"`);
         client=new PrismaClient({datasourceUrl:connection});
         prisma=Object.create(PrismaService.prototype);(prisma as any).$transaction=client.$transaction.bind(client);

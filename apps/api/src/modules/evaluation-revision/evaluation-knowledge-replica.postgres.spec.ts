@@ -15,6 +15,7 @@ import { EvaluationRevisionService } from './evaluation-revision.service';
 import { revisionHash } from './evaluation-revision';
 import { isolatedEvalNamespaceForPrisma } from '../simulation/isolated-eval-namespace';
 import { ensureSyntheticGlobalTables } from '../../common/__fixtures__/synthetic-global-tables';
+import { DISPOSABLE_KNOWLEDGE_DATABASE, isDisposableDatabaseUrl } from '../../common/__fixtures__/disposable-database';
 
 const url = process.env.KNOWLEDGE_MEMORY_TEST_DATABASE_URL;
 (url ? describe : describe.skip)('RAG replicas through PostgreSQL/pgvector and canonical readers', () => {
@@ -37,7 +38,7 @@ const url = process.env.KNOWLEDGE_MEMORY_TEST_DATABASE_URL;
 
     beforeAll(async () => {
         const parsed = new URL(url!);
-        if (!['127.0.0.1', 'localhost'].includes(parsed.hostname) || parsed.pathname !== '/parallly_knowledge_eval_isolation')
+        if (!['127.0.0.1', 'localhost'].includes(parsed.hostname) || !isDisposableDatabaseUrl(parsed, DISPOSABLE_KNOWLEDGE_DATABASE))
             throw new Error('disposable_loopback_database_required');
         client = new PrismaClient({ datasourceUrl: url });
         prisma = Object.assign(Object.create(PrismaService.prototype), { tenant: client.tenant,

@@ -29,7 +29,11 @@ import { PrismaService } from './prisma.service';
  *   PARALLLY_PGBOUNCER_TEST_URL=postgresql://postgres:...@127.0.0.1:55438/parallly_eval_isolation?pgbouncer=true
  */
 const pooledUrl = process.env.PARALLLY_PGBOUNCER_TEST_URL;
-const directUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
+// Its OWN direct url, not the shared one. The suites split by Jest worker and
+// this proxy points at a fixed database, so the two halves of this suite — DDL
+// on the direct connection, everything else through the pool — have to name the
+// same database as each other or the schema is created where nobody reads it.
+const directUrl = process.env.PARALLLY_PGBOUNCER_DIRECT_URL;
 const ready = !!pooledUrl && !!directUrl;
 
 (ready ? describe : describe.skip)('the tenant primitives through a real PgBouncer', () => {

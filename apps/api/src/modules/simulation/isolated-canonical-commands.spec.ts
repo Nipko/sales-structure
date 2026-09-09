@@ -38,6 +38,7 @@ import { composeSubtypeEvalPack, listCanonicalSubtypeExperienceProfileIds } from
 import { PrismaClient } from '@prisma/client';
 import { RegionalProfileService } from '../tenants/regional-profile.service';
 import { ensureSyntheticGlobalTables } from '../../common/__fixtures__/synthetic-global-tables';
+import { isDisposableDatabaseUrl } from '../../common/__fixtures__/disposable-database';
 
 const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
 (connection ? describe : describe.skip)('canonical domain commands in a disposable PostgreSQL namespace', () => {
@@ -75,7 +76,7 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
     const query = async (sql: string, params: any[] = []) => (await pool.query(sql, params)).rows;
     beforeAll(async () => {
         const url = new URL(connection!);
-        if (!['127.0.0.1','localhost'].includes(url.hostname) || !url.pathname.startsWith('/parallly_eval_isolation')) throw new Error('disposable_eval_database_required');
+        if (!['127.0.0.1','localhost'].includes(url.hostname) || !isDisposableDatabaseUrl(url)) throw new Error('disposable_eval_database_required');
         pool = new (require('pg').Pool)({ connectionString: connection });
         prisma = {
             $queryRawUnsafe: (sql: string,...params: any[]) => query(sql,params),

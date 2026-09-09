@@ -3,6 +3,7 @@ import { AGENT_TEST_EXECUTION_CONTEXT } from '../../common/types/execution-conte
 import { VerticalReadinessService } from '../verticals/vertical-readiness.service';
 import { EvaluationRevisionService } from './evaluation-revision.service';
 import { LodgingSourceOfTruthService } from '../channel-manager/lodging-source-of-truth.service';
+import { isDisposableDatabaseUrl } from '../../common/__fixtures__/disposable-database';
 import { assertServiceCatalogCurrent, captureServiceCatalog, withCapturedServiceCatalog,
     serviceCatalogCaptureDatabase, type CaptureDatabase, type CaptureQuery } from './evaluation-service-catalog-capture';
 
@@ -16,7 +17,7 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
     const query = async (sql: string, params: unknown[] = []) => (await pool.query(sql, params)).rows;
     beforeAll(async () => {
         const url = new URL(connection!);
-        if (!['localhost','127.0.0.1'].includes(url.hostname) || !url.pathname.startsWith('/parallly_eval_isolation'))
+        if (!['localhost','127.0.0.1'].includes(url.hostname) || !isDisposableDatabaseUrl(url))
             throw new Error('disposable_eval_database_required');
         pool = new (require('pg').Pool)({ connectionString: connection });
         await query('INSERT INTO public.tenants(id,schema_name) VALUES($1::uuid,$2)', [tenantId,source]);

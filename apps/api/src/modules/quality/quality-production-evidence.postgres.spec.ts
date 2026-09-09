@@ -5,6 +5,7 @@ import { PrismaClient } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
+import { isDisposableDatabaseUrl } from '../../common/__fixtures__/disposable-database';
 
 const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
 const deferred = () => { let resolve!: () => void; const promise = new Promise<void>(done => { resolve=done; }); return { promise,resolve }; };
@@ -22,7 +23,7 @@ const deferred = () => { let resolve!: () => void; const promise = new Promise<v
     const result={overall:9,resolution:9,tone:9,accuracy:8,empathy:8,flags:[],resolved:true,resolutionReason:'La respuesta parece resolver la pregunta.'};
     beforeAll(async () => {
         const url=new URL(connection!);
-        if (!['127.0.0.1','localhost'].includes(url.hostname) || !url.pathname.startsWith('/parallly_eval_isolation')) throw new Error('disposable_database_required');
+        if (!['127.0.0.1','localhost'].includes(url.hostname) || !isDisposableDatabaseUrl(url)) throw new Error('disposable_database_required');
         pool=new(require('pg').Pool)({ connectionString:connection });
         await pool.query(`CREATE SCHEMA "${schema}"`);
         for (const statement of [

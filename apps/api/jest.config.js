@@ -11,5 +11,10 @@ module.exports = {
     "^@parallext/shared$": "<rootDir>/../../packages/shared/src/index.ts",
   },
   testPathIgnorePatterns: ["/node_modules/", "/dist/"],
+  // One PostgreSQL database per worker, made fresh each run. Sharing one
+  // database was what made two suites able to interfere with each other; there
+  // is no concurrency inside a worker, so splitting by worker removes it.
+  globalSetup: "<rootDir>/jest.global-setup.js",
+  setupFiles: ["<rootDir>/jest.setup-worker-database.js"],
   collectCoverageFrom: ["src/**/*.ts", "!src/main.ts"],
 };

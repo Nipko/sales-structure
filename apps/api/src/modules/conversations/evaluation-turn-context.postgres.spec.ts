@@ -11,6 +11,7 @@ import { EvaluationRevisionService } from '../evaluation-revision/evaluation-rev
 import { agentTurnFixture } from './__fixtures__/agent-turn.fixture';
 import { AGENT_TEST_EXECUTION_CONTEXT } from '../../common/types/execution-context';
 import { ensureSyntheticGlobalTables } from '../../common/__fixtures__/synthetic-global-tables';
+import { isDisposableDatabaseUrl } from '../../common/__fixtures__/disposable-database';
 
 const url = process.env.PARALLLY_ISOLATION_TEST_URL;
 (url ? describe : describe.skip)('Frozen core context through Prisma, canonical readers and revision guards', () => {
@@ -23,7 +24,7 @@ const url = process.env.PARALLLY_ISOLATION_TEST_URL;
         privateCredential: 'synthetic-not-for-the-prompt' };
     beforeAll(async () => {
         const parsed = new URL(url!);
-        if (!['127.0.0.1', 'localhost'].includes(parsed.hostname) || parsed.pathname !== '/parallly_eval_isolation')
+        if (!['127.0.0.1', 'localhost'].includes(parsed.hostname) || !isDisposableDatabaseUrl(parsed))
             throw new Error('disposable_loopback_database_required');
         client = new PrismaClient({ datasourceUrl: url });
         prisma = Object.create(PrismaService.prototype);

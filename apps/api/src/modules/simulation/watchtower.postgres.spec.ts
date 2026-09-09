@@ -3,6 +3,7 @@ import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import { PrismaService } from '../prisma/prisma.service';
 import { WatchtowerService } from './watchtower.service';
+import { isDisposableDatabaseUrl } from '../../common/__fixtures__/disposable-database';
 
 const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
 const redisConnection = process.env.PARALLLY_SAMPLING_REDIS_URL;
@@ -20,7 +21,7 @@ const redisConnection = process.env.PARALLLY_SAMPLING_REDIS_URL;
     const q = async (sql: string, params: any[] = []) => prisma.executeInTenantSchema(schema,sql,params);
     beforeAll(async () => {
         const url = new URL(connection!);
-        if (!['127.0.0.1','localhost'].includes(url.hostname) || !url.pathname.startsWith('/parallly_eval_isolation')) throw new Error('disposable_eval_database_required');
+        if (!['127.0.0.1','localhost'].includes(url.hostname) || !isDisposableDatabaseUrl(url)) throw new Error('disposable_eval_database_required');
         pool = new (require('pg').Pool)({connectionString:connection,max:8});
         if(redisConnection){
             const redisUrl=new URL(redisConnection);

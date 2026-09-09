@@ -13,6 +13,7 @@ import { learningInboxEvidence, readLearningInboxSource } from '../learning/lear
 import { redactWidgetAgentReplies } from './widget-agent-reply-retention';
 import { HANDOFF_RECEIPT_DDL, recordHandoffReceipt } from '../handoff/handoff-receipt';
 import { handoffNoticeText, type HandoffNoticeKind, type HandoffNoticeLanguage } from '../handoff/handoff-notice';
+import { isDisposableDatabaseUrl } from '../../common/__fixtures__/disposable-database';
 
 const databaseUrl=process.env.PARALLLY_ISOLATION_TEST_URL;
 (databaseUrl?describe:describe.skip)('normal Web Chat reply admission with Prisma and PostgreSQL',()=>{
@@ -26,7 +27,7 @@ const databaseUrl=process.env.PARALLLY_ISOLATION_TEST_URL;
     const config={get:()=> 'synthetic-widget-jwt-secret-32-characters',getOrThrow:()=> 'synthetic-widget-jwt-secret-32-characters'};
     beforeAll(async()=>{
         const url=new URL(databaseUrl!);
-        if(!['localhost','127.0.0.1'].includes(url.hostname)||url.pathname!=='/parallly_eval_isolation')throw new Error('disposable_database_required');
+        if(!['localhost','127.0.0.1'].includes(url.hostname)||!isDisposableDatabaseUrl(url))throw new Error('disposable_database_required');
         client=new PrismaClient({datasourceUrl:databaseUrl});
         await client.$executeRawUnsafe(`CREATE SCHEMA "${schema}"`);
         await client.$executeRawUnsafe('INSERT INTO public.tenants(id,schema_name,is_active) VALUES($1::uuid,$2,true)',tenantId,schema);

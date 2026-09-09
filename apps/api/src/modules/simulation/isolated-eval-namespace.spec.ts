@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto';
 import { IsolatedEvalNamespace, isolatedDefault } from './isolated-eval-namespace';
+import { isDisposableDatabaseUrl } from '../../common/__fixtures__/disposable-database';
 
 describe('isolated evaluation SQL policy', () => {
     it('rebinds serial defaults and permits only reviewed built-in defaults', () => {
@@ -31,7 +32,7 @@ databaseTests('isolated namespaces on PostgreSQL (explicit disposable database o
     const leases: any[] = [];
     beforeAll(async () => {
         const url = new URL(connection!);
-        if (!['127.0.0.1', 'localhost'].includes(url.hostname) || !url.pathname.startsWith('/parallly_eval_isolation')) throw new Error('disposable_eval_database_required');
+        if (!['127.0.0.1', 'localhost'].includes(url.hostname) || !isDisposableDatabaseUrl(url)) throw new Error('disposable_eval_database_required');
         const { Client } = require('pg'); client = new Client({ connectionString: connection }); await client.connect();
         service = new IsolatedEvalNamespace({ transaction: async work => {
             await client.query('BEGIN');

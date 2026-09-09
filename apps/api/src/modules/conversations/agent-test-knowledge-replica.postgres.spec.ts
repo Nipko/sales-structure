@@ -30,6 +30,7 @@ import { sealEvaluationSnapshot, type AgentEvaluationSnapshot } from './agent-ev
 import { agentTurnFixture, publishTools } from './__fixtures__/agent-turn.fixture';
 import { ComplianceService } from '../compliance/compliance.service';
 import { ensureSyntheticGlobalTables } from '../../common/__fixtures__/synthetic-global-tables';
+import { DISPOSABLE_KNOWLEDGE_DATABASE, isDisposableDatabaseUrl } from '../../common/__fixtures__/disposable-database';
 
 const url = process.env.KNOWLEDGE_MEMORY_TEST_DATABASE_URL;
 const REGISTRY = 'public.evaluation_knowledge_usages';
@@ -67,7 +68,7 @@ const REGISTRY = 'public.evaluation_knowledge_usages';
 
     beforeAll(async () => {
         const parsed = new URL(url!);
-        if (!['127.0.0.1', 'localhost'].includes(parsed.hostname) || parsed.pathname !== '/parallly_knowledge_eval_isolation')
+        if (!['127.0.0.1', 'localhost'].includes(parsed.hostname) || !isDisposableDatabaseUrl(parsed, DISPOSABLE_KNOWLEDGE_DATABASE))
             throw new Error('disposable_loopback_database_required');
         client = new PrismaClient({ datasourceUrl: url }); secondClient = new PrismaClient({ datasourceUrl: url });
         prisma = asPrisma(client); secondPrisma = asPrisma(secondClient);

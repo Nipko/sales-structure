@@ -8,6 +8,7 @@ import { LearningService } from '../learning/learning.service';
 import { learningSnapshotHash, type RuntimeLearningExample } from '../learning/learning-contracts';
 import { learningInboxEvidence, readLearningInboxSource } from '../learning/learning-inbox-source';
 import { LLMSourceAuthorityUnavailable } from '../ai/interfaces/llm-source-authority';
+import { isDisposableDatabaseUrl } from '../../common/__fixtures__/disposable-database';
 
 const connection=process.env.PARALLLY_ISOLATION_TEST_URL;
 (connection?describe:describe.skip)('historical Simulation source authority on real PostgreSQL and Prisma',()=>{
@@ -21,7 +22,7 @@ const connection=process.env.PARALLLY_ISOLATION_TEST_URL;
     const start=(extra:any={})=>service.startRun(tenantId,{agentId,channelType:'web_widget',scenarioSource:'replay',count:1,createdBy:'reviewer@example.test',...extra});
     beforeAll(async()=>{
         const url=new URL(connection!);
-        if(!['127.0.0.1','localhost'].includes(url.hostname)||!url.pathname.startsWith('/parallly_eval_isolation'))throw new Error('disposable_database_required');
+        if(!['127.0.0.1','localhost'].includes(url.hostname)||!isDisposableDatabaseUrl(url))throw new Error('disposable_database_required');
         db=new PrismaClient({datasources:{db:{url:connection}}});await db.$connect();
         prisma=Object.create(PrismaService.prototype);
         (prisma as any).$transaction=db.$transaction.bind(db);

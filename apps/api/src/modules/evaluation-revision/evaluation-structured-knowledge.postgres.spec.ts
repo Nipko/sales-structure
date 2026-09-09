@@ -12,6 +12,7 @@ import { EvaluationRevisionService } from './evaluation-revision.service';
 import { agentTurnFixture, publishTools } from '../conversations/__fixtures__/agent-turn.fixture';
 import { AIToolExecutorService } from '../conversations/ai-tool-executor.service';
 import { ensureSyntheticGlobalTables } from '../../common/__fixtures__/synthetic-global-tables';
+import { isDisposableDatabaseUrl } from '../../common/__fixtures__/disposable-database';
 
 const url = process.env.PARALLLY_ISOLATION_TEST_URL;
 (url ? describe : describe.skip)('Captured FAQs/policies through canonical PostgreSQL readers', () => {
@@ -22,7 +23,7 @@ const url = process.env.PARALLLY_ISOLATION_TEST_URL;
     const sql = (text: string, ...params: any[]) => client.$queryRawUnsafe<any[]>(text, ...params);
     beforeAll(async () => {
         const parsed = new URL(url!);
-        if (!['127.0.0.1', 'localhost'].includes(parsed.hostname) || parsed.pathname !== '/parallly_eval_isolation')
+        if (!['127.0.0.1', 'localhost'].includes(parsed.hostname) || !isDisposableDatabaseUrl(parsed))
             throw new Error('disposable_loopback_database_required');
         client = new PrismaClient({ datasourceUrl: url });
         prisma = Object.create(PrismaService.prototype);

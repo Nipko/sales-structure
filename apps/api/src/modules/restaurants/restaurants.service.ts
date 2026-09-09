@@ -10,6 +10,7 @@ import {
     requireTenantContact,
 } from '../../common/utils/tenant-contact.util';
 import { resolveNativeEvidenceOpportunity } from '../../common/utils/native-evidence-opportunity.util';
+import type { EvalNamespaceLease } from '../simulation/isolated-eval-namespace';
 
 /**
  * Restaurants module — menu catalog, food orders, and promotions.
@@ -384,7 +385,15 @@ export class RestaurantsService {
         discount?: number;
         paymentMethod?: string;
         notes?: string;
-    }): Promise<any> {
+    },
+    /**
+     * `execution.sandboxNamespace` es el arriendo de una evaluación aislada. El
+     * pedido se escribe con su precio recalculado del menú —eso es lo que se
+     * mide— pero `food_order.created` no se emite: ese evento le manda una
+     * notificación push al dueño del restaurante, y un pedido simulado no
+     * puede mandarlo a la cocina.
+     */
+    execution: { sandboxNamespace?: EvalNamespaceLease } = {}): Promise<any> {
         if (!data.items?.length) throw new BadRequestException('Order must have at least one item');
         if (data.orderType === 'delivery' && !data.deliveryAddress) {
             throw new BadRequestException('deliveryAddress is required for delivery orders');
@@ -484,7 +493,7 @@ export class RestaurantsService {
         });
 
         try {
-            this.eventEmitter.emit('food_order.created', {
+            if (!execution.sandboxNamespace) this.eventEmitter.emit('food_order.created', {
                 orderId: order.id,
                 tenantSchemaName: schemaName,
                 schemaName,

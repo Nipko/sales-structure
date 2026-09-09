@@ -4,7 +4,7 @@ Registro generado desde contratos de dominio, herramientas, dependencias y escen
 
 Perfiles canónicos: **76**. Tareas declaradas: **268**. Tareas que comprometen al negocio: **146**.
 
-Tareas sin caso positivo con efecto verificable: **27**. Tareas con alguna herramienta de escritura sin verificador de efecto: **5**.
+Tareas sin caso positivo con efecto verificable: **6**. Tareas con alguna herramienta de escritura sin verificador de efecto: **5**.
 
 Estos dos contadores **no** son los de «sin positivo propio / sin verificador» de [`task-matrix-derived.md`](../2026-09-08/task-matrix-derived.md), que están en cero. Aquel mide si la tarea tiene escenario propio y familia auditada; éste exige además que un caso positivo afirme un **efecto en base** (`db_effect`) del writer que la tarea compromete. Una tarea cuya familia de escritura todavía no corre en el adaptador aislado no puede afirmarlo, así que cuenta acá y no allá. Leer «cero sin positivo» como «toda tarea transaccional tiene un positivo verificable» es exactamente el error que esta línea existe para evitar.
 
@@ -12,7 +12,7 @@ La matriz describe cobertura declarada. Los estados por canal e idioma permanece
 
 La disponibilidad comercial, el permiso de ejecutar una herramienta y la existencia de un verificador de lectura son dimensiones distintas. La prueba de carga de módulos o de componentes tampoco certifica un proveedor externo.
 
-Revisión base del repositorio: `a628e3b6770fe6deb08c99223747db3097df3746`; incluye los cambios del árbol de trabajo al generar.
+Revisión base del repositorio: `c7598409a50aae68709d34dd16bd443a66f50e70`; incluye los cambios del árbol de trabajo al generar.
 
 [Detalle de tareas en CSV](competence-matrix.csv). El contrato completo está disponible en `GET /eval/:tenantId/competence-matrix`; el generador también lo exporta con `--json`.
 
@@ -31,10 +31,10 @@ Revisión base del repositorio: `a628e3b6770fe6deb08c99223747db3097df3746`; incl
 | finanzas/asesoria | 3 | 2 | 0 | — |
 | finanzas/creditos | 3 | 2 | 0 | — |
 | finanzas/pagos_recaudos | 1 | 0 | 0 | — |
-| fotografia/bodas | 2 | 1 | 1 | — |
-| fotografia/estudio | 2 | 1 | 1 | — |
-| fotografia/eventos | 2 | 1 | 1 | — |
-| fotografia/producto | 2 | 1 | 1 | — |
+| fotografia/bodas | 2 | 1 | 0 | — |
+| fotografia/estudio | 2 | 1 | 0 | — |
+| fotografia/eventos | 2 | 1 | 0 | — |
+| fotografia/producto | 2 | 1 | 0 | — |
 | gimnasios/crossfit | 4 | 3 | 0 | — |
 | gimnasios/cycling | 4 | 3 | 0 | — |
 | gimnasios/gimnasio_general | 4 | 3 | 0 | — |
@@ -50,14 +50,14 @@ Revisión base del repositorio: `a628e3b6770fe6deb08c99223747db3097df3746`; incl
 | moda_belleza/spa | 4 | 2 | 0 | — |
 | otro/__none__ | 5 | 2 | 0 | — |
 | pet_services/adiestramiento | 6 | 3 | 0 | — |
-| pet_services/guarderia | 5 | 2 | 1 | — |
-| pet_services/hotel | 5 | 2 | 1 | — |
+| pet_services/guarderia | 5 | 2 | 0 | — |
+| pet_services/hotel | 5 | 2 | 0 | — |
 | pet_services/paseos | 6 | 3 | 0 | — |
 | pet_services/peluqueria | 6 | 3 | 0 | — |
-| restaurantes/cafeteria | 5 | 3 | 1 | — |
-| restaurantes/casual_dining | 5 | 3 | 1 | — |
-| restaurantes/comida_rapida | 3 | 1 | 1 | — |
-| restaurantes/dark_kitchen | 3 | 1 | 1 | — |
+| restaurantes/cafeteria | 5 | 3 | 0 | — |
+| restaurantes/casual_dining | 5 | 3 | 0 | — |
+| restaurantes/comida_rapida | 3 | 1 | 0 | — |
+| restaurantes/dark_kitchen | 3 | 1 | 0 | — |
 | retail/electronica | 5 | 2 | 0 | — |
 | retail/hogar | 7 | 4 | 0 | — |
 | retail/marketplace | 1 | 0 | 0 | — |
@@ -72,13 +72,13 @@ Revisión base del repositorio: `a628e3b6770fe6deb08c99223747db3097df3746`; incl
 | seguros/broker | 3 | 2 | 1 | — |
 | seguros/salud | 3 | 2 | 1 | — |
 | seguros/vida | 3 | 2 | 1 | — |
-| servicios_hogar/cerrajeria | 2 | 1 | 1 | — |
-| servicios_hogar/electricidad | 2 | 1 | 1 | — |
-| servicios_hogar/fumigacion | 2 | 1 | 1 | — |
-| servicios_hogar/jardineria | 2 | 1 | 1 | — |
-| servicios_hogar/limpieza | 2 | 1 | 1 | — |
-| servicios_hogar/pintura | 2 | 1 | 1 | — |
-| servicios_hogar/plomeria | 2 | 1 | 1 | — |
+| servicios_hogar/cerrajeria | 2 | 1 | 0 | — |
+| servicios_hogar/electricidad | 2 | 1 | 0 | — |
+| servicios_hogar/fumigacion | 2 | 1 | 0 | — |
+| servicios_hogar/jardineria | 2 | 1 | 0 | — |
+| servicios_hogar/limpieza | 2 | 1 | 0 | — |
+| servicios_hogar/pintura | 2 | 1 | 0 | — |
+| servicios_hogar/plomeria | 2 | 1 | 0 | — |
 | servicios_profesionales/abogados | 4 | 2 | 0 | — |
 | servicios_profesionales/arquitectos | 4 | 2 | 0 | — |
 | servicios_profesionales/consultores | 4 | 2 | 0 | — |
@@ -87,10 +87,10 @@ Revisión base del repositorio: `a628e3b6770fe6deb08c99223747db3097df3746`; incl
 | technology/hardware | 5 | 2 | 0 | — |
 | technology/saas | 3 | 2 | 0 | — |
 | technology/soporte_ti_msp | 1 | 0 | 0 | — |
-| turismo/agencia_viajes | 2 | 1 | 1 | — |
-| turismo/alquiler_vacacional | 3 | 1 | 1 | — |
-| turismo/hotel | 3 | 1 | 1 | — |
-| turismo/tours | 2 | 1 | 1 | — |
+| turismo/agencia_viajes | 2 | 1 | 0 | — |
+| turismo/alquiler_vacacional | 3 | 1 | 0 | — |
+| turismo/hotel | 3 | 1 | 0 | — |
+| turismo/tours | 2 | 1 | 0 | — |
 | veterinaria/clinica_general | 5 | 3 | 0 | — |
 | veterinaria/exoticos | 5 | 3 | 0 | — |
 | veterinaria/hospital_24h | 5 | 3 | 0 | — |

@@ -107,17 +107,35 @@ export const EVAL_WRITER_SANDBOX_FAMILIES: Readonly<Record<string, EvalWriterSan
         tools: Object.freeze(['cancel_appointment', 'reschedule_appointment', 'schedule_test_drive']),
         table: 'appointments', contactColumn: 'contact_id', canonicalOnly: true, verifierAudited: true,
     }),
+    /**
+     * Las seis operaciones de servicio, hospedaje y comida.
+     *
+     * Dejaron de escribir por el adaptador SQL de este archivo: ahora corren su
+     * comando de producción —`PropertiesService.createBooking`,
+     * `ToursService.createBooking`, `RestaurantsService.createOrder`,
+     * `HomeServicesService.createRequest`, `PhotographyService.create`,
+     * `ResourceRentalsService.create`— dentro del namespace arrendado, que es
+     * la única forma de que la fila afirmada sea la fila que el producto
+     * escribe (precio recalculado del catálogo, asiento descontado del cupo,
+     * `pending_review` en vez de `reserved`).
+     *
+     * Y por eso son `canonicalOnly`. El comando real emite avisos, retiene
+     * fechas y descuenta inventario: contra el schema real de un tenant una
+     * evaluación le mandaría un técnico a una dirección inventada, un pedido
+     * de comida a la cocina y un aviso de emergencia al dueño. El arriendo no
+     * es una formalidad — es lo que hace que nada de eso salga.
+     */
     property_bookings: Object.freeze({
         status: 'audited', tools: Object.freeze(['create_property_booking']),
-        table: 'property_bookings', contactColumn: 'contact_id',
+        table: 'property_bookings', contactColumn: 'contact_id', canonicalOnly: true, verifierAudited: true,
     }),
     tour_bookings: Object.freeze({
         status: 'audited', tools: Object.freeze(['create_tour_booking']),
-        table: 'tour_bookings', contactColumn: 'contact_id',
+        table: 'tour_bookings', contactColumn: 'contact_id', canonicalOnly: true, verifierAudited: true,
     }),
     restaurant_orders: Object.freeze({
         status: 'audited', tools: Object.freeze(['place_order']),
-        table: 'food_orders', contactColumn: 'contact_id',
+        table: 'food_orders', contactColumn: 'contact_id', canonicalOnly: true, verifierAudited: true,
     }),
     class_bookings: Object.freeze({
         status: 'audited', tools: Object.freeze(['book_class']),
@@ -129,15 +147,25 @@ export const EVAL_WRITER_SANDBOX_FAMILIES: Readonly<Record<string, EvalWriterSan
     }),
     service_requests: Object.freeze({
         status: 'audited', tools: Object.freeze(['create_service_request']),
-        table: 'service_requests', contactColumn: 'contact_id',
+        table: 'service_requests', contactColumn: 'contact_id', canonicalOnly: true, verifierAudited: true,
     }),
     photo_sessions: Object.freeze({
         status: 'audited', tools: Object.freeze(['request_photo_quote']),
-        table: 'photo_sessions', contactColumn: 'contact_id',
+        table: 'photo_sessions', contactColumn: 'contact_id', canonicalOnly: true, verifierAudited: true,
     }),
+    /**
+     * `create_pet_boarding` corre en el namespace; `create_vehicle_rental` no.
+     *
+     * Comparten familia y tabla, pero el alquiler de vehículo está declarado A2
+     * con `step_up`: el guardián central le exige identidad verificada antes de
+     * llegar al comando, y la identidad sintética del namespace sólo cubre
+     * lectores. Queda igualmente `canonicalOnly` —y por eso fuera del schema
+     * real— porque sin arriendo ese mismo control llamaría a `startVerification`
+     * y una evaluación mandaría un código de verdad al teléfono de alguien.
+     */
     resource_rentals: Object.freeze({
         status: 'audited', tools: Object.freeze(['create_vehicle_rental', 'create_pet_boarding']),
-        table: 'resource_rentals', contactColumn: 'contact_id',
+        table: 'resource_rentals', contactColumn: 'contact_id', canonicalOnly: true, verifierAudited: true,
     }),
     catalog_orders: Object.freeze({
         status: 'audited', tools: Object.freeze(['place_catalog_order','cancel_catalog_order']),

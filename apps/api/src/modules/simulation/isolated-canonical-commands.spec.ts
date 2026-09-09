@@ -7,6 +7,12 @@ import { appointmentServiceTerms, AppointmentTermsChangedError } from '../appoin
 import { EducationService } from '../education/education.service';
 import { GymsService } from '../gyms/gyms.service';
 import { PetsService } from '../pets/pets.service';
+import { PropertiesService } from '../vacation-rental/properties.service';
+import { ToursService } from '../tours/tours.service';
+import { RestaurantsService } from '../restaurants/restaurants.service';
+import { HomeServicesService } from '../home-services/home-services.service';
+import { PhotographyService } from '../photography/photography.service';
+import { ResourceRentalsService } from '../resource-rentals/resource-rentals.service';
 import { AIToolExecutorService } from '../conversations/ai-tool-executor.service';
 import { authorityFor } from '../conversations/__fixtures__/tool-authority.fixture';
 import { ToolExecutionControlService } from '../conversations/tool-execution-control.service';
@@ -27,7 +33,8 @@ import { AgentTurnTrace, EphemeralTurnState, type AgentTurnSession } from '../co
 import { persistConversationRuntimeState } from '../conversations/conversation-runtime-state';
 import { captureLearningLedger, verifyLearningOperation } from '../learning/learning-operation-evidence';
 import { evaluationNamespaceTimezone } from './eval-temporal-context';
-import { prepareCanonicalEvalFixtures } from './eval-canonical-fixtures';
+import { bindCanonicalEvalFixtures, prepareCanonicalEvalFixtures } from './eval-canonical-fixtures';
+import { composeSubtypeEvalPack, listCanonicalSubtypeExperienceProfileIds } from '@parallext/shared';
 import { PrismaClient } from '@prisma/client';
 import { RegionalProfileService } from '../tenants/regional-profile.service';
 import { ensureSyntheticGlobalTables } from '../../common/__fixtures__/synthetic-global-tables';
@@ -36,12 +43,14 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
 (connection ? describe : describe.skip)('canonical domain commands in a disposable PostgreSQL namespace', () => {
     let pool: any, prisma: any, namespaces: IsolatedEvalNamespace, lease: any;
     let appointments: AppointmentsService, gyms: GymsService, education: EducationService, executor: AIToolExecutorService;
+    let properties: PropertiesService;
     const tenantId = randomUUID(), source = `tenant_commands_${randomUUID().replace(/-/g, '')}`;
     const contactId = '00000000-0000-4000-8000-00000000eba1', otherContact = randomUUID();
     const serviceId = randomUUID(), classId = randomUUID(), memberId = randomUUID(), otherMember = randomUUID(), courseId = randomUUID(), cohortId = randomUUID();
     let conversationId: string;
     const effects = { emit: jest.fn(() => { throw new Error('outbound_domain_event_forbidden'); }) };
     const calendar = { enqueueWithQuery: jest.fn(() => { throw new Error('calendar_outbox_forbidden'); }) };
+    const mail = { renderAndSend: jest.fn(() => { throw new Error('outbound_email_forbidden'); }) };
     const identityBoundary = {
         isVerified: jest.fn(() => { throw new Error('live_identity_read_forbidden'); }),
         startVerification: jest.fn(() => { throw new Error('live_identity_otp_forbidden'); }),
@@ -55,6 +64,12 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
         // source schema this spec builds must carry the table or `session.reset`
         // fails on a relation the namespace was never asked to clone.
         'products','orders','order_items','stock_movements','vehicles','pets','pet_vaccinations','pet_command_receipts','insurance_plans','insurance_policies','insurance_claims',
+        // Las operaciones de servicio, hospedaje y comida. `ical_blocks` es la
+        // mitad del chequeo de conflicto de una estadía y `resource_rental_events`
+        // se escribe en la misma transacción que la reserva de recurso: sin
+        // ninguna de las dos el comando falla por infraestructura, no por lo
+        // que la evaluación mide.
+        'service_requests','photo_sessions','ical_blocks','resource_rentals','resource_rental_events',
         'staff_members','customer_vehicles','repair_orders','repair_order_events'];
     const date = new Date(Date.now() + 7 * 86400_000).toISOString().slice(0,10);
     const query = async (sql: string, params: any[] = []) => (await pool.query(sql, params)).rows;
@@ -99,8 +114,16 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
         gyms = new GymsService(prisma); education = new EducationService(prisma);
         const slots = { acquireLockToken:async()=>randomUUID(),releaseLockToken:async()=>true,get:async()=>null,incr:async()=>1,expire:async()=>true };
         const control = new ToolExecutionControlService(prisma,{ get:()=> 'isolated-test-secret-length-32-characters' } as any,identityBoundary as any,slots as any);
+        // Los comandos de servicio, hospedaje y comida, con sus dos únicas
+        // salidas al mundo montadas para EXPLOTAR: si alguno emitiera su evento
+        // o mandara su correo dentro del namespace, el caso falla acá y no
+        // meses después en la casilla de un huésped.
+        properties = new PropertiesService(prisma,{} as any,mail as any);
         const args: any[] = Array(32).fill({});
-        Object.assign(args,{0:prisma,1:slots,2:effects,11:new PetsService(prisma),13:gyms,14:education,21:control,22:{},31:appointments});
+        Object.assign(args,{0:prisma,1:slots,2:effects,7:properties,8:new ToursService(prisma,{} as any,mail as any),
+            11:new PetsService(prisma),12:new RestaurantsService(prisma,effects as any),13:gyms,14:education,
+            17:new HomeServicesService(prisma,effects as any),21:control,22:{},
+            23:new PhotographyService(prisma,effects as any),26:new ResourceRentalsService(prisma),31:appointments});
         executor = new (AIToolExecutorService as any)(...args);
     },30000);
     beforeEach(async () => {
@@ -717,6 +740,103 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
             if(original===undefined) delete process.env.DATABASE_URL;else process.env.DATABASE_URL=original;
         }
     });
+    /**
+     * Las seis operaciones de servicio, hospedaje y comida, ejecutadas de verdad.
+     *
+     * No es una comprobación de forma: corre el comando de PRODUCCIÓN de cada
+     * una dentro del namespace arrendado y verifica la fila con las mismas
+     * afirmaciones que el set dorado publica, para que "admitida" signifique
+     * que la afirmación puede pasar y no que alguien la escribió.
+     *
+     * Lo que se le entrega a cada writer está elegido para que mentir salga
+     * caro: la solicitud de servicio va marcada `emergencia` —el único camino
+     * que manda correo—, el pedido de comida trae un precio unitario inflado
+     * por el "modelo", y la reserva de tour trae un correo de huésped. Si
+     * alguna de esas tres salidas al mundo se abriera, el doble de eventos o el
+     * de correo revienta el caso acá mismo.
+     */
+    it('runs every admitted service, lodging and food command in the namespace with no external effect',async()=>{
+        const q=(sql:string,params:any[]=[])=>prisma.executeInTenantSchema(lease.schemaName,sql,params);
+        await q('DELETE FROM persona_config');
+        const fixtures=await prepareCanonicalEvalFixtures(q as any,lease.schemaName,
+            {capturedAt:new Date().toISOString(),config:{hours:{timezone:'America/Bogota',schedule:{}}}} as any);
+        expect(fixtures.status).toBe('ready');
+        if(fixtures.status!=='ready') throw new Error('fixture_blocked');
+        const ids=fixtures.ids;
+        const calls:Array<{name:string;result:any}>=[];
+        const inbound=(text:string)=>q("INSERT INTO messages(conversation_id,direction,content_type,content_text,status,created_at) VALUES($1::uuid,'inbound','text',$2,'delivered',clock_timestamp())",[conversationId,text]);
+        const invoke=async(name:string,args:any)=>{
+            const result=await executor.execute(lease.schemaName,tenantId,contactId,name,args,conversationId,{
+                authority:authorityFor(name),executionContext:AGENT_TEST_EXECUTION_CONTEXT,evalMode:true,sandboxNamespace:lease,
+            });
+            calls.push({name,result});return result;
+        };
+        const run=async(name:string,args:any)=>{
+            await inbound('Quiero realizar esta operación');
+            const first=await invoke(name,args);
+            if(first?.error!=='confirmation_required') { expect(first.error).toBeUndefined(); return first; }
+            await inbound('Sí, confirmo');
+            const result=await invoke(name,{...args,_control:{confirmationToken:first.confirmationToken}});
+            expect(result.error).toBeUndefined();return result;
+        };
+        const person={customerName:'Alex Rivera',customerPhone:'+573000000001'};
+        await run('create_property_booking',{propertyId:ids.property,checkIn:fixtures.date,checkOut:fixtures.endDate,
+            guestName:person.customerName,guestPhone:person.customerPhone,guests:2});
+        await run('create_tour_booking',{packageId:ids.tourPackage,departureDate:fixtures.date,departureTime:fixtures.time,
+            partySize:2,adults:2,children:0,guestName:person.customerName,guestPhone:person.customerPhone,
+            // Un correo de huésped que el modelo puede pasar y que producción sí usaría.
+            guestEmail:'alex.rivera@example.invalid'});
+        // El precio unitario lo manda el "modelo" inflado: el writer tiene que
+        // descartarlo y recalcular 2 × 10 desde la carta.
+        await run('place_order',{orderType:'pickup',...person,
+            items:[{menuItemId:ids.menuItem,name:'[EVAL] Sandbox Menu Item',quantity:2,unitPrice:9_999}]});
+        // `emergencia` es el único camino que notifica a los responsables.
+        await run('create_service_request',{serviceType:'plomeria',urgency:'emergencia',...person,
+            address:'Calle 45 #12-30',issueDescription:'Fuga de agua bajo el lavaplatos'});
+        await run('request_photo_quote',{sessionType:'wedding',date:fixtures.date,...person});
+        await run('create_pet_boarding',{petId:ids.pet,serviceId:ids.boardingService,
+            startDate:fixtures.date,endDate:fixtures.endDate});
+
+        // Las mismas afirmaciones que el set dorado publica para cada tarea, no
+        // una copia escrita para este caso.
+        const packs=listCanonicalSubtypeExperienceProfileIds().map(id=>composeSubtypeEvalPack(
+            {industry:id.split('/')[0],subtype:id.split('/')[1],language:'en'}));
+        for(const key of ['book_stay','book_tour','place_food_order','request_service','request_photo_quote','board_pet']) {
+            const seed=packs.flat().find(item=>item.key===`intent_${key}_canonical_complete_v1`);
+            expect(seed).toBeDefined();
+            const bound=bindCanonicalEvalFixtures(seed!,fixtures);
+            const verified=await verifyExpectedEffects({expected:bound.expectedActions as any,contactId,
+                verifiers:EVAL_EFFECT_VERIFIERS,observedToolCalls:calls,query:q});
+            expect({key,checks:verified.checks.filter(check=>!check.ok)}).toEqual({key,checks:[]});
+            // Otro contacto no ve ninguna de estas filas.
+            expect((await verifyExpectedEffects({expected:bound.expectedActions as any,contactId:otherContact,
+                verifiers:EVAL_EFFECT_VERIFIERS,observedToolCalls:calls,query:q})).passed).toBe(false);
+        }
+        expect(effects.emit).not.toHaveBeenCalled();
+        expect(mail.renderAndSend).not.toHaveBeenCalled();
+        expect(calendar.enqueueWithQuery).not.toHaveBeenCalled();
+        expect(identityBoundary.isVerified).not.toHaveBeenCalled();
+        expect(identityBoundary.startVerification).not.toHaveBeenCalled();
+        // El alquiler de vehículo comparte familia y tabla con la guardería y
+        // aun así no se admitió: no entra al conjunto canónico, así que la
+        // ejecución se corta en el ejecutor antes de cualquier comando. El
+        // motivo por el que no se admitió está una capa más adentro —su
+        // identidad escalada—, y también se comprueba: montado a mano, el
+        // guardián central lo detiene con la identidad sintética que sólo cubre
+        // lectores, sin llegar a mandar un código.
+        const rental=await invoke('create_vehicle_rental',{vehicleId:ids.vehicle,startDate:fixtures.date,
+            endDate:fixtures.endDate,driverName:person.customerName});
+        expect(rental).toMatchObject({error:'canonical_sandbox_not_available',persisted:false});
+        expect(await hasEvalIdentityFixture(prisma,{schemaName:lease.schemaName,tenantId,contactId,conversationId,
+            toolName:'create_vehicle_rental',sandboxNamespace:lease})).toBe(false);
+        expect(identityBoundary.startVerification).not.toHaveBeenCalled();
+        // Nada de esto tocó el schema real del tenant.
+        for(const table of ['property_bookings','tour_bookings','food_orders','food_order_items',
+            'service_requests','photo_sessions','resource_rentals','resource_rental_events'])
+            expect((await query(`SELECT count(*)::int AS n FROM "${source}".${table}`))[0].n).toBe(0);
+        expect((await q('SELECT count(*)::int AS n FROM resource_rental_events'))[0].n).toBe(1);
+    },60000);
+
     it('persists a draft review without an appointment, then resumes the approved command exactly once',async()=>{
         const agentId=randomUUID();
         const q=(sql:string,params:any[]=[])=>prisma.executeInTenantSchema(lease.schemaName,sql,params);

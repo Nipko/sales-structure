@@ -9,6 +9,30 @@ export const CANONICAL_EVAL_TOOL_FAMILIES: Readonly<Record<string, string>> = Ob
     place_catalog_order:'catalog_orders',cancel_catalog_order:'catalog_orders',
     register_pet: 'pets', update_pet: 'pets',
     calculate_quote: 'insurance_quotes',
+    // Las seis operaciones que un negocio de servicio, hospedaje o comida
+    // cierra en el chat. Estaban en el registro de familias auditadas pero no
+    // acá, y la superficie ejecutable bajo un namespace se decide **acá**: sin
+    // esta entrada el escenario recibía `canonical_sandbox_not_available` y
+    // ninguna afirmación positiva podía pasar, por lo que ninguna se escribió.
+    //
+    // Entran ahora porque cada uno corre su comando de producción real dentro
+    // del namespace arrendado, con su único efecto externo apagado por el
+    // arriendo (no por el schema ni por un flag suelto), con todas las tablas
+    // que leen y escriben clonadas, y con el estado que afirman igual al que
+    // escribe producción — `create_vehicle_rental` nace `pending_review`, no
+    // `reserved`.
+    //
+    // `create_vehicle_rental` NO entra, aunque comparta familia y tabla con la
+    // guardería. Es la única de estas operaciones declarada A2 con
+    // `assuranceEnforcement: 'step_up'`, así que el guardián central le pide
+    // identidad verificada antes de llegar al comando, y la identidad sintética
+    // del namespace sólo cubre lectores (`EVAL_IDENTITY_READERS`) — igual que
+    // rechaza `file_claim`. Admitirla exigiría darle identidad verificada a un
+    // writer sensible desde una prueba, que es exactamente lo que ese control
+    // existe para impedir.
+    create_property_booking: 'property_bookings', create_tour_booking: 'tour_bookings',
+    place_order: 'restaurant_orders', create_service_request: 'service_requests',
+    request_photo_quote: 'photo_sessions', create_pet_boarding: 'resource_rentals',
 });
 /** Private readers keep their normal identity/ownership guards; this only admits
  * their schema-local implementation after a fixture lease has been verified. */
@@ -47,7 +71,16 @@ const TABLES = new Set([
     'courses', 'course_cohorts', 'enrollments', 'products', 'orders', 'order_items','stock_movements',
     'properties', 'property_bookings', 'tour_packages', 'tour_inventory', 'tour_bookings',
     'menu_items', 'food_orders', 'food_order_items', 'service_requests', 'photo_sessions',
-    'resource_rentals', 'vehicles', 'pets', 'pet_vaccinations', 'pet_command_receipts', 'insurance_policies', 'insurance_claims',
+    // `ical_blocks` no lo escribe nadie desde el chat: es la mitad del chequeo
+    // de conflicto que `createBooking` hace antes de aceptar una estadía. Sin
+    // la tabla la reserva falla por una relación ausente, que es un fallo de
+    // infraestructura disfrazado de "no había disponibilidad".
+    'ical_blocks',
+    // La bitácora de la reserva de recurso se escribe en la MISMA transacción
+    // que la reserva: sin clonarla, el INSERT de `resource_rentals` se revierte
+    // entero y el alquiler nunca existe.
+    'resource_rentals', 'resource_rental_events',
+    'vehicles', 'pets', 'pet_vaccinations', 'pet_command_receipts', 'insurance_policies', 'insurance_claims',
     // `insurance_plans` is the read `calculate_quote` needs before it can write:
     // without it the quote fails on a missing plan rather than on anything the
     // evaluation is measuring.

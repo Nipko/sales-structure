@@ -276,6 +276,9 @@ describe('AIToolExecutorService vertical safety contracts', () => {
                     prepTimeMinutes: 22,
                 })],
             }),
+            // Sin arriendo de evaluación: este turno es producción y su aviso
+            // al restaurante tiene que salir.
+            { sandboxNamespace: undefined },
         );
         expect(result).toMatchObject({
             currency: 'MXN',

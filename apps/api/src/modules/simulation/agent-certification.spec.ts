@@ -184,15 +184,16 @@ describe('computing whether a profile has been shown to do its work', () => {
         // the point — a run on one proves nothing about the others.
         const report = certifyProfiles({ scope, evidence: [] });
         expect(report.summary.profiles).toBe(76);
-        // +100 over the previous 15_172: the five `quote_policy` profiles gained
-        // the five canonical quoting cases in each of the four languages. A
-        // committing task that nothing proved now costs something to prove.
-        expect(report.summary.requiredCases).toBe(15_272);
+        // +336 over the previous 15_272: the twenty-one committing tasks of the
+        // six service, lodging and food operations gained four canonical cases
+        // in each of the four languages. Before, those tasks cost nothing to
+        // prove because nothing asserted they had left anything behind.
+        expect(report.summary.requiredCases).toBe(15_608);
         // Pinned like the 76/268/146 of the declared matrix: adding or removing a
         // case changes what certification costs, and that should be noticed.
         expect(certifyProfiles({
             scope: { channels: ['web_widget', 'whatsapp'], models: scope.models }, evidence: [],
-        }).summary.requiredCases).toBe(15_272 * 2);
+        }).summary.requiredCases).toBe(15_608 * 2);
     });
 
     it('shares one definition of a passing run with the release gate', () => {

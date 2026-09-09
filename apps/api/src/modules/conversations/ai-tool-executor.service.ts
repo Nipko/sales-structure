@@ -857,7 +857,7 @@ export class AIToolExecutorService {
                     return this.getCheckInInstructions(schemaName, contactId, args.propertyId);
 
                 case 'create_property_booking':
-                    return this.createPropertyBooking(schemaName, contactId, args as any, conversationId, tenantId);
+                    return this.createPropertyBooking(schemaName, contactId, args as any, conversationId, tenantId, canonicalSandbox);
 
                 case 'cancel_property_booking':
                     return this.cancelPropertyBooking(schemaName, contactId, args.bookingId, args.reason);
@@ -876,7 +876,7 @@ export class AIToolExecutorService {
                     return this.checkPackageAvailabilityTool(schemaName, args.packageId, args.date, args.partySize);
 
                 case 'create_tour_booking':
-                    return this.createTourBooking(schemaName, contactId, args, conversationId);
+                    return this.createTourBooking(schemaName, contactId, args, conversationId, canonicalSandbox);
 
                 case 'cancel_tour_booking':
                     return this.cancelTourBooking(schemaName, contactId, args.bookingId, args.reason);
@@ -922,7 +922,7 @@ export class AIToolExecutorService {
                     return this.getPromotions(schemaName);
 
                 case 'place_order':
-                    return this.placeOrder(schemaName, contactId, conversationId, args);
+                    return this.placeOrder(schemaName, contactId, conversationId, args, canonicalSandbox);
 
                 case 'cancel_order':
                     return this.cancelOrder(schemaName, contactId, args.orderId, args.reason);
@@ -1021,7 +1021,7 @@ export class AIToolExecutorService {
                     return this.checkHomeServiceAvailabilityTool(schemaName, args);
 
                 case 'create_service_request':
-                    return this.createServiceRequestTool(schemaName, contactId, conversationId, args);
+                    return this.createServiceRequestTool(schemaName, contactId, conversationId, args, canonicalSandbox);
 
                 case 'check_request_status':
                     return this.checkServiceRequestStatusTool(schemaName, contactId, args);
@@ -1101,7 +1101,7 @@ export class AIToolExecutorService {
                     return this.checkDateAvailabilityTool(schemaName, args);
 
                 case 'request_photo_quote':
-                    return this.requestPhotoQuoteTool(schemaName, contactId, conversationId, args);
+                    return this.requestPhotoQuoteTool(schemaName, contactId, conversationId, args, canonicalSandbox);
 
                 case 'cancel_photo_session':
                     return this.cancelPhotoSession(schemaName, contactId, args.sessionId, args.reason);
@@ -3812,6 +3812,7 @@ export class AIToolExecutorService {
         args: { propertyId: string; checkIn: string; checkOut: string; guestName: string; guestPhone?: string; guests?: number },
         conversationId?: string,
         tenantId?: string,
+        namespace?: EvalNamespaceLease,
     ): Promise<any> {
         try {
             const booking = await this.propertiesService.createBooking(schema, args.propertyId, {
@@ -3823,7 +3824,7 @@ export class AIToolExecutorService {
                 guestsCount: args.guests || 1,
                 checkIn: args.checkIn,
                 checkOut: args.checkOut,
-            });
+            }, { sandboxNamespace: namespace });
 
             this.logger.log(`[Tool] Property booking created: ${booking.id} for ${args.guestName}`);
 
@@ -3974,6 +3975,7 @@ export class AIToolExecutorService {
         contactId: string,
         args: any,
         conversationId?: string,
+        namespace?: EvalNamespaceLease,
     ): Promise<any> {
         try {
             const booking = await this.toursService.createBooking(schemaName, {
@@ -3990,7 +3992,7 @@ export class AIToolExecutorService {
                 specialRequests: args.specialRequests,
                 contactId,
                 conversationId,
-            });
+            }, { sandboxNamespace: namespace });
             return {
                 success: true,
                 booking: {
@@ -4379,6 +4381,7 @@ export class AIToolExecutorService {
         contactId: string,
         conversationId: string | undefined,
         args: any,
+        namespace?: EvalNamespaceLease,
     ): Promise<any> {
         try {
             if (!Array.isArray(args.items) || args.items.length === 0) {
@@ -4459,7 +4462,7 @@ export class AIToolExecutorService {
                 items: resolvedItems,
                 paymentMethod: args.paymentMethod,
                 notes: args.notes,
-            });
+            }, { sandboxNamespace: namespace });
 
             return {
                 orderId: order.id,
@@ -5013,6 +5016,7 @@ export class AIToolExecutorService {
         contactId: string,
         conversationId: string | undefined,
         args: any,
+        namespace?: EvalNamespaceLease,
     ): Promise<any> {
         try {
             const request = await this.homeServicesService.createRequest(schemaName, {
@@ -5031,7 +5035,7 @@ export class AIToolExecutorService {
                 serviceId: args.serviceId,
                 scheduledAt: args.scheduledAt,
                 status: args.serviceId && args.scheduledAt ? 'scheduled' : 'pending',
-            });
+            }, { sandboxNamespace: namespace });
             return {
                 requestId: request.id,
                 status: request.status,
@@ -6362,6 +6366,7 @@ export class AIToolExecutorService {
         contactId: string,
         conversationId: string | undefined,
         args: any,
+        namespace?: EvalNamespaceLease,
     ): Promise<any> {
         try {
             if (!args?.date || !args?.customerName) {
@@ -6383,7 +6388,7 @@ export class AIToolExecutorService {
                 location: args.location || null,
                 notes: args.specialRequests || null,
                 status: 'requested',
-            });
+            }, { sandboxNamespace: namespace });
             const sessionId = session?.id;
             if (!sessionId) {
                 this.logger.warn('Photo session insert returned no id');

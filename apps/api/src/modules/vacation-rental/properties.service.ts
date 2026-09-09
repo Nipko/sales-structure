@@ -14,6 +14,7 @@ import {
     requireTenantContact,
 } from '../../common/utils/tenant-contact.util';
 import { resolveNativeEvidenceOpportunity } from '../../common/utils/native-evidence-opportunity.util';
+import type { EvalNamespaceLease } from '../simulation/isolated-eval-namespace';
 import {
     LodgingSorResolution,
     LodgingSourceOfTruthService,
@@ -549,7 +550,20 @@ export class PropertiesService {
     /**
      * Create a direct booking.
      */
-    async createBooking(schemaName: string, propertyId: string, data: any): Promise<any> {
+    /**
+     * `execution.sandboxNamespace` es el arriendo de una evaluación aislada. La
+     * estadía se escribe con su precio y su política reales —eso es lo que se
+     * mide— pero el correo de confirmación al huésped queda apagado. Hoy la
+     * herramienta no pasa `guestEmail`, así que ese camino no se alcanza desde
+     * el chat; el arriendo lo cierra igual para que agregarlo mañana (como ya
+     * lo hace tours) no empiece a mandar correos desde una prueba.
+     */
+    async createBooking(
+        schemaName: string,
+        propertyId: string,
+        data: any,
+        execution: { sandboxNamespace?: EvalNamespaceLease } = {},
+    ): Promise<any> {
         this.assertUuid(propertyId, 'propertyId');
         if (!data || typeof data !== 'object') {
             throw new BadRequestException('Booking payload is required');
@@ -715,7 +729,7 @@ export class PropertiesService {
 
         // After successful booking insert, try to send confirmation email (fire-and-forget)
         try {
-            if (data.guestEmail) {
+            if (data.guestEmail && !execution.sandboxNamespace) {
                 // Check if confirmation emails are enabled for properties
                 let emailConfirmationsEnabled = true;
                 try {

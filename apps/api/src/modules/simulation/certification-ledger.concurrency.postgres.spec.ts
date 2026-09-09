@@ -4,7 +4,8 @@ import { listCanonicalSubtypeExperienceProfileIds } from '@parallext/shared';
 import {
     certificationEvidenceFromLedger, certificationProgress, driveCertificationRun,
     ensureCertificationLedger, leaseCertificationCase, planCertificationLedger,
-    recordCertificationCase, type CertificationCaseResult, type CertificationQuery,
+    recordCertificationCase, retryCertificationCase, CertificationPlanRefused,
+    type CertificationCaseResult, type CertificationQuery,
 } from './certification-ledger';
 import { isDisposableDatabase } from '../../common/__fixtures__/disposable-database';
 
@@ -76,26 +77,59 @@ const profileId = listCanonicalSubtypeExperienceProfileIds()[0];
     const freshRun = (over: Record<string, unknown> = {}) =>
         planCertificationLedger(sql, { ...planInput, ...over } as any);
 
-    it('does not hand out more work than the budget can pay for, however many workers ask', async () => {
-        // Four cents of budget and cases that cost two. At most two may ever be
-        // handed out — and the third must be refused BEFORE it runs, not after
-        // it has been paid for.
-        const run = await freshRun({ budgetUsdCents: 4 });
+    /**
+     * The reservation each case carries comes from the plan, not from the test.
+     * Asserting a made-up per-case price would be testing the fake runner.
+     */
+    const reserves = async (runId: string) => {
+        const rows = await sql<any[]>(
+            `SELECT reserve_usd_cents AS reserve FROM agent_certification_cases WHERE run_id=$1::uuid`, [runId]);
+        return rows.map(row => Number(row.reserve));
+    };
+    const leasedReserve = async (runId: string) => {
+        const [row] = await sql<any[]>(
+            `SELECT COALESCE(SUM(reserve_usd_cents),0)::int AS n FROM agent_certification_cases
+              WHERE run_id=$1::uuid AND state='leased'`, [runId]);
+        return Number(row.n);
+    };
+
+    it('never hands out more reservation than the budget can pay for', async () => {
+        const sizing = await freshRun();
+        const perCase = await reserves(sizing.id);
+        expect(Math.min(...perCase)).toBeGreaterThan(0);
+        // Room for a couple of cases, not for the run.
+        const budget = Math.min(...perCase) * 2;
+
+        const run = await freshRun({ budgetUsdCents: budget });
         const leases = [];
-        for (let worker = 0; worker < 4; worker++) {
+        for (;;) {
             const claim = await transaction(query => leaseCertificationCase(query, run.id));
-            if (claim.ok) leases.push(claim.lease); else break;
+            if (!claim.ok) { expect(claim.stopReason).toBe('budget_exhausted'); break; }
+            leases.push(claim.lease);
+            // The invariant, checked after every single lease rather than at the
+            // end: what is committed can always be paid for.
+            expect(await leasedReserve(run.id)).toBeLessThanOrEqual(budget);
         }
-        expect(leases).toHaveLength(2);
+        expect(leases.length).toBeGreaterThan(0);
+        expect(leases.length).toBeLessThan(run.plannedCases);
+
+        // Settling at the reserved price keeps the run inside its ceiling.
+        const priced = await sql<any[]>(
+            `SELECT id, reserve_usd_cents AS reserve FROM agent_certification_cases
+              WHERE run_id=$1::uuid AND state='leased'`, [run.id]);
+        const byId = new Map(priced.map(row => [String(row.id), Number(row.reserve)]));
         for (const lease of leases) {
-            await transaction(query => recordCertificationCase(query, lease, result({ costUsdCents: 2 })));
+            await transaction(query => recordCertificationCase(query, lease,
+                result({ costUsdCents: byId.get(lease.caseId) ?? 0 })));
         }
-        const progress = (await certificationProgress(sql, run.id))!;
-        expect(progress.spentUsdCents).toBeLessThanOrEqual(4);
-    }, 120000);
+        expect((await certificationProgress(sql, run.id))!.spentUsdCents).toBeLessThanOrEqual(budget);
+    }, 180000);
 
     it('refuses concurrently, not just one at a time', async () => {
-        const run = await freshRun({ budgetUsdCents: 2 });
+        const sizing = await freshRun();
+        // Exactly one case fits: `committed >= budget` refuses the moment the
+        // first reservation is taken.
+        const run = await freshRun({ budgetUsdCents: Math.min(...await reserves(sizing.id)) });
         // Both transactions open before either commits: the guarantee has to
         // survive the interleaving, not just the sequence.
         const [first, second] = await Promise.all([
@@ -103,7 +137,43 @@ const profileId = listCanonicalSubtypeExperienceProfileIds()[0];
             transaction(query => leaseCertificationCase(query, run.id)),
         ]);
         expect([first.ok, second.ok].filter(Boolean)).toHaveLength(1);
-    }, 120000);
+        expect([first, second].find(claim => !claim.ok)).toMatchObject({ stopReason: 'budget_exhausted' });
+    }, 180000);
+
+    it('records a case that cost more than its reservation, and stops after it', async () => {
+        // The reservation is a ceiling from the declared token bound. If a real
+        // run breaks it, the ledger must record what it actually cost — lying to
+        // protect the ceiling would make the spend unauditable — and refuse the
+        // next case because the budget really is gone.
+        const sizing = await freshRun();
+        const budget = Math.min(...await reserves(sizing.id)) * 2;
+        const run = await freshRun({ budgetUsdCents: budget });
+        const claim = await transaction(query => leaseCertificationCase(query, run.id));
+        expect(claim.ok).toBe(true);
+        if (!claim.ok) return;
+        await transaction(query => recordCertificationCase(query, claim.lease,
+            result({ costUsdCents: budget * 3 })));
+        const progress = (await certificationProgress(sql, run.id))!;
+        expect(progress.spentUsdCents).toBe(budget * 3);
+        const refused = await transaction(query => leaseCertificationCase(query, run.id));
+        expect(refused).toEqual({ ok: false, stopReason: 'budget_exhausted' });
+        expect((await certificationProgress(sql, run.id))!.state).toBe('finished');
+    }, 180000);
+
+    it('gives the reservation back when a case settles under it', async () => {
+        const sizing = await freshRun();
+        const budget = Math.min(...await reserves(sizing.id)) * 2;
+        const run = await freshRun({ budgetUsdCents: budget });
+        const first = await transaction(query => leaseCertificationCase(query, run.id));
+        expect(first.ok).toBe(true);
+        if (!first.ok) return;
+        // Settles at nothing, so the whole budget is free again and more work
+        // can be handed out than the reservations alone would have allowed.
+        await transaction(query => recordCertificationCase(query, first.lease, result({ costUsdCents: 0 })));
+        expect(await leasedReserve(run.id)).toBe(0);
+        const second = await transaction(query => leaseCertificationCase(query, run.id));
+        expect(second.ok).toBe(true);
+    }, 180000);
 
     it('does not call a run finished while another worker still holds cases', async () => {
         const run = await freshRun();
@@ -141,6 +211,44 @@ const profileId = listCanonicalSubtypeExperienceProfileIds()[0];
         });
         expect(driven.processed).toBe(0);
         expect(driven.stopReason).toBe('lease_lost');
+    }, 120000);
+
+    it('does not call a run complete while a failure is waiting for a decision', async () => {
+        const run = await freshRun();
+        let failed = false;
+        for (;;) {
+            const claim = await transaction(query => leaseCertificationCase(query, run.id));
+            if (!claim.ok) { expect(claim.stopReason).toBe('awaiting_retry_decision'); break; }
+            await transaction(query => recordCertificationCase(query, claim.lease,
+                result({ passed: failed })));
+            failed = true;
+        }
+        // Nothing pending, nothing leased, and still not finished: a case that
+        // failed every attempt is a decision somebody owes, not work that ran out.
+        expect((await certificationProgress(sql, run.id))!.state).toBe('running');
+        const [stuck] = await sql<any[]>(
+            "SELECT case_key FROM agent_certification_cases WHERE run_id=$1::uuid AND state='failed' LIMIT 1",
+            [run.id]);
+        await transaction(query => retryCertificationCase(query, run.id, String(stuck.case_key)));
+        const retry = await transaction(query => leaseCertificationCase(query, run.id));
+        expect(retry.ok).toBe(true);
+        if (!retry.ok) return;
+        await transaction(query => recordCertificationCase(query, retry.lease, result()));
+        expect(await transaction(query => leaseCertificationCase(query, run.id)))
+            .toEqual({ ok: false, stopReason: 'complete' });
+    }, 240000);
+
+    it('refuses to plan several profiles under one agent', async () => {
+        // The whole point of the subject table. A plan that cannot say which
+        // agent answered for which profile would produce evidence nobody can
+        // attribute, and 76 profiles sharing one authority is exactly that.
+        const [first, second] = listCanonicalSubtypeExperienceProfileIds().slice(0, 2);
+        const refused = await planCertificationLedger(sql, {
+            ...planInput, profiles: [first, second], languages: ['es'],
+        } as any).catch(error => error);
+        expect(refused).toBeInstanceOf(CertificationPlanRefused);
+        expect(refused.code).toBe('certification_subject_required');
+        expect(refused.detail).toEqual([first, second].sort());
     }, 120000);
 
     it('names the subject of each profile, so one profile does not certify another', async () => {

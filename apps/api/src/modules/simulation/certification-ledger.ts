@@ -50,10 +50,28 @@ export type CertificationRunState = (typeof CERTIFICATION_RUN_STATES)[number];
 export const CERTIFICATION_CASE_STATES = ['pending', 'leased', 'passed', 'failed', 'error'] as const;
 export type CertificationCaseState = (typeof CERTIFICATION_CASE_STATES)[number];
 
-/** Why the executor stopped handing out work. Never inferred by a caller. */
-export const CERTIFICATION_STOP_REASONS =
-    ['cancelled', 'budget_exhausted', 'deadline_passed', 'complete', 'batch_limit'] as const;
+/**
+ * Why the executor stopped handing out work. Never inferred by a caller, and
+ * deliberately more than one kind of "nothing to give you":
+ *
+ *  · `in_flight` — every case is out with another worker. The run is NOT
+ *    finished; saying so once closed a run whose results were still coming;
+ *  · `awaiting_retry_decision` — nothing is pending or leased, but cases failed
+ *    and nobody has decided whether to try them again. A run whose last word is
+ *    a failure has not run out of work, it has run out of instructions;
+ *  · `batch_limit` — this worker did its share, which is not the run's state;
+ *  · `lease_lost` — this worker's result was refused because its lease had been
+ *    given to somebody else. It did no work and must not claim any.
+ */
+export const CERTIFICATION_STOP_REASONS = [
+    'cancelled', 'budget_exhausted', 'deadline_passed', 'complete',
+    'batch_limit', 'in_flight', 'awaiting_retry_decision', 'lease_lost',
+] as const;
 export type CertificationStopReason = (typeof CERTIFICATION_STOP_REASONS)[number];
+
+/** The reasons that end a run. The others mean "not now", not "not ever". */
+export const CERTIFICATION_TERMINAL_REASONS: readonly CertificationStopReason[] =
+    Object.freeze(['cancelled', 'budget_exhausted', 'deadline_passed', 'complete']);
 
 export const CERTIFICATION_LEDGER_DDL: readonly string[] = Object.freeze([
     `CREATE TABLE IF NOT EXISTS agent_certification_runs (
@@ -75,6 +93,24 @@ export const CERTIFICATION_LEDGER_DDL: readonly string[] = Object.freeze([
         CONSTRAINT agent_certification_runs_k CHECK (k >= 1 AND k <= 5),
         CONSTRAINT agent_certification_runs_threshold CHECK (threshold >= 7 AND threshold <= 10)
     )`,
+    /**
+     * One subject per profile, because a profile IS a template and a template is
+     * a different agent. A single agentId on the run proved one configuration
+     * and was silently read as proof of the other 75; the run row keeps its
+     * columns as the DEFAULT subject for a single-profile run, and a run that
+     * covers more than one profile must name a subject for each.
+     */
+    `CREATE TABLE IF NOT EXISTS agent_certification_subjects (
+        run_id UUID NOT NULL,
+        profile_id TEXT NOT NULL,
+        agent_id UUID NOT NULL,
+        config_hash TEXT NOT NULL,
+        dependency_revision TEXT NOT NULL,
+        mission JSONB,
+        tool_grants JSONB,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (run_id, profile_id)
+    )`,
     `CREATE TABLE IF NOT EXISTS agent_certification_cases (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         run_id UUID NOT NULL,
@@ -86,6 +122,14 @@ export const CERTIFICATION_LEDGER_DDL: readonly string[] = Object.freeze([
         channel_type TEXT NOT NULL,
         model TEXT NOT NULL,
         definition_hash TEXT NOT NULL,
+        /**
+         * The ceiling this case may cost, taken from the plan and held from the
+         * moment it is leased. The budget check adds this to what has already
+         * been spent, because a case being run has not been paid for yet and a
+         * ceiling compared only against settled cost lets every worker in the
+         * fleet pass the same check at the same time.
+         */
+        reserve_usd_cents INTEGER NOT NULL DEFAULT 0,
         state TEXT NOT NULL DEFAULT 'pending',
         lease_token UUID,
         lease_expires_at TIMESTAMPTZ,
@@ -129,15 +173,46 @@ export function certificationCaseKey(cell: {
     });
 }
 
-export interface CertificationRunInput extends CertificationPlanInput {
-    /** The agent whose configuration this run is evidence about. */
+/**
+ * The agent one profile's cases actually ran against.
+ *
+ * A profile is a template: a clinic and a car dealership are not the same agent
+ * with a different label, they are different configurations, different missions
+ * and different tool grants. Evidence that cannot say which one answered proves
+ * nothing about any of them, which is why this is per profile and not per run.
+ */
+export interface CertificationSubject {
     readonly agentId: string;
     readonly configHash: string;
     readonly dependencyRevision: string;
-    /** Hard ceiling in US cents. No case is leased once the spend would exceed it. */
+    /** The mission the subject was given, for a reader auditing the evidence. */
+    readonly mission?: Record<string, unknown> | null;
+    /** The tools it was allowed. Two subjects with different grants are two subjects. */
+    readonly toolGrants?: readonly string[] | null;
+}
+
+export interface CertificationRunInput extends CertificationPlanInput {
+    /**
+     * The default subject. Enough for a single-profile run; a run covering more
+     * than one profile must name a subject for each in `subjects`, and is
+     * refused otherwise rather than quietly attributing 76 profiles to one agent.
+     */
+    readonly agentId: string;
+    readonly configHash: string;
+    readonly dependencyRevision: string;
+    /** Subject per profile id. Required when the plan covers more than one. */
+    readonly subjects?: Readonly<Record<string, CertificationSubject>>;
+    /** Hard ceiling in US cents, reserved at lease time rather than counted after. */
     readonly budgetUsdCents?: number;
     readonly deadlineAt?: Date | string | null;
     readonly threshold?: number;
+}
+
+/** A plan that would produce evidence nobody could attribute is not planned. */
+export class CertificationPlanRefused extends Error {
+    constructor(readonly code: string, readonly detail: readonly string[] = []) {
+        super(code);
+    }
 }
 
 export interface CertificationRunRecord {
@@ -158,6 +233,21 @@ export async function planCertificationLedger(
 ): Promise<CertificationRunRecord> {
     const plan = planCertificationRun(input);
     const threshold = input.threshold ?? 7;
+
+    // The default subject only stands in for a run about ONE profile. Beyond
+    // that it would be a claim about agents nobody configured, and the point of
+    // the whole ledger is that evidence names what produced it.
+    const subjects = new Map<string, CertificationSubject | null>();
+    for (const profileId of plan.profiles) {
+        const named = input.subjects?.[profileId];
+        if (named) { subjects.set(profileId, named); continue; }
+        subjects.set(profileId, plan.profiles.length === 1
+            ? { agentId: input.agentId, configHash: input.configHash, dependencyRevision: input.dependencyRevision }
+            : null);
+    }
+    const unnamed = [...subjects.entries()].filter(([, subject]) => !subject).map(([profileId]) => profileId);
+    if (unnamed.length) throw new CertificationPlanRefused('certification_subject_required', unnamed.sort());
+
     await query(
         `INSERT INTO agent_certification_runs
             (id, plan_hash, agent_id, config_hash, dependency_revision, k, threshold, state,
@@ -168,6 +258,16 @@ export async function planCertificationLedger(
             plan.k, threshold, input.budgetUsdCents ?? null,
             input.deadlineAt ? new Date(input.deadlineAt).toISOString() : null],
     );
+    for (const [profileId, subject] of subjects) {
+        await query(
+            `INSERT INTO agent_certification_subjects
+                (run_id, profile_id, agent_id, config_hash, dependency_revision, mission, tool_grants)
+             VALUES ($1::uuid,$2,$3::uuid,$4,$5,$6::jsonb,$7::jsonb)
+             ON CONFLICT (run_id, profile_id) DO NOTHING`,
+            [runId, profileId, subject!.agentId, subject!.configHash, subject!.dependencyRevision,
+                JSON.stringify(subject!.mission ?? null),
+                JSON.stringify(subject!.toolGrants ? [...subject!.toolGrants] : null)]);
+    }
     let planned = 0;
     for (const cell of plan.cells) {
         // The scenario universe comes from the same function certification
@@ -177,13 +277,21 @@ export async function planCertificationLedger(
         for (const [scenarioKey, required] of demanded) {
             const definitionHash = revisionHash([...required.definitions].sort());
             const caseKey = certificationCaseKey({ ...cell, scenarioKey });
+            // This case's share of the cell's ceiling, by the turns it takes.
+            // Derived from the plan rather than from a second price list, so the
+            // number reserved and the number authorised are the same number.
+            const reserve = cell.turns > 0
+                ? Math.ceil(cell.maxCostUsdCents * (required.turns / cell.turns))
+                : 0;
             const rows = await query<any[]>(
                 `INSERT INTO agent_certification_cases
-                    (run_id, case_key, attempt, profile_id, scenario_key, language, channel_type, model, definition_hash)
-                 VALUES ($1::uuid,$2,1,$3,$4,$5,$6,$7,$8)
+                    (run_id, case_key, attempt, profile_id, scenario_key, language, channel_type, model,
+                     definition_hash, reserve_usd_cents)
+                 VALUES ($1::uuid,$2,1,$3,$4,$5,$6,$7,$8,$9)
                  ON CONFLICT (run_id, case_key, attempt) DO NOTHING
                  RETURNING id`,
-                [runId, caseKey, cell.profileId, scenarioKey, cell.language, cell.channel, cell.model, definitionHash],
+                [runId, caseKey, cell.profileId, scenarioKey, cell.language, cell.channel, cell.model,
+                    definitionHash, reserve],
             );
             if (rows?.length) planned++;
         }
@@ -217,10 +325,15 @@ export interface CertificationLease {
 /**
  * Hands out one case, or says why it will not.
  *
- * The three refusals are checked BEFORE the work, because a budget checked
- * afterwards is a budget that has already been exceeded. `spent` is the sum of
- * what recorded cases actually cost, not what the plan predicted: the plan's
- * number is a ceiling and stopping at the ceiling would stop early.
+ * Everything is checked BEFORE the work, because a budget checked afterwards is
+ * a budget that has already been exceeded. The committed total is what settled
+ * cases COST plus what leased cases have RESERVED: a case being run has not been
+ * paid for yet, and comparing only against settled cost let every worker in the
+ * fleet pass the same check at the same instant. Four workers on a four-cent
+ * budget took four two-cent cases that way.
+ *
+ * The whole thing is serialised on the run row, so two workers cannot both read
+ * the same committed total and both decide there is room.
  */
 export async function leaseCertificationCase(
     query: CertificationQuery, runId: string, leaseSeconds = 900,
@@ -228,12 +341,18 @@ export async function leaseCertificationCase(
     const [run] = await query<any[]>(
         `SELECT state, budget_usd_cents, deadline_at,
                 (SELECT COALESCE(SUM(cost_usd_cents),0)::int FROM agent_certification_cases
-                  WHERE run_id = r.id) AS spent
+                  WHERE run_id = r.id) AS spent,
+                (SELECT COALESCE(SUM(reserve_usd_cents),0)::int FROM agent_certification_cases
+                  WHERE run_id = r.id AND state = 'leased'
+                    AND (lease_expires_at IS NULL OR lease_expires_at >= clock_timestamp())) AS reserved
            FROM agent_certification_runs r WHERE id = $1::uuid FOR UPDATE`, [runId]);
     if (!run) return { ok: false, stopReason: 'cancelled' };
     if (run.state === 'cancelled') return { ok: false, stopReason: 'cancelled' };
-    if (run.budget_usd_cents != null && Number(run.spent) >= Number(run.budget_usd_cents)) {
-        await stopCertificationRun(query, runId, 'budget_exhausted');
+    const committed = Number(run.spent) + Number(run.reserved);
+    if (run.budget_usd_cents != null && committed >= Number(run.budget_usd_cents)) {
+        // Only terminal when nothing is still out: a worker may yet come back
+        // under its reservation and leave room for the next case.
+        if (Number(run.reserved) === 0) await stopCertificationRun(query, runId, 'budget_exhausted');
         return { ok: false, stopReason: 'budget_exhausted' };
     }
     if (run.deadline_at) {
@@ -246,12 +365,18 @@ export async function leaseCertificationCase(
             return { ok: false, stopReason: 'deadline_passed' };
         }
     }
+    // Only a case whose reservation still fits. Handing out a case that cannot
+    // be paid for would make the ceiling advisory.
+    const remaining = run.budget_usd_cents == null
+        ? null
+        : Number(run.budget_usd_cents) - committed;
     const rows = await query<any[]>(
         `UPDATE agent_certification_cases SET state='leased', lease_token=gen_random_uuid(),
                 lease_expires_at = clock_timestamp() + ($2 || ' seconds')::interval, updated_at = NOW()
           WHERE id = (
               SELECT id FROM agent_certification_cases
                WHERE run_id = $1::uuid
+                 AND ($3::int IS NULL OR reserve_usd_cents <= $3::int)
                  AND (state = 'pending'
                       OR (state = 'leased' AND lease_expires_at IS NOT NULL AND lease_expires_at < clock_timestamp()))
                ORDER BY created_at, attempt
@@ -259,9 +384,32 @@ export async function leaseCertificationCase(
                LIMIT 1)
       RETURNING id, run_id, case_key, attempt, profile_id, scenario_key, language, channel_type, model,
                 definition_hash, lease_token`,
-        [runId, String(Math.max(1, Math.trunc(leaseSeconds)))],
+        [runId, String(Math.max(1, Math.trunc(leaseSeconds))), remaining],
     );
     if (!rows?.length) {
+        // Nothing claimable is not the same as nothing left. Three different
+        // facts used to arrive here as one word, and the word was `complete`.
+        const [outstanding] = await query<any[]>(
+            `SELECT COUNT(*) FILTER (WHERE state = 'pending')::int AS pending,
+                    COUNT(*) FILTER (WHERE state = 'leased'
+                        AND (lease_expires_at IS NULL OR lease_expires_at >= clock_timestamp()))::int AS leased,
+                    COUNT(*)::int AS total
+               FROM agent_certification_cases WHERE run_id = $1::uuid`, [runId]);
+        if (Number(outstanding?.leased ?? 0) > 0) return { ok: false, stopReason: 'in_flight' };
+        if (Number(outstanding?.pending ?? 0) > 0) {
+            // Pending but unaffordable: the ceiling, not the queue, is what
+            // stopped this, and it stopped for good since nothing is out.
+            await stopCertificationRun(query, runId, 'budget_exhausted');
+            return { ok: false, stopReason: 'budget_exhausted' };
+        }
+        // Nothing pending, nothing out. A case that failed every attempt is a
+        // decision somebody owes, not work the run has run out of.
+        const [unresolved] = await query<any[]>(
+            `SELECT COUNT(*)::int AS n FROM (
+                SELECT case_key, BOOL_OR(state = 'passed') AS proven
+                  FROM agent_certification_cases WHERE run_id = $1::uuid GROUP BY case_key
+             ) c WHERE proven = false`, [runId]);
+        if (Number(unresolved?.n ?? 0) > 0) return { ok: false, stopReason: 'awaiting_retry_decision' };
         await stopCertificationRun(query, runId, 'complete');
         return { ok: false, stopReason: 'complete' };
     }
@@ -306,6 +454,8 @@ export async function recordCertificationCase(
 ): Promise<{ ok: boolean; reason?: 'lease_lost' }> {
     const state = result.errorCode ? 'error' : result.passed ? 'passed' : 'failed';
     const rows = await query<any[]>(
+        // `lease_expires_at=NULL` releases the reservation as well as the lease:
+        // the case has a real cost now, and holding both would count it twice.
         `UPDATE agent_certification_cases
             SET state=$3, served_model=$4, cost_usd_cents=$5, latency_ms=$6,
                 transcript=$7::jsonb, tools=$8::jsonb, verification=$9::jsonb, scenario=$10::jsonb,
@@ -442,36 +592,80 @@ export async function certificationProgress(
     });
 }
 
+export interface CertificationEvidenceAuthorities {
+    /** The subject each profile stands on today, by profile id. */
+    readonly subjects?: Readonly<Record<string, { configHash?: string; dependencyRevision?: string }>>;
+    /** Applied to every profile that has no entry in `subjects`. */
+    readonly configHash?: string;
+    readonly dependencyRevision?: string;
+}
+
+export interface CertificationEvidenceResult {
+    readonly evidence: readonly AgentReleaseRunEvidence[];
+    /** Cases dropped because the scenario they proved has since been rewritten. */
+    readonly staleCases: number;
+    /** Profiles dropped because the agent they were proven against has changed. */
+    readonly staleSubjects: readonly string[];
+}
+
 /**
  * Turns the ledger into the evidence the certification report reads.
  *
- * One sealed run per channel, because that is how `certifyProfile` slices
- * evidence, and only cases whose stored definition hash still matches the pack
- * today: a scenario rewritten since it passed was proven in a form that no
- * longer exists, which is not proof of the form that does. Those are dropped
- * here rather than counted, and `staleCases` says how many so the drop is
- * visible instead of silent.
+ * One sealed run per channel AND per profile, because the subject is per
+ * profile: a sealed run names one agentId and one configHash, so a seal
+ * covering two profiles would be claiming that one agent answered for both.
+ * `certifyProfile` iterates every row it is given and filters by scenario
+ * profile, so several seals per channel are exactly what it expects.
+ *
+ * Two independent authorities decide what still counts:
+ *
+ *  · the SCENARIO. A case whose stored definition hash no longer matches the
+ *    pack was proven in a form that does not exist any more. Dropped per case,
+ *    counted in `staleCases`;
+ *  · the SUBJECT. A profile whose agent has been reconfigured since is no
+ *    longer evidenced by that run. Dropped per profile, named in
+ *    `staleSubjects` — and, crucially, without taking the other profiles with
+ *    it. A shared authority used to invalidate all 76 for one edit.
  */
 export async function certificationEvidenceFromLedger(
     query: CertificationQuery, runId: string,
-    /**
-     * The authorities as they stand NOW. When either has moved, the whole run
-     * is evidence about a configuration that no longer exists and none of it is
-     * returned — invalidation is the run, not a per-case judgement, because
-     * every case in it ran against the same agent.
-     */
-    current?: { configHash?: string; dependencyRevision?: string },
-): Promise<{ evidence: readonly AgentReleaseRunEvidence[]; staleCases: number; staleRun?: string }> {
+    current?: CertificationEvidenceAuthorities,
+): Promise<CertificationEvidenceResult> {
+    const empty = { evidence: Object.freeze([]), staleCases: 0, staleSubjects: Object.freeze([]) };
     const [run] = await query<any[]>(
         `SELECT agent_id, config_hash, dependency_revision, k, threshold
            FROM agent_certification_runs WHERE id=$1::uuid`, [runId]);
-    if (!run) return { evidence: Object.freeze([]), staleCases: 0 };
-    if (current?.configHash && current.configHash !== String(run.config_hash)) {
-        return { evidence: Object.freeze([]), staleCases: 0, staleRun: 'config_changed' };
-    }
-    if (current?.dependencyRevision && current.dependencyRevision !== String(run.dependency_revision)) {
-        return { evidence: Object.freeze([]), staleCases: 0, staleRun: 'dependency_changed' };
-    }
+    if (!run) return empty;
+    const subjectRows = await query<any[]>(
+        `SELECT profile_id, agent_id, config_hash, dependency_revision
+           FROM agent_certification_subjects WHERE run_id=$1::uuid`, [runId]);
+    const subjects = new Map<string, { agentId: string; configHash: string; dependencyRevision: string }>(
+        (subjectRows ?? []).map(row => [String(row.profile_id), {
+            agentId: String(row.agent_id), configHash: String(row.config_hash),
+            dependencyRevision: String(row.dependency_revision),
+        }]));
+    // A run planned before subjects existed still has the run-level columns.
+    const fallback = {
+        agentId: String(run.agent_id), configHash: String(run.config_hash),
+        dependencyRevision: String(run.dependency_revision),
+    };
+    const staleSubjects = new Set<string>();
+    const subjectFor = (profileId: string) => {
+        const subject = subjects.get(profileId) ?? fallback;
+        const expected = current?.subjects?.[profileId]
+            ?? (current?.configHash || current?.dependencyRevision
+                ? { configHash: current?.configHash, dependencyRevision: current?.dependencyRevision }
+                : undefined);
+        if (expected?.configHash && expected.configHash !== subject.configHash) {
+            staleSubjects.add(profileId);
+            return null;
+        }
+        if (expected?.dependencyRevision && expected.dependencyRevision !== subject.dependencyRevision) {
+            staleSubjects.add(profileId);
+            return null;
+        }
+        return subject;
+    };
     const rows = await query<any[]>(
         `SELECT case_key, profile_id, scenario_key, language, channel_type, model, definition_hash,
                 served_model, scenario, verification
@@ -491,28 +685,46 @@ export async function certificationEvidenceFromLedger(
         return currentDefinitions.get(`${cacheKey}|${scenarioKey}`) ?? null;
     };
 
-    const byChannel = new Map<string, { scenarios: any[]; results: any[]; models: Set<string> }>();
+    type Bucket = {
+        channelType: string; profileId: string;
+        subject: { agentId: string; configHash: string; dependencyRevision: string };
+        scenarios: any[]; results: any[]; models: Set<string>;
+    };
+    const buckets = new Map<string, Bucket>();
     let staleCases = 0;
     for (const row of rows ?? []) {
-        if (definitionFor(row.profile_id, row.language, row.scenario_key) !== row.definition_hash) {
+        const profileId = String(row.profile_id);
+        const subject = subjectFor(profileId);
+        if (!subject) continue;
+        if (definitionFor(profileId, row.language, row.scenario_key) !== row.definition_hash) {
             staleCases++;
             continue;
         }
-        const channel = String(row.channel_type);
-        const bucket = byChannel.get(channel) ?? { scenarios: [], results: [], models: new Set<string>() };
+        const channelType = String(row.channel_type);
+        const key = `${channelType}|${profileId}`;
+        const bucket = buckets.get(key)
+            ?? { channelType, profileId, subject, scenarios: [], results: [], models: new Set<string>() };
         bucket.scenarios.push(row.scenario);
         bucket.results.push((row.verification as any) ?? null);
         bucket.models.add(String(row.served_model || row.model));
-        byChannel.set(channel, bucket);
+        buckets.set(key, bucket);
     }
-    const evidence = [...byChannel.entries()].map(([channelType, bucket]) => sealReleaseRun({
-        agentId: String(run.agent_id), dependencyRevision: String(run.dependency_revision),
-        configHash: String(run.config_hash), channelType, status: 'completed',
-        k: Number(run.k), passPolicy: 'all', threshold: Number(run.threshold),
-        models: [...bucket.models].sort(),
-        scenarios: bucket.scenarios, results: bucket.results.filter(Boolean),
-    }));
-    return { evidence: Object.freeze(evidence), staleCases };
+    const evidence = [...buckets.values()]
+        .sort((a, b) => `${a.channelType}|${a.profileId}`.localeCompare(`${b.channelType}|${b.profileId}`))
+        .map(bucket => sealReleaseRun({
+            agentId: bucket.subject.agentId,
+            dependencyRevision: bucket.subject.dependencyRevision,
+            configHash: bucket.subject.configHash,
+            channelType: bucket.channelType, status: 'completed',
+            k: Number(run.k), passPolicy: 'all', threshold: Number(run.threshold),
+            models: [...bucket.models].sort(),
+            scenarios: bucket.scenarios, results: bucket.results.filter(Boolean),
+        }));
+    return {
+        evidence: Object.freeze(evidence),
+        staleCases,
+        staleSubjects: Object.freeze([...staleSubjects].sort()),
+    };
 }
 
 /**
@@ -563,7 +775,15 @@ export async function driveCertificationRun(
                 errorCode: String(error?.message ?? 'runner_failed').slice(0, 200),
             };
         }
-        await input.transaction(query => recordCertificationCase(query, claim.lease, result));
+        const written = await input.transaction(query =>
+            recordCertificationCase(query, claim.lease, result));
+        if (!written.ok) {
+            // The lease was given to somebody else while this worker was
+            // running. It produced nothing the ledger accepted, so it counts
+            // nothing — and it stops, because a worker this far behind will
+            // most likely lose the next lease too.
+            return { processed, stopReason: 'lease_lost' };
+        }
         processed++;
         // Not `complete`: this worker did its share, which is a different fact
         // from the run having no work left. Reporting them the same would make

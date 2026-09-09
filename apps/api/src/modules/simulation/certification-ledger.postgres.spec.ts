@@ -257,9 +257,9 @@ const profileId = listCanonicalSubtypeExperienceProfileIds()[0];
         // against an agent that no longer exists, so none of it is evidence
         // about the one that does.
         expect(await certificationEvidenceFromLedger(sql, run.id, { configHash: 'config-2' }))
-            .toEqual({ evidence: [], staleCases: 0, staleRun: 'config_changed' });
+            .toEqual({ evidence: [], staleCases: 0, staleSubjects: [profileId] });
         expect(await certificationEvidenceFromLedger(sql, run.id, { dependencyRevision: 'dependency-2' }))
-            .toEqual({ evidence: [], staleCases: 0, staleRun: 'dependency_changed' });
+            .toEqual({ evidence: [], staleCases: 0, staleSubjects: [profileId] });
         expect((await certificationEvidenceFromLedger(sql, run.id,
             { configHash: 'config-1', dependencyRevision: 'dependency-1' })).evidence).toHaveLength(1);
 

@@ -174,12 +174,21 @@ Runbooks: `docs/runbooks/dispatch-reconciliation.md` y `docs/runbooks/dispatch-l
 
 ---
 
+## 8. Lo que queda: los gates externos — **corregido: son cinco, no cuatro**
+
+> **Corrección (9 de septiembre, tarde).** Esta sección decía cuatro gates y omitía el que la propia §4 hacía inevitable: certificar los 76 perfiles exige **llamadas generativas reales**, y eso necesita credencial de un proveedor LLM, modelos concretos, techo de gasto y autorización. No es el gate 1 —las credenciales de Meta/Telegram no compran tokens— y mezclarlos hacía desaparecer un permiso que cuesta dinero.
+>
+> El paquete de ese gate ya está calculado y es exacto: **78.120 casos, 139.940 llamadas al modelo, techo US$677,40 para un modelo, 233 h** ([`closure-state.md`](../../audits/2026-09-09/closure-state.md), generado desde el código). El §8 de abajo se conserva como estaba, con el quinto añadido.
+>
+> Esta sección tampoco debe leerse como cierre del programa: la §3 conserva 23 filas `No aceptado` y el trabajo local sigue abierto — está enumerado, ya no descrito, en `closure-state.md`.
+
 ## 8. Lo que queda: los cuatro gates externos
 
 1. **Credenciales, cuentas y destinatarios de prueba de proveedores** para los pilotos (WhatsApp/Meta, Instagram, Messenger, Telegram, correo). Todo el código, los fixtures, los transportes estrictos, la reconciliación, los runbooks y las alertas ya existen; falta con qué llamar.
 2. **Personas nuevas reclutadas** para la prueba moderada de onboarding, tours y accesibilidad. Los recorridos, la comprobación de meta por tour y las pruebas automáticas de accesibilidad ya están.
 3. **Cuentas autorizadas de alternativas** para ejecutar el benchmark. El arnés local ya se niega a resumir lo que no es una comparación (`0a5cd070`).
 4. **Aprobación explícita de push, deploy, migración y activación** de piloto o de producción.
+5. **Credencial de uno o más proveedores LLM, modelos concretos y techo de gasto autorizado** para ejecutar la matriz generativa. Distinto del gate 1: una cuenta de WhatsApp no compra tokens.
 
 Fuera de esos cuatro, lo que queda **no está bloqueado, está pendiente**: ejecutar las 268 tareas contra modelo/idioma/canal para certificar perfiles (H1), las familias de writers todavía bloqueadas (B2, C2), los lectores comerciales congelados (E2), el despacho diferido y las salidas/trazas restantes (G1) y la fragilidad de aislamiento de la §5.
 

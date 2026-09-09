@@ -84,7 +84,12 @@ describe('ningún llamador omite la región', () => {
             // Una llamada de un solo argumento compila perfecto y vuelve a
             // introducir el defecto en silencio, así que se prohíbe la forma.
             const singleArg = /normalizePhoneE164\(\s*[^),]*\s*\)/g;
-            const offenders = (caller.source.match(singleArg) || [])
+            // Anotado: `match()` devuelve `RegExpMatchArray | null` y el `|| []`
+            // producía la unión con `never[]`, así que el parámetro del filtro
+            // se estrechaba a `never` y `tsc` lo rechazaba. Sólo lo veía una
+            // corrida limpia: el build incremental se saltaba este fichero.
+            const matches: string[] = caller.source.match(singleArg) ?? [];
+            const offenders = matches
                 // `normalizePhoneE164(x, y)` no matchea; esto sólo caza la de
                 // un argumento. Se excluyen las menciones en comentarios.
                 .filter(match => !match.includes(','));

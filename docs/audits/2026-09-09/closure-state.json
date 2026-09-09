@@ -1,5 +1,5 @@
 {
-  "revision": "713823c408dc5c4eda78bf02c85d6ba86163ed10",
+  "revision": "1deec8d9c8069a840b79b171dcacb792aac60b77",
   "generatedFrom": [
     "modules/simulation/task-competence-matrix.ts",
     "modules/simulation/certification-plan.ts",
@@ -311,7 +311,7 @@
     ]
   },
   "agentOutputs": {
-    "stores": 19,
+    "stores": 20,
     "open": [
       {
         "id": "eval_runs",
@@ -336,17 +336,12 @@
       {
         "id": "handoff_summary",
         "store": "conversations.handoff_summary and internal_notes.content",
-        "remedy": "Clear both in the contact-erasure statement that already resets the conversation metadata, and record the external CRM note id so the copy can be retracted with it."
+        "remedy": "Record the external CRM note id when the summary is pushed, so the copy outside the platform can be retracted with the one inside it."
       },
       {
         "id": "quality_scores",
         "store": "conversation_quality_scores (judge verdict and its free-text resolution reason)",
         "remedy": "Record the release ids of the turn being judged, so a withdrawn release can take its verdicts with it."
-      },
-      {
-        "id": "benchmark_attempts",
-        "store": "the frozen benchmark corpus and the attempt transcripts summarised against it",
-        "remedy": "Give the attempt ledger a release id and a contact id when it is built, so both keys reach it from the first row rather than being retrofitted onto a corpus that already exists."
       },
       {
         "id": "outbound_queue_job",
@@ -370,7 +365,6 @@
       "resource_rentals"
     ],
     "unboundCharge": [
-      "catalog_orders",
       "property_bookings",
       "tour_bookings",
       "restaurant_orders"

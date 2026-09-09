@@ -5,7 +5,7 @@ Generado por `docs/audits/2026-09-09/generate-closure-state.cjs`. **Ningún núm
 programa que sí se escribieron a mano envejecieron —el 32/10 de la matriz, el `complete` de canales,
 «otras salidas», «faltan términos en otras familias»—, y ése es exactamente el motivo.
 
-Revisión: `713823c408dc5c4eda78bf02c85d6ba86163ed10`. Sin base de datos, sin modelo, sin proveedor, sin tenant.
+Revisión: `1deec8d9c8069a840b79b171dcacb792aac60b77`. Sin base de datos, sin modelo, sin proveedor, sin tenant.
 
 ## Matriz de tareas
 
@@ -39,7 +39,7 @@ Un modelo (`gpt-4.1-mini`), 5 canales, 4 idiomas, k=1:
 
 ## Dónde descansan las palabras del agente
 
-19 lugares inventariados, **8 abiertos**:
+20 lugares inventariados, **7 abiertos**:
 
 | Store | Qué lo cerraría |
 |---|---|
@@ -47,15 +47,14 @@ Un modelo (`gpt-4.1-mini`), 5 canales, 4 idiomas, k=1:
 | `simulation_runs` | Same as `eval_runs`: invalidate by release id when the release is retired. |
 | `agent_release_evidence` | Invalidate on retirement of the release the snapshot names, and join the contact-erasure fan-out. |
 | `quality_regression_cases` | Record the release id beside the source contact id when the case is frozen, so a retraction has a key. |
-| `handoff_summary` | Clear both in the contact-erasure statement that already resets the conversation metadata, and record the external CRM note id so the copy can be retracted with it. |
+| `handoff_summary` | Record the external CRM note id when the summary is pushed, so the copy outside the platform can be retracted with the one inside it. |
 | `quality_scores` | Record the release ids of the turn being judged, so a withdrawn release can take its verdicts with it. |
-| `benchmark_attempts` | Give the attempt ledger a release id and a contact id when it is built, so both keys reach it from the first row rather than being retrofitted onto a corpus that already exists. |
 | `outbound_queue_job` | Turn the durable dispatch switch on for the tenant, which routes the same reply through `agent_dispatch_outbox` — already reached by both keys. Until then this is the widest hole in the sweep. |
 
 ## Términos que el cliente aceptó
 
 15 familias. Sin comando vinculado: `appointment_transitions`, `repair_orders`, `class_bookings`, `insurance_quotes`, `property_bookings`, `tour_bookings`, `restaurant_orders`, `service_requests`, `photo_sessions`, `resource_rentals`.
 
-Sin cobro vinculado: `catalog_orders`, `property_bookings`, `tour_bookings`, `restaurant_orders`.
+Sin cobro vinculado: `property_bookings`, `tour_bookings`, `restaurant_orders`.
 
 Para actualizar: `node docs/audits/2026-09-09/generate-closure-state.cjs` desde la raíz.

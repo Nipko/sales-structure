@@ -1088,22 +1088,6 @@ export class ConversationsService {
                 turnEffects,
             );
 
-        // Persist the decision BEFORE any of it goes out, so a crash between the
-        // first bubble and the last one is resumed with the same words instead of
-        // a freshly generated answer stitched onto the old one.
-        const replyPmid = providerMessageId(normalizedMsg);
-        // Not for a reply that derives from learned examples. This key is
-        // reachable only by provider message id, so a release withdrawn later
-        // has no way to find it — the retraction clears the outbox, the widget
-        // replies and the turn envelope, and a copy of the same words would sit
-        // here for a day waiting to be replayed. The ledger already holds this
-        // turn and IS reachable by release, so nothing is lost by not caching it.
-        const derivesFromLearning = turnEffects.learningFootprints.some(
-            footprint => footprint.entries.length > 0);
-        if (response && !resumedReply && replyPmid && !isErrorFallback(response) && !derivesFromLearning) {
-            await this.redis.set(turnReplyKey(tenantId, replyPmid), response, 86400).catch(() => {});
-        }
-
         // Words that derive from learned examples whose provenance could not be
         // stated do not go out by any path. Aggregation used to swallow that
         // failure and hand admission an empty footprint, which reads as "this
@@ -1151,6 +1135,30 @@ export class ConversationsService {
                     entry.caption === undefined ? { url: entry.url } : { url: entry.url, caption: entry.caption }));
                 turnEffects.learningFootprints = stored.envelope.learningFootprints;
             }
+        }
+
+        // The words, cached, but only BEHIND the row that holds the whole answer.
+        //
+        // This key predates the ledger and used to be written the moment the
+        // model returned — ahead of the envelope. A crash in that window left the
+        // system preferring a lossy memory over a complete one: the retry
+        // replayed the text and the payment link, the attachments, the writers
+        // and the learned sources of that same turn were dropped, because words
+        // are all this key can hold. Written here it can only ever be a fallback
+        // for a turn whose ledger row does not exist — a tenant whose table was
+        // not provisioned — which is the single case it was introduced for.
+        //
+        // Not written at all for a reply that derives from learned examples: the
+        // key is reachable only by provider message id, so a release withdrawn
+        // later has no way to find it, while the retraction does clear the
+        // outbox, the widget replies and the turn envelope. Nor for one whose
+        // provenance was refused — that reply never leaves, and caching it left
+        // a copy a redelivery could still replay.
+        const replyPmid = providerMessageId(normalizedMsg);
+        const derivesFromLearning = turnEffects.learningFootprints.some(
+            footprint => footprint.entries.length > 0);
+        if (response && !resumedReply && replyPmid && !isErrorFallback(response) && !derivesFromLearning) {
+            await this.redis.set(turnReplyKey(tenantId, replyPmid), response, 86400).catch(() => {});
         }
 
         // Auto-progress signals from the RESOLVED inbound text (post audio/image processing,
@@ -1835,8 +1843,38 @@ export class ConversationsService {
 
         if (result.length === 0) {
             // Only reachable with a non-null external_id — a genuine redelivery.
+            //
+            // AND THE ROW'S ID HAS TO COME BACK WITH IT. `ON CONFLICT DO NOTHING`
+            // returns nothing, so this used to answer "duplicate, no id" — and an
+            // inbound id is the key to everything that makes a resumed turn safe:
+            // the turn ledger is opened by it (so the envelope, the payment link,
+            // the attachments, the writers and the learned sources of the
+            // interrupted attempt were never recovered), the committed dispatch
+            // batch is found by it (so the reply left through the legacy route
+            // while the batch that owned it stayed `prepared`), and `settle` is
+            // written by it (so a finished turn never recorded that it had
+            // finished). The ledger was unreachable on precisely the attempt it
+            // exists for. One SELECT restores all of it.
             this.logger.warn(`[Pipeline] Duplicate inbound ${externalId} for tenant ${tenantId} — already stored`);
-            return { duplicate: true };
+            const [stored] = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+                `SELECT id, conversation_id FROM messages
+                  WHERE external_id = $1 AND external_id IS NOT NULL LIMIT 1`,
+                [externalId],
+            ).catch((error: any) => {
+                this.logger.error(`[Pipeline] Could not read back the stored ${externalId}: ${error?.message}`);
+                return [] as any[];
+            });
+            // Same provider message, different conversation, is not a resume: it
+            // would carry another thread's ledger and batch into this turn. The
+            // redelivery of a message we really do hold is still a duplicate — it
+            // just cannot be continued here.
+            if (stored && String(stored.conversation_id) !== String(conversationId)) {
+                this.logger.error(
+                    `[Pipeline] Stored ${externalId} belongs to conversation ${stored.conversation_id}, `
+                    + `not ${conversationId} — not resuming`);
+                return { duplicate: true };
+            }
+            return { id: stored?.id as string | undefined, duplicate: true };
         }
 
         // Funnel stage 3: stamp first inbound message arrival on the tenant

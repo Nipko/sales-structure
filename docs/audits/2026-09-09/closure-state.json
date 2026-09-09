@@ -1,5 +1,5 @@
 {
-  "revision": "ee99ee030bedeb27224ef22bf349f9315a13c8e0",
+  "revision": "fb1c1366e27bcd0ef3ce073935656105f1a87c61",
   "generatedFrom": [
     "modules/simulation/task-competence-matrix.ts",
     "modules/simulation/certification-plan.ts",
@@ -352,22 +352,7 @@
   },
   "termsBinding": {
     "families": 15,
-    "unboundCommand": [
-      "appointment_transitions",
-      "repair_orders",
-      "class_bookings",
-      "insurance_quotes",
-      "property_bookings",
-      "tour_bookings",
-      "restaurant_orders",
-      "service_requests",
-      "photo_sessions",
-      "resource_rentals"
-    ],
-    "unboundCharge": [
-      "property_bookings",
-      "tour_bookings",
-      "restaurant_orders"
-    ]
+    "unboundCommand": [],
+    "unboundCharge": []
   }
 }

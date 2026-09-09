@@ -5,10 +5,10 @@ el estado sale de ella: con una condición local sin cumplir la fila está `abie
 cumplida y un gate externo nombrado está `bloqueada`; sólo sin condición y sin gate está `aceptada`.
 Cerrar un hueco cambia esta tabla cambiando el código, y reabrirlo la cambia de vuelta.
 
-Revisión: `b9f67348ef116a9070e48f3ae16cc0fb9b5bc536`.
+Revisión: `fb1c1366e27bcd0ef3ce073935656105f1a87c61`.
 
-**El programa no está terminado.** 3 filas aceptadas, 17 bloqueadas por un
-gate externo concreto y 5 abiertas; 0 perfiles certificados
+**El programa no está terminado.** 5 filas aceptadas, 17 bloqueadas por un
+gate externo concreto y 3 abiertas; 0 perfiles certificados
 de 76.
 
 Sin contradicciones: ninguna fila se declara aceptada con una condición abierta o un gate pendiente, ninguna se declara bloqueada sin nombrar el gate y ninguna se declara abierta sin decir qué falta.
@@ -25,14 +25,14 @@ Sin contradicciones: ninguna fila se declara aceptada con una condición abierta
 
 | ID | Estado | De dónde sale | Qué falta | Evidencia | Commits |
 |---|---|---|---|---|---|
-| A1 | **abierta** | contador | 10 familias sin comando ligado y 3 sin cobro ligado | Inventario calculado de 15 familias (`terms-binding-inventory.ts`). Cita y matrícula ligan comando y cobro; el pedido de catálogo pasó a cobrar desde `orders.catalog_terms` y a rechazar la fila que no acordó nada. Sin comando ligado: `appointment_transitions`, `repair_orders`, `class_bookings`, `insurance_quotes`, `property_bookings`, `tour_bookings`, `restaurant_orders`, `service_requests`, `photo_sessions`, `resource_rentals`. Sin cobro ligado: `property_bookings`, `tour_bookings`, `restaurant_orders`. | `a806ef62` `f121dc5f` |
+| A1 | **aceptada** | contador | — | Inventario calculado de 15 familias (`terms-binding-inventory.ts`). Cita y matrícula ligan comando y cobro; el pedido de catálogo pasó a cobrar desde `orders.catalog_terms` y a rechazar la fila que no acordó nada. Sin comando ligado: . Sin cobro ligado: . | `a806ef62` `f121dc5f` |
 | A2 | **bloqueada** por gate 1 | **declaración** | — | Comando, retención, settlement, avisos durables y revisión sin reenvío implementados y probados con PostgreSQL. La conciliación contra un proveedor real no puede correrse sin su cuenta. | — |
 | A3 | **bloqueada** por gate 1 | **declaración** | — | Propuesta, consentimiento, aprobación humana y entrega durable probados con PostgreSQL y Socket.IO. La entrega real necesita un canal conectado. | — |
 | A4 | **bloqueada** por gate 1 | **declaración** | — | Transacciones, lectores, promoción y restauración única comprobadas contra PostgreSQL. | — |
 | B1 | **bloqueada** por gate 1 | corrida (`docs/audits/2026-09-09/order-sensitivity-runs.md`) | — | El turno completo corre de punta a punta sobre PostgreSQL, Valkey, BullMQ y Socket.IO reales, con crash en cada frontera, una erasure en vuelo y los primitivos a través de un PgBouncer real en modo transacción. | — |
 | B2 | **aceptada** | contador | — | Las 15 familias del registro tienen writer canónico auditado, con id de inbound compartido con el runtime y el ledger. Cero bloqueadas. | — |
 | C1 | **bloqueada** por gate 1 | **declaración** | — | Árbitro, dueño por puerto, consentimiento por misión, corrección y reanudación probados en los cuatro idiomas del contrato (es/en/pt/fr). | — |
-| C2 | **abierta** | contador | 10 familias cuyo writer ejecuta sin que le muestren lo acordado | Ciclos de agenda y de mascotas con recibos atómicos comprobados. El cierre de esta fila es el mismo que el de A1. | — |
+| C2 | **aceptada** | contador | — | Ciclos de agenda y de mascotas con recibos atómicos comprobados. El cierre de esta fila es el mismo que el de A1. | — |
 | C3 | **bloqueada** por gate 2 | contador | — | Contratos MCP y dependencias base implementados. El ejecutor está cableado a servicio, cola y endpoint, y se ensaya sin proveedor; la cobertura por tarea la decide una corrida real: 0 perfiles certificados de 76. | — |
 | D1 | **bloqueada** por gate 3 | **declaración** | — | Muestreo, revisión humana con CAS y anotaciones RAG implementados. No se certifica veracidad global y el propio informe lo dice; una revisión de muestra necesita personas. | — |
 | D2 | **abierta** | **declaración** | calidad semántica bajo carga sin dataset, umbrales ni números publicados | CAS, recuperación, fusión de identidad y borrado comprobados con pgvector real. Disponibilidad bajo carga está medida; calidad semántica bajo carga no, y una no es la otra. | — |
@@ -66,8 +66,8 @@ Sin contradicciones: ninguna fila se declara aceptada con una condición abierta
 | Perfiles certificados | 0 |
 | Tareas sin positivo o sin verificador, fuera de las declaradas | 0 |
 | Familias con términos inventariadas | 15 |
-| Familias sin comando ligado | 10 |
-| Familias sin cobro ligado | 3 |
+| Familias sin comando ligado | 0 |
+| Familias sin cobro ligado | 0 |
 | Familias de writer bloqueadas | 0 |
 | Lugares donde descansan las palabras del agente | 20 |
 | De ellos, abiertos | 7 |

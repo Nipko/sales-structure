@@ -1,12 +1,12 @@
 {
   "version": 1,
-  "revision": "b9f67348ef116a9070e48f3ae16cc0fb9b5bc536",
-  "generatedAt": "2026-09-09T20:17:18.980Z",
+  "revision": "fb1c1366e27bcd0ef3ce073935656105f1a87c61",
+  "generatedAt": "2026-09-09T22:40:18.189Z",
   "finished": false,
   "counts": {
-    "aceptada": 3,
+    "aceptada": 5,
     "bloqueada": 17,
-    "abierta": 5
+    "abierta": 3
   },
   "provenance": {
     "derived": 8,
@@ -26,23 +26,8 @@
     "tasks": 268,
     "certifiedProfiles": 0,
     "termsFamilies": 15,
-    "unboundCommand": [
-      "appointment_transitions",
-      "repair_orders",
-      "class_bookings",
-      "insurance_quotes",
-      "property_bookings",
-      "tour_bookings",
-      "restaurant_orders",
-      "service_requests",
-      "photo_sessions",
-      "resource_rentals"
-    ],
-    "unboundCharge": [
-      "property_bookings",
-      "tour_bookings",
-      "restaurant_orders"
-    ],
+    "unboundCommand": [],
+    "unboundCharge": [],
     "blockedWriterFamilies": [],
     "outputStores": 20,
     "openOutputStores": [
@@ -62,13 +47,13 @@
   "rows": [
     {
       "id": "A1",
-      "open": 13,
-      "openLabel": "10 familias sin comando ligado y 3 sin cobro ligado",
+      "open": 0,
+      "openLabel": "0 familias sin comando ligado y 0 sin cobro ligado",
       "gates": [],
-      "status": "abierta",
+      "status": "aceptada",
       "provenance": "derived",
       "artefact": null,
-      "evidence": "Inventario calculado de 15 familias (`terms-binding-inventory.ts`). Cita y matrícula ligan comando y cobro; el pedido de catálogo pasó a cobrar desde `orders.catalog_terms` y a rechazar la fila que no acordó nada. Sin comando ligado: `appointment_transitions`, `repair_orders`, `class_bookings`, `insurance_quotes`, `property_bookings`, `tour_bookings`, `restaurant_orders`, `service_requests`, `photo_sessions`, `resource_rentals`. Sin cobro ligado: `property_bookings`, `tour_bookings`, `restaurant_orders`.",
+      "evidence": "Inventario calculado de 15 familias (`terms-binding-inventory.ts`). Cita y matrícula ligan comando y cobro; el pedido de catálogo pasó a cobrar desde `orders.catalog_terms` y a rechazar la fila que no acordó nada. Sin comando ligado: . Sin cobro ligado: .",
       "commits": [
         "a806ef62",
         "f121dc5f"
@@ -152,10 +137,10 @@
     },
     {
       "id": "C2",
-      "open": 10,
-      "openLabel": "10 familias cuyo writer ejecuta sin que le muestren lo acordado",
+      "open": 0,
+      "openLabel": "0 familias cuyo writer ejecuta sin que le muestren lo acordado",
       "gates": [],
-      "status": "abierta",
+      "status": "aceptada",
       "provenance": "derived",
       "artefact": null,
       "evidence": "Ciclos de agenda y de mascotas con recibos atómicos comprobados. El cierre de esta fila es el mismo que el de A1.",

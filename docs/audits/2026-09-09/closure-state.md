@@ -5,7 +5,7 @@ Generado por `docs/audits/2026-09-09/generate-closure-state.cjs`. **Ningún núm
 programa que sí se escribieron a mano envejecieron —el 32/10 de la matriz, el `complete` de canales,
 «otras salidas», «faltan términos en otras familias»—, y ése es exactamente el motivo.
 
-Revisión: `ee99ee030bedeb27224ef22bf349f9315a13c8e0`. Sin base de datos, sin modelo, sin proveedor, sin tenant.
+Revisión: `fb1c1366e27bcd0ef3ce073935656105f1a87c61`. Sin base de datos, sin modelo, sin proveedor, sin tenant.
 
 ## Matriz de tareas
 
@@ -53,8 +53,8 @@ Un modelo (`gpt-4.1-mini`), 5 canales, 4 idiomas, k=1:
 
 ## Términos que el cliente aceptó
 
-15 familias. Sin comando vinculado: `appointment_transitions`, `repair_orders`, `class_bookings`, `insurance_quotes`, `property_bookings`, `tour_bookings`, `restaurant_orders`, `service_requests`, `photo_sessions`, `resource_rentals`.
+15 familias. Sin comando vinculado: —.
 
-Sin cobro vinculado: `property_bookings`, `tour_bookings`, `restaurant_orders`.
+Sin cobro vinculado: —.
 
 Para actualizar: `node docs/audits/2026-09-09/generate-closure-state.cjs` desde la raíz.

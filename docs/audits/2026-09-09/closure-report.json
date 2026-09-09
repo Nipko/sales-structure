@@ -1,12 +1,12 @@
 {
   "version": 1,
-  "revision": "ee99ee030bedeb27224ef22bf349f9315a13c8e0",
-  "generatedAt": "2026-09-09T20:16:14.800Z",
+  "revision": "b9f67348ef116a9070e48f3ae16cc0fb9b5bc536",
+  "generatedAt": "2026-09-09T20:17:18.980Z",
   "finished": false,
   "counts": {
     "aceptada": 3,
-    "bloqueada": 15,
-    "abierta": 7
+    "bloqueada": 17,
+    "abierta": 5
   },
   "provenance": {
     "derived": 8,
@@ -163,15 +163,15 @@
     },
     {
       "id": "C3",
-      "open": 1,
-      "openLabel": "la cobertura por tarea depende de una certificación que nadie ejecutó",
+      "open": 0,
+      "openLabel": "el ejecutor de certificación no está cableado a ningún entrypoint",
       "gates": [
         2
       ],
-      "status": "abierta",
+      "status": "bloqueada",
       "provenance": "derived",
       "artefact": null,
-      "evidence": "Contratos MCP y dependencias base implementados. La cobertura por tarea la decide H1: 0 perfiles certificados de 76.",
+      "evidence": "Contratos MCP y dependencias base implementados. El ejecutor está cableado a servicio, cola y endpoint, y se ensaya sin proveedor; la cobertura por tarea la decide una corrida real: 0 perfiles certificados de 76.",
       "commits": []
     },
     {
@@ -249,15 +249,15 @@
     },
     {
       "id": "F1",
-      "open": 1,
-      "openLabel": "el assessment no puede cerrarse sobre tareas que nadie certificó",
+      "open": 0,
+      "openLabel": "el ejecutor de certificación no está cableado a ningún entrypoint",
       "gates": [
         2
       ],
-      "status": "abierta",
+      "status": "bloqueada",
       "provenance": "derived",
       "artefact": null,
-      "evidence": "Assessment común implementado y probado; su cierre es la certificación de tareas reales (H1).",
+      "evidence": "Assessment común implementado y probado; su cierre es una corrida real de certificación, cuyo ejecutor ya existe y se ensaya sin proveedor.",
       "commits": []
     },
     {

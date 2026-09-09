@@ -5,10 +5,10 @@ el estado sale de ella: con una condición local sin cumplir la fila está `abie
 cumplida y un gate externo nombrado está `bloqueada`; sólo sin condición y sin gate está `aceptada`.
 Cerrar un hueco cambia esta tabla cambiando el código, y reabrirlo la cambia de vuelta.
 
-Revisión: `ee99ee030bedeb27224ef22bf349f9315a13c8e0`.
+Revisión: `b9f67348ef116a9070e48f3ae16cc0fb9b5bc536`.
 
-**El programa no está terminado.** 3 filas aceptadas, 15 bloqueadas por un
-gate externo concreto y 7 abiertas; 0 perfiles certificados
+**El programa no está terminado.** 3 filas aceptadas, 17 bloqueadas por un
+gate externo concreto y 5 abiertas; 0 perfiles certificados
 de 76.
 
 Sin contradicciones: ninguna fila se declara aceptada con una condición abierta o un gate pendiente, ninguna se declara bloqueada sin nombrar el gate y ninguna se declara abierta sin decir qué falta.
@@ -33,14 +33,14 @@ Sin contradicciones: ninguna fila se declara aceptada con una condición abierta
 | B2 | **aceptada** | contador | — | Las 15 familias del registro tienen writer canónico auditado, con id de inbound compartido con el runtime y el ledger. Cero bloqueadas. | — |
 | C1 | **bloqueada** por gate 1 | **declaración** | — | Árbitro, dueño por puerto, consentimiento por misión, corrección y reanudación probados en los cuatro idiomas del contrato (es/en/pt/fr). | — |
 | C2 | **abierta** | contador | 10 familias cuyo writer ejecuta sin que le muestren lo acordado | Ciclos de agenda y de mascotas con recibos atómicos comprobados. El cierre de esta fila es el mismo que el de A1. | — |
-| C3 | **abierta** | contador | la cobertura por tarea depende de una certificación que nadie ejecutó (y después, gate 2) | Contratos MCP y dependencias base implementados. La cobertura por tarea la decide H1: 0 perfiles certificados de 76. | — |
+| C3 | **bloqueada** por gate 2 | contador | — | Contratos MCP y dependencias base implementados. El ejecutor está cableado a servicio, cola y endpoint, y se ensaya sin proveedor; la cobertura por tarea la decide una corrida real: 0 perfiles certificados de 76. | — |
 | D1 | **bloqueada** por gate 3 | **declaración** | — | Muestreo, revisión humana con CAS y anotaciones RAG implementados. No se certifica veracidad global y el propio informe lo dice; una revisión de muestra necesita personas. | — |
 | D2 | **abierta** | **declaración** | calidad semántica bajo carga sin dataset, umbrales ni números publicados | CAS, recuperación, fusión de identidad y borrado comprobados con pgvector real. Disponibilidad bajo carga está medida; calidad semántica bajo carga no, y una no es la otra. | — |
 | D3 | **bloqueada** por gate 3 | **declaración** | — | Atribución observable y diagnóstico técnico probados. No equivalen a veracidad ni a entailment, y el informe lo dice. | — |
 | E1 | **aceptada** | contador | — | 76 perfiles, 268 tareas, 146 que comprometen al negocio, y cero tareas sin caso positivo propio o sin verificador fuera de las 5 declaradas: `file_claim` en las cinco subtipos de seguros existe para probar que el escalón de identidad la rechaza, así que no hay efecto que verificar y un "positivo" sería el agente haciendo lo que no debe. Certificar estas tareas es H1. | — |
 | E2 | **abierta** | **declaración** | lectores comerciales sin congelar y sin evaluación bajo tráfico concurrente | Núcleo, FAQs, políticas, temporalidad, réplica RAG administrada, jueces y retención integrados. | — |
 | E3 | **bloqueada** por gate 5 y 1 | **declaración** | — | Outbox durable, transporte estricto, recuperación, reconciliación con actor y evidencia, pantalla de operador y alerta real. El interruptor sigue apagado por defecto: encenderlo es una activación. | — |
-| F1 | **abierta** | contador | el assessment no puede cerrarse sobre tareas que nadie certificó (y después, gate 2) | Assessment común implementado y probado; su cierre es la certificación de tareas reales (H1). | — |
+| F1 | **bloqueada** por gate 2 | contador | — | Assessment común implementado y probado; su cierre es una corrida real de certificación, cuyo ejecutor ya existe y se ensaya sin proveedor. | — |
 | F2 | **aceptada** | contador | — | Cada blocker y cada recomendación del assessment tiene resolución declarada, con prueba de cobertura que falla al aparecer un código sin ella; el universo lo produce el código que emite los códigos, no un barrido de texto. Las 8 operaciones que Assist no ejecuta declaran requisitos no secretos, preparación, pantalla exacta y qué releer al volver. | `37411849` `f2a976d6` |
 | F3 | **bloqueada** por gate 3 | **declaración** | — | Recorridos por tareas verificadas implementados y con pruebas de accesibilidad automáticas. Las sesiones moderadas necesitan personas. | — |
 | F4 | **bloqueada** por gate 3 | **declaración** | — | Un solo vocabulario de seis estados proyectado y mostrado en el tablero. La validación visual necesita personas. | — |

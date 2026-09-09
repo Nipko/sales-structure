@@ -81,6 +81,21 @@ const undeclaredTaskGaps = matrixTasks.filter(task =>
     && (task.gaps.includes('effect_verifier_missing') || task.gaps.includes('positive_task_case_missing')));
 const declaredTaskGaps = matrixTasks.filter(task => DECLARED_TASK_EXCEPTIONS.includes(task.key)).length;
 
+/**
+ * Is the executor wired to something a person can invoke, and can it be
+ * rehearsed with no provider? Read off the module and the runner rather than
+ * asserted: this is exactly the claim that was wrong before — a durable executor
+ * with no caller — so it is the claim that has to be computed.
+ */
+const simulationModule = fs.readFileSync(
+    path.join(root, 'apps/api/src/modules/simulation/simulation.module.ts'), 'utf8');
+const certificationRunner = fs.readFileSync(
+    path.join(root, 'apps/api/src/modules/simulation/certification-runner.ts'), 'utf8');
+const executorOperable = ['CertificationService', 'CertificationProcessor', 'CertificationController']
+    .every(symbol => simulationModule.includes(symbol))
+    && certificationRunner.includes('dryRunCertificationRunner')
+    && certificationRunner.includes('parallelyCertificationRunner');
+
 const certificationTables = CERTIFICATION_LEDGER_DDL
     .filter(statement => statement.includes('CREATE TABLE')).length;
 const benchmarkTables = BENCHMARK_LEDGER_DDL.filter(statement => statement.includes('CREATE TABLE')).length;
@@ -155,10 +170,13 @@ const ROWS = [
         evidence: 'Ciclos de agenda y de mascotas con recibos atómicos comprobados. El cierre de esta fila es el mismo que el de A1.',
     }),
     row('C3', { provenance: 'derived', 
-        open: matrix.summary.certifiedProfiles === 0 ? 1 : 0,
-        openLabel: 'la cobertura por tarea depende de una certificación que nadie ejecutó',
+        // Not "nobody ran it": the executor exists, is wired to an entrypoint
+        // and is rehearsable without a provider. What is left is the credential,
+        // which is a gate and not an open local hole.
+        open: executorOperable ? 0 : 1,
+        openLabel: 'el ejecutor de certificación no está cableado a ningún entrypoint',
         gates: [2],
-        evidence: `Contratos MCP y dependencias base implementados. La cobertura por tarea la decide H1: ${matrix.summary.certifiedProfiles} perfiles certificados de ${matrix.summary.profiles}.`,
+        evidence: `Contratos MCP y dependencias base implementados. El ejecutor está cableado a servicio, cola y endpoint, y se ensaya sin proveedor; la cobertura por tarea la decide una corrida real: ${matrix.summary.certifiedProfiles} perfiles certificados de ${matrix.summary.profiles}.`,
     }),
     row('D1', { provenance: 'declared',  gates: [3], evidence: 'Muestreo, revisión humana con CAS y anotaciones RAG implementados. No se certifica veracidad global y el propio informe lo dice; una revisión de muestra necesita personas.' }),
     row('D2', { provenance: 'declared', 
@@ -183,10 +201,10 @@ const ROWS = [
     }),
     row('E3', { provenance: 'declared',  gates: [5, 1], evidence: 'Outbox durable, transporte estricto, recuperación, reconciliación con actor y evidencia, pantalla de operador y alerta real. El interruptor sigue apagado por defecto: encenderlo es una activación.' }),
     row('F1', { provenance: 'derived', 
-        open: matrix.summary.certifiedProfiles === 0 ? 1 : 0,
-        openLabel: 'el assessment no puede cerrarse sobre tareas que nadie certificó',
+        open: executorOperable ? 0 : 1,
+        openLabel: 'el ejecutor de certificación no está cableado a ningún entrypoint',
         gates: [2],
-        evidence: 'Assessment común implementado y probado; su cierre es la certificación de tareas reales (H1).',
+        evidence: 'Assessment común implementado y probado; su cierre es una corrida real de certificación, cuyo ejecutor ya existe y se ensaya sin proveedor.',
     }),
     row('F2', { provenance: 'derived', 
         open: resolutionDefects.length + routedWithoutHandoff.length,

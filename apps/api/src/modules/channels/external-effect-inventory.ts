@@ -305,15 +305,17 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
                 + 'that typed it'),
             idempotency: none('no dedupeId, no job id, no unique constraint. A double click, a retried '
                 + 'request or a reconnecting socket sends the message again'),
-            receipt: none('the provider id returned by `sendMessage` is discarded. Worse, the `messages` '
-                + 'row is inserted with status `delivered` BEFORE the send, and the send is wrapped in a '
-                + 'catch that only logs — so a message that never left reads as delivered in the inbox'),
-            uncertainOutcome: none('`sendMessage` returns null for every failure and the catch swallows '
-                + 'it, so a timeout that may have reached the customer is indistinguishable from a refusal'),
+            receipt: partial('the `messages` row is now written `pending` and settled to `sent` or '
+                + '`failed` by the outcome of the send, and the failure reaches the agent instead of only '
+                + 'the log. Still partial: the provider id returned by `sendMessage` is discarded, so '
+                + 'there is no identifier to reconcile the send against later'),
+            uncertainOutcome: none('`sendMessage` returns null for every failure, so a timeout that may '
+                + 'have reached the customer settles as `failed` exactly like a refusal did. The status is '
+                + 'honest about "did not confirm"; it cannot distinguish "may have arrived"'),
             erasure: partial('GDPR erasure redacts the `messages` row like any other. There is no other '
                 + 'record of the attempt to erase, which is the same reason there is nothing to recover'),
-            recovery: none('nothing durable exists to retry from. A failed human reply is lost and the '
-                + 'agent is not told'),
+            recovery: none('nothing durable exists to retry from. A failed human reply is now visible to '
+                + 'the agent, but re-sending it is a person typing it again'),
         },
     }),
 

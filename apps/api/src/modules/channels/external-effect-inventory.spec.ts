@@ -344,18 +344,26 @@ describe('the inventory is honest about what is not covered', () => {
         }
     });
 
-    it('records the human reply as the worst-covered producer, because it is', () => {
+    it('keeps the human reply honest about the half of it that is still uncovered', () => {
         const human = EXTERNAL_EFFECT_PRODUCERS.find(row => row.id === 'human.agent.reply')!;
-        // Four of six at `none`, and the receipt cell has to keep saying why:
-        // the row is written `delivered` before the send, and the send is
-        // swallowed. A future edit that softens this without changing
-        // `agent-console.service.ts` fails here.
-        expect(EFFECT_PROPERTIES.filter(property => human.properties[property].level === 'none').length)
-            .toBeGreaterThanOrEqual(4);
-        expect(human.properties.receipt.note).toContain('delivered');
         const service = fs.readFileSync(
             path.join(SRC, 'modules', 'agent-console', 'agent-console.service.ts'), 'utf8');
-        expect(service).toContain("'outbound', 'delivered'");
+        // The worst cell of this table was the receipt: the row was written
+        // `delivered` before the send and the send was swallowed by a catch that
+        // only logged, so a reply that never left read as delivered. That is
+        // fixed — the row starts `pending` and settles on the outcome — and the
+        // inventory may only say so while the code still does it.
+        expect(service).toContain("'outbound', 'pending'");
+        expect(service).not.toContain("'outbound', 'delivered'");
+        expect(human.properties.receipt.level).toBe('partial');
+        expect(human.properties.receipt.note).toContain('pending');
+
+        // What did NOT change: no queue, no lease, no dedupe, nothing durable to
+        // retry from, and `sendMessage` still returns null for every failure, so
+        // a timeout that may have reached the customer settles like a refusal.
+        for (const property of ['authority', 'idempotency', 'uncertainOutcome', 'recovery'] as const) {
+            expect(human.properties[property].level).toBe('none');
+        }
         expect(service).toContain('Could not send agent message via channel');
     });
 

@@ -91,6 +91,14 @@ export interface ConversationDetail {
 
 export interface ConversationMessage {
     id: string;
+    /**
+     * What became of an outbound message, when this is one that was just sent.
+     *
+     * `pending` until a provider accepted it. The row used to be written as
+     * `delivered` before anything was sent, so the console had nothing to
+     * distinguish a reply that left from one whose send threw into a warn.
+     */
+    status?: 'pending' | 'sent' | 'failed';
     content: string;
     type: 'text' | 'image' | 'document' | 'audio' | 'note';
     sender: 'customer' | 'agent' | 'ai' | 'system';
@@ -406,11 +414,17 @@ export class AgentConsoleService {
             [conversationId],
         );
 
+        // 'pending', not 'delivered'. This row was written as delivered BEFORE
+        // anything was sent, and the send below is inline in a catch that only
+        // warns — so a reply that never left the building read as delivered in
+        // the inbox, the agent moved on, and the customer was still waiting.
+        // The durable dispatch path already learned this rule: history says
+        // pending until a provider accepts the effect it describes.
         const result = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
             `INSERT INTO messages (conversation_id, content_text, content_type, direction, status, metadata, created_at)
-       VALUES ($1::uuid, $2, $3, 'outbound', 'delivered', $4::jsonb, NOW())
-       RETURNING id, content_text, content_type, direction, created_at, metadata`,
+       VALUES ($1::uuid, $2, $3, 'outbound', 'pending', $4::jsonb, NOW())
+       RETURNING id, content_text, content_type, direction, status, created_at, metadata`,
             [conversationId, contentText, contentType, metadataJson],
         );
 
@@ -437,7 +451,30 @@ export class AgentConsoleService {
             this.logger.warn(`Could not update first_response_at: ${e.message}`);
         }
 
+        /**
+         * What the row is allowed to say about a send that already happened.
+         *
+         * Never downgrades a status a provider webhook may have written first:
+         * a `delivered` or `read` that arrived while this was still settling is
+         * newer evidence than anything this code knows, and `redacted` outranks
+         * everything. Same rule the outbox applies, for the same reason.
+         */
+        const settle = async (status: 'sent' | 'failed', detail?: string) => {
+            try {
+                await this.prisma.executeInTenantSchema(schemaName,
+                    `UPDATE messages SET status=$2,
+                        metadata = COALESCE(metadata,'{}'::jsonb) || $3::jsonb
+                     WHERE id=$1::uuid AND status NOT IN ('redacted','delivered','read')`,
+                    [msg.id, status, JSON.stringify(detail ? { sendError: detail.slice(0, 200) } : {})]);
+                msg.status = status;
+            } catch (error: any) {
+                // The send outcome could not be recorded. Leaving the row
+                // `pending` is the honest state: nothing here may claim it left.
+                this.logger.error(`Agent message ${msg.id} outcome not recorded (${status}): ${error?.message}`);
+            }
+        };
         // Obtener token real y enviar via el canal (WhatsApp, etc.)
+        let sendAttempted = false;
         try {
             // Buscar el canal activo de la conversación para saber a qué número enviar
             const convRows = await this.prisma.executeInTenantSchema<any[]>(
@@ -458,6 +495,7 @@ export class AgentConsoleService {
                 const outContent: any = isMedia
                     ? { type: contentType, mediaUrl: this.absoluteMediaUrl(mediaUrl), caption: caption || content || undefined, ...(filename ? { filename } : {}) }
                     : { type: 'text', text: content };
+                sendAttempted = true;
                 await this.channelGateway.sendMessage(
                     {
                         tenantId,
@@ -468,13 +506,20 @@ export class AgentConsoleService {
                     },
                     creds.accessToken,
                 );
+                await settle('sent');
             }
         } catch (e: any) {
             this.logger.warn(`Could not send agent message via channel: ${e.message}`);
+            // The agent has to be told. A failure that only reaches the server
+            // log leaves them believing the customer was answered.
+            if (sendAttempted) await settle('failed', e?.message);
         }
 
         return {
             id: msg.id,
+            // What actually happened to it, so the console can show a reply that
+            // did not leave instead of one more line that looks sent.
+            status: msg.status,
             content: msg.content_text,
             type: msg.content_type,
             sender: 'agent',

@@ -55,3 +55,19 @@ No fue serializar. Fue quitar el estado compartido:
   que es lo que hace reproducible una corrida sospechosa.
 
 Registro crudo: `scratchpad/order-20260909.log`, `order-4711.log`, `order-90210.log`.
+
+## Después del trabajo posterior
+
+Las tres corridas de arriba fijaron el aislamiento sobre 580 suites. El trabajo
+que siguió agregó cuatro suites y 44 pruebas, así que la verificación se repitió
+al final con otro orden más:
+
+| Seed | Suites | Pruebas | Fallidas | Omitidas | Tiempo |
+|---|---:|---:|---:|---:|---:|
+| `verify-20260909` | 584 / 584 | 6382 / 6382 | 0 | 0 | 212,2 s |
+
+La corrida anterior a ésta, con seed `final-20260909`, terminó con **una** suite
+en rojo y vale la pena decir cuál: `agent-output-inventory.spec.ts`, porque el
+ledger de certificación y el de benchmark guardan un transcript y ninguno de los
+dos estaba declarado en el inventario. Ese barrido existe exactamente para eso,
+y lo encontró en la primera corrida después de que ambos aparecieran.

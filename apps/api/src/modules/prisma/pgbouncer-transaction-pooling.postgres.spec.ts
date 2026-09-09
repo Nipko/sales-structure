@@ -155,10 +155,14 @@ const ready = !!pooledUrl && !!directUrl;
                 await query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))::text', [`agent-privacy:${schema}`]);
                 await query('INSERT INTO probe(id, note) VALUES ($1::uuid, $2)', [row, 'dentro del lote']);
             });
+            // This tenant's fence, not every advisory lock in the database: the
+            // database is shared with whatever suite runs beside this one, and a
+            // neighbour's lock says nothing about this transaction. The try-lock
+            // answers false if anything still holds it and releases at COMMIT.
             const [locks] = (await asClient(client => client.query(
-                `SELECT count(*)::int AS held FROM pg_locks WHERE locktype='advisory'
-                  AND database=(SELECT oid FROM pg_database WHERE datname=current_database())`))).rows;
-            expect(Number(locks.held)).toBe(0);
+                'SELECT pg_try_advisory_xact_lock(hashtextextended($1,0)) AS free',
+                [`agent-privacy:${schema}`]))).rows;
+            expect(locks.free).toBe(true);
             const [stored] = await prisma.executeInTenantSchema(schema,
                 'SELECT note FROM probe WHERE id=$1::uuid', [row]);
             expect(stored.note).toBe('dentro del lote');

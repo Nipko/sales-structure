@@ -1152,12 +1152,21 @@ const ready = !!databaseUrl && !!redisUrl;
             await deliverCustomerMessage('sin candados de sesión');
             // Every lock this path takes is `pg_advisory_xact_lock*`, which ends
             // with its transaction. A session lock on a pooled connection would
-            // be handed to the next client still held.
-            const [held]: any[] = await client.$queryRawUnsafe(
-                `SELECT count(*)::int AS held FROM pg_locks
-                  WHERE locktype = 'advisory' AND database = (SELECT oid FROM pg_database
-                        WHERE datname = current_database())`);
-            expect(Number(held.held)).toBe(0);
+            // be handed to the next client still held — and the fence below is
+            // the one that would deadlock a whole tenant's privacy path.
+            //
+            // Asked about THIS tenant's key rather than by counting every
+            // advisory lock in the database: this database is shared with the
+            // suite running beside it, and a neighbour's lock is not evidence
+            // about this turn. A try-lock inside a transaction answers false if
+            // anything still holds it, and releases at COMMIT either way.
+            const free = await client.$transaction(async (tx: any) => {
+                const [row]: any[] = await tx.$queryRawUnsafe(
+                    'SELECT pg_try_advisory_xact_lock(hashtextextended($1,0)) AS free',
+                    `agent-privacy:${schema}`);
+                return row.free === true;
+            });
+            expect(free).toBe(true);
         });
 
         it('does not depend on a connection surviving between calls', async () => {

@@ -187,6 +187,16 @@ describe('el detector de rioplatense', () => {
         expect(rioplatenseMarkersIn('¿Me podés ayudar?')).toEqual(['podés']);
         // "Dale" solo es común en medio continente; sólo se marca la muletilla.
         expect(rioplatenseMarkersIn('Dale, gracias')).toEqual([]);
+        // `che` se listaba como `'che,'` y `'che '` para esquivar los falsos
+        // positivos, y no alcanzaba: cualquier pack que hablara del precio por
+        // NOCHE quedaba marcado como rioplatense. Un detector que marca de más
+        // termina desactivado, que es lo que este módulo advierte de sí mismo.
+        expect(rioplatenseMarkersIn('El precio por noche, con desayuno')).toEqual([]);
+        expect(rioplatenseMarkersIn('Traigo el coche a las ocho')).toEqual([]);
+        expect(rioplatenseMarkersIn('Che, una consulta')).toEqual(['che']);
+        // Y el límite es por letra, no por ``: una marca acentuada no se
+        // parte por la mitad.
+        expect(rioplatenseMarkersIn('¿Podés confirmarlo?')).toEqual(['podés']);
         expect(rioplatenseMarkersIn('¿Me puede ayudar?')).toEqual([]);
         expect(rioplatenseMarkersIn(null)).toEqual([]);
     });

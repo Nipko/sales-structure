@@ -8,7 +8,7 @@
 import type { VerticalDefinitions } from "./vertical-catalog";
 import type { AgentAssessment, AgentConfigurationChange, AgentConfigurationProposal, AppliedAgentConfiguration, AgentQualityAttentionSummary, AgentQualityOverview, AgentQualitySignal, GuidedTourId, AgentConfigurationWorkspace, SaveAgentDraftRequest, SavedAgentDraft } from "@parallext/shared";
 import type { QualityAssistantTarget } from "@/lib/quality-assistant-contract";
-import type { LearningImport, LearningWorkspaceData } from "@/lib/agent-learning";
+import type { LearningImport, LearningReviewHistory, LearningWorkspaceData } from "@/lib/agent-learning";
 import type { KnowledgeConflictOverview, KnowledgeConflictReview } from "@/lib/knowledge-conflicts";
 import type { ToolApprovalItem } from "@/lib/tool-approvals";
 import type { OperationalNotice, OperationalNoticeList, NoticeReviewRequest } from './operational-notices';
@@ -921,6 +921,8 @@ export const api = {
     importInboxLearning: (tenantId: string, agentId: string, conversationId: string) => apiPost(`/learning/${tenantId}/${agentId}/inbox`, { conversationId }),
     getLearningOriginal: (tenantId: string, agentId: string, sourceId: string) => apiGet(`/learning/${tenantId}/${agentId}/sources/${sourceId}/original`),
     analyzeLearningExample: (tenantId: string, agentId: string, exampleId: string) => apiPost(`/learning/${tenantId}/${agentId}/examples/${exampleId}/analyze`, {}),
+    getLearningReviewHistory: (tenantId: string, agentId: string, exampleId: string) =>
+        apiGet<LearningReviewHistory>(`/learning/${tenantId}/${agentId}/examples/${exampleId}/reviews`),
     reviewLearningExample: (tenantId: string, agentId: string, exampleId: string, input: { decision: "approved" | "rejected"; revision: number; note: string; privacyChecked: boolean; correctnessChecked: boolean }) => apiPost(`/learning/${tenantId}/${agentId}/examples/${exampleId}/review`, input),
     reviseLearningExample: (tenantId: string, agentId: string, exampleId: string, revision: number, responsePattern: string) => apiPut(`/learning/${tenantId}/${agentId}/examples/${exampleId}/revision`, { revision, responsePattern }),
     createLearningRelease: (tenantId: string, agentId: string, exampleIds: string[]) => apiPost(`/learning/${tenantId}/${agentId}/releases`, { exampleIds }),

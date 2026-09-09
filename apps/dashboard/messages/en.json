@@ -594,7 +594,18 @@
     },
     "evidenceUnavailable": "We could not verify the examples. Select Refresh to check them again.",
     "coverageUnavailable": "We could not verify how many conversations are reserved for tests. Select Refresh to try again.",
-    "coverageLoading": "Checking conversations reserved for tests…"
+    "coverageLoading": "Checking conversations reserved for tests…",
+    "dedupConflict": "This example repeats something already in the training material, so it cannot be approved yet.",
+    "dedupPending": "It has not been compared with the rest of the material yet, so it cannot be approved.",
+    "dedupNotCompared": "The example’s representation could not be generated, and that is what the comparison needs.",
+    "dedupHoldout": "It also resembles a case in the reserved set, the one used to measure. Approving it would contaminate the measurement.",
+    "dedupPeer": "It resembles example {id} ({status}).",
+    "dedupPrecedence": "The example that was already here keeps its review. If you prefer this one, reject the other and analyse again.",
+    "reviewHistory": "Review history",
+    "reviewHistoryLoading": "Loading the history…",
+    "reviewHistoryUnavailable": "The history could not be read. The source may have been withdrawn or erased.",
+    "reviewHistoryEmpty": "Nobody has reviewed this example yet.",
+    "reviewHistoryTruncated": "Showing the {limit} most recent reviews."
   },
   "sales": {
     "title": "Sales",

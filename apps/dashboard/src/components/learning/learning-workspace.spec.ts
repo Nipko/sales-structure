@@ -94,3 +94,73 @@ describe('review and publication surfaces', () => {
         expect(approvedFact).toContain(mockMessages.es.kinds.business_fact);
     });
 });
+/**
+ * Why a reviewer cannot approve, said as the reason it actually is.
+ *
+ * `canApproveLearningExample` refuses a near-duplicate exactly as flatly as it
+ * refuses a low score, and the card told the reviewer "quality" in both cases —
+ * so a duplicate looked like a bad example, and the one thing they could do
+ * about it (reject the other one) went unsaid.
+ */
+describe('why an example cannot be approved', () => {
+    const duplicate = (over: Partial<LearningExample['analysis']> = {}): LearningExample => ({
+        ...example(), dedup_status: 'conflict',
+        analysis: { ...example().analysis, dedup: { status: 'conflict', precedence: 'existing_example_keeps_its_review',
+            duplicates: [{ exampleId: 'aabbccdd-1111-4111-8111-111111111111', heldStatus: 'approved',
+                distance: 0.04, patternSimilarity: 0.93, matchedBy: ['episode', 'pattern'] }] }, ...over },
+    });
+
+    it.each(['es','en','pt','fr'])('names the duplicate rather than blaming quality in %s', locale => {
+        mockLocale = locale;
+        const html = renderToStaticMarkup(createElement(ExampleCard,
+            { ...common, example: duplicate(), selected: false, onSelect: jest.fn() } as any));
+        expect(html).toContain(mockMessages[locale].dedupConflict);
+        expect(html).not.toContain(mockMessages[locale].qualityThreshold);
+        // The peer is named by identifier and status only. Its words would
+        // outlive every path that erases it.
+        expect(html).toContain('aabbccdd');
+        expect(html).not.toContain('0.93');
+        expect(html).toContain(mockMessages[locale].dedupPrecedence);
+    });
+
+    it('separates "not compared yet" from "collides with something"', () => {
+        mockLocale = 'es';
+        const pending = { ...example(), dedup_status: 'pending',
+            analysis: { ...example().analysis, dedup: { status: 'pending' as const, reason: 'embedding_unavailable' } } };
+        const html = renderToStaticMarkup(createElement(ExampleCard,
+            { ...common, example: pending, selected: false, onSelect: jest.fn() } as any));
+        expect(html).toContain(mockMessages.es.dedupPending);
+        expect(html).toContain(mockMessages.es.dedupNotCompared);
+        expect(html).not.toContain(mockMessages.es.dedupConflict);
+    });
+
+    it('warns that a holdout collision would contaminate the measurement', () => {
+        mockLocale = 'es';
+        const html = renderToStaticMarkup(createElement(ExampleCard, { ...common,
+            example: duplicate({ dedup: { status: 'conflict', crossSplitOverlap: true, duplicates: [] } } as any),
+            selected: false, onSelect: jest.fn() } as any));
+        expect(html).toContain(mockMessages.es.dedupHoldout);
+    });
+
+    it('still says quality when quality is the reason', () => {
+        mockLocale = 'es';
+        const weak = { ...example(), analysis: { ...example().analysis,
+            scores: Object.fromEntries(Object.keys(example().analysis!.scores!).map(key => [key, 1])) } };
+        const html = renderToStaticMarkup(createElement(ExampleCard,
+            { ...common, example: weak, selected: false, onSelect: jest.fn() } as any));
+        expect(html).toContain(mockMessages.es.qualityThreshold);
+        expect(html).not.toContain(mockMessages.es.dedupConflict);
+    });
+
+    it('offers the review history on every card, in every locale', () => {
+        for (const locale of ['es', 'en', 'pt', 'fr']) {
+            mockLocale = locale;
+            const html = renderToStaticMarkup(createElement(ExampleCard,
+                { ...common, example: example(), selected: false, onSelect: jest.fn() } as any));
+            // Closed until opened: it is one query per example and most
+            // reviewers never look.
+            expect(html).toContain(mockMessages[locale].reviewHistory);
+            expect(html).not.toContain(mockMessages[locale].reviewHistoryEmpty);
+        }
+    });
+});

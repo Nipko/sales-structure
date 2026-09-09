@@ -594,7 +594,18 @@
     },
     "evidenceUnavailable": "Não foi possível verificar os exemplos. Selecione Atualizar para consultá-los novamente.",
     "coverageUnavailable": "Não foi possível verificar quantas conversas estão reservadas para testes. Selecione Atualizar para tentar novamente.",
-    "coverageLoading": "Consultando as conversas reservadas para testes…"
+    "coverageLoading": "Consultando as conversas reservadas para testes…",
+    "dedupConflict": "Este exemplo repete algo que já está no material de treinamento, então ainda não pode ser aprovado.",
+    "dedupPending": "Ainda não foi comparado com o restante do material, então não pode ser aprovado.",
+    "dedupNotCompared": "Não foi possível gerar a representação do exemplo, que é o que a comparação precisa.",
+    "dedupHoldout": "Também se parece com um caso do conjunto reservado, o que serve para medir. Aprová-lo contaminaria a medição.",
+    "dedupPeer": "Parece-se com o exemplo {id} ({status}).",
+    "dedupPrecedence": "O exemplo que já estava aqui mantém sua revisão. Se preferir este, rejeite o outro e analise de novo.",
+    "reviewHistory": "Histórico de revisões",
+    "reviewHistoryLoading": "Carregando o histórico…",
+    "reviewHistoryUnavailable": "Não foi possível ler o histórico. A fonte pode ter sido retirada ou apagada.",
+    "reviewHistoryEmpty": "Ninguém revisou este exemplo ainda.",
+    "reviewHistoryTruncated": "Mostrando as {limit} revisões mais recentes."
   },
   "sales": {
     "title": "Vendas",

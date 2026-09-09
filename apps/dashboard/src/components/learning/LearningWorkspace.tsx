@@ -6,7 +6,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { ArrowLeft, BookOpen, Loader2, RefreshCw } from "lucide-react";
 import { api } from "@/lib/api";
 import { canApproveLearningExample, canSelectLearningExample, learningEvaluationSummary, parseLearningTranscript,
-    type LearningExample, type LearningRelease, type LearningWorkspaceData } from "@/lib/agent-learning";
+    type LearningExample, type LearningRelease, type LearningReviewHistory, type LearningWorkspaceData } from "@/lib/agent-learning";
 
 const field = "w-full rounded-lg border border-neutral-300 bg-transparent px-3 py-2 text-sm dark:border-neutral-700";
 const button = "rounded-lg border border-neutral-300 px-3 py-2 text-sm font-medium hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-neutral-700 dark:hover:bg-neutral-800";
@@ -218,7 +218,30 @@ export function ExampleCard({ example, tenantId, agentId, busy, run, selected, o
         {example.analysis?.scores && <dl className="grid grid-cols-2 gap-2 text-xs md:grid-cols-3">{Object.entries(example.analysis.scores).map(([name, score]) => <div key={name} className="flex justify-between rounded-lg bg-neutral-50 p-2 dark:bg-neutral-950"><dt>{t.has(`dimensions.${name}`) ? t(`dimensions.${name}`) : t("quality")}</dt><dd>{score}/4</dd></div>)}</dl>}
         {!!example.analysis?.exclusions?.length && <div className="space-y-1 text-sm text-amber-700 dark:text-amber-300"><p>{t("excludedHelp")}</p><ul className="list-disc pl-5">{example.analysis.exclusions.map((reason, index) => <li key={index}>{t.has(`exclusions.${reason}`) ? t(`exclusions.${reason}`) : reason}</li>)}</ul></div>}
         {example.kind && t.has(`kinds.${example.kind}`) && <p className="text-sm text-neutral-500">{t(`kinds.${example.kind}`)}</p>}
-        {example.status === 'analyzed' && !canApproveLearningExample(example) && <p className="text-sm text-amber-700 dark:text-amber-300">{t("qualityThreshold")}</p>}
+        {/* Why approval is blocked, rather than one message for every reason.
+            `canApproveLearningExample` refuses a duplicate as flatly as it
+            refuses a low score, and the reviewer used to be told "quality" in
+            both cases — so a near-duplicate looked like a bad example and the
+            one thing they could actually do about it went unsaid. */}
+        {example.dedup_status !== 'clear' && <div className="space-y-1 text-sm text-amber-700 dark:text-amber-300">
+            <p>{t(example.dedup_status === 'conflict' ? 'dedupConflict' : 'dedupPending')}</p>
+            {example.analysis?.dedup?.reason === 'embedding_unavailable'
+                && <p className="text-xs">{t('dedupNotCompared')}</p>}
+            {example.analysis?.dedup?.crossSplitOverlap && <p className="text-xs">{t('dedupHoldout')}</p>}
+            {/* Identifiers, never the peer's words: a copy of them here would
+                outlive every path that erases that peer. */}
+            {!!example.analysis?.dedup?.duplicates?.length && <ul className="list-disc pl-5 text-xs">
+                {example.analysis.dedup.duplicates.map(peer => <li key={peer.exampleId}>
+                    {t('dedupPeer', { id: peer.exampleId.slice(0, 8),
+                        status: t.has(`statuses.${peer.heldStatus}`) ? t(`statuses.${peer.heldStatus}`) : peer.heldStatus })}
+                </li>)}
+            </ul>}
+            {example.analysis?.dedup?.precedence === 'existing_example_keeps_its_review'
+                && <p className="text-xs">{t('dedupPrecedence')}</p>}
+        </div>}
+        {example.status === 'analyzed' && example.dedup_status === 'clear' && !canApproveLearningExample(example)
+            && <p className="text-sm text-amber-700 dark:text-amber-300">{t("qualityThreshold")}</p>}
+        <ReviewHistory example={example} tenantId={tenantId} agentId={agentId} busy={busy} />
         {reviewable && <fieldset disabled={busy || changed} className="space-y-3 border-t border-neutral-200 pt-4 dark:border-neutral-800">
             <Label text={t("reviewNote")}><textarea className={field} rows={2} value={note} minLength={10} maxLength={2000} onChange={event => setNote(event.target.value)} /></Label>
             <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={privacy} onChange={event => setPrivacy(event.target.checked)} />{t("privacyChecked")}</label>
@@ -230,6 +253,51 @@ export function ExampleCard({ example, tenantId, agentId, busy, run, selected, o
             <button className={button} disabled={busy} onClick={() => run(() => api.withdrawLearningSource(tenantId, agentId, example.source_id), "withdrawn")}>{t("withdraw")}</button>
         </div>
     </article>;
+}
+
+/**
+ * What was decided about this example before, and why.
+ *
+ * `learning_reviews` had two writers, three deleters and no reader anywhere, so
+ * the reasoning behind an approval or a rejection was invisible to the person
+ * deciding about the next one — and to anyone later asking why a published
+ * release contains what it contains.
+ *
+ * Loaded on demand rather than with the workspace: it is one query per example
+ * and most reviewers never open it.
+ */
+export function ReviewHistory({ example, tenantId, agentId, busy }: {
+    example: LearningExample; tenantId: string; agentId: string; busy: boolean }) {
+    const t = useTranslations("agentLearning");
+    const [state, setState] = useState<'idle' | 'loading' | 'error'>('idle');
+    const [history, setHistory] = useState<LearningReviewHistory | null>(null);
+    const load = async () => {
+        setState('loading');
+        const result = await api.getLearningReviewHistory(tenantId, agentId, example.id);
+        // A refusal is not an empty history. The read applies the same source
+        // and privacy rules as every other example read, so a withdrawn source
+        // or an erased contact refuses — and saying "no reviews" there would
+        // report an erasure as an absence of decisions.
+        if (result.success && result.data) { setHistory(result.data); setState('idle'); }
+        else { setHistory(null); setState('error'); }
+    };
+    return <details className="text-sm" onToggle={event => {
+        if ((event.currentTarget as HTMLDetailsElement).open && !history && state !== 'loading') void load();
+    }}>
+        <summary className="cursor-pointer">{t('reviewHistory')}</summary>
+        {state === 'loading' && <p role="status" className="mt-2 text-xs">{t('reviewHistoryLoading')}</p>}
+        {state === 'error' && <p role="status" className="mt-2 text-xs text-amber-700 dark:text-amber-300">{t('reviewHistoryUnavailable')}</p>}
+        {history && (history.history.length
+            ? <ol className="mt-2 space-y-2">{history.history.map(entry => <li key={entry.id} className="rounded-lg bg-neutral-50 p-2 text-xs dark:bg-neutral-950">
+                <p className="font-medium">{t.has(`statuses.${entry.decision}`) ? t(`statuses.${entry.decision}`) : entry.decision}
+                    {' · '}{t('revision', { number: entry.revision })}</p>
+                <p className="whitespace-pre-wrap">{entry.note}</p>
+                <p className="text-neutral-500">{entry.reviewer_id}</p>
+            </li>)}</ol>
+            : <p className="mt-2 text-xs text-neutral-500">{t('reviewHistoryEmpty')}</p>)}
+        {history && history.history.length >= history.limit
+            && <p className="mt-2 text-xs text-neutral-500">{t('reviewHistoryTruncated', { limit: history.limit })}</p>}
+    </details>;
 }
 
 export function ReleaseCard({ release, number, busy, run, tenantId, agentId }: { release: LearningRelease; number: number; busy: boolean; run: Run; tenantId: string; agentId: string }) {

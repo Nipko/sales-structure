@@ -6,7 +6,23 @@ export type LearningImport = {
 export type LearningExample = {
     id: string; source_id: string; kind: string | null; intent: string;
     episode: LearningMessage[]; response_pattern: string | null; rationale: string | null;
-    facts_required: string[]; analysis: { scores?: Record<string, number>; exclusions?: string[] } | null;
+    facts_required: string[]; analysis: {
+        scores?: Record<string, number>; exclusions?: string[];
+        /**
+         * Why this example collided, written by the analysis that found it.
+         *
+         * Identifiers and numbers only: a copy of the peer's words here would
+         * outlive every path that erases that peer.
+         */
+        dedup?: {
+            status: 'pending' | 'clear' | 'conflict';
+            reason?: string;
+            precedence?: string;
+            crossSplitOverlap?: boolean;
+            duplicates?: Array<{ exampleId: string; heldStatus: string; distance: number;
+                patternSimilarity: number; matchedBy: Array<'episode' | 'pattern'> }>;
+        };
+    } | null;
     status: string; revision: number; dedup_status: string; split: string; channel: string;
     language: string; source_kind: string; source_conversation_id?: string;
     sourceAvailability?: 'current' | 'changed';
@@ -18,6 +34,27 @@ export type LearningRelease = {
     evaluation?: { candidateAverage?: number; baselineAverage?: number; error?: string;
         totalCases?: number; completedCases?: number; failedCases?: number };
 };
+/**
+ * Why an example was approved, revised or rejected, and by whom.
+ *
+ * Every decision was appended to `learning_reviews` and nothing ever read it
+ * back, so the person deciding about the next example could not see what had
+ * been decided about this one. Withdrawing a source deletes these rows, so an
+ * empty history means "never reviewed" and never "erased": an erased example
+ * refuses the read instead of returning nothing.
+ */
+export type LearningReviewHistory = {
+    exampleId: string;
+    revision: number;
+    status: string;
+    dedupStatus: string;
+    reviewedBy: string | null;
+    reviewedAt: string | null;
+    limit: number;
+    history: Array<{ id: string; revision: number; decision: string; reviewer_id: string;
+        note: string; created_at: string; snapshot: unknown }>;
+};
+
 export type LearningWorkspaceData = {
     examples: LearningExample[]; releases: LearningRelease[]; coverage: Array<{ split: string; count: number }>;
 };

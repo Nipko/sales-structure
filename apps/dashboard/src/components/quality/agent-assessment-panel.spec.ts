@@ -20,7 +20,11 @@ jest.mock('@/lib/api', () => ({ api: {} }));
 const assessment = (hasAgent: boolean): AgentAssessment => ({ version: 1, revision: '1', generatedAt: new Date().toISOString(),
     agent: hasAgent ? { id: 'agent', name: 'Luna', version: 1, isActive: true, updatedAt: new Date().toISOString() } : null,
     mission: { source: 'not_configured', definition: null, templateId: null, profileId: null, availableIntentKeys: [], unsupportedIntents: [] },
-    channels: [], tasks: [], nextTask: null, requiredTests: [], configuration: null, overview: null });
+    channels: [], tasks: [], nextTask: null, requiredTests: [], configuration: null, overview: null,
+    // `pending` and not `unknown`: this fixture describes an account that was
+    // read successfully and has nothing configured yet, which is a known answer.
+    // `unknown` is reserved for the case where nobody could look.
+    state: 'pending' });
 
 describe('mission guidance distinguishes a missing mission from a missing agent', () => {
     it.each(['es', 'en', 'pt', 'fr'])('keeps the existing agent editable when its mission is missing in %s', locale => {

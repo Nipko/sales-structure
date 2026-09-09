@@ -141,35 +141,31 @@ Un `agent_dispatch_outbox` en `prepared`, `queued` o `failed` con `available_at`
 | Edad de reconciliación | < 1 h | Tramo mecánico sí, tramo humano no | `dispatch:reconciliation:overdue` (critical) |
 | Latencia admisión/settle | p95 < 500 ms | Sí (sin PgBouncer) | **ninguna** |
 
-## Hallazgos abiertos que encontró el harness
+## Los tres hallazgos del harness, y cómo quedaron
 
-Se registran acá tal como se midieron; **no se corrigieron en esta tanda** y las pruebas afirman el comportamiento observado, no el pretendido, para que el harness no finja que un invariante se cumple cuando no.
+Los encontró la corrida de carga. Se corrigieron en `7f9548b9` y las pruebas que los registraban ahora afirman el comportamiento arreglado, así que si alguno vuelve, vuelven en rojo.
 
-### H1 — Un `failed` concurrente sí degrada `delivered` (P0)
+### H1 — Un `failed` concurrente degradaba `delivered` (P0) · **cerrado**
 
-`applyDispatchProviderStatus` toma `FOR UPDATE OF d` sobre la fila del outbox, pero decide con el `messages.status` que trajo **esa misma sentencia**, leído del snapshot anterior al cerrojo. Dos webhooks del mismo recibo en vuelo a la vez se serializan bien y después deciden sobre un valor ya viejo: el `failed` tardío ve `sent`, pasa el rango y escribe `failed` sobre un `delivered` confirmado. Reproducido 8/8 en la sonda y de forma determinista en la suite.
+`applyDispatchProviderStatus` tomaba `FOR UPDATE OF d` sobre la fila del outbox y decidía con el `messages.status` que traía **esa misma sentencia**, leído del snapshot anterior al cerrojo. Dos webhooks del mismo recibo en vuelo a la vez se serializaban bien y después decidían sobre un valor ya viejo: el `failed` tardío veía `sent`, pasaba el rango y escribía sobre un `delivered` confirmado. Reproducido 8/8 en la sonda y de forma determinista en la suite.
 
-En producción se alcanza cuando hay dos cuerpos de webhook simultáneos para un recibo: reintentos de Meta, o la API y la app WhatsApp aplicando estados a la vez. `channel-delivery-status` serializa los eventos **dentro de un cuerpo**, que es la razón por la que ninguna prueba existente lo veía.
+En producción se alcanza con dos cuerpos de webhook simultáneos para un recibo: reintentos de Meta, o la API y la app WhatsApp aplicando a la vez. `channel-delivery-status` serializa los eventos **dentro de un cuerpo**, que es la razón por la que ninguna prueba existente lo veía.
 
-Segunda cara del mismo mecanismo: diez copias concurrentes de un `delivered` idéntico informan `applied` las diez. Ahí no cuesta nada — las escrituras son iguales — pero es el mismo síntoma barato del mecanismo caro de arriba.
+La guarda y el rango siempre estuvieron bien; lo que estaba mal era de dónde salía el valor. `FOR UPDATE OF d, m` no sirve —`m` es el lado anulable de un outer join—, así que ahora se cierra la fila primero y se lee el estado después. La segunda cara se fue con eso: diez copias concurrentes de un `delivered` idéntico ya no informan `applied` las diez.
 
-**Arreglo:** cerrar `messages` con la misma sentencia (`FOR UPDATE OF d, m`) o releer el estado después de conceder el cerrojo. Prueba que lo fija: `FINDING: a rejection concurrent with an acceptance does degrade `delivered``.
+### H2 — Un efecto de handoff con lease vencido nunca llegaba a `unknown` (P1) · **cerrado**
 
-### H2 — Un efecto de handoff con lease vencido nunca llega a `unknown` (P1)
+`admitHandoffEffect` escribía la transición a `unknown` y **acto seguido lanzaba** desde la misma transacción. `handoff.service.ts` lo llama dentro de `transactionInTenantSchema`, así que Prisma revertía la escritura junto con el rechazo y la fila se quedaba en `admitted` detrás de un lease muerto, para siempre.
 
-`admitHandoffEffect` escribe la transición a `unknown` y **acto seguido lanza** desde la misma transacción. `handoff.service.ts:394` lo llama dentro de `transactionInTenantSchema`, así que Prisma revierte la escritura junto con el rechazo: la fila se queda en `admitted` detrás de un lease muerto, para siempre.
+Lo que sí se cumplía: no había segundo mensaje de Slack ni segundo SMS pago; toda admisión posterior se rechazaba. Lo que no: nadie se enteraba nunca de que el efecto quedó incierto, y `readUncertainHandoffEffects` no lo veía. La suite unitaria no lo detectaba porque maneja un `Client` de `pg` en autocommit, donde la escritura sobrevive al `throw`.
 
-El outbox de despacho se niega a hacer esto a propósito — `admitDispatch` lleva un comentario explícito de "deliberately no write here" y deja la transición a `expireDispatchLeases`. **Para los efectos de handoff no existe esa pasada**, y `readUncertainHandoffEffects` no tiene ningún llamador en producción: sólo lo referencian las pruebas.
+El rechazo pasó a ser un **estado devuelto** en vez de una excepción, así que la transición confirma con él, y `expireHandoffEffectLeases` barre las filas de transferencias que nunca se reanudan. Sigue sin haber una pantalla que liste esos efectos inciertos: la cola de reconciliación de despacho tiene la suya, ésta no.
 
-Lo que sí se cumple: no hay segundo mensaje de Slack ni segundo SMS pago; toda admisión posterior se rechaza. Lo que no: nadie se entera nunca de que el efecto quedó incierto. Y como la fila nunca sale de `admitted`, el titular del lease vencido todavía puede escribir su resultado — el lease acota quién puede intentar, no hasta cuándo vale una respuesta.
+### O1 — El recibo de una aceptación tardía se descartaba · **cerrado del lado del handoff**
 
-La suite existente no lo veía porque maneja un `Client` de `pg` en autocommit, donde la escritura sobrevive al `throw`.
+Cuando el lease vence con la petición en el aire, el recibo que el proveedor sí devolvió era el único registro de que el destino se alcanzó, y se perdía. Para los efectos de handoff ahora se guarda en la fila —que sigue incierta— y se guarda **devolviendo** en vez de lanzar, porque un `throw` habría revertido también ese registro: el mismo error, por tercera vez.
 
-**Arreglo:** no escribir dentro del rechazo (como el outbox), y agregar una pasada de vencimiento equivalente a `expireDispatchLeases` más un consumidor real de `readUncertainHandoffEffects`.
-
-### O1 — El recibo de una aceptación tardía se descarta (observación)
-
-Cuando el lease vence con la petición en el aire, `settleDispatch` rechaza el lease que la fila ya no tiene (`dispatch_lease_lost`) y el recibo que el proveedor sí devolvió no se escribe en ningún lado. Es coherente con el diseño — la fila ya es de la reconciliación —, pero deja al operador buscando a mano en WhatsApp Manager el dato que el proceso tuvo en la mano. Verificado en `leaves the row uncertain when the lease lapses mid-request`.
+`settleDispatch` conserva el comportamiento anterior: rechaza el lease que la fila ya no tiene y el recibo no se escribe. Es coherente con su diseño —la fila ya es de la reconciliación— pero deja al operador buscando a mano en WhatsApp Manager el dato que el proceso tuvo en la mano. Queda anotado como pendiente, no como cerrado.
 
 ## Lo que este harness NO cubre
 

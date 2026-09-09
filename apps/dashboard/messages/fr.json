@@ -11671,7 +11671,26 @@
     "apply": "Appliquer ces modifications",
     "applying": "Application et vérification…",
     "applied": "Modifications enregistrées.",
-    "verificationPending": "Les modifications sont enregistrées, mais nous n’avons pas encore pu vérifier l’évaluation actualisée.",
+    "draftCheck": {
+      "title": "Vérification de la modification appliquée",
+      "scope": "Elle porte sur la révision du brouillon qui vient d’être enregistrée. Elle ne dit rien de la configuration qui répond actuellement : c’est l’évaluation de l’agent qui répond à cette question.",
+      "scopeAccount": "La modification a été appliquée aux données du compte. L’évaluation de l’agent décrit toujours la configuration qui répond aux clients.",
+      "verified": "Le brouillon enregistré a répondu à un message de test.",
+      "verifiedLimit": "C’est un test de fumée, pas une certification : il s’est exécuté avec les outils désactivés et montre seulement que la configuration modifiée répond. Le fonctionnement de chaque scénario de mission se vérifie à part, dans l’évaluation de l’agent.",
+      "failed": "La modification est enregistrée et le brouillon n’a pas répondu. Vérifiez-le avant de le publier.",
+      "unavailable": "La modification est enregistrée, mais rien n’a été vérifié : cette révision n’a pas pu être exécutée.",
+      "notApplicable": "Il n’y a pas de brouillon à exécuter : cette proposition a modifié les données du compte. Ce n’est pas une erreur.",
+      "stale": "Cette vérification porte sur une révision antérieure du brouillon, qui a changé depuis. Elle ne dit rien de l’état actuel : vérifiez à nouveau.",
+      "staleThen": "Ce qui avait été vérifié :",
+      "reasons": {
+        "runner_unavailable": "La vérification n’a pas pu être exécutée pour le moment. Vous pouvez réessayer ou tester le brouillon vous-même.",
+        "run_failed": "L’exécution ne s’est pas terminée. Nous n’en connaissons pas la raison : réessayez la vérification ou testez le brouillon vous-même.",
+        "quota_exhausted": "Les messages IA de votre offre sont épuisés pour cette période, la vérification n’a donc pas été exécutée. Cela ne dit rien du brouillon.",
+        "timed_out": "La vérification a pris trop de temps et a été abandonnée. Cela ne signifie pas que le brouillon est incorrect.",
+        "revision_changed": "Le brouillon a changé pendant la vérification : l’exécution aurait porté sur une autre configuration. Vérifiez à nouveau."
+      }
+    },
+    "verificationPending": "Les modifications sont enregistrées, mais nous n’avons pas pu confirmer que la mise à jour a fini de s’appliquer sur toute la plateforme. Réessayez pour la terminer.",
     "retryVerification": "Réessayer la vérification",
     "expired": "Cette proposition a expiré. Demandez une nouvelle révision.",
     "applyError": "Cette modification n’a pas pu être confirmée. Si la configuration a changé ou si la proposition a expiré, préparez une nouvelle révision ; en cas d’interruption, vous pouvez réessayer.",

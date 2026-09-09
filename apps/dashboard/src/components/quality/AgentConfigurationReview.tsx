@@ -2,11 +2,57 @@
 
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { AGENT_ACCOUNT_DAYS, isAgentAccountBusinessHours, type AgentConfigurationProposal, type AgentMissionV1, type AppliedAgentConfiguration } from '@parallext/shared';
+import { AGENT_ACCOUNT_DAYS, isAgentAccountBusinessHours, type AgentConfigurationProposal, type AgentMissionV1, type AppliedAgentConfiguration, type AppliedDraftVerification, type AppliedDraftVerificationState } from '@parallext/shared';
 import { useTenant } from '@/contexts/TenantContext';
 import { useRole } from '@/hooks/useRole';
 import { api } from '@/lib/api';
 import { notifyAgentConfigurationApplied, requestQualityHealthRefresh } from '@/lib/quality-health-events';
+
+/** One sentence per state. A fifth state cannot compile until it has its own. */
+const DRAFT_CHECK_KEYS: Record<AppliedDraftVerificationState, string> = {
+    verified: 'verified', failed: 'failed', unavailable: 'unavailable', not_applicable: 'notApplicable',
+};
+/** Superseded evidence takes the "nothing proven" tone, never the green one. */
+const DRAFT_CHECK_TONES: Record<AppliedDraftVerificationState | 'stale', string> = {
+    verified: 'border-emerald-300 text-emerald-700 dark:border-emerald-800 dark:text-emerald-400',
+    failed: 'border-red-300 text-red-600 dark:border-red-800 dark:text-red-400',
+    unavailable: 'border-amber-300 text-amber-700 dark:border-amber-800 dark:text-amber-400',
+    not_applicable: 'border-neutral-200 text-neutral-700 dark:border-neutral-700 dark:text-neutral-300',
+    stale: 'border-amber-300 text-amber-700 dark:border-amber-800 dark:text-amber-400',
+};
+
+/**
+ * Evidence about the revision this apply wrote. It gets its own box because it
+ * answers a different question from the assessment around it: that one
+ * describes the configuration still serving customers, this one only says
+ * whether the edited draft answered at all — with tools off, and without
+ * proving that any mission task passes.
+ */
+export function AppliedDraftEvidence({ verification, currentRevision }: {
+    verification: AppliedDraftVerification;
+    /** The draft pointer the apply re-read as it committed, when there is one. */
+    currentRevision?: { id: string; bodyHash: string } | null;
+}) {
+    const t = useTranslations('agentConfiguration');
+    // The receipt names the revision it ran against, so it can only ever speak
+    // for that one: once the draft moves past it this is history, not a verdict.
+    const stale = Boolean(verification.revisionId && currentRevision
+        && (currentRevision.id !== verification.revisionId || currentRevision.bodyHash !== verification.revisionHash));
+    const state = verification.state;
+    const reason = verification.reason;
+    return <section className={`mt-3 rounded-lg border p-3 ${DRAFT_CHECK_TONES[stale ? 'stale' : state]}`}>
+        <h4 className="font-semibold">{t('draftCheck.title')}</h4>
+        <p className="mt-1 text-xs text-neutral-600 dark:text-neutral-400">{t(state === 'not_applicable' ? 'draftCheck.scopeAccount' : 'draftCheck.scope')}</p>
+        {stale
+            ? <><p role="status" className="mt-2 font-medium">{t('draftCheck.stale')}</p>
+                <p className="mt-1 text-xs">{t('draftCheck.staleThen')} {t(`draftCheck.${DRAFT_CHECK_KEYS[state]}`)}</p></>
+            : <p role={state === 'failed' ? 'alert' : 'status'} className="mt-2 font-medium">{t(`draftCheck.${DRAFT_CHECK_KEYS[state]}`)}</p>}
+        {!stale && state === 'verified' && <p className="mt-1 text-xs text-neutral-600 dark:text-neutral-400">{t('draftCheck.verifiedLimit')}</p>}
+        {/* Only what the apply reported. An unmapped reason says nothing rather than naming a cause nobody established. */}
+        {!stale && state === 'unavailable' && reason && t.has(`draftCheck.reasons.${reason}`)
+            && <p className="mt-1 text-xs">{t(`draftCheck.reasons.${reason}`)}</p>}
+    </section>;
+}
 
 /** The displayed values and digest are immutable; changing a value requires a new proposal. */
 export function AgentConfigurationReview({ proposal, onApplied }: {
@@ -24,6 +70,10 @@ export function AgentConfigurationReview({ proposal, onApplied }: {
     const applied = scoped && current.status === 'applied';
     const expired = !scoped || current.status === 'expired' || (!applied && Date.parse(current.expiresAt) <= Date.now());
     const canApply = ['tenant_admin', 'super_admin'].includes(role ?? '');
+    // Applying again replays the committed proposal and runs the check afresh,
+    // so a check that never ran is worth offering again. Exhausted quota is not:
+    // nothing about pressing the button puts AI messages back in the period.
+    const recheckable = result?.draftVerification.state === 'unavailable' && result.draftVerification.reason !== 'quota_exhausted';
     const renderValue = (value: unknown) => {
         if (value === null || value === undefined || value === '') return <span className="italic text-neutral-500">{t('empty')}</span>;
         if (typeof value === 'string') return <p className="whitespace-pre-wrap break-words">{value}</p>;
@@ -69,11 +119,12 @@ export function AgentConfigurationReview({ proposal, onApplied }: {
         </div>)}
         {error && <p role="alert" className="mt-3 text-red-600 dark:text-red-400">{t('applyError')}</p>}
         {applied && <p role="status" className="mt-3 text-emerald-700 dark:text-emerald-400">{proposal.targetScope === 'account' ? t('applied') : tDraft('saved')}</p>}
+        {result && <AppliedDraftEvidence verification={result.draftVerification} currentRevision={result.draft?.workspace.draft} />}
         {result?.draft?.workspace.evaluationRevisionId && <a href={`/admin/agent/${proposal.agentId}/test?configurationRevisionId=${encodeURIComponent(result.draft.workspace.evaluationRevisionId)}`}
             className="mt-3 inline-flex min-h-10 items-center rounded-lg border px-3 py-2">{tDraft('testDraft')}</a>}
         {result?.verification === 'unavailable' && <p role="status" className="mt-2 text-amber-700 dark:text-amber-400">{t('verificationPending')}</p>}
         {expired && <p role="status" className="mt-3 text-amber-700 dark:text-amber-400">{t('expired')}</p>}
-        {canApply && !expired && (!applied || result?.verification === 'unavailable') && <button type="button" disabled={busy} onClick={() => void apply()}
+        {canApply && !expired && (!applied || result?.verification === 'unavailable' || recheckable) && <button type="button" disabled={busy} onClick={() => void apply()}
             className="mt-3 min-h-10 rounded-lg bg-indigo-600 px-3 py-2 font-medium text-white disabled:opacity-50">{busy ? t('applying') : applied ? t('retryVerification') : proposal.targetScope === 'account' ? t('apply') : tDraft('save')}</button>}
     </section>;
 }

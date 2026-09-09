@@ -11671,7 +11671,26 @@
     "apply": "Aplicar estas alterações",
     "applying": "Aplicando e verificando…",
     "applied": "Alterações salvas.",
-    "verificationPending": "As alterações foram salvas, mas ainda não conseguimos verificar a avaliação atualizada.",
+    "draftCheck": {
+      "title": "Verificação da alteração aplicada",
+      "scope": "Refere-se à revisão do rascunho que acabou de ser salva. Não diz nada sobre a configuração que está atendendo agora: isso é respondido pela avaliação do agente.",
+      "scopeAccount": "A alteração foi aplicada aos dados da conta. A avaliação do agente continua descrevendo a configuração que está atendendo.",
+      "verified": "O rascunho salvo respondeu a uma mensagem de teste.",
+      "verifiedLimit": "É um teste de fumaça, não uma certificação: foi executado com as ferramentas desligadas e só mostra que a configuração editada responde. Se cada cenário da missão funciona é verificado à parte, na avaliação do agente.",
+      "failed": "A alteração foi salva e o rascunho não respondeu. Revise-o antes de publicar.",
+      "unavailable": "A alteração foi salva, mas nada foi verificado: esta revisão não chegou a ser executada.",
+      "notApplicable": "Não há rascunho para executar: esta proposta alterou dados da conta. Não é um erro.",
+      "stale": "Esta verificação corresponde a uma revisão anterior do rascunho, que já mudou. Não diz nada sobre o que existe agora: verifique novamente.",
+      "staleThen": "O que havia sido verificado:",
+      "reasons": {
+        "runner_unavailable": "Não foi possível executar a verificação neste momento. Você pode tentar de novo ou testar o rascunho por conta própria.",
+        "run_failed": "A execução não foi concluída. Não sabemos por quê: tente a verificação de novo ou teste o rascunho por conta própria.",
+        "quota_exhausted": "As mensagens de IA do seu plano acabaram neste período, então a verificação não foi executada. Isso não diz nada sobre o rascunho.",
+        "timed_out": "A verificação demorou demais e foi abandonada. Isso não significa que o rascunho esteja errado.",
+        "revision_changed": "O rascunho mudou durante a verificação, então a execução teria sido sobre outra configuração. Verifique novamente."
+      }
+    },
+    "verificationPending": "As alterações foram salvas, mas não conseguimos confirmar que a atualização terminou de ser aplicada em toda a plataforma. Tente novamente para concluí-la.",
     "retryVerification": "Tentar verificação novamente",
     "expired": "Esta proposta expirou. Solicite uma nova revisão.",
     "applyError": "Não foi possível confirmar esta alteração. Se a configuração mudou ou a proposta expirou, prepare uma nova revisão; se houve uma interrupção, você pode tentar novamente.",

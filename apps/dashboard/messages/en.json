@@ -11671,7 +11671,26 @@
     "apply": "Apply these changes",
     "applying": "Applying and verifying…",
     "applied": "Changes saved.",
-    "verificationPending": "The changes were saved, but we could not verify the updated assessment yet.",
+    "draftCheck": {
+      "title": "Check on the applied change",
+      "scope": "It covers the draft revision that was just saved. It says nothing about the configuration that is serving right now: the agent assessment answers that.",
+      "scopeAccount": "The change was applied to your account settings. The agent assessment still describes the configuration that is serving.",
+      "verified": "The saved draft answered a test message.",
+      "verifiedLimit": "This is a smoke check, not a certification: it ran with tools switched off and only shows that the edited configuration replies. Whether each mission scenario works is checked separately, in the agent assessment.",
+      "failed": "The change is saved and the draft did not reply. Review it before publishing.",
+      "unavailable": "The change is saved, but nothing was checked: this revision was never run.",
+      "notApplicable": "There is no draft to run: this proposal changed account settings. This is not an error.",
+      "stale": "This check covers an earlier draft revision, and the draft has changed since. It says nothing about what is there now: check it again.",
+      "staleThen": "What had been checked:",
+      "reasons": {
+        "runner_unavailable": "The check could not be run right now. You can retry it or test the draft yourself.",
+        "run_failed": "The run did not complete. We do not know why: retry the check or test the draft yourself.",
+        "quota_exhausted": "Your plan's AI messages ran out for this period, so the check was not run. It says nothing about the draft.",
+        "timed_out": "The check took too long and was abandoned. It does not mean the draft is wrong.",
+        "revision_changed": "The draft changed while the check was running, so the run would have been against a different configuration. Check it again."
+      }
+    },
+    "verificationPending": "The changes were saved, but we could not confirm the update finished being applied across the platform. Retry to complete it.",
     "retryVerification": "Retry verification",
     "expired": "This proposal expired. Request a new review.",
     "applyError": "This change could not be confirmed. If the configuration changed or the proposal expired, prepare a new review; if the request was interrupted, you can retry.",

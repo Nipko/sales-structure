@@ -11671,7 +11671,26 @@
     "apply": "Aplicar estos cambios",
     "applying": "Aplicando y verificando…",
     "applied": "Cambios guardados.",
-    "verificationPending": "Los cambios se guardaron, pero todavía no pudimos verificar la evaluación actualizada.",
+    "draftCheck": {
+      "title": "Comprobación del cambio aplicado",
+      "scope": "Corresponde a la revisión del borrador que se acaba de guardar. No dice nada sobre la configuración que está atendiendo ahora: eso lo responde la evaluación del agente.",
+      "scopeAccount": "El cambio se aplicó a los datos de la cuenta. La evaluación del agente sigue describiendo la configuración que está atendiendo.",
+      "verified": "El borrador guardado respondió a un mensaje de prueba.",
+      "verifiedLimit": "Es una prueba de humo, no una certificación: se ejecutó con las herramientas apagadas y solo muestra que la configuración editada contesta. Que cada escenario de la misión funcione se comprueba aparte, en la evaluación del agente.",
+      "failed": "El cambio quedó guardado y el borrador no respondió. Revísalo antes de publicarlo.",
+      "unavailable": "El cambio quedó guardado, pero no se comprobó nada: esta revisión no llegó a ejecutarse.",
+      "notApplicable": "No hay borrador que ejecutar: esta propuesta cambió datos de la cuenta. No es un error.",
+      "stale": "Esta comprobación corresponde a una revisión anterior del borrador, que ya cambió. No dice nada sobre lo que hay ahora: vuelve a comprobarlo.",
+      "staleThen": "Lo que se había comprobado:",
+      "reasons": {
+        "runner_unavailable": "No se pudo ejecutar la comprobación en este momento. Puedes reintentarla o probar el borrador tú mismo.",
+        "run_failed": "La ejecución no se completó. No sabemos por qué: reintenta la comprobación o prueba el borrador tú mismo.",
+        "quota_exhausted": "Se agotaron los mensajes de IA de tu plan en este período, así que no se ejecutó la comprobación. No indica nada sobre el borrador.",
+        "timed_out": "La comprobación tardó demasiado y se abandonó. No significa que el borrador esté mal.",
+        "revision_changed": "El borrador cambió mientras se comprobaba, así que la ejecución habría sido sobre otra configuración. Vuelve a comprobarlo."
+      }
+    },
+    "verificationPending": "Los cambios se guardaron, pero no pudimos confirmar que la actualización terminara de aplicarse en toda la plataforma. Reintenta para completarla.",
     "retryVerification": "Reintentar verificación",
     "expired": "Esta propuesta venció. Solicita una nueva revisión.",
     "applyError": "No se pudo confirmar este cambio. Si cambió la configuración o venció la propuesta, prepara una nueva revisión; si hubo una interrupción, puedes reintentar.",

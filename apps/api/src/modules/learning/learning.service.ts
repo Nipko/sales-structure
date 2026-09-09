@@ -11,6 +11,7 @@ import { LLMSourceAuthorityUnavailable, type LLMSourceAuthority } from '../ai/in
 import type { LLMResponse } from '../ai/interfaces/illm-provider.interface';
 import type { ExternalSourceAuthority } from '../ai/interfaces/external-source-authority';
 import { LEARNING_SCHEMA } from './learning-schema';
+import { LEARNING_DUPLICATE_DISTANCE, isLearningEmbedding, learningDedupRecord, learningSplitDuplicates } from './learning-dedup';
 import { assertRuntimeLearningFootprint, createRuntimeLearningFootprint } from './learning-runtime-footprint';
 import { assertLearningContactsAllowed, assertLearningInboxSource, learningInboxEvidence,
     readLearningInboxSource, retireLearningSources,
@@ -255,6 +256,53 @@ export class LearningService {
         });
     }
 
+    /**
+     * Why this example reads the way it does.
+     *
+     * Every decision was already appended to `learning_reviews` — the decision,
+     * the note, who made it, and a snapshot of the wording it was made about —
+     * and nothing ever read a row back. So the reviewer deciding on the next
+     * example could not see that this one had been revised twice for the same
+     * fault, and nobody asking later why a published release contains a
+     * particular sentence could see who accepted it or what they were looking at
+     * when they did.
+     *
+     * Guarded by the same read every other example path uses rather than a
+     * lighter one of its own, because the snapshot holds the example's text at
+     * the time and the retraction rules are what decide whether that text may
+     * still be shown. A withdrawn source, an erased contact, a contact who has
+     * objected, or an inbox conversation edited since the import all make the
+     * example unreadable here exactly as they make it unreadable everywhere
+     * else. That is the difference between a read path and a hole: the rows for
+     * a retired source are deleted outright by the retraction, so an empty
+     * history means "never reviewed" and can never mean "erased" — an erased one
+     * is refused, not emptied.
+     *
+     * Holdout is refused rather than returned empty, matching `revise`: the wall
+     * does not open for a read just because there happens to be nothing behind it.
+     */
+    async reviewHistory(tenantId:string,agentId:string,exampleId:string,limit?:number){
+        const schema=await this.schema(tenantId);
+        await this.assertAgent(schema,agentId);
+        await this.ensureTables(schema);
+        if(!UUID.test(exampleId))throw new BadRequestException({error:'invalid_learning_example'});
+        const take=Math.min(Math.max(Math.trunc(Number(limit))||50,1),200);
+        return this.prisma.transactionInTenantSchema(schema,async query=>{
+            await query(`SELECT pg_advisory_xact_lock_shared(hashtextextended($1,0))::text`,[`agent-privacy:${schema}`]);
+            const rows=await query<any[]>(`SELECT e.id,e.revision,e.status,e.dedup_status,e.reviewed_by,e.reviewed_at,e.source_id,
+                s.split,s.status AS source_status
+                FROM learning_examples e JOIN learning_sources s ON s.id=e.source_id
+                WHERE e.id=$1::uuid AND e.agent_id=$2::uuid`,[exampleId,agentId]);
+            if(!rows.length||rows[0].source_status!=='active')throw new BadRequestException({error:'learning_example_unavailable'});
+            if(rows[0].split!=='train')throw new ForbiddenException({error:'holdout_is_reserved'});
+            await this.assertSourcesAvailable(query,[rows[0].source_id]);
+            const history=await query<any[]>(`SELECT id,revision,decision,snapshot,reviewer_id,note,created_at
+                FROM learning_reviews WHERE example_id=$1::uuid ORDER BY created_at DESC,id DESC LIMIT $2::int`,[exampleId,take]);
+            return {exampleId,revision:rows[0].revision,status:rows[0].status,dedupStatus:rows[0].dedup_status,
+                reviewedBy:rows[0].reviewed_by,reviewedAt:rows[0].reviewed_at,limit:take,history};
+        });
+    }
+
     private async prepareHoldout(schema:string,tenantId:string,agentId:string){
         const pending=await this.prisma.executeInTenantSchema<any[]>(schema,`SELECT e.id,e.source_id,e.episode FROM learning_examples e
             JOIN learning_sources s ON s.id=e.source_id WHERE e.agent_id=$1::uuid AND s.split='holdout'
@@ -305,11 +353,20 @@ export class LearningService {
                  WHERE conversation_id=$1::uuid AND status='succeeded' ORDER BY created_at DESC LIMIT 30`, [example.source_conversation_id]) : [];
             const sourceAuthority=this.sourceDataAuthority(query,[example.source_id]);
             const embedding = await this.knowledge.generateEmbedding(text.slice(0, 6000), tenantId,undefined,sourceAuthority);
-            const embeddingString = `[${embedding.join(',')}]`;
-            const overlap = await this.prisma.executeInTenantSchema<any[]>(schema,
+            // Fail closed on the vector itself. A provider that answers with a
+            // truncated or non-numeric embedding used to abort the whole analysis
+            // at the `::vector` cast, leaving the reviewer a 500 and no judgment;
+            // the tempting alternative is worse, because storing it and carrying
+            // on would write `clear` — "compared, nothing found" — onto an
+            // example nothing was ever compared against. Neither comparison runs
+            // without a usable vector, and `pending` keeps the example out of
+            // every release until one does.
+            const comparable = isLearningEmbedding(embedding);
+            const embeddingString = comparable ? `[${embedding.join(',')}]` : null;
+            const overlap = comparable ? await this.prisma.executeInTenantSchema<any[]>(schema,
                 `SELECT e.id FROM learning_examples e JOIN learning_sources s ON s.id=e.source_id
                  WHERE e.embedding IS NOT NULL AND e.id<>$1::uuid AND s.split<>$2 AND s.status='active'
-                    AND (e.embedding <=> $3::vector) < 0.12`, [exampleId,example.split,embeddingString]);
+                    AND (e.embedding <=> $3::vector) < 0.12`, [exampleId,example.split,embeddingString]) : [];
             await this.assertSourcesAvailable(query,[example.source_id]);
             const result = await this.llm.execute({
                 withSourceAuthority:invoke=>sourceAuthority(invoke,response=>response.usage),
@@ -334,23 +391,39 @@ export class LearningService {
                         result: sanitizeLearningText(JSON.stringify(e.response_payload)), confirmed: !!e.confirmed_by_message_id })) }) }],
             });
             const judgment = this.parseJudgment(result.content);
+            // The cross-split query above protects the evaluation; this one
+            // protects the release payload. Nothing compared the train split
+            // against itself, so five phrasings of one lesson could all reach
+            // `clear`, be approved one by one, and spend a runtime budget of
+            // three examples saying the same thing in one customer's voice.
+            const duplicates = comparable ? await learningSplitDuplicates(query,
+                {exampleId,agentId,split:example.split,embedding:embeddingString!,responsePattern:judgment.responsePattern}) : [];
             const exclusions = [...new Set([...judgment.exclusions, ...learningExclusions(text), ...learningExclusions(JSON.stringify(judgment))])];
             if (messages.some(m => m.role === 'assistant' && claimsCompletedOperation(m.text)) && !evidence.length) exclusions.push('unverified_operation');
             if (overlap.length) exclusions.push('holdout_semantic_overlap');
+            if (duplicates.length) exclusions.push('same_split_semantic_duplicate');
+            if (!comparable) exclusions.push('dedup_comparison_unavailable');
             if (judgment.kind === 'operational_pattern' && !evidence.length) exclusions.push('missing_operational_evidence');
             if (judgment.kind === 'operational_pattern' && !evidence.some(e=>e.tool_name===judgment.requiredTool)) exclusions.push('missing_required_tool');
             if (/\d|https?:\/\/|[\w.+-]+@[\w.-]+\.[a-z]{2,}/i.test(judgment.responsePattern)) exclusions.push('variable_facts_not_parameterized');
-            const analysis = { ...judgment, exclusions: [...new Set(exclusions)], evaluatedAt: new Date().toISOString() };
+            const dedup = learningDedupRecord({comparable,crossSplit:!!overlap.length,duplicates});
+            const analysis = { ...judgment, exclusions: [...new Set(exclusions)], dedup, evaluatedAt: new Date().toISOString() };
             await this.assertSourcesAvailable(query,[example.source_id],true);
             if (overlap.length) await query(
                 `UPDATE learning_examples SET dedup_status='conflict',status=CASE WHEN status='approved' THEN 'retired' ELSE 'flagged' END,
                     updated_at=NOW() WHERE id=ANY($1::uuid[])`, [overlap.map(row=>row.id)]);
+            // Nothing is written to the same-split peers. The cross-split branch
+            // above retires an approved example on purpose — a contaminated
+            // holdout is not a judgement call, and the evaluation is worthless
+            // until that example is out. Redundancy is a judgement call, so it
+            // lands on the arrival and leaves every reviewed row exactly as its
+            // reviewer left it.
             const updated = await query<any[]>(
                 `UPDATE learning_examples SET kind=$3,analysis=$4::jsonb,response_pattern=$5,rationale=$6,facts_required=$7::jsonb,
                     evidence_refs=$8::uuid[],embedding=$9::vector,dedup_status=$10,status=$11,updated_at=NOW()
                  WHERE id=$1::uuid AND revision=$2 AND status='analyzing' RETURNING id`,
                 [exampleId,example.revision,judgment.kind,JSON.stringify(analysis),judgment.responsePattern,judgment.rationale,
-                 JSON.stringify(judgment.factsRequired),evidence.map(e=>e.id),embeddingString,overlap.length?'conflict':'clear',exclusions.length?'flagged':'analyzed']);
+                 JSON.stringify(judgment.factsRequired),evidence.map(e=>e.id),embeddingString,dedup.status,exclusions.length?'flagged':'analyzed']);
             if (!updated.length) throw new ConflictException({ error: 'learning_example_changed' });
             return { analysis, status: exclusions.length ? 'flagged' : 'analyzed' };
             },{timeout:120000});
@@ -455,6 +528,16 @@ export class LearningService {
                 ORDER BY e.id`,[exampleIds,agentId]);
             if(examples.length!==exampleIds.length) throw new ForbiddenException({error:'learning_release_requires_approved_examples'});
             if(new Set(examples.map(e=>e.content_hash)).size!==examples.length) throw new ForbiddenException({error:'learning_release_duplicate_examples'});
+            // The same check the analysis runs, repeated over the actual
+            // selection. Analysis compares an example against what exists at the
+            // moment it runs; two examples analyzed concurrently each see a split
+            // without the other and both come out `clear`. This is the only point
+            // that sees the whole payload at once, and it already holds the
+            // exclusive release lock, so it is where the guarantee can be exact.
+            const redundant=await query<any[]>(`SELECT a.id FROM learning_examples a JOIN learning_examples b ON b.id=ANY($1::uuid[]) AND b.id<a.id
+                WHERE a.id=ANY($1::uuid[]) AND a.embedding IS NOT NULL AND b.embedding IS NOT NULL
+                  AND (a.embedding <=> b.embedding) < $2::float8 LIMIT 1`,[exampleIds,LEARNING_DUPLICATE_DISTANCE]);
+            if(redundant.length) throw new ForbiddenException({error:'learning_release_duplicate_examples'});
             const counts=new Map<string,number>();
             for(const example of examples){const key=`${example.language}:${example.intent}`;counts.set(key,(counts.get(key)||0)+1);}
             if([...counts.values()].some(count=>count>5)) throw new ForbiddenException({error:'learning_release_requires_diversity'});

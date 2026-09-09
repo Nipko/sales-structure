@@ -67,6 +67,22 @@ export class LearningController {
         await this.audit(req,tenantId,'source_imported','learning_source',{agentId,kind:'file',...data});
         return {success:true,data};
     }
+    /**
+     * The review history of one example.
+     *
+     * Read-only by construction: no write verb, and the service method appends
+     * nothing. Reading a decision is not itself a decision, so unlike a
+     * publication or a withdrawal this writes no audit row of its own — the rows
+     * it returns ARE the trail.
+     */
+    @Get('examples/:exampleId/reviews')
+    async reviews(@Param('tenantId') tenantId:string,@Param('agentId') agentId:string,
+        @Param('exampleId') exampleId:string,@Query('limit') limit?:string){
+        // Bounded in the service, not here: a caller reaching the method from
+        // anywhere else must get the same page, and a nonsense limit is a
+        // default rather than a crash.
+        return {success:true,data:await this.learning.reviewHistory(tenantId,agentId,exampleId,parseInt(limit||'',10))};
+    }
     @Get('sources/:sourceId/original')
     async original(@Param('tenantId') tenantId:string,@Param('agentId') agentId:string,@Param('sourceId') sourceId:string){
         return {success:true,data:await this.learning.originalSource(tenantId,agentId,sourceId)};

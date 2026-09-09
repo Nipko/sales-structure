@@ -39,7 +39,12 @@ export const LEARNING_SCHEMA = [
         baseline_release_id UUID, traffic_percent INTEGER NOT NULL DEFAULT 100 CHECK (traffic_percent BETWEEN 0 AND 100),
         evaluation_status VARCHAR(16) NOT NULL DEFAULT 'pending' CHECK (evaluation_status IN ('pending','running','passed','failed')),
         evaluation JSONB, created_by VARCHAR(100) NOT NULL, published_by VARCHAR(100), published_at TIMESTAMPTZ,
+        retired_by VARCHAR(100), retired_at TIMESTAMPTZ,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`,
     `CREATE INDEX IF NOT EXISTS idx_learning_releases_active ON learning_releases(agent_id, status, created_at DESC)`,
     `ALTER TABLE learning_releases ADD COLUMN IF NOT EXISTS evaluation_namespaces JSONB`,
+    // A tenant whose tables predate these keeps the CREATE TABLE above; the
+    // widening is what reaches it.
+    `ALTER TABLE learning_releases ADD COLUMN IF NOT EXISTS retired_by VARCHAR(100)`,
+    `ALTER TABLE learning_releases ADD COLUMN IF NOT EXISTS retired_at TIMESTAMPTZ`,
 ] as const;

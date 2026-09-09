@@ -153,7 +153,11 @@ const databaseUrl = process.env.LEARNING_EVIDENCE_TEST_DATABASE_URL || process.e
                 :sql("UPDATE messages SET content_text='Edit heldout after admission' WHERE conversation_id=$1::uuid",[f.sources[1].conversationId]);
             let done=false; const settled=mutation.finally(()=>{done=true;});
             try{
-                await waitForBlockedQuery(action==='rollback'?'%UPDATE learning_releases%'
+                // Rollback blocks on the privacy fence now, like every other
+                // retraction: it retracts derived words, so it takes the same
+                // lock in the same order as a withdrawal rather than reaching
+                // `UPDATE learning_releases` first.
+                await waitForBlockedQuery(action==='rollback'?'%pg_advisory_xact_lock(%'
                     :action==='source_withdrawal'?'%pg_advisory_xact_lock(%'
                     :action==='example_retirement'?'%UPDATE learning_examples%':'%UPDATE messages%');
                 expect(done).toBe(false);
@@ -163,23 +167,42 @@ const databaseUrl = process.env.LEARNING_EVIDENCE_TEST_DATABASE_URL || process.e
             }finally{finish();await holding;await settled;}
             await expect(check(f.footprint)).rejects.toThrow();
         });
-    it('retains readonly wrapper rechecks, usage evidence and ordinary provider errors',async()=>{
+    it('makes a rollback wait for the turn holding the source fence, and refuses after it lands',async()=>{
         const f=await fixture(), usage={promptTokens:4,completionTokens:3,totalTokens:7};
         const authority=learning.runtimeSourceAuthority(tenantId,agentId,f.selected);
-        // Readonly provider callbacks do not hold release or Inbox row locks.
-        let failure:unknown;
-        try{await authority(async()=>{
-            await learning.rollback(tenantId,agentId,f.releaseId);
-            return {content:'Must be discarded',finishReason:'stop',usage};
-        });}catch(error){failure=error;}
-        expect(failure).toBeInstanceOf(LLMSourceAuthorityUnavailable);
-        expect((failure as LLMSourceAuthorityUnavailable).usage).toEqual(usage);
+        // A rollback retracts derived words, so it takes the exclusive privacy
+        // fence like every other retraction. That changes what protects a turn
+        // in flight: the recheck after the provider call used to be the only
+        // defence against a retraction committing mid-call, and now the fence
+        // makes that impossible in the first place.
+        //
+        // It has to be driven from its own connection, which is how production
+        // reaches it — an HTTP request, not a nested call. Awaiting it inside
+        // the callback is a self-deadlock: the turn holds the fence shared and
+        // will not let go until the callback returns.
+        let rollback!:Promise<unknown>;
+        const answer=await authority(async()=>{
+            rollback=learning.rollback(tenantId,agentId,f.releaseId,'operator');
+            await waitForBlockedQuery('%pg_advisory_xact_lock(%');
+            return {content:'Answered while the fence was held',finishReason:'stop',usage};
+        });
+        expect(answer.content).toBe('Answered while the fence was held');
+        await rollback;
+
+        // Once it lands, the release serves nobody.
         const provider=jest.fn(async()=>({content:'No',finishReason:'stop' as const}));
         await expect(authority(provider)).rejects.toBeInstanceOf(LLMSourceAuthorityUnavailable);
         expect(provider).not.toHaveBeenCalled();
+        // Re-publishing the status does not bring it back: the retraction
+        // emptied the snapshot, which is the point. An ordinary provider error
+        // is a separate question, so it gets a release that was never retracted.
         await sql("UPDATE learning_releases SET status='published'");
+        await expect(authority(provider)).rejects.toBeInstanceOf(LLMSourceAuthorityUnavailable);
+
+        const intact=await fixture();
         const original=new Error('provider unavailable');
-        await expect(authority(async()=>{throw original;})).rejects.toBe(original);
+        await expect(learning.runtimeSourceAuthority(tenantId,agentId,intact.selected)(
+            async()=>{throw original;})).rejects.toBe(original);
     });
     it('allows candidate projections only in the existing readonly preview wrapper',async()=>{
         const f=await fixture(); await sql("UPDATE learning_releases SET status='candidate'");

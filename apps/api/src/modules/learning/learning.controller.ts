@@ -52,8 +52,11 @@ export class LearningController {
         return {success:true,data:await this.learning.publish(tenantId,agentId,releaseId,body.trafficPercent,this.actor(req))};
     }
     @Post('releases/:releaseId/rollback')
-    async rollback(@Param('tenantId') tenantId:string,@Param('agentId') agentId:string,@Param('releaseId') releaseId:string){
-        return {success:true,data:await this.learning.rollback(tenantId,agentId,releaseId)};
+    async rollback(@Param('tenantId') tenantId:string,@Param('agentId') agentId:string,@Param('releaseId') releaseId:string,@Req() req:any){
+        // Publishing recorded who did it and rolling back recorded nobody, which
+        // is backwards: taking words out of service is the decision more likely
+        // to be asked about afterwards.
+        return {success:true,data:await this.learning.rollback(tenantId,agentId,releaseId,this.actor(req))};
     }
     @Delete('sources/:sourceId')
     async withdraw(@Param('tenantId') tenantId:string,@Param('agentId') agentId:string,@Param('sourceId') sourceId:string){

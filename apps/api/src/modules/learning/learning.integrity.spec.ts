@@ -124,9 +124,13 @@ describe('Learning runtime scope',()=>{
         let contactKey='';for(let i=0;i<100;i++){contactKey=String(i);if(parseInt(learningHash(`${agent}:${contactKey}`).slice(0,8),16)%100>=10)break;}
         expect(await service.getPublishedReleaseSnapshot(tenant,agent,contactKey)).toEqual({releaseId:stable,releaseHash:'stable'});
     });
-    it('uses the publication lock for rollback as well',async()=>{
-        const {service,query}=build();await service.rollback(tenant,agent,releaseId);
-        expect(query.mock.calls[0]).toEqual([expect.stringContaining('pg_advisory_xact_lock'),[`learning-release:${tenant}:${agent}`]]);
+    it('takes the privacy fence before the publication lock when rolling back',async()=>{
+        const {service,query}=build();await service.rollback(tenant,agent,releaseId,'operator');
+        // A rollback retracts derived words, so it takes the same fence in the
+        // same order as every other retraction path — otherwise a rollback and
+        // an erasure can interleave over the same rows.
+        expect(query.mock.calls[0]).toEqual([expect.stringContaining('pg_advisory_xact_lock'),['agent-privacy:tenant_learning']]);
+        expect(query.mock.calls[1]).toEqual([expect.stringContaining('pg_advisory_xact_lock'),[`learning-release:${tenant}:${agent}`]]);
     });
     it('keeps learning disabled explicitly without reading a published release',async()=>{
         const {service,prisma}=build();expect(await service.getRuntimeExamples(tenant,agent,{language:'es',releaseId:null})).toEqual([]);

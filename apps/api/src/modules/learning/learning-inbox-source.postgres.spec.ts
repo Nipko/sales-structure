@@ -471,6 +471,50 @@ const databaseUrl=process.env.LEARNING_EVIDENCE_TEST_DATABASE_URL;
             {status:'retired',snapshot:{},evaluation:null,evaluation_namespaces:null,evaluation_status:'failed'}]);
         await expect(learning.checkpointEvaluation(tenantId,agentId,root.releaseId,root.attemptId,[{private:'late-result'}],root.hash)).rejects.toThrow();
     });
+    it('retracts what a published release produced when it is rolled back, and says who did it',async()=>{
+        // `rollback` flipped one status column. It disposed no evaluation
+        // namespace, redacted no derived reply and recorded no actor — so the
+        // words a withdrawn release had already produced stayed in the outbox,
+        // in the widget's deferred replies and in the envelope a turn would be
+        // resumed from, ready to be delivered after the rollback. The function
+        // that retracts all of it existed and had three callers, none of them
+        // the one operator action most likely to need it.
+        const {source,example}=await imported();
+        const copy=await evaluationCopy(source,example);
+        await learning.registerEvaluationNamespace(tenantId,agentId,copy.releaseId,copy.attemptId,copy.hash,copy.lease);
+        await learning.withEvaluationSources(tenantId,agentId,copy.releaseId,copy.attemptId,copy.hash,async()=>{
+            await prisma.executeInTenantSchema(copy.lease.schemaName,
+                "INSERT INTO contacts(id,name) VALUES($1::uuid,'PRIVATE_REPLAY_COPY')",[randomUUID()]);
+        });
+        expect(await exists(copy.lease)).toHaveLength(1);
+        await sql("UPDATE learning_releases SET status='published',published_at=NOW() WHERE id=$1::uuid",[copy.releaseId]);
+
+        const result=await learning.rollback(tenantId,agentId,copy.releaseId,'operator-1');
+        expect(result).toMatchObject({retired:copy.releaseId});
+        expect((result as any).retractedReleases).toBeGreaterThanOrEqual(1);
+
+        // The frozen holdout, the judge traces and the sandbox copy go with it.
+        expect(await exists(copy.lease)).toHaveLength(0);
+        const [row]=await sql(`SELECT status,snapshot,evaluation,evaluation_namespaces,retired_by,retired_at
+            FROM learning_releases WHERE id=$1::uuid`,[copy.releaseId]);
+        expect(row).toMatchObject({status:'retired',snapshot:{},evaluation:null,evaluation_namespaces:null,
+            retired_by:'operator-1'});
+        expect(row.retired_at).toBeTruthy();
+    });
+
+    it('refuses to roll back a release that is not published, and retracts nothing',async()=>{
+        const {source,example}=await imported();
+        const copy=await evaluationCopy(source,example);
+        await learning.registerEvaluationNamespace(tenantId,agentId,copy.releaseId,copy.attemptId,copy.hash,copy.lease);
+        await expect(learning.rollback(tenantId,agentId,copy.releaseId,'operator-1')).rejects.toThrow();
+        // A refused rollback is not a quiet retraction: the candidate keeps its
+        // snapshot and its namespace registration.
+        expect((await sql('SELECT status FROM learning_releases WHERE id=$1::uuid',[copy.releaseId]))[0].status)
+            .toBe('candidate');
+        expect((await sql('SELECT evaluation_namespaces FROM learning_releases WHERE id=$1::uuid',[copy.releaseId]))[0]
+            .evaluation_namespaces).toHaveLength(1);
+    });
+
     it('rejects a forged namespace, superseded attempt and changed source before copying',async()=>{
         const {source,example}=await imported();const copy=await evaluationCopy(source,example);
         await expect(learning.registerEvaluationNamespace(tenantId,agentId,copy.releaseId,copy.attemptId,copy.hash,{...copy.lease,token:randomUUID()})).rejects.toThrow();

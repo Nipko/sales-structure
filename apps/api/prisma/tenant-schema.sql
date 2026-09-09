@@ -4736,6 +4736,7 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."learning_releases" (
         baseline_release_id UUID, traffic_percent INTEGER NOT NULL DEFAULT 100 CHECK (traffic_percent BETWEEN 0 AND 100),
         evaluation_status VARCHAR(16) NOT NULL DEFAULT 'pending' CHECK (evaluation_status IN ('pending','running','passed','failed')),
         evaluation JSONB, created_by VARCHAR(100) NOT NULL, published_by VARCHAR(100), published_at TIMESTAMPTZ,
+        retired_by VARCHAR(100), retired_at TIMESTAMPTZ,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
 
 CREATE INDEX IF NOT EXISTS idx_learning_releases_active ON "{{SCHEMA_NAME}}"."learning_releases"(agent_id, status, created_at DESC);

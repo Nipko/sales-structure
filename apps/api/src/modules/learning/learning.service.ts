@@ -686,14 +686,34 @@ export class LearningService {
         });
     }
 
-    async rollback(tenantId:string,agentId:string,releaseId:string){
+    /**
+     * Take a published release out of service AND retract what it produced.
+     *
+     * This used to flip one status column. It disposed no evaluation namespace,
+     * redacted no derived reply, recorded no actor and no time — so the words a
+     * withdrawn release had already produced stayed in the outbox, in the widget's
+     * deferred replies and in the envelope a turn would be resumed from, ready to
+     * be delivered after the release they came from had been rolled back. The
+     * function that does all of that, `retireLearningReleases`, existed and had
+     * three callers, none of them the one operator action most likely to need it.
+     *
+     * The privacy fence is taken first and in the same order as every other
+     * retraction path, so a rollback and an erasure cannot interleave.
+     */
+    async rollback(tenantId:string,agentId:string,releaseId:string,actorId?:string){
         const schema=await this.schema(tenantId);
         return this.prisma.transactionInTenantSchema(schema,async query=>{
+        await query(`SELECT pg_advisory_xact_lock(hashtextextended($1,0))::text`,[`agent-privacy:${schema}`]);
         await query(`SELECT pg_advisory_xact_lock(hashtextextended($1,0))::text`,[`learning-release:${tenantId}:${agentId}`]);
-        const rows=await query<any[]>(`UPDATE learning_releases SET status='retired'
-            WHERE id=$1::uuid AND agent_id=$2::uuid AND status='published' RETURNING baseline_release_id`,[releaseId,agentId]);
+        const rows=await query<any[]>(`UPDATE learning_releases SET status='retired',
+            retired_by=$3, retired_at=NOW()
+            WHERE id=$1::uuid AND agent_id=$2::uuid AND status='published' RETURNING baseline_release_id`,
+            [releaseId,agentId,actorId||null]);
         if(!rows.length) throw new ConflictException({error:'learning_release_not_published'});
-        return {retired:releaseId,baselineReleaseId:rows[0].baseline_release_id};
+        // Descendants come with it: the recursive lineage inside is what stops a
+        // release built on top of this one from serving its parent's material.
+        const retracted=await retireLearningReleases(query,{releaseIds:[releaseId]});
+        return {retired:releaseId,baselineReleaseId:rows[0].baseline_release_id,retractedReleases:retracted};
         });
     }
 

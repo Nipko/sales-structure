@@ -74,6 +74,20 @@ export class AgentReleaseStore {
         if(locked)this.assertCandidate(locked.candidate,tenantId);
         return locked;
     }
+    /**
+     * Whether a job is due, and whether a lease expired, are questions about NOW
+     * — `clock_timestamp()`, which advances inside the transaction — and not
+     * about when this transaction happened to begin.
+     *
+     * `NOW()` freezes at BEGIN, and this statement waits: it takes the privacy
+     * fence and reads the candidate `FOR UPDATE`, so under load it can begin,
+     * block behind the transaction still creating the evaluation, and only then
+     * read a `next_attempt_at` later than its own frozen clock. The UPDATE
+     * matched nothing and this answered null — "no work" — for a job that was
+     * due. `assertExecutionLease` had used `clock_timestamp()` all along and
+     * `checkpoint` had not, so the same `lease_valid` was two questions
+     * depending on who asked.
+     */
     async claim(query:RevisionQuery,schema:string,tenantId:string,agentId:string,candidateId:string,evaluationId:string):Promise<any|null>{
         assertReleaseIds(tenantId,agentId,candidateId,evaluationId);await this.privacy(query,schema);
         const data=await this.lockReviewed(query,tenantId,agentId,candidateId);
@@ -84,7 +98,8 @@ export class AgentReleaseStore {
         const evaluation=(await query<any[]>(`UPDATE agent_release_evaluations SET status='running',lease_token=$3::uuid,
             lease_until=NOW()+INTERVAL '180 seconds',attempts=attempts+1,error=NULL,updated_at=NOW()
             WHERE id=$1::uuid AND candidate_id=$2::uuid
-              AND ((status IN ('pending','failed','budget_deferred') AND next_attempt_at<=NOW()) OR (status='running' AND lease_until<NOW())) RETURNING *`,
+              AND ((status IN ('pending','failed','budget_deferred') AND next_attempt_at<=clock_timestamp())
+                OR (status='running' AND lease_until<clock_timestamp())) RETURNING *`,
             [evaluationId,candidateId,token]))[0];
         if(!evaluation)return null;
         await query("UPDATE agent_release_candidates SET status='evaluating',version=version+1,updated_at=NOW() WHERE id=$1::uuid",[candidateId]);
@@ -116,7 +131,7 @@ export class AgentReleaseStore {
         const data=await this.lockReviewed(query,input.tenantId,input.agentId,input.candidateId);
         if(!data)conflict('agent_release_invalidated');
         this.assertCandidate(data.candidate,input.tenantId);
-        const evaluation=(await query<any[]>(`SELECT *,lease_until>NOW() AS lease_valid FROM agent_release_evaluations
+        const evaluation=(await query<any[]>(`SELECT *,lease_until>clock_timestamp() AS lease_valid FROM agent_release_evaluations
             WHERE id=$1::uuid AND candidate_id=$2::uuid FOR UPDATE`,[input.evaluationId,input.candidateId]))[0];
         if(!evaluation||evaluation.status!=='running'||evaluation.lease_token!==input.leaseToken||!evaluation.lease_valid)
             conflict('agent_release_lease_lost');

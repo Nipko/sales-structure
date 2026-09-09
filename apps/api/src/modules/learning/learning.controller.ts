@@ -61,6 +61,15 @@ export class LearningController {
             where:{tenantId,action:{startsWith:'learning.'},details:{path:['agentId'],equals:agentId}},
             orderBy:{createdAt:'desc'},take})};
     }
+    /**
+     * What the judge and the people who review it agree about.
+     *
+     * A `GET` before the `:param` routes below, for the same reason `audit` is.
+     */
+    @Get('calibration')
+    async calibration(@Param('tenantId') tenantId:string,@Param('agentId') agentId:string,@Query('limit') limit?:string){
+        return {success:true,data:await this.learning.judgeCalibration(tenantId,agentId,parseInt(limit||'',10)||undefined)};
+    }
     @Post('import')
     async importFile(@Param('tenantId') tenantId:string,@Param('agentId') agentId:string,@Body() body:LearningFileImport,@Req() req:any){
         const data=await this.learning.importSource(tenantId,agentId,body,this.actor(req));

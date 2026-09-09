@@ -13,6 +13,7 @@ import type { ExternalSourceAuthority } from '../ai/interfaces/external-source-a
 import { LEARNING_SCHEMA } from './learning-schema';
 import { LEARNING_DUPLICATE_DISTANCE, isLearningEmbedding, learningDedupRecord, learningSplitDuplicates } from './learning-dedup';
 import { assertRuntimeLearningFootprint, createRuntimeLearningFootprint } from './learning-runtime-footprint';
+import { learningJudgeCalibration } from './learning-judge-calibration';
 import { assertLearningContactsAllowed, assertLearningInboxSource, learningInboxEvidence,
     readLearningInboxSource, retireLearningSources,
     LearningInboxSourceUnavailable, type LearningInboxEvidence, type LearningSourceQuery } from './learning-inbox-source';
@@ -313,6 +314,23 @@ export class LearningService {
                 FROM learning_reviews WHERE example_id=$1::uuid ORDER BY created_at DESC,id DESC LIMIT $2::int`,[exampleId,take]);
             return {exampleId,revision:rows[0].revision,status:rows[0].status,dedupStatus:rows[0].dedup_status,
                 reviewedBy:rows[0].reviewed_by,reviewedAt:rows[0].reviewed_at,limit:take,history};
+        });
+    }
+
+    /**
+     * How often a person rejects what the judge was willing to pass.
+     *
+     * Read on the same privacy fence and the same source assertions as every
+     * other example read, so a retracted source refuses rather than quietly
+     * contributing a decision about material nobody may use any more.
+     */
+    async judgeCalibration(tenantId:string,agentId:string,limit?:number){
+        const schema=await this.schema(tenantId);
+        await this.assertAgent(schema,agentId);
+        await this.ensureTables(schema);
+        return this.prisma.transactionInTenantSchema(schema,async query=>{
+            await query(`SELECT pg_advisory_xact_lock_shared(hashtextextended($1,0))::text`,[`agent-privacy:${schema}`]);
+            return learningJudgeCalibration(query,agentId,{limit});
         });
     }
 

@@ -50,7 +50,11 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
         'pipelines','pipeline_stages','deals','services','service_staff','calendar_integrations','appointments','availability_slots','blocked_dates',
         'membership_plans','members','fitness_classes','class_bookings','course_cohorts','enrollments',
         'properties','property_bookings','tour_packages','tour_inventory','tour_bookings','menu_items','food_orders','food_order_items',
-        'products','orders','order_items','stock_movements','vehicles','pets','pet_vaccinations','pet_command_receipts','insurance_policies','insurance_claims',
+        // `insurance_plans` is part of the EvalSession fixture set: the seed
+        // creates the plan `calculate_quote` reads before it writes, so the
+        // source schema this spec builds must carry the table or `session.reset`
+        // fails on a relation the namespace was never asked to clone.
+        'products','orders','order_items','stock_movements','vehicles','pets','pet_vaccinations','pet_command_receipts','insurance_plans','insurance_policies','insurance_claims',
         'staff_members','customer_vehicles','repair_orders','repair_order_events'];
     const date = new Date(Date.now() + 7 * 86400_000).toISOString().slice(0,10);
     const query = async (sql: string, params: any[] = []) => (await pool.query(sql, params)).rows;

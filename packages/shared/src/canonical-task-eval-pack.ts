@@ -5,6 +5,7 @@ import { repairTaskEvalScenarios } from './repair-task-eval-pack';
 import { catalogTaskEvalScenarios } from './catalog-task-eval-pack';
 import { vehicleTaskEvalScenarios } from './vehicle-task-eval-pack';
 import { petTaskEvalScenarios } from './pet-task-eval-pack';
+import { insuranceTaskEvalScenarios } from './insurance-task-eval-pack';
 
 type Domain = 'appointments' | 'class_bookings' | 'enrollments';
 const F = (name: string) => `{{fixture.${name}}}`;
@@ -65,6 +66,8 @@ export function canonicalTaskEvalScenarios(intent: IntentContract, language: Eva
     if (vehicle.length) return vehicle;
     const pet = petTaskEvalScenarios(intent, language);
     if (pet.length) return pet;
+    const insurance = insuranceTaskEvalScenarios(intent, language);
+    if (insurance.length) return insurance;
     const domain: Domain | undefined = intent.key === 'book_appointment' || intent.key === 'cancel_appointment' ? 'appointments'
         : intent.key === 'book_class' ? 'class_bookings' : intent.key === 'enrol_student' ? 'enrollments' : undefined;
     if (!domain || !intent.commits) return [];

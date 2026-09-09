@@ -20,6 +20,7 @@ export const CANONICAL_EVAL_FIXTURE_IDS = Object.freeze({
     vehicleDepositService: '00000000-0000-4000-8000-00000000b015',
     petOwner: '00000000-0000-4000-8000-00000000b016',
     otherPet: '00000000-0000-4000-8000-00000000b017',
+    insurancePlan: '00000000-0000-4000-8000-00000000b018',
 });
 
 type Window = { day: number; start: number; end: number };
@@ -176,6 +177,16 @@ export async function prepareCanonicalEvalFixtures(query: EvalNamespaceQuery, sc
     await seed(`INSERT INTO ${table('pets')} (id,contact_id,name,species,weight_kg,is_active,metadata) VALUES ($1::uuid,$2::uuid,'[EVAL] Sandbox Pet','dog',4,true,$3::jsonb)`, [f.pet, EVAL_SANDBOX_CONTACT_ID, marker]);
     await seed(`INSERT INTO ${table('contacts')}(id,external_id,channel_type,name) VALUES($1::uuid,'eval-pet-owner','web_widget','[EVAL] Other tutor')`, [f.petOwner]);
     await seed(`INSERT INTO ${table('pets')}(id,contact_id,name,species,weight_kg,is_active,metadata) VALUES($1::uuid,$2::uuid,'[EVAL] Other pet','cat',3,true,$3::jsonb)`, [f.otherPet, f.petOwner, marker]);
+    // `insurance_plans` was already cloned into the namespace "so the quote is
+    // calculated against the real plan instead of failing on an absent plan",
+    // but nothing ever seeded a row: `calculate_quote` reads the plan first and
+    // returned `Plan not found`, so no quote could ever be written and the task
+    // could not have a positive case. The band is deliberately flat
+    // (min = max): `calculatePremium` short-circuits when they are equal, so the
+    // premium is the same number whatever age the model declares — an assertion
+    // on it measures the write, not the model's arithmetic.
+    await seed(`INSERT INTO ${table('insurance_plans')} (id,name,description,insurance_type,coverage_level,monthly_premium_min,monthly_premium_max,currency,min_age,max_age,is_active,metadata)
+        VALUES ($1::uuid,'[EVAL] Sandbox Plan','Evaluation-only fixture','auto','basico',50,50,'COP',18,75,true,$2::jsonb)`, [f.insurancePlan, marker]);
     await seed(`INSERT INTO ${table('insurance_policies')} (id,policy_number,contact_id,policyholder_name,monthly_premium,currency,starts_at,ends_at,status,metadata) VALUES ($1::uuid,'EVAL-SANDBOX-POLICY',$2::uuid,'Eval Policyholder',10,'COP',CURRENT_DATE,$3::date,'active',$4::jsonb)`, [f.insurancePolicy, EVAL_SANDBOX_CONTACT_ID, fixture.endDate, marker]);
     await prepareRepairEvalFixtures(query, schema);
     await prepareCatalogEvalFixtures(query, schema, f.product);

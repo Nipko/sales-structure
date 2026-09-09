@@ -4,7 +4,7 @@ Registro generado desde contratos de dominio, herramientas, dependencias y escen
 
 Perfiles canónicos: **76**. Tareas declaradas: **268**. Tareas que comprometen al negocio: **146**.
 
-Tareas sin caso positivo con efecto verificable: **32**. Tareas con alguna herramienta de escritura sin verificador de efecto: **5**.
+Tareas sin caso positivo con efecto verificable: **27**. Tareas con alguna herramienta de escritura sin verificador de efecto: **5**.
 
 Estos dos contadores **no** son los de «sin positivo propio / sin verificador» de [`task-matrix-derived.md`](../2026-09-08/task-matrix-derived.md), que están en cero. Aquel mide si la tarea tiene escenario propio y familia auditada; éste exige además que un caso positivo afirme un **efecto en base** (`db_effect`) del writer que la tarea compromete. Una tarea cuya familia de escritura todavía no corre en el adaptador aislado no puede afirmarlo, así que cuenta acá y no allá. Leer «cero sin positivo» como «toda tarea transaccional tiene un positivo verificable» es exactamente el error que esta línea existe para evitar.
 
@@ -12,7 +12,7 @@ La matriz describe cobertura declarada. Los estados por canal e idioma permanece
 
 La disponibilidad comercial, el permiso de ejecutar una herramienta y la existencia de un verificador de lectura son dimensiones distintas. La prueba de carga de módulos o de componentes tampoco certifica un proveedor externo.
 
-Revisión base del repositorio: `2ad9aabe29aafdb593eb6cf189636d301645d683`; incluye los cambios del árbol de trabajo al generar.
+Revisión base del repositorio: `a628e3b6770fe6deb08c99223747db3097df3746`; incluye los cambios del árbol de trabajo al generar.
 
 [Detalle de tareas en CSV](competence-matrix.csv). El contrato completo está disponible en `GET /eval/:tenantId/competence-matrix`; el generador también lo exporta con `--json`.
 
@@ -67,11 +67,11 @@ Revisión base del repositorio: `2ad9aabe29aafdb593eb6cf189636d301645d683`; incl
 | salud/farmacia | 5 | 2 | 0 | — |
 | salud/medica_general | 3 | 2 | 0 | — |
 | salud/psicologia | 4 | 2 | 0 | — |
-| seguros/aseguradora | 3 | 2 | 2 | — |
-| seguros/auto | 3 | 2 | 2 | — |
-| seguros/broker | 3 | 2 | 2 | — |
-| seguros/salud | 3 | 2 | 2 | — |
-| seguros/vida | 3 | 2 | 2 | — |
+| seguros/aseguradora | 3 | 2 | 1 | — |
+| seguros/auto | 3 | 2 | 1 | — |
+| seguros/broker | 3 | 2 | 1 | — |
+| seguros/salud | 3 | 2 | 1 | — |
+| seguros/vida | 3 | 2 | 1 | — |
 | servicios_hogar/cerrajeria | 2 | 1 | 1 | — |
 | servicios_hogar/electricidad | 2 | 1 | 1 | — |
 | servicios_hogar/fumigacion | 2 | 1 | 1 | — |

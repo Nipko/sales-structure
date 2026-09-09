@@ -931,12 +931,18 @@ export class LearningService {
      * Take a published release out of service AND retract what it produced.
      *
      * This used to flip one status column. It disposed no evaluation namespace,
-     * redacted no derived reply, recorded no actor and no time — so the words a
-     * withdrawn release had already produced stayed in the outbox, in the widget's
-     * deferred replies and in the envelope a turn would be resumed from, ready to
-     * be delivered after the release they came from had been rolled back. The
-     * function that does all of that, `retireLearningReleases`, existed and had
-     * three callers, none of them the one operator action most likely to need it.
+     * took back nothing it had produced, recorded no actor and no time — so the
+     * words a withdrawn release had already written stayed in the outbox, in the
+     * envelope a turn would be resumed from and in the draft somebody was one
+     * click from sending, ready to reach a customer AFTER the release they came
+     * from had been rolled back. The function that does all of that,
+     * `retireLearningReleases`, existed and had three callers, none of them the
+     * one operator action most likely to need it.
+     *
+     * What it takes back is what has not reached anyone. A reply a customer
+     * already read stays: that is their conversation, not the release's
+     * property. Erasing it belongs to the person whose data it was, through
+     * `withdrawSource`.
      *
      * The privacy fence is taken first and in the same order as every other
      * retraction path, so a rollback and an erasure cannot interleave.
@@ -953,7 +959,13 @@ export class LearningService {
         if(!rows.length) throw new ConflictException({error:'learning_release_not_published'});
         // Descendants come with it: the recursive lineage inside is what stops a
         // release built on top of this one from serving its parent's material.
-        const retracted=await retireLearningReleases(query,{releaseIds:[releaseId]});
+        // Everything this release produced that has not reached anybody: the
+        // outbox items still waiting, the envelope a turn would be resumed from,
+        // the draft a person was one click from sending. NOT the replies a
+        // customer already read — a rollback withdraws a release, it does not
+        // rewrite the conversations it took part in. That erasure belongs to the
+        // person whose data it was, through `withdrawSource`.
+        const retracted=await retireLearningReleases(query,{releaseIds:[releaseId],deliveredReplies:'retain'});
         return {retired:releaseId,baselineReleaseId:rows[0].baseline_release_id,retractedReleases:retracted};
         });
     }

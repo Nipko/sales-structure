@@ -45,7 +45,23 @@ export async function cleanLearningEvaluationNamespaces(query:LearningSourceQuer
  * owned copy is gone; a failed teardown rolls back retirement rather than hiding
  * an orphan. Baseline descendants contain derived comparison evidence too.
  */
-export async function retireLearningReleases(query:LearningSourceQuery,input:{releaseIds?:string[];sourceIds?:string[]}):Promise<number>{
+export async function retireLearningReleases(query:LearningSourceQuery,input:{releaseIds?:string[];sourceIds?:string[];
+    /**
+     * What to do with a reply that ALREADY reached a customer.
+     *
+     * `redact` — the default, and the only right answer when a person withdraws
+     * their data: everything derived from it goes, delivered or not.
+     *
+     * `retain` — for an operator taking a release out of service. Everything the
+     * release produced that has not reached anyone is still taken back, but
+     * `redactWidgetAgentReplies` is the one call here that rewrites a customer's
+     * transcript: it blanks the `messages` row itself. A message somebody already
+     * read is part of their conversation, not the release's property, and erasing
+     * it because a style was rolled back would silently rewrite a history nobody
+     * asked to have rewritten. The outbox, the envelope and the pending draft are
+     * internal replay material and go either way.
+     */
+    deliveredReplies?:'redact'|'retain'}):Promise<number>{
     const columns=await query<any[]>(`SELECT column_name FROM information_schema.columns
         WHERE table_schema=current_schema() AND table_name='learning_releases'`);
     const names=new Set(columns.map(c=>c.column_name));
@@ -60,7 +76,8 @@ export async function retireLearningReleases(query:LearningSourceQuery,input:{re
     const [{schema}]=await query<any[]>('SELECT current_schema() AS schema');
     // Retained source IDs still find derived replies after a previous release
     // retirement emptied its snapshot. Redact before dropping that lineage.
-    await redactWidgetAgentReplies(query,schema,{releaseIds:rows.map(row=>row.id),sourceIds:input.sourceIds});
+    if(input.deliveredReplies!=='retain')
+        await redactWidgetAgentReplies(query,schema,{releaseIds:rows.map(row=>row.id),sourceIds:input.sourceIds});
     // Outbound items still waiting to be sent derive from the same examples.
     await redactDispatchOutbox(query,schema,{releaseIds:rows.map(row=>row.id),sourceIds:input.sourceIds});
     // And the envelope a turn would be resumed from, which carries the same

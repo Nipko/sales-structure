@@ -14361,5 +14361,47 @@
       "requestInvalid": "La solicitud fue rechazada por su forma. Vuelve a cargar la pantalla e inténtalo de nuevo.",
       "unavailable": "No pudimos verificar esta información. Actualiza o vuelve a intentar; no se interpreta como éxito ni como ausencia de datos."
     }
+  },
+  "agentContent": {
+    "willCreate": "Todavía no existe. Si lo aplicas, se crea con exactamente esto y queda para que lo revises.",
+    "apply": "Crear",
+    "applying": "Creando…",
+    "created": "Listo. Se creó y ya puedes revisarlo.",
+    "replayed": "Ya se había creado con esta misma revisión. No se duplicó.",
+    "reviewObject": "Ver y editar",
+    "expired": "Esta propuesta venció. Pídele a Assist que la vuelva a preparar.",
+    "operations": {
+      "knowledge_faq_create": "Crear una pregunta frecuente",
+      "policies_legal_text_create": "Redactar un texto legal",
+      "catalogue_course_create": "Dar de alta un curso",
+      "agenda_service_create": "Crear un servicio agendable"
+    },
+    "fields": {
+      "title": "Título",
+      "content": "Contenido",
+      "name": "Nombre",
+      "type": "Tipo",
+      "text": "Texto",
+      "description": "Descripción",
+      "price": "Precio",
+      "currency": "Moneda",
+      "durationHours": "Duración (horas)",
+      "durationMinutes": "Duración (minutos)",
+      "modality": "Modalidad",
+      "active": "Activo"
+    },
+    "verification": {
+      "unavailable": "Se creó, pero no pudimos confirmarlo del todo. Ábrelo para comprobarlo.",
+      "object_missing": "La propuesta quedó consumida y el objeto no llegó a crearse. Pídele a Assist que la prepare de nuevo.",
+      "reread_failed": "Se escribió, pero no pudimos volver a leerlo para confirmarlo. Ábrelo para comprobarlo.",
+      "audit_unavailable": "Se creó, pero no pudimos dejar constancia de quién lo hizo."
+    },
+    "errors": {
+      "apply_failed": "No se pudo crear. Si cambió algo o la propuesta venció, pídele a Assist que la prepare de nuevo.",
+      "operation_not_executable": "Esto no lo hace Assist: se configura en su propia pantalla.",
+      "operation_input_invalid": "Faltan datos o alguno no es válido. Pídele a Assist que lo corrija.",
+      "plan_limit_reached": "Tu plan no admite más elementos de este tipo.",
+      "role_not_permitted": "Tu rol no puede crear esto."
+    }
   }
 }

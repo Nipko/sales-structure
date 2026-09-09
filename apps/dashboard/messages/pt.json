@@ -14361,5 +14361,47 @@
       "requestInvalid": "O pedido foi recusado pela sua forma. Carregue o ecrã de novo e tente outra vez.",
       "unavailable": "Não conseguimos verificar esta informação. Atualize ou tente de novo; não se interpreta como sucesso nem como ausência de dados."
     }
+  },
+  "agentContent": {
+    "willCreate": "Ainda não existe. Ao aplicar, será criado exatamente assim e ficará para você revisar.",
+    "apply": "Criar",
+    "applying": "Criando…",
+    "created": "Pronto. Foi criado e já pode revisar.",
+    "replayed": "Já tinha sido criado a partir desta mesma revisão. Nada foi duplicado.",
+    "reviewObject": "Abrir e editar",
+    "expired": "Esta proposta expirou. Peça ao Assist que a prepare de novo.",
+    "operations": {
+      "knowledge_faq_create": "Criar uma pergunta frequente",
+      "policies_legal_text_create": "Redigir um texto legal",
+      "catalogue_course_create": "Cadastrar um curso",
+      "agenda_service_create": "Criar um serviço agendável"
+    },
+    "fields": {
+      "title": "Título",
+      "content": "Conteúdo",
+      "name": "Nome",
+      "type": "Tipo",
+      "text": "Texto",
+      "description": "Descrição",
+      "price": "Preço",
+      "currency": "Moeda",
+      "durationHours": "Duração (horas)",
+      "durationMinutes": "Duração (minutos)",
+      "modality": "Modalidade",
+      "active": "Ativo"
+    },
+    "verification": {
+      "unavailable": "Foi criado, mas não conseguimos confirmar totalmente. Abra para verificar.",
+      "object_missing": "A proposta foi consumida e o objeto não chegou a ser criado. Peça ao Assist que a prepare de novo.",
+      "reread_failed": "Foi gravado, mas não conseguimos relê-lo para confirmar. Abra para verificar.",
+      "audit_unavailable": "Foi criado, mas não conseguimos registrar quem o fez."
+    },
+    "errors": {
+      "apply_failed": "Não foi possível criar. Se algo mudou ou a proposta expirou, peça ao Assist que a prepare de novo.",
+      "operation_not_executable": "Isto o Assist não faz: configura-se na tela própria.",
+      "operation_input_invalid": "Faltam dados ou algum é inválido. Peça ao Assist que corrija.",
+      "plan_limit_reached": "Seu plano não permite mais itens deste tipo.",
+      "role_not_permitted": "Seu perfil não pode criar isto."
+    }
   }
 }

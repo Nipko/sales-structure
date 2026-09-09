@@ -6,7 +6,7 @@
  */
 
 import type { VerticalDefinitions } from "./vertical-catalog";
-import type { AgentAssessment, AgentConfigurationChange, AgentConfigurationProposal, AppliedAgentConfiguration, AgentQualityAttentionSummary, AgentQualityOverview, AgentQualitySignal, GuidedTourId, AgentConfigurationWorkspace, SaveAgentDraftRequest, SavedAgentDraft } from "@parallext/shared";
+import type { AgentAssessment, AgentConfigurationChange, AgentConfigurationProposal, AgentContentProposal, AppliedAgentConfiguration, AppliedAgentContentObject, AgentOperationAvailability, AgentQualityAttentionSummary, AgentQualityOverview, AgentQualitySignal, GuidedTourId, AgentConfigurationWorkspace, SaveAgentDraftRequest, SavedAgentDraft } from "@parallext/shared";
 import type { QualityAssistantTarget } from "@/lib/quality-assistant-contract";
 import type { LearningImport, LearningReviewHistory, LearningWorkspaceData } from "@/lib/agent-learning";
 import type { KnowledgeConflictOverview, KnowledgeConflictReview } from "@/lib/knowledge-conflicts";
@@ -1315,6 +1315,8 @@ export const api = {
         apiPost<{
             reply: string;
             proposal?: AgentConfigurationProposal;
+            /** A content object Assist offers to create; reviewed and applied separately. */
+            contentProposal?: AgentContentProposal;
             actions?: Array<{
                 code: "open_quality_center" | "open_quality_action" | "start_guided_tour";
                 labelKey: "openCenter" | "resolvePriority" | "showMe";
@@ -1328,6 +1330,16 @@ export const api = {
         apiPost<AgentConfigurationProposal>(`/copilot/configuration/${tenantId}/proposals`, data),
     applyAgentConfiguration: (tenantId: string, proposalId: string, digest: string) =>
         apiPost<AppliedAgentConfiguration>(`/copilot/configuration/${tenantId}/proposals/${proposalId}/apply`, { digest }),
+
+    // Content objects Assist can create: a FAQ, a legal text, a course, a
+    // bookable service. Everything that would reach a customer is declared a
+    // route to the screen that owns it instead, so there is nothing to apply.
+    listAgentOperations: (tenantId: string) =>
+        apiGet<AgentOperationAvailability[]>(`/copilot/operations/${tenantId}`),
+    proposeAgentContent: (tenantId: string, data: { operation: string; input: unknown; requestKey: string }) =>
+        apiPost<AgentContentProposal>(`/copilot/operations/${tenantId}/proposals`, data),
+    applyAgentContent: (tenantId: string, proposalId: string, digest: string) =>
+        apiPost<AppliedAgentContentObject>(`/copilot/operations/${tenantId}/proposals/${proposalId}/apply`, { digest }),
 
     getCopilotSuggestions: (conversationId: string) =>
         apiGet(`/copilot/${conversationId}/suggestions`),

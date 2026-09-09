@@ -14361,5 +14361,47 @@
       "requestInvalid": "The request was refused because of its shape. Load the screen again and try once more.",
       "unavailable": "We could not verify this. Refresh or try again; it is not read as success nor as an absence of data."
     }
+  },
+  "agentContent": {
+    "willCreate": "It does not exist yet. Applying creates it with exactly this, ready for you to review.",
+    "apply": "Create",
+    "applying": "Creating…",
+    "created": "Done. It was created and you can review it now.",
+    "replayed": "It had already been created from this same revision. Nothing was duplicated.",
+    "reviewObject": "Open and edit",
+    "expired": "This proposal expired. Ask Assist to prepare it again.",
+    "operations": {
+      "knowledge_faq_create": "Create a frequently asked question",
+      "policies_legal_text_create": "Draft a legal text",
+      "catalogue_course_create": "Add a course",
+      "agenda_service_create": "Create a bookable service"
+    },
+    "fields": {
+      "title": "Title",
+      "content": "Content",
+      "name": "Name",
+      "type": "Type",
+      "text": "Text",
+      "description": "Description",
+      "price": "Price",
+      "currency": "Currency",
+      "durationHours": "Duration (hours)",
+      "durationMinutes": "Duration (minutes)",
+      "modality": "Format",
+      "active": "Active"
+    },
+    "verification": {
+      "unavailable": "It was created, but we could not fully confirm it. Open it to check.",
+      "object_missing": "The proposal was consumed and the object was never created. Ask Assist to prepare it again.",
+      "reread_failed": "It was written, but we could not read it back to confirm. Open it to check.",
+      "audit_unavailable": "It was created, but we could not record who did it."
+    },
+    "errors": {
+      "apply_failed": "It could not be created. If something changed or the proposal expired, ask Assist to prepare it again.",
+      "operation_not_executable": "Assist does not do this: it is configured on its own screen.",
+      "operation_input_invalid": "Something is missing or invalid. Ask Assist to correct it.",
+      "plan_limit_reached": "Your plan does not allow more items of this kind.",
+      "role_not_permitted": "Your role cannot create this."
+    }
   }
 }

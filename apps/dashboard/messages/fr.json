@@ -14361,5 +14361,47 @@
       "requestInvalid": "La demande a été refusée en raison de sa forme. Rechargez l'écran et réessayez.",
       "unavailable": "Nous n'avons pas pu vérifier cette information. Actualisez ou réessayez ; cela ne vaut ni succès ni absence de données."
     }
+  },
+  "agentContent": {
+    "willCreate": "Cela n'existe pas encore. En appliquant, l'objet est créé exactement ainsi et reste à votre revue.",
+    "apply": "Créer",
+    "applying": "Création…",
+    "created": "C'est fait. L'objet a été créé et vous pouvez le revoir.",
+    "replayed": "Il avait déjà été créé à partir de cette même révision. Rien n'a été dupliqué.",
+    "reviewObject": "Ouvrir et modifier",
+    "expired": "Cette proposition a expiré. Demandez à Assist de la préparer à nouveau.",
+    "operations": {
+      "knowledge_faq_create": "Créer une question fréquente",
+      "policies_legal_text_create": "Rédiger un texte légal",
+      "catalogue_course_create": "Ajouter un cours",
+      "agenda_service_create": "Créer un service réservable"
+    },
+    "fields": {
+      "title": "Titre",
+      "content": "Contenu",
+      "name": "Nom",
+      "type": "Type",
+      "text": "Texte",
+      "description": "Description",
+      "price": "Prix",
+      "currency": "Devise",
+      "durationHours": "Durée (heures)",
+      "durationMinutes": "Durée (minutes)",
+      "modality": "Format",
+      "active": "Actif"
+    },
+    "verification": {
+      "unavailable": "L'objet a été créé, mais nous n'avons pas pu le confirmer entièrement. Ouvrez-le pour vérifier.",
+      "object_missing": "La proposition a été consommée et l'objet n'a jamais été créé. Demandez à Assist de la préparer à nouveau.",
+      "reread_failed": "Il a été écrit, mais nous n'avons pas pu le relire pour confirmer. Ouvrez-le pour vérifier.",
+      "audit_unavailable": "Il a été créé, mais nous n'avons pas pu consigner qui l'a fait."
+    },
+    "errors": {
+      "apply_failed": "La création a échoué. Si quelque chose a changé ou si la proposition a expiré, demandez à Assist de la préparer à nouveau.",
+      "operation_not_executable": "Assist ne fait pas cela : cela se configure sur son propre écran.",
+      "operation_input_invalid": "Il manque des données ou l'une d'elles est invalide. Demandez à Assist de corriger.",
+      "plan_limit_reached": "Votre forfait n'autorise pas plus d'éléments de ce type.",
+      "role_not_permitted": "Votre rôle ne peut pas créer cela."
+    }
   }
 }

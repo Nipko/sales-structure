@@ -19,6 +19,7 @@ import {
   type GuidedTourId,
   type GuidedTourStartDetail,
   type AgentConfigurationProposal,
+  type AgentContentProposal,
 } from "@parallext/shared";
 import { useAuth } from "@/contexts/AuthContext";
 import { useRole } from "@/hooks/useRole";
@@ -37,6 +38,7 @@ import {
 } from "@/lib/quality-assistant-contract";
 import { ParalllyAssistant } from "@/components/ParalllyAssistant";
 import { AgentConfigurationReview } from "@/components/quality/AgentConfigurationReview";
+import { AgentContentReview } from "@/components/quality/AgentContentReview";
 import { guidedTourAnchorId } from "@/lib/guided-tours";
 import { canRunProductTourAtWidth } from "@/lib/product-tour-contract";
 import {
@@ -110,7 +112,11 @@ function parseChatAction(action: unknown): ChatAction | null {
   }
   return null;
 }
-type ChatMessage = { role: "user" | "assistant"; content: string; actions?: ChatAction[]; proposal?: AgentConfigurationProposal };
+type ChatMessage = { role: "user" | "assistant"; content: string; actions?: ChatAction[]; proposal?: AgentConfigurationProposal;
+  // A content object Assist offers to create. Separate from `proposal`
+  // because a creation has no `before` to diff against, and the two review
+  // cards answer different questions.
+  contentProposal?: AgentContentProposal };
 
 const useIntroLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
@@ -130,6 +136,11 @@ export function HelpAssistant() {
 }
 
 function TenantHelpAssistant() {
+  // The tenant the applied object belongs to. Read here rather than passed in,
+  // because the component above remounts on a tenant swap — so this is always
+  // the tenant whose JWT the reply was produced under.
+  const { user } = useAuth();
+  const tenantId = user?.tenantId ?? null;
   const t = useTranslations("helpAssistant");
   const locale = useLocale();
   const pathname = usePathname();
@@ -310,7 +321,9 @@ function TenantHelpAssistant() {
           .filter((action): action is ChatAction => action !== null)
           .slice(0, 3)
         : undefined;
-      setMessages((current) => [...current, { role: "assistant", content, actions, proposal: response.success ? response.data?.proposal : undefined }]);
+      setMessages((current) => [...current, { role: "assistant", content, actions,
+        proposal: response.success ? response.data?.proposal : undefined,
+        contentProposal: response.success ? response.data?.contentProposal : undefined }]);
     } catch (error) {
       if (requestEpoch !== requestEpochRef.current) return;
       console.error("Error calling copilotChat API:", error);
@@ -494,6 +507,8 @@ function TenantHelpAssistant() {
                   {message.role === "user" ? message.content : renderFormattedText(message.content)}
                 </div>
                 {message.role === "assistant" && message.proposal && <AgentConfigurationReview key={message.proposal.id} proposal={message.proposal} />}
+                {message.role === "assistant" && message.contentProposal && tenantId
+                  && <AgentContentReview key={message.contentProposal.id} tenantId={tenantId} proposal={message.contentProposal} />}
                 {message.role === "assistant" && message.actions && message.actions.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-2">
                     {message.actions.map((action) => (

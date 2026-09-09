@@ -37,8 +37,6 @@ const LOCALE_SPECIFIC_KEYS: readonly string[] = [];
 /** How many paths a failure prints before it stops. A 9k-line dump is not a report. */
 const MAX_REPORTED = 20;
 
-type Leaf = { path: string; kind: string };
-
 /**
  * Every leaf path with the shape of its value.
  *

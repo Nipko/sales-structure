@@ -1190,7 +1190,9 @@ export class ConversationsService {
                 // Draft-for-approval (WS3 #6): a human reviews/edits/sends in the
                 // console instead of the AI replying directly. Store the suggestion
                 // and notify the inbox; the customer gets nothing until approval.
-                await this.persistDraft(tenantId, schemaName, conversation.id, response, contact?.name, inboundMessageId);
+                await this.persistDraft(tenantId, schemaName, conversation.id, response, contact?.name, inboundMessageId,
+                    turnEffects.learningFootprints.flatMap(footprint =>
+                        footprint.entries.map(entry => String(entry.releaseId))));
                 if (this.turnLedger && priorTurn) await this.turnLedger.recordDelivery(schemaName, ledgerInboundId, 'draft');
                 this.logger.log(`[Pipeline] Draft mode — reply suggested to console (not sent to customer)`);
             } else {
@@ -5722,13 +5724,29 @@ export class ConversationsService {
     }
 
     /** A persisted suggestion is the only output of a draft turn. */
+    /**
+     * A reply waiting for a person to press send.
+     *
+     * `learningReleaseIds` is what makes it reachable by a retraction. The draft
+     * is words the agent produced and a human may still deliver, so it belongs
+     * in the same set as the outbox, the widget's deferred replies and the turn
+     * envelope — and it was the one that no retraction touched: a release could
+     * be rolled back and its words still sat here, one click from a customer.
+     *
+     * Drafts written before this field existed carry no provenance and cannot be
+     * matched. They are left alone rather than cleared wholesale: erasing a
+     * person's pending work because a release they never used was withdrawn
+     * would cost more than the window is worth, and a draft's life is hours.
+     */
     private async persistDraft(
         tenantId: string, schemaName: string, conversationId: string, text: string,
-        contactName?: string, sourceMessageId?: string,
+        contactName?: string, sourceMessageId?: string, learningReleaseIds: string[] = [],
     ): Promise<void> {
         await this.prisma.executeInTenantSchema(schemaName,
             "UPDATE conversations SET metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb), '{pendingDraft}', $2::jsonb), updated_at = NOW() WHERE id = $1::uuid",
-            [conversationId, JSON.stringify({ text, sourceMessageId, effectsExecuted: false, createdAt: new Date().toISOString() })],
+            [conversationId, JSON.stringify({ text, sourceMessageId, effectsExecuted: false,
+                learningReleaseIds: [...new Set(learningReleaseIds)].sort(),
+                createdAt: new Date().toISOString() })],
         );
         this.eventEmitter.emit('draft.suggested', { tenantId, conversationId, text, contactName });
     }

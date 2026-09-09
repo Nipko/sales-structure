@@ -15,6 +15,7 @@ import { isolatedEvalNamespaceForPrisma, type EvalNamespaceLease } from '../simu
 const databaseUrl=process.env.LEARNING_EVIDENCE_TEST_DATABASE_URL;
 (databaseUrl?describe:describe.skip)('Inbox learning binds reviewed source versions in PostgreSQL',()=>{
     const tenantId=randomUUID(),agentId=randomUUID(),conversationId=randomUUID(),otherContact=randomUUID();
+    const otherConversationId=randomUUID();
     const schema=`tenant_learning_source_${randomUUID().replace(/-/g,'')}`;
     let contactId=randomUUID();
     while(learningSplit(learningHash(`${tenantId}:contact:${contactId}`))!=='train')contactId=randomUUID();
@@ -39,7 +40,10 @@ const databaseUrl=process.env.LEARNING_EVIDENCE_TEST_DATABASE_URL;
         Object.defineProperty(prisma,'tenant',{value:{findUnique:jest.fn(async()=>({language:'es'})),findMany:jest.fn(async()=>[{id:tenantId,schemaName:schema,isActive:true}])}});
         await sql('CREATE TABLE contacts(id UUID PRIMARY KEY,name TEXT,phone TEXT,email TEXT)');
         await sql('CREATE TABLE agent_personas(id UUID PRIMARY KEY,config_json JSONB)');
-        await sql('CREATE TABLE conversations(id UUID PRIMARY KEY,contact_id UUID REFERENCES contacts(id),agent_id UUID,channel_type TEXT,qa_revision BIGINT NOT NULL DEFAULT 0)');
+        // `metadata` carries the pending draft, which a retraction has to reach:
+        // a reply a person is one click from sending is in the same set as the
+        // outbox and the turn envelope.
+        await sql('CREATE TABLE conversations(id UUID PRIMARY KEY,contact_id UUID REFERENCES contacts(id),agent_id UUID,channel_type TEXT,metadata JSONB,updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),qa_revision BIGINT NOT NULL DEFAULT 0)');
         await sql('CREATE TABLE messages(id UUID PRIMARY KEY,conversation_id UUID REFERENCES conversations(id),direction TEXT,content_text TEXT,created_at TIMESTAMPTZ)');
         await sql('CREATE TABLE contact_identities(contact_id UUID,customer_profile_id UUID)');
         await sql('CREATE TABLE customer_memory_erasure(contact_id UUID PRIMARY KEY)');
@@ -66,7 +70,8 @@ const databaseUrl=process.env.LEARNING_EVIDENCE_TEST_DATABASE_URL;
             contact_identities,tool_execution_ledger,leads,opt_out_records,deletion_requests CASCADE`);
         await sql("INSERT INTO contacts VALUES($1::uuid,'Ana','+573101234567','ana@example.test'),($2::uuid,'Beatriz',NULL,NULL)",[contactId,otherContact]);
         await sql("INSERT INTO agent_personas VALUES($1::uuid,'{}'::jsonb)",[agentId]);
-        await sql("INSERT INTO conversations VALUES($1::uuid,$2::uuid,$3::uuid,'whatsapp',0)",[conversationId,contactId,agentId]);
+        await sql("INSERT INTO conversations(id,contact_id,agent_id,channel_type,qa_revision) VALUES($1::uuid,$2::uuid,$3::uuid,'whatsapp',0)",[conversationId,contactId,agentId]);
+        await sql("INSERT INTO conversations(id,contact_id,agent_id,channel_type,qa_revision) VALUES($1::uuid,$2::uuid,$3::uuid,'whatsapp',0)",[otherConversationId,otherContact,agentId]);
         await sql("INSERT INTO messages VALUES($1::uuid,$3::uuid,'inbound','Soy Ana, necesito orientación.','2026-09-01T12:00:00Z'),($2::uuid,$3::uuid,'outbound','Claro. ¿Qué necesitas resolver?','2026-09-01T12:00:01Z')",[randomUUID(),randomUUID(),conversationId]);
         knowledge.generateEmbedding.mockClear();llm.execute.mockClear();
     });
@@ -120,7 +125,7 @@ const databaseUrl=process.env.LEARNING_EVIDENCE_TEST_DATABASE_URL;
     it('keeps an unchanged source valid during unrelated customer activity',async()=>{
         const {source,example}=await imported();await published(source,example);
         const otherConversation=randomUUID();
-        await sql("INSERT INTO conversations VALUES($1::uuid,$2::uuid,$3::uuid,'telegram',0)",[otherConversation,otherContact,agentId]);
+        await sql("INSERT INTO conversations(id,contact_id,agent_id,channel_type,qa_revision) VALUES($1::uuid,$2::uuid,$3::uuid,'telegram',0)",[otherConversation,otherContact,agentId]);
         await sql("INSERT INTO messages VALUES($1::uuid,$2::uuid,'inbound','Unrelated customer traffic',NOW())",[randomUUID(),otherConversation]);
         expect(await learning.getRuntimeExamples(tenantId,agentId,{language:'es'})).toHaveLength(1);
         expect((await learning.list(tenantId,agentId)).examples[0].sourceAvailability).toBe('current');
@@ -223,6 +228,32 @@ const databaseUrl=process.env.LEARNING_EVIDENCE_TEST_DATABASE_URL;
         // And a lead of the right person with no objection recorded is not one.
         await sql('INSERT INTO leads VALUES($1::uuid,$2::uuid)',[randomUUID(),contactId]);
         expect(await learning.getRuntimeExamples(tenantId,agentId,{language:'es'})).toHaveLength(1);
+    });
+
+    it('takes back the reply a person was one click from sending',async()=>{
+        // `conversations.metadata.pendingDraft` holds words the agent produced
+        // that a human may still deliver. It belongs in the same retraction set
+        // as the outbox, the widget's deferred replies and the turn envelope —
+        // and it was the one nothing reached: a release could be rolled back and
+        // its words still sat there waiting for somebody to press send.
+        const {source,example}=await imported();const releaseId=await published(source,example);
+        const otherRelease=randomUUID();
+        await sql(`UPDATE conversations SET metadata=jsonb_build_object('pendingDraft',
+            jsonb_build_object('text','Te ayudo con eso.','learningReleaseIds',jsonb_build_array($2::text)))
+            WHERE id=$1::uuid`,[conversationId,releaseId]);
+        // A draft from a release nobody withdrew, and one with no provenance at
+        // all, both have to survive: erasing a person's pending work because an
+        // unrelated release was retracted costs more than the window is worth.
+        await sql(`UPDATE conversations SET metadata=jsonb_build_object('pendingDraft',
+            jsonb_build_object('text','Otro borrador','learningReleaseIds',jsonb_build_array($2::text)))
+            WHERE id=$1::uuid`,[otherConversationId,otherRelease]);
+
+        await learning.rollback(tenantId,agentId,releaseId,'operator-1');
+
+        expect((await sql('SELECT metadata FROM conversations WHERE id=$1::uuid',[conversationId]))[0].metadata)
+            .not.toHaveProperty('pendingDraft');
+        expect((await sql('SELECT metadata FROM conversations WHERE id=$1::uuid',[otherConversationId]))[0].metadata)
+            .toHaveProperty('pendingDraft');
     });
 
     it('serializes a reviewed-source commit with message edits through the real revision trigger',async()=>{
@@ -482,7 +513,7 @@ const databaseUrl=process.env.LEARNING_EVIDENCE_TEST_DATABASE_URL;
         const {source,example}=await imported();const baselineId=await published(source,example);
         const [{snapshot_hash:baselineHash}]=await sql('SELECT snapshot_hash FROM learning_releases WHERE id=$1::uuid',[baselineId]);
         const secondConversation=randomUUID();
-        await sql("INSERT INTO conversations VALUES($1::uuid,$2::uuid,$3::uuid,'telegram',0)",[secondConversation,otherContact,agentId]);
+        await sql("INSERT INTO conversations(id,contact_id,agent_id,channel_type,qa_revision) VALUES($1::uuid,$2::uuid,$3::uuid,'telegram',0)",[secondConversation,otherContact,agentId]);
         await sql("INSERT INTO messages VALUES($1::uuid,$3::uuid,'inbound','Necesito otro servicio',NOW()),($2::uuid,$3::uuid,'outbound','¿Qué servicio deseas?',NOW())",[randomUUID(),randomUUID(),secondConversation]);
         const importedSecond=await learning.importInbox(tenantId,agentId,secondConversation,'reviewer');
         const [secondSource]=await sql('SELECT * FROM learning_sources WHERE id=$1::uuid',[importedSecond.sourceId]);

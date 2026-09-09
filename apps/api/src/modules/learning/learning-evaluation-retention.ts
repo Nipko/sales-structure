@@ -1,7 +1,7 @@
 import { disposeOwnedEvalNamespace, type EvalNamespaceLease } from '../simulation/isolated-eval-namespace';
 import type { LearningSourceQuery } from './learning-inbox-source';
 import { redactWidgetAgentReplies } from '../widget/widget-agent-reply-retention';
-import { redactTurnLedger } from '../conversations/agent-turn-ledger';
+import { redactPendingDrafts, redactTurnLedger } from '../conversations/agent-turn-ledger';
 import { redactDispatchOutbox } from '../channels/agent-dispatch-outbox';
 
 export interface LearningEvaluationNamespace extends EvalNamespaceLease { attemptId:string;workerToken?:string; }
@@ -68,6 +68,9 @@ export async function retireLearningReleases(query:LearningSourceQuery,input:{re
     // the ledger cannot filter by source id, and by here every affected release
     // has already been resolved.
     if(rows.length)await redactTurnLedger(query as any,schema,{releaseIds:rows.map(row=>row.id)});
+    // The reply a person was one click from sending. Same set as the outbox,
+    // the widget's deferred replies and the ledger, and the one nothing reached.
+    if(rows.length)await redactPendingDrafts(query as any,schema,{releaseIds:rows.map(row=>row.id)});
     if(!rows.length)return 0;
     for(const row of rows)for(const lease of (row.evaluation_namespaces||[]) as LearningEvaluationNamespace[]){
         if(lease.sourceSchema!==schema)throw new Error('learning_evaluation_namespace_scope_mismatch');

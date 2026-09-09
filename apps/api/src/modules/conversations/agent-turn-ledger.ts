@@ -364,3 +364,37 @@ export async function redactTurnLedger(query: TurnLedgerQuery, schema: string,
         [contactIds, releaseIds]);
     return rows.length;
 }
+
+/**
+ * The reply a person was about to send, when the release it came from is gone.
+ *
+ * `conversations.metadata.pendingDraft` holds words the agent produced and a
+ * human may still deliver with one click. It belongs in the same retraction set
+ * as the outbox, the widget's deferred replies and this ledger — and it was the
+ * one nothing reached: a release could be rolled back and its words still sat
+ * there, waiting for somebody to press send.
+ *
+ * Matched by the release ids the draft records. A draft written before that
+ * field existed carries no provenance and is left alone: erasing a person's
+ * pending work because a release they never used was withdrawn would cost more
+ * than the window is worth, and a draft lives hours.
+ *
+ * Lives here rather than in `conversations.service.ts` so the retention module
+ * can call it beside the other three without importing the whole service.
+ */
+export async function redactPendingDrafts(query: TurnLedgerQuery, schema: string,
+    scope: { releaseIds?: readonly string[] }): Promise<number> {
+    const releaseIds = [...new Set(scope.releaseIds || [])];
+    if (releaseIds.some(id => !UUID.test(id))) fail('turn_ledger_release_invalid');
+    if (!releaseIds.length) return 0;
+    const rows = await query<any[]>(
+        `UPDATE conversations
+            SET metadata = COALESCE(metadata,'{}'::jsonb) - 'pendingDraft', updated_at = NOW()
+          WHERE metadata ? 'pendingDraft'
+            AND EXISTS (
+                SELECT 1 FROM jsonb_array_elements_text(
+                    COALESCE(metadata->'pendingDraft'->'learningReleaseIds','[]'::jsonb)) AS release_id
+                 WHERE release_id = ANY($1::text[]))
+          RETURNING id`, [releaseIds]);
+    return rows.length;
+}

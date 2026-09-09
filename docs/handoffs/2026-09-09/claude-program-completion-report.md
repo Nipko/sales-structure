@@ -10,7 +10,7 @@ Este informe no usa porcentajes para declarar cierre. Lo que está aceptado se n
 
 La tanda anterior entregó el **ledger durable del turno** como P0 cerrado, y lo era: la tabla existía, la migración existía, sus pruebas unitarias pasaban. Lo que faltaba era comprobar que el runtime pudiera **alcanzarla**.
 
-El arnés de punta a punta —una sola conversación de cliente, desde el webhook firmado hasta un estado de entrega, sobre el controlador real, las dos colas BullMQ reales, el turno real, el outbox real, el escritor único de estados y un socket de navegador real— encontró que no podía. Tres defectos, los tres en junturas que ninguna suite unitaria mira:
+El arnés de punta a punta —una sola conversación de cliente, desde el webhook firmado hasta un estado de entrega, sobre el controlador real, las dos colas BullMQ reales, el turno real, el outbox real, el escritor único de estados y un socket de navegador real— encontró que no podía. Tres defectos, los tres en junturas que ninguna suite unitaria mira — y detrás de ellos, al correr la suite como corresponde, cuatro más:
 
 **1. El ingreso desplegado de WhatsApp confirmaba con 200 un mensaje que nunca llegó a la cola.** El controlador estaba bien y su propio comentario lo decía: *«Si encolar falla se devuelve 500 A PROPÓSITO: Meta reintenta»*. El servicio debajo se tragaba el fallo del `enqueue`, liberaba la reclamación de idempotencia «para que Meta reintente» y volvía normalmente. Meta reintenta exactamente lo que **no** le confirmamos, así que el 200 garantizaba que ese reintento no vendría: liberar la reclamación no salvaba nada. Una caída transitoria de Valkey no demoraba un turno, lo borraba — en la única de las siete rutas de ingreso que el trabajo de cero-pérdida había dejado atrás. (`bff8d01f`)
 
@@ -20,13 +20,15 @@ El arnés de punta a punta —una sola conversación de cliente, desde el webhoo
 
 Los dos «defectos conocidos» que el propio arnés había documentado —la respuesta que volvía por la ruta legacy perdiendo el enlace y la foto, y el cliente contestado por segunda vez— eran **síntomas del segundo**. Sus comentarios pedían explícitamente que, si el ledger llegaba a ser alcanzable, las pruebas fallaran y se reescribieran a la afirmación fuerte. Fallaron, y se reescribieron.
 
-Después, correr la suite completa **con las tres bases conectadas** —no con las suites PostgreSQL auto-omitidas, que es como se habían obtenido los verdes anteriores— destapó dos defectos más, uno tapando al otro:
+Después, correr la suite completa **con las bases conectadas** —no con las suites PostgreSQL auto-omitidas, que es como se habían obtenido los verdes anteriores— destapó dos más, uno tapando al otro:
 
 **4. Una retractación fallaba con 42703 y abortaba la retirada completa del release.** `redactPendingDrafts` actualizaba `conversations` dando por hechas las columnas `metadata` y `updated_at`. Corre dentro de la valla exclusiva de privacidad del llamador, así que el throw no perdía una sentencia: revertía **toda** la retirada. Un solo tenant mal aprovisionado hacía imposible cualquier retractación. (`ce0cc4b5`)
 
 **5. Y debajo de ese fallo, que lo escondía: un `rollback` de operador borraba del historial del cliente.** `rollback` había sido enseñado a llamar a `retireLearningReleases` para que un release retirado no siguiera llegando a nadie por el outbox, el sobre y el borrador pendiente. Correcto: esos tres son material interno de replay. Pero `redactWidgetAgentReplies` no lo es — blanquea la fila de `messages` (`content_type='redacted'`, texto NULL). Un operador que retiraba un release porque no le gustaba el estilo **borraba, del historial de cada cliente, cada respuesta que ese release había producido**. Nadie pidió que se reescribiera esa conversación, y la persona dueña de esas palabras no fue consultada. La suite decía que el contrato se respetaba: lo decía porque el defecto 4 abortaba la transacción antes de llegar ahí. Dos defectos anulándose, en corridas sin base que no podían notarlo. (`9aafb2a9`)
 
-**6. Y un error de tipos que el build incremental venía saltando.** `caller.source.match(re) || []` estrecha el parámetro del filtro a `never`. Fallaba desde que se escribió; ningún `tsc --noEmit` local lo veía porque `apps/api/tsconfig.json` tiene `incremental: true` y reusaba un `.tsbuildinfo` que ya lo había aceptado. Apareció al borrar los cuatro ficheros de build info y typechequear los seis paquetes en frío, que es lo que hace un checkout limpio de CI. (`e43097d3`)
+**6. Y un reloj congelado que hacía perder trabajo.** `NOW()` se congela al comenzar la transacción. `claim`, en el store de releases, lo usaba para decidir si una evaluación ya tocaba — y esa sentencia **espera**: toma la valla de privacidad y lee el candidato `FOR UPDATE`, así que bajo carga puede empezar, bloquearse detrás de la transacción que todavía está creando la evaluación, y recién entonces leer un `next_attempt_at` posterior a su propio reloj congelado. El UPDATE no matcheaba nada y `claim` respondía `null` —«no hay trabajo»— por un trabajo que sí tocaba. En el mismo fichero `assertExecutionLease` preguntaba si el lease seguía vivo con `clock_timestamp()` y `checkpoint` con `NOW()`: **el mismo `lease_valid` eran dos preguntas distintas según quién preguntara.** Apareció porque el arnés fue instrumentado para decir por qué un claim devolvió null (`359981d4`), y la primera vez que volvió a pasar imprimió la fila entera. El outbox de despacho conserva `NOW()` a propósito: allí un reloj atrasado lee un lease vencido como vivo, lo cual erra hacia **no soltar nunca** un lease antes de tiempo —demora una recuperación, jamás entrega dos veces— y cambiarle la semántica al camino de entrega es una decisión con su propia revisión. (`67a01566`)
+
+**7. Y un error de tipos que el build incremental venía saltando.** `caller.source.match(re) || []` estrecha el parámetro del filtro a `never`. Fallaba desde que se escribió; ningún `tsc --noEmit` local lo veía porque `apps/api/tsconfig.json` tiene `incremental: true` y reusaba un `.tsbuildinfo` que ya lo había aceptado. Apareció al borrar los cuatro ficheros de build info y typechequear los seis paquetes en frío, que es lo que hace un checkout limpio de CI. (`e43097d3`)
 
 Por último, **el hueco de PgBouncer dejó de ser un hueco**. El arnés lo declaraba como ausencia honesta («no hay imagen de PgBouncer en esta máquina»). La hay: `edoburu/pgbouncer` en modo transacción con un pool de **uno**, de modo que todos los clientes caen en la misma conexión de servidor y el compartir es determinista en vez de probable. Eso convierte tres advertencias en hechos reproducibles: un `SET` plano, una tabla temporal y un candado consultivo **de sesión** viajan de un cliente al siguiente, y ese candado puede ser **liberado por un cliente que nunca lo tomó**. Eso último es por qué `prisma migrate` corre sobre `DIRECT_DATABASE_URL` — un hecho sobre el proxy, no sobre nuestro SQL — y ahora es una prueba y no un párrafo. (`166c90f0`)
 
@@ -34,7 +36,7 @@ Por último, **el hueco de PgBouncer dejó de ser un hueco**. El arnés lo decla
 
 ## 2. Commits del rango
 
-87 commits locales entre `30a79102` (exclusive) y `HEAD`. Los ocho de esta tanda:
+94 commits locales entre `30a79102` (exclusive) y `HEAD`. Los trece de esta tanda, uno por línea de comportamiento:
 
 | Commit | Comportamiento |
 | --- | --- |
@@ -45,9 +47,14 @@ Por último, **el hueco de PgBouncer dejó de ser un hueco**. El arnés lo decla
 | `cf2540da` | Un mensaje de cliente, de punta a punta, por la maquinaria real (18 casos) |
 | `166c90f0` | Los primitivos de tenant, a través de un PgBouncer real en modo transacción |
 | `e43097d3` | Un error de tipos que el build incremental venía saltando |
-| (este informe) | `docs`: informe de cierre y bitácora al día |
+| `e442c6bf` | El informe de cierre y la bitácora al día |
+| `359981d4` | Los dos fallos sensibles al orden explican qué los causó |
+| `4120da4b` | Se pregunta por la valla de ESTE tenant, no por todo candado de la base |
+| `acbbf2e4` | Las migraciones se aplican mientras el turno sigue escribiendo |
+| `67a01566` | Vencimientos y leases se preguntan al reloj que corre, no al que se detuvo en el BEGIN |
+| (esta actualización) | `docs`: rango, conteo y verificación finales |
 
-Los 79 anteriores del rango están listados uno por línea de comportamiento en `git log --oneline 30a79102..HEAD`; su detalle por bloque vive en [la bitácora de ejecución](../../agent-platform-implementation-progress.md) y en `docs/audits/2026-09-07/` y `docs/audits/2026-09-08/`.
+Los 81 anteriores del rango están listados uno por línea de comportamiento en `git log --oneline 30a79102..HEAD`; su detalle por bloque vive en [la bitácora de ejecución](../../agent-platform-implementation-progress.md) y en `docs/audits/2026-09-07/` y `docs/audits/2026-09-08/`.
 
 ---
 
@@ -114,7 +121,7 @@ Los 6 sin positivo verificable son los 5 de `file_claim` más `create_vehicle_re
 | TypeScript, **en frío** (borrando los cuatro `.tsbuildinfo`) | api, dashboard, whatsapp, landing, mobile, shared: **6/6 limpio** |
 | Build | shared (tsc), api (nest), whatsapp (nest), dashboard (next), landing (next): **5/5 verde** |
 | Bootstrap NestJS (`test:bootstrap`) | **verde** — AppModule compila sin errores de DI |
-| Suite completa de la API, con PostgreSQL + pgvector + Valkey + BullMQ + Socket.IO + PgBouncer conectados | **576 suites / 6.314 pruebas, todas verdes, cero omitidas** (205 s, `--maxWorkers=2`) |
+| Suite completa de la API, con PostgreSQL + pgvector + Valkey + BullMQ + Socket.IO + PgBouncer conectados | **577 suites / 6.316 pruebas, todas verdes, cero omitidas** (232 s, `--maxWorkers=2`) |
 | Suite del dashboard | **67 suites / 767 pruebas verdes** |
 | Suite del servicio WhatsApp | **4 suites / 26 pruebas verdes** |
 | Suites PostgreSQL | ejecutadas, **no auto-omitidas**. Los verdes anteriores del programa (519/55 omitidas) se habían obtenido sin bases conectadas; correrlas es lo que destapó los defectos 4 y 5 |
@@ -123,13 +130,14 @@ Los 6 sin positivo verificable son los 5 de `file_claim` más `create_vehicle_re
 | Socket.IO | servidor real, cliente `socket.io-client` real y dos `ConversationsGateway` cableadas como en producción (worker sin `server`, publica por el relay Redis; API dueña del namespace, reemite) |
 | PgBouncer | **real**, `pool_mode=transaction`, `default_pool_size=1`, 9 casos verdes |
 | Carga y caos | arnés de carga del camino durable ejecutado (`f08b0a70`); tres defectos que encontró, cerrados (`7f9548b9`) |
+| **Migración bajo volumen representativo** | las seis migraciones aplicadas **mientras el turno escribe**, sobre 8 schemas de tenant y 6 escritores concurrentes: **2.035 escrituras, 0 fallidas**, la más lenta 30 ms, cada migración entre 6 y 36 ms (`acbbf2e4`) |
 | Accesibilidad | pruebas automáticas de render + accesibilidad en dashboard (`2d918fb0`); paridad de claves en los cuatro idiomas (`eacce9b2`) |
 | Visual con personas | **no ejecutado** — gate 2 |
 | Pilotos con proveedores | **no ejecutados** — gate 1, y ninguna llamada real se hizo |
 
 ### Una fragilidad de aislamiento, dicha en voz alta
 
-En una de las corridas completas, dos suites de simulación (`agent-release.postgres.spec.ts` e `isolated-canonical-commands.spec.ts`) fallaron; **ambas pasan en aislamiento y pasan juntas con las suites nuevas**. `--maxWorkers=2` contra UNA sola base compartida hace que el orden de ejecución importe. No es un defecto de producto y no se presenta como uno: es una fragilidad del arnés que merece su propia investigación, y queda registrada aquí en vez de promediada dentro de un número verde.
+En una de las corridas completas, dos suites de simulación (`agent-release.postgres.spec.ts` e `isolated-canonical-commands.spec.ts`) fallaron; **ambas pasan en aislamiento y pasan juntas con las suites nuevas**. `--maxWorkers=2` contra UNA sola base compartida hace que el orden de ejecución importe. No es un defecto de producto y no se presenta como uno: es una fragilidad del arnés que merece su propia investigación, y queda registrada aquí en vez de promediada dentro de un número verde. Y esa instrumentación **ya rindió**: la vez siguiente que falló, el mensaje traía la fila entera y con ella el defecto real —un `NOW()` congelado decidiendo si un trabajo ya vencía (§1.6, `67a01566`)—, así que parte de lo que se leía como fragilidad del arnés era producto. Lo que sí se hizo es que la próxima vez sea evidencia y no un encogimiento de hombros (`359981d4`): un `claim` nulo informa el estado del candidato y de la evaluación que lo produjo, y la corrección de mascota fija en la misma aserción cuál fue el último entrante que leyó la compuerta. Aparte, una de las dos aserciones de candados consultivos preguntaba por **toda** la base y por eso llegó a ver el candado que la suite de PgBouncer toma a propósito; ahora pregunta por la valla de su propio tenant (`4120da4b`).
 
 ---
 
@@ -148,6 +156,8 @@ Seis migraciones aditivas en el rango, todas expand-contract (sólo `ADD COLUMN`
 
 Runbooks: `docs/runbooks/dispatch-reconciliation.md` y `docs/runbooks/dispatch-load-and-slo.md` (SLOs escritos contra mediciones reales, con el vigilante que los lee nombrado).
 
+**Aplicadas bajo volumen representativo** (`acbbf2e4`): los seis ficheros, verbatim, mientras seis escritores hacen lo que hace un turno —insertar el mensaje del cliente, tocar la conversación, releer el historial— sobre ocho schemas de tenant. Ninguna escritura en vuelo falló, ninguna fila escrita durante la migración se perdió, ningún schema quedó a medias, y reaplicarlas no cambió nada: un deploy que reintenta tras un hipo de red no puede convertirse en otro deploy. El camino de lectura anterior a la migración se vuelve a ejercitar después, que es la otra mitad de expand-contract. Esa suite corre contra **su propia base de datos**, porque los ficheros recorren `public.tenants` y tocarían cada schema nombrado allí.
+
 **Aplicarlas en un entorno de despliegue autorizado y observarlas ahí sigue pendiente → gate 4.**
 
 ---
@@ -159,7 +169,8 @@ Runbooks: `docs/runbooks/dispatch-reconciliation.md` y `docs/runbooks/dispatch-l
 3. **Redis es caché, nunca autoridad — también en el orden.** El caché de palabras se escribe detrás del sobre. (`2685883d`)
 4. **Seis tareas se quedan sin positivo verificable a propósito.** Son escrituras sensibles con identidad reforzada; admitirlas sería darle a una prueba la identidad verificada de un cliente.
 5. **El interruptor del outbox de salida normal sigue apagado.** Encenderlo es una decisión con piloto detrás, no un efecto colateral de esta tanda.
-6. **La calibración del juez informa lo que se puede medir y nombra lo que no.** El juez es una compuerta: nadie puede aprobar lo que reprobó, así que una celda de la matriz de confusión no existe y un «precision/recall» sería un número con medio denominador ausente. (`c7598409`)
+6. **Un vencimiento se pregunta al reloj que corre.** `clock_timestamp()` para «¿ya toca?» y «¿venció el lease?»; `NOW()` sólo para escribir el vencimiento. En el camino de **entrega** se conserva `NOW()` a propósito, porque allí errar es errar hacia no soltar un lease antes de tiempo. (`67a01566`)
+7. **La calibración del juez informa lo que se puede medir y nombra lo que no.** El juez es una compuerta: nadie puede aprobar lo que reprobó, así que una celda de la matriz de confusión no existe y un «precision/recall» sería un número con medio denominador ausente. (`c7598409`)
 
 ---
 
@@ -170,7 +181,7 @@ Runbooks: `docs/runbooks/dispatch-reconciliation.md` y `docs/runbooks/dispatch-l
 3. **Cuentas autorizadas de alternativas** para ejecutar el benchmark. El arnés local ya se niega a resumir lo que no es una comparación (`0a5cd070`).
 4. **Aprobación explícita de push, deploy, migración y activación** de piloto o de producción.
 
-Fuera de esos cuatro, lo que queda **no está bloqueado, está pendiente**: ejecutar las 268 tareas contra modelo/idioma/canal para certificar perfiles (H1), las familias de writers todavía bloqueadas (B2, C2), los lectores comerciales congelados (E2), el despacho diferido (G1) y la fragilidad de aislamiento de la §5.
+Fuera de esos cuatro, lo que queda **no está bloqueado, está pendiente**: ejecutar las 268 tareas contra modelo/idioma/canal para certificar perfiles (H1), las familias de writers todavía bloqueadas (B2, C2), los lectores comerciales congelados (E2), el despacho diferido y las salidas/trazas restantes (G1) y la fragilidad de aislamiento de la §5.
 
 ---
 

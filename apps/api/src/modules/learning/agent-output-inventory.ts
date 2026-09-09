@@ -239,13 +239,16 @@ export const AGENT_OUTPUT_STORES: readonly AgentOutputStore[] = Object.freeze([
         store: 'conversations.handoff_summary and internal_notes.content',
         sources: ['modules/handoff/handoff.service.ts', 'modules/agent-console/agent-console.service.ts'],
         carriesProvenance: false,
-        reachedByRetraction: 'no',
-        reachedByContactErasure: 'no',
+        reachedByRetraction: 'by_design',
+        reachedByContactErasure: 'yes',
         status: 'open',
-        rationale: 'LLM-generated text derived from the customer\'s transcript, in neither fan-out. The same text is '
-            + 'pushed to a third-party CRM, so an erasure that misses it leaves a copy outside the platform too.',
-        remedy: 'Clear both in the contact-erasure statement that already resets the conversation metadata, and record '
-            + 'the external CRM note id so the copy can be retracted with it.',
+        rationale: 'LLM-generated text derived from the customer\'s transcript. The erasure now clears the summary and '
+            + 'deletes the notes in the same statement that resets the conversation metadata. A retraction leaves them: '
+            + 'a summary is about the CONVERSATION, not about a release, and withdrawing a release does not unwrite what '
+            + 'a person was told when the conversation was handed to them. What remains open is the copy pushed to a '
+            + 'third-party CRM, which the platform cannot reach because it never recorded where it went.',
+        remedy: 'Record the external CRM note id when the summary is pushed, so the copy outside the platform can be '
+            + 'retracted with the one inside it.',
     }),
     store({
         id: 'customer_memory_facts',

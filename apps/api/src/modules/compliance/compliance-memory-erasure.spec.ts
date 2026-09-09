@@ -6,16 +6,22 @@ const profileId = '33333333-3333-4333-8333-333333333333';
 
 function build(failMemory = false) {
     const state = { tombstones: [] as string[], facts: ['active', 'superseded'], merged: [contactId, siblingId],
-        ledgerPresent: false, ledgerErased: null as string[] | null };
+        ledgerPresent: false, ledgerErased: null as string[] | null, notesPresent: false };
     const query = jest.fn(async (sql: string, params: any[] = []) => {
         if (sql.includes('current_schema() AS schema') && sql.includes('AS replies')) return [{schema:'tenant_memory',replies:null,sources:null}];
         // Same shape for the dispatch outbox: this tenant has no such table yet,
         // which must be a no-op rather than a refusal of the whole erasure.
         if (sql.includes('current_schema() AS schema') && sql.includes('AS outbox')) return [{schema:'tenant_memory',outbox:null,sources:null}];
-        // The turn ledger answers the same way: absent is a no-op, present is an
-        // erasure the contact is entitled to.
+        // Optional relations answer for THEMSELVES. One shared answer for every
+        // `to_regclass` would let a table that is absent be deleted from, and
+        // let a table that is present be skipped — which is the difference
+        // between an erasure that reaches somebody's data and one that does not.
         if (sql.includes('to_regclass($1)::text AS name')) {
-            return [{ name: state.ledgerPresent ? 'tenant_memory.agent_turn_ledger' : null }];
+            const relation = String(params[0] ?? '');
+            const present = relation.endsWith('.agent_turn_ledger') ? state.ledgerPresent
+                : relation.endsWith('.internal_notes') ? state.notesPresent
+                    : false;
+            return [{ name: present ? relation : null }];
         }
         if (sql.includes('UPDATE "tenant_memory".agent_turn_ledger')) {
             state.ledgerErased = params[0];
@@ -108,6 +114,10 @@ describe('Contact erasure reaches memory derivatives', () => {
         // clears drafts by RELEASE id, which is the wrong key for an erasure —
         // here the person is the key and every draft of theirs goes.
         expect(update[0]).toContain("-'pendingDraft'");
+        // And the summary a model wrote about this person's conversation, which
+        // the agent console shows to whoever picks it up.
+        expect(update[0]).toContain('handoff_summary=NULL');
+        expect(update[0]).toContain('handoff_summary_generated_at=NULL');
         expect(update[1]).toEqual([[contactId,siblingId]]);
         expect(redis.del).toHaveBeenCalledWith('procedure:conversation');
         expect(redis.del).toHaveBeenCalledWith('booking:conversation');
@@ -154,5 +164,28 @@ describe('Contact erasure reaches memory derivatives', () => {
         state.ledgerPresent = false;
         await expect(service.eraseContactData('tenant_memory', profileId, contactId, 'admin')).resolves.toBeDefined();
         expect(state.ledgerErased).toBeNull();
+    });
+
+    it('deletes the notes written on the back of the handoff summary', async () => {
+        const { service, query, state } = build();
+        state.notesPresent = true;
+        await service.eraseContactData('tenant_memory', profileId, contactId, 'admin');
+        const del = query.mock.calls.find(([sql]) => sql.includes('DELETE FROM internal_notes'))!;
+        expect(del).toBeDefined();
+        // Scoped by conversation, because that is the only key the table has:
+        // `internal_notes` has no contact column, so reaching this person's rows
+        // means reaching them through their conversations.
+        expect(del[0]).toContain('SELECT id FROM conversations WHERE contact_id=ANY($1::uuid[])');
+        expect(del[1]).toEqual([[contactId, siblingId]]);
+    });
+
+    it('does not refuse the whole erasure when the tenant has no internal notes table', async () => {
+        // The table came from the CRM migration, not the schema template, so an
+        // older tenant may not have it. Asking is the point: a missing relation
+        // inside this transaction would roll back the erasure entirely.
+        const { service, query, state } = build();
+        state.notesPresent = false;
+        await expect(service.eraseContactData('tenant_memory', profileId, contactId, 'admin')).resolves.toBeDefined();
+        expect(query.mock.calls.some(([sql]) => sql.includes('DELETE FROM internal_notes'))).toBe(false);
     });
 });

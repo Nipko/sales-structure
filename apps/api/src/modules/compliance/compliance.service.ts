@@ -380,9 +380,25 @@ export class ComplianceService {
             // the retraction path clears it by release id, which is the wrong
             // key for an erasure — the person is the key, and every draft of
             // theirs goes regardless of which release produced it.
+            //
+            // `handoff_summary` goes with it for the same reason and was in
+            // neither fan-out: it is a model's description of this person's
+            // conversation, written for whoever picks it up, and the same text is
+            // pushed to a third-party CRM — leaving it here kept a copy inside
+            // the platform to match the copy outside it.
             await query(`UPDATE conversations SET metadata=(COALESCE(metadata,'{}'::jsonb)-'procedureState'-'bookingState'-'missionFocus'-'pendingDraft')
-                ||'{"procedureStateManaged":true,"bookingStateManaged":true,"missionFocusManaged":true}'::jsonb
+                ||'{"procedureStateManaged":true,"bookingStateManaged":true,"missionFocusManaged":true}'::jsonb,
+                handoff_summary=NULL, handoff_summary_generated_at=NULL
                 WHERE contact_id=ANY($1::uuid[])`,[contactIds]);
+            // And the notes a person wrote about them on the back of that summary.
+            // The table predates the tenant-schema template, so a schema that
+            // never ran the CRM migration has to be asked rather than assumed —
+            // a missing relation here would abort the whole erasure.
+            const [notes] = await query<any[]>('SELECT to_regclass($1)::text AS name', [`${schema}.internal_notes`]);
+            if (notes?.name) {
+                await query(`DELETE FROM internal_notes WHERE conversation_id IN (
+                    SELECT id FROM conversations WHERE contact_id=ANY($1::uuid[]))`, [contactIds]);
+            }
             const widgetSessions = await eraseWidgetContactSessions(query, schema, contactIds);
             const widgetReplies = await redactWidgetAgentReplies(query, schema, {contactIds});
             // Same exclusive fence, same reason: the words and the recipient of

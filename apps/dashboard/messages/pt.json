@@ -3199,7 +3199,13 @@
       "useBusinessHoursDesc": "Copiamos aqui os horários salvos em Configurações → Horários. Depois revise e confirme abaixo.",
       "useBusinessHoursAction": "Usar o horário do negócio",
       "useBusinessHoursApplied": "Pronto: copiamos seu horário. Revise e toque em Confirmar para salvar.",
-      "useBusinessHoursMissing": "Você ainda não salvou o horário do negócio em Configurações → Horários."
+      "useBusinessHoursMissing": "Você ainda não salvou o horário do negócio em Configurações → Horários.",
+      "scheduleUnavailable": "Não conseguimos ler os seus horários",
+      "scheduleUnavailableHint": "O que apareceria aqui seria uma semana de exemplo, não a sua. Salvar a partir deste cartão substituiria os sete dias. Tente novamente.",
+      "remindersUnavailable": "Não conseguimos ler a configuração de lembretes",
+      "remindersUnavailableHint": "Não sabemos se os seus lembretes estão ativos. Tente novamente antes de alterá-los.",
+      "flowsUnavailable": "Não conseguimos ler a configuração de Flows",
+      "flowsUnavailableHint": "Não sabemos se você tem um Flow conectado. Tente novamente antes de ativá-lo ou desativá-lo."
     },
     "staffSection": {
       "title": "Equipe profissional",

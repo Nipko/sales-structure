@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { LoadFailureNotice } from "@/components/ui/load-failure";
 import { guidedTourAnchorId } from "@/lib/guided-tours";
 import {
     Clock, Calendar, Link2, Ban, Bell, Users, Settings2,
@@ -83,6 +84,19 @@ interface ConfigTabProps {
     onUpdateReminderSettings?: (settings: Partial<ReminderSettings>) => void;
     bookingFlowsConfig?: BookingFlowsConfig;
     onUpdateBookingFlows?: (cfg: Partial<BookingFlowsConfig>) => void;
+    /**
+     * Each editor below opens on a default when it has nothing: a Mon-Fri
+     * week, four reminders on, Flows off. Those defaults are only honest after
+     * a read came back. When one did not, the card shows what we do not know
+     * instead of a form whose Save would post those defaults as the tenant's
+     * configuration.
+     */
+    availabilityUnavailable?: boolean;
+    remindersUnavailable?: boolean;
+    flowsUnavailable?: boolean;
+    onRetryAvailability?: () => void;
+    onRetryReminders?: () => void;
+    onRetryFlows?: () => void;
 }
 
 const DAY_KEYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"] as const;
@@ -223,6 +237,8 @@ export default function ConfigTab({
     services = [], maxCalendars = 5,
     reminderSettings, onUpdateReminderSettings,
     bookingFlowsConfig, onUpdateBookingFlows,
+    availabilityUnavailable = false, remindersUnavailable = false, flowsUnavailable = false,
+    onRetryAvailability, onRetryReminders, onRetryFlows,
 }: ConfigTabProps) {
     const t = useTranslations("appointments");
     const { user } = useAuth();
@@ -375,7 +391,9 @@ export default function ConfigTab({
     return (
         <div className="space-y-6">
 
-            {!hasSavedAvailability && (
+            {/* "You have not saved a schedule yet" is a claim about the tenant,
+                so it only belongs here once a read said so. */}
+            {!hasSavedAvailability && !availabilityUnavailable && (
                 <div className="flex items-start gap-3 p-4 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30">
                     <AlertTriangle size={20} className="text-red-500 shrink-0 mt-0.5" />
                     <div className="flex-1">
@@ -548,6 +566,16 @@ export default function ConfigTab({
             <ConfigCard icon={Clock} iconColor="bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400"
                 title={t("configSection.schedule")} description={t("configSection.scheduleDesc")}>
 
+                {/* The whole editor is withheld, not just disabled: its Save
+                    replaces all seven days, and the week it would send is the
+                    component's own default, not the tenant's. */}
+                {availabilityUnavailable ? (
+                    <LoadFailureNotice
+                        title={t("configSection.scheduleUnavailable")}
+                        hint={t("configSection.scheduleUnavailableHint")}
+                        onRetry={onRetryAvailability}
+                    />
+                ) : (<>
                 <div className="flex flex-wrap items-center gap-3 mb-4 p-3 rounded-xl border border-dashed border-indigo-200 dark:border-indigo-500/30 bg-indigo-50/50 dark:bg-indigo-500/5">
                     <div className="flex-1 min-w-[220px]">
                         <p className="text-sm font-medium text-foreground">{t("configSection.useBusinessHours")}</p>
@@ -613,12 +641,22 @@ export default function ConfigTab({
                     className="mt-4 px-5 py-2.5 rounded-xl bg-indigo-500 text-white text-sm font-medium hover:bg-indigo-600 transition-colors cursor-pointer border-none">
                     {t("actions.confirm")}
                 </button>
+                </>)}
             </ConfigCard>
             </div>
 
             {/* ── 3. Reminders ── */}
             <ConfigCard icon={Bell} iconColor="bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400"
                 title={t("configSection.reminders")} description={t("configSection.remindersDesc")}>
+                {remindersUnavailable ? (
+                    /* Four toggles that default to "on" would otherwise state
+                       that this tenant's reminders are running. */
+                    <LoadFailureNotice
+                        title={t("configSection.remindersUnavailable")}
+                        hint={t("configSection.remindersUnavailableHint")}
+                        onRetry={onRetryReminders}
+                    />
+                ) : (
                 <div className="space-y-4">
                     <div className="flex items-center justify-between p-3 rounded-xl border border-neutral-200 dark:border-neutral-700">
                         <div>
@@ -655,6 +693,7 @@ export default function ConfigTab({
                         </p>
                     </div>
                 </div>
+                )}
             </ConfigCard>
 
             {/* ── 3b. WhatsApp Flows (booking, opt-in) ── */}
@@ -665,6 +704,16 @@ export default function ConfigTab({
                 description={t("configSection.whatsappFlowsDesc")}
                 badge="Beta"
             >
+                {flowsUnavailable ? (
+                    /* Toggling from here posts `flowId` next to `enabled`, and
+                       the draft ID is seeded from the config we failed to read
+                       — an empty string over the tenant's real Flow. */
+                    <LoadFailureNotice
+                        title={t("configSection.flowsUnavailable")}
+                        hint={t("configSection.flowsUnavailableHint")}
+                        onRetry={onRetryFlows}
+                    />
+                ) : (
                 <div className="space-y-4">
                     <div className="flex items-center justify-between p-3 rounded-xl border border-neutral-200 dark:border-neutral-700">
                         <div>
@@ -709,6 +758,7 @@ export default function ConfigTab({
                         <p className="text-xs text-emerald-700 dark:text-emerald-300">{t("configSection.flowNote")}</p>
                     </div>
                 </div>
+                )}
             </ConfigCard>
 
             {/* ── 4. Blocked Dates ── */}
@@ -732,7 +782,10 @@ export default function ConfigTab({
                     <p className="text-sm text-muted-foreground mb-4">{t("configSection.noBlockedDates")}</p>
                 )}
                 <div className="flex gap-3">
-                    <input type="date" value={newBlockedDate} onChange={e => setNewBlockedDate(e.target.value)} className={cn(inputCls, "w-44")} />
+                    {/* A date input ignores `placeholder`, so this field had no
+                        accessible name at all — the neighbouring text input got
+                        one from its placeholder and this one was silent. */}
+                    <input type="date" aria-label={t("configSection.addBlockedDate")} value={newBlockedDate} onChange={e => setNewBlockedDate(e.target.value)} className={cn(inputCls, "w-44")} />
                     <input type="text" value={newBlockedReason} onChange={e => setNewBlockedReason(e.target.value)}
                         placeholder={t("configSection.reason")} className={cn(inputCls, "flex-1")} />
                     <button onClick={handleAddBlocked}

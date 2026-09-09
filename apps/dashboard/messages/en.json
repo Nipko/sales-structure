@@ -3199,7 +3199,13 @@
       "useBusinessHoursDesc": "We copy in the hours you saved in Settings → Business hours. Review them and confirm below.",
       "useBusinessHoursAction": "Use the business hours",
       "useBusinessHoursApplied": "Done: we copied your hours. Review them and hit Confirm to save.",
-      "useBusinessHoursMissing": "You have not saved the business hours yet, in Settings → Business hours."
+      "useBusinessHoursMissing": "You have not saved the business hours yet, in Settings → Business hours.",
+      "scheduleUnavailable": "We could not read your working hours",
+      "scheduleUnavailableHint": "What would show here is an example week, not yours. Saving from this card would replace all seven days. Try the request again.",
+      "remindersUnavailable": "We could not read your reminder settings",
+      "remindersUnavailableHint": "We do not know whether your reminders are on. Retry before changing them.",
+      "flowsUnavailable": "We could not read your Flows settings",
+      "flowsUnavailableHint": "We do not know whether you have a Flow connected. Retry before turning it on or off."
     },
     "staffSection": {
       "title": "Professional team",

@@ -3199,7 +3199,13 @@
       "useBusinessHoursDesc": "Nous recopions les horaires enregistrés dans Paramètres → Horaires. Vérifiez-les puis confirmez ci-dessous.",
       "useBusinessHoursAction": "Utiliser les horaires de l'entreprise",
       "useBusinessHoursApplied": "C'est fait : vos horaires ont été copiés. Vérifiez puis appuyez sur Confirmer pour enregistrer.",
-      "useBusinessHoursMissing": "Vous n'avez pas encore enregistré les horaires dans Paramètres → Horaires."
+      "useBusinessHoursMissing": "Vous n'avez pas encore enregistré les horaires dans Paramètres → Horaires.",
+      "scheduleUnavailable": "Nous n'avons pas pu lire vos horaires",
+      "scheduleUnavailableHint": "Ce qui s'afficherait ici serait une semaine d'exemple, pas la vôtre. Enregistrer depuis cette carte remplacerait les sept jours. Réessayez.",
+      "remindersUnavailable": "Nous n'avons pas pu lire la configuration des rappels",
+      "remindersUnavailableHint": "Nous ignorons si vos rappels sont actifs. Réessayez avant de les modifier.",
+      "flowsUnavailable": "Nous n'avons pas pu lire la configuration des Flows",
+      "flowsUnavailableHint": "Nous ignorons si un Flow est connecté. Réessayez avant de l'activer ou de le désactiver."
     },
     "staffSection": {
       "title": "Équipe professionnelle",

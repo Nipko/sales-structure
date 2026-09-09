@@ -3199,7 +3199,13 @@
       "useBusinessHoursDesc": "Copiamos acá los horarios que guardaste en Configuración → Horarios. Después revísalos y confirma abajo.",
       "useBusinessHoursAction": "Usar el horario del negocio",
       "useBusinessHoursApplied": "Listo: copiamos tu horario. Revísalo y toca Confirmar para guardarlo.",
-      "useBusinessHoursMissing": "Todavía no guardaste el horario del negocio en Configuración → Horarios."
+      "useBusinessHoursMissing": "Todavía no guardaste el horario del negocio en Configuración → Horarios.",
+      "scheduleUnavailable": "No pudimos leer tus horarios",
+      "scheduleUnavailableHint": "Lo que se muestra sería un horario de ejemplo, no el tuyo. Guardar desde acá reemplazaría los siete días. Reintenta la consulta.",
+      "remindersUnavailable": "No pudimos leer la configuración de recordatorios",
+      "remindersUnavailableHint": "No sabemos si tus recordatorios están activos. Reintenta antes de cambiarlos.",
+      "flowsUnavailable": "No pudimos leer la configuración de Flows",
+      "flowsUnavailableHint": "No sabemos si tienes un Flow conectado. Reintenta antes de activarlo o desactivarlo."
     },
     "staffSection": {
       "title": "Equipo profesional",

@@ -24,6 +24,19 @@ export function isAgentMissionV1(value: unknown): value is AgentMissionV1 {
         && list(mission.successCriteria) && list(mission.handoffConditions);
 }
 
+/** Mirrors `buildAgentToolExplanations`; kept here so every surface reads one shape. */
+export interface AgentToolExplanationV1 {
+    tool: string;
+    state: AgentOperationalState;
+    achieves: { effect: string; commitsBusiness: boolean; confirmation: string; externalEffect: string };
+    missionIntents: string[];
+    requires: { prerequisites: string[]; readiness: string[] };
+    missing: { reason: string | null; detail: string | null; repairRoute: string | null; readiness: string[] };
+    example: string | null;
+    safeTest: { available: boolean; href: string | null };
+    result: 'not_verified' | 'verified' | 'failed' | 'stale';
+}
+
 export type AgentSetupTaskKey = 'mission' | 'channel' | 'agent' | 'business' | 'knowledge' | 'catalog' | 'team' | 'hours' | 'appointments' | 'tests';
 export interface AgentSetupTask {
     key: AgentSetupTaskKey;
@@ -84,6 +97,19 @@ export interface AgentAssessment {
         state: AgentOperationalState;
         unavailableTools: string[];
     }>;
+    /**
+     * One entry per tool the mission needs or the contract published, saying
+     * what it achieves, when it applies, what it needs, what is missing in the
+     * words of the gate that refused it, an example from this business, whether
+     * it can be exercised safely, and whether it has been shown to work.
+     *
+     * All of it already existed — the exclusions carry typed reasons and repair
+     * routes, the domain contract knows which task uses which tool, and the eval
+     * packs hold a sentence a customer of this subtype would say. It was being
+     * reduced to two counts, so a switched-off tool could not be told apart from
+     * one the plan excludes or one with no data behind it.
+     */
+    tools: AgentToolExplanationV1[];
     /** Whitelisted configuration for review; secrets and customer data never enter Assist. */
     configuration: Record<string, unknown> | null;
 }

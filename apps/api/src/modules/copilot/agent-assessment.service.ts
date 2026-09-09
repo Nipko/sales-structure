@@ -3,6 +3,8 @@ import { createHash } from 'crypto';
 import { operationalStateFromCheck, operationalStateFromQuality, rollUpOperationalState,
     type AgentOperationalState } from '@parallext/shared';
 import { intentEvidence, readSealedRunEvidence } from '../simulation/agent-release-evidence';
+import { buildAgentToolExplanations } from './agent-tool-explanations';
+import { AGENT_TEST_SAFE_TOOL_NAMES } from '../conversations/agent-test-tool-policy';
 import {
     AGENT_SETUP_TASK_CHECKS, buildDomainContractDraft, isAgentAccountBusinessHours, isAgentMissionV1, type AgentAssessment,
     type AgentMissionV1, type AgentSetupTask, type AgentQualityCheck, findGuidedTourForQualityCode,
@@ -162,6 +164,13 @@ export class AgentAssessmentService {
                 ...tasks.map(task => task.state),
                 ...statedChannels.map(channel => channel.state),
             ]),
+            tools: buildAgentToolExplanations({
+                contract: statedChannels.find(channel => channel.contract)?.contract ?? null,
+                domain, missionIntentKeys: definition.intentKeys,
+                evidenceByIntent: Object.fromEntries(requiredTests.map(test => [test.intentKey, test.evidence])),
+                agentId: agent.id, language: typeof config.language === 'string' ? config.language : 'es',
+                safeToolNames: new Set(AGENT_TEST_SAFE_TOOL_NAMES),
+            }) as any,
             configuration: { persona: { name: text(config.persona?.name), role: text(config.persona?.role), greeting: text(config.persona?.greeting), fallbackMessage: text(config.persona?.fallbackMessage),
                 personality: { tone: text(config.persona?.personality?.tone), formality: text(config.persona?.personality?.formality) } },
                 behavior: { rules: strings(config.behavior?.rules), forbiddenTopics: strings(config.behavior?.forbiddenTopics), handoffTriggers: strings(config.behavior?.handoffTriggers) },
@@ -184,6 +193,6 @@ export class AgentAssessmentService {
             // No agent at all is `pending`, not `unknown`: the answer is known
             // and it is that nothing has been created yet.
             tasks: [{ key: 'agent', status: 'fail', state: 'pending', checks: [], href: '/admin/agent', tourId: null, dependsOn: [] }],
-            state: 'pending', nextTask: 'agent', requiredTests: [], configuration: null };
+            state: 'pending', nextTask: 'agent', requiredTests: [], tools: [], configuration: null };
     }
 }

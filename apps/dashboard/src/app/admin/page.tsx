@@ -498,7 +498,7 @@ export default function AdminDashboard() {
                         {tVw(vt.industry !== 'otro' && tVw.has(vt.industry) ? vt.industry : 'default', { name: user?.firstName || "Admin" })}
                     </p>
                 </div>
-                <DataSourceBadge isLive={isLive} />
+                <DataSourceBadge state={isLive ? "live" : "unverified"} />
             </div>
 
             <HelpPanel

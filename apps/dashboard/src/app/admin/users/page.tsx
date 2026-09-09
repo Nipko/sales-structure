@@ -434,7 +434,7 @@ export default function UsersPage() {
                     title={t('title')}
                     subtitle={t('subtitleStats', { total: stats.total, active: stats.active, agents: stats.agents })}
                     icon={Users}
-                    badge={<DataSourceBadge isLive={isLive} />}
+                    badge={<DataSourceBadge state={isLive ? "live" : "unverified"} />}
                     action={isAdmin ? (
                         <button id={guidedTourAnchorId("users-invite")} onClick={() => setShowInvite(true)} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 font-medium text-sm cursor-pointer hover:opacity-90 press-effect">
                             <UserPlus size={16} /> {t("modal.inviteButton")}

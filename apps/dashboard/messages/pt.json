@@ -857,8 +857,16 @@
     },
     "status": "Estado",
     "private": "Privado",
-    "badgeLive": "AO VIVO",
-    "badgeDemo": "DEMO"
+    "dataSource": {
+      "live": "AO VIVO",
+      "unverified": "NÃO CONFIRMADO",
+      "unavailable": "SEM LEITURA"
+    },
+    "dataSourceHint": {
+      "live": "Estes dados vêm da sua conta.",
+      "unverified": "Ainda não confirmamos a origem destes dados.",
+      "unavailable": "Não conseguimos ler estes dados. O que você vê não é uma resposta."
+    }
   },
   "nav": {
     "platformConsole": "Console da plataforma",

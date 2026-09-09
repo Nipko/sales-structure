@@ -857,8 +857,16 @@
     },
     "status": "Statut",
     "private": "Privé",
-    "badgeLive": "EN DIRECT",
-    "badgeDemo": "DÉMO"
+    "dataSource": {
+      "live": "EN DIRECT",
+      "unverified": "NON CONFIRMÉ",
+      "unavailable": "NON LU"
+    },
+    "dataSourceHint": {
+      "live": "Ces données proviennent de votre compte.",
+      "unverified": "Nous n'avons pas encore confirmé l'origine de ces données.",
+      "unavailable": "Nous n'avons pas pu lire ces données. Ce que vous voyez n'est pas une réponse."
+    }
   },
   "nav": {
     "platformConsole": "Console plateforme",

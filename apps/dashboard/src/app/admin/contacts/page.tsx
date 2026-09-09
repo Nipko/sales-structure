@@ -335,7 +335,7 @@ export default function ContactsPage() {
             <PageHeader
                 title={vt.customerNounPlural.charAt(0).toUpperCase() + vt.customerNounPlural.slice(1)}
                 subtitle={`${contacts.length} ${vt.customerNounPlural} · $${totalValue.toLocaleString()}`}
-                badge={<DataSourceBadge isLive={isLive} />}
+                badge={<DataSourceBadge state={isLive ? "live" : "unverified"} />}
                 action={
                     <div className="flex flex-wrap items-center gap-2">
                         <Button variant="outline" size="sm" onClick={() => router.push("/admin/contacts/segments")}

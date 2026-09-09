@@ -1319,7 +1319,7 @@ export default function InboxPage() {
                                     </span>
                                 )}
                             </div>
-                            <DataSourceBadge isLive={isLive} />
+                            <DataSourceBadge state={isLive ? "live" : "unverified"} />
                         </div>
                     </div>
 

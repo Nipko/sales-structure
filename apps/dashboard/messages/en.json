@@ -857,8 +857,16 @@
     },
     "status": "Status",
     "private": "Private",
-    "badgeLive": "LIVE",
-    "badgeDemo": "DEMO"
+    "dataSource": {
+      "live": "LIVE",
+      "unverified": "UNCONFIRMED",
+      "unavailable": "NOT READ"
+    },
+    "dataSourceHint": {
+      "live": "This data comes from your account.",
+      "unverified": "We have not confirmed where this data came from yet.",
+      "unavailable": "We could not read this data. What you see is not an answer."
+    }
   },
   "nav": {
     "platformConsole": "Platform console",

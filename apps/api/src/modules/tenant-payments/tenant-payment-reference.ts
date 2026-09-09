@@ -1,5 +1,5 @@
 import { enrollmentPriceSql, enrollmentCurrencySql } from '../education/enrollment-terms';
-import { appointmentPriceSql, appointmentCurrencySql } from '../appointments/appointment-service-terms';
+import { appointmentAgreedPriceSql, appointmentAgreedCurrencySql } from '../appointments/appointment-service-terms';
 
 export type TenantPaymentProvider = 'mercadopago' | 'wompi';
 
@@ -63,8 +63,12 @@ export const PAYMENT_REFERENCE_TARGETS: Record<string, PaymentReferenceTarget> =
     // salvo que la cita lleve una seña fijada en `amount_due`.
     appointment: {
         table: 'appointments',
-        amountExpression: `COALESCE(target.amount_due, ${appointmentPriceSql()})`,
-        currencyExpression: appointmentCurrencySql(),
+        // The AGREED price, not the catalogue's. A legacy appointment with no
+        // `serviceTerms` yields NULL and stops being payable — the same refusal
+        // enrollments already make — instead of being charged whatever the
+        // service costs today, which is a number the customer never saw.
+        amountExpression: `COALESCE(target.amount_due, ${appointmentAgreedPriceSql()})`,
+        currencyExpression: appointmentAgreedCurrencySql(),
         join: 'LEFT JOIN services service ON service.id = target.service_id',
         rejectedStatuses: ['cancelled', 'no_show', 'completed', 'expired'],
         description: entityId => `Pago de cita ${entityId.slice(0, 8)}`,

@@ -79,8 +79,48 @@ export function appointmentTermsReviewResult(terms: AppointmentServiceTerms, err
             requiresPaymentToConfirm: terms.requiresPayment, amountDueToConfirm: terms.amountDue, appointmentTerms: terms } };
 }
 
+/**
+ * The price a CHARGE may use: the one the customer agreed to, or none.
+ *
+ * A legacy appointment carries no `serviceTerms`, so there is no recoverable
+ * historical quote — and the catalogue's price today is not it. Charging that is
+ * charging a number nobody agreed to, and if the tenant has since raised prices
+ * it is charging more. The sibling family already refuses: `enrollmentPriceSql`
+ * returns NULL for a legacy row and the reference stops being payable, which is
+ * the correct direction to err in.
+ *
+ * Kept separate from `appointmentPriceSql` on purpose. That one still falls back
+ * to the catalogue and is right to, because a screen showing "the price of this
+ * service" is a different statement from "the amount we are about to take". Two
+ * meanings, two names; the money path gets the one that cannot guess.
+ */
+export function appointmentAgreedPriceSql(appointment = 'target'): string {
+    if (!/^[a-z_]+$/.test(appointment)) throw new Error('invalid_sql_alias');
+    return `NULLIF(${appointment}.metadata->'serviceTerms'->>'price','')::numeric`;
+}
+export function appointmentAgreedCurrencySql(appointment = 'target'): string {
+    if (!/^[a-z_]+$/.test(appointment)) throw new Error('invalid_sql_alias');
+    return `${appointment}.metadata->'serviceTerms'->>'currency'`;
+}
+
+/**
+ * How many appointments predate the binding, so the size of the gap above is a
+ * number rather than a worry.
+ *
+ * Failing closed on a legacy row is only responsible if somebody can see how
+ * many rows that is before it bites. Nothing counted them; this is the query
+ * that does, and the sibling families get the same treatment through
+ * `TERMS_BINDING_FAMILIES`.
+ */
+export function appointmentsWithoutAgreedTermsSql(): string {
+    return `SELECT count(*)::int AS orphans FROM appointments
+             WHERE NOT (metadata ? 'serviceTerms')
+               AND status NOT IN ('cancelled', 'no_show', 'completed', 'expired')`;
+}
+
 /** New appointments retain their sale terms. Legacy rows have no recoverable
- * historical quote and keep the existing catalog fallback until reviewed. */
+ * historical quote and keep the catalogue fallback for DISPLAY only — the charge
+ * uses `appointmentAgreedPriceSql`, which refuses instead of guessing. */
 export function appointmentPriceSql(appointment = 'target', service = 'service'): string {
     if (![appointment, service].every(alias => /^[a-z_]+$/.test(alias))) throw new Error('invalid_sql_alias');
     return `(CASE WHEN ${appointment}.metadata ? 'serviceTerms' THEN (${appointment}.metadata->'serviceTerms'->>'price')::numeric ELSE ${service}.price END)`;

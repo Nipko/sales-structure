@@ -28,6 +28,12 @@ const markdown = [
   'Registro generado desde contratos de dominio, herramientas, dependencias y escenarios del código. No contiene datos de clientes.', '',
   `Perfiles canónicos: **${summary.profiles}**. Tareas declaradas: **${summary.tasks}**. Tareas que comprometen al negocio: **${summary.committingTasks}**.`, '',
   `Tareas sin caso positivo con efecto verificable: **${summary.tasksMissingPositiveCases}**. Tareas con alguna herramienta de escritura sin verificador de efecto: **${summary.tasksMissingVerifiers}**.`, '',
+  'Estos dos contadores **no** son los de «sin positivo propio / sin verificador» de'
+  + ' [`task-matrix-derived.md`](../2026-09-08/task-matrix-derived.md), que están en cero. Aquel mide si la tarea tiene'
+  + ' escenario propio y familia auditada; éste exige además que un caso positivo afirme un **efecto en base**'
+  + ' (`db_effect`) del writer que la tarea compromete. Una tarea cuya familia de escritura todavía no corre en el'
+  + ' adaptador aislado no puede afirmarlo, así que cuenta acá y no allá. Leer «cero sin positivo» como «toda tarea'
+  + ' transaccional tiene un positivo verificable» es exactamente el error que esta línea existe para evitar.', '',
   'La matriz describe cobertura declarada. Los estados por canal e idioma permanecen en «no ejecutado» hasta asociar evidencia de una revisión concreta. No hereda certificación de otro perfil ni convierte un escenario genérico llamado «camino feliz» en prueba de una operación terminada.', '',
   'La disponibilidad comercial, el permiso de ejecutar una herramienta y la existencia de un verificador de lectura son dimensiones distintas. La prueba de carga de módulos o de componentes tampoco certifica un proveedor externo.', '',
   `Revisión base del repositorio: \`${matrix.sourceRevision}\`; incluye los cambios del árbol de trabajo al generar.`, '',

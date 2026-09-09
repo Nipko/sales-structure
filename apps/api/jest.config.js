@@ -15,6 +15,10 @@ module.exports = {
   // database was what made two suites able to interfere with each other; there
   // is no concurrency inside a worker, so splitting by worker removes it.
   globalSetup: "<rootDir>/jest.global-setup.js",
+  // Set JEST_SEQUENCE_SEED to run the files in a different order; unset it and
+  // this is Jest's own sequencer. Changing the file order is how the absence of
+  // cross-suite interference gets proven.
+  testSequencer: "<rootDir>/jest.sequencer.js",
   setupFiles: ["<rootDir>/jest.setup-worker-database.js"],
   collectCoverageFrom: ["src/**/*.ts", "!src/main.ts"],
 };

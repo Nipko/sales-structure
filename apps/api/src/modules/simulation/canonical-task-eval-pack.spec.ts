@@ -5,10 +5,11 @@ import { buildTaskCompetenceMatrix } from './task-competence-matrix';
 
 const supported = new Set(['book_appointment', 'cancel_appointment', 'book_class', 'enrol_student']);
 const separatelyVerified = new Set(['open_repair_order','track_repair_order','approve_repair_estimate','cancel_repair_order','place_catalog_order','track_catalog_order','cancel_catalog_order','schedule_test_drive','register_pet','quote_policy',
-    // Las seis operaciones de servicio, hospedaje y comida. Sus columnas y su
-    // estado los fija `operation-task-eval-pack.spec.ts`, que además comprueba
-    // que el estado afirmado sea el que escribe producción.
-    'book_stay','book_tour','place_food_order','request_service','request_photo_quote','board_pet']);
+    // Las siete operaciones de servicio, hospedaje, comida y alquiler. Sus
+    // columnas y su estado los fija `operation-task-eval-pack.spec.ts`, que
+    // además comprueba que el estado afirmado sea el que escribe producción —
+    // y para el alquiler ese estado es `pending_review`, no `reserved`.
+    'book_stay','book_tour','place_food_order','request_service','request_photo_quote','board_pet','rent_vehicle']);
 const fixture = resolveCanonicalEvalFixtures({ capturedAt: '2026-09-07T15:00:00Z', config: { hours: { timezone: 'America/Bogota', schedule: {} } } } as AgentEvaluationSnapshot);
 
 describe('complete canonical task evaluation packs', () => {

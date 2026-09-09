@@ -22,17 +22,25 @@ export const CANONICAL_EVAL_TOOL_FAMILIES: Readonly<Record<string, string>> = Ob
     // escribe producción — `create_vehicle_rental` nace `pending_review`, no
     // `reserved`.
     //
-    // `create_vehicle_rental` NO entra, aunque comparta familia y tabla con la
-    // guardería. Es la única de estas operaciones declarada A2 con
-    // `assuranceEnforcement: 'step_up'`, así que el guardián central le pide
-    // identidad verificada antes de llegar al comando, y la identidad sintética
-    // del namespace sólo cubre lectores (`EVAL_IDENTITY_READERS`) — igual que
-    // rechaza `file_claim`. Admitirla exigiría darle identidad verificada a un
-    // writer sensible desde una prueba, que es exactamente lo que ese control
-    // existe para impedir.
+    // `create_vehicle_rental` entra ahora, y era la última que faltaba. Es la
+    // única declarada A2 con `assuranceEnforcement: 'step_up'`, así que el
+    // guardián central le pide identidad verificada antes de llegar al comando.
+    // Se resolvió donde correspondía: la identidad sintética del namespace ya
+    // no cubre sólo lectores, cubre también a los writers que el arriendo
+    // confina por completo (`EVAL_IDENTITY_STEP_UP_WRITERS`), con la
+    // confinación **comprobada** —canónica y de familia `canonicalOnly`— en vez
+    // de supuesta. Adentro no hay ninguna persona a la que suplantar: el
+    // contacto es el sintético fijo, el schema es un clon que el arriendo tira,
+    // la constancia vive en ese mismo schema y vence con él, y no hay camino
+    // que emita un código.
+    //
+    // `file_claim` sigue afuera y seguirá fallando esa comprobación: su familia
+    // es `identity_challenge`, existe para demostrar la NEGACIÓN del step-up y
+    // nunca llega a un writer, así que no hay nada que una constancia desbloquee.
     create_property_booking: 'property_bookings', create_tour_booking: 'tour_bookings',
     place_order: 'restaurant_orders', create_service_request: 'service_requests',
     request_photo_quote: 'photo_sessions', create_pet_boarding: 'resource_rentals',
+    create_vehicle_rental: 'resource_rentals',
 });
 /** Private readers keep their normal identity/ownership guards; this only admits
  * their schema-local implementation after a fixture lease has been verified. */

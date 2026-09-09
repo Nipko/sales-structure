@@ -31,14 +31,20 @@ const f = (name: string) => `{{fixture.${name}}}`;
 const ADDRESS = 'Calle 45 #12-30';
 
 /**
- * `rent_vehicle` NO está acá, y su ausencia es deliberada. `create_vehicle_rental`
- * es la única de estas operaciones declarada A2 con verificación de identidad
- * escalada: el guardián central la detiene antes del comando y la identidad
- * sintética del namespace sólo cubre lectores, así que un caso positivo suyo
- * fallaría siempre por un motivo que nada tiene que ver con el agente.
+ * `rent_vehicle` YA está acá. Faltaba porque `create_vehicle_rental` es la única
+ * de estas operaciones declarada A2 con verificación de identidad escalada: el
+ * guardián central la detenía antes del comando y la identidad sintética del
+ * namespace sólo cubría lectores, así que un caso positivo suyo habría fallado
+ * siempre por un motivo ajeno al agente.
+ *
+ * Eso se resolvió donde estaba el problema —la constancia sintética ahora cubre
+ * también a los writers que el arriendo confina por completo— y con eso el caso
+ * mide lo que debe medir. Nace `pending_review`, no `reserved`: identidad,
+ * licencia, seguro y pago los revisa una persona, y afirmar `reserved` sería
+ * afirmar una reserva que el negocio no dio.
  */
 type Operation = 'book_stay' | 'book_tour' | 'place_food_order' | 'request_service'
-    | 'request_photo_quote' | 'board_pet';
+    | 'request_photo_quote' | 'board_pet' | 'rent_vehicle';
 
 interface OperationCase {
     /** El writer que compromete al negocio. Lo demás del plan es lectura. */
@@ -52,6 +58,17 @@ interface OperationCase {
     criteria: LocalizedPhrase;
     /** Las columnas que el comando de producción persiste para este pedido. */
     where: Record<string, unknown>;
+    /**
+     * Lo que distingue las filas de ESTA operación cuando la tabla es
+     * compartida.
+     *
+     * `resource_rentals` la escriben dos operaciones —guardería y alquiler—, así
+     * que contar la tabla entera del contacto hacía que una operación rompiera
+     * la afirmación de la otra: la guardería veía dos filas y fallaba por algo
+     * que no hizo. Contar "una fila DE SU TIPO" es además lo que la afirmación
+     * siempre quiso decir.
+     */
+    scope?: Record<string, unknown>;
 }
 
 const confirm = phrase(
@@ -256,10 +273,41 @@ const OPERATIONS: Readonly<Record<Operation, OperationCase>> = Object.freeze({
         // `created_by` nulo distingue la reserva hecha por el agente de una
         // cargada a mano en el panel, y `version` en 1 dice que nadie la editó
         // después. La guardería sí nace `reserved`: el cupo queda tomado.
+        scope: { rental_type: 'pet_boarding' },
         where: {
             rental_type: 'pet_boarding', resource_id: f('petId'), service_id: f('boardingServiceId'),
             start_date: { op: 'date_eq', value: f('date') }, end_date: { op: 'date_eq', value: f('endDate') },
             status: 'reserved', version: 1, created_by: null,
+        },
+    },
+    rent_vehicle: {
+        writer: 'create_vehicle_rental', family: 'resource_rentals', table: 'resource_rentals',
+        open: phrase(
+            `Quiero alquilar el vehículo ${f('vehicleId')} del ${f('date')} al ${f('endDate')}. Soy ${f('customerName')} y conduzco yo. Revise que esté libre todo ese rango antes de dejar la solicitud.`,
+            `I want to rent vehicle ${f('vehicleId')} from ${f('date')} to ${f('endDate')}. I am ${f('customerName')} and I am the driver. Check it is free for that whole range before leaving the request.`,
+            `Quero alugar o veículo ${f('vehicleId')} de ${f('date')} até ${f('endDate')}. Sou ${f('customerName')} e eu mesmo dirijo. Verifique se está livre em todo esse período antes de deixar a solicitação.`,
+            `Je veux louer le véhicule ${f('vehicleId')} du ${f('date')} au ${f('endDate')}. Je suis ${f('customerName')} et c’est moi qui conduis. Vérifiez qu’il est libre sur toute la période avant de déposer la demande.`,
+        ),
+        question: phrase(
+            `¿Qué cubre el seguro del vehículo ${f('vehicleId')} y qué necesito para retirarlo? Todavía no quiero que deje ninguna solicitud.`,
+            `What does the insurance on vehicle ${f('vehicleId')} cover and what do I need to pick it up? I do not want you to leave any request yet.`,
+            `O que cobre o seguro do veículo ${f('vehicleId')} e o que preciso para retirá-lo? Ainda não quero que deixe nenhuma solicitação.`,
+            `Que couvre l’assurance du véhicule ${f('vehicleId')} et que me faut-il pour le retirer ? Je ne veux encore déposer aucune demande.`,
+        ),
+        criteria: phrase(
+            'Comprueba la disponibilidad del vehículo en todo el rango antes de dejar la solicitud y no promete el auto sin haberlo hecho. Deja UNA sola solicitud por pedido, a nombre del propio cliente. Dice con claridad que queda PENDIENTE DE REVISIÓN y que no hay reserva confirmada: identidad, licencia, seguro y pago los revisa una persona. No inventa precio, franquicia, requisitos de licencia ni condiciones del seguro.',
+            'Checks the vehicle is available across the whole range before leaving the request and never promises the car without doing so. Leaves exactly ONE request per order, in the customer’s own name. States clearly that it is PENDING REVIEW and that nothing is confirmed: identity, licence, insurance and payment are reviewed by a person. Never invents price, excess, licence requirements or insurance terms.',
+            'Verifica a disponibilidade do veículo em todo o período antes de deixar a solicitação e não promete o carro sem tê-lo feito. Deixa UMA única solicitação por pedido, em nome do próprio cliente. Diz com clareza que fica PENDENTE DE REVISÃO e que não há reserva confirmada: identidade, habilitação, seguro e pagamento são revisados por uma pessoa. Não inventa preço, franquia, exigências de habilitação nem condições do seguro.',
+            'Vérifie la disponibilité du véhicule sur toute la période avant de déposer la demande et ne promet jamais la voiture sans l’avoir fait. Ne laisse qu’UNE seule demande par commande, au nom du client lui-même. Indique clairement qu’elle est EN ATTENTE DE VALIDATION et qu’aucune réservation n’est confirmée : identité, permis, assurance et paiement sont revus par une personne. N’invente ni prix, ni franchise, ni exigences de permis, ni conditions d’assurance.',
+        ),
+        // `pending_review`, no `reserved`: el auto no queda tomado. Es la única
+        // de las siete que nace así, y afirmarlo es justamente lo que impide
+        // que el agente diga "reservado" cuando el negocio no lo dio.
+        scope: { rental_type: 'vehicle_rental' },
+        where: {
+            rental_type: 'vehicle_rental', resource_id: f('vehicleId'),
+            start_date: { op: 'date_eq', value: f('date') }, end_date: { op: 'date_eq', value: f('endDate') },
+            status: 'pending_review', version: 1, created_by: null,
         },
     },
 });
@@ -272,14 +320,16 @@ export function operationTaskEvalScenarios(intent: IntentContract, language: Eva
     if (!operation || !intent.commits) return [];
     const say = (value: LocalizedPhrase) => localizedPhrase(value, language);
     const { writer, family, table } = operation;
+    const scope = operation.scope;
     const committed: EvalActionAssertionSeed[] = [
         called(writer),
-        { kind: 'db_effect', type: 'row_count', family, table, count: 1 },
+        { kind: 'db_effect', type: 'row_count', family, table, count: 1, ...(scope ? { where: scope } : {}) },
         { kind: 'db_effect', type: 'row_exists', family, table, where: operation.where },
     ];
     // Una ausencia de filas prueba que no hubo operación y nada más: el traslado
     // a una persona necesita su propia evidencia, y por eso no se afirma acá.
-    const untouched: EvalActionAssertionSeed[] = [notCalled(writer), { kind: 'db_effect', type: 'no_row', family, table }];
+    const untouched: EvalActionAssertionSeed[] = [notCalled(writer),
+        { kind: 'db_effect', type: 'no_row', family, table, ...(scope ? { where: scope } : {}) }];
     const cases: EvalScenarioSeed[] = [];
     const add = (key: string, title: LocalizedPhrase, messages: LocalizedPhrase[], actions: EvalActionAssertionSeed[]) => cases.push({
         key: `intent_${intent.key}_canonical_${key}_v1`, title: say(title), language, messages: messages.map(say),

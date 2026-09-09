@@ -806,11 +806,27 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
         await run('create_pet_boarding',{petId:ids.pet,serviceId:ids.boardingService,
             startDate:fixtures.date,endDate:fixtures.endDate});
 
+        // El séptimo, y el que faltaba. Sin la constancia sintética el guardián
+        // central lo detiene —y sin mandar ningún código, que es la razón por la
+        // que este writer nunca puede correr fuera de un arriendo—.
+        const rentalArgs={vehicleId:ids.vehicle,startDate:fixtures.date,endDate:fixtures.endDate,
+            driverName:person.customerName,driverPhone:person.customerPhone};
+        await inbound('Quiero alquilar el vehículo');
+        expect(await invoke('create_vehicle_rental',rentalArgs))
+            .toMatchObject({error:'eval_identity_fixture_required',persisted:false});
+        expect(identityBoundary.startVerification).not.toHaveBeenCalled();
+        // Con la constancia corre el comando de producción real, y nace
+        // `pending_review`: identidad, licencia, seguro y pago los revisa una
+        // persona, así que el auto NO queda tomado.
+        await q("INSERT INTO __eval_identity_assurance(conversation_id,contact_id,assurance,expires_at) SELECT $1::uuid,$2::uuid,'synthetic_A2',expires_at FROM __eval_namespace ON CONFLICT (conversation_id) DO NOTHING",[conversationId,contactId]);
+        expect(await run('create_vehicle_rental',rentalArgs))
+            .toMatchObject({success:true,pendingReview:true,reservationConfirmed:false});
+
         // Las mismas afirmaciones que el set dorado publica para cada tarea, no
         // una copia escrita para este caso.
         const packs=listCanonicalSubtypeExperienceProfileIds().map(id=>composeSubtypeEvalPack(
             {industry:id.split('/')[0],subtype:id.split('/')[1],language:'en'}));
-        for(const key of ['book_stay','book_tour','place_food_order','request_service','request_photo_quote','board_pet']) {
+        for(const key of ['book_stay','book_tour','place_food_order','request_service','request_photo_quote','board_pet','rent_vehicle']) {
             const seed=packs.flat().find(item=>item.key===`intent_${key}_canonical_complete_v1`);
             expect(seed).toBeDefined();
             const bound=bindCanonicalEvalFixtures(seed!,fixtures);
@@ -825,25 +841,19 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
         expect(mail.renderAndSend).not.toHaveBeenCalled();
         expect(calendar.enqueueWithQuery).not.toHaveBeenCalled();
         expect(identityBoundary.isVerified).not.toHaveBeenCalled();
+        // Ni una sola verificación real en las siete operaciones, alquiler
+        // incluido: la constancia sintética no puede emitir un código.
         expect(identityBoundary.startVerification).not.toHaveBeenCalled();
-        // El alquiler de vehículo comparte familia y tabla con la guardería y
-        // aun así no se admitió: no entra al conjunto canónico, así que la
-        // ejecución se corta en el ejecutor antes de cualquier comando. El
-        // motivo por el que no se admitió está una capa más adentro —su
-        // identidad escalada—, y también se comprueba: montado a mano, el
-        // guardián central lo detiene con la identidad sintética que sólo cubre
-        // lectores, sin llegar a mandar un código.
-        const rental=await invoke('create_vehicle_rental',{vehicleId:ids.vehicle,startDate:fixtures.date,
-            endDate:fixtures.endDate,driverName:person.customerName});
-        expect(rental).toMatchObject({error:'canonical_sandbox_not_available',persisted:false});
+        // `file_claim` sigue afuera y la constancia no lo cubre: su familia es
+        // `identity_challenge`, existe para demostrar la NEGACIÓN del step-up y
+        // nunca llega a un writer, así que no hay nada que desbloquear.
         expect(await hasEvalIdentityFixture(prisma,{schemaName:lease.schemaName,tenantId,contactId,conversationId,
-            toolName:'create_vehicle_rental',sandboxNamespace:lease})).toBe(false);
-        expect(identityBoundary.startVerification).not.toHaveBeenCalled();
+            toolName:'file_claim',sandboxNamespace:lease})).toBe(false);
         // Nada de esto tocó el schema real del tenant.
         for(const table of ['property_bookings','tour_bookings','food_orders','food_order_items',
             'service_requests','photo_sessions','resource_rentals','resource_rental_events'])
             expect((await query(`SELECT count(*)::int AS n FROM "${source}".${table}`))[0].n).toBe(0);
-        expect((await q('SELECT count(*)::int AS n FROM resource_rental_events'))[0].n).toBe(1);
+        expect((await q('SELECT count(*)::int AS n FROM resource_rental_events'))[0].n).toBe(2);
     },60000);
 
     it('persists a draft review without an appointment, then resumes the approved command exactly once',async()=>{

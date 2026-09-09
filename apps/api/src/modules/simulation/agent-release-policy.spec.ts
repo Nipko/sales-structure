@@ -76,8 +76,14 @@ describe('release technical evidence policy',()=>{
             expect(assess([proof()],override).eligibleForReview).toBe(false);
     });
     it('does not let setup effects substitute for missing positive cases of a committing mission',()=>{
-        const result=assess([proof()],{profileId:'automotriz/alquiler',intentKeys:['rent_vehicle']});
-        expect(result.gaps).toContainEqual({code:'positive_task_case_missing',task:'rent_vehicle'});
+        // `file_claim`, no `rent_vehicle`. El alquiler dejó de servir de
+        // ejemplo el día que ganó su caso positivo, y usarlo habría hecho que
+        // esta prueba pasara por una razón distinta de la que mide. El de
+        // siniestros sigue sin caso positivo **por diseño**: en una evaluación
+        // existe para demostrar que el step-up lo rechaza, así que nunca llega
+        // a un writer.
+        const result=assess([proof()],{profileId:'seguros/auto',intentKeys:['file_claim']});
+        expect(result.gaps).toContainEqual({code:'positive_task_case_missing',task:'file_claim'});
         expect(result.eligibleForReview).toBe(false);
     });
     it('detects stored evidence tampering before considering a run',()=>{

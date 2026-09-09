@@ -154,14 +154,15 @@ export const EVAL_WRITER_SANDBOX_FAMILIES: Readonly<Record<string, EvalWriterSan
         table: 'photo_sessions', contactColumn: 'contact_id', canonicalOnly: true, verifierAudited: true,
     }),
     /**
-     * `create_pet_boarding` corre en el namespace; `create_vehicle_rental` no.
+     * Las dos corren en el namespace, incluido el alquiler de vehículo.
      *
-     * Comparten familia y tabla, pero el alquiler de vehículo está declarado A2
-     * con `step_up`: el guardián central le exige identidad verificada antes de
-     * llegar al comando, y la identidad sintética del namespace sólo cubre
-     * lectores. Queda igualmente `canonicalOnly` —y por eso fuera del schema
-     * real— porque sin arriendo ese mismo control llamaría a `startVerification`
-     * y una evaluación mandaría un código de verdad al teléfono de alguien.
+     * El alquiler está declarado A2 con `step_up`, así que el guardián central
+     * le exige identidad verificada antes de llegar al comando. La constancia
+     * sintética del arriendo ahora la cubre —ver `EVAL_IDENTITY_STEP_UP_WRITERS`,
+     * que comprueba que la familia siga siendo `canonicalOnly` antes de cubrir
+     * a nadie—. `canonicalOnly` sigue siendo obligatorio, y por eso mismo:
+     * fuera de un arriendo ese mismo control llamaría a `startVerification` y
+     * una evaluación mandaría un código de verdad al teléfono de alguien.
      */
     resource_rentals: Object.freeze({
         status: 'audited', tools: Object.freeze(['create_vehicle_rental', 'create_pet_boarding']),

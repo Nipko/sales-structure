@@ -188,12 +188,12 @@ describe('computing whether a profile has been shown to do its work', () => {
         // six service, lodging and food operations gained four canonical cases
         // in each of the four languages. Before, those tasks cost nothing to
         // prove because nothing asserted they had left anything behind.
-        expect(report.summary.requiredCases).toBe(15_608);
+        expect(report.summary.requiredCases).toBe(15_624);
         // Pinned like the 76/268/146 of the declared matrix: adding or removing a
         // case changes what certification costs, and that should be noticed.
         expect(certifyProfiles({
             scope: { channels: ['web_widget', 'whatsapp'], models: scope.models }, evidence: [],
-        }).summary.requiredCases).toBe(15_608 * 2);
+        }).summary.requiredCases).toBe(15_624 * 2);
     });
 
     it('shares one definition of a passing run with the release gate', () => {

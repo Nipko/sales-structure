@@ -105,10 +105,10 @@ Derivada de las mismas fuentes que usa el runtime, no transcrita: perfiles canó
 | Sin caso negativo propio | **0** |
 | Sin verificador | **0** |
 | Deliberadamente sin verificador de efecto | **5** (`file_claim`) |
-| Sin positivo *verificable* bajo la definición estricta del generador | **6** |
+| Sin positivo *verificable* bajo la definición estricta del generador | **5** |
 | **Perfiles certificados** | **0** |
 
-Los 6 sin positivo verificable son los 5 de `file_claim` más `create_vehicle_rental`, excluidos por la misma razón: son escrituras sensibles con identidad reforzada, y admitirlas significaría concederle a una prueba la identidad verificada de un cliente.
+Los 5 sin positivo verificable son **todos `file_claim`**. `create_vehicle_rental` salió de esa lista: lo que lo detenía era su identidad escalada, y eso se resolvió donde estaba —la constancia sintética del arriendo cubre ahora a los writers que ese arriendo confina por completo, con la confinación comprobada en vez de supuesta—, así que ninguna prueba recibe la identidad de un cliente: dentro de un arriendo no hay cliente. Los 5 que quedan lo están **por diseño**: en una evaluación `file_claim` existe para demostrar que el step-up lo rechaza, así que nunca llega a un writer y pedirle un caso positivo sería pedir que se compruebe que no se escribió nada.
 
 **Resultados por idioma y canal: no existen.** No hay un solo perfil certificado, y ninguno hereda certificación por parecerse a otro. La matriz dice qué tiene cada tarea y qué le falta; no dice que el agente la resuelva. Ejecutar las conversaciones completas contra los modelos soportados, en es/en/pt/fr y por canal compatible, es el trabajo que sigue.
 

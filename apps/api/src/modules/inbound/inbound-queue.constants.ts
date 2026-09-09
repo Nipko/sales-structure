@@ -11,6 +11,34 @@ import { NormalizedMessage } from '@parallext/shared';
  */
 export const INBOUND_QUEUE = 'inbound-messages';
 
+/**
+ * A customer message that never reached the queue.
+ *
+ * A webhook body carries several independent things, and most failures in one
+ * of them must NOT travel back to the provider: a status receipt we could not
+ * write, or a body we can never parse, would come back forever if we answered
+ * 5xx, and forever is worse than the loss. The single exception is a customer
+ * message that did not become durable — there the redelivery is precisely what
+ * we want, and a 200 turns a transient outage into a message nobody will ever
+ * answer.
+ *
+ * So the ingress needs to tell those two apart, and this is the marker that
+ * does it: it means "we do not have this message". `InboundQueueService.enqueue`
+ * discards a structurally broken message with `return` and never a throw, so
+ * anything it does throw is infrastructure and belongs in here.
+ */
+export class InboundNotDurableError extends Error {
+    constructor(
+        /** The provider's id for the message, when it sent one. */
+        readonly providerMessageId: string | undefined,
+        /** What actually failed, kept for the log at the edge. */
+        readonly reason: unknown,
+    ) {
+        super(`inbound_not_durable${providerMessageId ? `: ${providerMessageId}` : ''}`);
+        this.name = 'InboundNotDurableError';
+    }
+}
+
 export interface InboundJobData {
     msg: NormalizedMessage;
     enqueuedAt: number;

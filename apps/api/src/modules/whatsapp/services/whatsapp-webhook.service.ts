@@ -2,6 +2,7 @@ import { Injectable, Logger, BadRequestException, Inject, forwardRef } from '@ne
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { InboundQueueService } from '../../inbound/inbound-queue.service';
+import { InboundNotDurableError } from '../../inbound/inbound-queue.constants';
 import { ComplianceService } from '../../analytics/compliance.service';
 import { WhatsappConnectionService } from './whatsapp-connection.service';
 import { WhatsAppAdapter } from '../../channels/whatsapp/whatsapp.adapter';
@@ -119,6 +120,12 @@ export class WhatsappWebhookService {
               handled = true;
             }
           } catch (err: any) {
+            // A customer message that never reached the queue is the ONE failure
+            // allowed out of here. The controller turns it into a 500 and Meta
+            // redelivers, which is the whole point of enqueuing before we
+            // acknowledge. Everything else stays swallowed on purpose: a body we
+            // can never process would otherwise come back forever.
+            if (err instanceof InboundNotDurableError) throw err;
             this.logger.error(`Webhook change processing failed (field=${change?.field}): ${err.message}`, err.stack);
             handled = true;
           }
@@ -267,6 +274,13 @@ export class WhatsappWebhookService {
 
      // Process EVERY message in the batch — WhatsApp can deliver several messages
      // in a single webhook; taking only messages[0] silently dropped the rest.
+     // Raised by the first message of the batch that failed to become
+     // durable, thrown once the rest of the batch has had its turn: one broken
+     // message must not strand its siblings, and the ones that DID make it are
+     // protected from the redelivery by their own idempotency claim and by the
+     // unique index on `messages.external_id`.
+     let notDurable: InboundNotDurableError | null = null;
+
      for (const msg of value.messages) {
          const waMessageId = msg?.id; // wamid.xxx
 
@@ -371,8 +385,22 @@ export class WhatsappWebhookService {
              // turn instead of answering the customer twice. If that dedupe is ever
              // removed, this release becomes a double-reply generator.
              if (waMessageId) await this.redis.del(`idem:wa:${waMessageId}`).catch(() => {});
+             // ...and REFUSE THE ACKNOWLEDGEMENT. Releasing the claim only helps
+             // if Meta redelivers, and Meta redelivers exactly what it was not
+             // told we have — so swallowing here made the release pointless and
+             // the message lost: a transient Valkey outage answered 200 for a
+             // turn that never existed. `enqueue` discards a structurally broken
+             // message with `return` and never a throw, so anything caught here
+             // is infrastructure, which is the case a redelivery fixes.
+             //
+             // This is the same contract the other six producers already have
+             // in `ChannelsController`; WhatsApp's own route reached the queue
+             // through this service, and the swallow below it undid it.
+             notDurable ??= new InboundNotDurableError(waMessageId, error);
          }
      }
+
+     if (notDurable) throw notDurable;
   }
 
   /**

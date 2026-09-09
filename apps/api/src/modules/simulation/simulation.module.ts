@@ -25,6 +25,9 @@ import { CERTIFICATION_QUEUE } from './certification-contract';
 import { CertificationService } from './certification.service';
 import { CertificationController } from './certification.controller';
 import { CertificationProcessor } from './certification.processor';
+import { BENCHMARK_QUEUE, BenchmarkService } from './benchmark.service';
+import { BenchmarkController } from './benchmark.controller';
+import { BenchmarkProcessor } from './benchmark.processor';
 
 /**
  * Agent Simulation pre-deploy (T2.13). Reuses:
@@ -46,9 +49,10 @@ import { CertificationProcessor } from './certification.processor';
         BullModule.registerQueue({ name: QUALITY_QUEUE }),
         BullModule.registerQueue({ name: AGENT_RELEASE_QUEUE }),
         BullModule.registerQueue({ name: CERTIFICATION_QUEUE }),
+        BullModule.registerQueue({ name: BENCHMARK_QUEUE }),
     ],
-    providers: [SimulationService, SimulationProcessor, EvalService, EvalAutorunListener, EvalAutorunStateService, EvalGateProcessor, WatchtowerService,AgentReleaseService,AgentReleaseProcessor,CertificationService,CertificationProcessor],
-    controllers: [SimulationController, EvalController, WatchtowerController,AgentReleaseController,CertificationController],
-    exports: [SimulationService, EvalService, CertificationService],
+    providers: [SimulationService, SimulationProcessor, EvalService, EvalAutorunListener, EvalAutorunStateService, EvalGateProcessor, WatchtowerService,AgentReleaseService,AgentReleaseProcessor,CertificationService,CertificationProcessor,BenchmarkService,BenchmarkProcessor],
+    controllers: [SimulationController, EvalController, WatchtowerController,AgentReleaseController,CertificationController,BenchmarkController],
+    exports: [SimulationService, EvalService, CertificationService, BenchmarkService],
 })
 export class SimulationModule {}

@@ -159,6 +159,11 @@ export function summariseBenchmark(input: {
     const subjects = input.subjects ?? [];
     if (subjects.length < 2) blockers.push('single_subject');
     if (!subjects.some(subject => subject.kind === 'alternative')) blockers.push('no_alternative_subject');
+    // And one of them has to be us. Two competitors answering the same corpus is
+    // a perfectly good measurement of those two competitors, and it says nothing
+    // at all about this product — which is the only thing this benchmark exists
+    // to find out.
+    if (!subjects.some(subject => subject.kind === 'self')) blockers.push('no_self_subject');
     if (new Set(subjects.map(subject => subject.blindLabel)).size !== subjects.length) {
         blockers.push('blind_labels_not_unique');
     }

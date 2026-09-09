@@ -75,7 +75,10 @@ function AgentAssessmentContent({ agentId, assessment: provided }: { agentId?: s
             <h3 className="mt-3 text-xs font-semibold uppercase tracking-wide text-neutral-500">{t('tasksTitle')}</h3>
             <ul className="mt-2 space-y-2">{visibleTasks.map(task => <li key={task.key} className="flex flex-wrap items-center gap-x-2 gap-y-1">
                 <Link href={task.href} className="underline">{tSetup(`items.${task.key}`)}</Link>
-                <OperationalStateBadge state={task.state} />
+                {/* No badge for a task that does not apply: the six states answer
+                    "how far along is this", and that question was never asked
+                    here. Salud's word below is the whole answer. */}
+                {task.state && <OperationalStateBadge state={task.state} />}
                 {/* Salud's own word stays next to the shared one: it is what the
                     check tables say, and it still carries "no aplica", which has
                     no rung on the ladder. Where the two differ the server meant

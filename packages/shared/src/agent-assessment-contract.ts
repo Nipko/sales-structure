@@ -43,8 +43,16 @@ export interface AgentSetupTask {
     status: AgentQualityCheckStatus;
     /** The same task in the one vocabulary every surface renders. `status` stays
      *  because Salud and the editor already read it; this is the projection so
-     *  three screens stop saying three different words about one task. */
-    state: AgentOperationalState;
+     *  three screens stop saying three different words about one task.
+     *
+     *  `null` for a task that does not apply to this business. "Does not apply"
+     *  is not one of the six states and must not be squeezed into one: reporting
+     *  it as `unknown` said "nobody could read this", and because `unknown`
+     *  dominates the roll-up, a single inapplicable task made the whole agent
+     *  permanently unreadable — a clinic with no catalogue could never be shown
+     *  as operating. `status` already carries `not_applicable`; the absence of a
+     *  state is what says the question was not asked. */
+    state: AgentOperationalState | null;
     checks: AgentQualityCheck[];
     href: string;
     tourId: GuidedTourId | null;

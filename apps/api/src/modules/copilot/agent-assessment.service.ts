@@ -92,12 +92,18 @@ export class AgentAssessmentService {
         // status and inventing three labels is exactly what this replaces.
         const withState = (task: Omit<AgentSetupTask, 'state'>, override?: AgentOperationalState): AgentSetupTask => ({
             ...task,
+            // No `?? 'unknown'`: `operationalStateFromCheck` returns null only for
+            // `not_applicable`, and calling that "nobody could read it" was not a
+            // label problem. `unknown` dominates the roll-up, so one inapplicable
+            // task made the whole agent permanently unreadable — a clinic with no
+            // catalogue could never be reported as operating. `rollUpOperationalState`
+            // already skips nulls, which is what it was written to do.
             state: override ?? operationalStateFromCheck(task.status, {
                 // A task whose checks could not be read is unknown, whatever the
                 // aggregate says: an unreadable source is not a passing one.
                 sourceAvailable: !task.checks.some(check =>
                     (check as any)?.evidence?.sourceAvailability === 'unavailable'),
-            }) ?? 'unknown',
+            }),
         });
         const tasks: AgentSetupTask[] = [withState({ key: 'mission', status: saved !== undefined && (!isAgentMissionV1(saved) || unsupportedIntents.length) ? 'fail' : configured ? 'pass' : 'warning', checks: [],
             href: `/admin/agent/${agent.id}`, tourId: null, dependsOn: [] },

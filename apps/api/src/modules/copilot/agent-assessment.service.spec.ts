@@ -1,9 +1,10 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
+import { rollUpOperationalState } from '@parallext/shared';
 import { AgentAssessmentService } from './agent-assessment.service';
 
 const TENANT = '11111111-1111-4111-8111-111111111111';
 const AGENT = '22222222-2222-4222-8222-222222222222';
-function harness(options: { missing?: boolean; drift?: boolean; unknown?: boolean; mission?: any; runs?: any[] } = {}) {
+function harness(options: { missing?: boolean; drift?: boolean; unknown?: boolean; mission?: any; runs?: any[]; teamNotApplicable?: boolean } = {}) {
     const query = jest.fn(async (_schema, sql, params) => sql.startsWith('SELECT version') ? [{ version: options.drift ? 3 : 2 }] : options.missing ? [] : [{
         id: AGENT, version: 2, template_id: 'restaurant', channels: ['whatsapp', 'telegram'], channel_bindings: [],
         config_json: { persona: { role: 'Atender pedidos', name: 'Luna', secret: 'NEVER EXPOSE' },
@@ -16,7 +17,8 @@ function harness(options: { missing?: boolean; drift?: boolean; unknown?: boolea
                 : sql.includes('FROM eval_runs') ? evalRows : [])),
         tenant: { findUnique: jest.fn().mockResolvedValue({ industry: 'restaurantes', settings: { verticalConfig: { subType: 'casual_dining' } } }) } };
     const check = (code: string, status = 'pass') => ({ code, status, evidence: status === 'unknown' ? { sourceAvailability: 'unavailable' } : {}, dimension: 'business_scope', critical: true, weight: 1 });
-    const overview = { agent: { id: AGENT, version: 2, name: 'Luna' }, preparation: { dimensions: [{ checks: [check('persona_identity'), check('knowledge_coverage', options.unknown ? 'unknown' : 'pass'), check('tool_appointments', 'not_applicable')] }] }, tested: { status: 'ready', stale: false } };
+    const overview = { agent: { id: AGENT, version: 2, name: 'Luna' }, preparation: { dimensions: [{ checks: [check('persona_identity'), check('knowledge_coverage', options.unknown ? 'unknown' : 'pass'), check('tool_appointments', 'not_applicable'),
+        ...(options.teamNotApplicable ? [check('human_handoff_route', 'not_applicable')] : [])] }] }, tested: { status: 'ready', stale: false } };
     const quality = { getOverview: jest.fn().mockResolvedValue(overview) };
     const capabilities = { resolve: jest.fn().mockResolvedValue({ contract: { publishedTools: ['search_menu'], resolvedAt: '2026-09-06T00:00:00Z' } }) };
     return { service: new AgentAssessmentService(prisma as any, quality as any, capabilities as any), prisma, quality, capabilities, overview };
@@ -47,11 +49,32 @@ describe('shared agent assessment', () => {
         // Three screens reading one status and inventing three labels is what
         // this replaces, so the word has to arrive with the task.
         for (const task of assessment.tasks) {
-            expect(['unknown', 'pending', 'prepared', 'tested', 'operating', 'degraded'])
+            expect(['unknown', 'pending', 'prepared', 'tested', 'operating', 'degraded', null])
                 .toContain(task.state);
         }
         // Running on the template's mission is pending, not broken and not done.
         expect(assessment.tasks.find(task => task.key === 'mission')?.state).toBe('pending');
+    });
+
+    it('gives a task that does not apply no state, instead of calling it unreadable', async () => {
+        // "Does not apply" is not one of the six, and it was being squeezed into
+        // `unknown`. That is not a label problem: `unknown` dominates the
+        // roll-up, so one inapplicable task made the whole agent permanently
+        // unreadable — a business without that capability could never be
+        // reported as operating, however much of it worked.
+        const { service } = harness({ teamNotApplicable: true });
+        const assessment = await service.getAssessment(TENANT, AGENT);
+        const team = assessment.tasks.find(task => task.key === 'team')!;
+        expect(team.status).toBe('not_applicable');
+        expect(team.state).toBeNull();
+        // `status` still carries the answer, so nothing was hidden by removing
+        // the state — only the wrong word was.
+        // What the absence buys, stated against the roll-up itself rather than
+        // against this fixture's other tasks: a task that does not apply drags
+        // nothing down, while the `unknown` it used to become dominates every
+        // healthy part around it.
+        expect(rollUpOperationalState(['operating', team.state])).toBe('operating');
+        expect(rollUpOperationalState(['operating', 'unknown'])).toBe('unknown');
     });
 
     it('never rolls a whole agent up to operating while a part could not be read', async () => {

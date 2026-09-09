@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { createHash, randomUUID } from 'crypto';
+import { randomUUID } from 'crypto';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { AGENT_CONFIGURATION_PATHS, CONVERSATIONAL_CHANNELS, buildDomainContractDraft, isAgentAccountBusinessHours, isAgentMissionV1, type AgentConfigurationChange, type AgentConfigurationProposal, type AppliedAgentConfiguration, type AppliedDraftVerification, type AppliedDraftVerificationReason, type AppliedDraftVerificationState, type ConversationalChannelType, type SavedAgentDraft } from '@parallext/shared';
 import { PrismaService } from '../prisma/prisma.service';
@@ -13,14 +13,12 @@ import { TenantsService } from '../tenants/tenants.service';
 import { AgentDraftService } from '../persona/agent-draft.service';
 import { AgentConfigurationRevisionStore } from '../persona/agent-configuration-revision';
 import { ensureDraftProposalSchema } from './agent-configuration-proposal-schema';
+import { canonical, proposalHash } from './agent-proposal-digest';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-function canonical(value: unknown): string {
-    if (Array.isArray(value)) return '[' + value.map(canonical).join(',') + ']';
-    if (value && typeof value === 'object') return '{' + Object.keys(value).sort().map(key => JSON.stringify(key) + ':' + canonical((value as any)[key])).join(',') + '}';
-    return JSON.stringify(value) ?? 'null';
-}
-const hash = (value: unknown) => createHash('sha256').update(canonical(value)).digest('hex');
+// Shared with the content-creation ledger: "the same reviewed content" has to
+// mean the same thing in both, or a digest stops being a guarantee.
+const hash = proposalHash;
 function readPath(value: any, path: string): unknown { return path.split('.').reduce((node, key) => node?.[key], value) ?? null; }
 function applyChanges(config: any, changes: AgentConfigurationChange[]): any {
     if ((config.editorMode ?? config._mode) === 'prompt' && changes.some(change => change.path.startsWith('persona.') || change.path === 'behavior.rules')) {

@@ -22,6 +22,8 @@ import { CopilotService, CopilotChatRequest } from './copilot.service';
 import { CopilotChatRateLimitGuard } from './copilot-chat-rate-limit.guard';
 import { AgentAssessmentService } from './agent-assessment.service';
 import { AgentConfigurationService } from './agent-configuration.service';
+import { AgentContentProposalService } from './agent-content-proposal.service';
+import { auditActor } from '../../common/utils/audit-actor.util';
 
 interface CopilotChatClientRequest {
     message?: unknown;
@@ -49,7 +51,8 @@ export class CopilotController {
     private readonly logger = new Logger(CopilotController.name);
 
     constructor(private readonly copilotService: CopilotService, private readonly assessment: AgentAssessmentService = null as any,
-        private readonly configuration: AgentConfigurationService = null as any) {}
+        private readonly configuration: AgentConfigurationService = null as any,
+        private readonly operations: AgentContentProposalService = null as any) {}
 
     @Post('configuration/:tenantId/proposals')
     @Roles('super_admin', 'tenant_admin')
@@ -65,6 +68,46 @@ export class CopilotController {
         if (!body || Object.keys(body).some(key => key !== 'digest')) throw new BadRequestException('Invalid reviewed proposal');
         return { success: true, data: await this.configuration.apply(tenantId, proposalId, body.digest,
             { id: req.user?.sub || req.user?.id, role: req.user?.role }) };
+    }
+
+    // ─── Content operations (create, never send) ────────────────────────────
+    //
+    // Declared before the `:conversationId` routes below so `operations` is
+    // matched as a literal and never swallowed as a conversation id.
+
+    /** Every declared operation with a verdict for this caller, routed ones included. */
+    @Get('operations/:tenantId')
+    @Roles('super_admin', 'tenant_admin', 'tenant_supervisor')
+    async listOperations(@Param('tenantId') tenantId: string, @Req() req: any) {
+        return { success: true, data: await this.operations.listOperations(tenantId, this.operationActor(req)) };
+    }
+
+    @Post('operations/:tenantId/proposals')
+    @Roles('super_admin', 'tenant_admin', 'tenant_supervisor')
+    async proposeOperation(@Param('tenantId') tenantId: string, @Body() body: any, @Req() req: any) {
+        if (!body || Object.keys(body).some(key => !['operation', 'input', 'requestKey'].includes(key))) {
+            throw new BadRequestException('Invalid operation proposal');
+        }
+        return { success: true, data: await this.operations.propose(tenantId, body.operation, body.input,
+            this.operationActor(req), body.requestKey) };
+    }
+
+    @Post('operations/:tenantId/proposals/:proposalId/apply')
+    @Roles('super_admin', 'tenant_admin', 'tenant_supervisor')
+    async applyOperation(@Param('tenantId') tenantId: string, @Param('proposalId') proposalId: string,
+        @Body() body: any, @Req() req: any) {
+        if (!body || Object.keys(body).some(key => key !== 'digest')) throw new BadRequestException('Invalid reviewed proposal');
+        return { success: true, data: await this.operations.apply(tenantId, proposalId, body.digest, this.operationActor(req)) };
+    }
+
+    /**
+     * The effective user plus, under impersonation, the operator behind them.
+     * `auditActor` takes the USER, not the request: passing `req` would record
+     * an action with no identity at all.
+     */
+    private operationActor(req: any): { id: string; role: string; delegation?: Record<string, unknown> } {
+        const actor = auditActor(req?.user);
+        return { id: actor.userId as string, role: req?.user?.role, ...(actor.delegation ? { delegation: actor.delegation } : {}) };
     }
 
     @Get('assessment/:tenantId')

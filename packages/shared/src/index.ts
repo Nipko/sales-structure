@@ -18,6 +18,8 @@ export * from './agent-assessment-contract';
 export * from './agent-operational-state';
 export * from './channel-credential-health';
 export * from './agent-configuration-contract';
+// ---- What Assist may create, and what it deliberately routes to a screen ----
+export * from './agent-operation-contract';
 export * from './agent-draft-contract';
 export * from './agent-release-subject';
 

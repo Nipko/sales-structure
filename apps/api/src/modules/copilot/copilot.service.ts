@@ -13,6 +13,7 @@ import { AgentQualityService } from '../quality/agent-quality.service';
 import { AgentQualitySignalService } from '../quality/agent-quality-signal.service';
 import { AgentAssessmentService } from './agent-assessment.service';
 import { AgentConfigurationService } from './agent-configuration.service';
+import { AgentContentProposalService } from './agent-content-proposal.service';
 import {
     GuidedTourDefinition,
     GuidedTourId,
@@ -23,8 +24,10 @@ import {
     guidedToursForArticles,
     type AgentAssessment,
     type AgentConfigurationProposal,
+    type AgentContentProposal,
     type ToolDefinition,
     AGENT_CONFIGURATION_PATHS,
+    AGENT_OPERATION_REGISTRY,
     CAPABILITY_EXCLUSION_TEXT,
 } from '@parallext/shared';
 
@@ -91,6 +94,8 @@ export interface CopilotChatResponse {
     tokensUsed?: number;
     actions?: CopilotChatAction[];
     proposal?: AgentConfigurationProposal;
+    /** A reviewable creation (FAQ, policy, course, agenda service). Nothing is written yet. */
+    contentProposal?: AgentContentProposal;
 }
 
 // ─── New interfaces (conversation copilot) ──────────────────────────────────
@@ -137,6 +142,7 @@ export class CopilotService {
         private qualitySignals: AgentQualitySignalService = null as any,
         private assessment: AgentAssessmentService = null as any,
         private configuration: AgentConfigurationService = null as any,
+        private operations: AgentContentProposalService = null as any,
     ) {}
 
     // ─── Per-plan capability context ────────────────────────────────────────
@@ -1170,6 +1176,23 @@ Reglas estrictas:
             }),
         ]);
 
+        // Creating content is a different permission from editing the agent, and
+        // narrower per object: a supervisor may write a FAQ but not a legal
+        // text. The enum offered to the model is filtered by the caller's role,
+        // so it cannot propose something the role would then be refused.
+        const creatableOperations = AGENT_OPERATION_REGISTRY
+            .filter(operation => operation.availability === 'executable' && operation.roles.includes(request.context.userRole as any))
+            .map(operation => operation.key);
+        const canCreateContent = Boolean(this.operations && request.context.actorId && creatableOperations.length);
+        // What Assist will never do, stated to the model from the same registry
+        // the API enforces. Without it the model invents a capability or an
+        // apology; with it, it names the screen that owns the decision.
+        const routedOperations = AGENT_OPERATION_REGISTRY.filter(operation => operation.availability === 'route_to_screen');
+        const contentOperationContext = canCreateContent
+            ? `12. **CREACIÓN ASISTIDA:** con propose_content_object puedes preparar la creación de: ${creatableOperations.join(', ')}. Solo prepara una propuesta para revisión; nada se crea hasta que la persona la aplique. Nunca afirmes haber creado algo desde este chat. Usa el texto que dio el dueño: no inventes precios, duraciones ni redacción legal; si falta un dato, pídelo.
+Estas NO las hace Assist —deriva a la pantalla que las decide—: ${routedOperations.map(operation => `${operation.key} → ${operation.route} (${operation.reason})`).join('; ')}.`
+            : '';
+
         const systemPrompt = `Eres **Parallly Assist**, el asistente oficial de ayuda de la plataforma Parallly.
 Tu única misión: ayudar a los usuarios (administradores, supervisores y agentes de negocio) a entender, configurar y usar las funcionalidades de la plataforma.
 
@@ -1194,7 +1217,7 @@ ${guidedTourContext ? '\n' + guidedTourContext + '\n' : ''}
 9. **CALIDAD DEL AGENTE:** si existe el bloque de estado real, ese bloque manda sobre explicaciones genéricas de la KB. Explica evidencia y prioridad sin revelar identificadores internos, transcripciones ni texto de clientes. Los cambios siempre requieren revisión humana.
 10. **RECORRIDOS:** cuando exista un recorrido guiado para lo que pide el usuario, prefiere ofrecerlo antes que describir menús largos. El recorrido no cambia ninguna configuración por sí mismo: abre la pantalla y muestra dónde; la persona hace el cambio.
 11. **CONFIGURACIÓN ASISTIDA:** si tienes propose_agent_configuration y el usuario pide cambios, prepara valores concretos. editableConfiguration muestra el borrador actual cuando existe: parte de esos valores. La evaluación describe exclusivamente la versión operativa; nunca la presentes como verificación del borrador. La herramienta solo crea una propuesta para revisión; el botón guarda un borrador, sin publicarlo ni activarlo. account.businessHours modifica la cuenta completa y debe revisarse en una propuesta separada. Nunca afirmes haber guardado, activado ni aplicado cambios desde este chat. No solicites secretos ni propongas tareas ajenas a la plantilla.
-
+${contentOperationContext}
 ## Contexto de la consulta:
 - Rol autenticado: ${request.context.userRole}
 - Página actual del panel: ${request.context.page}`;
@@ -1216,6 +1239,18 @@ ${guidedTourContext ? '\n' + guidedTourContext + '\n' : ''}
                 type: 'object', additionalProperties: false, properties: { path: { type: 'string', enum: [...AGENT_CONFIGURATION_PATHS] }, value: {} }, required: ['path', 'value'],
             } } }, required: ['changes'] },
         };
+        const contentTool: ToolDefinition = {
+            name: 'propose_content_object',
+            description: 'Prepare a reviewable proposal to CREATE one object the business owns, when the owner asks for it and has given the wording. Nothing is written until a person reviews and applies it. knowledge.faq.create {title,content}. policies.legal_text.create {name,type:privacy|terms|data_processing|general,text} — saved inactive; a person activates it. catalogue.course.create {name,description,price?,currency?,durationHours?,modality?}. agenda.service.create {name,description?,durationMinutes,price?,currency?}. Write the text from what the owner told you; never invent prices, hours or legal wording. One object per call.',
+            parameters: { type: 'object', additionalProperties: false, required: ['operation', 'input'], properties: {
+                operation: { type: 'string', enum: creatableOperations },
+                input: { type: 'object' },
+            } },
+        };
+
+        const tools: ToolDefinition[] = [];
+        if (canPropose) tools.push(configurationTool);
+        if (canCreateContent) tools.push(contentTool);
 
         try {
             const response = await this.llmRouter.execute({
@@ -1226,7 +1261,7 @@ ${guidedTourContext ? '\n' + guidedTourContext + '\n' : ''}
                 // Low temperature: this is a support assistant — accuracy over creativity.
                 temperature: 0.4,
                 maxTokens: 800,
-                ...(canPropose ? { tools: [configurationTool] } : {}),
+                ...(tools.length ? { tools } : {}),
             });
 
             const requestedProposal = response.toolCalls?.find(call => call.function.name === configurationTool.name);
@@ -1241,6 +1276,20 @@ ${guidedTourContext ? '\n' + guidedTourContext + '\n' : ''}
                     fr: 'J’ai préparé une proposition. Vérifiez les valeurs actuelles et proposées avant de l’appliquer.',
                 };
                 return { reply: ready[locale] ?? ready.es, proposal, actions: qualityContext.actions.slice(0, CopilotService.MAX_CHAT_ACTIONS) };
+            }
+
+            const requestedContent = response.toolCalls?.find(call => call.function.name === contentTool.name);
+            if (requestedContent && canCreateContent) {
+                const args = JSON.parse(requestedContent.function.arguments);
+                const contentProposal = await this.operations.propose(tenantId, args?.operation, args?.input,
+                    { id: request.context.actorId!, role: request.context.userRole });
+                const ready: Record<string, string> = {
+                    es: 'Preparé lo que se va a crear. Revísalo antes de aplicarlo: todavía no existe nada.',
+                    en: 'I prepared what would be created. Review it before applying: nothing exists yet.',
+                    pt: 'Preparei o que seria criado. Revise antes de aplicar: ainda não existe nada.',
+                    fr: 'J’ai préparé ce qui serait créé. Vérifiez avant d’appliquer : rien n’existe encore.',
+                };
+                return { reply: ready[locale] ?? ready.es, contentProposal, actions: qualityContext.actions.slice(0, CopilotService.MAX_CHAT_ACTIONS) };
             }
 
             this.logger.log(
@@ -1284,6 +1333,24 @@ ${guidedTourContext ? '\n' + guidedTourContext + '\n' : ''}
                 };
                 const reasons = (Array.isArray(detail.reasons) ? detail.reasons : []).map((reason: string) => (CAPABILITY_EXCLUSION_TEXT as any)[reason]?.[locale]).filter(Boolean);
                 return { reply: [intro[locale] ?? intro.es, ...reasons].join('\n'), actions: qualityContext.actions.slice(0, CopilotService.MAX_CHAT_ACTIONS) };
+            }
+            // A creation that was refused must say so plainly. The generic
+            // fallback would read as "something went wrong", and the person
+            // would reasonably wonder whether half of it got written.
+            if (detail && ['operation_unknown', 'operation_not_executable', 'operation_input_invalid',
+                'operation_role_not_permitted', 'operation_gate_unavailable', 'plan_limit_reached', 'plan_feature_missing'].includes(detail.error)) {
+                const refused: Record<string, string> = {
+                    es: 'No preparé esa creación y no se creó nada.',
+                    en: 'I did not prepare that creation, and nothing was created.',
+                    pt: 'Não preparei essa criação e nada foi criado.',
+                    fr: 'Je n’ai pas préparé cette création, et rien n’a été créé.',
+                };
+                const elsewhere: Record<string, string> = {
+                    es: 'Eso se hace en', en: 'That is done in', pt: 'Isso é feito em', fr: 'Cela se fait dans',
+                };
+                const route = detail.error === 'operation_not_executable' && typeof detail.route === 'string'
+                    ? ` ${elsewhere[locale] ?? elsewhere.es} ${detail.route}.` : '';
+                return { reply: `${refused[locale] ?? refused.es}${route}`, actions: qualityContext.actions.slice(0, CopilotService.MAX_CHAT_ACTIONS) };
             }
             this.logger.error('Copilot chat error, returning fallback:', error);
             return {

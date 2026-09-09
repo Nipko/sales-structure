@@ -4689,6 +4689,33 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_config_proposals" (
     "applied_version" INTEGER,
     UNIQUE ("requested_by", "request_key")
 );
+
+-- Reviewed content commands: Assist may create objects the tenant owns (a FAQ,
+-- a legal text, a course, a bookable service) under the same review ledger as a
+-- configuration change. Separate from `agent_config_proposals` because that
+-- table's `agent_id` is NOT NULL and references an agent persona, and none of
+-- these objects belongs to an agent.
+-- `created_object_id` is stamped AFTER the claim: the create runs through the
+-- module that owns the table and cannot join this ledger's transaction, so a
+-- row claimed with no object id means the effect never completed — never that a
+-- second one is waiting to be created.
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_content_proposals" (
+    "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "operation" TEXT NOT NULL,
+    "requested_by" UUID NOT NULL,
+    "request_key" VARCHAR(80) NOT NULL,
+    "digest" VARCHAR(64) NOT NULL,
+    "input" JSONB NOT NULL,
+    "status" VARCHAR(20) NOT NULL DEFAULT 'proposed' CHECK ("status" IN ('proposed', 'applied', 'expired')),
+    "expires_at" TIMESTAMPTZ NOT NULL,
+    "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    "applied_at" TIMESTAMPTZ,
+    "applied_by" UUID,
+    "created_object_id" UUID,
+    UNIQUE ("requested_by", "request_key")
+);
+CREATE INDEX IF NOT EXISTS "idx_agent_content_proposals_status"
+    ON "{{SCHEMA_NAME}}"."agent_content_proposals" ("status", "expires_at");
 -- BEGIN LEARNING TABLES
 -- Curated learning is opt-in. Sources are split before excerpts; published
 -- snapshots contain only approved examples and an independent frozen holdout.

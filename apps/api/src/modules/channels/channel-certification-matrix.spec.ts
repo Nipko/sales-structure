@@ -1,11 +1,10 @@
 import { CERTIFIED_SELF_SERVICE_CHANNELS } from '@parallext/shared';
 import { buildChannelCertificationMatrix, summariseChannelCertification,
     CHANNEL_CAPABILITIES } from './channel-certification-matrix';
-import { WhatsAppAdapter } from './whatsapp/whatsapp.adapter';
-import { InstagramAdapter } from './instagram/instagram.adapter';
-import { MessengerAdapter } from './messenger/messenger.adapter';
-import { TelegramAdapter } from './telegram/telegram.adapter';
-import { WidgetChannelAdapter } from './widget.adapter';
+import 'reflect-metadata';
+import { PATH_METADATA } from '@nestjs/common/constants';
+import { channelCertificationRuntime } from './channel-certification-runtime';
+import { ChannelManagementController } from './channel-management.controller';
 
 /**
  * What each channel is allowed to be said to do.
@@ -21,24 +20,10 @@ import { WidgetChannelAdapter } from './widget.adapter';
  * drifts from the code fails instead of shipping as a claim.
  */
 describe('what each channel may be said to do', () => {
-    /** The runtime's own answer to "does this adapter send strictly?" — the same
-     *  question `ChannelGatewayService.getStrictTransport` asks. */
-    const strictTransports = Object.entries({
-        whatsapp: WhatsAppAdapter, instagram: InstagramAdapter, messenger: MessengerAdapter,
-        telegram: TelegramAdapter, web_widget: WidgetChannelAdapter,
-    }).filter(([, adapter]) => typeof (adapter.prototype as any).sendStrict === 'function')
-        .map(([channel]) => channel);
+    // The same input the endpoint serves, so a drift between what the product
+    // reports and what this file asserts is impossible rather than unlikely.
+    const runtime = channelCertificationRuntime();
 
-    const runtime = {
-        strictTransports,
-        durableDispatchChannels: strictTransports,
-        // The widget has no provider to accept a message, so its admission is
-        // the delivery. A missing strict transport there is the design.
-        localAdmissionChannels: ['web_widget'],
-        inboundChannels: ['whatsapp', 'instagram', 'messenger', 'telegram', 'web_widget'],
-        deliveryStatusProducers: ['whatsapp', 'instagram', 'messenger', 'web_widget'],
-        readStatusProducers: ['whatsapp', 'instagram', 'messenger'],
-    };
     const matrix = () => buildChannelCertificationMatrix(runtime);
     const row = (channelType: string) => matrix().find(entry => entry.channelType === channelType)!;
 
@@ -69,7 +54,7 @@ describe('what each channel may be said to do', () => {
         // transport today; if one stops, this says so before the matrix claims
         // otherwise. The widget is deliberately absent: there is nobody to hand
         // the message to, so it admits locally instead.
-        expect(strictTransports.sort())
+        expect([...runtime.strictTransports].sort())
             .toEqual(CERTIFIED_SELF_SERVICE_CHANNELS.filter(channel => channel !== 'web_widget').sort());
         for (const channelType of CERTIFIED_SELF_SERVICE_CHANNELS) {
             const cell = row(channelType).capabilities.find(entry => entry.capability === 'outbound_text')!;
@@ -129,5 +114,19 @@ describe('what each channel may be said to do', () => {
         for (const entry of matrix()) {
             expect(entry.capabilities.map(cell => cell.capability)).toEqual([...CHANNEL_CAPABILITIES]);
         }
+    });
+    it('is reachable, which is the whole reason it stopped living in a test', () => {
+        // The only importer of this module used to be this file. An endpoint
+        // declared after `:channelType/status` would still be unreachable — Nest
+        // matches in declaration order, so that route would answer this path
+        // with a status lookup for a channel called "certification".
+        const paths = Object.getOwnPropertyNames(ChannelManagementController.prototype)
+            .filter(name => name !== 'constructor')
+            .map(name => Reflect.getMetadata(PATH_METADATA,
+                (ChannelManagementController.prototype as any)[name]))
+            .filter((path): path is string => typeof path === 'string');
+        const index = paths.indexOf('certification');
+        expect(index).toBeGreaterThanOrEqual(0);
+        expect(paths.slice(0, index).filter(path => path.startsWith(':') || path.includes('/:'))).toEqual([]);
     });
 });

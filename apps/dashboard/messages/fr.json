@@ -10260,6 +10260,8 @@
     "clear": "Effacer la bannière",
     "publishedSuccess": "Bannière publiée — visible par tous les tenants",
     "clearedSuccess": "Bannière effacée",
+    "stateUnknown": "Nous n'avons pas pu lire l'état de la bannière",
+    "stateUnknownHint": "Nous ignorons si un avis est publié en ce moment. Réessayez avant de publier ou d'effacer : enregistrer depuis cet écran écraserait ce qui est actif.",
     "lastSet": "Dernière publication : {who} — {when}"
   },
   "tenantAdminActions": {

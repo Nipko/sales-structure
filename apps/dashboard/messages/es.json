@@ -10260,6 +10260,8 @@
     "clear": "Limpiar banner",
     "publishedSuccess": "Banner publicado — visible para todos los tenants",
     "clearedSuccess": "Banner desactivado",
+    "stateUnknown": "No pudimos leer el estado del banner",
+    "stateUnknownHint": "No sabemos si hay un aviso publicado ahora mismo. Reintenta antes de publicar o limpiar: guardar desde esta pantalla sobrescribiría lo que esté activo.",
     "lastSet": "Última publicación: {who} — {when}"
   },
   "tenantAdminActions": {

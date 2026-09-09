@@ -10260,6 +10260,8 @@
     "clear": "Clear banner",
     "publishedSuccess": "Banner published — visible to every tenant",
     "clearedSuccess": "Banner cleared",
+    "stateUnknown": "We could not read the banner state",
+    "stateUnknownHint": "We do not know whether a notice is published right now. Retry before publishing or clearing: saving from this screen would overwrite whatever is live.",
     "lastSet": "Last published: {who} — {when}"
   },
   "tenantAdminActions": {

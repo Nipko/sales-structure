@@ -44,7 +44,7 @@ import { sealReleaseRun, type AgentReleaseRunEvidence } from './agent-release-po
 
 export type CertificationQuery = <R = any[]>(sql: string, params?: any[]) => Promise<R>;
 
-export const CERTIFICATION_RUN_STATES = ['planned', 'running', 'finished', 'cancelled'] as const;
+export const CERTIFICATION_RUN_STATES = ['planned', 'running', 'paused', 'finished', 'cancelled'] as const;
 export type CertificationRunState = (typeof CERTIFICATION_RUN_STATES)[number];
 
 export const CERTIFICATION_CASE_STATES = ['pending', 'leased', 'passed', 'failed', 'error'] as const;
@@ -65,7 +65,7 @@ export type CertificationCaseState = (typeof CERTIFICATION_CASE_STATES)[number];
  */
 export const CERTIFICATION_STOP_REASONS = [
     'cancelled', 'budget_exhausted', 'deadline_passed', 'complete',
-    'batch_limit', 'in_flight', 'awaiting_retry_decision', 'lease_lost',
+    'batch_limit', 'in_flight', 'awaiting_retry_decision', 'lease_lost', 'paused',
 ] as const;
 export type CertificationStopReason = (typeof CERTIFICATION_STOP_REASONS)[number];
 
@@ -77,19 +77,34 @@ export const CERTIFICATION_LEDGER_DDL: readonly string[] = Object.freeze([
     `CREATE TABLE IF NOT EXISTS agent_certification_runs (
         id UUID PRIMARY KEY,
         plan_hash TEXT NOT NULL,
+        /**
+         * The caller's idempotency key. A retried request, a double-clicked
+         * button and a redelivered job all resolve to this run rather than to a
+         * second catalogue nobody meant to pay for.
+         */
+        request_key TEXT UNIQUE,
         agent_id UUID NOT NULL,
         config_hash TEXT NOT NULL,
         dependency_revision TEXT NOT NULL,
         k INTEGER NOT NULL,
         threshold NUMERIC NOT NULL,
         state TEXT NOT NULL,
+        /**
+         * A rehearsal contacts no provider. It writes real rows on purpose — the
+         * point is to prove the wiring — so what stops it certifying the
+         * catalogue is this column, checked where the evidence is built rather
+         * than trusted to whoever started it.
+         */
+        mode TEXT NOT NULL DEFAULT 'live',
         stop_reason TEXT,
         budget_usd_cents INTEGER,
         deadline_at TIMESTAMPTZ,
         planned_cases INTEGER NOT NULL DEFAULT 0,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        CONSTRAINT agent_certification_runs_state CHECK (state IN ('planned','running','finished','cancelled')),
+        CONSTRAINT agent_certification_runs_state
+            CHECK (state IN ('planned','running','paused','finished','cancelled')),
+        CONSTRAINT agent_certification_runs_mode CHECK (mode IN ('dry_run','live')),
         CONSTRAINT agent_certification_runs_k CHECK (k >= 1 AND k <= 5),
         CONSTRAINT agent_certification_runs_threshold CHECK (threshold >= 7 AND threshold <= 10)
     )`,
@@ -202,6 +217,8 @@ export interface CertificationRunInput extends CertificationPlanInput {
     readonly dependencyRevision: string;
     /** Subject per profile id. Required when the plan covers more than one. */
     readonly subjects?: Readonly<Record<string, CertificationSubject>>;
+    /** `dry_run` writes rows and certifies nothing; `live` calls a provider. */
+    readonly mode?: 'dry_run' | 'live';
     /** Hard ceiling in US cents, reserved at lease time rather than counted after. */
     readonly budgetUsdCents?: number;
     readonly deadlineAt?: Date | string | null;
@@ -250,12 +267,12 @@ export async function planCertificationLedger(
 
     await query(
         `INSERT INTO agent_certification_runs
-            (id, plan_hash, agent_id, config_hash, dependency_revision, k, threshold, state,
+            (id, plan_hash, agent_id, config_hash, dependency_revision, k, threshold, state, mode,
              budget_usd_cents, deadline_at, planned_cases)
-         VALUES ($1::uuid,$2,$3::uuid,$4,$5,$6,$7,'planned',$8,$9::timestamptz,0)
+         VALUES ($1::uuid,$2,$3::uuid,$4,$5,$6,$7,'planned',$8,$9,$10::timestamptz,0)
          ON CONFLICT (id) DO NOTHING`,
         [runId, plan.planHash, input.agentId, input.configHash, input.dependencyRevision,
-            plan.k, threshold, input.budgetUsdCents ?? null,
+            plan.k, threshold, input.mode ?? 'live', input.budgetUsdCents ?? null,
             input.deadlineAt ? new Date(input.deadlineAt).toISOString() : null],
     );
     for (const [profileId, subject] of subjects) {
@@ -339,7 +356,7 @@ export async function leaseCertificationCase(
     query: CertificationQuery, runId: string, leaseSeconds = 900,
 ): Promise<{ ok: true; lease: CertificationLease } | { ok: false; stopReason: CertificationStopReason }> {
     const [run] = await query<any[]>(
-        `SELECT state, budget_usd_cents, deadline_at,
+        `SELECT state, budget_usd_cents, deadline_at, mode,
                 (SELECT COALESCE(SUM(cost_usd_cents),0)::int FROM agent_certification_cases
                   WHERE run_id = r.id) AS spent,
                 (SELECT COALESCE(SUM(reserve_usd_cents),0)::int FROM agent_certification_cases
@@ -348,6 +365,10 @@ export async function leaseCertificationCase(
            FROM agent_certification_runs r WHERE id = $1::uuid FOR UPDATE`, [runId]);
     if (!run) return { ok: false, stopReason: 'cancelled' };
     if (run.state === 'cancelled') return { ok: false, stopReason: 'cancelled' };
+    // Paused is not stopped: the cases keep their state and the run resumes
+    // where it was, which is the difference between an operator taking a look
+    // and an operator giving up.
+    if (run.state === 'paused') return { ok: false, stopReason: 'paused' };
     const committed = Number(run.spent) + Number(run.reserved);
     if (run.budget_usd_cents != null && committed >= Number(run.budget_usd_cents)) {
         // Only terminal when nothing is still out: a worker may yet come back
@@ -512,6 +533,20 @@ export async function stopCertificationRun(
 export const cancelCertificationRun = (query: CertificationQuery, runId: string) =>
     stopCertificationRun(query, runId, 'cancelled');
 
+/**
+ * Stops handing out work without ending the run. Leases already out are left
+ * alone: interrupting a case mid-flight would waste what it has already spent.
+ */
+export async function pauseCertificationRun(query: CertificationQuery, runId: string): Promise<void> {
+    await query(`UPDATE agent_certification_runs SET state='paused', stop_reason='paused', updated_at=NOW()
+                  WHERE id=$1::uuid AND state IN ('planned','running')`, [runId]);
+}
+
+export async function resumeCertificationRun(query: CertificationQuery, runId: string): Promise<void> {
+    await query(`UPDATE agent_certification_runs SET state='running', stop_reason=NULL, updated_at=NOW()
+                  WHERE id=$1::uuid AND state='paused'`, [runId]);
+}
+
 export interface CertificationProgress {
     readonly runId: string;
     readonly state: CertificationRunState;
@@ -601,6 +636,8 @@ export interface CertificationEvidenceAuthorities {
 }
 
 export interface CertificationEvidenceResult {
+    /** True when the run was a rehearsal: real rows, no provider, no evidence. */
+    readonly dryRun?: boolean;
     readonly evidence: readonly AgentReleaseRunEvidence[];
     /** Cases dropped because the scenario they proved has since been rewritten. */
     readonly staleCases: number;
@@ -633,9 +670,13 @@ export async function certificationEvidenceFromLedger(
 ): Promise<CertificationEvidenceResult> {
     const empty = { evidence: Object.freeze([]), staleCases: 0, staleSubjects: Object.freeze([]) };
     const [run] = await query<any[]>(
-        `SELECT agent_id, config_hash, dependency_revision, k, threshold
+        `SELECT agent_id, config_hash, dependency_revision, k, threshold, mode
            FROM agent_certification_runs WHERE id=$1::uuid`, [runId]);
     if (!run) return empty;
+    // The rehearsal wrote real rows so the wiring could be proven. It did not
+    // ask a model anything, so it proves nothing about one, and no argument
+    // from the caller can turn it into evidence.
+    if (String(run.mode) === 'dry_run') return { ...empty, dryRun: true };
     const subjectRows = await query<any[]>(
         `SELECT profile_id, agent_id, config_hash, dependency_revision
            FROM agent_certification_subjects WHERE run_id=$1::uuid`, [runId]);

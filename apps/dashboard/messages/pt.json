@@ -1010,6 +1010,7 @@
     },
     "routes": {
       "agentDetail": "Detalhes do agente",
+      "channelCertification": "Certificação de canais",
       "channelEmail": "E-mail",
       "channelInstagram": "Instagram",
       "channelInstagramCallback": "Conexão do Instagram",
@@ -3795,6 +3796,58 @@
       }
     },
     "resourceLabel": "campanhas de transmissão"
+  },
+  "channelCertification": {
+    "title": "Certificação de canais",
+    "subtitle": "O que se pode afirmar de cada canal, calculado a partir do código que roda e não declarado num documento. Implementado, operando e certificado são três respostas diferentes, e uma capacidade apenas declarada não é nenhuma das três.",
+    "refresh": "Atualizar",
+    "unreadable": "Não foi possível ler a matriz. Isto não é uma matriz vazia: até a consulta funcionar não se afirma nada em nenhum sentido.",
+    "channel": "Canal",
+    "tableCaption": "Capacidades por canal, com o estado e a evidência por trás de cada uma.",
+    "certifiedRow": "Certificado",
+    "outOfScope": "Não é um canal conversacional de autoatendimento",
+    "noProof": "Sem execução registrada",
+    "basis": {
+      "derived": "respondido pelo runtime",
+      "declared": "declarado no código",
+      "out_of_scope": "não é oferecido aqui"
+    },
+    "summary": {
+      "title": "Resumo",
+      "implemented": "Implementado",
+      "implementedMeaning": "Nada ficou sem implementar no escopo. Não diz nada sobre funcionar.",
+      "operating": "Operando",
+      "operatingMeaning": "Toda capacidade no escopo vista funcionando. Ainda não é um certificado.",
+      "certified": "Certificado",
+      "certifiedMeaning": "Operando e comprovado por uma execução, com sua revisão e sua data."
+    },
+    "gaps": {
+      "title": "O que falta, por capacidade",
+      "none": "Nada.",
+      "pending": "Sem implementar",
+      "pendingMeaning": "Ainda não há código que responda por isto.",
+      "untested": "Declarado, nunca operado",
+      "untestedMeaning": "O código afirma. Ninguém viu funcionar. Esta é a lista que antes era invisível.",
+      "unproven": "Operando, sem prova",
+      "unprovenMeaning": "Visto funcionando, sem nenhuma execução registrada a seu favor."
+    },
+    "capabilities": {
+      "inbound": "Entrada",
+      "outbound_text": "Texto de saída",
+      "outbound_media": "Mídia de saída",
+      "payment_link": "Link de pagamento",
+      "flow": "Formulário interativo",
+      "delivery_receipt": "Recibo de entrega",
+      "read_receipt": "Recibo de leitura",
+      "durable_dispatch": "Despacho durável",
+      "token_lifecycle": "Ciclo de vida do token",
+      "reconnect": "Reconexão",
+      "rate_limits": "Limites de taxa",
+      "handoff": "Transferência",
+      "multi_account": "Múltiplas contas",
+      "privacy_erasure": "Apagamento por privacidade",
+      "agent_per_connection": "Um agente por conexão"
+    }
   },
   "channels": {
     "title": "Canais",

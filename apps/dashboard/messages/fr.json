@@ -1010,6 +1010,7 @@
     },
     "routes": {
       "agentDetail": "Détails de l'agent",
+      "channelCertification": "Certification des canaux",
       "channelEmail": "E-mail",
       "channelInstagram": "Instagram",
       "channelInstagramCallback": "Connexion Instagram",
@@ -3795,6 +3796,58 @@
       }
     },
     "resourceLabel": "campagnes de diffusion"
+  },
+  "channelCertification": {
+    "title": "Certification des canaux",
+    "subtitle": "Ce que l'on peut affirmer de chaque canal, calculé à partir du code qui tourne et non déclaré dans un document. Implémenté, opérationnel et certifié sont trois réponses différentes, et une capacité seulement déclarée n'est aucune des trois.",
+    "refresh": "Actualiser",
+    "unreadable": "La matrice n'a pas pu être lue. Ce n'est pas une matrice vide : tant que la requête n'aboutit pas, rien n'est affirmé dans un sens ni dans l'autre.",
+    "channel": "Canal",
+    "tableCaption": "Capacités par canal, avec l’état et la preuve derrière chacune.",
+    "certifiedRow": "Certifié",
+    "outOfScope": "Ce n'est pas un canal conversationnel en libre-service",
+    "noProof": "Aucune exécution enregistrée",
+    "basis": {
+      "derived": "répondu par le runtime",
+      "declared": "déclaré dans le code",
+      "out_of_scope": "non proposé ici"
+    },
+    "summary": {
+      "title": "Résumé",
+      "implemented": "Implémenté",
+      "implementedMeaning": "Rien ne reste à implémenter dans le périmètre. Ne dit rien sur le fait que cela fonctionne.",
+      "operating": "Opérationnel",
+      "operatingMeaning": "Toute capacité du périmètre vue fonctionner. Ce n'est toujours pas un certificat.",
+      "certified": "Certifié",
+      "certifiedMeaning": "Opérationnel et prouvé par une exécution, avec sa révision et sa date."
+    },
+    "gaps": {
+      "title": "Ce qui manque, par capacité",
+      "none": "Rien.",
+      "pending": "Non implémenté",
+      "pendingMeaning": "Aucun code ne répond encore de ceci.",
+      "untested": "Déclaré, jamais opéré",
+      "untestedMeaning": "Le code l'affirme. Personne ne l'a vu fonctionner. C'est la liste qui était invisible.",
+      "unproven": "Opérationnel, sans preuve",
+      "unprovenMeaning": "Vu fonctionner, sans aucune exécution enregistrée à son actif."
+    },
+    "capabilities": {
+      "inbound": "Entrant",
+      "outbound_text": "Texte sortant",
+      "outbound_media": "Médias sortants",
+      "payment_link": "Lien de paiement",
+      "flow": "Formulaire interactif",
+      "delivery_receipt": "Accusé de livraison",
+      "read_receipt": "Accusé de lecture",
+      "durable_dispatch": "Envoi durable",
+      "token_lifecycle": "Cycle de vie du jeton",
+      "reconnect": "Reconnexion",
+      "rate_limits": "Limites de débit",
+      "handoff": "Transfert",
+      "multi_account": "Comptes multiples",
+      "privacy_erasure": "Effacement pour confidentialité",
+      "agent_per_connection": "Un agent par connexion"
+    }
   },
   "channels": {
     "title": "Canaux",

@@ -93,14 +93,42 @@ describe('what each channel may be said to do', () => {
         }
     });
 
-    it('refuses to call a channel complete while anything in scope is pending', () => {
+    it('separates implemented from operating from certified, because they are three questions', () => {
         const summary = summariseChannelCertification(matrix());
         expect(summary.selfService).toBe(5);
         expect(summary.retained).toBe(2);
         // Telegram and the widget have no provider read receipt, so nothing is
-        // complete yet — and the summary names the capability, not just a count.
+        // implemented yet — and the summary names the capability, not just a count.
         expect(summary.pendingByCapability.read_receipt).toEqual(['telegram', 'web_widget']);
-        expect(summary.complete).toBeLessThan(summary.selfService);
+        expect(summary.implemented).toBeLessThan(summary.selfService);
+        // The one that used to be missing. A merely DECLARED capability is not
+        // `pending`, it is `prepared`, so a row whose media, payment link, flow,
+        // tokens, reconnect, rate limits, multi-account, handoff, erasure and
+        // agent-per-connection had never been operated counted as complete on
+        // the strength of five derived cells. WhatsApp is exactly that row.
+        expect(summary.untestedByCapability.outbound_media).toContain('whatsapp');
+        expect(summary.untestedByCapability.handoff).toEqual(
+            ['instagram', 'messenger', 'telegram', 'web_widget', 'whatsapp']);
+        expect(summary.operating).toBe(0);
+        // And nothing is certified, because nothing records an executed run yet.
+        // Zero is the honest answer; the previous shape could not express it.
+        expect(summary.certified).toBe(0);
+        expect(matrix().every(row => row.certified === false)).toBe(true);
+    });
+
+    it('will not certify a capability that only names a file', () => {
+        for (const entry of matrix().filter(row => row.selfService)) {
+            for (const cell of entry.capabilities) {
+                // Prose is a pointer, not a proof: it cannot say WHEN something
+                // was checked or against WHICH revision.
+                expect(cell.proof).toBeNull();
+            }
+            // Every capability observed working is listed as unproven, so the
+            // work an executed run would close is enumerable and not a feeling.
+            expect(entry.unproven).toEqual(entry.capabilities
+                .filter(cell => cell.basis !== 'out_of_scope' && cell.state === 'operating')
+                .map(cell => cell.capability));
+        }
     });
 
     it('rolls a channel up to the least advanced thing in its scope', () => {

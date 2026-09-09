@@ -100,6 +100,9 @@ const NAVIGATION_ROUTE_DEFINITIONS = [
 
   // Channels
   { id: "channels", pattern: "/admin/channels", titleKey: "nav.items.channels", scope: "tenant" },
+  // Platform-scoped, not tenant-scoped: it says what the PRODUCT can do on each
+  // channel, which is the same answer for every tenant.
+  { id: "channelCertification", pattern: "/admin/channels/certification", titleKey: "navigation.routes.channelCertification", scope: "platform", parentId: "channels", discoverable: false },
   { id: "channelEmail", pattern: "/admin/channels/email", titleKey: "navigation.routes.channelEmail", scope: "tenant", parentId: "channels", discoverable: false },
   { id: "channelInstagram", pattern: "/admin/channels/instagram", titleKey: "navigation.routes.channelInstagram", scope: "tenant", parentId: "channels" },
   { id: "channelInstagramCallback", pattern: "/admin/channels/instagram/callback", titleKey: "navigation.routes.channelInstagramCallback", scope: "tenant", parentId: "channelInstagram", discoverable: false },

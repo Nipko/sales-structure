@@ -49,12 +49,39 @@ export type CapabilityBasis =
     /** Outside this channel's product scope. Never a gap, never a certificate. */
     | 'out_of_scope';
 
+/**
+ * A run that happened, not a place to go and look.
+ *
+ * `evidence` is prose — a file, a constant, a sentence — and prose cannot say
+ * WHEN something was checked or against WHICH version. A capability certified by
+ * a file path is certified by the existence of a file. This is the other thing:
+ * an executed suite or a pilot, with the revision it ran against and the moment
+ * it ran, so a reader can tell a current proof from a stale one and a dashboard
+ * can link to it.
+ */
+export interface ChannelCapabilityProof {
+    /** A suite that ran here, or a pilot that happened with a provider. */
+    readonly kind: 'suite' | 'pilot';
+    /** The spec, runbook or run id a reader can open. */
+    readonly source: string;
+    /** The revision of that source when the proof was recorded. */
+    readonly revision: string;
+    /** When it was recorded. ISO-8601. */
+    readonly recordedAt: string;
+}
+
 export interface ChannelCapabilityCell {
     readonly capability: ChannelCapability;
     readonly state: AgentOperationalState;
     readonly basis: CapabilityBasis;
     /** A file, a constant, a pilot — whatever a reader has to go and look at. */
     readonly evidence: string;
+    /**
+     * The executed proof, when there is one. `null` is the honest answer for
+     * everything today: nothing in this repository records one yet, and a cell
+     * without a proof is never certified — which is the point.
+     */
+    readonly proof: ChannelCapabilityProof | null;
 }
 
 export interface ChannelCertification {
@@ -64,8 +91,19 @@ export interface ChannelCertification {
     readonly retainedScope: string | null;
     readonly state: AgentOperationalState;
     readonly capabilities: readonly ChannelCapabilityCell[];
-    /** Capabilities still waiting on something. Empty is the only clean answer. */
+    /** Nothing implements it yet. */
     readonly pending: readonly ChannelCapability[];
+    /**
+     * Implemented and DECLARED, never operated. This list is the one that used
+     * to be invisible: `pending` holds only the cells in state `pending`, so a
+     * row whose every declared capability sat at `prepared` looked complete. A
+     * declaration is a claim about the code, not a report of it working.
+     */
+    readonly untested: readonly ChannelCapability[];
+    /** Operating, but with no executed proof recorded against it. */
+    readonly unproven: readonly ChannelCapability[];
+    /** Every in-scope capability is operating AND carries a current proof. */
+    readonly certified: boolean;
 }
 
 export interface ChannelCertificationInput {
@@ -170,8 +208,9 @@ const UNIVERSAL: Readonly<Partial<Record<ChannelCapability, string>>> = Object.f
 });
 
 function cell(capability: ChannelCapability, state: AgentOperationalState,
-    basis: CapabilityBasis, evidence: string): ChannelCapabilityCell {
-    return Object.freeze({ capability, state, basis, evidence });
+    basis: CapabilityBasis, evidence: string,
+    proof: ChannelCapabilityProof | null = null): ChannelCapabilityCell {
+    return Object.freeze({ capability, state, basis, evidence, proof });
 }
 
 export function buildChannelCertificationMatrix(input: ChannelCertificationInput): readonly ChannelCertification[] {
@@ -190,6 +229,11 @@ export function buildChannelCertificationMatrix(input: ChannelCertificationInput
                 capabilities: Object.freeze(CHANNEL_CAPABILITIES.map(capability =>
                     cell(capability, 'pending', 'out_of_scope', retainedScope ?? 'not a self-service channel'))),
                 pending: Object.freeze([]),
+                untested: Object.freeze([]),
+                unproven: Object.freeze([]),
+                // Out of scope is not certified either. Nothing was claimed, so
+                // nothing is granted.
+                certified: false,
             });
         }
 
@@ -234,40 +278,72 @@ export function buildChannelCertificationMatrix(input: ChannelCertificationInput
         // Out-of-scope cells do not drag the channel down: a Telegram without
         // Flow is not a Telegram with a gap.
         const inScope = ordered.filter(entry => entry.basis !== 'out_of_scope');
+        const pending = inScope.filter(entry => entry.state === 'pending');
+        const untested = inScope.filter(entry => entry.state === 'prepared');
+        const unproven = inScope.filter(entry => entry.state === 'operating' && !entry.proof);
         return Object.freeze({
             channelType, selfService: true, retainedScope: null,
             state: rollUpOperationalState(inScope.map(entry => entry.state)),
             capabilities: Object.freeze(ordered),
-            pending: Object.freeze(inScope.filter(entry => entry.state === 'pending').map(entry => entry.capability)),
+            pending: Object.freeze(pending.map(entry => entry.capability)),
+            untested: Object.freeze(untested.map(entry => entry.capability)),
+            unproven: Object.freeze(unproven.map(entry => entry.capability)),
+            // Three conditions, all of them required. Anything less is a claim.
+            certified: inScope.length > 0 && !pending.length && !untested.length && !unproven.length,
         });
     }));
 }
 
+/**
+ * Four different questions, which `complete` used to answer as if they were one.
+ *
+ * It counted a row with nothing in state `pending`, and a merely DECLARED
+ * capability is not `pending` — it is `prepared`. So a channel whose media,
+ * payment link, flow, token lifecycle, reconnect, rate limits, multi-account,
+ * handoff, privacy erasure and agent-per-connection had never been operated
+ * counted as complete on the strength of five derived cells. The row's own state
+ * said `prepared` at the same time, which is how the disagreement was visible
+ * and still not caught.
+ */
 export interface ChannelCertificationSummary {
     readonly channels: number;
     readonly selfService: number;
     readonly retained: number;
-    /** Self-service channels with nothing pending in scope. */
-    readonly complete: number;
+    /** Nothing left unimplemented in scope. Says nothing about it working. */
+    readonly implemented: number;
+    /** Every in-scope capability observed working. Still not a certificate. */
+    readonly operating: number;
+    /** Operating AND proven by an executed run. The only one that certifies. */
+    readonly certified: number;
     readonly pendingByCapability: Readonly<Record<string, readonly string[]>>;
+    /** Declared but never operated — the work a test closes, not code. */
+    readonly untestedByCapability: Readonly<Record<string, readonly string[]>>;
+    /** Operating with no run recorded against it. */
+    readonly unprovenByCapability: Readonly<Record<string, readonly string[]>>;
 }
 
 export function summariseChannelCertification(
     rows: readonly ChannelCertification[] = [],
 ): ChannelCertificationSummary {
-    const pendingByCapability: Record<string, string[]> = {};
-    for (const row of rows.filter(entry => entry.selfService)) {
-        for (const capability of row.pending) {
-            (pendingByCapability[capability] ??= []).push(row.channelType);
+    const byCapability = (pick: (row: ChannelCertification) => readonly ChannelCapability[]) => {
+        const index: Record<string, string[]> = {};
+        for (const row of rows.filter(entry => entry.selfService)) {
+            for (const capability of pick(row)) (index[capability] ??= []).push(row.channelType);
         }
-    }
+        return Object.freeze(Object.fromEntries(
+            Object.entries(index).map(([key, value]) => [key, Object.freeze(value.sort())])));
+    };
+    const selfService = rows.filter(row => row.selfService);
     return Object.freeze({
         channels: rows.length,
-        selfService: rows.filter(row => row.selfService).length,
+        selfService: selfService.length,
         retained: rows.filter(row => !row.selfService).length,
-        complete: rows.filter(row => row.selfService && !row.pending.length).length,
-        pendingByCapability: Object.freeze(Object.fromEntries(
-            Object.entries(pendingByCapability).map(([key, value]) => [key, Object.freeze(value.sort())]))),
+        implemented: selfService.filter(row => !row.pending.length).length,
+        operating: selfService.filter(row => !row.pending.length && !row.untested.length).length,
+        certified: selfService.filter(row => row.certified).length,
+        pendingByCapability: byCapability(row => row.pending),
+        untestedByCapability: byCapability(row => row.untested),
+        unprovenByCapability: byCapability(row => row.unproven),
     });
 }
 

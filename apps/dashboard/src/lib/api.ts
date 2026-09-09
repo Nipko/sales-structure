@@ -1624,6 +1624,13 @@ export const api = {
         apiPut(`/vertical-integrations/${tenantId}/${provider}/config`, body),
     getEffectiveVerticalProfile: (tenantId: string) =>
         apiGet(`/verticals/${tenantId}/effective-profile`),
+    /**
+     * The channel certification matrix. Platform-scoped, not tenant-scoped: it
+     * says what the PRODUCT can do on each channel, which is the same answer for
+     * everyone. It had no client at all until this one — the endpoint shipped and
+     * nothing in the dashboard or the mobile app ever asked for it.
+     */
+    getChannelCertification: () => apiGet(`/channels/certification`),
     getVerticalCertificationCatalog: (country?: string) =>
         apiGet(`/verticals/certification-catalog${country ? `?country=${encodeURIComponent(country)}` : ""}`),
     testVerticalIntegration: (tenantId: string, provider: string) =>

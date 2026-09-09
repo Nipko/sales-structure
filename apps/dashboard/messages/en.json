@@ -1010,6 +1010,7 @@
     },
     "routes": {
       "agentDetail": "Agent details",
+      "channelCertification": "Channel certification",
       "channelEmail": "Email",
       "channelInstagram": "Instagram",
       "channelInstagramCallback": "Instagram connection",
@@ -3795,6 +3796,58 @@
       }
     },
     "resourceLabel": "broadcast campaigns"
+  },
+  "channelCertification": {
+    "title": "Channel certification",
+    "subtitle": "What each channel can be said to do, computed from the running code rather than declared in a document. Implemented, operating and certified are three different answers, and a capability that is only declared is none of them.",
+    "refresh": "Refresh",
+    "unreadable": "The matrix could not be read. This is not an empty matrix: nothing is being claimed either way until the request succeeds.",
+    "channel": "Channel",
+    "tableCaption": "Capabilities by channel, with the state and the evidence behind each one.",
+    "certifiedRow": "Certified",
+    "outOfScope": "Not a self-service conversational channel",
+    "noProof": "No executed run recorded",
+    "basis": {
+      "derived": "answered by the runtime",
+      "declared": "declared in code",
+      "out_of_scope": "not offered here"
+    },
+    "summary": {
+      "title": "Summary",
+      "implemented": "Implemented",
+      "implementedMeaning": "Nothing left unimplemented in scope. Says nothing about it working.",
+      "operating": "Operating",
+      "operatingMeaning": "Every capability in scope observed working. Still not a certificate.",
+      "certified": "Certified",
+      "certifiedMeaning": "Operating and proven by an executed run, with its revision and its date."
+    },
+    "gaps": {
+      "title": "What is missing, by capability",
+      "none": "Nothing.",
+      "pending": "Not implemented",
+      "pendingMeaning": "No code answers for this yet.",
+      "untested": "Declared, never operated",
+      "untestedMeaning": "The code claims it. Nobody has seen it work. This is the list that used to be invisible.",
+      "unproven": "Operating, unproven",
+      "unprovenMeaning": "Observed working, with no executed run recorded against it."
+    },
+    "capabilities": {
+      "inbound": "Inbound",
+      "outbound_text": "Outbound text",
+      "outbound_media": "Outbound media",
+      "payment_link": "Payment link",
+      "flow": "Interactive form",
+      "delivery_receipt": "Delivery receipt",
+      "read_receipt": "Read receipt",
+      "durable_dispatch": "Durable dispatch",
+      "token_lifecycle": "Token lifecycle",
+      "reconnect": "Reconnect",
+      "rate_limits": "Rate limits",
+      "handoff": "Handoff",
+      "multi_account": "Multiple accounts",
+      "privacy_erasure": "Privacy erasure",
+      "agent_per_connection": "One agent per connection"
+    }
   },
   "channels": {
     "title": "Channels",

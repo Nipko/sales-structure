@@ -99,6 +99,38 @@ Restricciones que el sistema impone y **no** conviene intentar rodear:
 
 Cada resolución queda auditada (`dispatch.reconciliation.resolved`) con el actor, la evidencia y el estado resultante.
 
+## Retención: qué deja de estar en una fila liquidada
+
+Una fila terminal —`sent`, `stored`, `suppressed`— pierde su contenido a los **30 días**
+(`DISPATCH_PAYLOAD_RETENTION_DAYS`), en el barrido diario `dispatch-recovery.redactSettled`
+(`40 4 * * *`, una sola instancia, hasta 2.000 filas por tenant por pasada).
+
+**Qué se va:** `payload`, `recipient`, `conversation_id`, `contact_id`, `learning_footprint`.
+**Qué queda:** la fila, su `state`, su `receipt`, sus `attempts` y sus tiempos. Así que
+«¿salió esto, cuándo y con qué acuse?» se sigue respondiendo para siempre; «¿qué decía?»
+no, y para eso está `messages`, que es la historia que lee una persona.
+
+Por qué existe: el `payload` es una **copia**. Esa columna sólo está para que un efecto no
+enviado todavía se pueda enviar, y una fila terminal no se puede enviar de nuevo. Nada la
+borraba, así que la tabla crecía sin techo y cada mensaje que el agente hubiera mandado
+alguna vez seguía ahí, con su destinatario, alcanzable únicamente por un borrado que
+nombrara a ese contacto exacto.
+
+Se usa **la misma forma que el borrado**: `redacted_at` puesto y el contenido en NULL, que
+es lo que exige el CHECK de la tabla —una fila está redactada o está completa, nunca a
+medias—. Consecuencia deliberada: una fila retenida y una borrada por GDPR son
+indistinguibles para cualquier lector. Ninguna de las dos tiene ya las palabras.
+
+**Tres estados quedan afuera a propósito:**
+
+- `reconciliation_required` — es la cola que trabaja una persona, y necesita el
+  destinatario y el contenido para ir a mirar en el proveedor;
+- `failed` — está esperando su próximo intento, no terminó;
+- `admitted` — tiene un permiso vivo.
+
+Si necesitás el contenido de una fila liquidada de hace más de 30 días, no está: mirá
+`messages` por `message_id`.
+
 ## Diagnóstico rápido
 
 ```sql

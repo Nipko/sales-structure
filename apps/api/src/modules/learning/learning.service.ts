@@ -12,7 +12,8 @@ import type { LLMResponse } from '../ai/interfaces/illm-provider.interface';
 import type { ExternalSourceAuthority } from '../ai/interfaces/external-source-authority';
 import { LEARNING_SCHEMA } from './learning-schema';
 import { assertRuntimeLearningFootprint, createRuntimeLearningFootprint } from './learning-runtime-footprint';
-import { assertLearningInboxSource, learningInboxEvidence, readLearningInboxSource, retireLearningSources,
+import { assertLearningContactsAllowed, assertLearningInboxSource, learningInboxEvidence,
+    readLearningInboxSource, retireLearningSources,
     LearningInboxSourceUnavailable, type LearningInboxEvidence, type LearningSourceQuery } from './learning-inbox-source';
 import {
     LEARNING_DIMENSIONS, claimsCompletedOperation, learningExclusions, learningHash, learningSnapshotHash, learningSplit,
@@ -62,7 +63,12 @@ export class LearningService {
         const schema = await this.schema(tenantId);
         await this.assertAgent(schema, agentId);
         if (!UUID.test(conversationId)) throw new BadRequestException({ error: 'invalid_conversation' });
-        const source = await readLearningInboxSource((sql,params) => this.prisma.executeInTenantSchema(schema,sql,params),conversationId);
+        const query: LearningSourceQuery = (sql,params) => this.prisma.executeInTenantSchema(schema,sql,params);
+        const source = await readLearningInboxSource(query,conversationId);
+        // Refused at the import, not only at the release: copying the words of
+        // someone who has asked to be left alone is the act to prevent, and once
+        // copied they are already in a second place to erase.
+        await assertLearningContactsAllowed(query,[source.contactId]);
         const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { language: true } });
         const sanitized = source.messages.map(m => ({...m,text:sanitizeLearningText(m.text,source.redactTerms)}));
         return this.persistSource(tenantId, agentId, {
@@ -730,6 +736,10 @@ export class LearningService {
             AND status='active' AND NOT EXISTS(SELECT 1 FROM customer_memory_erasure d WHERE d.contact_id=s.source_contact_id)
             ${lock?'FOR SHARE OF s':''}`,[sourceIds]);
         if(available.length!==sourceIds.length)throw new ForbiddenException({error:'learning_release_source_withdrawn'});
+        // An objection raised after the import reaches the runtime here, on the
+        // same fence every other retraction uses, so a published release stops
+        // serving the words within the turn rather than at the next review.
+        await assertLearningContactsAllowed(query,available.map(source=>source.source_contact_id));
         for(const source of available)await assertLearningInboxSource(query,source,lock);
     }
 

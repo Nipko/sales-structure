@@ -77,6 +77,60 @@ export async function assertLearningInboxSource(query: LearningSourceQuery, sour
     return current;
 }
 
+export class LearningContactObjected extends ForbiddenException {
+    constructor() { super({ error: 'learning_source_contact_objected', action: 'withdraw_source' }); }
+}
+
+/**
+ * A customer who has objected stops teaching the agent.
+ *
+ * An executed erasure was already honoured on every path. The two objections
+ * that come BEFORE an erasure were not: an opt-out record and a deletion
+ * request are how a person says "stop" while the compliance queue still has
+ * their data, and neither was visible to learning. So a conversation could be
+ * imported as a training example, reviewed, published, and go on shaping every
+ * future answer for that tenant while a deletion request for that same person
+ * sat pending — the objection was recorded, acknowledged, and had no effect on
+ * the one system that had already copied the words.
+ *
+ * Read as its own statement instead of joined into `readLearningInboxSource`:
+ * that row is hashed whole into the import evidence, so an added column would
+ * change every stored `sourceHash` at once and silently invalidate every source
+ * ever imported. An objection is a gate over the snapshot, never part of it.
+ *
+ * `to_regclass` guards each table. The compliance tables belong to the canonical
+ * tenant schema, but not to the minimal schemas evaluation namespaces and tests
+ * build; where the table does not exist no objection can ever have been recorded
+ * in it, so there is nothing to honour. That is an absent record, not an absent
+ * check — and it is why the guard reads the catalog rather than swallowing 42P01,
+ * which would also swallow a real permissions or search_path fault.
+ *
+ * A `rejected` opt-out is a reviewed false positive and does not object. Every
+ * other status does, `pending` included: an unreviewed "stop" is still a stop.
+ */
+export async function objectingLearningContacts(query: LearningSourceQuery,
+    contactIds: readonly (string | null | undefined)[]): Promise<string[]> {
+    const ids = [...new Set(contactIds.filter((id): id is string => !!id))];
+    if (!ids.length) return [];
+    const [tables] = await query<any[]>(`SELECT to_regclass('leads') IS NOT NULL AS has_leads,
+        to_regclass('opt_out_records') IS NOT NULL AS has_opt_outs,
+        to_regclass('deletion_requests') IS NOT NULL AS has_deletions`);
+    if (!tables?.has_leads) return [];
+    const objections: string[] = [];
+    if (tables.has_opt_outs) objections.push(`EXISTS(SELECT 1 FROM opt_out_records o
+        WHERE o.lead_id=l.id AND COALESCE(o.status,'pending')<>'rejected')`);
+    if (tables.has_deletions) objections.push(`EXISTS(SELECT 1 FROM deletion_requests d WHERE d.lead_id=l.id)`);
+    if (!objections.length) return [];
+    const rows = await query<any[]>(`SELECT DISTINCT l.contact_id::text AS contact_id FROM leads l
+        WHERE l.contact_id=ANY($1::uuid[]) AND (${objections.join(' OR ')})`, [ids]);
+    return rows.map(row => row.contact_id as string);
+}
+
+export async function assertLearningContactsAllowed(query: LearningSourceQuery,
+    contactIds: readonly (string | null | undefined)[]): Promise<void> {
+    if ((await objectingLearningContacts(query, contactIds)).length) throw new LearningContactObjected();
+}
+
 /** Reimporting a changed conversation requires new examples and a new review.
  * Retire train AND holdout derivatives, including any completed evaluation traces.
  */

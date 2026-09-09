@@ -43,6 +43,11 @@ const databaseUrl=process.env.LEARNING_EVIDENCE_TEST_DATABASE_URL;
         await sql('CREATE TABLE messages(id UUID PRIMARY KEY,conversation_id UUID REFERENCES conversations(id),direction TEXT,content_text TEXT,created_at TIMESTAMPTZ)');
         await sql('CREATE TABLE contact_identities(contact_id UUID,customer_profile_id UUID)');
         await sql('CREATE TABLE customer_memory_erasure(contact_id UUID PRIMARY KEY)');
+        // The compliance side of the same person: an objection is recorded
+        // against a lead, and learning only ever knows the contact behind it.
+        await sql('CREATE TABLE leads(id UUID PRIMARY KEY,contact_id UUID)');
+        await sql('CREATE TABLE opt_out_records(id UUID PRIMARY KEY,lead_id UUID,channel TEXT,status TEXT)');
+        await sql('CREATE TABLE deletion_requests(id UUID PRIMARY KEY,lead_id UUID,status TEXT)');
         await sql('CREATE TABLE tool_execution_ledger(id UUID,conversation_id UUID,tool_name TEXT,status TEXT,response_payload JSONB,confirmed_by_message_id UUID,created_at TIMESTAMPTZ)');
         const ddl=readFileSync(join(__dirname,'../../../prisma/tenant-schema.sql'),'utf8');
         const start=ddl.indexOf('CREATE OR REPLACE FUNCTION "{{SCHEMA_NAME}}".qa_message_revision()');
@@ -57,7 +62,8 @@ const databaseUrl=process.env.LEARNING_EVIDENCE_TEST_DATABASE_URL;
         await learning.ensureTables(schema);
     });
     beforeEach(async()=>{
-        await sql('TRUNCATE learning_sources,learning_releases,contacts,agent_personas,customer_memory_erasure,contact_identities,tool_execution_ledger CASCADE');
+        await sql(`TRUNCATE learning_sources,learning_releases,contacts,agent_personas,customer_memory_erasure,
+            contact_identities,tool_execution_ledger,leads,opt_out_records,deletion_requests CASCADE`);
         await sql("INSERT INTO contacts VALUES($1::uuid,'Ana','+573101234567','ana@example.test'),($2::uuid,'Beatriz',NULL,NULL)",[contactId,otherContact]);
         await sql("INSERT INTO agent_personas VALUES($1::uuid,'{}'::jsonb)",[agentId]);
         await sql("INSERT INTO conversations VALUES($1::uuid,$2::uuid,$3::uuid,'whatsapp',0)",[conversationId,contactId,agentId]);
@@ -172,6 +178,53 @@ const databaseUrl=process.env.LEARNING_EVIDENCE_TEST_DATABASE_URL;
         await learning.eraseContactSources(schema,tenantId,[contactId]);
         expect((await sql('SELECT source_evidence FROM learning_sources WHERE id=$1::uuid',[source.id]))[0].source_evidence).toBeNull();
     });
+    it('stops teaching with the words of someone who asked to be left alone, and resumes if the review says it was a false alarm',async()=>{
+        // Erasure was honoured everywhere. The two objections that come BEFORE
+        // an erasure were not: the person had said stop, the tenant had recorded
+        // it, and the release built from their conversation went on answering.
+        const {source,example}=await imported();await published(source,example);
+        expect(await learning.getRuntimeExamples(tenantId,agentId,{language:'es'})).toHaveLength(1);
+        const leadId=randomUUID(),optOutId=randomUUID();
+        await sql('INSERT INTO leads VALUES($1::uuid,$2::uuid)',[leadId,contactId]);
+        await sql("INSERT INTO opt_out_records VALUES($1::uuid,$2::uuid,'whatsapp','pending')",[optOutId,leadId]);
+
+        // Unreviewed is still a stop: the runtime falls back to the configured
+        // persona rather than serving the example one more time while a person
+        // gets around to confirming it.
+        expect(await learning.getRuntimeExamples(tenantId,agentId,{language:'es'})).toEqual([]);
+        await expect(learning.importInbox(tenantId,agentId,conversationId,'reviewer'))
+            .rejects.toMatchObject({response:{error:'learning_source_contact_objected'}});
+
+        // Reviewed as a false positive, it is not an objection at all, and the
+        // release that was already reviewed and published serves again.
+        await sql("UPDATE opt_out_records SET status='rejected' WHERE id=$1::uuid",[optOutId]);
+        expect(await learning.getRuntimeExamples(tenantId,agentId,{language:'es'})).toHaveLength(1);
+    });
+
+    it('treats a deletion request as an objection from the moment it is filed, not when it is executed',async()=>{
+        // A deletion request sits in a queue until somebody runs it. Waiting for
+        // `customer_memory_erasure` meant the words kept working for exactly as
+        // long as the tenant took to process the request.
+        const {source,example}=await imported();await published(source,example);
+        const leadId=randomUUID();
+        await sql('INSERT INTO leads VALUES($1::uuid,$2::uuid)',[leadId,contactId]);
+        await sql("INSERT INTO deletion_requests VALUES($1::uuid,$2::uuid,'pending')",[randomUUID(),leadId]);
+        expect(await sql('SELECT 1 FROM customer_memory_erasure')).toEqual([]);
+        expect(await learning.getRuntimeExamples(tenantId,agentId,{language:'es'})).toEqual([]);
+    });
+
+    it('does not let one objection silence another customer, and keeps a file source without a contact usable',async()=>{
+        const {source,example}=await imported();await published(source,example);
+        const leadId=randomUUID();
+        // The objection belongs to somebody else entirely.
+        await sql('INSERT INTO leads VALUES($1::uuid,$2::uuid)',[leadId,otherContact]);
+        await sql("INSERT INTO opt_out_records VALUES($1::uuid,$2::uuid,'whatsapp','confirmed')",[randomUUID(),leadId]);
+        expect(await learning.getRuntimeExamples(tenantId,agentId,{language:'es'})).toHaveLength(1);
+        // And a lead of the right person with no objection recorded is not one.
+        await sql('INSERT INTO leads VALUES($1::uuid,$2::uuid)',[randomUUID(),contactId]);
+        expect(await learning.getRuntimeExamples(tenantId,agentId,{language:'es'})).toHaveLength(1);
+    });
+
     it('serializes a reviewed-source commit with message edits through the real revision trigger',async()=>{
         const {source}=await imported();
         await prisma.transactionInTenantSchema(schema,async query=>{

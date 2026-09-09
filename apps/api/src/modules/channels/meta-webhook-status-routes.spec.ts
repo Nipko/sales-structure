@@ -40,8 +40,15 @@ describe('las rutas de webhook de Messenger e Instagram', () => {
                     if (sql.includes('current_schema() AS schema')) {
                         return [{ schema: SCHEMA, outbox: 'agent_dispatch_outbox' }];
                     }
-                    if (sql.includes('FROM agent_dispatch_outbox d\n         LEFT JOIN')) {
-                        return [{ id: 'row-1', message_id: 'msg-1', redacted_at: null, message_status: 'sent' }];
+                    if (sql.includes('FROM agent_dispatch_outbox d')
+                        && sql.includes('FOR UPDATE OF d')) {
+                        return [{ id: 'row-1', message_id: 'msg-1', redacted_at: null }];
+                    }
+                    // Read after the lock, not in the statement that takes it:
+                    // joining it in answered from the snapshot taken before the
+                    // lock was granted, so a late event decided from a stale status.
+                    if (sql.includes('SELECT status FROM messages WHERE id')) {
+                        return [{ status: 'sent' }];
                     }
                     if (sql.includes('SELECT d.receipt FROM agent_dispatch_outbox d')) {
                         return [{ receipt: 'm_syn_resuelto' }];

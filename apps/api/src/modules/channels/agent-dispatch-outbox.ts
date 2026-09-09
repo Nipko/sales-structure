@@ -694,15 +694,24 @@ export async function applyDispatchProviderStatus(query: DispatchOutboxQuery, sc
     if (tables?.schema !== schema) fail('dispatch_invalid_reference');
     if (!tables.outbox) return { applied: false, reason: 'unknown_receipt', messageId: null, status: null };
     const [row] = await query<any[]>(
-        `SELECT d.id, d.message_id, d.redacted_at, m.status AS message_status
-         FROM agent_dispatch_outbox d
-         LEFT JOIN messages m ON m.id = d.message_id
+        `SELECT d.id, d.message_id, d.redacted_at FROM agent_dispatch_outbox d
          WHERE d.receipt = $1 FOR UPDATE OF d`, [input.providerMessageId.trim()]);
     if (!row) return { applied: false, reason: 'unknown_receipt', messageId: null, status: null };
     if (row.redacted_at || !row.message_id) {
         return { applied: false, reason: 'redacted', messageId: null, status: null };
     }
-    const current = String(row.message_status || 'pending');
+    // Read the status AFTER the lock, not in the statement that takes it.
+    // Joining `messages` into the locking select answered from the snapshot
+    // taken before the lock was granted, so two events for one receipt
+    // serialised correctly and then the second decided against a status the
+    // first had already moved: a late `failed` compared itself to a stale
+    // `sent`, passed the rank check, and overwrote a confirmed `delivered`.
+    // `FOR UPDATE OF d, m` cannot express this — `m` is the nullable side of an
+    // outer join — so the row is locked first and read second.
+    const [message] = await query<any[]>(
+        'SELECT status FROM messages WHERE id = $1::uuid FOR UPDATE', [row.message_id]);
+    if (!message) return { applied: false, reason: 'redacted', messageId: null, status: null };
+    const current = String(message.status || 'pending');
     if (current === 'redacted') return { applied: false, reason: 'redacted', messageId: null, status: null };
     if (input.status === 'failed') {
         if (MESSAGE_STATUS_RANK[current] >= MESSAGE_STATUS_RANK.delivered) {

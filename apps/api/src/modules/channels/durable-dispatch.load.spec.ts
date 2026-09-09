@@ -453,25 +453,19 @@ const REPLICAS_PER_TURN = 3;
             expect(await statusOf(dispatchId)).toBe('read');
         });
 
-        it('FINDING: a rejection concurrent with an acceptance does degrade `delivered`', async () => {
+        it('refuses a rejection that arrives after an acceptance, even under contention', async () => {
             /**
-             * The guard is real and the ranking is right, but both are decided
-             * from `m.status` read in the SELECT that takes `FOR UPDATE OF d`.
-             * The lock is on the dispatch row; the message status comes from the
-             * statement snapshot taken before that lock was granted. So the
-             * second transaction serialises correctly and then decides from a
-             * value that is already stale, and writes `failed` over `delivered`
-             * — the exact statement this path exists to prevent.
+             * The guard and the ranking were always right; both were decided
+             * from `m.status` read in the SELECT that took `FOR UPDATE OF d`.
+             * The lock was on the dispatch row and the message status came from
+             * the statement snapshot taken before that lock was granted, so the
+             * second transaction serialised correctly and then decided from a
+             * value that was already stale — writing `failed` over `delivered`,
+             * the exact statement this path exists to prevent. Reached in
+             * production whenever two webhook bodies for one receipt are in
+             * flight: Meta retries, and the API and the WhatsApp app both apply.
              *
-             * Reached in production whenever two webhook bodies for one receipt
-             * are in flight at once: Meta retries, and the API and the WhatsApp
-             * app both apply statuses. `channel-delivery-status` serialises the
-             * events inside ONE body, which is why every existing test passes.
-             *
-             * Asserted as observed rather than as intended, so the harness does
-             * not pretend an invariant holds that does not. Locking `messages`
-             * too (`FOR UPDATE OF d, m`, or re-reading the status after the lock)
-             * flips this expectation, and this test is what will say so.
+             * The row is locked first and the status read second now.
              */
             const receipt = `wamid.${randomUUID()}`;
             const dispatchId = await sentRow(receipt);
@@ -480,31 +474,27 @@ const REPLICAS_PER_TURN = 3;
                 { providerMessageId: receipt, status: 'delivered' });
             expect(accepted.reason).toBe('applied');
             // Starts while the acceptance is uncommitted, so it blocks on the
-            // dispatch row and resumes with a snapshot that predates it.
+            // dispatch row and resumes after it commits.
             const late = tx(query => applyDispatchProviderStatus(query, schema,
                 { providerMessageId: receipt, status: 'failed', errorCode: 'wa_131047' }));
             await new Promise(resolve => setTimeout(resolve, 150));
             await winner.commit();
             const result = await late;
 
-            expect(result.reason).toBe('applied');
-            expect(await statusOf(dispatchId)).toBe('failed');
-            metrics.count('status.delivered_degraded_by_concurrent_failure');
-            metrics.note('FINDING: concurrent `failed` overwrites `delivered`'
-                + ' — applyDispatchProviderStatus decides from a pre-lock snapshot of messages.status');
+            expect(result).toMatchObject({ applied: false, reason: 'already_delivered' });
+            expect(await statusOf(dispatchId)).toBe('delivered');
+            metrics.count('status.late_rejection_refused_after_delivery');
         });
 
-        it('FINDING: concurrent copies of one event all report `applied`', async () => {
+        it('applies one of a burst of identical events and reports the rest as not newer', async () => {
             /**
              * The second face of the same defect. Ten identical `delivered`
-             * events serialise on the dispatch row and every one of them then
-             * decides from the snapshot it took before the lock, sees `sent`,
-             * and writes. The recorded status is still right — the writes are
-             * identical — so this one costs nothing by itself; it is here
-             * because it is the cheap, harmless symptom of the mechanism that
-             * is expensive in the test above, and because `applied` is what the
-             * channel report hands back to its caller as "this changed
-             * something".
+             * events used to serialise on the dispatch row and every one of them
+             * then decided from the snapshot it took before the lock, saw
+             * `sent`, and wrote. The recorded status stayed right — the writes
+             * were identical — but `applied` is what the channel report hands
+             * its caller as "this changed something", so ten of them was a lie
+             * about the same fact ten times.
              */
             const receipt = `wamid.${randomUUID()}`;
             const dispatchId = await sentRow(receipt);
@@ -512,9 +502,10 @@ const REPLICAS_PER_TURN = 3;
             const results = await Promise.all(Array.from({ length: duplicates }, () =>
                 metrics.time('status.duplicate', () => tx(query => applyDispatchProviderStatus(query, schema,
                     { providerMessageId: receipt, status: 'delivered' })))));
-            expect(results.filter(result => result.reason === 'applied')).toHaveLength(duplicates);
+            expect(results.filter(result => result.reason === 'applied')).toHaveLength(1);
+            expect(results.filter(result => result.reason === 'not_newer')).toHaveLength(duplicates - 1);
             expect(await statusOf(dispatchId)).toBe('delivered');
-            metrics.count('status.concurrent_duplicates_reapplied', duplicates - 1);
+            metrics.count('status.concurrent_duplicates_refused', duplicates - 1);
         });
     });
 
@@ -653,24 +644,20 @@ const REPLICAS_PER_TURN = 3;
             metrics.count('handoff.destinations_admitted', rows.length);
         });
 
-        it('FINDING: a lapsed lease never becomes `unknown`, though it is never handed back either', async () => {
+        it('turns a lapsed handoff permission into uncertainty a person can see', async () => {
             /**
-             * `admitHandoffEffect` writes the `unknown` transition and then
-             * throws `handoff_effect_terminal:unknown` from the same
-             * transaction. `handoff.service.ts:394` runs it inside
-             * `transactionInTenantSchema`, so Prisma rolls the write back with
-             * the refusal and the row stays `admitted` behind a dead lease. The
-             * dispatch outbox refuses to do this on purpose — `admitDispatch`
-             * carries an explicit "deliberately no write here" for exactly this
-             * reason and leaves the transition to `expireDispatchLeases`. There
-             * is no equivalent pass for handoff effects, and
-             * `readUncertainHandoffEffects` has no production caller at all.
+             * `admitHandoffEffect` used to write the `unknown` transition and
+             * then throw from the same transaction. `handoff.service.ts` runs it
+             * inside `transactionInTenantSchema`, so Prisma rolled the write back
+             * with the refusal and the row stayed `admitted` behind a dead lease.
+             * Safety held — every later admission refused, so no second Slack
+             * message and no second paid SMS — but nobody ever learned the effect
+             * was uncertain, because nothing persisted `unknown` and no surface
+             * listed it. The existing unit suite missed it entirely: it drives a
+             * raw autocommit client, where the write survives the throw.
              *
-             * What holds: no second Slack message, no second paid SMS. Every
-             * admission refuses, forever. What does not: nobody ever learns the
-             * effect is uncertain, because nothing persists `unknown` and no
-             * surface lists it. The existing suite misses this because it drives
-             * a raw autocommit client, where the write survives the throw.
+             * The refusal is now a returned state rather than an exception, so
+             * the transition commits with it.
              */
             const receiptId = await receiptFor();
             const leaseToken = randomUUID();
@@ -679,30 +666,33 @@ const REPLICAS_PER_TURN = 3;
             await sql("UPDATE agent_handoff_effects SET lease_expires_at = NOW() - INTERVAL '1 second' "
                 + "WHERE receipt_id=$1::uuid AND destination='slack'", [receiptId]);
 
-            const codes = await Promise.all(Array.from({ length: 4 }, async () => {
+            const states = await Promise.all(Array.from({ length: 4 }, async () => {
                 try {
-                    await tx(query => admitHandoffEffect(query, schema,
+                    const row = await tx(query => admitHandoffEffect(query, schema,
                         { receiptId, destination: 'slack', leaseToken: randomUUID(), leaseSeconds: 60 }));
-                    return 'granted';
+                    return row.state;
                 } catch (error: any) { return String(error?.code ?? error?.message); }
             }));
-            expect(codes.filter(code => code === 'granted')).toHaveLength(0);
-            expect(new Set(codes)).toEqual(new Set(['handoff_effect_terminal:unknown']));
+            expect(states.filter(state => state === 'admitted')).toHaveLength(0);
+            expect(new Set(states)).toEqual(new Set(['unknown']));
 
             const [slack] = (await tx(query => readHandoffEffects(query, schema, receiptId)))
                 .filter(row => row.destination === 'slack');
-            expect(slack).toMatchObject({ state: 'admitted', attempts: 1, errorCode: null });
+            expect(slack).toMatchObject({ state: 'unknown', attempts: 1,
+                errorCode: 'lease_expired_after_admission' });
             const uncertain = await tx(query => readUncertainHandoffEffects(query, schema, 50));
-            expect(uncertain.map(row => row.id)).not.toContain(slack.id);
-            // And because the row never leaves `admitted`, the holder whose lease
-            // ran out can still write its outcome — the lease bounds who may
-            // attempt, not how long an answer stays acceptable.
-            const late = await tx(query => settleHandoffEffect(query, schema,
+            expect(uncertain.map(row => row.id)).toContain(slack.id);
+
+            // The holder whose lease ran out can no longer settle it — but the
+            // receipt it carries is the only record that the destination was
+            // reached, so it is kept rather than thrown away with the refusal.
+            const stale = await tx(query => settleHandoffEffect(query, schema,
                 { receiptId, destination: 'slack', leaseToken, outcome: { kind: 'accepted', receipt: 'ts.1' } }));
-            expect(late).toMatchObject({ state: 'accepted', receipt: 'ts.1' });
-            metrics.count('handoff.lapsed_left_admitted');
-            metrics.note('FINDING: admitHandoffEffect rolls back its own `unknown` transition —'
-                + ' a lapsed handoff effect stays `admitted` and never reaches an operator');
+            expect(stale.state).toBe('unknown');
+            const [after] = (await tx(query => readHandoffEffects(query, schema, receiptId)))
+                .filter(row => row.destination === 'slack');
+            expect(after).toMatchObject({ state: 'unknown', receipt: 'ts.1' });
+            metrics.count('handoff.lapsed_reached_operator');
         });
     });
 });

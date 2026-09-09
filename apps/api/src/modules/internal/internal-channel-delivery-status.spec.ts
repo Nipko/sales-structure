@@ -35,9 +35,14 @@ describe('internal channel delivery status', () => {
                         return [{ schema: schemaName, outbox: 'agent_dispatch_outbox' }];
                     }
                     if (sql.includes('FROM agent_dispatch_outbox d')) {
-                        return options.outboxRow
-                            ? [{ ...options.outboxRow, message_status: options.messageStatus ?? 'sent' }]
-                            : [];
+                        return options.outboxRow ? [{ ...options.outboxRow }] : [];
+                    }
+                    // Read after the lock rather than joined into the statement
+                    // that takes it: the join answered from the snapshot taken
+                    // before the lock, so a late event decided from a stale
+                    // status and could overwrite a confirmed delivery.
+                    if (sql.includes('SELECT status FROM messages WHERE id')) {
+                        return options.outboxRow ? [{ status: options.messageStatus ?? 'sent' }] : [];
                     }
                     updates.push({ sql, params });
                     return [];

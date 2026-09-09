@@ -20,7 +20,8 @@ import { randomUUID } from 'crypto';
 import { handoffAgentI18n } from './handoff-i18n';
 import {
     HANDOFF_ANNOUNCEMENT_DESTINATIONS, HANDOFF_EFFECTS_DDL, HandoffEffectError,
-    admitHandoffEffect, prepareHandoffEffects, projectHandoffEffects, settleHandoffEffect,
+    admitHandoffEffect, expireHandoffEffectLeases, prepareHandoffEffects, projectHandoffEffects,
+    settleHandoffEffect,
     type HandoffEffectDestination, type HandoffEffectOutcome,
 } from './handoff-effects';
 import {
@@ -391,8 +392,15 @@ export class HandoffService {
             }
             const leaseToken = randomUUID();
             try {
-                await this.prisma.transactionInTenantSchema(schemaName, query =>
+                const admitted = await this.prisma.transactionInTenantSchema(schemaName, query =>
                     admitHandoffEffect(query, schemaName, { receiptId: receipt.id, destination, leaseToken }));
+                // Not granted. The lapsed-lease case answers this way on purpose:
+                // its `unknown` transition has to commit, and a throw would take
+                // it down with the refusal.
+                if (admitted.state !== 'admitted') {
+                    this.logger.log(`Handoff effect ${destination} not attempted: ${admitted.state}`);
+                    return undefined;
+                }
             } catch (error: any) {
                 if (error instanceof HandoffEffectError) {
                     this.logger.log(`Handoff effect ${destination} not attempted: ${error.code}`);
@@ -595,6 +603,13 @@ export class HandoffService {
             await this.prisma.executeInTenantSchema(schemaName, statement);
         }
         this.handoffReceiptSchemaReady.add(schemaName);
+        // Permissions nobody settled become uncertain here rather than sitting
+        // `admitted` behind a dead lease. Once per schema per process, outside
+        // every transaction, and never on the path of a transfer that is
+        // currently being delivered.
+        await this.prisma.transactionInTenantSchema(schemaName,
+            query => expireHandoffEffectLeases(query, schemaName))
+            .catch(error => this.logger.warn(`Handoff effect leases not swept: ${error?.message}`));
     }
 
     /**

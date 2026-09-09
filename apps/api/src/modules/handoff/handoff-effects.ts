@@ -128,10 +128,17 @@ export async function readHandoffEffects(query: HandoffEffectQuery, schema: stri
 /**
  * Permission for exactly one attempt, committed before the attempt happens.
  *
- * A lease that ran out is NOT handed back. The previous holder may have reached
- * the destination and died before it could say so, and a second Slack message
- * or a second SMS is not a recoverable mistake — the row becomes `unknown` and
- * this call refuses.
+ * Returns the row, and the CALLER checks whether it was granted: a row that
+ * comes back in any state other than `admitted` was not. That shape exists
+ * because of the lapsed-lease case, which has to WRITE — the previous holder
+ * may have reached the destination and died before it could say so, so the row
+ * becomes `unknown` and stays there. Throwing that refusal, as this used to,
+ * rolled the transition back with it whenever the caller wrapped the call in a
+ * transaction, and the row sat `admitted` behind a dead lease forever: safe,
+ * because every later admission still refused, but invisible, because nobody
+ * ever learned the effect was uncertain.
+ *
+ * The refusals that need no write still throw.
  */
 export async function admitHandoffEffect(query: HandoffEffectQuery, schema: string, input: {
     receiptId: string; destination: HandoffEffectDestination;
@@ -147,17 +154,18 @@ export async function admitHandoffEffect(query: HandoffEffectQuery, schema: stri
          FROM agent_handoff_effects WHERE receipt_id = $1::uuid AND destination = $2 FOR UPDATE`,
         [input.receiptId, input.destination]);
     if (!row) fail('handoff_effect_unprepared');
-    if (HANDOFF_EFFECT_TERMINAL_STATES.includes(row.state)) fail(`handoff_effect_terminal:${row.state}`);
+    if (HANDOFF_EFFECT_TERMINAL_STATES.includes(row.state)) return mapRow(row);
     if (row.state === 'admitted') {
         if (!row.lease_expired) fail('handoff_effect_leased');
-        // The attempt that held this lease may have reached the destination.
+        // The attempt that held this lease may have reached the destination, so
+        // the row becomes uncertain and is RETURNED rather than thrown: a throw
+        // from here takes its own transition down with it.
         const [abandoned] = await query<any[]>(
             `UPDATE agent_handoff_effects
                 SET state='unknown', lease_token=NULL, lease_expires_at=NULL,
                     error_code=COALESCE(error_code,'lease_expired_after_admission'), updated_at=NOW()
               WHERE id=$1::uuid RETURNING *`, [row.id]);
-        void abandoned;
-        fail('handoff_effect_terminal:unknown');
+        return mapRow(abandoned);
     }
     const [admitted] = await query<any[]>(
         `UPDATE agent_handoff_effects
@@ -186,8 +194,24 @@ export async function settleHandoffEffect(query: HandoffEffectQuery, schema: str
           WHERE receipt_id = $1::uuid AND destination = $2 FOR UPDATE`, [input.receiptId, input.destination]);
     if (!row) fail('handoff_effect_unprepared');
     // A lease that is no longer ours settled elsewhere; saying so twice would
-    // overwrite the answer whoever holds it is about to write.
-    if (row.state !== 'admitted' || row.lease_token !== input.leaseToken) fail(`handoff_effect_not_leased:${row.state}`);
+    // overwrite the answer whoever holds it is about to write. The receipt is
+    // still evidence, though — an acceptance that arrives after its lease
+    // lapsed is the only record that the destination was reached, and dropping
+    // it sends an operator looking for it by hand.
+    if (row.state !== 'admitted' || row.lease_token !== input.leaseToken) {
+        // An acceptance whose lease lapsed carries the only record that the
+        // destination was reached, and dropping it sends an operator looking for
+        // it by hand. It is recorded and the CURRENT row returned — throwing
+        // here would roll the record back with the refusal, which is the same
+        // mistake the admission used to make with its own `unknown` transition.
+        if (outcome.kind === 'accepted' && typeof outcome.receipt === 'string' && outcome.receipt && !row.receipt) {
+            const [kept] = await query<any[]>(
+                'UPDATE agent_handoff_effects SET receipt=$2, updated_at=NOW() WHERE id=$1::uuid RETURNING *',
+                [row.id, outcome.receipt.slice(0, 300)]);
+            return mapRow(kept);
+        }
+        fail(`handoff_effect_not_leased:${row.state}`);
+    }
 
     const state: HandoffEffectState = outcome.kind === 'accepted' ? 'accepted'
         : outcome.kind === 'unknown' ? 'unknown' : 'rejected';
@@ -248,4 +272,31 @@ export async function projectHandoffEffects(query: HandoffEffectQuery, schema: s
     await query(
         `UPDATE agent_handoff_receipts SET effects = COALESCE(effects, '{}'::jsonb) || $2::jsonb
           WHERE id = $1::uuid`, [receiptId, JSON.stringify(projection)]);
+}
+
+/**
+ * Turn permissions nobody settled into uncertainty a person can see.
+ *
+ * A transfer that dies holding a permission leaves the row `admitted` behind a
+ * lease that will never be renewed. Every later admission refuses it, so nothing
+ * is repeated — but nothing surfaces either, and `readUncertainHandoffEffects`
+ * never sees it. This is the pass that moves it, and it is deliberately the
+ * same shape as `expireDispatchLeases`: an expired permission becomes uncertain,
+ * never available again.
+ */
+export async function expireHandoffEffectLeases(query: HandoffEffectQuery, schema: string,
+    limit = 200): Promise<number> {
+    if (!SCHEMA.test(schema)) fail('handoff_effect_invalid_reference');
+    const [present] = await query<any[]>('SELECT to_regclass($1)::text AS name', [`${schema}.agent_handoff_effects`]);
+    if (!present?.name) return 0;
+    const rows = await query<any[]>(
+        `UPDATE agent_handoff_effects
+            SET state='unknown', lease_token=NULL, lease_expires_at=NULL,
+                error_code=COALESCE(error_code,'lease_expired_after_admission'), updated_at=NOW()
+          WHERE id IN (
+              SELECT id FROM agent_handoff_effects
+               WHERE state='admitted' AND lease_expires_at IS NOT NULL AND lease_expires_at <= NOW()
+               ORDER BY lease_expires_at ASC LIMIT $1)
+          RETURNING id`, [Math.min(Math.max(Number(limit) || 200, 1), 500)]);
+    return rows.length;
 }

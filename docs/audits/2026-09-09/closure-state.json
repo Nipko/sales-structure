@@ -1,0 +1,379 @@
+{
+  "revision": "713823c408dc5c4eda78bf02c85d6ba86163ed10",
+  "generatedFrom": [
+    "modules/simulation/task-competence-matrix.ts",
+    "modules/simulation/certification-plan.ts",
+    "modules/channels/channel-certification-matrix.ts",
+    "modules/learning/agent-output-inventory.ts",
+    "modules/conversations/terms-binding-inventory.ts"
+  ],
+  "taskMatrix": {
+    "profiles": 76,
+    "tasks": 268,
+    "committingTasks": 146,
+    "tasksMissingPositiveCases": 5,
+    "tasksMissingVerifiers": 5,
+    "unregisteredTools": [],
+    "certifiedProfiles": 0
+  },
+  "certificationPlan": {
+    "profiles": 76,
+    "languages": [
+      "en",
+      "es",
+      "fr",
+      "pt"
+    ],
+    "channels": [
+      "instagram",
+      "messenger",
+      "telegram",
+      "web_widget",
+      "whatsapp"
+    ],
+    "models": [
+      "gpt-4.1-mini"
+    ],
+    "k": 1,
+    "tokenBound": {
+      "inputPerTurn": 8000,
+      "outputPerTurn": 1000
+    },
+    "requiredCases": 78120,
+    "modelCalls": 139940,
+    "maxCostUsdCents": 67740,
+    "maxSeconds": 839640,
+    "refusals": []
+  },
+  "channelCertification": {
+    "channels": 7,
+    "selfService": 5,
+    "retained": 2,
+    "implemented": 3,
+    "operating": 0,
+    "certified": 0,
+    "pendingByCapability": {
+      "delivery_receipt": [
+        "telegram"
+      ],
+      "read_receipt": [
+        "telegram",
+        "web_widget"
+      ]
+    },
+    "untestedByCapability": {
+      "outbound_media": [
+        "instagram",
+        "messenger",
+        "telegram",
+        "web_widget",
+        "whatsapp"
+      ],
+      "payment_link": [
+        "instagram",
+        "messenger",
+        "telegram",
+        "web_widget",
+        "whatsapp"
+      ],
+      "token_lifecycle": [
+        "instagram",
+        "messenger",
+        "telegram",
+        "whatsapp"
+      ],
+      "reconnect": [
+        "instagram",
+        "messenger",
+        "telegram",
+        "web_widget",
+        "whatsapp"
+      ],
+      "rate_limits": [
+        "instagram",
+        "messenger",
+        "telegram",
+        "web_widget",
+        "whatsapp"
+      ],
+      "handoff": [
+        "instagram",
+        "messenger",
+        "telegram",
+        "web_widget",
+        "whatsapp"
+      ],
+      "multi_account": [
+        "instagram",
+        "messenger",
+        "telegram",
+        "web_widget",
+        "whatsapp"
+      ],
+      "privacy_erasure": [
+        "instagram",
+        "messenger",
+        "telegram",
+        "web_widget",
+        "whatsapp"
+      ],
+      "agent_per_connection": [
+        "instagram",
+        "messenger",
+        "telegram",
+        "web_widget",
+        "whatsapp"
+      ],
+      "flow": [
+        "whatsapp"
+      ]
+    },
+    "unprovenByCapability": {
+      "inbound": [
+        "instagram",
+        "messenger",
+        "telegram",
+        "web_widget",
+        "whatsapp"
+      ],
+      "outbound_text": [
+        "instagram",
+        "messenger",
+        "telegram",
+        "web_widget",
+        "whatsapp"
+      ],
+      "delivery_receipt": [
+        "instagram",
+        "messenger",
+        "web_widget",
+        "whatsapp"
+      ],
+      "read_receipt": [
+        "instagram",
+        "messenger",
+        "whatsapp"
+      ],
+      "durable_dispatch": [
+        "instagram",
+        "messenger",
+        "telegram",
+        "web_widget",
+        "whatsapp"
+      ]
+    },
+    "rows": [
+      {
+        "channel": "email",
+        "selfService": false,
+        "state": "pending",
+        "certified": false,
+        "pending": [],
+        "untested": [],
+        "unproven": []
+      },
+      {
+        "channel": "instagram",
+        "selfService": true,
+        "state": "prepared",
+        "certified": false,
+        "pending": [],
+        "untested": [
+          "outbound_media",
+          "payment_link",
+          "token_lifecycle",
+          "reconnect",
+          "rate_limits",
+          "handoff",
+          "multi_account",
+          "privacy_erasure",
+          "agent_per_connection"
+        ],
+        "unproven": [
+          "inbound",
+          "outbound_text",
+          "delivery_receipt",
+          "read_receipt",
+          "durable_dispatch"
+        ]
+      },
+      {
+        "channel": "messenger",
+        "selfService": true,
+        "state": "prepared",
+        "certified": false,
+        "pending": [],
+        "untested": [
+          "outbound_media",
+          "payment_link",
+          "token_lifecycle",
+          "reconnect",
+          "rate_limits",
+          "handoff",
+          "multi_account",
+          "privacy_erasure",
+          "agent_per_connection"
+        ],
+        "unproven": [
+          "inbound",
+          "outbound_text",
+          "delivery_receipt",
+          "read_receipt",
+          "durable_dispatch"
+        ]
+      },
+      {
+        "channel": "sms",
+        "selfService": false,
+        "state": "pending",
+        "certified": false,
+        "pending": [],
+        "untested": [],
+        "unproven": []
+      },
+      {
+        "channel": "telegram",
+        "selfService": true,
+        "state": "pending",
+        "certified": false,
+        "pending": [
+          "delivery_receipt",
+          "read_receipt"
+        ],
+        "untested": [
+          "outbound_media",
+          "payment_link",
+          "token_lifecycle",
+          "reconnect",
+          "rate_limits",
+          "handoff",
+          "multi_account",
+          "privacy_erasure",
+          "agent_per_connection"
+        ],
+        "unproven": [
+          "inbound",
+          "outbound_text",
+          "durable_dispatch"
+        ]
+      },
+      {
+        "channel": "web_widget",
+        "selfService": true,
+        "state": "pending",
+        "certified": false,
+        "pending": [
+          "read_receipt"
+        ],
+        "untested": [
+          "outbound_media",
+          "payment_link",
+          "reconnect",
+          "rate_limits",
+          "handoff",
+          "multi_account",
+          "privacy_erasure",
+          "agent_per_connection"
+        ],
+        "unproven": [
+          "inbound",
+          "outbound_text",
+          "delivery_receipt",
+          "durable_dispatch"
+        ]
+      },
+      {
+        "channel": "whatsapp",
+        "selfService": true,
+        "state": "prepared",
+        "certified": false,
+        "pending": [],
+        "untested": [
+          "outbound_media",
+          "payment_link",
+          "flow",
+          "token_lifecycle",
+          "reconnect",
+          "rate_limits",
+          "handoff",
+          "multi_account",
+          "privacy_erasure",
+          "agent_per_connection"
+        ],
+        "unproven": [
+          "inbound",
+          "outbound_text",
+          "delivery_receipt",
+          "read_receipt",
+          "durable_dispatch"
+        ]
+      }
+    ]
+  },
+  "agentOutputs": {
+    "stores": 19,
+    "open": [
+      {
+        "id": "eval_runs",
+        "store": "eval_runs.results (per-scenario transcripts) and agent_snapshot",
+        "remedy": "Invalidate the run when its release is retired — the snapshot already names it — and reach it from the contact-erasure fan-out the way simulation replays already are."
+      },
+      {
+        "id": "simulation_runs",
+        "store": "simulation_runs.results (agent transcripts) and evaluation_snapshot",
+        "remedy": "Same as `eval_runs`: invalidate by release id when the release is retired."
+      },
+      {
+        "id": "agent_release_evidence",
+        "store": "agent_release_candidates.agent_snapshot and agent_release_evaluations.results",
+        "remedy": "Invalidate on retirement of the release the snapshot names, and join the contact-erasure fan-out."
+      },
+      {
+        "id": "quality_regression_cases",
+        "store": "quality_regression_cases.proposal.observedReplies",
+        "remedy": "Record the release id beside the source contact id when the case is frozen, so a retraction has a key."
+      },
+      {
+        "id": "handoff_summary",
+        "store": "conversations.handoff_summary and internal_notes.content",
+        "remedy": "Clear both in the contact-erasure statement that already resets the conversation metadata, and record the external CRM note id so the copy can be retracted with it."
+      },
+      {
+        "id": "quality_scores",
+        "store": "conversation_quality_scores (judge verdict and its free-text resolution reason)",
+        "remedy": "Record the release ids of the turn being judged, so a withdrawn release can take its verdicts with it."
+      },
+      {
+        "id": "benchmark_attempts",
+        "store": "the frozen benchmark corpus and the attempt transcripts summarised against it",
+        "remedy": "Give the attempt ledger a release id and a contact id when it is built, so both keys reach it from the first row rather than being retrofitted onto a corpus that already exists."
+      },
+      {
+        "id": "outbound_queue_job",
+        "store": "BullMQ `outbound-messages` job payload (legacy reply path)",
+        "remedy": "Turn the durable dispatch switch on for the tenant, which routes the same reply through `agent_dispatch_outbox` — already reached by both keys. Until then this is the widest hole in the sweep."
+      }
+    ]
+  },
+  "termsBinding": {
+    "families": 15,
+    "unboundCommand": [
+      "appointment_transitions",
+      "repair_orders",
+      "class_bookings",
+      "insurance_quotes",
+      "property_bookings",
+      "tour_bookings",
+      "restaurant_orders",
+      "service_requests",
+      "photo_sessions",
+      "resource_rentals"
+    ],
+    "unboundCharge": [
+      "catalog_orders",
+      "property_bookings",
+      "tour_bookings",
+      "restaurant_orders"
+    ]
+  }
+}

@@ -4689,6 +4689,7 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_config_proposals" (
     "applied_version" INTEGER,
     UNIQUE ("requested_by", "request_key")
 );
+-- BEGIN LEARNING TABLES
 -- Curated learning is opt-in. Sources are split before excerpts; published
 -- snapshots contain only approved examples and an independent frozen holdout.
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."learning_sources" (
@@ -4736,11 +4737,15 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."learning_releases" (
         baseline_release_id UUID, traffic_percent INTEGER NOT NULL DEFAULT 100 CHECK (traffic_percent BETWEEN 0 AND 100),
         evaluation_status VARCHAR(16) NOT NULL DEFAULT 'pending' CHECK (evaluation_status IN ('pending','running','passed','failed')),
         evaluation JSONB, created_by VARCHAR(100) NOT NULL, published_by VARCHAR(100), published_at TIMESTAMPTZ,
-        retired_by VARCHAR(100), retired_at TIMESTAMPTZ,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
 
 CREATE INDEX IF NOT EXISTS idx_learning_releases_active ON "{{SCHEMA_NAME}}"."learning_releases"(agent_id, status, created_at DESC);
 ALTER TABLE "{{SCHEMA_NAME}}"."learning_releases" ADD COLUMN IF NOT EXISTS evaluation_namespaces JSONB;
+-- Fuera del CREATE porque es el tenant cuya tabla YA existe el que las
+-- necesita: sin ellas el rollback falla con 42703.
+ALTER TABLE "{{SCHEMA_NAME}}"."learning_releases" ADD COLUMN IF NOT EXISTS retired_by VARCHAR(100);
+ALTER TABLE "{{SCHEMA_NAME}}"."learning_releases" ADD COLUMN IF NOT EXISTS retired_at TIMESTAMPTZ;
+-- END LEARNING TABLES
 
 -- Durable approved-command delivery stores references and outcomes only.
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."tool_approval_effects" (

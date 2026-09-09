@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 
@@ -115,30 +115,60 @@ export class AlertConfigService {
         private readonly redis: RedisService,
     ) {}
 
-    /** Merge a partial config over a base, one level deep on nested objects. */
+    /**
+     * Merge a partial config over a base, one level deep on nested objects.
+     *
+     * Every value is coerced, including the ones inside nested objects. Those
+     * used to be spread raw while only the flat scalars went through `num()`,
+     * so anything the panel could not turn into a number — an emptied field, a
+     * typo, a null — became the threshold itself. The failure was not loud: a
+     * comparison like `2 >= 'abc'` is simply `false`, so the alert stopped
+     * firing while the panel went on displaying whatever had been typed. An
+     * alert that silently stops watching is worse than one that was never
+     * configured, because somebody believes it is on.
+     *
+     * Numeric strings are accepted because the panel's inputs produce them;
+     * anything genuinely unreadable falls back to the base value here and is
+     * refused outright by `set`, which is where a person is still watching.
+     */
     private mergeOver(base: AlertConfig, partial: any): AlertConfig {
         const p = (partial && typeof partial === 'object') ? partial : {};
-        const num = (v: any, fallback: number) => (typeof v === 'number' && Number.isFinite(v) ? v : fallback);
+        const num = (v: any, fallback: number) => {
+            const value = typeof v === 'string' && v.trim() !== '' ? Number(v) : v;
+            return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+        };
+        /** Field by field, so an unknown key cannot introduce an uncoerced one. */
+        const nums = <T extends Record<string, number>>(baseObject: T, given: any): T => {
+            const merged: Record<string, number> = { ...baseObject };
+            for (const key of Object.keys(baseObject)) merged[key] = num(given?.[key], baseObject[key]);
+            return merged as T;
+        };
+        const bools = <T extends Record<string, boolean>>(baseObject: T, given: any): T => {
+            const merged: Record<string, boolean> = { ...baseObject };
+            for (const key of Object.keys(baseObject)) {
+                const value = given?.[key];
+                merged[key] = typeof value === 'boolean' ? value
+                    : value === 'true' ? true : value === 'false' ? false : baseObject[key];
+            }
+            return merged as T;
+        };
         // Deep-merge the per-queue depth thresholds against the canonical queue set.
         const qd: Record<string, { warn: number; crit: number }> = {};
-        for (const k of Object.keys(base.queueDepth)) {
-            const pk = (p.queueDepth && typeof p.queueDepth === 'object' && p.queueDepth[k]) || {};
-            qd[k] = { ...base.queueDepth[k], ...pk };
-        }
+        for (const k of Object.keys(base.queueDepth)) qd[k] = nums(base.queueDepth[k], p.queueDepth?.[k]);
         const qf: Record<string, number> = {};
         for (const k of Object.keys(base.queueFailedByQueue)) {
             qf[k] = num(p.queueFailedByQueue?.[k], base.queueFailedByQueue[k]);
         }
         return {
-            disk: { ...base.disk, ...(p.disk || {}) },
-            ram: { ...base.ram, ...(p.ram || {}) },
-            redis: { ...base.redis, ...(p.redis || {}) },
-            dbConnections: { ...base.dbConnections, ...(p.dbConnections || {}) },
-            pgbouncer: { ...base.pgbouncer, ...(p.pgbouncer || {}) },
-            sentryErrors: { ...base.sentryErrors, ...(p.sentryErrors || {}) },
-            slaBreaches: { ...base.slaBreaches, ...(p.slaBreaches || {}) },
-            dispatchReconciliation: { ...base.dispatchReconciliation, ...(p.dispatchReconciliation || {}) },
-            dispatchLatency: { ...base.dispatchLatency, ...(p.dispatchLatency || {}) },
+            disk: nums(base.disk, p.disk),
+            ram: nums(base.ram, p.ram),
+            redis: nums(base.redis, p.redis),
+            dbConnections: nums(base.dbConnections, p.dbConnections),
+            pgbouncer: nums(base.pgbouncer, p.pgbouncer),
+            sentryErrors: nums(base.sentryErrors, p.sentryErrors),
+            slaBreaches: nums(base.slaBreaches, p.slaBreaches),
+            dispatchReconciliation: nums(base.dispatchReconciliation, p.dispatchReconciliation),
+            dispatchLatency: nums(base.dispatchLatency, p.dispatchLatency),
             queueDepth: qd,
             queueFailedByQueue: qf,
             queueFailed: num(p.queueFailed, base.queueFailed),
@@ -147,7 +177,7 @@ export class AlertConfigService {
             storageQuotaPct: num(p.storageQuotaPct, base.storageQuotaPct),
             diskProjectionDays: num(p.diskProjectionDays, base.diskProjectionDays),
             backupStaleHours: num(p.backupStaleHours, base.backupStaleHours),
-            channels: { ...base.channels, ...(p.channels || {}) },
+            channels: bools(base.channels, p.channels),
         };
     }
 
@@ -173,9 +203,37 @@ export class AlertConfigService {
         }
     }
 
+    /**
+     * Every numeric field a caller actually sent, or the exact path that was not
+     * a number. Reading is forgiving because a bad row must not take the alerts
+     * down with it; writing is not, because a person is right there to be told.
+     */
+    private unreadable(base: any, partial: any, path = ''): string[] {
+        if (!partial || typeof partial !== 'object') return [];
+        const bad: string[] = [];
+        for (const key of Object.keys(partial)) {
+            const here = path ? `${path}.${key}` : key;
+            const expected = base?.[key];
+            const given = partial[key];
+            if (expected && typeof expected === 'object') { bad.push(...this.unreadable(expected, given, here)); continue; }
+            if (given === undefined || given === null) continue;
+            if (typeof expected === 'number') {
+                const value = typeof given === 'string' && given.trim() !== '' ? Number(given) : given;
+                if (typeof value !== 'number' || !Number.isFinite(value)) bad.push(here);
+            } else if (typeof expected === 'boolean') {
+                if (typeof given !== 'boolean' && given !== 'true' && given !== 'false') bad.push(here);
+            }
+        }
+        return bad;
+    }
+
     /** Persist a (partial) config, merged over current. Returns the effective config. */
     async set(partial: any): Promise<AlertConfig> {
         const current = await this.get();
+        const unreadable = this.unreadable(current, partial);
+        // Saving it as the old value would report success and leave the operator
+        // believing the threshold they typed is the one being watched.
+        if (unreadable.length) throw new BadRequestException({ error: 'alert_threshold_not_a_number', fields: unreadable });
         const merged = this.mergeOver(current, partial);
         const json = JSON.stringify(merged);
         await this.prisma.$executeRaw`

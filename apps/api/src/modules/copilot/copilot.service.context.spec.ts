@@ -1,10 +1,11 @@
+import { misleadingAssistOperations } from '@parallext/shared';
 import { CopilotService, CopilotChatRequest } from './copilot.service';
 
 const TENANT_ID = '11111111-1111-4111-8111-111111111111';
 const AGENT_ID = '22222222-2222-4222-8222-222222222222';
 const SIGNAL_ID = '33333333-3333-4333-8333-333333333333';
 
-function createService(assessment: any = null, configuration: any = null) {
+function createService(assessment: any = null, configuration: any = null, operations: any = null) {
     const llmRouter = {
         execute: jest.fn().mockResolvedValue({
             content: 'Ayuda',
@@ -42,6 +43,7 @@ function createService(assessment: any = null, configuration: any = null) {
         qualitySignals as any,
         assessment,
         configuration,
+        operations,
     );
     return { service, llmRouter, verticals, agentQuality, qualitySignals };
 }
@@ -341,6 +343,22 @@ describe('CopilotService authenticated context', () => {
         expect(response.actions).toEqual([
             expect.objectContaining({ href: '/admin/agent/quality?agent=22222222-2222-4222-8222-222222222222' }),
         ]);
+    });
+
+    it('tells the model which assisted creations do not close the check they look like they close', async () => {
+        // Assist can write a knowledge resource of type faq and an inactive
+        // legal text. Neither moves `tool_faqs` or `tool_policies`, which count
+        // rows of two other tables — and a person who applies the write and
+        // watches the banner stay red stops believing the assessment. The pairs
+        // come from the resolution table, so this cannot drift from it.
+        const { service, llmRouter } = createService(null, null, { propose: jest.fn() });
+        jest.spyOn(service as any, 'searchKb').mockReturnValue([]);
+        await service.chat(chatRequest({ actorId: 'user-1' } as any));
+        const prompt = llmRouter.execute.mock.calls[0][0].systemPrompt;
+        for (const pair of misleadingAssistOperations()) {
+            expect(prompt).toContain(`${pair.operation} NO resuelve ${pair.code}`);
+        }
+        expect(misleadingAssistOperations().length).toBeGreaterThan(0);
     });
 
     it('never loads agent-quality context for tenant agents', async () => {

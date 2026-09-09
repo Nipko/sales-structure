@@ -7,6 +7,7 @@ import type {
     AgentQualityOverview,
     AgentQualityPillarStatus,
     AgentQualityPreparationPillar,
+    AgentQualityIssueCode,
     AgentQualityProductionIssue,
     AgentQualityProductionPillar,
     AgentQualityRecommendation,
@@ -1269,7 +1270,13 @@ export class AgentQualityService {
         return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || 'issue';
     }
 
-    private classifyQualityFlag(label: string): string {
+    /**
+     * Returns one of the declared classes, never a free string. The union is
+     * shared because `agent-issue-resolution.ts` has to cover every class with
+     * a resolution, and a class invented here without one would reach a person
+     * as `investigate_<something>` with nothing to do about it.
+     */
+    private classifyQualityFlag(label: string): AgentQualityIssueCode {
         const value = this.slug(label);
         if (/(invent|alucin|incorrect|imprecis|contradic|no_verific|fuente|conocimiento|precio_err|dato_err)/.test(value)) return 'qa_knowledge_accuracy';
         if (/(no_resol|sin_resol|necesidad|pendiente|aband|incomplet|no_cerro|no_solucion)/.test(value)) return 'qa_unresolved_need';

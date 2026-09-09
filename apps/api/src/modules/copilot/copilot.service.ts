@@ -28,6 +28,7 @@ import {
     type ToolDefinition,
     AGENT_CONFIGURATION_PATHS,
     AGENT_OPERATION_REGISTRY,
+    misleadingAssistOperations,
     CAPABILITY_EXCLUSION_TEXT,
 } from '@parallext/shared';
 
@@ -1188,9 +1189,17 @@ Reglas estrictas:
         // the API enforces. Without it the model invents a capability or an
         // apology; with it, it names the screen that owns the decision.
         const routedOperations = AGENT_OPERATION_REGISTRY.filter(operation => operation.availability === 'route_to_screen');
+        // A write that cannot move the check the person was sent to fix is worse
+        // than no write: they apply it, the banner stays red, and the next thing
+        // they distrust is the assessment. Both pairs are declared in the
+        // resolution table and stated here rather than left to the model.
+        const misleading = misleadingAssistOperations()
+            .map(pair => `${pair.operation} NO resuelve ${pair.code}: ${pair.because}`)
+            .join(' ');
         const contentOperationContext = canCreateContent
             ? `12. **CREACIÓN ASISTIDA:** con propose_content_object puedes preparar la creación de: ${creatableOperations.join(', ')}. Solo prepara una propuesta para revisión; nada se crea hasta que la persona la aplique. Nunca afirmes haber creado algo desde este chat. Usa el texto que dio el dueño: no inventes precios, duraciones ni redacción legal; si falta un dato, pídelo.
-Estas NO las hace Assist —deriva a la pantalla que las decide—: ${routedOperations.map(operation => `${operation.key} → ${operation.route} (${operation.reason})`).join('; ')}.`
+Estas NO las hace Assist —deriva a la pantalla que las decide—: ${routedOperations.map(operation => `${operation.key} → ${operation.route} (${operation.reason})`).join('; ')}.
+Y estas creaciones NO cierran el punto de calidad que lo parece; no las ofrezcas como el arreglo de ese punto: ${misleading}`
             : '';
 
         const systemPrompt = `Eres **Parallly Assist**, el asistente oficial de ayuda de la plataforma Parallly.

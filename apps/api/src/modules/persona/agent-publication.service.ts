@@ -1,4 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { AgentDraftService } from './agent-draft.service';
 import { PersonaService } from './persona.service';
@@ -52,6 +53,10 @@ export class AgentPublicationService {
         // lives in ConversationsModule, which already imports this one, and the
         // cycle is not worth it for one call.
         private readonly revisions: EvaluationRevisionService,
+        // Last, and defaulted: the positional specs that construct this service
+        // directly must keep compiling, and an absent emitter degrades to no
+        // notification rather than to a failed publication.
+        private readonly events: EventEmitter2 = null as any,
     ) {
         this.store = new AgentPublicationStore(prisma);
     }
@@ -183,6 +188,16 @@ export class AgentPublicationService {
      * revision until the entry expires; the audit row is the record of who
      * changed what. Neither may roll back a publication that already committed,
      * and an idempotent replay repeats both harmlessly.
+     *
+     * The notification is the third: `agent.config.updated` had two listeners
+     * and no emitter anywhere in the API. `EvalAutorunListener` waits on it to
+     * run the eval gate after a behaviour change, and `AgentQualitySignalService`
+     * to reconcile its signals — both dormant since the edit path moved from
+     * `PersonaService.updateAgent` to the draft/publication flow, which is where
+     * an agent's behaviour actually changes for customers and where nothing was
+     * announcing it. Unlike the other two, an idempotent replay must NOT repeat
+     * it: re-running an evaluation for a publication that already happened
+     * spends the tenant's autorun budget on nothing.
      */
     private async settle(tenantId: string, agentId: string, actor: PublicationActorRequest,
         receipt: PublicationReceipt, detail: Record<string, unknown>): Promise<void> {
@@ -206,6 +221,15 @@ export class AgentPublicationService {
             } });
         } catch (error: any) {
             this.logger.error(`[Publication] audit write failed for ${receipt.id}: ${error?.message}`);
+        }
+        if (receipt.idempotentReplay || !this.events) return;
+        try {
+            this.events.emit('agent.config.updated', { tenantId, agentId,
+                changed: `agent_publication_${receipt.kind}`, publicationId: receipt.id,
+                operationalVersion: receipt.operationalVersion, operationalHash: receipt.operationalHash });
+        } catch (error: any) {
+            // A listener that throws cannot undo a publication that committed.
+            this.logger.error(`[Publication] notification failed for ${receipt.id}: ${error?.message}`);
         }
     }
 }

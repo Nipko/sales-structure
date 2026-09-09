@@ -16,9 +16,12 @@ export interface EvalGateJob {
 
 /**
  * Auto-runs the eval gate (EvalService.runGateV2) when an agent's behaviour config
- * changes. Listens for `agent.config.updated` (emitted by PersonaService.updateAgent)
- * and enqueues a deduped, delayed job onto EVAL_GATE_QUEUE. Best-effort — a failure
- * here never breaks the agent-save request.
+ * changes. Listens for `agent.config.updated`, emitted by
+ * `AgentPublicationService.settle` after a publication or a rollback commits —
+ * the moment the change reaches customers. It used to say `PersonaService.updateAgent`,
+ * which stopped emitting anything when the edit path moved to the draft flow and
+ * left this listener with no emitter at all. Enqueues a deduped, delayed job onto
+ * EVAL_GATE_QUEUE. Best-effort — a failure here never breaks the publication.
  */
 @Injectable()
 export class EvalAutorunListener {

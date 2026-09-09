@@ -37,6 +37,8 @@ describe('AgentPublicationService', () => {
         manifestError?: Error;
         cacheFails?: boolean;
         auditFails?: boolean;
+        replay?: boolean;
+        notifyFails?: boolean;
     } = {}) {
         const query = jest.fn(async (sql: string, _params?: any[]) => {
             if (sql.includes('FROM public.tenants')) return [{ id: tenantId, industry: 'otro', settings: {} }];
@@ -63,17 +65,22 @@ describe('AgentPublicationService', () => {
         const revisions: any = { assertCurrent: jest.fn(async () => {
             if (options.manifestError) throw options.manifestError;
         }) };
-        const service = new AgentPublicationService(prisma, persona, drafts, revisions);
+        const events: any = { emit: jest.fn(() => {
+            if (options.notifyFails) throw new Error('listener exploded');
+            return true;
+        }) };
+        const service = new AgentPublicationService(prisma, persona, drafts, revisions, events);
         const store = (service as any).store;
+        const settled = { ...receipt, idempotentReplay: !!options.replay };
         store.ensure = jest.fn(async () => undefined);
-        store.publish = jest.fn(async () => receipt);
-        store.rollback = jest.fn(async () => ({ ...receipt, kind: 'rollback' as const }));
+        store.publish = jest.fn(async () => settled);
+        store.rollback = jest.fn(async () => ({ ...settled, kind: 'rollback' as const }));
         jest.spyOn((service as any).logger, 'error').mockImplementation(() => undefined);
 
         const entitlement = jest.spyOn(
             require('../../common/utils/subscription-entitlement.util'), 'resolveTenantSubscriptionAccess')
             .mockResolvedValue(options.access ?? { allowed: true } as any);
-        return { service, prisma, persona, drafts, revisions, store, query, entitlement };
+        return { service, prisma, persona, drafts, revisions, store, query, entitlement, events };
     }
     afterEach(() => jest.restoreAllMocks());
 
@@ -203,6 +210,40 @@ describe('AgentPublicationService', () => {
     });
 
     describe('la historia es la mitad observable', () => {
+        it('avisa que la configuración cambió, que era lo que nadie emitía', async () => {
+            // `agent.config.updated` tenía dos oyentes y ningún emisor: el eval
+            // gate automático y la reconciliación de señales de calidad llevaban
+            // dormidos desde que la edición se movió al flujo de borrador.
+            const h = harness();
+            await h.service.publish(tenantId, agentId, candidateId, publishBody, admin);
+            expect(h.events.emit).toHaveBeenCalledWith('agent.config.updated', expect.objectContaining({
+                tenantId, agentId, changed: 'agent_publication_publish', publicationId: 'pub-1',
+                operationalVersion: 8,
+            }));
+        });
+
+        it('también avisa cuando lo que cambió fue una reversión', async () => {
+            const h = harness();
+            await h.service.rollback(tenantId, agentId, { ...publishBody, expectedPublicationId: candidateId }, admin);
+            expect(h.events.emit).toHaveBeenCalledWith('agent.config.updated',
+                expect.objectContaining({ changed: 'agent_publication_rollback' }));
+        });
+
+        it('no vuelve a avisar por una repetición idempotente', async () => {
+            // Repetir la caché y la auditoría es inocuo; repetir el aviso gasta
+            // el presupuesto diario de evaluación del tenant en nada.
+            const h = harness({ replay: true });
+            await h.service.publish(tenantId, agentId, candidateId, publishBody, admin);
+            expect(h.events.emit).not.toHaveBeenCalled();
+            expect(h.persona.invalidatePersonaResolutionCaches).toHaveBeenCalled();
+        });
+
+        it('no pierde una publicación confirmada porque un oyente reviente', async () => {
+            const h = harness({ notifyFails: true });
+            await expect(h.service.publish(tenantId, agentId, candidateId, publishBody, admin))
+                .resolves.toMatchObject({ id: 'pub-1' });
+        });
+
         it('acota el límite y no devuelve los cuerpos de configuración', async () => {
             const h = harness();
             await h.service.history(tenantId, agentId, admin, 5000);

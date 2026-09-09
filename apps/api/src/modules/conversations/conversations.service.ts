@@ -5533,7 +5533,15 @@ export class ConversationsService {
                 }
             }
             if (reply && draftMode) {
-                await this.persistDraft(tenantId, schemaName, conversationId, reply, contact.name, inboundMessageId);
+                // With the release ids, like the messaging path. Without them a
+                // retraction could never match this draft: `redactPendingDrafts`
+                // looks for exactly this field, and the Web Chat draft was the
+                // one call site that left it empty — so a release could be rolled
+                // back and its words stayed here, one click from a customer, on
+                // the only channel where the reply never queues anywhere else.
+                await this.persistDraft(tenantId, schemaName, conversationId, reply, contact.name, inboundMessageId,
+                    replyProvenance.getFootprints().flatMap(footprint =>
+                        footprint.entries.map(entry => String(entry.releaseId))));
                 await this.redis.set(replyKey, JSON.stringify({
                     conversationId, contactId, draft: true,
                 }), 86400);

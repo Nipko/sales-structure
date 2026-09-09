@@ -349,7 +349,13 @@ describe('ConversationsService widget containment', () => {
         expect(await collect(service.processWidgetMessage('10000000-0000-4000-8000-000000000001', 'tenant_1', '20000000-0000-4000-8000-000000000002', '30000000-0000-4000-8000-000000000003', 'human please', { inboundMessageId: '40000000-0000-4000-8000-000000000004' }))).toBe('');
         expect(internal.handoffService.executeHandoff).not.toHaveBeenCalled();
         expect(internal.handoffService.executeHandoffOnce).not.toHaveBeenCalled();
-        expect(prisma.executeInTenantSchema.mock.calls.some((call: any[]) => call[1].includes('pendingDraft'))).toBe(true);
+        const draftCall = prisma.executeInTenantSchema.mock.calls.find((call: any[]) => call[1].includes('pendingDraft'));
+        expect(draftCall).toBeDefined();
+        // And it carries the provenance a retraction matches on. Without the
+        // field there is nothing for `redactPendingDrafts` to find, so a release
+        // could be rolled back and its words would stay here — on the one
+        // channel where a draft is the only place the reply exists.
+        expect(JSON.parse(draftCall![2][1])).toHaveProperty('learningReleaseIds');
         expect(internal.eventEmitter.emit).toHaveBeenCalledWith('draft.suggested', expect.objectContaining({ text: 'safe reply' }));
     });
 });

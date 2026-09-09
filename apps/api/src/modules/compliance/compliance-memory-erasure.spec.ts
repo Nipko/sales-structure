@@ -102,6 +102,12 @@ describe('Contact erasure reaches memory derivatives', () => {
         expect(result.completed).toBe(true);
         const update=query.mock.calls.find(([sql])=>sql.includes('UPDATE conversations')&&sql.includes('ANY($1::uuid[])'))!;
         expect(update[0]).toContain('"procedureStateManaged":true,"bookingStateManaged":true');
+        // And the reply somebody was one click from sending them. It is agent
+        // text about this person, sitting where a human presses a button, and it
+        // was the one piece this fan-out did not reach: the retraction path
+        // clears drafts by RELEASE id, which is the wrong key for an erasure —
+        // here the person is the key and every draft of theirs goes.
+        expect(update[0]).toContain("-'pendingDraft'");
         expect(update[1]).toEqual([[contactId,siblingId]]);
         expect(redis.del).toHaveBeenCalledWith('procedure:conversation');
         expect(redis.del).toHaveBeenCalledWith('booking:conversation');

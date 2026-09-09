@@ -374,7 +374,13 @@ export class ComplianceService {
             for (const lock of locks) await query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))::text`, [lock]);
             await query(`INSERT INTO customer_memory_erasure (contact_id)
                 SELECT unnest($1::uuid[]) ON CONFLICT (contact_id) DO UPDATE SET erased_at = NOW()`, [contactIds]);
-            await query(`UPDATE conversations SET metadata=(COALESCE(metadata,'{}'::jsonb)-'procedureState'-'bookingState'-'missionFocus')
+            // `pendingDraft` goes with them. It is a reply this person was
+            // about to be sent, sitting where a human presses one button, and
+            // it was the one piece of agent text this fan-out did not reach:
+            // the retraction path clears it by release id, which is the wrong
+            // key for an erasure — the person is the key, and every draft of
+            // theirs goes regardless of which release produced it.
+            await query(`UPDATE conversations SET metadata=(COALESCE(metadata,'{}'::jsonb)-'procedureState'-'bookingState'-'missionFocus'-'pendingDraft')
                 ||'{"procedureStateManaged":true,"bookingStateManaged":true,"missionFocusManaged":true}'::jsonb
                 WHERE contact_id=ANY($1::uuid[])`,[contactIds]);
             const widgetSessions = await eraseWidgetContactSessions(query, schema, contactIds);

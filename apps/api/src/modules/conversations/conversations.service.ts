@@ -1092,7 +1092,15 @@ export class ConversationsService {
         // first bubble and the last one is resumed with the same words instead of
         // a freshly generated answer stitched onto the old one.
         const replyPmid = providerMessageId(normalizedMsg);
-        if (response && !resumedReply && replyPmid && !isErrorFallback(response)) {
+        // Not for a reply that derives from learned examples. This key is
+        // reachable only by provider message id, so a release withdrawn later
+        // has no way to find it — the retraction clears the outbox, the widget
+        // replies and the turn envelope, and a copy of the same words would sit
+        // here for a day waiting to be replayed. The ledger already holds this
+        // turn and IS reachable by release, so nothing is lost by not caching it.
+        const derivesFromLearning = turnEffects.learningFootprints.some(
+            footprint => footprint.entries.length > 0);
+        if (response && !resumedReply && replyPmid && !isErrorFallback(response) && !derivesFromLearning) {
             await this.redis.set(turnReplyKey(tenantId, replyPmid), response, 86400).catch(() => {});
         }
 

@@ -83,7 +83,10 @@ describe('recovering a turn from its ledger', () => {
         });
         const message: any = {
             id: 'provider-message', tenantId, contactId: '573001112233', channelType: 'whatsapp',
-            channelAccountId: 'account-one', content: { type: 'text', text: 'hola' }, metadata: {},
+            channelAccountId: 'account-one', content: { type: 'text', text: 'hola' },
+            // A real provider id: the reply cache is keyed on it, so without one
+            // a test about that cache proves nothing either way.
+            metadata: { waMessageId: 'wamid.INBOUND' },
         };
         return { service, message, ledger, sends };
     }
@@ -251,6 +254,33 @@ describe('recovering a turn from its ledger', () => {
         expect(service.saveAiMessage).toHaveBeenCalledWith(
             '11111111-1111-4111-8111-111111111111', conversationId, 'Elegi el servicio', 'whatsapp',
             outboundDedupeId(message, 'flow-history', 0));
+    });
+
+    it('never leaves learning-derived words in a cache a retraction cannot reach', async () => {
+        const { service, message } = fixture({ state: 'open', attempts: 1, envelope: null, writers: [] },
+            { duplicate: false });
+        service.generateResponse = jest.fn(async (...args: any[]) => {
+            const sink = args[args.length - 1];
+            sink.learningFootprints = [{ version: 1, tenantId, agentId: '55555555-5555-4555-8555-555555555555',
+                entries: [{ releaseId: '66666666-6666-4666-8666-666666666666', releaseHash: 'a'.repeat(64),
+                    exampleId: '77777777-7777-4777-8777-777777777777', projectionHash: 'b'.repeat(64) }] }];
+            return 'palabras con estilo aprendido';
+        });
+        await service.runTurn(message);
+
+        // The key is reachable only by provider message id, so a release
+        // withdrawn later cannot find it. The ledger holds the same turn and IS
+        // reachable by release.
+        const cached = service.redis.set.mock.calls.filter((call: any[]) => String(call[0]).startsWith('turn:reply:'));
+        expect(cached).toEqual([]);
+    });
+
+    it('still caches a reply that used no learning at all', async () => {
+        const { service, message } = fixture({ state: 'open', attempts: 1, envelope: null, writers: [] },
+            { duplicate: false });
+        await service.runTurn(message);
+        expect(service.redis.set.mock.calls.some((call: any[]) => String(call[0]).startsWith('turn:reply:')))
+            .toBe(true);
     });
 
     it('stamps the turn as finished in PostgreSQL, not only in Redis', async () => {

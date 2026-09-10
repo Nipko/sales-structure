@@ -1,0 +1,239 @@
+name: Candidate images (manual)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Build the images for a commit that is NOT on main, and prove what they are.
+#
+# The gap this closes is specific and was reproduced rather than suspected: the
+# only path that builds images runs `if: github.ref == 'refs/heads/main'` and is
+# followed by the production deploy job. So the only way to obtain images for a
+# candidate was to merge it — which deploys it. "Build and validate the candidate
+# before merge" had no mechanism.
+#
+# This is that mechanism, and it deliberately does three things and no more:
+#
+#   1. builds the five images from an explicit commit;
+#   2. tags them ONLY by that commit — never `latest`, which is what the
+#      production compose falls back to, so a candidate can never become what a
+#      manual `docker compose up` picks;
+#   3. resolves and publishes the immutable DIGEST of each one.
+#
+# The third is the point. A tag that looks like a SHA is still a tag: it can be
+# moved. Evidence gathered from "the candidate" means nothing unless the thing
+# that ran and the thing that was approved are the same bytes, and only the
+# digest says that. The cut-over runbook pins digests, not tags.
+#
+# It does not deploy. It cannot: it has no host credentials and no SSH step.
+# ─────────────────────────────────────────────────────────────────────────────
+
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: Full 40-character commit SHA to build
+        required: true
+        type: string
+      confirm:
+        description: Type "candidate" to confirm this publishes images
+        required: true
+        type: string
+
+concurrency:
+  group: parallext-candidate-${{ inputs.sha }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  API_IMAGE: ghcr.io/nipko/parallext-api
+  WORKER_IMAGE: ghcr.io/nipko/parallext-worker
+  DASHBOARD_IMAGE: ghcr.io/nipko/parallext-dashboard
+  WHATSAPP_IMAGE: ghcr.io/nipko/parallext-whatsapp
+  LANDING_IMAGE: ghcr.io/nipko/parallext-landing
+
+jobs:
+  build:
+    name: Build and identify the candidate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Confirmation typed
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          if [ "$CONFIRM" != "candidate" ]; then
+            echo "::error::Confirmation not typed. This publishes images to the registry."
+            exit 1
+          fi
+
+      - name: The SHA is a full commit, not a prefix or a tag
+        env:
+          SHA: ${{ inputs.sha }}
+        run: |
+          # A 7-character prefix is ambiguous and a branch name is a moving
+          # target. Evidence has to name one commit and keep naming it.
+          if ! printf '%s' "$SHA" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "::error::sha must be a full 40-character commit SHA (got '$SHA')"
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          # The candidate's own tree, not the default branch. Without this the
+          # workflow would build whatever main happens to be, and label it with
+          # the candidate's SHA — which is worse than not building at all.
+          ref: ${{ inputs.sha }}
+          fetch-depth: 0
+
+      - name: The checkout really is that commit
+        env:
+          SHA: ${{ inputs.sha }}
+        run: |
+          ACTUAL="$(git rev-parse HEAD)"
+          if [ "$ACTUAL" != "$SHA" ]; then
+            echo "::error::checkout resolved to $ACTUAL, not $SHA"
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - name: Generate Prisma client
+        env:
+          DATABASE_URL: postgresql://parallext:ci@localhost:5432/parallext_engine?schema=public
+          DIRECT_DATABASE_URL: postgresql://parallext:ci@localhost:5432/parallext_engine?schema=public
+        run: npx prisma generate --schema=apps/api/prisma/schema.prisma
+
+      # The same gate the production build depends on, run here so a candidate
+      # cannot be built out of a tree that would not have been allowed to merge.
+      - name: Typecheck
+        run: |
+          npx tsc -p packages/shared/tsconfig.json --noEmit --pretty false
+          npx tsc -p apps/api/tsconfig.json --noEmit --pretty false
+          npx tsc -p apps/dashboard/tsconfig.json --noEmit --pretty false
+      - name: Lint contracts
+        run: |
+          (cd apps/api && npx eslint "src/**/*.ts" --quiet)
+          (cd apps/dashboard && npx eslint . --quiet)
+          (cd apps/whatsapp && npx eslint "src/**/*.ts" --quiet)
+
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - run: mkdir -p artifacts
+
+      # ── The five images. `candidate-<sha>` and nothing else. ───────────────
+      #
+      # Never `latest`: `docker-compose.prod.yml` falls back to it, so a
+      # candidate tagged `latest` becomes what a manual `up` on the VPS starts.
+      - name: API
+        id: api
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: infra/docker/Dockerfile.api
+          push: true
+          tags: ${{ env.API_IMAGE }}:candidate-${{ inputs.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Worker
+        id: worker
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: infra/docker/Dockerfile.worker
+          push: true
+          tags: ${{ env.WORKER_IMAGE }}:candidate-${{ inputs.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Dashboard
+        id: dashboard
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: infra/docker/Dockerfile.dashboard
+          push: true
+          tags: ${{ env.DASHBOARD_IMAGE }}:candidate-${{ inputs.sha }}
+          # The dashboard bakes `NEXT_PUBLIC_*` into its bundle at build time, so
+          # the API it talks to is decided HERE and cannot be changed by a `.env`
+          # on the host afterwards. This candidate is built for the operational
+          # environment, which is the one it will be verified on; anything else
+          # would produce a page that reads from somewhere the evidence does not
+          # describe.
+          build-args: |
+            NEXT_PUBLIC_API_URL=${{ vars.CANDIDATE_PUBLIC_API_URL }}
+            NEXT_PUBLIC_WA_SERVICE_URL=${{ vars.CANDIDATE_PUBLIC_WA_URL }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: WhatsApp
+        id: whatsapp
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: infra/docker/Dockerfile.whatsapp
+          push: true
+          tags: ${{ env.WHATSAPP_IMAGE }}:candidate-${{ inputs.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Landing
+        id: landing
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: infra/docker/Dockerfile.landing
+          push: true
+          tags: ${{ env.LANDING_IMAGE }}:candidate-${{ inputs.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # ── What the candidate IS. Digests, not tags. ──────────────────────────
+      - name: Publish the digest manifest
+        env:
+          SHA: ${{ inputs.sha }}
+          API_DIGEST: ${{ steps.api.outputs.digest }}
+          WORKER_DIGEST: ${{ steps.worker.outputs.digest }}
+          DASHBOARD_DIGEST: ${{ steps.dashboard.outputs.digest }}
+          WHATSAPP_DIGEST: ${{ steps.whatsapp.outputs.digest }}
+          LANDING_DIGEST: ${{ steps.landing.outputs.digest }}
+        run: |
+          # A tag shaped like a SHA is still mutable. The digest is the identity
+          # every later step pins, so that "the candidate we tested" and "the
+          # candidate we approved" are provably the same bytes.
+          for name in API WORKER DASHBOARD WHATSAPP LANDING; do
+            eval "value=\${${name}_DIGEST}"
+            if [ -z "$value" ]; then
+              echo "::error::no digest for ${name}; the manifest would name a tag it cannot pin"
+              exit 1
+            fi
+          done
+          cat > artifacts/candidate-manifest.json <<EOF
+          {
+            "version": 1,
+            "sha": "${SHA}",
+            "builtAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "runId": "${GITHUB_RUN_ID}",
+            "images": {
+              "api":       { "tag": "${API_IMAGE}:candidate-${SHA}",       "digest": "${API_DIGEST}" },
+              "worker":    { "tag": "${WORKER_IMAGE}:candidate-${SHA}",    "digest": "${WORKER_DIGEST}" },
+              "dashboard": { "tag": "${DASHBOARD_IMAGE}:candidate-${SHA}", "digest": "${DASHBOARD_DIGEST}" },
+              "whatsapp":  { "tag": "${WHATSAPP_IMAGE}:candidate-${SHA}",  "digest": "${WHATSAPP_DIGEST}" },
+              "landing":   { "tag": "${LANDING_IMAGE}:candidate-${SHA}",   "digest": "${LANDING_DIGEST}" }
+            }
+          }
+          EOF
+          cat artifacts/candidate-manifest.json
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: candidate-${{ inputs.sha }}-${{ github.run_id }}
+          path: artifacts/candidate-manifest.json
+          if-no-files-found: error
+          retention-days: 90

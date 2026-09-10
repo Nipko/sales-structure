@@ -80,6 +80,7 @@ export * from './subtype-eval-derivation';
 // ---- Channel Types ----
 export * from './channel-policy';
 export * from './outbound-message-contract';
+export * from './dispatch-pilot-scope';
 
 export * from './email-verification-policy';
 export * from './intent-workflow-contract';

@@ -20,6 +20,7 @@
         "db:seed:gecko": "psql $DATABASE_URL -f prisma/seed-gecko.sql",
         "db:studio": "prisma studio",
         "migrate:tenants": "node scripts/migrate-tenants.js",
+        "preflight:agreed-terms": "node scripts/preflight-agreed-terms.cjs",
         "reconcile:vertical-provisioning": "node scripts/reconcile-vertical-provisioning.js",
         "migrate:bi-api-keys": "node scripts/migrate-bi-api-keys.js"
     },

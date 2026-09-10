@@ -459,10 +459,23 @@ REGLA DE PLAN: estos valores son la ÚNICA fuente válida sobre límites y dispo
             .map(x => x.a);
     }
 
-    private async buildVerticalContext(tenantId: string): Promise<string> {
+    /**
+     * The tenant's vertical, as prose for the model AND as data for the code.
+     *
+     * It used to return only the string. The capabilities were therefore
+     * available to the prompt and to nothing else, which is how the handoff list
+     * came to be built without them — and how Assist ended up offering a
+     * restaurant a screen its own panel hides.
+     *
+     * Fail-closed on error: an empty capability list authorises nothing, which
+     * is the safe direction for a list whose job is to decide what to offer.
+     */
+    private async buildVerticalContext(
+        tenantId: string,
+    ): Promise<{ prompt: string; capabilities: readonly string[] }> {
         try {
             const config = await this.verticals.getVerticalConfig(tenantId);
-            if (!config) return '';
+            if (!config) return { prompt: '', capabilities: [] };
             const effectiveCapabilities = Array.isArray(config.effectiveCapabilities)
                 ? config.effectiveCapabilities.filter((capability) => typeof capability === 'string')
                 : [];
@@ -471,12 +484,12 @@ REGLA DE PLAN: estos valores son la ÚNICA fuente válida sobre límites y dispo
                 subType: config.subType || null,
                 effectiveCapabilities,
             };
-            return `## CONTEXTO VERTICAL EFECTIVO (autoritativo, derivado del tenant autenticado)
+            return { capabilities: effectiveCapabilities, prompt: `## CONTEXTO VERTICAL EFECTIVO (autoritativo, derivado del tenant autenticado)
 ${JSON.stringify(context)}
-REGLA VERTICAL: orienta la respuesta hacia esta industria y subtipo. Solo presentes como disponibles las capacidades incluidas en effectiveCapabilities; una lista vacía es fail-closed y no autoriza inferir funciones verticales.`;
+REGLA VERTICAL: orienta la respuesta hacia esta industria y subtipo. Solo presentes como disponibles las capacidades incluidas en effectiveCapabilities; una lista vacía es fail-closed y no autoriza inferir funciones verticales.` };
         } catch (error: any) {
             this.logger.warn(`buildVerticalContext failed: ${error.message}`);
-            return '';
+            return { prompt: '', capabilities: [] };
         }
     }
 
@@ -1182,14 +1195,37 @@ Reglas estrictas:
         // narrower per object: a supervisor may write a FAQ but not a legal
         // text. The enum offered to the model is filtered by the caller's role,
         // so it cannot propose something the role would then be refused.
+        //
+        // And by the tenant's vertical, for the same reason the handoffs below
+        // are: a course prepared for a restaurant is applied into a table whose
+        // screen that tenant cannot open. `AgentContentProposalService` refuses
+        // it either way; offering it here would only mean the refusal arrives
+        // after the person wrote the content.
+        const tenantCapabilities = new Set(verticalContext.capabilities);
+        const permitted = (operation: { roles: readonly string[]; requiresCapability?: string }) =>
+            operation.roles.includes(request.context.userRole as any)
+            && (!operation.requiresCapability || tenantCapabilities.has(operation.requiresCapability));
         const creatableOperations = AGENT_OPERATION_REGISTRY
-            .filter(operation => operation.availability === 'executable' && operation.roles.includes(request.context.userRole as any))
+            .filter(operation => operation.availability === 'executable' && permitted(operation))
             .map(operation => operation.key);
         const canCreateContent = Boolean(this.operations && request.context.actorId && creatableOperations.length);
         // What Assist will never do, stated to the model from the same registry
         // the API enforces. Without it the model invents a capability or an
         // apology; with it, it names the screen that owns the decision.
-        const routedOperations = routedAgentOperations();
+        //
+        // The list used to be handed over whole, filtered by neither role nor
+        // vertical, so Assist would tell an inbox agent to open `/admin/users`
+        // and grant a role, and tell a restaurant to open `/admin/appointments`.
+        // The panel then bounced both: `roles.ts` denies by default and the
+        // layout hides a vertical surface the tenant's capabilities do not
+        // include. What the owner experienced was the assistant sending them
+        // somewhere that does not exist.
+        //
+        // Excluded ones are NOT dropped in silence. An operation the model has
+        // never heard of gets an invented apology or a different screen; one it
+        // has been told is unavailable, and why, gets said plainly.
+        const routedOperations = routedAgentOperations().filter(permitted);
+        const notRoutable = routedAgentOperations().filter(operation => !routedOperations.includes(operation));
         // A write that cannot move the check the person was sent to fix is worse
         // than no write: they apply it, the banner stays red, and the next thing
         // they distrust is the assessment. Both pairs are declared in the
@@ -1197,16 +1233,36 @@ Reglas estrictas:
         const misleading = misleadingAssistOperations()
             .map(pair => `${pair.operation} NO resuelve ${pair.code}: ${pair.because}`)
             .join(' ');
-        const contentOperationContext = canCreateContent
+        // Two halves, and only the first one depends on being able to create.
+        //
+        // They used to be one string behind `canCreateContent`, so a
+        // `tenant_agent` — who can create nothing — was told nothing about the
+        // screens either, including `agenda.appointment.book`, the one routed
+        // operation the registry declares for that role. An inbox agent asking
+        // where to book got a guess instead of the screen that books.
+        const creationContext = canCreateContent
             ? `12. **CREACIÓN ASISTIDA:** con propose_content_object puedes preparar la creación de: ${creatableOperations.join(', ')}. Solo prepara una propuesta para revisión; nada se crea hasta que la persona la aplique. Nunca afirmes haber creado algo desde este chat. Usa el texto que dio el dueño: no inventes precios, duraciones ni redacción legal; si falta un dato, pídelo.
-Estas NO las hace Assist —deriva a la pantalla que las decide—: ${routedOperations.map(operation => {
+Y estas creaciones NO cierran el punto de calidad que lo parece; no las ofrezcas como el arreglo de ese punto: ${misleading}
+`
+            : '';
+        const unavailableSentence = notRoutable.length
+            ? `Estas existen pero NO están disponibles en esta cuenta o para este rol; decilo así y no ofrezcas la pantalla: ${notRoutable.map(operation => {
+                const why = !operation.roles.includes(request.context.userRole as any)
+                    ? `la decide ${operation.roles.filter(role => role !== 'super_admin').join(' o ') || 'un administrador de la plataforma'}`
+                    : 'no forma parte de las capacidades de este rubro';
+                return `${operation.key} (${why})`;
+            }).join('; ')}.`
+            : '';
+        const routedSentence = routedOperations.length
+            ? `Estas NO las hace Assist —deriva a la pantalla que las decide—: ${routedOperations.map(operation => {
                 const asks = operation.requirements.map(requirement => requirement.choices?.length
                     ? `${requirement.key} (${requirement.choices.join('|')})`
                     : requirement.key).join(', ');
                 return `${operation.key} → ${operation.route} (${operation.reason}${asks ? `; preguntá antes: ${asks}` : ''})`;
-            }).join('; ')}. Antes de derivar, preguntá los datos NO secretos que figuran arriba y nunca pidas tokens, claves ni contraseñas: ese es el motivo por el que la pantalla es de la persona y no tuya.
-Y estas creaciones NO cierran el punto de calidad que lo parece; no las ofrezcas como el arreglo de ese punto: ${misleading}`
-            : '';
+            }).join('; ')}. Antes de derivar, preguntá los datos NO secretos que figuran arriba y nunca pidas tokens, claves ni contraseñas: ese es el motivo por el que la pantalla es de la persona y no tuya.`
+            : 'Ninguna de las operaciones sensibles está disponible para este rol en esta cuenta; no ofrezcas ninguna de esas pantallas.';
+        const handoffContext = `${canCreateContent ? 13 : 12}. **DERIVACIÓN:** ${[unavailableSentence, routedSentence].filter(Boolean).join(' ')}`;
+        const contentOperationContext = `${creationContext}${handoffContext}`;
 
         const systemPrompt = `Eres **Parallly Assist**, el asistente oficial de ayuda de la plataforma Parallly.
 Tu única misión: ayudar a los usuarios (administradores, supervisores y agentes de negocio) a entender, configurar y usar las funcionalidades de la plataforma.
@@ -1214,7 +1270,7 @@ Tu única misión: ayudar a los usuarios (administradores, supervisores y agente
 ## BASE DE CONOCIMIENTO (única fuente de verdad sobre la plataforma):
 ${kbContext}
 ${planContext ? '\n' + planContext + '\n' : ''}
-${verticalContext ? '\n' + verticalContext + '\n' : ''}
+${verticalContext.prompt ? '\n' + verticalContext.prompt + '\n' : ''}
 ${channelContext ? '\n' + channelContext + '\n' : ''}
 ${qualityContext.prompt ? '\n' + qualityContext.prompt + '\n' : ''}
 ${assessmentContext ? '\n' + assessmentContext + '\n' : ''}

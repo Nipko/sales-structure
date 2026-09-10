@@ -1,3 +1,5 @@
+import type { VerticalCapability } from './vertical-capability-manifest';
+
 /**
  * What Parallly Assist may create on the tenant's behalf — and, in the same
  * place and with the same weight, what it may not.
@@ -112,6 +114,28 @@ interface AgentOperationCommon {
     roles: readonly AgentOperationRole[];
     /** The screen that owns the object, for review afterwards or for the handoff. */
     route: string;
+    /**
+     * The vertical capability the destination screen belongs to, when it belongs
+     * to one.
+     *
+     * Without this the handoff makes a promise the panel then breaks. The
+     * dashboard hides a vertical surface a tenant's capabilities do not include
+     * and redirects anyone who asks for it, so offering `agenda.appointment.book`
+     * to a restaurant sent the owner to a screen the layout bounced them off —
+     * the exact shape of "the assistant told me to go somewhere that does not
+     * exist".
+     *
+     * It sits on the common shape rather than only on the routed one because a
+     * creation lands on a screen too: preparing a course for a restaurant ends
+     * on `/admin/catalog/courses`, which that tenant cannot open either.
+     *
+     * `undefined` means the screen is cross-vertical: channels, users, the agent
+     * editor, payments, FAQs, legal texts and offers are the same for everybody.
+     *
+     * It must agree with the dashboard's own route → item → capability map; the
+     * parity spec beside the resolver is what keeps the two from drifting.
+     */
+    readonly requiresCapability?: VerticalCapability;
 }
 
 export interface AgentExecutableOperation extends AgentOperationCommon {
@@ -204,6 +228,7 @@ export const AGENT_OPERATION_REGISTRY: readonly AgentOperationDefinition[] = Obj
     {
         key: 'catalogue.course.create',
         domain: 'catalogue',
+        requiresCapability: 'course_enrollment',
         availability: 'executable',
         effect: 'create',
         sideEffects: 'tenant_record_only',
@@ -215,6 +240,7 @@ export const AGENT_OPERATION_REGISTRY: readonly AgentOperationDefinition[] = Obj
     {
         key: 'agenda.service.create',
         domain: 'agenda',
+        requiresCapability: 'appointment_booking',
         availability: 'executable',
         effect: 'create',
         sideEffects: 'tenant_record_only',
@@ -294,6 +320,7 @@ export const AGENT_OPERATION_REGISTRY: readonly AgentOperationDefinition[] = Obj
         domain: 'agenda',
         availability: 'route_to_screen',
         reason: 'outward_facing_effect',
+        requiresCapability: 'appointment_booking',
         requirements: [],
         // A booking screen with no service and no availability has nothing to
         // book, and the two checks that say so are the ones to fix first.
@@ -310,6 +337,7 @@ export const AGENT_OPERATION_REGISTRY: readonly AgentOperationDefinition[] = Obj
         domain: 'agenda',
         availability: 'route_to_screen',
         reason: 'destructive_replacement',
+        requiresCapability: 'appointment_booking',
         requirements: [],
         readiness: [],
         resultCheck: 'tool_appointments',
@@ -319,10 +347,13 @@ export const AGENT_OPERATION_REGISTRY: readonly AgentOperationDefinition[] = Obj
     },
     {
         // A campaign schedules sends to the tenant's customers through a channel.
+        // `/admin/catalog/campaigns` is the education catalogue hub, not the
+        // cross-vertical one: the panel maps it to the `courses` surface.
         key: 'catalogue.campaign.create',
         domain: 'catalogue',
         availability: 'route_to_screen',
         reason: 'outward_facing_effect',
+        requiresCapability: 'course_enrollment',
         requirements: [],
         readiness: [],
         resultCheck: 'assessment',
@@ -596,6 +627,12 @@ export interface AppliedAgentContentObject {
 
 export type AgentOperationBlockedReason =
     | 'role_not_permitted'
+    /**
+     * The tenant's vertical does not include the capability the destination
+     * screen belongs to. A restaurant has no course catalogue: creating one
+     * would write a row into a table whose screen that tenant cannot open.
+     */
+    | 'vertical_capability_missing'
     | 'plan_limit_reached'
     | 'plan_feature_missing'
     /** The gate itself could not be read, so the answer is no. */

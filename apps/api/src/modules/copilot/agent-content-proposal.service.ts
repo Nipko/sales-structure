@@ -18,6 +18,7 @@ import { KnowledgeService } from '../knowledge/knowledge.service';
 import { ComplianceService } from '../compliance/compliance.service';
 import { CatalogService } from '../catalog/catalog.service';
 import { ServicesService } from '../appointments/services.service';
+import { VerticalsService } from '../verticals/verticals.service';
 import { ensureContentProposalSchema } from './agent-configuration-proposal-schema';
 import { PROPOSAL_TTL_MINUTES, proposalHash } from './agent-proposal-digest';
 import {
@@ -58,6 +59,7 @@ export class AgentContentProposalService {
         private readonly compliance: ComplianceService,
         private readonly catalog: CatalogService,
         private readonly services: ServicesService,
+        private readonly verticals: VerticalsService,
     ) {}
 
     // ─── The registry, as this caller sees it ───────────────────────────────
@@ -85,7 +87,8 @@ export class AgentContentProposalService {
                 result.push({ ...base, availability: 'blocked', reason: 'gate_unavailable' });
                 continue;
             }
-            const blocked = await this.gateVerdict(definition, context);
+            const blocked = await this.capabilityVerdict(definition, context)
+                ?? await this.gateVerdict(definition, context);
             result.push(blocked
                 ? { ...base, availability: 'blocked', reason: blocked }
                 : { ...base, availability: 'executable', reason: null });
@@ -272,7 +275,45 @@ export class AgentContentProposalService {
             .then(rows => rows[0] ?? null);
     }
 
+    /**
+     * The vertical gate, asked before the plan gate.
+     *
+     * A plan says how much of a thing a tenant may have; a vertical says whether
+     * the thing exists for them at all. `catalogue.course.create` is gated by
+     * neither a plan feature nor a limit, so before this a restaurant's admin
+     * could have Assist prepare a course, apply it, and write a row into a
+     * table whose screen the dashboard hides from them — created, audited, and
+     * unreachable.
+     *
+     * Fail-closed, and narrowly: an operation with no `requiresCapability` never
+     * reaches this method, so a vertical service that is down cannot block a FAQ
+     * or a legal text.
+     */
+    private async assertCapability(definition: AgentExecutableOperation, context: ContentOperationContext): Promise<void> {
+        const required = definition.requiresCapability;
+        if (!required) return;
+        const config = await this.verticals.getVerticalConfig(context.tenantId).catch((error: any) => {
+            this.logger.warn(`vertical capability read failed for ${context.tenantId}: ${error?.message}`);
+            return null;
+        });
+        const capabilities = Array.isArray(config?.effectiveCapabilities) ? config!.effectiveCapabilities : [];
+        if (!capabilities.includes(required as any)) {
+            throw new ForbiddenException({
+                error: 'vertical_capability_missing', operation: definition.key, capability: required,
+            });
+        }
+    }
+
+    /** The same vertical gate, asked as a question instead of an assertion. */
+    private async capabilityVerdict(definition: AgentExecutableOperation, context: ContentOperationContext): Promise<AgentOperationBlockedReason | null> {
+        if (!definition.requiresCapability) return null;
+        return this.assertCapability(definition, context)
+            .then(() => null)
+            .catch(() => 'vertical_capability_missing' as const);
+    }
+
     private async assertGate(definition: AgentExecutableOperation, context: ContentOperationContext): Promise<void> {
+        await this.assertCapability(definition, context);
         const gate = definition.gate;
         if (gate.kind === 'none') return;
         if (gate.kind === 'plan_feature') {
@@ -296,6 +337,7 @@ export class AgentContentProposalService {
             return null;
         } catch (error: any) {
             const code = typeof error?.getResponse === 'function' ? (error.getResponse() as any)?.error : undefined;
+            if (code === 'vertical_capability_missing') return 'vertical_capability_missing';
             if (code === 'plan_limit_reached') return 'plan_limit_reached';
             if (code === 'plan_feature_missing') return 'plan_feature_missing';
             return 'gate_unavailable';

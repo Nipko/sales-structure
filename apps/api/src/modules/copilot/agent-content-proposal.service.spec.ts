@@ -121,9 +121,20 @@ function harness(options: { knowledgeCount?: number; knowledgeLimit?: number } =
         }),
     };
 
+    // The tenant's vertical, as the capability gate reads it. Default: a
+    // business that has both surfaces, so the existing cases are unchanged and
+    // the ones that assert a refusal have to narrow it on purpose.
+    let capabilities: string[] = ['appointment_booking', 'course_enrollment', 'faq_search'];
+    const verticals: any = {
+        getVerticalConfig: jest.fn(async () => ({
+            industry: 'salud', subType: 'clinica', effectiveCapabilities: [...capabilities],
+        })),
+    };
+
     return {
-        service: new AgentContentProposalService(prisma, throttle, knowledgeService, compliance, catalog, servicesService),
-        prisma, throttle, knowledgeService, compliance, catalog, servicesService,
+        service: new AgentContentProposalService(prisma, throttle, knowledgeService, compliance, catalog, servicesService, verticals),
+        prisma, throttle, knowledgeService, compliance, catalog, servicesService, verticals,
+        setCapabilities: (value: string[]) => { capabilities = value; },
         ledger, knowledge, legalTexts, courses, services,
         setKnowledgeLimit: (value: number) => { knowledgeLimit = value; },
         setExistingKnowledge: (value: number) => { existingKnowledge = value; },
@@ -236,6 +247,38 @@ describe('AgentContentProposalService.propose', () => {
         await expect(kit.service.propose(TENANT, 'knowledge.faq.create', FAQ, SUPERVISOR)).resolves.toBeTruthy();
     });
 
+    it('el rubro del tenant frena antes que la cuota: un restaurante no tiene cursos', async () => {
+        const kit = harness();
+        // Las capacidades reales de un restaurante. `catalogue.course.create` no
+        // tiene cuota de plan ni feature flag, así que antes de esto el dueño
+        // podía pedirle a Assist un curso, aplicarlo, y escribir una fila en una
+        // tabla cuya pantalla el panel le esconde: creado, auditado e
+        // inalcanzable.
+        kit.setCapabilities(['restaurant_ordering', 'faq_search']);
+        const error = await kit.service.propose(TENANT, 'catalogue.course.create',
+            { name: 'Curso de sommelier', description: 'Cata y maridaje en ocho clases.' }, ADMIN).catch(e => e);
+        expect(error).toBeInstanceOf(ForbiddenException);
+        expect(detail(error)).toMatchObject({
+            error: 'vertical_capability_missing', operation: 'catalogue.course.create', capability: 'course_enrollment',
+        });
+        expect(kit.ledger).toHaveLength(0);
+        // Y lo transversal sigue disponible: el arreglo no puede apagar la FAQ
+        // de un restaurante, que es exactamente lo que sí puede escribir.
+        await expect(kit.service.propose(TENANT, 'knowledge.faq.create', FAQ, ADMIN)).resolves.toBeTruthy();
+    });
+
+    it('una capacidad que no se puede leer se responde que no, no que sí', async () => {
+        const kit = harness();
+        kit.verticals.getVerticalConfig.mockRejectedValue(new Error('vertical service down'));
+        const error = await kit.service.propose(TENANT, 'agenda.service.create',
+            { name: 'Corte', durationMinutes: 30, price: 1000, currency: 'cop' }, ADMIN).catch(e => e);
+        expect(detail(error)).toMatchObject({ error: 'vertical_capability_missing' });
+        // Fail-closed y estrecho: una operación sin capacidad exigida nunca
+        // llega a preguntar, así que el servicio caído no apaga la FAQ.
+        await expect(kit.service.propose(TENANT, 'knowledge.faq.create', FAQ, ADMIN)).resolves.toBeTruthy();
+        expect(kit.verticals.getVerticalConfig).toHaveBeenCalledTimes(1);
+    });
+
     it('un tenant inexistente no deja rastro', async () => {
         const kit = harness();
         kit.prisma.getTenantSchemaName.mockResolvedValue(null);
@@ -316,6 +359,18 @@ describe('AgentContentProposalService.apply', () => {
         expect(kit.knowledge).toHaveLength(0);
     });
 
+    it('el rubro se vuelve a mirar al aplicar, no se hereda de la revisión', async () => {
+        const kit = harness();
+        const proposal = await kit.service.propose(TENANT, 'catalogue.course.create',
+            { name: 'Anatomía I', description: 'Sistema óseo y muscular.' }, ADMIN);
+        // El rubro del negocio cambió entre la revisión y el clic. La propuesta
+        // vieja no puede ser el permiso: la pantalla que la reciba ya no existe.
+        kit.setCapabilities(['restaurant_ordering']);
+        const error = await kit.service.apply(TENANT, proposal.id, proposal.digest, ADMIN).catch(e => e);
+        expect(detail(error)).toMatchObject({ error: 'vertical_capability_missing' });
+        expect(kit.catalog.createCourse).not.toHaveBeenCalled();
+    });
+
     it('una propuesta consumida sin objeto no se reporta como verificada', async () => {
         const kit = harness();
         const proposal = await kit.service.propose(TENANT, 'knowledge.faq.create', FAQ, ADMIN);
@@ -366,6 +421,17 @@ describe('AgentContentProposalService.listOperations', () => {
         expect(byKey['publication.agent.publish']).toMatchObject({ availability: 'route_to_screen', reason: 'customer_facing_decision' });
         expect(byKey['roles.member.grant']).toMatchObject({ availability: 'route_to_screen', reason: 'privilege_decision' });
         expect(listed).toHaveLength(AGENT_OPERATION_REGISTRY.length);
+    });
+
+    it('lo que el rubro no incluye se informa como tal, no como "ejecutable"', async () => {
+        const kit = harness();
+        kit.setCapabilities(['restaurant_ordering', 'faq_search']);
+        const byKey = Object.fromEntries((await kit.service.listOperations(TENANT, ADMIN)).map(item => [item.key, item]));
+        // La misma respuesta que daría el camino de propose, para que preguntar
+        // "¿podés?" y pedirlo no puedan contestar cosas distintas.
+        expect(byKey['catalogue.course.create']).toMatchObject({ availability: 'blocked', reason: 'vertical_capability_missing' });
+        expect(byKey['agenda.service.create']).toMatchObject({ availability: 'blocked', reason: 'vertical_capability_missing' });
+        expect(byKey['knowledge.faq.create']).toMatchObject({ availability: 'executable', reason: null });
     });
 
     it('sin schema del tenant no inventa disponibilidad', async () => {

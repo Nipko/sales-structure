@@ -2,10 +2,18 @@ import fs from "node:fs";
 import path from "node:path";
 import {
     AGENT_HANDOFF_RETURN_PARAM,
+    AGENT_OPERATION_REGISTRY,
     buildAgentHandoff,
+    listVerticalCapabilityConfigurations,
     routedAgentOperations,
 } from "@parallext/shared";
+import type { VerticalCapability } from "@parallext/shared";
 import { NAVIGATION_ROUTES } from "./navigation-contract";
+import {
+    getVerticalDashboardItemForPath,
+    resolveVerticalDashboard,
+    type VerticalDashboardItem,
+} from "./vertical-dashboard-resolver";
 
 /**
  * El lado del panel del traspaso de Assist.
@@ -61,6 +69,78 @@ describe("traspaso de Assist a la pantalla que decide", () => {
             }
         }
         expect({ unread }).toEqual({ unread: [] });
+    });
+
+    /**
+     * La pantalla existe. La pregunta que sigue —y que nadie hacía— es si la
+     * persona a la que Assist la ofrece puede abrirla.
+     *
+     * El panel esconde una superficie vertical que las capacidades del tenant
+     * no incluyen y redirige a quien la pida. Assist ofrecía `/admin/appointments`
+     * a un restaurante y `/admin/catalog/campaigns` a cualquiera: el dueño
+     * seguía el consejo y el panel lo devolvía al asistente de puesta en marcha.
+     *
+     * El mapa de abajo NO es una copia: se calcula preguntándole al propio
+     * resolutor qué ítems enciende cada capacidad. Si mañana `courses` pasa a
+     * depender de otra capacidad, esto se pone rojo solo.
+     */
+    describe("las capacidades que la pantalla destino exige", () => {
+        const capabilities = [...new Set(
+            listVerticalCapabilityConfigurations().flatMap((profile) => profile.capabilities),
+        )] as VerticalCapability[];
+
+        /** Capacidad → ítems que enciende, según el resolutor y nadie más. */
+        const itemsOf = new Map<VerticalCapability, readonly VerticalDashboardItem[]>(
+            capabilities.map((capability) => [
+                capability,
+                // Sin `manifestVersion` el resolutor no filtra por rutas del
+                // subtipo, así que lo que vuelve es la proyección pura de la
+                // capacidad — que es exactamente lo que se quiere comparar.
+                resolveVerticalDashboard({ effectiveCapabilities: [capability] }).visibleItems,
+            ]),
+        );
+
+        it("toda operación con pantalla vertical declara la capacidad que la enciende", () => {
+            const wrong: string[] = [];
+            for (const operation of AGENT_OPERATION_REGISTRY) {
+                const item = getVerticalDashboardItemForPath(operation.route);
+                const declared = operation.requiresCapability as VerticalCapability | undefined;
+                if (!item) {
+                    // Cross-vertical: exigir una capacidad acá escondería la
+                    // pantalla de canales a media plataforma.
+                    if (declared) wrong.push(`${operation.key}: ${operation.route} no es vertical y exige ${declared}`);
+                    continue;
+                }
+                if (!declared) {
+                    wrong.push(`${operation.key}: ${operation.route} es la superficie "${item}" y no exige capacidad`);
+                    continue;
+                }
+                if (!(itemsOf.get(declared) || []).includes(item)) {
+                    wrong.push(`${operation.key}: exige ${declared}, que no enciende "${item}"`);
+                }
+            }
+            expect({ wrong }).toEqual({ wrong: [] });
+        });
+
+        it("un tenant sin la capacidad no ve la pantalla a la que se derivaría", () => {
+            // El otro lado del mismo hecho, dicho como lo vive el restaurante:
+            // con sus capacidades reales, la agenda y el catálogo de cursos no
+            // están, y por eso Assist no puede ofrecerlas.
+            const restaurant = resolveVerticalDashboard({
+                industry: "restaurantes",
+                effectiveCapabilities: ["restaurant_ordering", "faq_search"],
+            });
+            for (const route of ["/admin/appointments", "/admin/catalog/campaigns"]) {
+                const item = getVerticalDashboardItemForPath(route);
+                expect(item).not.toBeNull();
+                expect(restaurant.visibleItems).not.toContain(item!);
+            }
+            // Y las transversales sí, o el arreglo habría roto lo que servía.
+            for (const route of ["/admin/channels", "/admin/users", "/admin/agent",
+                "/admin/settings/integrations/payments", "/admin/catalog/offers"]) {
+                expect(getVerticalDashboardItemForPath(route)).toBeNull();
+            }
+        });
     });
 
     it("la marca de vuelta la lee el asistente, no cada pantalla", () => {

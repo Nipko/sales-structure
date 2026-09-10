@@ -1,4 +1,4 @@
-import { misleadingAssistOperations } from '@parallext/shared';
+import { misleadingAssistOperations, routedAgentOperations } from '@parallext/shared';
 import { CopilotService, CopilotChatRequest } from './copilot.service';
 
 const TENANT_ID = '11111111-1111-4111-8111-111111111111';
@@ -247,9 +247,12 @@ describe('CopilotService authenticated context', () => {
         const context = await (service as any).buildVerticalContext(TENANT_ID);
 
         expect(verticals.getVerticalConfig).toHaveBeenCalledWith(TENANT_ID);
-        expect(context).toContain('"industry":"turismo"');
-        expect(context).toContain('"subType":"alquiler_vacacional"');
-        expect(context).toContain('"nightly_booking"');
+        expect(context.prompt).toContain('"industry":"turismo"');
+        expect(context.prompt).toContain('"subType":"alquiler_vacacional"');
+        expect(context.prompt).toContain('"nightly_booking"');
+        // Las mismas capacidades como dato, no solo como prosa: es lo que
+        // decide qué pantallas se ofrecen, y por eso sale por separado.
+        expect(context.capabilities).toEqual(['crm_pipeline', 'nightly_booking']);
     });
 
     it('injects only server-derived vertical context into the support prompt', async () => {
@@ -359,6 +362,89 @@ describe('CopilotService authenticated context', () => {
             expect(prompt).toContain(`${pair.operation} NO resuelve ${pair.code}`);
         }
         expect(misleadingAssistOperations().length).toBeGreaterThan(0);
+    });
+
+    /**
+     * The handoff list, filtered by the two things that decide whether the
+     * screen opens at all.
+     *
+     * It used to be handed over whole. Assist would tell an inbox agent to open
+     * `/admin/users` and grant a role, and a vacation rental to open
+     * `/admin/appointments` — and the panel bounced both, because `roles.ts`
+     * denies by default and the layout hides a vertical surface the tenant's
+     * capabilities do not include.
+     */
+    describe('las derivaciones que el panel sí va a abrir', () => {
+        const operationsStub = () => ({ propose: jest.fn() });
+
+        it('no ofrece la pantalla de un rubro que este tenant no tiene', async () => {
+            // El fixture es un alquiler vacacional: `nightly_booking` y
+            // `crm_pipeline`, sin agenda ni cursos.
+            const { service, llmRouter } = createService(null, null, operationsStub());
+            jest.spyOn(service as any, 'searchKb').mockReturnValue([]);
+            await service.chat(chatRequest({ actorId: 'user-1' } as any));
+            const prompt = llmRouter.execute.mock.calls[0][0].systemPrompt;
+            expect(prompt).toContain('channels.account.connect → /admin/channels');
+            expect(prompt).toContain('roles.member.grant → /admin/users');
+            for (const key of ['agenda.appointment.book', 'agenda.availability.replace', 'catalogue.campaign.create']) {
+                expect(prompt).not.toContain(`${key} → `);
+            }
+        });
+
+        it('dice cuáles quedaron afuera y por qué, en vez de callarlas', async () => {
+            // Callarlas es peor: el modelo no puede distinguir "no existe" de
+            // "no te lo conté", así que inventa una disculpa o manda a otra
+            // pantalla. Enunciadas, contesta lo que pasa de verdad.
+            const { service, llmRouter } = createService(null, null, operationsStub());
+            jest.spyOn(service as any, 'searchKb').mockReturnValue([]);
+            await service.chat(chatRequest({ actorId: 'user-1' } as any));
+            const prompt = llmRouter.execute.mock.calls[0][0].systemPrompt;
+            expect(prompt).toContain('agenda.appointment.book (no forma parte de las capacidades de este rubro)');
+            expect(prompt).toContain('catalogue.campaign.create (no forma parte de las capacidades de este rubro)');
+        });
+
+        it('a un agente de inbox no le ofrece conceder roles ni publicar', async () => {
+            const { service, llmRouter } = createService(null, null, operationsStub());
+            jest.spyOn(service as any, 'searchKb').mockReturnValue([]);
+            await service.chat(chatRequest({ userRole: 'tenant_agent', actorId: 'user-1' } as any));
+            const prompt = llmRouter.execute.mock.calls[0][0].systemPrompt;
+            for (const key of ['roles.member.grant', 'publication.agent.publish', 'payments.rail.configure']) {
+                expect(prompt).not.toContain(`${key} → `);
+                expect(prompt).toContain(`${key} (la decide tenant_admin)`);
+            }
+        });
+
+        it('un rubro con agenda sí recibe la pantalla de agenda', async () => {
+            // El otro lado: el arreglo tiene que dejar pasar lo que sirve, o
+            // sería una pantalla menos para todos en vez de un consejo veraz.
+            const { service, llmRouter, verticals } = createService(null, null, operationsStub());
+            verticals.getVerticalConfig.mockResolvedValue({
+                industry: 'salud', subType: 'clinica_general',
+                effectiveCapabilities: ['appointment_booking', 'faq_search'],
+            });
+            jest.spyOn(service as any, 'searchKb').mockReturnValue([]);
+            await service.chat(chatRequest({ actorId: 'user-1' } as any));
+            const prompt = llmRouter.execute.mock.calls[0][0].systemPrompt;
+            expect(prompt).toContain('agenda.appointment.book → /admin/appointments');
+            expect(prompt).toContain('agenda.availability.replace → /admin/appointments');
+            expect(prompt).toContain('catalogue.campaign.create (no forma parte de las capacidades de este rubro)');
+        });
+
+        it('sin contexto vertical legible no ofrece ninguna pantalla vertical', async () => {
+            // Fail-closed. Una lista de capacidades vacía no autoriza nada, que
+            // es la dirección segura para una lista que decide qué ofrecer.
+            const { service, llmRouter, verticals } = createService(null, null, operationsStub());
+            verticals.getVerticalConfig.mockRejectedValue(new Error('vertical service down'));
+            jest.spyOn(service as any, 'searchKb').mockReturnValue([]);
+            await service.chat(chatRequest({ actorId: 'user-1' } as any));
+            const prompt = llmRouter.execute.mock.calls[0][0].systemPrompt;
+            const vertical = routedAgentOperations().filter(operation => operation.requiresCapability);
+            expect(vertical.length).toBeGreaterThan(0);
+            for (const operation of vertical) expect(prompt).not.toContain(`${operation.key} → `);
+            // Y las transversales siguen ahí: caerse el servicio vertical no
+            // puede dejar al dueño sin la pantalla de canales.
+            expect(prompt).toContain('channels.account.connect → /admin/channels');
+        });
     });
 
     it('never loads agent-quality context for tenant agents', async () => {

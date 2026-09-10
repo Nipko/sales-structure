@@ -13,6 +13,7 @@ import {
     type BenchmarkQuery, type BenchmarkRunner,
 } from './benchmark-harness';
 import { assertCertificationActor, type CertificationActor } from './certification-contract';
+import { gateScenario, gateUsage, type EvalGateResult } from './eval-gate-result';
 
 export const BENCHMARK_QUEUE = 'agent-benchmark';
 
@@ -288,19 +289,47 @@ export class BenchmarkService {
             const started = Date.now();
             try {
                 const snapshot = await this.agentTest.captureSnapshot(tenantId, subject.id);
-                const gate = await this.evals.runGateV2(tenantId, subject.id, {
+                const gate: EvalGateResult = await this.evals.runGateV2(tenantId, subject.id, {
                     channelType: task.channel, k: 1, passPolicy: 'all', agentSnapshot: snapshot,
-                    scenarios: [{ key: task.key, messages: [...task.messages], criteria: '', expectedActions: [] }],
+                    // The task's own effect checks, carried through. They were
+                    // dropped — `expectedActions: []` — so `passed` was the
+                    // judge's opinion of the words, while the comment beside it
+                    // promised the row had landed. A comparison built on that is
+                    // comparing prose.
+                    scenarios: [{
+                        key: task.key, messages: [...task.messages], criteria: '',
+                        expectedActions: [...(task.confirms ?? [])],
+                    }],
                 } as any);
-                const result = (gate?.results ?? [])[0];
+                // `scenarios`, not `results`. Reading a field the gate does not
+                // have returned `undefined` for every task, and `undefined`
+                // became `confirmed: false` at zero cost — a measured failure
+                // nobody measured, which then satisfied `comparable: true`
+                // against an alternative. That is a fabricated comparison
+                // wearing the shape of evidence.
+                const result = gateScenario(gate, task.key);
+                if (!result) {
+                    // The gate ran and said nothing about this task. Unchecked,
+                    // which the summary already knows how to refuse — not a
+                    // failure, which it would happily compare.
+                    return {
+                        confirmed: null, costUsdCents: null, latencyMs: Date.now() - started, transcript: [],
+                        error: 'benchmark_gate_returned_no_scenario',
+                    };
+                }
+                const usage = gateUsage(gate, result);
                 return {
                     // `confirmed` is the effect check, not the judge's opinion:
                     // the corpus counts a task done where the row lands.
-                    confirmed: result?.passed === true,
-                    costUsdCents: Math.max(0, Math.round(Number(gate?.costUsdCents ?? 0))),
+                    confirmed: result.passed === true,
+                    // Unknown stays unknown. Zero here reads downstream as "our
+                    // side answered this for free", which is a claim about a
+                    // competitor comparison that nobody measured.
+                    costUsdCents: usage.state === 'reported' ? usage.costUsdCents : null,
                     latencyMs: Date.now() - started,
-                    transcript: (result?.runs ?? []).flatMap((run: any) => run?.transcript ?? []),
-                    error: result?.error ? String(result.error).slice(0, 200) : null,
+                    transcript: (result.runs ?? []).flatMap(run =>
+                        [...((run?.transcript ?? []) as ReadonlyArray<{ role: 'user' | 'assistant'; content: string }>)]),
+                    error: result.error ? String(result.error).slice(0, 200) : null,
                 };
             } catch (error: any) {
                 // Unchecked, not failed. The summary treats the two differently

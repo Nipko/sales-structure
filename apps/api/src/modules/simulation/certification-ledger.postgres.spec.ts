@@ -58,7 +58,7 @@ const profileId = listCanonicalSubtypeExperienceProfileIds()[0];
         transaction(query => query<R>(text, params));
 
     const result = (over: Partial<CertificationCaseResult> = {}): CertificationCaseResult => ({
-        passed: true, servedModel: 'gpt-4.1-mini', costUsdCents: 1, latencyMs: 10,
+        passed: true, servedModel: 'gpt-4.1-mini', usage: { state: 'reported' as const, costUsdCents: 1 }, latencyMs: 10,
         transcript: [{ role: 'assistant', content: 'ok' }], tools: [], verification: { ok: true },
         scenario: { key: 'scenario' }, ...over,
     });
@@ -120,7 +120,7 @@ const profileId = listCanonicalSubtypeExperienceProfileIds()[0];
         expect(rescued.lease.leaseToken).not.toBe(stalled.lease.leaseToken);
 
         // The rescuer records. Then the stalled worker wakes up and tries to.
-        expect(await transaction(query => recordCertificationCase(query, rescued.lease, result({ costUsdCents: 3 }))))
+        expect(await transaction(query => recordCertificationCase(query, rescued.lease, result({ usage: { state: 'reported' as const, costUsdCents: 3 } }))))
             .toEqual({ ok: true });
         expect(await transaction(query => recordCertificationCase(query, stalled.lease, result({ passed: false }))))
             .toEqual({ ok: false, reason: 'lease_lost' });
@@ -134,7 +134,7 @@ const profileId = listCanonicalSubtypeExperienceProfileIds()[0];
         const lease = await transaction(query => leaseCertificationCase(query, run.id));
         expect(lease.ok).toBe(true);
         if (!lease.ok) return;
-        await transaction(query => recordCertificationCase(query, lease.lease, result({ passed: false, costUsdCents: 2 })));
+        await transaction(query => recordCertificationCase(query, lease.lease, result({ passed: false, usage: { state: 'reported' as const, costUsdCents: 2 } })));
         expect(await transaction(query => retryCertificationCase(query, run.id, lease.lease.caseKey)))
             .toEqual({ ok: true, attempt: 2 });
         const rows = await sql<any[]>(
@@ -158,7 +158,7 @@ const profileId = listCanonicalSubtypeExperienceProfileIds()[0];
         for (let index = 0; index < 3; index++) {
             const lease = await transaction(query => leaseCertificationCase(query, run.id));
             if (!lease.ok) break;
-            await transaction(query => recordCertificationCase(query, lease.lease, result({ costUsdCents: 2 })));
+            await transaction(query => recordCertificationCase(query, lease.lease, result({ usage: { state: 'reported' as const, costUsdCents: 2 } })));
         }
         const refused = await transaction(query => leaseCertificationCase(query, run.id));
         expect(refused).toEqual({ ok: false, stopReason: 'budget_exhausted' });

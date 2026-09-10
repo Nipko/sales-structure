@@ -3,6 +3,7 @@ import { revisionHash } from '../evaluation-revision/evaluation-revision';
 import { requiredScenarios } from './agent-certification';
 import { planCertificationRun, type CertificationPlan, type CertificationPlanInput } from './certification-plan';
 import { sealReleaseRun, type AgentReleaseRunEvidence } from './agent-release-policy';
+import { USAGE_UNKNOWN, type EvalUsage } from './eval-gate-result';
 
 /**
  * The durable ledger a catalogue certification run is made of.
@@ -391,8 +392,9 @@ export async function leaseCertificationCase(
 ): Promise<{ ok: true; lease: CertificationLease } | { ok: false; stopReason: CertificationStopReason }> {
     const [run] = await query<any[]>(
         `SELECT state, budget_usd_cents, deadline_at, mode,
-                (SELECT COALESCE(SUM(cost_usd_cents),0)::int FROM agent_certification_cases
-                  WHERE run_id = r.id) AS spent,
+                (SELECT COALESCE(SUM(COALESCE(cost_usd_cents, reserve_usd_cents)),0)::int
+                   FROM agent_certification_cases
+                  WHERE run_id = r.id AND state IN ('passed','failed','error')) AS spent,
                 (SELECT COALESCE(SUM(reserve_usd_cents),0)::int FROM agent_certification_cases
                   WHERE run_id = r.id AND state = 'leased'
                     AND (lease_expires_at IS NULL OR lease_expires_at >= clock_timestamp())) AS reserved
@@ -486,7 +488,15 @@ export interface CertificationCaseResult {
     readonly passed: boolean;
     /** The model that actually answered. A run that cannot name one proves nothing. */
     readonly servedModel: string;
-    readonly costUsdCents: number;
+    /**
+     * What it cost, or the admission that nobody said.
+     *
+     * It was `costUsdCents: number`, and every real run wrote 0 into it because
+     * the gate reports no usage. Zero is the one answer this must never invent:
+     * the provider has already done the work, and settling at zero releases the
+     * reservation and refills a ceiling that was never spent down.
+     */
+    readonly usage: EvalUsage;
     readonly latencyMs: number;
     readonly transcript: unknown;
     readonly tools: unknown;
@@ -508,9 +518,18 @@ export async function recordCertificationCase(
     query: CertificationQuery, lease: Pick<CertificationLease, 'caseId' | 'leaseToken'>, result: CertificationCaseResult,
 ): Promise<{ ok: boolean; reason?: 'lease_lost' }> {
     const state = result.errorCode ? 'error' : result.passed ? 'passed' : 'failed';
+    // NULL means "nobody said what this cost", and the budget reads a NULL cost
+    // as the whole reservation. Writing 0 — which a `number` field forced —
+    // released the reservation AND contributed nothing to what was spent, so the
+    // ceiling went back up after work the provider had already done. `not_run`
+    // is the only case that genuinely cost nothing.
+    const cost = result.usage.state === 'reported'
+        ? Math.max(0, Math.trunc(result.usage.costUsdCents ?? 0))
+        : result.usage.state === 'not_run' ? 0 : null;
     const rows = await query<any[]>(
-        // `lease_expires_at=NULL` releases the reservation as well as the lease:
-        // the case has a real cost now, and holding both would count it twice.
+        // The lease is released either way: this worker is done with the case.
+        // What that does NOT release is the exposure, which lives in the cost
+        // column and is only zero when somebody measured a zero.
         `UPDATE agent_certification_cases
             SET state=$3, served_model=$4, cost_usd_cents=$5, latency_ms=$6,
                 transcript=$7::jsonb, tools=$8::jsonb, verification=$9::jsonb, scenario=$10::jsonb,
@@ -518,7 +537,7 @@ export async function recordCertificationCase(
           WHERE id=$1::uuid AND lease_token=$2::uuid
       RETURNING id`,
         [lease.caseId, lease.leaseToken, state, result.servedModel,
-            Math.max(0, Math.trunc(result.costUsdCents)), Math.max(0, Math.trunc(result.latencyMs)),
+            cost, Math.max(0, Math.trunc(result.latencyMs)),
             JSON.stringify(result.transcript ?? null), JSON.stringify(result.tools ?? null),
             JSON.stringify(result.verification ?? null), JSON.stringify(result.scenario ?? null),
             result.errorCode ?? null],
@@ -538,19 +557,26 @@ export async function retryCertificationCase(
 ): Promise<{ ok: boolean; attempt?: number; reason?: 'not_retryable' }> {
     const [row] = await query<any[]>(
         `SELECT profile_id, scenario_key, language, channel_type, model, definition_hash,
-                MAX(attempt) OVER () AS last_attempt, state
+                reserve_usd_cents, MAX(attempt) OVER () AS last_attempt, state
            FROM agent_certification_cases
           WHERE run_id=$1::uuid AND case_key=$2
           ORDER BY attempt DESC LIMIT 1`, [runId, caseKey]);
     if (!row || !['failed', 'error'].includes(String(row.state))) return { ok: false, reason: 'not_retryable' };
     const attempt = Number(row.last_attempt) + 1;
+    // A retry costs what the first attempt cost. The column defaults to 0, so
+    // omitting it created an attempt with no reservation at all — leaseable
+    // under any remaining budget, including none, which makes the ceiling
+    // advisory from the second attempt onwards.
+    const reserve = Number(row.reserve_usd_cents);
+    if (!Number.isFinite(reserve) || reserve < 0) return { ok: false, reason: 'not_retryable' };
     await query(
         `INSERT INTO agent_certification_cases
-            (run_id, case_key, attempt, profile_id, scenario_key, language, channel_type, model, definition_hash)
-         VALUES ($1::uuid,$2,$3,$4,$5,$6,$7,$8,$9)
+            (run_id, case_key, attempt, profile_id, scenario_key, language, channel_type, model,
+             definition_hash, reserve_usd_cents)
+         VALUES ($1::uuid,$2,$3,$4,$5,$6,$7,$8,$9,$10)
          ON CONFLICT (run_id, case_key, attempt) DO NOTHING`,
         [runId, caseKey, attempt, row.profile_id, row.scenario_key, row.language,
-            row.channel_type, row.model, row.definition_hash]);
+            row.channel_type, row.model, row.definition_hash, Math.trunc(reserve)]);
     return { ok: true, attempt };
 }
 
@@ -844,8 +870,11 @@ export async function driveCertificationRun(
         try {
             result = await input.runner(claim.lease);
         } catch (error: any) {
+            // The runner threw AFTER it may already have called the provider.
+            // `unknown`, so the reservation is retained rather than released on
+            // the strength of an exception.
             result = {
-                passed: false, servedModel: '', costUsdCents: 0, latencyMs: 0,
+                passed: false, servedModel: '', usage: USAGE_UNKNOWN, latencyMs: 0,
                 transcript: null, tools: null, verification: null, scenario: {},
                 errorCode: String(error?.message ?? 'runner_failed').slice(0, 200),
             };

@@ -56,7 +56,7 @@ const profileId = listCanonicalSubtypeExperienceProfileIds()[0];
     const sql: CertificationQuery = <R = any[]>(text: string, params: any[] = []) =>
         transaction(query => query<R>(text, params));
     const result = (over: Partial<CertificationCaseResult> = {}): CertificationCaseResult => ({
-        passed: true, servedModel: 'gpt-4.1-mini', costUsdCents: 2, latencyMs: 10,
+        passed: true, servedModel: 'gpt-4.1-mini', usage: { state: 'reported' as const, costUsdCents: 2 }, latencyMs: 10,
         transcript: [], tools: [], verification: { ok: true }, scenario: { key: 'k' }, ...over,
     });
 
@@ -120,7 +120,7 @@ const profileId = listCanonicalSubtypeExperienceProfileIds()[0];
         const byId = new Map(priced.map(row => [String(row.id), Number(row.reserve)]));
         for (const lease of leases) {
             await transaction(query => recordCertificationCase(query, lease,
-                result({ costUsdCents: byId.get(lease.caseId) ?? 0 })));
+                result({ usage: { state: 'reported' as const, costUsdCents: byId.get(lease.caseId) ?? 0 } })));
         }
         expect((await certificationProgress(sql, run.id))!.spentUsdCents).toBeLessThanOrEqual(budget);
     }, 180000);
@@ -152,7 +152,7 @@ const profileId = listCanonicalSubtypeExperienceProfileIds()[0];
         expect(claim.ok).toBe(true);
         if (!claim.ok) return;
         await transaction(query => recordCertificationCase(query, claim.lease,
-            result({ costUsdCents: budget * 3 })));
+            result({ usage: { state: 'reported' as const, costUsdCents: budget * 3 } })));
         const progress = (await certificationProgress(sql, run.id))!;
         expect(progress.spentUsdCents).toBe(budget * 3);
         const refused = await transaction(query => leaseCertificationCase(query, run.id));
@@ -169,7 +169,7 @@ const profileId = listCanonicalSubtypeExperienceProfileIds()[0];
         if (!first.ok) return;
         // Settles at nothing, so the whole budget is free again and more work
         // can be handed out than the reservations alone would have allowed.
-        await transaction(query => recordCertificationCase(query, first.lease, result({ costUsdCents: 0 })));
+        await transaction(query => recordCertificationCase(query, first.lease, result({ usage: { state: 'reported' as const, costUsdCents: 0 } })));
         expect(await leasedReserve(run.id)).toBe(0);
         const second = await transaction(query => leaseCertificationCase(query, run.id));
         expect(second.ok).toBe(true);

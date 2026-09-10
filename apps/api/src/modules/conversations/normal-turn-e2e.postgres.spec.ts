@@ -191,6 +191,8 @@ const ready = !!databaseUrl && !!redisUrl;
     let crashAt: string | null = null;
     /** Ordering trace for the "enqueued before the 200" proof. */
     let ackTrace: string[] = [];
+    /** Overrides the attachment the faked model asks for, for one case. */
+    let attachment: { url: string; caption?: string; mediaType?: string } | null = null;
 
     const sql = (text: string, params: any[] = []): Promise<any[]> =>
         prisma.executeInTenantSchema(schema, text, params);
@@ -474,7 +476,9 @@ const ready = !!databaseUrl && !!redisUrl;
         conversations.generateResponse = jest.fn(async (...args: any[]) => {
             const effects = args[14];
             effects.paymentLinks.push(PAYMENT_LINK);
-            effects.media.push({ url: MEDIA_URL, caption: MEDIA_CAPTION });
+            // `attachment` lets one case ask for an audio or a document. It is
+            // set by the test and reset after, so every other case is unchanged.
+            effects.media.push(attachment ?? { url: MEDIA_URL, caption: MEDIA_CAPTION });
             effects.writers.push({ tool: 'create_payment_link', status: 'succeeded',
                 ledgerId: randomUUID(), receipt: PAYMENT_LINK });
             return REPLY_TEXT;
@@ -838,6 +842,42 @@ const ready = !!databaseUrl && !!redisUrl;
     });
 
     // ═════════════════════════════════════════════════════════════════════════
+    describe('the kind of an attachment survives the whole turn', () => {
+        afterEach(() => { attachment = null; });
+
+        /**
+         * Nothing carried a media kind: the tools returned `{url, caption}`, the
+         * sink kept it, `toDispatchTurnOutput` copied it, and the batch builder
+         * read the absent field as `image`. A voice note therefore left declared
+         * as a photo — a payload Meta rejects — taking its folded caption with
+         * it. This drives the real pipeline, not the builder alone.
+         */
+        it.each([
+            ['comprobante.mp4', 'video', 1],
+            ['nota.ogg', 'audio', 2],
+            ['factura.pdf', 'document', 1],
+        ])('delivers %s as a %s', async (file, kind, mediaEffects) => {
+            attachment = { url: `https://cdn.example.test/${file}`, caption: MEDIA_CAPTION };
+            const { wamid } = await deliverCustomerMessage(`mandame el ${kind}`);
+            const inboundMessageId = await inboundMessageIdFor(wamid);
+            const rows = await outboxRows(inboundMessageId);
+
+            const media = rows.filter(row => row.item_kind === 'media');
+            expect(media).toHaveLength(1);
+            expect(media[0].payload.mediaType).toBe(kind);
+
+            // Audio has no caption field at Meta, so its caption stays a second
+            // effect. Video and document carry it, so they are one. The count
+            // and the batch have to agree, or a saving is reported that the
+            // transport did not make.
+            expect(rows.filter(row => ['media', 'text'].includes(row.item_kind)))
+                .toHaveLength(mediaEffects);
+            // And the provider was told the same kind the row declares.
+            const performed = remoteEffects.filter(effect => effect.kind === 'media');
+            expect(performed[performed.length - 1].body).toContain(file);
+        });
+    });
+
     describe('a crash at each boundary', () => {
         /**
          * The inbound job is durable before the worker exists, so a process that

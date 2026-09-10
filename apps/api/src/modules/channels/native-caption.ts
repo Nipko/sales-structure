@@ -1,3 +1,5 @@
+import { toTelegramHtml } from '../../common/utils/channel-text-format.util';
+
 /**
  * When a caption and its attachment are ONE message, and when they are two.
  *
@@ -72,5 +74,22 @@ export function foldableCaption(
     const body = String(caption ?? '').trim();
     if (!body) return null;
     if (!carriesNativeCaption(channelType, mediaType)) return null;
-    return body.length <= MAX_NATIVE_CAPTION ? body : null;
+    // Measured as the PROVIDER will receive it, not as the model wrote it.
+    // Telegram captions are sent as HTML, and `toTelegramHtml` escapes on
+    // the way out: 1,024 ampersands become 5,120 characters of payload. The
+    // fold was decided on the raw string, so the request was rejected — and
+    // by then the separate caption item no longer existed to fall back to.
+    return renderedCaptionLength(channelType, body) <= MAX_NATIVE_CAPTION ? body : null;
+}
+
+/**
+ * How long this caption is once the transport has serialised it.
+ *
+ * WhatsApp sends the caption as text and only rewrites markdown, which
+ * cannot grow it past its own input. Telegram sends HTML.
+ */
+export function renderedCaptionLength(channelType: string | null | undefined, caption: string): number {
+    const channel = String(channelType ?? '').trim().toLowerCase();
+    if (channel === 'telegram') return toTelegramHtml(caption).length;
+    return caption.length;
 }

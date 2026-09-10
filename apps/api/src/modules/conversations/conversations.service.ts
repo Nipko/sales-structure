@@ -26,6 +26,7 @@ import { AgentTurnLedgerStore } from './agent-turn-ledger.store';
 import type { TurnEnvelope, TurnLedgerRow, TurnWriterRecord } from './agent-turn-ledger';
 import { DispatchRolloutService } from '../channels/dispatch-rollout.service';
 import { buildDispatchItems } from '../channels/dispatch-items';
+import { mediaKindFor } from '../channels/media-kind';
 import {
     compactTurnAnswer, toDispatchTurnOutput, type CompactedTurnAnswer,
 } from './turn-outcome-effects';
@@ -272,7 +273,7 @@ const PERSISTED_ID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{
  */
 interface TurnEffectSink {
     readonly paymentLinks: string[];
-    readonly media: { url: string; caption?: string }[];
+    readonly media: { url: string; caption?: string; mediaType?: string | null }[];
     /**
      * Which learned examples this reply actually derives from.
      *
@@ -3949,7 +3950,9 @@ export class ConversationsService {
             let finalResponse = '';
             // Media the LLM asked to send (e.g. product images), collected across
             // tool iterations and dispatched after the text reply.
-            const mediaToSend: Array<{ url: string; caption?: string }> = [];
+            // `mediaType` when a tool declares one. Nothing did, and every
+            // layer below read the absence as `image`.
+            const mediaToSend: Array<{ url: string; caption?: string; mediaType?: string | null }> = [];
 
             const planFeatures = session?.snapshot.runtimeInputs?.planFeatures ?? await this.throttle.getPlanFeatures(tenantId, executionContext);
             let allowedTiers = this.mapLlmTierToAllowed(planFeatures.llmTier);
@@ -4153,7 +4156,7 @@ export class ConversationsService {
                                 ? result._mediaToSend
                                 : [result._mediaToSend];
                             for (const m of items) {
-                                if (m?.url) mediaToSend.push({ url: m.url, caption: m.caption });
+                                if (m?.url) mediaToSend.push({ url: m.url, caption: m.caption, mediaType: m.mediaType ?? m.type ?? null });
                             }
                             delete result._mediaToSend;
                         }
@@ -4322,7 +4325,8 @@ export class ConversationsService {
                     continue;
                 }
                 if (effectSink) {
-                    effectSink.media.push({ url: mediaToSend[i].url, caption: mediaToSend[i].caption });
+                    effectSink.media.push({ url: mediaToSend[i].url, caption: mediaToSend[i].caption,
+                        mediaType: mediaToSend[i].mediaType ?? null });
                     continue;
                 }
                 await this.sendMedia(
@@ -5756,7 +5760,7 @@ export class ConversationsService {
         composed?: CompactedTurnAnswer;
         operationalScope?: ServedAgentAuthority; gapMs: number;
         /** Attachments the model requested by id; each caption is its own item. */
-        media?: readonly { url: string; caption?: string }[];
+        media?: readonly { url: string; caption?: string; mediaType?: string | null }[];
         /** Learned examples this reply derives from, or empty when it uses none. */
         learningFootprints?: readonly RuntimeLearningFootprint[];
         /** An interactive form, which can be the whole of what a turn produced. */
@@ -5816,7 +5820,12 @@ export class ConversationsService {
             const items = buildDispatchItems({
                 textChunks: output.textChunks,
                 paymentLinks: [...new Set(output.paymentLinks)],
-                media: (input.media || []).map(entry => ({ url: entry.url, caption: entry.caption })),
+                media: (input.media || []).map(entry => ({
+                    url: entry.url, caption: entry.caption,
+                    // Derived here rather than left absent, so the item the
+                    // batch commits declares what the transport will send.
+                    mediaType: mediaKindFor(entry.url, entry.mediaType),
+                })),
                 ...(input.flow ? { flow: { ...input.flow } } : {}),
                 // The channel decides whether a caption is a second charge.
                 // WhatsApp and Telegram bill a captioned attachment as one

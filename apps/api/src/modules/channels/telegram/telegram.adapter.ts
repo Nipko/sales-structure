@@ -9,6 +9,12 @@ import {
     type StrictDispatchOutcome, type StrictDispatchRequest, type StrictDispatchTransport,
 } from '../strict-dispatch-transport';
 import { foldableCaption } from '../native-caption';
+import { mediaKindFor, type MediaKind } from '../media-kind';
+
+/** One Telegram method per kind, so the two never drift apart. */
+const METHOD_BY_KIND: Readonly<Record<MediaKind, string>> = Object.freeze({
+    image: 'sendPhoto', video: 'sendVideo', audio: 'sendAudio', document: 'sendDocument',
+});
 
 /**
  * Telegram Bot API Adapter
@@ -73,7 +79,11 @@ export class TelegramAdapter implements IChannelAdapter, StrictDispatchTransport
         if (request.itemKind === 'media') {
             const mediaUrl = String(payload.mediaUrl ?? '');
             if (!mediaUrl.trim()) throw new Error('empty_media_payload');
-            const method = this.resolveMediaMethod(mediaUrl);
+            // The kind the ITEM declares wins over the filename: the batch
+            // builder already settled it with `mediaKindFor`, and a second
+            // opinion here is how the caption rule and the method disagree —
+            // one calling a `.ogg` an audio and the other a photo.
+            const method = METHOD_BY_KIND[mediaKindFor(mediaUrl, payload.mediaType as string | undefined)];
             // A caption attaches only when Telegram delivers it as ONE message —
             // which is every media kind it has, within 1,024 characters. Past
             // that limit `foldableCaption` answers null and the caption arrives

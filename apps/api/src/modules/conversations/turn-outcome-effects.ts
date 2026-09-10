@@ -43,6 +43,7 @@
  */
 
 import { carriesNativeCaption, foldableCaption, NATIVE_CAPTION_CHANNELS } from '../channels/native-caption';
+import { mediaKindFor } from '../channels/media-kind';
 
 /** What one turn decided to say, before it becomes transport effects. */
 export interface TurnAnswer {
@@ -121,7 +122,8 @@ export function countTurnEffects(answer: TurnAnswer, options: {
         // function that decides; asking it here rather than repeating the rule
         // is what stops this count from reporting a saving the transport did not
         // make — or missing one it did.
-        if (foldableCaption(options.channelType, entry.mediaType, entry.caption)) return total + 1;
+        if (foldableCaption(options.channelType,
+            mediaKindFor(entry.url, entry.mediaType), entry.caption)) return total + 1;
         return total + 1 + (entry.caption && entry.caption.trim() ? 1 : 0);
     }, 0);
     return textEffects + linkEffects + mediaEffects;
@@ -252,7 +254,8 @@ export function compactTurnAnswer(answer: TurnAnswer, options: {
     // reports and what the transport does cannot drift apart.
     const captioned = answer.media.filter(entry => entry.caption && entry.caption.trim());
     const foldable = captioned.filter(entry =>
-        options.lane === 'durable' && foldableCaption(options.channelType, entry.mediaType, entry.caption));
+        options.lane === 'durable' && foldableCaption(options.channelType,
+            mediaKindFor(entry.url, entry.mediaType), entry.caption));
     if (!captioned.length) {
         notes.push(note('caption_onto_media', false, 'no_captioned_attachment_this_turn'));
     } else if (options.lane === 'legacy') {
@@ -263,7 +266,8 @@ export function compactTurnAnswer(answer: TurnAnswer, options: {
         // caption past 1,024 characters — which is not a cheaper message but a
         // rejected payload, and is never truncated to make it fit.
         notes.push(note('caption_onto_media', false,
-            !carriesNativeCaption(options.channelType, captioned[0].mediaType)
+            !carriesNativeCaption(options.channelType,
+                mediaKindFor(captioned[0].url, captioned[0].mediaType))
                 ? (NATIVE_CAPTION_CHANNELS.has(options.channelType)
                     ? 'media_kind_has_no_caption_field'
                     : 'channel_needs_two_requests_for_a_caption')
@@ -301,7 +305,7 @@ export function compactTurnAnswer(answer: TurnAnswer, options: {
  */
 export function toDispatchTurnOutput(compacted: CompactedTurnAnswer): {
     textChunks: string[]; paymentLinks: string[];
-    media: { url: string; caption?: string | null }[]; flow?: unknown;
+    media: { url: string; caption?: string | null; mediaType?: string | null }[]; flow?: unknown;
 } {
     const { answer, linkCarryingChunks } = compacted;
     const carrying = new Set(linkCarryingChunks);
@@ -311,7 +315,14 @@ export function toDispatchTurnOutput(compacted: CompactedTurnAnswer): {
             ...answer.chunks.filter((_, index) => carrying.has(index)),
             ...answer.paymentLinks,
         ],
-        media: answer.media.map(entry => ({ url: entry.url, caption: entry.caption })),
+        // The kind travels with the attachment. It used to be dropped here,
+        // and the batch builder read the absent field as `image` — so an
+        // audio note left declared as a photo, which Meta rejects, and the
+        // caption folded onto it went down with the payload.
+        media: answer.media.map(entry => ({
+            url: entry.url, caption: entry.caption,
+            mediaType: mediaKindFor(entry.url, entry.mediaType),
+        })),
         ...(answer.flow ? { flow: answer.flow } : {}),
     };
 }

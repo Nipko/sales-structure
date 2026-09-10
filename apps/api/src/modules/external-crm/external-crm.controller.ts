@@ -18,7 +18,19 @@ import { ExternalCrmService } from './external-crm.service';
 import { CrmImportService } from './crm-import.service';
 import { CrmAdapterFactory } from './crm-adapter.factory';
 import { TenantGuard } from '../../common/guards/tenant.guard';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
 
+/**
+ * Binding a business to its CRM is an owner's decision, not an inbox operator's.
+ *
+ * Every tenant-scoped route below starts an OAuth flow that stores the tenant's
+ * credentials, tests them, unbinds them, or copies contacts across. They all
+ * carried `TenantGuard` and no `RolesGuard`, which answers "is this your
+ * tenant?" and never "may you do this in it" — so a `tenant_agent`, whose whole
+ * job is answering messages in the inbox, could disconnect the company's
+ * HubSpot or start an import into it.
+ */
 @Controller('external-crm')
 export class ExternalCrmController {
     constructor(
@@ -35,13 +47,15 @@ export class ExternalCrmController {
     }
 
     @Get(':tenantId/connections')
-    @UseGuards(AuthGuard('jwt'), TenantGuard)
+    @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
+    @Roles('super_admin', 'tenant_admin')
     async list(@Param('tenantId') tenantId: string) {
         return { success: true, data: await this.service.listConnections(tenantId) };
     }
 
     @Post(':tenantId/connect/:provider')
-    @UseGuards(AuthGuard('jwt'), TenantGuard)
+    @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
+    @Roles('super_admin', 'tenant_admin')
     async connect(
         @Param('tenantId') tenantId: string,
         @Param('provider') provider: string,
@@ -72,13 +86,15 @@ export class ExternalCrmController {
     }
 
     @Post(':tenantId/connections/:connectionId/test')
-    @UseGuards(AuthGuard('jwt'), TenantGuard)
+    @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
+    @Roles('super_admin', 'tenant_admin')
     async test(@Param('tenantId') tenantId: string, @Param('connectionId') connectionId: string) {
         return { success: true, data: await this.service.testConnection(tenantId, connectionId) };
     }
 
     @Delete(':tenantId/connections/:connectionId')
-    @UseGuards(AuthGuard('jwt'), TenantGuard)
+    @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
+    @Roles('super_admin', 'tenant_admin')
     async disconnect(@Param('tenantId') tenantId: string, @Param('connectionId') connectionId: string) {
         return { success: true, data: await this.service.disconnect(tenantId, connectionId) };
     }
@@ -86,13 +102,15 @@ export class ExternalCrmController {
     // ─── Initial import ──────────────────────────────────────────────────────
 
     @Get(':tenantId/connections/:connectionId/import/preview')
-    @UseGuards(AuthGuard('jwt'), TenantGuard)
+    @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
+    @Roles('super_admin', 'tenant_admin')
     async previewImport(@Param('tenantId') tenantId: string, @Param('connectionId') connectionId: string) {
         return { success: true, data: await this.importService.preview(tenantId, connectionId) };
     }
 
     @Post(':tenantId/connections/:connectionId/import/start')
-    @UseGuards(AuthGuard('jwt'), TenantGuard)
+    @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
+    @Roles('super_admin', 'tenant_admin')
     async startImport(
         @Param('tenantId') tenantId: string,
         @Param('connectionId') connectionId: string,
@@ -102,13 +120,15 @@ export class ExternalCrmController {
     }
 
     @Get(':tenantId/imports/:importId')
-    @UseGuards(AuthGuard('jwt'), TenantGuard)
+    @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
+    @Roles('super_admin', 'tenant_admin')
     async getImport(@Param('tenantId') tenantId: string, @Param('importId') importId: string) {
         return { success: true, data: await this.importService.getStatus(tenantId, importId) };
     }
 
     @Get(':tenantId/connections/:connectionId/imports')
-    @UseGuards(AuthGuard('jwt'), TenantGuard)
+    @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
+    @Roles('super_admin', 'tenant_admin')
     async listImports(@Param('tenantId') tenantId: string, @Param('connectionId') connectionId: string) {
         return { success: true, data: await this.importService.listImports(tenantId, connectionId) };
     }

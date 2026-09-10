@@ -308,7 +308,12 @@ export async function evidenceWithoutProvenance(
 export async function releasesForMessages(
     query: EvidenceQuery, messageIds: readonly string[],
 ): Promise<string[]> {
-    const ids = [...new Set(messageIds.map(value => String(value)).filter(Boolean))];
+    // Only well-formed uuids reach the cast. This runs inside the transaction
+    // that is about to write a verdict, and `$1::uuid[]` on a malformed id does
+    // not return nothing — it aborts every statement after it, including the
+    // INSERT this was called to enrich.
+    const ids = [...new Set(messageIds.map(value => String(value))
+        .filter(value => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)))];
     if (!ids.length) return [];
     const [ledger] = await query<any[]>("SELECT to_regclass('agent_turn_ledger')::text AS name");
     if (!ledger?.name) return [];

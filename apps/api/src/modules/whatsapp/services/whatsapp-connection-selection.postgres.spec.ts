@@ -90,7 +90,26 @@ const enabled = !!databaseUrl;
         }
     };
 
+    /**
+     * The suite supplies its own key instead of inheriting whatever the shell has.
+     *
+     * `WhatsappCryptoService` falls back to base64 when `ENCRYPTION_KEY` is
+     * absent or short, and base64 NEVER fails: it decodes anything, so the
+     * undecryptable-credential case below resolved instead of refusing. The
+     * suite passed for whoever had the variable exported and failed for whoever
+     * did not — a test whose verdict is a property of the shell.
+     *
+     * Production always has the key (it is in the critical env list, and
+     * `encryptToken` throws outright when NODE_ENV is production), so pinning it
+     * here is not a convenience: it is the only way this suite exercises the
+     * AES-256-GCM path the resolver actually runs against.
+     */
+    const KEY = 'a'.repeat(64);
+    let previousKey: string | undefined;
+
     beforeAll(async () => {
+        previousKey = process.env.ENCRYPTION_KEY;
+        process.env.ENCRYPTION_KEY = KEY;
         const url = new URL(databaseUrl!);
         if (!['localhost', '127.0.0.1'].includes(url.hostname) || !url.pathname.endsWith('_eval_isolation'))
             throw new Error('disposable_loopback_database_required');
@@ -132,6 +151,8 @@ const enabled = !!databaseUrl;
     });
 
     afterAll(async () => {
+        if (previousKey === undefined) delete process.env.ENCRYPTION_KEY;
+        else process.env.ENCRYPTION_KEY = previousKey;
         if (!client) return;
         try {
             for (const tenant of [tenantA, tenantB]) {

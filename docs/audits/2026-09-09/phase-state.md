@@ -28,7 +28,7 @@ suya y `npm run verify:artifacts` falla si se separan del código.
 | 7 — Playwright | **cerrada localmente** | `executed_evidence`: 168 pruebas, landing y dashboard, escritorio y móvil, cuatro idiomas, cuatro roles, aislamiento de tenant, teclado, landmarks, contraste medido con axe en los dos temas, reflow a 320 px y al 200 %, cero hostnames productivos y cero requests no declaradas. Dos corridas completas seguidas en verde | Publicar el agente se cubre como **destino** del traspaso, no como acto: `publication.agent.publish` abre `/admin/agent` y ahí se detiene. Las secciones del editor (herramientas, conocimiento, políticas, horario) se cubren por su pantalla, no campo por campo |
 | 8 — revisión adversarial | **cerrada localmente** | `derived`: barrido de los 125 controllers en tres categorías, cada excepción con su motivo; barrido mecánico del diff entero contra las clases de defecto que este repositorio ya conoce (cadena opcional corta, `$n` sin cast, `NOW()` en vencimientos, ruta sin guarda, clave i18n en menos de cuatro idiomas). `executed_evidence`: los 35 commits que cambian runtime leídos, los de dinero y privacidad línea por línea; cuatro huecos reales cerrados —uno de comportamiento, dos de cobertura y una etiqueta que contradecía a quien puede abrir la página—, cada uno con su prueba y su mutación | — |
 | 9 — verificación integral | **cerrada, repetida sobre este HEAD** | `executed_evidence`: tsc en frío en api/dashboard/whatsapp/landing/mobile/shared; builds de los cinco; bootstrap de Nest; **tres órdenes de suite** (por defecto, semilla 4711, semilla 90210) más una corrida final, todas con **603 suites y 6.568 pruebas, cero falladas y cero omitidas**; 168 pruebas de navegador; migraciones bajo escritura concurrente; `git diff --check` limpio; artefactos regenerados sin diff | — |
-| 10 — rama de revisión y draft PR | **hecha** | `executed_evidence`: rama `claude/agent-platform-finalization-20260909` y draft PR [#21](https://github.com/Nipko/sales-structure/pull/21), abiertos después de repetir la fase 9 entera sobre este HEAD. Los disparadores se leyeron antes de empujar: `deploy.yml` y `release.yml` sólo corren en `main`, así que una rama no despliega nada, y el único job con clave de modelo real (`weekly`) está limitado a la programación dominical o a un lanzamiento manual — el PR lo reporta como `skipping` | Los checks del PR, y después la revisión de una persona. Sin merge |
+| 10 — rama de revisión y draft PR | **hecha** | `executed_evidence`: rama `claude/agent-platform-finalization-20260909` y draft PR [#21](https://github.com/Nipko/sales-structure/pull/21), abiertos después de repetir la fase 9 entera sobre este HEAD. Los disparadores se leyeron antes de empujar: `deploy.yml` y `release.yml` sólo corren en `main`, así que una rama no despliega nada, y el único job con clave de modelo real (`weekly`) está limitado a la programación dominical o a un lanzamiento manual — el PR lo reporta como `skipping`. Checks remotos **en verde**: `Chromium smoke` (168 pruebas, 10m57s), `PR contract and unit evidence` (5m49s) y GitGuardian; los dos jobs de push/programación quedan en `skipping`. Sigue en draft y sin merge | — |
 | 11 — staging | **bloqueada** | — | Requiere credenciales de staging |
 
 ## Lo que esta tanda encontró y arregló
@@ -86,6 +86,32 @@ empezó a medirse.
     incompleto**: `current?.operational.body` es opcional un nivel y después no,
     así que la excepción se iba al límite de error del recorrido y dejaba la
     única pantalla que una cuenta nueva no puede saltear girando sin mensaje.
+
+### Lo que encontró el primer PR (fase 10)
+
+19. **Tres contratos de lint que nadie había corrido.** El job del PR falló con
+    37 errores de ESLint en la API, y el de dashboard ni siquiera arrancaba:
+    `eslint .` moría con «could not find plugin jsx-a11y» antes de mirar un
+    archivo, porque el bloque de reglas se aplicaba a TODOS y el plugin sólo
+    está registrado para el glob de `eslint-config-next`. La puerta de
+    accesibilidad que ese archivo describe nunca se ejecutó. Su afirmación sí
+    era cierta —con el lint andando, `src/` tiene cero errores y los conteos de
+    deuda del comentario (235, 231, 23, 20, 12, 1, 1, 1) son exactos—, pero
+    nadie lo había comprobado.
+20. **Un barrido que no podía encontrar nada.** `terms-binding-inventory.spec.ts`
+    armaba su patrón dentro de un template literal: ahí `` es el carácter de
+    retroceso y `\s` es una `s` suelta, así que la expresión que se compilaba era
+    `<BS>price s*=`. La prueba que vigila que ningún camino de dinero vuelva a
+    leer una columna viva no coincidía con nada y pasaba siempre.
+21. **Cinco `throw` dentro de `finally`.** Cada uno protegía un `DROP SCHEMA` de
+    un nombre inesperado — el chequeo correcto en el lugar equivocado: `finally`
+    corre con otro error en vuelo, así que activar el guardia reemplazaba el
+    fallo del que iba la prueba por una queja de limpieza.
+22. **Una condición de seguridad leída desde una ref durante el render.** En el
+    asistente de puesta en marcha, `blocked` —lo que impide probar un borrador
+    con cambios sin guardar— salía de `dirtyRef.current`, y una ref no programa
+    un dibujo. Funcionaba sólo porque cada escritura venía pegada a un
+    `setState`.
 
 ### Lo que encontró leer los commits uno por uno (fase 8)
 

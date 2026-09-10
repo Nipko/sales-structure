@@ -135,8 +135,12 @@ describe('ConversationsService durable reply producer', () => {
             learningFootprints: [],
         }));
         const items = (h.dispatchOutbox.prepare.mock.calls[0] as any[])[1].items;
+        // CHANGED, deliberately: this used to assert two `text` items for two
+        // bubbles. From 1 October Meta bills each delivered message, so two
+        // bubbles that fit in one body were two charges for one answer. The
+        // producer now folds them, and the customer reads the same words.
         expect(items.map((item: any) => [item.kind, item.payload.text]))
-            .toEqual([['text', 'Primero'], ['text', 'Después']]);
+            .toEqual([['text', 'Primero\n\nDespués']]);
     });
 
     it('publishes each item on its own, staggered', async () => {
@@ -206,12 +210,26 @@ describe('ConversationsService durable reply producer', () => {
             const h = harness({ enabled: true });
             await expect(run(h.service, { paymentLinks, media })).resolves.toBe(true);
             const items = h.dispatchOutbox.prepare.mock.calls[0][1].items;
+            // CAMBIADO a propósito: eran CINCO efectos —dos burbujas, el enlace,
+            // la foto y su caption— para una sola respuesta. Desde el 1 de
+            // octubre cada uno es un cargo. Ahora las burbujas se unen y el
+            // servidor pega la URL canónica al final de esa burbuja; el ítem
+            // conserva la clase `payment_link`, así que la procedencia del
+            // enlace sigue estando donde una disputa la lee. El caption sigue
+            // siendo su propio efecto: si falla, la foto no se reenvía.
             expect(items.map((item: any) => item.kind))
-                .toEqual(['text', 'text', 'payment_link', 'media', 'text']);
-            expect(items[2].payload.text).toBe('https://checkout.test/abc');
-            expect(items[3].payload.mediaUrl).toBe('https://example.test/a.jpg');
-            // El caption es su propio efecto: si falla, la foto no se reenvía.
-            expect(items[4].payload.text).toBe('Mira este');
+                .toEqual(['payment_link', 'media', 'text']);
+            expect(items[0].payload.text).toBe('Primero\n\nDespués\n\nhttps://checkout.test/abc');
+            expect(items[1].payload.mediaUrl).toBe('https://example.test/a.jpg');
+            expect(items[2].payload.text).toBe('Mira este');
+        });
+
+        it('pega la URL tal cual la devolvió la herramienta, sin que la escriba el modelo', async () => {
+            const h = harness({ enabled: true });
+            const url = 'https://checkout.test/abc?ref=a%2Fb&x=1';
+            await run(h.service, { paymentLinks: [url] });
+            const items = h.dispatchOutbox.prepare.mock.calls[0][1].items;
+            expect(items[0].payload.text.endsWith(url)).toBe(true);
         });
 
         it('deduplica el enlace, porque dos herramientas pueden devolver el mismo', async () => {
@@ -224,6 +242,17 @@ describe('ConversationsService durable reply producer', () => {
         it('sigue siendo el mismo lote de texto cuando el turno no produjo efectos', async () => {
             const h = harness({ enabled: true });
             await expect(run(h.service, { paymentLinks: [], media: [] })).resolves.toBe(true);
+            // CAMBIADO: un solo ítem de texto, por la misma razón que arriba.
+            expect(h.dispatchOutbox.prepare.mock.calls[0][1].items.map((item: any) => item.kind))
+                .toEqual(['text']);
+        });
+
+        it('no une burbujas que no caben en un cuerpo de WhatsApp', async () => {
+            // Un cuerpo que WhatsApp rechaza no es un mensaje más barato: son
+            // cero mensajes y un error. Ahí el reparto se conserva.
+            const h = harness({ enabled: true });
+            const long = 'a'.repeat(2600);
+            await run(h.service, { chunks: [long, long], paymentLinks: [], media: [] });
             expect(h.dispatchOutbox.prepare.mock.calls[0][1].items.map((item: any) => item.kind))
                 .toEqual(['text', 'text']);
         });

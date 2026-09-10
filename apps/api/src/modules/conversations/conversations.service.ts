@@ -26,6 +26,9 @@ import { AgentTurnLedgerStore } from './agent-turn-ledger.store';
 import type { TurnEnvelope, TurnLedgerRow, TurnWriterRecord } from './agent-turn-ledger';
 import { DispatchRolloutService } from '../channels/dispatch-rollout.service';
 import { buildDispatchItems } from '../channels/dispatch-items';
+import {
+    compactTurnAnswer, toDispatchTurnOutput, type CompactedTurnAnswer,
+} from './turn-outcome-effects';
 import { ChannelTokenService } from '../channels/channel-token.service';
 import { ConversationsGateway } from './conversations.gateway';
 import { HandoffService } from '../handoff/handoff.service';
@@ -1106,6 +1109,12 @@ export class ConversationsService {
         let deliveryChunks = recoveredEnvelope?.chunks.length
             ? [...recoveredEnvelope.chunks]
             : (response ? this.splitResponseIntoChunks(response) : []);
+        // True once these words come from a row rather than from this attempt —
+        // recovered, resumed, or adopted from a concurrent attempt that recorded
+        // first. Such an answer is delivered in the shape it was stored in: the
+        // other attempt may already be sending it, and a differently folded copy
+        // would be a second answer wearing the same identity.
+        let answerIsStored = !!recoveredEnvelope || !!resumedReply;
         if (turnEffects.flow && !turnEffects.flow.flowId) delete turnEffects.flow;
         if ((response || turnEffects.flow) && !recoveredEnvelope && !isErrorFallback(response || '')
             && this.turnLedger && priorTurn) {
@@ -1130,6 +1139,7 @@ export class ConversationsService {
                     + `adopting the stored answer instead of the one just generated`);
                 response = stored.envelope.text;
                 deliveryChunks = [...stored.envelope.chunks];
+                answerIsStored = true;
                 turnEffects.paymentLinks.splice(0, turnEffects.paymentLinks.length, ...stored.envelope.paymentLinks);
                 turnEffects.media.splice(0, turnEffects.media.length, ...stored.envelope.media.map(entry =>
                     entry.caption === undefined ? { url: entry.url } : { url: entry.url, caption: entry.caption }));
@@ -1207,15 +1217,41 @@ export class ConversationsService {
                 // Deliver long, multi-paragraph replies as 2-3 natural bubbles (more
                 // human than a wall of text). Short replies go as one message. Bubbles
                 // are staggered so they arrive in order with a brief pause.
-                const chunks = deliveryChunks;
                 const CHUNK_GAP_MS = 1200;
+                // One answer, as few charged messages as the transport can
+                // honestly carry. From 1 October Meta bills the message, not the
+                // answer, so words + link + picture leaving as three requests is
+                // three charges for one thing the agent said. The fold happens
+                // here, once, so both delivery paths send the same shape — and
+                // never for a recovered or resumed answer, whose effects may
+                // already be identified, queued, or in the customer's hand.
+                const composed = compactTurnAnswer({
+                    chunks: deliveryChunks,
+                    paymentLinks: turnEffects.paymentLinks,
+                    media: turnEffects.media,
+                    flow: turnEffects.flow ?? null,
+                }, {
+                    lane: 'durable', channelType: normalizedMsg.channelType,
+                    recovered: answerIsStored,
+                });
+                if (composed.after !== composed.before) {
+                    this.logger.log(`[Dispatch] one answer compacted from ${composed.before} to `
+                        + `${composed.after} chargeable effect(s): `
+                        + composed.notes.filter(entry => entry.applied)
+                            .map(entry => `${entry.rule}(-${entry.saved})`).join(', '));
+                }
+                const chunks = composed.answer.chunks;
                 // The durable path records the bubbles and their history in one
                 // transaction and answers true; otherwise this tenant and channel
                 // keep the two independent writes they have today.
                 const durable = await this.dispatchReplyThroughOutbox({
                     tenantId, schemaName, conversation, inboundMsg: normalizedMsg, inboundMessageId,
-                    chunks, operationalScope: turnScope, gapMs: CHUNK_GAP_MS,
-                    paymentLinks: turnEffects.paymentLinks, media: turnEffects.media,
+                    // Both: the folded answer for the batch builder, and the same
+                    // bubbles and links flat, so a reader of this call — and the
+                    // recovery contract — still sees what is being sent.
+                    chunks, paymentLinks: composed.answer.paymentLinks,
+                    composed, operationalScope: turnScope, gapMs: CHUNK_GAP_MS,
+                    media: turnEffects.media,
                     learningFootprints: turnEffects.learningFootprints,
                     flow: turnEffects.flow,
                 });
@@ -1244,8 +1280,12 @@ export class ConversationsService {
                     // moving them here is what lets one decision cover the whole
                     // turn, and the identifiers keep a reprocessed turn from
                     // delivering any of it twice.
+                    // Only the links compaction could not fold into the words.
+                    // The folded ones already travelled inside their bubble, and
+                    // its history row carries the URL, so nothing is lost — one
+                    // fewer charge, and the same thing on the customer's screen.
                     let linkIndex = 0;
-                    for (const url of new Set(turnEffects.paymentLinks)) {
+                    for (const url of new Set(composed.answer.paymentLinks)) {
                         await this.sendPaymentLink(tenantId, normalizedMsg, url);
                         await this.saveAiMessage(
                             tenantId, conversation.id, url, normalizedMsg.channelType,
@@ -5650,10 +5690,17 @@ export class ConversationsService {
 
     private async dispatchReplyThroughOutbox(input: {
         tenantId: string; schemaName: string; conversation: any; inboundMsg: NormalizedMessage;
-        inboundMessageId?: string; chunks: readonly string[];
-        operationalScope?: ServedAgentAuthority; gapMs: number;
+        inboundMessageId?: string; chunks?: readonly string[];
         /** Canonical URLs from tool receipts, never a URL the model typed. */
         paymentLinks?: readonly string[];
+        /**
+         * The answer already folded by the caller, so both delivery paths send
+         * the same shape. Absent when a caller hands over raw bubbles; then the
+         * fold happens here, because a producer that skipped it would be the one
+         * paying for three messages where one would do.
+         */
+        composed?: CompactedTurnAnswer;
+        operationalScope?: ServedAgentAuthority; gapMs: number;
         /** Attachments the model requested by id; each caption is its own item. */
         media?: readonly { url: string; caption?: string }[];
         /** Learned examples this reply derives from, or empty when it uses none. */
@@ -5663,10 +5710,17 @@ export class ConversationsService {
     }): Promise<boolean> {
         const { tenantId, conversation, inboundMsg } = input;
         const contactId = String(conversation?.contact_id || '');
+        const composed = input.composed ?? compactTurnAnswer({
+            chunks: input.chunks ?? [],
+            paymentLinks: input.paymentLinks ?? [],
+            media: input.media ?? [],
+            flow: input.flow ?? null,
+        }, { lane: 'durable', channelType: inboundMsg.channelType });
+        const answer = composed.answer;
         if (!this.dispatchOutbox || !this.dispatchRollout || !input.operationalScope
             || !input.inboundMessageId || !PERSISTED_ID.test(input.inboundMessageId)
             || !PERSISTED_ID.test(contactId)
-            || !(input.chunks.length || input.flow || input.paymentLinks?.length || input.media?.length)) return false;
+            || !(answer.chunks.length || input.flow || answer.paymentLinks.length || input.media?.length)) return false;
         const binding = {
             conversationId: String(conversation.id), contactId,
             inboundMessageId: input.inboundMessageId,
@@ -5699,9 +5753,15 @@ export class ConversationsService {
             // and the pictures travel in this batch or not at all: leaving them
             // outside would put an effect of this answer beyond the recovery
             // and deduplication that the batch is for.
+            //
+            // The bubble that now ends in a canonical URL is handed over as a
+            // payment link, not as text: `buildDispatchItems` gives it the
+            // `payment_link` kind, so folding the link saved a charge without
+            // losing the provenance a later dispute reads.
+            const output = toDispatchTurnOutput(composed);
             const items = buildDispatchItems({
-                textChunks: [...input.chunks],
-                paymentLinks: [...new Set(input.paymentLinks || [])],
+                textChunks: output.textChunks,
+                paymentLinks: [...new Set(output.paymentLinks)],
                 media: (input.media || []).map(entry => ({ url: entry.url, caption: entry.caption })),
                 ...(input.flow ? { flow: { ...input.flow } } : {}),
             });

@@ -58,6 +58,21 @@ export const OUTBOUND_PAYLOAD_DDL: readonly string[] = Object.freeze([
         ON outbound_payloads USING GIN (release_ids) WHERE payload IS NOT NULL`,
 ]);
 
+/**
+ * Does this tenant have the table yet?
+ *
+ * Asked before every read and every redaction, and not as a courtesy. These run
+ * inside somebody else's transaction — a contact erasure, a release retirement —
+ * where a query against a missing relation does not return nothing, it aborts
+ * every statement after it and the COMMIT fails. Catching the error does not
+ * help. `to_regclass` answers NULL instead of failing, which is why it goes
+ * first.
+ */
+async function hasOutboundPayloads(query: OutboundPayloadQuery): Promise<boolean> {
+    const [row] = await query<any[]>("SELECT to_regclass('outbound_payloads')::text AS name");
+    return !!row?.name;
+}
+
 export async function ensureOutboundPayloads(query: OutboundPayloadQuery): Promise<void> {
     for (const statement of OUTBOUND_PAYLOAD_DDL) await query(statement);
 }
@@ -100,6 +115,7 @@ export async function storeOutboundPayload(
 export async function loadOutboundPayload(
     query: OutboundPayloadQuery, id: string,
 ): Promise<StoredOutboundPayload | null> {
+    if (!await hasOutboundPayloads(query)) return null;
     const [row] = await query<any[]>(
         `SELECT id, payload, redacted_at, redacted_reason, sent_at FROM outbound_payloads WHERE id = $1::uuid`, [id]);
     if (!row) return null;
@@ -120,6 +136,7 @@ export async function loadOutboundPayload(
  * rather than deleting it.
  */
 export async function markOutboundPayloadSent(query: OutboundPayloadQuery, id: string): Promise<void> {
+    if (!await hasOutboundPayloads(query)) return;
     await query(
         `UPDATE outbound_payloads
             SET payload = NULL, sent_at = NOW(), redacted_reason = 'delivered'
@@ -137,6 +154,7 @@ export async function redactOutboundPayloadsForRelease(
     query: OutboundPayloadQuery, releaseIds: readonly string[],
 ): Promise<number> {
     if (!releaseIds.length) return 0;
+    if (!await hasOutboundPayloads(query)) return 0;
     const rows = await query<any[]>(
         `UPDATE outbound_payloads
             SET payload = NULL, redacted_at = NOW(), redacted_reason = 'retraction'
@@ -155,6 +173,7 @@ export async function redactOutboundPayloadsForContact(
     query: OutboundPayloadQuery, contactIds: readonly string[],
 ): Promise<number> {
     if (!contactIds.length) return 0;
+    if (!await hasOutboundPayloads(query)) return 0;
     const rows = await query<any[]>(
         `UPDATE outbound_payloads
             SET payload = NULL, redacted_at = NOW(), redacted_reason = 'erasure'

@@ -96,7 +96,7 @@ export default defineConfig({
       // Kept as a project rather than a viewport override inside each test so
       // adding a spec covers both sizes without anybody remembering to.
       name: "dashboard-mobile",
-      testMatch: /dashboard[\/](session-and-roles|locales-and-access|assist-handoffs|guided-tours|oauth-return|signup-to-first-agent)\.spec\.ts$/,
+      testMatch: /dashboard[\/](session-and-roles|locales-and-access|assist-handoffs|guided-tours|oauth-return|signup-to-first-agent|assist-proposal-loop)\.spec\.ts$/,
       use: {
         ...devices["Pixel 7"],
         baseURL: dashboardUrl,

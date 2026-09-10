@@ -36,6 +36,34 @@ const USER_COLUMNS: ReadonlyArray<[string, string]> = [
     ['last_name', 'TEXT'],
 ];
 
+/**
+ * Columnas de `public.channel_accounts`. La tercera tabla global que empezó a
+ * tener una copia por suite, con el mismo desenlace: `tenant_id` era UUID en
+ * una y TEXT en otra, así que una prueba pasaba sola y moría en la corrida
+ * completa por un cast que no tenía nada que ver con lo que probaba.
+ *
+ * Los tipos son los de `20260301000000_init` —`VARCHAR` donde init pone
+ * `VARCHAR`— porque una copia más flaca deja pasar acá lo que producción
+ * rechaza. Nulables, como el resto del andamiaje: `ADD COLUMN NOT NULL` sin
+ * default no se puede aplicar sobre una tabla que ya tiene filas.
+ *
+ * `waba_timezone` va sin el CHECK que trae la migración a propósito: la prueba
+ * que verifica ese CHECK lo aplica ella misma y tiene que poder verlo aparecer.
+ */
+const CHANNEL_ACCOUNT_COLUMNS: ReadonlyArray<[string, string]> = [
+    ['tenant_id', 'UUID'],
+    ['channel_type', 'VARCHAR(50)'],
+    ['account_id', 'VARCHAR(255)'],
+    ['display_name', "VARCHAR(255) DEFAULT ''"],
+    ['access_token', "TEXT DEFAULT ''"],
+    ['refresh_token', 'TEXT'],
+    ['webhook_secret', 'TEXT'],
+    ['is_active', 'BOOLEAN DEFAULT true'],
+    ['metadata', "JSONB DEFAULT '{}'::jsonb"],
+    ['created_at', 'TIMESTAMPTZ DEFAULT NOW()'],
+    ['updated_at', 'TIMESTAMPTZ DEFAULT NOW()'],
+];
+
 async function ensure(exec: Exec, table: string, columns: ReadonlyArray<[string, string]>): Promise<void> {
     await exec(`CREATE TABLE IF NOT EXISTS public.${table}(id UUID PRIMARY KEY)`);
     for (const [name, type] of columns) {
@@ -53,4 +81,5 @@ async function ensure(exec: Exec, table: string, columns: ReadonlyArray<[string,
 export async function ensureSyntheticGlobalTables(exec: Exec): Promise<void> {
     await ensure(exec, 'tenants', TENANT_COLUMNS);
     await ensure(exec, 'users', USER_COLUMNS);
+    await ensure(exec, 'channel_accounts', CHANNEL_ACCOUNT_COLUMNS);
 }

@@ -4,6 +4,7 @@ import { join } from 'path';
 import { Client } from 'pg';
 import { PrismaClient } from '@prisma/client';
 import { PrismaService } from './prisma.service';
+import { ensureSyntheticGlobalTables } from '../../common/__fixtures__/synthetic-global-tables';
 
 /**
  * The additive migrations of this programme, applied WHILE the turn is writing.
@@ -72,6 +73,13 @@ const WRITERS = 6;
         // The global table the migrations read to find the tenants.
         await admin.query(`CREATE TABLE IF NOT EXISTS public.tenants(
             id UUID PRIMARY KEY, schema_name TEXT NOT NULL UNIQUE)`);
+        // And the tables a migration in this window WIDENS rather than creates.
+        // `20260301000000_init` makes `channel_accounts`, so it is there in any
+        // real chain; this suite applies only the additive window, so the shared
+        // scaffold has to stand in for the base. Shared, not copied: a private
+        // copy is how two suites ended up with different types for the same
+        // column and a green run depended on which ran first.
+        await ensureSyntheticGlobalTables(sql => admin.query(sql));
 
         const template = readFileSync(join(__dirname, '../../../prisma/tenant-schema.sql'), 'utf8');
         const slice = template.slice(

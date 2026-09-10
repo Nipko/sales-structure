@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import { Client } from 'pg';
+import { ensureSyntheticGlobalTables } from '../../../common/__fixtures__/synthetic-global-tables';
 
 /**
  * ═══ DOS DEFINICIONES DE LAS MISMAS DOS TABLAS ═══
@@ -59,16 +60,15 @@ integration('the two definitions of the WhatsApp spend ledger agree', () => {
         // 2. The migration, driven by a tenants row exactly as it will be in
         //    production — including the loop and the schema lookup it does.
         await q(`CREATE SCHEMA "${migrated}"`);
-        // `public.tenants` is provisioned for every worker by the global setup
-        // and has no default on `id`, exactly as production does not — so the
-        // id is supplied rather than assumed. `IF NOT EXISTS` is the fallback
-        // for a database that has neither table yet; on one that has them this
-        // is a no-op and the real shapes are what the migration meets.
-        await q(`CREATE TABLE IF NOT EXISTS public.tenants(
-            id UUID PRIMARY KEY, schema_name TEXT NOT NULL)`);
-        await q(`CREATE TABLE IF NOT EXISTS public.channel_accounts(
-            id UUID PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id TEXT,
-            channel_type TEXT, account_id TEXT)`);
+        // The two global tables the migration reads and widens, from the one
+        // fixture every suite shares. A private copy here is what made this
+        // suite pass alone and fail in a full run: `tenant_id` was UUID in the
+        // neighbouring suite and TEXT in this one, and whichever ran first in a
+        // worker defined the table for the rest — so a probe died on a cast that
+        // had nothing to do with what it was testing.
+        await ensureSyntheticGlobalTables(sql => q(sql));
+        // No default on `id`, exactly as the fixture and the real table for
+        // `tenants` have none, so it is supplied rather than assumed.
         await q('INSERT INTO public.tenants(id, schema_name) VALUES(gen_random_uuid(), $1)', [migrated]);
         await q(readFileSync(resolve(__dirname,
             `../../../../prisma/migrations/${MIGRATION}/migration.sql`), 'utf8'));
@@ -209,15 +209,17 @@ integration('the two definitions of the WhatsApp spend ledger agree', () => {
             // make `Intl.DateTimeFormat` reject every price forever — a channel
             // that stopped delivering with no explanation. The database refusing
             // it turns that into a failure on the day it is written.
+            const account = `INSERT INTO public.channel_accounts(id, tenant_id, channel_type,
+                account_id, waba_timezone)
+                VALUES(gen_random_uuid(), gen_random_uuid(), 'whatsapp', $1, $2)`;
+
             await q('SAVEPOINT probe');
-            await expect(q(`INSERT INTO public.channel_accounts(tenant_id, channel_type,
-                account_id, waba_timezone) VALUES('t','whatsapp','n1','12')`)).rejects.toThrow();
+            await expect(q(account, ['n1', '12'])).rejects.toThrow();
             await q('ROLLBACK TO SAVEPOINT probe');
 
             await q('SAVEPOINT probe');
             for (const zone of ['America/Bogota', 'America/Argentina/Buenos_Aires', 'UTC']) {
-                await q(`INSERT INTO public.channel_accounts(tenant_id, channel_type,
-                    account_id, waba_timezone) VALUES('t','whatsapp',$1,$2)`, [zone, zone]);
+                await q(account, [zone, zone]);
                 // A zone the CHECK admits must also be a zone the runtime can
                 // format with, or the constraint is agreeing with itself.
                 expect(() => new Intl.DateTimeFormat('en-CA', { timeZone: zone })).not.toThrow();

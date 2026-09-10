@@ -256,6 +256,32 @@ export class WhatsappController {
     };
   }
 
+  // ======================== BILLING TIME ZONE ========================
+
+  @Post('connection/billing-timezone')
+  @RequiresVerifiedEmail('sensitive_admin')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('super_admin', 'tenant_admin')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Set the IANA time zone Meta\'s charges for a number are dated in' })
+  async setBillingTimeZone(@Request() req: any, @Body() body: {
+    phoneNumberId: string;
+    /** An IANA zone, e.g. `America/Bogota`. Never Meta's numeric `timezone_id`. */
+    timeZone: string;
+  }) {
+    const tenantId = req.user?.tenantId;
+    if (!tenantId) throw new BadRequestException('User does not belong to a tenant');
+    // The number is named explicitly rather than resolved: this is a decision
+    // about WHICH account pays, so choosing one on the caller's behalf would be
+    // the very substitution the resolvers were fixed to stop making.
+    if (!body?.phoneNumberId?.trim()) {
+      throw new BadRequestException('phoneNumberId es obligatorio: la zona es de un número, no del tenant');
+    }
+    const result = await this.connectionService.setBillingTimeZone(
+      tenantId, body.phoneNumberId.trim(), body.timeZone);
+    return { success: true, data: result };
+  }
+
   // ======================== BUSINESS PROFILE ========================
 
   @Get('business-profile')

@@ -8,6 +8,10 @@ import { TenantThrottleService } from '../../throttle/tenant-throttle.service';
 import { AGENT_QUALITY_DEPENDENCIES_UPDATED } from '../../quality/agent-quality-events';
 import { ConnectionRefusedError } from '../../channels/connection-refusal';
 import type { ResolvedConnection, SendContextRequest } from '../../channels/channel-token.service';
+// Validated by the very function that will price with it: a zone this cannot
+// format is a zone every later charge would refuse, so accepting one here would
+// only move the failure to the first message somebody tries to send.
+import { wabaLocalDate } from '../../billing/whatsapp-rates';
 
 const META_GRAPH = 'https://graph.facebook.com/v21.0';
 
@@ -206,6 +210,11 @@ export class WhatsappConnectionService {
             wabaId,
             phoneNumberId,
             source: 'manual_connect',
+            // Meta's own timezone id, kept as EVIDENCE and never as a zone: it is
+            // a numeric Facebook id (`12`), not IANA, and the CHECK on
+            // `waba_timezone` refuses one. Storing it means the mapping can be
+            // done later without asking Meta again for every connection.
+            ...(data.timezoneId ? { metaTimezoneId: String(data.timezoneId) } : {}),
           },
         },
       });
@@ -222,6 +231,11 @@ export class WhatsappConnectionService {
             wabaId,
             phoneNumberId,
             source: 'manual_connect',
+            // Meta's own timezone id, kept as EVIDENCE and never as a zone: it is
+            // a numeric Facebook id (`12`), not IANA, and the CHECK on
+            // `waba_timezone` refuses one. Storing it means the mapping can be
+            // done later without asking Meta again for every connection.
+            ...(data.timezoneId ? { metaTimezoneId: String(data.timezoneId) } : {}),
           },
         },
       });
@@ -466,6 +480,53 @@ export class WhatsappConnectionService {
 
     throw new ConnectionRefusedError('credential_missing',
       { tenantId, channelType: 'whatsapp', requestedAccountId: base.phoneNumberId });
+  }
+
+  // ======================== BILLING TIME ZONE ========================
+
+  /**
+   * The IANA zone Meta's charges for this number are dated in.
+   *
+   * From 1 October 2026 the rate depends on the effective date and the free
+   * thousand resets per number per calendar month. Both questions are "what day,
+   * and what month, is it for THIS account?" and only the WABA's own zone
+   * answers them: a tenant can hold numbers in two countries, and 23:30 on
+   * 30 September in Bogotá is already October in UTC.
+   *
+   * It is set by hand on purpose. Meta returns `timezone_id`, which is a NUMERIC
+   * Facebook id and not a zone; mapping it would mean shipping Facebook's table
+   * from memory, and a wrong entry silently dates charges in the wrong month —
+   * exactly the kind of thing that must not be guessed. The number Meta gave is
+   * kept in `metadata.metaTimezoneId` so the mapping can be done later against
+   * the real table, without asking Meta again for every connection.
+   *
+   * Until a zone is set the resolver refuses to price rather than defaulting.
+   */
+  async setBillingTimeZone(tenantId: string, phoneNumberId: string, timeZone: string): Promise<{
+    phoneNumberId: string; timeZone: string;
+  }> {
+    const zone = String(timeZone ?? '').trim();
+    // Validated against the runtime that will USE it, not against a list of
+    // shapes: a zone this rejects is one every price would then refuse.
+    if (!zone || wabaLocalDate(new Date(), zone) === null) {
+      throw new BadRequestException(
+        `"${zone}" no es una zona horaria IANA (ej. America/Bogota). Meta devuelve un id numérico, que no sirve acá.`);
+    }
+    const account = await this.prisma.channelAccount.findFirst({
+      where: { tenantId, channelType: 'whatsapp', accountId: phoneNumberId },
+      select: { id: true },
+    });
+    // The same refusal vocabulary as every other "that connection is not this
+    // tenant's" answer, so a caller reads one set of codes.
+    if (!account) {
+      throw new ConnectionRefusedError('connection_not_found',
+        { tenantId, channelType: 'whatsapp', requestedAccountId: phoneNumberId });
+    }
+    await this.prisma.channelAccount.update({
+      where: { id: account.id }, data: { wabaTimezone: zone },
+    });
+    this.logger.log(`WhatsApp ${phoneNumberId} of tenant ${tenantId} is now billed in ${zone}`);
+    return { phoneNumberId, timeZone: zone };
   }
 
   // ======================== BUSINESS PROFILE ========================

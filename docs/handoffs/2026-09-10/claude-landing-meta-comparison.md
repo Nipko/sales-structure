@@ -17,6 +17,7 @@ No pidas permiso para preparar contenido, implementar correcciones locales, trad
 - [Auditoría de 34 rutas y claims](../../research/2026-09-10/landing-claims-and-content-audit.md).
 - [Copy maestro y arquitectura de información](../../research/2026-09-10/landing-positioning-and-content-plan.md).
 - [Núcleo de pagos en es/en/pt/fr](../../research/2026-09-10/landing-billing-copy.i18n.json).
+- [Tarjeta Meta: recorrido y separación de seguridad](../../research/2026-09-10/meta-card-setup-and-security-contract.md).
 - Contratos de producto actuales, `billing_plans`, flags de disponibilidad, política de canales/verticales y fuentes de calidad que se citan en esos documentos.
 
 Revisa los hallazgos contra HEAD; las pruebas históricas y cifras del inventario no certifican el release nuevo. Mantén la distinción entre implementado, probado localmente, piloto y producción. No publiques 76 perfiles certificados cuando el reporte conocido tiene cero.
@@ -46,6 +47,8 @@ Corrige en una proyección reusable del catálogo, no con filtros aislados en la
 API, home, tabla de precios, quiz, soluciones, signup y dashboard deben compartir la semántica. El catálogo sin respuesta muestra un error recuperable, no un precio fijo de respaldo. La jurisdicción fiscal se resuelve con configuración/condición comercial validada; no cambies tratamiento tributario sólo para que coincida con la landing.
 
 ## L2 — pagos y configuración comprensibles
+
+Implementa el contrato de tarjeta y seguridad enlazado arriba. Para pago directo: guía propia → página oficial externa de Meta → retorno → relectura backend. Distingue Embedded Signup del alta de tarjeta; no construir un iframe propio ni prometer una API de tarjetas. Explica también el formulario real de suscripción: frontend Parallly → tokenización Wompi → fuente/consentimiento en backend. Protege el frontend y la instrumentación; no publicar garantías generales basadas sólo en tokenización. La misma tarjeta física puede tener dos registros independientes; enviar desde Parallly sí puede generar consumo Meta aunque no tengamos sus datos bancarios.
 
 Implementa bloque de tres pagos en home/precios, aviso cercano al CTA y página canónica propuesta `/costos-whatsapp`. Reutiliza texto/contrato en signup, onboarding, canales y Assist. Evita mostrar todas las condiciones únicamente en una FAQ o footer.
 

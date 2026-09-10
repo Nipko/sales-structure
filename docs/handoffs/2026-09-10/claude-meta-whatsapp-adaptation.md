@@ -76,6 +76,8 @@ Prueba 999/1000/1001, dos números con distribución desigual, varios países, m
 
 ### Assist y configuración guiada
 
+Aplicar [el contrato de tarjeta Meta y separación de seguridad](../../research/2026-09-10/meta-card-setup-and-security-contract.md): ingreso en página oficial Meta, guía/retorno/comprobación en Parallly y autorización de consumo separada de la suscripción. Conserva las ramas directo/partner/desconocido y la frontera real del formulario Wompi de Parallly.
+
 Integra el paso pago Meta en el contrato real de readiness y resoluciones de Assist, no sólo en un tour. Explica quién cobra, por qué, estimación y límite antes de activar. Abre el destino correcto, relee al volver, muestra última comprobación y no confunde suscripción Parallly con financiación Meta.
 
 La tarjeta se introduce en Meta. No pedir PAN/CVV en chat, guardarlo en logs ni simular un formulario de tarjeta con una API inexistente. Una atestación manual no es verificación del proveedor.

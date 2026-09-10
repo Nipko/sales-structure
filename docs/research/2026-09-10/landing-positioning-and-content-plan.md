@@ -262,6 +262,8 @@ La calculadora de margen de la investigación es **interna**: no publicar costos
 
 ### Recorrido de configuración
 
+Aplicar la [especificación de tarjeta y seguridad](meta-card-setup-and-security-contract.md): guía en Parallly, ingreso de tarjeta en el sitio oficial de Meta y comprobación al volver. Reutilizar sus textos de destino externo, datos y autorizaciones; no describir el formulario SaaS propio como un iframe Wompi.
+
 Texto de entrada: “Conectar el número y configurar cómo se paga son dos pasos distintos.”
 
 Primero resolver la modalidad: pago directo, financiación por partner o desconocida. La landing pública explica las alternativas; la guía de una cuenta elige el flujo con datos verificados. Los pasos siguientes corresponden **sólo a pago directo**:

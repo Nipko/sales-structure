@@ -71,6 +71,8 @@ Un error confirmado de pago debe pausar nuevos envíos cobrables de la cuenta af
 
 ## Recorrido recomendado para añadir el medio de pago
 
+La [especificación de tarjeta y seguridad](meta-card-setup-and-security-contract.md) fija el recorrido: guía en Parallly, página oficial externa de Meta, retorno y consulta de estado. Distingue la ventana de conexión del alta de tarjeta, las ramas de pagador y la frontera real del formulario SaaS con Wompi.
+
 1. Antes de conectar: “Tu plan Parallly cubre plataforma e IA. Meta cobra el uso de WhatsApp por separado según destino y mensaje”. Mostrar simulador y presupuesto; no llamar gratuito a todo lo que ocurre dentro de 24h.
 2. Completar Embedded Signup v4 y registrar activos/credencial; estado “Conexión realizada; falta revisar facturación”.
 3. Consultar cuenta de mensajes. Si falta método, ofrecer “Configurar pago en Meta”. La ruta documentada es WhatsApp Manager → cuenta correcta → administrar configuración → configuración de pago → Billing & payments → añadir método. En cuentas migradas, explicar que la sección se llama Cuenta de mensajes. [F3, F6]

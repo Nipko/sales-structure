@@ -197,6 +197,6 @@ export class ComplianceController {
     ) {
         const schema = await this.schemaFor(tenantId);
         const result = await this.complianceService.eraseContactData(schema, tenantId, contactId, user.id || user.sub);
-        return { success: true, data: result };
+        return { success: result.completed, data: result };
     }
 }

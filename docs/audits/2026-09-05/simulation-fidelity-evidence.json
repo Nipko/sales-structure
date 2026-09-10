@@ -1,0 +1,45 @@
+{
+  "scope": "Real SimulationService methods with isolated dependencies; no DB, LLM or network.",
+  "requestedChannel": "web_widget",
+  "requestPassedToAgentTest": {
+    "message": "Bonjour",
+    "conversationHistory": []
+  },
+  "toolsDisabled": true,
+  "immutablePersonaSnapshotPassedToAgentTest": false,
+  "customerSimulatorFailureBecomes": "[FIN]",
+  "baselineWithPreviouslyPassingScenarioNowError": {
+    "total": 2,
+    "scored": 1,
+    "failed": 1,
+    "byDifficulty": {
+      "medium": {
+        "count": 1,
+        "avg": 9
+      }
+    },
+    "avgSubScores": {
+      "resolution": 9,
+      "tone": 9,
+      "accuracy": 9,
+      "empathy": 9
+    },
+    "worst": [
+      {
+        "key": "A",
+        "title": "A",
+        "overall": 9,
+        "resolved": true,
+        "flags": []
+      }
+    ],
+    "baseline": {
+      "runId": "baseline-audit",
+      "baselineAvg": 9,
+      "avgDelta": 0,
+      "regressions": [],
+      "improvements": [],
+      "hasRegression": false
+    }
+  }
+}

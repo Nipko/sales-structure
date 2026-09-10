@@ -1,3 +1,6 @@
+import type { ServiceExecutionContext } from '../../common/types/execution-context';
+import type { PaymentAgentExecution } from './payment-agent-authority';
+import { ServedAgentAuthorityError, validServedAgentAuthority } from '../persona/served-agent-authority';
 import {
     BadRequestException,
     ConflictException,
@@ -8,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { createHash, randomBytes, timingSafeEqual } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
+import { agreedTermsRefusalKey, countAgreedTermsOrphans, isMissingAgreedTermsRefusal } from './agreed-terms-orphans';
 import { RedisService } from '../redis/redis.service';
 import { WhatsappCryptoService } from '../whatsapp/services/whatsapp-crypto.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
@@ -779,14 +783,36 @@ export class TenantPaymentsService {
         });
     }
 
-    async getRuntimeCapability(tenantId: string): Promise<{
+    /**
+     * The dry run an operator has to be able to ask for before a deploy: how
+     * many live orders and appointments would stop being payable, in which
+     * states, and which ones by id. No personal data crosses the boundary.
+     */
+    async agreedTermsOrphans(tenantId: string) {
+        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
+        if (!schemaName) return null;
+        return this.prisma.transactionInTenantSchema(schemaName, query =>
+            countAgreedTermsOrphans(((sql: string, params: any[] = []) => query(sql, params)) as any));
+    }
+
+    /** How many charges this tenant has been refused for want of agreed terms. */
+    async agreedTermsRefusals(tenantId: string): Promise<Record<string, number>> {
+        const out: Record<string, number> = {};
+        for (const kind of ['order', 'appointment']) {
+            const value = await this.redis.get?.(agreedTermsRefusalKey(tenantId, kind)).catch(() => null);
+            out[kind] = Number(value ?? 0) || 0;
+        }
+        return out;
+    }
+
+    async getRuntimeCapability(tenantId: string, executionContext?: ServiceExecutionContext): Promise<{
         configured: boolean;
         ready: boolean;
         statusAvailable: boolean;
         activeProvider?: TenantPaymentProvider;
     }> {
         const config = await this.getConfig(tenantId);
-        const statusAvailable = this.store ? await this.store.isAvailable(tenantId) : false;
+        const statusAvailable = this.store ? await this.store.isAvailable(tenantId, executionContext) : false;
         return {
             configured: config.connected,
             ready: config.ready && statusAvailable,
@@ -1009,7 +1035,7 @@ export class TenantPaymentsService {
         payerEmail?: string;
         idempotencyKey?: string;
     }): Promise<PaymentLink>;
-    async createPaymentLink(input: CreateTenantPaymentLinkInput): Promise<PaymentLink>;
+    async createPaymentLink(input: CreateTenantPaymentLinkInput, execution?: PaymentAgentExecution): Promise<PaymentLink>;
     async createPaymentLink(
         tenantOrInput: string | CreateTenantPaymentLinkInput,
         legacyInput?: {
@@ -1019,9 +1045,10 @@ export class TenantPaymentsService {
             externalReference: string;
             payerEmail?: string;
             idempotencyKey?: string;
-        },
+        } | PaymentAgentExecution,
     ): Promise<PaymentLink> {
         if (typeof tenantOrInput === 'string') {
+            if (!legacyInput || 'operationalScope' in legacyInput) throw new BadRequestException({error:'invalid_payment_request'});
             await this.assertCustomerPaymentsEntitled(tenantOrInput);
             const stored = await this.readStoredConfig(tenantOrInput);
             if (stored.activeProvider === 'wompi') {
@@ -1031,6 +1058,10 @@ export class TenantPaymentsService {
         }
 
         const input = tenantOrInput;
+        const execution = legacyInput && 'operationalScope' in legacyInput ? legacyInput : undefined;
+        if (execution && !validServedAgentAuthority(execution.operationalScope, execution.operationalScope?.schemaName, input.tenantId)) {
+            throw new ServedAgentAuthorityError();
+        }
         await this.assertCustomerPaymentsEntitled(input.tenantId);
         const reference = input.canonicalReference || input.payableReference || '';
         const owned = await this.resolveOwnedPayable(input.tenantId, input.contactId, reference);
@@ -1076,7 +1107,7 @@ export class TenantPaymentsService {
                 providerConfigRevision: config.providers[provider].configRevision || 0,
             },
             expiresAt,
-        });
+        }, execution?.operationalScope);
         if (intent.status === 'pending'
             && intent.expiresAt
             && intent.expiresAt.getTime() <= Date.now()) {
@@ -1123,6 +1154,19 @@ export class TenantPaymentsService {
                 status: intent.status,
             });
         }
+
+        // The callback runs after credentials/body preparation, adjacent to POST.
+        // COMMIT grants this invocation one attempt; publishing afterwards cannot
+        // cancel it. No lock spans provider I/O, and a retry never receives the token.
+        let admissionAttempted = false;
+        let admissionId: string | undefined;
+        const admit = async () => {
+            if (!execution) return;
+            if (admissionAttempted) throw new ServiceUnavailableException('payment_dispatch_already_admitted');
+            admissionAttempted = true;
+            admissionId = await store.admitAgentCreation(input.tenantId, intent.id, execution.operationalScope);
+            if (!admissionId) throw new ServiceUnavailableException('payment_admission_receipt_unavailable');
+        };
 
         let providerLockToken: string | null = null;
         try {
@@ -1172,6 +1216,13 @@ export class TenantPaymentsService {
                 throw new BadRequestException({ error: 'wompi_not_configured' });
             }
             let knownProviderLinkId: string | undefined;
+            try { await admit(); }
+            catch (error) {
+                const rejected = error instanceof ServedAgentAuthorityError;
+                await store.markCreationState(input.tenantId, intent.id, rejected ? 'failed' : 'ambiguous',
+                    rejected ? error.code : 'payment_admission_outcome_unknown');
+                throw error;
+            }
             try {
                 const link = await this.requireWompiClient().createAndVerifyPaymentLink({
                     publicKey: credentials.publicKey,
@@ -1241,7 +1292,7 @@ export class TenantPaymentsService {
                 externalReference: owned.canonicalReference,
                 payerEmail: input.payerEmail,
                 idempotencyKey,
-            });
+            }, execution ? admit : undefined);
             knownMercadoPagoLinkId = link.id;
             const attached = await store.attachProviderLink({
                 tenantId: input.tenantId,
@@ -1256,7 +1307,7 @@ export class TenantPaymentsService {
             const recoverableLinkId = providerError?.providerLinkId || knownMercadoPagoLinkId;
             const state = recoverableLinkId
                 ? 'requires_review'
-                : providerError?.ambiguous ? 'ambiguous' : 'failed';
+                : providerError?.ambiguous || (!providerError && admissionAttempted && !(error instanceof ServedAgentAuthorityError)) ? 'ambiguous' : 'failed';
             await store.markCreationState(
                 input.tenantId,
                 intent.id,
@@ -1494,7 +1545,19 @@ export class TenantPaymentsService {
             if (!row
                 || !Number.isSafeInteger(amountCents)
                 || amountCents <= 0
-                || !/^[A-Z]{3}$/.test(currency)) return null;
+                || !/^[A-Z]{3}$/.test(currency)) {
+                // One refusal here means something very different from the
+                // others: the row exists and nobody recorded what the customer
+                // agreed to, so a real person is holding a link that will not
+                // work. Returning a bare `null` for that made it look exactly
+                // like a typo in a reference. It is counted and named now, so an
+                // alert can watch one key instead of a log nobody greps.
+                if (isMissingAgreedTermsRefusal(row, parsed.kind)) {
+                    this.logger.warn(`[tenant-payments] ${parsed.canonicalReference} refused: no agreed terms recorded`);
+                    await this.redis.incr?.(agreedTermsRefusalKey(tenantId, parsed.kind)).catch(() => undefined);
+                }
+                return null;
+            }
             if (!includeTerminal && (
                 !['pending', 'failed'].includes(paymentStatus)
                 || parsed.target.rejectedStatuses.includes(resourceStatus)
@@ -1529,6 +1592,7 @@ export class TenantPaymentsService {
             expiresAt?: Date;
             excludeOfflineMethods?: boolean;
         },
+        beforeSubmit?: () => Promise<void>,
     ): Promise<PaymentLink> {
         const token = await this.getMercadoPagoAccessToken(tenantId);
         if (!token) throw new BadRequestException({ error: 'payments_not_configured' });
@@ -1566,6 +1630,7 @@ export class TenantPaymentsService {
                 }
                 : {}),
         });
+        await beforeSubmit?.();
         let response: Response;
         try {
             response = await fetch(`${MP_API}/checkout/preferences`, {
@@ -1587,7 +1652,9 @@ export class TenantPaymentsService {
                 response.status >= 500,
             );
         }
-        const payload: any = await response.json();
+        let payload: any;
+        try { payload = await response.json(); }
+        catch { throw new MercadoPagoProviderError('invalid_payment_link_response', true); }
         const id = String(payload?.id || '').trim();
         const url = String(payload?.init_point || payload?.sandbox_init_point || '').trim();
         if (!id || !this.isHttpsUrl(url)) {

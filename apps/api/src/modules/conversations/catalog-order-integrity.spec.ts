@@ -1,3 +1,4 @@
+import { catalogHash, catalogItems, catalogTerms } from '../orders/catalog-order-contract';
 import { AIToolExecutorService } from './ai-tool-executor.service';
 import { authorityFor } from './__fixtures__/tool-authority.fixture';
 
@@ -25,9 +26,9 @@ const PRODUCT_ID = 'a36c1e0c-c71b-4837-8f30-048e94bba421';
 
 function createExecutor(queryRawUnsafe: jest.Mock, ordersService?: any) {
     const control = {
-        preflight: jest.fn().mockResolvedValue({ allowed: true }),
-        complete: jest.fn(),
-        fail: jest.fn(),
+        preflight: jest.fn().mockResolvedValue({ allowed: true, idempotencyKey:'catalog-call' }),
+        complete: jest.fn().mockResolvedValue(undefined),
+        fail: jest.fn().mockResolvedValue(undefined),
     };
     // El constructor toma 26 dependencias; los stubs van por posición hasta el
     // control y el resto se inyecta por nombre, como en las demás specs.
@@ -125,116 +126,54 @@ describe('search_products respeta la disponibilidad y su propio dominio', () => 
     });
 });
 
-describe('place_catalog_order llega al writer', () => {
-    const availableProduct = [{
-        id: PRODUCT_ID, name: 'Ibuprofeno 400mg', price: '12000', currency: 'COP', stock: 10, is_available: true,
-    }];
-
-    it('consulta is_available y no la columna inexistente is_active', async () => {
-        const query = jest.fn().mockResolvedValue(availableProduct);
-        const createOrder = jest.fn().mockResolvedValue({ id: 'order-1' });
-        const { executor } = createExecutor(query, { createOrder });
-
-        await executor.execute(
-            schemaName, tenantId, contactId, 'place_catalog_order',
-            { items: [{ productId: PRODUCT_ID, quantity: 2 }] }, conversationId,
-            { authority: authorityFor('place_catalog_order') },
-        );
-
-        const [sql] = query.mock.calls[0];
-        expect(sql).not.toContain('is_active');
-        expect(sql).toContain('is_available');
+describe('place_catalog_order delegates the reviewed canonical command', () => {
+    const operationalScope={kind:'agent' as const,tenantId,schemaName,agentId:'55555555-5555-4555-8555-555555555555',version:1,operationalHash:'a'.repeat(64)};
+    const product={id:PRODUCT_ID,name:'Ibuprofeno 400mg',price:'12000',currency:'COP',stock:10,is_available:true};
+    function writer(rows:any[]=[product]) {
+        const quote=jest.fn(async(_schema:string,data:any)=>catalogTerms(rows,catalogItems(data.items),'','agent'));
+        const create=jest.fn().mockResolvedValue({id:'44444444-4444-4444-8444-444444444444',totalAmount:24000,currency:'COP',items:[{}],status:'pending',paymentStatus:'pending'});
+        return {quote,create,...createExecutor(jest.fn(),{catalogCommands:()=>({quote,create})})};
+    }
+    const args={items:[{productId:PRODUCT_ID,quantity:2}]};
+    const run=(executor:AIToolExecutorService,input:any=args)=>executor.execute(schemaName,tenantId,contactId,'place_catalog_order',input,conversationId,{authority:authorityFor('place_catalog_order'),operationalScope});
+    it('binds the owned schema, identity, canonical prices and execution key; discards model prices',async()=>{
+        const {executor,quote,create}=writer();
+        const result:any=await run(executor,{items:[{...args.items[0],unitPrice:1}],catalogTermsHash:'forged'});
+        expect(quote).toHaveBeenCalledWith(schemaName,expect.objectContaining({contactId,conversationId}));
+        const terms=await quote.mock.results[0].value;
+        expect(create).toHaveBeenCalledWith(schemaName,expect.objectContaining({contactId,conversationId,idempotencyKey:'catalog-call'}),{source:'agent',expectedTermsHash:catalogHash(terms),operationalScope});
+        expect(result.order).toMatchObject({total:24000,currency:'COP',status:'pending',paymentStatus:'pending'});
     });
-
-    it('crea el pedido con el precio del catálogo, no el del modelo', async () => {
-        const query = jest.fn().mockResolvedValue(availableProduct);
-        const createOrder = jest.fn().mockResolvedValue({ id: 'order-1' });
-        const { executor } = createExecutor(query, { createOrder });
-
-        const result: any = await executor.execute(
-            schemaName, tenantId, contactId, 'place_catalog_order',
-            { items: [{ productId: PRODUCT_ID, quantity: 2, unitPrice: 1 }] }, conversationId,
-            { authority: authorityFor('place_catalog_order') },
-        );
-
-        expect(createOrder).toHaveBeenCalledWith(tenantId, expect.objectContaining({
-            items: [expect.objectContaining({ productId: PRODUCT_ID, quantity: 2, unitPrice: 12000 })],
-        }));
-        expect(result.success).toBe(true);
-        expect(result.order).toMatchObject({ id: 'order-1', total: 24000, currency: 'COP' });
+    it('returns availability facts for a rejected product without writing',async()=>{
+        const {executor,create}=writer([{...product,is_available:false}]);
+        expect(await run(executor)).toMatchObject({error:'catalog_product_unavailable',productId:PRODUCT_ID,persisted:false});
+        expect(create).not.toHaveBeenCalled();
     });
-
-    it('un producto apagado se rechaza antes de escribir', async () => {
-        const query = jest.fn().mockResolvedValue([{ ...availableProduct[0], is_available: false }]);
-        const createOrder = jest.fn();
-        const { executor } = createExecutor(query, { createOrder });
-
-        const result: any = await executor.execute(
-            schemaName, tenantId, contactId, 'place_catalog_order',
-            { items: [{ productId: PRODUCT_ID, quantity: 1 }] }, conversationId,
-            { authority: authorityFor('place_catalog_order') },
-        );
-
-        expect(result.error).toBe('product_unavailable');
-        expect(createOrder).not.toHaveBeenCalled();
+    it('explains insufficient stock using canonical quantities',async()=>{
+        const {executor,create}=writer([{...product,stock:1}]);
+        expect(await run(executor)).toMatchObject({error:'catalog_stock_insufficient',available:1,requested:2});
+        expect(create).not.toHaveBeenCalled();
     });
-
-    it('stock insuficiente se explica con las cantidades reales', async () => {
-        const query = jest.fn().mockResolvedValue([{ ...availableProduct[0], stock: 1 }]);
-        const createOrder = jest.fn();
-        const { executor } = createExecutor(query, { createOrder });
-
-        const result: any = await executor.execute(
-            schemaName, tenantId, contactId, 'place_catalog_order',
-            { items: [{ productId: PRODUCT_ID, quantity: 4 }] }, conversationId,
-            { authority: authorityFor('place_catalog_order') },
-        );
-
-        expect(result).toMatchObject({ error: 'insufficient_stock', available: 1, requested: 4 });
-        expect(createOrder).not.toHaveBeenCalled();
+    it('preserves an untracked product as a valid order input',async()=>{
+        const {executor,quote}=writer([{...product,stock:null}]);
+        expect(await run(executor)).toMatchObject({success:true});
+        expect((await quote.mock.results[0].value).items[0].tracksStock).toBe(false);
     });
-
-    it('un producto sin control de unidades (stock NULL) sí se puede pedir', async () => {
-        const query = jest.fn().mockResolvedValue([{ ...availableProduct[0], stock: null }]);
-        const createOrder = jest.fn().mockResolvedValue({ id: 'order-2' });
-        const { executor } = createExecutor(query, { createOrder });
-
-        const result: any = await executor.execute(
-            schemaName, tenantId, contactId, 'place_catalog_order',
-            { items: [{ productId: PRODUCT_ID, quantity: 3 }] }, conversationId,
-            { authority: authorityFor('place_catalog_order') },
-        );
-
-        expect(result.success).toBe(true);
-        expect(createOrder).toHaveBeenCalled();
+    it('hides internal writer failures and never reports a successful order',async()=>{
+        const {executor,create}=writer();create.mockRejectedValue(new Error('SELECT secret FROM tenant_x.orders'));
+        const result=await run(executor);
+        expect(result).toMatchObject({error:'catalog_operation_unavailable',outcome:'unverified'});
+        expect(result.persisted).toBeUndefined();
+        expect(JSON.stringify(result)).not.toContain('tenant_x');
     });
-
-    it('si el writer falla, no se anuncia un pedido', async () => {
-        const query = jest.fn().mockResolvedValue(availableProduct);
-        const createOrder = jest.fn().mockRejectedValue(new Error('Insufficient stock for Ibuprofeno 400mg'));
-        const { executor } = createExecutor(query, { createOrder });
-
-        const result: any = await executor.execute(
-            schemaName, tenantId, contactId, 'place_catalog_order',
-            { items: [{ productId: PRODUCT_ID, quantity: 2 }] }, conversationId,
-            { authority: authorityFor('place_catalog_order') },
-        );
-
-        expect(result.error).toBe('order_failed');
-        expect(result.success).toBeUndefined();
+    it('reports uncertain acknowledgement as persisted and requires reconciliation',async()=>{
+        const {executor,control}=writer();control.complete.mockRejectedValue(new Error('ledger unavailable'));
+        const result=await run(executor);
+        expect(result).toMatchObject({error:'reconciliation_required',persisted:true,retryable:false});
+        expect(result.order).toBeUndefined();
     });
-
-    it('sin OrdersService no promete tomar pedidos', async () => {
-        const query = jest.fn().mockResolvedValue(availableProduct);
-        const { executor } = createExecutor(query);
-        (executor as any).ordersService = undefined;
-
-        const result: any = await executor.execute(
-            schemaName, tenantId, contactId, 'place_catalog_order',
-            { items: [{ productId: PRODUCT_ID, quantity: 1 }] }, conversationId,
-            { authority: authorityFor('place_catalog_order') },
-        );
-
-        expect(result.error).toBe('orders_unavailable');
+    it('fails closed if the canonical service is unavailable',async()=>{
+        const {executor}=createExecutor(jest.fn());
+        expect(await run(executor)).toMatchObject({error:'catalog_operation_unavailable',outcome:'unverified'});
     });
 });

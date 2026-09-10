@@ -1,3 +1,4 @@
+import { enrollmentPriceSql, enrollmentCurrencySql } from '../education/enrollment-terms';
 import { Injectable, Logger, Optional, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { createHash, createHmac, timingSafeEqual } from 'crypto';
@@ -41,8 +42,8 @@ const TARGETS: Record<string, {
     },
     enrollment: {
         table: 'enrollments',
-        amountExpression: 'course.price',
-        currencyExpression: 'course.currency',
+        amountExpression: enrollmentPriceSql(),
+        currencyExpression: enrollmentCurrencySql(),
         join: 'JOIN courses course ON course.id = target.course_id',
     },
 };

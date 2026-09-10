@@ -1,0 +1,22 @@
+# E3 — revisión de candidatos desde el dashboard
+
+La página `/admin/agent/:agentId/releases`, enlazada desde el editor y registrada en navegación, prepara evaluaciones usando sólo el UUID vigente del borrador. No envía configuración, puntuaciones, resultados ni umbrales desde el navegador. La clave de solicitud se conserva ante pérdida de respuesta; una revisión distinta genera otra solicitud. El supervisor puede leer y el administrador puede preparar y registrar decisiones.
+
+La lista identifica los treinta candidatos más recientes; el detalle distingue trabajo pendiente, procesamiento, presupuesto diferido, fallo, revisión aprobada/rechazada e invalidación. Los casos procesados se presentan por separado de los casos requeridos verificados. Los errores de lectura no se convierten en lista vacía ni en aprobación. La actualización es explícita para evitar consultas repetidas costosas al manifiesto completo.
+
+La proyección segura del sujeto se deriva de la captura privada: persona, instrucciones libres o guiadas, misión, reglas, límites, herramientas configuradas y permisos explícitos, horarios y parámetros de búsqueda. La comparación utiliza exclusivamente el cuerpo operativo de base que la misma captura conserva. La ausencia de esa base se informa y no se reemplaza por una lectura viva. No se copia configuración arbitraria, credenciales de herramientas, modelos/proveedores ni precios de proveedores. Se identifican por separado el hash candidato y el hash operativo de base.
+
+El sujeto y la comparación entran en `releaseReviewEvidence` y, por tanto, en el hash que el servidor comprueba al registrar la revisión. El mismo contrato agrega comprobaciones operacionales por canal/caso/assertion, con intentos verificados, fallidos y desconocidos. La proyección valida los hashes de ejecución, escenario y contexto; si faltan comprobaciones o sus vínculos no corresponden, informa desconocido. No expone filtros SQL, descripciones libres ni cuerpos de proveedor. La existencia de una llamada se distingue de una comprobación de registros.
+
+La persona abre cada muestra real por canal e idioma antes de marcarla revisada. La aprobación exige todos los hashes de muestras y seis declaraciones explícitas sobre objetivo, instrucciones, hechos, herramientas, estilo y límites. El formulario usa CAS de revisión y hash de evidencia y mantiene una clave de reintento estable. Cambiar de candidato, versión o evidencia reinicia las declaraciones; las respuestas tardías no se muestran en otro candidato. Cuando la revisión deja de estar vigente, se retira el sujeto y las muestras anteriores. No existe un botón de publicación en este lote.
+
+La muestra textual sigue el contrato del backend: la primera muestra completa disponible por idioma/canal. No se presenta como revisión exhaustiva de cada conversación; el detalle de comprobaciones operacionales sí permite inspeccionar todas las assertions incluidas en las ejecuciones terminadas. La proyección de cambios contiene campos seguros de revisión y no pretende ser un diff exhaustivo de conexiones privadas u otros campos. La publicación atómica y su revisión completa pertenecen al siguiente lote.
+
+## Evidencia
+
+- Cinco suites de API, 43 pruebas aprobadas: 21 PostgreSQL (18 del almacén de candidatos/revisión y tres de recuperación), doce de servicio y diez de proyección segura/comprobaciones operacionales.
+- Dashboard: 46 suites, 474 pruebas aprobadas, incluidas catorce pruebas nuevas de revisión en español, inglés, portugués y francés, alcance/permisos, hashes, reintentos, respuestas escapadas y datos desconocidos.
+- TypeScript de API y dashboard y compilación del paquete compartido aprobados.
+- El chequeo de navegación detectó inicialmente la ruta nueva no registrada; se corrigió el registro y la suite global volvió a pasar.
+
+Comandos: `jest --config jest.config.js --runInBand --testPathPattern='agent-release-review-subject|agent-release-operation-review|agent-release.postgres|agent-release.service.spec|agent-release-recovery.postgres'` con `AGENT_RELEASE_TEST_DATABASE_URL` y `PARALLLY_ISOLATION_TEST_URL` apuntando únicamente al PostgreSQL temporal de loopback; `jest --config jest.config.cjs --runInBand` en dashboard; `tsc --noEmit --pretty false` en ambas aplicaciones. No hubo despliegue, navegación autenticada de navegador ni evaluación real de un modelo externo. Las pruebas SQL sintéticas verifican persistencia, autoridad y revisión; no certifican desempeño comercial.

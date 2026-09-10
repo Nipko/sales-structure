@@ -11,6 +11,7 @@ describe('VehicleInventoryService pagination', () => {
         const service = new VehicleInventoryService(
             { executeInTenantSchema, getTenantSchemaName } as any,
             {} as any,
+            {} as any,
         );
         jest.spyOn(service, 'ensureTables').mockResolvedValue(undefined);
 

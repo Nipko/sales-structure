@@ -1,0 +1,219 @@
+{
+  "date": "2026-09-08",
+  "scope": "Committed foundations only. Overlapping batteries must not be summed. Draft integration is not certified.",
+  "blocks": [
+    {
+      "name": "retention",
+      "commit": "1f704ddc",
+      "indexBase": "a71f7b19e0ab248957b4c38dd80f03aa45ed9957",
+      "files": [
+        "apps/api/prisma/tenant-schema.sql",
+        "apps/api/src/modules/compliance/compliance-memory-erasure.spec.ts",
+        "apps/api/src/modules/compliance/compliance.service.ts",
+        "apps/api/src/modules/conversations/tool-control-erasure-race.spec.ts",
+        "apps/api/src/modules/learning/learning-evaluation-retention.ts",
+        "apps/api/src/modules/widget/widget-agent-reply-retention.postgres.spec.ts",
+        "apps/api/src/modules/widget/widget-agent-reply-retention.ts"
+      ],
+      "apiTypeScript": "PASS (exact staged index, separate from Jest)",
+      "passedSuites": 14,
+      "passedTests": 220,
+      "failedTests": 0,
+      "pendingTests": 0,
+      "postgresSuites": 4,
+      "postgresTests": 97.0,
+      "suites": [
+        {
+          "path": "apps/api/src/modules/widget/widget-agent-reply-retention.postgres.spec.ts",
+          "passed": 11,
+          "pending": 0,
+          "status": "passed"
+        },
+        {
+          "path": "apps/api/src/modules/learning/learning-inbox-source.postgres.spec.ts",
+          "passed": 51,
+          "pending": 0,
+          "status": "passed"
+        },
+        {
+          "path": "apps/api/src/modules/simulation/simulation-replay.postgres.spec.ts",
+          "passed": 20,
+          "pending": 0,
+          "status": "passed"
+        },
+        {
+          "path": "apps/api/src/app.bootstrap.spec.ts",
+          "passed": 1,
+          "pending": 0,
+          "status": "passed"
+        },
+        {
+          "path": "apps/api/src/modules/learning/learning-runtime-footprint.postgres.spec.ts",
+          "passed": 15,
+          "pending": 0,
+          "status": "passed"
+        },
+        {
+          "path": "apps/api/src/modules/learning/learning-evaluation.spec.ts",
+          "passed": 27,
+          "pending": 0,
+          "status": "passed"
+        },
+        {
+          "path": "apps/api/src/modules/conversations/agent-test-live-parity.spec.ts",
+          "passed": 9,
+          "pending": 0,
+          "status": "passed"
+        },
+        {
+          "path": "apps/api/src/modules/conversations/conversations.runtime-integrity.spec.ts",
+          "passed": 11,
+          "pending": 0,
+          "status": "passed"
+        },
+        {
+          "path": "apps/api/src/modules/conversations/agent-turn-source-authority.spec.ts",
+          "passed": 7,
+          "pending": 0,
+          "status": "passed"
+        },
+        {
+          "path": "apps/api/src/modules/conversations/tool-control-erasure-race.spec.ts",
+          "passed": 2,
+          "pending": 0,
+          "status": "passed"
+        },
+        {
+          "path": "apps/api/src/modules/compliance/compliance-memory-erasure.spec.ts",
+          "passed": 7,
+          "pending": 0,
+          "status": "passed"
+        },
+        {
+          "path": "apps/api/src/modules/learning/learning.integrity.spec.ts",
+          "passed": 21,
+          "pending": 0,
+          "status": "passed"
+        },
+        {
+          "path": "apps/api/src/modules/ai/router/llm-source-authority.spec.ts",
+          "passed": 6,
+          "pending": 0,
+          "status": "passed"
+        },
+        {
+          "path": "apps/api/src/modules/learning/learning-runtime-footprint.spec.ts",
+          "passed": 32,
+          "pending": 0,
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "provenance",
+      "commit": "735a0511",
+      "indexBase": "1f704ddc8dcc0e1c2996b6cbd20ad107063e74f9",
+      "files": [
+        "apps/api/src/modules/conversations/agent-reply-provenance.spec.ts",
+        "apps/api/src/modules/conversations/agent-reply-provenance.ts",
+        "apps/api/src/modules/widget/widget-agent-history-footprints.spec.ts",
+        "apps/api/src/modules/widget/widget-agent-history-footprints.ts"
+      ],
+      "apiTypeScript": "PASS (exact staged index, separate from Jest)",
+      "passedSuites": 13,
+      "passedTests": 228,
+      "failedTests": 0,
+      "pendingTests": 0,
+      "postgresSuites": 3,
+      "postgresTests": 86.0,
+      "suites": [
+        {
+          "path": "apps/api/src/modules/conversations/agent-reply-provenance.spec.ts",
+          "passed": 19,
+          "pending": 0,
+          "status": "passed"
+        },
+        {
+          "path": "apps/api/src/modules/widget/widget-agent-history-footprints.spec.ts",
+          "passed": 9,
+          "pending": 0,
+          "status": "passed"
+        },
+        {
+          "path": "apps/api/src/modules/learning/learning-inbox-source.postgres.spec.ts",
+          "passed": 51,
+          "pending": 0,
+          "status": "passed"
+        },
+        {
+          "path": "apps/api/src/app.bootstrap.spec.ts",
+          "passed": 1,
+          "pending": 0,
+          "status": "passed"
+        },
+        {
+          "path": "apps/api/src/modules/simulation/simulation-replay.postgres.spec.ts",
+          "passed": 20,
+          "pending": 0,
+          "status": "passed"
+        },
+        {
+          "path": "apps/api/src/modules/learning/learning-evaluation.spec.ts",
+          "passed": 27,
+          "pending": 0,
+          "status": "passed"
+        },
+        {
+          "path": "apps/api/src/modules/learning/learning-runtime-footprint.postgres.spec.ts",
+          "passed": 15,
+          "pending": 0,
+          "status": "passed"
+        },
+        {
+          "path": "apps/api/src/modules/conversations/agent-test-live-parity.spec.ts",
+          "passed": 9,
+          "pending": 0,
+          "status": "passed"
+        },
+        {
+          "path": "apps/api/src/modules/conversations/conversations.runtime-integrity.spec.ts",
+          "passed": 11,
+          "pending": 0,
+          "status": "passed"
+        },
+        {
+          "path": "apps/api/src/modules/conversations/agent-turn-source-authority.spec.ts",
+          "passed": 7,
+          "pending": 0,
+          "status": "passed"
+        },
+        {
+          "path": "apps/api/src/modules/learning/learning.integrity.spec.ts",
+          "passed": 21,
+          "pending": 0,
+          "status": "passed"
+        },
+        {
+          "path": "apps/api/src/modules/ai/router/llm-source-authority.spec.ts",
+          "passed": 6,
+          "pending": 0,
+          "status": "passed"
+        },
+        {
+          "path": "apps/api/src/modules/learning/learning-runtime-footprint.spec.ts",
+          "passed": 32,
+          "pending": 0,
+          "status": "passed"
+        }
+      ]
+    }
+  ],
+  "draftPreservation": {
+    "status": "PASS",
+    "capturedFrom": "1f704ddc8dcc0e1c2996b6cbd20ad107063e74f9",
+    "patchSha256": "39d4cf1e5cf2bcb6c1a6884706c19b7153982a794dd44bdb573845cdb7d2f55a",
+    "filesVerified": 6,
+    "method": "git apply to isolated base copy; normalized SHA-256 matches all six captured files; git apply --check passes against restored product tree",
+    "productPatchActivated": false
+  }
+}

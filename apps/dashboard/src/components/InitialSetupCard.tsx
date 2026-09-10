@@ -11,12 +11,13 @@ import {
   type GuidedTourStartDetail,
 } from "@parallext/shared";
 import { useAuth } from "@/contexts/AuthContext";
+import { useTenant } from "@/contexts/TenantContext";
 import { useRole } from "@/hooks/useRole";
 import { api } from "@/lib/api";
 import { guidedTourAnchorId } from "@/lib/guided-tours";
-import { buildEssentialSetupItems, resolveInitialSetupSources, type EssentialSetupItem } from "@/lib/initial-setup";
-import { readSetupStatusFacts } from "@/lib/onboarding-guide";
+import { type EssentialSetupItem } from "@/lib/initial-setup";
 import { canAccessDashboardNavigationPath } from "@/lib/navigation-access";
+import { QUALITY_HEALTH_REFRESH_EVENT } from "@/lib/quality-health-events";
 
 /**
  * The single source of progress for a new account.
@@ -33,12 +34,15 @@ export default function InitialSetupCard({
   onProgress?: (progress: { total: number; completed: number }) => void;
 } = {}) {
   const t = useTranslations("qualityHealth.setup");
-  const { user, verticalConfig } = useAuth();
+  const { verticalConfig } = useAuth();
+  const { activeTenantId: tenantId } = useTenant();
   const { role, impersonating } = useRole();
-  const tenantId = user?.tenantId;
+  const eligible = ['tenant_admin', 'tenant_supervisor', 'super_admin'].includes(role ?? '');
+  const [tourContext, setTourContext] = useState<Pick<GuidedTourStartDetail, "agentId" | "verticalCatalogRoute">>({});
   const [items, setItems] = useState<EssentialSetupItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const loadRevision = useRef(0);
   const canAccess = useCallback((href: string) => Boolean(role) && canAccessDashboardNavigationPath(
     href,
     role!,
@@ -47,7 +51,8 @@ export default function InitialSetupCard({
   ), [impersonating, role, verticalConfig]);
 
   const load = useCallback(async () => {
-    if (!tenantId) {
+    const revision = ++loadRevision.current;
+    if (!tenantId || !eligible) {
       setItems([]);
       setLoading(false);
       return;
@@ -55,39 +60,29 @@ export default function InitialSetupCard({
     setLoading(true);
     setError(false);
     try {
-      const [statusResponse, planResponse, channelsResponse] = await Promise.all([
-        api.getSetupStatus(tenantId),
-        api.getPlanFeatures(tenantId),
-        api.fetch(`/channels/overview?tenantId=${tenantId}`),
-      ]);
-
-      // The checklist is graded with the same checks Agent health uses, so the
-      // two surfaces can never contradict each other. Without an agent there is
-      // nothing to grade and every item is honestly pending.
-      const facts = readSetupStatusFacts(statusResponse);
-      const agentId = facts?.defaultAgent?.id
-        || (await resolveDefaultAgentId(tenantId));
-      const qualityResponse = agentId
-        ? await api.getAgentQualityOverview(tenantId, agentId)
-        : undefined;
-
-      const { status, planChannels, activeChannels, checks } = resolveInitialSetupSources(
-        statusResponse,
-        planResponse,
-        channelsResponse,
-        qualityResponse,
-      );
-      setItems(buildEssentialSetupItems({ status, planChannels, activeChannels, checks, canAccess }));
+      const response = await api.getAgentAssessment(tenantId);
+      if (!response.success || !response.data) throw new Error("assessment_unavailable");
+      const assessment = response.data;
+      if (revision !== loadRevision.current) return;
+      setItems(assessment.tasks.filter(task => canAccess(task.href)).map(task => ({
+        key: task.key, href: task.href, done: task.status === "pass" || task.status === "not_applicable",
+        tourId: task.tourId, channelType: task.channelType, ...(task.status === "unknown" ? { verification: "unavailable" as const } : {}),
+      })));
+      setTourContext({ agentId: assessment.agent?.id, verticalCatalogRoute: assessment.tasks.find(task => task.key === "catalog")?.href });
     } catch {
+      if (revision !== loadRevision.current) return;
       setItems([]);
       setError(true);
     } finally {
-      setLoading(false);
+      if (revision === loadRevision.current) setLoading(false);
     }
-  }, [canAccess, tenantId]);
+  }, [canAccess, tenantId, eligible]);
 
   useEffect(() => {
     void load();
+    const refresh = () => { void load(); };
+    window.addEventListener(QUALITY_HEALTH_REFRESH_EVENT, refresh);
+    return () => { loadRevision.current += 1; window.removeEventListener(QUALITY_HEALTH_REFRESH_EVENT, refresh); };
   }, [load]);
 
   const completed = items.filter((item) => item.done).length;
@@ -104,11 +99,11 @@ export default function InitialSetupCard({
   const startTour = useCallback((item: EssentialSetupItem) => {
     const tour = item.tourId ? getGuidedTour(item.tourId) : null;
     if (!tour || !canRoleRunGuidedTour(tour, role)) return;
-    const detail: GuidedTourStartDetail = { tourId: tour.id };
+    const detail: GuidedTourStartDetail = { tourId: tour.id, ...tourContext, channelType: item.channelType };
     window.dispatchEvent(new CustomEvent(GUIDED_TOUR_START_EVENT, { detail }));
-  }, [role]);
+  }, [role, tourContext]);
 
-  if (!tenantId) return null;
+  if (!tenantId || !eligible) return null;
   if (!loading && !error && (items.length === 0 || completed === items.length)) return null;
 
   const firstPending = items.find((item) => !item.done);
@@ -156,7 +151,7 @@ export default function InitialSetupCard({
                       {item.done
                         ? <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white"><Check size={14} aria-hidden="true" /></span>
                         : <Circle size={22} className="shrink-0 text-indigo-300 dark:text-indigo-500" aria-hidden="true" />}
-                      <span className="min-w-0 flex-1 text-sm font-medium text-neutral-800 dark:text-neutral-200">{t(`items.${item.key}`)}</span>
+                      <span className="min-w-0 flex-1 text-sm font-medium text-neutral-800 dark:text-neutral-200">{t(`items.${item.key}`)}{item.verification === "unavailable" && <span className="block text-xs font-normal">{t("verificationUnavailable")}</span>}</span>
                     </div>
                     {!item.done && (
                       <div
@@ -186,23 +181,4 @@ export default function InitialSetupCard({
       </div>
     </section>
   );
-}
-
-/**
- * Fallback for tenants whose `setup-status` predates `defaultAgent`. Returns
- * `null` when the tenant genuinely has no agent — which is a valid answer, not
- * a failure.
- */
-async function resolveDefaultAgentId(tenantId: string): Promise<string | null> {
-  try {
-    const response = await api.listAgentQualityAgents(tenantId);
-    if (!response.success || !Array.isArray(response.data)) return null;
-    const agents = response.data;
-    const preferred = agents.find((agent) => agent.is_default)
-      ?? agents.find((agent) => agent.is_active)
-      ?? agents[0];
-    return preferred?.id ?? null;
-  } catch {
-    return null;
-  }
 }

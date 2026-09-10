@@ -18,6 +18,8 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { AGENT_QUALITY_DEPENDENCIES_UPDATED } from '../quality/agent-quality-events';
 import { CERTIFIED_SELF_SERVICE_CHANNELS, advanceOnboardingStage } from '@parallext/shared';
 import { mutateTenantSettingsAtomic } from '../../common/utils/tenant-settings.util';
+import { buildChannelCertificationMatrix, summariseChannelCertification } from './channel-certification-matrix';
+import { channelCertificationRuntime } from './channel-certification-runtime';
 import { RequiresVerifiedEmail } from '../../common/decorators/requires-verified-email.decorator';
 import {
     CREDENTIAL_TYPE_BY_CHANNEL,
@@ -25,7 +27,7 @@ import {
     isCredentialFailure,
     resolveCredentialHealth,
     type ChannelCredentialRecord,
-} from './channel-credential-health.util';
+} from '@parallext/shared';
 
 @ApiTags('channel-management')
 @Controller('channels')
@@ -90,6 +92,28 @@ export class ChannelManagementController {
         } catch (e: any) {
             this.logger.warn(`onboardingStage advance failed for ${tenantId}: ${e?.message}`);
         }
+    }
+
+    /**
+     * What each channel may be said to do, and what it may not.
+     *
+     * Declared BEFORE `:channelType/status`: Nest matches in declaration order,
+     * so below it this path would be answered by a status lookup for a channel
+     * called "certification".
+     *
+     * Platform scope, not tenant scope — it answers what the product has
+     * certified, which is the same for every tenant. What one tenant's
+     * connection can do today is the assessment's question, and the two are
+     * deliberately different: a certified capability nobody connected is not
+     * operating, and a connected channel cannot acquire a capability the
+     * product never certified.
+     */
+    @Get('certification')
+    @Roles('super_admin', 'tenant_admin', 'tenant_supervisor')
+    @ApiOperation({ summary: 'Certified capability matrix for every channel type' })
+    getCertification() {
+        const channels = buildChannelCertificationMatrix(channelCertificationRuntime());
+        return { success: true, data: { channels, summary: summariseChannelCertification(channels) } };
     }
 
     @Get('overview')

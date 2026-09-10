@@ -105,7 +105,7 @@ export const TOOL_SUBPERMISSION_RULES: readonly {
 }[] = Object.freeze([
     {
         family: 'appointments', flag: 'canBook',
-        tools: Object.freeze(['create_appointment', 'send_booking_link']),
+        tools: Object.freeze(['create_appointment', 'schedule_test_drive', 'send_booking_link']),
     },
     {
         family: 'appointments', flag: 'canCancel',
@@ -118,6 +118,7 @@ export const TOOL_SUBPERMISSION_RULES: readonly {
 /** Los nombres que un `false` explícito del dueño retira de este agente. */
 export function subpermissionDeniedToolNames(cfgTools: unknown): Set<string> {
     const denied = new Set<string>();
+    if (!familyEnabled(cfgTools,'appointments')) denied.add('schedule_test_drive');
     for (const rule of TOOL_SUBPERMISSION_RULES) {
         const family = (cfgTools as any)?.[rule.family];
         if (!family) continue;

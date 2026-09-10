@@ -20,7 +20,7 @@ export const PETS_TOOLS: ToolDefinition[] = [
     },
     {
         name: 'register_pet',
-        description: 'Register a new pet for the current tutor. Use when the contact mentions a pet not yet on file. Only requires name and species — other fields are optional and can be filled in later by the clinic.',
+        description: 'Register a new pet for the current tutor after the tutor asks to save it. Check existing pets first. Requires the name and species supplied by the tutor; never infer species or create a duplicate from a repeated request. Other fields are optional and can be filled in later by the clinic.',
         parameters: {
             type: 'object',
             properties: {
@@ -28,7 +28,7 @@ export const PETS_TOOLS: ToolDefinition[] = [
                 species: {
                     type: 'string',
                     enum: ['dog', 'cat', 'bird', 'rabbit', 'reptile', 'rodent', 'fish', 'other'],
-                    description: 'Species — defaults to dog',
+                    description: 'Species supplied by the tutor; ask if unknown. There is no default.',
                 },
                 breed: { type: 'string', description: 'Breed (e.g. Golden Retriever, Persian)' },
                 sex: { type: 'string', enum: ['male', 'female', 'unknown'], description: 'Sex' },
@@ -39,7 +39,7 @@ export const PETS_TOOLS: ToolDefinition[] = [
                 allergies: { type: 'string', description: 'Known allergies (food, medication)' },
                 chronicConditions: { type: 'string', description: 'Chronic conditions (diabetes, heart, kidney, etc.)' },
             },
-            required: ['name'],
+            required: ['name', 'species'],
         },
     },
     {

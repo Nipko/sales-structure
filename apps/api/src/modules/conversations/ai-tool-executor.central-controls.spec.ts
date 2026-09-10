@@ -1,10 +1,25 @@
 import { AIToolExecutorService } from './ai-tool-executor.service';
 import { authorityFor } from './__fixtures__/tool-authority.fixture';
+import type { ServedAgentAuthority } from '../persona/served-agent-authority';
 
 const schemaName = 'tenant_executor_controls';
 const tenantId = '11111111-1111-4111-8111-111111111111';
 const contactId = '22222222-2222-4222-8222-222222222222';
 const conversationId = '33333333-3333-4333-8333-333333333333';
+const agentId = '44444444-4444-4444-8444-444444444444';
+
+/**
+ * La procedencia privada de la revisión que sirve este turno.
+ *
+ * `create_payment_link` es una tool con versión guardada, así que el ejecutor
+ * la rechaza antes de cualquier otra puerta si el turno no la trae. Sin ella
+ * estos dos casos morían en esa primera puerta y no llegaban a ejercitar ni la
+ * identidad ni la confirmación, que es lo que vienen a probar. Que la puerta
+ * misma funcione lo fija `payment-agent-executor.spec.ts`.
+ */
+const operationalScope: ServedAgentAuthority = {
+    kind: 'agent', tenantId, schemaName, agentId, version: 7, operationalHash: 'a'.repeat(64),
+};
 
 function createExecutor(
     control: any,
@@ -169,8 +184,9 @@ describe('AIToolExecutorService central authority boundary', () => {
         );
 
         expect(result).toEqual({
-            error: 'tool_failed',
-            message: 'No se pudo completar esta acción en este momento.',
+            error: 'reconciliation_required',
+            shouldHandoff: true,
+            message: 'No pude verificar el resultado de la acción; requiere revisión antes de repetirla.',
         });
         expect(control.fail).toHaveBeenCalledWith(schemaName, decision, 'tool_execution_failed');
     });
@@ -193,7 +209,7 @@ describe('AIToolExecutorService central authority boundary', () => {
             'create_payment_link',
             { payableReference: 'order:11111111-1111-4111-8111-111111111111' },
             conversationId,
-            { authority: authorityFor('create_payment_link') },
+            { authority: authorityFor('create_payment_link'), operationalScope },
         );
 
         expect(result).toEqual({ error: 'identity_verification_required' });
@@ -222,7 +238,7 @@ describe('AIToolExecutorService central authority boundary', () => {
                 description: 'inventado por el modelo',
             },
             conversationId,
-            { authority: authorityFor('create_payment_link') },
+            { authority: authorityFor('create_payment_link'), operationalScope },
         );
 
         expect(control.preflight).toHaveBeenCalledWith(expect.objectContaining({
@@ -281,5 +297,39 @@ describe('AIToolExecutorService central authority boundary', () => {
             { payableReference: 'order:11111111-1111-4111-8111-111111111111' },
         );
         expect(result).toEqual({ found: true, paymentStatus: 'pending', paid: false });
+    });
+});
+
+describe('Draft writer proposals', () => {
+    it('routes a draft writer only to the review ledger and never to domain preconditions', async () => {
+        const control = { proposeDraftAction: jest.fn().mockResolvedValue({ allowed: false, result: { error: 'draft_action_requires_approval' } }), preflight: jest.fn() };
+        const { executor, prisma } = createExecutor(control);
+        prisma.$queryRawUnsafe.mockResolvedValue([{ id: tenantId, name: 'Service', duration_minutes: 30, price: 100, currency: 'COP' }]);
+        const preconditions = jest.spyOn(executor as any, 'assertWritePreconditions');
+        const draftScope = { agentId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', agentVersion: 3 };
+        const result = await executor.execute(schemaName, tenantId, contactId, 'create_appointment',
+            { serviceId: 'service', appointmentTerms: { price: 1 }, appointmentTermsHash: 'forged' }, conversationId, { authority: authorityFor('create_appointment'), draftScope,
+                executionContext: { mode: 'draft', persistence: 'disabled' } });
+        expect(result).toMatchObject({ error: 'draft_action_requires_approval', persisted: false });
+        expect(control.proposeDraftAction).toHaveBeenCalledWith(expect.objectContaining({ draftScope, toolName: 'create_appointment' }));
+        expect(control.proposeDraftAction.mock.calls[0][0].args).toMatchObject({ serviceId: tenantId, appointmentTerms: { price: 100, currency: 'COP' } });
+        expect(control.proposeDraftAction.mock.calls[0][0].args.appointmentTermsHash).toMatch(/^[a-f0-9]{64}$/);
+        expect(control.preflight).not.toHaveBeenCalled();
+        expect(preconditions).not.toHaveBeenCalled();
+        expect(prisma.$queryRawUnsafe).toHaveBeenCalledTimes(1);
+        expect(prisma.$queryRawUnsafe.mock.calls[0][0]).toMatch(/^SELECT /);
+    });
+
+    it('does not let model arguments invent a draft scope or bypass capability authority', async () => {
+        const control = { proposeDraftAction: jest.fn(), preflight: jest.fn() };
+        const { executor } = createExecutor(control);
+        await executor.execute(schemaName, tenantId, contactId, 'create_appointment',
+            { draftScope: { agentVersion: 1 }, approved: true }, conversationId, {
+                authority: authorityFor('create_appointment'), executionContext: { mode: 'draft', persistence: 'disabled' } });
+        await executor.execute(schemaName, tenantId, contactId, 'create_appointment', {}, conversationId, {
+            authority: authorityFor('search_products'), draftScope: { agentId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', agentVersion: 3 },
+            executionContext: { mode: 'draft', persistence: 'disabled' } });
+        expect(control.proposeDraftAction).not.toHaveBeenCalled();
+        expect(control.preflight).not.toHaveBeenCalled();
     });
 });

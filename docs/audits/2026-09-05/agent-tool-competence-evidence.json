@@ -1,0 +1,75 @@
+{
+  "scope": "Local isolated reproductions using actual TypeScript methods; dependency fixtures only; no live tenant validation.",
+  "checks": {
+    "approvedMcpRead": {
+      "allowed": false,
+      "result": {
+        "error": "tool_controls_incomplete",
+        "message": "La acción no tiene todos los controles de seguridad requeridos.",
+        "shouldHandoff": true,
+        "controlBlocked": true
+      }
+    },
+    "fullClassWaitlist": {
+      "error": "Class is full",
+      "queryCount": 1
+    },
+    "appointmentDeposit": {
+      "configuredPolicy": {
+        "mode": "deposit",
+        "requiresPayment": true,
+        "dueAmount": 30000,
+        "totalAmount": 100000,
+        "customerChooses": false,
+        "degradedFromDeposit": false
+      },
+      "result": {
+        "success": true,
+        "appointment": {
+          "id": "33333333-3333-4333-8333-333333333333",
+          "service": "Consulta con anticipo",
+          "date": "2026-09-08",
+          "time": "10:00",
+          "status": "confirmed",
+          "customerName": "Audit fixture"
+        }
+      },
+      "insertHasConfirmedLiteral": true,
+      "insertHasAmountDue": false,
+      "insertHasHoldExpiresAt": false,
+      "returnedPayableReference": null
+    },
+    "enrollmentCancellationFailure": {
+      "firstCancellation": {
+        "error": "isolated_fixture_capacity_write_failure"
+      },
+      "retryCancellation": {
+        "error": "Cannot cancel an enrollment in \"dropped\" status."
+      },
+      "finalStatus": "dropped",
+      "seatReturnAttempts": 1,
+      "capacityRestored": false
+    },
+    "retrievalDependencyLoss": {
+      "query": "quiero cancelar mi clase de yoga gimnasios idle",
+      "candidateCount": 31,
+      "selected": [
+        "create_appointment",
+        "cancel_appointment",
+        "reschedule_appointment",
+        "place_catalog_order",
+        "record_contact_consent",
+        "book_class",
+        "freeze_membership",
+        "cancel_class_booking",
+        "get_class_schedule",
+        "list_services",
+        "search_faqs",
+        "get_policy",
+        "search_knowledge_base"
+      ],
+      "bookClassPresent": true,
+      "requiredMembershipReaderPresent": false
+    }
+  }
+}

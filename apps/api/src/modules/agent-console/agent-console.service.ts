@@ -1,8 +1,11 @@
+import { randomUUID } from 'crypto';
+import { WidgetMessageStore } from '../widget/widget-message-store.service';
 import {
     BadRequestException,
     ConflictException,
     ForbiddenException,
     Injectable,
+    Optional,
     Logger,
     NotFoundException,
 } from '@nestjs/common';
@@ -88,6 +91,14 @@ export interface ConversationDetail {
 
 export interface ConversationMessage {
     id: string;
+    /**
+     * What became of an outbound message, when this is one that was just sent.
+     *
+     * `pending` until a provider accepted it. The row used to be written as
+     * `delivered` before anything was sent, so the console had nothing to
+     * distinguish a reply that left from one whose send threw into a warn.
+     */
+    status?: 'pending' | 'sent' | 'failed';
     content: string;
     type: 'text' | 'image' | 'document' | 'audio' | 'note';
     sender: 'customer' | 'agent' | 'ai' | 'system';
@@ -116,6 +127,7 @@ export class AgentConsoleService {
         private llmRouter: LLMRouterService,
         private eventEmitter: EventEmitter2,
         private aiResolutionService: AiResolutionService,
+        @Optional() private widgetMessages?: WidgetMessageStore,
     ) { }
 
     /**
@@ -276,7 +288,11 @@ export class AgentConsoleService {
         msgParams.push(limit + 1);
         const messages = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
-            `SELECT id, content_text as content, content_type as type, direction as sender, created_at, metadata
+            // `status` travels with the message: an outbound row the provider
+            // refused is written `failed`, and without this column the console
+            // could only warn at the moment of sending — one reload and the
+            // reply that never left looked ordinary again.
+            `SELECT id, content_text as content, content_type as type, direction as sender, status, created_at, metadata
        FROM messages
        WHERE conversation_id = $1::uuid ${beforeClause}
        ORDER BY created_at DESC
@@ -375,6 +391,19 @@ export class AgentConsoleService {
         const contentText = isMedia ? (caption || content || '') : content;
         const metadataJson = isMedia ? JSON.stringify({ mediaUrl, ...(caption || content ? { caption: caption || content } : {}), ...(filename ? { filename } : {}) }) : null;
 
+        const deliveryBinding = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+            'SELECT channel_type FROM conversations WHERE id=$1::uuid', [conversationId]);
+        if (deliveryBinding[0]?.channel_type === 'web_widget') {
+            if (!this.widgetMessages) throw new Error('widget_delivery_unavailable');
+            await this.aiResolutionService.ensureResolutionColumns(schemaName);
+            const msg = await this.widgetMessages.persist(tenantId, { conversationId, source:'agent', agentId,
+                dedupeId: 'agent:' + randomUUID(),
+                content: isMedia ? {type:contentType as any,mediaUrl:this.absoluteMediaUrl(mediaUrl),caption:contentText,filename}
+                    : {type:'text',text:contentText} });
+            return {id:msg.id,content:msg.content_text||'',type:msg.content_type as any,sender:'agent',timestamp:msg.created_at,
+                metadata:{...msg.metadata,deliveryState:'stored'}};
+        }
+
         // Any human-authored reply makes the transcript mixed. Mark it before
         // persisting the message so quality/outcome scores do not credit a
         // conversation that a person helped complete. The handoff itself stays
@@ -389,11 +418,17 @@ export class AgentConsoleService {
             [conversationId],
         );
 
+        // 'pending', not 'delivered'. This row was written as delivered BEFORE
+        // anything was sent, and the send below is inline in a catch that only
+        // warns — so a reply that never left the building read as delivered in
+        // the inbox, the agent moved on, and the customer was still waiting.
+        // The durable dispatch path already learned this rule: history says
+        // pending until a provider accepts the effect it describes.
         const result = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
             `INSERT INTO messages (conversation_id, content_text, content_type, direction, status, metadata, created_at)
-       VALUES ($1::uuid, $2, $3, 'outbound', 'delivered', $4::jsonb, NOW())
-       RETURNING id, content_text, content_type, direction, created_at, metadata`,
+       VALUES ($1::uuid, $2, $3, 'outbound', 'pending', $4::jsonb, NOW())
+       RETURNING id, content_text, content_type, direction, status, created_at, metadata`,
             [conversationId, contentText, contentType, metadataJson],
         );
 
@@ -420,7 +455,30 @@ export class AgentConsoleService {
             this.logger.warn(`Could not update first_response_at: ${e.message}`);
         }
 
+        /**
+         * What the row is allowed to say about a send that already happened.
+         *
+         * Never downgrades a status a provider webhook may have written first:
+         * a `delivered` or `read` that arrived while this was still settling is
+         * newer evidence than anything this code knows, and `redacted` outranks
+         * everything. Same rule the outbox applies, for the same reason.
+         */
+        const settle = async (status: 'sent' | 'failed', detail?: string) => {
+            try {
+                await this.prisma.executeInTenantSchema(schemaName,
+                    `UPDATE messages SET status=$2,
+                        metadata = COALESCE(metadata,'{}'::jsonb) || $3::jsonb
+                     WHERE id=$1::uuid AND status NOT IN ('redacted','delivered','read')`,
+                    [msg.id, status, JSON.stringify(detail ? { sendError: detail.slice(0, 200) } : {})]);
+                msg.status = status;
+            } catch (error: any) {
+                // The send outcome could not be recorded. Leaving the row
+                // `pending` is the honest state: nothing here may claim it left.
+                this.logger.error(`Agent message ${msg.id} outcome not recorded (${status}): ${error?.message}`);
+            }
+        };
         // Obtener token real y enviar via el canal (WhatsApp, etc.)
+        let sendAttempted = false;
         try {
             // Buscar el canal activo de la conversación para saber a qué número enviar
             const convRows = await this.prisma.executeInTenantSchema<any[]>(
@@ -441,6 +499,7 @@ export class AgentConsoleService {
                 const outContent: any = isMedia
                     ? { type: contentType, mediaUrl: this.absoluteMediaUrl(mediaUrl), caption: caption || content || undefined, ...(filename ? { filename } : {}) }
                     : { type: 'text', text: content };
+                sendAttempted = true;
                 await this.channelGateway.sendMessage(
                     {
                         tenantId,
@@ -451,13 +510,20 @@ export class AgentConsoleService {
                     },
                     creds.accessToken,
                 );
+                await settle('sent');
             }
         } catch (e: any) {
             this.logger.warn(`Could not send agent message via channel: ${e.message}`);
+            // The agent has to be told. A failure that only reaches the server
+            // log leaves them believing the customer was answered.
+            if (sendAttempted) await settle('failed', e?.message);
         }
 
         return {
             id: msg.id,
+            // What actually happened to it, so the console can show a reply that
+            // did not leave instead of one more line that looks sent.
+            status: msg.status,
             content: msg.content_text,
             type: msg.content_type,
             sender: 'agent',

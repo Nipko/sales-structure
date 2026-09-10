@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, Logger, Optional } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
@@ -6,7 +6,16 @@ import { RedisService } from '../redis/redis.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { LlmKeyService } from '../settings/llm-key.service';
 import { LLMRouterService } from '../ai/router/llm-router.service';
+import type { ExternalSourceAuthority } from '../ai/interfaces/external-source-authority';
+import { LLMSourceAuthorityUnavailable } from '../ai/interfaces/llm-source-authority';
 import { kbmsg } from './knowledge-i18n';
+import type { KnowledgeHit, KnowledgeSearchOptions, KnowledgeSourceMetadata } from './knowledge-contracts';
+import { knowledgeSourceAvailable } from './knowledge-contracts';
+import { KnowledgeConflictService } from '../kb-health/knowledge-conflict.service';
+import { knowledgeReplicaSchema } from '../evaluation-revision/evaluation-knowledge-replica';
+import type { KnowledgeGapReport, RetrievedKnowledgeItem } from '@parallext/shared';
+import { attributeKnowledgeResponse, knowledgeDocumentReadiness } from './knowledge-attribution';
+import { KNOWLEDGE_ATTRIBUTION_SCHEMA } from './knowledge-attribution-schema';
 import OpenAI from 'openai';
 import axios from 'axios';
 import * as crypto from 'crypto';
@@ -29,9 +38,8 @@ const mammoth = require('mammoth');
 const CHUNK_MAX_CHARS = 2000;
 const CHUNK_OVERLAP_CHARS = 200;
 const HAS_KNOWLEDGE_TTL = 300;
-// Effective relevance bar for "was this chunk actually used" analytics — distinct
-// from the (often 0) recall threshold used to build the candidate pool.
-const KB_USE_THRESHOLD = 0.35;
+// Retrieval relevance is not evidence that the generated reply used a source.
+const KB_RELEVANCE_THRESHOLD = 0.35;
 const CRAWL_TIMEOUT_MS = 15_000;
 const CRAWL_MAX_BYTES = 5 * 1024 * 1024; // 5 MB
 
@@ -40,6 +48,7 @@ export class KnowledgeService {
     private readonly logger = new Logger(KnowledgeService.name);
     private openai: OpenAI | null = null;
     private currentKey = '';
+    private attributionSchemas?: Map<string, Promise<void>>;
 
     constructor(
         private readonly prisma: PrismaService,
@@ -49,6 +58,7 @@ export class KnowledgeService {
         private readonly llmKeys: LlmKeyService,
         private readonly llmRouter: LLMRouterService,
         @Optional() private readonly events?: EventEmitter2,
+        @Optional() private readonly conflicts?: KnowledgeConflictService,
     ) {}
 
     /**
@@ -75,7 +85,7 @@ export class KnowledgeService {
 
     async ingestDocument(
         tenantId: string,
-        file: {
+        file: KnowledgeSourceMetadata & {
             name: string;
             content?: string;
             fileBase64?: string;
@@ -122,14 +132,19 @@ export class KnowledgeService {
         const excerpt = textContent.substring(0, 300).replace(/\s+/g, ' ').trim();
 
         const detectedLang = this.detectLanguage(textContent);
+        const source = this.validateSourceMetadata(file);
+        await this.validateSourceAgents(schema, source.agentIds);
 
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schema,
-            `INSERT INTO knowledge_documents (title, file_name, file_type, content_text, status, source_type, source_url, crawl_hash, category, is_public, slug, excerpt, language)
-             VALUES ($1, $2, $3, $4, 'processing', $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
+            `INSERT INTO knowledge_documents (title, file_name, file_type, content_text, status, source_type, source_url, crawl_hash, category, is_public, slug, excerpt, language,
+                is_regulated, jurisdiction, authority, valid_from, valid_to, audience, agent_ids)
+             VALUES ($1, $2, $3, $4, 'processing', $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16::date, $17::date, $18, $19::uuid[]) RETURNING *`,
             [file.name, file.name, file.mimeType || 'text/plain', textContent,
              file.sourceType || 'upload', file.sourceUrl || null, contentHash,
-             file.category || null, file.isPublic ?? false, slug, excerpt, detectedLang],
+             file.category || null, file.isPublic ?? false, slug, excerpt, detectedLang,
+             source.isRegulated ?? false, source.jurisdiction ?? null, source.authority ?? null,
+             source.validFrom ?? null, source.validTo ?? null, source.audience ?? 'customer', source.agentIds ?? []],
         );
         const document = rows[0];
 
@@ -271,7 +286,7 @@ export class KnowledgeService {
     async updateDocument(
         tenantId: string,
         documentId: string,
-        update: {
+        update: KnowledgeSourceMetadata & {
             name?: string; content?: string; fileBase64?: string; mimeType?: string; crawlHash?: string;
             category?: string; isPublic?: boolean; autoRecrawl?: boolean;
             changedBy?: string; changeSummary?: string;
@@ -280,8 +295,21 @@ export class KnowledgeService {
         const schema = await this.tenantSchema(tenantId);
 
         const existing = await this.prisma.executeInTenantSchema<any[]>(schema,
-            `SELECT id, title, file_type, version FROM knowledge_documents WHERE id = $1::uuid`, [documentId]);
+            `SELECT id, title, file_type, version, updated_at, updated_at::text AS revision, is_regulated, jurisdiction, authority, valid_from, valid_to, audience, agent_ids, is_public
+             FROM knowledge_documents WHERE id = $1::uuid`, [documentId]);
         if (!existing?.[0]) throw new BadRequestException({ error: 'document_not_found' });
+        const source = this.validateSourceMetadata({
+            isRegulated: existing[0].is_regulated,
+            jurisdiction: existing[0].jurisdiction,
+            authority: existing[0].authority,
+            audience: existing[0].audience,
+            agentIds: existing[0].agent_ids,
+            isPublic: existing[0].is_public,
+            validFrom: existing[0].valid_from ? new Date(existing[0].valid_from).toISOString().slice(0, 10) : null,
+            validTo: existing[0].valid_to ? new Date(existing[0].valid_to).toISOString().slice(0, 10) : null,
+            ...update,
+        });
+        await this.validateSourceAgents(schema, source.agentIds);
 
         let textContent = update.content || '';
         if (!textContent && update.fileBase64) {
@@ -310,56 +338,67 @@ export class KnowledgeService {
 
         const contentHash = update.crawlHash || crypto.createHash('sha256').update(textContent).digest('hex').substring(0, 16);
 
-        // Save current version before overwriting
+        // Build the replacement completely before touching the live source. Neither a
+        // provider failure nor a partial embedding insert may unpublish the last version.
         const currentVersion = existing[0].version || 1;
-        await this.prisma.executeInTenantSchema(schema,
-            `INSERT INTO knowledge_document_versions (document_id, version, title, content_text, chunk_count, changed_by, change_summary)
-             SELECT id, COALESCE(version, 1), title, content_text, chunk_count, $2, $3
-             FROM knowledge_documents WHERE id = $1::uuid`,
-            [documentId, update.changedBy || null, update.changeSummary || null]);
-
         const newVersion = currentVersion + 1;
-
-        await this.prisma.executeInTenantSchema(schema,
-            `UPDATE knowledge_documents SET status = 'processing', updated_at = NOW() WHERE id = $1::uuid`, [documentId]);
-
         try {
-            await this.prisma.executeInTenantSchema(schema,
-                `DELETE FROM knowledge_embeddings WHERE document_id = $1::uuid`, [documentId]);
-
-            await this.embedAndStoreChunks(schema, documentId, textContent, tenantId);
-            const chunks = this.chunkText(textContent);
+            const prepared = await this.prepareEmbeddedChunks(schema, textContent, tenantId);
 
             const slug = (update.name || existing[0].title).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').substring(0, 200);
             const excerpt = textContent.substring(0, 300).replace(/\s+/g, ' ').trim();
             const detectedLang = this.detectLanguage(textContent);
 
-            await this.prisma.executeInTenantSchema(schema,
+            await this.prisma.transactionInTenantSchema(schema, async (query) => {
+                const locked = await query<any[]>(
+                    `SELECT version, updated_at, updated_at::text AS revision FROM knowledge_documents WHERE id = $1::uuid FOR UPDATE`, [documentId]);
+                if (!locked[0] || typeof existing[0].revision !== 'string' || typeof locked[0].revision !== 'string' || (locked[0].version || 1) !== currentVersion ||
+                    locked[0].revision !== existing[0].revision) {
+                    throw new ConflictException({ error: 'document_changed_during_indexing' });
+                }
+                await query(
+                    `INSERT INTO knowledge_document_versions (document_id, version, title, content_text, chunk_count, changed_by, change_summary)
+                     SELECT id, COALESCE(version, 1), title, content_text, chunk_count, $2, $3
+                     FROM knowledge_documents WHERE id = $1::uuid`,
+                    [documentId, update.changedBy || null, update.changeSummary || null]);
+                await query(`DELETE FROM knowledge_embeddings WHERE document_id = $1::uuid`, [documentId]);
+                await this.storePreparedChunks(query, documentId, prepared);
+                await query(
                 `UPDATE knowledge_documents
                  SET title = COALESCE($2, title), content_text = $3, chunk_count = $4,
-                     status = 'ready', crawl_hash = $5,
+                     status = 'ready', error_message = NULL, crawl_hash = $5,
                      last_crawled_at = CASE WHEN source_type = 'url' THEN NOW() ELSE last_crawled_at END,
                      category = COALESCE($6, category),
                      is_public = COALESCE($7, is_public),
                      auto_recrawl = COALESCE($8, auto_recrawl),
                      slug = $9, excerpt = $10,
                      version = $11, language = $12,
+                     is_regulated = $13, jurisdiction = $14, authority = $15, valid_from = $16::date, valid_to = $17::date,
+                     audience = $18, agent_ids = $19::uuid[],
                      updated_at = NOW()
                  WHERE id = $1::uuid`,
-                [documentId, update.name || null, textContent, chunks.length, contentHash,
+                [documentId, update.name || null, textContent, prepared.length, contentHash,
                  update.category !== undefined ? update.category : null,
                  update.isPublic !== undefined ? update.isPublic : null,
                  update.autoRecrawl !== undefined ? update.autoRecrawl : null,
-                 slug, excerpt, newVersion, detectedLang]);
+                 slug, excerpt, newVersion, detectedLang, source.isRegulated ?? false,
+                 source.jurisdiction ?? null, source.authority ?? null, source.validFrom ?? null, source.validTo ?? null,
+                 source.audience ?? 'customer', source.agentIds ?? []]);
+            });
 
             await this.invalidateHasKnowledgeCache(tenantId);
             this.emitQualityDependency(tenantId);
-            this.logger.log(`Document ${documentId} updated to v${newVersion}: ${chunks.length} chunks re-embedded`);
-            return { documentId, chunkCount: chunks.length, status: 'ready', version: newVersion };
+            this.logger.log(`Document ${documentId} updated to v${newVersion}: ${prepared.length} chunks re-embedded`);
+            return { documentId, chunkCount: prepared.length, status: 'ready', version: newVersion };
         } catch (error: any) {
-            await this.prisma.executeInTenantSchema(schema,
-                `UPDATE knowledge_documents SET status = 'error', error_message = $2, updated_at = NOW() WHERE id = $1::uuid`,
-                [documentId, error.message]);
+            // The transaction restored content, chunks and version. Keep the source
+            // readable; expose the failed attempt without overwriting a newer edit.
+            if (!(error instanceof ConflictException)) {
+                await this.prisma.executeInTenantSchema(schema,
+                    `UPDATE knowledge_documents SET error_message = $2
+                     WHERE id = $1::uuid AND COALESCE(version, 1) = $3 AND updated_at = $4::timestamptz`,
+                    [documentId, String(error.message).slice(0, 1000), currentVersion, existing[0].revision]).catch(() => {});
+            }
             throw error;
         }
     }
@@ -397,23 +436,27 @@ export class KnowledgeService {
         };
     }
 
-    // ─── Content Quality Scoring ─────────────────────────────────────────────
+    // ─── Content readiness (not a factual-correctness score) ──────────────────
 
     async getDocumentQualityScores(tenantId: string) {
         const schema = await this.tenantSchema(tenantId);
-
+        await this.ensureAttributionSchema(schema);
+        await this.ensureKbFeedbackTable(schema);
         const docs = await this.prisma.executeInTenantSchema<any[]>(schema,
             `SELECT kd.id, kd.title, kd.chunk_count, kd.status,
                     LENGTH(kd.content_text) AS content_length,
-                    kd.category, kd.source_type,
+                    kd.category, kd.source_type, kd.version, kd.error_message,
+                    kd.is_regulated, kd.authority, kd.jurisdiction, kd.valid_from, kd.valid_to,
+                    kd.satisfaction_score, kd.feedback_count,
+                    (SELECT COUNT(*)::int FROM kb_feedback f WHERE f.document_id=kd.id AND f.is_false_positive=true) AS false_positive_count,
                     COALESCE(stats.retrieval_count, 0)::int AS retrieval_count,
                     COALESCE(stats.avg_score, 0) AS avg_score,
                     COALESCE(stats.used_count, 0)::int AS used_count
              FROM knowledge_documents kd
              LEFT JOIN LATERAL (
-                 SELECT COUNT(*)::int AS retrieval_count,
+                 SELECT COUNT(DISTINCT retrieval_batch_id)::int AS retrieval_count,
                         ROUND(AVG(score)::numeric, 3) AS avg_score,
-                        COUNT(CASE WHEN was_used THEN 1 END)::int AS used_count
+                        COUNT(DISTINCT response_id) FILTER (WHERE attribution_version=1 AND was_used)::int AS used_count
                  FROM kb_retrieval_log
                  WHERE document_id = kd.id
                    AND created_at >= NOW() - INTERVAL '30 days'
@@ -421,40 +464,11 @@ export class KnowledgeService {
              WHERE kd.status != 'deleted'
              ORDER BY kd.created_at DESC`);
 
-        return (docs || []).map((d: any) => {
-            let score = 0;
-            const factors: Record<string, number> = {};
-
-            // Content length (0-25 pts): 500+ chars = full marks
-            const lenPts = Math.min(25, Math.round((d.content_length || 0) / 500 * 25));
-            factors.contentLength = lenPts;
-            score += lenPts;
-
-            // Chunk count (0-20 pts): 3+ chunks = full marks
-            const chunkPts = Math.min(20, (d.chunk_count || 0) * 7);
-            factors.chunkCount = chunkPts;
-            score += chunkPts;
-
-            // Category assigned (0-10 pts)
-            const catPts = d.category ? 10 : 0;
-            factors.categorized = catPts;
-            score += catPts;
-
-            // Retrieval performance (0-25 pts)
-            const retPts = Math.min(25, d.retrieval_count * 5);
-            factors.retrievals = retPts;
-            score += retPts;
-
-            // Avg relevance score (0-20 pts)
-            const relPts = Math.round((Number(d.avg_score) || 0) * 20);
-            factors.relevance = relPts;
-            score += relPts;
-
-            return {
+        return (docs || []).map((d: any) => ({
                 id: d.id,
                 title: d.title,
-                qualityScore: Math.min(100, score),
-                factors,
+                version: Number(d.version || 1),
+                ...knowledgeDocumentReadiness(d),
                 stats: {
                     contentLength: d.content_length || 0,
                     chunkCount: d.chunk_count || 0,
@@ -462,9 +476,11 @@ export class KnowledgeService {
                     avgScore: Number(d.avg_score) || 0,
                     usedCount: d.used_count,
                     hasCategoryFlag: !!d.category,
+                    falsePositiveCount: Number(d.false_positive_count || 0),
+                    feedbackCount: Number(d.feedback_count || 0),
+                    satisfactionScore: d.feedback_count ? Number(d.satisfaction_score) : null,
                 },
-            };
-        });
+        }));
     }
 
     // ─── AI Article Suggestions ──────────────────────────────────────────────
@@ -653,39 +669,18 @@ export class KnowledgeService {
         tenantId: string,
         query: string,
         topK = 5,
-        options?: {
-            similarityThreshold?: number;
-            poolSize?: number;
-            conversationId?: string;
-            language?: string;
-            rerank?: boolean;
-            rerankTopN?: number;
-            executionContext?: ServiceExecutionContext;
-            /**
-             * Operating country of the tenant this turn belongs to.
-             *
-             * A document marked `is_regulated` is EXCLUDED when its jurisdiction
-             * is a different country, rather than merely down-ranked. Language
-             * was the only signal retrieval had, and only as a ranking boost —
-             * so Colombian regulation answered a Mexican tenant's customer,
-             * confidently and with a citation. In health, finance, insurance and
-             * legal that is a wrong answer with a source attached.
-             *
-             * Absent, no regulated document is returned at all: answering a
-             * regulatory question without knowing the jurisdiction is the
-             * failure this filter exists to prevent.
-             */
-            jurisdiction?: string | null;
-        },
-    ): Promise<any[]> {
-        const schema = await this.tenantSchema(tenantId);
+        options?: KnowledgeSearchOptions,
+    ): Promise<KnowledgeHit[]> {
+        const schema = options?.evaluationKnowledge
+            ? await knowledgeReplicaSchema(this.prisma, options.evaluationKnowledge, tenantId, options.executionContext)
+            : await this.tenantSchema(tenantId);
         const poolSize = Math.max(topK, options?.poolSize ?? topK * 4);
         const similarityThreshold = options?.similarityThreshold ?? 0;
 
         if (!persistenceDisabled(options?.executionContext)) {
             await this.ensureKbSearchVector(schema);
         }
-        const queryEmbedding = await this.embedQueryCached(query, tenantId, options?.executionContext);
+        const queryEmbedding = await this.embedQueryCached(query, tenantId, options?.executionContext,options?.withDataSourceAuthority);
         const embeddingStr = `[${queryEmbedding.join(',')}]`;
         const regconfig = this.pgRegconfig(options?.language);
 
@@ -700,20 +695,27 @@ export class KnowledgeService {
         // in force today: an expired norm cited as current is its own kind of
         // wrong answer.
         const jurisdiction = (options?.jurisdiction || '').trim().toUpperCase() || null;
+        const agentId = options?.agentId || null;
+        const audience = options?.audience ?? 'customer';
+        const SCOPE_GATE = `AND COALESCE(kd.audience, 'customer') = $AUDIENCE$::text
+            AND (COALESCE(cardinality(kd.agent_ids), 0) = 0
+                OR ($AGENT$::uuid IS NOT NULL AND $AGENT$::uuid = ANY(kd.agent_ids)))`;
         const REGULATED_GATE = `
                    AND (
                        COALESCE(kd.is_regulated, false) = false
                        OR (
                            $JURISDICTION$::text IS NOT NULL
-                           AND (kd.jurisdiction IS NULL OR kd.jurisdiction = $JURISDICTION$::text)
-                           AND (kd.valid_from IS NULL OR kd.valid_from <= CURRENT_DATE)
-                           AND (kd.valid_to IS NULL OR kd.valid_to >= CURRENT_DATE)
+                           AND kd.jurisdiction = $JURISDICTION$::text
                        )
-                   )`;
-        const DOC_COLUMNS = `kd.title AS title, kd.id AS document_id, kd.language AS doc_language,
-                        kd.jurisdiction AS doc_jurisdiction, kd.authority AS doc_authority,
+                   )
+                   AND (kd.valid_from IS NULL OR kd.valid_from <= CURRENT_DATE)
+                   AND (kd.valid_to IS NULL OR kd.valid_to >= CURRENT_DATE)`;
+        const DOC_COLUMNS = `kd.title::text AS title, kd.id AS document_id, kd.language::text AS doc_language,
+                        kd.jurisdiction::text AS doc_jurisdiction, kd.authority::text AS doc_authority,
                         kd.valid_from AS doc_valid_from, kd.valid_to AS doc_valid_to,
-                        COALESCE(kd.is_regulated, false) AS doc_is_regulated`;
+                        COALESCE(kd.is_regulated, false) AS doc_is_regulated,
+                        COALESCE(kd.version, 1) AS doc_version, kd.source_url::text AS doc_source_url,
+                        COALESCE(kd.audience, 'customer')::text AS doc_audience, kd.agent_ids AS doc_agent_ids`;
 
         const [vectorPool, tsPool] = await Promise.all([
             this.prisma.executeInTenantSchema<any[]>(schema,
@@ -724,9 +726,10 @@ export class KnowledgeService {
                  JOIN knowledge_documents kd ON kd.id = ke.document_id
                  WHERE kd.status = 'ready'
                  ${REGULATED_GATE.replace(/\$JURISDICTION\$/g, '$3')}
-                 ORDER BY ke.embedding <=> $1::vector
+                 ${SCOPE_GATE.replace(/\$AUDIENCE\$/g, '$4').replace(/\$AGENT\$/g, '$5')}
+                 ORDER BY ke.embedding <=> $1::vector, ke.id
                  LIMIT $2`,
-                [embeddingStr, poolSize, jurisdiction]),
+                [embeddingStr, poolSize, jurisdiction, audience, agentId]),
             this.prisma.executeInTenantSchema<any[]>(schema,
                 `SELECT ke.id AS chunk_id, ke.chunk_text, ke.chunk_index, ke.metadata,
                         ${DOC_COLUMNS}
@@ -734,9 +737,10 @@ export class KnowledgeService {
                  JOIN knowledge_documents kd ON kd.id = ke.document_id
                  WHERE kd.status = 'ready' AND ke.search_tsv @@ plainto_tsquery($1::regconfig, $2)
                  ${REGULATED_GATE.replace(/\$JURISDICTION\$/g, '$4')}
-                 ORDER BY ts_rank(ke.search_tsv, plainto_tsquery($1::regconfig, $2)) DESC
+                 ${SCOPE_GATE.replace(/\$AUDIENCE\$/g, '$5').replace(/\$AGENT\$/g, '$6')}
+                 ORDER BY ts_rank(ke.search_tsv, plainto_tsquery($1::regconfig, $2)) DESC, ke.id
                  LIMIT $3`,
-                [regconfig, query, poolSize, jurisdiction]).catch(() => [] as any[]),
+                [regconfig, query, poolSize, jurisdiction, audience, agentId]).catch(() => [] as any[]),
         ]);
 
         const RRF_K = 60;
@@ -766,6 +770,7 @@ export class KnowledgeService {
         });
 
         const ranked = [...fused.values()]
+            .filter(({ row }) => knowledgeSourceAvailable(row, options))
             .map(({ row, rrf, vecSim, inTs }) => {
                 let keywordBoost = inTs ? KEYWORD_BOOST : 0;
                 if (queryTokens.length) {
@@ -775,7 +780,7 @@ export class KnowledgeService {
                 }
                 const langBoost = wantLang && (row.doc_language || '').slice(0, 2).toLowerCase() === wantLang ? LANG_BOOST : 0;
                 // `score` stays the vector-similarity-based scale for analytics
-                // continuity (trackRetrieval compares it to KB_USE_THRESHOLD);
+                // continuity (trackRetrieval compares it to KB_RELEVANCE_THRESHOLD);
                 // ordering is by RRF.
                 const score = Math.min(1, Math.max(0, vecSim + keywordBoost + langBoost));
                 return {
@@ -785,15 +790,44 @@ export class KnowledgeService {
                     chunk_text: row.chunk_text,
                     chunk_index: row.chunk_index,
                     metadata: row.metadata,
+                    doc_language: row.doc_language ?? null,
+                    doc_jurisdiction: row.doc_jurisdiction ?? null,
+                    doc_authority: row.doc_authority ?? null,
+                    doc_valid_from: row.doc_valid_from ?? null,
+                    doc_valid_to: row.doc_valid_to ?? null,
+                    doc_is_regulated: row.doc_is_regulated === true,
+                    doc_version: Number(row.doc_version ?? 1),
+                    doc_source_url: row.doc_source_url ?? null,
+                    doc_audience: row.doc_audience ?? 'customer',
+                    doc_agent_ids: row.doc_agent_ids ?? [],
                     similarity: vecSim,
                     keywordHit: inTs || keywordBoost > 0,
                     score,
                     _rrf: rrf,
+                    _bm25: inTs,
                 };
             })
-            // Keep a chunk if it clears the relevance bar OR it's a keyword match
-            // (the BM25 win the pure-vector path would have dropped on threshold).
-            .filter(r => r.score >= similarityThreshold || r.keywordHit)
+            // Keep a chunk if it clears the relevance bar OR it is a real BM25
+            // match — the win the pure-vector path would have dropped on
+            // threshold, which is what this exception was written for.
+            //
+            // `_bm25` and NOT `keywordHit`, and the difference is the whole
+            // point. `keywordHit` is graded and generous by design: it turns
+            // true when ANY single query token longer than three characters
+            // appears as a substring of the chunk, because that makes a useful
+            // nudge to the SCORE. Used as an admission ticket it made
+            // `similarityThreshold` stop being a threshold — one shared common
+            // word ("habitaciones", "appointment") let a chunk through at any
+            // cut, so a caller asking for 0.35 got whatever shared a word with
+            // the question. The measured cost was abstention: the corpus could
+            // not answer, retrieval returned something anyway, and the agent
+            // built a confident reply on it.
+            //
+            // `_bm25` is the tsvector match, and `plainto_tsquery` ANDs every
+            // lexeme of the question — so it means the chunk contains all of
+            // them. That is the exact-term recall the exception exists to
+            // protect, and nothing wider.
+            .filter(r => r.score >= similarityThreshold || r._bm25)
             .sort((a, b) => b._rrf - a._rrf || b.score - a.score);
 
         // Optional LLM reranker over the top-N of the fused pool — best-effort, gated by
@@ -805,14 +839,24 @@ export class KnowledgeService {
                 options.rerankTopN ?? 12,
                 tenantId,
                 options.executionContext,
+                options.withDataSourceAuthority,
             )
             : ranked;
 
-        const enriched = reranked.slice(0, topK).map(({ _rrf, ...rest }) => rest);
+        const retrievalBatchId = crypto.randomUUID();
+        const conflictEvidence = this.conflicts ? await this.conflicts.annotations(schema,
+            [...new Set(reranked.slice(0,topK).map(row => row.document_id))],
+            {audience,agentId,jurisdiction}, options?.executionContext) : null;
+        const enriched = reranked.slice(0, topK).map(({ _rrf, _bm25, ...rest }) => ({
+            ...rest, retrievalId: crypto.randomUUID(), retrievalBatchId,
+            ...(conflictEvidence ? {conflictReviewStatus: conflictEvidence.available ? 'available' as const : 'unavailable' as const,
+                conflicts: (conflictEvidence.annotations[rest.document_id] || []).filter(note => rest.chunk_text.includes(note.quote))} : {}),
+        }));
 
-        // Fire-and-forget analytics tracking
+        // Await the best-effort insert so final-response attribution cannot race
+        // a detached retrieval insert. A metrics failure never breaks retrieval.
         if (!persistenceDisabled(options?.executionContext)) {
-            this.trackRetrieval(schema, tenantId, query, enriched, similarityThreshold, options?.conversationId).catch(() => {});
+            await this.trackRetrieval(schema, tenantId, query, enriched, similarityThreshold, options?.conversationId, retrievalBatchId);
         }
 
         return enriched;
@@ -829,6 +873,7 @@ export class KnowledgeService {
         topN: number,
         tenantId?: string,
         executionContext?: ServiceExecutionContext,
+        sourceAuthority?:ExternalSourceAuthority,
     ): Promise<any[]> {
         const pool = candidates.slice(0, Math.min(topN, candidates.length));
         if (pool.length <= 1) return candidates;
@@ -846,6 +891,7 @@ export class KnowledgeService {
                 maxTokens: 200,
                 tenantId,
                 executionContext,
+                withSourceAuthority:sourceAuthority?invoke=>sourceAuthority(invoke,response=>response.usage):undefined,
                 systemPrompt: 'Sos un reranker. Devolvé SOLO un JSON array de índices (enteros) ordenados por relevancia a la consulta, el más relevante primero. Sin texto extra.',
                 messages: [{ role: 'user', content: `Consulta: ${query}\n\nFragmentos:\n${list}` }],
             });
@@ -862,6 +908,7 @@ export class KnowledgeService {
             pool.forEach((c, i) => { if (!seen.has(i)) reordered.push(c); }); // append omitted
             return [...reordered, ...candidates.slice(pool.length)];
         } catch (e: any) {
+            if(e instanceof LLMSourceAuthorityUnavailable)throw e;
             this.logger.warn(`[KB rerank] failed (non-fatal): ${e.message}`);
             return candidates;
         }
@@ -869,77 +916,136 @@ export class KnowledgeService {
 
     // ─── KB Analytics ────────────────────────────────────────────────────────
 
+    private async ensureAttributionSchema(schema: string): Promise<void> {
+        this.attributionSchemas ??= new Map();
+        let pending = this.attributionSchemas.get(schema);
+        if (!pending) {
+            pending = (async () => {
+                for (const sql of KNOWLEDGE_ATTRIBUTION_SCHEMA) await this.prisma.executeInTenantSchema(schema, sql);
+            })().catch(error => { this.attributionSchemas!.delete(schema); throw error; });
+            this.attributionSchemas.set(schema, pending);
+        }
+        await pending;
+    }
+
+    private async analyticsTransaction<T>(schema: string, conversationId: string | undefined,
+        action: (query: <R = any[]>(sql: string, params?: any[]) => Promise<R>) => Promise<T>,
+    ): Promise<{ blocked: boolean; value?: T }> {
+        return this.prisma.transactionInTenantSchema(schema, async query => {
+            // Erasure takes the exclusive form of this same lock before redaction.
+            await query(`SELECT pg_advisory_xact_lock_shared(hashtextextended($1,0))`, [`agent-privacy:${schema}`]);
+            if (conversationId) {
+                const contact = await query<any[]>(`SELECT c.id FROM conversations c
+                    WHERE c.id=$1::uuid AND NOT EXISTS
+                    (SELECT 1 FROM customer_memory_erasure e WHERE e.contact_id=c.contact_id)`, [conversationId]);
+                if (!contact.length) return { blocked: true };
+            }
+            return { blocked: false, value: await action(query) };
+        });
+    }
+
     private async trackRetrieval(
         schema: string, tenantId: string, query: string,
-        results: any[], threshold: number, conversationId?: string,
+        results: any[], threshold: number, conversationId?: string, batchId = crypto.randomUUID(),
     ) {
         try {
-            // A retrieval is unanswered when no candidate clears the effective
-            // grounding bar. A wide recall pool below that bar is still a real KB
-            // gap and must not disappear from per-agent quality evidence.
-            const useThreshold = Math.max(threshold, KB_USE_THRESHOLD);
-            const hasUsableResult = results.some((result) => Number(result?.score) >= useThreshold);
-            if (!hasUsableResult) {
-                const queryHash = crypto.createHash('sha256').update(query.toLowerCase().trim()).digest('hex').substring(0, 16);
-                await this.prisma.executeInTenantSchema(schema,
-                    `INSERT INTO kb_unanswered_queries (query, query_hash, occurrences, last_seen_at)
-                     VALUES ($1, $2, 1, NOW())
-                     ON CONFLICT (query_hash) WHERE resolved = false
-                     DO UPDATE SET occurrences = kb_unanswered_queries.occurrences + 1, last_seen_at = NOW()`,
+            await this.ensureAttributionSchema(schema);
+            const relevanceThreshold = Math.max(threshold, KB_RELEVANCE_THRESHOLD);
+            const hasRelevantResult = results.some(result => Number(result?.score) >= relevanceThreshold);
+            const records: Array<{ id: string; document_id: string | null; chunk_id: string | null; score: number | null;
+                relevance_passed: boolean; source_version: number | null; source_title: string | null }> = results.map(result => ({
+                id: result.retrievalId || crypto.randomUUID(), document_id: result.document_id,
+                chunk_id: result.id, score: result.score, relevance_passed: result.score >= relevanceThreshold,
+                source_version: result.doc_version || 1, source_title: String(result.title || '').slice(0, 500),
+            }));
+            if (!hasRelevantResult) records.push({ id: crypto.randomUUID(), document_id: null, chunk_id: null,
+                score: null, relevance_passed: false, source_version: null, source_title: null });
+            await this.analyticsTransaction(schema, conversationId, async execute => {
+                if (!hasRelevantResult) {
+                    const queryHash = crypto.createHash('sha256').update(query.toLowerCase().trim()).digest('hex').substring(0, 16);
+                    await execute(`INSERT INTO kb_unanswered_queries (query, query_hash, occurrences, last_seen_at)
+                        VALUES ($1, $2, 1, NOW()) ON CONFLICT (query_hash) WHERE resolved = false
+                        DO UPDATE SET occurrences = kb_unanswered_queries.occurrences + 1, last_seen_at = NOW()`,
                     [query.substring(0, 500), queryHash]);
-
-                // Preserve a conversation-scoped sentinel as well as the
-                // aggregate unanswered-query row. The Quality Center can then
-                // attribute real retrieval gaps to the exact agent/version
-                // that handled the turn without correlating free-form text or
-                // assigning a tenant-wide aggregate to every agent.
-                await this.prisma.executeInTenantSchema(schema,
-                    `INSERT INTO kb_retrieval_log (document_id, chunk_id, query, score, was_used, conversation_id)
-                     VALUES (NULL, NULL, $1, NULL, false, $2::uuid)`,
-                    [query.substring(0, 500), conversationId || null]);
-            }
-
-            // was_used must reflect the EFFECTIVE use bar (a chunk that actually
-            // grounds the answer), not the recall threshold (often 0 to return a
-            // wide pool to the LLM) — otherwise the hit-rate reports ~100%.
-            for (const r of results.slice(0, 10)) {
-                await this.prisma.executeInTenantSchema(schema,
-                    `INSERT INTO kb_retrieval_log (document_id, chunk_id, query, score, was_used, conversation_id)
-                     VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6::uuid)`,
-                    [r.document_id, r.id, query.substring(0, 500), r.score,
-                     r.score >= useThreshold, conversationId || null]);
-            }
+                }
+                // A null-document row preserves the conversation-scoped relevance gap.
+                // Every new row starts with was_used=false, regardless of its score.
+                await execute(`INSERT INTO kb_retrieval_log
+                    (id,document_id,chunk_id,query,score,was_used,conversation_id,retrieval_batch_id,
+                     relevance_passed,attribution_version,source_version,source_title)
+                    SELECT r.id,r.document_id,r.chunk_id,$2,r.score,false,$3::uuid,$4::uuid,
+                        r.relevance_passed,1,r.source_version,r.source_title
+                    FROM jsonb_to_recordset($1::jsonb) AS r(id UUID,document_id UUID,chunk_id UUID,score NUMERIC,
+                        relevance_passed BOOLEAN,source_version INTEGER,source_title TEXT)`,
+                [JSON.stringify(records), query.substring(0, 500), conversationId || null, batchId]);
+            });
         } catch (e: any) {
             this.logger.warn(`[KB Analytics] tracking failed (non-fatal): ${e.message}`);
         }
     }
 
+    /** Call only after the final response has passed all guards and rewrites. This
+     * measures generated replies, not delivery or factual/semantic correctness. */
+    async recordResponseAttribution(tenantId: string, conversationId: string, reply: string,
+        items: RetrievedKnowledgeItem[], executionContext?: ServiceExecutionContext) {
+        const report = attributeKnowledgeResponse(reply, items);
+        if (persistenceDisabled(executionContext)) return { ...report, persistence: 'disabled' as const };
+        if (!report.evidence.length) return { ...report, persistence: 'not_needed' as const };
+        try {
+            const schema = await this.tenantSchema(tenantId);
+            await this.ensureAttributionSchema(schema);
+            const result = await this.analyticsTransaction(schema, conversationId, async query => query<any[]>(
+                `UPDATE kb_retrieval_log l SET presented=true,was_used=e.signal<>'unobserved',
+                    response_signal=e.signal,attribution_granularity=e.granularity,evidence_hash=e."evidenceHash",
+                    response_id=$4::uuid,response_hash=$3,attributed_at=NOW()
+                 FROM jsonb_to_recordset($1::jsonb) AS e("retrievalId" UUID,"documentId" UUID,signal TEXT,granularity TEXT,"evidenceHash" TEXT)
+                 WHERE l.id=e."retrievalId" AND l.document_id=e."documentId" AND l.conversation_id=$2::uuid
+                    AND l.attribution_version=1 AND l.attributed_at IS NULL RETURNING l.id`,
+                [JSON.stringify(report.evidence), conversationId, report.responseHash, crypto.randomUUID()]));
+            return { ...report, persistence: result.blocked ? 'contact_erased' as const :
+                result.value?.length === report.evidence.length ? 'recorded' as const : 'incomplete' as const };
+        } catch (error: any) {
+            this.logger.warn(`[KB Analytics] response attribution failed (non-fatal): ${error.message}`);
+            return { ...report, persistence: 'unavailable' as const };
+        }
+    }
+
     async getAnalytics(tenantId: string, days = 30) {
         const schema = await this.tenantSchema(tenantId);
+        await this.ensureAttributionSchema(schema);
+        days = Math.max(1, Math.min(365, Number.isFinite(days) ? Math.floor(days) : 30));
         const since = new Date(Date.now() - days * 86_400_000).toISOString();
 
         const [topDocs, totalQueries, unanswered, avgScore, dailyVolume] = await Promise.all([
             this.prisma.executeInTenantSchema<any[]>(schema,
-                `SELECT kd.id, kd.title, kd.source_type,
-                        COUNT(krl.id)::int AS retrieval_count,
-                        COUNT(CASE WHEN krl.was_used THEN 1 END)::int AS used_count,
+                `SELECT kd.id AS document_id, kd.title AS document_name, kd.source_type,
+                        COUNT(DISTINCT krl.retrieval_batch_id)::int AS retrieval_count,
+                        COUNT(DISTINCT krl.response_id) FILTER (WHERE krl.attribution_version=1 AND krl.was_used)::int AS used_count,
                         ROUND(AVG(krl.score)::numeric, 3) AS avg_score
                  FROM kb_retrieval_log krl
                  JOIN knowledge_documents kd ON kd.id = krl.document_id
-                 WHERE krl.created_at >= $1::timestamp
+                 WHERE krl.created_at >= $1::timestamp AND krl.attribution_version=1
                  GROUP BY kd.id, kd.title, kd.source_type
                  ORDER BY retrieval_count DESC LIMIT 20`,
                 [since]),
 
             this.prisma.executeInTenantSchema<any[]>(schema,
-                `SELECT COUNT(DISTINCT query)::int AS total,
-                        COUNT(CASE WHEN was_used THEN 1 END)::int AS hits,
-                        COUNT(*)::int AS total_retrievals
-                 FROM kb_retrieval_log WHERE created_at >= $1::timestamp`,
+                `WITH searches AS (SELECT retrieval_batch_id, BOOL_OR(relevance_passed) AS relevant,
+                        BOOL_OR(document_id IS NOT NULL) AS has_candidates,
+                        BOOL_OR(attributed_at IS NOT NULL) AS assessed, BOOL_OR(was_used) AS observed
+                    FROM kb_retrieval_log WHERE created_at >= $1::timestamp AND attribution_version=1
+                    GROUP BY retrieval_batch_id)
+                 SELECT (SELECT COUNT(DISTINCT query)::int FROM kb_retrieval_log WHERE created_at >= $1::timestamp AND attribution_version=1) AS total,
+                    COUNT(*)::int AS total_retrievals, COUNT(*) FILTER (WHERE relevant)::int AS hits,
+                    COUNT(*) FILTER (WHERE has_candidates)::int AS candidate_searches,
+                    COUNT(*) FILTER (WHERE assessed)::int AS assessed_searches,
+                    COUNT(*) FILTER (WHERE observed)::int AS observed_searches,
+                    (SELECT COUNT(*)::int FROM kb_retrieval_log WHERE created_at >= $1::timestamp AND attribution_version=0) AS legacy_rows
+                 FROM searches`,
                 [since]),
 
             this.prisma.executeInTenantSchema<any[]>(schema,
-                `SELECT id, query, occurrences, last_seen_at
+                `SELECT id, query, occurrences, last_seen_at, resolved
                  FROM kb_unanswered_queries
                  WHERE resolved = false AND last_seen_at >= $1::timestamp
                  ORDER BY occurrences DESC LIMIT 20`,
@@ -948,32 +1054,44 @@ export class KnowledgeService {
             this.prisma.executeInTenantSchema<any[]>(schema,
                 `SELECT ROUND(AVG(score)::numeric, 3) AS avg,
                         ROUND(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY score)::numeric, 3) AS median
-                 FROM kb_retrieval_log WHERE created_at >= $1::timestamp AND was_used = true`,
+                 FROM kb_retrieval_log WHERE created_at >= $1::timestamp AND document_id IS NOT NULL AND attribution_version=1`,
                 [since]),
 
             this.prisma.executeInTenantSchema<any[]>(schema,
-                `SELECT DATE(created_at) AS day,
-                        COUNT(*)::int AS queries,
-                        COUNT(CASE WHEN was_used THEN 1 END)::int AS hits
+                `SELECT TO_CHAR(created_at, 'YYYY-MM-DD') AS date,
+                        COUNT(DISTINCT retrieval_batch_id)::int AS queries,
+                        COUNT(DISTINCT retrieval_batch_id) FILTER (WHERE relevance_passed)::int AS hits,
+                        COUNT(DISTINCT response_id) FILTER (WHERE was_used)::int AS observed_responses
                  FROM kb_retrieval_log
-                 WHERE created_at >= $1::timestamp
-                 GROUP BY DATE(created_at)
-                 ORDER BY day DESC LIMIT 30`,
+                 WHERE created_at >= $1::timestamp AND attribution_version=1
+                 GROUP BY TO_CHAR(created_at, 'YYYY-MM-DD')
+                 ORDER BY date DESC LIMIT 365`,
                 [since]),
         ]);
 
-        const total = totalQueries?.[0]?.total || 0;
-        const hits = totalQueries?.[0]?.hits || 0;
-        const hitRate = total > 0 ? Math.round((hits / (totalQueries?.[0]?.total_retrievals || 1)) * 100) : 0;
+        const counts = totalQueries?.[0] || {};
+        const total = Number(counts.total || 0);
+        const searches = Number(counts.total_retrievals || 0);
+        const assessed = Number(counts.assessed_searches || 0);
+        const candidates = Number(counts.candidate_searches || 0);
 
         return {
             period: { days, since },
             overview: {
                 uniqueQueries: total,
-                totalRetrievals: totalQueries?.[0]?.total_retrievals || 0,
-                hitRate,
-                avgScore: avgScore?.[0]?.avg ?? 0,
-                medianScore: avgScore?.[0]?.median ?? 0,
+                totalRetrievals: searches,
+                // All rates are fractions [0,1]. Legacy heuristic rows never enter
+                // response attribution or the per-search denominators.
+                hitRate: searches ? Number(counts.hits || 0) / searches : null,
+                observedRate: assessed ? Number(counts.observed_searches || 0) / assessed : null,
+                attributionCoverage: candidates ? assessed / candidates : null,
+                assessedSearches: assessed,
+                candidateSearches: candidates,
+                observedSearches: Number(counts.observed_searches || 0),
+                legacyRows: Number(counts.legacy_rows || 0),
+                avgScore: avgScore?.[0]?.avg == null ? null : Number(avgScore[0].avg),
+                medianScore: avgScore?.[0]?.median == null ? null : Number(avgScore[0].median),
+                semanticSupport: 'not_evaluated',
             },
             topDocuments: topDocs || [],
             unansweredQueries: unanswered || [],
@@ -1011,7 +1129,8 @@ export class KnowledgeService {
         return this.prisma.executeInTenantSchema<any[]>(schema,
             `SELECT id, title, file_name, file_type, file_size, chunk_count, status, error_message,
                     source_type, source_url, last_crawled_at, category, is_public, slug, excerpt,
-                    auto_recrawl, language, version, created_at, updated_at, content_text
+                    auto_recrawl, language, version, created_at, updated_at, content_text,
+                    is_regulated, jurisdiction, authority, valid_from, valid_to, audience, agent_ids
              FROM knowledge_documents
              ${where}
              ORDER BY created_at DESC`,
@@ -1040,9 +1159,26 @@ export class KnowledgeService {
     async updateDocumentMeta(
         tenantId: string,
         documentId: string,
-        meta: { category?: string; isPublic?: boolean; autoRecrawl?: boolean; name?: string },
+        meta: KnowledgeSourceMetadata & { category?: string; isPublic?: boolean; autoRecrawl?: boolean; name?: string },
     ) {
         const schema = await this.tenantSchema(tenantId);
+        const rows = await this.prisma.executeInTenantSchema<any[]>(schema,
+            `SELECT is_regulated, jurisdiction, authority, valid_from, valid_to, audience, agent_ids, is_public,
+                    updated_at::text AS revision FROM knowledge_documents WHERE id = $1::uuid`, [documentId]);
+        if (!rows?.[0]) throw new BadRequestException({ error: 'document_not_found' });
+        const previous = rows[0];
+        const source = this.validateSourceMetadata({
+            isRegulated: previous.is_regulated,
+            jurisdiction: previous.jurisdiction,
+            authority: previous.authority,
+            audience: previous.audience,
+            agentIds: previous.agent_ids,
+            isPublic: previous.is_public,
+            validFrom: previous.valid_from ? new Date(previous.valid_from).toISOString().slice(0, 10) : null,
+            validTo: previous.valid_to ? new Date(previous.valid_to).toISOString().slice(0, 10) : null,
+            ...meta,
+        });
+        await this.validateSourceAgents(schema, source.agentIds);
         const sets: string[] = ['updated_at = NOW()'];
         const params: any[] = [documentId];
         let idx = 2;
@@ -1051,6 +1187,13 @@ export class KnowledgeService {
         if (meta.category !== undefined) { sets.push(`category = $${idx}`); params.push(meta.category || null); idx++; }
         if (meta.isPublic !== undefined) { sets.push(`is_public = $${idx}`); params.push(meta.isPublic); idx++; }
         if (meta.autoRecrawl !== undefined) { sets.push(`auto_recrawl = $${idx}`); params.push(meta.autoRecrawl); idx++; }
+        for (const [key, column, cast] of [
+            ['isRegulated', 'is_regulated', ''], ['jurisdiction', 'jurisdiction', ''],
+            ['authority', 'authority', ''], ['validFrom', 'valid_from', '::date'], ['validTo', 'valid_to', '::date'],
+            ['audience', 'audience', ''], ['agentIds', 'agent_ids', '::uuid[]'],
+        ] as const) {
+            if (meta[key] !== undefined) { sets.push(`${column} = $${idx}${cast}`); params.push(source[key]); idx++; }
+        }
 
         if (meta.name !== undefined) {
             const slug = meta.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').substring(0, 200);
@@ -1059,11 +1202,66 @@ export class KnowledgeService {
             idx++;
         }
 
-        await this.prisma.executeInTenantSchema(schema,
-            `UPDATE knowledge_documents SET ${sets.join(', ')} WHERE id = $1::uuid`, params);
+        params.push(previous.revision);
+        const updated = await this.prisma.executeInTenantSchema<any[]>(schema,
+            `UPDATE knowledge_documents SET ${sets.join(', ')} WHERE id = $1::uuid AND updated_at = $${idx}::timestamptz RETURNING id`, params);
+        if (!updated.length) throw new ConflictException({ error: 'document_changed_during_metadata_update' });
 
         this.emitQualityDependency(tenantId);
         return { success: true };
+    }
+
+    private validateSourceMetadata(source: KnowledgeSourceMetadata & { isPublic?: boolean }): KnowledgeSourceMetadata {
+        if (source.isRegulated !== undefined && typeof source.isRegulated !== 'boolean') {
+            throw new BadRequestException({ error: 'invalid_source_regulation' });
+        }
+        const normalized = { ...source };
+        if (source.audience !== undefined && !['customer', 'internal'].includes(source.audience)) {
+            throw new BadRequestException({ error: 'invalid_source_audience' });
+        }
+        if (source.audience === 'internal' && source.isPublic) {
+            throw new BadRequestException({ error: 'internal_source_cannot_be_public' });
+        }
+        if (source.agentIds !== undefined) {
+            if (!Array.isArray(source.agentIds) || source.agentIds.length > 100 ||
+                source.agentIds.some(id => typeof id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id))) {
+                throw new BadRequestException({ error: 'invalid_source_agents' });
+            }
+            normalized.agentIds = [...new Set(source.agentIds)];
+        }
+        if (source.jurisdiction != null) {
+            if (typeof source.jurisdiction !== 'string' || !/^[a-z]{2}$/i.test(source.jurisdiction.trim())) {
+                throw new BadRequestException({ error: 'invalid_source_jurisdiction' });
+            }
+            normalized.jurisdiction = source.jurisdiction.trim().toUpperCase();
+        }
+        if (source.authority != null) {
+            if (typeof source.authority !== 'string' || source.authority.length > 300) {
+                throw new BadRequestException({ error: 'invalid_source_authority' });
+            }
+            normalized.authority = source.authority.trim() || null;
+        }
+        for (const key of ['validFrom', 'validTo'] as const) {
+            const value = source[key];
+            if (value != null && (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value) ||
+                Number.isNaN(Date.parse(value)) || new Date(value).toISOString().slice(0, 10) !== value)) {
+                throw new BadRequestException({ error: 'invalid_source_validity' });
+            }
+        }
+        if (source.validFrom && source.validTo && source.validFrom > source.validTo) {
+            throw new BadRequestException({ error: 'invalid_source_validity_range' });
+        }
+        if (source.isRegulated && (!normalized.jurisdiction || !normalized.authority)) {
+            throw new BadRequestException({ error: 'regulated_source_requires_jurisdiction_and_authority' });
+        }
+        return normalized;
+    }
+
+    private async validateSourceAgents(schema: string, agentIds?: string[]) {
+        if (!agentIds?.length) return;
+        const rows = await this.prisma.executeInTenantSchema<any[]>(schema,
+            `SELECT id FROM agent_personas WHERE id = ANY($1::uuid[])`, [agentIds]);
+        if (rows.length !== agentIds.length) throw new BadRequestException({ error: 'source_agent_not_found' });
     }
 
     // ─── Tenant Knowledge Check (cached) ─────────────────────────────────────
@@ -1071,14 +1269,23 @@ export class KnowledgeService {
     async tenantHasKnowledge(
         tenantId: string,
         executionContext?: ServiceExecutionContext,
+        scope?: Pick<KnowledgeSearchOptions, 'agentId' | 'audience' | 'jurisdiction' | 'evaluationKnowledge'>,
     ): Promise<boolean> {
-        if (persistenceDisabled(executionContext)) {
-            const schema = await this.tenantSchema(tenantId);
+        if (persistenceDisabled(executionContext) || scope) {
+            const schema = scope?.evaluationKnowledge
+                ? await knowledgeReplicaSchema(this.prisma, scope.evaluationKnowledge, tenantId, executionContext)
+                : await this.tenantSchema(tenantId);
             const rows = await this.prisma.executeInTenantSchema<any[]>(
                 schema,
                 `SELECT COUNT(*)::int AS cnt FROM knowledge_embeddings ke
                  JOIN knowledge_documents kd ON kd.id = ke.document_id
-                 WHERE kd.status = 'ready'`,
+                 WHERE kd.status = 'ready'
+                    AND COALESCE(kd.audience, 'customer') = $1
+                    AND (COALESCE(cardinality(kd.agent_ids), 0) = 0 OR $2::uuid = ANY(kd.agent_ids))
+                    AND (kd.valid_from IS NULL OR kd.valid_from <= CURRENT_DATE)
+                    AND (kd.valid_to IS NULL OR kd.valid_to >= CURRENT_DATE)
+                    AND (COALESCE(kd.is_regulated, false) = false OR kd.jurisdiction = $3)`,
+                [scope?.audience ?? 'customer', scope?.agentId || null, scope?.jurisdiction?.toUpperCase() || null],
             );
             return rows[0]?.cnt > 0;
         }
@@ -1095,7 +1302,11 @@ export class KnowledgeService {
             // (searchRelevant only returns chunks of status='ready' docs).
             `SELECT COUNT(*)::int AS cnt FROM knowledge_embeddings ke
              JOIN knowledge_documents kd ON kd.id = ke.document_id
-             WHERE kd.status = 'ready'`,
+             WHERE kd.status = 'ready' AND COALESCE(kd.audience, 'customer') = 'customer'
+                AND COALESCE(cardinality(kd.agent_ids), 0) = 0
+                AND (kd.valid_from IS NULL OR kd.valid_from <= CURRENT_DATE)
+                AND (kd.valid_to IS NULL OR kd.valid_to >= CURRENT_DATE)
+                AND COALESCE(kd.is_regulated, false) = false`,
         );
         const hasKnowledge = rows[0]?.cnt > 0;
         await this.redis.set(cacheKey, hasKnowledge ? '1' : '0', HAS_KNOWLEDGE_TTL);
@@ -1153,6 +1364,14 @@ export class KnowledgeService {
     // ─── Chunking & Embedding ────────────────────────────────────────────────
 
     private async embedAndStoreChunks(schema: string, documentId: string, text: string, tenantId?: string) {
+        const prepared = await this.prepareEmbeddedChunks(schema, text, tenantId);
+        await this.prisma.transactionInTenantSchema(schema, async (query) => {
+            await this.storePreparedChunks(query, documentId, prepared);
+        });
+        return prepared.length;
+    }
+
+    private async prepareEmbeddedChunks(schema: string, text: string, tenantId?: string) {
         const chunks = this.chunkText(text);
 
         if (tenantId) {
@@ -1181,16 +1400,10 @@ export class KnowledgeService {
         // Index BM25 with the document's OWN language so stemming matches the query-side
         // regconfig (instead of always Spanish). Default Spanish for unknown/auto.
         const docRegconfig = this.pgRegconfig(this.detectLanguage(text));
+        const prepared: Array<{ text: string; embedding: string; regconfig: string }> = [];
         for (let i = 0; i < chunks.length; i++) {
             const embedding = await this.generateEmbedding(chunks[i], tenantId);
-            const embeddingStr = `[${embedding.join(',')}]`;
-            await this.prisma.executeInTenantSchema(
-                schema,
-                `INSERT INTO knowledge_embeddings (document_id, chunk_index, chunk_text, embedding, metadata, search_tsv)
-                 VALUES ($1::uuid, $2, $3, $4::vector, $5::jsonb, to_tsvector($6::regconfig, $3))`,
-                [documentId, i, chunks[i], embeddingStr,
-                 JSON.stringify({ char_offset: i * (CHUNK_MAX_CHARS - CHUNK_OVERLAP_CHARS) }), docRegconfig],
-            );
+            prepared.push({ text: chunks[i], embedding: `[${embedding.join(',')}]`, regconfig: docRegconfig });
         }
 
         if (tenantId) {
@@ -1205,7 +1418,22 @@ export class KnowledgeService {
             await this.redis.expire(costKey, ttl);
         }
 
-        return chunks.length;
+        return prepared;
+    }
+
+    private async storePreparedChunks(
+        query: (sql: string, params: any[]) => Promise<unknown>,
+        documentId: string,
+        prepared: Array<{ text: string; embedding: string; regconfig: string }>,
+    ) {
+        for (let i = 0; i < prepared.length; i++) {
+            const chunk = prepared[i];
+            await query(
+                `INSERT INTO knowledge_embeddings (document_id, chunk_index, chunk_text, embedding, metadata, search_tsv)
+                 VALUES ($1::uuid, $2, $3, $4::vector, $5::jsonb, to_tsvector($6::regconfig, $3))`,
+                [documentId, i, chunk.text, chunk.embedding,
+                 JSON.stringify({ char_offset: i * (CHUNK_MAX_CHARS - CHUNK_OVERLAP_CHARS) }), chunk.regconfig]);
+        }
     }
 
     private chunkText(text: string): string[] {
@@ -1358,15 +1586,30 @@ export class KnowledgeService {
         text: string,
         tenantId?: string,
         executionContext?: ServiceExecutionContext,
+        sourceAuthority?:ExternalSourceAuthority,
     ): Promise<number[]> {
         // Embeddings currently require OpenAI specifically. Fail with a clear,
         // actionable message instead of an opaque 401 from the SDK when the key
         // is missing (the platform contract only guarantees ≥1 provider of any kind).
         const openai = await this.ensureOpenAI(tenantId);
-        const response = await openai.embeddings.create({
-            model: 'text-embedding-3-small',
-            input: text,
-        });
+        const input={model:'text-embedding-3-small',input:text};
+        const request=async()=>{
+            if(!sourceAuthority)return openai.embeddings.create(input);
+            for(let attempt=0;;attempt++){
+                try{
+                    // Retries live outside the SDK, with fresh authority before
+                    // each outgoing attempt and a bounded request duration.
+                    return await sourceAuthority(()=>openai.embeddings.create(input,{maxRetries:0,timeout:45000}),response=>({
+                        promptTokens:response.usage?.prompt_tokens||0,completionTokens:0,totalTokens:response.usage?.total_tokens||0,
+                    }));
+                }catch(error:any){
+                    if(error instanceof LLMSourceAuthorityUnavailable||attempt>=2
+                        ||!(error instanceof OpenAI.APIConnectionError||[408,409,429].includes(error?.status)||error?.status>=500))throw error;
+                    await new Promise(resolve=>setTimeout(resolve,200*2**attempt));
+                }
+            }
+        };
+        const response = await request();
         if (tenantId && !persistenceDisabled(executionContext)) {
             const date = new Date().toISOString().slice(0, 10);
             const baseKey = `ai:stats:${tenantId}:${date}:embeddings`;
@@ -1396,9 +1639,10 @@ export class KnowledgeService {
         query: string,
         tenantId?: string,
         executionContext?: ServiceExecutionContext,
+        sourceAuthority?:ExternalSourceAuthority,
     ): Promise<number[]> {
-        if (persistenceDisabled(executionContext)) {
-            return this.generateEmbedding(query, tenantId, executionContext);
+        if (persistenceDisabled(executionContext)||sourceAuthority) {
+            return this.generateEmbedding(query, tenantId, executionContext,sourceAuthority);
         }
         const h = crypto.createHash('sha256').update(query.trim().toLowerCase()).digest('hex').slice(0, 32);
         const key = `kb:qemb:${tenantId || 'g'}:${h}`;
@@ -1626,37 +1870,49 @@ export class KnowledgeService {
         tenantId: string,
         data: { conversationId?: string; messageId?: string; documentId?: string; query?: string; rating: number; comment?: string; createdBy?: string },
     ) {
+        const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+        if (!Number.isInteger(data.rating) || data.rating < 1 || data.rating > 5 ||
+            [data.conversationId, data.messageId, data.documentId].some(id => id != null && !uuid.test(id)) ||
+            (data.query != null && (typeof data.query !== 'string' || data.query.length > 2000)) ||
+            (data.comment != null && (typeof data.comment !== 'string' || data.comment.length > 5000))) {
+            throw new BadRequestException('invalid_knowledge_feedback');
+        }
         const schema = await this.tenantSchema(tenantId);
         await this.ensureKbFeedbackTable(schema);
-
-        const rows = await this.prisma.executeInTenantSchema<any[]>(schema,
-            `INSERT INTO kb_feedback (conversation_id, message_id, document_id, query, rating, comment, created_by)
-             VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7) RETURNING *`,
-            [
-                data.conversationId || null,
-                data.messageId || null,
-                data.documentId || null,
-                data.query || null,
-                data.rating,
-                data.comment || null,
-                data.createdBy || null,
-            ]);
-
-        if (data.documentId) {
-            const stats = await this.prisma.executeInTenantSchema<any[]>(schema,
-                `SELECT ROUND(AVG(rating)::numeric, 2) AS avg_rating, COUNT(*)::int AS cnt
-                 FROM kb_feedback WHERE document_id = $1::uuid`,
-                [data.documentId]);
-
-            if (stats?.[0]) {
-                await this.prisma.executeInTenantSchema(schema,
-                    `UPDATE knowledge_documents SET satisfaction_score = $2, feedback_count = $3, updated_at = NOW()
-                     WHERE id = $1::uuid`,
-                    [data.documentId, stats[0].avg_rating, stats[0].cnt]);
-            }
+        await this.ensureAttributionSchema(schema);
+        // Resolve a message-only reference to its conversation so it receives the
+        // same erasure protection. Repeat the relationship check inside the lock.
+        let conversationId = data.conversationId;
+        if (data.messageId && !conversationId) {
+            const rows = await this.prisma.executeInTenantSchema<any[]>(schema,
+                `SELECT conversation_id FROM messages WHERE id=$1::uuid`, [data.messageId]);
+            if (!rows[0]) throw new BadRequestException('knowledge_feedback_message_unavailable');
+            conversationId = rows[0].conversation_id;
         }
-
-        return rows?.[0] || { success: true };
+        const result = await this.analyticsTransaction(schema, conversationId, async query => {
+            if (data.messageId) {
+                const messages = await query<any[]>(`SELECT id FROM messages WHERE id=$1::uuid AND conversation_id=$2::uuid`,
+                    [data.messageId, conversationId]);
+                if (!messages.length) throw new BadRequestException('knowledge_feedback_message_mismatch');
+            }
+            if (data.documentId) {
+                const documents = await query<any[]>(`SELECT id FROM knowledge_documents WHERE id=$1::uuid AND status<>'deleted' FOR UPDATE`,
+                    [data.documentId]);
+                if (!documents.length) throw new BadRequestException('knowledge_feedback_document_unavailable');
+            }
+            const rows = await query<any[]>(`INSERT INTO kb_feedback (conversation_id,message_id,document_id,query,rating,comment,created_by)
+                VALUES ($1::uuid,$2::uuid,$3::uuid,$4,$5,$6,$7) RETURNING *`,
+            [conversationId || null, data.messageId || null, data.documentId || null, data.query || null,
+                data.rating, data.comment || null, data.createdBy || null]);
+            if (data.documentId) await query(`UPDATE knowledge_documents d SET satisfaction_score=s.avg_rating,feedback_count=s.cnt
+                FROM (SELECT ROUND(AVG(rating)::numeric,2) AS avg_rating,COUNT(*)::int AS cnt FROM kb_feedback WHERE document_id=$1::uuid) s
+                WHERE d.id=$1::uuid`, [data.documentId]);
+            // Feedback is an opinion/correction signal, not new source content:
+            // do not refresh document.updated_at or its factual currency.
+            return rows[0] || { success: true };
+        });
+        if (result.blocked) throw new BadRequestException('knowledge_feedback_conversation_unavailable');
+        return result.value;
     }
 
     async markFalsePositive(tenantId: string, feedbackId: string) {
@@ -1670,23 +1926,24 @@ export class KnowledgeService {
         return { success: true };
     }
 
-    async getGapReport(tenantId: string, days: number) {
+    async getGapReport(tenantId: string, days: number): Promise<KnowledgeGapReport> {
         const schema = await this.tenantSchema(tenantId);
         await this.ensureKbFeedbackTable(schema);
         const since = new Date(Date.now() - days * 86_400_000).toISOString();
+        const unavailableSections: KnowledgeGapReport['unavailableSections'] = [];
 
         const unansweredQueries = await this.prisma.executeInTenantSchema<any[]>(schema,
             `SELECT id, query, occurrences, last_seen_at
              FROM kb_unanswered_queries
              WHERE resolved = false
              ORDER BY occurrences DESC
-             LIMIT 20`).catch(() => []);
+             LIMIT 20`).catch(() => { unavailableSections.push('unansweredQueries'); return []; });
 
         const lowSatisfactionDocs = await this.prisma.executeInTenantSchema<any[]>(schema,
             `SELECT id, title, satisfaction_score, feedback_count
              FROM knowledge_documents
              WHERE satisfaction_score < 3 AND feedback_count > 0 AND status != 'deleted'
-             ORDER BY satisfaction_score ASC`).catch(() => []);
+             ORDER BY satisfaction_score ASC`).catch(() => { unavailableSections.push('lowSatisfactionDocs'); return []; });
 
         let staleDocuments: any[] = [];
         try {
@@ -1707,6 +1964,7 @@ export class KnowledgeService {
                 [since]) || [];
         } catch {
             staleDocuments = [];
+            unavailableSections.push('staleDocuments');
         }
 
         const falsePositiveCounts = await this.prisma.executeInTenantSchema<any[]>(schema,
@@ -1716,9 +1974,10 @@ export class KnowledgeService {
              WHERE fb.is_false_positive = true AND fb.created_at >= $1::timestamp
              GROUP BY fb.document_id, kd.title
              ORDER BY false_positive_count DESC`,
-            [since]).catch(() => []);
+            [since]).catch(() => { unavailableSections.push('falsePositiveCounts'); return []; });
 
         return {
+            unavailableSections,
             unansweredQueries: unansweredQueries || [],
             lowSatisfactionDocs: lowSatisfactionDocs || [],
             staleDocuments: staleDocuments || [],

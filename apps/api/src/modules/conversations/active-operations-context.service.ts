@@ -14,7 +14,7 @@ import type {
     VerticalCapability,
 } from '@parallext/shared';
 import { PrismaService } from '../prisma/prisma.service';
-import { filterActiveObjectsForPrompt } from './active-object-policy';
+import { filterActiveObjectsForPrompt, type ActiveObjectPolicyContext } from './active-object-policy';
 
 export type ActiveOperationsLoaderName =
     | 'appointments'
@@ -41,6 +41,9 @@ export interface ActiveOperationsContextInput {
     schemaName: string;
     contactId: string | null | undefined;
     config: Partial<TenantConfig> & Record<string, any>;
+    /** Private evaluation fallback when the agent config declares no industry.
+     * Null records verified absence and must not trigger a live tenant lookup. */
+    fallbackPolicyContext?: ActiveObjectPolicyContext | null;
     timezone?: string;
     now?: Date;
     maxItems?: number;
@@ -67,7 +70,7 @@ const ISO_WITH_ZONE_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z
 const STATUS_MAP: Readonly<Record<ActiveObjectStatusClass, ReadonlySet<string>>> = {
     pending: new Set([
         'pending', 'received', 'requested', 'new', 'draft', 'created',
-        'waitlist', 'enrolled', 'scheduled',
+        'waitlist', 'waitlisted', 'waitlist_review', 'enrolled', 'scheduled',
         'estimating', 'awaiting_approval',
     ]),
     active: new Set([
@@ -123,6 +126,17 @@ function activeObjectPolicyContext(config: ActiveOperationsContextInput['config'
         industry: config.industry || verticalConfig.industry || capabilityManifest.industry,
         subtype: config.subType || config.subtype || verticalConfig.subType
             || verticalConfig.subtype || capabilityManifest.subType || capabilityManifest.subtype,
+    };
+}
+
+/** Preserve the live exposure policy when capturing evaluation inputs. This
+ * projection intentionally does not canonicalize legacy or unknown domains;
+ * the exposure boundary must still treat those as sensitive. */
+export function tenantActiveObjectPolicyContext(tenant: any): ActiveObjectPolicyContext {
+    const verticalConfig = isRecord(tenant?.settings?.verticalConfig) ? tenant.settings.verticalConfig : {};
+    return {
+        industry: verticalConfig.industry || tenant?.industry,
+        subtype: verticalConfig.subType || verticalConfig.subtype,
     };
 }
 
@@ -244,17 +258,13 @@ export class ActiveOperationsContextService {
     private async resolvePolicyContext(input: ActiveOperationsContextInput) {
         const configured = activeObjectPolicyContext(input.config);
         if (configured.industry) return configured;
+        if (input.fallbackPolicyContext !== undefined) return input.fallbackPolicyContext || {};
         try {
             const tenant = await (this.prisma as any).tenant?.findUnique?.({
                 where: { id: input.tenantId },
                 select: { industry: true, settings: true },
             });
-            const verticalConfig = isRecord(tenant?.settings?.verticalConfig)
-                ? tenant.settings.verticalConfig : {};
-            return {
-                industry: verticalConfig.industry || tenant?.industry,
-                subtype: verticalConfig.subType || verticalConfig.subtype,
-            };
+            return tenantActiveObjectPolicyContext(tenant);
         } catch (error: any) {
             this.logger.warn(`[ActiveOperations] vertical policy unavailable for tenant ${input.tenantId}: ${error?.message || 'lookup_failed'}`);
             // Empty context intentionally makes appointments tool-only.
@@ -385,7 +395,7 @@ export class ActiveOperationsContextService {
             case 'memberships':
                 return tools.gyms?.enabled === true ? 'get_my_membership' : undefined;
             case 'class_bookings':
-                return tools.gyms?.enabled === true ? 'list_my_classes' : undefined;
+                return tools.gyms?.enabled === true ? 'get_my_class_bookings' : undefined;
             case 'enrollments':
                 return tools.education?.enabled === true ? 'list_my_enrollments' : undefined;
             case 'photo_sessions':

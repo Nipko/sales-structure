@@ -1,11 +1,25 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { RedisService } from '../redis/redis.service';
+import { LearningService } from '../learning/learning.service';
+import { eraseWidgetContactSessions } from '../widget/widget-session-erasure';
+import { redactWidgetAgentReplies } from '../widget/widget-agent-reply-retention';
+import { redactOutboundPayloadsForContact } from '../channels/outbound-payload-store';
+import { redactDispatchOutbox } from '../channels/agent-dispatch-outbox';
+import { redactTurnLedger } from '../conversations/agent-turn-ledger';
+import { eraseSimulationContactReplays } from '../simulation/simulation-replay-retention';
+import { eraseContactRegressionArtifacts } from '../quality/regressions/quality-regression-retention';
+import { requestCrmNoteRetraction } from '../external-crm/crm-note-receipts';
+import { eraseOperationalContactNotices } from '../operational-notices/operational-notice-erasure';
+import { eraseContactMissionEvidence } from '../quality/mission-evidence';
+import { retireKnowledgeReplicasInTransaction } from '../evaluation-revision/evaluation-knowledge-lifecycle';
 
 @Injectable()
 export class ComplianceService {
     private readonly logger = new Logger(ComplianceService.name);
 
-    constructor(private readonly prisma: PrismaService) {}
+    constructor(private readonly prisma: PrismaService, @Optional() private readonly redis?: RedisService,
+        @Optional() private readonly learning?: LearningService) {}
 
     // ─── Legal Text Versions ──────────────────────────────────────────────────
 
@@ -175,17 +189,17 @@ export class ComplianceService {
 
     /**
      * GDPR Article 17 — Right to Erasure.
-     * Anonymizes all PII for a contact across every tenant table.
-     * Preserves structural records (IDs, timestamps, foreign keys) for
-     * analytics integrity but removes all personally identifiable content.
+     * Redacts supported contact records and transitive agent derivatives.
+     * Preserves structural IDs and reports any incomplete table operation.
      */
     async eraseContactData(
         schemaName: string,
         tenantId: string,
         contactId: string,
         requestedBy: string,
-    ): Promise<{ erasedTables: string[]; totalRecordsAffected: number }> {
+    ): Promise<{ erasedTables: string[]; failedTables: string[]; completed: boolean; totalRecordsAffected: number }> {
         const erasedTables: string[] = [];
+        const failedTables: string[] = [];
         let totalRecords = 0;
         const anon = `[ERASED-${contactId.slice(0, 8)}]`;
 
@@ -198,9 +212,46 @@ export class ComplianceService {
                     totalRecords += typeof count === 'number' ? count : 1;
                 }
             } catch (err: any) {
+                failedTables.push(label);
                 this.logger.warn(`[GDPR Erase] Skipped ${label}: ${err.message}`);
             }
         };
+
+        // Publish the erasure tombstone before redacting the transcript. The memory
+        // extractor checks it again under the same lock immediately before commit.
+        try {
+            const counts = await this.eraseCustomerMemory(schemaName, contactId, tenantId);
+            erasedTables.push('customer_memories', 'customer_memory_facts');
+            totalRecords += counts;
+        } catch (err: any) {
+            failedTables.push('customer_memory');
+            this.logger.warn(`[GDPR Erase] Memory erasure failed: ${err.message}`);
+        }
+
+        try {
+            const linked = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+                `SELECT DISTINCT contact_id FROM contact_identities WHERE customer_profile_id IN
+                    (SELECT customer_profile_id FROM contact_identities WHERE contact_id=$1::uuid)`, [contactId]);
+            const contactIds = [...new Set([contactId, ...linked.map(c=>c.contact_id)])];
+            const conversations = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+                `UPDATE conversations SET metadata='{"procedureStateManaged":true,"bookingStateManaged":true,"missionFocusManaged":true}'::jsonb, updated_at=NOW()
+                 WHERE contact_id=ANY($1::uuid[]) RETURNING id`, [contactIds]);
+            // PostgreSQL markers are authoritative if cache deletion is unavailable.
+            if(this.redis) for(const conversation of conversations) {
+                await Promise.allSettled([this.redis.del(`procedure:${conversation.id}`),this.redis.del(`booking:${conversation.id}`)]);
+            }
+            totalRecords += await this.learning?.eraseContactSources(schemaName, tenantId, contactIds) || 0;
+            erasedTables.push('conversation_state', 'learning_derivatives');
+        } catch (err:any) {
+            failedTables.push('conversation_and_learning_derivatives');
+            this.logger.warn(`[GDPR Erase] Derived state erasure failed: ${err.message}`);
+        }
+
+        // Resolve the original phone before the contact row is anonymized.
+        await run('campaign_recipients',
+            `UPDATE campaign_recipients SET phone = $2
+             WHERE phone IN (SELECT phone FROM contacts WHERE id = $1::uuid) RETURNING id`,
+            [contactId, anon]);
 
         // 1. Contacts — anonymize name, phone, email
         await run('contacts',
@@ -229,7 +280,7 @@ export class ComplianceService {
 
         // 4. Conversations — clear any PII metadata
         await run('conversations',
-            `UPDATE conversations SET metadata = '{}'::jsonb, updated_at = NOW()
+            `UPDATE conversations SET metadata = '{"procedureStateManaged":true,"bookingStateManaged":true,"missionFocusManaged":true}'::jsonb, updated_at = NOW()
              WHERE contact_id = $1::uuid RETURNING id`,
             [contactId],
         );
@@ -241,21 +292,17 @@ export class ComplianceService {
             [contactId, anon],
         );
 
-        // 6. Campaign recipients — anonymize phone
-        await run('campaign_recipients',
-            `UPDATE campaign_recipients SET phone = $2
-             WHERE phone IN (SELECT phone FROM contacts WHERE id = $1::uuid)
+        // 7. Customer profiles — anonymize if exists
+        await run('customer_profiles',
+            `UPDATE customer_profiles SET phone = $2, email = NULL, display_name = $2, metadata = '{}'::jsonb, updated_at = NOW()
+             WHERE id IN (SELECT customer_profile_id FROM contact_identities WHERE contact_id = $1::uuid)
              RETURNING id`,
             [contactId, anon],
         );
 
-        // 7. Customer profiles — anonymize if exists
-        await run('customer_profiles',
-            `UPDATE customer_profiles SET primary_phone = $2, primary_email = NULL, display_name = $2
-             WHERE id IN (SELECT customer_profile_id FROM contacts WHERE id = $1::uuid AND customer_profile_id IS NOT NULL)
-             RETURNING id`,
-            [contactId, anon],
-        );
+        await run('contact_identities',
+            `UPDATE contact_identities SET external_id = $2 WHERE contact_id = $1::uuid RETURNING id`,
+            [contactId,anon]);
 
         // 8. Custom attribute values — delete
         await run('custom_attribute_values',
@@ -274,7 +321,7 @@ export class ComplianceService {
         );
 
         // 10. Mark all pending deletion requests for this contact as completed
-        await run('deletion_requests',
+        if (!failedTables.length) await run('deletion_requests',
             `UPDATE deletion_requests SET status = 'completed', processed_at = NOW()
              WHERE lead_id IN (SELECT id FROM leads WHERE contact_id = $1::uuid) AND status = 'pending'
              RETURNING id`,
@@ -286,9 +333,9 @@ export class ComplianceService {
             await this.prisma.auditLog.create({
                 data: {
                     tenantId,
-                    action: 'gdpr.contact_erased',
+                    action: failedTables.length ? 'gdpr.contact_erasure_incomplete' : 'gdpr.contact_erased',
                     resource: 'contact',
-                    details: { contactId, erasedTables, totalRecordsAffected: totalRecords, requestedBy },
+                    details: { contactId, erasedTables, failedTables, totalRecordsAffected: totalRecords, requestedBy },
                 },
             });
         } catch (e: any) {
@@ -296,7 +343,137 @@ export class ComplianceService {
         }
 
         this.logger.log(`[GDPR Erase] Contact ${contactId} erased in tenant ${tenantId}: ${erasedTables.join(', ')} (${totalRecords} records)`);
-        return { erasedTables, totalRecordsAffected: totalRecords };
+        return { erasedTables, failedTables, completed: failedTables.length === 0, totalRecordsAffected: totalRecords };
+    }
+
+    private async eraseCustomerMemory(schema: string, contactId: string, tenantId: string): Promise<number> {
+        await this.prisma.executeInTenantSchema(schema,
+            `CREATE TABLE IF NOT EXISTS customer_memory_erasure (
+                contact_id UUID PRIMARY KEY, erased_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
+        return this.prisma.transactionInTenantSchema(schema, async (query) => {
+            // Same first lock as ToolExecutionControl transactions: a request,
+            // finalizer or approval notification cannot cross the erasure boundary.
+            await query(`SELECT pg_advisory_xact_lock(hashtextextended($1,0))::text`,[`agent-privacy:${schema}`]);
+            // Retire copies in the source erasure transaction, so no retained
+            // evaluation corpus can outlive a committed privacy revocation.
+            await retireKnowledgeReplicasInTransaction({
+                $queryRawUnsafe: (sql, ...params) => query<any[]>(sql, params),
+                $executeRawUnsafe: (sql, ...params) => query(sql, params),
+            }, tenantId, schema);
+            // Keep the unified family stable until all tombstones and derived
+            // deletions commit, including first identity INSERTs and merges.
+            await query(`LOCK TABLE contact_identities IN SHARE MODE`);
+            const profiles = await query<any[]>(
+                `SELECT DISTINCT customer_profile_id FROM contact_identities WHERE contact_id = $1::uuid`, [contactId]);
+            const profileIds = profiles.map(p => p.customer_profile_id).filter(Boolean).sort();
+            const linked = await query<any[]>(
+                `SELECT DISTINCT contact_id FROM contact_identities WHERE customer_profile_id = ANY($1::uuid[])`, [profileIds]);
+            const contactIds = [...new Set([contactId, ...linked.map(c => c.contact_id)])].sort();
+            const locks = [
+                ...profileIds.map(id => `customer-memory:${schema}:profile:${id}`),
+                ...contactIds.map(id => `customer-memory:${schema}:contact:${id}`),
+            ].sort();
+            for (const lock of locks) await query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))::text`, [lock]);
+            await query(`INSERT INTO customer_memory_erasure (contact_id)
+                SELECT unnest($1::uuid[]) ON CONFLICT (contact_id) DO UPDATE SET erased_at = NOW()`, [contactIds]);
+            // `pendingDraft` goes with them. It is a reply this person was
+            // about to be sent, sitting where a human presses one button, and
+            // it was the one piece of agent text this fan-out did not reach:
+            // the retraction path clears it by release id, which is the wrong
+            // key for an erasure — the person is the key, and every draft of
+            // theirs goes regardless of which release produced it.
+            //
+            // `handoff_summary` goes with it for the same reason and was in
+            // neither fan-out: it is a model's description of this person's
+            // conversation, written for whoever picks it up, and the same text is
+            // pushed to a third-party CRM — leaving it here kept a copy inside
+            // the platform to match the copy outside it.
+            await query(`UPDATE conversations SET metadata=(COALESCE(metadata,'{}'::jsonb)-'procedureState'-'bookingState'-'missionFocus'-'pendingDraft')
+                ||'{"procedureStateManaged":true,"bookingStateManaged":true,"missionFocusManaged":true}'::jsonb,
+                handoff_summary=NULL, handoff_summary_generated_at=NULL
+                WHERE contact_id=ANY($1::uuid[])`,[contactIds]);
+            // And the notes a person wrote about them on the back of that summary.
+            // The table predates the tenant-schema template, so a schema that
+            // never ran the CRM migration has to be asked rather than assumed —
+            // a missing relation here would abort the whole erasure.
+            const [notes] = await query<any[]>('SELECT to_regclass($1)::text AS name', [`${schema}.internal_notes`]);
+            if (notes?.name) {
+                await query(`DELETE FROM internal_notes WHERE conversation_id IN (
+                    SELECT id FROM conversations WHERE contact_id=ANY($1::uuid[]))`, [contactIds]);
+            }
+            // The legacy outbound queue, reachable at last. Its words and its
+            // recipient used to sit in a Redis job that no key could match; they
+            // sit in a tenant row now, and an erasure takes them whether or not
+            // the message ever went out.
+            await redactOutboundPayloadsForContact(query as any, contactIds);
+            const widgetSessions = await eraseWidgetContactSessions(query, schema, contactIds);
+            const widgetReplies = await redactWidgetAgentReplies(query, schema, {contactIds});
+            // Same exclusive fence, same reason: the words and the recipient of
+            // an outbound item not yet sent must go, while the row survives so a
+            // recovered job cannot repopulate the payload and deliver it.
+            const dispatchItems = await redactDispatchOutbox(query, schema, {contactIds});
+            // The turn ledger holds the same words one step earlier: the envelope
+            // an interrupted turn would be resumed from. Leaving it would let a
+            // replay repopulate everything the line above just cleared.
+            const turnEnvelopes = await redactTurnLedger(query as any, schema, {contactIds});
+            // And the copy of that summary outside the platform. The note id
+            // used to be returned by the adapter and dropped, so the paragraph
+            // sat in the tenant's HubSpot or Pipedrive with nothing able to point
+            // at it; it has an address now. Only the REQUEST is written here —
+            // the erasure must not be held open across a third party's HTTP
+            // timeout, nor rolled back by one — and `retractPendingCrmNotes`
+            // turns it into a call that settles as accepted, rejected or unknown.
+            const crmNotes = await requestCrmNoteRetraction(query as any, contactIds);
+            const regressionCases = await eraseContactRegressionArtifacts(query, contactIds);
+            const simulationReplays = await eraseSimulationContactReplays(query, contactIds);
+            const operationalNotices = await eraseOperationalContactNotices(query,schema,contactIds);
+            await eraseContactMissionEvidence(query,contactIds);
+            const [petReceipts] = await query<any[]>('SELECT to_regclass($1)::text AS name', [`${schema}.pet_command_receipts`]);
+            if (petReceipts?.name) await query('DELETE FROM pet_command_receipts WHERE contact_id=ANY($1::uuid[])', [contactIds]);
+            const tables=await query<any[]>(`SELECT to_regclass('tool_execution_ledger')::text AS ledger,
+                to_regclass('tool_approval_tickets')::text AS tickets,to_regclass('tool_approval_outbox')::text AS outbox,
+                to_regclass('kb_retrieval_log')::text AS kb_log,to_regclass('kb_unanswered_queries')::text AS kb_queries,
+                to_regclass('kb_feedback')::text AS kb_feedback,
+                to_regclass('conversation_quality_scores')::text AS quality_scores,
+                to_regclass('quality_sampling_items')::text AS quality_sampling`);
+            if(tables[0]?.ledger)await query(`UPDATE tool_execution_ledger SET request_payload='{}'::jsonb,
+                response_payload='{"error":"contact_erased"}'::jsonb,confirmation_token=NULL,
+                execution_lease_token=NULL,execution_lease_expires_at=NULL,last_error_code='contact_erased',
+                status=CASE WHEN status='executing' THEN 'reconciliation_required' WHEN status='succeeded' THEN 'succeeded' ELSE 'rejected' END,
+                updated_at=NOW() WHERE contact_id=ANY($1::uuid[])`,[contactIds]);
+            if(tables[0]?.tickets)await query(`UPDATE tool_approval_tickets SET status='rejected',decision_reason=NULL,
+                resume_state='completed',resume_result='{"error":"contact_erased"}'::jsonb,resume_error='contact_erased',
+                resume_lease_token=NULL,resume_lease_expires_at=NULL,updated_at=NOW() WHERE contact_id=ANY($1::uuid[])`,[contactIds]);
+            if(tables[0]?.outbox)await query(`UPDATE tool_approval_outbox SET payload='{}'::jsonb,status='published',
+                lease_token=NULL,lease_expires_at=NULL,last_error=NULL,updated_at=NOW() WHERE ticket_id IN
+                (SELECT id FROM tool_approval_tickets WHERE contact_id=ANY($1::uuid[]))`,[contactIds]);
+            // Retrieval and response attribution use the shared privacy lock.
+            // Delete query text/hashes and response-derived hashes while holding
+            // the exclusive lock, so a late response cannot recreate analytics.
+            if (tables[0]?.kb_log && tables[0]?.kb_queries) await query(`DELETE FROM kb_unanswered_queries u
+                USING kb_retrieval_log l,conversations c WHERE l.conversation_id=c.id
+                    AND c.contact_id=ANY($1::uuid[]) AND u.query=l.query`, [contactIds]);
+            if (tables[0]?.kb_log) await query(`DELETE FROM kb_retrieval_log l USING conversations c
+                WHERE l.conversation_id=c.id AND c.contact_id=ANY($1::uuid[])`, [contactIds]);
+            if (tables[0]?.kb_feedback) await query(`UPDATE kb_feedback f SET query=NULL,comment=NULL,message_id=NULL
+                WHERE f.conversation_id IN (SELECT id FROM conversations WHERE contact_id=ANY($1::uuid[]))
+                    OR f.message_id IN (SELECT m.id FROM messages m JOIN conversations c ON c.id=m.conversation_id
+                        WHERE c.contact_id=ANY($1::uuid[]))`, [contactIds]);
+            if (tables[0]?.quality_scores) await query(`DELETE FROM conversation_quality_scores q USING conversations c
+                WHERE q.conversation_id=c.id AND c.contact_id=ANY($1::uuid[])`, [contactIds]);
+            if (tables[0]?.quality_sampling) await query(`UPDATE quality_sampling_items SET state='erased',
+                contact_id=NULL,conversation_id=NULL,lease_token=NULL,lease_expires_at=NULL,last_error_code=NULL
+                WHERE contact_id=ANY($1::uuid[])`, [contactIds]);
+            const facts = await query<any[]>(
+                `DELETE FROM customer_memory_facts
+                 WHERE (owner_kind = 'profile' AND owner_id = ANY($1::uuid[]))
+                    OR (owner_kind = 'contact' AND owner_id = ANY($2::uuid[]))
+                    OR source_contact_id = ANY($2::uuid[]) RETURNING id`, [profileIds, contactIds]);
+            const merged = await query<any[]>(
+                `DELETE FROM customer_memories WHERE contact_id = ANY($1::uuid[]) RETURNING contact_id`, [contactIds]);
+            return facts.length + merged.length + widgetSessions + widgetReplies + dispatchItems
+                + regressionCases + simulationReplays + operationalNotices + crmNotes;
+        });
     }
 
     // ─── Cross-tenant overview (super_admin) ──────────────────────────

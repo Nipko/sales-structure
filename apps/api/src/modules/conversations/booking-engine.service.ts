@@ -1,10 +1,18 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { AIToolExecutorService } from './ai-tool-executor.service';
 import { InterpretedIntent } from './intent-interpreter.service';
-import type { ToolExecutionAuthority } from '@parallext/shared';
+import type { ToolExecutionAuthority, MissionExecutionScopeV1 } from '@parallext/shared';
+import { holdStillAliveSql } from '../../common/utils/payment-policy.util';
 import { bookingEngineAuthorityDecision, deniedOperationalIntent } from './turn-authority';
+import { bookingConfirmationHash } from './booking-confirmation';
+import { appointmentPriceSql, appointmentCurrencySql, type AppointmentServiceTerms } from '../appointments/appointment-service-terms';
+import { isPauseMessage, isResumeMessage } from '../../common/conversation/intent-normalizer';
+import { procedureDialogueMessages } from './procedure-dialogue-messages';
+import { containsMissionDirective, isCollectionCancellation, isDirectedCorrection, isNamedMissionResume, mentionedMissionDomains, missionDialogue, parseDirectedSlotCorrection } from './mission-focus';
+import { coerceProcedureSlot } from './procedure-slot-interpolation';
 
 /**
  * Lo que el motor necesita saber del turno además del estado de la reserva.
@@ -25,6 +33,10 @@ export interface BookingTurnContext {
     flowCapable?: boolean;
     flowData?: Record<string, unknown>;
     conversationId?: string;
+    missionScope?: MissionExecutionScopeV1;
+    flowResponseToken?: string;
+    resumeSelected?: boolean;
+    startSelected?: boolean;
 }
 
 
@@ -41,6 +53,13 @@ export interface BookingTurnContext {
 /** Booking engine messages in 4 languages */
 const MESSAGES: Record<string, Record<string, string | string[]>> = {
     es: {
+        bookingPrice: "Precio: {amount} {currency}",
+        bookingDuration: 'Duración reservada: {minutes} minutos',
+        bookingLocation: 'Lugar: {location}',
+        bookingOnline: 'En línea',
+        bookingPaymentDue: "Pago para confirmar: {amount} {currency}",
+        bookingPending: "La solicitud de cita para {service} el {date} a las {time} quedó registrada y pendiente de confirmación.",
+        bookingAwaitingPayment: "La cita para {service} el {date} a las {time} está pendiente del pago de {amount} {currency}. El horario se retiene temporalmente; la confirmación llegará cuando se acredite el pago.",
         serviceSelected: [
             '{service} seleccionado. ¿Qué fecha te queda bien?',
             '¡Excelente elección! Reservaremos {service}. ¿Qué día te gustaría agendar?',
@@ -71,7 +90,7 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         confirmButton: '¿Confirmar cita?\n\n{summary}',
         btnConfirm: 'Confirmar',
         btnCancel: 'Cancelar',
-        booked: '¡Cita confirmada!\nServicio: {service}\nFecha: {date} a las {time}\nNombre: {name}\nInvitación enviada a: {email}\n¿Algo más?',
+        booked: '¡Cita confirmada!\nServicio: {service}\nFecha: {date} a las {time}\nNombre: {name}\n¿Algo más?',
         bookingError: 'Error al crear la cita: {error}. ¿Probamos otro horario?',
         askDate: [
             '¿Qué fecha te gustaría para {service}?',
@@ -89,6 +108,13 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         flowCta: 'Agendar',
     },
     en: {
+        bookingPrice: "Price: {amount} {currency}",
+        bookingDuration: 'Reserved duration: {minutes} minutes',
+        bookingLocation: 'Location: {location}',
+        bookingOnline: 'Online',
+        bookingPaymentDue: "Payment to confirm: {amount} {currency}",
+        bookingPending: "Your appointment request for {service} on {date} at {time} was recorded and is awaiting confirmation.",
+        bookingAwaitingPayment: "Your appointment for {service} on {date} at {time} is awaiting payment of {amount} {currency}. The slot is held temporarily; confirmation follows verified payment.",
         serviceSelected: '{service} selected. What date works for you?',
         switchedService: 'Switched to {service}. What date works for you?',
         cancelled: 'No problem! Is there anything else I can help you with?',
@@ -105,7 +131,7 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         confirmButton: 'Confirm booking?\n\n{summary}',
         btnConfirm: 'Confirm',
         btnCancel: 'Cancel',
-        booked: 'Appointment confirmed!\nService: {service}\nDate: {date} at {time}\nName: {name}\nCalendar invite sent to: {email}\nAnything else?',
+        booked: 'Appointment confirmed!\nService: {service}\nDate: {date} at {time}\nName: {name}\nAnything else?',
         bookingError: 'Issue creating appointment: {error}. Try another time?',
         askDate: 'What date would you like for {service}?',
         whichTime: 'Which time? {slots}',
@@ -118,6 +144,13 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         flowCta: 'Book',
     },
     pt: {
+        bookingPrice: "Preço: {amount} {currency}",
+        bookingDuration: 'Duração reservada: {minutes} minutos',
+        bookingLocation: 'Local: {location}',
+        bookingOnline: 'Online',
+        bookingPaymentDue: "Pagamento para confirmar: {amount} {currency}",
+        bookingPending: "A solicitação de agendamento de {service} em {date} às {time} foi registrada e aguarda confirmação.",
+        bookingAwaitingPayment: "O agendamento de {service} em {date} às {time} aguarda o pagamento de {amount} {currency}. O horário fica reservado temporariamente; a confirmação ocorre após a aprovação do pagamento.",
         serviceSelected: '{service} selecionado. Qual data funciona para você?',
         switchedService: 'Mudamos para {service}. Qual data funciona para você?',
         cancelled: 'Sem problema! Posso ajudar com mais alguma coisa?',
@@ -134,7 +167,7 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         confirmButton: 'Confirmar agendamento?\n\n{summary}',
         btnConfirm: 'Confirmar',
         btnCancel: 'Cancelar',
-        booked: 'Agendamento confirmado!\nServiço: {service}\nData: {date} às {time}\nNome: {name}\nConvite enviado para: {email}\nMais alguma coisa?',
+        booked: 'Agendamento confirmado!\nServiço: {service}\nData: {date} às {time}\nNome: {name}\nMais alguma coisa?',
         bookingError: 'Erro ao criar agendamento: {error}. Tentar outro horário?',
         askDate: 'Qual data gostaria para {service}?',
         whichTime: 'Qual horário? {slots}',
@@ -147,6 +180,13 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         flowCta: 'Agendar',
     },
     fr: {
+        bookingPrice: "Prix : {amount} {currency}",
+        bookingDuration: 'Durée réservée : {minutes} minutes',
+        bookingLocation: 'Lieu : {location}',
+        bookingOnline: 'En ligne',
+        bookingPaymentDue: "Paiement pour confirmer : {amount} {currency}",
+        bookingPending: "Votre demande de rendez-vous pour {service} le {date} à {time} est enregistrée et attend une confirmation.",
+        bookingAwaitingPayment: "Le rendez-vous pour {service} le {date} à {time} attend le paiement de {amount} {currency}. Le créneau est retenu temporairement ; la confirmation suivra le paiement vérifié.",
         serviceSelected: '{service} sélectionné. Quelle date vous convient ?',
         switchedService: 'Changé pour {service}. Quelle date vous convient ?',
         cancelled: 'Pas de problème ! Puis-je vous aider avec autre chose ?',
@@ -163,7 +203,7 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         confirmButton: 'Confirmer le rendez-vous ?\n\n{summary}',
         btnConfirm: 'Confirmer',
         btnCancel: 'Annuler',
-        booked: 'Rendez-vous confirmé !\nService : {service}\nDate : {date} à {time}\nNom : {name}\nInvitation envoyée à : {email}\nAutre chose ?',
+        booked: 'Rendez-vous confirmé !\nService : {service}\nDate : {date} à {time}\nNom : {name}\nAutre chose ?',
         bookingError: 'Erreur lors de la création : {error}. Essayer un autre horaire ?',
         askDate: 'Quelle date souhaitez-vous pour {service} ?',
         whichTime: 'Quel horaire ? {slots}',
@@ -208,8 +248,9 @@ function msg(lang: string, key: string, vars: Record<string, string> = {}): stri
 const UNRECOVERABLE_TOOL_ERRORS = new Set(['appointments_not_configured', 'tool_failed']);
 
 export interface BookingState {
+    missionId?: string;
     step: 'idle' | 'show_services' | 'ask_date' | 'show_slots' | 'ask_name' | 'ask_email' | 'confirm' | 'booked' | 'waiting_flow';
-    services?: Array<{ id: string; name: string; durationMinutes: number; durationMinutesMax?: number; durationType?: string; price: number; currency: string }>;
+    services?: Array<{ id: string; name: string; durationMinutes: number; durationMinutesMax?: number; durationType?: string; price: number; currency: string; requiresPaymentToConfirm?: boolean; amountDueToConfirm?: number | null; appointmentTerms?: AppointmentServiceTerms }>;
     serviceId?: string;
     serviceName?: string;
     date?: string;
@@ -226,8 +267,31 @@ export interface BookingState {
     customerName?: string;
     customerEmail?: string;
     customerPhone?: string;
+    appointmentId?: string;
+    appointmentStatus?: string;
+    payableReference?: string | null;
     /** ISO timestamp set when a WhatsApp Flow was sent; used to expire stale Flows (>1h). */
     flowStartedAt?: string;
+    flowToken?: string;
+    flowRevision?: number;
+    /** Backend timestamp; a conversational pause does not discard the mission. */
+    savedAt?: string;
+    pausedAt?: string | null;
+    resumedAfterExpiry?: boolean;
+    confirmationId?: string;
+    confirmationHash?: string;
+    confirmationIssuedAt?: string;
+}
+
+/** Revoking a proposal does not erase collected customer/service preferences. */
+export function invalidateBookingProposal(state: BookingState): void {
+    state.confirmationId = undefined;
+    state.confirmationHash = undefined;
+    state.confirmationIssuedAt = undefined;
+    state.flowToken = undefined;
+    state.flowRevision = undefined;
+    state.flowStartedAt = undefined;
+    if (state.step === 'waiting_flow') state.step = state.serviceId ? 'ask_date' : 'show_services';
 }
 
 export interface EngineResult {
@@ -288,6 +352,11 @@ export class BookingEngineService {
         private toolExecutor: AIToolExecutorService,
     ) {}
 
+    /** Reuses this engine with request-scoped boundaries; never rewires a singleton. */
+    forExecution(ports: { redis: RedisService; toolExecutor: AIToolExecutorService }): BookingEngineService {
+        return new BookingEngineService(this.prisma, ports.redis, ports.toolExecutor);
+    }
+
     /**
      * Process using INTERPRETED intent (not raw text).
      */
@@ -313,7 +382,57 @@ export class BookingEngineService {
         // la exige.
         const { authority, flowCapable = false, flowData, conversationId } = turn;
         const state = { ...currentState };
+        if (turn.startSelected && state.step === 'idle' && (!intent.intent || intent.intent === 'unknown')) intent = { ...intent, intent: 'ask_availability' };
+        state.missionId ||= turn.missionScope?.missionId || randomUUID();
         const L = language; // shorthand for msg() calls
+        const domains = mentionedMissionDomains(rawText);
+        const active = !['idle', 'booked'].includes(state.step);
+        if (active && containsMissionDirective(rawText) && domains.length > 1) {
+            return { handled: true, state, text: missionDialogue(L, 'clarify') };
+        }
+        if (active && intent.intent === 'cancel' && !isCollectionCancellation(rawText)
+            || active && containsMissionDirective(rawText) && !isDirectedCorrection(rawText)
+                && domains.length > 0 && !domains.includes('appointment')) {
+            state.pausedAt ||= new Date().toISOString();
+            invalidateBookingProposal(state);
+            return { handled: false, state };
+        }
+        if (!['idle', 'booked'].includes(state.step) && isPauseMessage(rawText)) {
+            state.pausedAt = new Date().toISOString();
+            invalidateBookingProposal(state);
+            return { handled: true, state, text: procedureDialogueMessages(L).paused };
+        }
+        if (state.pausedAt) {
+            const namedResume = isNamedMissionResume(rawText) && domains.length === 1 && domains[0] === 'appointment';
+            if (!turn.resumeSelected && !namedResume && !isResumeMessage(rawText) && intent.intent !== 'cancel') return { handled: false, state };
+            state.pausedAt = null;
+            if (turn.resumeSelected || namedResume || isResumeMessage(rawText)) {
+                invalidateBookingProposal(state);
+                return this.repromptCurrentStep(state, L);
+            }
+        }
+        if (active && isDirectedCorrection(rawText)) {
+            const correction = parseDirectedSlotCorrection(rawText, [
+                { field: 'customerName', type: 'name' }, { field: 'customerEmail', type: 'email' },
+                { field: 'customerPhone', type: 'phone' }, { field: 'date', type: 'date' }, { field: 'time', type: 'time' },
+            ]);
+            const type = correction?.field === 'customerName' ? 'name' : correction?.field === 'customerEmail' ? 'email'
+                : correction?.field === 'customerPhone' ? 'phone' : 'string';
+            const value = correction ? coerceProcedureSlot(correction.value, type) : null;
+            const temporalValid = correction?.field === 'date' ? /^\d{4}-\d{2}-\d{2}$/.test(correction.value) && correction.value >= todayDate
+                : correction?.field === 'time' ? /^([01]\d|2[0-3]):[0-5]\d$/.test(correction.value) : true;
+            if (!correction || !value?.ok || !temporalValid) return { handled: true, state, text: missionDialogue(L, 'invalidCorrection') };
+            (state as any)[correction.field] = value.value;
+            invalidateBookingProposal(state);
+            if (correction.field === 'date') { state.time = undefined; state.slots = undefined; state.staffId = undefined; state.staffName = undefined; }
+            if (correction.field === 'date' || correction.field === 'time') {
+                // Revalidate availability on a later selection turn, never book
+                // merely because this correction contains a previously valid time.
+                state.step = 'ask_date';
+                return { handled: true, state, text: missionDialogue(L, 'correction') };
+            }
+            return { ...this.repromptCurrentStep(state, L), handled: true };
+        }
 
         // Defense in depth: the orchestrator checks this before entering the
         // engine, and the engine checks again before reading cached services or
@@ -396,7 +515,12 @@ export class BookingEngineService {
         if (state.step === 'waiting_flow') {
             const expired = !!state.flowStartedAt
                 && (Date.now() - Date.parse(state.flowStartedAt)) > 3_600_000;
-            if (rawText === '__flow_response__' && flowData && !expired) {
+            const validFlowBinding = !!state.flowToken && turn.flowResponseToken === state.flowToken
+                && (!turn.missionScope || state.missionId === turn.missionScope.missionId && state.flowRevision === turn.missionScope.revision);
+            if (rawText === '__flow_response__' && state.flowToken && !expired && !validFlowBinding) {
+                return { handled: true, state, text: missionDialogue(L, 'clarify') };
+            }
+            if (rawText === '__flow_response__' && flowData && !expired && validFlowBinding) {
                 const pick = (...keys: string[]): string => {
                     for (const k of keys) {
                         const v = (flowData as any)[k];
@@ -507,6 +631,8 @@ export class BookingEngineService {
             if (wantsBooking) {
                 state.step = 'waiting_flow';
                 state.flowStartedAt = new Date().toISOString();
+                state.flowToken = randomUUID();
+                state.flowRevision = turn.missionScope?.revision ?? 0;
                 return {
                     handled: true,
                     state,
@@ -745,7 +871,10 @@ export class BookingEngineService {
             const slot = state.slots.find(s => s.time === time);
             if (slot) { state.time = slot.time; return this.collectMissingInfo(state, L); }
         }
-        if (rawText === 'confirm_yes') {
+        if (rawText === 'confirm_yes' || rawText.startsWith('confirm_yes:')) {
+            if (!state.confirmationId || rawText !== `confirm_yes:${state.confirmationId}` || state.step !== 'confirm') {
+                return this.repromptCurrentStep(state, L);
+            }
             return this.createBooking(
                 schemaName,
                 tenantId,
@@ -757,7 +886,8 @@ export class BookingEngineService {
                 'confirm_yes',
             );
         }
-        if (rawText === 'confirm_no') {
+        if ((rawText === 'confirm_no' || rawText.startsWith('confirm_no:')) && state.confirmationId
+            && rawText === `confirm_no:${state.confirmationId}`) {
             Object.assign(state, { step: 'idle', serviceId: undefined, serviceName: undefined, date: undefined, slots: undefined, time: undefined });
             return { handled: true, state, text: msg(L, 'cancelled') };
         }
@@ -987,15 +1117,31 @@ export class BookingEngineService {
         // a la Dra. X y no a la Dra. Y, ese es el momento de decirlo — y de que
         // el cliente pueda corregirlo antes de que la cita exista.
         const withStaff = state.staffName ? `\n${sl.with}: ${state.staffName}` : '';
-        const summary = `${state.serviceName} ${sl.on} ${state.date} ${sl.at} ${state.time}${withStaff}\n${sl.name}: ${state.customerName}\n${sl.email}: ${state.customerEmail}`;
+        const service = state.services?.find(s => s.id === state.serviceId);
+        const priceSummary = service ? '\n' + msg(lang, 'bookingPrice', { amount: String(service.price), currency: service.currency }) : '';
+        const terms = service?.appointmentTerms;
+        const duration = terms?.durationType === 'flexible' ? terms.durationMinutesMax || terms.durationMinutes : terms?.durationMinutes;
+        const durationSummary = duration ? '\n' + msg(lang, 'bookingDuration', { minutes: String(duration) }) : '';
+        const location = terms?.locationType === 'online' ? msg(lang, 'bookingOnline') : terms?.locationAddress;
+        const locationSummary = location ? '\n' + msg(lang, 'bookingLocation', { location }) : '';
+        const termsHash = bookingConfirmationHash(state);
+        if (!state.confirmationId || state.confirmationHash !== termsHash
+            || Date.now() - Date.parse(state.confirmationIssuedAt || '') > 30 * 60 * 1000
+            || !Number.isFinite(Date.parse(state.confirmationIssuedAt || ''))) {
+            state.confirmationId = randomUUID();
+            state.confirmationHash = termsHash;
+            state.confirmationIssuedAt = new Date().toISOString();
+        }
+        const dueSummary = service?.requiresPaymentToConfirm ? '\n' + msg(lang, 'bookingPaymentDue', { amount: String(service.amountDueToConfirm ?? service.price), currency: service.currency }) : '';
+        const summary = `${state.serviceName} ${sl.on} ${state.date} ${sl.at} ${state.time}${withStaff}\n${sl.name}: ${state.customerName}\n${sl.email}: ${state.customerEmail}${durationSummary}${locationSummary}${priceSummary}${dueSummary}`;
         return {
             handled: true, state,
             text: msg(lang, 'confirmPrompt', { summary }),
             buttonMessage: {
                 body: msg(lang, 'confirmButton', { summary }),
                 buttons: [
-                    { id: 'confirm_yes', title: msg(lang, 'btnConfirm') },
-                    { id: 'confirm_no', title: msg(lang, 'btnCancel') },
+                    { id: `confirm_yes:${state.confirmationId}`, title: msg(lang, 'btnConfirm') },
+                    { id: `confirm_no:${state.confirmationId}`, title: msg(lang, 'btnCancel') },
                 ],
             },
         };
@@ -1013,33 +1159,38 @@ export class BookingEngineService {
         confirmationSource?: 'confirm_yes' | 'flow_response' | 'text_confirmation',
     ): Promise<EngineResult> {
         this.logger.log(`[Decide] BOOKING: ${state.serviceName} ${state.date} ${state.time} for ${state.customerName}`);
+        if (confirmationSource && confirmationSource !== 'flow_response'
+            && (!state.confirmationId || state.confirmationHash !== bookingConfirmationHash(state)
+                || !Number.isFinite(Date.parse(state.confirmationIssuedAt || ''))
+                || Date.now() - Date.parse(state.confirmationIssuedAt!) > 30 * 60 * 1000)) {
+            return this.collectMissingInfo(state, lang);
+        }
 
-        // Bug #5: Normalize startAt to ISO 8601 to avoid timezone-sensitive timestamp comparison.
-        // Using AT TIME ZONE ensures the DB compares in tenant-local time regardless of server TZ.
+        // Appointment columns store tenant-local wall-clock timestamps. A replay
+        // must preserve that clock and exclude payment holds that have expired.
         try {
             const startAt = `${state.date}T${state.time}:00`;
             const existing: any[] = await this.prisma.$queryRawUnsafe(
-                `SELECT id FROM "${schema}".appointments
-                 WHERE contact_id = $1::uuid
-                   AND service_id = $2::uuid
-                   AND start_at = $3::timestamptz
-                   AND status NOT IN ('cancelled') LIMIT 1`,
+                `SELECT a.id, a.status, a.payment_status, a.amount_due, a.hold_expires_at,
+                        ${appointmentPriceSql('a', 's')} AS price, ${appointmentCurrencySql('a', 's')} AS currency
+                 FROM "${schema}".appointments a LEFT JOIN "${schema}".services s ON s.id = a.service_id
+                 WHERE a.contact_id = $1::uuid
+                   AND a.service_id = $2::uuid
+                   AND a.start_at = $3::timestamp
+                   AND a.status NOT IN ('cancelled', 'completed', 'no_show') AND ${holdStillAliveSql('a')} LIMIT 1`,
                 contactId, state.serviceId, startAt,
             );
             if (existing?.length) {
                 this.logger.warn(`[Decide] Duplicate booking prevented — appointment ${existing[0].id} already exists`);
-                state.step = 'booked';
-                return {
-                    handled: true, state,
-                    text: msg(lang, 'booked', { service: state.serviceName || '', date: state.date || '', time: state.time || '', name: state.customerName || '', email: state.customerEmail || '' }),
-                    // The appointment exists — saying so is the truth, not a claim
-                    // without backing. Reported as an idempotent replay so the
-                    // output guardrail does not rewrite it into "still pending".
-                    executedTools: [{
-                        name: 'create_appointment',
-                        result: { success: true, idempotentReplay: true, appointmentId: existing[0].id },
-                    }],
-                };
+                const apt = existing[0];
+                const awaitingPayment = apt.status === 'pending_payment';
+                return this.bookingOutcome(state, lang, {
+                    success: true, idempotentReplay: true, appointmentId: apt.id,
+                    appointment: { id: apt.id, status: apt.status, awaitingPayment,
+                        amountDueToConfirm: apt.amount_due ?? apt.price, currency: apt.currency,
+                        holdExpiresAt: apt.hold_expires_at,
+                        payableReference: awaitingPayment ? `appointment:${apt.id}` : null },
+                });
             }
         } catch (err) {
             this.logger.warn(`[Decide] Duplicate check failed (non-blocking): ${(err as any).message}`);
@@ -1057,16 +1208,21 @@ export class BookingEngineService {
                 authorityEvidence: {
                     kind: 'booking_engine_confirmation' as const,
                     source: confirmationSource,
+                    flowToken: confirmationSource === 'flow_response' ? state.flowToken : undefined,
                 },
             } : {}),
         });
         const executedTools = [{ name: 'create_appointment', result }];
-        if (result?.success) {
-            state.step = 'booked';
-            return {
-                handled: true, state, executedTools,
-                text: msg(lang, 'booked', { service: state.serviceName || '', date: state.date || '', time: state.time || '', name: state.customerName || '', email: state.customerEmail || '' }),
-            };
+        if (result?.success) return this.bookingOutcome(state, lang, result);
+        if (result?.error === 'appointment_terms_changed' && result.service?.id === state.serviceId) {
+            state.services = [...(state.services || []).filter(service => service.id !== state.serviceId), result.service];
+            state.serviceName = result.service.name;
+            state.confirmationId = undefined;
+            state.confirmationHash = undefined;
+            // The next confirmation summary and persisted state use the new
+            // canonical facts; clear the discovery cache so it cannot revert them.
+            await this.redis.del(`booking:services:${tenantId}`).catch(() => {});
+            return { ...this.collectMissingInfo(state, lang), executedTools };
         }
         // Same criterion as checkAvailability: on an unrecoverable failure the
         // appointment was NOT created and "try another time" is both a lie and a
@@ -1076,6 +1232,24 @@ export class BookingEngineService {
             return { ...this.escalateToHuman(state, lang, 'bookingFailedHandoff', `booking_failed:${fatal}`), executedTools };
         }
         return { handled: true, state, executedTools, text: msg(lang, 'bookingError', { error: result?.error || 'Unknown' }) };
+    }
+
+    private bookingOutcome(state: BookingState, lang: string, result: any): EngineResult {
+        const appointment = result.appointment || {};
+        const pendingPayment = appointment.awaitingPayment === true || appointment.status === 'pending_payment';
+        state.step = 'booked'; // Collection is complete; resource status is stored separately.
+        state.appointmentId = appointment.id || result.appointmentId;
+        state.appointmentStatus = appointment.status || 'pending';
+        state.payableReference = appointment.payableReference || null;
+        return {
+            handled: true, state, executedTools: [{ name: 'create_appointment', result }],
+            text: msg(lang, pendingPayment ? 'bookingAwaitingPayment'
+                : appointment.status === 'confirmed' ? 'booked' : 'bookingPending', {
+                service: state.serviceName || '', date: state.date || '', time: state.time || '',
+                name: state.customerName || '', email: state.customerEmail || '',
+                amount: String(appointment.amountDueToConfirm ?? ''), currency: appointment.currency || '',
+            }),
+        };
     }
 
     // ── Re-prompt current step (mid-flow protection) ──

@@ -330,6 +330,17 @@ const INTENTS_BY_TOOL_GROUP: Readonly<Record<string, readonly IntentContract[]>>
             states: Object.freeze(['collecting', 'confirming', 'ordered', 'handed_off']),
             commits: true,
         }),
+        Object.freeze<IntentContract>({
+            key:'track_catalog_order',description:'El cliente consulta sus pedidos y su estado real de pago.',slots:Object.freeze([]),
+            toolPlan:Object.freeze(['list_my_catalog_orders','get_catalog_order']),confirmation:'none',fallback:'handoff',
+            states:Object.freeze(['listed','empty','handed_off']),commits:false,
+        }),
+        Object.freeze<IntentContract>({
+            key:'cancel_catalog_order',description:'El cliente solicita cancelar su pedido impago con revisión del estado vigente.',
+            slots:Object.freeze([Object.freeze<SlotSchema>({key:'orderId',type:'reference',required:true,sensitivity:'personal',source:'tool',persistence:'turn'})]),
+            toolPlan:Object.freeze(['list_my_catalog_orders','get_catalog_order','cancel_catalog_order']),confirmation:'explicit',fallback:'handoff',
+            states:Object.freeze(['reviewing','confirming','cancelled','handed_off']),commits:true,
+        }),
     ]),
     // ═══ LOS QUINCE GRUPOS QUE NO DECLARABAN NINGUNA INTENCIÓN ═══
     //
@@ -519,15 +530,17 @@ const INTENTS_BY_TOOL_GROUP: Readonly<Record<string, readonly IntentContract[]>>
                 key: 'vehicle_id', type: 'reference', required: true,
                 sensitivity: 'public', source: 'tool', persistence: 'record',
             }),
+            Object.freeze<SlotSchema>({key:'service_id',type:'reference',required:true,sensitivity:'public',source:'tool',persistence:'record'}),
+            Object.freeze<SlotSchema>({key:'staff_id',type:'reference',required:true,sensitivity:'public',source:'tool',persistence:'record'}),
             DATETIME_SLOT,
             ...CONTACT_SLOTS,
         ]),
         toolPlan: Object.freeze([
-            'search_vehicles', 'get_vehicle_details', 'schedule_test_drive',
+            'search_vehicles', 'get_vehicle_details', 'list_services', 'check_availability', 'schedule_test_drive',
         ]),
         confirmation: 'explicit',
         fallback: 'handoff',
-        states: Object.freeze(['collecting', 'confirming', 'scheduled', 'handed_off']),
+        states: Object.freeze(['collecting', 'confirming', 'pending', 'awaiting_payment', 'confirmed', 'handed_off']),
         commits: true,
     })]),
 

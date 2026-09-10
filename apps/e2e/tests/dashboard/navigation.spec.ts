@@ -417,6 +417,15 @@ async function bootstrapTenantAdmin(
       return;
     }
 
+    // The setup card asks Assist what is still blocking the agent. Undeclared,
+    // it made this suite red against a product that was working — which is the
+    // cost of a strict guard and the reason it is worth having: the call was
+    // real, and nobody had reviewed it here.
+    if (method === "GET" && path === `/copilot/assessment/${TENANT_ID}`) {
+      await fulfillSuccess(route, { blockers: [], recommendations: [], ready: false });
+      return;
+    }
+
     if (
       method === "GET"
       && [

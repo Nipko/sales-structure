@@ -14,6 +14,15 @@ export * from './vertical-product-policy';
 export * from './vertical-builder-contract';
 export * from './automation-trigger-contract';
 export * from './agent-quality-contract';
+export * from './agent-assessment-contract';
+export * from './agent-operational-state';
+export * from './channel-credential-health';
+export * from './agent-configuration-contract';
+// ---- What Assist may create, and what it deliberately routes to a screen ----
+export * from './agent-operation-contract';
+export * from './agent-issue-resolution';
+export * from './agent-draft-contract';
+export * from './agent-release-subject';
 
 // ---- Guided tours: which tour helps with what, validated on both sides ----
 export * from './guided-tour-contract';
@@ -229,6 +238,7 @@ export interface ConversationAssignedEvent {
 export type EditorMode = 'guided' | 'prompt';
 
 export interface TenantConfig {
+    mission?: import('./agent-assessment-contract').AgentMissionV1;
     id: string;
     name: string;
     slug: string;
@@ -275,6 +285,8 @@ export interface PersonaConfig {
 }
 
 export interface BehaviorConfig {
+    /** Suggest replies for human review; tools cannot commit effects in this mode. */
+    draftMode?: boolean;
     rules: string[];
     requiredFields: Record<string, RequiredField[]>;
     forbiddenTopics: string[];
@@ -288,6 +300,7 @@ export interface RequiredField {
 }
 
 export interface LLMConfig {
+    kbReranker?: boolean;
     temperature: number;
     maxTokens: number;
     routing: {
@@ -730,6 +743,12 @@ export type KnowledgeSource = 'faq' | 'policy' | 'kb_article' | 'product' | 'ser
 export interface RetrievedKnowledgeItem {
     source: KnowledgeSource;
     id: string;
+    /** Retrieval identity is internal evidence, never a customer-facing citation. */
+    retrievalId?: string;
+    retrievalBatchId?: string;
+    documentId?: string;
+    version?: number;
+    sourceUrl?: string;
     score?: number;
     title?: string;
     content: string;
@@ -746,6 +765,8 @@ export interface RetrievedKnowledgeItem {
     validFrom?: string;
     validTo?: string;
     isRegulated?: boolean;
+    conflictReviewStatus?: 'available' | 'unavailable';
+    conflicts?: import('./knowledge-conflict-contract').KnowledgeConflictAnnotation[];
 }
 
 // ---- Versioned active domain-object context ----
@@ -948,6 +969,15 @@ export interface TurnCapability {
 }
 
 export interface TurnContext {
+    /** Final generated-response diagnostics. Citations/overlap are not semantic verification. */
+    knowledgeAttribution?: {
+        version: 1; responseHash: string; presentedDocuments: number; observedDocuments: number;
+        citedDocuments: number; literalOverlapDocuments: number; unknownCitations: number; ambiguousCitations: number;
+        semanticSupport: 'not_evaluated'; persistence: 'disabled' | 'not_needed' | 'contact_erased' | 'recorded' | 'incomplete' | 'unavailable';
+    };
+    learningExamples?: Array<{ id: string; releaseId: string; releaseHash: string; situation: string; responsePattern: string; rationale: string; factsRequired: string[]; authority: 'style_only' }>;
+    channelType?: ChannelType;
+    executionMode?: 'live' | 'draft' | 'agent_test' | 'evaluation';
     language: string;
     timezone: string;
     /** Operating country, currency, locale and form of address for this turn. */
@@ -1004,6 +1034,7 @@ export interface TurnContext {
      *  a rolling summary, injected so the agent doesn't "forget" between sessions. */
     customerMemory?: {
         facts?: string[];
+        conflicts?: Array<{key:string;observations:string[]}>;
         summary?: string;
     };
     /** Number of messages in the current conversation (used for anti-repetition) */
@@ -1101,6 +1132,9 @@ export interface VerticalContext {
 
 // ---- Test Agent Types ----
 export interface TestAgentRequest {
+    runtimeSessionId?: string;
+    /** Select a current, server-stored configuration draft; never accepts raw configuration. */
+    configurationRevisionId?: string;
     message: string;
     /** Resolve the exact live capability contract for this certified channel. */
     channelType?: ConversationalChannelType;
@@ -1141,6 +1175,10 @@ export interface TestAgentToolParity {
 }
 
 export interface TestAgentDebugInfo {
+    runtimeSessionId?: string;
+    runtimeError?: string;
+    agentRevision?: { version: number | null; configHash: string; capturedAt: string; configurationRevisionId?: string;
+        dependencyRevision?: string; strategy?: 'guarded_live_dependencies'; limitations?: string[] };
     systemPrompt: string;
     toolCalls: TestAgentToolCall[];
     ragHits: RetrievedKnowledgeItem[];
@@ -1290,6 +1328,14 @@ export type ProcedureStepType = 'message' | 'ask' | 'tool' | 'condition' | 'hand
 
 export type ProcedureConditionOperator = 'eq' | 'neq' | 'contains' | 'exists' | 'not_exists';
 
+export type ProcedureFieldType = 'string' | 'number' | 'integer' | 'boolean' | 'date' | 'uuid' | 'email' | 'phone' | 'name';
+
+export interface ProcedureFieldSpec {
+    type?: ProcedureFieldType;
+    required?: boolean;
+    choices?: string[];
+}
+
 export interface ProcedureStep {
     /** Stable step id (referenced by next/then/else). */
     id: string;
@@ -1300,10 +1346,17 @@ export interface ProcedureStep {
         /** ask: the field to collect + the question to ask. */
         field?: string;
         question?: string;
+        /** Ask validation. Existing definitions infer common contact fields. */
+        fieldType?: ProcedureFieldType;
+        required?: boolean;
+        choices?: string[];
+        /** Verified purpose of collecting this field, supplied by the author. */
+        explanation?: string;
         /** tool: an AI tool name (same registry as the agent tools) + args + where to store the result. */
         tool?: string;
         args?: Record<string, any>;
         saveAs?: string;
+        slots?: Record<string, ProcedureFieldSpec>;
         /** condition: evaluate a collected field and branch. */
         conditionField?: string;
         operator?: ProcedureConditionOperator;
@@ -1337,13 +1390,22 @@ export interface ProcedureDefinition {
     sourceSop?: string;
 }
 
-/** Redis-backed execution state for an in-progress procedure. */
+/** Durable mission state; Redis caches it but never owns its lifetime. */
 export interface ProcedureRunState {
+    missionId?: string;
     procedureId: string;
     version: number;
     currentStepId: string | null;
     collected: Record<string, any>;
     /** When set, the previous turn asked for this field and we await the answer. */
     awaitingField?: string | null;
+    /** An explicit pause requires a resume turn before collecting or executing. */
+    pausedAt?: string | null;
     startedAt: string;
+    updatedAt?: string;
+    expiresAt?: string;
+    /** Other explicitly paused tasks. Each frame keeps its own retention clock. */
+    suspendedMissions?: ProcedureRunState[];
 }
+export type { KnowledgeGapReport } from './knowledge';
+export type { ConversationMissionRefV1, ConversationMissionFocusV1, MissionExpectedReplyV1, MissionExecutionScopeV1 } from './conversation-mission';

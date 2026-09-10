@@ -29,13 +29,14 @@ function createHasher() {
             return [{ id: '44444444-4444-4444-8444-444444444444', content_text: 'quiero reservar' }];
         }
         if (normalized.startsWith('INSERT INTO tool_execution_ledger')) {
-            inserted.push({ idempotency_key: params[0], tool_name: params[1], args_hash: params[2] });
+            inserted.push({ idempotency_key: params[0], tool_name: params[1], args_hash: params[2], request_payload: JSON.parse(params[8]) });
             return [];
         }
         return [];
     });
     const service = new ToolExecutionControlService(
-        { executeInTenantSchema, transactionInTenantSchema: jest.fn() } as any,
+        { executeInTenantSchema, transactionInTenantSchema: jest.fn(async (schema, work) =>
+            work((sql: string, params?: any[]) => executeInTenantSchema(schema, sql, params))) } as any,
         { get: jest.fn().mockReturnValue('args-canonical-secret-at-least-32-bytes-long') } as any,
         { isVerified: jest.fn().mockResolvedValue(true), startVerification: jest.fn() } as any,
         { get: jest.fn(), incr: jest.fn(), expire: jest.fn() } as any,
@@ -57,6 +58,15 @@ async function hashOf(args: Record<string, unknown>): Promise<string> {
 }
 
 describe('canonical arguments', () => {
+    it('persists the served revision outside model-controlled arguments for approval recovery', async () => {
+        const {service,inserted}=createHasher();
+        const operationalScope={kind:'agent' as const,tenantId,schemaName,agentId:'55555555-5555-4555-8555-555555555555',version:7,operationalHash:'a'.repeat(64)};
+        await service.preflight({schemaName,tenantId,contactId,conversationId,toolName:'create_property_booking',
+            args:{propertyId:'p1',operationalScope:{version:999}},operationalScope});
+        expect(inserted).toHaveLength(1);
+        expect(inserted[0].request_payload.operationalScope).toEqual(operationalScope);
+        expect(inserted[0].request_payload.args.operationalScope).toEqual({version:999});
+    });
     it('reads the same date written three ways as one operation', async () => {
         const iso = await hashOf({ propertyId: 'p1', checkIn: '2026-08-20' });
         expect(await hashOf({ propertyId: 'p1', checkIn: '20/08/2026' })).toBe(iso);

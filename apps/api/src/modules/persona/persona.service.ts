@@ -1,4 +1,6 @@
-import { BadRequestException, ForbiddenException, forwardRef, Inject, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, forwardRef, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { AgentConfigurationRevisionStore } from './agent-configuration-revision';
+import { readServingPersona } from './serving-persona';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { TenantsService } from '../tenants/tenants.service';
@@ -7,6 +9,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import * as yaml from 'js-yaml';
 import {
     CERTIFIED_SELF_SERVICE_CHANNELS,
+    isAgentMissionV1,
     TenantConfig,
     resolveAgentSkillset,
     skillsetGuidanceFor,
@@ -29,9 +32,11 @@ import { resolveOnboardingPersonaTemplate } from './onboarding-persona-resolver'
 
 /** Exact durable agent/configuration selected for one live channel turn. */
 export interface PersonaResolution {
-    config: TenantConfig;
+    config: TenantConfig | null;
     agentId: string | null;
     version: number | null;
+    operationalHash?: string;
+    legacyConfigHash?: string;
 }
 
 /**
@@ -200,6 +205,7 @@ export class PersonaService {
      */
     private buildInvariantBlock(config: TenantConfig, tenantBusinessHours?: any): string {
         const lines: string[] = [];
+        this.pushMission(lines, config);
         this.pushForbiddenTopics(lines, config.behavior);
         this.pushHandoffTriggers(lines, config.behavior);
         this.pushBusinessHours(lines, config.hours, tenantBusinessHours);
@@ -248,6 +254,7 @@ export class PersonaService {
         this.pushForbiddenTopics(lines, behavior);
         this.pushHandoffTriggers(lines, behavior);
         this.pushRequiredInformation(lines, config);
+        this.pushMission(lines, config);
         this.pushBusinessHours(lines, hours, tenantBusinessHours);
         this.pushSkillset(lines, config);
 
@@ -295,6 +302,17 @@ export class PersonaService {
             lines.push('    </context>');
         }
         lines.push('  </required_information>');
+    }
+
+    private pushMission(lines: string[], config: TenantConfig): void {
+        const mission = config.mission;
+        if (!isAgentMissionV1(mission)) return;
+        lines.push('  <mission>');
+        lines.push(`    <objective>${escapeXmlText(mission.objective)}</objective>`);
+        for (const intent of mission.intentKeys ?? []) lines.push(`    <intent>${escapeXmlText(intent)}</intent>`);
+        for (const criterion of mission.successCriteria ?? []) lines.push(`    <success_criterion>${escapeXmlText(criterion)}</success_criterion>`);
+        for (const condition of mission.handoffConditions ?? []) lines.push(`    <handoff_condition>${escapeXmlText(condition)}</handoff_condition>`);
+        lines.push('  </mission>');
     }
 
     private pushBusinessHours(lines: string[], hours: any, tenantBusinessHours?: any): void {
@@ -538,7 +556,8 @@ export class PersonaService {
      * los campos que vienen en el guardado, porque el asistente persiste el paso
      * 1 antes de que la persona haya visto los demás.
      */
-    private assertAgentConfigValid(config: any, options: { partial?: boolean } = {}): void {
+    /** Canonical validator also used by reviewed configuration commands. */
+    assertAgentConfigValid(config: any, options: { partial?: boolean } = {}): void {
         if (!config || typeof config !== 'object') {
             throw new BadRequestException({
                 error: 'agent_invalid',
@@ -548,6 +567,7 @@ export class PersonaService {
         }
 
         const invalid: string[] = [];
+        if (config.mission !== undefined && !isAgentMissionV1(config.mission)) invalid.push('mission');
 
         // Modo prompt: la persona escribió sus propias instrucciones y ese texto
         // reemplaza a la estructura. Exigir reglas y triggers acá bloquearía a
@@ -689,95 +709,22 @@ export class PersonaService {
 
     /**
      * Get the persona assigned to a specific channel.
-     * Falls back to default persona, then to auto-generated default.
+     * Routing and version come from the same current database snapshot.
+     * Disabled durable agents never fall back to a cached or generated persona.
      */
     async resolvePersonaForChannel(
         tenantId: string,
         channelType: string,
         accountId?: string,
     ): Promise<PersonaResolution> {
-        // Resolution metadata has a separate cache contract. Reusing the former
-        // config-only values would make attribution depend on cache state.
-        const cacheKey = accountId
-            ? `persona-resolution:${tenantId}:channel:${channelType}:acct:${accountId}`
-            : `persona-resolution:${tenantId}:channel:${channelType}`;
         await this.ensureTablesForTenant(tenantId);
         const schemaName = await this.tenantsService.getSchemaName(tenantId);
         await this.ensureConversationAttributionColumns(tenantId, schemaName);
-
-        const cached = await this.redis.getJson<PersonaResolution>(cacheKey);
-        if (cached) return cached;
-
-        let resolution: PersonaResolution | null = null;
-
-        // 0. Exact connection binding wins ("${channelType}:${accountId}").
-        if (accountId) {
-            try {
-                const binding = `${channelType}:${accountId}`;
-                const rows = await this.prisma.$queryRawUnsafe(
-                    `SELECT id, config_json, version FROM "${schemaName}".agent_personas
-                     WHERE is_active = true AND $1 = ANY(channel_bindings)
-                     ORDER BY updated_at DESC LIMIT 1`,
-                    binding,
-                ) as any[];
-                if (rows.length > 0) resolution = this.toPersonaResolution(rows[0]);
-            } catch (e: any) {
-                this.logger.warn(`agent_personas binding lookup failed for ${tenantId}/${channelType}:${accountId}: ${e.message}`);
-            }
-        }
-
-        // 1. Fallback: agent assigned to this channel TYPE.
-        if (!resolution) {
-            try {
-                const rows = await this.prisma.$queryRawUnsafe(
-                    `SELECT id, config_json, version FROM "${schemaName}".agent_personas
-                     WHERE is_active = true AND $1 = ANY(channels)
-                     ORDER BY updated_at DESC LIMIT 1`,
-                    channelType,
-                ) as any[];
-                if (rows.length > 0) resolution = this.toPersonaResolution(rows[0]);
-            } catch (e: any) {
-                this.logger.warn(`agent_personas lookup failed for ${tenantId}/${channelType}: ${e.message}`);
-            }
-        }
-
-        // 2. Fallback to default agent
-        if (!resolution) {
-            try {
-                const rows = await this.prisma.$queryRawUnsafe(
-                    `SELECT id, config_json, version FROM "${schemaName}".agent_personas
-                     WHERE is_active = true AND is_default = true LIMIT 1`,
-                ) as any[];
-                if (rows.length > 0) resolution = this.toPersonaResolution(rows[0]);
-            } catch {}
-        }
-
-        // 3. Fallback to legacy persona_config
-        if (!resolution) {
-            const legacyConfig = await this.getActivePersona(tenantId);
-            resolution = {
-                config: legacyConfig || this.buildDefaultPersona(tenantId),
-                agentId: null,
-                version: null,
-            };
-        }
-
-        await this.redis.setJson(cacheKey, resolution, 600);
-        return resolution;
+        return readServingPersona((sql,params)=>this.prisma.executeInTenantSchema(schemaName,sql,params),channelType,accountId);
     }
-
     /** Backward-compatible config-only API for non-attributing callers. */
-    async getPersonaForChannel(tenantId: string, channelType: string, accountId?: string): Promise<TenantConfig> {
+    async getPersonaForChannel(tenantId: string, channelType: string, accountId?: string): Promise<TenantConfig | null> {
         return (await this.resolvePersonaForChannel(tenantId, channelType, accountId)).config;
-    }
-
-    private toPersonaResolution(row: any): PersonaResolution {
-        const parsedVersion = row?.version == null ? Number.NaN : Number(row.version);
-        return {
-            config: row.config_json as TenantConfig,
-            agentId: row.id ? String(row.id) : null,
-            version: Number.isInteger(parsedVersion) ? parsedVersion : null,
-        };
     }
 
     /**
@@ -831,6 +778,12 @@ export class PersonaService {
     /**
      * Get a single agent by ID
      */
+    async readConfigurationRevision(tenantId:string,agentId:string,revisionId:string,executionContext?:ServiceExecutionContext):Promise<any> {
+        const schemaName=await this.tenantsService.getSchemaName(tenantId,executionContext);
+        const store=new AgentConfigurationRevisionStore(this.prisma);
+        return this.prisma.transactionInTenantSchema(schemaName,query=>store.readCurrentRevisionWithQuery(query,agentId,revisionId));
+    }
+
     async getAgent(
         tenantId: string,
         agentId: string,
@@ -1080,177 +1033,26 @@ export class PersonaService {
     /**
      * Update an existing agent
      */
-    async updateAgent(tenantId: string, agentId: string, data: {
-        name?: string;
-        configJson?: any;
-        channels?: string[];
-        channelBindings?: string[];
-        scheduleMode?: string;
-        isActive?: boolean;
-        isDefault?: boolean;
-        /**
-         * Borrador explícito del asistente de configuración: valida solo los
-         * campos presentes. Un guardado normal del editor valida el agente
-         * entero.
-         */
-        partialDraft?: boolean;
-    }): Promise<any> {
-        this.assertSelfServiceAssignments(data.channels, data.channelBindings);
-
-        // El nombre vive también en la columna que muestra el panel: vaciarlo
-        // dejaba un agente sin nombre en la lista y sin identidad en el prompt.
-        if (data.name !== undefined && !PersonaService.isNonEmptyText(data.name)) {
-            throw new BadRequestException({
-                error: 'agent_invalid',
-                fields: ['persona.name'],
-                message: 'Faltan datos obligatorios del agente. Revisá los campos marcados.',
-            });
-        }
-
-        // Ensure the table + channel_bindings column exist before we read/write them
-        // (existing tenants may predate the multi-account column).
+    async updateAgent(tenantId: string, agentId: string, data: { expectedVersion?: number; [key: string]: any }): Promise<any> {
+        if (!data || data.isActive !== false || Object.keys(data).some(key => !['isActive', 'expectedVersion'].includes(key)))
+            throw new BadRequestException({ error: 'agent_draft_contract_required' });
+        if (!Number.isInteger(data.expectedVersion) || Number(data.expectedVersion) < 0)
+            throw new BadRequestException({ error: 'agent_version_required' });
         await this.ensureTablesForTenant(tenantId);
         const schemaName = await this.tenantsService.getSchemaName(tenantId);
-        const qualityRefreshAgentIds = new Set<string>();
-
-        // Capture prior bindings so we can invalidate their per-account caches too,
-        // and the stored config so `tools` can be merged instead of replaced.
-        const priorAgent = await this.prisma.$queryRawUnsafe(
-            `SELECT channel_bindings, config_json FROM "${schemaName}".agent_personas WHERE id = $1::uuid`,
-            agentId,
-        ) as any[];
-        const priorBindings: string[] = priorAgent[0]?.channel_bindings || [];
-        const priorConfig: any = priorAgent[0]?.config_json || {};
-
-        // `tools` se FUSIONA con lo guardado (ver mergeAgentTools): lo que el emisor
-        // manda gana, lo que no menciona sobrevive. Así el asistente guiado deja de
-        // borrar los flags de herramienta que sembró el bootstrap vertical.
-        let configToSave = data.configJson !== undefined
-            ? this.mergeAgentTools(data.configJson, priorConfig)
-            : undefined;
-
-        // El nombre del agente vive en DOS lugares: la columna `name`, que es lo
-        // que muestra el panel, y `config_json.persona.name`, que es lo que el
-        // prompt le dice al modelo que ES —la regla 2b del contrato L1 es
-        // tajante: "tu nombre es EXACTAMENTE ese, nunca te presentes con otro".
-        //
-        // `createAgent` los sincroniza; esto no lo hacía. Renombrar el agente
-        // cambiaba el panel y dejaba al modelo presentándose con el nombre
-        // anterior, que en un tenant recién creado es el que sembró la vertical.
-        // En producción el dueño veía "Laura Sofia" y sus clientes hablaban con
-        // "Maya", la asesora de viajes por defecto de turismo. Y la IA no estaba
-        // alucinando: obedecía al pie de la letra el nombre que le pasaban.
-        if (data.name) {
-            const base: any = configToSave ?? priorConfig;
-            if (base && typeof base === 'object') {
-                configToSave = {
-                    ...base,
-                    persona: { ...(base.persona || {}), name: data.name },
-                };
-            }
-        }
-
-        // Validar ANTES de cualquier escritura (incluida la reasignación de
-        // canales y de `is_default`, que ya tocan otras filas): un rechazo no
-        // puede dejar el tenant a medio camino.
-        if (data.configJson !== undefined && configToSave !== undefined) {
-            this.assertAgentConfigValid(configToSave, { partial: data.partialDraft === true });
-        }
-
-        // Gate de prerrequisitos de agenda: se aplica cuando este guardado ENCIENDE las
-        // citas. Deliberadamente no se bloquea cuando ya venían encendidas — si no, un
-        // tenant con la agenda incompleta no podría editar ni el saludo de su agente, ni
-        // llegar a apagar la herramienta, que es justo el arreglo que necesita.
-        const appointmentsWasOn = priorConfig?.tools?.appointments?.enabled === true;
-        const appointmentsWillBeOn = configToSave?.tools?.appointments?.enabled === true;
-        if (appointmentsWillBeOn && !appointmentsWasOn) {
-            await this.assertAppointmentsPrerequisites(tenantId, schemaName);
-        }
-
-        if (data.isDefault) {
-            await this.prisma.$executeRawUnsafe(
-                `UPDATE "${schemaName}".agent_personas SET is_default = false WHERE is_default = true AND id != $1::uuid`,
-                agentId,
-            );
-        }
-
-        // Handle channel reassignment conflicts
-        if (data.channels) {
-            for (const ch of data.channels) {
-                const reassigned = await this.prisma.$queryRawUnsafe(
-                    `UPDATE "${schemaName}".agent_personas
-                        SET channels = array_remove(channels, $1),
-                            version = COALESCE(version, 0) + 1,
-                            updated_at = NOW()
-                      WHERE id != $2::uuid AND $1 = ANY(channels)
-                  RETURNING id`,
-                    ch, agentId,
-                ) as Array<{ id: string }>;
-                reassigned.forEach((row) => qualityRefreshAgentIds.add(String(row.id)));
-            }
-        }
-
-        // Handle per-connection binding reassignment ("one agent per connection").
-        if (data.channelBindings) {
-            for (const b of data.channelBindings) {
-                const reassigned = await this.prisma.$queryRawUnsafe(
-                    `UPDATE "${schemaName}".agent_personas
-                        SET channel_bindings = array_remove(channel_bindings, $1),
-                            version = COALESCE(version, 0) + 1,
-                            updated_at = NOW()
-                      WHERE id != $2::uuid AND $1 = ANY(channel_bindings)
-                  RETURNING id`,
-                    b, agentId,
-                ) as Array<{ id: string }>;
-                reassigned.forEach((row) => qualityRefreshAgentIds.add(String(row.id)));
-            }
-        }
-
-        if (data.configJson?.persona?.name && data.name === undefined) {
-            data.name = data.configJson.persona.name;
-        }
-
-        const sets: string[] = ['updated_at = NOW()'];
-        const params: any[] = [];
-        let paramIdx = 1;
-
-        if (data.name !== undefined) { sets.push(`name = $${paramIdx}`); params.push(data.name); paramIdx++; }
-        if (configToSave !== undefined) { sets.push(`config_json = $${paramIdx}::jsonb`); params.push(JSON.stringify(configToSave)); paramIdx++; }
-        if (data.channels !== undefined) { sets.push(`channels = $${paramIdx}::text[]`); params.push(data.channels); paramIdx++; }
-        if (data.channelBindings !== undefined) { sets.push(`channel_bindings = $${paramIdx}::text[]`); params.push(data.channelBindings); paramIdx++; }
-        if (data.scheduleMode !== undefined) { sets.push(`schedule_mode = $${paramIdx}`); params.push(data.scheduleMode); paramIdx++; }
-        if (data.isActive !== undefined) { sets.push(`is_active = $${paramIdx}`); params.push(data.isActive); paramIdx++; }
-        if (data.isDefault !== undefined) { sets.push(`is_default = $${paramIdx}`); params.push(data.isDefault); paramIdx++; }
-
-        sets.push(`version = version + 1`);
-        params.push(agentId);
-
-        const rows = await this.prisma.$queryRawUnsafe(
-            `UPDATE "${schemaName}".agent_personas SET ${sets.join(', ')} WHERE id = $${paramIdx}::uuid RETURNING *`,
-            ...params,
-        ) as any[];
-
-        const agent = rows[0];
-
-        // Invalidate type-level + per-connection caches (prior AND new bindings).
-        const affectedBindings = Array.from(new Set([...priorBindings, ...(data.channelBindings || [])]));
-        await this.invalidatePersonaCaches(tenantId, affectedBindings);
-
-        // Quality signals must follow every version bump, including name,
-        // activation, assignment and schedule changes.
-        for (const affectedAgentId of qualityRefreshAgentIds) {
-            this.eventEmitter.emit('agent.version.updated', { tenantId, agentId: affectedAgentId, changed: 'assignment_reassigned' });
-        }
-
-        // Auto-run the eval gate when the agent's BEHAVIOUR config changed — not on
-        // trivial flips (isActive/isDefault/channels/scheduleMode/name). In-process,
-        // best-effort emit; the listener debounces + enqueues.
-        if (data.configJson !== undefined) {
-            this.eventEmitter.emit('agent.config.updated', { tenantId, agentId, changed: 'config_json' });
-        } else {
-            this.eventEmitter.emit('agent.version.updated', { tenantId, agentId, changed: 'agent_updated' });
-        }
-
+        const { agent, priorBindings } = await this.prisma.transactionInTenantSchema(schemaName, async query => {
+            await query('SELECT id FROM public.tenants WHERE id=$1::uuid FOR UPDATE', [tenantId]);
+            const prior = (await query<any[]>('SELECT channel_bindings, config_json, version FROM agent_personas WHERE id=$1::uuid FOR UPDATE', [agentId]))[0];
+            if (!prior) throw new NotFoundException('Agent not found');
+            if (Number(prior.version) !== data.expectedVersion)
+                throw new ConflictException({ error: 'agent_version_conflict', message: 'Agent changed; reload before saving.' });
+            // Disabling is immediate. It cannot transfer assignments or publish a saved draft.
+            const rows = await query<any[]>('UPDATE agent_personas SET is_active=false, version=version+1, updated_at=NOW() WHERE id=$1::uuid AND version=$2 RETURNING *', [agentId, data.expectedVersion]);
+            if (!rows[0]) throw new ConflictException({ error: 'agent_version_conflict' });
+            return { agent: rows[0], priorBindings: prior.channel_bindings ?? [] };
+        });
+        await this.invalidatePersonaCaches(tenantId, priorBindings);
+        this.eventEmitter.emit('agent.version.updated', { tenantId, agentId, changed: 'agent_deactivated' });
         return agent;
     }
 
@@ -3275,7 +3077,7 @@ export class PersonaService {
         }
     }
 
-    private async assertAppointmentsPrerequisites(tenantId: string, schemaName: string): Promise<void> {
+    async assertAppointmentsPrerequisites(tenantId: string, schemaName: string): Promise<void> {
         const { services, slots } = await this.countAppointmentsPrerequisites(schemaName);
 
         if (services === 0 || slots === 0) {

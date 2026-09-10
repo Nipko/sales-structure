@@ -336,6 +336,9 @@ describe('AI tool schema and runtime alignment', () => {
                 notes: 'Ceremonia exterior',
                 status: 'requested',
             },
+            // Sin arriendo de evaluación: este turno es producción y su aviso
+            // al fotógrafo tiene que salir.
+            { sandboxNamespace: undefined },
         );
         expect(harness.prisma.executeInTenantSchema).not.toHaveBeenCalled();
         expect(harness.eventEmitter.emit).not.toHaveBeenCalled();

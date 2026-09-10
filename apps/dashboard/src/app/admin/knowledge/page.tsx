@@ -1,7 +1,9 @@
 "use client";
 
+import { KnowledgeConflictsPanel } from '@/components/knowledge/KnowledgeConflictsPanel';
 import { PageHeader } from "@/components/ui/page-header";
 import { HelpPanel } from "@/components/ui/help-panel";
+import { LoadFailureNotice } from "@/components/ui/load-failure";
 import { guidedTourAnchorId } from "@/lib/guided-tours";
 import { UpgradeBanner, UpgradeModal } from "@/components/ui/upgrade-banner";
 import { usePlanLimits } from "@/hooks/usePlanLimits";
@@ -12,6 +14,7 @@ import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
+import type { KnowledgeGapReport } from "@parallext/shared";
 import {
     BookOpen, Search, Plus, X, FileText, Globe, HelpCircle,
     RefreshCw, Edit3, Trash2, BarChart3, ExternalLink, CheckCircle2,
@@ -39,6 +42,13 @@ interface KBDocument {
     auto_recrawl?: boolean;
     language?: string;
     version?: number;
+    is_regulated?: boolean;
+    jurisdiction?: string | null;
+    authority?: string | null;
+    valid_from?: string | null;
+    valid_to?: string | null;
+    audience?: 'customer' | 'internal';
+    agent_ids?: string[];
     created_at: string;
     updated_at?: string;
 }
@@ -47,9 +57,15 @@ interface KBAnalytics {
     overview: {
         uniqueQueries: number;
         totalRetrievals: number;
-        hitRate: number;
-        avgScore: number;
-        medianScore: number;
+        hitRate: number | null;
+        avgScore: number | null;
+        medianScore: number | null;
+        observedRate: number | null;
+        attributionCoverage: number | null;
+        assessedSearches: number;
+        candidateSearches: number;
+        observedSearches: number;
+        legacyRows: number;
     };
     topDocuments: Array<{ document_id: string; document_name: string; retrieval_count: number; used_count: number }>;
     unansweredQueries: Array<{ id: string; query: string; occurrences: number; last_seen_at: string; resolved: boolean }>;
@@ -82,6 +98,11 @@ export default function KnowledgePage() {
     // Documents
     const [documents, setDocuments] = useState<KBDocument[]>([]);
     const [loadingDocs, setLoadingDocs] = useState(true);
+    // Each of the three reads below had its own `.catch(() => [])`, so a
+    // rejected library came back as an empty one. "Tu base de conocimiento está
+    // vacía" then explains why the agent is not answering, and the owner starts
+    // re-uploading documents that are already there.
+    const [libraryUnavailable, setLibraryUnavailable] = useState(false);
 
     // Search
     const [searchQuery, setSearchQuery] = useState("");
@@ -97,7 +118,8 @@ export default function KnowledgePage() {
 
     // Edit modal
     const [editDoc, setEditDoc] = useState<KBDocument | null>(null);
-    const [editForm, setEditForm] = useState({ name: "", content: "", category: "" });
+    const [editForm, setEditForm] = useState({ name: "", content: "", category: "", isRegulated: false, jurisdiction: "", authority: "", validFrom: "", validTo: "", audience: 'customer' as 'customer' | 'internal', agentIds: [] as string[] });
+    const [sourceAgents, setSourceAgents] = useState<Array<{ id: string; name: string }>>([]);
     const [editSaving, setEditSaving] = useState(false);
 
     // Create modal (legacy)
@@ -127,14 +149,13 @@ export default function KnowledgePage() {
     // Quality scores
     const [qualityScores, setQualityScores] = useState<any[]>([]);
     const [qualityLoading, setQualityLoading] = useState(false);
+    const [qualityError, setQualityError] = useState(false);
+    const [qualityRefresh, setQualityRefresh] = useState(0);
 
     // Gap report
-    const [gapReport, setGapReport] = useState<any>(null);
+    const [gapReport, setGapReport] = useState<KnowledgeGapReport | null>(null);
     const [gapLoading, setGapLoading] = useState(false);
 
-    // KB Health (contradictions — T2.14)
-    const [kbIssues, setKbIssues] = useState<any[]>([]);
-    const [kbScanning, setKbScanning] = useState(false);
 
     // AI Suggestions
     const [suggestions, setSuggestions] = useState<any[]>([]);
@@ -161,22 +182,42 @@ export default function KnowledgePage() {
     }, []);
 
     // Load documents
-    useEffect(() => {
+    const loadLibrary = useCallback(() => {
         if (!activeTenantId) return;
         setLoadingDocs(true);
 
+        const FAILED = Symbol("failed");
+        const orFailed = (promise: Promise<unknown>) => promise.catch(() => FAILED as unknown);
+
         Promise.all([
-            api.fetch("/knowledge/documents").catch(() => []),
-            api.fetch(`/knowledge/resources/${activeTenantId}`).catch(() => []),
-            api.fetch("/knowledge/documents/categories").catch(() => []),
+            orFailed(api.fetch("/knowledge/documents")),
+            orFailed(api.fetch(`/knowledge/resources/${activeTenantId}`)),
+            orFailed(api.fetch("/knowledge/documents/categories")),
         ]).then(([docs, res, cats]) => {
+            // The library count gates the empty state and the plan-limit bar,
+            // so only the two reads that feed it decide whether it is unknown.
+            // Categories are a filter: losing them narrows nothing.
+            setLibraryUnavailable(docs === FAILED || res === FAILED);
             if (Array.isArray(docs)) setDocuments(docs);
             if (Array.isArray(res)) setResources(res);
             if (Array.isArray(cats)) setCategories(cats);
         }).finally(() => setLoadingDocs(false));
     }, [activeTenantId]);
 
+    useEffect(() => { loadLibrary(); }, [loadLibrary]);
+
     // Load analytics when tab changes
+    useEffect(() => {
+        let current = true;
+        setSourceAgents([]);
+        if (activeTenantId && canEditKnowledge) {
+            api.listAgents(activeTenantId).then(result => {
+                if (current && result?.success && Array.isArray(result.data)) setSourceAgents(result.data);
+            }).catch(() => {});
+        }
+        return () => { current = false; };
+    }, [activeTenantId, canEditKnowledge]);
+
     useEffect(() => {
         if (!canSeeGlobalAnalytics || tab !== "analytics" || !activeTenantId) return;
         setAnalyticsLoading(true);
@@ -244,7 +285,10 @@ export default function KnowledgePage() {
     // Edit document
     const handleEdit = (doc: KBDocument) => {
         setEditDoc(doc);
-        setEditForm({ name: doc.name || doc.title || "", content: doc.content_text || "", category: doc.category || "" });
+        setEditForm({ name: doc.name || doc.title || "", content: doc.content_text || "", category: doc.category || "",
+            isRegulated: doc.is_regulated ?? false, jurisdiction: doc.jurisdiction || "", authority: doc.authority || "",
+            validFrom: doc.valid_from?.slice(0, 10) || "", validTo: doc.valid_to?.slice(0, 10) || "",
+            audience: doc.audience ?? 'customer', agentIds: doc.agent_ids ?? [] });
     };
 
     const handleEditSave = async () => {
@@ -253,10 +297,18 @@ export default function KnowledgePage() {
         try {
             const result = await api.fetch(`/knowledge/documents/${editDoc.id}`, {
                 method: "PUT",
-                body: JSON.stringify({ name: editForm.name, content: editForm.content, category: editForm.category || undefined }),
+                body: JSON.stringify({ ...editForm, category: editForm.category || undefined,
+                    jurisdiction: editForm.jurisdiction || null, authority: editForm.authority || null,
+                    validFrom: editForm.validFrom || null, validTo: editForm.validTo || null,
+                    isPublic: editForm.audience === 'internal' ? false : editDoc.is_public }),
             });
-            if (result?.id) {
-                setDocuments(prev => prev.map(d => d.id === editDoc.id ? { ...d, name: editForm.name, content_text: editForm.content, ...result } : d));
+            if (result?.documentId || result?.id) {
+                setDocuments(prev => prev.map(d => d.id === editDoc.id ? { ...d, name: editForm.name, title: editForm.name,
+                    content_text: editForm.content, category: editForm.category, is_regulated: editForm.isRegulated,
+                    jurisdiction: editForm.jurisdiction, authority: editForm.authority, valid_from: editForm.validFrom,
+                    valid_to: editForm.validTo, audience: editForm.audience, agent_ids: editForm.agentIds,
+                    is_public: editForm.audience === 'internal' ? false : d.is_public,
+                    updated_at: new Date().toISOString(), ...result } : d));
                 setEditDoc(null);
                 showToast(t("edit.success"));
             }
@@ -426,48 +478,31 @@ export default function KnowledgePage() {
 
     // Load quality scores
     useEffect(() => {
-        if (!canSeeGlobalAnalytics || tab !== "quality") return;
+        if (!canSeeGlobalAnalytics || tab !== "quality" || !activeTenantId) return;
+        let cancelled = false;
         setQualityLoading(true);
+        setQualityError(false);
+        setQualityScores([]);
         api.fetch("/knowledge/documents/quality")
             .then(res => {
-                if (res?.success && res.data) setQualityScores(res.data);
+                if (!res?.success || !Array.isArray(res.data)) throw new Error('knowledge_diagnostics_unavailable');
+                if (!cancelled) setQualityScores(res.data);
             })
-            .catch(() => {})
-            .finally(() => setQualityLoading(false));
-    }, [tab, canSeeGlobalAnalytics]);
+            .catch(() => { if (!cancelled) setQualityError(true); })
+            .finally(() => { if (!cancelled) setQualityLoading(false); });
+        return () => { cancelled = true; };
+    }, [tab, canSeeGlobalAnalytics, activeTenantId, qualityRefresh]);
 
     // Load gap report
     useEffect(() => {
         if (!canSeeGlobalAnalytics || tab !== "gaps" || !activeTenantId) return;
         setGapLoading(true);
+        setGapReport(null);
         api.fetch(`/knowledge/${activeTenantId}/gap-report`)
             .then((res: any) => setGapReport(res.data || res))
             .catch(() => {})
             .finally(() => setGapLoading(false));
-        // KB health contradictions
-        if (canEditKnowledge) {
-            api.getKbHealth(activeTenantId)
-                .then((res: any) => { if (res?.success) setKbIssues(res.data || []); })
-                .catch(() => {});
-        }
     }, [tab, activeTenantId, canEditKnowledge, canSeeGlobalAnalytics]);
-
-    const scanKbHealth = async () => {
-        if (!activeTenantId || kbScanning || !canEditKnowledge) return;
-        setKbScanning(true);
-        try {
-            await api.scanKbHealth(activeTenantId);
-            const res: any = await api.getKbHealth(activeTenantId);
-            if (res?.success) setKbIssues(res.data || []);
-        } catch { /* best-effort */ }
-        finally { setKbScanning(false); }
-    };
-
-    const resolveKbIssue = async (id: string, status: string) => {
-        if (!activeTenantId || !canEditKnowledge) return;
-        setKbIssues(prev => prev.filter((i: any) => i.id !== id)); // optimistic
-        try { await api.updateKbHealthIssue(activeTenantId, id, status); } catch { /* noop */ }
-    };
 
     // AI suggestions
     const handleGenerateSuggestions = async () => {
@@ -787,7 +822,10 @@ export default function KnowledgePage() {
                         </div>
                     ))}
 
-                    {totalDocs === 0 && !loadingDocs && (
+                    {libraryUnavailable && !loadingDocs && (
+                        <LoadFailureNotice onRetry={loadLibrary} />
+                    )}
+                    {totalDocs === 0 && !loadingDocs && !libraryUnavailable && (
                         <div className="rounded-[14px] border border-dashed border-border bg-card px-6 py-10 text-center">
                             <BookOpen size={30} className="mx-auto text-muted-foreground mb-3" />
                             <p className="text-sm font-semibold text-foreground">{t("empty.libraryTitle")}</p>
@@ -946,9 +984,14 @@ export default function KnowledgePage() {
                             <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                                 <KPICard icon={Search} label={t("analytics.overview.uniqueQueries")} value={analytics.overview.uniqueQueries} />
                                 <KPICard icon={Zap} label={t("analytics.overview.totalRetrievals")} value={analytics.overview.totalRetrievals} />
-                                <KPICard icon={Target} label={t("analytics.overview.hitRate")} value={`${(analytics.overview.hitRate * 100).toFixed(1)}%`} />
-                                <KPICard icon={TrendingUp} label={t("analytics.overview.avgScore")} value={`${(analytics.overview.avgScore * 100).toFixed(0)}%`} />
-                                <KPICard icon={Eye} label={t("analytics.overview.medianScore")} value={`${(analytics.overview.medianScore * 100).toFixed(0)}%`} />
+                                <KPICard icon={Target} label={t("analytics.overview.hitRate")} value={analytics.overview.hitRate == null ? '—' : `${(analytics.overview.hitRate * 100).toFixed(1)}%`} />
+                                <KPICard icon={TrendingUp} label={t("analytics.overview.avgScore")} value={analytics.overview.avgScore == null ? '—' : `${(analytics.overview.avgScore * 100).toFixed(0)}%`} />
+                                <KPICard icon={Eye} label={t("analytics.overview.observedRate")} value={analytics.overview.observedRate == null ? '—' : `${(analytics.overview.observedRate * 100).toFixed(1)}%`} />
+                            </div>
+                            <div className="rounded-xl border border-border p-4 text-sm text-muted-foreground space-y-2">
+                                <p>{t("analytics.attributionExplanation")}</p>
+                                <p>{t("analytics.attributionDenominator", { observed: analytics.overview.observedSearches, assessed: analytics.overview.assessedSearches, candidates: analytics.overview.candidateSearches })}</p>
+                                {!!analytics.overview.legacyRows && <p>{t("analytics.legacyExcluded", { count: analytics.overview.legacyRows })}</p>}
                             </div>
 
                             {/* Daily Volume Chart */}
@@ -1092,45 +1135,44 @@ export default function KnowledgePage() {
             {/* Quality Tab */}
             {tab === "quality" && (
                 <div>
+                    <p className="text-sm text-muted-foreground mb-4">{t("quality.explanation")}</p>
                     {qualityLoading && <div className="text-center py-10 text-muted-foreground">{tc("loading")}</div>}
-                    {!qualityLoading && qualityScores.length === 0 && (
+                    {qualityError && <div role="alert" className="text-sm text-amber-600 mb-4">
+                        <p>{t("analytics.loadError")}</p>
+                        <button className="mt-2 underline" onClick={() => setQualityRefresh(value => value + 1)}>{tc("retry")}</button>
+                    </div>}
+                    {!qualityLoading && !qualityError && qualityScores.length === 0 && (
                         <div className="text-center py-10 text-muted-foreground">{t("quality.noData")}</div>
                     )}
                     {!qualityLoading && qualityScores.length > 0 && (
                         <div className="flex flex-col gap-3">
-                            {qualityScores.sort((a, b) => b.qualityScore - a.qualityScore).map(doc => (
+                            {qualityScores.map(doc => (
                                 <div key={doc.id} className="p-5 rounded-[14px] border border-border bg-card">
                                     <div className="flex items-center justify-between mb-3">
                                         <span className="text-[15px] font-semibold truncate flex-1 mr-3">{doc.title}</span>
                                         <div className={cn(
-                                            "text-lg font-semibold px-3 py-1 rounded-lg",
-                                            doc.qualityScore >= 70 ? "bg-emerald-500/10 text-emerald-500" :
-                                            doc.qualityScore >= 40 ? "bg-amber-500/10 text-amber-500" :
+                                            "text-sm font-semibold px-3 py-1 rounded-lg",
+                                            doc.readiness === 'ready' ? "bg-emerald-500/10 text-emerald-500" :
+                                            doc.readiness === 'review_required' ? "bg-amber-500/10 text-amber-500" :
                                             "bg-red-500/10 text-red-500"
                                         )}>
-                                            {doc.qualityScore}/100
+                                            {t(`quality.states.${doc.readiness}`)}
                                         </div>
                                     </div>
-                                    <div className="h-2 rounded-full bg-muted overflow-hidden mb-3">
-                                        <div
-                                            className={cn("h-full rounded-full transition-all",
-                                                doc.qualityScore >= 70 ? "bg-emerald-500" :
-                                                doc.qualityScore >= 40 ? "bg-amber-500" : "bg-red-500"
-                                            )}
-                                            style={{ width: `${doc.qualityScore}%` }}
-                                        />
-                                    </div>
-                                    <div className="grid grid-cols-5 gap-2 text-xs">
+                                    <p className="text-xs text-muted-foreground mb-3">{t("quality.correctnessUnverified", { version: doc.version })}</p>
+                                    {!!doc.reasons?.length && <ul className="text-sm list-disc ml-5 mb-4 space-y-1">
+                                        {doc.reasons.map((reason: string) => <li key={reason}>{t(`quality.reasons.${reason}`)}</li>)}
+                                    </ul>}
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
                                         {[
-                                            { key: "contentLength", label: t("quality.contentLength"), max: 25 },
-                                            { key: "chunkCount", label: t("quality.chunkCount"), max: 20 },
-                                            { key: "categorized", label: t("quality.categorized"), max: 10 },
-                                            { key: "retrievals", label: t("quality.retrievals"), max: 25 },
-                                            { key: "relevance", label: t("quality.relevance"), max: 20 },
+                                            { key: "chunks", label: t("quality.chunkCount"), value: doc.stats.chunkCount },
+                                            { key: "retrievals", label: t("quality.retrievals"), value: doc.stats.retrievalCount },
+                                            { key: "observed", label: t("analytics.usedCount"), value: doc.stats.usedCount },
+                                            { key: "corrections", label: t("quality.corrections"), value: doc.stats.falsePositiveCount },
                                         ].map(f => (
                                             <div key={f.key} className="text-center">
                                                 <div className="text-muted-foreground mb-1">{f.label}</div>
-                                                <div className="font-semibold">{doc.factors[f.key]}/{f.max}</div>
+                                                <div className="font-semibold">{f.value}</div>
                                             </div>
                                         ))}
                                     </div>
@@ -1152,11 +1194,12 @@ export default function KnowledgePage() {
 
                     {!gapLoading && gapReport && (
                         <div className="flex flex-col gap-6">
+                            {!!gapReport.unavailableSections?.length && <p role="status" className="text-sm text-amber-600">{t("gaps.partial")}</p>}
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                                <KPICard icon={HelpCircle} label={t("gaps.kpi.unanswered")} value={gapReport.unansweredQueries?.length ?? 0} />
-                                <KPICard icon={ThumbsDown} label={t("gaps.kpi.lowSatisfaction")} value={gapReport.lowSatisfaction?.length ?? 0} />
-                                <KPICard icon={Clock} label={t("gaps.kpi.stale")} value={gapReport.staleDocs?.length ?? 0} />
-                                <KPICard icon={XCircle} label={t("gaps.kpi.falsePositives")} value={gapReport.falsePositiveCount ?? 0} />
+                                <KPICard icon={HelpCircle} label={t("gaps.kpi.unanswered")} value={gapReport.unavailableSections?.includes('unansweredQueries') ? '—' : gapReport.unansweredQueries?.length ?? 0} />
+                                <KPICard icon={ThumbsDown} label={t("gaps.kpi.lowSatisfaction")} value={gapReport.unavailableSections?.includes('lowSatisfactionDocs') ? '—' : gapReport.lowSatisfactionDocs?.length ?? 0} />
+                                <KPICard icon={Clock} label={t("gaps.kpi.stale")} value={gapReport.unavailableSections?.includes('staleDocuments') ? '—' : gapReport.staleDocuments?.length ?? 0} />
+                                <KPICard icon={XCircle} label={t("gaps.kpi.falsePositives")} value={gapReport.unavailableSections?.includes('falsePositiveCounts') ? '—' : gapReport.falsePositiveCounts?.reduce((total: number, item: any) => total + Number(item.false_positive_count || 0), 0) ?? 0} />
                             </div>
 
                             {gapReport.unansweredQueries?.length > 0 && (
@@ -1195,7 +1238,7 @@ export default function KnowledgePage() {
                                 </div>
                             )}
 
-                            {gapReport.lowSatisfaction?.length > 0 && (
+                            {gapReport.lowSatisfactionDocs?.length > 0 && (
                                 <div className="p-5 rounded-[14px] border border-border bg-card">
                                     <div className="flex items-center gap-2 mb-1">
                                         <ThumbsDown size={18} className="text-red-500" />
@@ -1212,7 +1255,7 @@ export default function KnowledgePage() {
                                                 </tr>
                                             </thead>
                                             <tbody>
-                                                {gapReport.lowSatisfaction.map((doc: any, i: number) => (
+                                                {gapReport.lowSatisfactionDocs.map((doc: any, i: number) => (
                                                     <tr key={doc.document_id || i} className="border-b border-border/50 hover:bg-muted/30">
                                                         <td className="py-2.5 px-3 text-foreground font-medium">{doc.document_name}</td>
                                                         <td className="py-2.5 px-3">
@@ -1222,12 +1265,12 @@ export default function KnowledgePage() {
                                                                         <Star
                                                                             key={s}
                                                                             size={13}
-                                                                            className={s <= Math.round(doc.satisfaction_score * 5) ? "text-amber-500 fill-amber-500" : "text-muted-foreground/30"}
+                                                                            className={s <= Math.round(doc.satisfaction_score) ? "text-amber-500 fill-amber-500" : "text-muted-foreground/30"}
                                                                         />
                                                                     ))}
                                                                 </div>
                                                                 <span className="text-xs text-muted-foreground">
-                                                                    {(doc.satisfaction_score * 100).toFixed(0)}%
+                                                                    {Number(doc.satisfaction_score).toFixed(1)}/5
                                                                 </span>
                                                             </div>
                                                         </td>
@@ -1240,7 +1283,7 @@ export default function KnowledgePage() {
                                 </div>
                             )}
 
-                            {gapReport.staleDocs?.length > 0 && (
+                            {gapReport.staleDocuments?.length > 0 && (
                                 <div className="p-5 rounded-[14px] border border-border bg-card">
                                     <div className="flex items-center gap-2 mb-1">
                                         <Clock size={18} className="text-orange-500" />
@@ -1253,37 +1296,25 @@ export default function KnowledgePage() {
                                                 <tr className="border-b border-border text-left">
                                                     <th className="py-2.5 px-3 text-xs font-semibold text-muted-foreground">{t("gaps.staleDocs.document")}</th>
                                                     <th className="py-2.5 px-3 text-xs font-semibold text-muted-foreground text-center">{t("gaps.staleDocs.daysSinceUpdate")}</th>
-                                                    <th className="py-2.5 px-3 text-xs font-semibold text-muted-foreground">{t("gaps.staleDocs.freshnessScore")}</th>
+                                                    <th className="py-2.5 px-3 text-xs font-semibold text-muted-foreground">{t("gaps.staleDocs.retrievalCount")}</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
-                                                {gapReport.staleDocs.map((doc: any, i: number) => (
+                                                {gapReport.staleDocuments.map((doc: any, i: number) => (
                                                     <tr key={doc.document_id || i} className="border-b border-border/50 hover:bg-muted/30">
                                                         <td className="py-2.5 px-3 text-foreground font-medium">{doc.document_name}</td>
                                                         <td className="py-2.5 px-3 text-center">
                                                             <span className={cn(
                                                                 "inline-flex items-center justify-center min-w-[28px] px-2 py-0.5 rounded-md text-xs font-semibold",
-                                                                doc.days_since_update > 90 ? "bg-red-500/10 text-red-500" :
-                                                                doc.days_since_update > 30 ? "bg-amber-500/10 text-amber-500" :
+                                                                Math.max(0, Math.floor((Date.now() - new Date(doc.updated_at).getTime()) / 86400000)) > 90 ? "bg-red-500/10 text-red-500" :
+                                                                Math.max(0, Math.floor((Date.now() - new Date(doc.updated_at).getTime()) / 86400000)) > 30 ? "bg-amber-500/10 text-amber-500" :
                                                                 "bg-emerald-500/10 text-emerald-500"
                                                             )}>
-                                                                {doc.days_since_update}d
+                                                                {Math.max(0, Math.floor((Date.now() - new Date(doc.updated_at).getTime()) / 86400000))}d
                                                             </span>
                                                         </td>
                                                         <td className="py-2.5 px-3">
-                                                            <div className="flex items-center gap-2">
-                                                                <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden max-w-[120px]">
-                                                                    <div
-                                                                        className={cn("h-full rounded-full",
-                                                                            doc.freshness_score >= 70 ? "bg-emerald-500" :
-                                                                            doc.freshness_score >= 40 ? "bg-amber-500" : "bg-red-500"
-                                                                        )}
-                                                                        style={{ width: `${Math.min(doc.freshness_score, 100)}%` }}
-                                                                    />
-                                                                </div>
-                                                                <span className="text-xs text-muted-foreground">{doc.freshness_score}%</span>
-                                                            </div>
-                                                        </td>
+                                                            {doc.query_frequency}</td>
                                                     </tr>
                                                 ))}
                                             </tbody>
@@ -1292,58 +1323,7 @@ export default function KnowledgePage() {
                                 </div>
                             )}
 
-                            {/* KB Health — contradiction detection (T2.14) */}
-                            <div className="p-5 rounded-[14px] border border-border bg-card">
-                                <div className="flex items-center justify-between mb-1 gap-2 flex-wrap">
-                                    <div className="flex items-center gap-2">
-                                        <AlertCircle size={18} className="text-purple-500" />
-                                        <h3 className="text-sm font-semibold m-0">{t("health.title")}</h3>
-                                    </div>
-                                    <button
-                                        onClick={scanKbHealth}
-                                        disabled={kbScanning}
-                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-border bg-transparent text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-50"
-                                    >
-                                        {kbScanning ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-                                        {kbScanning ? t("health.scanning") : t("health.scan")}
-                                    </button>
-                                </div>
-                                <p className="text-xs text-muted-foreground mb-4 mt-0">{t("health.description")}</p>
-                                {kbIssues.length === 0 ? (
-                                    <p className="text-xs text-muted-foreground py-4 text-center">{t("health.empty")}</p>
-                                ) : (
-                                    <div className="flex flex-col gap-3">
-                                        {kbIssues.map((issue: any) => (
-                                            <div key={issue.id} className="p-3 rounded-xl border border-purple-500/20 bg-purple-500/[0.04]">
-                                                <div className="flex items-center gap-2 mb-1 text-xs font-semibold text-foreground">
-                                                    <AlertCircle size={14} className="text-purple-500 flex-shrink-0" />
-                                                    <span>{issue.documentTitle || "—"} ↔ {issue.relatedDocumentTitle || "—"}</span>
-                                                </div>
-                                                <p className="text-xs text-muted-foreground mb-1">{issue.detail}</p>
-                                                {issue.suggestion && (
-                                                    <p className="text-xs text-emerald-600 dark:text-emerald-400 mb-2">💡 {issue.suggestion}</p>
-                                                )}
-                                                <div className="flex gap-2">
-                                                    <button
-                                                        onClick={() => resolveKbIssue(issue.id, "resolved")}
-                                                        className="text-[11px] px-2 py-1 rounded-md bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 transition-colors"
-                                                    >
-                                                        {t("health.markResolved")}
-                                                    </button>
-                                                    <button
-                                                        onClick={() => resolveKbIssue(issue.id, "dismissed")}
-                                                        className="text-[11px] px-2 py-1 rounded-md bg-muted text-muted-foreground hover:bg-muted/70 transition-colors"
-                                                    >
-                                                        {t("health.dismiss")}
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-
-                            {(gapReport.unansweredQueries?.length === 0 && gapReport.lowSatisfaction?.length === 0 && gapReport.staleDocs?.length === 0) && (
+                            {(!gapReport.unavailableSections?.length && gapReport.unansweredQueries?.length === 0 && gapReport.lowSatisfactionDocs?.length === 0 && gapReport.staleDocuments?.length === 0 && gapReport.falsePositiveCounts?.length === 0) && (
                                 <div className="text-center py-10">
                                     <CheckCircle2 size={40} className="mx-auto mb-3 text-emerald-500" />
                                     <p className="text-muted-foreground">{t("gaps.allClear")}</p>
@@ -1353,6 +1333,9 @@ export default function KnowledgePage() {
                     )}
                 </div>
             )}
+
+            {tab === 'gaps' && canSeeGlobalAnalytics && canEditKnowledge && activeTenantId &&
+                <KnowledgeConflictsPanel key={activeTenantId} tenantId={activeTenantId} agents={sourceAgents} />}
 
             {/* Upgrade Modal */}
             <UpgradeModal
@@ -1364,7 +1347,7 @@ export default function KnowledgePage() {
 
             {/* Crawl URL Modal */}
             {showCrawlModal && (
-                <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowCrawlModal(false)}>
+                <div data-tour-form="knowledge" className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowCrawlModal(false)}>
                     <div onClick={e => e.stopPropagation()} className="w-[520px] p-7 rounded-[18px] bg-card border border-border shadow-2xl">
                         <div className="flex justify-between items-center mb-5">
                             <h2 className="text-xl font-semibold m-0">{t("crawl.title")}</h2>
@@ -1412,8 +1395,8 @@ export default function KnowledgePage() {
 
             {/* Edit Document Modal */}
             {editDoc && (
-                <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setEditDoc(null)}>
-                    <div onClick={e => e.stopPropagation()} className="w-[600px] p-7 rounded-[18px] bg-card border border-border shadow-2xl">
+                <div data-tour-form="knowledge" className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setEditDoc(null)}>
+                    <div onClick={e => e.stopPropagation()} className="w-[600px] max-w-[95vw] max-h-[90vh] overflow-y-auto p-7 rounded-[18px] bg-card border border-border shadow-2xl">
                         <div className="flex justify-between items-center mb-5">
                             <h2 className="text-xl font-semibold m-0">{t("edit.title")}</h2>
                             <button onClick={() => setEditDoc(null)} className="bg-transparent border-none text-muted-foreground cursor-pointer"><X size={20} /></button>
@@ -1447,9 +1430,53 @@ export default function KnowledgePage() {
                                 {categories.map(c => <option key={c} value={c} />)}
                             </datalist>
                         </div>
+                        <fieldset className="mb-3 p-3 rounded-lg border border-border">
+                            <legend className="text-sm font-semibold px-1">{t("source.title")}</legend>
+                            <p className="text-xs text-muted-foreground mb-3">{t("source.hint")}</p>
+                            <label className="block text-xs font-semibold text-muted-foreground mb-3">
+                                {t("source.audience")}
+                                <select value={editForm.audience} onChange={e => setEditForm({ ...editForm, audience: e.target.value as 'customer' | 'internal' })} className="w-full mt-1 px-3 py-2 rounded-lg border border-border bg-background text-foreground">
+                                    <option value="customer">{t("source.customer")}</option>
+                                    <option value="internal">{t("source.internal")}</option>
+                                </select>
+                            </label>
+                            <p className="text-xs text-muted-foreground mb-2">{t("source.agentScope")}</p>
+                            <div className="flex flex-wrap gap-3 mb-3">
+                                {sourceAgents.map(agent => (
+                                    <label key={agent.id} className="flex gap-2 text-xs items-center">
+                                        <input type="checkbox" checked={editForm.agentIds.includes(agent.id)} onChange={e => setEditForm({ ...editForm,
+                                            agentIds: e.target.checked ? [...editForm.agentIds, agent.id] : editForm.agentIds.filter(id => id !== agent.id),
+                                        })} />
+                                        {agent.name}
+                                    </label>
+                                ))}
+                            </div>
+                            <label className="flex gap-2 text-sm mb-3">
+                                <input type="checkbox" checked={editForm.isRegulated} onChange={e => setEditForm({ ...editForm, isRegulated: e.target.checked })} />
+                                {t("source.isRegulated")}
+                            </label>
+                            <div className="grid grid-cols-2 gap-3">
+                                <label className="text-xs font-semibold text-muted-foreground">
+                                    {t("source.jurisdiction")}
+                                    <input value={editForm.jurisdiction} maxLength={2} placeholder="CO" onChange={e => setEditForm({ ...editForm, jurisdiction: e.target.value.toUpperCase() })} className="w-full mt-1 px-3 py-2 rounded-lg border border-border bg-background text-foreground" />
+                                </label>
+                                <label className="text-xs font-semibold text-muted-foreground">
+                                    {t("source.authority")}
+                                    <input value={editForm.authority} maxLength={300} onChange={e => setEditForm({ ...editForm, authority: e.target.value })} className="w-full mt-1 px-3 py-2 rounded-lg border border-border bg-background text-foreground" />
+                                </label>
+                                <label className="text-xs font-semibold text-muted-foreground">
+                                    {t("source.validFrom")}
+                                    <input type="date" value={editForm.validFrom} onChange={e => setEditForm({ ...editForm, validFrom: e.target.value })} className="w-full mt-1 px-3 py-2 rounded-lg border border-border bg-background text-foreground" />
+                                </label>
+                                <label className="text-xs font-semibold text-muted-foreground">
+                                    {t("source.validTo")}
+                                    <input type="date" value={editForm.validTo} onChange={e => setEditForm({ ...editForm, validTo: e.target.value })} className="w-full mt-1 px-3 py-2 rounded-lg border border-border bg-background text-foreground" />
+                                </label>
+                            </div>
+                        </fieldset>
                         <div className="flex gap-2.5 mt-6">
                             <button onClick={() => setEditDoc(null)} className="flex-1 py-3 rounded-[10px] border border-border bg-transparent text-foreground text-sm cursor-pointer font-semibold">{tc("cancel")}</button>
-                            <button onClick={handleEditSave} disabled={editSaving || !editForm.name} className={cn("flex-1 py-3 rounded-[10px] border-none text-white text-sm font-semibold", editSaving ? "bg-muted cursor-wait" : "bg-primary cursor-pointer")}>
+                            <button onClick={handleEditSave} disabled={editSaving || !editForm.name || (editForm.isRegulated && (!editForm.jurisdiction || !editForm.authority)) || Boolean(editForm.validFrom && editForm.validTo && editForm.validFrom > editForm.validTo)} className={cn("flex-1 py-3 rounded-[10px] border-none text-white text-sm font-semibold disabled:opacity-50", editSaving ? "bg-muted cursor-wait" : "bg-primary cursor-pointer")}>
                                 {editSaving ? t("edit.saving") : t("edit.save")}
                             </button>
                         </div>
@@ -1459,7 +1486,7 @@ export default function KnowledgePage() {
 
             {/* Create Resource Modal (legacy) */}
             {showCreateModal && (
-                <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowCreateModal(false)}>
+                <div data-tour-form="knowledge" className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowCreateModal(false)}>
                     <div onClick={e => e.stopPropagation()} className="w-[520px] p-7 rounded-[18px] bg-card border border-border shadow-2xl">
                         <div className="flex justify-between items-center mb-5">
                             <h2 className="text-xl font-semibold m-0">{t("modal.title")}</h2>
@@ -1490,7 +1517,7 @@ export default function KnowledgePage() {
 
             {/* Bulk Upload Modal */}
             {showBulkModal && (
-                <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => { setShowBulkModal(false); setBulkResults(null); setBulkFiles([]); }}>
+                <div data-tour-form="knowledge" className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => { setShowBulkModal(false); setBulkResults(null); setBulkFiles([]); }}>
                     <div onClick={e => e.stopPropagation()} className="w-[520px] p-7 rounded-[18px] bg-card border border-border shadow-2xl">
                         <div className="flex justify-between items-center mb-5">
                             <h2 className="text-xl font-semibold m-0">{t("bulk.title")}</h2>
@@ -1585,7 +1612,7 @@ export default function KnowledgePage() {
 
             {/* Version History Modal */}
             {versionDoc && (
-                <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setVersionDoc(null)}>
+                <div data-tour-form="knowledge" className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setVersionDoc(null)}>
                     <div onClick={e => e.stopPropagation()} className="w-[560px] max-h-[80vh] p-7 rounded-[18px] bg-card border border-border shadow-2xl flex flex-col">
                         <div className="flex justify-between items-center mb-5">
                             <h2 className="text-xl font-semibold m-0 flex items-center gap-2">

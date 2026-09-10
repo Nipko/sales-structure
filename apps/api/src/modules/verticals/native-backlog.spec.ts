@@ -241,7 +241,12 @@ describe('concrete CAP, LIVE, UX and SEC evidence', () => {
 describe('writers and exportable summary', () => {
     it.each([
         ['moda_belleza/spa', 3],
-        ['automotriz/alquiler', 3],
+        // Eran tres hasta que la prueba de manejo se consolidó en la agenda
+        // canónica y `schedule_test_drive` pasó a exigir `appointments`. Este
+        // perfil ES el que quita esa familia —una rentadora no agenda pruebas
+        // de manejo, las agenda el concesionario—, así que las dos escrituras
+        // que le quedan son las suyas: crear y cancelar el alquiler.
+        ['automotriz/alquiler', 2],
         ['pet_services/guarderia', 4],
         ['pet_services/hotel', 4],
     ])('%s retains %i business writers', (id, expected) => {

@@ -4,6 +4,10 @@ import { ConfigService } from '@nestjs/config';
 import { IChannelAdapter } from '../channel-gateway.service';
 import { NormalizedMessage, ChannelType } from '@parallext/shared';
 import { v4 as uuid } from 'uuid';
+import {
+    classifyTransportFailure, telegramAnswer, telegramClassifier,
+    type StrictDispatchOutcome, type StrictDispatchRequest, type StrictDispatchTransport,
+} from '../strict-dispatch-transport';
 
 /**
  * Telegram Bot API Adapter
@@ -15,12 +19,67 @@ import { v4 as uuid } from 'uuid';
  * API: https://api.telegram.org/bot{token}/sendMessage
  */
 @Injectable()
-export class TelegramAdapter implements IChannelAdapter {
+export class TelegramAdapter implements IChannelAdapter, StrictDispatchTransport {
     readonly channelType: ChannelType = 'telegram';
     private readonly logger = new Logger(TelegramAdapter.name);
     private readonly apiUrl = 'https://api.telegram.org';
 
     constructor(private configService: ConfigService) { }
+
+    /**
+     * One Bot API call, one classified outcome.
+     *
+     * Telegram is not a Graph provider: it answers `ok` with a `result`, or
+     * `ok: false` with an `error_code`, so it brings its own classifier. The
+     * `accessToken` here is the bot token and goes in the path, which is why
+     * nothing in this method may log the URL.
+     *
+     * `sendMediaMessage` above is what this replaces for durable dispatch: it
+     * puts the caption in the same call as the picture, so one call carried two
+     * effects under a single receipt and a caption that Telegram rejected —
+     * one stray `<` was enough — took the whole message down with it and the
+     * retry sent the picture again. Here a caption is its own dispatch item.
+     */
+    async sendStrict(request: StrictDispatchRequest, accessToken: string): Promise<StrictDispatchOutcome> {
+        const token = String(accessToken || '').trim();
+        if (!token) return { kind: 'rejected', errorCode: 'telegram_token_missing', retryable: false };
+        let call: { method: string; body: Record<string, any> };
+        try { call = this.strictCall(request); }
+        catch (error: any) {
+            return { kind: 'rejected', errorCode: String(error?.message || 'unsupported_payload'), retryable: false };
+        }
+        let response: Response;
+        try {
+            response = await fetch(`${this.apiUrl}/bot${token}/${call.method}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ chat_id: request.to, ...call.body }),
+                signal: AbortSignal.timeout(10_000),
+            });
+        } catch (error) { return classifyTransportFailure(error); }
+        let data: any = null;
+        try { data = await response.json(); } catch { data = null; }
+        return telegramClassifier(telegramAnswer(response.status, data));
+    }
+
+    private strictCall(request: StrictDispatchRequest): { method: string; body: Record<string, any> } {
+        const payload = request.payload || {};
+        if (request.itemKind === 'text' || request.itemKind === 'payment_link') {
+            const text = String(payload.text ?? '');
+            if (!text.trim()) throw new Error('empty_text_payload');
+            return { method: 'sendMessage', body: { text: toTelegramHtml(text), parse_mode: 'HTML' } };
+        }
+        if (request.itemKind === 'media') {
+            const mediaUrl = String(payload.mediaUrl ?? '');
+            if (!mediaUrl.trim()) throw new Error('empty_media_payload');
+            const method = this.resolveMediaMethod(mediaUrl);
+            // No caption field at all: the caption is the next dispatch item and
+            // carries its own receipt. Sending an empty one would be the same
+            // bundling with a different value.
+            return { method, body: { [this.resolveMediaField(method)]: mediaUrl } };
+        }
+        throw new Error('unsupported_item_kind:flow');
+    }
 
     /**
      * Telegram uses a different verification method: setWebhook.

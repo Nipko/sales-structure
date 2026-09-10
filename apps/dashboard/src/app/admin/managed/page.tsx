@@ -11,7 +11,7 @@ import { ShieldCheck, Loader2, Plus, Target, CheckCircle2, AlertTriangle, XCircl
 interface ManagedRow {
     tenantId: string; name: string; slug: string; targetPct: number; monthlyFeeCents?: number | null;
     notes?: string | null; deltaPct: number | null; status: string;
-    resolution?: { closed: number; aiResolved: number; aiVerified: number; resolutionRate: number; verifiedResolutionRate: number };
+    resolution?: { closed: number; aiResolved: number; aiVerified: number; resolutionRate: number; verifiedResolutionRate: number | null };
 }
 
 const STATUS: Record<string, { color: string; icon: any }> = {
@@ -141,7 +141,7 @@ export default function ManagedPage() {
                                                             onBlur={(e) => { const v = parseInt(e.target.value); if (v && v !== r.targetPct) updateTarget(r, v); }}
                                                             className="w-16 rounded border border-border bg-background px-2 py-1 text-sm text-center text-foreground" />%
                                                     </td>
-                                                    <td className="py-2.5 px-3 text-center text-foreground font-medium">{r.resolution?.verifiedResolutionRate ?? 0}%</td>
+                                                    <td className="py-2.5 px-3 text-center text-foreground font-medium">{r.resolution?.verifiedResolutionRate == null ? t('outcomeUnknown') : `${r.resolution.verifiedResolutionRate}%`}</td>
                                                     <td className={cn("py-2.5 px-3 text-center font-medium", (r.deltaPct ?? 0) >= 0 ? "text-emerald-500" : "text-red-400")}>
                                                         {r.deltaPct != null ? `${r.deltaPct >= 0 ? "+" : ""}${r.deltaPct}` : "—"}
                                                     </td>

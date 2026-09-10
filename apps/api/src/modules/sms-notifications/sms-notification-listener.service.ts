@@ -28,7 +28,10 @@ export class SmsNotificationListenerService {
         private readonly config: SmsNotificationsService,
     ) {}
 
-    @OnEvent('handoff.escalated')
+    // One destination, one event. A transfer used to announce itself once to
+    // all six consumers, so a single failure among them re-announced it to
+    // the five that had already succeeded.
+    @OnEvent('handoff.escalated.sms')
     async onHandoff(event: HandoffEscalatedEvent): Promise<void> {
         try {
             if (!event?.tenantId) return;

@@ -1,3 +1,4 @@
+import { runtimeStateTransactions } from './__fixtures__/runtime-state.fixture';
 import type { ProcedureDefinition, ProcedureRunState } from '@parallext/shared';
 import { ProcedureEngineService } from './procedure-engine.service';
 import { authorityFor } from './__fixtures__/tool-authority.fixture';
@@ -46,6 +47,7 @@ function createHarness(toolResult: Record<string, unknown>) {
         executeInTenantSchema: jest.fn().mockResolvedValue([{ ...procedure, steps: procedure.steps }]),
     };
     const toolExecutor = { execute: jest.fn().mockResolvedValue(toolResult) };
+    runtimeStateTransactions(prisma);
     const service = new ProcedureEngineService(prisma as any, redis as any, toolExecutor as any);
     return { service, redis, toolExecutor, getSavedState: () => savedState };
 }

@@ -11,6 +11,7 @@ import {
     requireTenantContact,
 } from '../../common/utils/tenant-contact.util';
 import { resolveNativeEvidenceOpportunity } from '../../common/utils/native-evidence-opportunity.util';
+import type { EvalNamespaceLease } from '../simulation/isolated-eval-namespace';
 import {
     PAYMENT_HOLD_MS,
     PENDING_PAYMENT_STATUS,
@@ -287,7 +288,15 @@ export class ToursService {
         opportunityId?: string;
         language?: string;
         specialRequests?: string;
-    }): Promise<any> {
+    },
+    /**
+     * `execution.sandboxNamespace` es el arriendo de una evaluación aislada. La
+     * reserva se escribe y el asiento se descuenta del cupo real del namespace
+     * —eso es lo que se mide— pero el correo de confirmación al viajero no se
+     * manda: el modelo puede pasar cualquier `guestEmail`, y una casilla de
+     * verdad no recibe la confirmación de un viaje que nadie hizo.
+     */
+    execution: { sandboxNamespace?: EvalNamespaceLease } = {}): Promise<any> {
         const partySize = requirePositiveIntegerUnit(data.partySize, 'partySize');
         const suppliedAdults = data.adults === undefined
             ? null
@@ -434,7 +443,7 @@ export class ToursService {
 
         // Try to send confirmation email (fire-and-forget)
         try {
-            const guestEmail = data.guestEmail;
+            const guestEmail = execution.sandboxNamespace ? null : data.guestEmail;
             if (guestEmail) {
                 // Check if confirmation emails are enabled for tours
                 let emailConfirmationsEnabled = true;

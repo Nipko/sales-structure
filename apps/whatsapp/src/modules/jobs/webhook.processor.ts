@@ -162,33 +162,96 @@ export class WebhookProcessor extends WorkerHost {
 
   /**
    * Procesar status update (sent, delivered, read, failed)
+   *
+   * This worker decided the status with its own SQL and never applied a single
+   * one: it looked the wamid up in `messages.external_id` — which holds OUR
+   * deduplication identity, not the provider's — and it set `updated_at`, a
+   * column `messages` has never had, so every UPDATE raised 42703 inside a
+   * catch that only warned. It also ranked `failed` above `delivered`/`read`,
+   * so it could have told a customer's history that a message never arrived
+   * after Meta confirmed it did. The rule now lives in the API, next to the
+   * outbox that owns the receipt; what is left here is the forward.
    */
   private async processStatus(data: any) {
-    const { schemaName, status } = data;
+    const { tenantId, schemaName, phoneNumberId, status } = data;
     this.logger.debug(`Processing status update: ${status.status} for message ${status.id}`);
 
-    try {
-      // Apply status only if it advances the lifecycle (sent<delivered<read<failed).
-      // Webhooks can arrive out of order, so a late 'delivered' must not overwrite
-      // an already-recorded 'read'.
-      await this.prisma.executeInTenantSchema(
-        schemaName,
-        `UPDATE messages SET status = $1, updated_at = NOW()
-         WHERE external_id = $2
-           AND (CASE COALESCE(status,'') WHEN 'sent' THEN 1 WHEN 'delivered' THEN 2 WHEN 'read' THEN 3 WHEN 'failed' THEN 4 ELSE 0 END)
-             < (CASE $1 WHEN 'sent' THEN 1 WHEN 'delivered' THEN 2 WHEN 'read' THEN 3 WHEN 'failed' THEN 4 ELSE 0 END)`,
-        [status.status, status.id],
-      );
+    const dedupeKey = `status:${status.id}:${status.status}`;
+    // What Meta said is on record BEFORE we try to apply it, so an event stays
+    // auditable through an API outage. It becomes 'processed' only once the
+    // status was really delivered, the same way processMessage does it.
+    await this.prisma.executeInTenantSchema(
+      schemaName,
+      `INSERT INTO whatsapp_webhook_events (event_type, payload_json, dedupe_key, processing_status)
+       VALUES ($1, $2, $3, 'received')
+       ON CONFLICT (dedupe_key) DO NOTHING`,
+      ['status_update', JSON.stringify(status), dedupeKey],
+    );
 
-      await this.prisma.executeInTenantSchema(
-        schemaName,
-        `INSERT INTO whatsapp_webhook_events (event_type, payload_json, dedupe_key, processing_status, processed_at)
-         VALUES ($1, $2, $3, 'processed', NOW())
-         ON CONFLICT (dedupe_key) DO NOTHING`,
-        ['status_update', JSON.stringify(status), `status:${status.id}:${status.status}`],
+    await this.forwardDeliveryStatus({
+      tenantId,
+      channelType: 'whatsapp',
+      channelAccountId: phoneNumberId,
+      providerMessageId: status.id,
+      status: status.status,
+      errorCode: status.errors?.[0]?.code ?? null,
+      recipient: status.recipient_id ?? null,
+    });
+
+    await this.prisma.executeInTenantSchema(
+      schemaName,
+      `UPDATE whatsapp_webhook_events
+          SET processing_status = 'processed', processed_at = NOW()
+        WHERE dedupe_key = $1`,
+      [dedupeKey],
+    ).catch(() => { /* best-effort: no reprocesar un forward exitoso por el stamp */ });
+  }
+
+  /**
+   * Hand the status to the API, which resolves it by
+   * `(tenant, channel, account, receipt)` against the outbox.
+   *
+   * Same contract as `forwardToConversationsService`: with no internal key, or
+   * with the API down, the job FAILS instead of completing green. A status lost
+   * in silence is exactly how the "Sent" lie held up for months.
+   */
+  private async forwardDeliveryStatus(payload: Record<string, unknown>): Promise<void> {
+    const apiUrl = this.configService.get<string>('API_INTERNAL_URL') || 'http://api:3000/api/v1';
+    const internalKey = this.configService.get<string>('INTERNAL_API_KEY')
+      || this.configService.get<string>('INTERNAL_JWT_SECRET');
+
+    if (!internalKey) {
+      throw new Error('INTERNAL_API_KEY/INTERNAL_JWT_SECRET not configured — cannot apply delivery status');
+    }
+
+    try {
+      const response = await firstValueFrom(
+        this.httpService.post(
+          `${apiUrl}/internal/channel-delivery-status`,
+          payload,
+          {
+            headers: { 'Content-Type': 'application/json', 'x-internal-key': internalKey },
+            timeout: 5000,
+          },
+        ),
       );
-    } catch (error: any) {
-      this.logger.warn(`Status update failed for message ${status.id}: ${error.message}`);
+      this.logger.debug(
+        `Delivery status ${payload.status} for ${payload.providerMessageId}: ${response.data?.reason}`,
+      );
+    } catch (err: any) {
+      // Meta also emits statuses the history does not model (`deleted`). A 400
+      // is a definitive refusal of the body: retrying it only burns the three
+      // attempts and litters the failed set. Everything else — including a 401
+      // from a misconfigured key — is retried: applying a status is idempotent
+      // by rank (it only moves forward) and cannot corrupt the history.
+      if (err.response?.status === 400) {
+        this.logger.warn(
+          `Delivery status ${payload.status} for ${payload.providerMessageId} refused by the API — not retrying`,
+        );
+        return;
+      }
+      this.logger.error(`Failed to apply delivery status via API: ${err.message} — will retry`);
+      throw err;
     }
   }
 

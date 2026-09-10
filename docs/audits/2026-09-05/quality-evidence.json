@@ -1,0 +1,16 @@
+{
+  "freshEvalOnly": "evidenced",
+  "freshEvalWithOldSimulation": "stale",
+  "staleReasons": [
+    "agent_configuration_changed_after_simulation",
+    "simulation_persona_version_mismatch"
+  ],
+  "unreadableSourcesBecomeCounts": {
+    "knowledge": 0,
+    "products": 0,
+    "services": 0
+  },
+  "qaReadsFirstFortyMessages": true,
+  "qaJudgesTranscriptWithoutBookingEvidence": true,
+  "scope": "Synthetic dependencies; no real conversation, DB, or LLM was evaluated."
+}

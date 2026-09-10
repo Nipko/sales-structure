@@ -8,14 +8,18 @@ function buildService() {
         getTenantSchemaName: jest.fn().mockResolvedValue('tenant_schema'),
         tenant: { findUnique: jest.fn() },
     };
+    Object.assign(prisma,{transactionInTenantSchema:jest.fn(async(schema:string,work:any)=>
+        work((sql:string,params:any[])=>prisma.executeInTenantSchema(schema,sql,params)))});
+    const lease = { schemaName:'tenant_eval_11111111_111111111111111111111111',tenantId:'tenant-id',sourceSchema:'tenant_schema',token:'token',expiresAt:new Date(Date.now()+3600000).toISOString(),tables:[] };
+    const namespaces = { provisionRuntime:jest.fn().mockResolvedValue(lease),assertOwned:jest.fn().mockResolvedValue(undefined),dispose:jest.fn().mockResolvedValue(undefined) };
     const service = new EvalService(
         prisma as any,
         {} as any,
         {} as any,
-        { acquireLock: jest.fn(), releaseLock: jest.fn() } as any,
-        { emit: jest.fn() } as any,
+        { acquireLockToken:jest.fn().mockResolvedValue('token'),renewLockToken:jest.fn().mockResolvedValue(true),releaseLockToken:jest.fn().mockResolvedValue(true) } as any,
+        { emit: jest.fn() } as any,undefined,namespaces as any,
     );
-    return { service, prisma };
+    return { service, prisma, namespaces, lease };
 }
 
 describe('versioned multilingual eval infrastructure', () => {
@@ -69,36 +73,52 @@ describe('versioned multilingual eval infrastructure', () => {
 
     it('has one contact-scoped verifier for every mutating sandbox family', () => {
         expect(Object.keys(EVAL_EFFECT_VERIFIERS).sort()).toEqual([
-            'appointments', 'catalog_orders', 'class_bookings', 'enrollments',
-            'photo_sessions', 'property_bookings', 'resource_rentals',
+            'appointment_transitions', 'appointments', 'catalog_orders', 'class_bookings', 'enrollments',
+            'insurance_quotes', 'pets',
+            'photo_sessions', 'property_bookings', 'repair_orders', 'resource_rentals',
             'restaurant_orders', 'service_requests', 'tour_bookings',
         ]);
         expect(EVAL_EFFECT_VERIFIERS.class_bookings.contactColumn).toBe('contact_id');
     });
 
-    it('prepares owned fixtures and cleanup covers effects, ledger, conversations and fixtures', async () => {
-        const { service, prisma } = buildService();
-        prisma.executeInTenantSchema.mockResolvedValue([]);
+    it('gives both families that verify `appointments` the same projections', () => {
+        // Una aserción que no nombra familia se resuelve por tabla, así que cuál
+        // de las dos encuentre no puede cambiar lo que puede comprobar. Las
+        // proyecciones describen cómo `appointments` guarda los términos de
+        // vehículo y servicio: son de la tabla, no de una familia.
+        expect(EVAL_EFFECT_VERIFIERS.appointment_transitions.table).toBe('appointments');
+        expect(EVAL_EFFECT_VERIFIERS.appointment_transitions.jsonFields)
+            .toEqual(EVAL_EFFECT_VERIFIERS.appointments.jsonFields);
+        expect(Object.keys(EVAL_EFFECT_VERIFIERS.appointments.jsonFields!).sort())
+            .toEqual(['service_terms_id', 'vehicle_id', 'vehicle_terms_id']);
+    });
 
-        await (service as any).prepareSandboxFixtures('tenant_schema');
-        const fixtureWrites = prisma.executeInTenantSchema.mock.calls
-            .filter((call: any[]) => /INSERT INTO "tenant_schema"\./.test(String(call[1])));
-        expect(fixtureWrites.length).toBeGreaterThanOrEqual(14);
-        expect(fixtureWrites.every((call: any[]) => /ON CONFLICT \(id\) DO UPDATE/.test(String(call[1]))))
-            .toBe(true);
+    it('prepares only an owned namespace and tears it down without deleting any live contact rows', async () => {
+        const {service,prisma,namespaces,lease}=buildService();
+        prisma.executeInTenantSchema.mockResolvedValue([{id:'11111111-1111-4111-8111-111111111111'}]);
+        await service.withSandboxSession('tenant-id',async session=>{await session.reset('telegram');await session.recordInbound('hola');});
+        expect(namespaces.provisionRuntime).toHaveBeenCalledWith('tenant-id','tenant_schema');
+        expect(prisma.executeInTenantSchema.mock.calls.every(call=>call[0]===lease.schemaName)).toBe(true);
+        expect(prisma.executeInTenantSchema.mock.calls.every(call=>!String(call[1]).includes('DELETE FROM'))).toBe(true);
+        expect(namespaces.dispose).toHaveBeenCalledWith(lease);
+    });
 
-        prisma.executeInTenantSchema.mockClear();
-        await (service as any).cleanupSandbox('tenant_schema');
-        const deletes = prisma.executeInTenantSchema.mock.calls.map((call: any[]) => String(call[1]));
-        for (const verifier of Object.values(EVAL_EFFECT_VERIFIERS)) {
-            expect(deletes.some(sql => sql.includes(`.${verifier.table} WHERE ${verifier.contactColumn}`)))
-                .toBe(true);
-        }
-        expect(deletes.some(sql => sql.includes('.tool_execution_ledger'))).toBe(true);
-        expect(deletes.some(sql => sql.includes('.messages'))).toBe(true);
-        expect(deletes.some(sql => sql.includes('.conversations'))).toBe(true);
-        expect(deletes.filter(sql => /metadata->>'evalSandbox' = 'true'/.test(sql)).length)
-            .toBeGreaterThanOrEqual(10);
+    it.each([false, true])('keeps all gate fixture writes in its owned namespace when the provider fails=%s', async (fail) => {
+        const { service, prisma, namespaces, lease } = buildService();
+        prisma.executeInTenantSchema.mockResolvedValue([{ id: '11111111-1111-4111-8111-111111111111' }]);
+        const agentTest = { captureSnapshot: jest.fn().mockResolvedValue({ config: {}, capturedAt: '2026-09-07T12:00:00Z' }),
+            releaseSnapshot: jest.fn(), snapshotSourceAuthority: jest.fn(() => async (invoke: any) => invoke()), assertSnapshotExecutable: jest.fn(), test: jest.fn() };
+        if (fail) agentTest.test.mockRejectedValue(new Error('provider unavailable'));
+        else agentTest.test.mockResolvedValue({ reply: 'Hello', debug: { toolCalls: [] } });
+        (service as any).agentTest = agentTest;
+        (service as any).quality = { judgeTranscript: jest.fn().mockResolvedValue({ overall: 9, resolved: true, flags: [] }) };
+        const run = service.runGateV2('tenant-id', 'agent', { scenarios: [{ key: 'greeting', messages: ['hello'] }] });
+        if (fail) await expect(run).rejects.toThrow('provider unavailable');
+        else await expect(run).resolves.toMatchObject({ status: 'completed', total: 1 });
+        const inserts = prisma.executeInTenantSchema.mock.calls.filter(call => /INSERT INTO/i.test(String(call[1])));
+        expect(inserts.some(call => call[0] === lease.schemaName && /INSERT INTO contacts/i.test(String(call[1])))).toBe(true);
+        expect(inserts.filter(call => call[0] === 'tenant_schema').every(call => /INSERT INTO eval_runs/i.test(String(call[1])))).toBe(true);
+        expect(namespaces.dispose).toHaveBeenCalledWith(lease);
     });
 
     it('creates the sandbox conversation with the required channel account identity', async () => {
@@ -117,35 +137,45 @@ describe('versioned multilingual eval infrastructure', () => {
         expect(params).toEqual([
             '00000000-0000-4000-8000-00000000eba1',
             'eval-sandbox',
+            'web_widget',
         ]);
     });
 
-    it('always cleans a partially prepared sandbox when the model/provider path fails', async () => {
-        const { service } = buildService();
-        const cleanup = jest.spyOn(service as any, 'cleanupSandbox').mockResolvedValue(undefined);
-        jest.spyOn(service as any, 'prepareSandboxFixtures').mockResolvedValue(undefined);
-        jest.spyOn(service as any, 'ensureSandboxConversation')
-            .mockResolvedValue('11111111-1111-4111-8111-111111111111');
-        jest.spyOn(service as any, 'recordSandboxInbound').mockResolvedValue(undefined);
-        (service as any).agentTest = {
-            test: jest.fn().mockRejectedValue(new Error('provider unavailable')),
-        };
+    it('reuses a checkpoint only for the same revision, channel, repetition count and pass policy',async()=>{
+        const {service,prisma}=buildService();
+        prisma.executeInTenantSchema.mockResolvedValue([{id:'11111111-1111-4111-8111-111111111111'}]);
+        const snapshot={agentId:'agent',config:{},configHash:'config',capturedAt:'2026-09-07T12:00:00Z',manifest:{revision:'revision'}};
+        const test=jest.fn().mockResolvedValue({reply:'Hello',debug:{toolCalls:[]}});
+        (service as any).agentTest={captureSnapshot:jest.fn().mockResolvedValue(snapshot),releaseSnapshot: jest.fn(), snapshotSourceAuthority: jest.fn(() => async (invoke: any) => invoke()), assertSnapshotExecutable:jest.fn(),test};
+        (service as any).quality={judgeTranscript:jest.fn().mockResolvedValue({overall:9,resolved:true,flags:[]})};
+        const options:any={agentSnapshot:snapshot,scenarios:[{key:'greeting',messages:['hello']}],channelType:'telegram'};
+        const first=await service.runGateV2('tenant-id','agent',options);expect(test).toHaveBeenCalledTimes(1);
+        await service.runGateV2('tenant-id','agent',{...options,previousResults:first.scenarios});expect(test).toHaveBeenCalledTimes(1);
+        await service.runGateV2('tenant-id','agent',{...options,previousResults:first.scenarios,channelType:'web_widget'});expect(test).toHaveBeenCalledTimes(2);
+        await service.runGateV2('tenant-id','agent',{...options,previousResults:first.scenarios,k:2});expect(test).toHaveBeenCalledTimes(4);
+        await service.runGateV2('tenant-id','agent',{...options,previousResults:first.scenarios,passPolicy:'majority'});expect(test).toHaveBeenCalledTimes(5);
+    });
+    it('includes a regression added between seed initialization and capturing the current revision',async()=>{
+        const {service,prisma}=buildService();prisma.executeInTenantSchema.mockResolvedValue([]);
+        const initial={key:'initial',messages:['hello']},added={key:'added_before_capture',messages:['A new failure']};
+        jest.spyOn(service,'listScenarios').mockResolvedValueOnce([initial]).mockResolvedValueOnce([initial,added]);
+        (service as any).agentTest={captureSnapshot:jest.fn().mockResolvedValue({agentId:'agent',config:{},configHash:'config',manifest:{revision:'revision'}}),
+            releaseSnapshot: jest.fn(), snapshotSourceAuthority: jest.fn(() => async (invoke: any) => invoke()), assertSnapshotExecutable:jest.fn()};
+        const run=jest.spyOn(service as any,'runPassK').mockImplementation(async(...args:any[])=>({key:args[3].key,score:9,passed:true}));
+        jest.spyOn(service as any,'persistRun').mockResolvedValue(undefined);
+        const result=await service.runGateV2('tenant-id','agent');
+        expect(result.total).toBe(2);expect(run.mock.calls.map((call:any[])=>call[3].key)).toEqual(['initial','added_before_capture']);
+    });
 
-        await expect((service as any).runScenarioWithActions(
-            'tenant-id',
-            '22222222-2222-4222-8222-222222222222',
-            'tenant_schema',
-            {
-                messages: ['confirm'],
-                expectedActions: [{ kind: 'tool_call', type: 'not_called', tool: 'create_appointment' }],
-            },
-            7,
-            true,
-        )).rejects.toThrow('provider unavailable');
-
-        expect(cleanup).toHaveBeenCalledTimes(2);
-        expect(cleanup).toHaveBeenNthCalledWith(1, 'tenant_schema');
-        expect(cleanup).toHaveBeenNthCalledWith(2, 'tenant_schema');
+    it('cleans its namespace when a provider fails and rejects missing sandbox infrastructure', async () => {
+        const {service,prisma,namespaces,lease}=buildService();
+        prisma.executeInTenantSchema.mockResolvedValue([{id:'11111111-1111-4111-8111-111111111111'}]);
+        (service as any).agentTest={assertSnapshotExecutable:jest.fn(),test:jest.fn().mockRejectedValue(new Error('provider unavailable'))};
+        await expect((service as any).runScenarioWithActions('tenant-id','agent','tenant_schema',{messages:['hola']},7,false,{config:{}})).rejects.toThrow('provider unavailable');
+        expect(namespaces.dispose).toHaveBeenCalledTimes(1);expect(namespaces.dispose).toHaveBeenCalledWith(lease);
+        (service as any).namespaces=undefined;prisma.executeInTenantSchema.mockClear();
+        await expect(service.withSandboxSession('tenant-id',async session=>session.reset('telegram'))).rejects.toThrow('canonical_sandbox_not_available');
+        expect(prisma.executeInTenantSchema).not.toHaveBeenCalled();
     });
 
     it('retires exact legacy seeds, preserves custom rows and quarantines ambiguous edits', async () => {

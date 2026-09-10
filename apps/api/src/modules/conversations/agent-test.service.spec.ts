@@ -1,398 +1,257 @@
 import { AgentTestService } from './agent-test.service';
-import {
-    AGENT_TEST_SAFE_TOOL_NAMES,
-    AGENT_TEST_SANDBOX_CONTACT_ID,
-} from './agent-test-tool-policy';
 import { AGENT_TEST_EXECUTION_CONTEXT } from '../../common/types/execution-context';
-import {
-    allowedModelTiersForPlan,
-    clampModelTiersToBudget,
-} from './agent-test-plan-policy';
+import { agentTurnFixture, publishTools } from './__fixtures__/agent-turn.fixture';
+import { EVAL_SANDBOX_CONTACT_ID, AGENT_TEST_SANDBOX_CONTACT_ID } from './agent-test-tool-policy';
+import { operationalConfigurationHash } from '../persona/agent-configuration-revision';
+import { revisionHash } from '../evaluation-revision/evaluation-revision';
 
-const ALL_TOOL_FLAGS = {
-    appointments: { enabled: true },
-    catalog: { enabled: true },
-    faqs: { enabled: true },
-    policies: { enabled: true },
-    knowledge: { enabled: true },
-    offers: { enabled: true },
-    orders: { enabled: true },
-    crm: { enabled: true },
-    ecommerce: { enabled: true, canApplyDiscount: true },
-    payments: { enabled: true, canCreateLinks: true },
-    properties: { enabled: true },
-    tours: { enabled: true },
-    treatments: { enabled: true },
-    realEstate: { enabled: true },
-    vehicles: { enabled: true },
-    pets: { enabled: true },
-    restaurants: { enabled: true },
-    gyms: { enabled: true },
-    education: { enabled: true },
-    insurance: { enabled: true },
-    homeServices: { enabled: true },
-    petServices: { enabled: true },
-    vehicleRentals: { enabled: true },
-    petBoarding: { enabled: true },
-    photography: { enabled: true },
-    professionalServices: { enabled: true },
-    repairOrders: { enabled: true },
-};
-
-function buildSubject() {
-    const personaService = {
-        getAgent: jest.fn().mockResolvedValue({
-            config_json: {
-                language: 'es-CO',
-                tools: ALL_TOOL_FLAGS,
-                rag: { enabled: false },
-                llm: { temperature: 0 },
-            },
-        }),
-    };
-    const llmRouter = { execute: jest.fn() };
-    const knowledgeService = {
-        tenantHasKnowledge: jest.fn().mockResolvedValue(false),
-        searchRelevant: jest.fn(),
-    };
-    const businessInfoService = { getPrimary: jest.fn().mockResolvedValue(null) };
-    const promptAssembler = {
-        computeUpcomingDays: jest.fn().mockReturnValue([]),
-        assemble: jest.fn().mockReturnValue('system prompt'),
-    };
-    const languageDetector = { detect: jest.fn().mockReturnValue('es') };
-    const toolExecutor = { execute: jest.fn().mockResolvedValue({ ok: true }) };
-    const tenantsService = { getSchemaName: jest.fn().mockResolvedValue('tenant_test') };
-    const throttle = {
-        hasAiMessageQuota: jest.fn().mockResolvedValue(true),
-        getPlanFeatures: jest.fn().mockResolvedValue({
-            llmTier: 'tier_2',
-            llmCostBudgetUsdCents: -1,
-        }),
-        getLlmSpendUsdCents: jest.fn().mockResolvedValue(0),
-        incrementAiMessageCount: jest.fn().mockResolvedValue(1),
-    };
-    const activeOperationsContext = {
-        populateTurnContext: jest.fn(async (turnContext: any) => {
-            turnContext.activeObjects = {
-                version: 1,
-                asOf: '2026-08-08T12:00:00.000Z',
-                items: [],
-            };
-            return { failures: [] };
-        }),
-    };
-
-    const service = new AgentTestService(
-        personaService as any,
-        llmRouter as any,
-        knowledgeService as any,
-        businessInfoService as any,
-        promptAssembler as any,
-        languageDetector as any,
-        toolExecutor as any,
-        tenantsService as any,
-        throttle as any,
-        activeOperationsContext as any,
-    );
-
-    return {
-        service, llmRouter, toolExecutor, throttle, activeOperationsContext,
-        promptAssembler,
-    };
-}
-
-describe('AgentTestService read-only tool policy', () => {
-    it('uses the shared operational-context projection before assembling the prompt', async () => {
-        const { service, llmRouter, activeOperationsContext, promptAssembler } = buildSubject();
-        llmRouter.execute.mockResolvedValue({ content: 'ok', model: 'test-model' });
-
-        await service.test('tenant-id', 'agent-id', { message: 'hola' });
-
-        expect(activeOperationsContext.populateTurnContext).toHaveBeenCalledWith(
-            expect.any(Object),
-            expect.objectContaining({
-                tenantId: 'tenant-id',
-                schemaName: 'tenant_test',
-                contactId: AGENT_TEST_SANDBOX_CONTACT_ID,
-            }),
-        );
-        expect(promptAssembler.assemble.mock.calls[0][1]).toMatchObject({
-            activeObjects: { version: 1, items: [] },
-        });
-        expect(activeOperationsContext.populateTurnContext.mock.invocationCallOrder[0])
-            .toBeLessThan(promptAssembler.assemble.mock.invocationCallOrder[0]);
+describe('AgentTestService delegates to the operational core', () => {
+    it('releases a newly captured corpus if request validation fails before retaining a session',async()=>{
+        const f=agentTurnFixture();
+        await expect(f.service.test('tenant','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',{message:'hola'},{evalMode:true}))
+            .rejects.toThrow('eval_sandbox_identity_required');
+        expect(f.evaluationKnowledge.release).toHaveBeenCalledTimes(1);
+        expect(f.llmRouter.execute).not.toHaveBeenCalled();
     });
-
-    it('advertises the audited real tool names, including professional services and safe ecommerce parity', async () => {
-        const { service, llmRouter } = buildSubject();
-        llmRouter.execute.mockResolvedValue({ content: 'ok', model: 'test-model' });
-
-        await service.test('tenant-id', 'agent-id', { message: 'hola' });
-
-        const offered = llmRouter.execute.mock.calls[0][0].tools.map((tool: any) => tool.name);
-        expect(new Set(offered)).toEqual(new Set(AGENT_TEST_SAFE_TOOL_NAMES));
-        expect(offered).toEqual(expect.arrayContaining([
-            'get_case_status',
-            'recommend_products',
-            'get_order_status',
-            'search_products',
-            'search_knowledge_base',
-            'list_active_offers',
-        ]));
-        const forbidden = [
-            // Obsolete aliases from the previous allowlist.
-            'list_products',
-            'search_knowledge',
-            'get_policies',
-            'list_offers',
-            // Writers and action-like tools.
-            // Availability can consult an external calendar provider, so it is
-            // intentionally absent until a local-only preview exists.
-            'check_availability',
-            'create_appointment',
-            'calculate_quote',
-            'get_placement_test_link',
-            'apply_discount',
-            'create_payment_link',
-            'get_payment_status',
-            'refund_payment',
-            'send_booking_link',
-            'cancel_appointment',
-            'reschedule_appointment',
-            'send_product_image',
-            'create_property_booking',
-            'cancel_property_booking',
-            'send_property_image',
-            'create_tour_booking',
-            'cancel_tour_booking',
-            'send_listing_image',
-            'send_vehicle_image',
-            'register_pet',
-            'update_pet',
-            'place_order',
-            'cancel_order',
-            'book_class',
-            'freeze_membership',
-            'cancel_class_booking',
-            'enroll_student',
-            'cancel_enrollment',
-            'file_claim',
-            'cancel_quote',
-            'request_identity_code',
-            'verify_identity_code',
-            'create_service_request',
-            'cancel_service_request',
-            'send_portfolio',
-            'request_photo_quote',
-            'cancel_photo_session',
-            // External tools stay default-denied until sandboxed.
-            'get_restaurant_menu',
-            'get_fitness_schedule',
-            'list_clinic_services',
-            'check_clinic_availability',
-        ];
-        for (const name of forbidden) expect(offered).not.toContain(name);
-        expect(offered.some((name: string) => name.startsWith('mcp__'))).toBe(false);
+    it('does not release another runner\'s snapshot when a test request is invalid',async()=>{
+        const f=agentTurnFixture(),snapshot=await f.service.captureSnapshot('tenant','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
+        await expect(f.service.test('tenant','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',{message:'hola'},{evalMode:true,agentSnapshot:snapshot}))
+            .rejects.toThrow('eval_sandbox_identity_required');
+        expect(f.evaluationKnowledge.release).not.toHaveBeenCalled();
     });
-
-    it('blocks hallucinated writers and opaque MCP tools before the real executor, even in evalMode', async () => {
-        const { service, llmRouter, toolExecutor } = buildSubject();
-        llmRouter.execute
-            .mockResolvedValueOnce({
-                content: '',
-                toolCalls: [
-                    { id: 'write-1', function: { name: 'create_appointment', arguments: '{"date":"2026-08-07"}' } },
-                    { id: 'mcp-1', function: { name: 'mcp__erp__create_order', arguments: '{}' } },
-                ],
-            })
-            .mockResolvedValueOnce({ content: 'No persistí ninguna acción.' });
-
-        const result = await service.test(
-            'tenant-id',
-            'agent-id',
-            { message: 'crea una cita' },
-            { evalMode: true },
-        );
-
-        expect(toolExecutor.execute).not.toHaveBeenCalled();
-        expect(result.debug.toolCalls).toHaveLength(2);
-        for (const call of result.debug.toolCalls) {
-            expect(call.result).toMatchObject({
-                error: 'agent_test_read_only',
-                persisted: false,
-            });
+    it('requires a sealed knowledge reference before entering the runtime',async()=>{
+        const f=agentTurnFixture(),snapshot=await f.service.captureSnapshot('tenant','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
+        delete snapshot.knowledgeInputs;
+        await expect(f.service.test('tenant','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',{message:'hola'},{agentSnapshot:snapshot}))
+            .rejects.toThrow('evaluation_knowledge_replica_required');
+        expect(f.llmRouter.execute).not.toHaveBeenCalled();
+    });
+    it('binds a public draft selection to its preview session and rejects switching revisions mid-conversation',async()=>{
+        const f=agentTurnFixture(),live=await f.personaService.getAgent(),id='11111111-1111-4111-8111-111111111111';
+        Object.assign(f.personaService,{readConfigurationRevision:jest.fn().mockResolvedValue({id,body_hash:'a'.repeat(64),base_operational_hash:operationalConfigurationHash({...live,id:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'}),
+            body:{configJson:{...live.config_json,language:'fr'},channels:['web_widget'],channelBindings:[],scheduleMode:'24_7',isActive:true,isDefault:false}})});
+        const revision=await (f.personaService as any).readConfigurationRevision();revision.body_hash=revisionHash(revision.body);
+        const first=await f.service.test('tenant','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',{message:'Bonjour',configurationRevisionId:id});
+        expect(first.debug.agentRevision?.configurationRevisionId).toBe(id);
+        const calls=f.llmRouter.execute.mock.calls.length;
+        await expect(f.service.test('tenant','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',{message:'Continue',runtimeSessionId:first.debug.runtimeSessionId,
+            configurationRevisionId:'22222222-2222-4222-8222-222222222222'})).rejects.toThrow('session_configuration_revision_changed');
+        expect(f.llmRouter.execute).toHaveBeenCalledTimes(calls);
+        const next=await f.service.test('tenant','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',{message:'Merci',runtimeSessionId:first.debug.runtimeSessionId});
+        expect(next.debug.agentRevision?.configurationRevisionId).toBe(id);
+    });
+    it('evaluates the selected canonical draft without replacing the operational persona',async()=>{
+        const f=agentTurnFixture(),live=await f.personaService.getAgent();
+        const draftConfig=structuredClone(live.config_json);draftConfig.persona={...draftConfig.persona,name:'Candidate Alex'};
+        const reader=jest.fn().mockResolvedValue({id:'11111111-1111-4111-8111-111111111111',body_hash:'a'.repeat(64),base_operational_hash:operationalConfigurationHash({...live,id:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'}),
+            body:{name:'Candidate Alex',configJson:draftConfig,channels:['telegram'],channelBindings:['telegram:owned'],
+                scheduleMode:'24_7',isActive:true,isDefault:false}});
+        const revision=await reader();revision.body_hash=revisionHash(revision.body);
+        Object.assign(f.personaService,{readConfigurationRevision:reader});
+        const snapshot=await f.service.captureSnapshot('tenant','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',{configurationRevisionId:'11111111-1111-4111-8111-111111111111'});
+        expect(reader).toHaveBeenCalledWith('tenant','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','11111111-1111-4111-8111-111111111111',AGENT_TEST_EXECUTION_CONTEXT);
+        expect(snapshot.config.persona.name).toBe('Candidate Alex');
+        expect(snapshot.configurationRevisionHash).toBe(revision.body_hash);
+        expect(snapshot.configurationBody?.channelBindings).toEqual(['telegram:owned']);
+        expect(snapshot.configurationBaseOperationalHash).toBe(operationalConfigurationHash({...live,id:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'}));
+        expect(snapshot.configurationBaseOperationalBody?.configJson).toEqual(live.config_json);
+        expect((await f.personaService.getAgent()).config_json).toEqual(live.config_json);
+        for(const field of ['configurationRevisionId','configurationRevisionHash','configurationBody','configurationBaseOperationalHash','configurationBaseOperationalBody'] as const){
+            const altered=structuredClone(snapshot);delete altered[field];
+            await expect(f.service.test('tenant','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',{message:'hello'},{agentSnapshot:altered})).rejects.toThrow('configuration_revision_integrity_mismatch');
         }
+        const changed=structuredClone(snapshot);changed.configurationRevisionHash='b'.repeat(64);
+        await expect(f.service.test('tenant','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',{message:'hello'},{agentSnapshot:changed})).rejects.toThrow('configuration_body_integrity_mismatch');
+        const routing=structuredClone(snapshot);routing.configurationBody!.channelBindings=['telegram:someone_else'];
+        await expect(f.service.test('tenant','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',{message:'hello'},{agentSnapshot:routing})).rejects.toThrow('configuration_body_integrity_mismatch');
+        expect(f.llmRouter.execute).not.toHaveBeenCalled();
     });
-
-    it('executes only allowlisted reads with a valid non-customer UUID', async () => {
-        const { service, llmRouter, toolExecutor, throttle } = buildSubject();
-        llmRouter.execute
-            .mockResolvedValueOnce({
-                content: '',
-                toolCalls: [
-                    { id: 'case-1', function: { name: 'get_case_status', arguments: '{}' } },
-                    { id: 'shop-1', function: { name: 'recommend_products', arguments: '{"search":"camisa"}' } },
-                ],
-            })
-            .mockResolvedValueOnce({ content: 'Resultado de prueba.' });
-
-        await service.test(
-            'tenant-id',
-            'agent-id',
-            { message: 'consulta segura' },
-            // A syntactically valid but arbitrary UUID must not let Agent Test
-            // inspect a real customer's contact-scoped records.
-            { sandboxContactId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' },
-        );
-
-        expect(toolExecutor.execute).toHaveBeenCalledTimes(2);
-        expect(throttle.incrementAiMessageCount).toHaveBeenCalledTimes(1);
-        const advertisedSafeTools = llmRouter.execute.mock.calls[0][0].tools
-            .map((tool: any) => tool.name);
-        expect(advertisedSafeTools).toEqual(expect.arrayContaining([
-            'get_case_status', 'recommend_products',
-        ]));
-        expect(advertisedSafeTools.every((name: string) => AGENT_TEST_SAFE_TOOL_NAMES.includes(name as any)))
-            .toBe(true);
-        for (const call of toolExecutor.execute.mock.calls) {
-            expect(call[2]).toBe(AGENT_TEST_SANDBOX_CONTACT_ID);
-            expect(call[2]).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
-            expect(AGENT_TEST_SAFE_TOOL_NAMES).toContain(call[3]);
-            expect(call[6]).toEqual({
-                // One immutable turn authority: exactly the tools advertised
-                // by this safe sandbox, never a per-call permission minted
-                // after seeing what the model tried to invoke.
-                authority: {
-                    source: 'agent_test',
-                    allowedTools: advertisedSafeTools,
-                    commitmentBlocked: null,
-                    deniedTools: [],
-                    resolvedAt: expect.stringMatching(
-                        /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/,
-                    ),
-                    subtypeProfileId: undefined,
-                },
-                evalMode: false,
-                readOnly: true,
-                executionContext: AGENT_TEST_EXECUTION_CONTEXT,
-                channelType: 'web_widget',
-            });
+    it('rejects a changed or misleading before-state rather than showing the wrong configuration diff',async()=>{
+        const f=agentTurnFixture(),live=await f.personaService.getAgent();
+        const reader=jest.fn().mockResolvedValue({id:'11111111-1111-4111-8111-111111111111',body_hash:'a'.repeat(64),base_operational_hash:'b'.repeat(64),
+            body:{name:'Candidate',configJson:live.config_json,channels:[],channelBindings:[],scheduleMode:'24_7',isActive:true,isDefault:false}});
+        Object.assign(f.personaService,{readConfigurationRevision:reader});
+        await expect(f.service.captureSnapshot('tenant','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',{configurationRevisionId:'11111111-1111-4111-8111-111111111111'})).rejects.toThrow('agent_operational_configuration_changed');
+        reader.mockResolvedValue({...await reader(),base_operational_hash:operationalConfigurationHash({...live,id:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'})});
+        const revision=await reader();revision.body_hash=revisionHash(revision.body);
+        const snapshot=await f.service.captureSnapshot('tenant','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',{configurationRevisionId:'11111111-1111-4111-8111-111111111111'});
+        snapshot.configurationBaseOperationalBody!.channels=['telegram'];
+        await expect(f.service.test('tenant','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',{message:'hello'},{agentSnapshot:snapshot})).rejects.toThrow('configuration_base_integrity_mismatch');
+        expect(f.llmRouter.execute).not.toHaveBeenCalled();
+    });
+    it('rejects a changed or removed frozen release scope before using the runtime',async()=>{
+        const f=agentTurnFixture();const snapshot=await f.service.captureSnapshot('tenant','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
+        snapshot.releaseScope!.channels.push('telegram');
+        await expect(f.service.test('tenant','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',{message:'hello'},{agentSnapshot:snapshot})).rejects.toThrow('frozen_dependencies_integrity_mismatch');
+        const removed=await f.service.captureSnapshot('tenant','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');delete removed.releaseScope;
+        await expect(f.service.test('tenant','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',{message:'hello'},{agentSnapshot:removed})).rejects.toThrow('release_scope_integrity_mismatch');
+        expect(f.llmRouter.execute).not.toHaveBeenCalled();
+    });
+    it('checks quota before loading config, resolving schema or calling the core', async () => {
+        const f = agentTurnFixture(); f.throttle.hasAiMessageQuota.mockResolvedValue(false);
+        await expect(f.service.test('tenant', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', { message: 'hola' })).rejects.toThrow('ai_message_quota_exceeded');
+        expect(f.personaService.getAgent).not.toHaveBeenCalled();
+        expect(f.tenantsService.getSchemaName).not.toHaveBeenCalled();
+        expect(f.llmRouter.execute).not.toHaveBeenCalled();
+    });
+    it('uses a frozen revision and actual channel while accounting every provider invocation', async () => {
+        const f = agentTurnFixture(); const snapshot = await f.service.captureSnapshot('tenant', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
+        f.personaService.getAgent.mockResolvedValue({ version: 99, config_json: { language: 'fr', tools: {} } });
+        const spy = jest.spyOn(f.runtime as any, 'generateResponse');
+        const result = await f.service.test('tenant', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', { message: 'hola', channelType: 'telegram' }, { agentSnapshot: snapshot });
+        expect(spy).toHaveBeenCalledTimes(1);
+        expect(spy.mock.calls[0][3]).toEqual(snapshot.config);
+        expect(f.personaService.getAgent).toHaveBeenCalledTimes(1);
+        expect(result.debug.turnContext).toMatchObject({ channelType: 'telegram', executionMode: 'agent_test' });
+        expect(result.debug.tokens).toEqual({ input: 20, output: 5 });
+        expect(result.debug.runtimeError).toBeUndefined();
+        expect(f.throttle.incrementAiMessageCount).toHaveBeenCalledTimes(1);
+        expect(f.throttle.getPlanFeatures).toHaveBeenCalledWith('tenant', AGENT_TEST_EXECUTION_CONTEXT);
+        expect(f.tenantsService.getSchemaName).toHaveBeenCalledWith('tenant', AGENT_TEST_EXECUTION_CONTEXT);
+    });
+    it('retains an opaque session, recent history and tools across turns', async () => {
+        const f = agentTurnFixture(); publishTools(f, ['search_products']);
+        f.llmRouter.execute.mockResolvedValueOnce({ toolCalls: [{ id: 't1', function: { name: 'search_products', arguments: '{}' } }], content: '' });
+        const first = await f.service.test('tenant', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', { message: 'busco camisa' });
+        const second = await f.service.test('tenant', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', { message: '¿y azul?', runtimeSessionId: first.debug.runtimeSessionId,
+            conversationHistory: [{ role: 'user', content: 'busco camisa' }, { role: 'assistant', content: first.reply }] });
+        expect(second.debug.runtimeSessionId).toBe(first.debug.runtimeSessionId);
+        const call = f.llmRouter.execute.mock.calls.at(-1)[0];
+        expect(call.messages).toEqual(expect.arrayContaining([{ role: 'user', content: 'busco camisa' }]));
+        expect((second.debug.turnContext as any).recentActions).toEqual(expect.arrayContaining([expect.objectContaining({ tool: 'search_products' })]));
+    });
+    it('rejects cross-tenant/channel reuse and a changed config revision', async () => {
+        const f = agentTurnFixture(); const first = await f.service.test('tenant', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', { message: 'hola' });
+        for (const [tenant, channelType] of [['other', 'web_widget'], ['tenant', 'telegram']]) {
+            await expect(f.service.test(tenant, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', { message: 'hola', channelType: channelType as any, runtimeSessionId: first.debug.runtimeSessionId })).rejects.toThrow('agent_test_session_scope_mismatch');
         }
+        f.personaService.getAgent.mockResolvedValue({ config_json: { language: 'fr' } });
+        const changed = await f.service.captureSnapshot('tenant', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
+        await expect(f.service.test('tenant', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', { message: 'hola', runtimeSessionId: first.debug.runtimeSessionId }, { agentSnapshot: changed })).rejects.toThrow('agent_test_session_revision_changed');
     });
-
-    it('propagates the persistence-disabled context through every non-tool layer', async () => {
-        const personaService = {
-            getAgent: jest.fn().mockResolvedValue({
-                config_json: {
-                    language: 'es-CO',
-                    rag: { enabled: true, topK: 2, similarityThreshold: 0.1 },
-                },
-            }),
-        };
-        const llmRouter = { execute: jest.fn().mockResolvedValue({ content: 'ok' }) };
-        const knowledgeService = {
-            tenantHasKnowledge: jest.fn().mockResolvedValue(true),
-            searchRelevant: jest.fn().mockResolvedValue([]),
-        };
-        const businessInfoService = { getPrimary: jest.fn().mockResolvedValue(null) };
-        const promptAssembler = {
-            computeUpcomingDays: jest.fn().mockReturnValue([]),
-            assemble: jest.fn().mockReturnValue('system prompt'),
-        };
-        const tenantsService = { getSchemaName: jest.fn().mockResolvedValue('tenant_test') };
-        const throttle = {
-            hasAiMessageQuota: jest.fn().mockResolvedValue(true),
-            getPlanFeatures: jest.fn().mockResolvedValue({ llmTier: 'tier_3' }),
-            getLlmSpendUsdCents: jest.fn().mockResolvedValue(0),
-            incrementAiMessageCount: jest.fn().mockResolvedValue(1),
-        };
-        const service = new AgentTestService(
-            personaService as any,
-            llmRouter as any,
-            knowledgeService as any,
-            businessInfoService as any,
-            promptAssembler as any,
-            { detect: jest.fn().mockReturnValue('es') } as any,
-            { execute: jest.fn() } as any,
-            tenantsService as any,
-            throttle as any,
-            { populateTurnContext: jest.fn().mockResolvedValue({ failures: [] }) } as any,
-        );
-
-        await service.test('tenant-id', 'agent-id', { message: 'hola' });
-
-        expect(personaService.getAgent).toHaveBeenCalledWith(
-            'tenant-id', 'agent-id', AGENT_TEST_EXECUTION_CONTEXT,
-        );
-        expect(businessInfoService.getPrimary).toHaveBeenCalledWith(
-            'tenant-id', AGENT_TEST_EXECUTION_CONTEXT,
-        );
-        expect(knowledgeService.tenantHasKnowledge).toHaveBeenCalledWith(
-            'tenant-id', AGENT_TEST_EXECUTION_CONTEXT,
-        );
-        expect(knowledgeService.searchRelevant).toHaveBeenCalledWith(
-            'tenant-id',
-            'hola',
-            2,
-            { similarityThreshold: 0.1, executionContext: AGENT_TEST_EXECUTION_CONTEXT },
-        );
-        expect(tenantsService.getSchemaName).toHaveBeenCalledWith(
-            'tenant-id', AGENT_TEST_EXECUTION_CONTEXT,
-        );
-        expect(llmRouter.execute).toHaveBeenCalledWith(expect.objectContaining({
-            executionContext: AGENT_TEST_EXECUTION_CONTEXT,
-            allowedTiers: ['tier_3_efficient', 'tier_4_budget'],
-        }));
-        expect(throttle.incrementAiMessageCount).toHaveBeenCalledWith('tenant-id');
+    it('requires the server eval identity and never accepts an arbitrary customer identity', async () => {
+        const f = agentTurnFixture();
+        await expect(f.service.test('tenant', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', { message: 'hola' }, { evalMode: true })).rejects.toThrow('eval_sandbox_identity_required');
+        const spy = jest.spyOn(f.runtime, 'executeAgentTurn');
+        await f.service.test('tenant', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', { message: 'hola' }, { sandboxContactId: '11111111-1111-4111-8111-111111111111' });
+        expect((spy.mock.calls[0][1] as any).contactId).toBe(AGENT_TEST_SANDBOX_CONTACT_ID);
     });
-
-    it('uses the plan tiers and production cost clamp, then accounts one tested turn', async () => {
-        const { service, llmRouter, throttle } = buildSubject();
-        throttle.getPlanFeatures.mockResolvedValue({
-            llmTier: 'tier_1',
-            llmCostBudgetUsdCents: 500,
+    it('reports missing canonical sandbox instead of calling a domain writer', async () => {
+        const f = agentTurnFixture(); publishTools(f, ['create_appointment', 'search_products']);
+        f.llmRouter.execute.mockResolvedValueOnce({ content: '', toolCalls: [{ id: 'write', function: { name: 'create_appointment', arguments: '{}' } }] });
+        const result = await f.service.test('tenant', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', { message: 'hola' }, {
+            evalMode: true, sandboxContactId: EVAL_SANDBOX_CONTACT_ID, sandboxConversationId: '11111111-1111-4111-8111-111111111111',
         });
-        throttle.getLlmSpendUsdCents.mockResolvedValue(500);
-        llmRouter.execute.mockResolvedValue({ content: 'ok', model: 'budget-model' });
-
-        await service.test('tenant-id', 'agent-id', { message: 'hola' });
-
-        expect(llmRouter.execute).toHaveBeenCalledWith(expect.objectContaining({
-            allowedTiers: ['tier_3_efficient', 'tier_4_budget'],
-        }));
-        expect(throttle.hasAiMessageQuota).toHaveBeenCalledWith('tenant-id');
-        expect(throttle.getLlmSpendUsdCents).toHaveBeenCalledWith('tenant-id');
-        expect(throttle.incrementAiMessageCount).toHaveBeenCalledTimes(1);
+        expect(f.toolExecutor.execute).not.toHaveBeenCalled();
+        expect(result.debug.toolCalls[0].result).toMatchObject({ error: 'canonical_sandbox_not_available', persisted: false });
+        expect(result.debug.toolParity.executableCount).toBe(1);
+    });
+    it('keeps budget failure distinguishable from a successful fallback and invokes no provider', async () => {
+        const f = agentTurnFixture();
+        const result = await f.service.test('tenant', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', { message: 'hola' }, { beforeModelExecution: async () => { throw new Error('eval_daily_budget_exhausted'); } });
+        expect(result.debug.runtimeError).toBe('eval_daily_budget_exhausted');
+        expect(f.llmRouter.execute).not.toHaveBeenCalled();
+        expect(f.throttle.incrementAiMessageCount).not.toHaveBeenCalled();
+        expect(f.prisma.executeInTenantSchema.mock.calls.every((call: any[]) => /^\s*(SELECT|WITH)/i.test(call[1]))).toBe(true);
+    });
+    it('freezes the published learning revision or an explicit empty baseline', async () => {
+        const learning = { getPublishedReleaseSnapshot: jest.fn().mockResolvedValue({ releaseId: 'release', releaseHash: 'hash' }) };
+        const f = agentTurnFixture({ learning }); const snapshot = await f.service.captureSnapshot('tenant', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
+        expect(snapshot).toMatchObject({ learningReleaseId: 'release', learningReleaseHash: 'hash' });
+        learning.getPublishedReleaseSnapshot.mockResolvedValue(null);
+        expect(await f.service.captureSnapshot('tenant', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')).toMatchObject({ learningReleaseId: null, learningReleaseHash: null });
+    });
+    it('prevents concurrent turns from sharing mutable state and makes an expired session explicit', async () => {
+        const f = agentTurnFixture();
+        const first = await f.service.test('tenant', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', { message: 'hola' });
+        let release!: () => void;
+        const blocked = new Promise<void>(resolve => { release = resolve; });
+        let admitted!: () => void;
+        const entered = new Promise<void>(resolve => { admitted = resolve; });
+        const second = f.service.test('tenant', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', { message: 'continúa', runtimeSessionId: first.debug.runtimeSessionId },
+            { beforeModelExecution: async () => { admitted(); await blocked; } });
+        await entered;
+        await expect(f.service.test('tenant', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', { message: 'otra', runtimeSessionId: first.debug.runtimeSessionId })).rejects.toThrow('agent_test_session_busy');
+        release(); await second;
+        await expect(f.service.test('tenant', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', { message: 'hola', runtimeSessionId: '11111111-1111-4111-8111-111111111111' })).rejects.toThrow('agent_test_session_expired');
+    });
+    it('reuses an unchanged validated revision without rereading the persona cache', async () => {
+        const f = agentTurnFixture(); const first = await f.service.test('tenant', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', { message: 'hola' });
+        const second = await f.service.test('tenant', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', { message: 'gracias', runtimeSessionId: first.debug.runtimeSessionId });
+        expect(second.debug.agentRevision).toEqual(first.debug.agentRevision);
+        expect(f.personaService.getAgent).toHaveBeenCalledTimes(1);
+    });
+    it('blocks reuse after KB/FAQ/catalog drift even when the saved persona is identical', async () => {
+        const f=agentTurnFixture();const first=await f.service.test('tenant','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',{message:'hola'});
+        f.revisions.assertCurrent.mockRejectedValue(new Error('evaluation_dependencies_changed:tenant.knowledge_embeddings'));
+        f.llmRouter.execute.mockClear();
+        await expect(f.service.test('tenant','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',{message:'otra duda',runtimeSessionId:first.debug.runtimeSessionId})).rejects.toThrow('knowledge_embeddings');
+        expect(f.llmRouter.execute).not.toHaveBeenCalled();
+    });
+    it('rejects a model result if dependencies changed during its invocation, accounting the spent call',async()=>{
+        const f=agentTurnFixture();const snapshot=await f.service.captureSnapshot('tenant','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
+        f.llmRouter.execute.mockImplementation(async()=>{
+            f.revisions.assertCurrent.mockRejectedValue(new Error('evaluation_dependencies_changed:tenant.policies'));
+            return {content:'This stale answer must not be released',model:'test'};
+        });
+        await expect(f.service.test('tenant','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',{message:'hola'},{agentSnapshot:snapshot})).rejects.toThrow('tenant.policies');
+        expect(f.throttle.incrementAiMessageCount).toHaveBeenCalledTimes(1);
+    });
+    it('does not feed a tool result from changed dependencies into another model invocation',async()=>{
+        const f=agentTurnFixture();publishTools(f,['search_products']);
+        const snapshot=await f.service.captureSnapshot('tenant','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
+        f.llmRouter.execute.mockResolvedValueOnce({content:'',toolCalls:[{id:'read',function:{name:'search_products',arguments:'{}'}}]});
+        f.toolExecutor.execute.mockImplementation(async()=>{
+            f.revisions.assertCurrent.mockRejectedValue(new Error('evaluation_dependencies_changed:tenant.products'));
+            return {items:[{price:999}]};
+        });
+        await expect(f.service.test('tenant','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',{message:'camisa'},{agentSnapshot:snapshot})).rejects.toThrow('tenant.products');
+        expect(f.llmRouter.execute).toHaveBeenCalledTimes(1);
+    });
+    it('rejects a legacy config-only snapshot and tampered frozen MCP/procedure data before using the core',async()=>{
+        const f=agentTurnFixture();const snapshot=await f.service.captureSnapshot('tenant','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
+        const legacy={...snapshot};delete legacy.manifest;
+        await expect(f.service.test('tenant','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',{message:'hola'},{agentSnapshot:legacy})).rejects.toThrow('manifest_required');
+        snapshot.procedures=[{id:'changed'} as any];
+        await expect(f.service.test('tenant','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',{message:'hola'},{agentSnapshot:snapshot})).rejects.toThrow('procedure_integrity');
+        expect(f.llmRouter.execute).not.toHaveBeenCalled();
+    });
+    it('supplies frozen procedure definitions even when the isolated namespace has no procedure table',async()=>{
+        const f=agentTurnFixture();
+        const procedure={id:'procedure-1',name:'Welcome',status:'active',version:2,trigger:{keywords:['consulta']},steps:[]};
+        f.revisions.captureProcedures.mockResolvedValue([procedure]);
+        const snapshot=await f.service.captureSnapshot('tenant','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
+        const fork=jest.spyOn(f.procedureEngine,'forExecution');
+        await f.service.test('tenant','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',{message:'hola'},{agentSnapshot:snapshot});
+        const definitions=(fork.mock.calls[0][0] as {definitions:import('./procedure-engine.service').ProcedureDefinitionStore}).definitions;
+        await expect(definitions.listActive('tenant_isolated')).resolves.toEqual([procedure]);
+        await expect(definitions.getById('tenant_isolated','procedure-1')).resolves.toEqual(procedure);
+        f.revisions.captureProcedures.mockResolvedValue([{...procedure,name:'New live name'}]);
+        await expect(definitions.getById('tenant_isolated','procedure-1')).resolves.toEqual(procedure);
+    });
+    it('preserves composite integrity across durable JSONB serialization without retaining provider secrets',async()=>{
+        const f=agentTurnFixture();f.integrations.getAllHealth.mockResolvedValue({mindbody:{connected:true,lastError:'private-token',credentials:'secret'}});
+        f.revisions.captureProcedures.mockResolvedValue([{id:'procedure',name:'Hello',status:'active',trigger:{keywords:[]},steps:[],version:1,vertical:undefined}]);
+        const captured=await f.service.captureSnapshot('tenant','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
+        const restored=JSON.parse(JSON.stringify(captured));
+        await expect(f.service.assertSnapshotCurrent(restored)).resolves.toBeUndefined();
+        expect(JSON.stringify(restored)).not.toContain('private-token');expect(JSON.stringify(restored)).not.toContain('credentials');
+        expect(restored.manifest.revision).toBe(captured.manifest!.revision);
+    });
+    it('validates the server namespace and threads it through the actual session tool boundary', async () => {
+        const f=agentTurnFixture();publishTools(f,['create_appointment','check_availability','create_payment_link']);
+        const namespace={schemaName:'tenant_eval_11111111_111111111111111111111111',sourceSchema:'tenant_test',tenantId:'tenant',token:'opaque',tables:[],expiresAt:new Date(Date.now()+3600000).toISOString()};
+        const namespaces={assertOwned:jest.fn().mockResolvedValue(undefined)};
+        (f.service as any).namespaces=namespaces;f.tenantsService.getSchemaName.mockResolvedValue('tenant_test');
+        const options={evalMode:true,sandboxContactId:EVAL_SANDBOX_CONTACT_ID,sandboxConversationId:'11111111-1111-4111-8111-111111111111',sandboxNamespace:namespace,sandboxInboundMessageId:'22222222-2222-4222-8222-222222222222'};
+        f.llmRouter.execute.mockResolvedValueOnce({content:'',toolCalls:[{id:'write',function:{name:'create_appointment',arguments:'{}'}}]});
+        await f.service.test('tenant','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',{message:'hola'},options);
+        expect(namespaces.assertOwned).toHaveBeenCalledWith(namespace);
+        expect(f.toolExecutor.execute.mock.calls[0][0]).toBe(namespace.schemaName);
+        expect(f.toolExecutor.execute.mock.calls[0][6]).toMatchObject({evalMode:true,sandboxNamespace:namespace,readOnly:false,executionState:expect.any(Object)});
+        await expect(f.service.test('tenant','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',{message:'hola'},{...options,sandboxNamespace:{...namespace,sourceSchema:'tenant_other'}})).rejects.toThrow('eval_namespace_scope_mismatch');
+        namespaces.assertOwned.mockRejectedValue(new Error('eval_namespace_lease_lost'));
+        await expect(f.service.test('tenant','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',{message:'hola'},options)).rejects.toThrow('eval_namespace_lease_lost');
     });
 
-    it('rejects before the provider when the monthly AI quota is exhausted', async () => {
-        const { service, llmRouter, throttle } = buildSubject();
-        throttle.hasAiMessageQuota.mockResolvedValue(false);
-
-        await expect(service.test('tenant-id', 'agent-id', { message: 'hola' }))
-            .rejects.toMatchObject({ status: 429 });
-
-        expect(llmRouter.execute).not.toHaveBeenCalled();
-        expect(throttle.incrementAiMessageCount).not.toHaveBeenCalled();
-    });
-});
-
-describe('Agent Test production plan routing parity', () => {
-    it.each([
-        ['tier_1', ['tier_1_premium', 'tier_2_standard', 'tier_3_efficient', 'tier_4_budget']],
-        ['tier_2', ['tier_2_standard', 'tier_3_efficient', 'tier_4_budget']],
-        ['tier_3', ['tier_3_efficient', 'tier_4_budget']],
-        ['tier_4', ['tier_4_budget']],
-        [undefined, ['tier_3_efficient', 'tier_4_budget']],
-    ] as const)('maps plan %s to the production tier allowlist', (planTier, expected) => {
-        expect(allowedModelTiersForPlan(planTier)).toEqual(expected);
-    });
-
-    it('does not clamp before budget exhaustion and clamps premium-only access after it', () => {
-        expect(clampModelTiersToBudget(['tier_1_premium'], 99, 100))
-            .toEqual(['tier_1_premium']);
-        expect(clampModelTiersToBudget(['tier_1_premium'], 100, 100))
-            .toEqual(['tier_4_budget']);
-    });
 });

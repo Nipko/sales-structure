@@ -11,7 +11,9 @@
  * - Only ids in this registry can ever reach the UI. A model-emitted marker
  *   with an unknown id is dropped, never rendered.
  * - Tours never change data: they open a screen and highlight where a person
- *   does something. The person still performs the change.
+ *   does something. The person still performs the change. A step may OBSERVE
+ *   whether its own goal is already met (`completedWhen`, in the dashboard
+ *   half); observing reads the screen and writes nothing.
  * - `minRole` is the least-privileged role that can run the tour. A tour that
  *   ends in an editor an admin owns is admin-only; supervisors get review tours.
  */
@@ -108,7 +110,7 @@ export const GUIDED_TOURS: readonly GuidedTourDefinition[] = [
         id: 'appointments_setup',
         route: '/admin/appointments',
         minRole: 'tenant_admin',
-        qualityCodes: ['tool_appointments'],
+        qualityCodes: ['tool_appointments', 'test_drive_service', 'test_drive_staff'],
         kbArticleIds: ['citas-calendarios'],
     },
     {
@@ -181,6 +183,8 @@ export interface GuidedTourStartDetail {
     /** Optional quality context so the runner can keep the focus banner in sync. */
     signalId?: string;
     agentId?: string;
+    channelType?: 'whatsapp' | 'instagram' | 'messenger' | 'telegram' | 'web_chat';
+    verticalCatalogRoute?: string;
 }
 
 /**
@@ -272,4 +276,57 @@ export function extractGuidedTourMarker(
         .replace(/\n{3,}/g, '\n\n')
         .trim();
     return { text: stripped, tourId };
+}
+
+/**
+ * What a run observed about one step.
+ *
+ * `unknown` is not a polite `false`. It is the answer when the step's anchor was
+ * never on screen, or when the screen shows nothing that settles the question.
+ * A tour that reports `done` without having seen it is worse than a tour that
+ * reports nothing at all, because the person stops looking.
+ */
+export type GuidedTourStepStatus = 'done' | 'pending' | 'unknown';
+
+/**
+ * How a run ended.
+ *
+ * `unverified` is the honest name for "walked through": the person saw every
+ * step and the tour has no evidence that anything is configured. Only
+ * `confirmed` may be phrased to the person as "listo".
+ */
+export type GuidedTourOutcome = 'confirmed' | 'incomplete' | 'unverified';
+
+export interface GuidedTourOutcomeSummary {
+    outcome: GuidedTourOutcome;
+    done: number;
+    pending: number;
+    unknown: number;
+    /** Steps that make a claim at all — never the number of steps in the tour. */
+    checked: number;
+}
+
+/**
+ * Fold the per-step observations into the end state of a run.
+ *
+ * `pending` outranks `unknown`: one thing we watched stay empty is real
+ * evidence, while a step we could not read is only an absence. `confirmed`
+ * needs every observation to be `done` AND at least one observation to exist,
+ * so a tour where nothing was checkable can never end up claiming success.
+ */
+export function summarizeGuidedTourOutcome(
+    statuses: readonly GuidedTourStepStatus[],
+): GuidedTourOutcomeSummary {
+    let done = 0;
+    let pending = 0;
+    let unknown = 0;
+    for (const status of statuses) {
+        if (status === 'done') done += 1;
+        else if (status === 'pending') pending += 1;
+        else unknown += 1;
+    }
+    const outcome: GuidedTourOutcome = pending > 0
+        ? 'incomplete'
+        : done > 0 && unknown === 0 ? 'confirmed' : 'unverified';
+    return { outcome, done, pending, unknown, checked: statuses.length };
 }

@@ -31,6 +31,7 @@ export class ToolApprovalController {
         @Param('tenantId') tenantId: string,
         @Query('status') status?: string,
         @Query('limit') limit?: string,
+        @Query('conversationId') conversationId?: string,
     ) {
         const allowedStatuses = new Set(['pending', 'approved', 'rejected', 'expired']);
         if (status && !allowedStatuses.has(status)) {
@@ -44,6 +45,7 @@ export class ToolApprovalController {
             tenantId,
             status: status as ToolApprovalStatus | undefined,
             limit: parsedLimit,
+            conversationId,
         });
         return { success: true, data };
     }

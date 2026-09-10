@@ -48,6 +48,10 @@ const BLOCKER_TARGETS: Record<string, (agentId: string) => string> = {
   tool_faqs: () => "/admin/knowledge/faqs",
   tool_policies: () => "/admin/knowledge",
   tool_appointments: () => "/admin/appointments",
+  tool_vehicles: () => "/admin/vehicles",
+  test_drive_permissions: (id) => `/admin/agent/${id}`,
+  test_drive_service: () => "/admin/appointments",
+  test_drive_staff: () => "/admin/appointments",
 };
 
 /** Recommendation codes arrive as `fix_<check>`; both forms name the same check. */

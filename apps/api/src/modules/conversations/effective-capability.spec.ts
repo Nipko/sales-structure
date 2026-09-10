@@ -52,10 +52,24 @@ function build(options: {
         throttle as any, readiness as any, regionalProfile as any,
     );
     jest.spyOn((service as any).logger, 'warn').mockImplementation(() => undefined);
-    return { service, throttle, readiness };
+    return { service, throttle, readiness, regionalProfile };
 }
 
 describe('el subtipo es un techo, no una sugerencia', () => {
+    it('uses the core country and jurisdiction without repeating the regional source lookup', async () => {
+        const f = build();
+        f.regionalProfile.resolve.mockRejectedValue(new Error('regional_read_forbidden'));
+        const input = { tenantId, schemaName, industry: 'retail', subType: 'moda', toolsConfig: {},
+            operatingCountry: 'MX', jurisdiction: 'MX' };
+        const contract = await f.service.resolve(input);
+        expect(contract.decisionInputs).toMatchObject({ operatingCountry: 'MX', jurisdiction: 'MX' });
+        expect(f.regionalProfile.resolve).not.toHaveBeenCalled();
+        expect(f.throttle.getPlanFeatures).toHaveBeenCalled();
+        f.regionalProfile.resolve.mockResolvedValue({ countryPackId: 'es-CO', operatingCountry: { value: 'CO' } });
+        const fallback = await f.service.resolve({ ...input, jurisdiction: undefined });
+        expect(fallback.decisionInputs?.jurisdiction).toBe('CO');
+        expect(f.regionalProfile.resolve).toHaveBeenCalledTimes(1);
+    });
     it('una familia fuera del subtipo se descarta con motivo', async () => {
         const { service } = build();
 

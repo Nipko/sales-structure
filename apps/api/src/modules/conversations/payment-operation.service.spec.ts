@@ -138,7 +138,7 @@ describe('PaymentOperationService provider-neutral contract', () => {
             // es una acción de dinero y sigue el mismo gate que la creación.
             discountsAvailable: false,
         });
-        expect(provider.getRuntimeCapability).toHaveBeenCalledWith(tenantId);
+        expect(provider.getRuntimeCapability).toHaveBeenCalledWith(tenantId, undefined);
     });
 
     it('fails status capability closed when the local ledger readiness check fails', async () => {
@@ -458,7 +458,7 @@ describe('PaymentOperationService provider-neutral contract', () => {
             preparation.payable,
         );
 
-        expect(throttle.isFeatureEnabled).toHaveBeenCalledWith(tenantId, 'customerPayments');
+        expect(throttle.isFeatureEnabled).toHaveBeenCalledWith(tenantId, 'customerPayments', undefined);
         expect(provider.createPaymentLink).not.toHaveBeenCalled();
         expect(result).toMatchObject({
             error: 'customer_payments_not_in_plan',

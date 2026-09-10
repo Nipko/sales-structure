@@ -2,6 +2,7 @@
 
 import { PageHeader } from "@/components/ui/page-header";
 import { HelpPanel } from "@/components/ui/help-panel";
+import { LoadFailureNotice } from "@/components/ui/load-failure";
 import { useState, useEffect, useCallback } from "react";
 import { useTranslations } from "next-intl";
 import { useTenant } from "@/contexts/TenantContext";
@@ -33,6 +34,8 @@ export default function CompliancePage() {
   const [optOuts, setOptOuts] = useState<any[]>([]);
   const [deletions, setDeletions] = useState<any[]>([]);
   const [auditLog, setAuditLog] = useState<any[]>([]);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [auditFailed, setAuditFailed] = useState(false);
   const [showModal, setShowModal] = useState<"create-legal" | "edit-legal" | "optout" | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [editingLegal, setEditingLegal] = useState<any | null>(null);
@@ -54,6 +57,10 @@ export default function CompliancePage() {
 
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 2500); };
 
+  // The five lists share one `Promise.all`, so one rejection used to blank all
+  // of them at once. "No hay bajas de consentimiento" then reads as permission
+  // to message someone who withdrew it — the one screen where an empty state
+  // invented by a network error has a legal cost.
   const loadAll = useCallback(async () => {
     if (!activeTenantId) return;
     try {
@@ -71,15 +78,25 @@ export default function CompliancePage() {
       if (Array.isArray(dr)) setDeletions(dr);
       if (stats?.success) setOptOutStats(stats.data);
       if (Array.isArray(ag)) setAgents(ag);
-    } catch (err) { console.error(err); }
+      setLoadFailed(false);
+    } catch (err) {
+      console.error(err);
+      setLegalTexts([]); setConsents([]); setOptOuts([]); setDeletions([]); setOptOutStats(null);
+      setLoadFailed(true);
+    }
   }, [activeTenantId]);
 
   const loadAuditLog = useCallback(async () => {
     if (!activeTenantId) return;
     try {
       const data = await api.getComplianceAuditLog(activeTenantId);
-      if (Array.isArray(data)) setAuditLog(data);
-    } catch { }
+      if (!Array.isArray(data)) throw new Error("compliance_audit_unavailable");
+      setAuditLog(data);
+      setAuditFailed(false);
+    } catch {
+      setAuditLog([]);
+      setAuditFailed(true);
+    }
   }, [activeTenantId]);
 
   useEffect(() => { loadAll(); }, [loadAll]);
@@ -250,6 +267,13 @@ export default function CompliancePage() {
           tips={tHelp.raw("compliance.tips") as string[]}
           mediaKey="compliance"
         />
+
+        {(tab === "audit" ? auditFailed : loadFailed) && (
+          <LoadFailureNotice
+            className="mb-5"
+            onRetry={() => { void (tab === "audit" ? loadAuditLog() : loadAll()); }}
+          />
+        )}
 
         {/* Info banner */}
         <div className="mb-5 px-4 py-3 rounded-xl bg-blue-500/5 border border-blue-500/20 flex items-start gap-3">

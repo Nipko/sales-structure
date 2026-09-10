@@ -59,9 +59,10 @@ export class ManagedService {
     }
 
     private async ensureColumn(schemaName: string): Promise<void> {
-        try {
-            await this.prisma.executeInTenantSchema(schemaName, `ALTER TABLE conversations ADD COLUMN IF NOT EXISTS resolution_verified BOOLEAN`, []);
-        } catch { /* noop */ }
+        // Sin try/catch: el que habia atrapaba y volvia a lanzar, que es lo
+        // mismo que no atrapar. Si un ALTER falla, el llamador se entera.
+        await this.prisma.executeInTenantSchema(schemaName, `ALTER TABLE conversations ADD COLUMN IF NOT EXISTS resolution_verified BOOLEAN`, []);
+        await this.prisma.executeInTenantSchema(schemaName, `ALTER TABLE conversations ADD COLUMN IF NOT EXISTS resolution_verification_source TEXT`, []);
     }
 
     /** Resolution metrics for one tenant over a period. */
@@ -76,7 +77,8 @@ export class ManagedService {
             `SELECT
                 COUNT(*) FILTER (WHERE resolution_type IS NOT NULL)::int AS closed,
                 COUNT(*) FILTER (WHERE resolution_type = 'ai_resolved')::int AS ai_resolved,
-                COUNT(*) FILTER (WHERE resolution_type = 'ai_resolved' AND resolution_verified = true)::int AS ai_verified
+                COUNT(*) FILTER (WHERE resolution_type = 'ai_resolved' AND resolution_verified = true AND resolution_verification_source = 'operational_evidence')::int AS ai_verified,
+                COUNT(*) FILTER (WHERE resolution_type IS NOT NULL AND resolution_verified IS NOT NULL AND resolution_verification_source = 'operational_evidence')::int AS verified_known
              FROM conversations
              WHERE created_at >= $1::timestamptz AND created_at <= $2::timestamptz`,
             [s, e],
@@ -85,6 +87,7 @@ export class ManagedService {
         const closed = Number(r.closed) || 0;
         const aiResolved = Number(r.ai_resolved) || 0;
         const aiVerified = Number(r.ai_verified) || 0;
+        const verifiedKnown = Number(r.verified_known) || 0;
         return {
             periodStart: s,
             periodEnd: e,
@@ -92,11 +95,13 @@ export class ManagedService {
             aiResolved,
             aiVerified,
             resolutionRate: closed > 0 ? Math.round((aiResolved / closed) * 10000) / 100 : 0,
-            verifiedResolutionRate: closed > 0 ? Math.round((aiVerified / closed) * 10000) / 100 : 0,
+            verificationCoverage: { known: verifiedKnown, unknown: Math.max(0, closed - verifiedKnown) },
+            verifiedResolutionRate: closed > 0 && verifiedKnown === closed ? Math.round((aiVerified / closed) * 10000) / 100 : null,
         };
     }
 
-    private status(verifiedRate: number, target: number): 'met' | 'at_risk' | 'breached' {
+    private status(verifiedRate: number | null, target: number): 'met' | 'at_risk' | 'breached' | 'unknown' {
+        if (verifiedRate == null) return 'unknown';
         if (verifiedRate >= target) return 'met';
         if (verifiedRate >= target - 5) return 'at_risk';
         return 'breached';
@@ -119,7 +124,7 @@ export class ManagedService {
             } catch (e: any) {
                 this.logger.warn(`[Managed] resolution failed for ${tenant.id}: ${e.message}`);
             }
-            const verifiedRate = resolution?.verifiedResolutionRate ?? 0;
+            const verifiedRate = resolution?.verifiedResolutionRate ?? null;
             out.push({
                 tenantId: tenant.id,
                 name: tenant.name,
@@ -129,7 +134,7 @@ export class ManagedService {
                 startedAt: cfg.startedAt ?? null,
                 notes: cfg.notes ?? null,
                 resolution,
-                deltaPct: resolution ? Math.round((verifiedRate - target) * 100) / 100 : null,
+                deltaPct: verifiedRate != null ? Math.round((verifiedRate - target) * 100) / 100 : null,
                 status: resolution ? this.status(verifiedRate, target) : 'unknown',
             });
         }
@@ -146,7 +151,7 @@ export class ManagedService {
         return {
             config: { ...cfg, resolutionTargetPct: target },
             resolution,
-            deltaPct: Math.round((resolution.verifiedResolutionRate - target) * 100) / 100,
+            deltaPct: resolution.verifiedResolutionRate == null ? null : Math.round((resolution.verifiedResolutionRate - target) * 100) / 100,
             status: this.status(resolution.verifiedResolutionRate, target),
         };
     }

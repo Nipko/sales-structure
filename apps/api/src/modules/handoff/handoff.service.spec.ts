@@ -7,7 +7,11 @@ describe('HandoffService structured handoff', () => {
     const contactId = '33333333-3333-4333-8333-333333333333';
 
     function makeHarness() {
+        // Status, resolution flag and internal note now commit as one transition.
+        const transition = jest.fn().mockResolvedValue([]);
         const prisma: any = {
+            transactionInTenantSchema: jest.fn().mockImplementation(
+                async (_schema: string, callback: any) => callback(transition)),
             getTenantSchemaName: jest.fn().mockResolvedValue(schemaName),
             tenant: {
                 findUnique: jest.fn().mockImplementation(async (args: any) => (
@@ -53,7 +57,7 @@ describe('HandoffService structured handoff', () => {
             del: jest.fn().mockResolvedValue(undefined),
             get: jest.fn(),
         };
-        const events = { emit: jest.fn().mockReturnValue(true) };
+        const events = { emit: jest.fn().mockReturnValue(true), emitAsync: jest.fn().mockResolvedValue([]) };
         const email = { send: jest.fn().mockResolvedValue(undefined) };
         const templates = { renderAndSend: jest.fn() };
         const llm = {
@@ -79,7 +83,7 @@ describe('HandoffService structured handoff', () => {
             { runExclusive: jest.fn() } as any,
         );
         jest.spyOn(service as any, 'tryAutoAssign').mockResolvedValue(null);
-        return { service, prisma, redis, events, llm, aiResolution };
+        return { service, prisma, redis, events, llm, aiResolution, transition };
     }
 
     it('persists and emits the structured summary while preserving the legacy string', async () => {
@@ -103,11 +107,11 @@ describe('HandoffService structured handoff', () => {
             'human_request',
         );
 
-        const persistenceCall = h.prisma.executeInTenantSchema.mock.calls.find((call: any[]) =>
-            String(call[1]).includes('handoff_summary = $3::jsonb'));
+        const persistenceCall = h.transition.mock.calls.find((call: any[]) =>
+            String(call[0]).includes('handoff_summary = $3::jsonb'));
         expect(persistenceCall).toBeDefined();
-        const metadataHandoff = JSON.parse(persistenceCall[2][1]);
-        const structured = JSON.parse(persistenceCall[2][2]);
+        const metadataHandoff = JSON.parse(persistenceCall[1][1]);
+        const structured = JSON.parse(persistenceCall[1][2]);
         expect(metadataHandoff.summary).toEqual(expect.any(String));
         expect(metadataHandoff.structuredSummary).toEqual(structured);
         expect(structured).toMatchObject({
@@ -120,14 +124,20 @@ describe('HandoffService structured handoff', () => {
         expect(result.summary).toEqual(expect.any(String));
         expect(result.structuredSummary).toEqual(structured);
 
-        expect(h.events.emit).toHaveBeenCalledWith('handoff.escalated', expect.objectContaining({
-            tenantId,
-            schemaName,
-            conversationId,
-            summary: result.summary,
-            structuredSummary: structured,
-            traceId: 'request-trace-1',
-        }));
+        // One event per destination. The single `handoff.escalated` used to
+        // reach six consumers at once, so a failure in any of them re-announced
+        // the transfer to the five that had already succeeded.
+        for (const destination of ['inbox', 'crm', 'webhooks', 'push', 'slack', 'sms']) {
+            expect(h.events.emitAsync).toHaveBeenCalledWith(`handoff.escalated.${destination}`,
+                expect.objectContaining({
+                    tenantId,
+                    schemaName,
+                    conversationId,
+                    summary: result.summary,
+                    structuredSummary: structured,
+                    traceId: 'request-trace-1',
+                }));
+        }
         const cached = JSON.parse(h.redis.set.mock.calls[0][1]);
         expect(cached.summary).toBe(result.summary);
         expect(cached.structuredSummary).toEqual(structured);

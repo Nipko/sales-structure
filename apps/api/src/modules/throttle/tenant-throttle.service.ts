@@ -1,8 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { persistenceDisabled, type ServiceExecutionContext } from '../../common/types/execution-context';
 import { PrismaService } from '../prisma/prisma.service';
 import { replaceTenantSettingsBranch } from '../../common/utils/tenant-settings-branch.util';
 import { RedisService } from '../redis/redis.service';
-import { FEATURE_OVERRIDE_KEYS, OVERRIDABLE_QUOTA_KEYS, isOverridableQuotaKey, CHANNEL_ACCOUNT_KEYS } from './plan-features.registry';
+import { OVERRIDABLE_QUOTA_KEYS, isOverridableQuotaKey, CHANNEL_ACCOUNT_KEYS } from './plan-features.registry';
+import { applyPlanFeatureOverrides } from './plan-feature-overrides';
 
 /**
  * Plan-based rate limiting and feature gating for multi-tenant fairness.
@@ -158,15 +160,15 @@ export class TenantThrottleService {
      * Returns a flat object with all feature keys from the seed.
      * Callers should access specific keys (e.g. result.maxAgents).
      */
-    async getPlanFeatures(tenantId: string): Promise<Record<string, any>> {
+    async getPlanFeatures(tenantId: string, executionContext?: ServiceExecutionContext): Promise<Record<string, any>> {
         const cacheKey = `plan_features:${tenantId}`;
-        const cached = await this.redis.getJson(cacheKey);
+        const cached = persistenceDisabled(executionContext) ? null : await this.redis.getJson(cacheKey);
         if (cached) {
             const overrides = await this.getQuotaOverrides(tenantId);
             return this.applyOverrides(cached as Record<string, any>, overrides);
         }
 
-        const plan = await this.getTenantPlan(tenantId);
+        const plan = await this.getTenantPlan(tenantId, executionContext);
         const row = await this.prisma.billingPlan.findUnique({
             where: { slug: plan },
             select: { maxAgents: true, maxAiMessages: true, features: true },
@@ -179,29 +181,22 @@ export class TenantThrottleService {
             maxAiMessages: row?.maxAiMessages ?? 0,
         };
 
-        await this.redis.setJson(cacheKey, base, FEATURES_CACHE_TTL);
+        if (!persistenceDisabled(executionContext)) await this.redis.setJson(cacheKey, base, FEATURES_CACHE_TTL);
 
         const overrides = await this.getQuotaOverrides(tenantId);
         return this.applyOverrides(base, overrides);
     }
 
     private applyOverrides(base: Record<string, any>, overrides: QuotaOverrides): Record<string, any> {
-        const merged: Record<string, any> = { ...base };
-        // Apply every overridable flat feature/limit key present as a number.
-        // (Rate-limit keys are applied separately in resolveLimits.)
-        for (const key of FEATURE_OVERRIDE_KEYS) {
-            const ov = (overrides as Record<string, any>)[key];
-            if (typeof ov === 'number') merged[key] = ov;
-        }
-        return merged;
+        return applyPlanFeatureOverrides(base, overrides);
     }
 
     /**
      * Check if a boolean feature flag is enabled for this tenant's plan.
      * Returns false if the key doesn't exist.
      */
-    async isFeatureEnabled(tenantId: string, featureKey: string): Promise<boolean> {
-        const features = await this.getPlanFeatures(tenantId);
+    async isFeatureEnabled(tenantId: string, featureKey: string, executionContext?: ServiceExecutionContext): Promise<boolean> {
+        const features = await this.getPlanFeatures(tenantId, executionContext);
         return features[featureKey] === true;
     }
 
@@ -439,9 +434,9 @@ export class TenantThrottleService {
     /**
      * Resolve tenant plan with Redis caching (5 min TTL).
      */
-    async getTenantPlan(tenantId: string): Promise<string> {
+    async getTenantPlan(tenantId: string, executionContext?: ServiceExecutionContext): Promise<string> {
         const cacheKey = `tenant_plan:${tenantId}`;
-        const cached = await this.redis.get(cacheKey);
+        const cached = persistenceDisabled(executionContext) ? null : await this.redis.get(cacheKey);
         if (cached) return cached;
 
         try {
@@ -450,9 +445,10 @@ export class TenantThrottleService {
                 select: { plan: true },
             });
             const plan = tenant?.plan || DEFAULT_PLAN;
-            await this.redis.set(cacheKey, plan, PLAN_CACHE_TTL);
+            if (!persistenceDisabled(executionContext)) await this.redis.set(cacheKey, plan, PLAN_CACHE_TTL);
             return plan;
-        } catch {
+        } catch (error) {
+            if (persistenceDisabled(executionContext)) throw error;
             return DEFAULT_PLAN;
         }
     }

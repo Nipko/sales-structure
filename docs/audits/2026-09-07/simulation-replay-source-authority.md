@@ -1,0 +1,39 @@
+# Procedencia y retiro de replays de Simulation
+
+La selección histórica anterior copiaba textos de cualquier conversación, sin registrar sus mensajes fuente ni comprobarlos al reutilizar un baseline. Un borrado del contacto no retiraba esas copias. La nueva ruta captura las fuentes al iniciar la prueba y conserva su autoridad evaluativa por separado del aprendizaje.
+
+## Contrato
+
+- El actor autenticado con rol de QA inicia `scenarioSource: replay`. Ese acto autoriza el conjunto capturado para `simulation_replay`; no constituye consentimiento comercial del cliente ni publica ejemplos de aprendizaje.
+- Se seleccionan conversaciones del agente y canal solicitados, excluyendo contactos con tombstone. Cada grant conserva actor y fecha, conversación/contacto/agente/canal, ocho IDs de mensajes como máximo en orden `created_at,id`, `qa_revision`, hash de contenido y hash de la definición exacta. No se agregan mensajes a una ejecución existente.
+- Los grants viven en `simulation_runs.replay_authority`, un registro de control ya excluido del manifiesto. Un baseline mantiene referencia al grant original y debe tener el mismo agente y canal. Los jobs BullMQ contienen sólo tenant/run IDs.
+- Lectura de resultados, baseline, retry, cada turno externo, callbacks anteriores a modelo/herramienta, judge y persistencia revalidan fuente y grant. Un resultado aprobado por el judge no reemplaza esta comprobación.
+- Los usos externos mantienen el fence compartido `agent-privacy:<schema>`. No mantienen bloqueada la fila de conversación durante el proveedor. Se vuelve a comprobar la revisión al terminar; los commits adquieren brevemente `FOR SHARE NOWAIT` para evitar publicar contra una edición concurrente.
+
+## Borrado y retiro
+
+`POST /simulation/:tenantId/:runId/retire` usa los guards existentes y permite `super_admin`, `tenant_admin` y `tenant_supervisor`. Devuelve `{success:true,data:{retired:true}}`. Retira también descendientes baseline. El retiro es terminal: una prueba nueva requiere una nueva captura autorizada.
+
+La retención se ejecuta dentro del fence exclusivo de Compliance, con todos los contactos vinculados. Vacía definiciones, resultados, resumen, snapshots, grants y scores; conserva el estado `retired` con código `simulation_replay_source_unavailable`. Los workers atrasados no pueden volver a persistir contenido ni cambiar ese estado. La lectura/lista devuelve resultados vacíos y no expone un resumen antiguo. Los replays históricos sin procedencia se retiran al migrar; el borrado también elimina su linaje antes de la migración.
+
+Antes de copiar texto a `tenant_eval_*`, se confirma el lease en `simulation_runs.replay_namespace_leases` en su propia transacción, antes de abrir el fence de uso externo. Adquirir otro lock compartido desde una segunda conexión dentro del fence externo podría bloquearse detrás de un borrado exclusivo en espera. Si el borrado gana entre el registro y el uso, retira el lease y el siguiente guard rechaza la copia. Así un crash después de copiar el inbound no pierde su vínculo de retención. El retiro valida schema de origen, tenant y token propietario del namespace y reutiliza el teardown canónico: bloqueo por namespace, eliminación de su grafo interno con `RESTRICT` y eliminación del schema con `RESTRICT`. No usa `CASCADE` en producción ni toca namespaces cuyo propietario no coincida.
+
+## Evidencia y límites
+
+La suite `simulation-replay.postgres.spec.ts` usa Prisma real y una base desechable de PostgreSQL. Cubre captura, canal, actor, tombstones, cambio antes/durante uso externo, borrado concurrente, baseline, retry, alteración de payload/IDs, worker completo, fallo durante judge, legacy y copia persistida tras crash. La prueba de namespace verifica desde otra conexión que el lease ya quedó confirmado antes de escribir texto y que el retiro elimina el schema.
+
+El manifiesto global permanece intacto. El tráfico operativo todavía puede invalidar una evaluación por sus otras dependencias; este lote no certifica una evaluación fluida en un tenant activo. Un proveedor que ya recibió una solicitud válida no puede desrecibirla; el fence serializa el borrado respecto de ese uso y bloquea los siguientes. No se reconstruye autoridad para texto histórico desconocido ni se publica aprendizaje automáticamente.
+
+La interfaz incorpora retiro explícito con confirmación, estado terminal y explicación en es/en/pt/fr. Los fallos de consulta ocultan evidencia previa; una consulta atrasada no reemplaza una selección más reciente. El cambio de tenant reinicia el estado. Resultados completados se revalidan al recuperar el foco y periódicamente; un resultado retirado desaparece también del drawer y deja de ser baseline elegible. Esto no puede retirar texto que una persona ya hubiera leído o copiado fuera de la aplicación.
+
+La auditoría adicional reprodujo otro ciclo concreto: Replay mantenía el lock compartido de privacidad; el borrado esperaba el exclusivo; Learning abría una segunda transacción y solicitaba otro compartido, que PostgreSQL dejaba detrás del borrado. Replay esperaba a Learning y el borrado esperaba a Replay. La reproducción previa terminó por lock_timeout, sin llamar al proveedor.
+
+La corrección usa withAgentSourceFence con AsyncLocalStorage privado: Replay y Learning conservan todas sus comprobaciones de origen y comparten la misma conexión y transacción cuando coinciden instancia Prisma y schema. Un scope ajeno, cerrado o usado fuera de su vida útil se rechaza. Esto no convierte los comandos de negocio ni transactionInTenantSchema en transacciones reentrantes. El retiro exclusivo de un Replay anidado inválido se difiere hasta que finaliza el propietario exterior, sin tomar el exclusivo dentro del lock compartido.
+
+La regresión PostgreSQL usa LearningService.runtimeDataSourceAuthority real con una publicación válida y proveedor simulado: encola primero el borrado exclusivo, comprueba pg_backend_pid antes y después de Learning, exige una sola transacción de fuente y confirma que el borrado completa sólo después de salir de Replay. También comprueba la revocación de una fuente Inbox independiente durante la respuesta del proveedor y el retiro diferido de un Replay anidado inválido. El lock_timeout acota el fallo con la implementación anterior; las pruebas no dependen de un proveedor externo ni imprimen conversaciones privadas.
+
+Validación del candidato exacto contra `6925009c`: TypeScript de API y dashboard aprobado; 12 suites de API / 171 casos aprobados por bloques, incluidos 72 con PostgreSQL y Prisma (Replay 19, Inbox Learning 51 y Learning evidence 2), seis del helper de fence y el bootstrap de NestJS. UI: dos suites / 27 casos, incluidos 13 de Replay en cuatro idiomas y 14 de revisión de agentes. No hubo casos omitidos. El primer intento de Inbox usó por error la base efímera sin pgvector y falló en preparación; sus 51 casos se repitieron y aprobaron en la base efímera con pgvector. El resto no se repitió ni se sumó dos veces.
+
+El manifiesto SHA-256 y los logs por bloque están en `scratch/replay-commit`; el compilador utilizó exclusivamente las fuentes de la exportación candidata, sin fuentes de trabajo ajenas. La última actualización de este informe sólo añade evidencia documental al mismo contenido de código probado. Las pruebas UI renderizan los cuatro idiomas; no constituyen una inspección visual en navegador.
+
+Verificación final integrada sobre `cdcb84c5`: se adaptó únicamente el contexto del parche de Compliance para conservar el borrado de recibos de mascotas ya registrado. La copia exacta del índice pasó **14 suites / 197 pruebas API en una ejecución completa**, incluidas las regresiones de borrado y comandos de mascotas, más **2 suites / 27 pruebas dashboard**. TypeScript API/dashboard sobre el índice y whitespace aprobados. Estos casos se solapan con la batería candidata y no se suman como cobertura adicional.

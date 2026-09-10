@@ -11,7 +11,7 @@ import {
     MessageSquare, CheckCircle, Check,
     Phone, Sparkles, Layers, ArrowRightLeft,
     AlertCircle, ArrowRight, Sprout, Clock, XCircle, LogOut,
-    AlertTriangle, Shield, Timer, Plus, Trash2,
+    AlertTriangle, Shield, Timer, Plus, Trash2, HelpCircle,
 } from "lucide-react";
 import WhatsAppEmbeddedSignup, { isKnownWhatsAppWarning } from "./WhatsAppEmbeddedSignup";
 import WhatsAppPrerequisites from "./WhatsAppPrerequisites";
@@ -25,6 +25,7 @@ import {
 import { guidedTourAnchorId } from "@/lib/guided-tours";
 import { DisconnectChannelModal } from "@/components/ui/disconnect-channel-modal";
 import { HelpPanel } from "@/components/ui/help-panel";
+import { LoadFailureNotice } from "@/components/ui/load-failure";
 
 const ROUTE_ICONS: Record<WhatsAppConnectRouteId, typeof Layers> = {
     coexistence: Layers,
@@ -55,6 +56,7 @@ export default function WhatsAppSetupPage() {
     const [connectWarnings, setConnectWarnings] = useState<string[]>([]);
     const [showAddNumber, setShowAddNumber] = useState(false);
     const [status, setStatus] = useState<any>(null);
+    const [statusUnavailable, setStatusUnavailable] = useState(false);
     const [templates, setTemplates] = useState<any[]>([]);
     const [config, setConfig] = useState<{ webhookUrl?: string; verifyToken?: string } | null>(null);
     const [phoneNumber, setPhoneNumber] = useState("");
@@ -74,7 +76,15 @@ export default function WhatsAppSetupPage() {
                 setPhoneNumber(channelData.display_phone_number || channelData.metadata?.displayPhoneNumber || channelData.accountId || "");
                 setPhoneNumberId(channelData.phone_number_id || channelData.metadata?.phoneNumberId || channelData.accountId || "");
             }
-        } catch (e) { console.error("Failed to load WA status", e); }
+            setStatusUnavailable(false);
+        } catch (e) {
+            // A failed status read is not a disconnected number. This page used
+            // to paint the red "Desconectado" pill from a network error, on the
+            // one screen a tenant checks when messages stop arriving.
+            console.error("Failed to load WA status", e);
+            setStatus(null);
+            setStatusUnavailable(true);
+        }
         try {
             const tplRes = await api.fetch("/channels/whatsapp/templates");
             setTemplates(tplRes || []);
@@ -165,12 +175,18 @@ export default function WhatsAppSetupPage() {
                 <div id={guidedTourAnchorId("whatsapp-status")} className="flex items-center gap-3">
                     <div className={cn(
                         "flex items-center gap-2 px-4 py-2 rounded-full text-[13px] font-semibold border",
-                        isConnected
-                            ? "bg-[rgba(46,204,113,0.1)] text-[#2ecc71] border-[rgba(46,204,113,0.2)]"
-                            : "bg-[rgba(231,76,60,0.1)] text-[#e74c3c] border-[rgba(231,76,60,0.2)]"
+                        statusUnavailable
+                            ? "bg-[rgba(255,170,0,0.12)] text-[var(--warning)] border-[rgba(255,170,0,0.25)]"
+                            : isConnected
+                                ? "bg-[rgba(46,204,113,0.1)] text-[#2ecc71] border-[rgba(46,204,113,0.2)]"
+                                : "bg-[rgba(231,76,60,0.1)] text-[#e74c3c] border-[rgba(231,76,60,0.2)]"
                     )}>
-                        {isConnected ? <CheckCircle size={16} /> : <AlertCircle size={16} />}
-                        {isConnected ? t("connected") : t("disconnected")}
+                        {statusUnavailable
+                            ? <HelpCircle size={16} aria-hidden="true" />
+                            : isConnected
+                                ? <CheckCircle size={16} aria-hidden="true" />
+                                : <AlertCircle size={16} aria-hidden="true" />}
+                        {statusUnavailable ? t("statusUnknown") : isConnected ? t("connected") : t("disconnected")}
                     </div>
                     {isConnected && (
                         <button
@@ -191,6 +207,12 @@ export default function WhatsAppSetupPage() {
                 mediaKey="channelsWhatsapp"
                 tourId="first_channel_whatsapp"
             />
+
+            {/* Everything below reads from a status we could not fetch, so say
+                so once instead of letting each section assert an empty answer. */}
+            {statusUnavailable && (
+                <LoadFailureNotice className="mb-6" onRetry={() => { void loadData(); }} />
+            )}
 
             {/* Meta conectó, pero con reservas. Sin esto la persona veía "conectado"
                 y se enteraba de la verificación pendiente cuando fallaba un envío. */}

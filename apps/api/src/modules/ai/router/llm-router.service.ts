@@ -1,7 +1,10 @@
 import { Injectable, Logger, Inject } from '@nestjs/common';
+import { createHash } from 'crypto';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ModelTier, RoutingFactors, RoutingDecision } from '@parallext/shared';
 import { ILLMProvider, LLMRequestOptions, LLMResponse } from '../interfaces/illm-provider.interface';
+import { LLMSourceAuthorityUnavailable, type LLMSourceAuthority } from '../interfaces/llm-source-authority';
+import { generateWithSourceAuthority } from './llm-source-attempt';
 import { RedisService } from '../../redis/redis.service';
 import { LlmKeyService } from '../../settings/llm-key.service';
 import type { ServiceExecutionContext } from '../../../common/types/execution-context';
@@ -12,7 +15,7 @@ import {
 
 type TaskType = 'conversation' | 'tool_calling';
 
-interface ModelConfig {
+export interface ModelConfig {
     id: string;
     provider: string;
     tier: ModelTier;
@@ -28,6 +31,12 @@ interface ModelConfig {
 // Rates are USD per 1k tokens (provider list price / 1000), input vs output
 // separated because output is typically 3-5× input. Update when providers
 // change pricing. costPer1kTokens is a rough blended figure for display only.
+/**
+ * The one catalogue. Anything that needs to know what a model costs — the
+ * router at runtime, a certification plan that has to state a maximum spend
+ * before anyone authorises it — reads THIS, because a second copy of a price
+ * list is a price list that will be wrong on the day it matters.
+ */
 const MODEL_REGISTRY: ModelConfig[] = [
     // Tier 1 — Premium (best quality, reserved for enterprise/custom plans)
     { id: 'claude-sonnet-4-6', provider: 'anthropic', tier: 'tier_1_premium', costPer1kTokens: 0.009, costInPer1k: 0.003, costOutPer1k: 0.015, maxContextTokens: 1000000, supportsTools: true },
@@ -42,6 +51,10 @@ const MODEL_REGISTRY: ModelConfig[] = [
     // Tier 4 — Budget (cheapest available)
     { id: 'deepseek-chat', provider: 'deepseek', tier: 'tier_4_budget', costPer1kTokens: 0.000685, costInPer1k: 0.00027, costOutPer1k: 0.0011, maxContextTokens: 64000, supportsTools: true },
 ];
+
+/** Read-only view of the catalogue for callers outside the router. */
+export const LLM_MODEL_CATALOGUE: readonly Readonly<ModelConfig>[] =
+    Object.freeze(MODEL_REGISTRY.map(model => Object.freeze({ ...model })));
 
 // Task-based fallback chains ordered by cost-effectiveness.
 // Conversation: natural tone + low cost. Gemini included (no tools needed).
@@ -125,6 +138,14 @@ export class LLMRouterService {
         const provider = this.providers.find(p => p.providerName === name);
         if (!provider) throw new Error(`Provider ${name} not found`);
         return provider;
+    }
+
+    /** The exact routing policy/configuration used by readonly evaluations; exposes no prices or credentials. */
+    async evaluationRoutingSignature(): Promise<string> {
+        const configured = await Promise.all(['openai','anthropic','google','xai','deepseek'].map(async name =>
+            [name, await this.llmKeys.isConfigured(name)]));
+        return createHash('sha256').update(JSON.stringify({registry:MODEL_REGISTRY, chains:FALLBACK_CHAINS,
+            leadTiers:[...TOOL_CALLING_LEAD_TIERS], configured, providers:this.providers.map(provider => provider.providerName).sort()})).digest('hex');
     }
 
     private breakerOpenKey(provider: string): string {
@@ -385,6 +406,7 @@ export class LLMRouterService {
          * riesgo; la excepcion que se escribio no cubria este caso.
          */
         voicedWrite?: boolean;
+        withSourceAuthority?: LLMSourceAuthority;
     }): Promise<LLMResponse & { routingDecision?: RoutingDecision }> {
 
         const noPersistence = persistenceDisabled(options.executionContext);
@@ -492,8 +514,8 @@ export class LLMRouterService {
                         ...options as Omit<LLMRequestOptions, 'model'>,
                         model: candidate.id,
                     };
-
-                    const response = await provider.generate(reqOptions);
+                    delete (reqOptions as any).withSourceAuthority;
+                    const response = await generateWithSourceAuthority(provider, reqOptions, options.withSourceAuthority);
                     const durationMs = Date.now() - startTime;
 
                     const escalated = !allowedTiers.includes(candidate.tier);
@@ -535,6 +557,11 @@ export class LLMRouterService {
                     return { ...response, routingDecision: decision };
                 } catch (err: any) {
                     const durationMs = Date.now() - startTime;
+                    if (err instanceof LLMSourceAuthorityUnavailable) {
+                        if (accountOperationalUsage && err.usage) this.trackStats(options.tenantId,candidate,durationMs,err.usage,false)
+                            .catch(e=>this.logger.warn(`AI stats tracking failed: ${e.message}`));
+                        throw err;
+                    }
                     if (accountOperationalUsage) {
                         this.trackStats(options.tenantId, candidate, durationMs, undefined, true).catch(e => this.logger.warn(`AI stats tracking failed: ${e.message}`));
                     }
@@ -588,9 +615,10 @@ export class LLMRouterService {
             ...options as Omit<LLMRequestOptions, 'model'>,
             model: modelConfig.id,
         };
+        delete (reqOptions as any).withSourceAuthority;
         const startTime = Date.now();
         try {
-            const response = await provider.generate(reqOptions);
+            const response = await generateWithSourceAuthority(provider, reqOptions, options.withSourceAuthority);
             const durationMs = Date.now() - startTime;
             this.logger.log(`[LLM] Direct via ${provider.providerName} (${modelConfig.id}) in ${durationMs}ms`);
             if (accountOperationalUsage) {
@@ -602,6 +630,11 @@ export class LLMRouterService {
             return { ...response };
         } catch (e: any) {
             const durationMs = Date.now() - startTime;
+            if (e instanceof LLMSourceAuthorityUnavailable) {
+                if (accountOperationalUsage && e.usage) this.trackStats(options.tenantId,modelConfig,durationMs,e.usage,false)
+                    .catch(err=>this.logger.warn(`AI stats tracking failed: ${err.message}`));
+                throw e;
+            }
             if (accountOperationalUsage) {
                 this.trackStats(options.tenantId, modelConfig, durationMs, undefined, true).catch(e => this.logger.warn(`AI stats tracking failed: ${e.message}`));
             }

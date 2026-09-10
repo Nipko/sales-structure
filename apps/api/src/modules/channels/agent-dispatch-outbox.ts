@@ -1,0 +1,1211 @@
+/**
+ * Durable outbox for the normal outbound turn.
+ *
+ * Today a turn enqueues the whole payload into Redis and calls saveAiMessage
+ * separately, so a failure can leave one of the two writes; the job carries the
+ * recipient and the words outside the storage erasure governs; a lost Redis
+ * acknowledgement can produce two jobs; and the only thing standing between a
+ * re-run job and a second delivery is a marker written after the provider
+ * answered. None of that can say, durably, whether one concrete attempt was
+ * authorized or what came back from it.
+ *
+ * This table is that record. One row per remote effect — never per call, because
+ * a Messenger image and its caption are two POSTs and one receipt cannot
+ * describe both. A row is the only thing that authorizes an attempt, and its
+ * state is the only thing that says what happened.
+ *
+ * Three rules the states exist to keep:
+ *
+ *   - `admitted` is permission for ONE concrete attempt. When its lease expires
+ *     the row does not become available again: the attempt may have reached the
+ *     provider, so it becomes `reconciliation_required`. Silence is not evidence
+ *     of failure, and a stale permission is never a fresh one.
+ *   - `attempts` is incremented in the admission transaction, which commits
+ *     before the external call. A rolled-back send therefore cannot reset the
+ *     count and loop forever.
+ *   - An accepted receipt is a historical fact. It can be read without passing
+ *     the guards meant for a NEW admission, and no later check turns it back
+ *     into a retryable failure.
+ */
+export type DispatchOutboxQuery = <R = any[]>(sql: string, params?: any[]) => Promise<R>;
+
+const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+const SCHEMA = /^tenant_[a-z0-9_]+$/;
+/** Bounded preflight failures. A definite refusal must not retry forever. */
+export const DISPATCH_MAX_ATTEMPTS = 5;
+
+export const DISPATCH_ITEM_KINDS = ['text', 'media', 'payment_link', 'flow'] as const;
+export type DispatchItemKind = (typeof DISPATCH_ITEM_KINDS)[number];
+
+export const DISPATCH_STATES = [
+    'prepared', 'queued', 'admitted', 'sent', 'stored', 'suppressed', 'failed', 'reconciliation_required',
+] as const;
+export type DispatchState = (typeof DISPATCH_STATES)[number];
+
+/** No new admission may be granted from these. */
+export const DISPATCH_TERMINAL_STATES: readonly DispatchState[] =
+    Object.freeze(['sent', 'stored', 'suppressed', 'reconciliation_required']);
+/** A row here is eligible for a new admission, subject to attempts and time. */
+export const DISPATCH_AVAILABLE_STATES: readonly DispatchState[] =
+    Object.freeze(['prepared', 'queued', 'failed']);
+/** The effect actually reached its destination. */
+export const DISPATCH_ARRIVED_STATES: readonly DispatchState[] = Object.freeze(['sent', 'stored']);
+
+/**
+ * Bootstrap outside any privacy or admission transaction. No cascading contact
+ * or message foreign key: erasure clears the payload, and the row must survive
+ * as the fact that stops a recovered job from delivering the same effect twice.
+ */
+export const DISPATCH_OUTBOX_DDL: readonly string[] = Object.freeze([
+    `CREATE TABLE IF NOT EXISTS agent_dispatch_outbox (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        batch_id UUID NOT NULL,
+        conversation_id UUID,
+        contact_id UUID,
+        inbound_message_id UUID NOT NULL,
+        channel_type TEXT NOT NULL,
+        channel_account_id TEXT NOT NULL,
+        recipient TEXT,
+        item_index INTEGER NOT NULL,
+        item_kind TEXT NOT NULL,
+        payload JSONB,
+        operational_scope JSONB NOT NULL DEFAULT '{}'::jsonb,
+        learning_footprint JSONB,
+        state TEXT NOT NULL,
+        attempts INTEGER NOT NULL DEFAULT 0,
+        lease_token UUID,
+        lease_expires_at TIMESTAMPTZ,
+        available_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        error_code TEXT,
+        receipt TEXT,
+        settled_lease_token UUID,
+        message_id UUID,
+        redacted_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CONSTRAINT agent_dispatch_outbox_identity UNIQUE (inbound_message_id, item_index),
+        CONSTRAINT agent_dispatch_outbox_state
+            CHECK (state IN ('prepared','queued','admitted','sent','stored','suppressed','failed','reconciliation_required')),
+        CONSTRAINT agent_dispatch_outbox_kind
+            CHECK (item_kind IN ('text','media','payment_link','flow')),
+        CONSTRAINT agent_dispatch_outbox_item_index CHECK (item_index >= 0),
+        CONSTRAINT agent_dispatch_outbox_lease
+            CHECK ((state = 'admitted') = (lease_token IS NOT NULL AND lease_expires_at IS NOT NULL)),
+        CONSTRAINT agent_dispatch_outbox_redaction
+            CHECK (redacted_at IS NOT NULL OR (conversation_id IS NOT NULL AND contact_id IS NOT NULL
+                AND recipient IS NOT NULL AND payload IS NOT NULL))
+    )`,
+    `CREATE TABLE IF NOT EXISTS agent_dispatch_outbox_sources (
+        dispatch_id UUID NOT NULL REFERENCES agent_dispatch_outbox(id) ON DELETE CASCADE,
+        source_id UUID NOT NULL, source_contact_id UUID,
+        PRIMARY KEY (dispatch_id, source_id)
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_agent_dispatch_outbox_pending
+        ON agent_dispatch_outbox(available_at, id)
+        WHERE state IN ('prepared','queued','failed')`,
+    `CREATE INDEX IF NOT EXISTS idx_agent_dispatch_outbox_lease
+        ON agent_dispatch_outbox(lease_expires_at) WHERE state = 'admitted'`,
+    `CREATE INDEX IF NOT EXISTS idx_agent_dispatch_outbox_batch
+        ON agent_dispatch_outbox(batch_id, item_index)`,
+    `CREATE INDEX IF NOT EXISTS idx_agent_dispatch_outbox_receipt
+        ON agent_dispatch_outbox(receipt) WHERE receipt IS NOT NULL`,
+    `CREATE INDEX IF NOT EXISTS idx_agent_dispatch_outbox_contact
+        ON agent_dispatch_outbox(contact_id) WHERE redacted_at IS NULL`,
+    `CREATE INDEX IF NOT EXISTS idx_agent_dispatch_outbox_sources_source
+        ON agent_dispatch_outbox_sources(source_id, dispatch_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_agent_dispatch_outbox_sources_contact
+        ON agent_dispatch_outbox_sources(source_contact_id, dispatch_id)`,
+    // A person's decision about an uncertain effect, written in the SAME
+    // transaction as the state change it authorises. The actor used to be
+    // discarded outright and the evidence truncated into `error_code`, which
+    // also destroyed the provider failure that justified the reconciliation in
+    // the first place — so an irreversible decision could exist with no record
+    // of who made it or why. `exported_at` is what lets the global audit log be
+    // a copy of this rather than a second, best-effort original.
+    `CREATE TABLE IF NOT EXISTS agent_dispatch_resolutions (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        dispatch_id UUID NOT NULL,
+        resolution TEXT NOT NULL,
+        evidence TEXT NOT NULL,
+        actor_id TEXT NOT NULL,
+        actor_role TEXT,
+        receipt TEXT,
+        previous_state TEXT NOT NULL,
+        previous_error_code TEXT,
+        new_state TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        exported_at TIMESTAMPTZ,
+        CONSTRAINT agent_dispatch_resolutions_kind
+            CHECK (resolution IN ('delivered','not_delivered','retry')),
+        CONSTRAINT agent_dispatch_resolutions_evidence
+            CHECK (char_length(evidence) BETWEEN 1 AND 500),
+        CONSTRAINT agent_dispatch_resolutions_actor CHECK (char_length(actor_id) BETWEEN 1 AND 200)
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_agent_dispatch_resolutions_dispatch
+        ON agent_dispatch_resolutions(dispatch_id, created_at DESC)`,
+    `CREATE INDEX IF NOT EXISTS idx_agent_dispatch_resolutions_unexported
+        ON agent_dispatch_resolutions(created_at) WHERE exported_at IS NULL`,
+]);
+
+export interface DispatchBinding {
+    readonly conversationId: string;
+    readonly contactId: string;
+    readonly inboundMessageId: string;
+    readonly channelType: string;
+    readonly channelAccountId: string;
+    readonly recipient: string;
+}
+
+export interface DispatchItem {
+    readonly kind: DispatchItemKind;
+    /** Exactly one remote effect. Immutable once prepared. */
+    readonly payload: Record<string, any>;
+}
+
+export interface DispatchRow {
+    readonly id: string;
+    /** The history row this effect was recorded as, in the same transaction. */
+    readonly messageId: string | null;
+    readonly batchId: string;
+    readonly itemIndex: number;
+    readonly itemKind: DispatchItemKind;
+    readonly state: DispatchState;
+    readonly attempts: number;
+    readonly receipt: string | null;
+    readonly errorCode: string | null;
+    /** When this row may next be admitted. PostgreSQL is the only scheduler. */
+    readonly availableAt: Date;
+    readonly redacted: boolean;
+    readonly binding: DispatchBinding | null;
+    readonly payload: Record<string, any> | null;
+    readonly operationalScope: Record<string, any>;
+    readonly learningFootprint: any[] | null;
+}
+
+export class DispatchOutboxError extends Error {
+    constructor(readonly code: string) { super(code); }
+}
+const fail = (code: string): never => { throw new DispatchOutboxError(code); };
+
+function mapRow(row: any): DispatchRow {
+    const redacted = row.redacted_at !== null && row.redacted_at !== undefined;
+    return Object.freeze({
+        id: String(row.id),
+        messageId: row.message_id ? String(row.message_id) : null,
+        batchId: String(row.batch_id),
+        itemIndex: Number(row.item_index),
+        itemKind: row.item_kind,
+        state: row.state,
+        attempts: Number(row.attempts),
+        receipt: row.receipt ?? null,
+        errorCode: row.error_code ?? null,
+        availableAt: row.available_at instanceof Date ? row.available_at : new Date(row.available_at),
+        redacted,
+        binding: redacted ? null : Object.freeze({
+            conversationId: String(row.conversation_id),
+            contactId: String(row.contact_id),
+            inboundMessageId: String(row.inbound_message_id),
+            channelType: String(row.channel_type),
+            channelAccountId: String(row.channel_account_id),
+            recipient: String(row.recipient),
+        }),
+        payload: redacted ? null : row.payload,
+        operationalScope: row.operational_scope || {},
+        learningFootprint: Array.isArray(row.learning_footprint) ? row.learning_footprint : null,
+    });
+}
+
+/** What the inbox shows for one effect. A Flow is recorded by its body text. */
+function historyContent(item: DispatchItem): { contentType: string; text: string | null; mediaUrl: string | null } {
+    const payload = item.payload || {};
+    if (item.kind === 'media') {
+        const requested = String(payload.mediaType ?? 'image');
+        return {
+            contentType: ['image', 'document', 'audio', 'video'].includes(requested) ? requested : 'image',
+            text: null, mediaUrl: String(payload.mediaUrl ?? '') || null,
+        };
+    }
+    return { contentType: 'text', text: String(payload.text ?? '') || null, mediaUrl: null };
+}
+
+function validBinding(binding: DispatchBinding): boolean {
+    return !!binding
+        && [binding.conversationId, binding.contactId, binding.inboundMessageId].every(id => UUID.test(String(id)))
+        && typeof binding.channelType === 'string' && /^[a-z_]{2,40}$/.test(binding.channelType)
+        && typeof binding.channelAccountId === 'string' && !!binding.channelAccountId.trim() && binding.channelAccountId.length <= 300
+        && typeof binding.recipient === 'string' && !!binding.recipient.trim() && binding.recipient.length <= 300;
+}
+
+/**
+ * Record the whole batch and its pending history in ONE transaction, before any
+ * job identifier reaches BullMQ. Re-preparing the same inbound returns what was
+ * already recorded: the words and their order belong to the original result, not
+ * to whichever attempt happens to run next.
+ */
+export async function prepareDispatchBatch(query: DispatchOutboxQuery, schema: string, input: {
+    binding: DispatchBinding;
+    items: readonly DispatchItem[];
+    operationalScope: Record<string, any>;
+    learningFootprint?: readonly any[];
+    sources?: readonly { id: string; sourceContactId?: string | null }[];
+}): Promise<{ batchId: string; rows: DispatchRow[] }> {
+    if (!SCHEMA.test(schema) || !input || !validBinding(input.binding)
+        || !Array.isArray(input.items) || !input.items.length || input.items.length > 32
+        || input.items.some(item => !item || !DISPATCH_ITEM_KINDS.includes(item.kind)
+            || !item.payload || typeof item.payload !== 'object' || Array.isArray(item.payload))
+        || !input.operationalScope || typeof input.operationalScope !== 'object') fail('dispatch_invalid_batch');
+    // Rows that do not exist yet cannot be locked, so two turns preparing the
+    // same inbound would both insert and one would surface a raw unique
+    // violation. Serialize them on the inbound itself: the loser then sees the
+    // winner's batch and returns it, which is the same answer a replay gets.
+    await query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))::text',
+        [`dispatch-batch:${schema}:${input.binding.inboundMessageId}`]);
+    const existing = await query<any[]>(
+        `SELECT * FROM agent_dispatch_outbox WHERE inbound_message_id = $1::uuid ORDER BY item_index
+         FOR UPDATE`, [input.binding.inboundMessageId]);
+    if (existing.length) {
+        const rows = existing.map(mapRow);
+        // A different shape for the same inbound means two different results are
+        // claiming one turn. Neither may silently replace the other.
+        if (rows.length !== input.items.length
+            || rows.some((row, index) => row.itemKind !== input.items[index].kind)) fail('dispatch_batch_conflict');
+        return { batchId: rows[0].batchId, rows };
+    }
+    // The inbound must already be persisted, so a recovered batch can always be
+    // tied back to the customer message that caused it.
+    const [inbound] = await query<any[]>(
+        `SELECT id FROM messages WHERE id = $1::uuid AND conversation_id = $2::uuid
+         AND direction = 'inbound' FOR SHARE`,
+        [input.binding.inboundMessageId, input.binding.conversationId]);
+    if (!inbound) fail('dispatch_inbound_unavailable');
+    const [conversation] = await query<any[]>(
+        'SELECT id FROM conversations WHERE id = $1::uuid AND contact_id = $2::uuid FOR SHARE',
+        [input.binding.conversationId, input.binding.contactId]);
+    if (!conversation) fail('dispatch_binding_changed');
+    const footprint = Array.isArray(input.learningFootprint) ? input.learningFootprint : [];
+    const sources = [...new Map((input.sources || []).map(source => [String(source.id), source])).values()];
+    if (sources.some(source => !UUID.test(String(source.id))
+        || (source.sourceContactId != null && !UUID.test(String(source.sourceContactId))))) fail('dispatch_invalid_batch');
+    const rows: DispatchRow[] = [];
+    const [identifiers] = await query<any[]>(
+        `SELECT gen_random_uuid() AS batch_id, to_regclass($1)::text AS dedupe_index`,
+        [`${schema}.uidx_messages_external_id`]);
+    const batchId = identifiers.batch_id, dedupeIndex = !!identifiers.dedupe_index;
+    for (const [index, item] of input.items.entries()) {
+        // History and dispatch commit together. They used to be two independent
+        // writes, so a failure could leave one of them; and the history row said
+        // 'delivered' before anything had been sent. It now says 'pending' until
+        // a provider actually accepts the effect it describes.
+        const externalId = `out:dispatch:${input.binding.inboundMessageId}:${index}`;
+        const content = historyContent(item);
+        const columns = `INSERT INTO messages(conversation_id, direction, content_type, content_text, media_url,
+                status, external_id, created_at)
+             VALUES($1::uuid,'outbound',$2,$3,$4,'pending',$5,NOW())`;
+        const values = [input.binding.conversationId, content.contentType, content.text, content.mediaUrl, externalId];
+        // uidx_messages_external_id is PARTIAL, and Postgres only matches a
+        // partial index when ON CONFLICT repeats its predicate. It is checked
+        // rather than attempted: a failed statement aborts the whole
+        // transaction, so there is no catching it and trying again in here. A
+        // schema whose index lagged the deploy loses this second line of
+        // defence, never the reply — the outbox identity is the first line, and
+        // re-preparing the same inbound returns before ever reaching this.
+        const [message] = await query<any[]>(
+            dedupeIndex ? `${columns} ON CONFLICT ("external_id") WHERE "external_id" IS NOT NULL DO NOTHING RETURNING id`
+                : `${columns} RETURNING id`,
+            values);
+        const [{ id: messageId }] = message
+            ? [message]
+            : await query<any[]>('SELECT id FROM messages WHERE external_id=$1 AND conversation_id=$2::uuid',
+                [externalId, input.binding.conversationId]);
+        if (!messageId) fail('dispatch_history_unavailable');
+        const [inserted] = await query<any[]>(
+            `INSERT INTO agent_dispatch_outbox(batch_id, conversation_id, contact_id, inbound_message_id,
+                channel_type, channel_account_id, recipient, item_index, item_kind, payload,
+                operational_scope, learning_footprint, message_id, state)
+             VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5,$6,$7,$8,$9,$10::jsonb,$11::jsonb,$12::jsonb,$13::uuid,'prepared')
+             RETURNING *`,
+            [batchId, input.binding.conversationId, input.binding.contactId, input.binding.inboundMessageId,
+                input.binding.channelType, input.binding.channelAccountId, input.binding.recipient,
+                index, item.kind, JSON.stringify(item.payload),
+                JSON.stringify(input.operationalScope), JSON.stringify(footprint), messageId]);
+        for (const source of sources) {
+            await query(`INSERT INTO agent_dispatch_outbox_sources(dispatch_id, source_id, source_contact_id)
+                VALUES($1::uuid,$2::uuid,$3::uuid)`,
+            [inserted.id, source.id, source.sourceContactId ?? null]);
+        }
+        rows.push(mapRow(inserted));
+    }
+    return { batchId: String(batchId), rows };
+}
+
+/**
+ * The canonical question: does a batch already own the answer to this inbound?
+ *
+ * It must be answerable before anything else a turn decides, and independently
+ * of any rollout switch. A batch that committed keeps the reply forever: if the
+ * switch is later turned off, or a lost COMMIT acknowledgement makes a producer
+ * believe nothing was written, the only thing standing between the customer and
+ * two copies of the same answer is this lookup.
+ *
+ * `null` means no batch exists. It never means "could not tell": an unreadable
+ * answer throws, so a caller cannot mistake uncertainty for absence.
+ *
+ * The recorded payload wins, but the binding is checked rather than trusted: a
+ * batch describing another conversation, contact, channel, account or recipient
+ * is a conflict to refuse, not a result to deliver.
+ */
+export async function readDispatchBatchForInbound(query: DispatchOutboxQuery, schema: string,
+    binding: DispatchBinding): Promise<DispatchRow[] | null> {
+    if (!SCHEMA.test(schema) || !validBinding(binding)) fail('dispatch_invalid_reference');
+    const [tables] = await query<any[]>(
+        'SELECT current_schema() AS schema, to_regclass($1)::text AS outbox',
+        [`${schema}.agent_dispatch_outbox`]);
+    if (tables?.schema !== schema) fail('dispatch_invalid_reference');
+    // A tenant that never took this path has no table, and therefore no batch.
+    if (!tables.outbox) return null;
+    const rows = await query<any[]>(
+        `SELECT * FROM agent_dispatch_outbox WHERE inbound_message_id = $1::uuid ORDER BY item_index`,
+        [binding.inboundMessageId]);
+    if (!rows.length) return null;
+    const mapped = rows.map(mapRow);
+    if (new Set(rows.map(row => String(row.batch_id))).size !== 1) fail('dispatch_batch_conflict');
+    // Contiguous from zero: a gap means a partially recorded result, which must
+    // not be delivered as if it were the whole answer.
+    if (mapped.some((row, index) => row.itemIndex !== index)) fail('dispatch_batch_conflict');
+    for (const row of mapped) {
+        // A redacted row keeps no binding to compare; erasure already removed it,
+        // and the batch still owns the reply so nothing is sent a second time.
+        if (row.redacted) continue;
+        const stored = row.binding!;
+        if (stored.conversationId !== binding.conversationId || stored.contactId !== binding.contactId
+            || stored.inboundMessageId !== binding.inboundMessageId
+            || stored.channelType !== binding.channelType
+            || stored.channelAccountId !== binding.channelAccountId
+            || stored.recipient !== binding.recipient) fail('dispatch_batch_binding_changed');
+    }
+    return mapped;
+}
+
+/**
+ * The next effect of a batch, once this one has arrived. Chaining from the
+ * worker is what actually orders a reply; the admission guard is the net that
+ * catches an early or duplicated job.
+ */
+export async function readNextDispatchInBatch(query: DispatchOutboxQuery, schema: string,
+    dispatchId: string): Promise<DispatchRow | null> {
+    if (!SCHEMA.test(schema) || !UUID.test(String(dispatchId))) fail('dispatch_invalid_reference');
+    const [row] = await query<any[]>(
+        `SELECT next.* FROM agent_dispatch_outbox current
+         JOIN agent_dispatch_outbox next ON next.batch_id = current.batch_id
+            AND next.item_index = current.item_index + 1
+         WHERE current.id = $1::uuid AND next.redacted_at IS NULL
+            AND next.state IN ('prepared','queued','failed')`, [dispatchId]);
+    return row ? mapRow(row) : null;
+}
+
+/**
+ * Read one row without applying any guard meant for a new admission. An accepted
+ * receipt must stay consultable: it is what tells a recovered job to stop.
+ */
+export async function readDispatchRow(query: DispatchOutboxQuery, schema: string,
+    dispatchId: string): Promise<DispatchRow | null> {
+    if (!SCHEMA.test(schema) || !UUID.test(String(dispatchId))) fail('dispatch_invalid_reference');
+    const [row] = await query<any[]>('SELECT * FROM agent_dispatch_outbox WHERE id = $1::uuid', [dispatchId]);
+    return row ? mapRow(row) : null;
+}
+
+/**
+ * Grant permission for ONE attempt, on the caller's transaction, after it has
+ * checked privacy, tenant, connection authority and sources with the same query.
+ * The caller performs the external call only after observing this COMMIT.
+ */
+export async function admitDispatch(query: DispatchOutboxQuery, schema: string, input: {
+    dispatchId: string; leaseToken: string; leaseSeconds: number;
+}): Promise<DispatchRow> {
+    if (!SCHEMA.test(schema) || !UUID.test(String(input?.dispatchId)) || !UUID.test(String(input?.leaseToken))
+        || !Number.isInteger(input.leaseSeconds) || input.leaseSeconds < 5 || input.leaseSeconds > 900)
+        fail('dispatch_invalid_reference');
+    // Both deadlines are evaluated by the database clock, in the same statement
+    // that locks the row: an application clock skewed against PostgreSQL must
+    // never be what decides that a permission is still alive.
+    const [row] = await query<any[]>(
+        `SELECT *, (lease_expires_at IS NOT NULL AND lease_expires_at > NOW()) AS lease_active,
+            (available_at > NOW()) AS waiting_backoff
+         FROM agent_dispatch_outbox WHERE id = $1::uuid FOR UPDATE`, [input.dispatchId]);
+    if (!row) fail('dispatch_unavailable');
+    if (row.redacted_at) fail('dispatch_redacted');
+    const state: DispatchState = row.state;
+    if (DISPATCH_TERMINAL_STATES.includes(state)) fail(`dispatch_terminal:${state}`);
+    if (state === 'admitted') {
+        // The previous permission may have reached the provider. A lease that ran
+        // out is missing information, not proof that nothing happened.
+        if (row.lease_active === true) fail('dispatch_lease_active');
+        // Deliberately no write here. This transaction is about to be rolled
+        // back by the refusal, so the transition would be lost; and moving a
+        // row nobody reconciled, from inside somebody else's admission attempt,
+        // would also destroy the lease evidence a reconciler needs.
+        fail('dispatch_reconciliation_required');
+    }
+    if (Number(row.attempts) >= DISPATCH_MAX_ATTEMPTS) {
+        await query(`UPDATE agent_dispatch_outbox SET state='suppressed', error_code='attempts_exhausted',
+            updated_at=NOW() WHERE id=$1::uuid`, [input.dispatchId]);
+        fail('dispatch_attempts_exhausted');
+    }
+    if (row.waiting_backoff === true) fail('dispatch_not_available_yet');
+    // Order is a durable property, not a hope about delays.
+    //
+    // Staggering publication by index cannot survive two workers, a slow first
+    // provider or a retry: the caption could overtake its own picture. So an item
+    // is admitted only once the one before it has actually arrived.
+    //
+    // The policy when the predecessor finished WITHOUT arriving is explicit by
+    // kind. A text item directly after a media item is that media's caption: its
+    // words describe something the customer never received, so it is refused
+    // rather than sent into a void. Every other item — a further bubble, a
+    // canonical payment link, a Flow — is still true on its own and proceeds.
+    if (Number(row.item_index) > 0) {
+        const [previous] = await query<any[]>(
+            `SELECT state, item_kind FROM agent_dispatch_outbox
+             WHERE batch_id = $1::uuid AND item_index = $2`, [row.batch_id, Number(row.item_index) - 1]);
+        if (!previous) fail('dispatch_batch_conflict');
+        if (!DISPATCH_ARRIVED_STATES.includes(previous.state)) {
+            if (!DISPATCH_TERMINAL_STATES.includes(previous.state)) fail('dispatch_awaiting_predecessor');
+            if (row.item_kind === 'text' && previous.item_kind === 'media') fail('dispatch_predecessor_failed');
+        }
+    }
+    const [admitted] = await query<any[]>(
+        `UPDATE agent_dispatch_outbox SET state='admitted', lease_token=$2::uuid,
+            lease_expires_at=NOW() + make_interval(secs => $3::double precision), attempts=attempts+1,
+            error_code=NULL, updated_at=NOW()
+         WHERE id=$1::uuid RETURNING *`,
+        [input.dispatchId, input.leaseToken, input.leaseSeconds]);
+    return mapRow(admitted);
+}
+
+export type DispatchOutcome =
+    | { kind: 'sent'; receipt: string }
+    | { kind: 'failed'; errorCode: string; retryInSeconds?: number }
+    | { kind: 'suppressed'; errorCode: string }
+    | { kind: 'reconciliation_required'; errorCode: string };
+
+/**
+ * Record what one admitted attempt produced, keyed to that exact lease. A lease
+ * somebody else replaced cannot write an outcome, and an already accepted
+ * receipt is never downgraded by a late failure report.
+ */
+export async function settleDispatch(query: DispatchOutboxQuery, schema: string, input: {
+    dispatchId: string; leaseToken: string; outcome: DispatchOutcome;
+}): Promise<DispatchRow> {
+    if (!SCHEMA.test(schema) || !UUID.test(String(input?.dispatchId)) || !UUID.test(String(input?.leaseToken))
+        || !input.outcome) fail('dispatch_invalid_reference');
+    const [row] = await query<any[]>(
+        'SELECT * FROM agent_dispatch_outbox WHERE id = $1::uuid FOR UPDATE', [input.dispatchId]);
+    if (!row) fail('dispatch_unavailable');
+    // Acceptance already recorded for this attempt: report it, never resend and
+    // never rewrite it as a failure a later check happened to observe.
+    if (row.state === 'sent' && row.settled_lease_token === input.leaseToken) return mapRow(row);
+    if (row.state !== 'admitted' || row.lease_token !== input.leaseToken) fail('dispatch_lease_lost');
+    const outcome = input.outcome;
+    // The history row follows the real outcome, not the hope. It was written
+    // 'pending' at prepare; only an accepted receipt makes it delivered, and a
+    // definitely refused effect is marked failed rather than left looking sent.
+    const markHistory = async (status: string) => {
+        if (!row.message_id) return;
+        await query(`UPDATE messages SET status=$2 WHERE id=$1::uuid AND status<>'redacted'`,
+            [row.message_id, status]);
+    };
+    if (outcome.kind === 'sent') {
+        if (typeof outcome.receipt !== 'string' || !outcome.receipt.trim() || outcome.receipt.length > 300)
+            fail('dispatch_receipt_required');
+        const [sent] = await query<any[]>(
+            `UPDATE agent_dispatch_outbox SET state='sent', receipt=$2, error_code=NULL,
+                settled_lease_token=lease_token, lease_token=NULL, lease_expires_at=NULL, updated_at=NOW()
+             WHERE id=$1::uuid RETURNING *`, [input.dispatchId, outcome.receipt.trim()]);
+        // Acceptance, not arrival. `delivered` and `read` come from the provider.
+        await markHistory('sent');
+        return mapRow(sent);
+    }
+    const errorCode = String(outcome.errorCode || 'unknown').slice(0, 120);
+    if (outcome.kind === 'failed') {
+        // Exhausting the budget here rather than leaving a row that looks
+        // retryable forever: the count already survived the rolled-back send.
+        const exhausted = Number(row.attempts) >= DISPATCH_MAX_ATTEMPTS;
+        const delay = Math.min(Math.max(Number(outcome.retryInSeconds ?? 30), 0), 3600);
+        const [failed] = await query<any[]>(
+            `UPDATE agent_dispatch_outbox SET state=$3, error_code=$2, settled_lease_token=lease_token,
+                lease_token=NULL, lease_expires_at=NULL,
+                available_at=NOW() + make_interval(secs => $4::double precision), updated_at=NOW()
+             WHERE id=$1::uuid RETURNING *`,
+            [input.dispatchId, errorCode, exhausted ? 'suppressed' : 'failed', exhausted ? 0 : delay]);
+        if (exhausted) await markHistory('failed');
+        return mapRow(failed);
+    }
+    const [settled] = await query<any[]>(
+        `UPDATE agent_dispatch_outbox SET state=$3, error_code=$2, settled_lease_token=lease_token,
+            lease_token=NULL, lease_expires_at=NULL, updated_at=NOW() WHERE id=$1::uuid RETURNING *`,
+        [input.dispatchId, errorCode, outcome.kind]);
+    // An uncertain outcome stays 'pending' on purpose: claiming failure would be
+    // as wrong as claiming delivery when the provider may well have acted.
+    if (outcome.kind === 'suppressed') await markHistory('failed');
+    return mapRow(settled);
+}
+
+/**
+ * Rows a recovery pass may re-publish. An `admitted` row whose lease ran out is
+ * deliberately NOT here: it needs reconciliation, not another attempt.
+ */
+export async function readPendingDispatch(query: DispatchOutboxQuery, schema: string,
+    limit = 100): Promise<DispatchRow[]> {
+    if (!SCHEMA.test(schema) || !Number.isInteger(limit) || limit < 1 || limit > 1000)
+        fail('dispatch_invalid_reference');
+    // Only the head of each batch: publishing a later item would just park it
+    // behind the predecessor guard, and the worker chains the rest itself.
+    //
+    // The head is the lowest-index row still capable of work — including one
+    // whose permission is in flight, which is precisely why the batch must yield
+    // nothing rather than offering the item behind it.
+    const rows = await query<any[]>(
+        `WITH head AS (
+            SELECT DISTINCT ON (batch_id) * FROM agent_dispatch_outbox
+            WHERE redacted_at IS NULL AND state IN ('prepared','queued','failed','admitted')
+            ORDER BY batch_id, item_index)
+         SELECT * FROM head
+         WHERE state IN ('prepared','queued','failed') AND available_at <= NOW()
+         ORDER BY available_at, id
+         LIMIT $1`, [limit]);
+    return rows.map(mapRow).sort((left, right) =>
+        left.availableAt.getTime() - right.availableAt.getTime() || left.id.localeCompare(right.id));
+}
+
+/**
+ * Record a failure that happened BEFORE any permission was granted — no
+ * credential, no entitlement, no transport for this channel.
+ *
+ * It spends an attempt on purpose. A preflight that keeps failing must run out
+ * the same budget as a failed send, otherwise a rolled-back attempt leaves a row
+ * that looks retryable forever and recovery loops on it without end.
+ */
+export async function recordDispatchPreflightFailure(query: DispatchOutboxQuery, schema: string, input: {
+    dispatchId: string; errorCode: string; retryInSeconds?: number; permanent?: boolean;
+}): Promise<DispatchRow> {
+    if (!SCHEMA.test(schema) || !UUID.test(String(input?.dispatchId))
+        || typeof input.errorCode !== 'string' || !input.errorCode.trim()) fail('dispatch_invalid_reference');
+    const [row] = await query<any[]>(
+        'SELECT * FROM agent_dispatch_outbox WHERE id = $1::uuid FOR UPDATE', [input.dispatchId]);
+    if (!row) fail('dispatch_unavailable');
+    // A permission already granted is not a preflight. Its outcome belongs to
+    // whoever holds the lease, and its lapse belongs to the reconciliation pass.
+    if (row.state === 'admitted') fail('dispatch_lease_active');
+    if (DISPATCH_TERMINAL_STATES.includes(row.state as DispatchState)) fail(`dispatch_terminal:${row.state}`);
+    const attempts = Number(row.attempts) + 1;
+    const exhausted = input.permanent === true || attempts >= DISPATCH_MAX_ATTEMPTS;
+    const delay = Math.min(Math.max(Number(input.retryInSeconds ?? 30), 0), 3600);
+    const [updated] = await query<any[]>(
+        `UPDATE agent_dispatch_outbox SET state=$3, attempts=$4, error_code=$2,
+            available_at=NOW() + make_interval(secs => $5::double precision), updated_at=NOW()
+         WHERE id=$1::uuid RETURNING *`,
+        [input.dispatchId, String(input.errorCode).slice(0, 120),
+            exhausted ? 'suppressed' : 'failed', attempts, exhausted ? 0 : delay]);
+    // A definitely refused effect must not sit in the conversation looking as if
+    // it were still on its way. `pending` is reserved for genuine uncertainty.
+    if (exhausted && row.message_id) {
+        await query(`UPDATE messages SET status='failed' WHERE id=$1::uuid AND status NOT IN ('redacted','delivered','read')`,
+            [row.message_id]);
+    }
+    return mapRow(updated);
+}
+
+/**
+ * Move permissions whose lease ran out into reconciliation. This is a committed
+ * pass of its own, never a side effect of somebody else's admission attempt:
+ * the attempt these rows describe may have reached the provider, and the lease
+ * they carried is evidence a reconciler needs. They never become available again.
+ */
+export async function expireDispatchLeases(query: DispatchOutboxQuery, schema: string,
+    limit = 100): Promise<DispatchRow[]> {
+    if (!SCHEMA.test(schema) || !Number.isInteger(limit) || limit < 1 || limit > 1000)
+        fail('dispatch_invalid_reference');
+    const rows = await query<any[]>(
+        `UPDATE agent_dispatch_outbox SET state='reconciliation_required',
+            settled_lease_token=lease_token, error_code='lease_expired_after_admission',
+            lease_token=NULL, lease_expires_at=NULL, updated_at=NOW()
+         WHERE id IN (
+            SELECT id FROM agent_dispatch_outbox WHERE state='admitted' AND lease_expires_at <= NOW()
+            ORDER BY lease_expires_at, id LIMIT $1 FOR UPDATE SKIP LOCKED)
+         RETURNING *`, [limit]);
+    return rows.map(mapRow);
+}
+
+/** Mark a prepared row as published to the work queue. Never a permission. */
+export async function markDispatchQueued(query: DispatchOutboxQuery, schema: string,
+    dispatchIds: readonly string[]): Promise<number> {
+    if (!SCHEMA.test(schema) || !Array.isArray(dispatchIds)
+        || dispatchIds.some(id => !UUID.test(String(id)))) fail('dispatch_invalid_reference');
+    if (!dispatchIds.length) return 0;
+    const rows = await query<any[]>(
+        `UPDATE agent_dispatch_outbox SET state='queued', updated_at=NOW()
+         WHERE id=ANY($1::uuid[]) AND state='prepared' RETURNING id`, [[...dispatchIds]]);
+    return rows.length;
+}
+
+/**
+ * What a conversation record may truthfully say about one outbound effect.
+ *
+ * These were conflated: an HTTP acceptance was written as `delivered`, which is
+ * a claim about the customer's phone that nobody had made. Acceptance is `sent`;
+ * `delivered` and `read` only ever come from the provider afterwards.
+ */
+const MESSAGE_STATUS_RANK: Record<string, number> = Object.freeze({
+    pending: 0, sent: 1, delivered: 2, read: 3,
+});
+export const DISPATCH_PROVIDER_STATUSES = ['sent', 'delivered', 'read', 'failed'] as const;
+export type DispatchProviderStatus = (typeof DISPATCH_PROVIDER_STATUSES)[number];
+
+export interface DispatchStatusResult {
+    readonly applied: boolean;
+    readonly reason: 'applied' | 'unknown_receipt' | 'not_newer' | 'already_delivered'
+        | 'already_failed' | 'redacted';
+    readonly messageId: string | null;
+    readonly status: string | null;
+}
+
+/**
+ * Apply a provider status event to the conversation record behind a receipt.
+ *
+ * The provider id lives on the dispatch row, not on `messages.external_id`,
+ * which holds our own deduplication identity. The webhook used to look the
+ * receipt up in `external_id` and therefore matched nothing at all.
+ *
+ * Status only ever moves forward. Events arrive out of order and more than once,
+ * so a `sent` after a `delivered` changes nothing, and a repeat is a no-op. A
+ * rejection is accepted over `pending` or `sent` — a provider can refuse after
+ * acknowledging — but never over `delivered` or `read`, where the customer
+ * already has the message and "failed" would be the false statement.
+ */
+export async function applyDispatchProviderStatus(query: DispatchOutboxQuery, schema: string, input: {
+    providerMessageId: string; status: DispatchProviderStatus; errorCode?: string | null;
+}): Promise<DispatchStatusResult> {
+    if (!SCHEMA.test(schema) || typeof input?.providerMessageId !== 'string'
+        || !input.providerMessageId.trim() || input.providerMessageId.length > 300
+        || !DISPATCH_PROVIDER_STATUSES.includes(input.status)) fail('dispatch_invalid_reference');
+    const [tables] = await query<any[]>(
+        'SELECT current_schema() AS schema, to_regclass($1)::text AS outbox',
+        [`${schema}.agent_dispatch_outbox`]);
+    if (tables?.schema !== schema) fail('dispatch_invalid_reference');
+    if (!tables.outbox) return { applied: false, reason: 'unknown_receipt', messageId: null, status: null };
+    const [row] = await query<any[]>(
+        `SELECT d.id, d.message_id, d.redacted_at FROM agent_dispatch_outbox d
+         WHERE d.receipt = $1 FOR UPDATE OF d`, [input.providerMessageId.trim()]);
+    if (!row) return { applied: false, reason: 'unknown_receipt', messageId: null, status: null };
+    if (row.redacted_at || !row.message_id) {
+        return { applied: false, reason: 'redacted', messageId: null, status: null };
+    }
+    // Read the status AFTER the lock, not in the statement that takes it.
+    // Joining `messages` into the locking select answered from the snapshot
+    // taken before the lock was granted, so two events for one receipt
+    // serialised correctly and then the second decided against a status the
+    // first had already moved: a late `failed` compared itself to a stale
+    // `sent`, passed the rank check, and overwrote a confirmed `delivered`.
+    // `FOR UPDATE OF d, m` cannot express this — `m` is the nullable side of an
+    // outer join — so the row is locked first and read second.
+    const [message] = await query<any[]>(
+        'SELECT status FROM messages WHERE id = $1::uuid FOR UPDATE', [row.message_id]);
+    if (!message) return { applied: false, reason: 'redacted', messageId: null, status: null };
+    const current = String(message.status || 'pending');
+    if (current === 'redacted') return { applied: false, reason: 'redacted', messageId: null, status: null };
+    if (input.status === 'failed') {
+        if (MESSAGE_STATUS_RANK[current] >= MESSAGE_STATUS_RANK.delivered) {
+            return { applied: false, reason: 'already_delivered', messageId: String(row.message_id), status: current };
+        }
+    } else if (current === 'failed') {
+        // The same rule read the other way round. A provider does not deliver
+        // what it rejected, and `failed` has no rank, so a later `delivered`
+        // compared against -1 and quietly erased a recorded rejection — the
+        // exact asymmetry the refusal above exists to prevent.
+        return { applied: false, reason: 'already_failed', messageId: String(row.message_id), status: current };
+    } else if ((MESSAGE_STATUS_RANK[input.status] ?? -1) <= (MESSAGE_STATUS_RANK[current] ?? -1)) {
+        return { applied: false, reason: 'not_newer', messageId: String(row.message_id), status: current };
+    }
+    await query('UPDATE messages SET status=$2 WHERE id=$1::uuid', [row.message_id, input.status]);
+    if (input.status === 'failed') {
+        await query(`UPDATE agent_dispatch_outbox SET error_code=COALESCE($2, error_code), updated_at=NOW()
+            WHERE id=$1::uuid`, [row.id, input.errorCode ? String(input.errorCode).slice(0, 120) : null]);
+    }
+    return { applied: true, reason: 'applied', messageId: String(row.message_id), status: input.status };
+}
+
+/**
+ * How far back a single cutoff is allowed to reach.
+ *
+ * A bound, not a correctness mechanism: the query already excludes every row
+ * the claim cannot change, so repeated watermarks drain the thread. This only
+ * stops one malformed or replayed timestamp from scanning a whole history.
+ */
+export const DISPATCH_WATERMARK_MAX_ROWS = 200;
+
+/**
+ * The receipts a provider's cutoff is actually talking about.
+ *
+ * Messenger says "everything sent to this conversation before or at this
+ * instant was read" and names no message at all; its delivery event may do the
+ * same, since Meta documents `delivery.mids` as possibly absent. A per-receipt
+ * writer cannot consume that, and minting a fake mid to feed it would be a lie
+ * about which message the provider meant. So the cutoff is resolved to receipts
+ * we can prove are covered, and each one is then decided by the ordinary
+ * per-receipt path — the ranking, the idempotency and the refusal to degrade
+ * `delivered`/`read` all stay in one place.
+ *
+ * Every clause here is a fence rather than a filter:
+ *   - the connection and the recipient, so a cutoff can never reach another
+ *     contact's messages or another account's;
+ *   - `state = 'sent'` with a receipt, so a row the provider never accepted is
+ *     not claimed as read by it;
+ *   - `redacted_at IS NULL`, so erasure is not undone by a late webhook;
+ *   - `NOT IN` the statuses the claim cannot improve, which also excludes
+ *     `failed`: a bulk cutoff must not overwrite a recorded rejection, or a
+ *     refused message ends up reading as "read" — the exact lie this whole
+ *     path exists to prevent. The per-mid writer never meets that case, so the
+ *     guard belongs with the producer that does.
+ *
+ * `updated_at` is the acceptance moment: `settleDispatch` stamps it in the same
+ * statement that writes `state='sent'`. Anything that touches the row later
+ * only pushes it forward, which can only drop a row out of a cutoff — the safe
+ * direction. It is still OUR clock against Meta's, so a message accepted in the
+ * seconds between Meta stamping the cutoff and us reading the webhook can be
+ * covered early. That is a message Meta did accept, to this contact, in this
+ * thread — an optimistic read, never a fabricated delivery.
+ */
+export async function resolveDispatchReceiptsUpTo(query: DispatchOutboxQuery, schema: string, input: {
+    channelType: string; channelAccountId: string; recipient: string;
+    status: DispatchProviderStatus; watermarkMs: number;
+}): Promise<string[]> {
+    if (!SCHEMA.test(schema)) fail('dispatch_invalid_reference');
+    const recipient = typeof input?.recipient === 'string' ? input.recipient.trim() : '';
+    const account = typeof input?.channelAccountId === 'string' ? input.channelAccountId.trim() : '';
+    if (!recipient || recipient.length > 300 || !account || account.length > 255
+        || !input.channelType || !Number.isInteger(input.watermarkMs)
+        || !DISPATCH_PROVIDER_STATUSES.includes(input.status)) fail('dispatch_invalid_reference');
+    // A cutoff is a claim about arrival. `sent` and `failed` are not arrivals,
+    // and neither can be asserted about a range of messages nobody named.
+    if (input.status !== 'delivered' && input.status !== 'read') fail('dispatch_invalid_reference');
+    const [tables] = await query<any[]>(
+        'SELECT current_schema() AS schema, to_regclass($1)::text AS outbox',
+        [`${schema}.agent_dispatch_outbox`]);
+    if (tables?.schema !== schema) fail('dispatch_invalid_reference');
+    if (!tables.outbox) return [];
+    const claimed = MESSAGE_STATUS_RANK[input.status];
+    const settled = Object.entries(MESSAGE_STATUS_RANK)
+        .filter(([, rank]) => rank >= claimed).map(([status]) => status)
+        .concat('redacted', 'failed');
+    const rows = await query<any[]>(
+        `SELECT d.receipt FROM agent_dispatch_outbox d
+           JOIN messages m ON m.id = d.message_id
+          WHERE d.channel_type = $1 AND d.channel_account_id = $2 AND d.recipient = $3
+            AND d.state = 'sent' AND d.receipt IS NOT NULL AND d.redacted_at IS NULL
+            AND d.updated_at <= to_timestamp($4::double precision / 1000)
+            AND m.status <> ALL($5::text[])
+          ORDER BY d.updated_at ASC
+          LIMIT ${DISPATCH_WATERMARK_MAX_ROWS}`,
+        [input.channelType, account, recipient, input.watermarkMs, settled]);
+    return (rows || []).map(row => String(row.receipt)).filter(Boolean);
+}
+
+/**
+ * The reconciliation queue, as an operator sees it.
+ *
+ * `reconciliation_required` means the attempt may have reached the provider and
+ * nobody knows. Ending that in a log leaves customers with a message that either
+ * arrived twice or never — and no one able to tell which. These rows have to be
+ * listable, searchable, and resolvable by a person whose decision is recorded.
+ *
+ * No message text or caption is exposed: reconciliation is about whether an
+ * effect happened, never about what it said. The recipient is masked, because a
+ * queue view is not a reason to hand out phone numbers.
+ */
+export interface DispatchReconciliationEntry {
+    readonly id: string;
+    /** Always `reconciliation_required` in this listing, and said out loud: a
+     *  row that settles between the read and the decision has to be
+     *  distinguishable from one that is still waiting. */
+    readonly state: DispatchState;
+    readonly conversationId: string | null;
+    readonly inboundMessageId: string;
+    readonly channelType: string;
+    readonly channelAccountId: string;
+    /** Last four characters only. Enough to recognise, not enough to reuse. */
+    readonly recipientHint: string | null;
+    readonly itemKind: DispatchItemKind;
+    readonly itemIndex: number;
+    readonly attempts: number;
+    readonly errorCode: string | null;
+    readonly receipt: string | null;
+    readonly settledLeaseToken: string | null;
+    readonly redacted: boolean;
+    readonly createdAt: Date;
+    readonly updatedAt: Date;
+    readonly ageSeconds: number;
+}
+
+export interface DispatchReconciliationBacklog {
+    readonly total: number;
+    readonly oldestAgeSeconds: number;
+    /** Rows past the operational deadline; what an alert should count. */
+    readonly breachingSla: number;
+    /**
+     * Rows still waiting for a worker long after they became available.
+     *
+     * A different failure from `total`, and the one nothing was watching: those
+     * rows are waiting for a PERSON to decide, these are waiting for a job that
+     * was never published or was published and lost. Queue depth cannot see
+     * them — a row with no job in BullMQ is invisible to it — and it is exactly
+     * the mode the outbox exists to make recoverable, so the row sits there
+     * holding an unsent reply while every dashboard reads normal.
+     */
+    readonly stalled: number;
+    readonly stalledOldestAgeSeconds: number;
+}
+
+const maskRecipient = (value: unknown): string | null => {
+    const raw = typeof value === 'string' ? value.trim() : '';
+    if (!raw) return null;
+    return raw.length <= 4 ? '*'.repeat(raw.length) : `${'*'.repeat(Math.min(raw.length - 4, 12))}${raw.slice(-4)}`;
+};
+
+function mapReconciliation(row: any): DispatchReconciliationEntry {
+    return Object.freeze({
+        id: String(row.id),
+        state: row.state as DispatchState,
+        conversationId: row.conversation_id ? String(row.conversation_id) : null,
+        inboundMessageId: String(row.inbound_message_id),
+        channelType: String(row.channel_type),
+        channelAccountId: String(row.channel_account_id),
+        recipientHint: maskRecipient(row.recipient),
+        itemKind: row.item_kind,
+        itemIndex: Number(row.item_index),
+        attempts: Number(row.attempts),
+        errorCode: row.error_code ?? null,
+        receipt: row.receipt ?? null,
+        settledLeaseToken: row.settled_lease_token ? String(row.settled_lease_token) : null,
+        redacted: !!row.redacted_at,
+        createdAt: row.created_at instanceof Date ? row.created_at : new Date(row.created_at),
+        updatedAt: row.updated_at instanceof Date ? row.updated_at : new Date(row.updated_at),
+        ageSeconds: Math.max(0, Math.round(Number(row.age_seconds) || 0)),
+    });
+}
+
+/** How long an uncertain effect may wait before it is an operational problem. */
+export const DISPATCH_RECONCILIATION_SLA_SECONDS = 3600;
+
+export async function readDispatchReconciliation(query: DispatchOutboxQuery, schema: string, options: {
+    limit?: number; search?: string | null;
+} = {}): Promise<DispatchReconciliationEntry[]> {
+    if (!SCHEMA.test(schema)) fail('dispatch_invalid_reference');
+    const limit = Math.min(Math.max(Number(options.limit ?? 50), 1), 200);
+    const search = typeof options.search === 'string' ? options.search.trim() : '';
+    const [tables] = await query<any[]>(
+        'SELECT current_schema() AS schema, to_regclass($1)::text AS outbox',
+        [`${schema}.agent_dispatch_outbox`]);
+    if (tables?.schema !== schema) fail('dispatch_invalid_reference');
+    if (!tables.outbox) return [];
+    const rows = await query<any[]>(
+        `SELECT *, EXTRACT(EPOCH FROM (NOW() - updated_at)) AS age_seconds
+         FROM agent_dispatch_outbox
+         WHERE state = 'reconciliation_required'
+           AND ($1 = '' OR receipt = $1 OR id::text = $1 OR inbound_message_id::text = $1
+                OR conversation_id::text = $1)
+         ORDER BY updated_at ASC
+         LIMIT $2`, [search, limit]);
+    return rows.map(mapReconciliation);
+}
+
+/**
+ * How long an available row may sit before it counts as stalled.
+ *
+ * The queue publishes a job as the row becomes available and the recovery
+ * sweep runs on its own schedule, so a row still waiting after ten minutes is
+ * not slow — it is a row whose job was never published, or was published and
+ * lost. Ten minutes is comfortably longer than any normal retry backoff and
+ * short enough that a person still has the context to act on it.
+ */
+export const DISPATCH_STALLED_AFTER_SECONDS = 600;
+
+export async function readDispatchBacklog(query: DispatchOutboxQuery,
+    schema: string): Promise<DispatchReconciliationBacklog> {
+    if (!SCHEMA.test(schema)) fail('dispatch_invalid_reference');
+    const [tables] = await query<any[]>(
+        'SELECT current_schema() AS schema, to_regclass($1)::text AS outbox',
+        [`${schema}.agent_dispatch_outbox`]);
+    if (tables?.schema !== schema) fail('dispatch_invalid_reference');
+    if (!tables.outbox) return { total: 0, oldestAgeSeconds: 0, breachingSla: 0, stalled: 0, stalledOldestAgeSeconds: 0 };
+    // Two SLOs, one pass. The monitor already opens a transaction per tenant and
+    // a second one would double the PgBouncer churn to ask a question the same
+    // scan answers. The rows are disjoint — a row is either waiting for a person
+    // or waiting for a worker — so the FILTERs cannot double count.
+    const [row] = await query<any[]>(
+        `SELECT COUNT(*) FILTER (WHERE state = 'reconciliation_required')::int AS total,
+                COALESCE(MAX(EXTRACT(EPOCH FROM (NOW() - updated_at)))
+                    FILTER (WHERE state = 'reconciliation_required'), 0) AS oldest,
+                COUNT(*) FILTER (WHERE state = 'reconciliation_required'
+                    AND updated_at < NOW() - make_interval(secs => $1::double precision))::int AS breaching,
+                COUNT(*) FILTER (WHERE state IN ('prepared','queued','failed')
+                    AND available_at < NOW() - make_interval(secs => $2::double precision))::int AS stalled,
+                COALESCE(MAX(EXTRACT(EPOCH FROM (NOW() - available_at)))
+                    FILTER (WHERE state IN ('prepared','queued','failed')
+                        AND available_at < NOW() - make_interval(secs => $2::double precision)), 0) AS stalled_oldest
+         FROM agent_dispatch_outbox
+         WHERE state IN ('reconciliation_required','prepared','queued','failed')`,
+        [DISPATCH_RECONCILIATION_SLA_SECONDS, DISPATCH_STALLED_AFTER_SECONDS]);
+    return {
+        total: Number(row?.total ?? 0),
+        oldestAgeSeconds: Math.max(0, Math.round(Number(row?.oldest ?? 0))),
+        breachingSla: Number(row?.breaching ?? 0),
+        stalled: Number(row?.stalled ?? 0),
+        stalledOldestAgeSeconds: Math.max(0, Math.round(Number(row?.stalled_oldest ?? 0))),
+    };
+}
+
+/**
+ * How long a settled row keeps the words it carried.
+ *
+ * The payload is a COPY. `messages` holds the customer-facing history; this
+ * column exists only so an unsent effect can still be sent, and a row in a
+ * terminal state can never be sent again — so past this window it is a second
+ * copy of somebody's message, and their recipient address, kept for no reason
+ * anybody can name. Nothing pruned it: the table grew forever and every message
+ * the agent ever sent stayed in it, reachable only by an erasure that names
+ * that specific contact.
+ *
+ * Thirty days is long enough for the operational questions that actually get
+ * asked of a settled row — "did this go out, when, and with what receipt" —
+ * which the row keeps answering afterwards, because retention redacts the
+ * content and never deletes the row. The audit line survives; the copy does not.
+ */
+export const DISPATCH_PAYLOAD_RETENTION_DAYS = 30;
+
+/**
+ * States whose content may be dropped once it is old enough.
+ *
+ * `reconciliation_required` is deliberately absent even though it is settled:
+ * that is the queue a person works from, and they need the recipient and the
+ * payload to go and look at the provider. `failed` is absent because it is
+ * retryable — the row is waiting for its next attempt, not finished. `admitted`
+ * holds a live permission.
+ */
+const DISPATCH_REDACTABLE_STATES = ['sent', 'stored', 'suppressed'] as const;
+
+/**
+ * Drop the content of terminal rows older than the retention window.
+ *
+ * Uses the same shape erasure does — `redacted_at` set, content columns nulled —
+ * because the table's own CHECK constraint was written for exactly that: a row
+ * is either redacted or complete, and there is no third state where half the
+ * columns are gone. Reusing it means a retained row and an erased row are
+ * indistinguishable to every reader, which is the honest outcome: neither has
+ * the words any more.
+ *
+ * Bounded per call so one enormous tenant cannot hold the sweep.
+ */
+export async function redactSettledDispatchOutbox(query: DispatchOutboxQuery, schema: string,
+    options: { olderThanDays?: number; limit?: number } = {}): Promise<number> {
+    if (!SCHEMA.test(schema)) fail('dispatch_invalid_reference');
+    const days = Number.isFinite(options.olderThanDays) && (options.olderThanDays as number) > 0
+        ? Math.trunc(options.olderThanDays as number) : DISPATCH_PAYLOAD_RETENTION_DAYS;
+    const limit = Math.min(Math.max(Math.trunc(options.limit ?? 500) || 500, 1), 5000);
+    const [tables] = await query<any[]>(
+        'SELECT current_schema() AS schema, to_regclass($1)::text AS outbox',
+        [`${schema}.agent_dispatch_outbox`]);
+    if (tables?.schema !== schema) fail('dispatch_invalid_reference');
+    if (!tables.outbox) return 0;
+    const redacted = await query<any[]>(
+        `UPDATE agent_dispatch_outbox SET redacted_at=NOW(), payload=NULL, recipient=NULL,
+                conversation_id=NULL, contact_id=NULL, learning_footprint=NULL
+         WHERE id IN (
+             SELECT id FROM agent_dispatch_outbox
+              WHERE redacted_at IS NULL AND state = ANY($1::text[])
+                AND updated_at < NOW() - make_interval(days => $2::int)
+              ORDER BY updated_at LIMIT $3::int)
+         RETURNING id`,
+        [[...DISPATCH_REDACTABLE_STATES], days, limit]);
+    return redacted.length;
+}
+
+export const DISPATCH_RESOLUTIONS = ['delivered', 'not_delivered', 'retry'] as const;
+export type DispatchResolution = (typeof DISPATCH_RESOLUTIONS)[number];
+
+/**
+ * A person's decision about an uncertain effect, recorded as one.
+ *
+ * `delivered` closes it with the receipt the operator found at the provider.
+ * `not_delivered` closes it without sending anything.
+ * `retry` is the only one that can produce another POST, and it therefore
+ * demands written evidence that the effect did NOT happen — the whole reason
+ * this state exists is that silence is not such evidence.
+ *
+ * Only a row still in `reconciliation_required` may be resolved: a decision
+ * about an effect that has since settled on its own is refused rather than
+ * applied to a different reality.
+ */
+export interface DispatchResolutionRecord {
+    readonly id: string;
+    readonly dispatchId: string;
+    readonly resolution: DispatchResolution;
+    readonly evidence: string;
+    readonly actorId: string;
+    readonly actorRole: string | null;
+    readonly previousState: string;
+    readonly previousErrorCode: string | null;
+    readonly newState: string;
+    readonly receipt: string | null;
+    readonly createdAt: Date;
+}
+
+function mapResolution(row: any): DispatchResolutionRecord {
+    return Object.freeze({
+        id: String(row.id), dispatchId: String(row.dispatch_id),
+        resolution: row.resolution as DispatchResolution, evidence: String(row.evidence),
+        actorId: String(row.actor_id), actorRole: row.actor_role ?? null,
+        previousState: String(row.previous_state), previousErrorCode: row.previous_error_code ?? null,
+        newState: String(row.new_state), receipt: row.receipt ?? null,
+        createdAt: row.created_at instanceof Date ? row.created_at : new Date(row.created_at),
+    });
+}
+
+export async function resolveDispatchReconciliation(query: DispatchOutboxQuery, schema: string, input: {
+    dispatchId: string; resolution: DispatchResolution; evidence: string;
+    actorId?: string | null; actorRole?: string | null; receipt?: string | null;
+}): Promise<{ row: DispatchRow; resolution: DispatchResolutionRecord }> {
+    if (!SCHEMA.test(schema) || !UUID.test(String(input?.dispatchId))
+        || !DISPATCH_RESOLUTIONS.includes(input.resolution)) fail('dispatch_invalid_reference');
+    const evidence = typeof input.evidence === 'string' ? input.evidence.trim() : '';
+    if (!evidence || evidence.length > 500) fail('dispatch_resolution_evidence_required');
+    // An irreversible decision with no author is not a decision anyone can
+    // review later, and `retry` sends another message to a real customer.
+    const actorId = typeof input.actorId === 'string' ? input.actorId.trim() : '';
+    if (!actorId || actorId.length > 200) fail('dispatch_resolution_actor_required');
+    const actorRole = typeof input.actorRole === 'string' && input.actorRole.trim()
+        ? input.actorRole.trim().slice(0, 60) : null;
+
+    const [row] = await query<any[]>(
+        'SELECT * FROM agent_dispatch_outbox WHERE id=$1::uuid FOR UPDATE', [input.dispatchId]);
+    if (!row) fail('dispatch_unavailable');
+    if (row.state !== 'reconciliation_required') fail(`dispatch_not_reconcilable:${row.state}`);
+
+    // The provider failure that put this row here is evidence too, and writing
+    // the decision over `error_code` used to erase it.
+    const previousErrorCode: string | null = row.error_code ?? null;
+    let settled: any;
+    let newState: DispatchState;
+    let receipt: string | null = null;
+
+    if (input.resolution === 'delivered') {
+        const stated = typeof input.receipt === 'string' ? input.receipt.trim() : '';
+        if (!stated) fail('dispatch_receipt_required');
+        receipt = stated.slice(0, 300);
+        newState = 'sent';
+        [settled] = await query<any[]>(
+            `UPDATE agent_dispatch_outbox SET state='sent', receipt=$2, updated_at=NOW()
+             WHERE id=$1::uuid RETURNING *`, [input.dispatchId, receipt]);
+        if (row.message_id) {
+            await query(`UPDATE messages SET status='sent' WHERE id=$1::uuid AND status='pending'`, [row.message_id]);
+        }
+    } else if (input.resolution === 'not_delivered') {
+        newState = 'suppressed';
+        [settled] = await query<any[]>(
+            `UPDATE agent_dispatch_outbox SET state='suppressed', updated_at=NOW()
+             WHERE id=$1::uuid RETURNING *`, [input.dispatchId]);
+        if (row.message_id) {
+            await query(`UPDATE messages SET status='failed' WHERE id=$1::uuid AND status NOT IN ('redacted','delivered','read')`,
+                [row.message_id]);
+        }
+    } else {
+        // The operator states the effect did not happen and accepts another
+        // attempt. Redacted words cannot be resent under any evidence.
+        if (row.redacted_at) fail('dispatch_redacted');
+        if (Number(row.attempts) >= DISPATCH_MAX_ATTEMPTS) fail('dispatch_attempts_exhausted');
+        newState = 'failed';
+        [settled] = await query<any[]>(
+            `UPDATE agent_dispatch_outbox SET state='failed', available_at=NOW(), updated_at=NOW()
+             WHERE id=$1::uuid RETURNING *`, [input.dispatchId]);
+    }
+
+    // Same transaction as the change it authorises. A decision that committed
+    // while its record did not is exactly the gap this closes.
+    const [recorded] = await query<any[]>(
+        `INSERT INTO agent_dispatch_resolutions
+            (dispatch_id, resolution, evidence, actor_id, actor_role, receipt,
+             previous_state, previous_error_code, new_state)
+         VALUES ($1::uuid,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+        [input.dispatchId, input.resolution, evidence, actorId, actorRole, receipt,
+            String(row.state), previousErrorCode, newState]);
+    return { row: mapRow(settled), resolution: mapResolution(recorded) };
+}
+
+/** Decisions whose copy has not reached the global audit log yet. */
+export async function readUnexportedDispatchResolutions(query: DispatchOutboxQuery, schema: string,
+    limit = 50): Promise<readonly DispatchResolutionRecord[]> {
+    if (!SCHEMA.test(schema)) fail('dispatch_invalid_reference');
+    const [tables] = await query<any[]>('SELECT to_regclass($1)::text AS present',
+        [`${schema}.agent_dispatch_resolutions`]);
+    if (!tables?.present) return Object.freeze([]);
+    const rows = await query<any[]>(
+        `SELECT * FROM agent_dispatch_resolutions WHERE exported_at IS NULL
+          ORDER BY created_at ASC LIMIT $1`, [Math.min(Math.max(Number(limit) || 50, 1), 200)]);
+    return Object.freeze(rows.map(mapResolution));
+}
+
+export async function markDispatchResolutionExported(query: DispatchOutboxQuery, schema: string,
+    resolutionId: string): Promise<void> {
+    if (!SCHEMA.test(schema) || !UUID.test(String(resolutionId))) fail('dispatch_invalid_reference');
+    await query(`UPDATE agent_dispatch_resolutions SET exported_at=NOW()
+                  WHERE id=$1::uuid AND exported_at IS NULL`, [resolutionId]);
+}
+
+export interface DispatchRedactionScope {
+    contactIds?: string[];
+    sourceIds?: string[];
+    releaseIds?: string[];
+}
+
+/**
+ * Redact on the caller's SAME tenant transaction, under the exclusive privacy
+ * fence, exactly like the Web Chat reply copies. The row identity and its state
+ * survive: a late finalizer must still find the fact that stops a resend, and a
+ * recovered job must not repopulate a payload erasure removed.
+ */
+export async function redactDispatchOutbox(query: DispatchOutboxQuery, schema: string,
+    input: DispatchRedactionScope): Promise<number> {
+    const contactIds = [...new Set(input?.contactIds || [])].sort();
+    const sourceIds = [...new Set(input?.sourceIds || [])].sort();
+    const releaseIds = [...new Set(input?.releaseIds || [])].sort();
+    if (!SCHEMA.test(schema) || [...contactIds, ...sourceIds, ...releaseIds].some(id => !UUID.test(id)))
+        fail('dispatch_redaction_scope_invalid');
+    if (!contactIds.length && !sourceIds.length && !releaseIds.length) return 0;
+    const [tables] = await query<any[]>(`SELECT current_schema() AS schema,
+        to_regclass($1)::text AS outbox, to_regclass($2)::text AS sources`,
+    [`${schema}.agent_dispatch_outbox`, `${schema}.agent_dispatch_outbox_sources`]);
+    if (tables?.schema !== schema) fail('dispatch_redaction_scope_invalid');
+    if (!tables.outbox) return 0;
+    await query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))::text', [`agent-privacy:${schema}`]);
+    // A missing source index beside an existing outbox is a partial migration,
+    // not evidence that no derived payload exists.
+    if (!tables.sources) fail('dispatch_source_index_unavailable');
+    const rows = await query<any[]>(`SELECT d.id FROM agent_dispatch_outbox d
+        WHERE d.redacted_at IS NULL AND (
+            d.contact_id=ANY($1::uuid[])
+            OR EXISTS(SELECT 1 FROM agent_dispatch_outbox_sources s WHERE s.dispatch_id=d.id
+                AND (s.source_contact_id=ANY($1::uuid[]) OR s.source_id=ANY($2::uuid[])))
+            OR EXISTS(SELECT 1 FROM jsonb_array_elements(CASE
+                WHEN jsonb_typeof(d.learning_footprint)='array' THEN d.learning_footprint ELSE '[]'::jsonb END) footprint
+                CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(footprint->'entries')='array'
+                    THEN footprint->'entries' ELSE '[]'::jsonb END) entry WHERE entry->>'releaseId'=ANY($3::text[])))
+        ORDER BY d.id FOR UPDATE OF d`, [contactIds, sourceIds, releaseIds]);
+    if (!rows.length) return 0;
+    const ids = rows.map(row => row.id);
+    await query(`UPDATE agent_dispatch_outbox SET redacted_at=NOW(), payload=NULL, recipient=NULL,
+        conversation_id=NULL, contact_id=NULL, operational_scope='{}'::jsonb, learning_footprint=NULL,
+        lease_token=NULL, lease_expires_at=NULL,
+        state=CASE WHEN state='admitted' THEN 'reconciliation_required' ELSE state END,
+        updated_at=NOW() WHERE id=ANY($1::uuid[])`, [ids]);
+    await query('DELETE FROM agent_dispatch_outbox_sources WHERE dispatch_id=ANY($1::uuid[])', [ids]);
+    return rows.length;
+}

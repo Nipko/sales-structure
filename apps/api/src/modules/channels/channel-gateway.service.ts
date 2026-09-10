@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { NormalizedMessage, ChannelType, OutboundMessage } from '@parallext/shared';
 import { WebhookTapService } from './webhook-tap.service';
 import { channelSafeImageUrl } from '../../common/utils/media-url.util';
+import type { StrictDispatchTransport } from './strict-dispatch-transport';
 
 /**
  * Abstract interface that all channel adapters must implement.
@@ -9,6 +10,8 @@ import { channelSafeImageUrl } from '../../common/utils/media-url.util';
  */
 export interface IChannelAdapter {
     readonly channelType: ChannelType;
+    /** Local persisted transports retain tenant/conversation scope from the full envelope. */
+    sendOutbound?(outbound: OutboundMessage): Promise<string>;
     handleWebhook(payload: any, accountId: string): Promise<NormalizedMessage | null>;
     sendTextMessage(to: string, text: string, accountId: string, accessToken: string): Promise<string>;
     sendMediaMessage(to: string, mediaUrl: string, caption: string | undefined, accountId: string, accessToken: string, mediaType?: 'image' | 'document' | 'audio' | 'video', filename?: string): Promise<string>;
@@ -54,6 +57,17 @@ export class ChannelGatewayService {
      */
     getAdapter(channelType: ChannelType): IChannelAdapter | undefined {
         return this.adapters.get(channelType);
+    }
+
+    /**
+     * The strict transport for a channel, or undefined when its adapter has not
+     * been migrated. Undefined is a refusal, never an invitation to fall back to
+     * `sendMessage`: that method turns every failure into null, which is exactly
+     * what the durable dispatch states exist to distinguish.
+     */
+    getStrictTransport(channelType: ChannelType): StrictDispatchTransport | undefined {
+        const adapter = this.adapters.get(channelType) as Partial<StrictDispatchTransport> | undefined;
+        return typeof adapter?.sendStrict === 'function' ? adapter as StrictDispatchTransport : undefined;
     }
 
     /**
@@ -103,6 +117,7 @@ export class ChannelGatewayService {
         }
 
         try {
+            if (adapter.sendOutbound) return await adapter.sendOutbound(outbound);
             // Opt-in WhatsApp Flow: routed by metadata.flowId. If the adapter can't send
             // it (non-WhatsApp), fall through to the text body so the booking never stalls.
             const meta = outbound.metadata as any;

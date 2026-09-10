@@ -16,7 +16,25 @@ import {
     StructuredHandoffSummary,
     TenantConfig,
 } from '@parallext/shared';
+import { randomUUID } from 'crypto';
 import { handoffAgentI18n } from './handoff-i18n';
+import {
+    HANDOFF_ANNOUNCEMENT_DESTINATIONS, HANDOFF_EFFECTS_DDL, HandoffEffectError,
+    admitHandoffEffect, expireHandoffEffectLeases, prepareHandoffEffects, projectHandoffEffects,
+    settleHandoffEffect,
+    type HandoffEffectDestination, type HandoffEffectOutcome,
+} from './handoff-effects';
+import {
+    HANDOFF_EFFECT_KEYS,
+    HANDOFF_RECEIPT_DDL,
+    markHandoffEffect,
+    readHandoffReceipt,
+    recordHandoffReceipt,
+    type HandoffEffectKey,
+    type HandoffReceipt,
+    type HandoffReceiptLookup,
+    type HandoffReceiptRequest,
+} from './handoff-receipt';
 import {
     buildDeterministicHandoffSummary,
     formatLegacyHandoffSummary,
@@ -41,6 +59,29 @@ export interface HandoffResult {
     summary: string;
     structuredSummary: StructuredHandoffSummary;
     reason: string;
+    /**
+     * Present only when the caller asked for one. It is the durable authority a
+     * deterministic notice needs to reach a conversation a person now owns; the
+     * `handoffId` above is a Redis lookup key and never serves that purpose.
+     */
+    receipt?: HandoffReceipt;
+}
+
+/** Everything the transition transaction may do besides its own statements. */
+export interface HandoffDeliveryOptions {
+    beforeSideEffect?: () => Promise<void>;
+    awaitNotifications?: boolean;
+    /**
+     * Bind this transfer to the exact inbound that caused it. Only callers that
+     * already persisted that inbound can supply it; the rest keep today's
+     * behaviour and simply produce no receipt.
+     */
+    receipt?: HandoffReceiptRequest;
+    /**
+     * Finish the side effects of a transfer that already committed. The
+     * transition, the note and the receipt are left untouched.
+     */
+    resume?: HandoffReceipt;
 }
 
 export interface HandoffEscalatedEvent {
@@ -65,10 +106,31 @@ interface AutoAssignment {
     phone?: string;
 }
 
+const HANDOFF_INBOX_URL = 'https://admin.parallly-chat.cloud/admin/inbox';
+
+/**
+ * Only a demonstrated absence of the effect may be attempted again.
+ *
+ * The bounded SMTP transport names the cases it cannot vouch for; those wait
+ * for a person. Everything else here comes from a fan-out listener, and the
+ * listeners that can partially succeed swallow their own errors — so a
+ * rejection means the listener threw before it reached anything.
+ */
+const HANDOFF_UNCERTAIN_FAILURES: ReadonlySet<string> = new Set([
+    'smtp_deadline_outcome_unknown', 'smtp_acceptance_unverified', 'smtp_connection_closed',
+]);
+function classifyHandoffEffectFailure(error: any): HandoffEffectOutcome {
+    const code = String(error?.message || error || 'handoff_effect_failed').slice(0, 120);
+    return HANDOFF_UNCERTAIN_FAILURES.has(code)
+        ? { kind: 'unknown', errorCode: code }
+        : { kind: 'rejected', errorCode: code };
+}
+
 @Injectable()
 export class HandoffService {
     private readonly logger = new Logger(HandoffService.name);
     private readonly handoffSchemaReady = new Set<string>();
+    private readonly handoffReceiptSchemaReady = new Set<string>();
 
     constructor(
         private prisma: PrismaService,
@@ -183,20 +245,32 @@ export class HandoffService {
      * Execute handoff: mark conversation, emit event for agent console notification,
      * assign to available agent if possible.
      */
+    async prepareDelivery(tenantId: string): Promise<void> {
+        const schema = await this.prisma.getTenantSchemaName(tenantId);
+        await this.ensureStructuredHandoffColumns(schema);
+        await this.aiResolutionService.ensureResolutionColumns(schema);
+    }
+
     async executeHandoff(
         tenantId: string,
         conversationId: string,
         message: NormalizedMessage,
         reason: string,
+        delivery?: HandoffDeliveryOptions,
     ): Promise<HandoffResult> {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
         await this.ensureStructuredHandoffColumns(schemaName);
+        // Lazy DDL is hoisted above the transition transaction: neither the
+        // resolution columns nor the receipt table may be created inside it.
+        await this.aiResolutionService.ensureResolutionColumns(schemaName);
+        if (delivery?.receipt) await this.ensureHandoffReceiptTable(schemaName);
         // Tenant language drives the email template variant (fallback 'es').
         // These are agent/admin-facing notifications, so tenant language is the
         // right choice. TODO(i18n): for customer-facing emails use the
         // conversation's detected language instead.
         const lang = await this.getTenantLanguage(tenantId);
 
+        await delivery?.beforeSideEffect?.();
         // 1. Build a bounded, evidence-linked summary. The legacy string is
         // retained for existing inbox/email consumers.
         const recentMessages = await this.prisma.executeInTenantSchema<HandoffMessageEvidence[]>(schemaName,
@@ -218,48 +292,75 @@ export class HandoffService {
         const summary = formatLegacyHandoffSummary(structuredSummary);
         const handoffTriggeredAt = structuredSummary.generatedAt;
 
-        // 2. Update conversation status to waiting_human
-        await this.prisma.executeInTenantSchema(schemaName,
-            `UPDATE conversations
-             SET status = 'waiting_human',
-                 metadata = jsonb_set(
-                     COALESCE(metadata, '{}'::jsonb),
-                     '{handoff}',
-                     $2::jsonb
-                 ),
-                 handoff_summary = $3::jsonb,
-                 handoff_trace_id = $4,
-                 handoff_summary_generated_at = $5::timestamptz,
-                 updated_at = NOW()
-             WHERE id = $1::uuid`,
-            [conversationId, JSON.stringify({
-                reason,
-                summary,
-                structuredSummary,
-                traceId: structuredSummary.traceId,
-                startedAt: handoffTriggeredAt,
-                contactId: message.contactId,
-            }), JSON.stringify(structuredSummary), structuredSummary.traceId, structuredSummary.generatedAt],
-        );
-
-        // 2b. Mark conversation as handed off for AI resolution tracking
-        await this.aiResolutionService.ensureResolutionColumns(schemaName);
-        await this.prisma.executeInTenantSchema(schemaName,
-            `UPDATE conversations SET was_handed_off = true, handoff_at = NOW() WHERE id = $1::uuid`,
-            [conversationId],
-        );
-
-        // 3. Create internal note documenting the handoff
+        await delivery?.beforeSideEffect?.();
+        // 2. The transition itself.
+        //
+        // Status, resolution flag, note and — when the caller asked for one —
+        // the durable receipt now commit together. They used to be three
+        // independent statements, so a failure between them could leave a
+        // conversation transferred with no note, or a receipt describing a
+        // transition that never happened. The receipt runs FIRST and inside the
+        // same transaction because it must observe, under the conversation row
+        // lock, the status the conversation still had before this update.
         const i18n = handoffAgentI18n(lang);
-        await this.prisma.executeInTenantSchema(schemaName,
-            `INSERT INTO internal_notes (conversation_id, agent_id, content, created_at)
-             VALUES ($1::uuid, NULL, $2, NOW())`,
-            [conversationId, i18n.noteText(reason, summary)],
-        );
+        // Resuming: the transition, the note and the receipt already committed.
+        // Repeating them would add a second internal note for one transfer.
+        const receipt = delivery?.resume ?? await this.prisma.transactionInTenantSchema(schemaName, async (query) => {
+            const recorded = delivery?.receipt
+                ? await recordHandoffReceipt(query, schemaName, {
+                    ...delivery.receipt,
+                    conversationId,
+                    toStatus: 'waiting_human',
+                    reason,
+                    traceId: structuredSummary.traceId,
+                })
+                : undefined;
+            // What this transfer owes, written with the transfer itself. A
+            // process that dies before reaching any destination still leaves the
+            // list behind, one row per destination, where recovery can find it.
+            if (recorded) {
+                await prepareHandoffEffects(query, schemaName, recorded.id,
+                    ['assignment', 'cache', ...HANDOFF_ANNOUNCEMENT_DESTINATIONS, 'email']);
+            }
+            await query(
+                `UPDATE conversations
+                 SET status = 'waiting_human',
+                     metadata = jsonb_set(
+                         COALESCE(metadata, '{}'::jsonb),
+                         '{handoff}',
+                         $2::jsonb
+                     ),
+                     handoff_summary = $3::jsonb,
+                     handoff_trace_id = $4,
+                     handoff_summary_generated_at = $5::timestamptz,
+                     updated_at = NOW()
+                 WHERE id = $1::uuid`,
+                [conversationId, JSON.stringify({
+                    reason,
+                    summary,
+                    structuredSummary,
+                    traceId: structuredSummary.traceId,
+                    startedAt: handoffTriggeredAt,
+                    contactId: message.contactId,
+                }), JSON.stringify(structuredSummary), structuredSummary.traceId, structuredSummary.generatedAt],
+            );
+            // 2b. Mark conversation as handed off for AI resolution tracking
+            await query(
+                `UPDATE conversations SET was_handed_off = true, handoff_at = NOW() WHERE id = $1::uuid`,
+                [conversationId],
+            );
+            // 3. Create internal note documenting the handoff
+            await query(
+                `INSERT INTO internal_notes (conversation_id, agent_id, content, created_at)
+                 VALUES ($1::uuid, NULL, $2, NOW())`,
+                [conversationId, i18n.noteText(reason, summary)],
+            );
+            return recorded;
+        });
 
         // 4. Get contact info for notifications
         const contactInfo = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-            `SELECT ct.name as contact_name, ct.phone as contact_phone, ct.channel_type,
+            `SELECT ct.id as contact_id, ct.name as contact_name, ct.phone as contact_phone, ct.channel_type,
                     (SELECT content_text FROM messages WHERE conversation_id = $1::uuid ORDER BY created_at DESC LIMIT 1) as last_message
              FROM conversations cv
              LEFT JOIN contacts ct ON ct.id = cv.contact_id
@@ -269,8 +370,70 @@ export class HandoffService {
         const contact = contactInfo?.[0] || {};
 
         // 5. Try to auto-assign to an available agent (skill-based routing)
-        const autoAssignment = await this.tryAutoAssign(tenantId, schemaName, conversationId, reason);
-        const assignedTo = autoAssignment?.agentId || null;
+        //
+        // From here every step is a resumable PHASE. Receipt, status and note
+        // commit together, but these happen after, and a crash in the window used
+        // to leave a receipt that made every later attempt return immediately —
+        // so nobody was assigned and nobody was told. Each phase is skipped when
+        // the receipt already records it, and records itself as soon as it ends.
+        // Each destination is admitted, attempted and settled on its own row.
+        // The aggregate `announced` flag could not say which of six consumers
+        // had run, so one failing consumer re-announced the transfer to all of
+        // them — a second Slack message, a second CRM note, a second paid SMS.
+        //
+        // `undefined` means this attempt did not happen: the destination is
+        // already settled, or it just failed. A caller that needs the value of
+        // an effect settled earlier reads it from the projection.
+        const deliverEffect = async (destination: HandoffEffectDestination,
+            act: () => Promise<string | null | void>): Promise<string | null | undefined> => {
+            if (!receipt) {
+                const legacy = await act();
+                return typeof legacy === 'string' ? legacy : null;
+            }
+            const leaseToken = randomUUID();
+            try {
+                const admitted = await this.prisma.transactionInTenantSchema(schemaName, query =>
+                    admitHandoffEffect(query, schemaName, { receiptId: receipt.id, destination, leaseToken }));
+                // Not granted. The lapsed-lease case answers this way on purpose:
+                // its `unknown` transition has to commit, and a throw would take
+                // it down with the refusal.
+                if (admitted.state !== 'admitted') {
+                    this.logger.log(`Handoff effect ${destination} not attempted: ${admitted.state}`);
+                    return undefined;
+                }
+            } catch (error: any) {
+                if (error instanceof HandoffEffectError) {
+                    this.logger.log(`Handoff effect ${destination} not attempted: ${error.code}`);
+                    return undefined;
+                }
+                throw error;
+            }
+            let outcome: HandoffEffectOutcome;
+            try {
+                const value = await act();
+                outcome = { kind: 'accepted', receipt: typeof value === 'string' ? value : null };
+            } catch (error: any) {
+                outcome = classifyHandoffEffectFailure(error);
+            }
+            // Never swallowed. A result that cannot be written leaves the row
+            // admitted, and the expiry of that lease is what turns it into
+            // `unknown` — a person decides — instead of into a second attempt.
+            await this.prisma.transactionInTenantSchema(schemaName, async query => {
+                await settleHandoffEffect(query, schemaName, { receiptId: receipt.id, destination, leaseToken, outcome });
+                await projectHandoffEffects(query, schemaName, receipt.id);
+            });
+            if (outcome.kind !== 'accepted') {
+                this.logger.error(`Handoff effect ${destination} settled as ${outcome.kind}: ${outcome.errorCode}`);
+            }
+            return outcome.kind === 'accepted' ? (outcome.receipt ?? null) : undefined;
+        };
+        const settledValue = (key: HandoffEffectKey) => receipt?.effects?.[key];
+        const assignment = await deliverEffect('assignment', async () => {
+            const autoAssignment = await this.tryAutoAssign(tenantId, schemaName, conversationId, reason, delivery);
+            return autoAssignment?.agentId || null;
+        });
+        const assignedTo: string | null = assignment !== undefined ? assignment
+            : (typeof settledValue('assignment') === 'string' ? settledValue('assignment') as string : null);
 
         // 6. Get assigned agent name for notifications
         let assignedAgentName: string | undefined;
@@ -286,24 +449,29 @@ export class HandoffService {
         }
 
         // 7. Store handoff state in Redis for fast lookup
-        const handoffId = `hoff_${Date.now()}`;
-        await this.redis.set(
-            `handoff:${tenantId}:${conversationId}`,
-            JSON.stringify({
-                handoffId,
-                reason,
-                startedAt: handoffTriggeredAt,
-                contactId: message.contactId,
-                assignedTo,
-                summary,
-                structuredSummary,
-                traceId: structuredSummary.traceId,
-            }),
-            86400,
-        );
+        const handoffId = typeof settledValue('cache') === 'string'
+            ? settledValue('cache') as string : `hoff_${Date.now()}`;
+        await deliverEffect('cache', async () => {
+            await this.redis.set(
+                `handoff:${tenantId}:${conversationId}`,
+                JSON.stringify({
+                    handoffId,
+                    reason,
+                    startedAt: handoffTriggeredAt,
+                    contactId: message.contactId,
+                    assignedTo,
+                    summary,
+                    structuredSummary,
+                    traceId: structuredSummary.traceId,
+                }),
+                86400,
+            );
+            return handoffId;
+        });
 
         // 8. Emit event with full context for notifications
-        this.eventEmitter.emit('handoff.escalated', {
+        await delivery?.beforeSideEffect?.();
+        const handoffEvent = {
             tenantId,
             conversationId,
             reason,
@@ -317,81 +485,78 @@ export class HandoffService {
             contactPhone: contact.contact_phone || '',
             lastMessage: (contact.last_message || '').substring(0, 100),
             handoffTriggeredAt,
-        } as HandoffEscalatedEvent);
-
-        // 9. Send email to assigned agent via template (fire-and-forget)
-        if (assignedAgentEmail) {
-            const contactName = contact.contact_name || i18n.contactFallback;
-            const contactPhone = contact.contact_phone || 'N/A';
-            const lastMessage = (contact.last_message || '').substring(0, 200);
-
-            try {
-                const sent = await this.emailTemplates.renderAndSend(schemaName, 'handoff_notification', assignedAgentEmail, {
-                    agent_name: assignedAgentName || i18n.agentFallback,
-                    contact_name: contactName,
-                    contact_phone: contactPhone,
-                    reason,
-                    last_message: lastMessage,
-                    inbox_url: 'https://admin.parallly-chat.cloud/admin/inbox',
-                }, lang);
-                if (!sent) throw new Error('Template not found or inactive');
-            } catch (e: any) {
-                // Fallback to direct email if template is not yet seeded
-                this.emailService.send({
-                    to: assignedAgentEmail,
-                    subject: i18n.assignedSubject(contactName),
-                    html: i18n.assignedHtml({ contactName, contactPhone, reason, lastMessage }),
-                }).catch(fe => this.logger.warn(`Handoff fallback email failed: ${fe.message}`));
-            }
-        } else {
-            // Unassigned case: fetch tenant's billingEmail or fallback to active tenant_admin email
-            let fallbackEmail: string | undefined;
-            try {
-                const tenant = await this.prisma.tenant.findUnique({
-                    where: { id: tenantId },
-                    select: { billingEmail: true },
-                });
-                fallbackEmail = tenant?.billingEmail || undefined;
-            } catch (e: any) {
-                this.logger.warn(`Failed to fetch tenant billing email: ${e.message}`);
-            }
-
-            if (!fallbackEmail) {
-                try {
-                    const adminUser = await this.prisma.user.findFirst({
-                        where: { tenantId, role: 'tenant_admin', isActive: true },
-                        select: { email: true },
-                    });
-                    fallbackEmail = adminUser?.email || undefined;
-                } catch (e: any) {
-                    this.logger.warn(`Failed to fetch fallback tenant admin email: ${e.message}`);
-                }
-            }
-
-            if (fallbackEmail) {
-                const contactName = contact.contact_name || i18n.contactFallback;
-                const contactPhone = contact.contact_phone || 'N/A';
-                const lastMessage = (contact.last_message || '').substring(0, 200);
-
-                try {
-                    const sent = await this.emailTemplates.renderAndSend(schemaName, 'handoff_notification_unassigned', fallbackEmail, {
-                        contact_name: contactName,
-                        contact_phone: contactPhone,
-                        reason,
-                        last_message: lastMessage,
-                        inbox_url: 'https://admin.parallly-chat.cloud/admin/inbox',
-                    }, lang);
-                    if (!sent) throw new Error('Template not found or inactive');
-                } catch (e: any) {
-                    // Fallback to direct email
-                    this.emailService.send({
-                        to: fallbackEmail,
-                        subject: i18n.unassignedSubject(),
-                        html: i18n.unassignedHtml({ contactName, contactPhone, reason, lastMessage }),
-                    }).catch(fe => this.logger.warn(`Handoff fallback unassigned email failed: ${fe.message}`));
-                }
-            }
+            // Stable across every attempt, so a consumer that can dedupe has
+            // something to dedupe on.
+            handoffReceiptId: receipt?.id ?? null,
+            // The CRM note has always been written against a contact this event
+            // never carried, so it referenced nobody.
+            contactId: contact.contact_id ?? null,
+            channelType: contact.channel_type ?? message.channelType ?? null,
+        } as HandoffEscalatedEvent;
+        // One event per destination instead of one for all six. `emitAsync`
+        // rejects the whole fan-out when any single listener throws, so the
+        // aggregate flag was never written and a resumed transfer announced
+        // itself again to the five that had already succeeded. Each of these is
+        // awaited on purpose: an announcement whose outcome nobody observed
+        // cannot be settled, and a transfer is rare enough to pay for that.
+        for (const destination of HANDOFF_ANNOUNCEMENT_DESTINATIONS) {
+            await deliverEffect(destination, async () => {
+                await this.eventEmitter.emitAsync(`handoff.escalated.${destination}`, handoffEvent);
+                return null;
+            });
         }
+
+        // 9. The most expensive repeat: a resumed transfer must never send a
+        // second email. `renderAndSend` answers with a boolean, and a boolean
+        // cannot tell an unconfigured transport — safe to try again — from a
+        // server that accepted the message before the socket died. The bounded
+        // attempt returns the SMTP id or throws a code that says which, so an
+        // outcome nobody can vouch for is recorded as `unknown` and waits for a
+        // person instead of arriving twice.
+        const contactName = contact.contact_name || i18n.contactFallback;
+        const contactPhone = contact.contact_phone || 'N/A';
+        const lastMessage = (contact.last_message || '').substring(0, 200);
+        const target = assignedAgentEmail
+            ? { email: assignedAgentEmail, slug: 'handoff_notification' as const }
+            : await this.resolveHandoffFallbackRecipient(tenantId);
+        await deliverEffect('email', async () => {
+            // Nobody to notify is a settled outcome, not an unfinished phase:
+            // leaving it open made every later attempt resume forever.
+            if (!target) return 'no_recipient';
+            const variables: Record<string, string> = target.slug === 'handoff_notification'
+                ? {
+                    agent_name: assignedAgentName || i18n.agentFallback,
+                    contact_name: contactName, contact_phone: contactPhone, reason,
+                    last_message: lastMessage, inbox_url: HANDOFF_INBOX_URL,
+                }
+                : {
+                    contact_name: contactName, contact_phone: contactPhone, reason,
+                    last_message: lastMessage, inbox_url: HANDOFF_INBOX_URL,
+                };
+            try {
+                const attempt = await this.emailTemplates.renderAndPrepare(
+                    schemaName, target.slug, target.email, variables, lang);
+                if (!attempt) throw new Error('handoff_email_template_unavailable');
+                await delivery?.beforeSideEffect?.();
+                return await attempt();
+            } catch (error: any) {
+                // A legacy transfer has no resume, so the plain transport is its
+                // only second chance. A durable caller — one holding a fence, or
+                // one with a receipt to resume from — gets the failure instead,
+                // and the classification decides whether it may try again.
+                if (receipt || delivery) throw error;
+                const sent = target.slug === 'handoff_notification'
+                    ? await this.emailService.send({
+                        to: target.email, subject: i18n.assignedSubject(contactName),
+                        html: i18n.assignedHtml({ contactName, contactPhone, reason, lastMessage }),
+                    })
+                    : await this.emailService.send({
+                        to: target.email, subject: i18n.unassignedSubject(),
+                        html: i18n.unassignedHtml({ contactName, contactPhone, reason, lastMessage }),
+                    });
+                return sent ? 'fallback' : 'fallback_unsent';
+            }
+        });
 
         this.logger.log(
             `Handoff executed: conversation=${conversationId}, reason=${reason}, assignedTo=${assignedTo || 'unassigned'}`,
@@ -403,7 +568,142 @@ export class HandoffService {
             summary,
             structuredSummary,
             reason,
+            receipt,
         };
+    }
+
+    /**
+     * Who hears about a transfer nobody was assigned: the tenant's billing
+     * address, then any active administrator. A lookup that fails is not an
+     * empty answer — it is a reason to try again later — so it propagates and
+     * the effect settles as retryable instead of as "nobody to notify".
+     */
+    private async resolveHandoffFallbackRecipient(tenantId: string):
+        Promise<{ email: string; slug: 'handoff_notification_unassigned' } | null> {
+        const tenant = await this.prisma.tenant.findUnique({
+            where: { id: tenantId }, select: { billingEmail: true },
+        });
+        if (tenant?.billingEmail) {
+            return { email: tenant.billingEmail, slug: 'handoff_notification_unassigned' };
+        }
+        const adminUser = await this.prisma.user.findFirst({
+            where: { tenantId, role: 'tenant_admin', isActive: true }, select: { email: true },
+        });
+        return adminUser?.email ? { email: adminUser.email, slug: 'handoff_notification_unassigned' } : null;
+    }
+
+    /**
+     * Bootstrap the receipt table outside any privacy or transition transaction.
+     * Ownership is checked by the callers that already resolved this schema for
+     * the tenant; no DDL may run once the transition transaction is open.
+     */
+    private async ensureHandoffReceiptTable(schemaName: string): Promise<void> {
+        if (this.handoffReceiptSchemaReady.has(schemaName)) return;
+        for (const statement of [...HANDOFF_RECEIPT_DDL, ...HANDOFF_EFFECTS_DDL]) {
+            await this.prisma.executeInTenantSchema(schemaName, statement);
+        }
+        this.handoffReceiptSchemaReady.add(schemaName);
+        // Permissions nobody settled become uncertain here rather than sitting
+        // `admitted` behind a dead lease. Once per schema per process, outside
+        // every transaction, and never on the path of a transfer that is
+        // currently being delivered.
+        await this.prisma.transactionInTenantSchema(schemaName,
+            query => expireHandoffEffectLeases(query, schemaName))
+            .catch(error => this.logger.warn(`Handoff effect leases not swept: ${error?.message}`));
+    }
+
+    /**
+     * Recover the receipt of a transfer already performed for this exact inbound.
+     *
+     * A caller uses this BEFORE deciding to escalate: a receipt means the
+     * transfer happened, so the notice is reproduced from it and the transfer is
+     * never repeated. Null means this inbound never transferred the conversation.
+     */
+    async lookupHandoffReceipt(tenantId: string, lookup: HandoffReceiptLookup): Promise<HandoffReceipt | null> {
+        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
+        await this.ensureHandoffReceiptTable(schemaName);
+        return this.prisma.transactionInTenantSchema(schemaName,
+            (query) => readHandoffReceipt(query, schemaName, lookup));
+    }
+
+    /**
+     * Finish the phases a crashed transfer never reached.
+     *
+     * Runs the same code as a fresh transfer with the transition skipped, so
+     * every phase applies its own "already done" rule and nothing that reached
+     * the outside world happens twice.
+     */
+    private async resumeHandoffEffects(
+        tenantId: string,
+        conversationId: string,
+        message: NormalizedMessage,
+        receipt: HandoffReceipt,
+        delivery?: Omit<HandoffDeliveryOptions, 'receipt'>,
+    ): Promise<void> {
+        // Each phase reads "already done" once, at the start, so two resumes
+        // racing could both announce the same transfer. One at a time; whoever
+        // does not get the lock simply leaves it to the holder.
+        const key = `lock:handoff-effects:${receipt.id}`;
+        const token = await this.redis.acquireLockToken(key, 60).catch(() => null);
+        if (!token) {
+            this.logger.log(`Handoff effects for ${receipt.id} are being resumed elsewhere`);
+            return;
+        }
+        try {
+            await this.executeHandoff(tenantId, conversationId, message, receipt.reason,
+                { ...delivery, resume: receipt });
+        } finally {
+            await this.redis.releaseLockToken(key, token).catch(() => undefined);
+        }
+    }
+
+    /**
+     * Escalate once for this inbound, or recover what a previous attempt already
+     * recorded. The two-step shape is deliberate: a concurrent turn that lost the
+     * unique index rolls its whole transition back, so notes, assignment and
+     * notifications are never repeated to obtain a notice that already exists.
+     */
+    async executeHandoffOnce(
+        tenantId: string,
+        conversationId: string,
+        message: NormalizedMessage,
+        reason: string,
+        request: HandoffReceiptRequest,
+        delivery?: Omit<HandoffDeliveryOptions, 'receipt'>,
+    ): Promise<HandoffReceipt> {
+        const lookup: HandoffReceiptLookup = {
+            conversationId, contactId: request.contactId, inboundMessageId: request.inboundMessageId,
+        };
+        const existing = await this.lookupHandoffReceipt(tenantId, lookup);
+        if (existing) {
+            // The transfer happened. Its side effects may not have: a crash
+            // between the transition and the assignment, the announcement or the
+            // notification used to be invisible here, because a receipt made
+            // every later attempt return immediately. Resume what is missing.
+            if (HANDOFF_EFFECT_KEYS.every(key => existing.effects?.[key] !== undefined)) return existing;
+            this.logger.warn(`Resuming handoff effects for ${conversationId}: `
+                + HANDOFF_EFFECT_KEYS.filter(key => existing.effects?.[key] === undefined).join(', '));
+            await this.resumeHandoffEffects(tenantId, conversationId, message, existing, delivery);
+            return (await this.lookupHandoffReceipt(tenantId, lookup)) ?? existing;
+        }
+        try {
+            const result = await this.executeHandoff(tenantId, conversationId, message, reason,
+                { ...delivery, receipt: request });
+            if (!result.receipt) throw new Error('handoff_receipt_unavailable');
+            // Re-read so the caller sees the phases as they actually ended: the
+            // receipt returned by the transition predates every side effect.
+            return (await this.lookupHandoffReceipt(tenantId, lookup).catch(() => null)) ?? result.receipt;
+        } catch (error) {
+            // A concurrent turn can win either the unique inbound index or the
+            // conversation row lock: the loser then sees a status a receipt may
+            // not transition out of. Both are the same fact — somebody else
+            // already transferred this inbound — and its receipt is canonical.
+            // Our own transition rolled back whole, so nothing was repeated.
+            // Any error that leaves no receipt behind is a genuine failure.
+            const recorded = await this.lookupHandoffReceipt(tenantId, lookup).catch(() => null);
+            if (recorded) return recorded;
+            throw error;
+        }
     }
 
     /**
@@ -559,6 +859,7 @@ export class HandoffService {
         schemaName: string,
         conversationId: string,
         reason?: string,
+        delivery?: { beforeSideEffect?: () => Promise<void>; awaitNotifications?: boolean },
     ): Promise<AutoAssignment | null> {
         try {
             // 1. Get contact_id from the conversation
@@ -683,7 +984,7 @@ export class HandoffService {
                         } as AutoAssignment;
                     },
                 );
-                this.emitConversationAssigned({
+                await this.emitConversationAssigned({
                     tenantId,
                     schemaName,
                     conversationId,
@@ -692,7 +993,7 @@ export class HandoffService {
                     ...(assignment.phone ? { phone: assignment.phone } : {}),
                     assignmentSource: 'auto',
                     assignedAt,
-                });
+                }, delivery);
                 this.logger.log(`[AutoAssign] Automatically assigned conversation ${conversationId} to agent "${agent.name}" (Active Count=${agent.active_count}, Matching Skills=${agent.matching_skills_count})`);
                 return assignment;
             }
@@ -702,9 +1003,12 @@ export class HandoffService {
         return null;
     }
 
-    private emitConversationAssigned(event: ConversationAssignedEvent): void {
+    private async emitConversationAssigned(event: ConversationAssignedEvent,
+        delivery?: { beforeSideEffect?: () => Promise<void>; awaitNotifications?: boolean }): Promise<void> {
         try {
-            this.eventEmitter.emit('conversation.assigned', event);
+            await delivery?.beforeSideEffect?.();
+            if (delivery?.awaitNotifications) await this.eventEmitter.emitAsync('conversation.assigned', event);
+            else this.eventEmitter.emit('conversation.assigned', event);
         } catch (error: any) {
             // The assignment transaction already committed. A listener failure
             // must not make callers retry and create a second assignment row.

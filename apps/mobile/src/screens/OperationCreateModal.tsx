@@ -24,6 +24,9 @@ import { useToast } from '../components/Toast';
 import { Modal } from '../components/AppModal';
 import { haptic } from '../lib/haptics';
 import { theme } from '../theme';
+import { randomUUID } from 'expo-crypto';
+import { catalogMoney,catalogRequestKey,currentOrderReview,type CatalogReview } from '../lib/catalogOrderReview';
+import { CatalogOrderQuoteCard } from '../components/CatalogOrderQuoteCard';
 
 export type ComposerKind = OperationComposerKind;
 
@@ -109,7 +112,7 @@ function normalizeReferences(kind: ComposerKind, primary: any[], secondary: any[
     const mappedPrimary = primary.map((item): ReferenceItem => {
         if (kind === 'tours') return { id: item.id, title: item.name || item.title || '', subtitle: item.destination || item.description, raw: item };
         if (kind === 'restaurant') return { id: item.id, title: item.name || '', subtitle: [item.category_name, Number(item.price || 0).toLocaleString()].filter(Boolean).join(' · '), raw: item };
-        if (kind === 'orders') return { id: item.id, title: item.name || '', subtitle: [item.sku, `${item.stock ?? 0}`, Number(item.price || 0).toLocaleString()].filter(Boolean).join(' · '), raw: item };
+        if (kind === 'orders') return { id: item.id, title: item.name || '', subtitle: item.sku || '', raw: item };
         if (kind === 'classes') return { id: item.id, title: item.name || '', subtitle: [item.scheduled_at, item.instructor_name].filter(Boolean).join(' · '), raw: item };
         if (kind === 'education') return { id: item.id, title: item.course_name || item.cohort_code || '', subtitle: [item.cohort_code, item.starts_at].filter(Boolean).join(' · '), raw: item };
         if (kind === 'insurance') return { id: item.id, title: item.name || item.policyholder_name || item.policy_number || '', subtitle: item.insurance_type || item.policy_number, raw: item };
@@ -294,7 +297,7 @@ export function OperationCreateModal({
     onClose,
     onCreated,
 }: Props) {
-    const { t } = useI18n();
+    const { t,locale } = useI18n();
     const toast = useToast();
     const insets = useSafeAreaInsets();
     const isManager = role === 'tenant_admin' || role === 'tenant_supervisor' || role === 'super_admin';
@@ -322,6 +325,8 @@ export function OperationCreateModal({
     const [resourcesNextOffset, setResourcesNextOffset] = useState(0);
     const [resourcesError, setResourcesError] = useState(false);
     const [submitting, setSubmitting] = useState(false);
+    const [catalogReview,setCatalogReview]=useState<CatalogReview|null>(null);
+    const catalogRequest=useRef<{fingerprint:string;key:string}|null>(null),catalogSubmitting=useRef(false);
     const contactRequest = useRef(0);
     const resourceRequest = useRef(0);
 
@@ -340,7 +345,7 @@ export function OperationCreateModal({
                 primaryRows = rows(await api.getRestaurantItems(tenantId));
             }
             if (kind === 'orders') {
-                primaryRows = rows(await api.getInventoryProducts(tenantId));
+                primaryRows = rows(await api.getInventoryProducts(tenantId)).filter(item=>item.isActive===true);
             }
             if (kind === 'classes') {
                 const from = dayString(new Date()) + 'T00:00:00';
@@ -490,6 +495,7 @@ export function OperationCreateModal({
         setContactsError(false);
         setResourcesError(false);
         setCart({});
+        setCatalogReview(null);catalogRequest.current=null;
         setMode(nextMode);
         void loadReferences();
         // References are intentionally reloaded each time: stock, capacity and
@@ -554,10 +560,13 @@ export function OperationCreateModal({
         () => primary.filter((item) => (cart[item.id] || 0) > 0),
         [cart, primary],
     );
+    const catalogPayload={contactId:selectedContact,paymentMethod:form.paymentMethod?.trim()||undefined,notes:form.notes?.trim()||undefined,
+        items:cartItems.map(item=>({productId:item.id,quantity:cart[item.id]}))};
+    const catalogFingerprint=JSON.stringify({tenantId,...catalogPayload}),reviewedCatalog=currentOrderReview(catalogReview,catalogFingerprint);
 
     const changeCart = (id: string, delta: number) => {
         setCart((current) => {
-            const next = Math.max(0, (current[id] || 0) + delta);
+            const next = Math.min(kind==='orders'?10000:Number.MAX_SAFE_INTEGER,Math.max(0, (current[id] || 0) + delta));
             return { ...current, [id]: next };
         });
     };
@@ -583,7 +592,8 @@ export function OperationCreateModal({
     }, [cartItems.length, form, isManager, kind, mode, selectedContact, selectedPetOwnerContactId, selectedPrimary, selectedSecondary]);
 
     const submit = async () => {
-        if (!canSubmit || submitting) return;
+        if (!canSubmit || submitting || catalogSubmitting.current) return;
+        if(kind==='orders')catalogSubmitting.current=true;
         setSubmitting(true);
         try {
             let response: any;
@@ -619,17 +629,14 @@ export function OperationCreateModal({
                     })),
                 });
             } else if (kind === 'orders') {
-                response = await api.createOrder(tenantId, {
-                    contactId: selectedContact,
-                    paymentMethod: form.paymentMethod?.trim() || undefined,
-                    notes: form.notes?.trim() || undefined,
-                    items: cartItems.map((item) => ({
-                        productId: item.id,
-                        productName: item.raw.name,
-                        quantity: cart[item.id],
-                        unitPrice: Number(item.raw.price || 0),
-                    })),
-                });
+                catalogRequest.current=catalogRequestKey(catalogRequest.current,catalogFingerprint,randomUUID);
+                if(!reviewedCatalog){
+                    const quoted:any=await api.quoteOrder(tenantId,catalogPayload);
+                    const review=currentOrderReview({...quoted?.data,fingerprint:catalogFingerprint},catalogFingerprint);
+                    if(!quoted?.success||!review)throw new Error('catalog_review_failed');
+                    setCatalogReview(review);return;
+                }
+                response = await api.createOrder(tenantId,{...catalogPayload,expectedTermsHash:reviewedCatalog.termsHash,idempotencyKey:catalogRequest.current.key});
             } else if (kind === 'classes' && mode === 'book') {
                 response = await api.bookFitnessClass(tenantId, selectedPrimary, selectedSecondary);
             } else if (kind === 'classes') {
@@ -737,10 +744,14 @@ export function OperationCreateModal({
             await onCreated();
             onClose();
         } catch (error: any) {
+            if(kind==='orders'){
+                setCatalogReview(null);toast.error(t('ops.catalog.reviewError'));return;
+            }
             const unavailable = /unavailable|full|conflict|stock|capacity|ocupad|cupo/i.test(String(error?.message || error || ''));
             toast.error(t(unavailable ? 'ops.create.unavailable' : 'ops.create.error'));
         } finally {
             setSubmitting(false);
+            catalogSubmitting.current=false;
         }
     };
 
@@ -759,20 +770,21 @@ export function OperationCreateModal({
     };
 
     return (
-        <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={onClose}>
+        <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={()=>{if(!catalogSubmitting.current)onClose();}}>
             <SafeAreaView style={styles.root} edges={['top']}>
                 <View style={styles.header}>
                     <View style={styles.headerText}>
                         <Text style={styles.title}>{t(`ops.create.title.${kind}`)}</Text>
                         <Text style={styles.subtitle}>{t(`ops.create.subtitle.${kind}`)}</Text>
                     </View>
-                    <TouchableOpacity style={styles.close} onPress={onClose} accessibilityRole="button" accessibilityLabel={t('common.close')}>
+                    <TouchableOpacity style={styles.close} disabled={kind==='orders'&&submitting} onPress={onClose} accessibilityRole="button" accessibilityLabel={t('common.close')}>
                         <Ionicons name="close" color={theme.text} size={24} />
                     </TouchableOpacity>
                 </View>
 
                 <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
                     <ScrollView
+                        pointerEvents={kind==='orders'&&submitting?'none':'auto'}
                         style={styles.flex}
                         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 30 }]}
                         keyboardShouldPersistTaps="handled"
@@ -847,10 +859,11 @@ export function OperationCreateModal({
                                         <View style={styles.cartCopy}>
                                             <Text style={styles.cartTitle}>{item.title}</Text>
                                             {!!item.subtitle && <Text style={styles.cartSubtitle}>{item.subtitle}</Text>}
+                                            {kind==='orders'&&<Text style={styles.cartSubtitle}>{catalogMoney(item.raw.price,item.raw.currency,locale)} · {item.raw.stock==null?t('ops.catalog.untracked'):t('ops.catalog.stock',{quantity:item.raw.stock})}</Text>}
                                         </View>
-                                        <TouchableOpacity style={styles.qtyButton} onPress={() => changeCart(item.id, -1)} disabled={!quantity} accessibilityRole="button"><Ionicons name="remove" size={18} color={quantity ? theme.text : theme.textSecondary} /></TouchableOpacity>
+                                        <TouchableOpacity style={styles.qtyButton} onPress={() => changeCart(item.id, -1)} disabled={!quantity} accessibilityRole="button" accessibilityLabel={kind==='orders'?t('ops.catalog.remove',{product:item.title}):undefined}><Ionicons name="remove" size={18} color={quantity ? theme.text : theme.textSecondary} /></TouchableOpacity>
                                         <Text style={styles.quantity}>{quantity}</Text>
-                                        <TouchableOpacity style={styles.qtyButton} onPress={() => changeCart(item.id, 1)} accessibilityRole="button"><Ionicons name="add" size={18} color={theme.text} /></TouchableOpacity>
+                                        <TouchableOpacity style={styles.qtyButton} onPress={() => changeCart(item.id, 1)} accessibilityRole="button" accessibilityLabel={kind==='orders'?t('ops.catalog.add',{product:item.title}):undefined}><Ionicons name="add" size={18} color={theme.text} /></TouchableOpacity>
                                     </View>
                                 );
                             })}
@@ -981,14 +994,15 @@ export function OperationCreateModal({
                         {!!selectedPrimaryRow && kind === 'tours' && <Text style={styles.hint}>{selectedPrimaryRow.subtitle}</Text>}
                         {!!selectedSecondaryRow && kind === 'insurance' && mode === 'claim' && <Text style={styles.hint}>{selectedSecondaryRow.subtitle}</Text>}
 
+                        {kind==='orders'&&reviewedCatalog&&<CatalogOrderQuoteCard review={reviewedCatalog}/>}
                         <TouchableOpacity
                             style={[styles.submit, (!canSubmit || submitting || selectorError) && styles.disabled]}
                             onPress={() => void submit()}
                             disabled={!canSubmit || submitting || selectorError}
                             accessibilityRole="button"
-                            accessibilityLabel={t('ops.create.submit')}
+                            accessibilityLabel={t(kind==='orders'?(reviewedCatalog?'ops.catalog.confirm':'ops.catalog.review'):'ops.create.submit')}
                         >
-                            {submitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitText}>{t('ops.create.submit')}</Text>}
+                            {submitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitText}>{t(kind==='orders'?(reviewedCatalog?'ops.catalog.confirm':'ops.catalog.review'):'ops.create.submit')}</Text>}
                         </TouchableOpacity>
                     </ScrollView>
                 </KeyboardAvoidingView>

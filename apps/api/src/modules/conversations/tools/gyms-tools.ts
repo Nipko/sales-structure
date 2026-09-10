@@ -64,12 +64,17 @@ export const GYMS_TOOLS: ToolDefinition[] = [
         },
     },
     {
+        name: 'get_my_class_bookings',
+        description: 'List the current contact\'s upcoming confirmed bookings and waitlist entries, including bookingId, class name and time. Call before cancelling or when recovering a reservation from an earlier conversation.',
+        parameters: { type: 'object', properties: {} },
+    },
+    {
         name: 'cancel_class_booking',
-        description: 'Cancel a class reservation. Credits are restored to the member. Use when the member wants to free up a spot they previously booked. Call get_my_membership first to get the memberId.',
+        description: 'Cancel an owned upcoming class reservation or waitlist entry. Only confirmed reservations restore consumed credits; waiting entries never consumed them. First call get_my_class_bookings and obtain confirmation for the selected class and time.',
         parameters: {
             type: 'object',
             properties: {
-                bookingId: { type: 'string', description: 'Booking UUID returned by book_class' },
+                bookingId: { type: 'string', description: 'Booking UUID returned by get_my_class_bookings or book_class' },
             },
             required: ['bookingId'],
         },

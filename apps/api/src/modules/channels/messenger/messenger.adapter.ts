@@ -4,6 +4,10 @@ import { ConfigService } from '@nestjs/config';
 import { IChannelAdapter } from '../channel-gateway.service';
 import { NormalizedMessage, ChannelType } from '@parallext/shared';
 import { v4 as uuid } from 'uuid';
+import {
+    classifyTransportFailure, metaGraphAnswer, metaGraphClassifier,
+    type StrictDispatchOutcome, type StrictDispatchRequest, type StrictDispatchTransport,
+} from '../strict-dispatch-transport';
 
 /**
  * Facebook Messenger Adapter
@@ -16,12 +20,61 @@ import { v4 as uuid } from 'uuid';
  * API: https://graph.facebook.com/v21.0/me/messages
  */
 @Injectable()
-export class MessengerAdapter implements IChannelAdapter {
+export class MessengerAdapter implements IChannelAdapter, StrictDispatchTransport {
     readonly channelType: ChannelType = 'messenger';
     private readonly logger = new Logger(MessengerAdapter.name);
     private readonly apiUrl = 'https://graph.facebook.com/v21.0';
 
     constructor(private configService: ConfigService) { }
+
+    /**
+     * One POST, one classified outcome.
+     *
+     * `sendMediaMessage` above is the exact shape this exists to replace: it
+     * performs two POSTs — the attachment and then the caption — and returns only
+     * the last id, so a caption that failed threw for the whole call and the
+     * retry sent the picture a second time. Here a caption is a separate
+     * dispatch item with its own receipt, and nothing is bundled.
+     */
+    async sendStrict(request: StrictDispatchRequest, accessToken: string): Promise<StrictDispatchOutcome> {
+        let message: Record<string, any>;
+        try { message = this.strictMessage(request); }
+        catch (error: any) {
+            return { kind: 'rejected', errorCode: String(error?.message || 'unsupported_payload'), retryable: false };
+        }
+        let response: Response;
+        try {
+            response = await fetch(`${this.apiUrl}/me/messages`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ recipient: { id: request.to }, message, messaging_type: 'RESPONSE' }),
+                signal: AbortSignal.timeout(10_000),
+            });
+        } catch (error) { return classifyTransportFailure(error); }
+        let data: any = null;
+        try { data = await response.json(); } catch { data = null; }
+        // The Graph contract: an id or an error object, never both, never neither.
+        return metaGraphClassifier(metaGraphAnswer(response.status, data, 'message_id'));
+    }
+
+    private strictMessage(request: StrictDispatchRequest): Record<string, any> {
+        const payload = request.payload || {};
+        if (request.itemKind === 'text' || request.itemKind === 'payment_link') {
+            const text = String(payload.text ?? '');
+            if (!text.trim()) throw new Error('empty_text_payload');
+            return { text: toPlainText(text) };
+        }
+        if (request.itemKind === 'media') {
+            const mediaUrl = String(payload.mediaUrl ?? '');
+            if (!mediaUrl.trim()) throw new Error('empty_media_payload');
+            const requested = String(payload.mediaType ?? 'image');
+            const type = ['image', 'file', 'audio', 'video'].includes(requested) ? requested
+                : requested === 'document' ? 'file' : 'image';
+            // No caption here on purpose: that is the second effect.
+            return { attachment: { type, payload: { url: mediaUrl, is_reusable: true } } };
+        }
+        throw new Error('unsupported_item_kind:flow');
+    }
 
     /**
      * Verify webhook (same Meta verification challenge pattern)
@@ -55,7 +108,13 @@ export class MessengerAdapter implements IChannelAdapter {
             const messaging = entry?.messaging?.[0];
 
             if (!messaging?.message) {
-                // Delivery confirmation, read receipt, or postback
+                // Not an inbound message — the only question this method answers.
+                // The null used to be the end of the story: the controller threw
+                // away delivery confirmations and read receipts right here with
+                // no log. They are classified before the adapter now, in
+                // `meta-messaging-status.ts`. This return type deliberately stays
+                // `NormalizedMessage | null`: a status is not an inbound message
+                // and has no business travelling inside one.
                 return null;
             }
 

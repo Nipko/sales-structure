@@ -10,6 +10,7 @@ import {
     type ProcedureRunState,
 } from '@parallext/shared';
 import { authorityFor } from './__fixtures__/tool-authority.fixture';
+import { runtimeStateTransactions } from './__fixtures__/runtime-state.fixture';
 
 /**
  * Los siete perfiles bloqueados, contra las CINCO puertas por las que se
@@ -268,8 +269,12 @@ describe('los perfiles no comercializables no comprometen al negocio', () => {
                     message: 'Esto no lo puedo cerrar por chat.',
                 }),
             };
+            const enginePrisma: any = { executeInTenantSchema: jest.fn().mockResolvedValue([procedure]) };
+            // El motor pasó a guardar su estado en la base además de Redis, así
+            // que necesita la misma frontera de transacción que sus hermanos.
+            runtimeStateTransactions(enginePrisma);
             const engine = new ProcedureEngineService(
-                { executeInTenantSchema: jest.fn().mockResolvedValue([procedure]) } as any,
+                enginePrisma as any,
                 {
                     getJson: jest.fn().mockResolvedValue(state),
                     setJson: jest.fn().mockResolvedValue(undefined),

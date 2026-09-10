@@ -1,5 +1,6 @@
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { PetCommands, type PetCommandOptions, type PetCreateInput } from './pet-commands';
 
 /**
  * Pets — veterinary clinic data model. The "patient" in vet workflows is
@@ -16,7 +17,8 @@ import { PrismaService } from '../prisma/prisma.service';
 export class PetsService {
     private readonly logger = new Logger(PetsService.name);
 
-    constructor(private readonly prisma: PrismaService) {}
+    private readonly commands: PetCommands;
+    constructor(private readonly prisma: PrismaService) { this.commands = new PetCommands(prisma); }
 
     // ── Pets CRUD ─────────────────────────────────────────────────
 
@@ -105,96 +107,17 @@ export class PetsService {
         return rows?.[0] || null;
     }
 
-    async create(schemaName: string, data: {
-        contactId: string;
-        name: string;
-        species?: string;
-        breed?: string;
-        sex?: string;
-        isNeutered?: boolean;
-        birthDate?: string;
-        weightKg?: number;
-        color?: string;
-        microchipId?: string;
-        allergies?: string;
-        chronicConditions?: string;
-        currentMedications?: string;
-        photoUrl?: string;
-    }): Promise<any> {
-        if (!data.contactId || !data.name) {
-            throw new BadRequestException('contactId and name are required');
-        }
-
-        const rows = await this.prisma.executeInTenantSchema<any[]>(
-            schemaName,
-            `INSERT INTO pets (
-                contact_id, name, species, breed, sex, is_neutered, birth_date,
-                weight_kg, color, microchip_id, allergies, chronic_conditions,
-                current_medications, photo_url
-             ) VALUES (
-                $1::uuid, $2, $3, $4, $5, $6, $7::date, $8, $9, $10, $11, $12, $13, $14
-             ) RETURNING *`,
-            [
-                data.contactId, data.name, data.species || 'dog',
-                data.breed || null, data.sex || null,
-                data.isNeutered ?? null, data.birthDate || null,
-                data.weightKg ?? null, data.color || null,
-                data.microchipId || null, data.allergies || null,
-                data.chronicConditions || null, data.currentMedications || null,
-                data.photoUrl || null,
-            ],
-        );
-        return rows?.[0];
+    async create(schemaName: string, data: PetCreateInput, options?: PetCommandOptions): Promise<any> {
+        return this.commands.create(schemaName, data, options);
     }
 
-    async update(schemaName: string, petId: string, data: any): Promise<any> {
-        const fields: string[] = [];
-        const values: any[] = [];
-        let i = 1;
-        const map: Record<string, string> = {
-            name: 'name',
-            species: 'species',
-            breed: 'breed',
-            sex: 'sex',
-            isNeutered: 'is_neutered',
-            birthDate: 'birth_date',
-            weightKg: 'weight_kg',
-            color: 'color',
-            microchipId: 'microchip_id',
-            allergies: 'allergies',
-            chronicConditions: 'chronic_conditions',
-            currentMedications: 'current_medications',
-            photoUrl: 'photo_url',
-            isActive: 'is_active',
-        };
-        for (const [key, col] of Object.entries(map)) {
-            if (key in data) {
-                fields.push(`${col} = $${i++}`);
-                values.push(data[key]);
-            }
-        }
-        if (fields.length === 0) {
-            return this.getById(schemaName, petId);
-        }
-        fields.push(`updated_at = NOW()`);
-        values.push(petId);
-
-        const rows = await this.prisma.executeInTenantSchema<any[]>(
-            schemaName,
-            `UPDATE pets SET ${fields.join(', ')} WHERE id = $${i}::uuid RETURNING *`,
-            values,
-        );
-        if (!rows?.length) throw new NotFoundException('Pet not found');
-        return rows[0];
+    async update(schemaName: string, petId: string, data: any, options?: PetCommandOptions): Promise<any> {
+        return this.commands.update(schemaName, petId, data, options);
     }
 
     async delete(schemaName: string, petId: string): Promise<void> {
         // Soft delete — preserve appointment / vaccination history.
-        await this.prisma.executeInTenantSchema(
-            schemaName,
-            `UPDATE pets SET is_active = false, updated_at = NOW() WHERE id = $1::uuid`,
-            [petId],
-        );
+        await this.commands.update(schemaName, petId, { isActive: false });
     }
 
     // ── Vaccinations ──────────────────────────────────────────────

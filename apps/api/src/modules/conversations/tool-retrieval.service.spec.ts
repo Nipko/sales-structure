@@ -95,4 +95,22 @@ describe('ToolRetrievalService', () => {
 
         expect(names).toContain('create_property_booking');
     });
+
+    it('retains membership and schedule readers when a gym writer survives a large toolset', () => {
+        const candidates = [
+            ...Array.from({ length: 28 }, (_, index) => tool(`unrelated_${index}`, 'general information')),
+            tool('book_class'), tool('get_class_schedule'), tool('get_my_membership'),
+        ];
+        const result = service.retrieveRelevantTools('sí gimnasios', candidates, 10, new Set(['book_class']));
+        expect(result.map(item => item.name)).toEqual(expect.arrayContaining(['book_class', 'get_my_membership', 'get_class_schedule']));
+    });
+
+    it('preserves authored task readers without adding tools absent from the authorized snapshot', () => {
+        const candidates = [...Array.from({ length: 12 }, (_, i) => tool(`other_${i}`)), tool('create_repair_order'), tool('get_repair_order')];
+        const result = service.retrieveRelevantTools('', candidates, 3, new Set(['create_repair_order']), [
+            ['get_repair_order', 'create_repair_order', 'unpublished_tool'],
+        ]);
+        expect(result.map(item => item.name)).toContain('get_repair_order');
+        expect(result.map(item => item.name)).not.toContain('unpublished_tool');
+    });
 });

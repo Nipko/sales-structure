@@ -20,6 +20,7 @@ import {
     serializeLocalTimestampRows,
 } from '../../common/utils/local-timestamp.util';
 import { resolveNativeEvidenceOpportunity } from '../../common/utils/native-evidence-opportunity.util';
+import type { EvalNamespaceLease } from '../simulation/isolated-eval-namespace';
 import {
     PHOTO_QUOTE_HOLD_MS,
     InvalidPhotoDateError,
@@ -149,7 +150,18 @@ export class PhotographyService {
         }
     }
 
-    async create(schemaName: string, data: any): Promise<any> {
+    /**
+     * `execution.sandboxNamespace` es el arriendo de una evaluación aislada: la
+     * sesión se registra y retiene su fecha dentro del namespace, pero
+     * `photo_session.requested` no se emite — ese evento termina en una
+     * notificación push al fotógrafo, y una cotización simulada no puede
+     * hacerle sonar el teléfono en medio de una boda real.
+     */
+    async create(
+        schemaName: string,
+        data: any,
+        execution: { sandboxNamespace?: EvalNamespaceLease } = {},
+    ): Promise<any> {
         if (!data.sessionType) throw new BadRequestException('sessionType is required');
         const durationMinutes = optionalPositiveIntegerUnit(data.durationMinutes, 'durationMinutes');
         const currency = normalizeCurrencyCode(data.currency);
@@ -233,7 +245,7 @@ export class PhotographyService {
         }
         const session = rows[0];
         if (!session) throw new Error('Photo session was not created');
-        if (status === 'requested') {
+        if (status === 'requested' && !execution.sandboxNamespace) {
             try {
                 this.eventEmitter.emit('photo_session.requested', {
                     tenantSchemaName: schemaName,

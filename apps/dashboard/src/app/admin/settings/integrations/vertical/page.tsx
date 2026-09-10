@@ -7,6 +7,7 @@ import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/page-header";
+import { LoadFailureNotice } from "@/components/ui/load-failure";
 import { HelpPanel } from "@/components/ui/help-panel";
 import {
     Plug, Loader2, CheckCircle2, RefreshCw, Trash2, Plug2,
@@ -89,6 +90,11 @@ export default function VerticalIntegrationsPage() {
     })();
 
     const [configs, setConfigs] = useState<Record<string, any>>({});
+    // `{}` reads as "none of these is connected" on every provider card, and it
+    // is also what a dropped request left behind. It even changes which cards
+    // are listed: a `configured` provider is shown regardless of vertical, so a
+    // failed read can hide the only screen that can disconnect a live credential.
+    const [unavailable, setUnavailable] = useState(false);
     const [forms, setForms] = useState<Record<string, Record<string, string>>>({});
     const [loading, setLoading] = useState(true);
     const [busy, setBusy] = useState<string>("");
@@ -99,8 +105,13 @@ export default function VerticalIntegrationsPage() {
         setLoading(true);
         try {
             const res: any = await api.getVerticalIntegrations(activeTenantId);
-            if (res?.success) setConfigs(res.data || {});
-        } catch { /* noop */ }
+            if (!res?.success) throw new Error("vertical_integrations_read_failed");
+            setConfigs(res.data || {});
+            setUnavailable(false);
+        } catch {
+            setConfigs({});
+            setUnavailable(true);
+        }
         setLoading(false);
     }, [activeTenantId]);
 
@@ -198,6 +209,8 @@ export default function VerticalIntegrationsPage() {
 
             {loading ? (
                 <div className="flex justify-center py-16"><Loader2 className="animate-spin text-muted-foreground" /></div>
+            ) : unavailable ? (
+                <LoadFailureNotice onRetry={() => { void load(); }} />
             ) : (
                 <div className="space-y-5">
                     {PROVIDERS.filter(({ key }) => {

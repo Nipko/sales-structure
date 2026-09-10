@@ -116,6 +116,7 @@ export class ChannelTokenService {
      * fall back to the shared whatsapp_credentials token.
      */
     async getChannelToken(tenantId: string, channelType: string, accountId?: string): Promise<GenericChannelCredentials> {
+        if (channelType === 'web_widget') return { accessToken: '', accountId: accountId || 'widget', channelType };
         // WhatsApp has its own dedicated resolution path
         if (channelType === 'whatsapp') {
             const wa = await this.getWhatsAppToken(tenantId, accountId);

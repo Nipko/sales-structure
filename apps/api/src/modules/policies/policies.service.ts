@@ -7,6 +7,7 @@ import type { Policy, PolicyType } from '@parallext/shared';
 import type { ServiceExecutionContext } from '../../common/types/execution-context';
 import { persistenceDisabled } from '../../common/types/execution-context';
 import { AGENT_QUALITY_DEPENDENCIES_UPDATED } from '../quality/agent-quality-events';
+import { structuredKnowledgeRelation, type StructuredKnowledgeCapture } from '../evaluation-revision/evaluation-structured-knowledge';
 
 const VALID_TYPES: PolicyType[] = ['shipping', 'return', 'warranty', 'cancellation', 'terms', 'privacy'];
 
@@ -74,16 +75,18 @@ export class PoliciesService {
         tenantId: string,
         type: PolicyType,
         executionContext?: ServiceExecutionContext,
+        captured?: StructuredKnowledgeCapture,
     ): Promise<Policy | null> {
         if (!VALID_TYPES.includes(type)) throw new BadRequestException(`Invalid policy type: ${type}`);
+        const frozen = captured ? structuredKnowledgeRelation(captured, tenantId, 'policies', 2, executionContext) : null;
         if (persistenceDisabled(executionContext)) {
-            const schemaName = await this.tenantsService.getSchemaName(tenantId, executionContext);
+            const schemaName = frozen ? null : await this.tenantsService.getSchemaName(tenantId, executionContext);
             const rows = await this.prisma.$queryRawUnsafe(
                 `SELECT id, type, title, content, version, effective_from, effective_to, is_active, created_at, updated_at
-                   FROM "${schemaName}"."policies"
+                   FROM ${frozen?.relation || `"${schemaName}"."policies"`}
                   WHERE type = $1 AND is_active = true
                   LIMIT 1`,
-                type,
+                type, ...(frozen ? [frozen.json] : []),
             ) as any[];
             return rows.length ? this.rowToPolicy(rows[0]) : null;
         }

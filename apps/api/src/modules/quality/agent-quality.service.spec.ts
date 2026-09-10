@@ -35,6 +35,7 @@ type HarnessOptions = {
     tenantSettings?: Record<string, any>;
     tenantUpdatedAt?: string;
     channelRows?: any[];
+    failedQueries?: string[];
     widgetRows?: any[];
     whatsappCredential?: Record<string, any> | null;
     credentialRows?: Record<string, any>[];
@@ -48,6 +49,9 @@ type HarnessOptions = {
     policies?: number;
     services?: number;
     slots?: number;
+    testDriveServices?: number;
+    testDriveSlots?: number;
+    vehicles?: number;
     products?: number;
     orders?: number;
     offers?: number;
@@ -101,6 +105,7 @@ function createHarness(options: HarnessOptions = {}) {
     const calls: Array<{ query: string; params: any[] }> = [];
     const executeInTenantSchema = jest.fn(async (_schema: string, query: string, params: any[] = []) => {
         calls.push({ query, params });
+        if (options.failedQueries?.some(part => query.includes(part))) throw new Error('Source unavailable');
         if (query.includes('SELECT id, name, is_default, is_active')) {
             return options.listRows ?? [{ id: AGENT_ID, name: 'Luna', is_default: true, is_active: true }];
         }
@@ -126,7 +131,8 @@ function createHarness(options: HarnessOptions = {}) {
         if (query.includes('FROM faqs')) return [{ count: options.faqs ?? 0, updated_at: null }];
         if (query.includes('FROM policies')) return [{ count: options.policies ?? 0, updated_at: null }];
         if (query.includes('FROM properties') && query.includes('tour_packages')) return [options.verticalCatalogs ?? {}];
-        if (query.includes('FROM services') && query.includes('availability_slots')) return [{ services: options.services ?? 0, slots: options.slots ?? 0 }];
+        if (query.includes('FROM services') && query.includes('availability_slots')) return [{ services: options.services ?? 0, slots: options.slots ?? 0, test_drive_services: options.testDriveServices ?? 0, test_drive_slots: options.testDriveSlots ?? 0 }];
+        if (query.includes('FROM vehicles')) return [{ count: options.vehicles ?? 0 }];
         if (query.includes('FROM products')) return [{ count: options.products ?? 0 }];
         if (query.includes('FROM orders')) return [{ count: options.orders ?? 0 }];
         if (query.includes('FROM commercial_offers')) return [{ count: options.offers ?? 0 }];
@@ -183,6 +189,7 @@ function createHarness(options: HarnessOptions = {}) {
                     }]))),
         },
         $queryRawUnsafe: jest.fn(async (query: string) => {
+            if (options.failedQueries?.some(part => query.includes(part))) throw new Error('Source unavailable');
             if (query.includes('FROM channel_accounts')) return options.channelRows ?? [{ channel_type: 'whatsapp', account_id: 'wa-1' }];
             if (query.includes('widget_configs')) return options.widgetRows ?? [];
             if (query.includes('FROM users')) return [{ count: options.activeHumans ?? 1 }];
@@ -197,8 +204,57 @@ function check(overview: AgentQualityOverview, code: string) {
 }
 
 describe('AgentQualityService', () => {
+    it('identifies test-drive prerequisites even when the general agenda has rows', async () => {
+        const config = { ...completeConfig, tools: { vehicles: { enabled: true }, appointments: { enabled: true } } };
+        const result = await createHarness({ config, services: 1, slots: 1, vehicles: 1 }).service.getOverview(TENANT_ID, AGENT_ID);
+        expect(check(result, 'tool_appointments').status).toBe('pass');
+        expect(check(result, 'tool_vehicles').status).toBe('pass');
+        expect(check(result, 'test_drive_service')).toMatchObject({ status: 'fail', href: '/admin/appointments' });
+        expect(check(result, 'test_drive_staff').status).toBe('fail');
+    });
+    it('keeps the intended test-drive mission pending when booking permission is disabled', async () => {
+        const config = { ...completeConfig, tools: { vehicles: { enabled: true }, appointments: { enabled: false } } };
+        const result = await createHarness({ config, vehicles: 1, testDriveServices: 1, testDriveSlots: 1 }).service.getOverview(TENANT_ID, AGENT_ID);
+        expect(check(result, 'test_drive_permissions')).toMatchObject({ status: 'fail', href: `/admin/agent/${AGENT_ID}` });
+    });
+    it('reports verified setup without claiming that the vehicle task has passed evaluation', async () => {
+        const config = { ...completeConfig, tools: { vehicles: { enabled: true }, appointments: { enabled: true } } };
+        const result = await createHarness({ config, vehicles: 1, testDriveServices: 1, testDriveSlots: 1, latestEval: null, latestSimulation: null }).service.getOverview(TENANT_ID, AGENT_ID);
+        for (const code of ['tool_vehicles', 'test_drive_service', 'test_drive_staff', 'test_drive_permissions']) expect(check(result, code).status).toBe('pass');
+        expect(result.tested.status).not.toBe('ready');
+    });
+    it('does not require booking for a mission explicitly limited to finding vehicles', async () => {
+        const config = { ...completeConfig, mission: { intentKeys: ['find_vehicle'] }, tools: { vehicles: { enabled: true } } };
+        const result = await createHarness({ config, vehicles: 1 }).service.getOverview(TENANT_ID, AGENT_ID);
+        for (const code of ['test_drive_service', 'test_drive_staff', 'test_drive_permissions']) expect(check(result, code).status).toBe('not_applicable');
+    });
+    it('does not present failed inventory or schedule probes as empty data', async () => {
+        const config = { ...completeConfig, tools: { vehicles: { enabled: true }, appointments: { enabled: true } } };
+        const result = await createHarness({ config, failedQueries: ['FROM vehicles', 'availability_slots'] }).service.getOverview(TENANT_ID, AGENT_ID);
+        for (const code of ['tool_vehicles', 'test_drive_service', 'test_drive_staff']) expect(check(result, code)).toMatchObject({ status: 'unknown', evidence: { sourceAvailability: 'unavailable' } });
+    });
     beforeAll(() => jest.useFakeTimers().setSystemTime(NOW));
     afterAll(() => jest.useRealTimers());
+
+    it('keeps unavailable readiness evidence distinct from verified missing configuration', async () => {
+        const { service } = createHarness({ failedQueries: ['FROM companies', 'FROM knowledge_embeddings', 'FROM users', 'FROM channel_accounts'], legacyWhatsAppRows: [] });
+        const result = await service.getOverview(TENANT_ID, AGENT_ID);
+        for (const code of ['business_identity', 'rag_knowledge', 'human_handoff_route', 'channel_connection']) {
+            expect(check(result, code)).toMatchObject({ status: 'unknown', evidence: { sourceAvailability: 'unavailable' } });
+            expect(Object.values(check(result, code).evidence!)).not.toContain(0);
+        }
+        expect(check(result, 'knowledge_coverage').status).toBe('unknown');
+        expect(check(result, 'persona_identity').status).toBe('pass');
+    });
+
+    it('preserves observed channel accounts without presenting a partial snapshot as a total', async () => {
+        const { service } = createHarness({ failedQueries: ['widget_configs'] });
+        await expect(service.getTenantChannelSnapshot(TENANT_ID)).resolves.toMatchObject({
+            availability: 'partial', total: null, channels: [expect.objectContaining({ type: 'whatsapp', accounts: 1 })],
+        });
+        const { service: unavailable } = createHarness({ failedQueries: ['widget_configs', 'FROM channel_accounts', 'FROM whatsapp_channels'] });
+        await expect(unavailable.getTenantChannelSnapshot(TENANT_ID)).resolves.toMatchObject({ availability: 'unavailable', total: null });
+    });
 
     it('returns only the minimal tenant-scoped agent selector', async () => {
         const { service, calls } = createHarness({
@@ -717,6 +773,15 @@ describe('AgentQualityService', () => {
         }));
     });
 
+    it('does not certify operations from high text-only scores with unknown outcomes', async () => {
+        const overview = await createHarness({
+            quality: { sample_size: 50, avg_overall: 9.8, verified_total: 0, verified_success: 0 },
+        }).service.getOverview(TENANT_ID, AGENT_ID);
+        expect(overview.production.status).toBe('insufficient_evidence');
+        expect(overview.production.metrics).toContainEqual(expect.objectContaining({code:'verified_resolution_rate',value:null,denominator:0}));
+        expect(overview.recommendations.some(item=>item.code==='improve_verified_resolution')).toBe(false);
+    });
+
     it('elevates critical production reconciliation evidence to at risk', async () => {
         const overview = await createHarness({
             tools: { total: 20, failures: 1, reconciliations: 1, conversation_ids: ['conv-tool'] },
@@ -789,7 +854,11 @@ describe('AgentQualityService', () => {
         );
         expect(productionCalls).toHaveLength(5);
         for (const call of productionCalls) {
-            expect(call.params).toEqual([AGENT_ID, 2]);
+            expect(call.params.slice(0,2)).toEqual([AGENT_ID, 2]);
+            if (call.query.includes('FROM conversation_quality_scores')) {
+                expect(call.params[2]).toMatch(/^[a-f0-9]{64}$/);
+                expect(call.query).toContain('cqs.rubric_hash = $3');
+            } else expect(call.params).toHaveLength(2);
             expect(call.query).toContain('$1::uuid');
             expect(call.query).toContain('agent_config_version = $2');
             expect(call.query).toContain('agent_attribution_conflicted');

@@ -3,14 +3,16 @@ import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
 import * as Sentry from '@sentry/nestjs';
 import { EvalService } from './eval.service';
+import { EvalAutorunStateService } from './eval-autorun-state.service';
 import { EVAL_GATE_QUEUE, EvalGateJob } from './eval-autorun.listener';
 import { PrismaService } from '../prisma/prisma.service';
 import { resolveTenantSubscriptionAccess } from '../../common/utils/subscription-entitlement.util';
+import { regressionAppliesToSnapshot } from '../quality/regressions/quality-regression-runtime';
 
 /**
  * Drains the auto-run eval gate. Each job runs the full τ² gate (golden set × k ×
- * multi-turn LLM-judge) which can take minutes, so concurrency is 1 and we never
- * auto-retry the whole gate (attempts: 1 set on add). Mirrors SimulationProcessor.
+ * multi-turn LLM-judge). Retries reuse the frozen revision and scenario checkpoints.
+ * The durable request survives queue outages and budget deferral.
  */
 @Processor(EVAL_GATE_QUEUE, { concurrency: 1 })
 export class EvalGateProcessor extends WorkerHost {
@@ -19,6 +21,7 @@ export class EvalGateProcessor extends WorkerHost {
     constructor(
         private readonly evals: EvalService,
         private readonly prisma: PrismaService,
+        private readonly state: EvalAutorunStateService,
     ) {
         super();
     }
@@ -29,10 +32,61 @@ export class EvalGateProcessor extends WorkerHost {
             if (access.restrictionLevel === 'unavailable') throw new Error('subscription_entitlement_unavailable');
             return { ok: false, skipped: true, reason: access.error };
         }
-        await this.evals.runGateV2(job.data.tenantId, job.data.agentId, {
-            trigger: job.data.trigger || 'persona_edit',
-        });
-        return { ok: true };
+        const { tenantId, agentId } = job.data;
+        // Old queued jobs are upgraded once; new ones identify an immutable request.
+        const revision = job.data.revision || await this.state.request(tenantId, agentId);
+        const request = await this.state.get(tenantId, agentId, revision);
+        if (!request) return { ok: true, skipped: true, reason: 'superseded_or_completed' };
+        if (request.status === 'completed') {
+            // Replay terminal cleanup after a lost completion acknowledgement.
+            await this.state.update(tenantId,agentId,revision,'completed');
+            return { ok: true, skipped: true, reason: 'superseded_or_completed' };
+        }
+        if (request.status === 'invalidated') return { ok: false, skipped: true, reason: 'evaluation_invalidated' };
+        if (request.status === 'budget_deferred' && new Date(request.next_attempt_at).getTime() > Date.now()) return { ok: false, deferred: true };
+        try {
+            // A captured reference has a fixed lifetime. A new attempt cannot
+            // renew it or silently switch this durable request to today's corpus.
+            await this.state.assertExecutable(tenantId,agentId,request.agent_snapshot);
+            // Keep stale applicable approvals visible to the source guard. Removing
+            // review_required here would silently turn an invalid regression into absence.
+            const scenarios = (request.scenarios || await this.evals.listScenarios(tenantId))
+                .filter((scenario:any)=>regressionAppliesToSnapshot(scenario,request.agent_snapshot,'web_widget'));
+            await this.state.update(tenantId, agentId, revision, 'running', undefined, scenarios);
+            const admitted=await this.state.get(tenantId,agentId,revision);
+            if(!admitted||admitted.status!=='running')return {ok:false,skipped:true,reason:'evaluation_invalidated_or_superseded'};
+            await this.evals.runGateV2(tenantId, agentId, {
+                trigger: job.data.trigger || 'persona_edit', agentSnapshot: request.agent_snapshot,
+                scenarios, previousResults: request.results || [],
+                beforeModelUnits: async units => {
+                    const current=await this.state.get(tenantId,agentId,revision);
+                    if (!current||current.status!=='running') throw new Error('eval_revision_invalidated_or_superseded');
+                    await this.state.consumeBudget(tenantId, units);
+                },
+                onScenarioCompleted: results => this.state.update(tenantId, agentId, revision, 'running', undefined, undefined, results),
+            });
+            await this.state.update(tenantId, agentId, revision, 'completed');
+            const completed=await this.state.get(tenantId,agentId,revision);
+            if(!completed||completed.status!=='completed')return {ok:false,skipped:true,reason:'evaluation_invalidated_or_superseded'};
+            return { ok: true };
+        } catch (error: any) {
+            const current=await this.state.get(tenantId,agentId,revision);
+            if(!current||current.status==='invalidated')return {ok:false,skipped:true,reason:'evaluation_invalidated_or_superseded'};
+            if(current.status==='completed'){
+                await this.state.update(tenantId,agentId,revision,'completed');
+                return {ok:true,skipped:true,reason:'completion_ack_recovered'};
+            }
+            const response=typeof error?.getResponse==='function'?error.getResponse():error?.response;
+            const code=String(response?.error||error?.message||'').replace(/^agent_runtime_failed:/,'');
+            if(/^(evaluation_knowledge_|llm_source_authority_unavailable$|evaluation_dependencies_changed|evaluation_revision_(?:integrity_mismatch|manifest_required)$|agent_snapshot_)/.test(code)){
+                await this.state.update(tenantId,agentId,revision,'invalidated','evaluation_source_unavailable');
+                return {ok:false,skipped:true,reason:'evaluation_source_unavailable'};
+            }
+            const budget = error.message === 'eval_autorun_budget_exhausted';
+            await this.state.update(tenantId, agentId, revision, budget ? 'budget_deferred' : 'failed', String(error.message || error));
+            if (budget) return { ok: false, deferred: true, reason: error.message };
+            throw error;
+        }
     }
 
     @OnWorkerEvent('failed')

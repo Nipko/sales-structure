@@ -9,6 +9,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 import { PrismaService } from '../prisma/prisma.service';
 import { KnowledgeService } from './knowledge.service';
+import type { KnowledgeSourceMetadata } from './knowledge-contracts';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 
 @ApiTags('knowledge')
@@ -30,7 +31,7 @@ export class KnowledgeController {
     @ApiOperation({ summary: 'Upload / ingest a document (text or binary PDF/DOCX) into the knowledge base' })
     async uploadDocument(
         @Req() req: any,
-        @Body() payload: {
+        @Body() payload: KnowledgeSourceMetadata & {
             name: string;
             content?: string;
             fileBase64?: string;
@@ -47,6 +48,13 @@ export class KnowledgeController {
             mimeType: payload.mimeType,
             category: payload.category,
             isPublic: payload.isPublic,
+            isRegulated: payload.isRegulated,
+            jurisdiction: payload.jurisdiction,
+            authority: payload.authority,
+            validFrom: payload.validFrom,
+            validTo: payload.validTo,
+            audience: payload.audience,
+            agentIds: payload.agentIds,
         });
     }
 
@@ -57,7 +65,7 @@ export class KnowledgeController {
     async updateDocument(
         @Req() req: any,
         @Param('id') id: string,
-        @Body() payload: { name?: string; content?: string; fileBase64?: string; mimeType?: string },
+        @Body() payload: KnowledgeSourceMetadata & { name?: string; content?: string; fileBase64?: string; mimeType?: string; category?: string; isPublic?: boolean },
     ) {
         const tenantId = req.user?.tenantId;
         return this.knowledgeService.updateDocument(tenantId, id, payload);
@@ -86,7 +94,7 @@ export class KnowledgeController {
     async updateDocumentMeta(
         @Req() req: any,
         @Param('id') id: string,
-        @Body() payload: { name?: string; category?: string; isPublic?: boolean; autoRecrawl?: boolean },
+        @Body() payload: KnowledgeSourceMetadata & { name?: string; category?: string; isPublic?: boolean; autoRecrawl?: boolean },
     ) {
         const tenantId = req.user?.tenantId;
         return this.knowledgeService.updateDocumentMeta(tenantId, id, payload);
@@ -137,7 +145,7 @@ export class KnowledgeController {
     @Get('documents/quality')
     @Roles('tenant_admin', 'tenant_supervisor')
     @UseGuards(AuthGuard('jwt'), RolesGuard)
-    @ApiOperation({ summary: 'Get quality scores for all documents' })
+    @ApiOperation({ summary: 'Get document technical readiness and unverified feedback/attribution diagnostics' })
     async getQualityScores(@Req() req: any) {
         const tenantId = req.user?.tenantId;
         const data = await this.knowledgeService.getDocumentQualityScores(tenantId);

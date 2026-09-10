@@ -17,6 +17,12 @@ import { InboundQueueService } from '../inbound/inbound-queue.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { AGENT_QUALITY_DEPENDENCIES_UPDATED } from '../quality/agent-quality-events';
 import { resolveTenantSubscriptionAccess } from '../../common/utils/subscription-entitlement.util';
+import {
+  isDeliveryStatus,
+  namespaceProviderErrorCode,
+  recordChannelDeliveryStatuses,
+} from '../channels/channel-delivery-status';
+import { DISPATCH_PROVIDER_STATUSES } from '../channels/agent-dispatch-outbox';
 
 /**
  * Internal endpoints — callable only by trusted internal microservices via
@@ -126,6 +132,93 @@ export class InternalController {
     // Throws 403 plan_limit_reached when the additional account would exceed the plan.
     await this.throttle.enforceChannelAccountLimit(tenantId, channelType, existingActive);
     return { allowed: true };
+  }
+
+  /**
+   * What the provider later said about one outbound message.
+   *
+   * The deployed WhatsApp ingress is the `whatsapp` service, not this API, and
+   * it was deciding these events with its own SQL: it looked the receipt up in
+   * `messages.external_id` (our deduplication identity, never the wamid), it
+   * ranked `failed` above `delivered`, and it set an `updated_at` column
+   * `messages` has never had — so every write raised 42703 into a catch and no
+   * status was ever recorded, for any producer. The worker now hands the event
+   * here and this side owns the rule, keyed on the connection plus the receipt.
+   *
+   * Deliberately not gated on the subscription: this records an effect that has
+   * already happened. Refusing it would freeze a lapsed tenant's inbox on
+   * "Sent" and make the caller's job retry something that can never succeed.
+   *
+   * Called by: apps/whatsapp/src/modules/jobs/webhook.processor.ts
+   */
+  @Post('channel-delivery-status')
+  async channelDeliveryStatus(
+    @Req() request: { user?: { isInternalService?: boolean } },
+    @Body() body: {
+      tenantId: string;
+      channelType: string;
+      channelAccountId: string;
+      providerMessageId: string;
+      status: string;
+      errorCode?: string | number | null;
+      recipient?: string | null;
+    },
+  ) {
+    this.assertInternalService(request);
+    this.assertTenantId(body?.tenantId);
+    if (!['whatsapp', 'instagram', 'messenger', 'telegram', 'web_widget'].includes(body?.channelType)) {
+      throw new BadRequestException('Unsupported conversational channel type');
+    }
+    if (typeof body.channelAccountId !== 'string' || !body.channelAccountId.trim()
+      || body.channelAccountId.length > 255) {
+      throw new BadRequestException('A valid channelAccountId is required');
+    }
+    // 300 is the receipt ceiling the outbox itself enforces; refusing here keeps
+    // the caller's job from retrying a value that can never resolve.
+    if (typeof body.providerMessageId !== 'string' || !body.providerMessageId.trim()
+      || body.providerMessageId.length > 300) {
+      throw new BadRequestException('A valid providerMessageId is required');
+    }
+    if (!isDeliveryStatus(body.status)) {
+      throw new BadRequestException(
+        `Unsupported delivery status — expected one of ${DISPATCH_PROVIDER_STATUSES.join(', ')}`,
+      );
+    }
+    if (body.errorCode !== undefined && body.errorCode !== null
+      && !['string', 'number'].includes(typeof body.errorCode)) {
+      throw new BadRequestException('Invalid errorCode');
+    }
+
+    const report = await recordChannelDeliveryStatuses(
+      [{
+        providerMessageId: body.providerMessageId.trim(),
+        status: body.status,
+        recipient: typeof body.recipient === 'string' ? body.recipient : null,
+        errorCode: namespaceProviderErrorCode(body.channelType, body.errorCode ?? null),
+      }],
+      { channelType: body.channelType, channelAccountId: body.channelAccountId },
+      {
+        store: this.prisma,
+        logger: this.logger,
+        resolveSchema: async () => {
+          const tenant = await this.prisma.tenant.findUnique({
+            where: { id: body.tenantId },
+            select: { schemaName: true },
+          });
+          return tenant?.schemaName || null;
+        },
+      },
+    );
+    const [result] = report.results;
+    // The caller owns a retryable BullMQ job, so an unreadable record must come
+    // back as a failure. A record that refused the event is a decision, not one.
+    if (report.unavailable) {
+      throw new ServiceUnavailableException({
+        error: 'delivery_status_unavailable',
+        message: 'The conversation record could not be read for this receipt.',
+      });
+    }
+    return { applied: result.applied, reason: result.reason };
   }
 
   /** Cross-process bridge used after WhatsApp Embedded Signup commits. */

@@ -1106,8 +1106,51 @@ export class EmailTemplatesService {
         to: string,
         variables: Record<string, string>,
         lang: string = 'es',
-        options: { attachments?: EmailAttachment[] } = {},
+        options: { attachments?: EmailAttachment[]; beforeSend?: () => Promise<void> } = {},
     ): Promise<boolean> {
+        const attempt = await this.renderAndPrepare(schemaName, slug, to, variables, lang, options)
+            .catch((error: any) => {
+                this.logger.error(`Cannot prepare "${slug}" for ${to}: ${error?.message}`);
+                return null;
+            });
+        if (!attempt) return false;
+        // Outside the catch below on purpose. A caller's fence check refusing is
+        // not a transport failure: the send must not happen AND the caller has
+        // to hear about it, which reporting `false` would hide.
+        await options.beforeSend?.();
+        try {
+            await attempt();
+            return true;
+        } catch (error: any) {
+            // The boolean contract every existing caller depends on: an
+            // unconfigured transport and a socket that died after acceptance
+            // both read as false here. Callers that cannot afford to confuse
+            // the two ask for the attempt itself.
+            this.logger.error(`Failed to send "${slug}" to ${to}: ${error?.message}`);
+            return false;
+        }
+    }
+
+    /**
+     * Everything `renderAndSend` does except the send, handed back as the
+     * bounded attempt itself.
+     *
+     * A boolean cannot tell "SMTP is not configured", which is safe to try
+     * again, from "the server accepted the message and then the socket died",
+     * which is not — and a handoff notification that resends on the second
+     * reading is a second email to a person. The attempt returns the SMTP
+     * message id on acceptance and throws discriminated codes otherwise, so the
+     * caller can record an uncertain outcome as uncertain. Null means the
+     * template does not exist, which is not an outcome the transport can have.
+     */
+    async renderAndPrepare(
+        schemaName: string,
+        slug: string,
+        to: string,
+        variables: Record<string, string>,
+        lang: string = 'es',
+        options: { attachments?: EmailAttachment[] } = {},
+    ): Promise<(() => Promise<string>) | null> {
         await this.refreshManagedDefaults(schemaName, slug);
 
         let template = await this.getBySlug(schemaName, slug, lang);
@@ -1117,7 +1160,7 @@ export class EmailTemplatesService {
         }
         if (!template) {
             this.logger.warn(`Template "${slug}" not found after seeding — email not sent`);
-            return false;
+            return null;
         }
 
         // Resolve dynamic branding variables from the companies table
@@ -1184,7 +1227,7 @@ export class EmailTemplatesService {
         const subject = this.renderVariables(template.subject, mergedVars);
         const html = this.renderVariables(template.bodyHtml, mergedVars);
 
-        return this.emailService.send({
+        return this.emailService.prepareBoundedSend({
             to,
             subject,
             html,

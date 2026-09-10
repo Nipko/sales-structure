@@ -6,19 +6,23 @@ const AGENT_ID = '33333333-3333-4333-8333-333333333333';
 
 describe('QualityService agent attribution', () => {
     function buildHarness(agentId: string | null, version: number | null) {
-        const executeInTenantSchema = jest.fn(async (_schema: string, sql: string) => {
-            if (sql.includes('FROM conversations WHERE id')) {
+        const executeInTenantSchema = jest.fn(async (_schema: string, sql: string, _params: any[] = []) => {
+            if (sql.includes('FROM conversations WHERE id=')) {
                 return [{
+                    contact_id: '44444444-4444-4444-8444-444444444444', qa_revision: '2',
                     resolution_type: 'ai_resolved',
                     was_handed_off: false,
                     agent_persona_id: agentId,
                     agent_config_version: version,
                 }];
             }
+            if (sql.includes('COUNT(*)::int AS total_messages')) return [{total_messages:2,text_messages:2}];
+            if (sql.includes('FROM agent_personas')) return [{version,config_json:{mission:'Answer questions'}}];
+            if (sql.includes('INSERT INTO conversation_quality_scores')) return [{id:'evidence-id'}];
             if (sql.includes('FROM messages')) {
                 return [
-                    { direction: 'inbound', content_text: '¿Tienen disponibilidad?' },
-                    { direction: 'outbound', content_text: 'Sí, mañana a las diez.' },
+                    { id:'55555555-5555-4555-8555-555555555555', direction: 'inbound', content_text: '¿Tienen disponibilidad?', original_characters:23 },
+                    { id:'66666666-6666-4666-8666-666666666666', direction: 'outbound', content_text: 'Sí, mañana a las diez.', original_characters:21 },
                 ];
             }
             return [];
@@ -26,6 +30,7 @@ describe('QualityService agent attribution', () => {
         const prisma: any = {
             getTenantSchemaName: jest.fn(async () => 'tenant_quality_test'),
             executeInTenantSchema,
+            transactionInTenantSchema: async (schema: string, work: any) => work((sql: string, params: any[] = []) => executeInTenantSchema(schema,sql,params)),
         };
         const redis: any = {
             get: jest.fn(async () => '1'),
@@ -72,12 +77,13 @@ describe('QualityService agent attribution', () => {
         expect(insert).toBeDefined();
         expect(insert![1]).toContain('(conversation_id, agent_id, agent_config_version');
         expect(insert![2].slice(0, 3)).toEqual([CONVERSATION_ID, AGENT_ID, 5]);
-        expect(eventEmitter.emit).toHaveBeenCalledWith('quality.scored', {
+        expect(eventEmitter.emit).toHaveBeenCalledWith('quality.scored', expect.objectContaining({
             tenantId: TENANT_ID,
             agentId: AGENT_ID,
             agentConfigVersion: 5,
             status: 'scored',
-        });
+            evidenceId: 'evidence-id', sourceRevision: '2',
+        }));
     });
 
     it('preserves null attribution for historical conversations', async () => {
@@ -111,6 +117,12 @@ describe('QualityService agent attribution', () => {
         expect((executeInTenantSchema.mock.calls as any[][]).some(
             (call) => String(call[1]).includes('INSERT INTO conversation_quality_scores'),
         )).toBe(false);
+    });
+
+    it.each([null, '', '9'])('rejects a nonnumeric score %p instead of coercing it to evidence', async (overall) => {
+        const { service, llmRouter } = buildHarness(AGENT_ID,5);
+        llmRouter.execute.mockResolvedValue({content:JSON.stringify({overall,resolution:8,tone:8,accuracy:8,empathy:8,flags:[],resolved:true,resolutionReason:'text'})});
+        await expect(service.scoreConversation(TENANT_ID,CONVERSATION_ID)).rejects.toThrow('invalid response');
     });
 
     it('propagates queue outages instead of silently claiming QA was scheduled', async () => {

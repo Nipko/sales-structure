@@ -1,0 +1,166 @@
+{
+  "auditDate": "2026-09-05",
+  "verification": "Actual pure functions; modeled initial-render selector sets; no browser or live tenant.",
+  "tourResults": [
+    {
+      "name": "Appointments initial calendar tab",
+      "tourId": "appointments_setup",
+      "route": "/admin/appointments",
+      "context": {},
+      "presentSelectors": [
+        "#tour-target-appointments-tabs"
+      ],
+      "sourceEvidence": [
+        "apps/dashboard/src/app/admin/appointments/page.tsx:142",
+        "apps/dashboard/src/app/admin/appointments/page.tsx:965",
+        "apps/dashboard/src/app/admin/appointments/page.tsx:981"
+      ],
+      "plan": {
+        "tourId": "appointments_setup",
+        "stepIndexes": [
+          0
+        ],
+        "inPlace": false
+      },
+      "retainedSteps": [
+        "tabs"
+      ],
+      "omittedSteps": [
+        "service",
+        "schedule"
+      ]
+    },
+    {
+      "name": "Agent review launched without the default agent id",
+      "tourId": "agent_handoff_rules",
+      "route": "/admin/agent",
+      "context": {},
+      "presentSelectors": [],
+      "sourceEvidence": [
+        "apps/dashboard/src/components/InitialSetupCard.tsx:107",
+        "apps/dashboard/src/lib/guided-tours.ts:58"
+      ],
+      "plan": {
+        "tourId": "agent_handoff_rules",
+        "stepIndexes": [],
+        "inPlace": false
+      },
+      "retainedSteps": [],
+      "omittedSteps": [
+        "name",
+        "greeting",
+        "fallback",
+        "rules",
+        "handoff",
+        "save"
+      ]
+    },
+    {
+      "name": "Agent review with selected agent, initial persona tab",
+      "tourId": "agent_handoff_rules",
+      "route": "/admin/agent/agent-id",
+      "context": {
+        "agentId": "agent-id"
+      },
+      "presentSelectors": [
+        "#tour-target-agent-name",
+        "#tour-target-agent-greeting",
+        "#tour-target-agent-fallback",
+        "#tour-target-agent-save"
+      ],
+      "sourceEvidence": [
+        "apps/dashboard/src/app/admin/agent/[agentId]/page.tsx:134",
+        "apps/dashboard/src/app/admin/agent/[agentId]/page.tsx:820"
+      ],
+      "plan": {
+        "tourId": "agent_handoff_rules",
+        "stepIndexes": [
+          0,
+          1,
+          2,
+          5
+        ],
+        "inPlace": false
+      },
+      "retainedSteps": [
+        "name",
+        "greeting",
+        "fallback",
+        "save"
+      ],
+      "omittedSteps": [
+        "rules",
+        "handoff"
+      ]
+    },
+    {
+      "name": "Human handoff tour with invitation dialog closed",
+      "tourId": "human_handoff_route",
+      "route": "/admin/users",
+      "context": {},
+      "presentSelectors": [
+        "#tour-users",
+        "#tour-target-users-invite",
+        "#tour-target-users-list"
+      ],
+      "sourceEvidence": [
+        "apps/dashboard/src/app/admin/users/page.tsx:192",
+        "apps/dashboard/src/app/admin/users/page.tsx:729"
+      ],
+      "plan": {
+        "tourId": "human_handoff_route",
+        "stepIndexes": [
+          0,
+          1,
+          3
+        ],
+        "inPlace": false
+      },
+      "retainedSteps": [
+        "menu",
+        "invite",
+        "pending"
+      ],
+      "omittedSteps": [
+        "role"
+      ]
+    }
+  ],
+  "checklist": {
+    "input": {
+      "status": {
+        "hasKnowledge": true
+      },
+      "planChannels": [
+        "whatsapp"
+      ],
+      "activeChannels": [
+        "whatsapp"
+      ],
+      "checks": {
+        "channel_connection": "fail",
+        "channel_assignment": "fail",
+        "knowledge_coverage": "fail"
+      }
+    },
+    "roleAccessAssumption": "All tested dashboard routes allowed.",
+    "output": [
+      {
+        "key": "channel",
+        "href": "/admin/channels/whatsapp",
+        "done": true,
+        "tourId": "first_channel_whatsapp"
+      },
+      {
+        "key": "knowledge",
+        "href": "/admin/knowledge",
+        "done": true,
+        "tourId": "knowledge_base"
+      }
+    ],
+    "sourceEvidence": [
+      "apps/dashboard/src/lib/initial-setup.ts:205",
+      "apps/dashboard/src/lib/initial-setup.ts:244"
+    ]
+  }
+}

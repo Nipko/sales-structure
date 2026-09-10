@@ -2,11 +2,13 @@ import { Injectable, Logger, BadRequestException, Inject, forwardRef } from '@ne
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { InboundQueueService } from '../../inbound/inbound-queue.service';
+import { InboundNotDurableError } from '../../inbound/inbound-queue.constants';
 import { ComplianceService } from '../../analytics/compliance.service';
 import { WhatsappConnectionService } from './whatsapp-connection.service';
 import { WhatsAppAdapter } from '../../channels/whatsapp/whatsapp.adapter';
 import { RedisService } from '../../redis/redis.service';
 import * as crypto from 'crypto';
+import { parseMetaDeliveryStatuses, recordChannelDeliveryStatuses } from '../../channels/channel-delivery-status';
 
 @Injectable()
 export class WhatsappWebhookService {
@@ -118,6 +120,12 @@ export class WhatsappWebhookService {
               handled = true;
             }
           } catch (err: any) {
+            // A customer message that never reached the queue is the ONE failure
+            // allowed out of here. The controller turns it into a 500 and Meta
+            // redelivers, which is the whole point of enqueuing before we
+            // acknowledge. Everything else stays swallowed on purpose: a body we
+            // can never process would otherwise come back forever.
+            if (err instanceof InboundNotDurableError) throw err;
             this.logger.error(`Webhook change processing failed (field=${change?.field}): ${err.message}`, err.stack);
             handled = true;
           }
@@ -205,47 +213,44 @@ export class WhatsappWebhookService {
    * como fallido y se loguea el código de Meta, que es lo que permite
    * diagnosticar sin adivinar.
    */
+  /**
+   * Meta's delivery lifecycle, applied to the conversation record.
+   *
+   * Only rejections used to be handled, and they were looked up in
+   * `messages.external_id` — which holds OUR deduplication identity, never the
+   * wamid — so nothing was ever found. The lookup, the ranking and the legacy
+   * fallback now live in `channel-delivery-status`, shared with the internal
+   * endpoint the deployed WhatsApp worker calls: one rule, one place.
+   */
   private async recordDeliveryStatuses(phoneNumberId: string, statuses: any[] | undefined): Promise<void> {
-    const failed = (statuses || []).filter((s: any) => String(s?.status || '').toLowerCase() === 'failed');
-    if (!failed.length) return;
-
-    for (const status of failed) {
-      const error = status?.errors?.[0] || {};
-      this.logger.error(
-        `[WA] Meta RECHAZÓ el mensaje ${status?.id || 'sin-id'} a ${status?.recipient_id || 'desconocido'} ` +
-        `(phone_number_id ${phoneNumberId}): code=${error.code ?? '?'} title="${error.title ?? ''}" ` +
-        `details="${error.error_data?.details ?? error.message ?? ''}"`,
-      );
-    }
-
-    // Marcar en la bandeja. Sin tenant resuelto no se puede, pero el log de
-    // arriba ya salió: el diagnóstico nunca depende de que esto funcione.
-    try {
-      const tenantId = await this.resolveTenantId(phoneNumberId);
-      if (!tenantId) return;
-      const schemaName = await this.prisma.getTenantSchemaName(tenantId);
-      if (!schemaName) return;
-      const ids = failed.map((s: any) => s?.id).filter(Boolean);
-      if (!ids.length) return;
-      await this.prisma.executeInTenantSchema(
-        schemaName,
-        `UPDATE messages SET status = 'failed'
-          WHERE external_id = ANY($1::text[]) AND direction = 'outbound' AND status <> 'failed'`,
-        [ids],
-      );
-    } catch (e: any) {
-      this.logger.warn(`[WA] no se pudo marcar el mensaje fallido: ${e.message}`);
-    }
+    await recordChannelDeliveryStatuses(
+      parseMetaDeliveryStatuses(statuses),
+      { channelType: 'whatsapp', channelAccountId: phoneNumberId },
+      {
+        store: this.prisma,
+        logger: this.logger,
+        resolveSchema: async () => {
+          const tenantId = await this.resolveTenantId(phoneNumberId);
+          if (!tenantId) return null;
+          return (await this.prisma.getTenantSchemaName(tenantId)) || null;
+        },
+      },
+    );
   }
 
   private async processMessageEvent(phoneNumberId: string, value: any) {
      this.logger.log(`Processing message event for phone_number_id: ${phoneNumberId}`);
 
+     // Statuses first, and unconditionally. This used to run only on the branch
+     // where the payload carried no `messages`, so a batch that mixed customer
+     // messages with delivery receipts — which Meta is free to send — silently
+     // dropped every receipt in it.
+     await this.recordDeliveryStatuses(phoneNumberId, value?.statuses);
+
      // Say WHY we stop. A status/read receipt carries no `messages`, and this
      // early return used to be silent — indistinguishable in the logs from a
      // customer message being dropped.
      if (!value?.messages || value.messages.length === 0) {
-         await this.recordDeliveryStatuses(phoneNumberId, value?.statuses);
          this.logger.log(
              `No messages in payload for ${phoneNumberId} ` +
              `(statuses=${value?.statuses?.length ?? 0}) — nothing to process`,
@@ -269,6 +274,13 @@ export class WhatsappWebhookService {
 
      // Process EVERY message in the batch — WhatsApp can deliver several messages
      // in a single webhook; taking only messages[0] silently dropped the rest.
+     // Raised by the first message of the batch that failed to become
+     // durable, thrown once the rest of the batch has had its turn: one broken
+     // message must not strand its siblings, and the ones that DID make it are
+     // protected from the redelivery by their own idempotency claim and by the
+     // unique index on `messages.external_id`.
+     let notDurable: InboundNotDurableError | null = null;
+
      for (const msg of value.messages) {
          const waMessageId = msg?.id; // wamid.xxx
 
@@ -373,8 +385,22 @@ export class WhatsappWebhookService {
              // turn instead of answering the customer twice. If that dedupe is ever
              // removed, this release becomes a double-reply generator.
              if (waMessageId) await this.redis.del(`idem:wa:${waMessageId}`).catch(() => {});
+             // ...and REFUSE THE ACKNOWLEDGEMENT. Releasing the claim only helps
+             // if Meta redelivers, and Meta redelivers exactly what it was not
+             // told we have — so swallowing here made the release pointless and
+             // the message lost: a transient Valkey outage answered 200 for a
+             // turn that never existed. `enqueue` discards a structurally broken
+             // message with `return` and never a throw, so anything caught here
+             // is infrastructure, which is the case a redelivery fixes.
+             //
+             // This is the same contract the other six producers already have
+             // in `ChannelsController`; WhatsApp's own route reached the queue
+             // through this service, and the swallow below it undid it.
+             notDurable ??= new InboundNotDurableError(waMessageId, error);
          }
      }
+
+     if (notDurable) throw notDurable;
   }
 
   /**

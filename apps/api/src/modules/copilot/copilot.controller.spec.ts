@@ -15,6 +15,26 @@ import { CopilotRateLimitService } from './copilot-rate-limit.service';
 
 const TENANT_ID = '11111111-1111-4111-8111-111111111111';
 
+describe('CopilotController reviewed configuration boundary', () => {
+    const actor = { sub: '33333333-3333-4333-8333-333333333333', role: 'tenant_admin' };
+    const configuration = { propose: jest.fn().mockResolvedValue({ status: 'proposed' }), apply: jest.fn().mockResolvedValue({ verification: 'verified' }) };
+    const controller = new CopilotController({} as any, null as any, configuration as any);
+    beforeEach(() => jest.clearAllMocks());
+    it('derives the proposer from the session and rejects client identity injection', async () => {
+        const body = { agentId: TENANT_ID, changes: [{ path: 'persona.name', value: 'Luna' }], requestKey: 'request-123' };
+        await controller.proposeConfiguration(TENANT_ID, body, { user: actor });
+        expect(configuration.propose).toHaveBeenCalledWith(TENANT_ID, body.agentId, body.changes, { id: actor.sub, role: actor.role }, body.requestKey);
+        await expect(controller.proposeConfiguration(TENANT_ID, { ...body, actorId: 'someone-else' }, { user: actor })).rejects.toBeInstanceOf(BadRequestException);
+        expect(configuration.propose).toHaveBeenCalledTimes(1);
+    });
+    it('accepts only the reviewed digest when applying, never replacement changes', async () => {
+        await expect(controller.applyConfiguration(TENANT_ID, TENANT_ID, { digest: 'a'.repeat(64), changes: [] }, { user: actor })).rejects.toBeInstanceOf(BadRequestException);
+        expect(configuration.apply).not.toHaveBeenCalled();
+        expect(Reflect.getMetadata(ROLES_KEY, CopilotController.prototype.applyConfiguration)).toEqual(['super_admin', 'tenant_admin']);
+        expect(Reflect.getMetadata(ROLES_KEY, CopilotController.prototype.getAssessment)).toEqual(['super_admin', 'tenant_admin', 'tenant_supervisor']);
+    });
+});
+
 describe('CopilotController chat boundary', () => {
     const chat = jest.fn();
     const controller = new CopilotController({ chat } as any);
@@ -59,6 +79,7 @@ describe('CopilotController chat boundary', () => {
                 tenantId: TENANT_ID,
                 userName: 'Owner',
                 userRole: 'tenant_admin',
+                actorId: 'user-1',
                 locale: 'es',
             },
         });

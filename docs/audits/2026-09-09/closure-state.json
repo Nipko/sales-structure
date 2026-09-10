@@ -1,0 +1,322 @@
+{
+  "revision": "e9f77b844b163c106839a2ff5589fb9d7648b3da",
+  "generatedFrom": [
+    "modules/simulation/task-competence-matrix.ts",
+    "modules/simulation/certification-plan.ts",
+    "modules/channels/channel-certification-matrix.ts",
+    "modules/learning/agent-output-inventory.ts",
+    "modules/conversations/terms-binding-inventory.ts"
+  ],
+  "taskMatrix": {
+    "profiles": 76,
+    "tasks": 268,
+    "committingTasks": 146,
+    "tasksMissingPositiveCases": 5,
+    "tasksMissingVerifiers": 5,
+    "unregisteredTools": [],
+    "certifiedProfiles": 0
+  },
+  "certificationPlan": {
+    "profiles": 76,
+    "languages": [
+      "en",
+      "es",
+      "fr",
+      "pt"
+    ],
+    "channels": [
+      "instagram",
+      "messenger",
+      "telegram",
+      "web_widget",
+      "whatsapp"
+    ],
+    "models": [
+      "gpt-4.1-mini"
+    ],
+    "k": 1,
+    "tokenBound": {
+      "inputPerTurn": 8000,
+      "outputPerTurn": 1000
+    },
+    "requiredCases": 78120,
+    "modelCalls": 139940,
+    "maxCostUsdCents": 67740,
+    "maxSeconds": 839640,
+    "refusals": []
+  },
+  "channelCertification": {
+    "channels": 7,
+    "selfService": 5,
+    "retained": 2,
+    "implemented": 3,
+    "operating": 0,
+    "certified": 0,
+    "pendingByCapability": {
+      "delivery_receipt": [
+        "telegram"
+      ],
+      "read_receipt": [
+        "telegram",
+        "web_widget"
+      ]
+    },
+    "untestedByCapability": {
+      "outbound_media": [
+        "instagram",
+        "messenger",
+        "telegram",
+        "web_widget",
+        "whatsapp"
+      ],
+      "payment_link": [
+        "instagram",
+        "messenger",
+        "telegram",
+        "web_widget",
+        "whatsapp"
+      ],
+      "token_lifecycle": [
+        "instagram",
+        "messenger",
+        "telegram",
+        "whatsapp"
+      ],
+      "reconnect": [
+        "instagram",
+        "messenger",
+        "telegram",
+        "web_widget",
+        "whatsapp"
+      ],
+      "rate_limits": [
+        "instagram",
+        "messenger",
+        "telegram",
+        "web_widget",
+        "whatsapp"
+      ],
+      "handoff": [
+        "instagram",
+        "messenger",
+        "telegram",
+        "web_widget",
+        "whatsapp"
+      ],
+      "multi_account": [
+        "instagram",
+        "messenger",
+        "telegram",
+        "web_widget",
+        "whatsapp"
+      ],
+      "privacy_erasure": [
+        "instagram",
+        "messenger",
+        "telegram",
+        "web_widget",
+        "whatsapp"
+      ],
+      "agent_per_connection": [
+        "instagram",
+        "messenger",
+        "telegram",
+        "web_widget",
+        "whatsapp"
+      ],
+      "flow": [
+        "whatsapp"
+      ]
+    },
+    "unprovenByCapability": {
+      "inbound": [
+        "instagram",
+        "messenger",
+        "telegram",
+        "web_widget",
+        "whatsapp"
+      ],
+      "outbound_text": [
+        "instagram",
+        "messenger",
+        "telegram",
+        "web_widget",
+        "whatsapp"
+      ],
+      "delivery_receipt": [
+        "instagram",
+        "messenger",
+        "web_widget",
+        "whatsapp"
+      ],
+      "read_receipt": [
+        "instagram",
+        "messenger",
+        "whatsapp"
+      ],
+      "durable_dispatch": [
+        "instagram",
+        "messenger",
+        "telegram",
+        "web_widget",
+        "whatsapp"
+      ]
+    },
+    "rows": [
+      {
+        "channel": "email",
+        "selfService": false,
+        "state": "pending",
+        "certified": false,
+        "pending": [],
+        "untested": [],
+        "unproven": []
+      },
+      {
+        "channel": "instagram",
+        "selfService": true,
+        "state": "prepared",
+        "certified": false,
+        "pending": [],
+        "untested": [
+          "outbound_media",
+          "payment_link",
+          "token_lifecycle",
+          "reconnect",
+          "rate_limits",
+          "handoff",
+          "multi_account",
+          "privacy_erasure",
+          "agent_per_connection"
+        ],
+        "unproven": [
+          "inbound",
+          "outbound_text",
+          "delivery_receipt",
+          "read_receipt",
+          "durable_dispatch"
+        ]
+      },
+      {
+        "channel": "messenger",
+        "selfService": true,
+        "state": "prepared",
+        "certified": false,
+        "pending": [],
+        "untested": [
+          "outbound_media",
+          "payment_link",
+          "token_lifecycle",
+          "reconnect",
+          "rate_limits",
+          "handoff",
+          "multi_account",
+          "privacy_erasure",
+          "agent_per_connection"
+        ],
+        "unproven": [
+          "inbound",
+          "outbound_text",
+          "delivery_receipt",
+          "read_receipt",
+          "durable_dispatch"
+        ]
+      },
+      {
+        "channel": "sms",
+        "selfService": false,
+        "state": "pending",
+        "certified": false,
+        "pending": [],
+        "untested": [],
+        "unproven": []
+      },
+      {
+        "channel": "telegram",
+        "selfService": true,
+        "state": "pending",
+        "certified": false,
+        "pending": [
+          "delivery_receipt",
+          "read_receipt"
+        ],
+        "untested": [
+          "outbound_media",
+          "payment_link",
+          "token_lifecycle",
+          "reconnect",
+          "rate_limits",
+          "handoff",
+          "multi_account",
+          "privacy_erasure",
+          "agent_per_connection"
+        ],
+        "unproven": [
+          "inbound",
+          "outbound_text",
+          "durable_dispatch"
+        ]
+      },
+      {
+        "channel": "web_widget",
+        "selfService": true,
+        "state": "pending",
+        "certified": false,
+        "pending": [
+          "read_receipt"
+        ],
+        "untested": [
+          "outbound_media",
+          "payment_link",
+          "reconnect",
+          "rate_limits",
+          "handoff",
+          "multi_account",
+          "privacy_erasure",
+          "agent_per_connection"
+        ],
+        "unproven": [
+          "inbound",
+          "outbound_text",
+          "delivery_receipt",
+          "durable_dispatch"
+        ]
+      },
+      {
+        "channel": "whatsapp",
+        "selfService": true,
+        "state": "prepared",
+        "certified": false,
+        "pending": [],
+        "untested": [
+          "outbound_media",
+          "payment_link",
+          "flow",
+          "token_lifecycle",
+          "reconnect",
+          "rate_limits",
+          "handoff",
+          "multi_account",
+          "privacy_erasure",
+          "agent_per_connection"
+        ],
+        "unproven": [
+          "inbound",
+          "outbound_text",
+          "delivery_receipt",
+          "read_receipt",
+          "durable_dispatch"
+        ]
+      }
+    ]
+  },
+  "agentOutputs": {
+    "stores": 20,
+    "open": []
+  },
+  "termsBinding": {
+    "families": 15,
+    "unboundCommand": [],
+    "unboundCharge": []
+  }
+}

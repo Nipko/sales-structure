@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, Query, Req, Logger, UseGuards } from '@nestjs/common';
+import { BadRequestException, Controller, Get, Post, Put, Delete, Body, Param, Query, Req, Logger, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { PersonaService } from './persona.service';
@@ -428,28 +428,7 @@ export class PersonaController {
             : (body.customizations.is247 === false ? 'business_hours' : '24_7');
         const selectedChannels = Array.isArray(body.selectedChannels) ? body.selectedChannels : undefined;
         if (defaultAgent) {
-            // Deliberadamente NO se escribe `persona_config` (el respaldo
-            // legado): con un agente por defecto vivo nadie lo lee —la
-            // resolución es canal → agente por defecto → legado— y su gate de
-            // agenda es más estricto que el del editor, así que un tenant con
-            // la agenda encendida y sin cupos vigentes no podría ni cambiarle
-            // el nombre a su agente. El editor de agentes tampoco lo escribe.
-            await this.personaService.updateAgent(tenantId, defaultAgent.id, {
-                name: config.persona.name,
-                configJson: config,
-                ...(selectedChannels ? { channels: selectedChannels } : {}),
-                ...(scheduleMode ? { scheduleMode } : {}),
-                // El asistente persiste el paso del agente antes de que la
-                // persona haya visto los demás: se valida lo que ya escribió,
-                // no lo que todavía no le preguntamos.
-                // El asistente sólo edita nombre y saludo: no muestra reglas ni
-                // motivos de escalamiento, así que no puede exigirlos. Un agente
-                // heredado al que le falte uno quedaba sin poder terminar la
-                // puesta en marcha, sin ninguna pantalla donde arreglarlo. El
-                // contrato completo lo hace cumplir el editor del agente, que sí
-                // tiene esos campos, y el Centro de calidad, que lleva hasta ellos.
-                partialDraft: true,
-            });
+            throw new BadRequestException({ error: 'agent_draft_contract_required' });
         } else {
             // Agente NUEVO: acá sí hay que decidir dónde atiende. Los cinco
             // tipos solo se siembran cuando el tenant no tiene ningún otro
@@ -554,17 +533,22 @@ export class PersonaController {
         const settings = (tenant?.settings as any) || {};
         const schema = tenant?.schemaName;
 
-        let hasPersona = false;
-        let hasConversations = false;
-        let hasKnowledge = false;
-        let hasTeam = false;
-        let hasAutomation = false;
-        let hasTemplates = false;
-        let hasAnyChannel = false;
+        let hasPersona: boolean | undefined = false;
+        let hasConversations: boolean | undefined = false;
+        // `undefined` is "not known here", which is what the onboarding
+        // contract demands in writing and what this endpoint used to spell
+        // `false`. A false here claims the account cannot receive a single
+        // message, and one unreadable count then sent a working tenant back to
+        // the setup card with Agent Health hidden.
+        let hasKnowledge: boolean | undefined = false;
+        let hasTeam: boolean | undefined = false;
+        let hasAutomation: boolean | undefined = false;
+        let hasTemplates: boolean | undefined = false;
+        let hasAnyChannel: boolean | undefined = false;
         // Los tipos de canal con al menos una conexión activa. El asistente lo
         // usa para no ofrecer conectar lo que ya está conectado.
         let connectedChannelTypes: string[] = [];
-        let hasBusinessAbout = false;
+        let hasBusinessAbout: boolean | undefined = false;
         // El catálogo REAL de la vertical, que no es la base de conocimiento.
         //
         // El checklist relabelaba el paso "base de conocimiento" por industria
@@ -595,27 +579,39 @@ export class PersonaController {
         if (schema) {
             try {
                 const checks = await Promise.allSettled([
-                    this.prisma.$queryRawUnsafe(`SELECT COUNT(*)::int AS c FROM "${schema}".agent_personas WHERE is_active = true`).catch(() => [{ c: 0 }]),
-                    this.prisma.$queryRawUnsafe(`SELECT COUNT(*)::int AS c FROM "${schema}".conversations LIMIT 1`).catch(() => [{ c: 0 }]),
+                    this.prisma.$queryRawUnsafe(`SELECT COUNT(*)::int AS c FROM "${schema}".agent_personas WHERE is_active = true`).catch(() => null),
+                    this.prisma.$queryRawUnsafe(`SELECT COUNT(*)::int AS c FROM "${schema}".conversations LIMIT 1`).catch(() => null),
                     this.prisma.$queryRawUnsafe(`SELECT COUNT(*)::int AS c FROM "${schema}".knowledge_resources LIMIT 1`)
                         .catch(() => this.prisma.$queryRawUnsafe(`SELECT COUNT(*)::int AS c FROM "${schema}".knowledge_documents WHERE status != 'deleted' LIMIT 1`)
-                        .catch(() => [{ c: 0 }])),
-                    this.prisma.$queryRawUnsafe(`SELECT COUNT(*)::int AS c FROM users WHERE tenant_id = $1::uuid AND is_active = true`, tenantId).catch(() => [{ c: 0 }]),
-                    this.prisma.$queryRawUnsafe(`SELECT COUNT(*)::int AS c FROM "${schema}".automation_rules WHERE active = true LIMIT 1`).catch(() => [{ c: 0 }]),
-                    this.prisma.$queryRawUnsafe(`SELECT COUNT(*)::int AS c FROM "${schema}".email_templates LIMIT 1`).catch(() => [{ c: 0 }]),
-                    this.prisma.$queryRawUnsafe(`SELECT COUNT(*)::int AS c FROM channel_accounts WHERE tenant_id = $1::uuid AND is_active = true`, tenantId).catch(() => [{ c: 0 }]),
-                    this.prisma.$queryRawUnsafe(`SELECT COUNT(*)::int AS c FROM "${schema}".companies WHERE is_primary = true AND about IS NOT NULL AND btrim(about) != ''`).catch(() => [{ c: 0 }]),
+                        .catch(() => null)),
+                    this.prisma.$queryRawUnsafe(`SELECT COUNT(*)::int AS c FROM users WHERE tenant_id = $1::uuid AND is_active = true`, tenantId).catch(() => null),
+                    this.prisma.$queryRawUnsafe(`SELECT COUNT(*)::int AS c FROM "${schema}".automation_rules WHERE active = true LIMIT 1`).catch(() => null),
+                    this.prisma.$queryRawUnsafe(`SELECT COUNT(*)::int AS c FROM "${schema}".email_templates LIMIT 1`).catch(() => null),
+                    this.prisma.$queryRawUnsafe(`SELECT COUNT(*)::int AS c FROM channel_accounts WHERE tenant_id = $1::uuid AND is_active = true`, tenantId).catch(() => null),
+                    this.prisma.$queryRawUnsafe(`SELECT COUNT(*)::int AS c FROM "${schema}".companies WHERE is_primary = true AND about IS NOT NULL AND btrim(about) != ''`).catch(() => null),
                 ]);
 
-                const val = (r: PromiseSettledResult<any>) => r.status === 'fulfilled' ? Number((r.value as any[])?.[0]?.c || 0) : 0;
-                hasPersona = val(checks[0]) > 0;
-                hasConversations = val(checks[1]) > 0;
-                hasKnowledge = val(checks[2]) > 0;
-                hasTeam = val(checks[3]) > 1;
-                hasAutomation = val(checks[4]) > 0;
-                hasTemplates = val(checks[5]) > 0;
-                hasAnyChannel = val(checks[6]) > 0;
-                hasBusinessAbout = val(checks[7]) > 0;
+                // A count that could not be read is `null`, and a flag derived
+                // from it is `undefined`. Collapsing both to zero is what let a
+                // database hiccup tell an operating tenant to connect its first
+                // channel.
+                const count = (r: PromiseSettledResult<any>): number | null => {
+                    if (r.status !== 'fulfilled' || r.value === null) return null;
+                    const rows = r.value as any[];
+                    return Number(rows?.[0]?.c ?? 0);
+                };
+                const over = (r: PromiseSettledResult<any>, floor = 0): boolean | undefined => {
+                    const value = count(r);
+                    return value === null ? undefined : value > floor;
+                };
+                hasPersona = over(checks[0]);
+                hasConversations = over(checks[1]);
+                hasKnowledge = over(checks[2]);
+                hasTeam = over(checks[3], 1);
+                hasAutomation = over(checks[4]);
+                hasTemplates = over(checks[5]);
+                hasAnyChannel = over(checks[6]);
+                hasBusinessAbout = over(checks[7]);
 
                 // QUÉ canales están conectados, no solo cuántos. El asistente
                 // dibujaba siempre el panel de conexión de WhatsApp porque su
@@ -623,7 +619,7 @@ export class PersonaController {
                 // sesión: un admin con WhatsApp ya en vivo veía el selector de
                 // ruta y podía lanzar un segundo Embedded Signup sobre su
                 // número en producción.
-                if (hasAnyChannel) {
+                if (hasAnyChannel === true) {
                     const typeRows = (await this.prisma.$queryRawUnsafe(
                         `SELECT DISTINCT channel_type FROM channel_accounts WHERE tenant_id = $1::uuid AND is_active = true`,
                         tenantId,
@@ -664,11 +660,19 @@ export class PersonaController {
                     const filter = catalog.activeFilter ? `WHERE ${catalog.activeFilter}` : '';
                     const rows = (await this.prisma.$queryRawUnsafe(
                         `SELECT COUNT(*)::int AS c FROM "${schema}".${catalog.table} ${filter} LIMIT 1`,
-                    ).catch(() => [{ c: 0 }])) as any[];
-                    hasVerticalCatalog = Number(rows?.[0]?.c || 0) > 0;
+                    ).catch(() => null)) as any[];
+                    // `null` here already means "this vertical has no catalogue
+                    // of its own", so an unreadable one has to stay null too
+                    // rather than claim the shelf is empty.
+                    hasVerticalCatalog = rows === null ? null : Number(rows?.[0]?.c || 0) > 0;
                 }
             } catch {
-                // If schema doesn't exist yet, all default to false
+                // Not "everything is missing": nobody could look. The onboarding
+                // guide has an unknown branch precisely for this, and answering
+                // `false` here bypassed it.
+                hasPersona = undefined; hasConversations = undefined; hasKnowledge = undefined;
+                hasTeam = undefined; hasAutomation = undefined; hasTemplates = undefined;
+                hasAnyChannel = undefined; hasBusinessAbout = undefined;
             }
         }
 
@@ -752,20 +756,7 @@ export class PersonaController {
         @Body() body: any,
         @Req() req: any,
     ) {
-        const paymentEntitlementError = await this.rejectUnavailableCustomerPayments(tenantId, body);
-        if (paymentEntitlementError) return paymentEntitlementError;
-
-        if (body.editorMode === 'prompt' && body.customPrompt) {
-            const enabled = await this.throttleService.isFeatureEnabled(tenantId, 'customPrompt');
-            if (!enabled) {
-                return { success: false, message: 'El prompt personalizado no está disponible en tu plan actual.' };
-            }
-        }
-        const createdBy = req.user?.sub || req.user?.id || 'unknown';
-        const yamlContent = yaml.dump(body, { lineWidth: -1 });
-        const config = await this.personaService.savePersonaFromYaml(tenantId, yamlContent, createdBy);
-        this.logger.log(`Persona config saved for tenant ${tenantId} by ${createdBy}`);
-        return { success: true, data: config };
+        throw new BadRequestException({ error: 'agent_draft_contract_required' });
     }
 
     // ── Multi-Agent CRUD ──────────────────────────────────────
@@ -830,6 +821,11 @@ export class PersonaController {
     @RequiresVerifiedEmail('activate_agent')
     @ApiOperation({ summary: 'Update an existing agent persona' })
     async updateAgent(@Param('tenantId') tenantId: string, @Param('agentId') agentId: string, @Body() body: any) {
+        if (!body || !Number.isInteger(body.expectedVersion) || body.expectedVersion < 0) {
+            throw new BadRequestException({ error: 'agent_version_required', message: 'Reload the agent before saving.' });
+        }
+        if (body.isActive !== false || Object.keys(body).some(key => !['isActive', 'expectedVersion'].includes(key)))
+            throw new BadRequestException({ error: 'agent_draft_contract_required' });
         const paymentEntitlementError = await this.rejectUnavailableCustomerPayments(tenantId, body.configJson);
         if (paymentEntitlementError) return paymentEntitlementError;
 

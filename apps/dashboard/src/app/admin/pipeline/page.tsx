@@ -381,7 +381,7 @@ export default function PipelinePage() {
                 <PageHeader
                     title={vt.pipelineNoun.charAt(0).toUpperCase() + vt.pipelineNoun.slice(1)}
                     subtitle={t('subtitle')}
-                    badge={<DataSourceBadge isLive={isLive} />}
+                    badge={<DataSourceBadge state={isLive ? "live" : "unverified"} />}
                     action={
                         <div className="flex items-center gap-2">
                             {canApprove && (

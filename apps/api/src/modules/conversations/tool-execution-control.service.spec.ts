@@ -2,6 +2,8 @@ import {
     classifyExplicitToolConfirmation,
     ToolExecutionControlService,
 } from './tool-execution-control.service';
+import { bindMcpArguments, type McpToolApproval } from '../mcp/mcp-tool-approval';
+import { appointmentServiceTerms, appointmentServiceTermsHash } from '../appointments/appointment-service-terms';
 
 const schemaName = 'tenant_dec_controls';
 const tenantId = '11111111-1111-4111-8111-111111111111';
@@ -32,12 +34,24 @@ function createHarness(identityVerified = true) {
         outbox: [],
         bookingState: null,
         insertInboundBeforeAcquire: false,
+        canonicalName: 'Amazon Minimalist',
+        erased: false,
+        agentVersion: 3,
+        draftEnabled: true,
     };
 
     const runQuery = async (sql: string, params: any[] = []) => {
         const normalized = sql.replace(/\s+/g, ' ').trim();
+        // The migration is exercised against concurrent PostgreSQL connections by the widget delivery suite.
+        if (normalized.startsWith('DO $widget_state$')) return [];
+        if (normalized.startsWith('SELECT contact_id FROM conversations')) return [{ contact_id: contactId }];
+        if (normalized.startsWith('SELECT version, is_active, config_json FROM agent_personas')) return [{ version: state.agentVersion, is_active: true, config_json: { behavior: { draftMode: state.draftEnabled } } }];
+        if(normalized.startsWith('SELECT pg_advisory_xact_lock'))return [];
+        if(normalized.startsWith('SELECT contact_id FROM customer_memory_erasure'))return state.erased?[{contact_id:contactId}]:[];
+        if(normalized.startsWith('SELECT contact_id FROM tool_approval_tickets'))return [{contact_id:contactId}];
         if (normalized.startsWith('CREATE TABLE') || normalized.startsWith('CREATE INDEX')
             || normalized.startsWith('ALTER TABLE') || normalized.startsWith('DO $ddl$')) return [];
+        if (normalized.startsWith('SELECT name FROM')) return [{ name: state.canonicalName }];
 
         if (normalized.includes("AND status = 'succeeded'")) {
             const found = [...state.ledgers].reverse().find((item: any) => (
@@ -272,6 +286,70 @@ function createHarness(identityVerified = true) {
 }
 
 describe('ToolExecutionControlService', () => {
+    it('refuses erased contacts before creating requests or sending identity challenges',async()=>{
+        const {service,state,chatIdentity}=createHarness(false);state.erased=true;
+        const decision=await service.preflight({schemaName,tenantId,contactId,conversationId,toolName:'create_appointment',args:{customerEmail:'secret@example.test'}});
+        expect(decision).toMatchObject({allowed:false,result:{error:'contact_erased'}});
+        expect(state.ledgers).toEqual([]);expect(chatIdentity.startVerification).not.toHaveBeenCalled();
+    });
+    const mcpReview: McpToolApproval = {
+        serverId: 'erp', toolName: 'operation', effect: 'write', definitionHash: 'a'.repeat(64),
+        dataClassification: 'contact', contactIdArgument: 'contactId', tenantIdArgument: 'tenantId',
+        requiresConfirmation: true, requiresHumanApproval: false,
+        approvedBy: 'owner', approvedAt: '2026-09-06T00:00:00Z',
+    };
+
+    it('executes a reviewed MCP writer only after signed confirmation, with a replayable ledger', async () => {
+        const { service, state } = createHarness();
+        const args = bindMcpArguments(mcpReview, { contactId: 'foreign', tenantId: 'foreign' }, tenantId, contactId);
+        const request = { schemaName, tenantId, contactId, conversationId, toolName: 'mcp__erp__operation', args, mcpApproval: mcpReview };
+        expect(await service.preflight(request)).toMatchObject({ allowed: false, result: { error: 'confirmation_required' } });
+        expect(args).toMatchObject({ contactId, tenantId });
+        state.latestMessage = state.messages[1];
+        const decision = await service.preflight(request);
+        expect(decision).toMatchObject({ allowed: true, policy: { origin: 'mcp', effect: 'write', idempotency: 'central_ledger' } });
+        await service.complete(schemaName, decision, { result: 'created', _executionEffect: 'write' });
+        expect(state.ledger.status).toBe('succeeded');
+        expect(await service.preflight(request)).toMatchObject({ allowed: false, result: { result: 'created' } });
+    });
+
+    it('a reviewed public read runs without a ledger, but a requested human gate is preserved', async () => {
+        const { service, state } = createHarness();
+        const review = { ...mcpReview, effect: 'read' as const, dataClassification: 'public' as const, requiresConfirmation: false };
+        const request = { schemaName, tenantId, contactId, conversationId, toolName: 'mcp__erp__operation', args: {}, mcpApproval: review };
+        expect(await service.preflight(request)).toMatchObject({ allowed: true, policy: { effect: 'read' } });
+        expect(state.ledgers).toHaveLength(0);
+        expect(await service.preflight({ ...request, mcpApproval: { ...review, requiresHumanApproval: true } })).toMatchObject({
+            allowed: false, result: { error: 'approval_required' },
+        });
+    });
+
+    it('uses the reviewed MCP effect when enforcing mission ownership',async()=>{
+        const {service,state}=createHarness();
+        const missionScope={version:1 as const,kind:'booking' as const,executionOwner:'tool' as const,missionId:'booking',domain:'appointment',revision:1,inboundMessageId:firstMessageId,expectedReply:null};
+        const request={schemaName,tenantId,contactId,conversationId,toolName:'mcp__erp__operation',args:{},missionScope};
+        expect(await service.preflight({...request,mcpApproval:mcpReview})).toMatchObject({allowed:false,result:{error:'mission_selection_required'}});
+        expect(await service.preflight({...request,mcpApproval:{...mcpReview,effect:'read',dataClassification:'public',requiresConfirmation:false}})).toMatchObject({allowed:true,policy:{effect:'read'}});
+        expect(state.ledgers).toHaveLength(0);
+    });
+
+    it('keeps conditional knowledge reads usable while business commands await mission selection',async()=>{
+        const {service,state}=createHarness();
+        const missionScope={version:1 as const,kind:'procedure' as const,executionOwner:'tool' as const,missionId:'procedure',revision:1,inboundMessageId:firstMessageId,expectedReply:null,writeBlocked:true};
+        for(const toolName of ['search_faqs','search_knowledge_base','get_policy']) {
+            expect(await service.preflight({schemaName,tenantId,contactId,conversationId,toolName,args:{},missionScope,readOnlyExecution:true})).toMatchObject({allowed:true});
+        }
+        expect(await service.preflight({schemaName,tenantId,contactId,conversationId,toolName:'enroll_student',args:{},missionScope})).toMatchObject({allowed:false,result:{error:'mission_selection_required'}});
+        expect(state.ledgers).toHaveLength(0);
+    });
+
+    it('old or malformed MCP reviews remain inoperative', async () => {
+        const { service } = createHarness();
+        expect(await service.preflight({ schemaName, tenantId, contactId, conversationId, toolName: 'mcp__erp__operation', args: {},
+            mcpApproval: { ...mcpReview, definitionHash: undefined },
+        })).toMatchObject({ allowed: false, result: { error: 'opaque_tool_not_approved' } });
+    });
+
     it('accepts only explicit bounded confirmations in supported languages', () => {
         for (const value of ['sí', 'I confirm', 'pode fazer', 'je confirme']) {
             expect(classifyExplicitToolConfirmation(value)).toBe('confirmed');
@@ -287,11 +365,10 @@ describe('ToolExecutionControlService', () => {
     it('acepta la confirmación como la escribe un cliente real', () => {
         // El allowlist exigía coincidencia EXACTA, así que "sí, confirmo la
         // reserva" caía en unclear y el agente volvía a preguntar — el bucle que
-        // hacía imposible cerrar una reserva. Sólo la APERTURA otorga
-        // consentimiento; nada negado ni matizado pasa.
+        // hacía imposible cerrar una reserva. La frase completa debe confirmar;
+        // un nombre concreto además exige vinculación con la propuesta pendiente.
         for (const value of [
             'Sí, confirmo la reserva',
-            'confirmo la reserva del Amazon Minimalist',
             'dale, confirmo',
             'ok confirmo',
             'yes, confirm the booking',
@@ -300,6 +377,14 @@ describe('ToolExecutionControlService', () => {
         ]) {
             expect(classifyExplicitToolConfirmation(value)).toBe('confirmed');
         }
+    });
+
+    it('requires the exact proposal referent for a named confirmation', () => {
+        const text = 'confirmo la reserva del Amazon Minimalist';
+        expect(classifyExplicitToolConfirmation(text)).toBe('unclear');
+        expect(classifyExplicitToolConfirmation(text, { acceptedReferents: ['Amazon Minimalist'] })).toBe('confirmed');
+        expect(classifyExplicitToolConfirmation(text, { acceptedReferents: ['Amazon Deluxe'] })).toBe('unclear');
+        expect(classifyExplicitToolConfirmation(`${text} a las 5`, { acceptedReferents: ['Amazon Minimalist'] })).toBe('unclear');
     });
 
     it('nunca infiere consentimiento de una negación o de un sí matizado', () => {
@@ -386,6 +471,38 @@ describe('ToolExecutionControlService', () => {
         expect(state.ledger.status).toBe('awaiting_confirmation');
     });
 
+    it.each(['sí', 'confirmo'])('does not let a retry use %s from the proposal turn as its confirmation', async text => {
+        const { service, state } = createHarness();
+        state.latestMessage = { id: firstMessageId, content_text: text };
+        const request = { schemaName, tenantId, contactId, conversationId, toolName: 'create_appointment', args: { serviceId: 'service-1', date: '2026-08-10', time: '10:00' } };
+        expect(await service.preflight(request)).toMatchObject({ allowed: false, result: { error: 'confirmation_required' } });
+        expect(await service.preflight(request)).toMatchObject({ allowed: false, result: { error: 'confirmation_required' } });
+        expect(state.ledger.confirmed_at).toBeNull();
+    });
+
+    it.each([
+        ['confirmo la reserva del Amazon Minimalist', true],
+        ['confirmo la reserva del Amazon Deluxe', false],
+        ['confirmo la reserva del Amazon Minimalist a las 5', false],
+    ])('binds a named reply to canonical names frozen in the signed proposal: %s', async (reply, expected) => {
+        const { service, state } = createHarness();
+        const request = { schemaName, tenantId, contactId, conversationId, toolName: 'create_appointment', args: { serviceId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', date: '2026-08-10', time: '10:00' } };
+        expect(await service.preflight(request)).toMatchObject({ allowed: false, result: { error: 'confirmation_required' } });
+        // A later rename cannot make a different name authorize the old terms.
+        state.canonicalName = 'Amazon Deluxe';
+        state.latestMessage = { id: secondMessageId, content_text: reply };
+        expect((await service.preflight(request)).allowed).toBe(expected);
+        expect(state.ledger.status).toBe(expected ? 'executing' : 'awaiting_confirmation');
+    });
+
+    it('does not trust a model-supplied name that conflicts with the canonical object id', async () => {
+        const { service, state } = createHarness();
+        const request = { schemaName, tenantId, contactId, conversationId, toolName: 'create_appointment', args: { serviceId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', serviceName: 'Amazon Deluxe', date: '2026-08-10', time: '10:00' } };
+        await service.preflight(request);
+        state.latestMessage = { id: secondMessageId, content_text: 'confirmo la reserva del Amazon Deluxe' };
+        expect(await service.preflight(request)).toMatchObject({ allowed: false, result: { error: 'confirmation_required' } });
+    });
+
     it('rejects a non-canonical confirmation token after a later affirmative message', async () => {
         const { service, state } = createHarness();
         const request = {
@@ -433,6 +550,31 @@ describe('ToolExecutionControlService', () => {
             allowed: false,
             result: { success: true, appointmentId: 'appointment-1', idempotentReplay: true },
         });
+    });
+
+    it('rejects a pending proposal from an older served revision before using a later confirmation', async () => {
+        const {service,state}=createHarness();
+        const operationalScope={kind:'agent' as const,tenantId,schemaName,agentId:'cccccccc-cccc-4ccc-8ccc-cccccccccccc',version:7,operationalHash:'a'.repeat(64)};
+        const request={schemaName,tenantId,contactId,conversationId,toolName:'create_appointment',
+            args:{serviceId:'service-1',date:'2026-08-10',time:'10:00'},operationalScope};
+        await service.preflight(request);state.latestMessage={id:secondMessageId,content_text:'confirmo'};
+        const result=await service.preflight({...request,operationalScope:{...operationalScope,version:8}});
+        expect(result).toMatchObject({allowed:false,result:{error:'agent_operational_revision_changed'}});
+        expect(state.ledger.status).toBe('awaiting_confirmation');expect(state.ledger.confirmed_at).toBeNull();
+        expect(state.ledger.request_payload.operationalScope).toEqual(operationalScope);
+    });
+
+    it.each(['succeeded','reconciliation_required'])('preserves an owned %s receipt after configuration changes without admitting another writer', async status => {
+        const {service,state}=createHarness();
+        const operationalScope={kind:'agent' as const,tenantId,schemaName,agentId:'cccccccc-cccc-4ccc-8ccc-cccccccccccc',version:7,operationalHash:'a'.repeat(64)};
+        const request={schemaName,tenantId,contactId,conversationId,toolName:'create_appointment',
+            args:{serviceId:'service-1',date:'2026-08-10',time:'10:00'},operationalScope};
+        await service.preflight(request);
+        const receipt=status==='succeeded'?{success:true,appointmentId:'appointment-1'}:{error:'reconciliation_required',persisted:true};
+        Object.assign(state.ledger,{status,response_payload:receipt});
+        const result=await service.preflight({...request,operationalScope:{...operationalScope,version:8}});
+        expect(result).toEqual({allowed:false,result:{...receipt,idempotentReplay:true}});
+        expect(state.ledgers).toHaveLength(1);expect(state.ledger.status).toBe(status);
     });
 
     it('opens a new operation for the same arguments from a later inbound intent', async () => {
@@ -611,6 +753,9 @@ describe('ToolExecutionControlService', () => {
         let failOutbox = true;
         const query = jest.fn(async (sql: string, params: any[] = []) => {
             const normalized = sql.replace(/\s+/g, ' ').trim();
+            if(normalized.startsWith('SELECT pg_advisory_xact_lock'))return [];
+            if(normalized.startsWith('SELECT contact_id FROM customer_memory_erasure'))return [];
+            if(normalized.startsWith('SELECT contact_id FROM tool_approval_tickets'))return [{contact_id:contactId}];
             if (normalized.startsWith('SELECT t.id AS ticket_id')) {
                 return ticket.status === 'pending' && new Date(ticket.expires_at).getTime() <= Date.now()
                     ? [{
@@ -725,8 +870,8 @@ describe('ToolExecutionControlService', () => {
 
     it('accepts BookingEngine confirmation only when inbound and persisted state bind every argument', async () => {
         const { service, state } = createHarness();
-        state.latestMessage = { id: firstMessageId, content_text: 'confirm_yes' };
-        state.bookingState = {
+        state.latestMessage = { id: firstMessageId, content_text: 'confirm_yes:proposal' };
+        state.bookingState = { confirmationId: 'proposal',
             step: 'confirm',
             serviceId: 'service-1',
             date: '2026-08-10',
@@ -758,10 +903,40 @@ describe('ToolExecutionControlService', () => {
         expect(state.ledger.confirmed_by_message_id).toBe(firstMessageId);
     });
 
+    it('does not reuse a previous acceptance when the canonical service price changes', async () => {
+        const { service, state } = createHarness();
+        const old = appointmentServiceTerms({ id: tenantId, name: 'Consulta', price: 100, currency: 'COP', duration_minutes: 30 });
+        const request = { schemaName, tenantId, contactId, conversationId, toolName: 'create_appointment',
+            args: { serviceId: tenantId, date: '2026-08-10', time: '10:00', appointmentTerms: old, appointmentTermsHash: appointmentServiceTermsHash(old) } };
+        expect(await service.preflight(request)).toMatchObject({ allowed: false, result: { error: 'confirmation_required' } });
+        state.latestMessage = { id: secondMessageId, content_text: 'Sí, confirmo' };
+        const fresh = { ...old, price: 120 };
+        const changed = { ...request, args: { ...request.args, appointmentTerms: fresh, appointmentTermsHash: appointmentServiceTermsHash(fresh) } };
+        expect(await service.preflight(changed)).toMatchObject({ allowed: false, result: { error: 'confirmation_required' } });
+        expect(await service.preflight(changed)).toMatchObject({ allowed: false, result: { error: 'confirmation_required' } });
+        expect(state.ledgers.some((row: any) => row.status === 'executing')).toBe(false);
+        state.latestMessage = { id: fourthMessageId, content_text: 'Confirmo' };
+        expect(await service.preflight(changed)).toMatchObject({ allowed: true });
+    });
+
+    it('requires a renewed booking summary for canonical terms changed since the button was shown', async () => {
+        const { service, state } = createHarness();
+        const old = appointmentServiceTerms({ id: tenantId, name: 'Consulta', price: 100, currency: 'COP', duration_minutes: 30 });
+        const args = { serviceId: tenantId, date: '2026-08-10', time: '10:00', customerName: 'Ana', customerEmail: 'ana@example.test',
+            appointmentTerms: { ...old, price: 120 } };
+        state.bookingState = { ...args, confirmationId: 'proposal', step: 'confirm', services: [{ id: tenantId, appointmentTerms: old }] };
+        state.latestMessage = { id: firstMessageId, content_text: 'confirm_yes:proposal' };
+        expect(await service.preflight({ schemaName, tenantId, contactId, conversationId, toolName: 'create_appointment', args,
+            authorityEvidence: { kind: 'booking_engine_confirmation', source: 'confirm_yes' } })).toMatchObject({
+                allowed: false, result: { error: 'appointment_terms_changed', persisted: false, service: { price: 120 } },
+            });
+        expect(state.ledger.confirmed_at).toBeNull();
+    });
+
     it('rejects a stale or mismatched BookingEngine authority claim', async () => {
         const { service, state } = createHarness();
-        state.latestMessage = { id: firstMessageId, content_text: 'confirm_yes' };
-        state.bookingState = {
+        state.latestMessage = { id: firstMessageId, content_text: 'confirm_yes:proposal' };
+        state.bookingState = { confirmationId: 'proposal',
             step: 'confirm',
             serviceId: 'service-other',
             date: '2026-08-10',
@@ -801,7 +976,7 @@ describe('ToolExecutionControlService', () => {
     it('accepts a typed confirmation with the same binding the button requires', async () => {
         const { service, state } = createHarness();
         state.latestMessage = { id: firstMessageId, content_text: 'Sí, confirmo la cita' };
-        state.bookingState = {
+        state.bookingState = { confirmationId: 'proposal',
             step: 'confirm',
             serviceId: 'service-1',
             date: '2026-08-10',
@@ -835,7 +1010,7 @@ describe('ToolExecutionControlService', () => {
     it('refuses a typed confirmation that is not an unambiguous yes', async () => {
         const { service, state } = createHarness();
         state.latestMessage = { id: firstMessageId, content_text: 'sí, pero cambiá la hora' };
-        state.bookingState = {
+        state.bookingState = { confirmationId: 'proposal',
             step: 'confirm',
             serviceId: 'service-1',
             date: '2026-08-10',
@@ -870,7 +1045,7 @@ describe('ToolExecutionControlService', () => {
     it('refuses a typed confirmation when the engine is not parked on the confirm step', async () => {
         const { service, state } = createHarness();
         state.latestMessage = { id: firstMessageId, content_text: 'confirmo' };
-        state.bookingState = {
+        state.bookingState = { confirmationId: 'proposal',
             step: 'ask_email',
             serviceId: 'service-1',
             date: '2026-08-10',
@@ -933,8 +1108,8 @@ describe('ToolExecutionControlService', () => {
     // internal problem they never saw.
     it('marks its own technical blocks so the pipeline can tell them from a domain escalation', async () => {
         const { service, state } = createHarness();
-        state.latestMessage = { id: firstMessageId, content_text: 'confirm_yes' };
-        state.bookingState = { step: 'ask_email', serviceId: 'service-1' };
+        state.latestMessage = { id: firstMessageId, content_text: 'confirm_yes:proposal' };
+        state.bookingState = { confirmationId: 'proposal', step: 'ask_email', serviceId: 'service-1' };
 
         const result = await service.preflight({
             schemaName,
@@ -950,5 +1125,69 @@ describe('ToolExecutionControlService', () => {
             allowed: false,
             result: { shouldHandoff: true, controlBlocked: true },
         });
+    });
+});
+
+describe('Draft action consent and human review', () => {
+    const draftScope = { agentId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', agentVersion: 3 };
+    const request = { schemaName, tenantId, contactId, conversationId, toolName: 'create_appointment',
+        args: { serviceId: 'service-1', date: '2026-10-20', time: '10:00' }, draftMode: true, draftScope };
+
+    it('requires customer consent, then human approval, and never executes from the draft turn', async () => {
+        const { service, state, chatIdentity } = createHarness(false);
+        expect(await service.proposeDraftAction(request)).toMatchObject({ allowed: false, result: { error: 'confirmation_required' } });
+        expect(state.tickets).toHaveLength(0);
+        expect(state.ledger.confirmed_at).toBeNull();
+        expect(chatIdentity.startVerification).not.toHaveBeenCalled();
+        state.latestMessage = state.messages[1];
+        expect(await service.proposeDraftAction(request)).toMatchObject({ allowed: false, result: { error: 'draft_action_requires_approval' } });
+        expect(state.tickets).toHaveLength(1);
+        expect(state.ledger.status).toBe('awaiting_approval');
+        expect(state.ledger.request_payload.draftReview).toEqual(draftScope);
+        expect(state.ticket.approval_source_message_id).toBe(secondMessageId);
+        expect(new Date(state.ticket.expires_at).getTime()).toBeLessThanOrEqual(new Date(state.ledger.confirmation_expires_at).getTime());
+        state.ticket.status = 'approved';
+        expect((await service.proposeDraftAction(request)).allowed).toBe(false);
+        expect(state.ledger.status).not.toBe('executing');
+        const decision = await service.preflight({ ...request, draftMode: false, draftScope: undefined });
+        expect(decision.allowed).toBe(true);
+        await service.complete(schemaName, decision, { success: true, appointmentId: 'stored-appointment' });
+        expect((await service.preflight({ ...request, draftMode: false })).allowed).toBe(false);
+        expect(state.ledgers).toHaveLength(1);
+    });
+
+    it('creates one media proposal without an OTP, command or customer consent requirement', async () => {
+        const { service, state, chatIdentity } = createHarness(false);
+        const mediaRequest = { ...request, toolName: 'send_product_image', args: { productId: 'catalog-item' } };
+        await service.proposeDraftAction(mediaRequest);
+        await service.proposeDraftAction(mediaRequest);
+        expect(state.tickets).toHaveLength(1);
+        expect(state.ledger.confirmed_at).toBeNull();
+        expect(state.ledger.status).toBe('awaiting_approval');
+        expect(chatIdentity.startVerification).not.toHaveBeenCalled();
+    });
+
+    it('refuses a changed revision or erased contact before creating a proposal', async () => {
+        const { service, state } = createHarness();
+        state.agentVersion = 4;
+        expect(await service.proposeDraftAction(request)).toMatchObject({ allowed: false, result: { error: 'draft_revision_changed' } });
+        expect(state.ledgers).toHaveLength(0);
+        state.agentVersion = 3;
+        state.erased = true;
+        expect(await service.proposeDraftAction(request)).toMatchObject({ allowed: false, result: { error: 'contact_erased' } });
+        expect(state.ledgers).toHaveLength(0);
+    });
+
+    it('refuses an approved proposal after revision change or approval expiry', async () => {
+        const { service, state } = createHarness();
+        const mediaRequest = { ...request, toolName: 'send_product_image', args: { productId: 'catalog-item' } };
+        await service.proposeDraftAction(mediaRequest);
+        state.ticket.status = 'approved';
+        state.agentVersion = 4;
+        expect(await service.preflight({ ...mediaRequest, draftMode: false })).toMatchObject({ allowed: false, result: { error: 'draft_revision_changed' } });
+        state.agentVersion = 3;
+        state.ticket.expires_at = new Date(Date.now() - 1).toISOString();
+        expect(await service.preflight({ ...mediaRequest, draftMode: false })).toMatchObject({ allowed: false, result: { error: 'approval_expired' } });
+        expect(state.ledger.status).not.toBe('executing');
     });
 });

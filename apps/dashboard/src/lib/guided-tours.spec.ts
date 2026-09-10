@@ -8,6 +8,8 @@ import {
   guidedTourEntryRoute,
   guidedTourMessageKeys,
   resolveGuidedTourStepRoutes,
+  planGuidedTourRun,
+  buildGuidedTourSteps,
 } from "./guided-tours";
 import { resolveNavigationRoute } from "./navigation-contract";
 
@@ -57,6 +59,35 @@ function lookup(messages: Record<string, unknown>, key: string): unknown {
 }
 
 describe("guided tour catalogue", () => {
+  it('preserves required steps hidden in tabs and supplies a safe control to reveal them', () => {
+    const plan = planGuidedTourRun('agent_handoff_rules', CONTEXT, {
+      currentRoute: `/admin/agent/${AGENT_ID}`, inPlace: false,
+      isPresent: selector => !selector.includes('rules') && !selector.includes('handoff'),
+    });
+    expect(plan.stepIndexes).toEqual([0, 1, 2, 3, 4, 5]);
+    const steps = getGuidedTourStepDefinitions('agent_handoff_rules', CONTEXT);
+    expect(steps[3].prepareSelector).toBe('[data-tab-id="instructions"]');
+    expect(steps[1].prepareSelector).toBe('[data-tab-id="persona"]');
+  });
+
+  it('does not navigate away after opening a FAQ or invitation editor', () => {
+    const faq = getGuidedTourStepDefinitions('knowledge_base');
+    expect(faq.slice(faq.findIndex(step => step.key === 'fields')).every(step => !step.route)).toBe(true);
+    const users = getGuidedTourStepDefinitions('human_handoff_route');
+    expect(users[users.length - 1]).toMatchObject({ key: 'role', prepareSelector: '#tour-target-users-invite' });
+  });
+
+  it.each(['instagram', 'messenger', 'telegram', 'web_chat'])('keeps %s channel guidance free of WhatsApp steps', (channelType) => {
+    const steps = getGuidedTourStepDefinitions('connect_channel', { channelType });
+    expect(steps.some(step => step.selector.includes('whatsapp') || step.route?.includes('whatsapp'))).toBe(false);
+    expect(steps.at(-1)?.key).toBe('channel');
+  });
+
+  it('keeps protected in-place tours free of all route navigation metadata', () => {
+    const plan = planGuidedTourRun('knowledge_base', {}, { currentRoute: '/admin/knowledge', inPlace: true, isPresent: () => true });
+    const steps = buildGuidedTourSteps('knowledge_base', {}, key => key, plan);
+    expect(steps.every(step => !step.nextRoute && !step.prevRoute && !(step as any).tourRoute)).toBe(true);
+  });
   it("gives every registered tour at least two steps", () => {
     const tooShort = GUIDED_TOUR_IDS
       .map((id) => ({ id, steps: getGuidedTourStepDefinitions(id, CONTEXT).length }))
@@ -107,12 +138,20 @@ describe("guided tour catalogue", () => {
 
 describe("guided tour copy", () => {
   const messages = readSpanishMessages();
-  // Unit C ships its keys through the i18n merge file; until that merge lands
-  // `guidedTours` does not exist and the parity check has nothing to compare.
-  const merged = Boolean(messages.guidedTours);
 
-  (merged ? it : it.skip)("has a title and a body for every step, in Spanish", () => {
-    const missing = guidedTourMessageKeys().filter((key) => typeof lookup(messages, key) !== "string");
-    expect(missing).toEqual([]);
+  it("has the guidedTours namespace at all", () => {
+    // This used to gate the check below, so the whole parity assertion skipped
+    // itself while the merge was pending — and would have gone on skipping
+    // silently if the namespace were ever dropped. The pending state is over;
+    // its absence is now a failure, not a reason to stop looking.
+    expect(Object.keys(messages.guidedTours ?? {}).length).toBeGreaterThan(0);
+  });
+
+  it.each(['es', 'en', 'pt', 'fr'])("has all tour and verification copy in %s", locale => {
+    const localized = JSON.parse(fs.readFileSync(path.join(SRC, '..', 'messages', `${locale}.json`), 'utf8'));
+    const keys = [...guidedTourMessageKeys(), 'guidedTours.connect_channel.steps.channel.title', 'guidedTours.connect_channel.steps.channel.content',
+      'qualityHealth.setup.items.appointments', 'qualityHealth.setup.verificationUnavailable', 'qualityHealth.focus.verificationUnavailable',
+      'qualityHealth.focus.verifiedResolved', 'productTour.finishFormFirst'];
+    expect(keys.filter(key => typeof lookup(localized, key) !== 'string')).toEqual([]);
   });
 });

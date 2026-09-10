@@ -1,10 +1,17 @@
+import type { EvalNamespaceLease } from '../simulation/isolated-eval-namespace';
+import { evaluationNamespaceTimezone } from '../simulation/eval-temporal-context';
+import { assertServedAgentAuthority, type ServedAgentAuthority } from '../persona/served-agent-authority';
 import { Injectable, Logger, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { randomUUID } from 'crypto';
+import { appointmentVehicleId, VehicleAppointmentError, type VehicleAppointmentTerms } from './vehicle-appointment-capacity';
+import { assertVehicleAppointmentReplay, vehicleAppointmentCommand } from './appointment-command-identity';
+import { updateVehicleAppointment } from './vehicle-appointment-update';
+import { operationalContactWasErased } from '../operational-notices/operational-notice-outbox';
 import { CalendarSyncOutboxService } from './calendar-sync-outbox.service';
 import { TemporalCapacityContractService } from '../verticals/temporal-capacity-contract.service';
-import { assertActiveTenantUser } from './tenant-user-scope.util';
+import { assertActiveTenantUser, tenantActorDirectory } from './tenant-user-scope.util';
 import {
     assertOptionalContactId,
     requireTenantContact,
@@ -20,6 +27,7 @@ import { resolveNativeEvidenceOpportunity } from '../../common/utils/native-evid
 import { RegionalProfileService } from '../tenants/regional-profile.service';
 import { mutateTenantSettingsBranchAtomic } from '../../common/utils/tenant-settings-branch.util';
 import { mutateTenantSettingsAtomic } from '../../common/utils/tenant-settings.util';
+import { appointmentServiceTerms, assertAppointmentServiceTerms, type AppointmentServiceTerms } from './appointment-service-terms';
 import {
     holdStillAliveSql,
     PAYMENT_HOLD_MS,
@@ -53,6 +61,12 @@ export interface Appointment {
     calendarSyncState: string | null;
     calendarSyncError: string | null;
     calendarSyncedAt: string | null;
+    paymentStatus?: string;
+    holdExpiresAt?: string | null;
+    awaitingPayment?: boolean;
+    amountDueToConfirm?: number | null;
+    paymentChoice?: 'deposit_or_full';
+    currency?: string;
 }
 
 export interface AvailabilitySlot {
@@ -224,16 +238,17 @@ export class AppointmentsService {
         return (rows as any[]).map((r) => this.mapRow(r));
     }
 
-    async getById(schemaName: string, appointmentId: string): Promise<Appointment> {
+    async getById(schemaName: string, appointmentId: string, namespace?: EvalNamespaceLease): Promise<Appointment> {
+        const directory = await tenantActorDirectory(this.prisma,schemaName,namespace);
         const rows = await this.prisma.executeInTenantSchema(schemaName,
             `SELECT a.*, c.name as contact_name, u.id as assigned_user_id,
                     u.first_name || ' ' || u.last_name as assigned_name
              FROM appointments a
              LEFT JOIN contacts c ON c.id = a.contact_id
-             LEFT JOIN public.tenants tenant_owner
+             LEFT JOIN ${directory.tenants} tenant_owner
                ON tenant_owner.schema_name = $1
               AND tenant_owner.is_active = true
-             LEFT JOIN public.users u
+             LEFT JOIN ${directory.users} u
                ON u.id = a.assigned_to::uuid
               AND u.tenant_id = tenant_owner.id
               AND u.is_active = true
@@ -261,7 +276,15 @@ export class AppointmentsService {
         customerPhone?: string;
         customerEmail?: string;
         source?: string;
-    }): Promise<Appointment> {
+    }, execution: { suppressEffects?: boolean; confirmWithoutPayment?: boolean; sandboxNamespace?: EvalNamespaceLease;
+        expectedServiceTerms?: AppointmentServiceTerms; operationalScope?: ServedAgentAuthority; vehicleRequestKey?: string;
+        expectedVehicleTerms?: VehicleAppointmentTerms } = {}): Promise<Appointment> {
+        if (execution.sandboxNamespace) {
+            await tenantActorDirectory(this.prisma,schemaName,execution.sandboxNamespace);
+            data = { ...data, metadata: { ...data.metadata, source: 'eval_gate' } };
+        }
+        const suppressEffects = !!execution.sandboxNamespace || execution.suppressEffects === true
+            || data.source === 'eval_gate' || data.metadata?.source === 'eval_gate';
         // Tenant-local appointment rows cannot FK to public.users. Resolve the
         // assignment against the active tenant owner before any conflict/write.
         const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -273,7 +296,7 @@ export class AppointmentsService {
             });
         }
         const assignedToUuid = data.assignedTo
-            ? await assertActiveTenantUser(this.prisma, schemaName, data.assignedTo)
+            ? await assertActiveTenantUser(this.prisma, schemaName, data.assignedTo, execution.sandboxNamespace)
             : null;
         const conversationIdUuid = data.conversationId && uuidRe.test(data.conversationId) ? data.conversationId : null;
 
@@ -313,7 +336,10 @@ export class AppointmentsService {
                 message: 'La cita necesita una hora final explícita posterior al inicio.',
             });
         }
-        const timezone = await this.resolveTimezoneForSchema(schemaName, data.metadata?.timezone);
+        const timezone = execution.sandboxNamespace
+            ? await evaluationNamespaceTimezone(this.prisma, schemaName, execution.sandboxNamespace)
+            : await this.resolveTimezoneForSchema(schemaName, data.metadata?.timezone);
+        if (execution.sandboxNamespace) data = { ...data, metadata: { ...data.metadata, timezone } };
         this.temporalContracts.normalize({
             kind: 'appointment',
             startsAtLocal: startAt,
@@ -321,15 +347,32 @@ export class AppointmentsService {
             durationMinutes: this.diffMinutesNaive(startAt, endAt),
         });
 
-        const id = randomUUID();
+        const vehicleId = appointmentVehicleId(data.metadata);
+        const command = vehicleId ? vehicleAppointmentCommand(schemaName, requestedContactId, execution.vehicleRequestKey,
+            [vehicleId, serviceIdUuid, assignedToUuid, startAt, endAt, conversationIdUuid,
+                data.customerName || null, data.customerPhone || null, data.customerEmail || null, data.notes || null,
+                execution.expectedServiceTerms || null,execution.expectedVehicleTerms || null]) : undefined;
+        const id = command?.id || randomUUID();
+        let replay = false;
         let canonicalServiceName = data.serviceName;
         // Se declara fuera de la transacción porque el llamador necesita saber
         // si la cita quedó pendiente de pago: es lo que impide que el agente
         // diga "tu cita quedó confirmada" sobre algo que nadie pagó.
         let policy = resolvePaymentPolicy(null, 0);
+        let currency = 'COP';
         try {
             await this.prisma.transactionInTenantSchema(schemaName, async (query) => {
+                await assertServedAgentAuthority(query, schemaName, execution.operationalScope);
+                if (vehicleId) {
+                    await query('SELECT pg_advisory_xact_lock_shared(hashtextextended($1,0))::text', [`agent-privacy:${schemaName}`]);
+                    if (await operationalContactWasErased(query, requestedContactId)) throw new BadRequestException({ error: 'contact_erased' });
+                }
                 const contactIdUuid = await requireTenantContact(query, requestedContactId);
+                if (command) {
+                    await query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))::text', [`vehicle-appointment-command:${schemaName}:${id}`]);
+                    const [existing] = await query<any[]>('SELECT id, contact_id, metadata FROM appointments WHERE id=$1::uuid', [id]);
+                    if (existing) { assertVehicleAppointmentReplay(existing, command.hash, contactIdUuid!); replay = true; return; }
+                }
                 const opportunityId = await resolveNativeEvidenceOpportunity(query, {
                     contactId: contactIdUuid,
                     conversationId: conversationIdUuid,
@@ -341,15 +384,25 @@ export class AppointmentsService {
                     staffUserId: assignedToUuid,
                     startAt,
                     endAt,
+                    vehicleId,
+                    expectedVehicleTerms: execution.expectedVehicleTerms,
+                    sandboxNamespace: execution.sandboxNamespace,
                 });
                 canonicalServiceName = service.name;
+                // The same service row is held FOR SHARE until the INSERT commits.
+                // Owner edits cannot race a customer's previously accepted terms.
+                if (data.source === 'ai' || execution.expectedServiceTerms) {
+                    assertAppointmentServiceTerms(execution.expectedServiceTerms, service);
+                }
                 // Si el servicio exige pago para confirmarse, la cita nace
                 // pendiente y con el turno RETENIDO 20 minutos mientras el
                 // cliente paga. El estado se pasa explícito porque el default
                 // de la columna es 'pending', que significa otra cosa —
                 // "agendada, falta que el negocio la confirme"— y sí ocupa.
                 policy = resolvePaymentPolicy(service, service?.price);
-                const status = policy.requiresPayment ? PENDING_PAYMENT_STATUS : 'pending';
+                currency = String(service.currency || 'COP');
+                const status = policy.requiresPayment ? PENDING_PAYMENT_STATUS
+                    : execution.confirmWithoutPayment ? 'confirmed' : 'pending';
                 const holdExpiresAt = policy.requiresPayment
                     ? new Date(Date.now() + PAYMENT_HOLD_MS)
                     : null;
@@ -368,7 +421,8 @@ export class AppointmentsService {
                     [
                         id, contactIdUuid, opportunityId, conversationIdUuid, assignedToUuid, serviceIdUuid,
                         canonicalServiceName, startAt, endAt, data.location || null,
-                        data.notes || null, JSON.stringify(data.metadata || {}),
+                        data.notes || null, JSON.stringify({ ...data.metadata, serviceTerms: appointmentServiceTerms(service),
+                            ...(command ? { vehicleId, vehicleTerms:service.vehicleTerms, vehicleAppointmentCommandHash: command.hash, testDrive: true } : {}) }),
                         data.customerName || null, data.customerPhone || null,
                         data.customerEmail || null, data.source || 'manual',
                         status, amountDue, holdExpiresAt,
@@ -376,11 +430,12 @@ export class AppointmentsService {
                 );
                 // Una cita impaga no se sincroniza al calendario del profesional:
                 // taparía su agenda con algo que todavía está a la venta.
-                if (!policy.requiresPayment) {
+                if (!policy.requiresPayment && !suppressEffects) {
                     await this.calendarOutbox.enqueueWithQuery(query, id, 'upsert');
                 }
             });
         } catch (error) {
+            if (error instanceof VehicleAppointmentError) throw new ConflictException({ error: error.vehicleCode });
             if (error instanceof AppointmentSlotConflictError) {
                 throw new ConflictException({
                     error: error.code,
@@ -397,19 +452,23 @@ export class AppointmentsService {
         }
 
         this.logger.log(`Appointment created: ${id} — ${canonicalServiceName} at ${startAt}`);
-        const appointment = await this.getById(schemaName, id);
+        const appointment = await this.getById(schemaName, id, execution.sandboxNamespace);
 
         // Emit event for WhatsApp confirmation
-        this.eventEmitter.emit('appointment.created', { schemaName, appointment });
+        if (!suppressEffects && !replay) {
+            this.eventEmitter.emit('appointment.created', { schemaName, appointment });
+        }
 
         // La política viaja con la cita: quien la lee —la herramienta, y a
         // través de ella el agente— tiene que saber que esto NO está confirmado
-        // y que el turno sigue disponible para otros hasta que entre el pago.
+        // y que el turno tiene una retención temporal hasta que entre el pago.
         return {
             ...appointment,
-            awaitingPayment: policy.requiresPayment,
-            amountDueToConfirm: policy.requiresPayment ? policy.dueAmount : undefined,
-            paymentChoice: policy.customerChooses ? 'deposit_or_full' : undefined,
+            ...(replay ? { idempotentReplay: true } : {}),
+            awaitingPayment: replay ? appointment.status === PENDING_PAYMENT_STATUS : policy.requiresPayment,
+            amountDueToConfirm: replay ? appointment.metadata?.serviceTerms?.amountDue : policy.requiresPayment ? policy.dueAmount : undefined,
+            paymentChoice: (replay ? appointment.metadata?.serviceTerms?.customerChooses : policy.customerChooses) ? 'deposit_or_full' : undefined,
+            currency: replay ? appointment.metadata?.serviceTerms?.currency : currency,
         } as Appointment;
     }
 
@@ -418,6 +477,40 @@ export class AppointmentsService {
         startAt?: string; endAt?: string; status?: string;
         location?: string; notes?: string;
     }): Promise<Appointment> {
+        const [vehicleSnapshot] = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+            `SELECT *, to_char(start_at,'YYYY-MM-DD"T"HH24:MI:SS') AS start_local,
+                to_char(end_at,'YYYY-MM-DD"T"HH24:MI:SS') AS end_local, updated_at::text AS update_revision
+             FROM appointments WHERE id=$1::uuid AND (metadata ? 'vehicleId' OR metadata ? 'vehicle_id')`, [appointmentId]);
+        if (vehicleSnapshot) {
+            if (data.serviceName !== undefined && data.serviceName !== vehicleSnapshot.service_name) {
+                throw new ConflictException({ error: 'test_drive_service_change_requires_review' });
+            }
+            const assignedTo = data.assignedTo === undefined ? vehicleSnapshot.assigned_to : data.assignedTo === null ? null
+                : await assertActiveTenantUser(this.prisma, schemaName, data.assignedTo);
+            const startAt = data.startAt === undefined ? vehicleSnapshot.start_local : this.normalizeNaive(data.startAt);
+            const endAt = data.endAt === undefined ? vehicleSnapshot.end_local : this.normalizeNaive(data.endAt);
+            if (!startAt || !endAt || endAt <= startAt) throw new BadRequestException({ error: 'invalid_test_drive_time' });
+            this.temporalContracts.normalize({ kind: 'appointment', startsAtLocal: startAt,
+                timezone: await this.resolveTimezoneForSchema(schemaName), durationMinutes: this.diffMinutesNaive(startAt, endAt) });
+            const status = data.status ?? vehicleSnapshot.status;
+            try {
+                await this.prisma.transactionInTenantSchema(schemaName, async query => {
+                    await updateVehicleAppointment(query, schemaName, vehicleSnapshot, {
+                        startAt, endAt, assignedTo, status,
+                        location: data.location ?? vehicleSnapshot.location, notes: data.notes ?? vehicleSnapshot.notes,
+                    });
+                    if (status !== PENDING_PAYMENT_STATUS) {
+                        await this.calendarOutbox.enqueueWithQuery(query, appointmentId, status === 'cancelled' ? 'delete' : 'upsert');
+                    }
+                });
+            } catch (error) {
+                if (error instanceof VehicleAppointmentError || error instanceof AppointmentSlotConflictError) {
+                    throw new ConflictException({ error: error instanceof VehicleAppointmentError ? error.vehicleCode : error.code });
+                }
+                throw error;
+            }
+            return this.getById(schemaName, appointmentId);
+        }
         const sets: string[] = [];
         const params: any[] = [];
         let idx = 1;
@@ -506,19 +599,20 @@ export class AppointmentsService {
     }
 
     async cancel(schemaName: string, appointmentId: string, reason?: string): Promise<Appointment> {
-        await this.prisma.transactionInTenantSchema(schemaName, async (query) => {
-            await query(
+        const changed = await this.prisma.transactionInTenantSchema(schemaName, async (query) => {
+            const rows = await query<any[]>(
                 `UPDATE appointments SET status = 'cancelled',
                         cancellation_reason = $2, updated_at = NOW()
-                 WHERE id = $1::uuid`,
+                 WHERE id = $1::uuid AND status <> 'cancelled' RETURNING id`,
                 [appointmentId, reason || null],
             );
-            await this.calendarOutbox.enqueueWithQuery(query, appointmentId, 'delete');
+            if (rows.length) await this.calendarOutbox.enqueueWithQuery(query, appointmentId, 'delete');
+            return rows.length > 0;
         });
         const appointment = await this.getById(schemaName, appointmentId);
 
         // Emit event for WhatsApp cancellation notification
-        this.eventEmitter.emit('appointment.cancelled', { schemaName, appointment, reason });
+        if (changed) this.eventEmitter.emit('appointment.cancelled', { schemaName, appointment, reason });
 
         return appointment;
     }
@@ -543,6 +637,10 @@ export class AppointmentsService {
             endDate?: string; // alternative: stop at date
         };
     }): Promise<{ groupId: string; appointments: Appointment[] }> {
+        if (data.metadata?.vehicleId !== undefined || data.metadata?.vehicle_id !== undefined) {
+            throw new BadRequestException({ error: 'test_drive_recurrence_not_supported',
+                message: 'Book each test drive through the vehicle appointment command with its own verified slot.' });
+        }
         const requestedContactId = assertOptionalContactId(data.contactId);
         if (!requestedContactId) {
             throw new BadRequestException({
@@ -952,6 +1050,8 @@ export class AppointmentsService {
             startAt: this.toNaiveIso(row.start_at),
             endAt: this.toNaiveIso(row.end_at),
             status: row.status,
+            paymentStatus: row.payment_status || 'pending',
+            holdExpiresAt: row.hold_expires_at ? new Date(row.hold_expires_at).toISOString() : null,
             location: row.location,
             notes: row.notes,
             reminderSent: row.reminder_sent,

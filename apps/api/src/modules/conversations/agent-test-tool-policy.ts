@@ -58,6 +58,10 @@ export interface EvalWriterSandboxFamily {
     contactColumn?: string;
     /** Why a pending family is not executable yet. */
     pendingReason?: string;
+    /** Read-only effect verification is independent of permission to execute a writer. */
+    verifierAudited?: boolean;
+    /** No fallback mutation adapter is allowed outside an owned namespace. */
+    canonicalOnly?: boolean;
 }
 
 /**
@@ -71,17 +75,67 @@ export const EVAL_WRITER_SANDBOX_FAMILIES: Readonly<Record<string, EvalWriterSan
         status: 'audited', tools: Object.freeze(['create_appointment']),
         table: 'appointments', contactColumn: 'contact_id',
     }),
+    /**
+     * Las transiciones de una cita, separadas de su creación a propósito.
+     *
+     * Verificar una cancelación o una reprogramación no es comprobar que existe
+     * una fila: es comprobar que una fila concreta CAMBIÓ, así que hereda la
+     * tabla de `appointments` pero no su auditoría. Estas tres ya corren por el
+     * adaptador aislado —`CANONICAL_EVAL_TOOL_FAMILIES` las mapea a
+     * `appointments`, que está en el registro de limpieza—, que es lo que hace
+     * que la membresía esté ganada y no supuesta.
+     *
+     * `canonicalOnly` es deliberado y no una formalidad: son ejecutables sólo
+     * dentro de un namespace arrendado. Nunca contra el schema real de un
+     * tenant, ni siquiera para el contacto sandbox — una cancelación mal
+     * dirigida ahí borraría la cita de un cliente de verdad.
+     */
+    /**
+     * Cotizar una póliza escribe una fila propia, no toca la póliza vigente ni
+     * ningún siniestro, y el namespace arrendado ya copia `insurance_plans` para
+     * que la cotización se calcule contra el plan real en vez de fallar por un
+     * plan ausente. `canonicalOnly`, como el resto: una cotización en el schema
+     * real quedaría en la bandeja de un asesor como si un cliente la hubiera
+     * pedido.
+     */
+    insurance_quotes: Object.freeze({
+        status: 'audited', tools: Object.freeze(['calculate_quote']),
+        table: 'insurance_quotes', contactColumn: 'contact_id', canonicalOnly: true, verifierAudited: true,
+    }),
+    appointment_transitions: Object.freeze({
+        status: 'audited',
+        tools: Object.freeze(['cancel_appointment', 'reschedule_appointment', 'schedule_test_drive']),
+        table: 'appointments', contactColumn: 'contact_id', canonicalOnly: true, verifierAudited: true,
+    }),
+    /**
+     * Las seis operaciones de servicio, hospedaje y comida.
+     *
+     * Dejaron de escribir por el adaptador SQL de este archivo: ahora corren su
+     * comando de producción —`PropertiesService.createBooking`,
+     * `ToursService.createBooking`, `RestaurantsService.createOrder`,
+     * `HomeServicesService.createRequest`, `PhotographyService.create`,
+     * `ResourceRentalsService.create`— dentro del namespace arrendado, que es
+     * la única forma de que la fila afirmada sea la fila que el producto
+     * escribe (precio recalculado del catálogo, asiento descontado del cupo,
+     * `pending_review` en vez de `reserved`).
+     *
+     * Y por eso son `canonicalOnly`. El comando real emite avisos, retiene
+     * fechas y descuenta inventario: contra el schema real de un tenant una
+     * evaluación le mandaría un técnico a una dirección inventada, un pedido
+     * de comida a la cocina y un aviso de emergencia al dueño. El arriendo no
+     * es una formalidad — es lo que hace que nada de eso salga.
+     */
     property_bookings: Object.freeze({
         status: 'audited', tools: Object.freeze(['create_property_booking']),
-        table: 'property_bookings', contactColumn: 'contact_id',
+        table: 'property_bookings', contactColumn: 'contact_id', canonicalOnly: true, verifierAudited: true,
     }),
     tour_bookings: Object.freeze({
         status: 'audited', tools: Object.freeze(['create_tour_booking']),
-        table: 'tour_bookings', contactColumn: 'contact_id',
+        table: 'tour_bookings', contactColumn: 'contact_id', canonicalOnly: true, verifierAudited: true,
     }),
     restaurant_orders: Object.freeze({
         status: 'audited', tools: Object.freeze(['place_order']),
-        table: 'food_orders', contactColumn: 'contact_id',
+        table: 'food_orders', contactColumn: 'contact_id', canonicalOnly: true, verifierAudited: true,
     }),
     class_bookings: Object.freeze({
         status: 'audited', tools: Object.freeze(['book_class']),
@@ -93,23 +147,43 @@ export const EVAL_WRITER_SANDBOX_FAMILIES: Readonly<Record<string, EvalWriterSan
     }),
     service_requests: Object.freeze({
         status: 'audited', tools: Object.freeze(['create_service_request']),
-        table: 'service_requests', contactColumn: 'contact_id',
+        table: 'service_requests', contactColumn: 'contact_id', canonicalOnly: true, verifierAudited: true,
     }),
     photo_sessions: Object.freeze({
         status: 'audited', tools: Object.freeze(['request_photo_quote']),
-        table: 'photo_sessions', contactColumn: 'contact_id',
+        table: 'photo_sessions', contactColumn: 'contact_id', canonicalOnly: true, verifierAudited: true,
     }),
+    /**
+     * Las dos corren en el namespace, incluido el alquiler de vehículo.
+     *
+     * El alquiler está declarado A2 con `step_up`, así que el guardián central
+     * le exige identidad verificada antes de llegar al comando. La constancia
+     * sintética del arriendo ahora la cubre —ver `EVAL_IDENTITY_STEP_UP_WRITERS`,
+     * que comprueba que la familia siga siendo `canonicalOnly` antes de cubrir
+     * a nadie—. `canonicalOnly` sigue siendo obligatorio, y por eso mismo:
+     * fuera de un arriendo ese mismo control llamaría a `startVerification` y
+     * una evaluación mandaría un código de verdad al teléfono de alguien.
+     */
     resource_rentals: Object.freeze({
         status: 'audited', tools: Object.freeze(['create_vehicle_rental', 'create_pet_boarding']),
-        table: 'resource_rentals', contactColumn: 'contact_id',
+        table: 'resource_rentals', contactColumn: 'contact_id', canonicalOnly: true, verifierAudited: true,
     }),
     catalog_orders: Object.freeze({
-        status: 'audited', tools: Object.freeze(['place_catalog_order']),
-        table: 'orders', contactColumn: 'contact_id',
+        status: 'audited', tools: Object.freeze(['place_catalog_order','cancel_catalog_order']),
+        table: 'orders', contactColumn: 'contact_id', canonicalOnly: true, verifierAudited:true,
     }),
     insurance_claims: Object.freeze({
         status: 'identity_challenge', tools: Object.freeze(['file_claim']),
         table: 'insurance_claims',
+    }),
+    pets: Object.freeze({
+        status: 'audited', tools: Object.freeze(['register_pet', 'update_pet']),
+        table: 'pets', contactColumn: 'contact_id', canonicalOnly: true, verifierAudited: true,
+    }),
+    repair_orders: Object.freeze({
+        status: 'audited', tools: Object.freeze(['create_repair_order', 'approve_repair', 'cancel_repair_order']),
+        table: 'repair_orders', contactColumn: 'contact_id', verifierAudited: true,
+        canonicalOnly: true,
     }),
 });
 
@@ -150,6 +224,7 @@ export function isEvalIdentityChallengeToolName(name: unknown): name is string {
  */
 export function canEvalExecuteWriter(name: unknown, contactId?: string): boolean {
     return isEvalWritableToolName(name)
+        && !Object.values(EVAL_WRITER_SANDBOX_FAMILIES).some(family => family.canonicalOnly && family.tools.includes(name))
         && contactId?.toLowerCase() === EVAL_SANDBOX_CONTACT_ID;
 }
 

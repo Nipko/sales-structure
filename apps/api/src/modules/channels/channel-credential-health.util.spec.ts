@@ -8,7 +8,7 @@ import {
     isCredentialWarning,
     resolveCredentialHealth,
     worstCredentialHealth,
-} from './channel-credential-health.util';
+} from '@parallext/shared';
 
 const NOW = new Date('2026-09-04T12:00:00.000Z').getTime();
 const IN_TWO_DAYS = '2026-09-06T12:00:00.000Z';

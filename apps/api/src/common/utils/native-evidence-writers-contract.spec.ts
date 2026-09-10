@@ -17,7 +17,7 @@ describe('native evidence writer ownership contract', () => {
         ['photography/photography.service.ts', 'photo_sessions'],
         ['resource-rentals/resource-rentals.service.ts', 'resource_rentals'],
         ['repair-orders/repair-orders.service.ts', 'repair_orders'],
-        ['orders/orders.service.ts', 'orders'],
+        ['orders/catalog-order-commands.ts', 'orders'],
     ])('%s resolves and persists exact ownership for %s', (file, table) => {
         const contents = source(`modules/${file}`);
         expect(contents).toContain('resolveNativeEvidenceOpportunity');
@@ -32,9 +32,12 @@ describe('native evidence writer ownership contract', () => {
         const end = contents.indexOf('private async cancelAppointment(', start);
         const createAppointment = contents.slice(start, end);
 
-        expect(createAppointment).toContain('resolveNativeEvidenceOpportunity(query');
-        expect(createAppointment).toContain('conversationId,');
-        expect(createAppointment).toContain('opportunity_id, conversation_id');
+        expect(createAppointment).toContain('this.appointmentsService.create(schema,');
+        expect(createAppointment).toContain('contactId, conversationId, serviceId: args.serviceId');
+        const command = source('modules/appointments/appointments.service.ts');
+        expect(command).toContain('resolveNativeEvidenceOpportunity(query');
+        expect(command).toContain('conversationId: conversationIdUuid');
+        expect(command).toContain('opportunity_id, conversation_id');
         expect(createAppointment).not.toContain('args.opportunityId');
         expect(createAppointment).not.toContain('trustedOpportunityId: args');
     });

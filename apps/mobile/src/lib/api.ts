@@ -394,8 +394,9 @@ export const api = {
     },
     createOrder: (tenantId: string, data: Record<string, any>) =>
         json(`/orders/${tenantId}`, { method: 'POST', body: JSON.stringify(data) }),
-    updateOrderStatus: (tenantId: string, orderId: string, status: string) =>
-        json(`/orders/${tenantId}/${orderId}/status`, { method: 'PUT', body: JSON.stringify({ status }) }),
+    quoteOrder: (tenantId:string,data:Record<string,any>)=>json(`/orders/quote/${tenantId}`,{method:'POST',body:JSON.stringify(data)}),
+    updateOrderStatus: (tenantId: string, orderId: string, status: string,expectedVersion:number) =>
+        json(`/orders/${tenantId}/${orderId}/status`, { method: 'PUT', body: JSON.stringify({ status,expectedVersion }) }),
     getFitnessClasses: (tenantId: string, from: string, to: string) =>
         json(`/gyms/${tenantId}/classes?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&limit=200`),
     getGymMembers: (tenantId: string, search?: string) =>

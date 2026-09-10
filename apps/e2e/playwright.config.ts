@@ -31,9 +31,13 @@ export default defineConfig({
   failOnFlakyTests: isCI,
   retries: isCI ? 1 : 0,
   workers: isCI ? 1 : undefined,
-  timeout: 45_000,
+  // Dev servers compile each route the first time it is asked for, and both of
+  // them are running while the suite does. A first hit under that contention
+  // has exceeded 45s more than once, always on a different test — a machine
+  // under load, not a slow page. More patience, never a weaker assertion.
+  timeout: 90_000,
   expect: {
-    timeout: 10_000,
+    timeout: 15_000,
   },
   reporter: isCI
     ? [
@@ -80,6 +84,19 @@ export default defineConfig({
       testMatch: "**/dashboard/**/*.spec.ts",
       use: {
         ...devices["Desktop Chrome"],
+        baseURL: dashboardUrl,
+      },
+    },
+    {
+      // The same specs at a phone viewport. Most of this product is used from
+      // a phone by the person who owns the business, and a layout that only
+      // works at 1280px is a layout most of its users never see working.
+      // Kept as a project rather than a viewport override inside each test so
+      // adding a spec covers both sizes without anybody remembering to.
+      name: "dashboard-mobile",
+      testMatch: /dashboard[\/](session-and-roles|locales-and-access|assist-handoffs|guided-tours|oauth-return|signup-to-first-agent|assist-proposal-loop|assist-guided-creation|contrast-and-zoom|agent-publication)\.spec\.ts$/,
+      use: {
+        ...devices["Pixel 7"],
         baseURL: dashboardUrl,
       },
     },

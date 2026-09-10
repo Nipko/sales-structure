@@ -10,7 +10,7 @@ import { Clock, Save, CheckCircle, AlertCircle, Globe } from "lucide-react";
 import { HelpPanel } from "@/components/ui/help-panel";
 import { guidedTourAnchorId } from "@/lib/guided-tours";
 import Link from "next/link";
-import { TIMEZONE_GROUPS, DEFAULT_TIMEZONE, normalizeTimezone } from "@parallext/shared";
+import { TIMEZONE_GROUPS, DEFAULT_TIMEZONE, normalizeTimezone, isAgentAccountBusinessHours } from "@parallext/shared";
 
 interface DaySchedule {
     enabled: boolean;
@@ -48,38 +48,47 @@ export default function BusinessHoursPage() {
     const tc = useTranslations("common");
     const t = useTranslations("settings.businessHoursPage");
     const tHelp = useTranslations("help");
+    const tConfiguration = useTranslations('agentConfiguration');
     const { user } = useAuth();
     const { activeTenantId } = useTenant();
     const [config, setConfig] = useState<BusinessHoursConfig>(defaultConfig);
     const [saving, setSaving] = useState(false);
     const [saved, setSaved] = useState(false);
     const [error, setError] = useState("");
+    const [baseline, setBaseline] = useState<Record<string, unknown> | null | undefined>(undefined);
 
     useEffect(() => {
+        let cancelled = false;
+        setBaseline(undefined);
+        setConfig(structuredClone(defaultConfig)); setError('');
         async function load() {
             const tenantId = activeTenantId || user?.tenantId;
             if (!tenantId) return;
-            const result = await api.getTenant(tenantId);
-            if (result.success && result.data) {
+            const result = await api.getTenant(tenantId).catch(() => null);
+            if (cancelled) return;
+            if (result?.success && result.data) {
                 const s = (result.data as any).settings || {};
+                setBaseline(s.businessHours ?? null);
                 if (s.businessHours) {
                     const bh = s.businessHours;
                     setConfig({
                         is247: bh.is247 ?? false,
                         timezone: normalizeTimezone(bh.timezone || DEFAULT_TIMEZONE),
-                        schedule: bh.schedule || defaultSchedule,
+                        schedule: Object.fromEntries(DAY_KEYS.map(day => [day, { ...defaultSchedule[day], enabled: false, ...(bh.schedule?.[day] && typeof bh.schedule[day] === 'object' ? bh.schedule[day] : {}) }])),
                         afterHoursMessage: bh.afterHoursMessage ?? s.outOfHoursMessage ?? "",
                     });
+                    if (!isAgentAccountBusinessHours(bh)) setError(tConfiguration('hoursInvalid'));
                 } else if (s.outOfHoursMessage !== undefined) {
                     setConfig(prev => ({
                         ...prev,
                         afterHoursMessage: s.outOfHoursMessage,
                     }));
                 }
-            }
+            } else { setError(tc('connectionError')); }
         }
         load();
-    }, [activeTenantId, user?.tenantId]);
+        return () => { cancelled = true; };
+    }, [activeTenantId, user?.tenantId, tc]);
 
     const updateDay = (day: string, field: keyof DaySchedule, value: any) => {
         setConfig(prev => ({
@@ -92,21 +101,25 @@ export default function BusinessHoursPage() {
     };
 
     const handleSave = async () => {
+        if (baseline === undefined) { setError(tc('connectionError')); return; }
+        if (!isAgentAccountBusinessHours(config)) { setError(tConfiguration('hoursInvalid')); return; }
         setSaving(true);
         setError("");
         try {
             const tenantId = activeTenantId || user?.tenantId;
             if (!tenantId) return;
             const result = await api.updateTenant(tenantId, {
+                expectedBusinessHours: baseline,
                 settings: {
                     businessHours: config,
                 },
             });
             if (result.success) {
+                setBaseline(JSON.parse(JSON.stringify(config)));
                 setSaved(true);
                 setTimeout(() => setSaved(false), 3000);
             } else {
-                setError(result.error || tc("errorSaving"));
+                setError((result as any).errorCode === 'business_hours_version_conflict' ? tConfiguration('editorChanged') : result.error || tc("errorSaving"));
             }
         } catch {
             setError(tc("connectionError"));
@@ -147,8 +160,9 @@ export default function BusinessHoursPage() {
             </div>
 
             {error && (
-                <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-400">
+                <div role="alert" className="flex flex-wrap items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-400">
                     <AlertCircle size={16} /> {error}
+                    <button type="button" onClick={() => window.location.reload()} className="rounded-lg border border-current px-3 py-2">{tConfiguration('reloadEditor')}</button>
                 </div>
             )}
 
@@ -278,6 +292,7 @@ export default function BusinessHoursPage() {
                 </p>
                 <textarea
                     value={config.afterHoursMessage}
+                    maxLength={2000}
                     onChange={(e) => setConfig(prev => ({ ...prev, afterHoursMessage: e.target.value }))}
                     placeholder={t("outOfHoursPlaceholder")}
                     rows={3}

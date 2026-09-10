@@ -1,6 +1,10 @@
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, Inject, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
+import { AppointmentsService } from '../appointments/appointments.service';
+import { APPOINTMENT_SERVICE_TERMS_COLUMNS, appointmentServiceTerms } from '../appointments/appointment-service-terms';
+import { vehicleAppointmentTerms, VehicleAppointmentError } from '../appointments/vehicle-appointment-capacity';
+import { ScheduleTestDriveDto } from './schedule-test-drive.dto';
 
 @Injectable()
 export class VehicleInventoryService {
@@ -9,6 +13,7 @@ export class VehicleInventoryService {
     constructor(
         private readonly prisma: PrismaService,
         private readonly throttle: TenantThrottleService,
+        @Inject(forwardRef(() => AppointmentsService)) private readonly appointments: AppointmentsService,
     ) {}
 
     /**
@@ -282,28 +287,39 @@ export class VehicleInventoryService {
         return rows[0];
     }
 
-    async scheduleTestDrive(tenantId: string, data: {
-        vehicleId: string; contactName: string; contactPhone?: string;
-        scheduledDate: string; scheduledTime: string; notes?: string;
-    }): Promise<any> {
+    async scheduleTestDrive(tenantId: string, data: ScheduleTestDriveDto): Promise<any> {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
-        await this.ensureTables(schemaName);
-
-        const conflict = await this.prisma.executeInTenantSchema<any[]>(schemaName, `
-            SELECT 1 FROM test_drives
-            WHERE vehicle_id = $1::uuid AND scheduled_date = $2::date AND scheduled_time = $3::time
-            AND status NOT IN ('cancelled', 'completed')
-        `, [data.vehicleId, data.scheduledDate, data.scheduledTime]);
-
-        if (conflict.length > 0) throw new BadRequestException('Test drive slot already booked');
-
-        const rows = await this.prisma.executeInTenantSchema<any[]>(schemaName, `
-            INSERT INTO test_drives (vehicle_id, contact_name, contact_phone, scheduled_date, scheduled_time, notes)
-            VALUES ($1::uuid, $2, $3, $4::date, $5::time, $6)
-            RETURNING *
-        `, [data.vehicleId, data.contactName, data.contactPhone || null,
-            data.scheduledDate, data.scheduledTime, data.notes || null]);
-        return rows[0];
+        const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+        if (![data.vehicleId, data.contactId, data.serviceId, data.staffId, data.requestKey].every(id => typeof id === 'string' && uuid.test(id))) {
+            throw new BadRequestException({ error: 'test_drive_identity_required' });
+        }
+        const [service] = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+            `SELECT ${APPOINTMENT_SERVICE_TERMS_COLUMNS} FROM services WHERE id=$1::uuid AND is_active=true`, [data.serviceId]);
+        if (!service || (service.duration_type || 'fixed') !== 'fixed' || !['in_person', 'hybrid'].includes(service.location_type || 'in_person')
+            || !Number.isInteger(Number(service.duration_minutes)) || Number(service.duration_minutes) < 1 || Number(service.duration_minutes) > 1440) {
+            throw new BadRequestException({ error: 'test_drive_service_contract_required' });
+        }
+        const [vehicle] = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+            'SELECT id,make,model,year,trim_level,vin,license_plate,status FROM vehicles WHERE id=$1::uuid', [data.vehicleId]);
+        let terms: ReturnType<typeof vehicleAppointmentTerms>;
+        try { terms = vehicleAppointmentTerms(vehicle); }
+        catch (error) {
+            if (error instanceof VehicleAppointmentError) throw new BadRequestException({ error: error.vehicleCode });
+            throw error;
+        }
+        const startAt = `${data.scheduledDate}T${data.scheduledTime}:00`;
+        const start = Date.parse(`${startAt}Z`);
+        if (!Number.isFinite(start) || new Date(start).toISOString().slice(0, 19) !== startAt) {
+            throw new BadRequestException({ error: 'invalid_test_drive_time' });
+        }
+        // UTC arithmetic preserves the local wall clock; create validates the tenant timezone.
+        const endAt = new Date(start + Number(service.duration_minutes) * 60_000).toISOString().slice(0, 19);
+        return this.appointments.create(schemaName, {
+            contactId: data.contactId, conversationId: data.conversationId, serviceId: data.serviceId,
+            serviceName: service.name, assignedTo: data.staffId, startAt, endAt,
+            customerName: data.contactName, customerPhone: data.contactPhone, customerEmail: data.contactEmail,
+            notes: data.notes, metadata: { vehicleId: data.vehicleId }, source: 'manual',
+        }, { vehicleRequestKey: data.requestKey, expectedServiceTerms: appointmentServiceTerms(service), expectedVehicleTerms: terms });
     }
 
     async listTestDrives(tenantId: string, filters?: { vehicleId?: string; status?: string; date?: string }): Promise<any[]> {
@@ -313,17 +329,32 @@ export class VehicleInventoryService {
         const params: any[] = [];
         let idx = 1;
 
-        if (filters?.vehicleId) { conditions.push(`td.vehicle_id = $${idx++}::uuid`); params.push(filters.vehicleId); }
+        if (filters?.vehicleId) { conditions.push(`td.vehicle_id = $${idx++}::uuid::text`); params.push(filters.vehicleId); }
         if (filters?.status) { conditions.push(`td.status = $${idx++}`); params.push(filters.status); }
         if (filters?.date) { conditions.push(`td.scheduled_date = $${idx++}::date`); params.push(filters.date); }
 
         const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+        const [legacyTable] = await this.prisma.executeInTenantSchema<any[]>(schemaName, "SELECT to_regclass('test_drives')::text AS name");
+        const legacy = legacyTable?.name ? `UNION ALL
+            SELECT id, vehicle_id::text, contact_name, contact_phone, scheduled_date, scheduled_time,
+                status, notes, 'legacy'::text AS source, NULL::uuid AS appointment_id FROM test_drives` : '';
         return this.prisma.executeInTenantSchema<any[]>(schemaName, `
-            SELECT td.*, v.make, v.model, v.year, v.color
-            FROM test_drives td
-            JOIN vehicles v ON v.id = td.vehicle_id
+            SELECT td.id, td.vehicle_id, td.contact_name, td.contact_phone,
+                to_char(td.scheduled_date,'YYYY-MM-DD') AS scheduled_date,
+                td.scheduled_time::text AS scheduled_time, td.status, td.notes, td.source, td.appointment_id,
+                v.make, v.model, v.year, v.color
+            FROM (
+                SELECT id, COALESCE(metadata->>'vehicleId',metadata->>'vehicle_id') AS vehicle_id,
+                    customer_name AS contact_name, customer_phone AS contact_phone,
+                    start_at::date AS scheduled_date, start_at::time AS scheduled_time,
+                    status, notes, 'appointment'::text AS source, id AS appointment_id
+                FROM appointments WHERE metadata ? 'vehicleId' OR metadata ? 'vehicle_id'
+                ${legacy}
+            ) td
+            LEFT JOIN vehicles v ON v.id::text = td.vehicle_id
             ${where}
-            ORDER BY td.scheduled_date, td.scheduled_time
+            ORDER BY td.scheduled_date DESC, td.scheduled_time DESC, td.id
+            LIMIT 100
         `, params);
     }
 

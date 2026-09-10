@@ -69,7 +69,7 @@ export default function InventoryPage() {
             <PageHeader
                 title={t('title')}
                 subtitle={t('subtitle')}
-                badge={<DataSourceBadge isLive={isLive} />}
+                badge={<DataSourceBadge state={isLive ? "live" : "unverified"} />}
                 action={
                     <button onClick={() => setShowCreateModal(true)} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 font-medium text-sm cursor-pointer hover:opacity-90 press-effect">
                         <Plus size={16} /> {tc("create")}

@@ -6,8 +6,16 @@
  */
 
 import type { VerticalDefinitions } from "./vertical-catalog";
-import type { AgentQualityAttentionSummary, AgentQualityOverview, AgentQualitySignal, GuidedTourId } from "@parallext/shared";
+import type { AgentAssessment, AgentConfigurationChange, AgentConfigurationProposal, AgentContentProposal, AppliedAgentConfiguration, AppliedAgentContentObject, AgentOperationAvailability, AgentQualityAttentionSummary, AgentQualityOverview, AgentQualitySignal, GuidedTourId, AgentConfigurationWorkspace, SaveAgentDraftRequest, SavedAgentDraft } from "@parallext/shared";
 import type { QualityAssistantTarget } from "@/lib/quality-assistant-contract";
+import type { LearningImport, LearningReviewHistory, LearningWorkspaceData } from "@/lib/agent-learning";
+import type { KnowledgeConflictOverview, KnowledgeConflictReview } from "@/lib/knowledge-conflicts";
+import type { ToolApprovalItem } from "@/lib/tool-approvals";
+import type { OperationalNotice, OperationalNoticeList, NoticeReviewRequest } from './operational-notices';
+import type { DiscardAgentDraftRequest } from '@parallext/shared';
+import type { AgentReleaseDetail, AgentReleaseListItem, AgentReleaseRequest, AgentReleaseReviewRequest } from './agent-release-review';
+import type { AgentPublicationHistory, AgentPublicationReceipt, PublishAgentConfigurationRequest, RollbackAgentConfigurationRequest } from './agent-publication';
+import type { DispatchReconciliationQueue, DispatchResolution, DispatchResolutionExport, DispatchResolutionReceipt, DispatchRolloutRequest, DispatchRolloutState } from './dispatch-operations';
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.parallly-chat.cloud/api/v1";
 
@@ -580,6 +588,49 @@ async function doRefresh(): Promise<string | null> {
 // ============================================
 
 export const api = {
+    getOperationalNotices: (tenantId:string,filters:{state?:string;conversationId?:string;cursor?:string}={}) => {
+        const query=new URLSearchParams(Object.entries(filters).filter((entry):entry is [string,string]=>!!entry[1]));
+        return apiGet<OperationalNoticeList>(`/operational-notices/${tenantId}${query.size?`?${query}`:''}`);
+    },
+    getOperationalNotice: (tenantId:string,noticeId:string) => apiGet<OperationalNotice>(`/operational-notices/${tenantId}/${noticeId}`),
+    reviewOperationalNotice: (tenantId:string,noticeId:string,body:NoticeReviewRequest) => apiPost<{reviewId:string;idempotentReplay:boolean;notice:OperationalNotice}>(`/operational-notices/${tenantId}/${noticeId}/reviews`,body),
+    getAgentReleases: (tenantId: string, agentId: string) => apiGet<AgentReleaseListItem[]>(`/agent-releases/${tenantId}/agents/${agentId}`),
+    getAgentRelease: (tenantId: string, agentId: string, candidateId: string) => apiGet<AgentReleaseDetail>(`/agent-releases/${tenantId}/agents/${agentId}/${candidateId}`),
+    prepareAgentRelease: (tenantId: string, agentId: string, body: AgentReleaseRequest) => apiPost<AgentReleaseDetail>(`/agent-releases/${tenantId}/agents/${agentId}`, body),
+    reviewAgentRelease: (tenantId: string, agentId: string, candidateId: string, body: AgentReleaseReviewRequest) => apiPost<AgentReleaseDetail>(`/agent-releases/${tenantId}/agents/${agentId}/${candidateId}/review`, body),
+
+    // Publication of an approved candidate, and its rollback. Both are
+    // compare-and-swap: the body carries what the caller believes is serving,
+    // so a stale expectation answers 409 instead of overwriting somebody else.
+    getAgentPublications: (tenantId: string, agentId: string, limit = 20) =>
+        apiGet<AgentPublicationHistory>(`/agent-publications/${tenantId}/agents/${agentId}?limit=${limit}`),
+    publishAgentConfiguration: (tenantId: string, agentId: string, candidateId: string, body: PublishAgentConfigurationRequest) =>
+        apiPost<AgentPublicationReceipt>(`/agent-publications/${tenantId}/agents/${agentId}/candidates/${candidateId}`, body),
+    rollbackAgentConfiguration: (tenantId: string, agentId: string, body: RollbackAgentConfigurationRequest) =>
+        apiPost<AgentPublicationReceipt>(`/agent-publications/${tenantId}/agents/${agentId}/rollback`, body),
+
+    // --- Durable dispatch rollout, kill switch and reconciliation (super_admin,
+    //     platform-wide). How replies leave the system is never a tenant setting,
+    //     so these carry no active-tenant context: the queue is read per tenant
+    //     from an explicit picker. ---
+    getDispatchRollout: () => apiGet<DispatchRolloutState>(`/dispatch-rollout`),
+    setDispatchRollout: (body: DispatchRolloutRequest) => apiPut<DispatchRolloutState>(`/dispatch-rollout`, body),
+    disableDispatchRollout: () => apiPost<DispatchRolloutState>(`/dispatch-rollout/disable`, {}),
+    getDispatchReconciliation: (tenantId: string, params?: { search?: string; limit?: number }) => {
+        const query = new URLSearchParams();
+        if (params?.search) query.set("search", params.search);
+        query.set("limit", String(params?.limit ?? 50));
+        return apiGet<DispatchReconciliationQueue>(`/dispatch-rollout/reconciliation/${tenantId}?${query}`);
+    },
+    resolveDispatchReconciliation: (tenantId: string, dispatchId: string,
+        body: { resolution: DispatchResolution; evidence: string; receipt?: string }) =>
+        apiPost<DispatchResolutionReceipt>(`/dispatch-rollout/reconciliation/${tenantId}/${dispatchId}`, body),
+    // La decisión ya está guardada junto al efecto cuando esto corre: acá sólo
+    // se ponen al día las copias al registro global que una exportación previa
+    // no completó.
+    exportDispatchResolutions: (tenantId: string) =>
+        apiPost<DispatchResolutionExport>(`/dispatch-rollout/reconciliation/${tenantId}/export`, {}),
+
     // --- Auth ---
     login: (email: string, password: string) =>
         apiPost("/auth/login", { email, password }),
@@ -696,6 +747,13 @@ export const api = {
 
     getConversation: (tenantId: string, id: string) =>
         apiGet(`/agent-console/conversation/${tenantId}/${id}`),
+
+    getToolApprovals: (tenantId: string, conversationId: string) =>
+        apiGet<ToolApprovalItem[]>(`/tool-approvals/${tenantId}?conversationId=${encodeURIComponent(conversationId)}&limit=100`),
+    decideToolApproval: (tenantId: string, ticketId: string, decision: 'approved' | 'rejected', reason?: string) =>
+        apiPost(`/tool-approvals/${tenantId}/${ticketId}/decision`, { decision, reason }),
+    resumeToolApproval: (tenantId: string, ticketId: string) =>
+        apiPost(`/tool-approvals/${tenantId}/${ticketId}/resume`, {}),
 
     sendMessage: (tenantId: string, id: string, content: string) =>
         apiPost(`/agent-console/conversation/${tenantId}/${id}/message`, { content }),
@@ -845,6 +903,9 @@ export const api = {
     disconnectChannelAccount: (channelType: string, accountId: string) =>
         apiDelete(`/channels/${channelType}/account/${encodeURIComponent(accountId)}`),
     getAgent: (tenantId: string, agentId: string) => apiGet(`/persona/${tenantId}/agents/${agentId}`),
+    getAgentConfiguration: (tenantId: string, agentId: string) => apiGet<AgentConfigurationWorkspace>(`/persona/${tenantId}/agents/${agentId}/configuration`),
+    saveAgentDraft: (tenantId: string, agentId: string, data: SaveAgentDraftRequest) => apiPut<SavedAgentDraft>(`/persona/${tenantId}/agents/${agentId}/configuration/draft`, data),
+    discardAgentDraft: (tenantId: string, agentId: string, data: DiscardAgentDraftRequest) => apiPost<AgentConfigurationWorkspace>(`/persona/${tenantId}/agents/${agentId}/configuration/draft/discard`, data),
     createAgent: (tenantId: string, data: any) => apiPost(`/persona/${tenantId}/agents`, data),
     updateAgent: (tenantId: string, agentId: string, data: any) => apiPut(`/persona/${tenantId}/agents/${agentId}`, data),
     deleteAgent: (tenantId: string, agentId: string) => apiDelete(`/persona/${tenantId}/agents/${agentId}`),
@@ -855,6 +916,21 @@ export const api = {
     getPlanFeatures: (tenantId: string) => apiGet(`/persona/${tenantId}/plan-features`),
 
     // --- Agent Availability ---
+    getAgentLearning: (tenantId: string, agentId: string) => apiGet<LearningWorkspaceData>(`/learning/${tenantId}/${agentId}`),
+    importAgentLearning: (tenantId: string, agentId: string, input: LearningImport) => apiPost(`/learning/${tenantId}/${agentId}/import`, input),
+    importInboxLearning: (tenantId: string, agentId: string, conversationId: string) => apiPost(`/learning/${tenantId}/${agentId}/inbox`, { conversationId }),
+    getLearningOriginal: (tenantId: string, agentId: string, sourceId: string) => apiGet(`/learning/${tenantId}/${agentId}/sources/${sourceId}/original`),
+    analyzeLearningExample: (tenantId: string, agentId: string, exampleId: string) => apiPost(`/learning/${tenantId}/${agentId}/examples/${exampleId}/analyze`, {}),
+    getLearningReviewHistory: (tenantId: string, agentId: string, exampleId: string) =>
+        apiGet<LearningReviewHistory>(`/learning/${tenantId}/${agentId}/examples/${exampleId}/reviews`),
+    reviewLearningExample: (tenantId: string, agentId: string, exampleId: string, input: { decision: "approved" | "rejected"; revision: number; note: string; privacyChecked: boolean; correctnessChecked: boolean }) => apiPost(`/learning/${tenantId}/${agentId}/examples/${exampleId}/review`, input),
+    reviseLearningExample: (tenantId: string, agentId: string, exampleId: string, revision: number, responsePattern: string) => apiPut(`/learning/${tenantId}/${agentId}/examples/${exampleId}/revision`, { revision, responsePattern }),
+    createLearningRelease: (tenantId: string, agentId: string, exampleIds: string[]) => apiPost(`/learning/${tenantId}/${agentId}/releases`, { exampleIds }),
+    evaluateLearningRelease: (tenantId: string, agentId: string, releaseId: string) => apiPost(`/learning/${tenantId}/${agentId}/releases/${releaseId}/evaluate`, {}),
+    publishLearningRelease: (tenantId: string, agentId: string, releaseId: string, trafficPercent: number) => apiPost(`/learning/${tenantId}/${agentId}/releases/${releaseId}/publish`, { trafficPercent }),
+    rollbackLearningRelease: (tenantId: string, agentId: string, releaseId: string) => apiPost(`/learning/${tenantId}/${agentId}/releases/${releaseId}/rollback`, {}),
+    withdrawLearningSource: (tenantId: string, agentId: string, sourceId: string) => apiDelete(`/learning/${tenantId}/${agentId}/sources/${sourceId}`),
+
     updateAgentStatus: (userId: string, status: string) =>
         apiPut(`/agent-console/status/${userId}`, { status }),
     getAgentsWithStatus: (tenantId: string) =>
@@ -984,8 +1060,14 @@ export const api = {
     createOrder(tenantId: string, data: any) {
         return apiPost(`/orders/${tenantId}`, data);
     },
-    updateOrderStatus(tenantId: string, orderId: string, status: string) {
-        return apiPut(`/orders/${tenantId}/${orderId}/status`, { status });
+    quoteOrder(tenantId:string,data:any){
+        return apiPost<any>(`/orders/quote/${tenantId}`,data);
+    },
+    recordOrderStockEvidence(tenantId:string,orderId:string,data:{expectedVersion:number;source:string;reason:string;lines:{lineId:string;stockDeducted:number}[]}){
+        return apiPost(`/orders/${tenantId}/${orderId}/stock-evidence`,data);
+    },
+    updateOrderStatus(tenantId: string, orderId: string, status: string,expectedVersion:number) {
+        return apiPut(`/orders/${tenantId}/${orderId}/status`, { status,expectedVersion });
     },
 
     // --- Broadcast ---
@@ -1232,6 +1314,9 @@ export const api = {
     }) =>
         apiPost<{
             reply: string;
+            proposal?: AgentConfigurationProposal;
+            /** A content object Assist offers to create; reviewed and applied separately. */
+            contentProposal?: AgentContentProposal;
             actions?: Array<{
                 code: "open_quality_center" | "open_quality_action" | "start_guided_tour";
                 labelKey: "openCenter" | "resolvePriority" | "showMe";
@@ -1241,6 +1326,21 @@ export const api = {
         }>("/copilot/chat", data),
 
     // Conversation copilot (inbox)
+    proposeAgentConfiguration: (tenantId: string, data: { agentId: string; changes: AgentConfigurationChange[]; requestKey: string }) =>
+        apiPost<AgentConfigurationProposal>(`/copilot/configuration/${tenantId}/proposals`, data),
+    applyAgentConfiguration: (tenantId: string, proposalId: string, digest: string) =>
+        apiPost<AppliedAgentConfiguration>(`/copilot/configuration/${tenantId}/proposals/${proposalId}/apply`, { digest }),
+
+    // Content objects Assist can create: a FAQ, a legal text, a course, a
+    // bookable service. Everything that would reach a customer is declared a
+    // route to the screen that owns it instead, so there is nothing to apply.
+    listAgentOperations: (tenantId: string) =>
+        apiGet<AgentOperationAvailability[]>(`/copilot/operations/${tenantId}`),
+    proposeAgentContent: (tenantId: string, data: { operation: string; input: unknown; requestKey: string }) =>
+        apiPost<AgentContentProposal>(`/copilot/operations/${tenantId}/proposals`, data),
+    applyAgentContent: (tenantId: string, proposalId: string, digest: string) =>
+        apiPost<AppliedAgentContentObject>(`/copilot/operations/${tenantId}/proposals/${proposalId}/apply`, { digest }),
+
     getCopilotSuggestions: (conversationId: string) =>
         apiGet(`/copilot/${conversationId}/suggestions`),
     getCopilotSummary: (conversationId: string) =>
@@ -1452,12 +1552,23 @@ export const api = {
     },
 
     // Quality / QA scoring (T1.6/T1.8)
+    getQualityRegressions: (tenantId: string, agentId: string) => apiGet(`/quality/${tenantId}/agents/${agentId}/regressions`),
+    getQualityRegressionSources: (tenantId: string, agentId: string) => apiGet(`/quality/${tenantId}/agents/${agentId}/regressions/sources`),
+    getQualityRegressionOptions: (tenantId: string, agentId: string) => apiGet(`/quality/${tenantId}/agents/${agentId}/regressions/options`),
+    getAgentMissionMetrics: (tenantId: string, agentId: string) => apiGet(`/quality/${tenantId}/agents/${agentId}/regressions/metrics`),
+    proposeQualityRegression: (tenantId: string, agentId: string, body: {kind: string;evidenceId: string}) => apiPost(`/quality/${tenantId}/agents/${agentId}/regressions`,body),
+    editQualityRegression: (tenantId: string, agentId: string, caseId: string, body: unknown) => apiPatch(`/quality/${tenantId}/agents/${agentId}/regressions/${caseId}`,body),
+    reviewQualityRegression: (tenantId: string, agentId: string, caseId: string, body: unknown) => apiPost(`/quality/${tenantId}/agents/${agentId}/regressions/${caseId}/review`,body),
+    getQualitySampling: (tenantId: string, day: string) =>
+        apiGet(`/quality-sampling/${tenantId}?day=${encodeURIComponent(day)}`),
     getQualitySummary: (tenantId: string, params: { start: string; end: string }) =>
         apiGet(`/quality/${tenantId}?start=${params.start}&end=${params.end}`),
     getQualityFlagged: (tenantId: string, params: { start: string; end: string; limit?: number }) =>
         apiGet(`/quality/${tenantId}/flagged?start=${params.start}&end=${params.end}&limit=${params.limit || 50}`),
     listAgentQualityAgents: (tenantId: string) =>
         apiGet<Array<{ id: string; name: string; is_active: boolean; is_default: boolean }>>(`/quality/${tenantId}/agents`),
+    getAgentAssessment: (tenantId: string, agentId?: string) =>
+        apiGet<AgentAssessment>(`/copilot/assessment/${tenantId}${agentId ? `?agentId=${encodeURIComponent(agentId)}` : ''}`),
     getAgentQualityOverview: (tenantId: string, agentId: string) =>
         apiGet<AgentQualityOverview>(`/quality/${tenantId}/agents/${agentId}/overview`),
     getAgentQualityAttentionSummary: (tenantId: string) =>
@@ -1493,6 +1604,8 @@ export const api = {
         apiGet(`/simulation/${tenantId}?limit=${limit}`),
     getAgentSimulation: (tenantId: string, runId: string) =>
         apiGet(`/simulation/${tenantId}/${runId}`),
+    retireAgentSimulation: (tenantId: string, runId: string) =>
+        apiPost(`/simulation/${tenantId}/${runId}/retire`, {}),
 
     // Procedures / SOP (T2.12)
     listProcedures: (tenantId: string) => apiGet(`/procedures/${tenantId}`),
@@ -1511,6 +1624,13 @@ export const api = {
         apiPut(`/vertical-integrations/${tenantId}/${provider}/config`, body),
     getEffectiveVerticalProfile: (tenantId: string) =>
         apiGet(`/verticals/${tenantId}/effective-profile`),
+    /**
+     * The channel certification matrix. Platform-scoped, not tenant-scoped: it
+     * says what the PRODUCT can do on each channel, which is the same answer for
+     * everyone. It had no client at all until this one — the endpoint shipped and
+     * nothing in the dashboard or the mobile app ever asked for it.
+     */
+    getChannelCertification: () => apiGet(`/channels/certification`),
     getVerticalCertificationCatalog: (country?: string) =>
         apiGet(`/verticals/certification-catalog${country ? `?country=${encodeURIComponent(country)}` : ""}`),
     testVerticalIntegration: (tenantId: string, provider: string) =>
@@ -1545,6 +1665,7 @@ export const api = {
     deleteMcpServer: (tenantId: string, id: string) => apiDelete(`/mcp/${tenantId}/servers/${id}`),
     testMcpServer: (tenantId: string, id: string) => apiPost(`/mcp/${tenantId}/servers/${id}/test`, {}),
     getMcpServerTools: (tenantId: string) => apiGet(`/mcp/${tenantId}/tools`),
+    setMcpToolApproval: (tenantId: string, body: any) => apiPut(`/mcp/${tenantId}/tool-approvals`, body),
 
     // CRM B2B (T3.21) — organizations, forecast, rotting
     listOrganizations: (tenantId: string, search?: string) =>
@@ -1594,6 +1715,10 @@ export const api = {
     updateSmsNotificationsConfig: (tenantId: string, body: any) => apiPut(`/sms-notifications/${tenantId}/config`, body),
 
     // KB health / contradictions (T2.14)
+    getKnowledgeConflicts: (tenantId: string) => apiGet<KnowledgeConflictOverview>(`/kb-health/${tenantId}/conflicts`),
+    scanKnowledgeConflicts: (tenantId: string, language: string) => apiPost(`/kb-health/${tenantId}/conflicts/scan`, {language}),
+    reviewKnowledgeConflict: (tenantId: string, caseId: string, input: KnowledgeConflictReview) =>
+        apiPost<KnowledgeConflictOverview>(`/kb-health/${tenantId}/conflicts/${caseId}/review`, input),
     getKbHealth: (tenantId: string) => apiGet(`/kb-health/${tenantId}`),
     scanKbHealth: (tenantId: string) => apiPost(`/kb-health/${tenantId}/scan`, {}),
     updateKbHealthIssue: (tenantId: string, id: string, status: string) =>
@@ -2115,6 +2240,8 @@ export const api = {
 
     // ─── Test Agent (dry-run with debug info) ───
     testAgent: (tenantId: string, agentId: string, data: {
+        runtimeSessionId?: string;
+        configurationRevisionId?: string;
         message: string;
         channelType?: 'whatsapp' | 'instagram' | 'messenger' | 'telegram' | 'web_widget';
         conversationHistory?: Array<{ role: string; content: string }>;
@@ -2494,7 +2621,7 @@ export const api = {
         const q = qs.toString();
         return apiGet(`/vehicles/${tenantId}/test-drives/list${q ? `?${q}` : ''}`);
     },
-    scheduleVehicleTestDrive: (tenantId: string, data: { vehicleId: string; contactName: string; contactPhone?: string; scheduledDate: string; scheduledTime: string; notes?: string }) =>
+    scheduleVehicleTestDrive: (tenantId: string, data: { vehicleId: string; contactId: string; serviceId: string; staffId: string; requestKey: string; conversationId?: string; contactName: string; contactPhone?: string; contactEmail?: string; scheduledDate: string; scheduledTime: string; notes?: string }) =>
         apiPost(`/vehicles/${tenantId}/test-drives`, data),
 
     // ─── Vehicle rentals & pet boarding ───
@@ -2600,6 +2727,7 @@ export const api = {
     recordRepairEstimateDecision: (tenantId: string, repairOrderId: string, data: {
         accepted: boolean;
         evidence: string;
+        expectedVersion: number;
     }) => apiPut<RepairOrder>(`/repair-orders/${tenantId}/${repairOrderId}/estimate-decision`, data),
     transitionRepairOrder: (tenantId: string, repairOrderId: string, data: {
         status: RepairOrderStatus;
@@ -2690,6 +2818,7 @@ export const api = {
 // pasos y recibiera un error sin saber dónde estaba el problema.
 export interface ApiFieldError { path: string; constraint?: string; message?: string }
 export interface ApiEnvelope<T> {
+    httpStatus?: number;
     success: boolean;
     data?: T;
     error?: string;
@@ -2714,13 +2843,16 @@ async function apiGet<T = any>(endpoint: string): Promise<ApiEnvelope<T>> {
     try {
         const res = await authFetch(endpoint);
         const json = await res.json();
-        if (!res.ok) return { success: false, error: json.message || `Error ${res.status}`, errorCode: json.error, fields: readFieldErrors(json) };
+        if (!res.ok) return { success: false, httpStatus: res.status, error: json.message || `Error ${res.status}`, errorCode: json.error, fields: readFieldErrors(json) };
         return json;
     } catch (err) {
         return { success: false, error: "Error de conexión" };
     }
 }
 
+// `httpStatus` viaja igual que en `apiGet`: hay refusals donde el código no
+// alcanza y el estado sí — un 409 significa que otra persona llegó primero, y
+// eso no se puede presentar como un formulario mal llenado.
 async function apiPost<T = any>(endpoint: string, body: any): Promise<ApiEnvelope<T>> {
     try {
         const res = await authFetch(endpoint, {
@@ -2728,7 +2860,7 @@ async function apiPost<T = any>(endpoint: string, body: any): Promise<ApiEnvelop
             body: JSON.stringify(body),
         });
         const json = await res.json();
-        if (!res.ok) return { success: false, error: json.message || `Error ${res.status}`, errorCode: json.error, fields: readFieldErrors(json) };
+        if (!res.ok) return { success: false, httpStatus: res.status, error: json.message || `Error ${res.status}`, errorCode: json.error, fields: readFieldErrors(json) };
         return json;
     } catch (err) {
         return { success: false, error: "Error de conexión" };

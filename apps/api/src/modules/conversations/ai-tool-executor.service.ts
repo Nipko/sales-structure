@@ -1,8 +1,22 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { enrollmentTermsHash, enrollmentTermsReviewResult } from '../education/enrollment-terms';
+import { LLMSourceAuthorityUnavailable } from '../ai/interfaces/llm-source-authority';
+import { appointmentVehicleId, vehicleAppointmentTerms, vehicleAppointmentBusyIntervals, VehicleAppointmentError, type VehicleAppointmentTerms } from '../appointments/vehicle-appointment-capacity';
+import { holdStillAliveSql } from '../../common/utils/payment-policy.util';
+import { updateVehicleAppointment } from '../appointments/vehicle-appointment-update';
+import { assertServedAgentAuthority, validServedAgentAuthority, VERSION_GUARDED_TOOLS, ServedAgentAuthorityError, type ServedAgentAuthority } from '../persona/served-agent-authority';
+import { educationToolError } from './education-tool-error';
+import { CANONICAL_EVAL_TOOLS, isolatedEvalNamespaceForPrisma, type EvalNamespaceLease } from '../simulation/isolated-eval-namespace';
+import { evaluationNamespaceTimezone } from '../simulation/eval-temporal-context';
+import { RepairOrderTerms, RepairTermsChangedError, repairRequestHash, repairTermsReviewResult, repairActionErrorResult } from '../repair-orders/repair-order-terms';
+import { catalogHash, catalogActionError, catalogTermsReviewResult } from '../orders/catalog-order-contract';
+import { BadRequestException, ConflictException, Injectable, Logger } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { createHash } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
+import { AppointmentsService } from '../appointments/appointments.service';
+import { APPOINTMENT_SERVICE_TERMS_COLUMNS, appointmentPriceSql, appointmentCurrencySql, appointmentServiceTerms, appointmentServiceTermsHash,
+    AppointmentTermsChangedError, appointmentTermsReviewResult, type AppointmentServiceTerms } from '../appointments/appointment-service-terms';
 import { CalendarIntegrationService } from '../appointments/calendar-integration.service';
 import { CalendarSyncOutboxService } from '../appointments/calendar-sync-outbox.service';
 import { FaqsService } from '../faqs/faqs.service';
@@ -28,6 +42,7 @@ import { TasksService } from '../crm/services/tasks/tasks.service';
 import { EcommerceService } from '../ecommerce/ecommerce.service';
 import { VerticalIntegrationsService } from '../vertical-integrations/vertical-integrations.service';
 import { McpClientService } from '../mcp/mcp-client.service';
+import { bindMcpArguments } from '../mcp/mcp-tool-approval';
 import {
     TOOL_READ_ERROR_CODES,
     decideToolAuthority,
@@ -58,14 +73,14 @@ import {
     evalIdentityChallengeResult,
     executeEvalSandboxMutation,
 } from './eval-writer-sandbox';
-import { isNonCommittalTool, isRegisteredStaticTool } from './tool-policy-registry';
+import { isDraftProposableToolName, isNonCommittalTool, isRegisteredStaticTool } from './tool-policy-registry';
 import {
     ToolExecutionControlService,
     type ToolExecutionControlDecision,
 } from './tool-execution-control.service';
 import { PaymentOperationService, type PreparedPaymentLink } from './payment-operation.service';
 import { TemporalCapacityContractService } from '../verticals/temporal-capacity-contract.service';
-import { assertActiveTenantUser } from '../appointments/tenant-user-scope.util';
+import { assertActiveTenantUser, tenantActorDirectory } from '../appointments/tenant-user-scope.util';
 import {
     AppointmentServiceUnavailableError,
     AppointmentSlotConflictError,
@@ -137,6 +152,7 @@ export class AIToolExecutorService {
         private readonly opportunitiesRepository?: OpportunitiesRepository,
         private readonly tasksService?: TasksService,
         private readonly repairOrders?: RepairOrdersService,
+        private readonly appointmentsService?: AppointmentsService,
     ) { }
 
     /**
@@ -214,16 +230,25 @@ export class AIToolExecutorService {
              * ellos no pasaban ninguna autorización.
              */
             authority: ToolExecutionAuthority;
+            /** Exact served revision, exclusively from trusted runtime/approval callers. */
+            operationalScope?: ServedAgentAuthority;
             evalMode?: boolean;
+            sandboxNamespace?: EvalNamespaceLease;
+            withDataSourceAuthority?:import('../ai/interfaces/external-source-authority').ExternalSourceAuthority;
+            structuredKnowledgeInputs?:import('../evaluation-revision/evaluation-structured-knowledge').StructuredKnowledgeCapture;
+            executionState?: { get(key: string): Promise<string | null> };
+            missionScope?: import('@parallext/shared').MissionExecutionScopeV1;
             channelType?: string;
             readOnly?: boolean;
             executionContext?: ServiceExecutionContext;
+            draftScope?: { agentId: string; agentVersion: number };
             /** Trusted caller key; it is always rebound to tenant/tool/args. */
             idempotencyKey?: string;
             /** Server-origin evidence; never populated from LLM arguments. */
             authorityEvidence?: {
                 kind: 'booking_engine_confirmation';
                 source: 'confirm_yes' | 'flow_response' | 'text_confirmation';
+                flowToken?: string;
             };
             /**
              * Tenant discount ceiling (`upsell.maxDiscountPercent`). Comes from
@@ -237,6 +262,12 @@ export class AIToolExecutorService {
              * country's rules is wrong even when it is fluent and cited.
              */
             jurisdiction?: string | null;
+            knowledgeSearch?: {
+                evaluationKnowledge?: import('../evaluation-revision/evaluation-knowledge-replica').EvaluationKnowledgeReplica;
+                similarityThreshold?: number; language?: string;
+                rerank?: boolean; rerankTopN?: number;
+                agentId?: string | null; audience?: 'customer' | 'internal';
+            };
             /**
              * El negocio no puede comprometerse en este turno.
              *
@@ -263,6 +294,7 @@ export class AIToolExecutorService {
         this.logger.log(`[Tool] Executing: ${toolName}`);
 
         let controlDecision: ToolExecutionControlDecision | undefined;
+        let catalogCommitted = false;
         let preparedPaymentLink: PreparedPaymentLink | undefined;
         let preparedContactConsent: PreparedContactConsent | undefined;
         try {
@@ -271,6 +303,18 @@ export class AIToolExecutorService {
             // boundary below; every other unknown name fails closed here.
             if (!toolName.startsWith('mcp__') && !isRegisteredStaticTool(toolName)) {
                 return { error: 'unknown_tool', tool: toolName };
+            }
+            if (opts?.executionContext?.mode === 'draft' && !isAgentTestSafeToolName(toolName)
+                && (!opts.draftScope || !isDraftProposableToolName(toolName))) {
+                return { error: 'draft_action_requires_approval', controlBlocked: true, persisted: false, shouldHandoff: false };
+            }
+
+            const canonicalSandbox = opts?.sandboxNamespace;
+            if (canonicalSandbox) {
+                if (opts.evalMode !== true || canonicalSandbox.schemaName !== schemaName || canonicalSandbox.tenantId !== tenantId
+                    || contactId !== '00000000-0000-4000-8000-00000000eba1' || !conversationId) throw new Error('eval_namespace_scope_mismatch');
+                await isolatedEvalNamespaceForPrisma(this.prisma).assertOwned(canonicalSandbox);
+                if (!isAgentTestSafeToolName(toolName) && !CANONICAL_EVAL_TOOLS.has(toolName)) return { error: 'canonical_sandbox_not_available', persisted: false, controlBlocked: true };
             }
 
             // La aprobación revisada de una tool MCP, resuelta ACÁ ARRIBA.
@@ -282,8 +326,9 @@ export class AIToolExecutorService {
             // cobro: trataba a las dos como comprometedoras y un perfil
             // bloqueado perdía también sus lecturas remotas.
             const mcpApproval = toolName.startsWith('mcp__') && this.mcpClient?.getApproval
-                ? await this.mcpClient.getApproval(tenantId, toolName).catch(() => null)
+                ? await this.mcpClient.getApproval(tenantId, toolName, opts?.executionContext).catch(() => null)
                 : null;
+            if (mcpApproval) args = bindMcpArguments(mcpApproval, args, tenantId, contactId);
 
             // ═══ LA PUERTA COMÚN, AHORA DEFAULT-DENY ═══
             //
@@ -316,6 +361,104 @@ export class AIToolExecutorService {
                 return this.authorityDenied(toolName, authorityDecision);
             }
 
+            if(toolName==='schedule_test_drive') {
+                if(![args.vehicleId,args.serviceId,args.staffId].every(value=>typeof value==='string'&&AIToolExecutorService.UUID_PATTERN.test(value)))
+                    return {error:'test_drive_service_staff_vehicle_required',persisted:false};
+                if (!/^\d{4}-\d{2}-\d{2}$/.test(args.scheduledDate || '') || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(args.scheduledTime || '')
+                    || typeof args.contactName !== 'string' || !args.contactName.trim()) return { error: 'test_drive_customer_and_time_required', persisted: false };
+            }
+            if (toolName === 'create_appointment' && args.vehicleId !== undefined) {
+                return { error: 'test_drive_tool_required', persisted: false,
+                    message: 'Use schedule_test_drive for a dealership vehicle. It requires both vehicle and appointment permissions.' };
+            }
+            if (['create_appointment','schedule_test_drive'].includes(toolName) && (opts?.executionContext?.mode === 'draft'
+                || !persistenceDisabled(opts?.executionContext) || canonicalSandbox)) {
+                const serviceId = String(args.serviceId || '');
+                const byId = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(serviceId);
+                const rows: any[] = await this.prisma.$queryRawUnsafe(
+                    `SELECT ${APPOINTMENT_SERVICE_TERMS_COLUMNS} FROM "${schemaName}".services
+                     WHERE is_active = true AND ${byId ? 'id = $1::uuid' : 'LOWER(name) = LOWER($1)'} LIMIT 2`, serviceId);
+                if (rows.length !== 1) return { error: rows.length ? 'appointment_service_ambiguous' : 'appointment_service_unavailable', persisted: false };
+                const terms = appointmentServiceTerms(rows[0]);
+                const termsHash = appointmentServiceTermsHash(terms);
+                if (!termsHash) return { error: 'appointment_service_terms_unavailable', persisted: false };
+                if (toolName === 'schedule_test_drive' && (terms.durationType !== 'fixed' || !['in_person', 'hybrid'].includes(terms.locationType))) {
+                    return { error: 'test_drive_service_contract_required', persisted: false };
+                }
+                // Discard any model-provided terms. The digest binds exact facts
+                // even though the legacy consent canonicalizer folds accents/case.
+                args = { ...args, serviceId: terms.serviceId, appointmentTerms: terms, appointmentTermsHash: termsHash };
+                if(args.vehicleId!==undefined){
+                    const vehicleId=appointmentVehicleId({vehicleId:args.vehicleId});
+                    const [vehicle]=await this.prisma.$queryRawUnsafe(`SELECT id,make,model,year,trim_level,vin,license_plate,status
+                        FROM "${schemaName}".vehicles WHERE id=$1::uuid`,vehicleId) as any[];
+                    args={...args,vehicleId,vehicleTerms:vehicleAppointmentTerms(vehicle)};
+                }
+            }
+
+            if (['place_catalog_order','cancel_catalog_order'].includes(toolName) && (opts?.executionContext?.mode === 'draft'
+                || !persistenceDisabled(opts?.executionContext) || canonicalSandbox)) {
+                const commands = this.catalogCommands();
+                const terms = toolName === 'place_catalog_order'
+                    ? await commands.quote(schemaName,{contactId,conversationId,items:args.items,notes:args.notes})
+                    : await commands.cancellationTerms(schemaName,String(args.orderId || ''),contactId);
+                args = toolName === 'place_catalog_order'
+                    ? {items:args.items,notes:args.notes,catalogTerms:terms,catalogTermsHash:catalogHash(terms)}
+                    : {orderId:args.orderId,reason:args.reason,catalogTerms:terms,catalogTermsHash:catalogHash(terms)};
+            }
+            if (['approve_repair', 'cancel_repair_order'].includes(toolName) && (opts?.executionContext?.mode === 'draft'
+                || !persistenceDisabled(opts?.executionContext) || canonicalSandbox)) {
+                if (!this.repairOrders) return this.repairOrderWiringUnavailable();
+                const terms = await this.repairOrders.getActionTerms(schemaName, String(args.repairOrderId || ''), contactId,
+                    toolName === 'approve_repair' ? 'estimate_decision' : 'cancel');
+                // Only canonical facts enter the signed consent arguments. The
+                // model cannot supply a cheaper estimate or another revision.
+                args = toolName === 'approve_repair'
+                    ? { repairOrderId: terms.repairOrderId, accepted: args.accepted, repairTerms: terms, repairTermsHash: repairRequestHash(terms) }
+                    : { repairOrderId: terms.repairOrderId, reason: args.reason, repairTerms: terms, repairTermsHash: repairRequestHash(terms) };
+            }
+            if (toolName === 'enroll_student' && (opts?.executionContext?.mode === 'draft'
+                || !persistenceDisabled(opts?.executionContext) || canonicalSandbox)) {
+                const terms = await this.educationService.getEnrollmentTerms(schemaName,String(args.cohortId || ''));
+                args = { ...args, allowWaitlist: args.allowWaitlist === true, enrollmentTerms: terms, enrollmentTermsHash: enrollmentTermsHash(terms) };
+            }
+            if (opts?.executionContext?.mode === 'draft' && !isAgentTestSafeToolName(toolName)) {
+                if (!this.toolExecutionControl?.proposeDraftAction) return { error: 'draft_action_requires_approval', persisted: false };
+                // Resolve only canonical, read-only terms before recording the
+                // review. Domain preconditions, identity challenges and writers
+                // remain behind the human resume workflow.
+                let payment: PreparedPaymentLink | undefined;
+                if (toolName === 'create_payment_link') {
+                    const prepared = await this.paymentOperations.preparePaymentLink(tenantId, contactId, args, opts.executionContext);
+                    if (!prepared.ok) return prepared.result;
+                    payment = prepared.payable;
+                    args = { paymentIntentId: payment.paymentIntentId, payableReference: payment.canonicalReference,
+                        amountCents: payment.amountCents, currency: payment.currency, description: payment.description, paymentStatus: payment.paymentStatus };
+                }
+                if (toolName === 'record_contact_consent') {
+                    const prepared = await this.prepareContactConsent(tenantId, args, opts.executionContext);
+                    if (!prepared.ok) return prepared.result;
+                    args = { ...prepared.consent };
+                }
+                const proposal = await this.toolExecutionControl.proposeDraftAction({ schemaName, tenantId, contactId,
+                    conversationId, channelType: opts.channelType, toolName, args, mcpApproval,
+                    draftMode: true, draftScope: opts.draftScope, operationalScope: opts.operationalScope });
+                if (proposal.allowed) return { error: 'draft_action_requires_approval', persisted: false };
+                if (args.repairTerms && proposal.result.error === 'confirmation_required') {
+                    return { ...proposal.result, ...repairTermsReviewResult(args.repairTerms, 'confirmation_required') };
+                }
+                if(args.catalogTerms && proposal.result.error==='confirmation_required') return {...proposal.result,...catalogTermsReviewResult(args.catalogTerms)};
+                if (['create_appointment', 'schedule_test_drive'].includes(toolName) && proposal.result.error === 'confirmation_required') {
+                    return { ...proposal.result, ...appointmentTermsReviewResult(args.appointmentTerms, 'confirmation_required'), vehicle: args.vehicleTerms };
+                }
+                if (toolName === 'enroll_student' && proposal.result.error === 'confirmation_required') {
+                    return {...proposal.result,...enrollmentTermsReviewResult(args.enrollmentTerms,args.allowWaitlist===true)};
+                }
+                return payment && proposal.result.error === 'confirmation_required'
+                    ? this.paymentOperations.confirmationRequiredResult(payment, proposal.result)
+                    : { ...proposal.result, persisted: false, shouldHandoff: false };
+            }
+
             // Persistence-disabled execution is a capability boundary, not a
             // hint. A future caller cannot reach a writer by skipping the
             // AgentTestService advertisement filter.
@@ -326,7 +469,13 @@ export class AIToolExecutorService {
             // afterwards. Without it the gate could never verify that a booking
             // actually happened — which is the only thing it exists to check.
             const evalWriterAllowed = opts?.evalMode === true
-                && canEvalExecuteWriter(toolName, contactId);
+                && (canonicalSandbox ? CANONICAL_EVAL_TOOLS.has(toolName) : canEvalExecuteWriter(toolName, contactId));
+            if (VERSION_GUARDED_TOOLS.has(toolName) && !evalWriterAllowed
+                && !persistenceDisabled(opts?.executionContext)
+                && !validServedAgentAuthority(opts.operationalScope, schemaName, tenantId)) {
+                return { error: 'agent_operational_authority_required', persisted: false, controlBlocked: true };
+            }
+            const operationalScope = evalWriterAllowed ? undefined : opts.operationalScope;
             if (persistenceDisabled(opts?.executionContext)
                 && !isAgentTestSafeToolName(toolName)
                 && !evalWriterAllowed) {
@@ -391,7 +540,7 @@ export class AIToolExecutorService {
             // Audited eval mutations use deterministic fixtures and never call
             // a provider-backed domain precondition. Production keeps its full
             // precondition path unchanged.
-            const precondition = isEvalSandboxMutatingToolName(toolName) && evalWriterAllowed
+            const precondition = !canonicalSandbox && isEvalSandboxMutatingToolName(toolName) && evalWriterAllowed
                 ? null
                 : await this.assertWritePreconditions(schemaName, toolName, args);
             if (precondition) return precondition;
@@ -412,8 +561,25 @@ export class AIToolExecutorService {
                 // short-circuit it and verify nothing.
                 readOnlyExecution: persistenceDisabled(opts?.executionContext) && !evalWriterAllowed,
                 authorityEvidence: opts?.authorityEvidence,
+                executionState: opts?.executionState,
+                missionScope: opts?.missionScope,
+                draftMode: opts?.executionContext?.mode === 'draft',
+                // Keep server provenance for the approval ledger during isolated
+                // replay. Domain commands use the namespace lease, not live authority.
+                operationalScope: opts?.operationalScope,
+                sandboxNamespace: canonicalSandbox,
             });
             if (!controlDecision.allowed) {
+                if (args.repairTerms && controlDecision.result?.error === 'confirmation_required') {
+                    return { ...controlDecision.result, ...repairTermsReviewResult(args.repairTerms, 'confirmation_required') };
+                }
+                if(args.catalogTerms && controlDecision.result?.error==='confirmation_required') return {...controlDecision.result,...catalogTermsReviewResult(args.catalogTerms)};
+                if (['create_appointment', 'schedule_test_drive'].includes(toolName) && controlDecision.result?.error === 'confirmation_required' && args.appointmentTerms) {
+                    return { ...controlDecision.result, ...appointmentTermsReviewResult(args.appointmentTerms, 'confirmation_required'), vehicle: args.vehicleTerms };
+                }
+                if(toolName==='enroll_student' && controlDecision.result?.error==='confirmation_required' && args.enrollmentTerms){
+                    return {...controlDecision.result,...enrollmentTermsReviewResult(args.enrollmentTerms,args.allowWaitlist===true)};
+                }
                 if (preparedPaymentLink
                     && controlDecision.result?.error === 'confirmation_required') {
                     return this.paymentOperations.confirmationRequiredResult(
@@ -445,6 +611,7 @@ export class AIToolExecutorService {
             // correctly refuses to preserve the discriminated-union narrowing
             // inside that later closure.
             const executionIdempotencyKey = controlDecision.idempotencyKey;
+            const executionPolicy = controlDecision.policy;
 
             const executeHandler = async (): Promise<any> => {
 
@@ -452,7 +619,7 @@ export class AIToolExecutorService {
             // different final mutation target. This adapter has no reference to
             // domain services, queues, providers or EventEmitter, so evalMode
             // cannot leak a notification or external write.
-            if (evalWriterAllowed && isEvalSandboxMutatingToolName(toolName)) {
+            if (!canonicalSandbox && evalWriterAllowed && isEvalSandboxMutatingToolName(toolName)) {
                 return executeEvalSandboxMutation(
                     this.prisma,
                     schemaName,
@@ -465,7 +632,8 @@ export class AIToolExecutorService {
 
             // External MCP tools (T3.20) — namespaced mcp__{server}__{tool}.
             if (toolName.startsWith('mcp__')) {
-                return this.mcpClient.callRemoteTool(tenantId, toolName, args);
+                const remote = await this.mcpClient.callRemoteTool(tenantId, toolName, args);
+                return { ...remote, _executionEffect: executionPolicy.commitsBusiness ? 'write' : 'read' };
             }
 
             switch (toolName) {
@@ -473,16 +641,22 @@ export class AIToolExecutorService {
                     return this.listServices(schemaName);
 
                 case 'check_availability':
-                    return this.checkAvailability(schemaName, args.date, args.serviceId, args.staffId);
+                    return this.checkAvailability(schemaName, args.date, args.serviceId, args.staffId, canonicalSandbox, args.vehicleId);
 
                 case 'create_appointment':
-                    return this.createAppointment(schemaName, tenantId, contactId, args as any, conversationId, opts?.evalMode);
+                    return this.createAppointment(schemaName, tenantId, contactId, args as any, conversationId, opts?.evalMode, canonicalSandbox, operationalScope, executionIdempotencyKey);
+
+                case 'schedule_test_drive':
+                    return this.createAppointment(schemaName, tenantId, contactId, {
+                        ...args, date: args.scheduledDate, time: args.scheduledTime,
+                        customerName: args.contactName, customerPhone: args.contactPhone, customerEmail: args.contactEmail,
+                    } as any, conversationId, opts?.evalMode, canonicalSandbox, operationalScope, executionIdempotencyKey);
 
                 case 'cancel_appointment':
-                    return this.cancelAppointment(schemaName, contactId, args.appointmentId, args.reason);
+                    return this.cancelAppointment(schemaName, contactId, args.appointmentId, args.reason, canonicalSandbox, operationalScope);
 
                 case 'reschedule_appointment':
-                    return this.rescheduleAppointment(schemaName, contactId, args.appointmentId, args.newDate, args.newTime, args.reason);
+                    return this.rescheduleAppointment(schemaName, contactId, args.appointmentId, args.newDate, args.newTime, args.reason, operationalScope, canonicalSandbox);
 
                 case 'get_appointment_details':
                     return this.getAppointmentDetails(schemaName, contactId, args.appointmentId);
@@ -523,21 +697,26 @@ export class AIToolExecutorService {
                 case 'send_vehicle_image':
                     return this.sendVehicleImage(schemaName, args.vehicleId);
 
-                case 'schedule_test_drive':
-                    return this.scheduleTestDrive(tenantId, args);
-
                 case 'place_catalog_order':
-                    return this.placeCatalogOrder(tenantId, schemaName, contactId, conversationId, args);
+                    return this.placeCatalogOrder(schemaName, contactId, conversationId, args, executionIdempotencyKey, operationalScope);
+                case 'list_my_catalog_orders':
+                    return { success:true, orders:await this.catalogCommands().listOwned(schemaName,contactId,args.limit) };
+                case 'get_catalog_order':
+                    return { success:true, order:await this.catalogCommands().getOwned(schemaName,String(args.orderId||''),contactId) };
+                case 'cancel_catalog_order':
+                    return { success:true, order:await this.catalogCommands().cancel(schemaName,String(args.orderId||''),contactId,
+                        {source:'agent',expectedVersion:args.catalogTerms?.orderVersion,expectedTermsHash:args.catalogTermsHash,reason:args.reason,operationalScope}),refundPerformed:false };
 
                 case 'search_faqs':
-                    return this.searchFaqs(tenantId, args.query, args.limit, opts?.executionContext);
+                    return this.searchFaqs(tenantId, args.query, args.limit, opts?.executionContext, opts?.structuredKnowledgeInputs);
 
                 case 'get_policy':
-                    return this.getPolicy(tenantId, args.type as PolicyType, opts?.executionContext);
+                    return this.getPolicy(tenantId, args.type as PolicyType, opts?.executionContext, opts?.structuredKnowledgeInputs);
 
                 case 'search_knowledge_base':
                     return this.searchKnowledgeBase(
                         tenantId, args.query, args.limit, opts?.executionContext, opts?.jurisdiction,
+                        opts?.knowledgeSearch, conversationId,opts?.withDataSourceAuthority,
                     );
 
                 case 'list_customer_orders':
@@ -629,6 +808,7 @@ export class AIToolExecutorService {
                         contactId,
                         controlDecision.ledgerId,
                         preparedPaymentLink,
+                        operationalScope,
                     );
 
                 case 'get_payment_status':
@@ -665,10 +845,10 @@ export class AIToolExecutorService {
 
                 // ── Vacation Rental tools ───────────────────────────
                 case 'list_properties':
-                    return this.listProperties(schemaName, args.guests, args.checkIn, args.checkOut, tenantId);
+                    return this.listProperties(schemaName, args.guests, args.checkIn, args.checkOut, tenantId, opts?.executionContext);
 
                 case 'check_property_availability':
-                    return this.checkPropertyAvailability(schemaName, args.propertyId, args.checkIn, args.checkOut, args.guests, tenantId);
+                    return this.checkPropertyAvailability(schemaName, args.propertyId, args.checkIn, args.checkOut, args.guests, tenantId, opts?.executionContext);
 
                 case 'get_property_details':
                     return this.getPropertyDetails(schemaName, args.propertyId);
@@ -677,7 +857,7 @@ export class AIToolExecutorService {
                     return this.getCheckInInstructions(schemaName, contactId, args.propertyId);
 
                 case 'create_property_booking':
-                    return this.createPropertyBooking(schemaName, contactId, args as any, conversationId, tenantId);
+                    return this.createPropertyBooking(schemaName, contactId, args as any, conversationId, tenantId, canonicalSandbox);
 
                 case 'cancel_property_booking':
                     return this.cancelPropertyBooking(schemaName, contactId, args.bookingId, args.reason);
@@ -696,7 +876,7 @@ export class AIToolExecutorService {
                     return this.checkPackageAvailabilityTool(schemaName, args.packageId, args.date, args.partySize);
 
                 case 'create_tour_booking':
-                    return this.createTourBooking(schemaName, contactId, args, conversationId);
+                    return this.createTourBooking(schemaName, contactId, args, conversationId, canonicalSandbox);
 
                 case 'cancel_tour_booking':
                     return this.cancelTourBooking(schemaName, contactId, args.bookingId, args.reason);
@@ -723,7 +903,7 @@ export class AIToolExecutorService {
                     return this.listPetsForContact(schemaName, contactId);
 
                 case 'register_pet':
-                    return this.registerPet(schemaName, contactId, args);
+                    return this.registerPet(schemaName, contactId, args, conversationId, executionIdempotencyKey, operationalScope);
 
                 case 'get_vaccination_status':
                     return this.getVaccinationStatus(schemaName, contactId, args.petId);
@@ -732,7 +912,7 @@ export class AIToolExecutorService {
                     return this.triagePetEmergency({ symptoms: args.symptoms || '' });
 
                 case 'update_pet':
-                    return this.updatePetTool(schemaName, contactId, args);
+                    return this.updatePetTool(schemaName, contactId, args, conversationId, executionIdempotencyKey, operationalScope);
 
                 // ── Restaurants tools ─────────────────────────────
                 case 'get_menu':
@@ -742,7 +922,7 @@ export class AIToolExecutorService {
                     return this.getPromotions(schemaName);
 
                 case 'place_order':
-                    return this.placeOrder(schemaName, contactId, conversationId, args);
+                    return this.placeOrder(schemaName, contactId, conversationId, args, canonicalSandbox);
 
                 case 'cancel_order':
                     return this.cancelOrder(schemaName, contactId, args.orderId, args.reason);
@@ -764,13 +944,16 @@ export class AIToolExecutorService {
                     return this.getMyMembership(schemaName, contactId);
 
                 case 'book_class':
-                    return this.bookClassTool(schemaName, contactId, args);
+                    return this.bookClassTool(schemaName, contactId, args, operationalScope);
 
                 case 'freeze_membership':
                     return this.freezeMembershipTool(schemaName, contactId, args);
 
+                case 'get_my_class_bookings':
+                    return this.listMyClassBookings(schemaName, contactId);
+
                 case 'cancel_class_booking':
-                    return this.cancelClassBooking(schemaName, contactId, args.bookingId);
+                    return this.cancelClassBooking(schemaName, contactId, args.bookingId, operationalScope);
 
                 // ── Education tools ───────────────────────────────
                 case 'get_courses':
@@ -780,13 +963,13 @@ export class AIToolExecutorService {
                     return this.getCourseScheduleTool(schemaName, args);
 
                 case 'enroll_student':
-                    return this.enrollStudentTool(schemaName, contactId, args);
+                    return this.enrollStudentTool(schemaName, contactId, args, operationalScope);
 
                 case 'get_placement_test_link':
                     return this.getPlacementTestLinkTool(schemaName, contactId, args);
 
                 case 'cancel_enrollment':
-                    return this.cancelEnrollment(schemaName, contactId, args.enrollmentId, args.reason);
+                    return this.cancelEnrollment(schemaName, contactId, args.enrollmentId, args.reason, operationalScope);
 
                 case 'list_my_enrollments':
                     return this.listMyEnrollments(schemaName, contactId);
@@ -838,7 +1021,7 @@ export class AIToolExecutorService {
                     return this.checkHomeServiceAvailabilityTool(schemaName, args);
 
                 case 'create_service_request':
-                    return this.createServiceRequestTool(schemaName, contactId, conversationId, args);
+                    return this.createServiceRequestTool(schemaName, contactId, conversationId, args, canonicalSandbox);
 
                 case 'check_request_status':
                     return this.checkServiceRequestStatusTool(schemaName, contactId, args);
@@ -887,6 +1070,7 @@ export class AIToolExecutorService {
                         conversationId,
                         args,
                         executionIdempotencyKey,
+                        operationalScope,
                     );
 
                 case 'list_my_repair_orders':
@@ -896,10 +1080,10 @@ export class AIToolExecutorService {
                     return this.getRepairOrder(schemaName, contactId, args.repairOrderId);
 
                 case 'approve_repair':
-                    return this.decideRepairEstimate(schemaName, contactId, args.repairOrderId, args.accepted);
+                    return this.decideRepairEstimate(schemaName, contactId, args.repairOrderId, args.accepted, args.repairTerms, args.repairTermsHash, operationalScope);
 
                 case 'cancel_repair_order':
-                    return this.cancelRepairOrder(schemaName, contactId, args.repairOrderId, args.reason);
+                    return this.cancelRepairOrder(schemaName, contactId, args.repairOrderId, args.reason, args.repairTerms, args.repairTermsHash, operationalScope);
 
                 case 'create_pet_boarding':
                     return this.createPetBoarding(schemaName, contactId, args);
@@ -917,7 +1101,7 @@ export class AIToolExecutorService {
                     return this.checkDateAvailabilityTool(schemaName, args);
 
                 case 'request_photo_quote':
-                    return this.requestPhotoQuoteTool(schemaName, contactId, conversationId, args);
+                    return this.requestPhotoQuoteTool(schemaName, contactId, conversationId, args, canonicalSandbox);
 
                 case 'cancel_photo_session':
                     return this.cancelPhotoSession(schemaName, contactId, args.sessionId, args.reason);
@@ -930,7 +1114,10 @@ export class AIToolExecutorService {
             }
             };
 
-            const result = attachWriterActiveObject(toolName, await executeHandler(), args);
+            const handlerResult = await executeHandler();
+            if (handlerResult?.error === 'agent_operational_revision_changed') throw new ServedAgentAuthorityError();
+            const result = attachWriterActiveObject(toolName, handlerResult, args);
+            if(['place_catalog_order','cancel_catalog_order'].includes(toolName) && result && typeof result==='object' && 'success' in result && result.success===true) catalogCommitted=true;
             if (this.toolExecutionControl && controlDecision) {
                 // A handler result is not acknowledged until the central ledger
                 // commits it. A commit failure therefore fails closed.
@@ -946,11 +1133,34 @@ export class AIToolExecutorService {
                     .fail(schemaName, controlDecision, 'tool_execution_failed')
                     .catch(() => undefined);
             }
+            if(error instanceof LLMSourceAuthorityUnavailable || (toolName === 'search_knowledge_base' && opts?.knowledgeSearch?.evaluationKnowledge))throw error;
+            if (error instanceof ServedAgentAuthorityError) return {
+                error: error.code, persisted: false, controlBlocked: true,
+                message: 'The agent configuration changed. Reload it and prepare a new proposal before executing this action.',
+            };
+            if(error instanceof VehicleAppointmentError) return {error:error.vehicleCode,persisted:false,requiresReview:true};
+            if(catalogCommitted) return {error:'reconciliation_required',persisted:true,retryable:false,shouldHandoff:true,
+                message:'The order operation committed but its acknowledgement could not be verified. Do not create another order or claim a refund. Re-read the owned order through the normal privacy and ownership checks.'};
+            if(['place_catalog_order','cancel_catalog_order','get_catalog_order','list_my_catalog_orders'].includes(toolName)) {
+                this.logger.warn(`[Tool] ${toolName} failed: ${error.message}`);
+                return catalogActionError(error);
+            }
+            if (['approve_repair', 'cancel_repair_order'].includes(toolName) && error instanceof RepairTermsChangedError) {
+                return repairTermsReviewResult(error.currentTerms);
+            }
+            if (['create_repair_order','approve_repair','cancel_repair_order','get_repair_order','list_my_repair_orders'].includes(toolName)) {
+                const recovery = repairActionErrorResult(error);
+                if (recovery) return recovery;
+            }
             // Log the technical detail internally, but return a GENERIC error to the
             // LLM — error.message can carry schema names and raw SQL fragments from
             // the DB driver that could otherwise be surfaced to the customer.
             this.logger.error(`[Tool] ${toolName} failed: ${error.message}`);
-            return { error: 'tool_failed', message: 'No se pudo completar esta acción en este momento.' };
+            const uncertain = controlDecision?.allowed && !!controlDecision.ledgerId
+                && controlDecision.policy.externalEffect !== 'none';
+            return uncertain
+                ? { error: 'reconciliation_required', shouldHandoff: true, message: 'No pude verificar el resultado de la acción; requiere revisión antes de repetirla.' }
+                : { error: 'tool_failed', message: 'No se pudo completar esta acción en este momento.' };
         }
     }
 
@@ -970,6 +1180,7 @@ export class AIToolExecutorService {
         conversationId: string | undefined,
         args: Record<string, any>,
         trustedIdempotencyKey?: string,
+        operationalScope?: ServedAgentAuthority,
     ): Promise<any> {
         if (!this.repairOrders) return this.repairOrderWiringUnavailable();
         if (!AIToolExecutorService.UUID_PATTERN.test(contactId || '')) {
@@ -997,7 +1208,7 @@ export class AIToolExecutorService {
             appointmentId: args.appointmentId,
             conversationId,
             idempotencyKey,
-        }, { type: 'agent' });
+        }, { type: 'agent' }, operationalScope);
         return {
             success: true,
             repairOrderId: order.id,
@@ -1017,6 +1228,7 @@ export class AIToolExecutorService {
             repairOrders: result.items.map(order => ({
                 id: order.id,
                 status: order.status,
+                version: order.version,
                 approvalStatus: order.approval_status,
                 customerConcern: order.customer_concern,
                 estimateAmountCents: order.estimate_amount_cents === null
@@ -1051,6 +1263,7 @@ export class AIToolExecutorService {
                 repairOrder: {
                     id: order.id,
                     status: order.status,
+                    version: order.version,
                     approvalStatus: order.approval_status,
                     customerConcern: order.customer_concern,
                     // Technician-authored diagnosis is clearly separated from
@@ -1088,13 +1301,17 @@ export class AIToolExecutorService {
         contactId: string,
         repairOrderId: string,
         accepted: unknown,
+        terms: RepairOrderTerms,
+        termsHash: string,
+        operationalScope?: ServedAgentAuthority,
     ): Promise<any> {
         if (!this.repairOrders) return this.repairOrderWiringUnavailable();
         if (typeof accepted !== 'boolean') {
             return { error: 'estimate_decision_required', message: 'Falta indicar si el estimado fue aprobado o rechazado.' };
         }
         const order = await this.repairOrders.decideEstimate(
-            schemaName, repairOrderId, contactId, accepted, 'agent',
+            schemaName, repairOrderId, contactId, accepted, 'agent', null, undefined,
+            { expectedVersion: terms?.orderVersion, expectedTermsHash: termsHash }, operationalScope,
         );
         return {
             success: true,
@@ -1114,9 +1331,13 @@ export class AIToolExecutorService {
         contactId: string,
         repairOrderId: string,
         reason?: string,
+        terms?: RepairOrderTerms,
+        termsHash?: string,
+        operationalScope?: ServedAgentAuthority,
     ): Promise<any> {
         if (!this.repairOrders) return this.repairOrderWiringUnavailable();
-        const order = await this.repairOrders.cancelOwned(schemaName, repairOrderId, contactId, reason);
+        const order = await this.repairOrders.cancelOwned(schemaName, repairOrderId, contactId, reason,
+            { expectedVersion: terms?.orderVersion as number, expectedTermsHash: termsHash }, operationalScope);
         return {
             success: true,
             repairOrderId: order.id,
@@ -1194,7 +1415,7 @@ export class AIToolExecutorService {
             );
             if (rows.length > 0) {
                 const p = rows[0];
-                return {
+                return readOk({
                     id: p.id,
                     name: p.name,
                     description: p.description,
@@ -1205,12 +1426,13 @@ export class AIToolExecutorService {
                     isAvailable: !!p.is_available,
                     requiresPrescription: !!p.requires_prescription,
                     images: Array.isArray(p.images) ? p.images : [],
-                };
+                });
             }
         } catch (e: any) {
             this.logger.warn(`[Tool] get_product products lookup failed: ${e.message}`);
+            return readFailed();
         }
-        return { error: 'Product not found' };
+        return readEmpty({ product: null });
     }
 
     /**
@@ -1220,7 +1442,8 @@ export class AIToolExecutorService {
      */
     private async sendProductImage(schema: string, productIdOrName: string): Promise<any> {
         const product = await this.getProduct(schema, productIdOrName);
-        if (product?.error) return { error: product.error };
+        if (product?.error) return product;
+        if (!product?.id) return { error: 'product_not_found', retryable: false };
         const media = this.toMediaSet(product.images, product.name || undefined);
         if (!media.length) {
             return { error: 'Ese producto no tiene una imagen disponible.' };
@@ -1421,57 +1644,7 @@ export class AIToolExecutorService {
         }
     }
 
-    /** Full details of one vehicle (query-directa). */
-    /**
-     * Books a test drive — the dealership's actual sale step.
-     *
-     * `scheduleTestDrive` has existed in the vehicle service for months, with its
-     * own slot-conflict check, and was never exposed to the agent. So automotive
-     * tenants had an agent that could search, describe and photograph a car and
-     * then had nothing to close with: it said "te agendo la prueba" and nothing
-     * was recorded anywhere.
-     */
     private static readonly UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-    private async scheduleTestDrive(tenantId: string, args: any): Promise<any> {
-        const UUID_RE = AIToolExecutorService.UUID_PATTERN;
-        if (!this.vehicleInventory) {
-            return { error: 'test_drive_unavailable', message: 'La agenda de pruebas de manejo no está disponible.' };
-        }
-        const vehicleId = String(args?.vehicleId || '');
-        if (!UUID_RE.test(vehicleId)) return { error: 'vehicle_not_found' };
-        const contactName = String(args?.contactName || '').trim();
-        if (!contactName) return { error: 'contact_name_required', message: 'Falta el nombre de quien va a manejar.' };
-        const scheduledDate = String(args?.scheduledDate || '').trim();
-        const scheduledTime = String(args?.scheduledTime || '').trim();
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(scheduledDate)) return { error: 'invalid_date', message: 'La fecha debe ser YYYY-MM-DD.' };
-        if (!/^\d{2}:\d{2}$/.test(scheduledTime)) return { error: 'invalid_time', message: 'La hora debe ser HH:MM.' };
-        try {
-            const drive = await this.vehicleInventory.scheduleTestDrive(tenantId, {
-                vehicleId,
-                contactName,
-                contactPhone: args?.contactPhone ? String(args.contactPhone) : undefined,
-                scheduledDate,
-                scheduledTime,
-                notes: args?.notes ? String(args.notes).slice(0, 500) : undefined,
-            });
-            return {
-                success: true,
-                testDrive: {
-                    id: drive?.id,
-                    vehicleId,
-                    date: scheduledDate,
-                    time: scheduledTime,
-                    status: drive?.status || 'scheduled',
-                },
-            };
-        } catch (e: any) {
-            // A taken slot is a normal outcome, not a failure to hide: the agent
-            // must offer another time instead of claiming the drive is booked.
-            this.logger.warn(`[Tool] schedule_test_drive failed: ${e.message}`);
-            return { error: 'slot_unavailable', message: e?.message || 'Ese horario ya está tomado.' };
-        }
-    }
 
     /**
      * Creates a real order from catalog products.
@@ -1490,97 +1663,16 @@ export class AIToolExecutorService {
      * El bloqueo vive en el writer y no en el prompt: una instrucción de texto
      * la puede pisar un prompt personalizado, y esto no.
      */
-    private async placeCatalogOrder(
-        tenantId: string,
-        schema: string,
-        contactId: string,
-        conversationId: string | undefined,
-        args: any,
-    ): Promise<any> {
-        const UUID_RE = AIToolExecutorService.UUID_PATTERN;
-        if (!this.ordersService) {
-            return { error: 'orders_unavailable', message: 'La toma de pedidos no está disponible.' };
-        }
-        const rawItems = Array.isArray(args?.items) ? args.items : [];
-        if (!rawItems.length) return { error: 'items_required', message: 'Falta qué productos quiere el cliente.' };
-        if (rawItems.length > 50) return { error: 'too_many_items' };
+    private catalogCommands() {
+        if(!this.ordersService) throw new Error('catalog_service_unavailable');
+        return this.ordersService.catalogCommands();
+    }
 
-        const items: Array<{ productId: string; productName: string; quantity: number; unitPrice: number; currency?: string }> = [];
-        for (const raw of rawItems) {
-            const productId = String(raw?.productId || '');
-            const quantity = Math.floor(Number(raw?.quantity));
-            if (!UUID_RE.test(productId)) return { error: 'product_not_found', productId };
-            if (!Number.isFinite(quantity) || quantity < 1) return { error: 'invalid_quantity', productId };
-            // `is_active` never existed on this table: the column is
-            // `is_available`. Every call threw before reaching OrdersService, so
-            // eight catalog-selling profiles could search and price a product and
-            // never record a single order.
-            const rows: any[] = await this.prisma.$queryRawUnsafe(
-                `SELECT id, name, price, currency, stock, is_available, requires_prescription
-                   FROM "${schema}".products
-                  WHERE id = $1::uuid LIMIT 1`,
-                productId,
-            );
-            const product = rows?.[0];
-            if (!product) return { error: 'product_not_found', productId };
-            if (product.is_available === false) {
-                return { error: 'product_unavailable', productId, productName: product.name };
-            }
-            if (product.requires_prescription === true) {
-                // Se nombra el producto para que el agente pueda decir CUÁL es
-                // el que necesita fórmula, en vez de un "no se pudo" que el
-                // cliente lee como que el negocio no lo tiene.
-                return {
-                    error: 'prescription_required',
-                    productId,
-                    productName: product.name,
-                    message: `${product.name} es de venta bajo fórmula médica: no puedo tomar ese pedido por chat. Te paso con una persona del equipo para validar la receta.`,
-                };
-            }
-            // Stock NULL means the tenant does not track units for this product.
-            // Only an explicit number can be short.
-            if (product.stock !== null && product.stock !== undefined && Number(product.stock) < quantity) {
-                return {
-                    error: 'insufficient_stock',
-                    productId,
-                    productName: product.name,
-                    available: Number(product.stock),
-                    requested: quantity,
-                };
-            }
-            items.push({
-                productId,
-                productName: product.name,
-                quantity,
-                unitPrice: Number(product.price || 0),
-                currency: product.currency || undefined,
-            });
-        }
-
-        try {
-            const order = await this.ordersService.createOrder(tenantId, {
-                contactId: UUID_RE.test(contactId) ? contactId : null,
-                conversationId: conversationId && UUID_RE.test(conversationId) ? conversationId : null,
-                status: 'pending',
-                notes: args?.notes ? String(args.notes).slice(0, 1000) : undefined,
-                items,
-            });
-            const total = items.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0);
-            return {
-                success: true,
-                order: {
-                    id: order?.id,
-                    status: 'pending',
-                    itemCount: items.length,
-                    total,
-                    currency: items[0]?.currency,
-                    payableReference: this.payableReference('order', String(order?.id), 'pending', 'pending'),
-                },
-            };
-        } catch (e: any) {
-            this.logger.warn(`[Tool] place_catalog_order failed: ${e.message}`);
-            return { error: 'order_failed', message: e?.message || 'No se pudo registrar el pedido.' };
-        }
+    private async placeCatalogOrder(schema: string,contactId: string,conversationId: string | undefined,args: any,idempotencyKey?: string,operationalScope?:ServedAgentAuthority): Promise<any> {
+        const order=await this.catalogCommands().create(schema,{contactId,conversationId,items:args.items,notes:args.notes,idempotencyKey},
+            {source:'agent',expectedTermsHash:args.catalogTermsHash,operationalScope});
+        return {success:true,order:{...order,total:order.totalAmount,itemCount:order.items.length,
+            payableReference:this.payableReference('order',order.id,order.paymentStatus,order.status)}};
     }
 
     private async getVehicleDetails(schema: string, vehicleId: string): Promise<any> {
@@ -1671,8 +1763,9 @@ export class AIToolExecutorService {
         query: string,
         limit = 3,
         executionContext?: ServiceExecutionContext,
+        captured?:import('../evaluation-revision/evaluation-structured-knowledge').StructuredKnowledgeCapture,
     ): Promise<any> {
-        const faqs = await this.faqsService.search(tenantId, query, limit, executionContext);
+        const faqs = await this.faqsService.search(tenantId, query, limit, executionContext, captured);
         // View counts are analytics writes, so introspection skips them.
         if (!persistenceDisabled(executionContext)) {
             for (const f of faqs) this.faqsService.incrementViews(tenantId, f.id);
@@ -1691,8 +1784,9 @@ export class AIToolExecutorService {
         tenantId: string,
         type: PolicyType,
         executionContext?: ServiceExecutionContext,
+        captured?:import('../evaluation-revision/evaluation-structured-knowledge').StructuredKnowledgeCapture,
     ): Promise<any> {
-        const policy = await this.policiesService.getActive(tenantId, type, executionContext);
+        const policy = await this.policiesService.getActive(tenantId, type, executionContext, captured);
         if (!policy) return { error: `No ${type} policy is configured for this business.` };
         return {
             type: policy.type,
@@ -2185,6 +2279,7 @@ export class AIToolExecutorService {
     private async prepareContactConsent(
         tenantId: string,
         args: Record<string, any>,
+        executionContext?: ServiceExecutionContext,
     ): Promise<{ ok: true; consent: PreparedContactConsent } | { ok: false; result: Record<string, unknown> }> {
         const policyType = String(args.policyType || '').trim().toLowerCase();
         const scope = String(args.scope || '').trim().toLowerCase();
@@ -2196,7 +2291,7 @@ export class AIToolExecutorService {
             };
         }
         try {
-            const policy = await this.policiesService.getActive(tenantId, policyType as PolicyType);
+            const policy = await this.policiesService.getActive(tenantId, policyType as PolicyType, executionContext);
             if (!policy) {
                 return {
                     ok: false,
@@ -2465,7 +2560,7 @@ export class AIToolExecutorService {
      * value: the payment backend resolves those from the contact-owned row.
      */
     private payableReference(
-        kind: 'order' | 'tour' | 'food' | 'enrollment' | 'property',
+        kind: 'order' | 'tour' | 'food' | 'enrollment' | 'property' | 'appointment',
         entityId: unknown,
         paymentStatus: unknown,
         resourceStatus?: unknown,
@@ -2486,8 +2581,9 @@ export class AIToolExecutorService {
             order: ['cancelled', 'refunded', 'paid'],
             tour: ['cancelled', 'refunded'],
             food: ['cancelled', 'refunded'],
-            enrollment: ['cancelled', 'dropped', 'refunded'],
+            enrollment: ['cancelled', 'dropped', 'refunded', 'waitlisted', 'waitlist_review'],
             property: ['cancelled', 'refunded'],
+            appointment: ['cancelled', 'refunded', 'completed', 'no_show', 'expired'],
         };
         if (rejectedByKind[kind].includes(normalizedResourceStatus)) return null;
 
@@ -2503,9 +2599,15 @@ export class AIToolExecutorService {
         executionContext?: ServiceExecutionContext,
         /** Operating country, so regulated sources of other countries stay out. */
         jurisdiction?: string | null,
+        settings?: { similarityThreshold?: number; language?: string; rerank?: boolean; rerankTopN?: number; agentId?: string | null; audience?: 'customer' | 'internal'; evaluationKnowledge?: import('../evaluation-revision/evaluation-knowledge-replica').EvaluationKnowledgeReplica },
+        conversationId?: string,
+        withDataSourceAuthority?:import('../ai/interfaces/external-source-authority').ExternalSourceAuthority,
     ): Promise<any> {
         try {
-            const hasKnowledge = await this.knowledgeService.tenantHasKnowledge(tenantId, executionContext);
+            const hasKnowledge = await this.knowledgeService.tenantHasKnowledge(tenantId, executionContext, {
+                agentId: settings?.agentId, audience: settings?.audience, jurisdiction,
+                evaluationKnowledge: settings?.evaluationKnowledge,
+            });
             // "El negocio no cargó base de conocimiento" y "la búsqueda no
             // encontró nada" son respuestas distintas, y ninguna de las dos es
             // "la consulta falló".
@@ -2518,7 +2620,7 @@ export class AIToolExecutorService {
                 tenantId,
                 query,
                 limit,
-                { executionContext, jurisdiction },
+                { ...settings, similarityThreshold: settings?.similarityThreshold ?? 0.35, executionContext, jurisdiction, conversationId,withDataSourceAuthority },
             );
             return readOk({
                 chunks: (results || []).map((r: any) => ({
@@ -2526,12 +2628,25 @@ export class AIToolExecutorService {
                     title: r.title,
                     content: r.chunk_text,
                     score: typeof r.score === 'number' ? r.score : (typeof r.similarity === 'number' ? r.similarity : undefined),
+                    documentId: r.document_id,
+                    retrievalId: r.retrievalId,
+                    retrievalBatchId: r.retrievalBatchId,
+                    jurisdiction: r.doc_jurisdiction,
+                    authority: r.doc_authority,
+                    isRegulated: r.doc_is_regulated,
+                    validFrom: r.doc_valid_from,
+                    validTo: r.doc_valid_to,
+                    version: r.doc_version,
+                    sourceUrl: r.doc_source_url,
+                    conflictReviewStatus: r.conflictReviewStatus,
+                    conflicts: r.conflicts,
                 })),
             });
         } catch (e: any) {
             // Un RAG caído devolvía `{chunks: []}`, indistinguible de "no hay
             // nada sobre eso" — así el agente contestaba de memoria sobre una
             // política que no pudo leer.
+            if(e instanceof LLMSourceAuthorityUnavailable || settings?.evaluationKnowledge)throw e;
             this.logger.warn(`[Tool] search_knowledge_base failed: ${e.message}`);
             return readFailed(TOOL_READ_ERROR_CODES.READ_FAILED, {
                 message: 'No pude consultar la base de conocimiento en este momento.',
@@ -2542,7 +2657,7 @@ export class AIToolExecutorService {
     private async listServices(schema: string): Promise<any> {
         const rows: any[] = await this.prisma.$queryRawUnsafe(
             `SELECT id, name, description, duration_minutes, buffer_minutes, price, currency, is_active, duration_type, duration_minutes_max,
-                    payment_policy, deposit_percent, deposit_amount
+                    payment_policy, deposit_percent, deposit_amount, location_type, location_address, meeting_link
              FROM "${schema}".services WHERE is_active = true AND (is_public IS NULL OR is_public = true)
              ORDER BY sort_order, name`,
         );
@@ -2570,13 +2685,18 @@ export class AIToolExecutorService {
                     amountDueToConfirm: policy.dueAmount,
                     paymentChoice: policy.customerChooses ? 'deposit_or_full' : undefined,
                     paymentNote: describePaymentPolicy(policy),
+                    appointmentTerms: appointmentServiceTerms(s),
                 };
             }),
         };
     }
 
     /** Resolve tenant timezone from persona_config or default */
-    private async getTenantTimezone(schema: string): Promise<string> {
+    private async getTenantTimezone(schema: string, namespace?: EvalNamespaceLease): Promise<string> {
+        if (schema.startsWith('tenant_eval_')) {
+            if (!namespace) throw new Error('eval_namespace_lease_required');
+            return evaluationNamespaceTimezone(this.prisma, schema, namespace);
+        }
         try {
             const rows = await this.prisma.$queryRawUnsafe(
                 `SELECT config_json->'hours'->>'timezone' as tz FROM "${schema}".persona_config WHERE is_active = true LIMIT 1`,
@@ -2587,9 +2707,10 @@ export class AIToolExecutorService {
         }
     }
 
-    private async checkAvailability(schema: string, date: string, serviceId: string, staffId?: string): Promise<any> {
+    private async checkAvailability(schema: string, date: string, serviceId: string, staffId?: string, namespace?: EvalNamespaceLease, vehicleId?: string): Promise<any> {
+        const directory = await tenantActorDirectory(this.prisma,schema,namespace);
         const resolvedStaffId = staffId
-            ? await assertActiveTenantUser(this.prisma, schema, staffId)
+            ? await assertActiveTenantUser(this.prisma, schema, staffId, namespace)
             : undefined;
         // Resolve serviceId — LLM may pass name instead of UUID
         const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(serviceId);
@@ -2612,7 +2733,7 @@ export class AIToolExecutorService {
         // 10 mesas): la ruta pública ya lo respeta y la de chat lo ignoraba, así
         // que un salón con 4 estilistas rechazaba al segundo cliente de las 15:00.
         const svcRows: any[] = await this.prisma.$queryRawUnsafe(
-            `SELECT duration_minutes, buffer_minutes, duration_type, duration_minutes_max, max_concurrent FROM "${schema}".services WHERE id = $1::uuid`,
+            `SELECT duration_minutes, buffer_minutes, duration_type, duration_minutes_max, max_concurrent, location_type FROM "${schema}".services WHERE id = $1::uuid AND is_active = true`,
             resolvedServiceId,
         );
         if (!svcRows.length) return { error: 'Service not found' };
@@ -2620,6 +2741,9 @@ export class AIToolExecutorService {
         const maxConcurrent = Math.max(1, Number(svcRows[0].max_concurrent) || 1);
 
         const durationType = svcRows[0].duration_type || 'fixed';
+        if (vehicleId && (durationType !== 'fixed' || !['in_person', 'hybrid'].includes(svcRows[0].location_type))) {
+            return { available: false, slots: [], error: 'test_drive_service_contract_required' };
+        }
 
         // `open` is not an appointment duration. It must be migrated to the
         // explicit nightly/day-capacity/session/resource model before booking.
@@ -2639,6 +2763,11 @@ export class AIToolExecutorService {
         const buffer = svcRows[0].buffer_minutes || 0;
         // Total block time = service duration + post-buffer
         const totalBlock = duration + buffer;
+        if (!Number.isInteger(duration) || duration < 1 || duration > 1440
+            || !Number.isInteger(buffer) || buffer < 0 || buffer > 1440) {
+            return { available: false, slots: [], error: 'invalid_appointment_temporal_contract',
+                message: 'The service duration or buffer is invalid. Correct the service before offering slots.' };
+        }
 
         // Get availability slots for the day
         const dayOfWeek = dayOfWeekForLocalDate(date);
@@ -2653,10 +2782,10 @@ export class AIToolExecutorService {
         const slots: any[] = await this.prisma.$queryRawUnsafe(
             `SELECT availability.user_id, availability.start_time::text, availability.end_time::text
              FROM "${schema}".availability_slots availability
-             JOIN public.users staff_user
+             JOIN ${directory.users} staff_user
                ON staff_user.id = availability.user_id
               AND staff_user.is_active = true
-             JOIN public.tenants tenant_owner
+             JOIN ${directory.tenants} tenant_owner
                ON tenant_owner.id = staff_user.tenant_id
               AND tenant_owner.schema_name = $2
               AND tenant_owner.is_active = true
@@ -2692,17 +2821,22 @@ export class AIToolExecutorService {
         // del negocio: 4 sillas de corte no son 4 salas de depilación).
         const existing: any[] = await this.prisma.$queryRawUnsafe(
             `SELECT assigned_to, service_id,
-                    to_char(start_at, 'HH24:MI') as start_time,
-                    to_char(end_at, 'HH24:MI') as end_time
+                    to_char(GREATEST(start_at,$1::date), 'HH24:MI') as start_time,
+                    CASE WHEN end_at >= $1::date + interval '1 day' THEN '24:00' ELSE to_char(end_at, 'HH24:MI') END as end_time
              FROM "${schema}".appointments
-             WHERE DATE(start_at) = $1::date AND status NOT IN ('cancelled')`,
+             WHERE start_at < $1::date + interval '1 day' AND end_at > $1::date
+               AND status NOT IN ('cancelled') AND ${holdStillAliveSql()}`,
             date,
         );
 
         // Check Google/Microsoft Calendar busy times
         let googleBusy: { start: string; end: string }[] = [];
         try {
-            googleBusy = await this.calendarIntegration.getFreeBusyForDate(schema, date, {
+            if (namespace) {
+                const providers: any[] = await this.prisma.$queryRawUnsafe(`SELECT id FROM "${schema}".calendar_integrations WHERE is_active=true LIMIT 1`);
+                if (providers.length) throw new Error('canonical_fixture_provider_not_available');
+            }
+            googleBusy = namespace ? [] : await this.calendarIntegration.getFreeBusyForDate(schema, date, {
                 serviceId: resolvedServiceId,
                 staffId: resolvedStaffId,
             });
@@ -2724,6 +2858,7 @@ export class AIToolExecutorService {
 
         // Generate available time slots
         const availableSlots: any[] = [];
+        const timezone = await this.getTenantTimezone(schema, namespace);
 
         for (const slot of slots) {
             const [startH, startM] = slot.start_time.split(':').map(Number);
@@ -2739,6 +2874,10 @@ export class AIToolExecutorService {
                 const timeStr = `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
                 const endMin = min + duration;
                 const endTimeStr = `${String(Math.floor(endMin / 60)).padStart(2, '0')}:${String(endMin % 60).padStart(2, '0')}`;
+                try {
+                    this.temporalContracts.normalize({ kind: 'appointment', startsAtLocal: `${date}T${timeStr}:00`,
+                        timezone, durationMinutes: duration, bufferMinutes: buffer });
+                } catch { continue; }
 
                 // ── All conflict checks use minutes-of-day in TENANT timezone ──
                 // This avoids the UTC vs local-time mismatch bug when the Node.js
@@ -2792,6 +2931,13 @@ export class AIToolExecutorService {
             }
         }
 
+        if(vehicleId){
+            const busy=await vehicleAppointmentBusyIntervals((sql,params)=>this.prisma.executeInTenantSchema(schema,sql,params as any[]),vehicleId,date);
+            for(let index=availableSlots.length-1;index>=0;index--){
+                const slot=availableSlots[index],start=`${date}T${slot.time}:00`,end=`${date}T${slot.endTime}:00`;
+                if(!slot.userId || busy.some(block=>start<block.end&&end>block.start))availableSlots.splice(index,1);
+            }
+        }
         // Slot hold (D3): ofrecer sin reservar es race. Al mostrar slots, pre-reservar 2 min con NX
         // para que segundo cliente no vea mismo hueco libre y luego falle al crear.
         for (const s of availableSlots.slice(0, 6)) {
@@ -2804,7 +2950,7 @@ export class AIToolExecutorService {
         const userIds = [...new Set(availableSlots.map(s => s.userId).filter(Boolean))];
         let userNames: Record<string, string> = {};
         if (userIds.length > 0) {
-            const users = await this.prisma.user.findMany({
+            const users = namespace ? await this.prisma.$queryRawUnsafe(`SELECT id,first_name AS "firstName",last_name AS "lastName" FROM ${directory.users} WHERE id=ANY($1::uuid[]) AND is_active=true`, userIds) as any[] : await this.prisma.user.findMany({
                 where: {
                     id: { in: userIds },
                     isActive: true,
@@ -3011,9 +3157,12 @@ export class AIToolExecutorService {
 
     private async createAppointment(
         schema: string, tenantId: string, contactId: string,
-        args: { serviceId: string; staffId?: string; date: string; time: string; customerName: string; customerPhone?: string; customerEmail?: string; notes?: string },
+        args: { serviceId: string; staffId?: string; date: string; time: string; customerName: string; customerPhone?: string; customerEmail?: string; notes?: string; appointmentTerms?: AppointmentServiceTerms; vehicleTerms?: VehicleAppointmentTerms; vehicleId?: string },
         conversationId?: string,
         evalMode?: boolean,
+        namespace?: EvalNamespaceLease,
+        operationalScope?: ServedAgentAuthority,
+        executionIdempotencyKey?: string,
     ): Promise<any> {
         // Resolve serviceId — LLM may pass name instead of UUID
         const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(args.serviceId);
@@ -3055,16 +3204,13 @@ export class AIToolExecutorService {
             const normalized = this.temporalContracts.normalize({
                 kind: 'appointment',
                 startsAtLocal: startAt,
-                timezone: await this.getTenantTimezone(schema),
+                timezone: await this.getTenantTimezone(schema, namespace),
                 durationMinutes: effectiveDuration,
             });
             if (normalized.kind !== 'appointment') throw new Error('wrong_temporal_kind');
             endAt = normalized.endsAtLocal;
-        } catch {
-            return {
-                error: 'invalid_appointment_temporal_contract',
-                message: 'The service duration or timezone is invalid. Correct configuration before creating an appointment.',
-            };
+        } catch (error: unknown) {
+            return this.appointmentTemporalFailure(error);
         }
 
         // El objeto de la cita se resuelve ANTES del lock, no dentro: de él sale
@@ -3076,7 +3222,7 @@ export class AIToolExecutorService {
         const subject = await this.resolveAppointmentSubject(schema, args);
         const staffCandidate = args.staffId || subject.suggestedStaffId || null;
         const assignedTo = staffCandidate
-            ? await assertActiveTenantUser(this.prisma, schema, staffCandidate)
+            ? await assertActiveTenantUser(this.prisma, schema, staffCandidate, namespace)
             : null;
 
         // Build the immutable calendar snapshot before the appointment INSERT.
@@ -3123,6 +3269,8 @@ export class AIToolExecutorService {
         const meetingUrl: string | undefined = svc.meeting_link || undefined;
         const appointmentMetadata = {
             ...(subject.metadata || {}),
+            ...(args.vehicleId ? { vehicleId: args.vehicleId } : {}),
+            ...(evalMode ? { source: 'eval_gate', timezone: await this.getTenantTimezone(schema, namespace) } : {}),
             isOnline,
             ...(meetingUrl ? { meetingUrl } : {}),
         };
@@ -3138,97 +3286,55 @@ export class AIToolExecutorService {
                 retryable: true,
             };
         }
-        let rows: any[];
         try {
-            const insertSql = `INSERT INTO appointments
-                 (contact_id, opportunity_id, conversation_id, service_id, service_name, assigned_to, start_at, end_at, status,
-                  customer_name, customer_phone, customer_email, location, notes, metadata)
-                 VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, $6::uuid, $7::timestamp, $8::timestamp, 'confirmed',
-                         $9, $10, $11, $12, $13, $14::jsonb)
-                 RETURNING id, service_name, start_at, end_at, status`;
-            rows = await this.prisma.transactionInTenantSchema(schema, async (query) => {
-                const canonicalContactId = await requireTenantContact(query, contactId);
-                const opportunityId = await resolveNativeEvidenceOpportunity(query, {
-                    contactId: canonicalContactId,
-                    conversationId,
-                });
-                await lockAndAssertAppointmentCapacity(query, {
-                    schemaName: schema,
-                    serviceId: args.serviceId,
-                    staffUserId: assignedTo,
-                    startAt,
-                    endAt,
-                });
-                const insertParams = [
-                    canonicalContactId, opportunityId, conversationId || null,
-                    args.serviceId, svc.name, assignedTo, startAt, endAt,
-                    args.customerName, args.customerPhone || null, args.customerEmail || null,
-                    location, description, JSON.stringify(appointmentMetadata),
-                ];
-                const inserted = await query<any[]>(insertSql, insertParams);
-                if (!evalMode) {
-                    await CalendarSyncOutboxService.enqueueWithTransaction(query, inserted[0].id, 'upsert');
-                }
-                return inserted;
-            });
+            if (!this.appointmentsService) throw new Error('appointment_command_unavailable');
+            const apt = await this.appointmentsService.create(schema, {
+                contactId, conversationId, serviceId: args.serviceId,
+                serviceName: svc.name, assignedTo: assignedTo || undefined,
+                startAt, endAt, customerName: args.customerName,
+                customerPhone: args.customerPhone, customerEmail: args.customerEmail,
+                location: location || undefined, notes: description,
+                metadata: appointmentMetadata, source: 'ai',
+            }, { suppressEffects: evalMode === true, confirmWithoutPayment: true, sandboxNamespace: namespace,
+                expectedServiceTerms: args.appointmentTerms, operationalScope, vehicleRequestKey:executionIdempotencyKey,
+                expectedVehicleTerms:args.vehicleTerms });
+            return {
+                success: true,
+                operationStatus: apt.awaitingPayment ? 'awaiting_payment' : apt.status,
+                appointment: {
+                    id: apt.id, service: apt.serviceName, date: args.date, time: args.time,
+                    ...(apt.metadata?.vehicleId?{vehicleId:apt.metadata.vehicleId,vehicleLabel:apt.metadata.vehicleTerms?.label}:{}),
+                    status: apt.status, customerName: args.customerName, meetingUrl,
+                    awaitingPayment: apt.awaitingPayment === true,
+                    amountDueToConfirm: apt.amountDueToConfirm,
+                    currency: apt.currency, holdExpiresAt: apt.holdExpiresAt,
+                    paymentChoice: apt.paymentChoice,
+                    payableReference: apt.awaitingPayment
+                        ? this.payableReference('appointment', apt.id, apt.paymentStatus, apt.status)
+                        : null,
+                },
+            };
         } catch (error) {
-            if (error instanceof AppointmentSlotConflictError) {
-                this.logger.warn(`[Tool] Double-booking prevented: ${args.date} ${args.time} (staff=${assignedTo || 'any'})`);
-                return { error: 'That time slot was just taken. Offer the customer another available time (call check_availability again).' };
+            if (error instanceof AppointmentTermsChangedError) return appointmentTermsReviewResult(error.currentTerms);
+            if(error instanceof ConflictException){
+                const code=(error.getResponse() as any)?.error;
+                if(typeof code==='string'&&(code.startsWith('test_drive_')||code.startsWith('appointment_vehicle_')))
+                    return {error:code,persisted:false,requiresReview:true};
             }
-            if (error instanceof AppointmentServiceUnavailableError) {
-                return { error: 'Service not found' };
+            if (error instanceof AppointmentSlotConflictError || error instanceof ConflictException) {
+                return { error: 'That time slot was just taken. Check availability again.', retryable: true };
             }
+            if (error instanceof AppointmentServiceUnavailableError) return { error: 'Service not found' };
             throw error;
         } finally {
             await this.redis.releaseLockToken(slotLock.key, slotLock.token);
         }
-
-        const apt = rows[0];
-        this.logger.log(`[Tool] Appointment created: ${apt.id} for ${args.customerName}`);
-
-        // Emit event so notifications (WhatsApp confirmation, email, calendar) are
-        // triggered. In evalMode the INSERT above still happens (so verifyActions can
-        // assert it) but NO outbound side-effect fires (no message/email/webhook/calendar).
-        if (!evalMode) this.eventEmitter.emit('appointment.created', {
-            schemaName: schema,
-            appointment: {
-                id: apt.id,
-                contactId: contactId,
-                serviceName: svc.name,
-                startAt: startAt,
-                endAt: endAt,
-                status: 'confirmed',
-                customerName: args.customerName,
-                customerEmail: args.customerEmail,
-                customerPhone: args.customerPhone,
-                // Without this the confirmation never shows the address: every
-                // listener reads `appointment.location`, and this path — the one
-                // the AI actually uses — used to leave it undefined.
-                location,
-                assignedTo,
-                meetingUrl,
-            },
-        });
-
-        return {
-            success: true,
-            appointment: {
-                id: apt.id,
-                service: svc.name,
-                date: args.date,
-                time: args.time,
-                status: 'confirmed',
-                customerName: args.customerName,
-                meetingUrl,
-            },
-        };
     }
 
-    private async cancelAppointment(schema: string, contactId: string, appointmentId: string, reason?: string): Promise<any> {
+    private async cancelAppointment(schema: string, contactId: string, appointmentId: string, reason?: string, namespace?: EvalNamespaceLease, operationalScope?:ServedAgentAuthority): Promise<any> {
         // Verify ownership — only cancel if it belongs to this contact
         const rows: any[] = await this.prisma.$queryRawUnsafe(
-            `SELECT id, contact_id, service_id, service_name, start_at, end_at, status
+            `SELECT id, contact_id, service_id, service_name, start_at, end_at, status, metadata
              FROM "${schema}".appointments WHERE id = $1::uuid`,
             appointmentId,
         );
@@ -3242,6 +3348,7 @@ export class AIToolExecutorService {
         const updated: any[] = await this.prisma.transactionInTenantSchema(
             schema,
             async (query) => {
+                await assertServedAgentAuthority(query, schema, operationalScope);
                 const changed = await query<any[]>(
                     `UPDATE appointments
                      SET status = 'cancelled', cancellation_reason = $1,
@@ -3266,7 +3373,7 @@ export class AIToolExecutorService {
             return { success: true, alreadyCancelled: true, message: 'Appointment was already cancelled.', alternatives: [] };
         }
 
-        this.eventEmitter.emit('appointment.cancelled', {
+        if (rows[0].metadata?.source !== 'eval_gate') this.eventEmitter.emit('appointment.cancelled', {
             schemaName: schema,
             appointment: {
                 id: rows[0].id,
@@ -3299,10 +3406,10 @@ export class AIToolExecutorService {
                 const probe = new Date(from);
                 probe.setDate(probe.getDate() + i);
                 const date = probe.toISOString().slice(0, 10);
-                const avail = await this.checkAvailability(schema, date, rows[0].service_id)
+                const avail = await this.checkAvailability(schema, date, rows[0].service_id, undefined, namespace, appointmentVehicleId(rows[0].metadata))
                     .catch(() => null);
                 for (const s of (avail?.slots || []).slice(0, 3 - alternatives.length)) {
-                    alternatives.push({ date, time: s.time, staffName: s.staffName });
+                    alternatives.push({ date, time: s.time, staffName: s.staffName, staffId: s.staffId });
                 }
             }
         }
@@ -3318,10 +3425,12 @@ export class AIToolExecutorService {
 
     private async listCustomerAppointments(schema: string, contactId: string): Promise<any> {
         const rows: any[] = await this.prisma.$queryRawUnsafe(
-            `SELECT id, service_name, start_at, end_at, status, customer_name
-             FROM "${schema}".appointments
-             WHERE contact_id = $1::uuid AND status NOT IN ('cancelled') AND start_at >= NOW()
-             ORDER BY start_at LIMIT 10`,
+            `SELECT a.id, a.service_name, a.status, a.customer_name, a.payment_status, a.amount_due, a.hold_expires_at, a.metadata,
+                    ${appointmentPriceSql('a', 's')} AS price, ${appointmentCurrencySql('a', 's')} AS currency,
+                    to_char(a.start_at, 'YYYY-MM-DD') AS local_date, to_char(a.start_at, 'HH24:MI') AS local_time
+             FROM "${schema}".appointments a LEFT JOIN "${schema}".services s ON s.id = a.service_id
+             WHERE a.contact_id = $1::uuid AND a.status NOT IN ('cancelled') AND a.start_at >= NOW()
+             ORDER BY a.start_at LIMIT 10`,
             contactId,
         );
 
@@ -3329,10 +3438,16 @@ export class AIToolExecutorService {
             appointments: rows.map(r => ({
                 id: r.id,
                 service: r.service_name,
-                date: new Date(r.start_at).toISOString().split('T')[0],
-                time: new Date(r.start_at).toTimeString().slice(0, 5),
+                date: r.local_date,
+                time: r.local_time,
                 status: r.status,
+                vehicleId: r.metadata?.vehicleId || r.metadata?.vehicle_id,
+                vehicleLabel: r.metadata?.vehicleTerms?.label,
                 customerName: r.customer_name,
+                paymentStatus: r.payment_status, holdExpiresAt: r.hold_expires_at,
+                amountDueToConfirm: r.amount_due ?? r.price, currency: r.currency,
+                payableReference: r.status === 'pending_payment' && new Date(r.hold_expires_at).getTime() > Date.now()
+                    ? this.payableReference('appointment', r.id, r.payment_status, r.status) : null,
             })),
         };
     }
@@ -3369,7 +3484,7 @@ export class AIToolExecutorService {
     /**
      * List active properties, optionally filtering by guest capacity.
      */
-    private async listProperties(schema: string, guests?: number, checkIn?: string, checkOut?: string, tenantId?: string): Promise<any> {
+    private async listProperties(schema: string, guests?: number, checkIn?: string, checkOut?: string, tenantId?: string, executionContext?: ServiceExecutionContext): Promise<any> {
         try {
             const conds: string[] = ['is_active = true'];
             const params: any[] = [];
@@ -3420,7 +3535,7 @@ export class AIToolExecutorService {
                 let failures = 0;
                 for (const prop of properties) {
                     try {
-                        const avail = await this.propertiesService.checkAvailability(schema, prop.id, checkIn, checkOut, tenantId);
+                        const avail = await this.propertiesService.checkAvailability(schema, prop.id, checkIn, checkOut, tenantId, executionContext);
                         if (avail.available) {
                             available.push({ ...prop, totalPrice: avail.totalPrice, nights: avail.nights });
                         }
@@ -3471,10 +3586,10 @@ export class AIToolExecutorService {
      * Check availability and pricing for a specific property + date range.
      */
     private async checkPropertyAvailability(
-        schema: string, propertyId: string, checkIn: string, checkOut: string, guests?: number, tenantId?: string,
+        schema: string, propertyId: string, checkIn: string, checkOut: string, guests?: number, tenantId?: string, executionContext?: ServiceExecutionContext,
     ): Promise<any> {
         try {
-            const avail = await this.propertiesService.checkAvailability(schema, propertyId, checkIn, checkOut, tenantId);
+            const avail = await this.propertiesService.checkAvailability(schema, propertyId, checkIn, checkOut, tenantId, executionContext);
 
             // If guest count provided, verify capacity
             if (guests && avail.available) {
@@ -3697,6 +3812,7 @@ export class AIToolExecutorService {
         args: { propertyId: string; checkIn: string; checkOut: string; guestName: string; guestPhone?: string; guests?: number },
         conversationId?: string,
         tenantId?: string,
+        namespace?: EvalNamespaceLease,
     ): Promise<any> {
         try {
             const booking = await this.propertiesService.createBooking(schema, args.propertyId, {
@@ -3708,7 +3824,7 @@ export class AIToolExecutorService {
                 guestsCount: args.guests || 1,
                 checkIn: args.checkIn,
                 checkOut: args.checkOut,
-            });
+            }, { sandboxNamespace: namespace });
 
             this.logger.log(`[Tool] Property booking created: ${booking.id} for ${args.guestName}`);
 
@@ -3859,6 +3975,7 @@ export class AIToolExecutorService {
         contactId: string,
         args: any,
         conversationId?: string,
+        namespace?: EvalNamespaceLease,
     ): Promise<any> {
         try {
             const booking = await this.toursService.createBooking(schemaName, {
@@ -3875,7 +3992,7 @@ export class AIToolExecutorService {
                 specialRequests: args.specialRequests,
                 contactId,
                 conversationId,
-            });
+            }, { sandboxNamespace: namespace });
             return {
                 success: true,
                 booking: {
@@ -4040,7 +4157,8 @@ export class AIToolExecutorService {
         }
     }
 
-    private async registerPet(schemaName: string, contactId: string, args: any): Promise<any> {
+    private async registerPet(schemaName: string, contactId: string, args: any, conversationId?: string,
+        idempotencyKey?: string, operationalScope?: ServedAgentAuthority): Promise<any> {
         try {
             const pet = await this.petsService.create(schemaName, {
                 contactId,
@@ -4054,12 +4172,13 @@ export class AIToolExecutorService {
                 color: args.color,
                 allergies: args.allergies,
                 chronicConditions: args.chronicConditions,
-            });
+            }, { contactId, conversationId, idempotencyKey, operationalScope, requireIdempotency: true });
             return {
                 petId: pet.id,
                 name: pet.name,
                 species: pet.species,
                 breed: pet.breed,
+                idempotentReplay: pet.idempotentReplay === true,
                 message: `Pet ${pet.name} registered successfully.`,
             };
         } catch (e: any) {
@@ -4262,6 +4381,7 @@ export class AIToolExecutorService {
         contactId: string,
         conversationId: string | undefined,
         args: any,
+        namespace?: EvalNamespaceLease,
     ): Promise<any> {
         try {
             if (!Array.isArray(args.items) || args.items.length === 0) {
@@ -4342,7 +4462,7 @@ export class AIToolExecutorService {
                 items: resolvedItems,
                 paymentMethod: args.paymentMethod,
                 notes: args.notes,
-            });
+            }, { sandboxNamespace: namespace });
 
             return {
                 orderId: order.id,
@@ -4445,7 +4565,7 @@ export class AIToolExecutorService {
         }
     }
 
-    private async bookClassTool(schemaName: string, contactId: string, args: any): Promise<any> {
+    private async bookClassTool(schemaName: string, contactId: string, args: any, operationalScope?:ServedAgentAuthority): Promise<any> {
         try {
             // IDOR guard: a customer can only book classes against their OWN membership.
             // Resolve the member from the current contact and ignore/reject any memberId
@@ -4457,7 +4577,7 @@ export class AIToolExecutorService {
             if (args.memberId && args.memberId !== member.id) {
                 return { error: 'You can only book classes for your own membership.' };
             }
-            const booking = await this.gymsService.bookClass(schemaName, args.classId, member.id);
+            const booking = await this.gymsService.bookClass(schemaName, args.classId, member.id, operationalScope);
             // Clase llena: el socio queda EN ESPERA, no rechazado. El mensaje
             // tiene que decir las dos cosas que le importan — que todavía no
             // tiene lugar, y que no hay que hacer nada más si alguien cancela.
@@ -4467,7 +4587,7 @@ export class AIToolExecutorService {
                     status: booking.status,
                     waitlistPosition: booking.waitlistPosition,
                     creditsUsed: 0,
-                    message: `The class is full. The member is now on the waitlist at position ${booking.waitlistPosition}. Tell them clearly they do NOT have a spot yet, that no credits were used, and that they will get it automatically if someone cancels — they do not need to do anything else.`,
+                    message: `The class is full. The member is now on the waitlist at position ${booking.waitlistPosition}. Tell them clearly they do NOT have a spot yet, that no credits were used, and that eligible members are promoted in order when a spot becomes available. Membership and credits must still be valid at promotion.`,
                 };
             }
             return {
@@ -4544,7 +4664,7 @@ export class AIToolExecutorService {
                 daysAhead: args.daysAhead,
             });
             if (!cohorts.length) {
-                return { cohorts: [], message: 'No open cohorts in the requested range. Suggest joining the waitlist.' };
+                return { cohorts: [], message: 'No upcoming cohorts in the requested range. Ask for another date or course; do not invent a waitlist cohort.' };
             }
             return {
                 count: cohorts.length,
@@ -4559,6 +4679,7 @@ export class AIToolExecutorService {
                     endsAt: c.ends_at,
                     schedule: c.schedule,
                     availableSeats: c.available_seats,
+                    waitlistAvailable: Number(c.available_seats) <= 0,
                     maxCapacity: c.max_capacity,
                     durationHours: c.duration_hours,
                     durationWeeks: c.duration_weeks,
@@ -4572,7 +4693,7 @@ export class AIToolExecutorService {
         }
     }
 
-    private async enrollStudentTool(schemaName: string, contactId: string, args: any): Promise<any> {
+    private async enrollStudentTool(schemaName: string, contactId: string, args: any, operationalScope?:ServedAgentAuthority): Promise<any> {
         try {
             const enrollment = await this.educationService.enrollStudent(schemaName, {
                 cohortId: args.cohortId,
@@ -4580,7 +4701,9 @@ export class AIToolExecutorService {
                 studentName: args.studentName,
                 studentEmail: args.studentEmail,
                 studentPhone: args.studentPhone,
-            });
+                allowWaitlist: args.allowWaitlist === true,
+                enrollmentTerms: args.enrollmentTerms,
+            }, operationalScope);
             return {
                 enrollmentId: enrollment.id,
                 cohortId: enrollment.cohort_id,
@@ -4592,12 +4715,25 @@ export class AIToolExecutorService {
                     enrollment.payment_status,
                     enrollment.status,
                 ),
-                message: 'Enrollment registered. Payment pending to confirm the seat.',
+                waitlisted: enrollment.status === 'waitlisted',
+                charged: false,
+                enrollmentTerms: enrollment.metadata?.enrollmentTerms,
+                message: enrollment.status === 'waitlisted'
+                    ? 'Joined the waitlist. No seat is assigned and no payment is requested. Promotion requires unchanged accepted terms.'
+                    : 'Enrollment registered and seat assigned. Payment status remains separate; no charge was made by this command.',
             };
-        } catch (e: any) {
-            return { error: e.message };
-        }
-    }
+          } catch (e: any) {
+              if (e instanceof ServedAgentAuthorityError) throw e;
+              if(['cohort_full_waitlist_requires_consent','enrollment_terms_changed_requires_confirmation'].includes(e.message)){
+                  try{
+                      const terms=await this.educationService.getEnrollmentTerms(schemaName,args.cohortId);
+                      return {...enrollmentTermsReviewResult(terms,e.message==='cohort_full_waitlist_requires_consent'||args.allowWaitlist===true,e.message),
+                          waitlistAvailable:e.message==='cohort_full_waitlist_requires_consent'};
+                  }catch{/* A missing or changed cohort cannot support a new consent proposal. */}
+              }
+              return educationToolError(e);
+          }
+      }
 
     private async getPlacementTestLinkTool(schemaName: string, contactId: string, args: any): Promise<any> {
         try {
@@ -4880,6 +5016,7 @@ export class AIToolExecutorService {
         contactId: string,
         conversationId: string | undefined,
         args: any,
+        namespace?: EvalNamespaceLease,
     ): Promise<any> {
         try {
             const request = await this.homeServicesService.createRequest(schemaName, {
@@ -4898,7 +5035,7 @@ export class AIToolExecutorService {
                 serviceId: args.serviceId,
                 scheduledAt: args.scheduledAt,
                 status: args.serviceId && args.scheduledAt ? 'scheduled' : 'pending',
-            });
+            }, { sandboxNamespace: namespace });
             return {
                 requestId: request.id,
                 status: request.status,
@@ -5515,10 +5652,14 @@ export class AIToolExecutorService {
     private async rescheduleAppointment(
         schema: string, contactId: string, appointmentId: string,
         newDate: string, newTime: string, reason?: string,
+        operationalScope?: ServedAgentAuthority,
+        sandboxNamespace?: EvalNamespaceLease,
     ): Promise<any> {
         const rows: any[] = await this.prisma.$queryRawUnsafe(
             `SELECT id, contact_id, service_id, service_name, start_at, end_at, status, assigned_to,
-                    google_event_id, outlook_event_id
+                    google_event_id, outlook_event_id, metadata, location, notes,
+                    to_char(start_at,'YYYY-MM-DD"T"HH24:MI:SS') AS start_local,
+                    to_char(end_at,'YYYY-MM-DD"T"HH24:MI:SS') AS end_local, updated_at::text AS update_revision
              FROM "${schema}".appointments WHERE id = $1::uuid`,
             appointmentId,
         );
@@ -5531,7 +5672,7 @@ export class AIToolExecutorService {
             `SELECT duration_minutes FROM "${schema}".services WHERE id = $1::uuid`,
             apt.service_id,
         );
-        const duration = Math.max(1, Number(svcRows[0]?.duration_minutes) || 30);
+        const duration = Number(svcRows[0]?.duration_minutes);
 
         if (!/^\d{4}-\d{2}-\d{2}$/.test(newDate) || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(newTime)) {
             return { error: 'newDate must use YYYY-MM-DD and newTime must use HH:MM (24-hour)' };
@@ -5542,8 +5683,20 @@ export class AIToolExecutorService {
         }
 
         const newStartAt = `${newDate}T${newTime}:00`;
-        const endBase = new Date(startBase.getTime() + duration * 60_000);
-        const newEndAt = endBase.toISOString().slice(0, 19);
+        let newEndAt: string;
+        try {
+            const temporal = this.temporalContracts.normalize({ kind: 'appointment', startsAtLocal: newStartAt,
+                timezone: await this.getTenantTimezone(schema, sandboxNamespace), durationMinutes: duration });
+            if (temporal.kind !== 'appointment') throw new Error('wrong_temporal_kind');
+            newEndAt = temporal.endsAtLocal;
+        } catch (error: unknown) { return this.appointmentTemporalFailure(error); }
+
+        if (appointmentVehicleId(apt.metadata) && apt.start_local === newStartAt && apt.end_local === newEndAt) {
+            return { success: true, alreadyRescheduled: true, appointment: {
+                id: appointmentId, service: apt.service_name, date: newDate, time: newTime, status: apt.status,
+                vehicleId: appointmentVehicleId(apt.metadata), vehicleLabel: apt.metadata?.vehicleTerms?.label,
+            } };
+        }
 
         const noteAppend = reason
             ? `\n[Rescheduled: ${reason}]`
@@ -5568,6 +5721,22 @@ export class AIToolExecutorService {
             const updated: any[] = await this.prisma.transactionInTenantSchema(
                 schema,
                 async (query) => {
+                    // Competes with create/payment settlement under the same DB
+                    // capacity lock, even when another writer does not use Redis.
+                    await assertServedAgentAuthority(query, schema, operationalScope);
+                    if (appointmentVehicleId(apt.metadata)) {
+                        await updateVehicleAppointment(query, schema, apt, {
+                            startAt: newStartAt, endAt: newEndAt, assignedTo, status: apt.status,
+                            notes: (apt.notes || '') + noteAppend, location: apt.location,
+                        }, sandboxNamespace);
+                        if (apt.status !== 'pending_payment') await CalendarSyncOutboxService.enqueueWithTransaction(query, appointmentId, 'upsert');
+                        return [{ id: appointmentId }];
+                    }
+                    await lockAndAssertAppointmentCapacity(query, {
+                        schemaName: schema, serviceId: apt.service_id, staffUserId: assignedTo,
+                        startAt: newStartAt, endAt: newEndAt, excludeAppointmentId: appointmentId,
+                        vehicleId:appointmentVehicleId(apt.metadata),
+                    });
                     const result = await query<any[]>(
                         `UPDATE appointments
                          SET start_at = $1::timestamp, end_at = $2::timestamp,
@@ -5606,6 +5775,19 @@ export class AIToolExecutorService {
                     return { error: 'Appointment changed concurrently. Reload it before retrying.' };
                 }
             }
+        } catch (error: unknown) {
+            if(error instanceof VehicleAppointmentError)return {error:error.vehicleCode,persisted:false,requiresReview:true};
+            if (error instanceof ConflictException) return { error: (error.getResponse() as any)?.error || 'appointment_changed_concurrently', persisted: false, requiresReview: true };
+            if (error instanceof AppointmentTermsChangedError) return appointmentTermsReviewResult(error.currentTerms);
+            if (error instanceof AppointmentSlotConflictError) return {
+                error: 'appointment_slot_unavailable', retryable: true,
+                message: 'That new slot is no longer available. Check availability and ask the customer to choose another time.',
+            };
+            if (error instanceof AppointmentServiceUnavailableError) return {
+                error: 'appointment_service_unavailable',
+                message: 'The appointment service is no longer active. Offer help from the team; do not reschedule it.',
+            };
+            throw error;
         } finally {
             await this.redis.releaseLockToken(slotLock.key, slotLock.token);
         }
@@ -5626,7 +5808,7 @@ export class AIToolExecutorService {
             };
         }
 
-        this.eventEmitter.emit('appointment.rescheduled', {
+        if (apt.metadata?.source !== 'eval_gate') this.eventEmitter.emit('appointment.rescheduled', {
             schemaName: schema,
             appointmentId,
             oldStartAt: apt.start_at,
@@ -5638,21 +5820,37 @@ export class AIToolExecutorService {
             success: true,
             message: 'Appointment rescheduled successfully',
             calendarSynced: false,
-            calendarSyncState: 'pending',
+            calendarSyncState: apt.status === 'pending_payment' ? 'awaiting_payment' : 'pending',
             appointment: {
                 id: appointmentId,
                 service: apt.service_name,
                 date: newDate,
                 time: newTime,
+                status: apt.status,
+                vehicleId: appointmentVehicleId(apt.metadata), vehicleLabel: apt.metadata?.vehicleTerms?.label,
             },
         };
     }
 
+    private appointmentTemporalFailure(error: unknown): Record<string, unknown> {
+        const response = error instanceof BadRequestException ? error.getResponse() : null;
+        if (response && typeof response === 'object' && (response as any).requiresClarification === true) {
+            return { error: (response as any).error, timezone: (response as any).timezone, requiresClarification: true,
+                message: 'This local time is nonexistent, repeated, or crosses a clock change. Ask the customer for another unambiguous time. Do not guess or retry the same time.' };
+        }
+        return { error: 'invalid_appointment_temporal_contract',
+            message: 'The service duration or timezone is invalid. Correct configuration before creating or rescheduling an appointment.' };
+    }
+
     private async getAppointmentDetails(schema: string, contactId: string, appointmentId: string): Promise<any> {
         const rows: any[] = await this.prisma.$queryRawUnsafe(
-            `SELECT id, contact_id, service_name, start_at, end_at, status,
-                    customer_name, customer_email, customer_phone, notes, metadata
-             FROM "${schema}".appointments WHERE id = $1::uuid`,
+            `SELECT a.id, a.contact_id, a.service_name, a.status, a.payment_status, a.amount_due, a.hold_expires_at,
+                    a.customer_name, a.customer_email, a.customer_phone, a.notes, a.metadata,
+                    ${appointmentPriceSql('a', 's')} AS price, ${appointmentCurrencySql('a', 's')} AS currency,
+                    to_char(a.start_at, 'YYYY-MM-DD') AS local_date,
+                    to_char(a.start_at, 'HH24:MI') AS local_time, to_char(a.end_at, 'HH24:MI') AS local_end_time
+             FROM "${schema}".appointments a LEFT JOIN "${schema}".services s ON s.id = a.service_id
+             WHERE a.id = $1::uuid`,
             appointmentId,
         );
         if (!rows.length) return { error: 'Appointment not found' };
@@ -5663,10 +5861,16 @@ export class AIToolExecutorService {
         return {
             id: apt.id,
             service: apt.service_name,
-            date: new Date(apt.start_at).toISOString().split('T')[0],
-            time: new Date(apt.start_at).toTimeString().slice(0, 5),
-            endTime: new Date(apt.end_at).toTimeString().slice(0, 5),
+            date: apt.local_date,
+            time: apt.local_time,
+            endTime: apt.local_end_time,
             status: apt.status,
+            vehicleId: metadata.vehicleId || metadata.vehicle_id,
+            vehicleLabel: metadata.vehicleTerms?.label,
+            paymentStatus: apt.payment_status, holdExpiresAt: apt.hold_expires_at,
+            amountDueToConfirm: apt.amount_due ?? apt.price, currency: apt.currency,
+            payableReference: apt.status === 'pending_payment' && new Date(apt.hold_expires_at).getTime() > Date.now()
+                ? this.payableReference('appointment', apt.id, apt.payment_status, apt.status) : null,
             customerName: apt.customer_name,
             customerEmail: apt.customer_email,
             customerPhone: apt.customer_phone,
@@ -5903,19 +6107,23 @@ export class AIToolExecutorService {
 
     // ── Gyms management handlers ─────────────────────────────────────
 
-    private async cancelClassBooking(schemaName: string, contactId: string, bookingId: string): Promise<any> {
+    private async listMyClassBookings(schemaName: string, contactId: string): Promise<any> {
         try {
-            // IDOR guard: verify the booking belongs to this contact before cancelling
-            // (same ownership pattern as cancelAppointment / cancelEnrollment).
-            const rows: any[] = await this.prisma.$queryRawUnsafe(
-                `SELECT id, contact_id FROM "${schemaName}".class_bookings WHERE id = $1::uuid`,
-                bookingId,
-            );
-            if (!rows.length) return { error: 'Booking not found' };
-            if (rows[0].contact_id !== contactId) return { error: 'You can only cancel your own bookings.' };
+            const bookings = await this.gymsService.listContactBookings(schemaName, contactId);
+            return readOk({ bookings: bookings.map(booking => ({
+                bookingId: booking.booking_id, status: booking.status,
+                classId: booking.class_id, className: booking.name,
+                scheduledAt: booking.scheduled_at, instructor: booking.instructor_name,
+                creditsUsed: booking.status === 'waitlist' ? 0 : booking.credits_used,
+            })) });
+        } catch {
+            return readFailed(TOOL_READ_ERROR_CODES.READ_FAILED);
+        }
+    }
 
-            await this.gymsService.cancelBooking(schemaName, bookingId);
-            return { success: true, message: 'Class booking cancelled. Credits have been restored.' };
+    private async cancelClassBooking(schemaName: string, contactId: string, bookingId: string, operationalScope?:ServedAgentAuthority): Promise<any> {
+        try {
+            return await this.gymsService.cancelBooking(schemaName, bookingId, contactId, operationalScope);
         } catch (e: any) {
             return { error: e.message };
         }
@@ -5923,63 +6131,19 @@ export class AIToolExecutorService {
 
     // ── Education management handlers ────────────────────────────────
 
-    private async cancelEnrollment(schema: string, contactId: string, enrollmentId: string, reason?: string): Promise<any> {
+    private async cancelEnrollment(schema: string, contactId: string, enrollmentId: string, reason?: string, operationalScope?:ServedAgentAuthority): Promise<any> {
         try {
-            const rows: any[] = await this.prisma.$queryRawUnsafe(
-                `SELECT id, contact_id, status, cohort_id, notes FROM "${schema}".enrollments WHERE id = $1::uuid`,
-                enrollmentId,
-            );
-            if (!rows.length) return { error: 'Enrollment not found' };
-            if (rows[0].contact_id !== contactId) return { error: 'You can only cancel your own enrollments' };
-
-            const cancellableStatuses = ['enrolled', 'active'];
-            if (!cancellableStatuses.includes(rows[0].status)) {
-                return { error: `Cannot cancel an enrollment in "${rows[0].status}" status.` };
-            }
-
-            // 'dropped', no 'cancelled': el vocabulario de la tabla es
-            // enrolled|active|completed|dropped|refunded. 'cancelled' se escribia
-            // igual (status esta mapeado) pero quedaba fuera de la paleta del
-            // panel y como balde desconocido en las analiticas por vertical.
-            //
-            // Y el motivo va a `notes`: updateEnrollment mapea seis campos y
-            // cancellationReason no es uno de ellos — se descartaba en silencio,
-            // asi que la razon que daba el alumno se perdia siempre. No hay
-            // columna cancellation_reason en la tabla; notes es su lugar.
-            await this.educationService.updateEnrollment(schema, enrollmentId, {
-                status: 'dropped',
-                // Se ANEXA: updateEnrollment pisa la columna, y las notas del
-                // profesor sobre el alumno no pueden desaparecer porque este
-                // cancele.
-                notes: `${rows[0].notes ? `${rows[0].notes}\n` : ''}[Cancelled by student]${reason ? ` ${reason}` : ''}`,
-            });
-
-            // Devolver el asiento: enrollStudent decrementa available_seats y marca
-            // 'full' al llegar a 0, pero la cancelación nunca lo restauraba — el
-            // mensaje decía "the seat has been released" y el cupo se perdía para
-            // siempre (cohortes fantasma llenas). Espejo exacto del decremento,
-            // incluida la vuelta de 'full' a 'open'. El guard de status de arriba
-            // impide restaurar dos veces (una cancelada no es cancelable de nuevo).
-            if (rows[0].cohort_id) {
-                await this.prisma.$queryRawUnsafe(
-                    `UPDATE "${schema}".course_cohorts
-                     SET available_seats = available_seats + 1,
-                         status = CASE WHEN status = 'full' THEN 'open' ELSE status END
-                     WHERE id = $1::uuid`,
-                    rows[0].cohort_id,
-                );
-            }
-
-            return { success: true, message: 'Enrollment cancelled successfully. The seat has been released.' };
+            return await this.educationService.cancelEnrollment(schema, enrollmentId, { contactId, reason }, operationalScope);
         } catch (e: any) {
-            return { error: e.message };
+            if (e instanceof ServedAgentAuthorityError) throw e;
+            return educationToolError(e);
         }
     }
 
     private async listMyEnrollments(schema: string, contactId: string): Promise<any> {
         try {
             const rows: any[] = await this.prisma.$queryRawUnsafe(
-                `SELECT e.id, e.status, e.payment_status, e.created_at,
+                `SELECT e.id, e.status, e.payment_status, e.created_at, e.metadata,
                         c.name AS course_name, c.subject, c.level, c.modality,
                         co.starts_at, co.schedule
                  FROM "${schema}".enrollments e
@@ -5999,8 +6163,10 @@ export class AIToolExecutorService {
                     startsAt: r.starts_at,
                     schedule: r.schedule,
                     status: r.status,
-                    paymentStatus: r.payment_status,
-                    payableReference: this.payableReference('enrollment', r.id, r.payment_status, r.status),
+                      paymentStatus: r.payment_status,
+                      enrollmentTerms:r.metadata?.enrollmentTerms,
+                      paymentTermsRequireReview:!enrollmentTermsHash(r.metadata?.enrollmentTerms),
+                      payableReference:enrollmentTermsHash(r.metadata?.enrollmentTerms)?this.payableReference('enrollment', r.id, r.payment_status, r.status):undefined,
                 })),
             };
         } catch (e: any) {
@@ -6108,12 +6274,9 @@ export class AIToolExecutorService {
 
     // ── Pets management handlers ─────────────────────────────────────
 
-    private async updatePetTool(schema: string, contactId: string, args: any): Promise<any> {
+    private async updatePetTool(schema: string, contactId: string, args: any, conversationId?: string,
+        idempotencyKey?: string, operationalScope?: ServedAgentAuthority): Promise<any> {
         try {
-            const pet = await this.petsService.getById(schema, args.petId);
-            if (!pet) return { error: 'Pet not found' };
-            if (pet.contact_id !== contactId) return { error: 'You can only update your own pets' };
-
             // Claves en camelCase: PetsService.update mapea camelCase→columna y
             // descarta lo que no reconoce. Con snake_case acá, weight_kg /
             // chronic_conditions / is_neutered se perdían EN SILENCIO mientras el
@@ -6131,10 +6294,12 @@ export class AIToolExecutorService {
                 return { error: 'No fields provided to update' };
             }
 
-            const updated = await this.petsService.update(schema, args.petId, updateData);
+            const updated = await this.petsService.update(schema, args.petId, updateData,
+                { contactId, conversationId, idempotencyKey, operationalScope, requireIdempotency: true });
             return {
                 success: true,
-                message: `${updated.name || pet.name} updated successfully`,
+                message: `${updated.name} updated successfully`,
+                idempotentReplay: updated.idempotentReplay === true,
                 pet: {
                     id: updated.id,
                     name: updated.name,
@@ -6201,6 +6366,7 @@ export class AIToolExecutorService {
         contactId: string,
         conversationId: string | undefined,
         args: any,
+        namespace?: EvalNamespaceLease,
     ): Promise<any> {
         try {
             if (!args?.date || !args?.customerName) {
@@ -6222,7 +6388,7 @@ export class AIToolExecutorService {
                 location: args.location || null,
                 notes: args.specialRequests || null,
                 status: 'requested',
-            });
+            }, { sandboxNamespace: namespace });
             const sessionId = session?.id;
             if (!sessionId) {
                 this.logger.warn('Photo session insert returned no id');

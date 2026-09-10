@@ -1,7 +1,11 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
+import type { ServiceExecutionContext } from '../../common/types/execution-context';
 import { createHash } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
+import { assertServedAgentAuthority, ServedAgentAuthorityError, type ServedAgentAuthority } from '../persona/served-agent-authority';
+import type { PaymentAgentExecution } from '../tenant-payments/payment-agent-authority';
+import { revisionHash } from '../evaluation-revision/evaluation-revision';
 
 export const PAYMENT_OPERATION_PROVIDER = 'PAYMENT_OPERATION_PROVIDER';
 
@@ -115,7 +119,7 @@ export interface PaymentOperationProvider {
      * `discountsAvailable` is derived from `supports('discount')` here, so a
      * provider cannot claim a money capability it did not implement.
      */
-    getRuntimeCapability?(tenantId: string): Promise<
+    getRuntimeCapability?(tenantId: string, executionContext?: ServiceExecutionContext): Promise<
         Omit<PaymentRuntimeCapability, 'planEnabled' | 'discountsAvailable' | 'maxDiscountPercent'>
     >;
     /** A bound adapter may deliberately expose only a subset of money actions. */
@@ -135,7 +139,7 @@ export interface PaymentOperationProvider {
         canonicalDescription?: string;
         paymentStatus?: CustomerPaymentStatus;
     }>;
-    createPaymentLink(input: PaymentLinkProviderRequest): Promise<{
+    createPaymentLink(input: PaymentLinkProviderRequest, execution?: PaymentAgentExecution): Promise<{
         providerOperationId: string;
         url: string;
         provider?: string;
@@ -204,8 +208,8 @@ export class PaymentOperationService {
         @Optional() private readonly throttle?: TenantThrottleService,
     ) {}
 
-    async getRuntimeCapability(tenantId: string): Promise<PaymentRuntimeCapability> {
-        const planEnabled = await this.isCustomerPaymentsEnabled(tenantId);
+    async getRuntimeCapability(tenantId: string, executionContext?: ServiceExecutionContext): Promise<PaymentRuntimeCapability> {
+        const planEnabled = await this.isCustomerPaymentsEnabled(tenantId, executionContext);
         // Status availability is deliberately resolved even after a downgrade:
         // existing links still need an authoritative read path. Entitlement and
         // provider readiness affect only creation.
@@ -219,7 +223,7 @@ export class PaymentOperationService {
             };
         }
         try {
-            const providerCapability = await this.provider.getRuntimeCapability(tenantId);
+            const providerCapability = await this.provider.getRuntimeCapability(tenantId, executionContext);
             return {
                 planEnabled,
                 configured: providerCapability.configured === true,
@@ -254,6 +258,7 @@ export class PaymentOperationService {
         tenantId: string,
         contactId: string,
         args: Record<string, unknown>,
+        executionContext?: ServiceExecutionContext,
     ): Promise<PaymentLinkPreparationResult> {
         const payableReference = this.exactIdentifier(args.payableReference, 180);
         if (!payableReference) {
@@ -265,7 +270,7 @@ export class PaymentOperationService {
                 },
             };
         }
-        if (!await this.isCustomerPaymentsEnabled(tenantId)) {
+        if (!await this.isCustomerPaymentsEnabled(tenantId, executionContext)) {
             return {
                 ok: false,
                 result: {
@@ -339,6 +344,7 @@ export class PaymentOperationService {
         contactId: string,
         executionLedgerId: string,
         prepared: PreparedPaymentLink,
+        operationalScope?: ServedAgentAuthority,
     ): Promise<Record<string, unknown>> {
         if (!this.validPreparedPaymentLink(tenantId, contactId, prepared)) {
             return {
@@ -354,7 +360,7 @@ export class PaymentOperationService {
             currency: prepared.currency,
             description: prepared.description,
             paymentStatus: prepared.paymentStatus,
-        });
+        }, operationalScope);
         const terminal = this.terminalResult(intent);
         if (terminal) return terminal;
         if (!this.provider || !this.supports('payment_link')) {
@@ -374,7 +380,7 @@ export class PaymentOperationService {
 
         let providerOperationId: string | undefined;
         try {
-            if (!await this.markProcessing(schemaName, intent.id, this.provider.id)) {
+            if (!await this.markProcessing(schemaName, intent.id, this.provider.id, operationalScope)) {
                 return this.processingConflict(schemaName, intent.id);
             }
             // This check is deliberately adjacent to the provider write. Tool
@@ -391,7 +397,7 @@ export class PaymentOperationService {
                 description: payable.description,
                 canonicalReference: payable.canonicalReference,
                 idempotencyKey: intent.id,
-            });
+            }, ...(operationalScope ? [{ operationalScope }] : []));
             providerOperationId = created?.providerOperationId;
             if (!created?.providerOperationId || !this.isHttpsUrl(created.url)
                 || (created.paymentStatus !== undefined && created.paymentStatus !== 'pending')) {
@@ -430,6 +436,9 @@ export class PaymentOperationService {
             }
             return result;
         } catch (error: unknown) {
+            if (error instanceof ServedAgentAuthorityError) {
+                return this.markKnownNoEffectFailure(schemaName, intent.id, error.code);
+            }
             if (error instanceof PaymentProviderCallError && error.outcome === 'known_no_effect') {
                 return this.markKnownNoEffectFailure(schemaName, intent.id, error.code);
             }
@@ -622,31 +631,40 @@ export class PaymentOperationService {
         executionLedgerId: string,
         kind: PaymentOperationKind,
         safeRequest: Record<string, unknown>,
+        operationalScope?: ServedAgentAuthority,
     ): Promise<PaymentLedgerRow> {
         await this.ensureTable(schemaName);
-        const requestHash = hash(JSON.stringify(safeRequest));
-        const rows = await this.query<PaymentLedgerRow[]>(
-            schemaName,
-            `INSERT INTO payment_operation_ledger
-                (execution_ledger_id, operation_kind, status, request_hash, request_payload,
-                 reconciliation_status)
-             VALUES ($1::uuid, $2, 'requested', $3, $4::jsonb, 'not_started')
-             ON CONFLICT (execution_ledger_id) DO NOTHING
-             RETURNING *`,
-            [executionLedgerId, kind, requestHash, JSON.stringify(safeRequest)],
-        );
-        const existing = rows[0] ? rows : await this.query<PaymentLedgerRow[]>(
-            schemaName,
-            `SELECT * FROM payment_operation_ledger
-              WHERE execution_ledger_id = $1::uuid
-              LIMIT 1`,
-            [executionLedgerId],
-        );
-        const row = existing[0];
-        if (!row || row.operation_kind !== kind || row.request_hash !== requestHash) {
-            throw new Error('payment_operation_idempotency_conflict');
-        }
-        return row;
+        // Bind the exact served revision into the idempotent money operation.
+        // No control metadata is taken from the customer's/model's request.
+        if (operationalScope) safeRequest = { ...safeRequest, operationalAuthority: operationalScope };
+        // JSONB and approval hydration may reorder provenance keys. Their order
+        // is not a new authorization or a new monetary request.
+        const requestHash = operationalScope ? revisionHash(safeRequest) : hash(JSON.stringify(safeRequest));
+        const create = async (query: <T = any[]>(sql: string, params?: any[]) => Promise<T>) => {
+            await assertServedAgentAuthority(query, schemaName, operationalScope);
+            const rows = await query<PaymentLedgerRow[]>(
+                `INSERT INTO payment_operation_ledger
+                    (execution_ledger_id, operation_kind, status, request_hash, request_payload,
+                     reconciliation_status)
+                 VALUES ($1::uuid, $2, 'requested', $3, $4::jsonb, 'not_started')
+                 ON CONFLICT (execution_ledger_id) DO NOTHING
+                 RETURNING *`,
+                [executionLedgerId, kind, requestHash, JSON.stringify(safeRequest)],
+            );
+            const existing = rows[0] ? rows : await query<PaymentLedgerRow[]>(
+                `SELECT * FROM payment_operation_ledger
+                  WHERE execution_ledger_id = $1::uuid
+                  LIMIT 1`,
+                [executionLedgerId],
+            );
+            const row = existing[0];
+            if (!row || row.operation_kind !== kind || row.request_hash !== requestHash) {
+                throw new Error('payment_operation_idempotency_conflict');
+            }
+            return row;
+        };
+        return operationalScope ? this.prisma.transactionInTenantSchema(schemaName, create)
+            : create((sql, params) => this.query(schemaName, sql, params));
     }
 
     private terminalResult(row: PaymentLedgerRow): Record<string, unknown> | null {
@@ -767,10 +785,10 @@ export class PaymentOperationService {
             && prepared.paymentStatus === current.paymentStatus;
     }
 
-    private async isCustomerPaymentsEnabled(tenantId: string): Promise<boolean> {
+    private async isCustomerPaymentsEnabled(tenantId: string, executionContext?: ServiceExecutionContext): Promise<boolean> {
         if (!this.throttle) return false;
         try {
-            return await this.throttle.isFeatureEnabled(tenantId, 'customerPayments');
+            return await this.throttle.isFeatureEnabled(tenantId, 'customerPayments', executionContext);
         } catch {
             return false;
         }
@@ -928,16 +946,21 @@ export class PaymentOperationService {
         return result;
     }
 
-    private async markProcessing(schemaName: string, id: string, provider: string): Promise<boolean> {
-        const rows = await this.query<PaymentLedgerRow[]>(
-            schemaName,
-            `UPDATE payment_operation_ledger
-                SET status = 'processing', provider = $2, updated_at = NOW()
-              WHERE id = $1::uuid AND status = 'requested'
-              RETURNING *`,
-            [id, provider],
-        );
-        return Boolean(rows[0]);
+    private async markProcessing(schemaName: string, id: string, provider: string, operationalScope?: ServedAgentAuthority): Promise<boolean> {
+        const mark = async (query: <T = any[]>(sql: string, params?: any[]) => Promise<T>) => {
+            await assertServedAgentAuthority(query, schemaName, operationalScope);
+            const rows = await query<PaymentLedgerRow[]>(
+                `UPDATE payment_operation_ledger
+                    SET status = 'processing', provider = $2, updated_at = NOW()
+                  WHERE id = $1::uuid AND status = 'requested'
+                    AND COALESCE(request_payload->'operationalAuthority','null'::jsonb)=$3::jsonb
+                  RETURNING *`,
+                [id, provider, JSON.stringify(operationalScope ?? null)],
+            );
+            return Boolean(rows[0]);
+        };
+        return operationalScope ? this.prisma.transactionInTenantSchema(schemaName, mark)
+            : mark((sql, params) => this.query(schemaName, sql, params));
     }
 
     private async processingConflict(schemaName: string, id: string): Promise<Record<string, unknown>> {
@@ -1034,20 +1057,23 @@ export class PaymentOperationService {
         const safeCode = /^[A-Za-z0-9_.:-]{1,80}$/.test(providerCode)
             ? providerCode
             : 'payment_provider_rejected';
+        const authorityChanged = safeCode === 'agent_operational_revision_changed';
         const result = {
-            error: 'payment_provider_rejected',
+            error: authorityChanged ? safeCode : 'payment_provider_rejected',
             providerErrorCode: safeCode,
             operationId: id,
             shouldHandoff: false,
             requiresNewConfirmation: true,
-            message: 'El proveedor rechazó la creación antes de generar un enlace. Corrige la configuración o los datos y solicita una confirmación nueva antes de reintentar.',
+            message: authorityChanged
+                ? 'La configuración del agente cambió antes de admitir el pago. Prepara una propuesta nueva con la versión vigente.'
+                : 'El proveedor rechazó la creación antes de generar un enlace. Corrige la configuración o los datos y solicita una confirmación nueva antes de reintentar.',
         };
         const updated = await this.query<Array<{ id: string }>>(
             schemaName,
             `UPDATE payment_operation_ledger
                 SET status = 'failed', reconciliation_status = $3,
                     response_payload = $2::jsonb, updated_at = NOW()
-              WHERE id = $1::uuid AND status = 'processing'
+              WHERE id = $1::uuid AND status IN ('requested', 'processing')
                 AND provider_operation_id IS NULL
               RETURNING id`,
             [id, JSON.stringify(result), `known_no_effect:${safeCode}`.slice(0, 80)],

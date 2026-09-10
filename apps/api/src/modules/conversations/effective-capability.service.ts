@@ -1,3 +1,4 @@
+import type { ServiceExecutionContext } from '../../common/types/execution-context';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import {
     CAPABILITY_EXCLUSION_TEXT,
@@ -193,6 +194,7 @@ export class EffectiveCapabilityService {
     ) {}
 
     async resolve(input: {
+        executionContext?: ServiceExecutionContext;
         tenantId: string;
         schemaName: string;
         industry: string;
@@ -273,7 +275,7 @@ export class EffectiveCapabilityService {
         let planFeatures: Record<string, any> = {};
         let planSlug = 'unknown';
         try {
-            planFeatures = await this.throttle.getPlanFeatures(input.tenantId);
+            planFeatures = await this.throttle.getPlanFeatures(input.tenantId, input.executionContext);
             // `getPlanFeatures()` deliberately returns the flattened feature
             // payload, not the tenant's plan slug. Reading `features.plan`
             // therefore recorded `unknown` in every real contract even though
@@ -281,7 +283,7 @@ export class EffectiveCapabilityService {
             // snapshot from the authoritative plan lookup when available.
             const getTenantPlan = (this.throttle as any).getTenantPlan;
             const runtimePlan = typeof getTenantPlan === 'function'
-                ? await getTenantPlan.call(this.throttle, input.tenantId)
+                ? await getTenantPlan.call(this.throttle, input.tenantId, input.executionContext)
                 : null;
             planSlug = String(
                 (typeof runtimePlan === 'string' ? runtimePlan : runtimePlan?.slug)
@@ -317,7 +319,7 @@ export class EffectiveCapabilityService {
 
         const readinessReport = this.readiness
             ? await this.readiness
-                .evaluate(input.tenantId, input.schemaName, [...new Set(readinessKeys)])
+                .evaluate(input.tenantId, input.schemaName, [...new Set(readinessKeys)], input.executionContext)
                 .catch(() => null)
             : null;
         if (this.readiness && !readinessReport) degraded = true;
@@ -576,8 +578,11 @@ export class EffectiveCapabilityService {
             }
         }
 
-        const regional = this.regionalProfile
-            ? await this.regionalProfile.resolve(input.tenantId).catch(() => null)
+        // The shared core already resolved both values (or captured them for
+        // evaluation). Only resolve a missing fallback; do not re-read facts
+        // that cannot affect this decision.
+        const regional = (input.operatingCountry == null || input.jurisdiction == null) && this.regionalProfile
+            ? await this.regionalProfile.resolve(input.tenantId, input.executionContext).catch(() => null)
             : null;
 
         const operatingCountry = input.operatingCountry

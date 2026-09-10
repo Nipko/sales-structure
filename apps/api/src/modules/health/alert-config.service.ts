@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 
@@ -16,6 +16,18 @@ export interface AlertConfig {
     pgbouncer: { warnSec: number; critSec: number };
     sentryErrors: { warn: number; crit: number };
     slaBreaches: { warn: number; crit: number };
+    /**
+     * Uncertain outbound effects waiting for a person. Two different quantities,
+     * not two levels of one: `backlog` counts everything queued for a decision,
+     * `overdue` only what already crossed DISPATCH_RECONCILIATION_SLA_SECONDS.
+     */
+    dispatchReconciliation: { backlog: number; overdue: number; stalled: number };
+    /**
+     * p95 ceiling in milliseconds for the two durable steps of a dispatch, and
+     * the fewest samples an alert may be raised on. A percentile over four
+     * requests is noise, not a signal about the path.
+     */
+    dispatchLatency: { p95Ms: number; minSamples: number };
     queueDepth: Record<string, { warn: number; crit: number }>;
     /** Alert when a queue's failed count is greater than its own threshold. */
     queueFailedByQueue: Record<string, number>;
@@ -37,6 +49,20 @@ export const ALERT_CONFIG_DEFAULTS: AlertConfig = {
     pgbouncer: { warnSec: 5, critSec: 20 },
     sentryErrors: { warn: 50, crit: 200 },
     slaBreaches: { warn: 10, crit: 30 },
+    // A row lands here only when an attempt was authorized and its outcome is
+    // unknowable, which is rare by design; a handful across the whole platform
+    // is a person's afternoon, twenty at once is something systemic. Age is the
+    // harder line: the SLA is already an hour, so the first row that crosses it
+    // is the incident and there is no volume that makes it acceptable.
+    // `stalled` counts a third thing entirely: rows whose job was never
+    // published. One is already a customer waiting on a reply nothing is going
+    // to send, so the threshold is the first row, like `overdue`.
+    dispatchReconciliation: { backlog: 20, overdue: 1, stalled: 1 },
+    // 500 ms is the runbook's objective, chosen with margin over what the load
+    // harness measured (178 ms admit / 104 ms settle at 360 concurrent attempts
+    // on 24 vCPU without PgBouncer). It is also a bucket edge, which is what
+    // keeps the comparison against a bucketed p95 sound.
+    dispatchLatency: { p95Ms: 500, minSamples: 50 },
     queueDepth: {
         // La cola de ENTRANTES faltaba, y es la que el propio platform-monitor
         // llama "la más importante de la plataforma": un backlog acá significa
@@ -89,28 +115,60 @@ export class AlertConfigService {
         private readonly redis: RedisService,
     ) {}
 
-    /** Merge a partial config over a base, one level deep on nested objects. */
+    /**
+     * Merge a partial config over a base, one level deep on nested objects.
+     *
+     * Every value is coerced, including the ones inside nested objects. Those
+     * used to be spread raw while only the flat scalars went through `num()`,
+     * so anything the panel could not turn into a number — an emptied field, a
+     * typo, a null — became the threshold itself. The failure was not loud: a
+     * comparison like `2 >= 'abc'` is simply `false`, so the alert stopped
+     * firing while the panel went on displaying whatever had been typed. An
+     * alert that silently stops watching is worse than one that was never
+     * configured, because somebody believes it is on.
+     *
+     * Numeric strings are accepted because the panel's inputs produce them;
+     * anything genuinely unreadable falls back to the base value here and is
+     * refused outright by `set`, which is where a person is still watching.
+     */
     private mergeOver(base: AlertConfig, partial: any): AlertConfig {
         const p = (partial && typeof partial === 'object') ? partial : {};
-        const num = (v: any, fallback: number) => (typeof v === 'number' && Number.isFinite(v) ? v : fallback);
+        const num = (v: any, fallback: number) => {
+            const value = typeof v === 'string' && v.trim() !== '' ? Number(v) : v;
+            return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+        };
+        /** Field by field, so an unknown key cannot introduce an uncoerced one. */
+        const nums = <T extends Record<string, number>>(baseObject: T, given: any): T => {
+            const merged: Record<string, number> = { ...baseObject };
+            for (const key of Object.keys(baseObject)) merged[key] = num(given?.[key], baseObject[key]);
+            return merged as T;
+        };
+        const bools = <T extends Record<string, boolean>>(baseObject: T, given: any): T => {
+            const merged: Record<string, boolean> = { ...baseObject };
+            for (const key of Object.keys(baseObject)) {
+                const value = given?.[key];
+                merged[key] = typeof value === 'boolean' ? value
+                    : value === 'true' ? true : value === 'false' ? false : baseObject[key];
+            }
+            return merged as T;
+        };
         // Deep-merge the per-queue depth thresholds against the canonical queue set.
         const qd: Record<string, { warn: number; crit: number }> = {};
-        for (const k of Object.keys(base.queueDepth)) {
-            const pk = (p.queueDepth && typeof p.queueDepth === 'object' && p.queueDepth[k]) || {};
-            qd[k] = { ...base.queueDepth[k], ...pk };
-        }
+        for (const k of Object.keys(base.queueDepth)) qd[k] = nums(base.queueDepth[k], p.queueDepth?.[k]);
         const qf: Record<string, number> = {};
         for (const k of Object.keys(base.queueFailedByQueue)) {
             qf[k] = num(p.queueFailedByQueue?.[k], base.queueFailedByQueue[k]);
         }
         return {
-            disk: { ...base.disk, ...(p.disk || {}) },
-            ram: { ...base.ram, ...(p.ram || {}) },
-            redis: { ...base.redis, ...(p.redis || {}) },
-            dbConnections: { ...base.dbConnections, ...(p.dbConnections || {}) },
-            pgbouncer: { ...base.pgbouncer, ...(p.pgbouncer || {}) },
-            sentryErrors: { ...base.sentryErrors, ...(p.sentryErrors || {}) },
-            slaBreaches: { ...base.slaBreaches, ...(p.slaBreaches || {}) },
+            disk: nums(base.disk, p.disk),
+            ram: nums(base.ram, p.ram),
+            redis: nums(base.redis, p.redis),
+            dbConnections: nums(base.dbConnections, p.dbConnections),
+            pgbouncer: nums(base.pgbouncer, p.pgbouncer),
+            sentryErrors: nums(base.sentryErrors, p.sentryErrors),
+            slaBreaches: nums(base.slaBreaches, p.slaBreaches),
+            dispatchReconciliation: nums(base.dispatchReconciliation, p.dispatchReconciliation),
+            dispatchLatency: nums(base.dispatchLatency, p.dispatchLatency),
             queueDepth: qd,
             queueFailedByQueue: qf,
             queueFailed: num(p.queueFailed, base.queueFailed),
@@ -119,7 +177,7 @@ export class AlertConfigService {
             storageQuotaPct: num(p.storageQuotaPct, base.storageQuotaPct),
             diskProjectionDays: num(p.diskProjectionDays, base.diskProjectionDays),
             backupStaleHours: num(p.backupStaleHours, base.backupStaleHours),
-            channels: { ...base.channels, ...(p.channels || {}) },
+            channels: bools(base.channels, p.channels),
         };
     }
 
@@ -145,9 +203,37 @@ export class AlertConfigService {
         }
     }
 
+    /**
+     * Every numeric field a caller actually sent, or the exact path that was not
+     * a number. Reading is forgiving because a bad row must not take the alerts
+     * down with it; writing is not, because a person is right there to be told.
+     */
+    private unreadable(base: any, partial: any, path = ''): string[] {
+        if (!partial || typeof partial !== 'object') return [];
+        const bad: string[] = [];
+        for (const key of Object.keys(partial)) {
+            const here = path ? `${path}.${key}` : key;
+            const expected = base?.[key];
+            const given = partial[key];
+            if (expected && typeof expected === 'object') { bad.push(...this.unreadable(expected, given, here)); continue; }
+            if (given === undefined || given === null) continue;
+            if (typeof expected === 'number') {
+                const value = typeof given === 'string' && given.trim() !== '' ? Number(given) : given;
+                if (typeof value !== 'number' || !Number.isFinite(value)) bad.push(here);
+            } else if (typeof expected === 'boolean') {
+                if (typeof given !== 'boolean' && given !== 'true' && given !== 'false') bad.push(here);
+            }
+        }
+        return bad;
+    }
+
     /** Persist a (partial) config, merged over current. Returns the effective config. */
     async set(partial: any): Promise<AlertConfig> {
         const current = await this.get();
+        const unreadable = this.unreadable(current, partial);
+        // Saving it as the old value would report success and leave the operator
+        // believing the threshold they typed is the one being watched.
+        if (unreadable.length) throw new BadRequestException({ error: 'alert_threshold_not_a_number', fields: unreadable });
         const merged = this.mergeOver(current, partial);
         const json = JSON.stringify(merged);
         await this.prisma.$executeRaw`

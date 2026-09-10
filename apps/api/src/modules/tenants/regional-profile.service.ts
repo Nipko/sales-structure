@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { persistenceDisabled, type ServiceExecutionContext } from '../../common/types/execution-context';
 import {
     AddressForm,
     COUNTRY_DEFAULT_ADDRESS_FORM,
@@ -128,22 +129,27 @@ export class RegionalProfileService {
         private readonly redis: RedisService,
     ) {}
 
-    async resolve(tenantId: string): Promise<TenantRegionalProfileV1> {
+    async resolve(tenantId: string, executionContext?: ServiceExecutionContext): Promise<TenantRegionalProfileV1> {
         const cacheKey = `regional:${tenantId}`;
         try {
-            const cached = await this.redis.getJson<TenantRegionalProfileV1>(cacheKey);
+            const cached = persistenceDisabled(executionContext) ? null : await this.redis.getJson<TenantRegionalProfileV1>(cacheKey);
             if (cached) return cached;
         } catch { /* A cache miss is not a failure. */ }
 
         const profile = await this.build(tenantId);
         try {
-            await this.redis.setJson(cacheKey, profile, CACHE_TTL_SECONDS);
+            if (!persistenceDisabled(executionContext)) await this.redis.setJson(cacheKey, profile, CACHE_TTL_SECONDS);
         } catch { /* Correct but uncached. */ }
         return profile;
     }
 
     async invalidate(tenantId: string): Promise<void> {
         await this.redis.del(`regional:${tenantId}`).catch(() => undefined);
+    }
+
+    /** A failed source read cannot become a frozen fallback profile. */
+    async captureForEvaluation(tenantId: string): Promise<TenantRegionalProfileV1> {
+        return this.build(tenantId, true);
     }
 
     /**
@@ -175,7 +181,7 @@ export class RegionalProfileService {
         }
     }
 
-    private async build(tenantId: string): Promise<TenantRegionalProfileV1> {
+    private async build(tenantId: string, strict = false): Promise<TenantRegionalProfileV1> {
         let tenant: any = null;
         try {
             tenant = await this.prisma.tenant.findUnique({
@@ -189,8 +195,10 @@ export class RegionalProfileService {
                 },
             });
         } catch (error: any) {
+            if (strict) throw new Error('evaluation_regional_source_unavailable');
             this.logger.warn(`[Regional] tenant read failed for ${tenantId}: ${error?.message}`);
         }
+        if (strict && !tenant) throw new Error('evaluation_regional_source_unavailable');
         return this.compose(tenantId, tenant);
     }
 

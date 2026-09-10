@@ -1,3 +1,4 @@
+import { QUALITY_RUBRIC_HASH } from './quality-rubric';
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import type {
     AgentQualityCheck,
@@ -6,6 +7,7 @@ import type {
     AgentQualityOverview,
     AgentQualityPillarStatus,
     AgentQualityPreparationPillar,
+    AgentQualityIssueCode,
     AgentQualityProductionIssue,
     AgentQualityProductionPillar,
     AgentQualityRecommendation,
@@ -22,7 +24,7 @@ import {
     resolveCredentialHealth,
     worstCredentialHealth,
     type ChannelCredentialHealth,
-} from '../channels/channel-credential-health.util';
+} from '@parallext/shared';
 
 const PRODUCTION_DAYS = 30;
 const MINIMUM_PRODUCTION_SAMPLE = 20;
@@ -56,6 +58,8 @@ type TenantContext = {
     settings: Record<string, any>;
     /** False when the connected-accounts read failed: absence is unknown, not zero. */
     channelLookupAvailable: boolean;
+    channelSourceAvailability?: { accounts: boolean; widgets: boolean };
+    humanLookupAvailable?: boolean;
     industry: string | null;
     updatedAt: Date | string | null;
     activeChannelTypes: Set<string>;
@@ -76,7 +80,8 @@ type CredentialHealth = ChannelCredentialHealth;
  */
 export interface TenantChannelSnapshot {
     generatedAt: string;
-    total: number;
+    availability: 'known' | 'partial' | 'unavailable';
+    total: number | null;
     channels: Array<{ type: string; accounts: number; health: ChannelCredentialHealth }>;
 }
 
@@ -87,6 +92,7 @@ type CredentialHealthRow = {
 };
 
 type ReadinessFacts = {
+    unavailableSources?: string[];
     company: any | null;
     companyUpdatedAt: Date | string | null;
     knowledgeChunks: number;
@@ -97,6 +103,9 @@ type ReadinessFacts = {
     policiesUpdatedAt: Date | string | null;
     services: number;
     availabilitySlots: number;
+    testDriveServices: number;
+    testDriveSlots: number;
+    vehicles: number;
     products: number;
     orders: number;
     offers: number;
@@ -249,7 +258,8 @@ export class AgentQualityService {
                    FROM public.widget_configs
                   WHERE tenant_id = $1::uuid AND is_active = true`,
                 tenantId,
-            ).catch(() => [] as any[]),
+            ).then((rows: any) => ({ available: true, rows: (rows as any[]) || [] }))
+                .catch(() => ({ available: false, rows: [] as any[] })),
             this.prisma.$queryRawUnsafe(
                 `SELECT COUNT(*)::int AS count
                    FROM users
@@ -257,7 +267,8 @@ export class AgentQualityService {
                     AND is_active = true
                     AND role IN ('tenant_admin', 'tenant_supervisor', 'tenant_agent')`,
                 tenantId,
-            ).catch(() => [{ count: 0 }]),
+            ).then((rows: any) => ({ available: true, rows: (rows as any[]) || [] }))
+                .catch(() => ({ available: false, rows: [] as any[] })),
             this.prisma.whatsappCredential.findMany({
                 where: { tenantId, credentialType: { in: Object.values(CREDENTIAL_TYPE_BY_CHANNEL) } },
                 orderBy: { createdAt: 'desc' },
@@ -289,9 +300,9 @@ export class AgentQualityService {
         const channelLookup = channels as { available: boolean; rows: any[] };
         const channelRows = [
             ...(Array.isArray(channelLookup?.rows) ? channelLookup.rows : []),
-            ...(Array.isArray(widgets) ? widgets as any[] : []),
+            ...widgets.rows,
         ];
-        const humanRows = Array.isArray(humans) ? humans as any[] : [];
+        const humanRows = humans.rows;
         const healthByAssignment = new Map<string, CredentialHealth>();
         const latestByType = new Map<string, any>();
         for (const credential of credentialLookup.rows) {
@@ -345,7 +356,9 @@ export class AgentQualityService {
             settings: (tenant?.settings as Record<string, any>) || {},
             industry: tenant?.industry || null,
             updatedAt: tenant?.updatedAt || null,
-            channelLookupAvailable: channelLookup?.available !== false,
+            channelLookupAvailable: channelLookup.available && widgets.available,
+            channelSourceAvailability: { accounts: channelLookup.available, widgets: widgets.available },
+            humanLookupAvailable: humans.available,
             activeChannelTypes: new Set(channelRows.map((row) => String(row.channel_type))),
             activeAccountBindings: new Set(channelRows.map((row) => `${row.channel_type}:${row.account_id}`)),
             activeHumanCount: Number(humanRows[0]?.count) || 0,
@@ -370,28 +383,36 @@ export class AgentQualityService {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
         if (!schemaName) throw new NotFoundException('Tenant not found');
         const context = await this.loadTenantContext(tenantId, schemaName);
+        const sources = context.channelSourceAvailability;
+        const availability = context.channelLookupAvailable ? 'known'
+            : sources?.accounts || sources?.widgets ? 'partial' : 'unavailable';
         return {
             generatedAt: new Date().toISOString(),
-            total: context.activeAccountCount,
+            availability,
+            total: availability === 'known' ? context.activeAccountCount : null,
             channels: context.channelTypeSummary.map(({ type, accounts, health }) => ({ type, accounts, health })),
         };
     }
 
     private async loadReadinessFacts(schemaName: string): Promise<ReadinessFacts> {
-        const safe = <T>(query: string, params: any[] = [], fallback: T): Promise<T> =>
+        const unavailableSources: string[] = [];
+        const safe = <T>(source: string, query: string, params: any[] = [], fallback: T): Promise<T> =>
             this.prisma.executeInTenantSchema<T>(schemaName, query, params).catch((error: any) => {
+                unavailableSources.push(source);
                 this.logger.debug(`[Agent quality] Optional readiness probe skipped: ${error?.message || error}`);
                 return fallback;
             });
 
-        const [companies, knowledge, faqRows, policyRows, appointmentRows, productRows, orderRows, offerRows, verticalRows] = await Promise.all([
+        const [companies, knowledge, faqRows, policyRows, appointmentRows, productRows, orderRows, offerRows, verticalRows, vehicleRows] = await Promise.all([
             safe<any[]>(
+                'company',
                 `SELECT name, industry, about, phone, email, website, address, city, country, updated_at
                    FROM companies
                ORDER BY is_primary DESC, updated_at DESC
                   LIMIT 1`, [], [],
             ),
             safe<any[]>(
+                'knowledge',
                 `SELECT COUNT(ke.id)::int AS count,
                         MAX(GREATEST(kd.updated_at, ke.created_at)) AS updated_at
                    FROM knowledge_embeddings ke
@@ -399,11 +420,13 @@ export class AgentQualityService {
                   WHERE kd.status = 'ready' AND btrim(ke.chunk_text) <> ''`, [], [{ count: 0, updated_at: null }],
             ),
             safe<any[]>(
+                'faqs',
                 `SELECT COUNT(*)::int AS count, MAX(updated_at) AS updated_at
                    FROM faqs
                   WHERE is_published = true AND btrim(question) <> '' AND btrim(answer) <> ''`, [], [{ count: 0, updated_at: null }],
             ),
             safe<any[]>(
+                'policies',
                 `SELECT COUNT(*)::int AS count, MAX(updated_at) AS updated_at
                    FROM policies
                   WHERE is_active = true
@@ -412,14 +435,28 @@ export class AgentQualityService {
                     AND btrim(content) <> ''`, [], [{ count: 0, updated_at: null }],
             ),
             safe<any[]>(
+                'appointments',
                 `SELECT
                     (SELECT COUNT(*)::int FROM services WHERE is_active = true AND btrim(name) <> '' AND duration_minutes > 0) AS services,
-                    (SELECT COUNT(*)::int FROM availability_slots WHERE is_active = true AND start_time < end_time) AS slots`, [], [{ services: 0, slots: 0 }],
+                    (SELECT COUNT(*)::int FROM availability_slots WHERE is_active = true AND start_time < end_time) AS slots,
+                    (SELECT COUNT(*)::int FROM services WHERE is_active=true AND btrim(name)<>''
+                        AND COALESCE(duration_type,'fixed')='fixed' AND duration_minutes BETWEEN 1 AND 1440
+                        AND COALESCE(location_type,'in_person') IN ('in_person','hybrid')) AS test_drive_services,
+                    (SELECT COUNT(*)::int FROM availability_slots a
+                        JOIN public.users u ON u.id=a.user_id AND u.is_active=true
+                        JOIN public.tenants t ON t.id=u.tenant_id AND t.is_active=true AND t.schema_name=$1
+                        WHERE a.is_active=true AND a.start_time<a.end_time
+                        AND EXISTS(SELECT 1 FROM services s WHERE s.is_active=true AND btrim(s.name)<>''
+                            AND COALESCE(s.duration_type,'fixed')='fixed' AND s.duration_minutes BETWEEN 1 AND 1440
+                            AND COALESCE(s.location_type,'in_person') IN ('in_person','hybrid')
+                            AND EXTRACT(EPOCH FROM (a.end_time-a.start_time))/60 >= s.duration_minutes)) AS test_drive_slots`,
+                [schemaName], [{ services: 0, slots: 0 }],
             ),
-            safe<any[]>(`SELECT COUNT(*)::int AS count FROM products WHERE is_available = true AND btrim(name) <> ''`, [], [{ count: 0 }]),
-            safe<any[]>(`SELECT COUNT(*)::int AS count FROM orders`, [], [{ count: 0 }]),
-            safe<any[]>(`SELECT COUNT(*)::int AS count FROM commercial_offers WHERE active = true`, [], [{ count: 0 }]),
+            safe<any[]>('products', `SELECT COUNT(*)::int AS count FROM products WHERE is_available = true AND btrim(name) <> ''`, [], [{ count: 0 }]),
+            safe<any[]>('orders', `SELECT COUNT(*)::int AS count FROM orders`, [], [{ count: 0 }]),
+            safe<any[]>('offers', `SELECT COUNT(*)::int AS count FROM commercial_offers WHERE active = true`, [], [{ count: 0 }]),
             safe<any[]>(
+                'verticalCatalogs',
                 `SELECT
                     (SELECT COUNT(*)::int FROM properties WHERE is_active = true) AS properties,
                     (SELECT COUNT(*)::int FROM tour_packages WHERE is_active = true) AS tours,
@@ -435,11 +472,13 @@ export class AgentQualityService {
                     (SELECT COUNT(*)::int FROM services WHERE is_active = true) AS photography,
                     (SELECT COUNT(*)::int FROM services WHERE is_active = true) AS professional_services`, [], [{}],
             ),
+            safe<any[]>('vehicles', `SELECT COUNT(*)::int AS count FROM vehicles WHERE status='available'`, [], [{ count: 0 }]),
         ]);
 
         const company = companies[0] || null;
         const vertical = verticalRows[0] || {};
         return {
+            unavailableSources,
             company,
             companyUpdatedAt: company?.updated_at || null,
             knowledgeChunks: Number(knowledge[0]?.count) || 0,
@@ -450,6 +489,9 @@ export class AgentQualityService {
             policiesUpdatedAt: policyRows[0]?.updated_at || null,
             services: Number(appointmentRows[0]?.services) || 0,
             availabilitySlots: Number(appointmentRows[0]?.slots) || 0,
+            testDriveServices: Number(appointmentRows[0]?.test_drive_services) || 0,
+            testDriveSlots: Number(appointmentRows[0]?.test_drive_slots) || 0,
+            vehicles: Number(vehicleRows[0]?.count) || 0,
             products: Number(productRows[0]?.count) || 0,
             orders: Number(orderRows[0]?.count) || 0,
             offers: Number(offerRows[0]?.count) || 0,
@@ -464,14 +506,14 @@ export class AgentQualityService {
             safe<any[]>(
                 `SELECT id, k, threshold, passed, avg_score, eval_activable, trigger, created_at
                    FROM eval_runs
-                  WHERE agent_id = $1::uuid
+                  WHERE agent_id = $1::uuid AND invalidated_at IS NULL
                ORDER BY created_at DESC
                   LIMIT 1`, [],
             ),
             safe<any[]>(
                 `SELECT id, persona_version, scenario_source, status, scenario_count, avg_score, resolved_rate, created_at, completed_at
                    FROM simulation_runs
-                  WHERE agent_id = $1::uuid AND status = 'completed'
+                  WHERE agent_id = $1::uuid AND status = 'completed' AND invalidated_at IS NULL
                ORDER BY completed_at DESC NULLS LAST, created_at DESC
                   LIMIT 1`, [],
             ),
@@ -533,11 +575,14 @@ export class AgentQualityService {
                     `WITH latest_quality AS (
                         SELECT DISTINCT ON (cqs.conversation_id)
                                cqs.conversation_id, cqs.overall_score, cqs.resolution_type,
-                               cqs.resolution_verified, cqs.created_at
+                               CASE WHEN cqs.operational_outcome='verified' THEN true WHEN cqs.operational_outcome='failed' THEN false ELSE NULL END AS resolution_verified, cqs.created_at
                           FROM conversation_quality_scores cqs
                           JOIN conversations c ON c.id = cqs.conversation_id
                          WHERE cqs.agent_id = $1::uuid
                            AND cqs.agent_config_version = $2
+                           AND cqs.source_revision = c.qa_revision AND cqs.rubric_version = 'v3' AND cqs.rubric_hash = $3
+                           AND NOT EXISTS (SELECT 1 FROM customer_memory_erasure e WHERE e.contact_id=c.contact_id)
+                           AND cqs.invalidated_at IS NULL
                            AND COALESCE(c.agent_attribution_conflicted, false) = false
                            AND COALESCE(c.was_handed_off, false) = false
                            AND cqs.created_at >= NOW() - INTERVAL '30 days'
@@ -545,11 +590,11 @@ export class AgentQualityService {
                     )
                     SELECT COUNT(*) FILTER (WHERE resolution_type = 'ai_resolved')::int AS sample_size,
                             AVG(overall_score) FILTER (WHERE resolution_type = 'ai_resolved') AS avg_overall,
-                            COUNT(*) FILTER (WHERE resolution_type = 'ai_resolved')::int AS verified_total,
+                            COUNT(*) FILTER (WHERE resolution_type = 'ai_resolved' AND resolution_verified IS NOT NULL)::int AS verified_total,
                             COUNT(*) FILTER (WHERE resolution_type = 'ai_resolved' AND resolution_verified = true)::int AS verified_success,
                             MIN(created_at) AS attributed_since
                        FROM latest_quality`,
-                    [agentId, agentVersion],
+                    [agentId, agentVersion, QUALITY_RUBRIC_HASH],
                 ),
                 this.prisma.executeInTenantSchema<any[]>(
                     schemaName,
@@ -568,11 +613,14 @@ export class AgentQualityService {
                     `WITH latest_quality AS (
                         SELECT DISTINCT ON (cqs.conversation_id)
                                cqs.conversation_id, cqs.flags, cqs.overall_score,
-                               cqs.resolution_type, cqs.resolution_verified, cqs.created_at
+                               cqs.resolution_type, CASE WHEN cqs.operational_outcome='verified' THEN true WHEN cqs.operational_outcome='failed' THEN false ELSE NULL END AS resolution_verified, cqs.created_at
                           FROM conversation_quality_scores cqs
                           JOIN conversations c ON c.id = cqs.conversation_id
                          WHERE cqs.agent_id = $1::uuid
                            AND cqs.agent_config_version = $2
+                           AND cqs.source_revision = c.qa_revision AND cqs.rubric_version = 'v3' AND cqs.rubric_hash = $3
+                           AND NOT EXISTS (SELECT 1 FROM customer_memory_erasure e WHERE e.contact_id=c.contact_id)
+                           AND cqs.invalidated_at IS NULL
                            AND COALESCE(c.agent_attribution_conflicted, false) = false
                            AND COALESCE(c.was_handed_off, false) = false
                            AND cqs.created_at >= NOW() - INTERVAL '30 days'
@@ -588,7 +636,7 @@ export class AgentQualityService {
                         )
                    ORDER BY created_at DESC
                       LIMIT 200`,
-                    [agentId, agentVersion],
+                    [agentId, agentVersion, QUALITY_RUBRIC_HASH],
                 ),
                 this.prisma.executeInTenantSchema<any[]>(
                     schemaName,
@@ -729,7 +777,26 @@ export class AgentQualityService {
         const staleBindings = assignmentHealth.filter(({ stale }) => stale).length;
 
         const checks: AgentQualityCheck[] = [];
-        const add = (check: CheckInput) => checks.push(check);
+        const dependencies: Record<string, string[]> = {
+            business_identity: ['company'], business_contact: ['company'],
+            rag_knowledge: ['knowledge'], tool_faqs: ['faqs'], tool_policies: ['policies'],
+            tool_appointments: ['appointments'], tool_catalog: ['products'], tool_ecommerce: ['products'],
+            tool_orders: ['orders'], tool_offers: ['offers'],
+            tool_vehicles: ['vehicles'], test_drive_service: ['appointments'], test_drive_staff: ['appointments'],
+        };
+        const add = (check: CheckInput) => {
+            const required = dependencies[check.code] ?? (check.code.startsWith('tool_') && check.evidence && 'records' in check.evidence ? ['verticalCatalogs'] : []);
+            const unavailable = required.filter(source => facts.unavailableSources?.includes(source));
+            if (check.code === 'human_handoff_route' && tenant.humanLookupAvailable === false) unavailable.push('humans');
+            if (['channel_connection', 'channel_coverage'].includes(check.code) && tenant.channelLookupAvailable === false) unavailable.push('channels');
+            if (check.code === 'knowledge_coverage' && Number(check.evidence?.availableSources ?? 0) === 0) {
+                unavailable.push(...(facts.unavailableSources ?? []).filter(source => ['knowledge', 'faqs', 'policies', 'products', 'appointments', 'verticalCatalogs'].includes(source)
+                    || source === 'vehicles' && tools.vehicles?.enabled === true));
+            }
+            checks.push(unavailable.length && check.status !== 'not_applicable'
+                ? { ...check, status: 'unknown', evidence: { sourceAvailability: 'unavailable', unavailableSources: [...new Set(unavailable)].join(',') } }
+                : check);
+        };
         const text = (value: unknown) => typeof value === 'string' && value.trim().length > 0;
         const list = (value: unknown) => Array.isArray(value) && value.some((item) => text(item));
         const status = (ok: boolean, missing: 'warning' | 'fail' = 'fail') => ok ? 'pass' as const : missing;
@@ -757,7 +824,7 @@ export class AgentQualityService {
 
         const knowledgeRequired = config.rag?.enabled === true || tools.knowledge?.enabled === true;
         const availableKnowledgeSources = facts.knowledgeChunks + facts.faqs + facts.policies + facts.products
-            + facts.services + Object.values(facts.verticalCatalogs).reduce((sum, count) => sum + count, 0);
+            + facts.services + (tools.vehicles?.enabled === true ? facts.vehicles : 0) + Object.values(facts.verticalCatalogs).reduce((sum, count) => sum + count, 0);
         add({ code: 'knowledge_coverage', dimension: 'knowledge_grounding', status: availableKnowledgeSources > 0 ? 'pass' : 'warning', critical: false, weight: 4, href: '/admin/knowledge', evidence: { availableSources: availableKnowledgeSources } });
         add({ code: 'rag_knowledge', dimension: 'knowledge_grounding', status: knowledgeRequired ? status(facts.knowledgeChunks > 0) : 'not_applicable', critical: knowledgeRequired, weight: 6, href: '/admin/knowledge', evidence: { enabled: knowledgeRequired, chunks: facts.knowledgeChunks } });
         const ragValid = Number(config.rag?.chunkSize) > 0
@@ -825,6 +892,17 @@ export class AgentQualityService {
             },
         });
         add({ code: 'tool_appointments', dimension: 'actions_outcomes', status: this.optionalToolStatus(tools.appointments, facts.services > 0 && facts.availabilitySlots > 0), critical: tools.appointments?.enabled === true, weight: 5, href: '/admin/appointments', evidence: { enabled: tools.appointments?.enabled === true, services: facts.services, availabilitySlots: facts.availabilitySlots } });
+        const missionIntents = (config as any).mission?.intentKeys;
+        const wantsTestDrives = tools.vehicles?.enabled === true
+            && (!Array.isArray(missionIntents) || missionIntents.includes('schedule_test_drive'));
+        add({ code: 'tool_vehicles', dimension: 'actions_outcomes', status: this.optionalToolStatus(tools.vehicles, facts.vehicles > 0), critical: tools.vehicles?.enabled === true,
+            weight: 4, href: '/admin/vehicles', evidence: { enabled: tools.vehicles?.enabled === true, records: facts.vehicles } });
+        add({ code: 'test_drive_permissions', dimension: 'actions_outcomes', status: wantsTestDrives ? status(tools.appointments?.enabled === true && tools.appointments?.canBook !== false) : 'not_applicable',
+            critical: wantsTestDrives, weight: 3, href: `/admin/agent/${agent.id}`, evidence: { appointmentsEnabled: tools.appointments?.enabled === true, canBook: tools.appointments?.canBook !== false } });
+        add({ code: 'test_drive_service', dimension: 'actions_outcomes', status: wantsTestDrives ? status(facts.testDriveServices > 0) : 'not_applicable',
+            critical: wantsTestDrives, weight: 3, href: '/admin/appointments', evidence: { compatibleServices: facts.testDriveServices } });
+        add({ code: 'test_drive_staff', dimension: 'actions_outcomes', status: wantsTestDrives ? status(facts.testDriveSlots > 0) : 'not_applicable',
+            critical: wantsTestDrives, weight: 3, href: '/admin/appointments', evidence: { compatibleAvailability: facts.testDriveSlots } });
         add({ code: 'tool_catalog', dimension: 'actions_outcomes', status: this.optionalToolStatus(tools.catalog, facts.products > 0), critical: tools.catalog?.enabled === true, weight: 4, href: '/admin/inventory', evidence: { enabled: tools.catalog?.enabled === true, products: facts.products } });
         add({ code: 'tool_ecommerce', dimension: 'actions_outcomes', status: this.optionalToolStatus(tools.ecommerce, facts.products > 0), critical: tools.ecommerce?.enabled === true, weight: 4, href: '/admin/inventory', evidence: { enabled: tools.ecommerce?.enabled === true, products: facts.products } });
         add({ code: 'tool_orders', dimension: 'actions_outcomes', status: tools.orders?.enabled === true ? 'pass' : 'not_applicable', critical: false, weight: 2, href: '/admin/orders', evidence: { enabled: tools.orders?.enabled === true, existingOrders: facts.orders } });
@@ -954,7 +1032,8 @@ export class AgentQualityService {
             || recurringKnowledgeGap;
         return {
             status: !facts.available || facts.sampleSize < MINIMUM_PRODUCTION_SAMPLE ? 'insufficient_evidence'
-                : needsAttention ? 'needs_attention' : 'evidenced',
+                : needsAttention ? 'needs_attention'
+                : facts.verifiedResolutionTotal < MINIMUM_PRODUCTION_SAMPLE ? 'insufficient_evidence' : 'evidenced',
             observedScore: enoughEvidence && facts.avgOverall != null ? this.round(facts.avgOverall * 10, 2) : null,
             sampleSize: facts.sampleSize,
             minimumSample: MINIMUM_PRODUCTION_SAMPLE,
@@ -1193,7 +1272,13 @@ export class AgentQualityService {
         return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || 'issue';
     }
 
-    private classifyQualityFlag(label: string): string {
+    /**
+     * Returns one of the declared classes, never a free string. The union is
+     * shared because `agent-issue-resolution.ts` has to cover every class with
+     * a resolution, and a class invented here without one would reach a person
+     * as `investigate_<something>` with nothing to do about it.
+     */
+    private classifyQualityFlag(label: string): AgentQualityIssueCode {
         const value = this.slug(label);
         if (/(invent|alucin|incorrect|imprecis|contradic|no_verific|fuente|conocimiento|precio_err|dato_err)/.test(value)) return 'qa_knowledge_accuracy';
         if (/(no_resol|sin_resol|necesidad|pendiente|aband|incomplet|no_cerro|no_solucion)/.test(value)) return 'qa_unresolved_need';

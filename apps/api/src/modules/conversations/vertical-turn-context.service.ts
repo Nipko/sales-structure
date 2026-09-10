@@ -1,3 +1,4 @@
+import type { ServiceExecutionContext } from '../../common/types/execution-context';
 import { Injectable } from '@nestjs/common';
 import {
     buildDomainContractDraft,
@@ -72,8 +73,9 @@ export class VerticalTurnContextService {
         tenantId: string;
         language: string;
         toolsConfig?: unknown;
+        executionContext?: ServiceExecutionContext;
     }): Promise<VerticalContext | undefined> {
-        const config = await this.verticals.getVerticalConfig(input.tenantId);
+        const config = await this.verticals.getVerticalConfig(input.tenantId, 0, input.executionContext);
         if (!config?.industry) return undefined;
 
         const language = this.languageCode(input.language);
@@ -224,7 +226,7 @@ const FLOW_GUIDANCE: ReadonlyArray<{ industry: string; requires: string; es: str
     { industry: 'servicios_hogar', requires: 'homeServices', es: 'Para una solicitud: entienda el problema y la dirección → resuma lo que registrará → create_service_request. Después del registro la conversación pasa a una persona del equipo.' },
     { industry: 'fotografia', requires: 'photography', es: 'Para una sesión: list_photo_packages → send_portfolio si el cliente quiere ver trabajo previo → check_date_availability → request_photo_quote.' },
     { industry: 'inmobiliaria', requires: 'realEstate', es: 'Para una visita: search_listings → get_listing_details → send_listing_image si ayuda → agende la visita registrando siempre el inmueble.' },
-    { industry: 'automotriz', requires: 'vehicles', es: 'Para una prueba de manejo: search_vehicles → get_vehicle_details → send_vehicle_image si ayuda → acuerde día y hora → schedule_test_drive. Nunca afirme que quedó agendada sin éxito de la herramienta.' },
+    { industry: 'automotriz', requires: 'vehicles', es: 'Prueba de manejo: search_vehicles → get_vehicle_details → list_services presencial de duración fija → check_availability con vehicleId → confirmar vehículo, asesor, horario y condiciones → schedule_test_drive con serviceId y staffId reales. Distingue pendiente de aprobación, pendiente de pago y confirmado. Usa el mismo appointment.id para consultar, reprogramar o cancelar. Explica requisitos faltantes y deriva al equipo si no puedes reservar.' },
     { industry: 'veterinaria', requires: 'pets', es: 'Registre la mascota con register_pet antes de agendar; use list_pets_for_contact primero para no duplicarla. Ante señales de urgencia use triage_pet_emergency.' },
     { industry: 'salud', requires: 'catalog', es: 'Para una venta de mostrador: search_products → check_stock → confirme producto y cantidad → place_catalog_order. Los productos bajo fórmula médica se derivan a una persona; nunca sugiera medicamento, dosis ni reemplazo.' },
     { industry: 'retail', requires: 'catalog', es: 'Para una venta: search_products → get_product → check_stock → send_product_image si ayuda → confirme producto y cantidad → place_catalog_order. Los precios salen del catálogo.' },

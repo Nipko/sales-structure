@@ -145,81 +145,17 @@ describe('PersonaController setup wizard — avanzar sin destruir', () => {
     });
 
     it.each([
-        ['sin plantilla', undefined],
-        ['con la plantilla de origen', 'tpl_sales'],
-    ])('personaliza sobre la configuración viva (%s)', async (_label, templateId) => {
-        const { controller, personaService } = makeController();
-
-        await controller.applyTemplate(
-            tenantId,
-            { templateId, customizations: { agentName: 'Ana' }, stage: 'agent_reviewed' } as any,
-            req,
-        );
-
-        expect(personaService.updateAgent).toHaveBeenCalledTimes(1);
-        const [, , payload] = personaService.updateAgent.mock.calls[0];
-        expect(payload.configJson.behaviourRules).toEqual(LIVE_CONFIG.behaviourRules);
-        expect(payload.configJson.handoff).toEqual(LIVE_CONFIG.handoff);
-        expect(payload.configJson.forbiddenTopics).toEqual(LIVE_CONFIG.forbiddenTopics);
-        expect(payload.configJson.rag).toEqual(LIVE_CONFIG.rag);
-        expect(payload.configJson.hours).toEqual(LIVE_CONFIG.hours);
-        expect(payload.configJson.persona.fallbackMessage).toBe(LIVE_CONFIG.persona.fallbackMessage);
-        expect(payload.configJson.tools.catalog).toEqual({ enabled: true });
-        // Lo único que el asistente cambió:
-        expect(payload.configJson.persona.name).toBe('Ana');
-        // El respaldo legado no se toca: con un agente vivo nadie lo lee, y su
-        // gate de agenda bloquearía un simple cambio de nombre.
-        expect(personaService.savePersonaFromYaml).not.toHaveBeenCalled();
-    });
-
-    it('no apaga una agenda que ya estaba encendida aunque falten cupos', async () => {
-        const withAppointments = {
-            ...LIVE_CONFIG,
-            tools: { ...LIVE_CONFIG.tools, appointments: { enabled: true, canBook: true } },
-        };
-        const { controller, personaService, prisma } = makeController({
-            agents: [{ id: agentId, is_default: true, config_json: withAppointments }],
-        });
-        // Sin servicios ni cupos activos.
-        prisma.$queryRawUnsafe.mockResolvedValue([{ slots: 0, services: 0 }]);
-
-        await controller.applyTemplate(
-            tenantId,
-            { customizations: { agentName: 'Ana' }, stage: 'agent_reviewed' } as any,
-            req,
-        );
-
-        const [, , payload] = personaService.updateAgent.mock.calls[0];
-        expect(payload.configJson.tools.appointments.enabled).toBe(true);
-    });
-
-    it('no ensancha canales ni modo de horario que nadie pidió', async () => {
+        { customizations: { agentName: 'Ana' } },
+        { templateId: 'tpl_sales', customizations: { agentName: 'Ana' } },
+        { selectedChannels: ['whatsapp'], customizations: { is247: false } },
+        { customizations: { enabledCapabilities: ['catalog'] }, markCompleted: true },
+    ])('requires the draft CAS route for an existing agent, preserving live settings: %j', async payload => {
         const { controller, personaService, written } = makeController();
-
-        await controller.applyTemplate(
-            tenantId,
-            { templateId: 'tpl_sales', customizations: { agentName: 'Ana' }, markCompleted: true },
-            req,
-        );
-
-        const [, , payload] = personaService.updateAgent.mock.calls[0];
-        expect(payload.channels).toBeUndefined();
-        expect(payload.scheduleMode).toBeUndefined();
-        expect(written[0].setupWizardChannels).toBeUndefined();
-    });
-
-    it('respeta los canales cuando el emisor SÍ los eligió', async () => {
-        const { controller, personaService } = makeController();
-
-        await controller.applyTemplate(
-            tenantId,
-            { templateId: 'tpl_sales', selectedChannels: ['whatsapp'], customizations: { is247: false } },
-            req,
-        );
-
-        const [, , payload] = personaService.updateAgent.mock.calls[0];
-        expect(payload.channels).toEqual(['whatsapp']);
-        expect(payload.scheduleMode).toBe('business_hours');
+        await expect(controller.applyTemplate(tenantId, payload, req)).rejects.toMatchObject({ response: { error: 'agent_draft_contract_required' } });
+        expect(personaService.updateAgent).not.toHaveBeenCalled();
+        expect(personaService.savePersonaFromYaml).not.toHaveBeenCalled();
+        expect(personaService.createAgent).not.toHaveBeenCalled();
+        expect(written).toEqual([]);
     });
 
     it('un tenant sin agente sigue estrenando uno desde la plantilla', async () => {

@@ -27,6 +27,11 @@ port `3001`. Both applications receive dummy local API URLs. Browser traffic to
 non-local hosts is blocked, and every backend interaction exercised by these
 tests must be explicitly mocked.
 
+For manual or tool-assisted visual review of the agent setup, assessment and
+learning pages without a real API, see
+[`docs/agent-platform-visual-review-2026-09-07.md`](../../docs/agent-platform-visual-review-2026-09-07.md).
+The loopback fixture does not certify backend behavior or replace browser tests.
+
 ## CI
 
 `.github/workflows/playwright.yml` runs Chromium with one worker, one retry,

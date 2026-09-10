@@ -13,12 +13,16 @@ import {
   MessageSquare, Instagram, Facebook, Send, X, Globe2, Plug,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
+import { AgentAssessmentPanel } from "@/components/quality/AgentAssessmentPanel";
 import { TabNav } from "@/components/ui/tab-nav";
 import { Badge } from "@/components/ui/badge";
 import { HelpPanel } from "@/components/ui/help-panel";
 import { AgentReadinessBanner } from "@/components/AgentReadinessBanner";
-import { requestQualityHealthRefresh } from "@/lib/quality-health-events";
+import { AGENT_CONFIGURATION_APPLIED_EVENT, requestQualityHealthRefresh } from "@/lib/quality-health-events";
 import { guidedTourAnchorId } from "@/lib/guided-tours";
+import type { AgentConfigurationWorkspace } from '@parallext/shared';
+import { AgentDraftStatus } from '@/components/quality/AgentDraftStatus';
+import { agentDraftTestHref, prepareDraftSave, type DraftSaveAttempt } from '@/lib/agent-draft-save';
 
 import type { PersonaConfig } from "../_types";
 import { defaultConfig } from "../_types";
@@ -124,12 +128,20 @@ export default function AgentEditorPage() {
   const tc = useTranslations("common");
   const tt = useTranslations("agent.tabs");
   const th = useTranslations("help");
+  const tConfiguration = useTranslations("agentConfiguration");
+  const tLearning = useTranslations("agentLearning");
+  const tReleases = useTranslations('agentReleases');
+  const tRegressions = useTranslations("qualityRegressions");
+  const tPublications = useTranslations("agentPublications");
   const { activeTenantId } = useTenant();
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
   const agentId = params.agentId as string;
   const heroRef = useRef<HTMLDivElement | null>(null);
+  const tDraft = useTranslations('agentDraft');
+  const [workspace, setWorkspace] = useState<AgentConfigurationWorkspace | null>(null);
+  const saveAttempt = useRef<DraftSaveAttempt | null>(null);
 
   const [activeTab, setActiveTab] = useState("persona");
   const [mode, setMode] = useState<"guided" | "prompt">("guided");
@@ -137,6 +149,8 @@ export default function AgentEditorPage() {
   const [customPrompt, setCustomPrompt] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [externalChange, setExternalChange] = useState(false);
+  const [loadedVersion, setLoadedVersion] = useState<number | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [isDefault, setIsDefault] = useState(false);
   const [isActive, setIsActive] = useState(true);
@@ -157,33 +171,51 @@ export default function AgentEditorPage() {
   });
 
   // ── Load agent data ────────────────────────────────────────
+  useEffect(() => {
+    const changed = (event: Event) => {
+      const detail = (event as CustomEvent).detail;
+      if (detail?.tenantId === activeTenantId && detail?.agentId === agentId) setExternalChange(true);
+    };
+    window.addEventListener(AGENT_CONFIGURATION_APPLIED_EVENT, changed);
+    return () => window.removeEventListener(AGENT_CONFIGURATION_APPLIED_EVENT, changed);
+  }, [activeTenantId, agentId]);
 
   useEffect(() => {
     if (!activeTenantId || !agentId) return;
     setLoading(true);
+    setLoadedVersion(null); setExternalChange(false);
+    setWorkspace(null); saveAttempt.current = null;
+    let cancelled = false;
 
     Promise.all([
-      api.getAgent(activeTenantId, agentId),
+      api.getAgentConfiguration(activeTenantId, agentId),
       api.listAgents(activeTenantId),
       api.fetch('/channels/overview').catch(() => ({ data: [] })),
     ])
       .then(([agentRes, agentsRes, overviewRes]: any[]) => {
+        if (cancelled) return;
         const accts: ChannelAccountLite[] = Array.isArray(overviewRes?.data)
           ? overviewRes.data.map((a: any) => ({ channelType: a.channelType, accountId: a.accountId, displayName: a.displayName }))
           : [];
         setAccounts(accts);
 
         if (agentRes?.success && agentRes.data) {
-          const data = agentRes.data;
-          const configData = data.config_json || {};
+          const state: AgentConfigurationWorkspace = agentRes.data;
+          setWorkspace(state);
+          const data = state.draft?.body ?? state.operational.body;
+          setLoadedVersion(state.operational.version);
+          const configData = data.configJson || {};
           setConfig(deepMerge(structuredClone(defaultConfig), configData));
-          setIsDefault(data.is_default ?? false);
+          setIsDefault(data.isDefault || searchParams.get('draftDefault') === '1');
+          if (searchParams.get('draftDefault') === '1' && !data.isDefault) setToast(tDraft('defaultNeedsSave'));
           // The `agent_active` quality check reads the COLUMN, not
           // `config_json.isActive`; the hero must show the same truth.
-          setIsActive(data.is_active !== false);
-          if (configData._customPrompt) {
-            setCustomPrompt(configData._customPrompt);
+          setIsActive(state.operational.body.isActive);
+          if ((configData.editorMode ?? configData._mode) === 'prompt') {
+            setCustomPrompt(configData.customPrompt ?? configData._customPrompt ?? '');
             setMode("prompt");
+          } else {
+            setCustomPrompt(''); setMode('guided');
           }
 
           // Normalize the stored assignment against the CURRENT connected accounts so
@@ -194,7 +226,7 @@ export default function AgentEditorPage() {
           //    binding back into `channels` so the assignment isn't lost when a second
           //    account gets disconnected).
           const srcChannels: string[] = data.channels || [];
-          const srcBindings: string[] = data.channel_bindings || [];
+          const srcBindings: string[] = data.channelBindings || [];
           const countByType: Record<string, number> = {};
           for (const a of accts) countByType[a.channelType] = (countByType[a.channelType] || 0) + 1;
           const bindingTypes = srcBindings.map(b => b.split(":")[0]);
@@ -226,7 +258,8 @@ export default function AgentEditorPage() {
         }
       })
       .catch(() => {})
-      .finally(() => setLoading(false));
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, [activeTenantId, agentId]);
 
   // ── Load appointments readiness ────────────────────────────
@@ -239,6 +272,10 @@ export default function AgentEditorPage() {
       api.getAvailability(activeTenantId).catch(() => null),
     ]).then(([svcRes, availRes]: any[]) => {
       if (cancelled) return;
+      if (!svcRes?.success || !availRes?.success) {
+        setApptReadiness({ services: 0, slots: 0, loaded: false });
+        return;
+      }
       let services = 0;
       if (Array.isArray(svcRes?.data)) services = svcRes.data.length;
       else if (svcRes?.data?.services && Array.isArray(svcRes.data.services)) services = svcRes.data.services.length;
@@ -348,7 +385,7 @@ export default function AgentEditorPage() {
   const highlightCls = (field: FocusField) =>
     focusField === field ? "rounded-xl ring-2 ring-indigo-500 ring-offset-2 ring-offset-white dark:ring-offset-neutral-900" : "";
 
-  // ── Validation (mirrors persona.service.updateAgent) ───────
+  // ── Validation (mirrors the canonical draft validator) ───────
   //
   // The editor used to save an agent with no name, no fallback, no rules and no
   // handoff reason, and the banner only said "1 critical blocker". Both halves
@@ -359,6 +396,7 @@ export default function AgentEditorPage() {
     const filled = (value: unknown) => typeof value === "string" && value.trim().length > 0;
     const anyFilled = (list: unknown) => Array.isArray(list) && list.some((item) => filled(item));
     if (!filled(config.persona.name)) errors.name = t("validation.nameRequired");
+    if (mode === "prompt") return errors;
     if (!filled(config.persona.role)) errors.role = t("validation.roleRequired");
     if (!filled(config.persona.fallbackMessage)) errors.fallback = t("validation.fallbackRequired");
     if (!anyFilled(config.behavior.rules)) errors.rules = t("validation.rulesRequired");
@@ -379,17 +417,23 @@ export default function AgentEditorPage() {
 
   async function applyActive(next: boolean) {
     if (!activeTenantId || !agentId) return;
+    if (next) { setToast(tDraft('activationReview')); return; }
+    if (externalChange || loadedVersion === null) { setToast(tConfiguration('editorChanged')); return; }
     setConfirmActive(null);
     setActivePending(true);
     try {
-      const res = await api.updateAgent(activeTenantId, agentId, { isActive: next });
+      const res = await api.updateAgent(activeTenantId, agentId, { isActive: next, expectedVersion: loadedVersion });
       if (res?.success) {
+        setLoadedVersion((res.data as any).version);
         setIsActive(next);
+        const reread = await api.getAgentConfiguration(activeTenantId, agentId);
+        if (reread.success && reread.data) setWorkspace(reread.data);
         setConfig((prev) => ({ ...prev, isActive: next }));
         setToast(next ? t("activation.activated") : t("activation.deactivated"));
         window.setTimeout(requestQualityHealthRefresh, 1_500);
         setQualityRefreshKey((current) => current + 1);
       } else {
+        if ((res as any)?.errorCode === 'agent_version_conflict') setExternalChange(true);
         setToast((res as any)?.error || tc("errorSaving"));
       }
     } catch {
@@ -403,6 +447,8 @@ export default function AgentEditorPage() {
 
   async function handleSave() {
     if (!activeTenantId || !agentId) return;
+    if (externalChange || loadedVersion === null || !workspace || (workspace.draft && !workspace.draft.currentBase)) { setToast(tConfiguration('editorChanged')); return; }
+    if (mode === "prompt" && !customPrompt.trim()) { setToast(tDraft('promptRequired')); return; }
     const errors = validateAgent();
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors);
@@ -424,27 +470,23 @@ export default function AgentEditorPage() {
         ...assignedChannels.filter(t => !multiAccountTypes.has(t)),
         ...foldedTypes,
       ]));
-      // `_personalizedAt` is what tells the agent list this agent was reviewed by
-      // a person. Keying the "personalize your agent" banner on template NAMES
-      // meant vertical tenants (almost all of them) never saw it.
-      const base = { ...config, _personalizedAt: new Date().toISOString() };
+      const base = { ...config };
       const configJson = mode === "prompt"
-        ? { ...base, _customPrompt: customPrompt, _mode: "prompt" }
-        : { ...base, _customPrompt: undefined, _mode: "wizard" };
-      const payload: any = {
-        configJson,
-        channels: channelsToSave,
-        channelBindings: bindingsToSave,
-        isDefault,
-      };
-      const res = await api.updateAgent(activeTenantId, agentId, payload);
-      if (res?.success) {
-        setToast(t("savedSuccess"));
-        setQualityRefreshKey((current) => current + 1);
-        // The API recalculates signals asynchronously after agent.config.updated.
-        // Refresh the global card/badge shortly after that reconciliation instead
-        // of leaving the previous health snapshot visible for up to five minutes.
-        window.setTimeout(requestQualityHealthRefresh, 1_500);
+        ? { ...base, customPrompt, editorMode: 'prompt', _customPrompt: customPrompt, _mode: "prompt" }
+        : { ...base, customPrompt: undefined, editorMode: 'guided', _customPrompt: undefined, _mode: "wizard" };
+      saveAttempt.current = prepareDraftSave(workspace, {
+        ...(workspace.draft?.body ?? workspace.operational.body), name: configJson.persona.name,
+        configJson, channels: channelsToSave, channelBindings: bindingsToSave, isDefault,
+      }, saveAttempt.current);
+      const res = await api.saveAgentDraft(activeTenantId, agentId, saveAttempt.current.request);
+      if (res?.success && res.data) {
+        setWorkspace(res.data.workspace);
+        setLoadedVersion(res.data.workspace.operational.version);
+        if (res.data.savedRevision.id !== res.data.workspace.draft?.id) setExternalChange(true);
+        saveAttempt.current = null;
+        setToast(tDraft('saved'));
+      } else if (['agent_version_conflict', 'agent_operational_version_changed', 'agent_draft_revision_changed', 'agent_operational_configuration_changed'].includes((res as any)?.errorCode)) {
+        setExternalChange(true); setToast(tConfiguration('editorChanged'));
       } else if ((res as any)?.errorCode === "agent_invalid") {
         // The API enforces the same rules. Its `fields` list is not forwarded by
         // the HTTP wrapper today, so re-derive the per-field messages locally
@@ -474,6 +516,7 @@ export default function AgentEditorPage() {
 
   async function handleSaveAsTemplate() {
     if (!activeTenantId) return;
+    if (workspace?.draft) { setToast(tDraft('templateOperationalOnly')); setMenuOpen(false); return; }
     try {
       const res = await api.saveAgentAsTemplate(
         activeTenantId, agentId,
@@ -516,10 +559,8 @@ export default function AgentEditorPage() {
 
   async function handleSetDefault() {
     if (!activeTenantId) return;
-    try {
-      const res = await api.updateAgent(activeTenantId, agentId, { isDefault: true });
-      if (res?.success) { setIsDefault(true); setToast(t("defaultUpdated")); }
-    } catch { setToast(t("errorUpdatingAgent")); }
+    if (externalChange || loadedVersion === null) { setToast(tConfiguration('editorChanged')); return; }
+    setIsDefault(true); setToast(tDraft('defaultNeedsSave'));
     setMenuOpen(false);
   }
 
@@ -557,6 +598,12 @@ export default function AgentEditorPage() {
 
   return (
     <div className="pb-20">
+      <AgentDraftStatus workspace={workspace} tenantId={activeTenantId} />
+      <AgentAssessmentPanel agentId={agentId} />
+      {externalChange && <div role="alert" className="mb-4 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-100">
+        <p>{tConfiguration('editorChanged')}</p>
+        <button type="button" onClick={() => window.location.reload()} className="mt-2 min-h-10 rounded-lg border border-current px-3 py-2">{tConfiguration('reloadEditor')}</button>
+      </div>}
       <PageHeader
         icon={Bot}
         title={config.persona.name || t("title")}
@@ -571,9 +618,13 @@ export default function AgentEditorPage() {
           </button>
         }
         action={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <Link href={`/admin/agent/${agentId}/releases`} className="rounded-lg border px-3 py-2 text-sm font-medium">{tReleases('openWorkspace')}</Link>
+            <Link href={`/admin/agent/${agentId}/publications`} className="rounded-lg border px-3 py-2 text-sm font-medium">{tPublications('openWorkspace')}</Link>
+            <Link href={`/admin/agent/${agentId}/learning`} className="rounded-lg border px-3 py-2 text-sm font-medium">{tLearning('openWorkspace')}</Link>
+            <Link href={`/admin/agent/${agentId}/regressions`} className="rounded-lg border px-3 py-2 text-sm font-medium">{tRegressions('openWorkspace')}</Link>
             <Link
-              href={`/admin/agent/${agentId}/test`}
+              href={workspace ? agentDraftTestHref(workspace) : `/admin/agent/${agentId}/test`}
               className="px-4 py-2.5 rounded-lg border border-neutral-200 dark:border-neutral-700 text-neutral-700 dark:text-neutral-200 text-sm font-medium cursor-pointer flex items-center gap-1.5 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
               title={t("testAgent")}
             >
@@ -583,7 +634,7 @@ export default function AgentEditorPage() {
               type="button"
               id={guidedTourAnchorId("agent-save")}
               onClick={handleSave}
-              disabled={saving}
+              disabled={saving || !workspace || externalChange || Boolean(workspace.draft && !workspace.draft.currentBase)}
               className={cn(
                 "px-5 py-2.5 rounded-lg border-none text-white text-sm font-semibold cursor-pointer flex items-center gap-1.5 transition-colors",
                 saving
@@ -591,7 +642,7 @@ export default function AgentEditorPage() {
                   : "bg-indigo-500 hover:bg-indigo-600"
               )}
             >
-              <Save size={16} /> {saving ? tc("saving") : tc("saveChanges")}
+              <Save size={16} /> {saving ? tc("saving") : tDraft('save')}
             </button>
             <div className="relative">
               <button
@@ -687,7 +738,7 @@ export default function AgentEditorPage() {
               aria-checked={isActive}
               aria-label={t("activation.label")}
               disabled={activePending}
-              onClick={() => setConfirmActive(!isActive)}
+              onClick={() => isActive ? setConfirmActive(false) : setToast(tDraft('activationReview'))}
               className={cn(
                 "relative w-12 h-6 rounded-full transition-colors cursor-pointer border-none",
                 activePending && "opacity-60 cursor-not-allowed",
@@ -751,7 +802,7 @@ export default function AgentEditorPage() {
                   const isAssigned = assignedBindings.includes(key);
                   const owner = getBindingOwner(key);
                   return (
-                    <button key={key} type="button" onClick={() => toggleBinding(key)} className={chipCls(isAssigned)}>
+                    <button key={key} type="button" aria-pressed={isAssigned} onClick={() => toggleBinding(key)} className={chipCls(isAssigned)}>
                       <Icon size={16} className={meta.color} />
                       <span className={labelCls(isAssigned)}>{meta.label}</span>
                       <span className="text-[11px] text-neutral-400 truncate max-w-[130px]">· {a.displayName || a.accountId}</span>
@@ -768,7 +819,7 @@ export default function AgentEditorPage() {
               const isAssigned = assignedChannels.includes(ch);
               const owner = getChannelOwner(ch);
               return [(
-                <button key={ch} type="button" onClick={() => toggleChannel(ch)} className={chipCls(isAssigned)}>
+                <button key={ch} type="button" aria-pressed={isAssigned} onClick={() => toggleChannel(ch)} className={chipCls(isAssigned)}>
                   <Icon size={16} className={meta.color} />
                   <span className={labelCls(isAssigned)}>{meta.label}</span>
                   {isAssigned && <CheckCircle size={14} className="text-indigo-500" />}
@@ -799,7 +850,7 @@ export default function AgentEditorPage() {
           onChangePrompt={setCustomPrompt}
           saving={saving}
           onSave={handleSave}
-          saveLabel={tc("saveChanges")}
+          saveLabel={tDraft('save')}
           savingLabel={tc("saving")}
         />
       )}
@@ -913,7 +964,7 @@ export default function AgentEditorPage() {
       <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-neutral-200 dark:border-neutral-800 bg-white/95 dark:bg-neutral-950/95 backdrop-blur-sm px-6 py-3 flex items-center justify-end gap-3">
         <span className="text-xs text-neutral-400 mr-auto">{t("title")}</span>
         <Link
-          href={`/admin/agent/${agentId}/test`}
+          href={workspace ? agentDraftTestHref(workspace) : `/admin/agent/${agentId}/test`}
           className="px-4 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 text-neutral-700 dark:text-neutral-200 text-sm font-medium no-underline flex items-center gap-1.5 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
         >
           <TestTube2 size={14} /> {t("testAgent")}
@@ -926,13 +977,13 @@ export default function AgentEditorPage() {
         <button
           type="button"
           onClick={handleSave}
-          disabled={saving}
+          disabled={saving || !workspace || externalChange || Boolean(workspace.draft && !workspace.draft.currentBase)}
           className={cn(
             "px-5 py-2 rounded-lg border-none text-white text-sm font-semibold cursor-pointer flex items-center gap-1.5 transition-colors",
             saving ? "bg-neutral-300 dark:bg-neutral-700 cursor-not-allowed" : "bg-indigo-500 hover:bg-indigo-600"
           )}
         >
-          <Save size={14} /> {saving ? tc("saving") : tc("saveChanges")}
+          <Save size={14} /> {saving ? tc("saving") : tDraft('save')}
         </button>
       </div>
 

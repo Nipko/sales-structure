@@ -169,3 +169,32 @@ describe('la cadena corre sobre el resultado real del writer', () => {
         )).toEqual({ success: true });
     });
 });
+
+/**
+ * The key each writer actually returns its id under.
+ *
+ * `resultKeys` is a hand-written list beside a handler that returns whatever it
+ * returns, and the two had drifted: `create_pet_boarding` answers
+ * `{ boarding: {...} }` and both rental cancels answer `{ rental: {...} }`,
+ * none of which were listed. The verifier then reports `object_reference_missing`
+ * for an operation that plainly succeeded — and an operational-pattern example
+ * from it can never be approved, because the review gate demands that evidence.
+ */
+describe('the shape each writer really answers with', () => {
+    const cases: Array<[string, Record<string, unknown>]> = [
+        ['create_pet_boarding', { success: true, boarding: { id: 'b-1' } }],
+        ['cancel_pet_boarding', { success: true, rental: { id: 'b-1' } }],
+        ['cancel_vehicle_rental', { success: true, rental: { id: 'v-1' } }],
+        ['create_vehicle_rental', { success: true, rental: { id: 'v-1' } }],
+        ['create_service_request', { success: true, request: { id: 's-1' } }],
+        ['request_photo_quote', { success: true, session: { id: 'p-1' } }],
+    ];
+
+    it.each(cases)('finds the identifier %s hands back', (tool, result) => {
+        const attached = attachWriterActiveObject(tool, result, {}) as any;
+        // Without the right key the result comes back untouched, and the
+        // verifier downstream reports the object as missing.
+        expect(attached.activeObject).toBeDefined();
+        expect(attached.activeObject.id).toBeTruthy();
+    });
+});

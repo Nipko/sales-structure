@@ -9,15 +9,19 @@ import {
   useSyncExternalStore,
   type CSSProperties,
 } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
 import { ChevronRight, Compass, Loader2, Send, Sparkles } from "lucide-react";
 import {
+  AGENT_HANDOFF_RETURN_PARAM,
   GUIDED_TOUR_START_EVENT,
+  getAgentOperation,
   isGuidedTourId,
   type GuidedTourId,
   type GuidedTourStartDetail,
+  type AgentConfigurationProposal,
+  type AgentContentProposal,
 } from "@parallext/shared";
 import { useAuth } from "@/contexts/AuthContext";
 import { useRole } from "@/hooks/useRole";
@@ -35,6 +39,8 @@ import {
   type QualityAssistantTarget,
 } from "@/lib/quality-assistant-contract";
 import { ParalllyAssistant } from "@/components/ParalllyAssistant";
+import { AgentConfigurationReview } from "@/components/quality/AgentConfigurationReview";
+import { AgentContentReview } from "@/components/quality/AgentContentReview";
 import { guidedTourAnchorId } from "@/lib/guided-tours";
 import { canRunProductTourAtWidth } from "@/lib/product-tour-contract";
 import {
@@ -108,7 +114,11 @@ function parseChatAction(action: unknown): ChatAction | null {
   }
   return null;
 }
-type ChatMessage = { role: "user" | "assistant"; content: string; actions?: ChatAction[] };
+type ChatMessage = { role: "user" | "assistant"; content: string; actions?: ChatAction[]; proposal?: AgentConfigurationProposal;
+  // A content object Assist offers to create. Separate from `proposal`
+  // because a creation has no `before` to diff against, and the two review
+  // cards answer different questions.
+  contentProposal?: AgentContentProposal };
 
 const useIntroLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
@@ -128,9 +138,16 @@ export function HelpAssistant() {
 }
 
 function TenantHelpAssistant() {
+  // The tenant the applied object belongs to. Read here rather than passed in,
+  // because the component above remounts on a tenant swap — so this is always
+  // the tenant whose JWT the reply was produced under.
+  const { user } = useAuth();
+  const tenantId = user?.tenantId ?? null;
   const t = useTranslations("helpAssistant");
   const locale = useLocale();
   const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const {
     canEditAgent,
     canEditKnowledge,
@@ -149,9 +166,6 @@ function TenantHelpAssistant() {
   const [isSending, setIsSending] = useState(false);
   const [qualityTarget, setQualityTarget] = useState<QualityAssistantTarget>();
   const [qualityDetail, setQualityDetail] = useState<QualityAssistantOpenDetail>();
-  // El recorrido guiado se ancla al sidebar de escritorio; en móvil la acción
-  // degrada a un enlace a la pantalla, que sí sirve para llegar.
-  const [canRunGuidedTour, setCanRunGuidedTour] = useState(false);
   // Señal publicada por `/admin`: nadie más vuelve a pedir `setup-status`.
   const setupCardIsTheGuide = isSetupCardTheActiveGuide(useSyncExternalStore(
     subscribeOnboardingLanding,
@@ -247,6 +261,34 @@ function TenantHelpAssistant() {
     return () => window.removeEventListener("parallly:open-copilot", handler);
   }, [resetToGenericContext]);
 
+  /**
+   * The return leg of a handoff.
+   *
+   * When Assist cannot do something itself — connect a channel, grant a role,
+   * publish, configure a payment rail — it sends the person to the screen that
+   * owns the decision, carrying `?assistOp=<operation>`. Coming back to a fresh
+   * chat would lose why they went, and Assist would have to guess whether it
+   * worked. So the marker reopens this conversation with the question already
+   * typed, and the answer comes from re-reading the assessment rather than from
+   * assuming the trip succeeded.
+   *
+   * The parameter is stripped on the way in: a reload, or a link the person
+   * shares, must not reopen the chat for a trip that already happened.
+   */
+  useEffect(() => {
+    const marker = searchParams.get(AGENT_HANDOFF_RETURN_PARAM);
+    if (!marker) return;
+    const operation = getAgentOperation(marker);
+    if (!operation || operation.availability !== "route_to_screen") return;
+    const next = new URLSearchParams(searchParams.toString());
+    next.delete(AGENT_HANDOFF_RETURN_PARAM);
+    router.replace(`${pathname}${next.size ? `?${next.toString()}` : ""}`, { scroll: false });
+    setIntro("done");
+    resetToGenericContext();
+    setChatInput(t("chat.handoff.checkResult", { operation: marker }));
+    setOpen(true);
+  }, [searchParams, pathname, router, resetToGenericContext, t]);
+
   useEffect(() => {
     const handler = (event: Event) => {
       const detail = parseQualityAssistantDetail((event as CustomEvent<unknown>).detail);
@@ -266,13 +308,6 @@ function TenantHelpAssistant() {
     return () => window.removeEventListener(QUALITY_ASSIST_EVENT, handler);
   }, [t]);
 
-  useEffect(() => {
-    const media = window.matchMedia("(min-width: 768px)");
-    const sync = () => setCanRunGuidedTour(canRunProductTourAtWidth(window.innerWidth));
-    sync();
-    media.addEventListener("change", sync);
-    return () => media.removeEventListener("change", sync);
-  }, []);
 
   const startGuidedTour = useCallback((tourId: GuidedTourId) => {
     const detail: GuidedTourStartDetail = {
@@ -318,7 +353,9 @@ function TenantHelpAssistant() {
           .filter((action): action is ChatAction => action !== null)
           .slice(0, 3)
         : undefined;
-      setMessages((current) => [...current, { role: "assistant", content, actions }]);
+      setMessages((current) => [...current, { role: "assistant", content, actions,
+        proposal: response.success ? response.data?.proposal : undefined,
+        contentProposal: response.success ? response.data?.contentProposal : undefined }]);
     } catch (error) {
       if (requestEpoch !== requestEpochRef.current) return;
       console.error("Error calling copilotChat API:", error);
@@ -433,7 +470,7 @@ function TenantHelpAssistant() {
             <span className="text-[11px] leading-relaxed text-neutral-600 dark:text-neutral-400">
               {t("announce.body")}
             </span>
-            <span className="mt-1 inline-flex items-center gap-1 self-start rounded-full bg-[#3897f0]/10 px-2.5 py-1 text-[10px] font-bold text-[#2b7cd4] dark:text-[#7ab9f5]">
+            <span className="mt-1 inline-flex items-center gap-1 self-start rounded-full bg-[#3897f0]/10 px-2.5 py-1 text-[10px] font-bold text-[#175da8] dark:text-[#7ab9f5]">
               {t("announce.cta")} <ChevronRight className="size-2.5" />
             </span>
             <span className="absolute -bottom-1.5 right-9 size-3 rotate-45 border-b border-r border-[#3897f0]/25 bg-white/95 dark:bg-neutral-900/95" />
@@ -501,10 +538,13 @@ function TenantHelpAssistant() {
                 >
                   {message.role === "user" ? message.content : renderFormattedText(message.content)}
                 </div>
+                {message.role === "assistant" && message.proposal && <AgentConfigurationReview key={message.proposal.id} proposal={message.proposal} />}
+                {message.role === "assistant" && message.contentProposal && tenantId
+                  && <AgentContentReview key={message.contentProposal.id} tenantId={tenantId} proposal={message.contentProposal} />}
                 {message.role === "assistant" && message.actions && message.actions.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-2">
                     {message.actions.map((action) => (
-                      action.code === "start_guided_tour" && canRunGuidedTour ? (
+                      action.code === "start_guided_tour" ? (
                         <button
                           key={`${index}-${action.code}-${action.tourId}`}
                           type="button"

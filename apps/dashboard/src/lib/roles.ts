@@ -99,6 +99,10 @@ export const PAGE_RULES: PageRule[] = [
     // ── Platform-only (super_admin always; no one else) ──────
     { prefix: "/admin/tenants", roles: [ROLE_KEYS.SUPER_ADMIN] },
     { prefix: "/admin/ops", roles: [ROLE_KEYS.SUPER_ADMIN] },
+    // Rollout, kill switch and the reconciliation queue. Deliberately NOT
+    // behind impersonation: it decides how replies leave the system for every
+    // tenant at once, and turning it off must never require entering one.
+    { prefix: "/admin/dispatch", roles: [ROLE_KEYS.SUPER_ADMIN] },
     { prefix: "/admin/incidents", roles: [ROLE_KEYS.SUPER_ADMIN] },
     { prefix: "/admin/fiscal", roles: [ROLE_KEYS.SUPER_ADMIN] },
     { prefix: "/admin/managed", roles: [ROLE_KEYS.SUPER_ADMIN] },
@@ -128,6 +132,11 @@ export const PAGE_RULES: PageRule[] = [
 
     // ── Tenant_admin only (also super_admin when impersonating) ─
     { prefix: "/admin/users", roles: [ROLE_KEYS.SUPER_ADMIN, ROLE_KEYS.TENANT_ADMIN], requiresImpersonationForSuperAdmin: true },
+    // Covers the editor and every workspace hanging off an agent, publication
+    // included. A rule cannot name a dynamic segment — the matcher is
+    // prefix-based — so `/admin/agent/:agentId/publications` is governed here,
+    // and `roles.spec.ts` pins that audience so widening this line is a
+    // deliberate act rather than a side effect.
     { prefix: "/admin/agent", roles: [ROLE_KEYS.SUPER_ADMIN, ROLE_KEYS.TENANT_ADMIN], requiresImpersonationForSuperAdmin: true },
     { prefix: "/admin/channels", roles: [ROLE_KEYS.SUPER_ADMIN, ROLE_KEYS.TENANT_ADMIN], requiresImpersonationForSuperAdmin: true },
     { prefix: "/admin/compliance", roles: [ROLE_KEYS.SUPER_ADMIN, ROLE_KEYS.TENANT_ADMIN], requiresImpersonationForSuperAdmin: true },
@@ -173,6 +182,7 @@ export const PAGE_RULES: PageRule[] = [
     { prefix: "/admin/settings/media", roles: [ROLE_KEYS.SUPER_ADMIN, ROLE_KEYS.TENANT_ADMIN, ROLE_KEYS.TENANT_SUPERVISOR], requiresImpersonationForSuperAdmin: true },
 
     // ── Operational (everyone in the tenant; super_admin via impersonation) ─
+    { prefix: "/admin/operational-notices", roles: [ROLE_KEYS.SUPER_ADMIN, ROLE_KEYS.TENANT_ADMIN, ROLE_KEYS.TENANT_SUPERVISOR], requiresImpersonationForSuperAdmin: true },
     { prefix: "/admin/inbox", roles: [ROLE_KEYS.SUPER_ADMIN, ROLE_KEYS.TENANT_ADMIN, ROLE_KEYS.TENANT_SUPERVISOR, ROLE_KEYS.TENANT_AGENT], requiresImpersonationForSuperAdmin: true },
     { prefix: "/admin/contacts", roles: [ROLE_KEYS.SUPER_ADMIN, ROLE_KEYS.TENANT_ADMIN, ROLE_KEYS.TENANT_SUPERVISOR, ROLE_KEYS.TENANT_AGENT], requiresImpersonationForSuperAdmin: true },
     { prefix: "/admin/pipeline", roles: [ROLE_KEYS.SUPER_ADMIN, ROLE_KEYS.TENANT_ADMIN, ROLE_KEYS.TENANT_SUPERVISOR, ROLE_KEYS.TENANT_AGENT], requiresImpersonationForSuperAdmin: true },

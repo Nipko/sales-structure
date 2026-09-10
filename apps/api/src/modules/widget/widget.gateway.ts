@@ -1,15 +1,19 @@
+import { WidgetMessageStore } from './widget-message-store.service';
+import { widgetPublicMessage } from './widget-message-protocol';
+import { WsRelayService } from '../redis/ws-relay.service';
+import { Interval } from '@nestjs/schedule';
 import {
     WebSocketGateway,
     WebSocketServer,
     SubscribeMessage,
     OnGatewayConnection,
     OnGatewayDisconnect,
+    OnGatewayInit,
     MessageBody,
     ConnectedSocket,
 } from '@nestjs/websockets';
-import { Logger, UsePipes, ValidationPipe } from '@nestjs/common';
+import { Logger, Optional, UsePipes, ValidationPipe } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
-import { randomUUID } from 'crypto';
 import { Server, Socket } from 'socket.io';
 import { WidgetService } from './widget.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -31,9 +35,11 @@ import {
     namespace: '/widget',
     cors: { origin: '*', credentials: false },
 })
-export class WidgetGateway implements OnGatewayConnection, OnGatewayDisconnect {
+export class WidgetGateway implements OnGatewayConnection, OnGatewayDisconnect, OnGatewayInit {
     @WebSocketServer() server: Server;
     private readonly logger = new Logger(WidgetGateway.name);
+    private readonly clients = new Map<string, Socket>();
+    private polling = false;
 
     constructor(
         private readonly widgetService: WidgetService,
@@ -41,7 +47,47 @@ export class WidgetGateway implements OnGatewayConnection, OnGatewayDisconnect {
         private readonly redis: RedisService,
         private readonly conversations: ConversationsService,
         private readonly rateLimit: WidgetRateLimitService,
+        @Optional() private readonly messages?: WidgetMessageStore,
+        @Optional() private readonly relay?: WsRelayService,
     ) {}
+
+    afterInit():void {
+        if (!this.server) return;
+        this.relay?.subscribe('widget',signal=>{
+            if(signal.event!=='widget:persisted'||!signal.payload?.tenantId||!signal.payload?.messageId)return;
+            for(const client of this.clients.values()) {
+                const session=(client as any).widgetSession;
+                if(session?.tenant_id===signal.payload.tenantId && session?.conversation_id===signal.payload.conversationId)
+                    this.syncClient(client,false,signal.payload.messageId).catch(()=>this.rejectClient(client,'Invalid session'));
+            }
+        });
+    }
+
+    @Interval(15000)
+    async replayPending():Promise<void>{
+        if(!this.server||this.polling||!this.messages)return;
+        this.polling=true;
+        try{for(const client of this.clients.values())await this.syncClient(client).catch(()=>this.rejectClient(client,'Invalid session'));}
+        finally{this.polling=false;}
+    }
+
+    private async syncClient(client:Socket,history=false,messageId?:string){
+        if(!this.messages)throw new Error('widget_delivery_unavailable');
+        return this.messages.withSessionMessages({token:(client as any).widgetToken,origin:client.handshake.headers.origin},
+            {history,messageId},async(session,messages)=>{
+                (client as any).widgetSession=session;
+                if(history)client.emit('widget:history',{messages:messages.map(widgetPublicMessage)});
+                else for(const message of messages)client.emit('widget:message',widgetPublicMessage(message));
+                return messages;
+            });
+    }
+
+    @SubscribeMessage('widget:received')
+    async handleReceipt(@ConnectedSocket() client:Socket,@MessageBody() data:{messageId?:string}){
+        if(!this.messages||typeof data?.messageId!=='string')return;
+        try{await this.messages.acknowledge({token:(client as any).widgetToken,origin:client.handshake.headers.origin},data.messageId);}
+        catch{this.rejectClient(client,'Invalid session');}
+    }
 
     async handleConnection(client: Socket) {
         const token = client.handshake.auth?.token || client.handshake.query?.token as string;
@@ -78,9 +124,14 @@ export class WidgetGateway implements OnGatewayConnection, OnGatewayDisconnect {
         (client as any).widgetSession = session;
         (client as any).widgetToken = token;
         (client as any).widgetCapabilities = capabilities;
+        this.clients.set(client.id,client);
         client.join(`session:${session.id}`);
         client.join(`tenant:${session.tenant_id}`);
         client.use(async (_packet, next) => {
+            const fresh=await this.widgetService.getSessionByToken(token);
+            if(!fresh||!isWidgetOriginAllowed(client.handshake.headers.origin,fresh.allowed_domains)){
+                this.rejectClient(client,'Invalid session');next(new Error('widget_session_invalid'));return;
+            }
             const current = await resolveTenantSubscriptionAccess(this.prisma, session.tenant_id, 'write');
             if (current.allowed) return next();
             client.emit('widget:error', {
@@ -92,18 +143,10 @@ export class WidgetGateway implements OnGatewayConnection, OnGatewayDisconnect {
         });
 
         if (session.conversation_id) {
-            const schemaName = await this.prisma.getTenantSchemaName(session.tenant_id);
-            const history = await this.prisma.executeInTenantSchema<any[]>(
-                schemaName,
-                `SELECT id, direction, content_text, created_at FROM messages
-                 WHERE conversation_id = $1::uuid ORDER BY created_at DESC LIMIT 30`,
-                [session.conversation_id],
-            );
-            // The query is newest-first. Capture that fact before producing the
-            // oldest-first presentation copy; Array.reverse() would otherwise
-            // mutate the same array and make the oldest turn look unanswered.
-            const newest = (history || [])[0];
-            client.emit('widget:history', { messages: [...(history || [])].reverse() });
+            let history;
+            try{history=await this.syncClient(client,true);}
+            catch{this.rejectClient(client,'Invalid session');return;}
+            const newest=history[history.length-1];
 
             // If the newest message is inbound, the previous turn never produced a
             // reply - the API was restarted or crashed mid-stream. The widget is
@@ -156,7 +199,7 @@ export class WidgetGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
 
     handleDisconnect(client: Socket) {
-        // Cleanup handled by socket.io room removal
+        this.clients.delete(client.id);
     }
 
     @OnEvent(BillingEventType.SUBSCRIPTION_CANCELLED, { async: true })
@@ -239,62 +282,17 @@ export class WidgetGateway implements OnGatewayConnection, OnGatewayDisconnect {
         (client as any).widgetCapabilities = capabilities;
         const schemaName = ready.schemaName;
 
-        let conversationId = session.conversation_id;
-        let contactId = session.contact_id;
-
-        if (!conversationId) {
-            const contactRows = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-                `INSERT INTO contacts (name, phone, email, channel_type, external_id, created_at, updated_at)
-                 VALUES ($1, $2, $3, 'web_widget', $4, NOW(), NOW())
-                 RETURNING id`,
-                [
-                    session.visitor_name || 'Visitante web',
-                    session.visitor_phone || `widget_${session.visitor_id}`,
-                    session.visitor_email || null,
-                    `widget_${session.visitor_id}`,
-                ],
-            );
-            contactId = contactRows[0].id;
-
-            const convRows = await this.prisma.executeInTenantSchema<any[]>(
-                schemaName,
-                `INSERT INTO conversations (contact_id, channel_type, channel_account_id, status, metadata, created_at, updated_at)
-                 VALUES ($1::uuid, 'web_widget', 'widget', 'active', $2::jsonb, NOW(), NOW())
-                 RETURNING id`,
-                [contactId, JSON.stringify({ widgetSessionId: session.id, page: session.page_url })],
-            );
-            conversationId = convRows[0].id;
-
-            await this.widgetService.updateSessionConversation(session.id, conversationId, contactId);
-            session.conversation_id = conversationId;
-            session.contact_id = contactId;
-        }
-
-        const inboundRows = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-            `INSERT INTO messages (conversation_id, direction, content_text, metadata, created_at)
-             VALUES ($1::uuid, 'inbound', $2, '{"channel":"web_widget"}'::jsonb, NOW())
-             RETURNING id`,
-            [conversationId, data.content],
-        );
-
-        // Delivery ack. Without it the widget rendered every message as sent even
-        // when socket.io had silently dropped it (its send buffer is discarded
-        // once the reconnection attempts run out), so a visitor could be talking
-        // to nobody and never know.
-        client.emit('widget:message-received', {
-            id: inboundRows?.[0]?.id,
-            content: data.content,
-            timestamp: new Date().toISOString(),
-        });
-
-        await this.prisma.executeInTenantSchema(schemaName,
-            `UPDATE conversations SET updated_at = NOW() WHERE id = $1::uuid`,
-            [conversationId],
-        );
+        if(!this.messages){this.rejectClient(client,'Widget channel unavailable');return;}
+        let received;
+        try{received=await this.messages.receive({token,origin:client.handshake.headers.origin},data.content);}
+        catch{this.rejectClient(client,'Invalid session');return;}
+        const {conversation_id:conversationId,contact_id:contactId}=received.session;
+        (client as any).widgetSession=received.session;
+        client.emit('widget:message-received',{id:received.messageId,content:data.content,timestamp:new Date().toISOString()});
 
         await this.streamAssistantReply(
             client, tenantId, schemaName, conversationId, contactId, data.content,
-            inboundRows?.[0]?.id,
+            received.messageId,
         );
     }
 
@@ -315,53 +313,25 @@ export class WidgetGateway implements OnGatewayConnection, OnGatewayDisconnect {
         inboundMessageId?: string,
     ): Promise<void> {
         client.emit('widget:typing', { isTyping: true });
-        const messageId = randomUUID();
-        let full = '';
-        let started = false; // only emit stream_start once the first chunk actually arrives
-
         try {
-            for await (const chunk of this.conversations.streamWidgetMessage(
-                tenantId, schemaName, conversationId, contactId, text, inboundMessageId,
+            const receipt = await this.conversations.processWidgetMessage(
+                tenantId, schemaName, conversationId, contactId, text,
                 {
+                    inboundMessageId,
+                    channelAccountId: (client as any).widgetSession?.widget_id,
                     allowHumanHandoff: hasWidgetCapability(
                         (client as any).widgetCapabilities as WidgetCapabilitySnapshot | undefined,
                         'human_handoff',
                     ),
                 },
-            )) {
-                if (!chunk) continue;
-                if (!started) {
-                    started = true;
-                    client.emit('widget:stream_start', { messageId, role: 'assistant', timestamp: new Date().toISOString() });
-                }
-                full += chunk;
-                client.emit('widget:stream_chunk', { messageId, delta: chunk });
-            }
-
-            // Nothing streamed (no persona, conversation handled by a human, or empty
-            // reply) → stay silent: no bubble, no sound, no persisted message.
-            if (started && full.trim()) {
-                await this.prisma.executeInTenantSchema(schemaName,
-                    `INSERT INTO messages (conversation_id, direction, content_text, metadata, created_at)
-                     VALUES ($1::uuid, 'outbound', $2, '{"channel":"web_widget","ai":true}'::jsonb, NOW())`,
-                    [conversationId, full],
-                );
-                client.emit('widget:stream_end', { messageId, content: full, timestamp: new Date().toISOString() });
-                // Back-compat: cached loaders that only listen for widget:message still render.
-                client.emit('widget:message', { content: full, role: 'assistant', timestamp: new Date().toISOString() });
-            }
+            );
+            // Text and private provenance were committed together by the core.
+            // Session authorization is checked again while reading/emitting IDs.
+            for (const reference of receipt?.status === 'stored' ? receipt.messages : [])
+                await this.syncClient(client, false, reference.messageId);
         } catch (err: any) {
             this.logger.warn(`Widget AI stream failed: ${err.message}`);
-            // Only surface an error if a stream had actually started (otherwise the loader
-            // has no bubble to fail). Persist the partial so history stays coherent.
-            if (started && full.trim()) {
-                await this.prisma.executeInTenantSchema(schemaName,
-                    `INSERT INTO messages (conversation_id, direction, content_text, metadata, created_at)
-                     VALUES ($1::uuid, 'outbound', $2, '{"channel":"web_widget","ai":true,"partial":true}'::jsonb, NOW())`,
-                    [conversationId, full],
-                ).catch(() => {});
-                client.emit('widget:stream_error', { messageId, message: 'Failed to process message', partial: full });
-            }
+            client.emit('widget:error', { code: 'assistant_turn_failed', message: 'Failed to process message' });
         } finally {
             client.emit('widget:typing', { isTyping: false });
         }
@@ -376,19 +346,21 @@ export class WidgetGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
 
     emitToSession(sessionId: string, event: string, data: any) {
-        this.server?.to(`session:${sessionId}`).emit(event, data);
+        // Legacy callers may only signal a stored message. Arbitrary payloads cannot bypass session revalidation.
+        if(event!=='widget:message'||typeof data?.messageId!=='string')return;
+        for(const client of this.clients.values())if((client as any).widgetSession?.id===sessionId)
+            this.syncClient(client,false,data.messageId).catch(()=>this.rejectClient(client,'Invalid session'));
     }
 
     private resolveCurrentCapabilities(session: any): WidgetCapabilitySnapshot {
         // Every caller invokes this only after the matching checks above have
-        // succeeded. Human delivery intentionally remains false until an
-        // authenticated agent-console -> widget adapter is implemented.
+        // succeeded. The same persisted transport serves authenticated human replies.
         return resolveWidgetCapabilities({
-            delivery: true,
+            delivery: Boolean(this.messages),
             identity: Boolean(session?.id && session?.tenant_id && session?.widget_id && session?.visitor_id),
             policy: true,
             revocation: true,
-            humanDelivery: false,
+            humanDelivery: Boolean(this.messages),
         });
     }
 

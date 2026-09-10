@@ -610,7 +610,10 @@ export class AgentConsoleGateway implements OnGatewayInit, OnGatewayConnection, 
      * Listen for handoff escalation events from HandoffService.
      * Notifies all agents in the tenant via WebSocket.
      */
-    @OnEvent('handoff.escalated')
+    // One destination, one event. A transfer used to announce itself once to
+    // all six consumers, so a single failure among them re-announced it to
+    // the five that had already succeeded.
+    @OnEvent('handoff.escalated.inbox')
     handleHandoffEscalated(event: HandoffEscalatedEvent) {
         this.logger.log(`Handoff event received for conversation ${event.conversationId} in tenant ${event.tenantId}`);
         this.fanoutHandoffEscalated(event);

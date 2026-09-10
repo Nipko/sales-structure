@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
 import { PageHeader } from "@/components/ui/page-header";
+import { LoadFailureNotice } from "@/components/ui/load-failure";
 import { HelpPanel } from "@/components/ui/help-panel";
 import { Slack, Loader2, CheckCircle, Send } from "lucide-react";
 
@@ -24,6 +25,10 @@ export default function SlackSettingsPage() {
     const { activeTenantId } = useTenant();
 
     const [cfg, setCfg] = useState<SlackConfig>({ enabled: false, webhookUrl: "", events: { handoff: true, appointment: true } });
+    // `save` PUTs the whole `cfg`. A swallowed read left the initial value on
+    // screen — disabled, empty webhook — so one Save wrote that over the
+    // tenant's real Slack destination and switched their alerts off.
+    const [unavailable, setUnavailable] = useState(false);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [testing, setTesting] = useState(false);
@@ -34,8 +39,12 @@ export default function SlackSettingsPage() {
         setLoading(true);
         try {
             const res: any = await api.getSlackConfig(activeTenantId);
-            if (res?.success && res.data) setCfg(res.data);
-        } catch { /* noop */ }
+            if (!res?.success || !res.data) throw new Error("slack_config_read_failed");
+            setCfg(res.data);
+            setUnavailable(false);
+        } catch {
+            setUnavailable(true);
+        }
         setLoading(false);
     }, [activeTenantId]);
 
@@ -47,7 +56,7 @@ export default function SlackSettingsPage() {
     };
 
     const save = async () => {
-        if (!activeTenantId || saving) return;
+        if (!activeTenantId || saving || unavailable) return;
         setSaving(true);
         try {
             const res: any = await api.updateSlackConfig(activeTenantId, cfg);
@@ -84,6 +93,11 @@ export default function SlackSettingsPage() {
 
             {loading ? (
                 <div className="flex justify-center py-16"><Loader2 className="animate-spin text-muted-foreground" /></div>
+            ) : unavailable ? (
+                /* The form is withheld rather than disabled: its Save replaces
+                   the whole config, and what it would send is this component's
+                   default, not the tenant's. */
+                <LoadFailureNotice onRetry={() => { void load(); }} />
             ) : (
                 <div className="rounded-[14px] border border-border bg-card p-6 flex flex-col gap-5">
                     {/* Enable toggle */}

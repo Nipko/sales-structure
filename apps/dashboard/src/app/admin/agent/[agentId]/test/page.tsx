@@ -1,13 +1,13 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useTenant } from "@/contexts/TenantContext";
 import { useLocale, useTranslations } from "next-intl";
 import { api } from "@/lib/api";
 import { ArrowLeft, Send, Wrench, Search, FileCode, Activity, RotateCcw, Bot, User, Loader2, ShieldCheck } from "lucide-react";
-import type { ConversationalChannelType, EffectiveCapabilityContract } from "@parallext/shared";
+import type { ConversationalChannelType, EffectiveCapabilityContract, AgentConfigurationWorkspace } from "@parallext/shared";
 
 const OPERATIONAL_CHANNELS: readonly ConversationalChannelType[] = [
     "web_widget", "whatsapp", "instagram", "messenger", "telegram",
@@ -20,6 +20,9 @@ type Turn = {
 };
 
 type DebugInfo = {
+    agentRevision?: { configurationRevisionId?: string };
+    runtimeSessionId?: string;
+    runtimeError?: string;
     systemPrompt: string;
     toolCalls: Array<{ name: string; args: Record<string, unknown>; result: unknown; durationMs: number }>;
     ragHits: Array<{ source: string; id: string; score?: number; title?: string; content: string }>;
@@ -61,9 +64,16 @@ type DebugTab = "prompt" | "tools" | "contract" | "rag" | "metrics" | "turn";
 export default function TestAgentPage() {
     const params = useParams();
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const requestedRevision = searchParams.get('configurationRevisionId');
     const agentId = params.agentId as string;
     const { activeTenantId } = useTenant();
     const t = useTranslations("agent.test");
+    const tDraft = useTranslations('agentDraft');
+    const [workspace, setWorkspace] = useState<AgentConfigurationWorkspace | null>(null);
+    const [configurationRevisionId, setConfigurationRevisionId] = useState<string | undefined>(undefined);
+    const [selectionError, setSelectionError] = useState(false);
+    const [configurationLoading, setConfigurationLoading] = useState(true);
     const locale = useLocale().slice(0, 2) as "es" | "en" | "pt" | "fr";
     const [turns, setTurns] = useState<Turn[]>([]);
     const [input, setInput] = useState("");
@@ -72,6 +82,29 @@ export default function TestAgentPage() {
     const [channelType, setChannelType] = useState<ConversationalChannelType>("web_widget");
     const [debugTab, setDebugTab] = useState<DebugTab>("prompt");
     const [selectedDebug, setSelectedDebug] = useState<DebugInfo | null>(null);
+    const runtimeSessionId = useRef<string | undefined>(undefined);
+    const requestScope = useRef(0);
+    useEffect(() => {
+        if (!activeTenantId || !agentId) return;
+        let cancelled = false;
+        setWorkspace(null); setSelectionError(false); setConfigurationLoading(true);
+        api.getAgentConfiguration(activeTenantId, agentId).then(result => {
+            if (cancelled) return;
+            if (!result.success || !result.data) { setSelectionError(true); return; }
+            setWorkspace(result.data);
+            if (requestedRevision && requestedRevision !== result.data.evaluationRevisionId) { setSelectionError(true); return; }
+            setConfigurationRevisionId(requestedRevision ?? undefined);
+        }).catch(() => { if (!cancelled) setSelectionError(true); }).finally(() => { if (!cancelled) setConfigurationLoading(false); });
+        return () => { cancelled = true; };
+    }, [activeTenantId, agentId, requestedRevision]);
+    useEffect(() => {
+        requestScope.current++;
+        runtimeSessionId.current = undefined;
+        setTurns([]);
+        setSelectedDebug(null);
+        setError("");
+        setSending(false);
+    }, [activeTenantId, agentId, configurationRevisionId, channelType]);
     const scrollRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -79,7 +112,8 @@ export default function TestAgentPage() {
     }, [turns]);
 
     const send = async () => {
-        if (!activeTenantId || !input.trim() || sending) return;
+        if (!activeTenantId || !input.trim() || sending || !workspace || selectionError) return;
+        const scope = requestScope.current;
         const userMsg = input.trim();
         setInput("");
         setError("");
@@ -92,21 +126,29 @@ export default function TestAgentPage() {
                 message: userMsg,
                 channelType,
                 conversationHistory: history,
+                runtimeSessionId: runtimeSessionId.current,
+                configurationRevisionId,
             });
+            if (scope !== requestScope.current) return;
             if (result.success && result.data) {
                 const debug = result.data.debug as DebugInfo;
                 setTurns(prev => [...prev, { role: "assistant", content: result.data.reply, debug }]);
+                runtimeSessionId.current = debug.runtimeSessionId;
+                if (debug.runtimeError) setError(t("errors.runtimeFailed"));
                 setSelectedDebug(debug);
             } else {
                 setError(result.error || t("errors.sendFailed"));
             }
         } catch (e: any) {
+            if (scope !== requestScope.current) return;
             setError(e.message || t("errors.connection"));
         }
         setSending(false);
     };
 
     const reset = () => {
+        requestScope.current++;
+        runtimeSessionId.current = undefined;
         setTurns([]);
         setSelectedDebug(null);
         setError("");
@@ -131,6 +173,15 @@ export default function TestAgentPage() {
                     </div>
                 </div>
                 <div className="flex items-center gap-2">
+                    <label className="flex items-center gap-2 text-xs">
+                        <span>{tDraft('testSelection')}</span>
+                        <select aria-label={tDraft('testSelection')} disabled={sending || !workspace} value={configurationRevisionId ?? 'operational'}
+                            onChange={event => { setConfigurationRevisionId(event.target.value === 'operational' ? undefined : event.target.value); setSelectionError(false); reset(); }}
+                            className="h-8 rounded-lg border border-neutral-300 bg-white px-2 dark:border-neutral-700 dark:bg-neutral-900">
+                            <option value="operational">{tDraft('operationalVersion', { version: workspace?.operational.version ?? '—' })}</option>
+                            {workspace?.draft && <option value={workspace.draft.id} disabled={!workspace.draft.currentBase}>{tDraft('draftPrepared')}</option>}
+                        </select>
+                    </label>
                     <label className="flex items-center gap-2 text-xs text-neutral-600 dark:text-neutral-300">
                         <span>{t("channelLabel")}</span>
                         <select
@@ -151,6 +202,7 @@ export default function TestAgentPage() {
                         </select>
                     </label>
                     <button
+                        disabled={sending}
                         onClick={reset}
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800"
                     >
@@ -159,6 +211,10 @@ export default function TestAgentPage() {
                     </button>
                 </div>
             </div>
+
+            <p role={selectionError ? 'alert' : 'status'} className="border-b px-6 py-2 text-xs text-indigo-700 dark:text-indigo-300">
+                {tDraft(configurationLoading ? 'loading' : selectionError ? 'testSelectionChanged' : !workspace ? 'loadUnavailable' : configurationRevisionId ? 'testingDraft' : 'testingOperational')}
+            </p>
 
             <div className="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_420px] overflow-hidden">
                 {/* Chat */}
@@ -231,13 +287,13 @@ export default function TestAgentPage() {
                                 value={input}
                                 onChange={e => setInput(e.target.value)}
                                 onKeyDown={e => e.key === "Enter" && !e.shiftKey && send()}
-                                disabled={sending}
+                                disabled={sending || !workspace || selectionError}
                                 placeholder={t("inputPlaceholder")}
                                 className="flex-1 h-10 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 text-sm text-neutral-900 dark:text-neutral-100 outline-none focus:border-indigo-500"
                             />
                             <button
                                 onClick={send}
-                                disabled={sending || !input.trim()}
+                                disabled={sending || !input.trim() || !workspace || selectionError}
                                 className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 px-4 py-2 text-sm font-medium text-white"
                             >
                                 <Send size={14} />

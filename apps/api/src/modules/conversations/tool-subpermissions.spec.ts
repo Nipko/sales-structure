@@ -26,6 +26,11 @@ function names(cfg: any): string[] {
 }
 
 describe('un subpermiso apagado retira su tool de la publicación', () => {
+    it('test drives require vehicles and permission to book the shared agenda', () => {
+        expect(names({ vehicles: { enabled: true } })).not.toContain('schedule_test_drive');
+        expect(names({ vehicles: { enabled: true }, appointments: { enabled: true, canBook: false } })).not.toContain('schedule_test_drive');
+        expect(names({ vehicles: { enabled: true }, appointments: { enabled: true, canBook: true } })).toContain('schedule_test_drive');
+    });
     it('canBook: false saca las que reservan y deja las que consultan', () => {
         const published = names({ appointments: { enabled: true, canBook: false } });
 

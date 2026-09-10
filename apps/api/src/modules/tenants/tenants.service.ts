@@ -46,6 +46,7 @@ import {
 import { TenantDetailResponseDto } from './dto/tenant-detail-response.dto';
 import { diagnoseTenantStall } from './tenant-stall-diagnosis.util';
 import { AGENT_QUALITY_DEPENDENCIES_UPDATED } from '../quality/agent-quality-events';
+import { isAgentAccountBusinessHours } from '@parallext/shared';
 
 export const TENANT_PLAN_SLUGS = ['emprendedor', 'starter', 'pro', 'enterprise', 'custom'] as const;
 export type TenantPlanSlug = typeof TENANT_PLAN_SLUGS[number];
@@ -1019,6 +1020,7 @@ export class TenantsService {
      * must perform that operation as an auditable, resumable unit.
      */
     async update(id: string, data: Partial<{
+        expectedBusinessHours: Record<string, unknown> | null;
         name: string;
         industry: string;
         subType: string | null;
@@ -1045,7 +1047,7 @@ export class TenantsService {
         }
         const existing = await this.prisma.tenant.findUnique({
             where: { id },
-            select: { industry: true, settings: true },
+            select: { industry: true, settings: true, schemaName: true },
         });
         if (!existing) {
             throw new NotFoundException(`Tenant ${id} not found`);
@@ -1057,6 +1059,7 @@ export class TenantsService {
         const {
             subType: requestedSubType,
             settings: requestedSettings,
+            expectedBusinessHours,
             ...tenantData
         } = data;
 
@@ -1121,7 +1124,20 @@ export class TenantsService {
         }
 
         if (requestedSettings) {
-            await mergeTenantSettingsAtomic(this.prisma, id, requestedSettings);
+            if (Object.prototype.hasOwnProperty.call(requestedSettings, 'businessHours')) {
+                if (!Object.prototype.hasOwnProperty.call(data, 'expectedBusinessHours') || !isAgentAccountBusinessHours(requestedSettings.businessHours)) {
+                    throw new BadRequestException({ error: 'business_hours_review_required', message: 'Load current hours and provide a complete valid schedule.' });
+                }
+                await this.prisma.transactionInTenantSchema(existing.schemaName, async query => {
+                    const changed = await query<any[]>(`UPDATE public.tenants SET settings=COALESCE(settings,'{}'::jsonb)||$2::jsonb, updated_at=NOW()
+                        WHERE id=$1::uuid AND COALESCE(settings->'businessHours','null'::jsonb)=$3::jsonb RETURNING id`,
+                        [id, JSON.stringify(requestedSettings), JSON.stringify(expectedBusinessHours ?? null)]);
+                    if (!changed.length) throw new ConflictException({ error: 'business_hours_version_conflict', message: 'Business hours changed; reload before saving.' });
+                    await query('UPDATE agent_personas SET version=COALESCE(version,0)+1, updated_at=NOW() RETURNING id');
+                });
+            } else {
+                await mergeTenantSettingsAtomic(this.prisma, id, requestedSettings);
+            }
         }
 
         const tenant = Object.keys(tenantData).length > 0
@@ -1129,13 +1145,19 @@ export class TenantsService {
             : await this.prisma.tenant.findUnique({ where: { id } });
         if (!tenant) throw new NotFoundException(`Tenant ${id} not found`);
 
-        // Invalidate both the current safe detail view and any legacy payload
-        // left behind during a rolling deployment.
+        await this.finalizeConfigurationUpdate(id, requestedSettings ?? {});
+        return redactReservedTenantSettingsFromRecord(tenant);
+    }
+
+    /** Repeatable finalization for an already committed canonical settings mutation. */
+    async finalizeConfigurationUpdate(id: string, requestedSettings: Record<string, unknown>): Promise<void> {
         await this.redis.del(tenantDetailCacheKey(id));
         await this.redis.del(legacyTenantConfigCacheKey(id));
         await this.redis.del(`tenant:${id}:schema`);
-
-        const qualitySettingsChanged = requestedSettings && [
+        if (Object.prototype.hasOwnProperty.call(requestedSettings, 'businessHours')) {
+            await this.personaService.invalidatePersonaResolutionCaches(id);
+        }
+        const qualitySettingsChanged = [
             'businessHours',
             'chatReasons',
             'customerTypes',
@@ -1147,7 +1169,6 @@ export class TenantsService {
             });
         }
 
-        return redactReservedTenantSettingsFromRecord(tenant);
     }
 
     /**

@@ -78,7 +78,8 @@ describe('el filtro jurisdiccional es duro para fuentes reguladas', () => {
         await service.searchRelevant(tenantId, 'norma', 5, { jurisdiction: 'CO' });
 
         for (const sql of retrievalSqls(capture)) {
-            expect(sql).toMatch(/kd\.jurisdiction IS NULL OR kd\.jurisdiction = /);
+            expect(sql).toMatch(/kd\.jurisdiction = /);
+            expect(sql).not.toContain('kd.jurisdiction IS NULL OR');
             // Una norma vencida citada como vigente es su propia clase de
             // respuesta equivocada.
             expect(sql).toMatch(/kd\.valid_from IS NULL OR kd\.valid_from <= CURRENT_DATE/);
@@ -108,8 +109,8 @@ describe('el filtro jurisdiccional es duro para fuentes reguladas', () => {
         await service.searchRelevant(tenantId, 'norma', 5, { jurisdiction: 'CO' });
 
         for (const sql of retrievalSqls(capture)) {
-            expect(sql).toContain('kd.authority AS doc_authority');
-            expect(sql).toContain('kd.jurisdiction AS doc_jurisdiction');
+            expect(sql).toContain('kd.authority::text AS doc_authority');
+            expect(sql).toContain('kd.jurisdiction::text AS doc_jurisdiction');
             expect(sql).toContain('kd.valid_from AS doc_valid_from');
         }
     });

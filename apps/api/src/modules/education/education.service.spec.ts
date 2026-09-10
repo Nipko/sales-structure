@@ -27,17 +27,19 @@ describe('EducationService enrollment contact integrity', () => {
 
         await expect(service.enrollStudent(schemaName, base))
             .rejects.toThrow('contactId does not belong to this tenant');
-        expect(query).toHaveBeenCalledTimes(1);
+        expect(query.mock.calls.filter(([sql])=>sql.includes('FROM contacts'))).toHaveLength(1);
         expect(query.mock.calls.some(([sql]) => sql.includes('UPDATE course_cohorts'))).toBe(false);
     });
 
     it('validates the contact, claims capacity and inserts in one transaction', async () => {
         const stored = { id: enrollmentId, cohort_id: cohortId, contact_id: contactId };
         const query = jest.fn(async (sql: string, params?: any[]) => {
+            if(sql.includes('pg_advisory_xact_lock')||sql.includes('to_regclass')||sql.startsWith('CREATE ')||sql.includes('FROM enrollments'))return [];
             if (sql.includes('FROM contacts')) return [{ id: contactId }];
             if (sql.includes('SELECT * FROM course_cohorts')) {
-                return [{ id: cohortId, course_id: courseId, status: 'open', available_seats: 2 }];
+                return [{ id: cohortId, course_id: courseId, status: 'open', available_seats: 2,starts_at:'2099-01-01' }];
             }
+            if(sql.includes('FROM courses'))return [{id:courseId,name:'Course',price:100,currency:'COP'}];
             if (sql.includes('UPDATE course_cohorts')) return [{ id: cohortId }];
             if (sql.includes('INSERT INTO enrollments')) {
                 expect(params?.[2]).toBe(contactId);
@@ -51,10 +53,11 @@ describe('EducationService enrollment contact integrity', () => {
             cohortId,
             contactId,
             studentName: 'Ana',
-        })).resolves.toBe(stored);
+        })).resolves.toMatchObject({...stored,seatAssigned:true,charged:false});
         expect(prisma.transactionInTenantSchema).toHaveBeenCalledWith(schemaName, expect.any(Function));
-        expect(String(query.mock.calls[1][0])).toContain('FOR UPDATE');
-        expect(query).toHaveBeenCalledTimes(4);
+        expect(query.mock.calls.find(([sql])=>sql.includes('SELECT * FROM course_cohorts'))?.[0]).toContain('FOR UPDATE');
+        expect(query.mock.calls.filter(([sql])=>sql.includes('UPDATE course_cohorts'))).toHaveLength(1);
+        expect(query.mock.calls.filter(([sql])=>sql.includes('INSERT INTO enrollments'))).toHaveLength(1);
     });
 });
 

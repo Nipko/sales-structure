@@ -43,6 +43,7 @@ import { buildVerticalOperationContract } from './vertical-operation-contract';
 import { VerticalIntegrationsService } from '../vertical-integrations/vertical-integrations.service';
 import { withSubtypeNavigation } from './subtype-navigation';
 import { buildVerticalAuthoringPackage } from './vertical-authoring-package';
+import { persistenceDisabled, type ServiceExecutionContext } from '../../common/types/execution-context';
 
 export const VERTICAL_PROVISIONING_VERSION = 2;
 
@@ -1450,7 +1451,7 @@ export class VerticalsService {
         };
     }
 
-    async getVerticalConfig(tenantId: string, repairAttempt = 0): Promise<TenantVerticalConfig | null> {
+    async getVerticalConfig(tenantId: string, repairAttempt = 0, executionContext?: ServiceExecutionContext): Promise<TenantVerticalConfig | null> {
         const cacheKey = `vertical:${tenantId}`;
         // The provisioning state in PostgreSQL is the publication fence. A
         // Redis hit can never bypass this durable read because a cached v2
@@ -1464,7 +1465,7 @@ export class VerticalsService {
         const settings = (tenant.settings as any) || {};
         let provisioningState = settings.verticalProvisioning;
         let mayPublishCurrentManifest = this.hasCompletedCurrentProvisioning(provisioningState);
-        const cached = await this.redis.getJson<TenantVerticalConfig>(cacheKey);
+        const cached = persistenceDisabled(executionContext) ? null : await this.redis.getJson<TenantVerticalConfig>(cacheKey);
         const storedConfig = settings.verticalConfig as TenantVerticalConfig | undefined;
         let config = storedConfig || cached || undefined;
 
@@ -1559,7 +1560,7 @@ export class VerticalsService {
                     fallbackConfig,
                     provisioningState,
                 );
-            try {
+            if (!persistenceDisabled(executionContext)) try {
                 const persisted = await this.persistVerticalConfigRepairCas(tenantId, settings, tenant.industry, {
                     verticalConfig: config,
                     ...(fallbackIdentityChanged
@@ -1572,7 +1573,7 @@ export class VerticalsService {
                         return null;
                     }
                     await this.redis.del(cacheKey).catch(() => undefined);
-                    return this.getVerticalConfig(tenantId, repairAttempt + 1);
+                    return this.getVerticalConfig(tenantId, repairAttempt + 1, executionContext);
                 }
                 this.logger.log(`Backfilled verticalConfig for tenant ${tenantId} (industry=${tenant.industry})`);
             } catch (err: any) {
@@ -1588,7 +1589,7 @@ export class VerticalsService {
             const mustPersist = !storedConfig
                 || JSON.stringify(storedConfig) !== JSON.stringify(resolved);
             config = resolved;
-            if (mustPersist) {
+            if (mustPersist && !persistenceDisabled(executionContext)) {
                 try {
                     const persisted = await this.persistVerticalConfigRepairCas(tenantId, settings, tenant.industry, {
                         verticalConfig: config,
@@ -1602,7 +1603,7 @@ export class VerticalsService {
                             return null;
                         }
                         await this.redis.del(cacheKey).catch(() => undefined);
-                        return this.getVerticalConfig(tenantId, repairAttempt + 1);
+                        return this.getVerticalConfig(tenantId, repairAttempt + 1, executionContext);
                     }
                     this.logger.log(`Reconciled verticalConfig publication state for tenant ${tenantId}`);
                 } catch (err: any) {
@@ -1611,7 +1612,7 @@ export class VerticalsService {
             }
         }
 
-        if (config) {
+        if (config && !persistenceDisabled(executionContext)) {
             await this.redis.setJson(cacheKey, config, 600); // 10 min TTL
         }
 

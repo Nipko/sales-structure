@@ -20,6 +20,7 @@ import {
     serializeLocalTimestampRows,
 } from '../../common/utils/local-timestamp.util';
 import { resolveNativeEvidenceOpportunity } from '../../common/utils/native-evidence-opportunity.util';
+import type { EvalNamespaceLease } from '../simulation/isolated-eval-namespace';
 import {
     HomeServiceCatalogUnavailableError,
     HomeServiceSlotUnavailableError,
@@ -128,7 +129,21 @@ export class HomeServicesService {
         return serializeLocalTimestampFields(rows[0], HOME_SERVICE_LOCAL_TIMESTAMPS);
     }
 
-    async createRequest(schemaName: string, data: any): Promise<any> {
+    /**
+     * `execution.sandboxNamespace` es el arriendo de una evaluación aislada.
+     *
+     * Presente, la solicitud se escribe igual —es lo que la evaluación mide—
+     * pero el aviso NO sale: `service_request.created` termina en un correo a
+     * los responsables del tenant cuando la urgencia es emergencia, y una fuga
+     * de gas simulada no puede despertar a nadie. Se apaga por el arriendo y no
+     * por el nombre del schema, para que un llamador de producción no pueda
+     * quedarse sin aviso por parecerse a una prueba.
+     */
+    async createRequest(
+        schemaName: string,
+        data: any,
+        execution: { sandboxNamespace?: EvalNamespaceLease } = {},
+    ): Promise<any> {
         if (!data.serviceType) throw new BadRequestException('serviceType is required');
         const scheduledAt = data.scheduledAt === undefined || data.scheduledAt === null
             ? null
@@ -207,7 +222,7 @@ export class HomeServicesService {
         const request = rows[0];
         if (!request) throw new Error('Service request was not created');
         try {
-            this.eventEmitter.emit('service_request.created', {
+            if (!execution.sandboxNamespace) this.eventEmitter.emit('service_request.created', {
                 requestId: request.id,
                 tenantSchemaName: schemaName,
                 schemaName,

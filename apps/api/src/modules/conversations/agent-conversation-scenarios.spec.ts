@@ -46,6 +46,8 @@ function createTenant() {
 
     const runQuery = async (sql: string, params: any[] = []): Promise<any[]> => {
         const q = sql.replace(/\s+/g, ' ').trim();
+        if(q.startsWith('SELECT pg_advisory_xact_lock')||q.startsWith('SELECT contact_id FROM customer_memory_erasure'))return [];
+        if(q.startsWith('SELECT contact_id FROM tool_approval_tickets'))return [{contact_id:contactId}];
 
         if (/^(CREATE|ALTER|DO )/.test(q)) return [];
 
@@ -160,6 +162,16 @@ function createTenant() {
                 execution_lease_expires_at: null,
             });
             return [{ id: byId.id }];
+        }
+
+        // The commitment gate asks whether the catalogue tables exist before it
+        // reads them. This fake has no catalogue, so the honest answer is "no
+        // such table" — and the gate then does exactly what it is supposed to:
+        // records no proposal, blocks nothing, and leaves these scenarios
+        // testing the confirmation machinery rather than the terms.
+        if (q.includes('to_regclass(')) {
+            const columns = [...q.matchAll(/AS (t\d+)/g)].map(match => match[1]);
+            return [Object.fromEntries(columns.map(column => [column, null]))];
         }
 
         throw new Error(`Unhandled SQL in scenario fake: ${q}`);

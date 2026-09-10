@@ -5,7 +5,7 @@ Generado por `docs/audits/2026-09-09/generate-closure-state.cjs`. **Ningún núm
 programa que sí se escribieron a mano envejecieron —el 32/10 de la matriz, el `complete` de canales,
 «otras salidas», «faltan términos en otras familias»—, y ése es exactamente el motivo.
 
-Revisión: `fb1c1366e27bcd0ef3ce073935656105f1a87c61`. Sin base de datos, sin modelo, sin proveedor, sin tenant.
+Revisión: `aa1ae87418b9a26d699afdf83a42434fabcb36be`. Sin base de datos, sin modelo, sin proveedor, sin tenant.
 
 ## Matriz de tareas
 
@@ -39,7 +39,7 @@ Un modelo (`gpt-4.1-mini`), 5 canales, 4 idiomas, k=1:
 
 ## Dónde descansan las palabras del agente
 
-20 lugares inventariados, **7 abiertos**:
+20 lugares inventariados, **6 abiertos**:
 
 | Store | Qué lo cerraría |
 |---|---|
@@ -49,7 +49,6 @@ Un modelo (`gpt-4.1-mini`), 5 canales, 4 idiomas, k=1:
 | `quality_regression_cases` | Record the release id beside the source contact id when the case is frozen, so a retraction has a key. |
 | `handoff_summary` | Record the external CRM note id when the summary is pushed, so the copy outside the platform can be retracted with the one inside it. |
 | `quality_scores` | Record the release ids of the turn being judged, so a withdrawn release can take its verdicts with it. |
-| `outbound_queue_job` | Turn the durable dispatch switch on for the tenant, which routes the same reply through `agent_dispatch_outbox` — already reached by both keys. Until then this is the widest hole in the sweep. |
 
 ## Términos que el cliente aceptó
 

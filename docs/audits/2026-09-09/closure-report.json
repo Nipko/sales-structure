@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "revision": "fb1c1366e27bcd0ef3ce073935656105f1a87c61",
-  "generatedAt": "2026-09-09T22:40:18.189Z",
+  "revision": "aa1ae87418b9a26d699afdf83a42434fabcb36be",
+  "generatedAt": "2026-09-10T00:32:37.635Z",
   "finished": false,
   "counts": {
     "aceptada": 5,
@@ -36,8 +36,7 @@
       "agent_release_evidence",
       "quality_regression_cases",
       "handoff_summary",
-      "quality_scores",
-      "outbound_queue_job"
+      "quality_scores"
     ],
     "channelsSelfService": 5,
     "channelsCertified": 0,
@@ -287,13 +286,13 @@
     },
     {
       "id": "G1",
-      "open": 7,
-      "openLabel": "7 lugares donde las palabras del agente descansan sin alcance completo",
+      "open": 6,
+      "openLabel": "6 lugares donde las palabras del agente descansan sin alcance completo",
       "gates": [],
       "status": "abierta",
       "provenance": "derived",
       "artefact": null,
-      "evidence": "20 lugares inventariados con barrido del árbol de fuentes, cada uno diciendo qué lo alcanza y por qué. Abiertos: `eval_runs`, `simulation_runs`, `agent_release_evidence`, `quality_regression_cases`, `handoff_summary`, `quality_scores`, `outbound_queue_job`.",
+      "evidence": "20 lugares inventariados con barrido del árbol de fuentes, cada uno diciendo qué lo alcanza y por qué. Abiertos: `eval_runs`, `simulation_runs`, `agent_release_evidence`, `quality_regression_cases`, `handoff_summary`, `quality_scores`.",
       "commits": [
         "d366baf3"
       ]

@@ -1,5 +1,5 @@
 {
-  "revision": "fb1c1366e27bcd0ef3ce073935656105f1a87c61",
+  "revision": "aa1ae87418b9a26d699afdf83a42434fabcb36be",
   "generatedFrom": [
     "modules/simulation/task-competence-matrix.ts",
     "modules/simulation/certification-plan.ts",
@@ -342,11 +342,6 @@
         "id": "quality_scores",
         "store": "conversation_quality_scores (judge verdict and its free-text resolution reason)",
         "remedy": "Record the release ids of the turn being judged, so a withdrawn release can take its verdicts with it."
-      },
-      {
-        "id": "outbound_queue_job",
-        "store": "BullMQ `outbound-messages` job payload (legacy reply path)",
-        "remedy": "Turn the durable dispatch switch on for the tenant, which routes the same reply through `agent_dispatch_outbox` — already reached by both keys. Until then this is the widest hole in the sweep."
       }
     ]
   },

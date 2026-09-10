@@ -1,5 +1,5 @@
 {
-  "revision": "aa1ae87418b9a26d699afdf83a42434fabcb36be",
+  "revision": "9a7dc5e16f5e629fc711b4c3c1901cb13048e3ed",
   "generatedFrom": [
     "modules/simulation/task-competence-matrix.ts",
     "modules/simulation/certification-plan.ts",
@@ -312,38 +312,7 @@
   },
   "agentOutputs": {
     "stores": 20,
-    "open": [
-      {
-        "id": "eval_runs",
-        "store": "eval_runs.results (per-scenario transcripts) and agent_snapshot",
-        "remedy": "Invalidate the run when its release is retired — the snapshot already names it — and reach it from the contact-erasure fan-out the way simulation replays already are."
-      },
-      {
-        "id": "simulation_runs",
-        "store": "simulation_runs.results (agent transcripts) and evaluation_snapshot",
-        "remedy": "Same as `eval_runs`: invalidate by release id when the release is retired."
-      },
-      {
-        "id": "agent_release_evidence",
-        "store": "agent_release_candidates.agent_snapshot and agent_release_evaluations.results",
-        "remedy": "Invalidate on retirement of the release the snapshot names, and join the contact-erasure fan-out."
-      },
-      {
-        "id": "quality_regression_cases",
-        "store": "quality_regression_cases.proposal.observedReplies",
-        "remedy": "Record the release id beside the source contact id when the case is frozen, so a retraction has a key."
-      },
-      {
-        "id": "handoff_summary",
-        "store": "conversations.handoff_summary and internal_notes.content",
-        "remedy": "Record the external CRM note id when the summary is pushed, so the copy outside the platform can be retracted with the one inside it."
-      },
-      {
-        "id": "quality_scores",
-        "store": "conversation_quality_scores (judge verdict and its free-text resolution reason)",
-        "remedy": "Record the release ids of the turn being judged, so a withdrawn release can take its verdicts with it."
-      }
-    ]
+    "open": []
   },
   "termsBinding": {
     "families": 15,

@@ -1,12 +1,12 @@
 {
   "version": 1,
-  "revision": "aa1ae87418b9a26d699afdf83a42434fabcb36be",
-  "generatedAt": "2026-09-10T00:32:37.635Z",
+  "revision": "9a7dc5e16f5e629fc711b4c3c1901cb13048e3ed",
+  "generatedAt": "2026-09-10T01:43:48.048Z",
   "finished": false,
   "counts": {
-    "aceptada": 5,
+    "aceptada": 6,
     "bloqueada": 17,
-    "abierta": 3
+    "abierta": 2
   },
   "provenance": {
     "derived": 8,
@@ -30,14 +30,7 @@
     "unboundCharge": [],
     "blockedWriterFamilies": [],
     "outputStores": 20,
-    "openOutputStores": [
-      "eval_runs",
-      "simulation_runs",
-      "agent_release_evidence",
-      "quality_regression_cases",
-      "handoff_summary",
-      "quality_scores"
-    ],
+    "openOutputStores": [],
     "channelsSelfService": 5,
     "channelsCertified": 0,
     "routedOperations": 8,
@@ -286,13 +279,13 @@
     },
     {
       "id": "G1",
-      "open": 6,
-      "openLabel": "6 lugares donde las palabras del agente descansan sin alcance completo",
+      "open": 0,
+      "openLabel": "0 lugares donde las palabras del agente descansan sin alcance completo",
       "gates": [],
-      "status": "abierta",
+      "status": "aceptada",
       "provenance": "derived",
       "artefact": null,
-      "evidence": "20 lugares inventariados con barrido del árbol de fuentes, cada uno diciendo qué lo alcanza y por qué. Abiertos: `eval_runs`, `simulation_runs`, `agent_release_evidence`, `quality_regression_cases`, `handoff_summary`, `quality_scores`.",
+      "evidence": "20 lugares inventariados con barrido del árbol de fuentes, cada uno diciendo qué lo alcanza y por qué. Abiertos: .",
       "commits": [
         "d366baf3"
       ]

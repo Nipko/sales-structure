@@ -5,10 +5,10 @@ el estado sale de ella: con una condición local sin cumplir la fila está `abie
 cumplida y un gate externo nombrado está `bloqueada`; sólo sin condición y sin gate está `aceptada`.
 Cerrar un hueco cambia esta tabla cambiando el código, y reabrirlo la cambia de vuelta.
 
-Revisión: `aa1ae87418b9a26d699afdf83a42434fabcb36be`.
+Revisión: `9a7dc5e16f5e629fc711b4c3c1901cb13048e3ed`.
 
-**El programa no está terminado.** 5 filas aceptadas, 17 bloqueadas por un
-gate externo concreto y 3 abiertas; 0 perfiles certificados
+**El programa no está terminado.** 6 filas aceptadas, 17 bloqueadas por un
+gate externo concreto y 2 abiertas; 0 perfiles certificados
 de 76.
 
 Sin contradicciones: ninguna fila se declara aceptada con una condición abierta o un gate pendiente, ninguna se declara bloqueada sin nombrar el gate y ninguna se declara abierta sin decir qué falta.
@@ -44,7 +44,7 @@ Sin contradicciones: ninguna fila se declara aceptada con una condición abierta
 | F2 | **aceptada** | contador | — | Cada blocker y cada recomendación del assessment tiene resolución declarada, con prueba de cobertura que falla al aparecer un código sin ella; el universo lo produce el código que emite los códigos, no un barrido de texto. Las 8 operaciones que Assist no ejecuta declaran requisitos no secretos, preparación, pantalla exacta y qué releer al volver. | `37411849` `f2a976d6` |
 | F3 | **bloqueada** por gate 3 | **declaración** | — | Recorridos por tareas verificadas implementados y con pruebas de accesibilidad automáticas. Las sesiones moderadas necesitan personas. | — |
 | F4 | **bloqueada** por gate 3 | **declaración** | — | Un solo vocabulario de seis estados proyectado y mostrado en el tablero. La validación visual necesita personas. | — |
-| G1 | **abierta** | contador | 6 lugares donde las palabras del agente descansan sin alcance completo | 20 lugares inventariados con barrido del árbol de fuentes, cada uno diciendo qué lo alcanza y por qué. Abiertos: `eval_runs`, `simulation_runs`, `agent_release_evidence`, `quality_regression_cases`, `handoff_summary`, `quality_scores`. | `d366baf3` |
+| G1 | **aceptada** | contador | — | 20 lugares inventariados con barrido del árbol de fuentes, cada uno diciendo qué lo alcanza y por qué. Abiertos: . | `d366baf3` |
 | G2 | **bloqueada** por gate 3 | **declaración** | — | Curación y revisión en cuatro idiomas implementadas. La revisión humana de muestra necesita personas. | — |
 | G3 | **bloqueada** por gate 1 | **declaración** | — | Comparación por runtime y evidencia en seis familias; publicación gradual y retiro implementados. | — |
 | H1 | **bloqueada** por gate 2 | corrida (`docs/audits/2026-09-09/certification-manifest.md`) | — | Ejecutor durable construido: 3 tablas, arriendo con `clock_timestamp()`, resultado escrito una sola vez, reintento como intento nuevo, presupuesto y deadline verificados antes de entregar trabajo, invalidación por definición de escenario y por autoridad del agente, y el reporte alimentado desde esas filas. El manifiesto de costo por modelo está calculado. Ejecutarlo necesita una credencial y un techo de gasto autorizado. | `e1ac3943` `4ec45699` |
@@ -70,7 +70,7 @@ Sin contradicciones: ninguna fila se declara aceptada con una condición abierta
 | Familias sin cobro ligado | 0 |
 | Familias de writer bloqueadas | 0 |
 | Lugares donde descansan las palabras del agente | 20 |
-| De ellos, abiertos | 6 |
+| De ellos, abiertos | 0 |
 | Canales de autoservicio | 5 |
 | Canales certificados | 0 |
 | Operaciones que Assist deriva a una pantalla | 8 |

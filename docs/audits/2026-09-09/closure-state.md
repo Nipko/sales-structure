@@ -5,7 +5,7 @@ Generado por `docs/audits/2026-09-09/generate-closure-state.cjs`. **Ningún núm
 programa que sí se escribieron a mano envejecieron —el 32/10 de la matriz, el `complete` de canales,
 «otras salidas», «faltan términos en otras familias»—, y ése es exactamente el motivo.
 
-Revisión: `aa1ae87418b9a26d699afdf83a42434fabcb36be`. Sin base de datos, sin modelo, sin proveedor, sin tenant.
+Revisión: `9a7dc5e16f5e629fc711b4c3c1901cb13048e3ed`. Sin base de datos, sin modelo, sin proveedor, sin tenant.
 
 ## Matriz de tareas
 
@@ -39,16 +39,10 @@ Un modelo (`gpt-4.1-mini`), 5 canales, 4 idiomas, k=1:
 
 ## Dónde descansan las palabras del agente
 
-20 lugares inventariados, **6 abiertos**:
+20 lugares inventariados, **0 abiertos**:
 
-| Store | Qué lo cerraría |
-|---|---|
-| `eval_runs` | Invalidate the run when its release is retired — the snapshot already names it — and reach it from the contact-erasure fan-out the way simulation replays already are. |
-| `simulation_runs` | Same as `eval_runs`: invalidate by release id when the release is retired. |
-| `agent_release_evidence` | Invalidate on retirement of the release the snapshot names, and join the contact-erasure fan-out. |
-| `quality_regression_cases` | Record the release id beside the source contact id when the case is frozen, so a retraction has a key. |
-| `handoff_summary` | Record the external CRM note id when the summary is pushed, so the copy outside the platform can be retracted with the one inside it. |
-| `quality_scores` | Record the release ids of the turn being judged, so a withdrawn release can take its verdicts with it. |
+Ninguno. Cada store declara qué lo alcanza y por qué; los que siguen sin llegar a algo lo
+dicen como límite aceptado (`by_design`) con el motivo, no como pendiente.
 
 ## Términos que el cliente aceptó
 

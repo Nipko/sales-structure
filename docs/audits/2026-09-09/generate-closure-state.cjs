@@ -158,9 +158,13 @@ const markdown = [
     '',
     `${AGENT_OUTPUT_STORES.length} lugares inventariados, **${openStores.length} abiertos**:`,
     '',
-    '| Store | Qué lo cerraría |',
-    '|---|---|',
-    ...openStores.map(row => `| \`${row.id}\` | ${row.remedy} |`),
+    // Una tabla con encabezado y sin filas se lee como un error de generación.
+    // Cero abiertos es un resultado y merece decirse con palabras.
+    ...(openStores.length
+        ? ['| Store | Qué lo cerraría |', '|---|---|',
+            ...openStores.map(row => `| \`${row.id}\` | ${row.remedy} |`)]
+        : ['Ninguno. Cada store declara qué lo alcanza y por qué; los que siguen sin llegar a algo lo',
+            'dicen como límite aceptado (`by_design`) con el motivo, no como pendiente.']),
     '',
     '## Términos que el cliente aceptó',
     '',

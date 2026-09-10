@@ -409,8 +409,8 @@ export default function LoginPage() {
                 </div>
 
                 {/* Footer */}
-                <p className="text-center text-xs text-neutral-400 mt-6">
-                    {t('poweredBy')} <a href="https://parallext.com" target="_blank" className="text-indigo-500 hover:text-indigo-400">Parallext.com</a>
+                <p className="text-center text-xs text-neutral-500 dark:text-neutral-400 mt-6">
+                    {t('poweredBy')} <a href="https://parallext.com" target="_blank" className="text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300">Parallext.com</a>
                     {/* Versión del producto, no el commit. El SHA no le dice nada
                         a un cliente y a un atacante le regala la revisión exacta
                         que corre, que es media pista para buscar un fallo

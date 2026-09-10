@@ -82,24 +82,32 @@ export function useApiData<T>(
  */
 export type DataSourceState = "live" | "unverified" | "unavailable";
 
-const BADGE_TONE: Record<DataSourceState, { background: string; color: string }> = {
-    live: { background: "rgba(46, 204, 113, 0.15)", color: "#2ecc71" },
-    unverified: { background: "rgba(152, 152, 176, 0.15)", color: "#9898b0" },
-    unavailable: { background: "rgba(241, 196, 15, 0.15)", color: "#f1c40f" },
+/**
+ * Tones that survive a light background.
+ *
+ * These were three saturated hexes picked against the dark theme — `#2ecc71` on
+ * its own 15% wash comes out at 1.86:1, and the amber was worse. Read on a
+ * laptop in daylight, the badge that says whether the numbers on the page are
+ * real was the least readable thing on it.
+ *
+ * Tailwind pairs instead of fixed hexes, so each theme gets its own value: the
+ * dark side keeps the bright tone it was designed for, and the light side gets
+ * one dark enough to read.
+ */
+const BADGE_TONE: Record<DataSourceState, string> = {
+    live: "bg-emerald-50 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300",
+    unverified: "bg-neutral-100 text-neutral-700 dark:bg-neutral-500/15 dark:text-neutral-300",
+    unavailable: "bg-amber-50 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300",
 };
 
 export function DataSourceBadge({ state }: { state: DataSourceState }) {
     const t = useTranslations("common");
     const label = t(`dataSource.${state}` as any);
-    const tone = BADGE_TONE[state];
     return (
         <span
             title={t(`dataSourceHint.${state}` as any)}
             aria-label={`${label}: ${t(`dataSourceHint.${state}` as any)}`}
-            style={{
-                fontSize: 10, padding: "2px 8px", borderRadius: 6, fontWeight: 600,
-                background: tone.background, color: tone.color,
-            }}
+            className={`rounded-md px-2 py-0.5 text-[10px] font-semibold ${BADGE_TONE[state]}`}
         >
             <span aria-hidden="true">● </span>{label}
         </span>

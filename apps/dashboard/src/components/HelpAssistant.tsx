@@ -470,7 +470,7 @@ function TenantHelpAssistant() {
             <span className="text-[11px] leading-relaxed text-neutral-600 dark:text-neutral-400">
               {t("announce.body")}
             </span>
-            <span className="mt-1 inline-flex items-center gap-1 self-start rounded-full bg-[#3897f0]/10 px-2.5 py-1 text-[10px] font-bold text-[#2b7cd4] dark:text-[#7ab9f5]">
+            <span className="mt-1 inline-flex items-center gap-1 self-start rounded-full bg-[#3897f0]/10 px-2.5 py-1 text-[10px] font-bold text-[#175da8] dark:text-[#7ab9f5]">
               {t("announce.cta")} <ChevronRight className="size-2.5" />
             </span>
             <span className="absolute -bottom-1.5 right-9 size-3 rotate-45 border-b border-r border-[#3897f0]/25 bg-white/95 dark:bg-neutral-900/95" />

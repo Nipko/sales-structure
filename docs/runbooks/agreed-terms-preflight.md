@@ -21,6 +21,32 @@ El preflight cuenta esas filas **antes** de que eso ocurra. Si encontró alguna,
 cliente de ese tenant tiene —o va a tener— un enlace de pago que no va a
 funcionar.
 
+### Qué cuenta exactamente como «sin acuerdo»
+
+La pregunta que hace el preflight es **la misma que hace la caja**, escrita una
+sola vez por familia y negada. Eso importa porque durante un tiempo fueron dos
+preguntas distintas y la del preflight era más floja: contaba sólo si faltaba la
+*clave*, mientras la caja exigía además un precio numérico y una moneda. Todo lo
+que quedaba en el medio se cobraba a nadie y se reportaba como cero.
+
+Cuenta como huérfana una fila viva en la que la caja no puede leer un acuerdo
+completo:
+
+| Forma | Antes | Ahora |
+|---|---|---|
+| `metadata` es NULL de SQL | no se contaba (`NULL ? 'x'` es NULL) | **cuenta** |
+| `{"serviceTerms": null}` | no se contaba (la clave existe) | **cuenta** |
+| `{"serviceTerms": {}}` | no se contaba | **cuenta** |
+| precio ausente, `""` o no numérico | no se contaba | **cuenta** |
+| moneda ausente o vacía | no se contaba | **cuenta** |
+| pedido con `action:"create"` sin `totalAmountCents` o sin moneda | no se contaba | **cuenta** |
+| propuesta aceptada sin `amount_cents` o sin moneda | no se contaba | **cuenta** |
+
+Un precio como `"a convenir"` además hacía **reventar** la consulta (`::numeric`
+lanza), lo que en la caja era un 500 y en el preflight se llevaba por delante a
+todos los tenants siguientes del barrido. Ahora el casteo va detrás del
+predicado, así que una fila mal formada se niega en vez de tumbar la corrida.
+
 ## Cómo leer la salida
 
 ```
@@ -116,6 +142,8 @@ corrió.
 
 | Qué | Dónde |
 |---|---|
+| **La definición de «acuerdo cobrable»**, una por familia | `appointmentAgreedTermsSql`, `catalogAgreedTermsSql`, `commitmentAgreedTermsSql` |
+| Que la caja, el conteo, el listado y el preflight sigan siendo esa misma | `agreed-terms-single-source.spec.ts` |
 | Las reglas por familia | `apps/api/src/modules/tenant-payments/agreed-terms-preflight.ts` |
 | El comando | `apps/api/scripts/preflight-agreed-terms.cjs` |
 | El paso del deploy | `.github/workflows/deploy.yml`, entre el backup y las migraciones |

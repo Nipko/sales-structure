@@ -1,6 +1,6 @@
-import { appointmentsWithoutAgreedTermsSql } from '../appointments/appointment-service-terms';
-import { ordersWithoutAgreedTermsSql } from '../orders/catalog-order-contract';
-import { commitmentOrphansSql } from '../conversations/commitment-proposal';
+import { appointmentsWithoutAgreedTermsDetailSql, appointmentsWithoutAgreedTermsSql } from '../appointments/appointment-service-terms';
+import { ordersWithoutAgreedTermsDetailSql, ordersWithoutAgreedTermsSql } from '../orders/catalog-order-contract';
+import { commitmentOrphanDetailSql, commitmentOrphansSql } from '../conversations/commitment-proposal';
 
 /**
  * The rows that predate the terms binding, counted before a deploy meets them.
@@ -63,53 +63,36 @@ export interface AgreedTermsOrphanReport {
 const SAMPLE = 20;
 
 /**
- * The three families the shared commitment gate closed read their acceptance
- * from `commitment_proposals` rather than from a column of their own, so their
- * orphan query is the same query with a different table. Writing it three times
- * would be three chances to forget the `accepted_at IS NOT NULL`.
+ * Count and detail come from the same family contract, so a row can never be in
+ * one and absent from the other. They were written out by hand here, which is
+ * how the listing an operator opens came to disagree with the number that sent
+ * them to it.
  */
-const commitmentDetail = (table: string, liveStates: readonly string[]) => `
-    SELECT target.id::text AS id, target.status, target.created_at
-      FROM ${table} target
-     WHERE NOT EXISTS (
-         SELECT 1 FROM commitment_proposals p
-          WHERE p.consumed_entity_id = target.id AND p.accepted_at IS NOT NULL)
-       AND target.status NOT IN (${liveStates.map(state => `'${state}'`).join(', ')})
-     ORDER BY target.created_at DESC`;
-
 const FAMILY_SQL: Record<AgreedTermsFamily, { table: string; count: string; detail: string }> = {
     catalog_orders: {
         table: 'orders',
         count: ordersWithoutAgreedTermsSql(),
-        detail: `SELECT id::text AS id, status, created_at
-                   FROM orders
-                  WHERE COALESCE(catalog_terms->>'action','') <> 'create'
-                    AND status NOT IN ('cancelled', 'refunded', 'paid')
-                  ORDER BY created_at DESC`,
+        detail: ordersWithoutAgreedTermsDetailSql(),
     },
     appointments: {
         table: 'appointments',
         count: appointmentsWithoutAgreedTermsSql(),
-        detail: `SELECT id::text AS id, status, created_at
-                   FROM appointments
-                  WHERE NOT (metadata ? 'serviceTerms')
-                    AND status NOT IN ('cancelled', 'no_show', 'completed', 'expired')
-                  ORDER BY created_at DESC`,
+        detail: appointmentsWithoutAgreedTermsDetailSql(),
     },
     property_bookings: {
         table: 'property_bookings',
         count: commitmentOrphansSql('property_bookings', ['cancelled', 'refunded', 'expired']),
-        detail: commitmentDetail('property_bookings', ['cancelled', 'refunded', 'expired']),
+        detail: commitmentOrphanDetailSql('property_bookings', ['cancelled', 'refunded', 'expired']),
     },
     tour_bookings: {
         table: 'tour_bookings',
         count: commitmentOrphansSql('tour_bookings', ['cancelled', 'refunded', 'expired']),
-        detail: commitmentDetail('tour_bookings', ['cancelled', 'refunded', 'expired']),
+        detail: commitmentOrphanDetailSql('tour_bookings', ['cancelled', 'refunded', 'expired']),
     },
     restaurant_orders: {
         table: 'food_orders',
         count: commitmentOrphansSql('food_orders', ['cancelled', 'refunded']),
-        detail: commitmentDetail('food_orders', ['cancelled', 'refunded']),
+        detail: commitmentOrphanDetailSql('food_orders', ['cancelled', 'refunded']),
     },
 };
 

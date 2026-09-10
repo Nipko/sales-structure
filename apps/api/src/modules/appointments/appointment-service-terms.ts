@@ -1,5 +1,6 @@
 import { createHash } from 'crypto';
 import { resolvePaymentPolicy } from '../../common/utils/payment-policy.util';
+import { notAgreedSql } from '../conversations/commitment-proposal';
 
 /** Canonical service facts that can materially change a customer's booking. */
 export interface AppointmentServiceTerms {
@@ -94,13 +95,47 @@ export function appointmentTermsReviewResult(terms: AppointmentServiceTerms, err
  * service" is a different statement from "the amount we are about to take". Two
  * meanings, two names; the money path gets the one that cannot guess.
  */
+/**
+ * The one condition under which an appointment carries an agreement a charge
+ * may read. Everything else — the price, the currency, the orphan count, the
+ * operator listing and the pre-deploy gate — is written from this.
+ *
+ * Each clause is a shape that was silently uncounted before, and every one of
+ * them is a real legacy row rather than a hypothetical:
+ *
+ *   · `metadata IS NOT NULL`      — the column is nullable, and `NULL ? 'x'` is
+ *                                   NULL, so `NOT (metadata ? 'serviceTerms')`
+ *                                   never matched those rows at all;
+ *   · `jsonb_typeof(...) = 'object'` — `{"serviceTerms": null}` and
+ *                                   `{"serviceTerms": "later"}` both satisfy `?`;
+ *   · the price matches a number  — `NULLIF(...,'')::numeric` refuses an empty
+ *                                   string and THROWS on `"a convenir"`, which
+ *                                   aborts the sweep it appears in;
+ *   · the currency is non-blank   — half an agreement is not an agreement, and
+ *                                   the resolver refuses on the three-letter
+ *                                   check anyway.
+ */
+export function appointmentAgreedTermsSql(appointment = 'target'): string {
+    if (!/^[a-z_]+$/.test(appointment)) throw new Error('invalid_sql_alias');
+    const terms = `${appointment}.metadata->'serviceTerms'`;
+    return `COALESCE(${appointment}.metadata IS NOT NULL
+        AND jsonb_typeof(${terms}) = 'object'
+        AND NULLIF(btrim(${terms}->>'price'), '') ~ '^-?[0-9]+([.][0-9]+)?$'
+        AND NULLIF(btrim(${terms}->>'currency'), '') IS NOT NULL, false)`;
+}
+
 export function appointmentAgreedPriceSql(appointment = 'target'): string {
     if (!/^[a-z_]+$/.test(appointment)) throw new Error('invalid_sql_alias');
-    return `NULLIF(${appointment}.metadata->'serviceTerms'->>'price','')::numeric`;
+    // Guarded by the predicate, so the cast only ever runs on text that is a
+    // number. Unguarded it was one malformed row away from a 500 in the till and
+    // an aborted statement in the gate.
+    return `(CASE WHEN ${appointmentAgreedTermsSql(appointment)}
+        THEN btrim(${appointment}.metadata->'serviceTerms'->>'price')::numeric END)`;
 }
 export function appointmentAgreedCurrencySql(appointment = 'target'): string {
     if (!/^[a-z_]+$/.test(appointment)) throw new Error('invalid_sql_alias');
-    return `${appointment}.metadata->'serviceTerms'->>'currency'`;
+    return `(CASE WHEN ${appointmentAgreedTermsSql(appointment)}
+        THEN btrim(${appointment}.metadata->'serviceTerms'->>'currency') END)`;
 }
 
 /**
@@ -112,10 +147,22 @@ export function appointmentAgreedCurrencySql(appointment = 'target'): string {
  * that does, and the sibling families get the same treatment through
  * `TERMS_BINDING_FAMILIES`.
  */
+export const APPOINTMENT_LIVE_STATES: readonly string[] =
+    Object.freeze(['cancelled', 'no_show', 'completed', 'expired']);
+
 export function appointmentsWithoutAgreedTermsSql(): string {
-    return `SELECT count(*)::int AS orphans FROM appointments
-             WHERE NOT (metadata ? 'serviceTerms')
-               AND status NOT IN ('cancelled', 'no_show', 'completed', 'expired')`;
+    return `SELECT count(*)::int AS orphans FROM appointments target
+             WHERE ${notAgreedSql(appointmentAgreedTermsSql())}
+               AND target.status NOT IN (${APPOINTMENT_LIVE_STATES.map(s => `'${s}'`).join(', ')})`;
+}
+
+/** The same rows, listed by id and status. Ids only: never a name or a number. */
+export function appointmentsWithoutAgreedTermsDetailSql(): string {
+    return `SELECT target.id::text AS id, target.status, target.created_at
+              FROM appointments target
+             WHERE ${notAgreedSql(appointmentAgreedTermsSql())}
+               AND target.status NOT IN (${APPOINTMENT_LIVE_STATES.map(s => `'${s}'`).join(', ')})
+             ORDER BY target.created_at DESC`;
 }
 
 /** New appointments retain their sale terms. Legacy rows have no recoverable
@@ -123,9 +170,14 @@ export function appointmentsWithoutAgreedTermsSql(): string {
  * uses `appointmentAgreedPriceSql`, which refuses instead of guessing. */
 export function appointmentPriceSql(appointment = 'target', service = 'service'): string {
     if (![appointment, service].every(alias => /^[a-z_]+$/.test(alias))) throw new Error('invalid_sql_alias');
-    return `(CASE WHEN ${appointment}.metadata ? 'serviceTerms' THEN (${appointment}.metadata->'serviceTerms'->>'price')::numeric ELSE ${service}.price END)`;
+    // Guarded by the same predicate the till uses. Unguarded, a stored
+    // `"a convenir"` made `::numeric` throw and the SCREEN 500 — a display path
+    // has even less business dying on a malformed row than the till does. An
+    // unreadable stored term is not a term, so it falls back to the catalogue,
+    // which is exactly what a legacy row already does.
+    return `(CASE WHEN ${appointmentAgreedTermsSql(appointment)} THEN btrim(${appointment}.metadata->'serviceTerms'->>'price')::numeric ELSE ${service}.price END)`;
 }
 export function appointmentCurrencySql(appointment = 'target', service = 'service'): string {
     if (![appointment, service].every(alias => /^[a-z_]+$/.test(alias))) throw new Error('invalid_sql_alias');
-    return `(CASE WHEN ${appointment}.metadata ? 'serviceTerms' THEN ${appointment}.metadata->'serviceTerms'->>'currency' ELSE ${service}.currency END)`;
+    return `(CASE WHEN ${appointmentAgreedTermsSql(appointment)} THEN btrim(${appointment}.metadata->'serviceTerms'->>'currency') ELSE ${service}.currency END)`;
 }

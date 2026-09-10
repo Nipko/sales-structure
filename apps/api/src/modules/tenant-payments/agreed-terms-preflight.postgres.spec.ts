@@ -55,9 +55,12 @@ integration('the agreed-terms gate against a real database', () => {
             status TEXT NOT NULL, created_at TIMESTAMPTZ DEFAULT NOW())`,
     ];
 
+    // `amount_cents` and `currency` are here because the gate now asks the same
+    // question the till does: an accepted proposal missing either half is an
+    // agreement nobody can charge, and it used to be counted as fine.
     const acceptanceStore = (schema: string) =>
         `CREATE TABLE "${schema}".commitment_proposals (id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            consumed_entity_id UUID, accepted_at TIMESTAMPTZ)`;
+            consumed_entity_id UUID, accepted_at TIMESTAMPTZ, amount_cents NUMERIC, currency TEXT)`;
 
     beforeAll(async () => {
         if (!isDisposableDatabase(connection)) throw new Error('disposable_loopback_database_required');
@@ -98,7 +101,7 @@ integration('the agreed-terms gate against a real database', () => {
         await run(`INSERT INTO "${modern}".appointments (status, metadata)
                    VALUES ('confirmed', '{"serviceTerms":{"price":"65000","currency":"COP"}}'::jsonb)`);
         await run(`INSERT INTO "${modern}".orders (status, catalog_terms)
-                   VALUES ('pending', '{"action":"create","totalAmountCents":"2470"}'::jsonb)`);
+                   VALUES ('pending', '{"action":"create","totalAmountCents":"2470","currency":"COP"}'::jsonb)`);
         const report = await preflightTenant(query, 'tenant-modern', modern);
         expect(report).toMatchObject({ schemaPresent: true, orphans: 0, failures: 0 });
         expect(report.families.every(f => f.outcome === 'counted')).toBe(true);

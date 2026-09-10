@@ -203,6 +203,20 @@ export async function ensureCommitmentProposals(query: CommitmentQuery): Promise
 }
 
 /**
+ * The negation every counter uses, and the reason it is a function.
+ *
+ * Every `*AgreedTermsSql` is TOTAL — it returns true or false and never NULL —
+ * so this can be a plain `NOT`. That totality is the point, and it is where the
+ * bug lived: in three-valued logic a NULL column made the old predicate NULL,
+ * `NOT NULL` is NULL, and a row that fails the `WHERE` is a row the gate never
+ * saw. `metadata` being SQL NULL is exactly that case, and it is the commonest
+ * legacy shape there is. Unknown is not agreed.
+ */
+export function notAgreedSql(agreedSql: string): string {
+    return `NOT (${agreedSql})`;
+}
+
+/**
  * The amount a charge may take for a row created from an accepted proposal.
  *
  * The shape every payable family uses, so the till reads the same thing
@@ -210,20 +224,56 @@ export async function ensureCommitmentProposals(query: CommitmentQuery): Promise
  * accepted proposal yields NULL and stops being payable, which is the refusal
  * appointments and catalogue orders already make.
  */
-export function commitmentAgreedAmountSql(entity = 'target'): string {
+/**
+ * ═══ ONE CONDITION, AND EVERYTHING ELSE DERIVED FROM IT ═══
+ *
+ * What makes a row payable: there is an accepted proposal behind it carrying
+ * BOTH halves of the agreement. Amount alone is not an agreement — a charge with
+ * no currency is refused three lines later — and `accepted_at` alone says only
+ * that somebody pressed yes to something.
+ *
+ * This predicate is the definition, and the amount, the currency, the orphan
+ * count, the operator listing and the pre-deploy gate are all written from it.
+ * They used to be four expressions: the charge required `amount_cents IS NOT
+ * NULL`, the counter did not, and an accepted proposal with no amount was
+ * therefore unpayable AND invisible to the gate that exists to find exactly
+ * that.
+ *
+ * `qualifier` is `"schema".` for the pre-deploy sweep, which walks every tenant
+ * on one raw connection and has no `search_path` to lean on, and empty inside a
+ * tenant transaction.
+ */
+export function commitmentAgreedTermsSql(entity = 'target', qualifier = ''): string {
     if (!/^[a-z_]+$/.test(entity)) throw new Error('invalid_sql_alias');
-    return `(SELECT p.amount_cents / 100 FROM commitment_proposals p
+    if (qualifier && !/^"[A-Za-z_][A-Za-z0-9_]*"\.$/.test(qualifier)) throw new Error('invalid_sql_qualifier');
+    // `EXISTS` is already total; the COALESCE keeps every family's predicate the
+    // same kind of thing, so no caller has to remember which ones can be NULL.
+    return `COALESCE(EXISTS (SELECT 1 FROM ${qualifier}commitment_proposals p
               WHERE p.consumed_entity_id = ${entity}.id AND p.accepted_at IS NOT NULL
                 AND p.amount_cents IS NOT NULL
+                AND NULLIF(btrim(p.currency), '') IS NOT NULL), false)`;
+}
+
+/** The newest COMPLETE acceptance, so an earlier partial one cannot shadow it. */
+function completeProposal(column: string, entity: string, qualifier: string): string {
+    if (!/^[a-z_. /0-9]+$/.test(column)) throw new Error('invalid_sql_column');
+    return `(SELECT ${column} FROM ${qualifier}commitment_proposals p
+              WHERE p.consumed_entity_id = ${entity}.id AND p.accepted_at IS NOT NULL
+                AND p.amount_cents IS NOT NULL
+                AND NULLIF(btrim(p.currency), '') IS NOT NULL
               ORDER BY p.accepted_at DESC LIMIT 1)`;
 }
 
-export function commitmentAgreedCurrencySql(entity = 'target'): string {
+export function commitmentAgreedAmountSql(entity = 'target', qualifier = ''): string {
     if (!/^[a-z_]+$/.test(entity)) throw new Error('invalid_sql_alias');
-    return `(SELECT p.currency FROM commitment_proposals p
-              WHERE p.consumed_entity_id = ${entity}.id AND p.accepted_at IS NOT NULL
-                AND p.amount_cents IS NOT NULL
-              ORDER BY p.accepted_at DESC LIMIT 1)`;
+    if (qualifier && !/^"[A-Za-z_][A-Za-z0-9_]*"\.$/.test(qualifier)) throw new Error('invalid_sql_qualifier');
+    return completeProposal('p.amount_cents / 100', entity, qualifier);
+}
+
+export function commitmentAgreedCurrencySql(entity = 'target', qualifier = ''): string {
+    if (!/^[a-z_]+$/.test(entity)) throw new Error('invalid_sql_alias');
+    if (qualifier && !/^"[A-Za-z_][A-Za-z0-9_]*"\.$/.test(qualifier)) throw new Error('invalid_sql_qualifier');
+    return completeProposal('p.currency', entity, qualifier);
 }
 
 /**
@@ -238,8 +288,18 @@ export function commitmentOrphansSql(table: string, liveStates: readonly string[
     if (liveStates.some(state => !/^[a-z_]+$/.test(state))) throw new Error('invalid_sql_state');
     const states = liveStates.map(state => `'${state}'`).join(', ');
     return `SELECT count(*)::int AS orphans FROM ${table} target
-             WHERE NOT EXISTS (
-                 SELECT 1 FROM commitment_proposals p
-                  WHERE p.consumed_entity_id = target.id AND p.accepted_at IS NOT NULL)
+             WHERE ${notAgreedSql(commitmentAgreedTermsSql())}
                AND target.status NOT IN (${states})`;
+}
+
+/** Rows the operator has to look at, by id and status only — never a name. */
+export function commitmentOrphanDetailSql(table: string, liveStates: readonly string[]): string {
+    if (!/^[a-z_]+$/.test(table)) throw new Error('invalid_sql_table');
+    if (liveStates.some(state => !/^[a-z_]+$/.test(state))) throw new Error('invalid_sql_state');
+    const states = liveStates.map(state => `'${state}'`).join(', ');
+    return `SELECT target.id::text AS id, target.status, target.created_at
+              FROM ${table} target
+             WHERE ${notAgreedSql(commitmentAgreedTermsSql())}
+               AND target.status NOT IN (${states})
+             ORDER BY target.created_at DESC`;
 }

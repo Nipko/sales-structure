@@ -1,6 +1,7 @@
 import { createHash } from 'crypto';
 import type { ServedAgentAuthority } from '../persona/served-agent-authority';
 import { BadRequestException, ConflictException } from '@nestjs/common';
+import { notAgreedSql } from '../conversations/commitment-proposal';
 
 export const CATALOG_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MAX_CENTS = 999999999999999n; // PostgreSQL numeric(15,2).
@@ -133,15 +134,37 @@ export function catalogActionError(error: unknown): Record<string, unknown> {
  * Cents to currency units, because that is what the reference compares against
  * and what the provider is asked for.
  */
+/**
+ * The one condition under which an order carries an agreement a charge may
+ * read. The amount, the currency, the orphan count, the listing and the
+ * pre-deploy gate are all written from it.
+ *
+ * `action = 'create'` was the whole test before, and it is not enough: an order
+ * whose terms say `create` and carry no `totalAmountCents` is refused at the
+ * till and was counted by nobody. `catalog_terms` is also nullable, and
+ * `NULL->>'action' = 'create'` is NULL rather than false — so those rows fell
+ * out of the counter's `WHERE` entirely.
+ */
+export function catalogAgreedTermsSql(order = 'target'): string {
+    if (!/^[a-z_]+$/.test(order)) throw new Error('invalid_sql_alias');
+    const terms = `${order}.catalog_terms`;
+    return `COALESCE(${terms} IS NOT NULL
+        AND ${terms}->>'action' = 'create'
+        AND NULLIF(btrim(${terms}->>'totalAmountCents'), '') ~ '^-?[0-9]+$'
+        AND NULLIF(btrim(${terms}->>'currency'), '') IS NOT NULL, false)`;
+}
+
 export function catalogAgreedAmountSql(order = 'target'): string {
     if (!/^[a-z_]+$/.test(order)) throw new Error('invalid_sql_alias');
-    return `(CASE WHEN ${order}.catalog_terms->>'action' = 'create'`
-        + ` THEN NULLIF(${order}.catalog_terms->>'totalAmountCents','')::numeric / 100 END)`;
+    // The cast runs only behind the predicate: `'mil'::numeric` throws, and a
+    // throw inside a sweep loses every tenant after it.
+    return `(CASE WHEN ${catalogAgreedTermsSql(order)}`
+        + ` THEN btrim(${order}.catalog_terms->>'totalAmountCents')::numeric / 100 END)`;
 }
 export function catalogAgreedCurrencySql(order = 'target'): string {
     if (!/^[a-z_]+$/.test(order)) throw new Error('invalid_sql_alias');
-    return `(CASE WHEN ${order}.catalog_terms->>'action' = 'create'`
-        + ` THEN ${order}.catalog_terms->>'currency' END)`;
+    return `(CASE WHEN ${catalogAgreedTermsSql(order)}`
+        + ` THEN btrim(${order}.catalog_terms->>'currency') END)`;
 }
 
 /**
@@ -149,8 +172,20 @@ export function catalogAgreedCurrencySql(order = 'target'): string {
  * somebody can see rather than a surprise at the till. The sibling families
  * answer the same question the same way.
  */
+export const CATALOG_ORDER_LIVE_STATES: readonly string[] =
+    Object.freeze(['cancelled', 'refunded', 'paid']);
+
 export function ordersWithoutAgreedTermsSql(): string {
-    return `SELECT count(*)::int AS orphans FROM orders
-             WHERE COALESCE(catalog_terms->>'action','') <> 'create'
-               AND status NOT IN ('cancelled', 'refunded', 'paid')`;
+    return `SELECT count(*)::int AS orphans FROM orders target
+             WHERE ${notAgreedSql(catalogAgreedTermsSql())}
+               AND target.status NOT IN (${CATALOG_ORDER_LIVE_STATES.map(s => `'${s}'`).join(', ')})`;
+}
+
+/** The same rows, listed by id and status. Ids only. */
+export function ordersWithoutAgreedTermsDetailSql(): string {
+    return `SELECT target.id::text AS id, target.status, target.created_at
+              FROM orders target
+             WHERE ${notAgreedSql(catalogAgreedTermsSql())}
+               AND target.status NOT IN (${CATALOG_ORDER_LIVE_STATES.map(s => `'${s}'`).join(', ')})
+             ORDER BY target.created_at DESC`;
 }

@@ -1,7 +1,8 @@
 import { COMMITMENT_FAMILIES, commitmentFamilyForTool, declaredWriterFamilies } from './commitment-families';
 import {
     COMMITMENT_ACTIONS, commitmentAgreedAmountSql, commitmentAgreedCurrencySql,
-    commitmentOrphansSql, commitmentProposalHash, commitmentReviewResult,
+    commitmentAgreedTermsSql, commitmentOrphansSql, commitmentProposalHash,
+    commitmentReviewResult, notAgreedSql,
     type CommitmentProposal,
 } from './commitment-proposal';
 import { EVAL_WRITER_SANDBOX_FAMILIES } from './agent-test-tool-policy';
@@ -152,9 +153,16 @@ describe('the SQL a charge reads', () => {
         expect(() => commitmentOrphansSql('food_orders', ["cancelled'"])).toThrow('invalid_sql_state');
     });
 
-    it('counts only live rows with no acceptance behind them', () => {
+    it('counts only live rows with no COMPLETE acceptance behind them', () => {
+        // `NOT EXISTS(accepted_at IS NOT NULL)` was the whole test, and the till
+        // asked for more: an accepted proposal with no `amount_cents` — or no
+        // currency — is an agreement nobody can charge, and it was counted as
+        // fine. The counter is now the negation of the till's own predicate, so
+        // the two cannot say different things about the same row.
         const sql = commitmentOrphansSql('property_bookings', ['cancelled', 'expired']);
-        expect(sql).toContain('NOT EXISTS');
+        expect(sql).toContain(notAgreedSql(commitmentAgreedTermsSql()));
+        expect(sql).toContain('p.amount_cents IS NOT NULL');
+        expect(sql).toContain(`NULLIF(btrim(p.currency), '') IS NOT NULL`);
         expect(sql).toContain("status NOT IN ('cancelled', 'expired')");
     });
 });

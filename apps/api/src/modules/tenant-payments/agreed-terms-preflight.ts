@@ -3,6 +3,9 @@ import {
     type AgreedTermsFamily,
     type OrphanQuery,
 } from './agreed-terms-orphans';
+import { APPOINTMENT_LIVE_STATES, appointmentAgreedTermsSql } from '../appointments/appointment-service-terms';
+import { CATALOG_ORDER_LIVE_STATES, catalogAgreedTermsSql } from '../orders/catalog-order-contract';
+import { commitmentAgreedTermsSql, notAgreedSql } from '../conversations/commitment-proposal';
 
 /**
  * The gate a deploy has to pass before it changes what a charge is allowed to
@@ -107,24 +110,34 @@ interface FamilySpec {
  * relying on one here would be worse than verbose: a stale path means counting
  * one tenant's rows while reporting another's name.
  */
-const COMMITMENT_PREDICATE = (schema: string) => `NOT EXISTS (
-    SELECT 1 FROM "${schema}".commitment_proposals p
-     WHERE p.consumed_entity_id = target.id AND p.accepted_at IS NOT NULL)`;
+/**
+ * Every predicate here is the family's OWN definition of a readable agreement,
+ * negated. Not a copy of it — the function itself, so the gate cannot drift
+ * from the till the way it had.
+ *
+ * What it had: the till required a numeric price and a currency, the gate asked
+ * only whether a key existed. `metadata` SQL NULL, `{"serviceTerms": null}`,
+ * `{"serviceTerms": {}}`, an empty or non-numeric price and a missing currency
+ * were all refused at the till and reported as zero here — which is the exact
+ * failure this gate exists to prevent, made by the gate.
+ */
+const COMMITMENT_PREDICATE = (schema: string) =>
+    notAgreedSql(commitmentAgreedTermsSql('target', `"${schema}".`));
 
 export const PREFLIGHT_FAMILIES: Readonly<Record<AgreedTermsFamily, FamilySpec>> = Object.freeze({
     catalog_orders: {
         table: 'orders',
-        liveStates: ['cancelled', 'refunded', 'paid'],
+        liveStates: [...CATALOG_ORDER_LIVE_STATES],
         acceptance: { kind: 'column', name: 'catalog_terms' },
-        orphanPredicate: () => `COALESCE(target.catalog_terms->>'action','') <> 'create'`,
+        orphanPredicate: () => notAgreedSql(catalogAgreedTermsSql()),
     },
     appointments: {
         table: 'appointments',
-        liveStates: ['cancelled', 'no_show', 'completed', 'expired'],
+        liveStates: [...APPOINTMENT_LIVE_STATES],
         // `metadata` predates every release in this batch, so appointments can
         // always be counted for real — no absent-store branch applies to them.
         acceptance: { kind: 'column', name: 'metadata' },
-        orphanPredicate: () => `NOT (target.metadata ? 'serviceTerms')`,
+        orphanPredicate: () => notAgreedSql(appointmentAgreedTermsSql()),
     },
     property_bookings: {
         table: 'property_bookings',

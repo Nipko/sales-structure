@@ -67,6 +67,14 @@ describe('what it costs after compaction', () => {
         expect(result.answer.paymentLinks).toEqual([]);
     });
 
+    it('turns the three-charge legacy turn into two', () => {
+        // The legacy producer already carried the caption on the picture, so
+        // the saving there is the link alone.
+        const result = compactTurnAnswer(TYPICAL, { lane: 'legacy', channelType: 'whatsapp' });
+        expect(result.before).toBe(3);
+        expect(result.after).toBe(2);
+    });
+
     it('appends the canonical URL verbatim — the server types it, not the model', () => {
         const url = 'https://checkout.wompi.co/l/VPOS_aBcD12?ref=abc%2Fdef';
         const result = compactTurnAnswer(answer({ chunks: ['Aquí tienes el enlace:'], paymentLinks: [url] }),

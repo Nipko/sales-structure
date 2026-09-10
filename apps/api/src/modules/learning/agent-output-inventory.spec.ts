@@ -129,10 +129,12 @@ describe('every place the agent\'s words come to rest', () => {
 
     it('names the widest hole rather than averaging it away', () => {
         const open = openAgentOutputStores().map(row => row.id);
-        // The legacy reply path is the one that matters most today: it is live,
-        // it holds the words with no provenance, and the durable path that
-        // solves it is behind a switch that is off by default.
-        expect(open).toContain('outbound_queue_job');
+        // The legacy reply path used to be the one that mattered most: live,
+        // holding the words with no provenance, and only closable by a switch
+        // nobody could flip for a real tenant. It is closed now — the job is a
+        // reference and the words live where both keys can reach them — so what
+        // this asserts is that it stays closed.
+        expect(open).not.toContain('outbound_queue_job');
         // eslint-disable-next-line no-console
         console.log(`[agent-output-inventory] ${AGENT_OUTPUT_STORES.length} stores, ${open.length} open: ${open.join(', ')}`);
     });

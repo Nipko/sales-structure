@@ -4,6 +4,7 @@ import { RedisService } from '../redis/redis.service';
 import { LearningService } from '../learning/learning.service';
 import { eraseWidgetContactSessions } from '../widget/widget-session-erasure';
 import { redactWidgetAgentReplies } from '../widget/widget-agent-reply-retention';
+import { redactOutboundPayloadsForContact } from '../channels/outbound-payload-store';
 import { redactDispatchOutbox } from '../channels/agent-dispatch-outbox';
 import { redactTurnLedger } from '../conversations/agent-turn-ledger';
 import { eraseSimulationContactReplays } from '../simulation/simulation-replay-retention';
@@ -399,6 +400,11 @@ export class ComplianceService {
                 await query(`DELETE FROM internal_notes WHERE conversation_id IN (
                     SELECT id FROM conversations WHERE contact_id=ANY($1::uuid[]))`, [contactIds]);
             }
+            // The legacy outbound queue, reachable at last. Its words and its
+            // recipient used to sit in a Redis job that no key could match; they
+            // sit in a tenant row now, and an erasure takes them whether or not
+            // the message ever went out.
+            await redactOutboundPayloadsForContact(query as any, contactIds);
             const widgetSessions = await eraseWidgetContactSessions(query, schema, contactIds);
             const widgetReplies = await redactWidgetAgentReplies(query, schema, {contactIds});
             // Same exclusive fence, same reason: the words and the recipient of

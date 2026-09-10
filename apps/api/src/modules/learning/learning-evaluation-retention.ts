@@ -3,6 +3,7 @@ import type { LearningSourceQuery } from './learning-inbox-source';
 import { redactWidgetAgentReplies } from '../widget/widget-agent-reply-retention';
 import { redactPendingDrafts, redactTurnLedger } from '../conversations/agent-turn-ledger';
 import { redactDispatchOutbox } from '../channels/agent-dispatch-outbox';
+import { redactOutboundPayloadsForRelease } from '../channels/outbound-payload-store';
 
 export interface LearningEvaluationNamespace extends EvalNamespaceLease { attemptId:string;workerToken?:string; }
 
@@ -80,6 +81,10 @@ export async function retireLearningReleases(query:LearningSourceQuery,input:{re
         await redactWidgetAgentReplies(query,schema,{releaseIds:rows.map(row=>row.id),sourceIds:input.sourceIds});
     // Outbound items still waiting to be sent derive from the same examples.
     await redactDispatchOutbox(query,schema,{releaseIds:rows.map(row=>row.id),sourceIds:input.sourceIds});
+    // And the legacy queue, which used to be unreachable: its words lived in a
+    // Redis job with no release id on them. They live in a row now, so a
+    // withdrawn release takes back what has not gone out yet.
+    if(rows.length)await redactOutboundPayloadsForRelease(query as any,rows.map(row=>String(row.id)));
     // And the envelope a turn would be resumed from, which carries the same
     // footprints. The recursive lineage above is what makes release ids enough:
     // the ledger cannot filter by source id, and by here every affected release

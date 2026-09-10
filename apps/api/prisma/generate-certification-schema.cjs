@@ -15,16 +15,20 @@ require(path.join(root, 'node_modules/tsconfig-paths')).register({
 const { CERTIFICATION_LEDGER_DDL } = require(path.join(root, 'apps/api/src/modules/simulation/certification-ledger.ts'));
 const { BENCHMARK_LEDGER_DDL } = require(path.join(root, 'apps/api/src/modules/simulation/benchmark-harness.ts'));
 const { COMMITMENT_PROPOSAL_DDL } = require(path.join(root, 'apps/api/src/modules/conversations/commitment-proposal.ts'));
+const { OUTBOUND_PAYLOAD_DDL } = require(path.join(root, 'apps/api/src/modules/channels/outbound-payload-store.ts'));
 
 // The constants create objects unqualified, relying on search_path. Both the
 // template and the migration have to name the schema, so the identifier right
 // after CREATE TABLE / CREATE INDEX ... ON is qualified and nothing else is.
 const qualify = (sql, prefix) => sql
     .replace(/CREATE TABLE IF NOT EXISTS ([a-z_]+)/g, (_m, name) => `CREATE TABLE IF NOT EXISTS ${prefix}"${name}"`)
-    .replace(/ON ([a-z_]+) \(/g, (_m, name) => `ON ${prefix}"${name}" (`)
-    .replace(/ON ([a-z_]+)\(/g, (_m, name) => `ON ${prefix}"${name}"(`);
+    // `ON table (`, `ON table(` and `ON table USING GIN (`. The third form was
+    // missing and left one index unqualified, so the template and the migration
+    // created it in whatever schema the search_path happened to point at.
+    .replace(/ON ([a-z_]+)(\s*\(|\s+USING\s)/g, (_m, name, tail) => `ON ${prefix}"${name}"${tail}`);
 
-const statements = [...CERTIFICATION_LEDGER_DDL, ...BENCHMARK_LEDGER_DDL, ...COMMITMENT_PROPOSAL_DDL]
+const statements = [...CERTIFICATION_LEDGER_DDL, ...BENCHMARK_LEDGER_DDL, ...COMMITMENT_PROPOSAL_DDL,
+    ...OUTBOUND_PAYLOAD_DDL]
     // Comments inside the DDL are for the reader of the TypeScript; the SQL
     // artefacts carry their own prose and keeping both would be two copies.
     .map(sql => sql.replace(/\/\*\*[\s\S]*?\*\//g, '').replace(/^\s*\n/gm, ''));
@@ -42,7 +46,11 @@ const templateBlock = ['-- BEGIN AGENT CERTIFICATION LEDGER',
 const template = path.join(root, 'apps/api/prisma/tenant-schema.sql');
 let text = fs.readFileSync(template, 'utf8');
 if (text.includes('-- BEGIN AGENT CERTIFICATION LEDGER')) {
-    text = text.replace(/-- BEGIN AGENT CERTIFICATION LEDGER[\s\S]*?-- END AGENT CERTIFICATION LEDGER\n/,
+    // `\r?\n`, because git hands this file back with CRLF endings. Anchoring on
+    // a bare newline made the replacement silently do nothing: the generator
+    // reported success, the block kept whatever it had, and the parity test
+    // failed on a table the template had never been told about.
+    text = text.replace(/-- BEGIN AGENT CERTIFICATION LEDGER[\s\S]*?-- END AGENT CERTIFICATION LEDGER\r?\n/,
         templateBlock);
 } else {
     text = `${text.replace(/\s*$/, '')}\n\n${templateBlock}`;

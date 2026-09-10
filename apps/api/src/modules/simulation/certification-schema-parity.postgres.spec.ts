@@ -5,6 +5,7 @@ import { Client } from 'pg';
 import { CERTIFICATION_LEDGER_DDL } from './certification-ledger';
 import { BENCHMARK_LEDGER_DDL } from './benchmark-harness';
 import { COMMITMENT_PROPOSAL_DDL } from '../conversations/commitment-proposal';
+import { OUTBOUND_PAYLOAD_DDL } from '../channels/outbound-payload-store';
 
 /**
  * Tres definiciones de las mismas tablas.
@@ -27,7 +28,7 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
 const integration = connection ? describe : describe.skip;
 
 const TABLES = ['agent_certification_runs', 'agent_certification_subjects', 'agent_certification_cases',
-    'benchmark_attempts', 'benchmark_reviews', 'commitment_proposals'];
+    'benchmark_attempts', 'benchmark_reviews', 'commitment_proposals', 'outbound_payloads'];
 
 integration('the three definitions of the certification tables agree', () => {
     const suffix = randomUUID().replace(/-/g, '');
@@ -51,7 +52,8 @@ integration('the three definitions of the certification tables agree', () => {
 
         // 1. What the runtime executes itself the first time a tenant needs it.
         await q(`SET search_path TO "${schemas.bootstrap}"`);
-        for (const sql of [...CERTIFICATION_LEDGER_DDL, ...BENCHMARK_LEDGER_DDL, ...COMMITMENT_PROPOSAL_DDL]) await q(sql);
+        for (const sql of [...CERTIFICATION_LEDGER_DDL, ...BENCHMARK_LEDGER_DDL, ...COMMITMENT_PROPOSAL_DDL,
+            ...OUTBOUND_PAYLOAD_DDL]) await q(sql);
         await q('SET search_path TO public');
 
         // 2. The checked-in definition of a brand new tenant.
@@ -149,6 +151,6 @@ integration('the three definitions of the certification tables agree', () => {
             expect(statement).not.toMatch(/^\s*(DROP|ALTER|UPDATE|DELETE|INSERT INTO|TRUNCATE)\b/i);
         }
         expect(migration).not.toMatch(/\bDROP\s+(TABLE|COLUMN|INDEX)\b|\bALTER\s+TABLE\b/i);
-        expect((migration.match(/CREATE TABLE IF NOT EXISTS/g) ?? []).length).toBe(6);
+        expect((migration.match(/CREATE TABLE IF NOT EXISTS/g) ?? []).length).toBe(7);
     });
 });

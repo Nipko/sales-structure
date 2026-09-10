@@ -16,6 +16,7 @@ import { AgentDispatchOutboxStore } from './agent-dispatch-outbox.store';
 import { DISPATCH_TERMINAL_STATES } from './agent-dispatch-outbox';
 import { transportNotAvailable } from './strict-dispatch-transport';
 import { OutboundQueueService } from './outbound-queue.service';
+import { loadOutboundPayload, markOutboundPayloadSent } from './outbound-payload-store';
 
 export const OUTBOUND_QUEUE = 'outbound-messages';
 
@@ -25,10 +26,25 @@ export const pendingJobsKey = (tenantId: string) => `outbound:pending:${tenantId
 /** Two identifiers, never a payload or a recipient: the outbox row is the record. */
 export interface DispatchJobReference { tenantId: string; dispatchId: string }
 
-export type OutboundJobData = { outbound: OutboundMessage; approvalEffect?: never; operationalNotice?: never; dispatch?: never }
-    | { outbound?: never; approvalEffect: ApprovedEffectReference; operationalNotice?: never; dispatch?: never }
-    | { outbound?: never; approvalEffect?: never; operationalNotice: OperationalNoticeReference; dispatch?: never }
-    | { outbound?: never; approvalEffect?: never; operationalNotice?: never; dispatch: DispatchJobReference };
+/**
+ * A reply that lives in the database, named by two ids.
+ *
+ * The `outbound` variant below carries the words and the recipient in Redis and
+ * is kept for exactly one reason: jobs published before this deploy are still in
+ * the queue when the worker restarts, and refusing them would drop replies
+ * somebody is waiting for. New jobs use this.
+ */
+export interface OutboundPayloadReference {
+    tenantId: string;
+    payloadId: string;
+}
+
+export type OutboundJobData =
+    { outbound: OutboundMessage; outboundRef?: never; approvalEffect?: never; operationalNotice?: never; dispatch?: never }
+    | { outbound?: never; outboundRef: OutboundPayloadReference; approvalEffect?: never; operationalNotice?: never; dispatch?: never }
+    | { outbound?: never; outboundRef?: never; approvalEffect: ApprovedEffectReference; operationalNotice?: never; dispatch?: never }
+    | { outbound?: never; outboundRef?: never; approvalEffect?: never; operationalNotice: OperationalNoticeReference; dispatch?: never }
+    | { outbound?: never; outboundRef?: never; approvalEffect?: never; operationalNotice?: never; dispatch: DispatchJobReference };
 
 @Processor(OUTBOUND_QUEUE, {
     concurrency: 5,
@@ -274,7 +290,31 @@ export class OutboundQueueProcessor extends WorkerHost {
                 };
             } });
         }
-        const { outbound } = job.data;
+        // Hydrate a referenced reply from the row that owns it.
+        //
+        // This is the last moment before the message leaves, which is exactly
+        // where a retraction or an erasure has to be honoured: a payload that
+        // was taken back while the job waited out its delay finds nothing to
+        // send, and says so instead of sending a message nobody may send any
+        // more. A payload already delivered finds nothing either, which is what
+        // stops a replayed job producing a second copy.
+        let hydrated = job.data.outbound as OutboundMessage | undefined;
+        if (!hydrated && job.data.outboundRef) {
+            const reference = job.data.outboundRef;
+            const stored = await this.readOutboundPayload(reference.tenantId, reference.payloadId);
+            if (!stored) {
+                this.logger.warn(`[Outbound] Payload ${reference.payloadId} is gone — nothing to send`);
+                return 'skipped:payload_missing';
+            }
+            if (!stored.payload) {
+                this.logger.log(
+                    `[Outbound] Payload ${reference.payloadId} was ${stored.redactedReason ?? 'cleared'} — not sending`);
+                return `skipped:${stored.redactedReason ?? 'payload_redacted'}`;
+            }
+            hydrated = stored.payload as unknown as OutboundMessage;
+        }
+        if (!hydrated) throw new Error('outbound_payload_unavailable');
+        const outbound: OutboundMessage = hydrated;
         const startTime = Date.now();
 
         const sentKey = this.sentMarkerKey(job.id as string | undefined);
@@ -364,6 +404,12 @@ export class OutboundQueueProcessor extends WorkerHost {
         // Delivered — mark before any post-send bookkeeping so a crash in the
         // lines below re-runs the job without re-sending to the customer.
         if (job.id) await this.redis.set(sentKey, String(result), 86400).catch(() => {});
+        // And drop the words from the durable row. The row stays as the fact
+        // that stops a replayed job sending a second copy; what it no longer
+        // holds is a message that has already reached the person it was for.
+        if (job.data.outboundRef) {
+            await this.clearOutboundPayload(job.data.outboundRef.tenantId, job.data.outboundRef.payloadId);
+        }
 
         // Count the quota only on a SUCCESSFUL send (not on every check/retry).
         await this.throttle.recordUsage(outbound.tenantId, 'outbound').catch(() => {});
@@ -384,6 +430,40 @@ export class OutboundQueueProcessor extends WorkerHost {
         );
 
         return result;
+    }
+
+    /**
+     * Reads a referenced reply out of the tenant that owns it.
+     *
+     * A tenant whose schema cannot be resolved, or that has no such table yet,
+     * returns null rather than throwing: the job then reports that there is
+     * nothing to send instead of retrying three times against a database that
+     * will keep answering the same way.
+     */
+    private async readOutboundPayload(tenantId: string, payloadId: string) {
+        try {
+            const schema = await this.prisma.getTenantSchemaName(tenantId);
+            if (!schema) return null;
+            return await this.prisma.transactionInTenantSchema(schema, query =>
+                loadOutboundPayload(((sql: string, params: any[] = []) => query(sql, params)) as any, payloadId));
+        } catch (error: any) {
+            this.logger.warn(`[Outbound] Could not read payload ${payloadId}: ${error?.message ?? error}`);
+            return null;
+        }
+    }
+
+    private async clearOutboundPayload(tenantId: string, payloadId: string): Promise<void> {
+        try {
+            const schema = await this.prisma.getTenantSchemaName(tenantId);
+            if (!schema) return;
+            await this.prisma.transactionInTenantSchema(schema, query =>
+                markOutboundPayloadSent(((sql: string, params: any[] = []) => query(sql, params)) as any, payloadId));
+        } catch (error: any) {
+            // Best effort: the message is already with the provider, and the
+            // sent marker in Redis is what stops the resend. Failing here must
+            // not turn a delivered reply into a retried one.
+            this.logger.warn(`[Outbound] Could not clear payload ${payloadId}: ${error?.message ?? error}`);
+        }
     }
 
     /** Record an end-to-end (webhook→customer) latency sample into a capped Redis reservoir. */
@@ -426,7 +506,26 @@ export class OutboundQueueProcessor extends WorkerHost {
             this.logger.error({ msg: 'Approval effect job failed', jobId: job.id, ...job.data.approvalEffect, attempt: job.attemptsMade });
             return;
         }
+        // A referenced job has no recipient in Redis, and that is the point: the
+        // failure log says which row could not be delivered, not who it was for.
+        // Sending the number to Sentry would put back exactly what moving the
+        // payload into the database took out.
+        if (job.data.outboundRef) {
+            const reference = job.data.outboundRef;
+            this.decrPending(reference.tenantId).catch(() => {});
+            this.logger.error({
+                msg: 'Outbound message failed after all retries',
+                jobId: job.id, attempt: job.attemptsMade,
+                tenantId: reference.tenantId, payloadId: reference.payloadId, error: error.message,
+            });
+            Sentry.captureException(error, {
+                tags: { queue: 'outbound-messages', tenantId: reference.tenantId },
+                extra: { jobId: job.id, payloadId: reference.payloadId, attempt: job.attemptsMade },
+            });
+            return;
+        }
         const { outbound } = job.data;
+        if (!outbound) return;
         this.decrPending(outbound.tenantId).catch(() => {});
         this.logger.error({
             msg: 'Outbound message failed after all retries',

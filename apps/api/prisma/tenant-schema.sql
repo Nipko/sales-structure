@@ -5455,4 +5455,26 @@ CREATE INDEX IF NOT EXISTS idx_commitment_proposal_entity
         ON "{{SCHEMA_NAME}}"."commitment_proposals" (consumed_entity_id) WHERE consumed_entity_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_commitment_proposal_contact
         ON "{{SCHEMA_NAME}}"."commitment_proposals" (contact_id);
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."outbound_payloads" (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id UUID NOT NULL,
+        channel_type TEXT NOT NULL,
+        contact_id UUID,
+        conversation_id UUID,
+        release_ids TEXT[] NOT NULL DEFAULT '{}',
+        dedupe_id TEXT,
+        payload JSONB,
+        redacted_at TIMESTAMPTZ,
+        redacted_reason TEXT,
+        sent_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CONSTRAINT outbound_payloads_reason
+            CHECK (redacted_reason IS NULL OR redacted_reason IN ('retraction','erasure','delivered'))
+    );
+CREATE UNIQUE INDEX IF NOT EXISTS uidx_outbound_payload_dedupe
+        ON "{{SCHEMA_NAME}}"."outbound_payloads" (tenant_id, dedupe_id) WHERE dedupe_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_outbound_payload_contact
+        ON "{{SCHEMA_NAME}}"."outbound_payloads" (contact_id) WHERE payload IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_outbound_payload_release
+        ON "{{SCHEMA_NAME}}"."outbound_payloads" USING GIN (release_ids) WHERE payload IS NOT NULL;
 -- END AGENT CERTIFICATION LEDGER

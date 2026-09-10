@@ -320,17 +320,22 @@ export const AGENT_OUTPUT_STORES: readonly AgentOutputStore[] = Object.freeze([
     // ── Deferred sends ───────────────────────────────────────────────────────
     store({
         id: 'outbound_queue_job',
-        store: 'BullMQ `outbound-messages` job payload (legacy reply path)',
-        sources: ['modules/channels/outbound-queue.service.ts'],
-        carriesProvenance: false,
-        reachedByRetraction: 'no',
-        reachedByContactErasure: 'no',
-        status: 'open',
-        rationale: 'The legacy reply path staggers bubbles, payment link and media into delayed Redis jobs that hold the '
-            + 'words and the recipient, with no footprint, no admission re-check and up to 24 h of retention on failure. '
-            + 'It is the live path today: the durable outbox that solves this is behind a switch that is off by default.',
-        remedy: 'Turn the durable dispatch switch on for the tenant, which routes the same reply through '
-            + '`agent_dispatch_outbox` — already reached by both keys. Until then this is the widest hole in the sweep.',
+        store: 'outbound_payloads.payload (the legacy reply path, now a reference)',
+        sources: ['modules/channels/outbound-queue.service.ts', 'modules/channels/outbound-payload-store.ts',
+            'modules/channels/outbound-queue.processor.ts'],
+        carriesProvenance: true,
+        reachedByRetraction: 'yes',
+        reachedByContactErasure: 'yes',
+        status: 'closed',
+        rationale: 'This was the widest hole in the sweep: staggered bubbles, payment links and media went into delayed '
+            + 'Redis jobs holding the words and the recipient, with no footprint, no contact and a day of retention on '
+            + 'failure, so neither key could reach them. The remedy this row used to ask for was to turn the durable '
+            + 'dispatch switch on, which is not something anybody can do for a live tenant. The job is a REFERENCE now: '
+            + 'Redis carries two ids, the words live in a tenant row that records the contact and the release ids, and '
+            + 'the processor reads them at the last moment before sending — which is what makes "retracted while it was '
+            + 'queued" mean something. Redaction nulls the payload and the row survives as the fact that stops a '
+            + 'resend, and delivery clears it for the same reason. A tenant whose schema cannot be resolved still sends '
+            + 'inline, exactly as before, so the change degrades rather than fails.',
     }),
 ]);
 

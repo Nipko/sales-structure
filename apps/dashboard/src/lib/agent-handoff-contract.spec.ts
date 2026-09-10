@@ -31,7 +31,11 @@ describe("traspaso de Assist a la pantalla que decide", () => {
         const known = new Set(NAVIGATION_ROUTES.map((route) => route.pattern));
         const unknown = routedAgentOperations()
             .map((operation) => operation.route)
-            .filter((route) => !known.has(route));
+            // `NAVIGATION_ROUTES` types its patterns as `/admin${string}`; the
+            // operation's route is a plain string, and the whole point of the
+            // check is to find the ones that are not in the set. The cast is
+            // what lets the lookup happen at all.
+            .filter((route) => !known.has(route as `/admin${string}`));
         expect({ unknown }).toEqual({ unknown: [] });
     });
 

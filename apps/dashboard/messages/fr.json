@@ -1268,7 +1268,9 @@
     "ssoForcedMessage": "Votre organisation exige la connexion SSO",
     "ssoAvailable": "SSO disponible pour votre domaine",
     "poweredBy": "Propulsé par",
-    "generatePassword": "Générer un mot de passe"
+    "generatePassword": "Générer un mot de passe",
+    "showPassword": "Afficher le mot de passe",
+    "hidePassword": "Masquer le mot de passe"
   },
   "dashboard": {
     "leadsTodayNoun": "{noun} aujourd’hui",

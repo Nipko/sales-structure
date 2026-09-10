@@ -83,6 +83,19 @@ export default defineConfig({
         baseURL: dashboardUrl,
       },
     },
+    {
+      // The same specs at a phone viewport. Most of this product is used from
+      // a phone by the person who owns the business, and a layout that only
+      // works at 1280px is a layout most of its users never see working.
+      // Kept as a project rather than a viewport override inside each test so
+      // adding a spec covers both sizes without anybody remembering to.
+      name: "dashboard-mobile",
+      testMatch: /dashboard[\/](session-and-roles|locales-and-access)\.spec\.ts$/,
+      use: {
+        ...devices["Pixel 7"],
+        baseURL: dashboardUrl,
+      },
+    },
   ],
   webServer: [
     {

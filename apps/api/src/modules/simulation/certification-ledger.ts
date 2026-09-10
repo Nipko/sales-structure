@@ -245,6 +245,10 @@ export interface CertificationRunRecord {
  * re-planning an interrupted run adds what is missing and touches nothing that
  * already has a result.
  */
+/** Rows per INSERT when planning. Large enough to matter, small enough that one
+ *  statement's parameter arrays stay comfortably inside what the driver sends. */
+const CASE_INSERT_BATCH = 500;
+
 export async function planCertificationLedger(
     query: CertificationQuery, input: CertificationRunInput, runId = randomUUID(),
 ): Promise<CertificationRunRecord> {
@@ -286,33 +290,63 @@ export async function planCertificationLedger(
                 JSON.stringify(subject!.toolGrants ? [...subject!.toolGrants] : null)]);
     }
     let planned = 0;
+    // Written in batches, and the reason is the size of the thing: the whole
+    // catalogue is 1,520 cells and 78,120 cases, and one INSERT per case held a
+    // single transaction open for forty-three seconds against the tenant's own
+    // schema — measured, not guessed. Under PgBouncer that is a server
+    // connection nobody else can have for forty-three seconds, to write rows
+    // that were all known before the first one was sent. Batched, the same
+    // 78,120 cases take just under four.
+    //
+    // `UNNEST` rather than a generated VALUES list so the statement text is
+    // constant: one prepared plan reused for every batch, and no chance of
+    // building SQL out of a loop.
+    const batch: {
+        caseKey: string[]; profileId: string[]; scenarioKey: string[]; language: string[];
+        channel: string[]; model: string[]; definitionHash: string[]; reserve: number[];
+    } = { caseKey: [], profileId: [], scenarioKey: [], language: [], channel: [], model: [],
+        definitionHash: [], reserve: [] };
+    const flush = async () => {
+        if (!batch.caseKey.length) return;
+        const rows = await query<any[]>(
+            `INSERT INTO agent_certification_cases
+                (run_id, case_key, attempt, profile_id, scenario_key, language, channel_type, model,
+                 definition_hash, reserve_usd_cents)
+             SELECT $1::uuid, entry.case_key, 1, entry.profile_id, entry.scenario_key, entry.language,
+                    entry.channel_type, entry.model, entry.definition_hash, entry.reserve
+               FROM UNNEST($2::text[],$3::text[],$4::text[],$5::text[],$6::text[],$7::text[],$8::text[],$9::int[])
+                 AS entry(case_key, profile_id, scenario_key, language, channel_type, model,
+                          definition_hash, reserve)
+             ON CONFLICT (run_id, case_key, attempt) DO NOTHING
+             RETURNING id`,
+            [runId, batch.caseKey, batch.profileId, batch.scenarioKey, batch.language,
+                batch.channel, batch.model, batch.definitionHash, batch.reserve]);
+        planned += rows?.length ?? 0;
+        for (const column of Object.values(batch)) column.length = 0;
+    };
     for (const cell of plan.cells) {
         // The scenario universe comes from the same function certification
         // demands, so a case can never be planned for a scenario the report
         // will not ask about.
         const demanded = requiredScenarios(cell.profileId, cell.language);
         for (const [scenarioKey, required] of demanded) {
-            const definitionHash = revisionHash([...required.definitions].sort());
-            const caseKey = certificationCaseKey({ ...cell, scenarioKey });
             // This case's share of the cell's ceiling, by the turns it takes.
             // Derived from the plan rather than from a second price list, so the
             // number reserved and the number authorised are the same number.
-            const reserve = cell.turns > 0
+            batch.caseKey.push(certificationCaseKey({ ...cell, scenarioKey }));
+            batch.profileId.push(cell.profileId);
+            batch.scenarioKey.push(scenarioKey);
+            batch.language.push(cell.language);
+            batch.channel.push(cell.channel);
+            batch.model.push(cell.model);
+            batch.definitionHash.push(revisionHash([...required.definitions].sort()));
+            batch.reserve.push(cell.turns > 0
                 ? Math.ceil(cell.maxCostUsdCents * (required.turns / cell.turns))
-                : 0;
-            const rows = await query<any[]>(
-                `INSERT INTO agent_certification_cases
-                    (run_id, case_key, attempt, profile_id, scenario_key, language, channel_type, model,
-                     definition_hash, reserve_usd_cents)
-                 VALUES ($1::uuid,$2,1,$3,$4,$5,$6,$7,$8,$9)
-                 ON CONFLICT (run_id, case_key, attempt) DO NOTHING
-                 RETURNING id`,
-                [runId, caseKey, cell.profileId, scenarioKey, cell.language, cell.channel, cell.model,
-                    definitionHash, reserve],
-            );
-            if (rows?.length) planned++;
+                : 0);
+            if (batch.caseKey.length >= CASE_INSERT_BATCH) await flush();
         }
     }
+    await flush();
     await query(
         `UPDATE agent_certification_runs
             SET planned_cases = (SELECT count(*)::int FROM agent_certification_cases WHERE run_id = $1::uuid),

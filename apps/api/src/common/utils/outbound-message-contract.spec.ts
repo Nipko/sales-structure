@@ -1,6 +1,7 @@
 import {
     assertTurnOutcome, fundingHeadline, isFundingCurrent, isOutboundSendContext, mayProceed,
     OUTBOUND_CONTRACT_VERSION, PROVIDER_BILLED_CHANNELS, retainedExposure, sameSendContext,
+    SEND_CONTEXT_IDENTITY,
     SPEND_GOVERNED_CHANNELS,
     type FundingReadiness, type OutboundSendContext, type SpendAuthorization,
 } from '@parallext/shared';
@@ -71,10 +72,57 @@ describe('the outbound message contract', () => {
             expect(sameSendContext(before, context())).toEqual({ same: true, changed: [] });
             expect(sameSendContext(before, context({ channelAccountId: '15550002222' })))
                 .toEqual({ same: false, changed: ['channelAccountId'] });
-            expect(sameSendContext(before, context({ payer: { kind: 'business_direct', wabaId: 'waba-2' } })))
-                .toEqual({ same: false, changed: ['payer.wabaId'] });
-            expect(sameSendContext(before, context({ credential: { id: 'cred-2', source: 'tenant_credential' } })))
-                .toEqual({ same: false, changed: ['credential.id'] });
+        });
+
+        /**
+         * ═══ EVERY IDENTITY FIELD, ONE AT A TIME ═══
+         *
+         * Three were missing and each of them is a different account or a
+         * different person:
+         *
+         *   · `payer.businessId` — one Business Portfolio owns several WABAs, so
+         *     moving a number between them changes who settles with Meta while
+         *     `wabaId` can legitimately stay put.
+         *   · `credential.source` — the same id exists as a per-account token and
+         *     as a tenant-wide one. Resolving to the other source presents a
+         *     different secret under a familiar name.
+         *   · `channelAddress` — documented as diagnostics, and it is what the
+         *     customer SEES. A retry from a number they do not recognise is a
+         *     different message to them, whoever paid.
+         */
+        it.each([
+            ['tenantId', { tenantId: '99999999-9999-4999-8999-999999999999' }],
+            ['channelType', { channelType: 'telegram' as const }],
+            ['channelAccountId', { channelAccountId: '15550002222' }],
+            ['channelAddress', { channelAddress: '+1 555 000 2222' }],
+            ['payer.kind', { payer: { kind: 'partner' as const, wabaId: 'waba-1', businessId: 'biz-1' } }],
+            ['payer.wabaId', { payer: { kind: 'business_direct' as const, wabaId: 'waba-2', businessId: 'biz-1' } }],
+            ['payer.businessId', { payer: { kind: 'business_direct' as const, wabaId: 'waba-1', businessId: 'biz-2' } }],
+            ['credential.id', { credential: { id: 'cred-2', source: 'channel_account' as const } }],
+            ['credential.source', { credential: { id: 'cred-1', source: 'system_user' as const } }],
+            ['recipient.scope', { recipient: { scope: 'internal' as const,
+                contactId: '22222222-2222-4222-8222-222222222222', address: '+573001112233' } }],
+            ['recipient.contactId', { recipient: { scope: 'customer' as const,
+                contactId: '33333333-3333-4333-8333-333333333333', address: '+573001112233' } }],
+            ['recipient.address', { recipient: { scope: 'customer' as const,
+                contactId: '22222222-2222-4222-8222-222222222222', address: '+573009998877' } }],
+        ])('notices %s alone', (field, override) => {
+            expect(sameSendContext(context(), context(override as any)))
+                .toEqual({ same: false, changed: [field] });
+        });
+
+        it('compares every field the context declares, so a new one cannot be forgotten', () => {
+            // The list is what the comparison walks. A field added to the
+            // interface and not added here would travel unchecked, which is how
+            // `payer.businessId`, `credential.source` and `channelAddress` were
+            // travelling until now.
+            const leaves = (value: any, prefix = ''): string[] =>
+                Object.entries(value).flatMap(([key, entry]) =>
+                    entry && typeof entry === 'object' && !Array.isArray(entry)
+                        ? leaves(entry, `${prefix}${key}.`)
+                        : [`${prefix}${key}`]);
+            const declared = leaves(context()).filter(field => field !== 'version');
+            expect([...SEND_CONTEXT_IDENTITY].sort()).toEqual(declared.sort());
         });
 
         it('treats a missing field and a null field as the same absence', () => {

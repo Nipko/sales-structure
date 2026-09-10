@@ -161,6 +161,33 @@ export function isOutboundSendContext(value: unknown): value is OutboundSendCont
 }
 
 /**
+ * The fields of a send context that a retry may not change.
+ *
+ * Written as a list rather than as a body of `check(...)` calls so that a
+ * field added to `OutboundSendContext` and forgotten here is caught by a test
+ * that walks the interface, instead of by whoever notices the bill.
+ *
+ * Every one of them is either who pays or who receives:
+ *
+ *   · `payer.businessId` — one Business Portfolio can own several WABAs, and
+ *     moving a number between them changes whose account settles with Meta
+ *     while `wabaId` may legitimately stay put.
+ *   · `credential.source` — the same id can appear as a per-account token and
+ *     as a tenant-wide one. A retry that resolves to the other source is
+ *     presenting a different secret under a familiar name, which is the exact
+ *     substitution the resolvers were fixed to refuse.
+ *   · `channelAddress` — documented as diagnostics, and it is what the
+ *     customer SEES. A retry arriving from a number they do not recognise is
+ *     a different message to them, whoever paid for it.
+ */
+export const SEND_CONTEXT_IDENTITY = Object.freeze([
+    'tenantId', 'channelType', 'channelAccountId', 'channelAddress',
+    'payer.kind', 'payer.wabaId', 'payer.businessId',
+    'credential.id', 'credential.source',
+    'recipient.scope', 'recipient.contactId', 'recipient.address',
+] as const);
+
+/**
  * Would a retry of this effect charge the same account and reach the same person?
  *
  * The one question a retry has to answer yes to. Compared field by field rather
@@ -170,20 +197,11 @@ export function isOutboundSendContext(value: unknown): value is OutboundSendCont
 export function sameSendContext(
     left: OutboundSendContext, right: OutboundSendContext,
 ): { readonly same: boolean; readonly changed: readonly string[] } {
-    const changed: string[] = [];
-    const check = (field: string, a: unknown, b: unknown) => {
-        if ((a ?? null) !== (b ?? null)) changed.push(field);
-    };
-    check('tenantId', left.tenantId, right.tenantId);
-    check('channelType', left.channelType, right.channelType);
-    check('channelAccountId', left.channelAccountId, right.channelAccountId);
-    check('payer.kind', left.payer?.kind, right.payer?.kind);
-    check('payer.wabaId', left.payer?.wabaId, right.payer?.wabaId);
-    check('credential.id', left.credential?.id, right.credential?.id);
-    check('recipient.scope', left.recipient?.scope, right.recipient?.scope);
-    check('recipient.contactId', left.recipient?.contactId, right.recipient?.contactId);
-    check('recipient.address', left.recipient?.address, right.recipient?.address);
-    return { same: changed.length === 0, changed: Object.freeze(changed) };
+    const at = (context: OutboundSendContext, path: string): unknown =>
+        path.split('.').reduce<any>((value, key) => (value == null ? value : value[key]), context);
+    const changed = SEND_CONTEXT_IDENTITY.filter(field =>
+        (at(left, field) ?? null) !== (at(right, field) ?? null));
+    return { same: changed.length === 0, changed: Object.freeze([...changed]) };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

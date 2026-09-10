@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto';
 import { PrismaClient } from '@prisma/client';
+import { isOutboundSendContext, sameSendContext } from '@parallext/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { WhatsappCryptoService } from '../whatsapp/services/whatsapp-crypto.service';
@@ -73,7 +74,7 @@ const enabled = !!databaseUrl && !!redisUrl;
     const outcome = async (pending: Promise<any>): Promise<string> => {
         try {
             const value = await pending;
-            return `resolved:${value?.phoneNumberId ?? value?.accountId ?? '?'}`;
+            return `resolved:${value?.phoneNumberId ?? value?.accountId ?? value?.context?.channelAccountId ?? '?'}`;
         } catch (error: any) {
             return `refused:${error?.code ?? error?.message ?? 'unknown'}`;
         }
@@ -114,7 +115,7 @@ const enabled = !!databaseUrl && !!redisUrl;
         for (const tenant of [tenantA, tenantB]) {
             await sql(tenant.schema, `CREATE TABLE whatsapp_channels(
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                phone_number_id VARCHAR(255), meta_waba_id VARCHAR(255),
+                phone_number_id VARCHAR(255), meta_waba_id VARCHAR(255), meta_business_id VARCHAR(255),
                 display_phone_number VARCHAR(50), access_token_ref TEXT,
                 channel_status VARCHAR(50) DEFAULT 'connected', connected_at TIMESTAMP)`);
         }
@@ -159,10 +160,10 @@ const enabled = !!databaseUrl && !!redisUrl;
         const wire = async (tenant: { id: string; schema: string }, entries: Array<[string, string, number]>) => {
             for (const [phone, wabaId, year] of entries) {
                 await sql(tenant.schema,
-                    `INSERT INTO whatsapp_channels(phone_number_id, meta_waba_id, display_phone_number,
-                        access_token_ref, channel_status, connected_at)
-                     VALUES($1,$2,$3,'credential_ref','connected',$4::timestamp)`,
-                    [phone, wabaId, `+57300${phone.slice(-6)}`, `${year}-01-01T00:00:00Z`]);
+                    `INSERT INTO whatsapp_channels(phone_number_id, meta_waba_id, meta_business_id,
+                        display_phone_number, access_token_ref, channel_status, connected_at)
+                     VALUES($1,$2,$3,$4,'credential_ref','connected',$5::timestamp)`,
+                    [phone, wabaId, `BUSINESS-${wabaId}`, `+57300${phone.slice(-6)}`, `${year}-01-01T00:00:00Z`]);
             }
             await client.$executeRawUnsafe(
                 `INSERT INTO public.whatsapp_credentials(id,tenant_id,credential_type,encrypted_value)
@@ -270,9 +271,15 @@ const enabled = !!databaseUrl && !!redisUrl;
         // scheme is newer than the entries that survive a deploy, and the old
         // code wrote the *fallback* number's credentials whenever a requested
         // number was missing. Nothing on the read path ever compared them.
+        // A COMPLETE entry, in the shape the resolver writes today — every field
+        // present and internally consistent. The only thing wrong with it is the
+        // one thing that matters: it is a1's, filed under a2's key. An entry
+        // missing a field would be thrown out by the shape check further up and
+        // would prove nothing about the account check.
         await redis.setJson(`wa_token:${tenantA.id}:${numbers.a2}`, {
             accessToken: 'CREDENTIALS-OF-THE-WRONG-NUMBER', phoneNumberId: numbers.a1,
-            wabaId: waba.a1, channelId: randomUUID(),
+            wabaId: waba.a1, businessId: `BUSINESS-${waba.a1}`, displayPhoneNumber: '+573001111111',
+            channelId: randomUUID(), credentialId: randomUUID(), credentialSource: 'system_user',
         }, 300);
         const resolved = await service.getWhatsAppToken(tenantA.id, numbers.a2);
         expect(resolved.phoneNumberId).toBe(numbers.a2);
@@ -283,10 +290,24 @@ const enabled = !!databaseUrl && !!redisUrl;
     it('does not serve a cached generic entry belonging to another account', async () => {
         await redis.setJson(`instagram_token:${tenantA.id}:${igAccounts.a2}`, {
             accessToken: 'CREDENTIALS-OF-THE-WRONG-ACCOUNT', accountId: igAccounts.a1, channelType: 'instagram',
+            credentialId: randomUUID(), credentialSource: 'channel_account',
         }, 300);
         const resolved = await service.getChannelToken(tenantA.id, 'instagram', igAccounts.a2);
         expect(resolved.accountId).toBe(igAccounts.a2);
         expect(resolved.accessToken).not.toBe('CREDENTIALS-OF-THE-WRONG-ACCOUNT');
+    });
+
+    it('does not serve an entry written before the account travelled inside it', async () => {
+        // What survives a deploy. The old value had no credential identity in it,
+        // so there is nothing to check it against and it is not used — it is
+        // re-resolved from the database instead of trusted.
+        await redis.setJson(`instagram_token:${tenantA.id}:${igAccounts.a1}`, {
+            accessToken: 'CREDENTIALS-FROM-BEFORE-THE-DEPLOY', accountId: igAccounts.a1,
+            channelType: 'instagram',
+        }, 300);
+        const resolved = await service.getChannelToken(tenantA.id, 'instagram', igAccounts.a1);
+        expect(resolved.accountId).toBe(igAccounts.a1);
+        expect(resolved.accessToken).toBe(`token-${igAccounts.a1}`);
     });
 
     it('does not answer for an account the tenant no longer has', async () => {
@@ -323,5 +344,47 @@ const enabled = !!databaseUrl && !!redisUrl;
         await service.invalidateCache('instagram', tenantA.id);
         expect(await outcome(service.getChannelToken(tenantA.id, 'instagram', igAccounts.a1)))
             .toBe('refused:connection_not_found');
+    });
+
+    // ── 4 · THE CONTEXT THAT TRAVELS WITH THE EFFECT ──────────────────────────
+
+    it('produces a send context carrying the exact connection and the account that pays', async () => {
+        const contactId = randomUUID();
+        const resolved = await service.resolveSendContext({
+            tenantId: tenantA.id, channelType: 'whatsapp', channelAccountId: numbers.a2,
+            recipient: { scope: 'customer', contactId, address: '+573001112233' },
+        });
+        expect(isOutboundSendContext(resolved.context)).toBe(true);
+        expect(resolved.context.channelAccountId).toBe(numbers.a2);
+        expect(resolved.context.payer.wabaId).toBe(waba.a2);
+        // The WABA is known; how it is funded is a separate probe that has not
+        // run. `business_direct` would be a guess about somebody's money.
+        expect(resolved.context.payer.kind).toBe('unknown');
+        expect(resolved.context.credential.source).toBe('system_user');
+        expect(resolved.accessToken).toBeTruthy();
+    });
+
+    it('makes a retry that moved to another connection visible field by field', async () => {
+        const recipient = { scope: 'customer' as const, contactId: randomUUID(), address: '+573001112233' };
+        const first = await service.resolveSendContext({
+            tenantId: tenantA.id, channelType: 'whatsapp', channelAccountId: numbers.a1, recipient });
+        const same = await service.resolveSendContext({
+            tenantId: tenantA.id, channelType: 'whatsapp', channelAccountId: numbers.a1, recipient });
+        const moved = await service.resolveSendContext({
+            tenantId: tenantA.id, channelType: 'whatsapp', channelAccountId: numbers.a2, recipient });
+
+        expect(sameSendContext(first.context, same.context).same).toBe(true);
+        expect(sameSendContext(first.context, moved.context).changed)
+            .toEqual(expect.arrayContaining(['channelAccountId', 'payer.wabaId']));
+    });
+
+    it('never produces a send context for a connection it could not authorise', async () => {
+        const recipient = { scope: 'customer' as const, contactId: randomUUID(), address: '+573001112233' };
+        expect(await outcome(service.resolveSendContext({
+            tenantId: tenantA.id, channelType: 'whatsapp', channelAccountId: numbers.b1, recipient })))
+            .toBe('refused:connection_not_found');
+        expect(await outcome(service.resolveSendContext({
+            tenantId: tenantA.id, channelType: 'whatsapp', recipient })))
+            .toBe('refused:connection_ambiguous');
     });
 });

@@ -179,7 +179,18 @@ export function isMissingAgreedTermsRefusal(
     // still charges from a live column cannot be refused for missing one, and
     // saying so would turn an ordinary not-found into a false alarm.
     if (!['order', 'appointment', 'property', 'tour', 'food'].includes(kind)) return false;
-    // The row exists and its agreed amount is absent: that is the snapshot
-    // missing, not a status or an ownership problem.
-    return row.amount === null || row.amount === undefined;
+    // The row exists and HALF the agreed snapshot is absent: that is the
+    // snapshot missing, not a status or an ownership problem.
+    //
+    // Either half, not just the amount. An appointment carries `amount_due` for
+    // a deposit, and the amount expression falls back to it — so a row created
+    // after deposits existed but before terms were bound comes back with a
+    // number and a NULL currency. The resolver refuses it correctly, on the
+    // three-letter check, and until this line said so that refusal was silent:
+    // a person holding a deposit link that will not work, reported to nobody,
+    // looking exactly like a typo in a reference. Which is the whole thing this
+    // function exists to tell apart.
+    const missing = (value: unknown) => value === null || value === undefined
+        || (typeof value === 'string' && value.trim() === '');
+    return missing(row.amount) || missing(row.currency);
 }

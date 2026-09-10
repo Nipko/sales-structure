@@ -141,5 +141,14 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
         // missing an acceptance; one that does not is exactly what this catches.
         expect(isMissingAgreedTermsRefusal({ amount: null }, 'enrollment')).toBe(false);
         expect(isMissingAgreedTermsRefusal({ amount: null }, 'tour')).toBe(true);
+        // La mitad que faltaba. Una cita creada después de que existieran las
+        // señas y antes de que se ataran los términos vuelve con NÚMERO y sin
+        // moneda: `COALESCE(amount_due, …)` la encuentra y la moneda acordada
+        // no existe. El resolutor la rechaza bien —por el chequeo de tres
+        // letras— y ese rechazo era mudo, que es justamente lo que esta función
+        // existe para distinguir de un error de tipeo en la referencia.
+        expect(isMissingAgreedTermsRefusal({ amount: 25000, currency: null }, 'appointment')).toBe(true);
+        expect(isMissingAgreedTermsRefusal({ amount: 25000, currency: '' }, 'appointment')).toBe(true);
+        expect(isMissingAgreedTermsRefusal({ amount: 25000, currency: 'COP' }, 'appointment')).toBe(false);
     });
 });

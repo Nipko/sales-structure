@@ -150,7 +150,7 @@ const RETAINED_SCOPE: Readonly<Record<string, string>> = Object.freeze({
  */
 const DECLARED: Readonly<Record<string, Partial<Record<ChannelCapability, string | null>>>> = Object.freeze({
     whatsapp: Object.freeze({
-        outbound_media: 'whatsapp.adapter.ts strictBody: image/document/audio/video, caption as its own item',
+        outbound_media: 'whatsapp.adapter.ts strictBody: image/document/audio/video; caption on the media item (audio keeps it separate)',
         payment_link: 'dispatch-items.ts emits payment links before media',
         flow: 'whatsapp.adapter.ts strictBody interactive/flow; produced by conversations.service.ts',
         token_lifecycle: 'whatsapp-token-health.service.ts + channel-credential-health',
@@ -177,7 +177,7 @@ const DECLARED: Readonly<Record<string, Partial<Record<ChannelCapability, string
         multi_account: 'channel_accounts per account',
     }),
     telegram: Object.freeze({
-        outbound_media: 'telegram.adapter.ts sendStrict, media call carries no caption field',
+        outbound_media: 'telegram.adapter.ts sendStrict; the media call carries the caption',
         payment_link: 'sent as text through the strict transport',
         flow: null,
         token_lifecycle: 'channel-credential-health telegram_token',

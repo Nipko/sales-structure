@@ -126,12 +126,26 @@ describe('WhatsApp strict dispatch', () => {
             type: 'text', text: { body: 'Hola' } });
     });
 
-    it('never attaches a caption to an image, because that would be two effects', async () => {
+    it('attaches the caption to the image, which Meta bills as one message', async () => {
+        // CHANGED deliberately. The caption used to be split off on every
+        // channel so that one acceptance meant exactly one effect. On Meta a
+        // captioned image IS one message — one charge, one id, one status —
+        // so the split bought no certainty and cost a charge per picture from
+        // 1 October 2026. Messenger and Instagram really do perform two POSTs
+        // and keep the split; `native-caption.ts` is where that line lives.
         answer(200, ok);
         await adapter.sendStrict(request({ itemKind: 'media',
             payload: { mediaUrl: 'https://example.test/a.jpg', caption: 'Una foto' } }), 'token');
-        expect(sent[0].body.image).toEqual({ link: 'https://example.test/a.jpg' });
-        expect(JSON.stringify(sent[0].body)).not.toContain('Una foto');
+        expect(sent[0].body.image).toEqual({ link: 'https://example.test/a.jpg', caption: 'Una foto' });
+    });
+
+    it('still refuses a caption on audio, which Meta has no field for', async () => {
+        // A rejected payload is zero messages, not one cheap one.
+        answer(200, ok);
+        await adapter.sendStrict(request({ itemKind: 'media',
+            payload: { mediaUrl: 'https://example.test/a.ogg', mediaType: 'audio',
+                caption: 'Una nota' } }), 'token');
+        expect(JSON.stringify(sent[0].body)).not.toContain('Una nota');
     });
 
     it('sends a Flow as its own effect and never degrades it to text', async () => {

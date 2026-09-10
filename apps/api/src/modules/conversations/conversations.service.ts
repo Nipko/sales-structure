@@ -5812,7 +5812,11 @@ export class ConversationsService {
                 paymentLinks: [...new Set(output.paymentLinks)],
                 media: (input.media || []).map(entry => ({ url: entry.url, caption: entry.caption })),
                 ...(input.flow ? { flow: { ...input.flow } } : {}),
-            });
+                // The channel decides whether a caption is a second charge.
+                // WhatsApp and Telegram bill a captioned attachment as one
+                // message, so it travels inside the media item there; Messenger
+                // and Instagram really do take two requests and keep the split.
+            }, { channelType: inboundMsg.channelType });
             prepared = await this.dispatchOutbox.prepare(tenantId, {
                 binding, items,
                 operationalScope: input.operationalScope,

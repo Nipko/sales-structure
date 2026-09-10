@@ -183,7 +183,8 @@ const ready = !!databaseUrl && !!redisUrl;
     let inboxEvents: { event: string; payload: any }[] = [];
 
     /** Every remote effect any transport performed, in the order performed. */
-    let remoteEffects: { via: 'strict' | 'loose'; kind: string; body: string; receipt?: string }[] = [];
+    let remoteEffects: { via: 'strict' | 'loose'; kind: string; body: string;
+        caption?: string; receipt?: string }[] = [];
     /** What the strict transport should answer next, per body. */
     let strictOutcome: (request: StrictDispatchRequest) => Promise<StrictDispatchOutcome>;
     /** Armed crash boundary; consumed by the first wrapper that matches. */
@@ -361,8 +362,13 @@ const ready = !!databaseUrl && !!redisUrl;
                 // and counting on the answer made that call invisible — the one
                 // effect that most needs counting, because "did this leave the
                 // process?" is the whole question a reconciliation asks.
-                const effect: { via: 'strict'; kind: string; body: string; receipt?: string } =
-                    { via: 'strict', kind: request.itemKind, body: bodyOf(request.payload) };
+                // The caption is recorded separately from the body because it now
+                // travels INSIDE the media effect on this channel. Counting effects
+                // without looking at it would call a lost caption a saving.
+                const effect: { via: 'strict'; kind: string; body: string;
+                    caption?: string; receipt?: string } = { via: 'strict', kind: request.itemKind,
+                    body: bodyOf(request.payload),
+                    ...(request.payload?.caption ? { caption: String(request.payload.caption) } : {}) };
                 remoteEffects.push(effect);
                 const outcome = await strictOutcome(request);
                 if (outcome.kind === 'accepted') effect.receipt = outcome.receipt;
@@ -650,28 +656,32 @@ const ready = !!databaseUrl && !!redisUrl;
             // replay knows the business already ran.
             expect(ledger.writers).toEqual([expect.objectContaining({ tool: 'create_payment_link' })]);
 
-            // LEG 3b — the batch. THREE effects now, in the order a person would
-            // send them: the words carry the link, the picture is its own effect,
-            // and the caption is still separate because one acceptance from the
-            // provider has to mean exactly one effect.
+            // LEG 3b — the batch. TWO effects, in the order a person would send
+            // them: the words carry the link, and the picture carries its caption.
+            // WhatsApp bills a captioned attachment as one message and acknowledges
+            // it once, so splitting it bought nothing and cost a charge. Messenger
+            // and Instagram genuinely take two requests and keep the split.
             const rows = await outboxRows(inboundMessageId);
             expect(rows.map(row => [row.item_kind, bodyOf(row.payload)])).toEqual([
                 ['payment_link', REPLY_WITH_LINK],
                 ['media', MEDIA_URL],
-                ['text', MEDIA_CAPTION],
             ]);
+            // The caption did not vanish into the saving: it is on the item.
+            expect(rows[1].payload.caption).toBe(MEDIA_CAPTION);
             expect(rows.every(row => row.state === 'sent')).toBe(true);
 
             // LEG 4 — the outbound queue and the strict transport.
-            expect(remoteEffects.map(effect => effect.body)).toEqual(
-                [REPLY_WITH_LINK, MEDIA_URL, MEDIA_CAPTION]);
+            expect(remoteEffects.map(effect => effect.body)).toEqual([REPLY_WITH_LINK, MEDIA_URL]);
+            // Two effects, and the customer still reads the caption — this is the
+            // whole difference between a saving and a dropped message.
+            expect(remoteEffects[1].caption).toBe(MEDIA_CAPTION);
             expect(remoteEffects.every(effect => effect.via === 'strict')).toBe(true);
 
             // The history says `sent`, not `delivered`: an acceptance is not an
             // arrival, and only the provider gets to say the second thing.
             const beforeStatus = await historyRows();
             expect(beforeStatus.filter(row => row.direction === 'outbound').map(row => row.status))
-                .toEqual(['sent', 'sent', 'sent']);
+                .toEqual(['sent', 'sent']);
 
             // LEG 5 — the provider's status webhook, through the one shared writer.
             const receipts = rows.map(row => String(row.receipt));
@@ -730,9 +740,9 @@ const ready = !!databaseUrl && !!redisUrl;
 
             const inboundMessageId = await inboundMessageIdFor(wamid);
             expect(await sql('SELECT id FROM messages WHERE external_id=$1', [wamid])).toHaveLength(1);
-            expect((await outboxRows(inboundMessageId))).toHaveLength(3);
-            expect(remoteEffects).toHaveLength(3);
-            expect(new Set(remoteEffects.map(effect => effect.body)).size).toBe(3);
+            expect((await outboxRows(inboundMessageId))).toHaveLength(2);
+            expect(remoteEffects).toHaveLength(2);
+            expect(new Set(remoteEffects.map(effect => effect.body)).size).toBe(2);
         });
 
         it('applies a repeated and an out-of-order status without moving the record backwards', async () => {
@@ -752,7 +762,7 @@ const ready = !!databaseUrl && !!redisUrl;
             await postWebhook(statusBody(receipt, 'read'));
             expect(await statusOf()).toBe('read');
             // And the same event twice never produces a second remote effect.
-            expect(remoteEffects).toHaveLength(3);
+            expect(remoteEffects).toHaveLength(2);
         });
 
         it('never lets a late failure overwrite a delivered or a read the provider already reported', async () => {
@@ -766,16 +776,20 @@ const ready = !!databaseUrl && !!redisUrl;
             await postWebhook(statusBody(String(rows[0].receipt), 'failed', 131047));
             expect(await statusOf(rows[0].message_id)).toBe('delivered');
 
-            await postWebhook(statusBody(String(rows[1].receipt), 'read'));
-            await postWebhook(statusBody(String(rows[1].receipt), 'failed', 131047));
-            expect(await statusOf(rows[1].message_id)).toBe('read');
+            // The same item, now read. `delivered` → `read` is forward, so one
+            // item can carry both halves of the claim; the batch is two items
+            // since the caption started riding on its picture.
+            await postWebhook(statusBody(String(rows[0].receipt), 'read'));
+            await postWebhook(statusBody(String(rows[0].receipt), 'failed', 131047));
+            expect(await statusOf(rows[0].message_id)).toBe('read');
 
-            // A rejection over an acceptance IS accepted — a provider may refuse
-            // after acknowledging — and the code it gave is kept for diagnosis.
-            await postWebhook(statusBody(String(rows[2].receipt), 'failed', 131053));
-            expect(await statusOf(rows[2].message_id)).toBe('failed');
+            // A rejection is accepted when nothing has been reported yet for that
+            // item — the second one, which no status has touched — and the code
+            // the provider gave is kept for diagnosis.
+            await postWebhook(statusBody(String(rows[1].receipt), 'failed', 131053));
+            expect(await statusOf(rows[1].message_id)).toBe('failed');
             const [refused] = await sql('SELECT error_code FROM agent_dispatch_outbox WHERE id=$1::uuid',
-                [rows[2].id]);
+                [rows[1].id]);
             expect(refused.error_code).toBe('wa_131053');
         });
 
@@ -839,7 +853,7 @@ const ready = !!databaseUrl && !!redisUrl;
             const inboundMessageId = await inboundMessageIdFor(wamid);
             expect((await ledgerRow(inboundMessageId)).state).toBe('settled');
             expect(remoteEffects.map(effect => effect.body))
-                .toEqual([REPLY_WITH_LINK, MEDIA_URL, MEDIA_CAPTION]);
+                .toEqual([REPLY_WITH_LINK, MEDIA_URL]);
         });
 
         /**
@@ -859,13 +873,13 @@ const ready = !!databaseUrl && !!redisUrl;
 
             const inboundMessageId = await inboundMessageIdFor(wamid);
             const rows = await outboxRows(inboundMessageId);
-            expect(rows).toHaveLength(3);
+            expect(rows).toHaveLength(2);
             expect(remoteEffects.map(effect => effect.body))
-                .toEqual([REPLY_WITH_LINK, MEDIA_URL, MEDIA_CAPTION]);
+                .toEqual([REPLY_WITH_LINK, MEDIA_URL]);
             expect(remoteEffects.every(effect => effect.via === 'strict')).toBe(true);
             // Exactly one copy of every word, and the ledger says the durable
             // path owned it from the first attempt.
-            expect(new Set(remoteEffects.map(effect => effect.body)).size).toBe(3);
+            expect(new Set(remoteEffects.map(effect => effect.body)).size).toBe(2);
             expect((await ledgerRow(inboundMessageId)).delivery_route).toBe('durable');
         });
 
@@ -912,13 +926,14 @@ const ready = !!databaseUrl && !!redisUrl;
 
             const rows = await outboxRows(inboundMessageId);
             expect(rows.map(row => row.state))
-                .toEqual(['reconciliation_required', 'sent', 'sent']);
+                .toEqual(['reconciliation_required', 'sent']);
             // The words and their link left this process exactly once, uncertain
             // or not, and the items behind them still went out in order.
             expect(remoteEffects.filter(effect => effect.body === REPLY_WITH_LINK)).toHaveLength(1);
-            // And the caption still follows its own picture.
-            expect(remoteEffects.map(effect => effect.body).indexOf(MEDIA_CAPTION))
-                .toBeGreaterThan(remoteEffects.map(effect => effect.body).indexOf(MEDIA_URL));
+            // And the caption still reaches the customer, now on its own picture
+            // rather than after it.
+            expect(remoteEffects.find(effect => effect.body === MEDIA_URL)?.caption)
+                .toBe(MEDIA_CAPTION);
         });
 
         /**
@@ -940,7 +955,7 @@ const ready = !!databaseUrl && !!redisUrl;
             expect((await postWebhook(messageBody(wamid, 'muero antes de anotar el resultado'))).status).toBe(200);
             await until('the retry to deliver the whole batch', async () =>
                 (await queueIdle(inboundQueue)) && (await queueIdle(outboundQueue))
-                && remoteEffects.length >= 3, 120_000);
+                && remoteEffects.length >= 2, 120_000);
             await settleQueues();
 
             const inboundMessageId = await inboundMessageIdFor(wamid);
@@ -956,12 +971,12 @@ const ready = !!databaseUrl && !!redisUrl;
                 paymentLinks: [PAYMENT_LINK], media: [{ url: MEDIA_URL, caption: MEDIA_CAPTION }],
             });
             expect((await outboxRows(inboundMessageId)).map(row => row.state))
-                .toEqual(['sent', 'sent', 'sent']);
+                .toEqual(['sent', 'sent']);
 
             // Once, in order, and through the strict transport — no second copy
             // and nothing left on the loose gateway.
             expect(remoteEffects.map(effect => effect.body))
-                .toEqual([REPLY_WITH_LINK, MEDIA_URL, MEDIA_CAPTION]);
+                .toEqual([REPLY_WITH_LINK, MEDIA_URL]);
             expect(remoteEffects.every(effect => effect.via === 'strict')).toBe(true);
         });
 
@@ -990,10 +1005,10 @@ const ready = !!databaseUrl && !!redisUrl;
 
             const inboundMessageId = await inboundMessageIdFor(wamid);
             expect((await outboxRows(inboundMessageId)).map(row => row.state))
-                .toEqual(['sent', 'sent', 'sent']);
+                .toEqual(['sent', 'sent']);
             // The whole answer went out exactly once, through the outbox…
             expect(remoteEffects.map(effect => effect.body))
-                .toEqual([REPLY_WITH_LINK, MEDIA_URL, MEDIA_CAPTION]);
+                .toEqual([REPLY_WITH_LINK, MEDIA_URL]);
             // …and nothing at all went out through the legacy route.
             expect(remoteEffects.filter(effect => effect.via === 'loose')).toHaveLength(0);
             // The Redis marker is gone and the row is what says this is finished.

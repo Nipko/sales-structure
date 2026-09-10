@@ -8,6 +8,7 @@ import {
     classifyTransportFailure, telegramAnswer, telegramClassifier,
     type StrictDispatchOutcome, type StrictDispatchRequest, type StrictDispatchTransport,
 } from '../strict-dispatch-transport';
+import { foldableCaption } from '../native-caption';
 
 /**
  * Telegram Bot API Adapter
@@ -73,10 +74,20 @@ export class TelegramAdapter implements IChannelAdapter, StrictDispatchTransport
             const mediaUrl = String(payload.mediaUrl ?? '');
             if (!mediaUrl.trim()) throw new Error('empty_media_payload');
             const method = this.resolveMediaMethod(mediaUrl);
-            // No caption field at all: the caption is the next dispatch item and
-            // carries its own receipt. Sending an empty one would be the same
-            // bundling with a different value.
-            return { method, body: { [this.resolveMediaField(method)]: mediaUrl } };
+            // A caption attaches only when Telegram delivers it as ONE message —
+            // which is every media kind it has, within 1,024 characters. Past
+            // that limit `foldableCaption` answers null and the caption arrives
+            // as its own item rather than as a rejected request; the caption is
+            // never truncated to fit, because a shorter message the customer did
+            // not ask for is not a saving. `buildDispatchItems` asks the same
+            // function, so an item built with a folded caption and the body sent
+            // here cannot disagree.
+            const caption = foldableCaption('telegram', payload.mediaType as string | undefined,
+                payload.caption as string | undefined);
+            return { method, body: {
+                [this.resolveMediaField(method)]: mediaUrl,
+                ...(caption ? { caption: toTelegramHtml(caption), parse_mode: 'HTML' } : {}),
+            } };
         }
         throw new Error('unsupported_item_kind:flow');
     }

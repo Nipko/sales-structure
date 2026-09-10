@@ -24,14 +24,17 @@
  *      — or worse, already committed as a batch — is recovered under the
  *      contract it was written with. Rewriting it would change the identity of
  *      effects a customer may already have started receiving.
- *   2. **A caption is not folded into an attachment on the durable lane.** The
- *      WhatsApp and Telegram transports can carry a native caption, and the
- *      strict transport deliberately refuses to, because the outbox media item
- *      has no caption field and one acceptance must mean exactly one effect.
- *      Fixing that needs the item payload to gain a caption — which belongs to
- *      the outbox's owner, not here. Until then the count stays honest.
+ *   2. **A caption is not folded where the provider would bill it twice.**
+ *      WhatsApp and Telegram deliver a captioned attachment as ONE message, so
+ *      folding there costs nothing and saves a charge. Messenger and Instagram
+ *      genuinely perform two POSTs behind one call and return only the last id,
+ *      so the split stays: one acceptance has to mean exactly one effect.
+ *      `native-caption.ts` is the single place that draws that line, and this
+ *      file asks it rather than repeating it.
  *   3. **Nothing merges past the channel's own limit.** A body WhatsApp rejects
- *      is not one cheaper message, it is zero messages and an error.
+ *      is not one cheaper message, it is zero messages and an error. The same
+ *      goes for a caption past 1,024 characters, and it is never truncated to
+ *      fit: a shorter message the customer did not ask for is not a saving.
  *
  * The link fold is the one that pays, and it has a condition the model cannot
  * satisfy: the URL is inserted **by the server, verbatim from the tool receipt**.
@@ -39,14 +42,25 @@
  * provenance survives the fold.
  */
 
+import { carriesNativeCaption, foldableCaption, NATIVE_CAPTION_CHANNELS } from '../channels/native-caption';
+
 /** What one turn decided to say, before it becomes transport effects. */
 export interface TurnAnswer {
     /** Reply bubbles, in the order the customer should read them. */
     readonly chunks: readonly string[];
     /** Canonical URLs from tool receipts. Never a URL the model typed. */
     readonly paymentLinks: readonly string[];
-    /** Attachments the model asked for by id, with their captions. */
-    readonly media: readonly { readonly url: string; readonly caption?: string }[];
+    /**
+     * Attachments the model asked for by id, with their captions.
+     *
+     * `mediaType` is here because whether a caption is a second effect depends
+     * on it: WhatsApp carries a caption on an image, a video and a document, and
+     * rejects one on audio. Absent means `image`, which is what both transports
+     * already default an unnamed type to.
+     */
+    readonly media: readonly {
+        readonly url: string; readonly caption?: string; readonly mediaType?: string | null;
+    }[];
     /** An interactive form, which can be the whole of what a turn produced. */
     readonly flow?: unknown | null;
 }
@@ -54,15 +68,14 @@ export interface TurnAnswer {
 /**
  * Which delivery path will carry it.
  *
- * The two lanes cost different amounts for the same answer, which is the single
- * most surprising thing in this file: the durable outbox splits a caption from
- * its attachment for a receipt it can trust, and that costs one extra message
- * per picture.
+ * The two lanes used to cost different amounts for the same answer: the durable
+ * outbox split every caption from its attachment for a receipt it could trust,
+ * which cost one extra message per picture even on the channels that bill a
+ * captioned attachment as one. They now agree wherever the provider does, and
+ * differ only where it genuinely takes two requests.
  */
 export type DeliveryLane = 'durable' | 'legacy';
 
-/** Channels whose media transport carries a caption in the same request. */
-const NATIVE_CAPTION_CHANNELS = new Set(['whatsapp', 'telegram']);
 
 /**
  * The most a single text body may carry.
@@ -103,7 +116,12 @@ export function countTurnEffects(answer: TurnAnswer, options: {
     const mediaEffects = answer.media.reduce((total, entry) => {
         if (!entry.url?.trim()) return total;
         if (options.lane === 'legacy') return total + 1; // caption rides along
-        // The durable lane sends the caption as its own item, on every channel.
+        // On the durable lane the caption rides along too, but only where the
+        // provider bills the result as one message. `foldableCaption` is the one
+        // function that decides; asking it here rather than repeating the rule
+        // is what stops this count from reporting a saving the transport did not
+        // make — or missing one it did.
+        if (foldableCaption(options.channelType, entry.mediaType, entry.caption)) return total + 1;
         return total + 1 + (entry.caption && entry.caption.trim() ? 1 : 0);
     }, 0);
     return textEffects + linkEffects + mediaEffects;
@@ -227,19 +245,31 @@ export function compactTurnAnswer(answer: TurnAnswer, options: {
 
     // ── 3. The caption on its attachment ────────────────────────────────────
     //
-    // Refused on the durable lane on purpose, and the reason is recorded rather
-    // than hidden: the outbox media item has no caption field, and the strict
-    // transports refuse to attach one so that one acceptance means exactly one
-    // effect. Changing that belongs to the outbox's owner.
-    const captioned = answer.media.filter(entry => entry.caption && entry.caption.trim()).length;
-    if (!captioned) {
+    // Applied where the provider bills the captioned attachment as ONE message,
+    // refused everywhere else with the reason recorded rather than hidden. The
+    // answer itself does not change here — the fold happens in
+    // `buildDispatchItems`, which asks the same `foldableCaption` — so what this
+    // reports and what the transport does cannot drift apart.
+    const captioned = answer.media.filter(entry => entry.caption && entry.caption.trim());
+    const foldable = captioned.filter(entry =>
+        options.lane === 'durable' && foldableCaption(options.channelType, entry.mediaType, entry.caption));
+    if (!captioned.length) {
         notes.push(note('caption_onto_media', false, 'no_captioned_attachment_this_turn'));
     } else if (options.lane === 'legacy') {
         notes.push(note('caption_onto_media', false, 'legacy_transport_already_carries_the_caption'));
-    } else if (!NATIVE_CAPTION_CHANNELS.has(options.channelType)) {
-        notes.push(note('caption_onto_media', false, 'channel_needs_two_requests_for_a_caption'));
+    } else if (!foldable.length) {
+        // Three distinct reasons, kept distinct: a channel that genuinely needs
+        // two requests, a media kind the provider gives no caption field, and a
+        // caption past 1,024 characters — which is not a cheaper message but a
+        // rejected payload, and is never truncated to make it fit.
+        notes.push(note('caption_onto_media', false,
+            !carriesNativeCaption(options.channelType, captioned[0].mediaType)
+                ? (NATIVE_CAPTION_CHANNELS.has(options.channelType)
+                    ? 'media_kind_has_no_caption_field'
+                    : 'channel_needs_two_requests_for_a_caption')
+                : 'caption_longer_than_the_provider_accepts'));
     } else {
-        notes.push(note('caption_onto_media', false, 'outbox_media_item_has_no_caption_field'));
+        notes.push(note('caption_onto_media', true, 'caption_delivered_with_its_attachment', foldable.length));
     }
 
     const compacted: TurnAnswer = Object.freeze({

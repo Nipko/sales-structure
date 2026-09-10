@@ -185,7 +185,12 @@ describe('Telegram strict dispatch', () => {
         expect(net.sent[0].body.text).toContain('&lt;');
     });
 
-    it('elige el método por el tipo de archivo y no manda caption con la foto', async () => {
+    it('elige el método por el tipo de archivo y manda el caption con la foto', async () => {
+        // CAMBIADO a propósito: el caption era la fila siguiente en TODOS los
+        // canales. Telegram entrega la foto y su caption como UN mensaje, así
+        // que separarlo no compraba certeza y costaba un cargo por foto desde
+        // el 1 de octubre. Messenger e Instagram sí hacen dos POST y conservan
+        // la separación; la línea vive en `native-caption.ts`.
         for (const [url, method, field] of [
             ['https://example.test/a.jpg', 'sendPhoto', 'photo'],
             ['https://example.test/a.mp4', 'sendVideo', 'video'],
@@ -197,9 +202,17 @@ describe('Telegram strict dispatch', () => {
                 payload: { mediaUrl: url, caption: 'Una foto' } }), 'bot-token');
             expect(net.sent[0].url).toContain(`/${method}`);
             expect(net.sent[0].body[field]).toBe(url);
-            // Ni el caption ni un caption vacío: el caption es la fila siguiente.
-            expect(JSON.stringify(net.sent[0].body)).not.toContain('caption');
+            expect(net.sent[0].body.caption).toBe('Una foto');
         }
+    });
+
+    it('no manda un campo caption cuando no hay caption', async () => {
+        // Un caption vacío sería el mismo empaquetado con otro valor.
+        net.reset();
+        net.answer(200, tgOk());
+        await adapter.sendStrict(request({ itemKind: 'media',
+            payload: { mediaUrl: 'https://example.test/a.jpg' } }), 'bot-token');
+        expect(JSON.stringify(net.sent[0].body)).not.toContain('caption');
     });
 
     it('rechaza un Flow y un payload que no puede expresar, sin gastar intento', async () => {

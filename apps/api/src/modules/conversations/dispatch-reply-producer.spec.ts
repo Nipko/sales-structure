@@ -215,13 +215,18 @@ describe('ConversationsService durable reply producer', () => {
             // octubre cada uno es un cargo. Ahora las burbujas se unen y el
             // servidor pega la URL canónica al final de esa burbuja; el ítem
             // conserva la clase `payment_link`, así que la procedencia del
-            // enlace sigue estando donde una disputa la lee. El caption sigue
-            // siendo su propio efecto: si falla, la foto no se reenvía.
+            // enlace sigue estando donde una disputa la lee.
+            //
+            // Y el caption viaja EN la foto, porque WhatsApp entrega y cobra las
+            // dos como un solo mensaje: separarlo no compraba ninguna certeza y
+            // costaba un cargo. Donde el proveedor hace dos POST de verdad
+            // —Messenger, Instagram— el caption sigue siendo su propio efecto.
             expect(items.map((item: any) => item.kind))
-                .toEqual(['payment_link', 'media', 'text']);
+                .toEqual(['payment_link', 'media']);
             expect(items[0].payload.text).toBe('Primero\n\nDespués\n\nhttps://checkout.test/abc');
             expect(items[1].payload.mediaUrl).toBe('https://example.test/a.jpg');
-            expect(items[2].payload.text).toBe('Mira este');
+            // El caption llega igual: dos efectos, no un mensaje perdido.
+            expect(items[1].payload.caption).toBe('Mira este');
         });
 
         it('pega la URL tal cual la devolvió la herramienta, sin que la escriba el modelo', async () => {

@@ -25,9 +25,17 @@ const TYPICAL: TurnAnswer = answer({
 });
 
 describe('what one answer costs today', () => {
-    it('counts four separate charges for one sales turn on the durable lane', () => {
-        // words + link + picture + caption. One thing said, four messages billed.
-        expect(countTurnEffects(TYPICAL, { lane: 'durable', channelType: 'whatsapp' })).toBe(4);
+    it('counts three separate charges for one sales turn on the durable lane', () => {
+        // words + link + captioned picture. It was four while the caption was
+        // split off on every channel; WhatsApp bills a captioned attachment as
+        // one message, so that split was a charge for nothing.
+        expect(countTurnEffects(TYPICAL, { lane: 'durable', channelType: 'whatsapp' })).toBe(3);
+    });
+
+    it('still counts four where the provider really does need two requests', () => {
+        // Messenger performs two POSTs behind one call and returns only the last
+        // id. Pretending otherwise would under-report the bill, not save money.
+        expect(countTurnEffects(TYPICAL, { lane: 'durable', channelType: 'messenger' })).toBe(4);
     });
 
     it('counts three on the legacy lane, because the caption rides on the picture', () => {
@@ -37,12 +45,19 @@ describe('what one answer costs today', () => {
     it('agrees with the batch the outbox would actually commit', () => {
         // The counter is only worth having if it matches the producer. This is
         // the assertion that keeps them together.
-        const items = buildDispatchItems({
-            textChunks: [...TYPICAL.chunks],
-            paymentLinks: [...TYPICAL.paymentLinks],
-            media: TYPICAL.media.map(entry => ({ url: entry.url, caption: entry.caption })),
-        });
-        expect(items).toHaveLength(countTurnEffects(TYPICAL, { lane: 'durable', channelType: 'whatsapp' }));
+        // On both a channel that folds and one that does not, because the two
+        // functions now share a decision and a shared decision is exactly what
+        // can be got wrong in one place and right in the other.
+        for (const channelType of ['whatsapp', 'telegram', 'messenger', 'instagram']) {
+            const items = buildDispatchItems({
+                textChunks: [...TYPICAL.chunks],
+                paymentLinks: [...TYPICAL.paymentLinks],
+                media: TYPICAL.media.map(entry => ({ url: entry.url, caption: entry.caption })),
+            }, { channelType });
+            expect({ channelType, items: items.length })
+                .toEqual({ channelType,
+                    items: countTurnEffects(TYPICAL, { lane: 'durable', channelType }) });
+        }
     });
 
     it('does not bill a Flow twice by adding the words it already carries', () => {
@@ -59,10 +74,12 @@ describe('what one answer costs today', () => {
 });
 
 describe('what it costs after compaction', () => {
-    it('turns the four-charge sales turn into three', () => {
+    it('turns the sales turn into one message plus its captioned picture', () => {
         const result = compactTurnAnswer(TYPICAL, { lane: 'durable', channelType: 'whatsapp' });
-        expect(result.before).toBe(4);
-        expect(result.after).toBe(3);
+        // Three before, two after: the link folds into the words, and the
+        // caption already travels on the picture.
+        expect(result.before).toBe(3);
+        expect(result.after).toBe(2);
         expect(result.answer.chunks[0]).toContain('https://checkout.wompi.co/l/VPOS_aBcD12');
         expect(result.answer.paymentLinks).toEqual([]);
     });
@@ -86,11 +103,14 @@ describe('what it costs after compaction', () => {
 
     it('keeps the folded bubble on the payment_link item so its provenance survives', () => {
         const result = compactTurnAnswer(TYPICAL, { lane: 'durable', channelType: 'whatsapp' });
-        const items = buildDispatchItems(toDispatchTurnOutput(result) as any);
+        const items = buildDispatchItems(toDispatchTurnOutput(result) as any,
+            { channelType: 'whatsapp' });
         const kinds = items.map(item => item.kind);
         // One text-shaped message carrying the words AND the canonical URL, and
         // it is not typed `text`: the kind is what a later dispute reads.
-        expect(kinds).toEqual(['payment_link', 'media', 'text']);
+        expect(kinds).toEqual(['payment_link', 'media']);
+        // And the caption is on the picture rather than gone.
+        expect((items[1].payload as any).caption).toBe('Así queda el corte');
         expect(items).toHaveLength(result.after);
         expect((items[0].payload as any).text).toContain('https://checkout.wompi.co/l/VPOS_aBcD12');
     });
@@ -152,10 +172,28 @@ describe('the compactions it refuses, and why', () => {
         expect(result.after).toBe(2);
     });
 
-    it('leaves a caption where the durable lane cannot carry it, and records the reason', () => {
+    it('records the caption fold where the provider bills it as one message', () => {
         const result = compactTurnAnswer(TYPICAL, { lane: 'durable', channelType: 'whatsapp' });
         expect(result.notes.find(entry => entry.rule === 'caption_onto_media'))
-            .toMatchObject({ applied: false, reason: 'outbox_media_item_has_no_caption_field' });
+            .toMatchObject({ applied: true, reason: 'caption_delivered_with_its_attachment', saved: 1 });
+    });
+
+    it('refuses the fold on a media kind the provider gives no caption field', () => {
+        // Meta rejects a caption on audio, and a rejected payload is zero
+        // messages rather than one cheap one.
+        const result = compactTurnAnswer(
+            answer({ media: [{ url: 'https://cdn.test/a.ogg', mediaType: 'audio', caption: 'hola' }] }),
+            { lane: 'durable', channelType: 'whatsapp' });
+        expect(result.notes.find(entry => entry.rule === 'caption_onto_media'))
+            .toMatchObject({ applied: false, reason: 'media_kind_has_no_caption_field' });
+    });
+
+    it('refuses the fold for a caption longer than the provider accepts', () => {
+        const result = compactTurnAnswer(
+            answer({ media: [{ url: 'https://cdn.test/a.jpg', caption: 'x'.repeat(1025) }] }),
+            { lane: 'durable', channelType: 'whatsapp' });
+        expect(result.notes.find(entry => entry.rule === 'caption_onto_media'))
+            .toMatchObject({ applied: false, reason: 'caption_longer_than_the_provider_accepts' });
     });
 
     it('says Messenger needs two requests rather than pretending it does not', () => {

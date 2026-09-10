@@ -8,6 +8,7 @@ import {
     classifyTransportFailure, metaGraphAnswer, metaGraphClassifier,
     type StrictDispatchOutcome, type StrictDispatchRequest, type StrictDispatchTransport,
 } from '../strict-dispatch-transport';
+import { foldableCaption } from '../native-caption';
 
 /**
  * WhatsApp Cloud API adapter
@@ -81,8 +82,16 @@ export class WhatsAppAdapter implements IChannelAdapter, StrictDispatchTransport
             const requested = String(payload.mediaType ?? 'image');
             const type = ['image', 'document', 'audio', 'video'].includes(requested) ? requested : 'image';
             const media: Record<string, any> = { link: mediaUrl };
-            // A caption is its own dispatch item with its own receipt; attaching
-            // it here would put two effects behind one acceptance again.
+            // A caption attaches here ONLY when Meta treats the result as one
+            // message — image, video, document, within 1,024 characters. That is
+            // one charge, one acceptance and one receipt, so the outbox's rule
+            // holds. Audio has no caption field at Meta and anything longer is a
+            // rejected payload, so `foldableCaption` answers null and the caption
+            // arrives as its own item, exactly as before. `builDispatchItems`
+            // consults the same function, so the item it built and the body sent
+            // here can never disagree about whether a caption was folded.
+            const caption = foldableCaption('whatsapp', type, payload.caption as string | undefined);
+            if (caption) media.caption = toWhatsAppFormatting(caption);
             if (type === 'document' && payload.filename) media.filename = String(payload.filename);
             return { type, [type]: media };
         }

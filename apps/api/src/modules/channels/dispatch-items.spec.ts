@@ -2,22 +2,62 @@ import { MessengerAdapter } from './messenger/messenger.adapter';
 import { buildDispatchItems, DispatchItemError } from './dispatch-items';
 
 describe('building the effects a turn actually means', () => {
-    const kinds = (output: any) => buildDispatchItems(output).map(item => item.kind);
+    /** Messenger by default: it is the channel the split exists for. */
+    const kinds = (output: any, channelType = 'messenger') =>
+        buildDispatchItems(output, { channelType }).map(item => item.kind);
 
     it('keeps reply bubbles in the order the customer should read them', () => {
-        const items = buildDispatchItems({ textChunks: ['Primero', 'Después'] });
+        const items = buildDispatchItems({ textChunks: ['Primero', 'Después'] },
+            { channelType: 'whatsapp' });
         expect(items.map(item => item.payload.text)).toEqual(['Primero', 'Después']);
         expect(kinds({ textChunks: ['a', 'b'] })).toEqual(['text', 'text']);
     });
 
-    it('makes a caption its own effect, right after its attachment', () => {
+    it('makes a caption its own effect where the provider needs two requests', () => {
         const items = buildDispatchItems({
             media: [{ url: 'https://example.test/a.jpg', caption: 'La foto del producto' }],
-        });
+        }, { channelType: 'messenger' });
         // Two receipts, so a caption that fails never resends the picture.
         expect(items.map(item => item.kind)).toEqual(['media', 'text']);
         expect(items[0].payload).toEqual({ mediaUrl: 'https://example.test/a.jpg' });
         expect(items[1].payload).toEqual({ text: 'La foto del producto' });
+    });
+
+    it('folds the caption onto the attachment where the provider bills them as one', () => {
+        // WhatsApp and Telegram deliver a captioned attachment as ONE message.
+        // The extra item was a charge for a split neither of them needs — and
+        // the customer reads exactly the same thing.
+        for (const channelType of ['whatsapp', 'telegram']) {
+            const items = buildDispatchItems({
+                media: [{ url: 'https://example.test/a.jpg', caption: 'La foto del producto' }],
+            }, { channelType });
+            expect({ channelType, kinds: items.map(item => item.kind) })
+                .toEqual({ channelType, kinds: ['media'] });
+            expect(items[0].payload).toEqual({
+                mediaUrl: 'https://example.test/a.jpg', caption: 'La foto del producto',
+            });
+        }
+    });
+
+    it('keeps the split for a media kind the provider gives no caption field', () => {
+        // Meta rejects a caption on audio. A rejected payload is not a cheaper
+        // message, it is zero messages.
+        const items = buildDispatchItems({
+            media: [{ url: 'https://example.test/a.ogg', mediaType: 'audio', caption: 'Escuchá esto' }],
+        }, { channelType: 'whatsapp' });
+        expect(items.map(item => item.kind)).toEqual(['media', 'text']);
+        expect(items[0].payload).not.toHaveProperty('caption');
+    });
+
+    it('keeps the split for a caption past what the provider accepts', () => {
+        // 1,024 characters. Truncating it to fit would change what the customer
+        // reads in order to save a message, which is not a saving.
+        const long = 'x'.repeat(1025);
+        const items = buildDispatchItems({
+            media: [{ url: 'https://example.test/a.jpg', caption: long }],
+        }, { channelType: 'whatsapp' });
+        expect(items.map(item => item.kind)).toEqual(['media', 'text']);
+        expect(items[1].payload.text).toBe(long);
     });
 
     it('emits only the attachment when there is no caption', () => {
@@ -27,7 +67,7 @@ describe('building the effects a turn actually means', () => {
 
     it('keeps a canonical payment link out of the words the model wrote', () => {
         const items = buildDispatchItems({ textChunks: ['Te paso el enlace'],
-            paymentLinks: ['https://checkout.test/abc'] });
+            paymentLinks: ['https://checkout.test/abc'] }, { channelType: 'whatsapp' });
         expect(items.map(item => item.kind)).toEqual(['text', 'payment_link']);
         expect(items[1].payload.text).toBe('https://checkout.test/abc');
     });
@@ -36,7 +76,7 @@ describe('building the effects a turn actually means', () => {
         const items = buildDispatchItems({
             textChunks: ['Este texto no debe salir además del Flow'],
             flow: { flowId: 'f-1', flowToken: 't-1', text: 'Agenda tu cita', flowCta: 'Agendar' },
-        });
+        }, { channelType: 'whatsapp' });
         expect(items.map(item => item.kind)).toEqual(['flow']);
         expect(items[0].payload).toMatchObject({ flowId: 'f-1', flowToken: 't-1', flowCta: 'Agendar' });
     });
@@ -61,8 +101,9 @@ describe('building the effects a turn actually means', () => {
             [{ textChunks: Array.from({ length: 33 }, (_, i) => `c${i}`) }, 'dispatch_item_too_many'],
         ];
         for (const [output, code] of cases) {
-            expect(() => buildDispatchItems(output)).toThrow(DispatchItemError);
-            expect(() => buildDispatchItems(output)).toThrow(code);
+            expect(() => buildDispatchItems(output, { channelType: 'whatsapp' }))
+                .toThrow(DispatchItemError);
+            expect(() => buildDispatchItems(output, { channelType: 'whatsapp' })).toThrow(code);
         }
     });
 });

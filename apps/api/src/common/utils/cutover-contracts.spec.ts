@@ -255,6 +255,11 @@ describe('what replaced staging', () => {
         const CHECKS = [
             'node apps/api/scripts/generate-whatsapp-rates.cjs --check',
             'node docs/audits/2026-09-09/verify-artifacts.cjs',
+            // The inventory of everything that can put a message on a customer's
+            // phone. It is derived by sweeping call sites, so a producer added
+            // in any later commit makes it wrong — and a list of what spends
+            // money is only worth having while it is complete.
+            'node apps/api/scripts/outbound-producer-inventory.cjs --check',
         ];
 
         // Commands, not comments. A check that cannot tell a `run:` line from
@@ -275,12 +280,13 @@ describe('what replaced staging', () => {
         });
 
         it('checks only, so CI can never rewrite the artefact it is judging', () => {
-            // Without `--check` these scripts WRITE. A workflow that regenerates
-            // and then compares is comparing a file with itself, and every drift
-            // it exists to catch passes.
+            // Without `--check` these two scripts WRITE. A workflow that
+            // regenerates and then compares is comparing a file with itself, and
+            // every drift it exists to catch passes.
+            const WRITERS = ['generate-whatsapp-rates.cjs', 'outbound-producer-inventory.cjs'];
             for (const file of ['.github/workflows/candidate.yml', '.github/workflows/vertical-quality.yml']) {
                 for (const line of commandsOf(file)) {
-                    if (!line.includes('generate-whatsapp-rates.cjs')) continue;
+                    if (!WRITERS.some(writer => line.includes(writer))) continue;
                     expect({ file, line: line.trim() })
                         .toEqual({ file, line: expect.stringContaining('--check') });
                 }

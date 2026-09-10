@@ -94,6 +94,7 @@ jobs:
         run: |
           node apps/api/scripts/generate-whatsapp-rates.cjs --check
           node docs/audits/2026-09-09/verify-artifacts.cjs
+          node apps/api/scripts/outbound-producer-inventory.cjs --check
       - name: Vertical focal suites
         run: >-
           npx jest --config apps/api/jest.config.js --runInBand

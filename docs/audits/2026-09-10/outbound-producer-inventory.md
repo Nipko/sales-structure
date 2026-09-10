@@ -56,8 +56,8 @@ llevar a la admisión económica.
 | `modules/automation/nurturing.service.ts:752` | `sendFollowUpText` | `outbound_queue` | dynamic | 1 (read) |
 | `modules/automation/nurturing.service.ts:796` | `sendWhatsAppTemplate` | `outbound_queue` | dynamic | 1 (read) |
 | `modules/broadcast/broadcast-queue.processor.ts:118` | `sendWhatsApp` | `inline` | dynamic | 1 (read) |
-| `modules/channels/channel-management.controller.ts:506` | `testTelegram` | `inline` | telegram | 1 (read) |
-| `modules/channels/channel-management.controller.ts:1440` | `testSms` | `inline` | sms | 1 (read) |
+| `modules/channels/channel-management.controller.ts:519` | `testTelegram` | `inline` | telegram | 1 (read) |
+| `modules/channels/channel-management.controller.ts:1483` | `testSms` | `inline` | sms | 1 (read) |
 | `modules/conversations/conversations.service.ts:1831` | `sendAfterHoursMessage` | `outbound_queue` | dynamic | 1 (read) |
 | `modules/conversations/conversations.service.ts:2104` | `sendResponse` | `outbound_queue` | dynamic | n(bubbles) (derived) |
 | `modules/conversations/conversations.service.ts:2133` | `sendPaymentLink` | `outbound_queue` | dynamic | n(links) (derived) |
@@ -163,8 +163,8 @@ mensajes entregados, y un indicador de "escribiendo" no lo es.
 
 | Línea | Método | Primitiva | Carril | Disparador | Canales | Efectos por respuesta | Base |
 |---:|---|---|---|---|---|---|---|
-| 506 | `testTelegram` | `.sendTextMessage` | `inline` | HTTP POST telegram/test | telegram | 1 | one effect per invocation; no loop reaches this send |
-| 1440 | `testSms` | `.sendTextMessage` | `inline` | HTTP POST sms/test | sms | 1 | one effect per invocation; no loop reaches this send |
+| 519 | `testTelegram` | `.sendTextMessage` | `inline` | HTTP POST telegram/test | telegram | 1 | one effect per invocation; no loop reaches this send |
+| 1483 | `testSms` | `.sendTextMessage` | `inline` | HTTP POST sms/test | sms | 1 | one effect per invocation; no loop reaches this send |
 
 ### `apps/api/src/modules/conversations/conversations.service.ts`
 

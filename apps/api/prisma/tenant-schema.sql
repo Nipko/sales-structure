@@ -5505,3 +5505,40 @@ ALTER TABLE "{{SCHEMA_NAME}}"."conversation_quality_scores"
     ADD COLUMN IF NOT EXISTS invalidated_reason TEXT,
     ADD COLUMN IF NOT EXISTS source_release_ids TEXT[];
 -- END AGENT EVIDENCE PROVENANCE
+
+-- BEGIN CRM NOTE RECEIPTS
+-- Adónde fue a parar el resumen del traspaso cuando salió de la plataforma.
+-- El adapter devolvía el id de la nota y `runJob` lo tiraba, así que la copia
+-- afuera no tenía dirección: un borrado podía limpiar `handoff_summary` y las
+-- notas internas y dejar el mismo párrafo en el HubSpot del tenant. Esta fila
+-- es esa dirección, y el estado de recuperarla — aceptado, rechazado o
+-- desconocido, nunca "se intentó".
+-- Generado desde la constante DDL que ejecuta el runtime
+-- (prisma/generate-crm-note-receipts.cjs).
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."crm_note_receipts" (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        connection_id TEXT NOT NULL,
+        provider TEXT NOT NULL,
+        source_kind TEXT NOT NULL,
+        source_id TEXT NOT NULL,
+        conversation_id UUID,
+        contact_id UUID,
+        external_id TEXT NOT NULL,
+        external_url TEXT,
+        state TEXT NOT NULL DEFAULT 'recorded',
+        attempts INTEGER NOT NULL DEFAULT 0,
+        retract_reason TEXT,
+        last_error TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CONSTRAINT crm_note_receipts_state CHECK (state IN
+            ('recorded','retract_pending','retracted','rejected','unknown')),
+        CONSTRAINT crm_note_receipts_attempts CHECK (attempts >= 0)
+    );
+CREATE UNIQUE INDEX IF NOT EXISTS uidx_crm_note_receipt_source
+        ON "{{SCHEMA_NAME}}"."crm_note_receipts" (connection_id, source_kind, source_id);
+CREATE INDEX IF NOT EXISTS idx_crm_note_receipt_contact
+        ON "{{SCHEMA_NAME}}"."crm_note_receipts" (contact_id) WHERE state <> 'retracted';
+CREATE INDEX IF NOT EXISTS idx_crm_note_receipt_pending
+        ON "{{SCHEMA_NAME}}"."crm_note_receipts" (updated_at) WHERE state = 'retract_pending';
+-- END CRM NOTE RECEIPTS

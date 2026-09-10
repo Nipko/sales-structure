@@ -9,6 +9,7 @@ import { redactDispatchOutbox } from '../channels/agent-dispatch-outbox';
 import { redactTurnLedger } from '../conversations/agent-turn-ledger';
 import { eraseSimulationContactReplays } from '../simulation/simulation-replay-retention';
 import { eraseContactRegressionArtifacts } from '../quality/regressions/quality-regression-retention';
+import { requestCrmNoteRetraction } from '../external-crm/crm-note-receipts';
 import { eraseOperationalContactNotices } from '../operational-notices/operational-notice-erasure';
 import { eraseContactMissionEvidence } from '../quality/mission-evidence';
 import { retireKnowledgeReplicasInTransaction } from '../evaluation-revision/evaluation-knowledge-lifecycle';
@@ -415,6 +416,14 @@ export class ComplianceService {
             // an interrupted turn would be resumed from. Leaving it would let a
             // replay repopulate everything the line above just cleared.
             const turnEnvelopes = await redactTurnLedger(query as any, schema, {contactIds});
+            // And the copy of that summary outside the platform. The note id
+            // used to be returned by the adapter and dropped, so the paragraph
+            // sat in the tenant's HubSpot or Pipedrive with nothing able to point
+            // at it; it has an address now. Only the REQUEST is written here —
+            // the erasure must not be held open across a third party's HTTP
+            // timeout, nor rolled back by one — and `retractPendingCrmNotes`
+            // turns it into a call that settles as accepted, rejected or unknown.
+            const crmNotes = await requestCrmNoteRetraction(query as any, contactIds);
             const regressionCases = await eraseContactRegressionArtifacts(query, contactIds);
             const simulationReplays = await eraseSimulationContactReplays(query, contactIds);
             const operationalNotices = await eraseOperationalContactNotices(query,schema,contactIds);
@@ -463,7 +472,7 @@ export class ComplianceService {
             const merged = await query<any[]>(
                 `DELETE FROM customer_memories WHERE contact_id = ANY($1::uuid[]) RETURNING contact_id`, [contactIds]);
             return facts.length + merged.length + widgetSessions + widgetReplies + dispatchItems
-                + regressionCases + simulationReplays + operationalNotices;
+                + regressionCases + simulationReplays + operationalNotices + crmNotes;
         });
     }
 

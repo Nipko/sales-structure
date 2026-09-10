@@ -1311,11 +1311,17 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
                 + 'contact `batch/upsert` is idempotent on email. Deal and note creation is a plain '
                 + 'POST with three attempts, so a retry duplicates a deal; Pipedrive does '
                 + 'search-then-create, which races with itself'),
-            receipt: partial('`persistLink` stores the remote contact and deal ids. The note id is '
-                + 'returned and dropped'),
-            uncertainOutcome: none('a timeout is retried, which is what duplicates the deal'),
-            erasure: none('a contact already pushed to the tenant\'s CRM is outside our erasure reach, '
-                + 'and the link row is not cleared either'),
+            receipt: partial('`persistLink` stores the remote contact and deal ids, and '
+                + '`crm_note_receipts` stores the note id the adapter returns — it used to be assigned to a '
+                + 'local variable and dropped. Still partial: a note pushed before that table existed left '
+                + 'no id behind and cannot be addressed now'),
+            uncertainOutcome: partial('a timeout on a push is retried, which is what duplicates the deal. A '
+                + 'RETRACTION is strict instead: accepted, rejected or unknown, and `unknown` stays visible '
+                + 'until somebody re-asks rather than being retried into a silent success'),
+            erasure: partial('the contact row pushed to the tenant\'s CRM is still outside our reach and the '
+                + 'link row is not cleared. The handoff NOTE is reached: the erasure marks its receipt for '
+                + 'retraction in its own transaction and `retractPendingCrmNotes` deletes it through the '
+                + 'same connection gate every other CRM effect uses'),
             recovery: partial('BullMQ retries; nothing republishes a lost job'),
         },
     }),

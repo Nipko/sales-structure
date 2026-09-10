@@ -245,18 +245,22 @@ export const AGENT_OUTPUT_STORES: readonly AgentOutputStore[] = Object.freeze([
     store({
         id: 'handoff_summary',
         store: 'conversations.handoff_summary and internal_notes.content',
-        sources: ['modules/handoff/handoff.service.ts', 'modules/agent-console/agent-console.service.ts'],
+        sources: ['modules/handoff/handoff.service.ts', 'modules/agent-console/agent-console.service.ts',
+            'modules/external-crm/crm-note-receipts.ts', 'modules/external-crm/external-crm.service.ts'],
         carriesProvenance: false,
         reachedByRetraction: 'by_design',
         reachedByContactErasure: 'yes',
-        status: 'open',
-        rationale: 'LLM-generated text derived from the customer\'s transcript. The erasure now clears the summary and '
+        status: 'closed',
+        rationale: 'LLM-generated text derived from the customer\'s transcript. The erasure clears the summary and '
             + 'deletes the notes in the same statement that resets the conversation metadata. A retraction leaves them: '
             + 'a summary is about the CONVERSATION, not about a release, and withdrawing a release does not unwrite what '
-            + 'a person was told when the conversation was handed to them. What remains open is the copy pushed to a '
-            + 'third-party CRM, which the platform cannot reach because it never recorded where it went.',
-        remedy: 'Record the external CRM note id when the summary is pushed, so the copy outside the platform can be '
-            + 'retracted with the one inside it.',
+            + 'a person was told when the conversation was handed to them. The copy pushed to a third-party CRM is '
+            + 'reached too: the note id the adapter returns was being dropped, and `crm_note_receipts` now records it '
+            + 'against the contact, so an erasure marks it for retraction in its own transaction and '
+            + '`retractPendingCrmNotes` settles it as accepted, rejected or unknown — never as "we tried". Two stated '
+            + 'limits: a note pushed before the receipt table existed left no id and cannot be addressed, and an '
+            + '`unknown` is a real end state that stays visible until a person re-asks rather than being rounded up '
+            + 'to success.',
     }),
     store({
         id: 'customer_memory_facts',

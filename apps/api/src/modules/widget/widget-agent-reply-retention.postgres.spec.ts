@@ -191,21 +191,40 @@ const databaseUrl = process.env.LEARNING_EVIDENCE_TEST_DATABASE_URL;
                 JSON.stringify([{transcript:['Derived text']}])]);
         await sql('INSERT INTO conversation_quality_scores(conversation_id,source_release_ids) VALUES($1::uuid,$2::text[]),($1::uuid,$3::text[])',
             [f.conversation,[f.release],[other]]);
+        // An operator taking a release out of service. `retain` is the same
+        // answer the delivered replies get: the evaluation really did run.
         await prisma.transactionInTenantSchema(schema,async query => {
             await query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))::text',[`agent-privacy:${schema}`]);
-            expect(await retireLearningReleases(query,{releaseIds:[f.release]})).toBe(1);
+            expect(await retireLearningReleases(query,{releaseIds:[f.release],deliveredReplies:'retain'})).toBe(1);
         });
         const runs=await sql("SELECT agent_snapshot->>'learningReleaseId' AS release,invalidated_at,invalidated_reason,results FROM eval_runs ORDER BY invalidated_at NULLS LAST");
         expect(runs).toHaveLength(2);
         expect(runs[0]).toMatchObject({release:f.release,invalidated_reason:'release_retired'});
-        // Not deleted: that evaluation really did run, and unwriting it would make
-        // the history lie. What stops is its standing as proof.
+        // Not deleted: unwriting it would make the history lie. What stops is
+        // its standing as proof.
         expect(runs[0].results).toEqual([{transcript:['Derived text']}]);
         expect(runs[1]).toMatchObject({release:other,invalidated_at:null,invalidated_reason:null});
         const scores=await sql('SELECT source_release_ids,invalidated_at FROM conversation_quality_scores ORDER BY invalidated_at NULLS LAST');
         expect(scores[0]).toMatchObject({source_release_ids:[f.release]});
         expect(scores[0].invalidated_at).not.toBeNull();
         expect(scores[1]).toMatchObject({source_release_ids:[other],invalidated_at:null});
+    });
+    it('takes the words out of that evidence when the person is the one being erased',async () => {
+        const f=await fixture(), other=randomUUID();
+        await sql('INSERT INTO eval_runs(agent_snapshot,results) VALUES($1::jsonb,$3::jsonb),($2::jsonb,$3::jsonb)',
+            [JSON.stringify({learningReleaseId:f.release}),JSON.stringify({learningReleaseId:other}),
+                JSON.stringify([{transcript:['Derived text']}])]);
+        // Withdrawing the source is what an erasure does, and it is a right
+        // rather than a decision about what may be used — so the transcript goes
+        // and the row stays as the fact that the run happened.
+        await learning.withdrawSource(tenantId,agentId,f.sources[0].id);
+        const runs=await sql("SELECT agent_snapshot->>'learningReleaseId' AS release,invalidated_reason,results FROM eval_runs ORDER BY invalidated_reason NULLS LAST");
+        expect(runs[0]).toMatchObject({release:f.release,invalidated_reason:'release_erased',results:[]});
+        // The row survives — the run happened — and what it no longer holds is
+        // anything the person said.
+        expect(runs).toHaveLength(2);
+        expect(runs[1]).toMatchObject({release:other,invalidated_reason:null});
+        expect(runs[1].results).toEqual([{transcript:['Derived text']}]);
     });
     it('Compliance expands a linked source family and redacts another recipient under the same erasure fence',async () => {
         const f=await fixture(), linked=randomUUID(), profile=randomUUID();

@@ -46,30 +46,30 @@ llevar a la admisión económica.
 |---|---|---|---|---|
 | `modules/agent-console/agent-console.service.ts:503` | `sendAgentMessage` | `inline` | whatsapp | 1 (read) |
 | `modules/appointments/appointment-notifications.service.ts:462` | `sendMessage` | `outbound_queue` | dynamic | 1 (read) |
-| `modules/appointments/appointment-reminders.service.ts:352` | `sendReminderTemplate` | `inline` | dynamic | n (derived) |
-| `modules/appointments/appointment-reminders.service.ts:429` | `sendAttendanceTemplate` | `inline` | dynamic | n (derived) |
-| `modules/automation/automation-jobs.processor.ts:200` | `handleSendTemplate` | `inline` | dynamic | 1 (read) |
-| `modules/automation/drip-sequence.service.ts:638` | `executeStepAction` | `inline` | dynamic | 1 (read) |
-| `modules/automation/drip-sequence.service.ts:662` | `executeStepAction` | `outbound_queue` | dynamic | 1 (read) |
-| `modules/automation/drip-sequence.service.ts:679` | `executeStepAction` | `outbound_queue` | dynamic | 1 (read) |
+| `modules/appointments/appointment-reminders.service.ts:377` | `sendReminderTemplate` | `inline` | dynamic | n (derived) |
+| `modules/appointments/appointment-reminders.service.ts:457` | `sendAttendanceTemplate` | `inline` | dynamic | n (derived) |
+| `modules/automation/automation-jobs.processor.ts:217` | `handleSendTemplate` | `inline` | dynamic | 1 (read) |
+| `modules/automation/drip-sequence.service.ts:648` | `executeStepAction` | `inline` | dynamic | 1 (read) |
+| `modules/automation/drip-sequence.service.ts:673` | `executeStepAction` | `outbound_queue` | dynamic | 1 (read) |
+| `modules/automation/drip-sequence.service.ts:690` | `executeStepAction` | `outbound_queue` | dynamic | 1 (read) |
 | `modules/automation/nurturing.service.ts:565` | `executeAttempt2` | `outbound_queue` | whatsapp | 1 (read) |
 | `modules/automation/nurturing.service.ts:752` | `sendFollowUpText` | `outbound_queue` | dynamic | 1 (read) |
 | `modules/automation/nurturing.service.ts:796` | `sendWhatsAppTemplate` | `outbound_queue` | dynamic | 1 (read) |
 | `modules/broadcast/broadcast-queue.processor.ts:118` | `sendWhatsApp` | `inline` | dynamic | 1 (read) |
 | `modules/channels/channel-management.controller.ts:519` | `testTelegram` | `inline` | telegram | 1 (read) |
 | `modules/channels/channel-management.controller.ts:1483` | `testSms` | `inline` | sms | 1 (read) |
-| `modules/conversations/conversations.service.ts:1831` | `sendAfterHoursMessage` | `outbound_queue` | dynamic | 1 (read) |
-| `modules/conversations/conversations.service.ts:2104` | `sendResponse` | `outbound_queue` | dynamic | n(bubbles) (derived) |
-| `modules/conversations/conversations.service.ts:2133` | `sendPaymentLink` | `outbound_queue` | dynamic | n(links) (derived) |
-| `modules/conversations/conversations.service.ts:2156` | `sendMedia` | `outbound_queue` | dynamic | n(media) (derived) |
-| `modules/conversations/conversations.service.ts:2206` | `sendFlow` | `outbound_queue` | dynamic | 1 (read) |
-| `modules/conversations/conversations.service.ts:5731` | `sendCollectedFlow` | `outbound_queue` | dynamic | 1 (read) |
+| `modules/conversations/conversations.service.ts:1836` | `sendAfterHoursMessage` | `outbound_queue` | dynamic | 1 (read) |
+| `modules/conversations/conversations.service.ts:2109` | `sendResponse` | `outbound_queue` | dynamic | n(bubbles) (derived) |
+| `modules/conversations/conversations.service.ts:2138` | `sendPaymentLink` | `outbound_queue` | dynamic | n(links) (derived) |
+| `modules/conversations/conversations.service.ts:2161` | `sendMedia` | `outbound_queue` | dynamic | n(media) (derived) |
+| `modules/conversations/conversations.service.ts:2211` | `sendFlow` | `outbound_queue` | dynamic | 1 (read) |
+| `modules/conversations/conversations.service.ts:5736` | `sendCollectedFlow` | `outbound_queue` | dynamic | 1 (read) |
 | `modules/recall/recall.service.ts:152` | `processForTenant` | `outbound_queue` | dynamic | 1 (read) |
 | `modules/whatsapp/whatsapp.controller.ts:445` | `sendTemplate` | `inline` | dynamic | 1 (read) |
 | `modules/whatsapp/whatsapp.controller.ts:465` | `sendText` | `inline` | dynamic | 1 (read) |
-| `modules/whatsapp/whatsapp.controller.ts:483` | `sendInteractive` | `inline` | dynamic | 1 (read) |
-| `modules/whatsapp/whatsapp.controller.ts:504` | `sendMedia` | `inline` | dynamic | 1 (read) |
-| `modules/whatsapp/whatsapp.controller.ts:525` | `sendLocation` | `inline` | dynamic | 1 (read) |
+| `modules/whatsapp/whatsapp.controller.ts:490` | `sendInteractive` | `inline` | dynamic | 1 (read) |
+| `modules/whatsapp/whatsapp.controller.ts:513` | `sendMedia` | `inline` | dynamic | 1 (read) |
+| `modules/whatsapp/whatsapp.controller.ts:537` | `sendLocation` | `inline` | dynamic | 1 (read) |
 
 ## Donde una respuesta se vuelve varios cargos
 
@@ -83,12 +83,12 @@ reparto**, que es donde una sola respuesta lógica se multiplica.
 | `modules/appointments/appointment-payment.listener.ts:89` | `onPaid` | `operational_notice` | **n** | one effect per entry of `rows` (fan-out at line 51) |
 | `modules/appointments/appointment-payment.listener.ts:107` | `onPaid` | `operational_notice` | **n** | one effect per entry of `rows` (fan-out at line 51) |
 | `modules/appointments/appointment-payment.listener.ts:115` | `onPaid` | `operational_notice` | **n** | one effect per entry of `rows` (fan-out at line 51) |
-| `modules/appointments/appointment-reminders.service.ts:352` | `sendReminderTemplate` | `inline` | **n** | one effect per entry of `appointments` (fan-out at line 190) |
-| `modules/appointments/appointment-reminders.service.ts:429` | `sendAttendanceTemplate` | `inline` | **n** | one effect per entry of `appointments` (fan-out at line 382) |
-| `modules/conversations/conversations.service.ts:2104` | `sendResponse` | `outbound_queue` | **n(bubbles)** | one effect per text bubble (fan-out at line 1313) |
-| `modules/conversations/conversations.service.ts:2133` | `sendPaymentLink` | `outbound_queue` | **n(links)** | one effect per canonical link (fan-out at line 1330) |
-| `modules/conversations/conversations.service.ts:2156` | `sendMedia` | `outbound_queue` | **n(media)** | one effect per attachment (fan-out at line 1337) |
-| `modules/conversations/conversations.service.ts:5811` | `dispatchReplyThroughOutbox` | `dispatch_outbox` | **n(items)** | one committed row per item; the whole batch is one answer |
+| `modules/appointments/appointment-reminders.service.ts:377` | `sendReminderTemplate` | `inline` | **n** | one effect per entry of `appointments` (fan-out at line 215) |
+| `modules/appointments/appointment-reminders.service.ts:457` | `sendAttendanceTemplate` | `inline` | **n** | one effect per entry of `appointments` (fan-out at line 410) |
+| `modules/conversations/conversations.service.ts:2109` | `sendResponse` | `outbound_queue` | **n(bubbles)** | one effect per text bubble (fan-out at line 1313) |
+| `modules/conversations/conversations.service.ts:2138` | `sendPaymentLink` | `outbound_queue` | **n(links)** | one effect per canonical link (fan-out at line 1330) |
+| `modules/conversations/conversations.service.ts:2161` | `sendMedia` | `outbound_queue` | **n(media)** | one effect per attachment (fan-out at line 1337) |
+| `modules/conversations/conversations.service.ts:5816` | `dispatchReplyThroughOutbox` | `dispatch_outbox` | **n(items)** | one committed row per item; the whole batch is one answer |
 | `modules/conversations/tool-approval-effects.service.ts:36` | `schedule` | `approved_effect` | **n** | one effect per entry of `rows` (loop at the send) |
 | `modules/education/education-enrollment-commands.ts:106` | `promote` | `operational_notice` | **n** | one effect per entry of `candidates` (loop at the send) |
 | `modules/education/education-enrollment-commands.ts:111` | `promote` | `operational_notice` | **n** | one effect per entry of `candidates` (loop at the send) |
@@ -128,22 +128,22 @@ mensajes entregados, y un indicador de "escribiendo" no lo es.
 
 | Línea | Método | Primitiva | Carril | Disparador | Canales | Efectos por respuesta | Base |
 |---:|---|---|---|---|---|---|---|
-| 352 | `sendReminderTemplate` | `.sendTemplate` | `inline` | called by another service | dynamic | n | one effect per entry of `appointments` (fan-out at line 190) |
-| 429 | `sendAttendanceTemplate` | `.sendTemplate` | `inline` | called by another service | dynamic | n | one effect per entry of `appointments` (fan-out at line 382) |
+| 377 | `sendReminderTemplate` | `.sendTemplate` | `inline` | called by another service | dynamic | n | one effect per entry of `appointments` (fan-out at line 215) |
+| 457 | `sendAttendanceTemplate` | `.sendTemplate` | `inline` | called by another service | dynamic | n | one effect per entry of `appointments` (fan-out at line 410) |
 
 ### `apps/api/src/modules/automation/automation-jobs.processor.ts`
 
 | Línea | Método | Primitiva | Carril | Disparador | Canales | Efectos por respuesta | Base |
 |---:|---|---|---|---|---|---|---|
-| 200 | `handleSendTemplate` | `.sendTemplate` | `inline` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
+| 217 | `handleSendTemplate` | `.sendTemplate` | `inline` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
 
 ### `apps/api/src/modules/automation/drip-sequence.service.ts`
 
 | Línea | Método | Primitiva | Carril | Disparador | Canales | Efectos por respuesta | Base |
 |---:|---|---|---|---|---|---|---|
-| 638 | `executeStepAction` | `.sendTemplate` | `inline` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
-| 662 | `executeStepAction` | `outboundQueue.enqueue` | `outbound_queue` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
-| 679 | `executeStepAction` | `outboundQueue.enqueue` | `outbound_queue` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
+| 648 | `executeStepAction` | `.sendTemplate` | `inline` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
+| 673 | `executeStepAction` | `outboundQueue.enqueue` | `outbound_queue` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
+| 690 | `executeStepAction` | `outboundQueue.enqueue` | `outbound_queue` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
 
 ### `apps/api/src/modules/automation/nurturing.service.ts`
 
@@ -171,15 +171,15 @@ mensajes entregados, y un indicador de "escribiendo" no lo es.
 | Línea | Método | Primitiva | Carril | Disparador | Canales | Efectos por respuesta | Base |
 |---:|---|---|---|---|---|---|---|
 | 1025 | `(top level)` | `.sendTypingIndicator` | `inline` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
-| 1831 | `sendAfterHoursMessage` | `outboundQueue.enqueue` | `outbound_queue` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
-| 2104 | `sendResponse` | `outboundQueue.enqueue` | `outbound_queue` | called by another service | dynamic | n(bubbles) | one effect per text bubble (fan-out at line 1313) |
-| 2133 | `sendPaymentLink` | `outboundQueue.enqueue` | `outbound_queue` | called by another service | dynamic | n(links) | one effect per canonical link (fan-out at line 1330) |
-| 2156 | `sendMedia` | `outboundQueue.enqueue` | `outbound_queue` | called by another service | dynamic | n(media) | one effect per attachment (fan-out at line 1337) |
-| 2206 | `sendFlow` | `outboundQueue.enqueue` | `outbound_queue` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
-| 5705 | `resumeOwnedDispatchBatch` | `outboundQueue.enqueueDispatch` | `dispatch_outbox` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
-| 5731 | `sendCollectedFlow` | `outboundQueue.enqueue` | `outbound_queue` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
-| 5775 | `dispatchReplyThroughOutbox` | `outboundQueue.enqueueDispatch` | `dispatch_outbox` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
-| 5811 | `dispatchReplyThroughOutbox` | `dispatchOutbox.prepare` | `dispatch_outbox` | called by another service | dynamic | n(items) | one committed row per item; the whole batch is one answer |
+| 1836 | `sendAfterHoursMessage` | `outboundQueue.enqueue` | `outbound_queue` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
+| 2109 | `sendResponse` | `outboundQueue.enqueue` | `outbound_queue` | called by another service | dynamic | n(bubbles) | one effect per text bubble (fan-out at line 1313) |
+| 2138 | `sendPaymentLink` | `outboundQueue.enqueue` | `outbound_queue` | called by another service | dynamic | n(links) | one effect per canonical link (fan-out at line 1330) |
+| 2161 | `sendMedia` | `outboundQueue.enqueue` | `outbound_queue` | called by another service | dynamic | n(media) | one effect per attachment (fan-out at line 1337) |
+| 2211 | `sendFlow` | `outboundQueue.enqueue` | `outbound_queue` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
+| 5710 | `resumeOwnedDispatchBatch` | `outboundQueue.enqueueDispatch` | `dispatch_outbox` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
+| 5736 | `sendCollectedFlow` | `outboundQueue.enqueue` | `outbound_queue` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
+| 5780 | `dispatchReplyThroughOutbox` | `outboundQueue.enqueueDispatch` | `dispatch_outbox` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
+| 5816 | `dispatchReplyThroughOutbox` | `dispatchOutbox.prepare` | `dispatch_outbox` | called by another service | dynamic | n(items) | one committed row per item; the whole batch is one answer |
 
 ### `apps/api/src/modules/conversations/tool-approval-effects.service.ts`
 
@@ -218,9 +218,9 @@ mensajes entregados, y un indicador de "escribiendo" no lo es.
 |---:|---|---|---|---|---|---|---|
 | 445 | `sendTemplate` | `.sendTemplate` | `inline` | HTTP POST send/template | dynamic | 1 | one effect per invocation; no loop reaches this send |
 | 465 | `sendText` | `.sendTextMessage` | `inline` | HTTP POST send/text | dynamic | 1 | one effect per invocation; no loop reaches this send |
-| 483 | `sendInteractive` | `.sendInteractiveMessage` | `inline` | HTTP POST send/interactive | dynamic | 1 | one effect per invocation; no loop reaches this send |
-| 504 | `sendMedia` | `.sendMediaMessage` | `inline` | HTTP POST send/media | dynamic | 1 | one effect per invocation; no loop reaches this send |
-| 525 | `sendLocation` | `.sendLocationMessage` | `inline` | HTTP POST send/location | dynamic | 1 | one effect per invocation; no loop reaches this send |
+| 490 | `sendInteractive` | `.sendInteractiveMessage` | `inline` | HTTP POST send/interactive | dynamic | 1 | one effect per invocation; no loop reaches this send |
+| 513 | `sendMedia` | `.sendMediaMessage` | `inline` | HTTP POST send/media | dynamic | 1 | one effect per invocation; no loop reaches this send |
+| 537 | `sendLocation` | `.sendLocationMessage` | `inline` | HTTP POST send/location | dynamic | 1 | one effect per invocation; no loop reaches this send |
 
 ## Contraste con el inventario declarado
 

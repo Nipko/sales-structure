@@ -157,9 +157,13 @@ El programa **no** está listo para publicar. Lo que falta:
   el borrador y ofrecer probarlo. Publicar sale hacia los clientes del tenant y
   vive en su propia pantalla; el traspaso llega hasta la puerta y se detiene ahí,
   que es lo que el registro promete y no más.
-- **Certificar un solo perfil.** El catálogo de 76 sigue en cero y la corrida
-  entera cuesta US$677,40 en 139.940 llamadas: necesita una autorización
-  explícita de modelo y de techo que nadie ha dado.
+- **Certificar un solo perfil.** El catálogo de 76 sigue en cero. La corrida
+  entera son 139.940 llamadas, y **su costo depende del modelo**: US$258,80 con
+  `gpt-4o-mini`, US$677,40 con `gpt-4.1-mini`, US$5.466,20 con
+  `claude-sonnet-4-6` — un factor de 21× por el mismo trabajo, así que una cifra
+  sin el nombre del modelo al lado se cita mal. Necesita una autorización
+  explícita de modelo y de techo que nadie ha dado. El canario barato ya está
+  planificado y sin ejecutar: `docs/audits/2026-09-10/certification-canary.md`.
 - **Staging.** Requiere credenciales que no existen acá.
 
 Lo que sí está: las diez fases locales cerradas, con la evidencia que dice cada
@@ -167,5 +171,6 @@ fila y con el tipo de evidencia declarado. Ninguna se cierra por haber construid
 la infraestructura que la mediría.
 
 Y por encima de las dos: **ningún perfil está certificado**. El catálogo de 76
-sigue en cero, la corrida completa cuesta US$677,40 en 139.940 llamadas, y eso
-necesita una autorización explícita de modelo y de techo que nadie ha dado.
+sigue en cero, la corrida completa son 139.940 llamadas cuyo techo va de
+US$258,80 (`gpt-4o-mini`) a US$5.466,20 (`claude-sonnet-4-6`) según el modelo, y
+eso necesita una autorización explícita de modelo y de techo que nadie ha dado.

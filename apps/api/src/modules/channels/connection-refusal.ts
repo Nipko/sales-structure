@@ -1,3 +1,5 @@
+import { HttpException, HttpStatus } from '@nestjs/common';
+
 /**
  * Why a connection could not be resolved — as a code, not as prose.
  *
@@ -36,28 +38,73 @@ export interface ConnectionRefusalDetail {
 }
 
 /**
+ * The HTTP answer each refusal deserves.
+ *
+ * There is no global exception filter in this application, so an error that is
+ * not an `HttpException` becomes a 500. That is how these refusals started
+ * regressing real endpoints: asking for the business profile of a number that is
+ * not connected used to answer `NotFoundException` — 404, which a dashboard can
+ * render — and once the resolver refused with a plain `Error` it answered 500,
+ * which reads as "the platform is broken" for a tenant whose only problem is
+ * that they have not connected a number.
+ *
+ * The three statuses are three different jobs:
+ *   404 — nothing there to serve. The tenant connects a number, or the caller
+ *         stops naming one that does not exist.
+ *   409 — there IS something to serve and more than one candidate. The request
+ *         is answerable as soon as the caller names which account pays; nothing
+ *         is broken and nothing is missing.
+ *   424 — the connection exists and its credential does not work. Nobody
+ *         upstream can fix this by changing the request; it is a rotation or a
+ *         key problem, and a 4xx that blames the caller would send the wrong
+ *         person looking.
+ */
+const REFUSAL_STATUS: Readonly<Record<ConnectionRefusalCode, HttpStatus>> = {
+    connection_not_found: HttpStatus.NOT_FOUND,
+    connection_absent: HttpStatus.NOT_FOUND,
+    connection_ambiguous: HttpStatus.CONFLICT,
+    credential_missing: HttpStatus.FAILED_DEPENDENCY,
+    credential_undecryptable: HttpStatus.FAILED_DEPENDENCY,
+};
+
+/**
  * A refusal to resolve a connection.
  *
- * An `Error` subclass on purpose: every one of the twenty-six call sites already
- * treats a failure here as a thrown error, either catching it or letting it
- * bubble, so refusing does not need any of them to change shape. What is new is
- * the `code`, so a caller that wants to distinguish "fix the call" from "the
- * tenant has nothing connected" can, without parsing English.
+ * An `HttpException` subclass, which is still an `Error`: every one of the
+ * twenty-six call sites already treats a failure here as a thrown error, either
+ * catching it or letting it bubble, so refusing needs none of them to change
+ * shape. What the base class adds is a status for the ones that bubble all the
+ * way to a controller, and what the `code` adds is a caller's ability to
+ * distinguish "fix the call" from "the tenant has nothing connected" without
+ * parsing English.
+ *
+ * The code travels in the response body too. A dashboard that has to tell a
+ * business "connect a number" apart from "say which number" cannot do it from
+ * the status alone, and must never do it by matching on prose.
  */
-export class ConnectionRefusedError extends Error {
+export class ConnectionRefusedError extends HttpException {
     readonly code: ConnectionRefusalCode;
     readonly tenantId: string;
     readonly channelType: string;
     readonly requestedAccountId?: string | null;
 
     constructor(code: ConnectionRefusalCode, detail: ConnectionRefusalDetail) {
-        super(describeRefusal(code, detail));
+        const status = REFUSAL_STATUS[code] ?? HttpStatus.INTERNAL_SERVER_ERROR;
+        // `message` stays the prose: NestJS reads it back off this object, so
+        // logs and `error.message` say what they always said.
+        super({ statusCode: status, error: 'connection_refused', code, message: describeRefusal(code, detail) },
+            status);
         this.name = 'ConnectionRefusedError';
         this.code = code;
         this.tenantId = detail.tenantId;
         this.channelType = detail.channelType;
         this.requestedAccountId = detail.requestedAccountId ?? null;
     }
+}
+
+/** The status a refusal answers with, for callers that need it without throwing. */
+export function refusalStatus(code: ConnectionRefusalCode): HttpStatus {
+    return REFUSAL_STATUS[code] ?? HttpStatus.INTERNAL_SERVER_ERROR;
 }
 
 /** The human half of a refusal. The machine half is the code. */

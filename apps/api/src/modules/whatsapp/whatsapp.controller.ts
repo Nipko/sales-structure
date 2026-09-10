@@ -477,11 +477,18 @@ export class WhatsappController {
     toPhone: string;
     interactive: any;
     conversationId?: string;
+    /**
+     * Which of the tenant's numbers sends, and therefore which WhatsApp
+     * Business Account Meta bills. Optional: a tenant with one number does not
+     * have to say. With several and none named, the send is refused rather than
+     * charged to whichever connected first.
+     */
+    fromPhoneNumberId?: string;
   }) {
     const schemaName = await this.resolveSchema(req);
     if (!schemaName) throw new BadRequestException('User does not belong to a tenant');
     return this.messagingService.sendInteractiveMessage(
-      schemaName, body.toPhone, body.interactive, body.conversationId
+      schemaName, body.toPhone, body.interactive, body.conversationId, body.fromPhoneNumberId
     );
   }
 
@@ -498,11 +505,14 @@ export class WhatsappController {
     caption?: string;
     filename?: string;
     conversationId?: string;
+    /** Which number sends, and therefore which WABA Meta bills. */
+    fromPhoneNumberId?: string;
   }) {
     const schemaName = await this.resolveSchema(req);
     if (!schemaName) throw new BadRequestException('User does not belong to a tenant');
     return this.messagingService.sendMediaMessage(
-      schemaName, body.toPhone, body.mediaType, body.mediaUrl, body.caption, body.filename, body.conversationId
+      schemaName, body.toPhone, body.mediaType, body.mediaUrl, body.caption, body.filename,
+      body.conversationId, body.fromPhoneNumberId
     );
   }
 
@@ -519,11 +529,14 @@ export class WhatsappController {
     name?: string;
     address?: string;
     conversationId?: string;
+    /** Which number sends, and therefore which WABA Meta bills. */
+    fromPhoneNumberId?: string;
   }) {
     const schemaName = await this.resolveSchema(req);
     if (!schemaName) throw new BadRequestException('User does not belong to a tenant');
     return this.messagingService.sendLocationMessage(
-      schemaName, body.toPhone, body.latitude, body.longitude, body.name, body.address, body.conversationId
+      schemaName, body.toPhone, body.latitude, body.longitude, body.name, body.address,
+      body.conversationId, body.fromPhoneNumberId
     );
   }
 

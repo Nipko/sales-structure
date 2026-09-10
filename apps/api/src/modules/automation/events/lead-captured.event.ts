@@ -13,7 +13,25 @@ export interface LeadCapturedEvent {
     courseId?: string;
     phone: string;
     name?: string;
+    /** El TIPO de canal (`whatsapp`, `instagram`…), no la conexión. */
     channel?: string;
+    /**
+     * La conexión concreta por la que llegó el lead: el `phone_number_id` de la
+     * WABA, la cuenta de IG, el bot de Telegram.
+     *
+     * `channel` dice de qué clase de canal se trata y nunca alcanzó para
+     * responder. Desde el 1 de octubre de 2026 Meta cobra cada mensaje de
+     * servicio entregado a la cuenta del negocio, así que una regla de
+     * automatización que manda una plantilla tiene que decir CUÁL de los números
+     * del tenant paga. Sin esto el resolvedor elegía el más antiguo y la cuenta
+     * que pagaba era una propiedad del orden de las filas.
+     *
+     * Opcional porque hay un origen que legítimamente no lo tiene: un lead de
+     * formulario no llegó por ninguna conexión. Ese caso se resuelve nombrando
+     * la conexión en la acción de la regla; y si nadie la nombra y el tenant
+     * tiene más de una, el envío se rechaza en vez de cobrarle a cualquiera.
+     */
+    channelAccountId?: string;
     source: 'whatsapp_inbound' | 'intake_form' | 'manual';
     isNew?: boolean;
 }

@@ -197,12 +197,30 @@ export class AutomationJobsProcessor extends WorkerHost {
             `[AutomationJobs] Enviando plantilla '${templateName}' (${language}) a ${phone}`,
         );
 
+        // WHICH of the tenant's numbers pays for this template.
+        //
+        // The rule wins over the event: a rule that names a connection is an
+        // explicit decision by the business, and the one thing that can answer a
+        // form lead, which arrived through no connection at all. Otherwise it is
+        // the connection the customer actually wrote to.
+        //
+        // Both absent is left absent on purpose rather than defaulted: the
+        // resolver serves it when the tenant has exactly one number and refuses
+        // `connection_ambiguous` when it has several. Meta charges the business
+        // per delivered service message from 1 October 2026, so guessing here
+        // spends somebody's money on a decision nobody made.
+        const fromPhoneNumberId = typeof action.channel_account_id === 'string'
+            && action.channel_account_id.trim()
+            ? action.channel_account_id.trim()
+            : event.channelAccountId;
+
         const result = await this.whatsappMessaging.sendTemplate(
             schemaName,
             phone,
             templateName,
             language,
             components,
+            fromPhoneNumberId,
         );
 
         return {

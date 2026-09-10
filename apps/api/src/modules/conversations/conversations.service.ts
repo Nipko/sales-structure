@@ -1634,6 +1634,11 @@ export class ConversationsService {
                 phone: contactId,
                 name: contact.name,
                 channel: channelType,
+                // WHICH connection, not just which kind. An automation rule that
+                // answers this lead with a template has to bill the number the
+                // customer actually wrote to; `channel` alone left the resolver
+                // picking the tenant's oldest.
+                channelAccountId: conversation.channel_account_id ?? undefined,
                 source: 'whatsapp_inbound',
             });
             this.logger.log(`Emitted lead.captured for new lead ${lead.id}`);

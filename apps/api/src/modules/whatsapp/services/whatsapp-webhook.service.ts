@@ -408,8 +408,14 @@ export class WhatsappWebhookService {
    * Fire-and-forget — errors are logged but don't block processing.
    */
   private resolveAccessTokenAndMarkRead(tenantId: string, phoneNumberId: string, waMessageId: string): void {
+      // The number that received the message is the number that acknowledges it,
+      // and it is right here as a parameter. Asking unnamed used to return the
+      // tenant's oldest connection, so a two-number tenant marked messages read
+      // with the wrong account's credential — and the `.catch` below meant that
+      // once the resolver started refusing instead, read receipts would have
+      // stopped silently.
       this.prisma.getTenantSchemaName(tenantId)
-          .then(schemaName => this.whatsappConnection.getValidAccessToken(schemaName))
+          .then(schemaName => this.whatsappConnection.getValidAccessToken(schemaName, phoneNumberId))
           .then(async creds => {
               await this.whatsappAdapter.markAsRead(phoneNumberId, waMessageId, creds.accessToken);
           })

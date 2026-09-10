@@ -291,7 +291,13 @@ export class IntakeService {
             campaignId: dto.campaignId,
             courseId: dto.courseId,
             isNew,
-            phone
+            phone,
+            // A form lead arrived through no connection at all, so there is no
+            // `channelAccountId` to give and none is invented. A rule that
+            // answers one with a WhatsApp template has to name the connection
+            // itself; if it does not and the tenant has more than one number,
+            // the send is refused rather than billed to whichever came first.
+            source: 'intake_form',
         });
 
         return { leadId, opportunityId, isNew, phone };

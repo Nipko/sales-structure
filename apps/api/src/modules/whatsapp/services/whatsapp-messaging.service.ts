@@ -89,9 +89,20 @@ export class WhatsappMessagingService {
       footer?: { text: string };
       action: any; // buttons[] o sections[]
     },
-    conversationId?: string
+    conversationId?: string,
+    /**
+     * Which of the tenant's numbers sends — and therefore which WhatsApp
+     * Business Account Meta bills from 1 October 2026. It could not be expressed
+     * here at all, so the resolver returned the tenant's oldest connection and
+     * the account that paid was a property of row order.
+     *
+     * Optional because most tenants have one number and naming it would be
+     * ceremony. Omitting it is not a default: the resolver answers an unnamed
+     * request only while there is exactly one, and refuses otherwise.
+     */
+    fromPhoneNumberId?: string,
   ) {
-    const { accessToken, phoneNumberId, channelId } = await this.connectionService.getValidAccessToken(schemaName);
+    const { accessToken, phoneNumberId, channelId } = await this.connectionService.getValidAccessToken(schemaName, fromPhoneNumberId);
     const cleanPhone = toPhone.replace(/[+\s-]/g, '');
 
     const payload = {
@@ -119,9 +130,11 @@ export class WhatsappMessagingService {
     mediaUrl: string,
     caption?: string,
     filename?: string,
-    conversationId?: string
+    conversationId?: string,
+    /** Which number sends, and therefore which WABA Meta bills. See above. */
+    fromPhoneNumberId?: string,
   ) {
-    const { accessToken, phoneNumberId, channelId } = await this.connectionService.getValidAccessToken(schemaName);
+    const { accessToken, phoneNumberId, channelId } = await this.connectionService.getValidAccessToken(schemaName, fromPhoneNumberId);
     const cleanPhone = toPhone.replace(/[+\s-]/g, '');
 
     const mediaPayload: any = { link: mediaUrl };
@@ -149,9 +162,11 @@ export class WhatsappMessagingService {
     longitude: number,
     name?: string,
     address?: string,
-    conversationId?: string
+    conversationId?: string,
+    /** Which number sends, and therefore which WABA Meta bills. See above. */
+    fromPhoneNumberId?: string,
   ) {
-    const { accessToken, phoneNumberId, channelId } = await this.connectionService.getValidAccessToken(schemaName);
+    const { accessToken, phoneNumberId, channelId } = await this.connectionService.getValidAccessToken(schemaName, fromPhoneNumberId);
     const cleanPhone = toPhone.replace(/[+\s-]/g, '');
 
     const payload = {

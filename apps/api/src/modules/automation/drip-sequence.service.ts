@@ -623,7 +623,17 @@ export class DripSequenceService {
         }
 
         const channelType = 'whatsapp';
-        const { accessToken, accountId } = await this.resolveChannelCredentials(tenantId, channelType);
+        // The connection this enrolment belongs to, taken from its conversation.
+        //
+        // Every send below is billable from 1 October 2026 and every one of them
+        // was going out unnamed: `resolveChannelCredentials` asked for the
+        // tenant's token without saying which number, so the resolver returned
+        // the oldest connection and that account paid — a property of row order,
+        // not of a decision. Naming it here fixes the template branch and the
+        // custom one at once, because both read from this.
+        const connection = await this.connectionOfEnrolment(schemaName, enrollment.conversation_id);
+        const { accessToken, accountId } = await this.resolveChannelCredentials(
+            tenantId, channelType, connection);
 
         if (step.message_type === 'template') {
             // Approved Meta template — the ONLY compliant way to open a cold conversation
@@ -635,7 +645,8 @@ export class DripSequenceService {
                 { type: 'body', parameters: [{ type: 'text', text: contact.name || 'cliente' }] },
             ];
             try {
-                await this.whatsappMessaging.sendTemplate(schemaName, phone, templateName, language, components);
+                await this.whatsappMessaging.sendTemplate(
+                    schemaName, phone, templateName, language, components, connection);
                 await this.saveOutboundMessage(schemaName, enrollment.conversation_id, `[Plantilla: ${templateName}]`);
             } catch (e: any) {
                 this.logger.error(`Drip template send failed (${templateName}) for ${phone}: ${e.message}`);
@@ -737,11 +748,42 @@ export class DripSequenceService {
         );
     }
 
-    private async resolveChannelCredentials(tenantId: string, channelType = 'whatsapp'): Promise<{ accessToken: string; accountId: string }> {
+    /**
+     * The connection an enrolment belongs to: the number the customer wrote to.
+     *
+     * `conversations.channel_account_id` is NOT NULL, so a drip enrolled from a
+     * conversation always has one. An enrolment created without a conversation
+     * does not, and that is left as `undefined` rather than filled in — the
+     * resolver then serves it on a single-number tenant and refuses on a
+     * multi-number one, which is the only honest answer when nobody said who pays.
+     */
+    private async connectionOfEnrolment(schemaName: string, conversationId?: string | null): Promise<string | undefined> {
+        if (!conversationId) return undefined;
         try {
-            const creds = await this.channelToken.getChannelToken(tenantId, channelType);
+            const rows = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+                `SELECT channel_account_id FROM conversations WHERE id = $1::uuid LIMIT 1`,
+                [conversationId]);
+            const found = rows?.[0]?.channel_account_id;
+            return typeof found === 'string' && found.trim() ? found.trim() : undefined;
+        } catch (e: any) {
+            // A lookup that failed is not a connection that is absent. Returning
+            // undefined here lets the resolver refuse on a multi-number tenant
+            // instead of this method choosing one by accident.
+            this.logger.warn(`Could not read the connection of conversation ${conversationId}: ${e.message}`);
+            return undefined;
+        }
+    }
+
+    private async resolveChannelCredentials(tenantId: string, channelType = 'whatsapp', accountId?: string):
+        Promise<{ accessToken: string; accountId: string }> {
+        try {
+            const creds = await this.channelToken.getChannelToken(tenantId, channelType, accountId);
             return { accessToken: creds.accessToken, accountId: creds.accountId };
         } catch (e: any) {
+            // Kept as a warning rather than a throw: the caller's other branches
+            // still have work to do. What changed is that the refusal is now
+            // reachable — asking unnamed on a multi-number tenant used to answer
+            // with the oldest connection instead of refusing.
             this.logger.warn(`Could not resolve ${channelType} token for tenant ${tenantId}: ${e.message}`);
             return { accessToken: '', accountId: '' };
         }

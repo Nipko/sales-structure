@@ -20,6 +20,22 @@ import {
     timezoneLabel,
 } from './appointment-ics.util';
 
+/**
+ * Which of the tenant's WhatsApp numbers sends — and therefore pays.
+ *
+ * Both reminder queries carry `conversation_account_id`, LEFT-joined from the
+ * conversation the appointment was booked in. `undefined` when the appointment
+ * has no conversation (created by hand, or through the public booking page):
+ * that is a real absence, and it is passed on as one rather than filled in. The
+ * resolver serves an unnamed request on a single-number tenant and refuses
+ * `connection_ambiguous` on a multi-number one, which is the only honest answer
+ * when nobody said whose account pays Meta for the delivery.
+ */
+function senderOf(appointment: { conversation_account_id?: string | null }): string | undefined {
+    const account = appointment.conversation_account_id;
+    return typeof account === 'string' && account.trim() ? account.trim() : undefined;
+}
+
 @Injectable()
 export class AppointmentRemindersService {
     private readonly logger = new Logger(AppointmentRemindersService.name);
@@ -162,9 +178,18 @@ export class AppointmentRemindersService {
                     a.contact_id, a.assigned_to, a.customer_name, a.customer_email,
                     c.name as contact_name, c.phone as contact_phone, c.email as contact_email,
                     c.channel_type as contact_channel,
+                    cv.channel_account_id AS conversation_account_id,
                     u.first_name || ' ' || u.last_name AS staff_name
              FROM appointments a
              LEFT JOIN contacts c ON c.id = a.contact_id
+             -- Which of the tenant's numbers this appointment was booked
+             -- through. Meta bills the business per delivered service message
+             -- from 1 October 2026, so a reminder has to name its sender or the
+             -- resolver picks the oldest connection and that account pays.
+             -- LEFT, because an appointment created by hand or through the
+             -- public booking page has no conversation and therefore no sender
+             -- identity; that stays NULL rather than becoming a guess.
+             LEFT JOIN conversations cv ON cv.id = a.conversation_id
              LEFT JOIN public.tenants tenant_owner
                ON tenant_owner.schema_name = $1
               AND tenant_owner.is_active = true
@@ -355,6 +380,7 @@ export class AppointmentRemindersService {
             'appointment_reminder',
             normalizeMetaLanguage(lang),
             components,
+            senderOf(appt),
         );
         this.logger.log(`Sent ${type} template reminder to ${appt.contact_phone} for appointment ${appt.id}`);
     }
@@ -364,9 +390,11 @@ export class AppointmentRemindersService {
         const appointments = await this.prisma.executeInTenantSchema<any[]>(schemaName,
             `SELECT a.id, a.service_name, a.contact_id, a.start_at,
                     c.name as contact_name, c.phone as contact_phone,
-                    c.channel_type as contact_channel
+                    c.channel_type as contact_channel,
+                    cv.channel_account_id AS conversation_account_id
              FROM appointments a
              LEFT JOIN contacts c ON c.id = a.contact_id
+             LEFT JOIN conversations cv ON cv.id = a.conversation_id
              WHERE a.status IN ('pending', 'confirmed')
                AND a.no_show_followed_up = false
                AND a.end_at < (NOW() AT TIME ZONE '${tz}') - interval '30 minutes'
@@ -432,6 +460,7 @@ export class AppointmentRemindersService {
             'attendance_check',
             normalizeMetaLanguage(lang),
             components,
+            senderOf(appt),
         );
         this.logger.log(`Sent attendance check template to ${appt.contact_phone} for appointment ${appt.id}`);
     }

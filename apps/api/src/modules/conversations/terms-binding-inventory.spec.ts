@@ -90,7 +90,11 @@ describe('which families bind what the customer agreed to', () => {
             const text = src(file);
             for (const match of text.matchAll(pattern)) {
                 for (const column of columns) {
-                    if (new RegExp(`\b${column}\s*=`).test(match[1])) drifting.push(`${file}: ${column}`);
+                    // `\\b` y `\\s` escapados: dentro de un template literal `\b` es el
+                    // caracter de retroceso y `\s` es una `s` suelta, asi que el
+                    // patron que se construia era `<BS>price s*=` y no encontraba
+                    // nada nunca — un barrido que siempre pasaba.
+                    if (new RegExp(`\\b${column}\\s*=`).test(match[1])) drifting.push(`${file}: ${column}`);
                 }
             }
         }

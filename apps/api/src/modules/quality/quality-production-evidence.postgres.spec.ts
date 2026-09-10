@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto';
+import { Pool } from 'pg';
 import { QualityService } from './quality.service';
 import { ComplianceService } from '../compliance/compliance.service';
 import { PrismaClient } from '@prisma/client';
@@ -24,7 +25,7 @@ const deferred = () => { let resolve!: () => void; const promise = new Promise<v
     beforeAll(async () => {
         const url=new URL(connection!);
         if (!['127.0.0.1','localhost'].includes(url.hostname) || !isDisposableDatabaseUrl(url)) throw new Error('disposable_database_required');
-        pool=new(require('pg').Pool)({ connectionString:connection });
+        pool=new Pool({ connectionString:connection });
         await pool.query(`CREATE SCHEMA "${schema}"`);
         for (const statement of [
             // `handoff_summary` is part of the real conversations table and the
@@ -208,8 +209,12 @@ const deferred = () => { let resolve!: () => void; const promise = new Promise<v
             expect((await runtime.scoreConversation(tenantId,conversationId)).status).toBe('erased');
         } finally {
             await client.$disconnect();
-            if(!/^tenant_quality_[a-f0-9]{32}_(runtime|template)$/.test(bootstrap))throw new Error('invalid_cleanup_scope');
-            await pool.query(`DROP SCHEMA IF EXISTS "${bootstrap}" CASCADE`);
+            // El guardia es la CONDICION, no un throw: `finally` corre con otro
+            // error en vuelo y lanzar aca lo reemplazaria por una queja de
+            // limpieza. Un nombre que no calza sencillamente no se borra.
+            if (/^tenant_quality_[a-f0-9]{32}_(runtime|template)$/.test(bootstrap)) {
+                await pool.query(`DROP SCHEMA IF EXISTS "${bootstrap}" CASCADE`);
+            }
         }
     });
 });

@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto';
+import { Pool } from 'pg';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import { PrismaService } from '../prisma/prisma.service';
@@ -29,7 +30,7 @@ const connection=process.env.PARALLLY_ISOLATION_TEST_URL;
     beforeAll(async()=>{
         const url=new URL(connection!);
         if(!['127.0.0.1','localhost'].includes(url.hostname)||!isDisposableDatabaseUrl(url))throw new Error('disposable_database_required');
-        pool=new(require('pg').Pool)({connectionString:connection});
+        pool=new Pool({connectionString:connection});
         await raw(`CREATE SCHEMA "${schema}"`);
         await raw('INSERT INTO public.tenants(id,schema_name,is_active) VALUES($1::uuid,$2,true)',[tenantId,schema]);
         prisma={

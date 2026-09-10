@@ -68,8 +68,7 @@ const url = process.env.PARALLLY_ISOLATION_TEST_URL;
         } finally { await client.$disconnect(); }
     });
 
-    it.each(['atencion', 'retour', 'atencao', 'attention', "' OR true --", 'absent topic'])
-    ('preserves canonical full-text/folding/null/empty semantics for %s', async query => {
+    it.each(['atencion', 'retour', 'atencao', 'attention', "' OR true --", 'absent topic'])('preserves canonical full-text/folding/null/empty semantics for %s', async query => {
         const captured = await captureStructuredKnowledge(database, tenantId);
         const expected = await faqs.search(tenantId, query, 3, AGENT_TEST_EXECUTION_CONTEXT);
         tenants.getSchemaName.mockClear();

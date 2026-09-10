@@ -16,6 +16,9 @@ describe('simulation evidence availability', () => {
         mockLocale = locale;
         for (const state of [{status:'retired' as const,loading:false,error:false},
             {status:'completed' as const,loading:true,error:false},{status:'completed' as const,loading:false,error:true}]) {
+            // El tipo del componente declara `children` como prop requerida, asi
+            // que pasarlo como tercer argumento deja el objeto de props incompleto.
+            // eslint-disable-next-line react/no-children-prop
             const html = renderToStaticMarkup(createElement(SimulationEvidenceBoundary, {...state,retry:jest.fn(),
                 children:createElement('div',null,'PRIVATE TRANSCRIPT 9/10')}));
             expect(html).not.toContain('PRIVATE TRANSCRIPT'); expect(html).not.toContain('9/10');
@@ -23,6 +26,8 @@ describe('simulation evidence availability', () => {
         }
     });
     it('renders available results without inventing a score or a success statement', () => {
+        // Mismo motivo: el componente declara `children` requerido.
+        // eslint-disable-next-line react/no-children-prop
         const html = renderToStaticMarkup(createElement(SimulationEvidenceBoundary,{status:'completed',loading:false,error:false,retry:jest.fn(),
             children:createElement('span',null,'Actual result')}));
         expect(html).toBe('<span>Actual result</span>');

@@ -364,8 +364,12 @@ const REGISTRY = 'public.evaluation_knowledge_usages';
             for (let i = 0; i < 2; i++) {
                 await reapKnowledgeReplicas(prisma, { tenantId: ids[i] });
                 await sql(`DELETE FROM ${REGISTRY} WHERE tenant_id=$1::uuid`, ids[i]);
-                if (!/^tenant_ragpage_[a-f0-9]{32}$/.test(schemas[i])) throw new Error('invalid_test_cleanup_scope');
-                await client.$executeRawUnsafe(`DROP SCHEMA IF EXISTS "${schemas[i]}" CASCADE`);
+                // El guardia es la CONDICION, no un throw: `finally` corre con
+                // otro error en vuelo y lanzar aca lo reemplazaria por una queja
+                // de limpieza. Un nombre que no calza no se borra, y listo.
+                if (/^tenant_ragpage_[a-f0-9]{32}$/.test(schemas[i])) {
+                    await client.$executeRawUnsafe(`DROP SCHEMA IF EXISTS "${schemas[i]}" CASCADE`);
+                }
                 await sql('DELETE FROM public.tenants WHERE id=$1::uuid', ids[i]);
             }
         }

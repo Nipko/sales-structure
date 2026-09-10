@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto';
+import { Pool } from 'pg';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import { PrismaService } from '../prisma/prisma.service';
@@ -77,7 +78,7 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
     beforeAll(async () => {
         const url = new URL(connection!);
         if (!['127.0.0.1','localhost'].includes(url.hostname) || !isDisposableDatabaseUrl(url)) throw new Error('disposable_eval_database_required');
-        pool = new (require('pg').Pool)({ connectionString: connection });
+        pool = new Pool({ connectionString: connection });
         prisma = {
             $queryRawUnsafe: (sql: string,...params: any[]) => query(sql,params),
             $executeRawUnsafe: (sql: string,...params: any[]) => query(sql,params),
@@ -162,8 +163,7 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
             { sandboxNamespace: lease, confirmWithoutPayment: true });
         expect(valid.metadata?.timezone).toBe('Europe/Paris');
     });
-    it.each(['missing', 'duplicate', 'invalid', 'expired', 'foreign'])
-    ('rejects %s evaluation timezone authority without substituting a live default', async state => {
+    it.each(['missing', 'duplicate', 'invalid', 'expired', 'foreign'])('rejects %s evaluation timezone authority without substituting a live default', async state => {
         const q = (sql: string, params: any[] = []) => prisma.executeInTenantSchema(lease.schemaName, sql, params);
         if (state === 'missing') await q("UPDATE persona_config SET config_json='{}'::jsonb");
         if (state === 'duplicate') await q("INSERT INTO persona_config(config_yaml,config_json,is_active) VALUES('{}',$1::jsonb,true)", [JSON.stringify({ hours: { timezone: 'UTC' } })]);
@@ -201,8 +201,7 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
             expect(liveLookup).not.toHaveBeenCalled();
         } finally { await client.$disconnect(); }
     });
-    it.each(['Sí, confirmo la corrección.', 'Yes, I confirm the correction.', 'Sim, confirmo a correção.', 'Oui, je confirme la correction.'])
-    ('registers, replays, reads and corrects a pet through its owned namespace: %s', async confirmation => {
+    it.each(['Sí, confirmo la corrección.', 'Yes, I confirm the correction.', 'Sim, confirmo a correção.', 'Oui, je confirme la correction.'])('registers, replays, reads and corrects a pet through its owned namespace: %s', async confirmation => {
         const q=(sql:string,params:any[]=[])=>prisma.executeInTenantSchema(lease.schemaName,sql,params);
         const inbound=async(text:string)=>q("INSERT INTO messages(conversation_id,direction,content_type,content_text,status,created_at) VALUES($1::uuid,'inbound','text',$2,'delivered',clock_timestamp())",[conversationId,text]);
         const invoke=(name:string,args:any)=>executor.execute(lease.schemaName,tenantId,contactId,name,args,conversationId,{

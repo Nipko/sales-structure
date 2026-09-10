@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto';
+import { Pool } from 'pg';
 import { AGENT_TEST_EXECUTION_CONTEXT } from '../../common/types/execution-context';
 import { VerticalReadinessService } from '../verticals/vertical-readiness.service';
 import { EvaluationRevisionService } from './evaluation-revision.service';
@@ -19,7 +20,7 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
         const url = new URL(connection!);
         if (!['localhost','127.0.0.1'].includes(url.hostname) || !isDisposableDatabaseUrl(url))
             throw new Error('disposable_eval_database_required');
-        pool = new (require('pg').Pool)({ connectionString: connection });
+        pool = new Pool({ connectionString: connection });
         await query('INSERT INTO public.tenants(id,schema_name) VALUES($1::uuid,$2)', [tenantId,source]);
         await query(`CREATE SCHEMA "${source}"`);
         await query(`CREATE SCHEMA "${sandbox}"`);

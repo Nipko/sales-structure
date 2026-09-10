@@ -147,7 +147,23 @@ export default function SetupWizardPage() {
     // para que un refresh antes de que el campo pierda el foco no se lleve el
     // nombre y el saludo recién escritos.
     const draftKey = tenantId ? `${DRAFT_KEY_PREFIX}:${tenantId}` : null;
+    /**
+     * Hay algo escrito sin guardar. En dos formas, y las dos hacen falta.
+     *
+     * La ref es lo que leen los callbacks: `saveOrAdvance` y `autosave`
+     * necesitan el valor de AHORA, no el de la ultima vez que se dibujo.
+     * El estado es lo que lee el render, y esa es la mitad que faltaba: una ref
+     * no programa un dibujo, asi que `blocked` —la condicion que impide probar
+     * un borrador con cambios sin guardar— dependia de un valor que podia
+     * cambiar sin que la pantalla se enterara. Funcionaba solo porque cada
+     * escritura venia acompanada de un `setState` vecino.
+     */
     const dirtyRef = useRef(false);
+    const [hasUnsavedEdits, setHasUnsavedEdits] = useState(false);
+    const markDirty = useCallback((value: boolean) => {
+        dirtyRef.current = value;
+        setHasUnsavedEdits(value);
+    }, []);
     const savingRef = useRef(false);
 
     /**
@@ -235,11 +251,11 @@ export default function SetupWizardPage() {
                 const matchingBase = draft?.operationalVersion === current?.operational?.version && draft?.revisionId === (current?.draft?.id ?? null);
                 if (matchingBase && typeof draft?.agentName === "string" && draft.agentName.trim() && draft.agentName !== name) {
                     setAgentName(draft.agentName);
-                    dirtyRef.current = true;
+                    markDirty(true);
                 }
                 if (matchingBase && typeof draft?.greeting === "string" && draft.greeting.trim() && draft.greeting !== hello) {
                     setGreeting(draft.greeting);
-                    dirtyRef.current = true;
+                    markDirty(true);
                 }
             } catch { /* borrador corrupto → empezar en el paso 1 */ }
 
@@ -348,7 +364,7 @@ export default function SetupWizardPage() {
         const ok = dirty ? await saveAgentEdits(options) : await advanceStage(options);
         // Sucio hasta que se confirme el guardado: un fallo no puede hacer
         // desaparecer lo tipeado del próximo intento.
-        if (ok && dirty && revision === editRevision.current) dirtyRef.current = false;
+        if (ok && dirty && revision === editRevision.current) markDirty(false);
         return ok;
     }, [advanceStage, saveAgentEdits]);
 
@@ -362,7 +378,7 @@ export default function SetupWizardPage() {
         savingRef.current = false;
         setSaving(false);
         if (ok) {
-            if (revision === editRevision.current) dirtyRef.current = false;
+            if (revision === editRevision.current) markDirty(false);
             setSavedAt(Date.now());
         }
         return ok;
@@ -543,7 +559,7 @@ export default function SetupWizardPage() {
                                         id="setup-agent-name"
                                         type="text"
                                         value={agentName}
-                                        onChange={(e) => { dirtyRef.current = true; editRevision.current++; setAgentName(e.target.value); }}
+                                        onChange={(e) => { markDirty(true); editRevision.current++; setAgentName(e.target.value); }}
                                         onBlur={() => void autosave()}
                                         className="w-full rounded-xl border border-neutral-300 bg-neutral-50 px-3.5 py-2.5 text-sm text-foreground outline-none focus:border-indigo-500 dark:border-white/10 dark:bg-white/5"
                                     />
@@ -557,7 +573,7 @@ export default function SetupWizardPage() {
                                         id="setup-agent-greeting"
                                         value={greeting}
                                         rows={3}
-                                        onChange={(e) => { dirtyRef.current = true; editRevision.current++; setGreeting(e.target.value); }}
+                                        onChange={(e) => { markDirty(true); editRevision.current++; setGreeting(e.target.value); }}
                                         onBlur={() => void autosave()}
                                         className="w-full resize-none rounded-xl border border-neutral-300 bg-neutral-50 px-3.5 py-2.5 text-sm text-foreground outline-none focus:border-indigo-500 dark:border-white/10 dark:bg-white/5"
                                     />
@@ -566,7 +582,7 @@ export default function SetupWizardPage() {
                                 <div className="flex items-center gap-3 text-[12px] text-muted-foreground">
                                     {saving
                                         ? <span className="inline-flex items-center gap-1.5"><Loader2 size={12} className="animate-spin" /> {t("agentStep.saving")}</span>
-                                        : savedAt && !dirtyRef.current
+                                        : savedAt && !hasUnsavedEdits
                                             ? <span className="inline-flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400"><Check size={12} /> {tDraft('saved')}</span>
                                             : <span>{t("agentStep.autosaveHint")}</span>}
                                 </div>
@@ -587,7 +603,7 @@ export default function SetupWizardPage() {
                                         {t("test.title")}
                                     </p>
                                     <AgentTestChat tenantId={tenantId} agentId={workspace?.agentId ?? null} configurationRevisionId={workspace?.evaluationRevisionId ?? undefined}
-                                        blocked={!workspace || Boolean(workspace.draft && !workspace.draft.currentBase) || dirtyRef.current || saving} />
+                                        blocked={!workspace || Boolean(workspace.draft && !workspace.draft.currentBase) || hasUnsavedEdits || saving} />
                                 </div>
                             )}
                         </div>

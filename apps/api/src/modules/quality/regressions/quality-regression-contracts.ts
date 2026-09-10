@@ -74,6 +74,10 @@ export function sanitizeRegressionRevision(input:RegressionProposal, coverage:Re
             .replace(/\+\d[\d\s().-]{7,}\d/g,'[phone]');
         for(const term of terms.filter(term=>term.trim().length>=2).sort((a,b)=>b.length-a.length))
             value=value.replace(new RegExp(`(?<![\\p{L}\\p{N}])${term.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}(?![\\p{L}\\p{N}])`,'giu'),'[person]');
+        // Los caracteres de control son justamente lo que se limpia: un NUL o un
+        // retroceso dentro de texto que produjo un agente nunca es contenido, y
+        // dejar pasar uno ya rompio una lectura antes.
+        // eslint-disable-next-line no-control-regex
         return value.replace(/[\u0000-\u0008\u000b-\u001f]/g,' ').trim();
     };
     const actions=validateRegressionAssertions(input.expectedActions);

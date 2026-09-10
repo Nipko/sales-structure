@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto';
+import { Pool } from 'pg';
 import { ToolExecutionControlService } from './tool-execution-control.service';
 import { ToolApprovalEffectsService } from './tool-approval-effects.service';
 import { APPROVAL_EFFECTS_EVENT } from './tool-approval-effects.contracts';
@@ -27,7 +28,7 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
     beforeAll(async () => {
         const url = new URL(connection!);
         if (!['127.0.0.1','localhost'].includes(url.hostname) || !isDisposableDatabaseUrl(url)) throw new Error('disposable_eval_database_required');
-        pool = new (require('pg').Pool)({ connectionString: connection });
+        pool = new Pool({ connectionString: connection });
         await q(`CREATE SCHEMA "${schema}"`);
         await q('INSERT INTO public.tenants(id,schema_name,is_active) VALUES($1::uuid,$2,true)',[tenantId,schema]);
         await scoped('CREATE TABLE contacts(id UUID PRIMARY KEY,external_id TEXT,channel_type TEXT,name TEXT,phone TEXT)');

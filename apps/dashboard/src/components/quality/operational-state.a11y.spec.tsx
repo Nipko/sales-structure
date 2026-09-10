@@ -1,4 +1,6 @@
 import type { AgentAssessment } from "@parallext/shared";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { scanScreen } from "@/test/a11y";
 import { AgentAssessmentPanel } from "./AgentAssessmentPanel";
 import { AppliedDraftEvidence } from "./AgentConfigurationReview";
@@ -66,7 +68,7 @@ describe("the states a person is asked to act on", () => {
             module.renderScreen(<AgentAssessmentPanel assessment={assessment()} />));
         const text = container.textContent ?? "";
         const messages = JSON.parse(
-            require("fs").readFileSync(require("path").join(__dirname, "../../../messages/es.json"), "utf8"));
+            readFileSync(join(__dirname, "../../../messages/es.json"), "utf8"));
         for (const state of ["pending", "unknown", "prepared", "degraded"]) {
             expect(text).toContain(messages.agentOperationalState.states[state].label);
         }
@@ -98,7 +100,7 @@ describe("the states a person is asked to act on", () => {
                 revisionId: null, revisionHash: null, checkedAt: "2026-09-08T00:00:00.000Z",
             }} />));
         const messages = JSON.parse(
-            require("fs").readFileSync(require("path").join(__dirname, "../../../messages/es.json"), "utf8"));
+            readFileSync(join(__dirname, "../../../messages/es.json"), "utf8"));
         const text = container.textContent ?? "";
         expect(text).toContain(messages.agentConfiguration.draftCheck.unavailable);
         expect(text).toContain(messages.agentConfiguration.draftCheck.reasons.quota_exhausted);

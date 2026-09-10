@@ -266,7 +266,11 @@ export class ProcedureEngineService {
 
     private async loadProcedureById(schemaName: string, id: string): Promise<ProcedureDefinition | null> {
         if (this.definitionStore) return this.definitionStore.getById(schemaName, id);
-        try {
+        // Sin try/catch: el que habia atrapaba y volvia a lanzar. Una lectura
+        // que falla NO puede cancelar una tarea durable del cliente, y la forma
+        // de conseguir eso es dejar que el error suba hasta quien sabe
+        // reintentar — no envolverlo en un catch que no hace nada.
+        {
             const rows = await this.prisma.executeInTenantSchema<any[]>(
                 schemaName,
                 `SELECT id, name, trigger, steps, status, version, vertical FROM procedures WHERE id = $1::uuid`,
@@ -286,9 +290,6 @@ export class ProcedureEngineService {
                 // carried on because the resume query forgot to ask.
                 vertical: r.vertical || undefined,
             };
-        } catch (error) {
-            // A transient read failure cannot cancel a durable customer task.
-            throw error;
         }
     }
 

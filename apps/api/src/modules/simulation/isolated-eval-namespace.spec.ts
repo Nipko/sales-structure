@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto';
+import { Client } from 'pg';
 import { IsolatedEvalNamespace, isolatedDefault } from './isolated-eval-namespace';
 import { isDisposableDatabaseUrl } from '../../common/__fixtures__/disposable-database';
 
@@ -33,7 +34,7 @@ databaseTests('isolated namespaces on PostgreSQL (explicit disposable database o
     beforeAll(async () => {
         const url = new URL(connection!);
         if (!['127.0.0.1', 'localhost'].includes(url.hostname) || !isDisposableDatabaseUrl(url)) throw new Error('disposable_eval_database_required');
-        const { Client } = require('pg'); client = new Client({ connectionString: connection }); await client.connect();
+        client = new Client({ connectionString: connection }); await client.connect();
         service = new IsolatedEvalNamespace({ transaction: async work => {
             await client.query('BEGIN');
             try { const result = await work(async (sql, params) => (await client.query(sql, params)).rows); await client.query('COMMIT'); return result; }

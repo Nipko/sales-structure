@@ -59,10 +59,10 @@ export class ManagedService {
     }
 
     private async ensureColumn(schemaName: string): Promise<void> {
-        try {
-            await this.prisma.executeInTenantSchema(schemaName, `ALTER TABLE conversations ADD COLUMN IF NOT EXISTS resolution_verified BOOLEAN`, []);
-            await this.prisma.executeInTenantSchema(schemaName, `ALTER TABLE conversations ADD COLUMN IF NOT EXISTS resolution_verification_source TEXT`, []);
-        } catch (error) { throw error; }
+        // Sin try/catch: el que habia atrapaba y volvia a lanzar, que es lo
+        // mismo que no atrapar. Si un ALTER falla, el llamador se entera.
+        await this.prisma.executeInTenantSchema(schemaName, `ALTER TABLE conversations ADD COLUMN IF NOT EXISTS resolution_verified BOOLEAN`, []);
+        await this.prisma.executeInTenantSchema(schemaName, `ALTER TABLE conversations ADD COLUMN IF NOT EXISTS resolution_verification_source TEXT`, []);
     }
 
     /** Resolution metrics for one tenant over a period. */

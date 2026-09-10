@@ -50,8 +50,7 @@ describe('Frozen factual context in the operational evaluation core', () => {
         expect(next.debug.turnContext.verticalContext?.industry).toBe('retail');
     });
 
-    it.each(['contextInputs', 'businessHours', 'business', 'regional', 'vertical', 'fr', 'activeObjectPolicy'])
-    ('rejects missing %s before the model even when resealed by a test fixture', async field => {
+    it.each(['contextInputs', 'businessHours', 'business', 'regional', 'vertical', 'fr', 'activeObjectPolicy'])('rejects missing %s before the model even when resealed by a test fixture', async field => {
         const f = agentTurnFixture(), snapshot = await f.service.captureSnapshot('tenant', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
         if (field === 'contextInputs') delete snapshot.contextInputs;
         else if (field === 'fr') delete (snapshot.contextInputs!.vertical as any).fr;

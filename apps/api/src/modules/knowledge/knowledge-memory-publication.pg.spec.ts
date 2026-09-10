@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto';
+import { Pool } from 'pg';
 import { ConflictException } from '@nestjs/common';
 import { KnowledgeService } from './knowledge.service';
 import { CustomerMemoryService } from '../conversations/customer-memory.service';
@@ -35,7 +36,7 @@ integration('Knowledge and memory publication with real PostgreSQL + pgvector',(
     beforeAll(async()=>{
         const url=new URL(databaseUrl!);
         if(!['127.0.0.1','localhost','[::1]'].includes(url.hostname)||!url.pathname.endsWith('_eval_isolation'))throw new Error('disposable_loopback_database_required');
-        const {Pool}=require('pg');pool=new Pool({connectionString:databaseUrl,max:8});
+        pool=new Pool({connectionString:databaseUrl,max:8});
         if(!/^tenant_memorykb_[a-f0-9]{32}$/.test(schema))throw new Error('invalid_test_schema');
         await pool.query(`CREATE SCHEMA "${schema}"`);
         const existing=(await pool.query("SELECT n.nspname FROM pg_extension e JOIN pg_namespace n ON n.oid=e.extnamespace WHERE e.extname='vector'")).rows;

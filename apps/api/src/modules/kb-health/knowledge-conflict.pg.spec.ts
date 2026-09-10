@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto';
+import { Pool } from 'pg';
 import { ConflictException } from '@nestjs/common';
 import { KnowledgeConflictService } from './knowledge-conflict.service';
 import { AGENT_TEST_EXECUTION_CONTEXT } from '../../common/types/execution-context';
@@ -30,7 +31,7 @@ integration('Knowledge conflict review on real PostgreSQL', () => {
     beforeAll(async()=>{
         const url=new URL(databaseUrl!);
         if(!['127.0.0.1','localhost','[::1]'].includes(url.hostname)||!url.pathname.endsWith('_eval_isolation'))throw new Error('disposable_loopback_database_required');
-        const {Pool}=require('pg');pool=new Pool({connectionString:databaseUrl,max:6});
+        pool=new Pool({connectionString:databaseUrl,max:6});
         if(!/^tenant_conflict_[a-f0-9]{32}$/.test(schema))throw new Error('invalid_test_schema');
         await pool.query(`CREATE SCHEMA "${schema}"`);
         for(const sql of [

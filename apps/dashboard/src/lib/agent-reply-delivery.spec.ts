@@ -1,6 +1,7 @@
 import { agentReplyDeliveryNotice } from './agent-reply-delivery';
+import es from '../../messages/es.json';
 
-const messages = require('../../messages/es.json').inbox;
+const messages = es.inbox;
 
 /**
  * The rule that decides whether an agent is told their reply did not leave.

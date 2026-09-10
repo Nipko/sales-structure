@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto';
+import { Pool } from 'pg';
 import { EvaluationRevisionService } from './evaluation-revision.service';
 import { isDisposableDatabaseUrl } from '../../common/__fixtures__/disposable-database';
 
@@ -10,7 +11,7 @@ const connection=process.env.PARALLLY_ISOLATION_TEST_URL;
     beforeAll(async()=>{
         const url=new URL(connection!);
         if(!['127.0.0.1','localhost'].includes(url.hostname)||!isDisposableDatabaseUrl(url))throw new Error('disposable_eval_database_required');
-        pool=new(require('pg').Pool)({connectionString:connection});
+        pool=new Pool({connectionString:connection});
         await query('CREATE TABLE IF NOT EXISTS public.tenants(id uuid PRIMARY KEY,schema_name text NOT NULL)');
         await query('INSERT INTO public.tenants(id,schema_name) VALUES($1::uuid,$2)',[tenantId,schema]);
         await query(`CREATE SCHEMA "${schema}"`);

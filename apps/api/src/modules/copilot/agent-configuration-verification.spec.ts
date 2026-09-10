@@ -17,7 +17,7 @@ const hours = (): AgentAccountBusinessHours => ({ is247: false, timezone: 'Ameri
     schedule: Object.fromEntries(AGENT_ACCOUNT_DAYS.map(day => [day, { enabled: day === 'monday', open: '08:00', close: '17:00' }])) as AgentAccountBusinessHours['schedule'] });
 
 function harness(runner?: { test: jest.Mock }, options: { language?: string } = {}) {
-    let agent: any = { id: AGENT, name: 'Luna', version: 4, is_active: true, is_default: true, channels: ['whatsapp'], channel_bindings: [],
+    const agent: any = { id: AGENT, name: 'Luna', version: 4, is_active: true, is_default: true, channels: ['whatsapp'], channel_bindings: [],
         config_json: { persona: { name: 'Luna', greeting: 'Hola' }, ...(options.language ? { language: options.language } : {}) } };
     let draft: any = null;
     let pointer: string | null | undefined;

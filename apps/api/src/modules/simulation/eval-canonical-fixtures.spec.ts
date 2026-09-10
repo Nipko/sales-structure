@@ -20,8 +20,7 @@ describe('canonical eval fixtures', () => {
         expect(query.mock.calls.find(([sql]) => sql.includes('.availability_slots'))![1]).toEqual(expect.arrayContaining([2, '13:15', '14:15']));
         expect(JSON.stringify(input)).toBe(original);
     });
-    it.each([{}, { schedule: {} }, { schedule: null }, { is247: true, schedule: { monday: { enabled: false } } }])
-    ('does not inherit a closed legacy schedule when tenant hours are unrestricted: %j', businessHours => {
+    it.each([{}, { schedule: {} }, { schedule: null }, { is247: true, schedule: { monday: { enabled: false } } }])('does not inherit a closed legacy schedule when tenant hours are unrestricted: %j', businessHours => {
         const input = snapshot({ schedule: { monday: { enabled: false } } });
         input.contextInputs = { businessHours } as any;
         expect(resolveCanonicalEvalFixtures(input)).toMatchObject({ status: 'ready', time: '09:00', windows: expect.any(Array) });

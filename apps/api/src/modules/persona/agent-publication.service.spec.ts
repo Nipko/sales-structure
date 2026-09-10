@@ -1,4 +1,5 @@
 import { AgentPublicationService } from './agent-publication.service';
+import * as entitlementUtil from '../../common/utils/subscription-entitlement.util';
 import { evaluationSnapshot } from '../conversations/agent-evaluation-snapshot';
 
 const tenantId = '11111111-1111-4111-8111-111111111111';
@@ -77,8 +78,11 @@ describe('AgentPublicationService', () => {
         store.rollback = jest.fn(async () => ({ ...settled, kind: 'rollback' as const }));
         jest.spyOn((service as any).logger, 'error').mockImplementation(() => undefined);
 
+        // El módulo, no un `require` en línea: `jest.spyOn` necesita el objeto y
+        // un import de namespace lo da. Se llama `entitlementUtil` porque el
+        // espía local ya ocupaba `entitlement`.
         const entitlement = jest.spyOn(
-            require('../../common/utils/subscription-entitlement.util'), 'resolveTenantSubscriptionAccess')
+            entitlementUtil, 'resolveTenantSubscriptionAccess')
             .mockResolvedValue(options.access ?? { allowed: true } as any);
         return { service, prisma, persona, drafts, revisions, store, query, entitlement, events };
     }

@@ -1,4 +1,7 @@
 import { randomUUID } from 'crypto';
+import { Queue, QueueEvents, Worker } from 'bullmq';
+import { PrismaClient } from '@prisma/client';
+import { Pool } from 'pg';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import { PrismaService } from '../prisma/prisma.service';
@@ -22,12 +25,12 @@ const redisConnection = process.env.PARALLLY_SAMPLING_REDIS_URL;
     beforeAll(async () => {
         const url = new URL(connection!);
         if (!['127.0.0.1','localhost'].includes(url.hostname) || !isDisposableDatabaseUrl(url)) throw new Error('disposable_eval_database_required');
-        pool = new (require('pg').Pool)({connectionString:connection,max:8});
+        pool = new Pool({connectionString:connection,max:8});
         if(redisConnection){
             const redisUrl=new URL(redisConnection);
             if(redisUrl.protocol!=='redis:'||!['127.0.0.1','localhost'].includes(redisUrl.hostname)||redisUrl.port!=='55440')throw new Error('disposable_sampling_redis_required');
             redisOptions={host:redisUrl.hostname,port:Number(redisUrl.port),maxRetriesPerRequest:null};
-            const {Queue}=require('bullmq');realQueue=new Queue(queueName,{connection:redisOptions});await realQueue.waitUntilReady();
+            realQueue=new Queue(queueName,{connection:redisOptions});await realQueue.waitUntilReady();
         }
         await pool.query('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"');
         await pool.query(`CREATE SCHEMA "${schema}"`);
@@ -78,7 +81,6 @@ const redisConnection = process.env.PARALLLY_SAMPLING_REDIS_URL;
         expect(await service.report(tenant,'2026-09-06')).toMatchObject({state:'available',eligible:0,selected:0,queued:0,actualFraction:null});
     });
     it('executes through the production Prisma query wrappers, including locks, JSON parameters and result serialization',async()=>{
-        const {PrismaClient}=require('@prisma/client');
         const client=new PrismaClient({datasources:{db:{url:connection}}});
         const production=Object.create(PrismaService.prototype);
         production.$transaction=client.$transaction.bind(client);
@@ -160,7 +162,7 @@ const redisConnection = process.env.PARALLLY_SAMPLING_REDIS_URL;
     });
     (redisConnection?it:it.skip)('retains the real BullMQ job after completion so a lost producer acknowledgement never runs a second worker job',async()=>{
         await conversation();await service.capture(tenant,now);
-        const {Worker,QueueEvents}=require('bullmq');let executed=0;
+        let executed=0;
         const events=new QueueEvents(queueName,{connection:redisOptions});await events.waitUntilReady();
         const worker=new Worker(queueName,async(job:any)=>{executed++;expect(Object.keys(job.data).sort()).toEqual(['conversationId','tenantId']);return{status:'test_worker_completed'};},{connection:redisOptions});
         await worker.waitUntilReady();

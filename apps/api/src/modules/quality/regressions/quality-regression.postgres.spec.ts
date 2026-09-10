@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto';
+import { Pool } from 'pg';
 import { PrismaClient } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { QualityService } from '../quality.service';
@@ -38,7 +39,7 @@ const deferred=()=>{let resolve!:()=>void;const promise=new Promise<void>(done=>
     beforeAll(async()=>{
         const url=new URL(connection!);
         if(!['127.0.0.1','localhost'].includes(url.hostname)||!isDisposableDatabaseUrl(url))throw new Error('disposable_database_required');
-        pool=new(require('pg').Pool)({connectionString:connection});await pool.query(`CREATE SCHEMA "${schema}"`);
+        pool=new Pool({connectionString:connection});await pool.query(`CREATE SCHEMA "${schema}"`);
         client=new PrismaClient({datasourceUrl:connection});
         prisma=Object.create(PrismaService.prototype);(prisma as any).$transaction=client.$transaction.bind(client);
         prisma.getTenantSchemaName=async()=>schema;
@@ -223,8 +224,12 @@ const deferred=()=>{let resolve!:()=>void;const promise=new Promise<void>(done=>
             const tables=await client.$queryRawUnsafe(`SELECT table_name FROM information_schema.tables WHERE table_schema=$1`,target) as any[];
             expect(tables.map(row=>row.table_name)).toEqual(expect.arrayContaining(['quality_regression_cases','quality_regression_reviews','agent_mission_instances','eval_runs']));
         }finally{
-            if(!/^tenant_regression_[a-f0-9]{32}_template$/.test(target))throw new Error('invalid_cleanup_scope');
-            await pool.query(`DROP SCHEMA "${target}" CASCADE`);
+            // El guardia es la CONDICION, no un throw: `finally` corre con otro
+            // error en vuelo y lanzar aca lo reemplazaria por una queja de
+            // limpieza. Un nombre que no calza sencillamente no se borra.
+            if (/^tenant_regression_[a-f0-9]{32}_template$/.test(target)) {
+                await pool.query(`DROP SCHEMA IF EXISTS "${target}" CASCADE`);
+            }
         }
     });
 });

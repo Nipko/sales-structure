@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto';
+import { Pool } from 'pg';
 import { KnowledgeService } from './knowledge.service';
 import { ComplianceService } from '../compliance/compliance.service';
 import type { RetrievedKnowledgeItem } from '@parallext/shared';
@@ -34,7 +35,6 @@ integration('Knowledge attribution on real PostgreSQL', () => {
         if (!['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname) || !url.pathname.endsWith('_eval_isolation')) {
             throw new Error('Knowledge integration requires a disposable loopback *_eval_isolation database');
         }
-        const { Pool } = require('pg');
         pool = new Pool({ connectionString: databaseUrl, max: 6 });
         if (!/^tenant_knowledge_[a-f0-9]{32}$/.test(schema)) throw new Error('invalid_test_schema');
         await pool.query(`CREATE SCHEMA "${schema}"`);

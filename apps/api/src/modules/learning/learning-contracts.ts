@@ -164,6 +164,10 @@ export function learningSplit(groupKey: string): 'train' | 'holdout' {
 }
 
 export function sanitizeLearningText(text: string, redactTerms: string[] = []): string {
+    // Los caracteres de control son justamente lo que se limpia: un NUL o un
+    // retroceso dentro de texto que produjo un agente nunca es contenido, y
+    // dejar pasar uno ya rompio una lectura antes.
+    // eslint-disable-next-line no-control-regex
     let clean = text.replace(/[\u0000-\u0008\u000b-\u001f]/g, ' ')
         .replace(/https?:\/\/\S+/gi, '[link]')
         .replace(/[\w.+-]+@[\w.-]+\.[a-z]{2,}/gi, '[contact]');

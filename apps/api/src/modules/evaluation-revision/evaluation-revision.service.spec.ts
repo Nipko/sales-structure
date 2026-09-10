@@ -42,8 +42,7 @@ describe('complete guarded evaluation revision',()=>{
         expect(manifest.limitations).toContain('provider_model_weights_not_versioned');
         assertRevisionIntegrity(manifest);
     });
-    it.each(['knowledge_documents','knowledge_embeddings','knowledge_document_versions','faqs','policies','companies','services','agent_personas'])
-    ('invalidates changes to %s even when the persona config hash would be unchanged',async table=>{
+    it.each(['knowledge_documents','knowledge_embeddings','knowledge_document_versions','faqs','policies','companies','services','agent_personas'])('invalidates changes to %s even when the persona config hash would be unchanged',async table=>{
         const f=revisionFixture();const manifest=await f.service.capture('tenant');
         f.source[table]='changed';
         await expect(f.service.assertCurrent(manifest)).rejects.toThrow(`evaluation_dependencies_changed:tenant.${table}`);

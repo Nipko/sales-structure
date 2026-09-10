@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto';
+import { revisionHash } from '../evaluation-revision/evaluation-revision';
 import { PrismaClient } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { SimulationService } from './simulation.service';
@@ -187,7 +188,7 @@ const connection=process.env.PARALLLY_ISOLATION_TEST_URL;
     });
     it('validates retries before reusing successful results and never exposes stale text in summaries/get',async()=>{
         const {runId}=await start();const [run]=await sql('SELECT * FROM simulation_runs WHERE id=$1::uuid',[runId]);
-        const def=run.scenario_definitions[0];const {revisionHash}=require('../evaluation-revision/evaluation-revision');
+        const def=run.scenario_definitions[0];
         const completed={...def,scenarioHash:revisionHash(def),transcript:[],judge,turns:1,latencyMs:1};
         await sql('UPDATE messages SET content_text=$2 WHERE id=$1::uuid',[messageId,'changed']);
         await expect((service as any).runScenariosConcurrently(tenantId,agentId,'web_widget',[def],{},undefined,[completed],undefined,{schemaName:schema,runId})).rejects.toThrow('simulation_replay_source_unavailable');
@@ -275,8 +276,12 @@ const connection=process.env.PARALLLY_ISOLATION_TEST_URL;
             expect(await tx(async query=>{await fence(query);return eraseSimulationContactReplays(query,[contactId]);})).toBe(1);
             expect(await db.$queryRawUnsafe('SELECT 1 FROM pg_namespace WHERE nspname=$1',namespace)).toEqual([]);
         } finally {
-            if(!/^tenant_eval_[a-f\d]{8}_[a-f\d]{24}$/.test(namespace))throw new Error('invalid_cleanup_scope');
-            await db.$executeRawUnsafe(`DROP SCHEMA IF EXISTS "${namespace}" CASCADE`);
+            // El guardia es la CONDICION, no un throw: `finally` corre con otro
+            // error en vuelo y lanzar aca lo reemplazaria por una queja de
+            // limpieza. Un nombre que no calza sencillamente no se borra.
+            if (/^tenant_eval_[a-f\d]{8}_[a-f\d]{24}$/.test(namespace)) {
+                await db.$executeRawUnsafe(`DROP SCHEMA IF EXISTS "${namespace}" CASCADE`);
+            }
         }
     });
     it('rejects a lease from another source before persisting any namespace authority',async()=>{
@@ -324,8 +329,12 @@ const connection=process.env.PARALLLY_ISOLATION_TEST_URL;
         } finally {
             prisma.transactionInTenantSchema=native;
             if(erasure)await erasure.catch(()=>undefined);
-            if(!/^tenant_eval_[a-f\d]{8}_[a-f\d]{24}$/.test(namespace))throw new Error('invalid_cleanup_scope');
-            await db.$executeRawUnsafe(`DROP SCHEMA IF EXISTS "${namespace}" CASCADE`);
+            // El guardia es la CONDICION, no un throw: `finally` corre con otro
+            // error en vuelo y lanzar aca lo reemplazaria por una queja de
+            // limpieza. Un nombre que no calza sencillamente no se borra.
+            if (/^tenant_eval_[a-f\d]{8}_[a-f\d]{24}$/.test(namespace)) {
+                await db.$executeRawUnsafe(`DROP SCHEMA IF EXISTS "${namespace}" CASCADE`);
+            }
         }
     },15000);
     it('reuses the Replay transaction for real Learning checks while erasure is queued',async()=>{

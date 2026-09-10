@@ -386,6 +386,10 @@ describe('CopilotService authenticated context', () => {
             const prompt = llmRouter.execute.mock.calls[0][0].systemPrompt;
             expect(prompt).toContain('channels.account.connect → /admin/channels');
             expect(prompt).toContain('roles.member.grant → /admin/users');
+            // Y NO aparecen también como no disponibles: las dos listas son una
+            // partición, no dos filtros que puedan solaparse.
+            expect(prompt).not.toContain('channels.account.connect (');
+            expect(prompt).not.toContain('roles.member.grant (');
             for (const key of ['agenda.appointment.book', 'agenda.availability.replace', 'catalogue.campaign.create']) {
                 expect(prompt).not.toContain(`${key} → `);
             }

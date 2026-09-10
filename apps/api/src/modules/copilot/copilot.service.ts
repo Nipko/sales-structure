@@ -1224,8 +1224,14 @@ Reglas estrictas:
         // Excluded ones are NOT dropped in silence. An operation the model has
         // never heard of gets an invented apology or a different screen; one it
         // has been told is unavailable, and why, gets said plainly.
-        const routedOperations = routedAgentOperations().filter(permitted);
-        const notRoutable = routedAgentOperations().filter(operation => !routedOperations.includes(operation));
+        // One call, partitioned. Two calls and an `includes` would depend on the
+        // registry handing back the same object references every time — true
+        // today, and the day it stops being true every operation lands in
+        // `notRoutable` and Assist tells the owner that connecting a channel is
+        // unavailable.
+        const everyRouted = routedAgentOperations();
+        const routedOperations = everyRouted.filter(permitted);
+        const notRoutable = everyRouted.filter(operation => !permitted(operation));
         // A write that cannot move the check the person was sent to fix is worse
         // than no write: they apply it, the banner stays red, and the next thing
         // they distrust is the assessment. Both pairs are declared in the

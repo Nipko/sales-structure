@@ -147,6 +147,8 @@ Un recargo del 10 % sobre costo produce sólo 9,09 % de margen antes de comision
 
 **Presupuesto y calidad.** Una misma autoridad debe cubrir chat, Assist, copiloto, media, RAG, aprendizaje, evaluaciones, jobs y campañas. Reservar antes de operaciones concurrentes, liquidar el uso real y retener incertidumbre hasta reconciliar. Los límites deben cumplir el contrato: alerta, presupuesto duro y cupo no son lo mismo. Si no queda modelo certificado para la tarea, explicar la limitación o escalar; no ejecutar una compra con calidad insuficiente para salvar margen.
 
+La [ampliación sobre respuestas WhatsApp](whatsapp-response-spend-guardrails-plan.md) concreta la prioridad por mercado destinatario: presupuestos monetarios por cuenta/contacto/tarea, compactación de efectos, falta de progreso y admisión de todos los emisores. Compara las propuestas de Jelou/respond.io y otros referentes. Este frente protege entregas Meta y no reabre los controles IA como condición para iniciarlo.
+
 **Vigencia.** Una tarea en cola que atraviesa octubre debe revalidar tarifa y autorización. La cotización interna congelada no congela el precio de Meta; la entrega/factura determina el cargo según su contrato. Cambios de precio que excedan un presupuesto aprobado requieren detener o pedir nueva aceptación.
 
 **Marketing.** Consentimiento y baja, categoría correcta, elegibilidad regional, presupuesto total, enfriamiento de 131049, expiración y métricas de resultado. Un máximo de precio por mensaje no limita toda la campaña. No recategorizar publicidad como utility ni explotar 24h para evadir restricciones.

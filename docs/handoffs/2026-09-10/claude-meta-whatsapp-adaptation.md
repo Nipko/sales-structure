@@ -86,6 +86,8 @@ Actualiza tours por tareas y estados, es/en/pt/fr, teclado, móvil y errores rec
 
 ## M3 — control económico completo sin degradar la función
 
+La adenda [R0–R6: respuestas WhatsApp por destino](claude-whatsapp-response-spend-guardrails.md) concreta la prioridad aclarada: autorizar el costo de mensajes salientes, compactar efectos y evitar conversaciones repetitivas. Usa esta autoridad económica para todos los productores WA; no interpretes los créditos IA como un presupuesto de Meta ni conviertas la adenda en una reapertura del control de modelos.
+
 Reutiliza ledger de uso/presupuesto donde exista, con una autoridad transaccional. Antes de cada operación que genera costo, reservar techo estimado y concurrencia; después, registrar costo real y liberar diferencia. Si el proveedor cobra más que la reserva, registrarlo honestamente y impedir gasto nuevo según política; no falsificar el costo para conservar el límite.
 
 Incluye chat, loop de tools, fallback, Assist, copiloto, media, RAG/embeddings, extracción, aprendizaje, certificación, benchmark, jobs y campañas. Usage por proveedor debe tener categorías disjuntas: reasoning puede estar incluido en output; caché tampoco se suma como tokens nuevos si ya está incluida.

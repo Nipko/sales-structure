@@ -48,6 +48,8 @@ API, home, tabla de precios, quiz, soluciones, signup y dashboard deben comparti
 
 ## L2 — pagos y configuración comprensibles
 
+Incorpora [R0–R6: protección de respuestas cobrables por destino](claude-whatsapp-response-spend-guardrails.md). La landing/Assist explican el presupuesto WhatsApp y su alcance sobre nuestros envíos sólo cuando el runtime lo haga cumplir. País destinatario, cuota y costo por tarea deben ser comprensibles; no prometer gasto ilimitado incluido ni control sobre otras apps que envían desde la misma cuenta.
+
 Implementa el contrato de tarjeta y seguridad enlazado arriba. Para pago directo: guía propia → página oficial externa de Meta → retorno → relectura backend. Distingue Embedded Signup del alta de tarjeta; no construir un iframe propio ni prometer una API de tarjetas. Explica también el formulario real de suscripción: frontend Parallly → tokenización Wompi → fuente/consentimiento en backend. Protege el frontend y la instrumentación; no publicar garantías generales basadas sólo en tokenización. La misma tarjeta física puede tener dos registros independientes; enviar desde Parallly sí puede generar consumo Meta aunque no tengamos sus datos bancarios.
 
 Implementa bloque de tres pagos en home/precios, aviso cercano al CTA y página canónica propuesta `/costos-whatsapp`. Reutiliza texto/contrato en signup, onboarding, canales y Assist. Evita mostrar todas las condiciones únicamente en una FAQ o footer.

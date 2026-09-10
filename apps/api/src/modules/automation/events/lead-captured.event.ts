@@ -32,6 +32,16 @@ export interface LeadCapturedEvent {
      * tiene más de una, el envío se rechaza en vez de cobrarle a cualquiera.
      */
     channelAccountId?: string;
+    /**
+     * El TIPO de canal de esa conexión, junto a ella y no aparte.
+     *
+     * `channelAccountId` sin su canal no significa nada: un id de Instagram y
+     * un `phone_number_id` de WhatsApp son dos cadenas indistinguibles. Se
+     * emitían juntas con `source: 'whatsapp_inbound'` fijo, así que un lead de
+     * Instagram terminaba pidiéndole al resolvedor de WhatsApp una conexión
+     * llamada `IG_ACCOUNT`. Van juntas o no van.
+     */
+    channelAccountType?: string;
     source: 'whatsapp_inbound' | 'intake_form' | 'manual';
     isNew?: boolean;
 }

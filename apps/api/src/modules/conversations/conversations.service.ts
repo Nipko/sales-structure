@@ -1634,12 +1634,18 @@ export class ConversationsService {
                 phone: contactId,
                 name: contact.name,
                 channel: channelType,
-                // WHICH connection, not just which kind. An automation rule that
-                // answers this lead with a template has to bill the number the
-                // customer actually wrote to; `channel` alone left the resolver
-                // picking the tenant's oldest.
+                // WHICH connection, and of WHICH channel. An automation rule
+                // that answers this lead with a template has to bill the number
+                // the customer actually wrote to — and the two travel together
+                // because apart they are indistinguishable strings, which is how
+                // an Instagram id ended up asking the WhatsApp resolver for a
+                // connection called `IG_ACCOUNT`.
                 channelAccountId: conversation.channel_account_id ?? undefined,
-                source: 'whatsapp_inbound',
+                channelAccountType: channelType,
+                // Derived, not assumed. This said `whatsapp_inbound` for every
+                // channel there is, so a rule conditioned on the source fired
+                // for leads that never touched WhatsApp.
+                source: channelType === 'whatsapp' ? 'whatsapp_inbound' : 'manual',
             });
             this.logger.log(`Emitted lead.captured for new lead ${lead.id}`);
         }

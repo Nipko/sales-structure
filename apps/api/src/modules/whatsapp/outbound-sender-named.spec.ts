@@ -70,6 +70,7 @@ describe('every charged WhatsApp producer names the account that pays', () => {
             end_at: new Date(Date.now() + 90_000_000).toISOString(), location: 'Sede',
             metadata: {}, contact_id: '33333333-3333-4333-8333-333333333333',
             contact_name: 'Ana', contact_phone: '+573001112233', contact_channel: 'whatsapp',
+            conversation_channel: 'whatsapp',
             staff_name: 'Dr. Pérez', ...extra,
         });
 
@@ -98,6 +99,19 @@ describe('every charged WhatsApp producer names the account that pays', () => {
             expect(messaging.sendTemplate.mock.calls[0][5]).toBeUndefined();
         });
 
+        it.each(['instagram', 'messenger', 'telegram', 'web_widget'])(
+            'lends nothing from an appointment booked over %s', async channel => {
+                // The column holds whichever account the customer wrote to, and
+                // an Instagram id is a perfectly well-formed string. Handing it
+                // to `sendTemplate` asked the WhatsApp resolver for a connection
+                // called `IG_ACCOUNT`.
+                const { service, messaging } = remindersWith(appointment({
+                    conversation_account_id: 'IG_ACCOUNT', conversation_channel: channel,
+                }));
+                await service.send24hReminders();
+                expect(messaging.sendTemplate.mock.calls[0][5]).toBeUndefined();
+            });
+
         it('asks the database for the connection, not just for the appointment', async () => {
             // The column has to be selected or the argument is always undefined
             // and the two cases above agree with each other about nothing.
@@ -106,16 +120,20 @@ describe('every charged WhatsApp producer names the account that pays', () => {
             const select = queries.find(sql => sql.includes('FROM appointments'));
             expect(select).toContain('channel_account_id');
             expect(select).toContain('JOIN conversations');
+            // And its channel, without which the account means nothing.
+            expect(select).toContain('channel_type');
         });
     });
 
     describe('drip sequences', () => {
-        const dripWith = (channelAccountId: string | null) => {
+        const dripWith = (channelAccountId: string | null, channelType = 'whatsapp') => {
             const messaging = { sendTemplate: jest.fn().mockResolvedValue({ success: true, messageId: 'm' }) };
             const channelToken = { getChannelToken: jest.fn().mockResolvedValue({ accessToken: 't', accountId: NUMBER }) };
             const prisma = {
                 executeInTenantSchema: jest.fn(async (_schema: string, sql: string) => {
-                    if (sql.includes('FROM conversations')) return [{ channel_account_id: channelAccountId }];
+                    if (sql.includes('FROM conversations')) {
+                        return [{ channel_account_id: channelAccountId, channel_type: channelType }];
+                    }
                     if (sql.includes('FROM contacts')) return [{ id: 'c', name: 'Ana', phone: '+573001112233' }];
                     return [];
                 }),
@@ -149,6 +167,15 @@ describe('every charged WhatsApp producer names the account that pays', () => {
             expect(messaging.sendTemplate.mock.calls[0][5]).toBeUndefined();
             expect(channelToken.getChannelToken).toHaveBeenCalledWith(TENANT, 'whatsapp', undefined);
         });
+
+        it('lends nothing from an enrolment whose conversation is not WhatsApp', async () => {
+            const { service, messaging, channelToken } = dripWith('IG_ACCOUNT', 'instagram');
+            await (service as any).executeStepAction(TENANT, SCHEMA, enrolment, step);
+            expect(messaging.sendTemplate.mock.calls[0][5]).toBeUndefined();
+            // And the credential is not resolved for it either: the same wrong
+            // id would have picked the same wrong account.
+            expect(channelToken.getChannelToken).toHaveBeenCalledWith(TENANT, 'whatsapp', undefined);
+        });
     });
 
     describe('automation rules', () => {
@@ -169,13 +196,36 @@ describe('every charged WhatsApp producer names the account that pays', () => {
         };
 
         it('bills the number the lead wrote to', async () => {
-            expect(await send({}, { channelAccountId: NUMBER })).toBe(NUMBER);
+            expect(await send({}, { channelAccountId: NUMBER, channelAccountType: 'whatsapp' }))
+                .toBe(NUMBER);
+        });
+
+        it.each(['instagram', 'messenger', 'telegram'])(
+            'lends nothing from a %s lead, even though the id looks fine', async channel => {
+                // Reproduced by the review: an Instagram event ended up with
+                // `IG_ACCOUNT` as a WhatsApp `fromPhoneNumberId`.
+                expect(await send({}, {
+                    channelAccountId: 'IG_ACCOUNT', channelAccountType: channel, channel,
+                })).toBeUndefined();
+            });
+
+        it('falls back to the event channel when the account type was not carried', async () => {
+            // Older events in a queue have no `channelAccountType`. The channel
+            // field is the next best thing, and it is still not "assume WhatsApp".
+            expect(await send({}, { channelAccountId: 'IG_ACCOUNT', channel: 'instagram' }))
+                .toBeUndefined();
+            expect(await send({}, { channelAccountId: NUMBER, channel: 'whatsapp' })).toBe(NUMBER);
         });
 
         it('lets the rule override it, which is the only answer for a form lead', async () => {
             // A lead from a landing form arrived through no connection, so the
-            // event cannot name one and the rule has to.
-            expect(await send({ channel_account_id: '15559998888' }, { channelAccountId: NUMBER }))
+            // event cannot name one and the rule has to. The same override is
+            // what answers an Instagram lead over WhatsApp.
+            expect(await send({ channel_account_id: '15559998888' },
+                { channelAccountId: NUMBER, channelAccountType: 'whatsapp' }))
+                .toBe('15559998888');
+            expect(await send({ channel_account_id: '15559998888' },
+                { channelAccountId: 'IG_ACCOUNT', channelAccountType: 'instagram' }))
                 .toBe('15559998888');
             expect(await send({ channel_account_id: '15559998888' }, {})).toBe('15559998888');
         });

@@ -8,6 +8,7 @@ import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { AUTOMATION_JOBS_QUEUE } from './automation-listener.service';
 import { HttpRequestHandler } from './handlers/http-request.handler';
 import { LeadCapturedEvent } from './events/lead-captured.event';
+import { senderOriginProblem, whatsappSenderFrom } from '../channels/whatsapp-sender-origin';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { resolveTenantSubscriptionAccess } from '../../common/utils/subscription-entitlement.util';
 
@@ -212,7 +213,26 @@ export class AutomationJobsProcessor extends WorkerHost {
         const fromPhoneNumberId = typeof action.channel_account_id === 'string'
             && action.channel_account_id.trim()
             ? action.channel_account_id.trim()
-            : event.channelAccountId;
+            // Only a WhatsApp conversation may lend its connection. An
+            // Instagram lead carries an Instagram id, and handing that to the
+            // WhatsApp resolver is how a send gets attributed to an account
+            // that is not a WhatsApp account at all.
+            : whatsappSenderFrom({
+                channelType: event.channelAccountType ?? event.channel,
+                channelAccountId: event.channelAccountId,
+            });
+        if (!fromPhoneNumberId) {
+            const problem = senderOriginProblem({
+                channelType: event.channelAccountType ?? event.channel,
+                channelAccountId: event.channelAccountId,
+            });
+            // Actionable, not silent: an operator has to be able to tell
+            // "the rule has no number" from "the rule sent from the wrong
+            // number", and from outside those look identical.
+            this.logger.warn(`[AutomationJobs] '${templateName}' has no WhatsApp sender `
+                + `(${problem ?? 'unknown'}); the resolver will refuse on a multi-number tenant. `
+                + 'Name a connection on the rule to fix it.');
+        }
 
         const result = await this.whatsappMessaging.sendTemplate(
             schemaName,

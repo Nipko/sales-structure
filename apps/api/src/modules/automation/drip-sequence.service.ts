@@ -14,6 +14,7 @@ import { WhatsappMessagingService } from '../whatsapp/services/whatsapp-messagin
 import { NURTURING_QUEUE } from './nurturing.service';
 import { LANG_NAME } from './nurturing-i18n';
 import { OutboundMessage } from '@parallext/shared';
+import { whatsappSenderFrom } from '../channels/whatsapp-sender-origin';
 
 // Cold-prospecting opener fallback (customer-facing) used when the LLM is
 // unavailable. Keyed by 2-letter language; falls back to es. A cold prospect has
@@ -761,10 +762,16 @@ export class DripSequenceService {
         if (!conversationId) return undefined;
         try {
             const rows = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-                `SELECT channel_account_id FROM conversations WHERE id = $1::uuid LIMIT 1`,
+                `SELECT channel_account_id, channel_type FROM conversations
+                  WHERE id = $1::uuid LIMIT 1`,
                 [conversationId]);
-            const found = rows?.[0]?.channel_account_id;
-            return typeof found === 'string' && found.trim() ? found.trim() : undefined;
+            // The channel comes back with the account because apart they are
+            // two indistinguishable strings. A drip enrolled from an Instagram
+            // conversation lends nothing to a WhatsApp send.
+            return whatsappSenderFrom({
+                channelType: rows?.[0]?.channel_type,
+                channelAccountId: rows?.[0]?.channel_account_id,
+            });
         } catch (e: any) {
             // A lookup that failed is not a connection that is absent. Returning
             // undefined here lets the resolver refuse on a multi-number tenant

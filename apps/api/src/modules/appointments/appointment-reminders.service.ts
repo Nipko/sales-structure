@@ -12,6 +12,7 @@ import { EmailTemplatesService } from '../email-templates/email-templates.servic
 import { APPOINTMENT_EMAIL_SLUGS } from '../email-templates/appointment-email-layout';
 import { formatDuration, normaliseLang, LANG_LOCALE } from './appointment-notifications-i18n';
 import { RegionalProfileService } from '../tenants/regional-profile.service';
+import { whatsappSenderFrom } from '../channels/whatsapp-sender-origin';
 import {
     buildAppointmentIcs,
     durationMinutes,
@@ -31,9 +32,18 @@ import {
  * `connection_ambiguous` on a multi-number one, which is the only honest answer
  * when nobody said whose account pays Meta for the delivery.
  */
-function senderOf(appointment: { conversation_account_id?: string | null }): string | undefined {
-    const account = appointment.conversation_account_id;
-    return typeof account === 'string' && account.trim() ? account.trim() : undefined;
+function senderOf(appointment: {
+    conversation_account_id?: string | null;
+    conversation_channel?: string | null;
+}): string | undefined {
+    // Only a WhatsApp conversation lends its connection. An appointment
+    // booked over Instagram carries an Instagram id in the same column, and
+    // handing that to the WhatsApp resolver attributes the reminder to an
+    // account that is not a WhatsApp account at all.
+    return whatsappSenderFrom({
+        channelType: appointment.conversation_channel,
+        channelAccountId: appointment.conversation_account_id,
+    });
 }
 
 @Injectable()
@@ -179,6 +189,7 @@ export class AppointmentRemindersService {
                     c.name as contact_name, c.phone as contact_phone, c.email as contact_email,
                     c.channel_type as contact_channel,
                     cv.channel_account_id AS conversation_account_id,
+                    cv.channel_type AS conversation_channel,
                     u.first_name || ' ' || u.last_name AS staff_name
              FROM appointments a
              LEFT JOIN contacts c ON c.id = a.contact_id
@@ -391,7 +402,8 @@ export class AppointmentRemindersService {
             `SELECT a.id, a.service_name, a.contact_id, a.start_at,
                     c.name as contact_name, c.phone as contact_phone,
                     c.channel_type as contact_channel,
-                    cv.channel_account_id AS conversation_account_id
+                    cv.channel_account_id AS conversation_account_id,
+                    cv.channel_type AS conversation_channel
              FROM appointments a
              LEFT JOIN contacts c ON c.id = a.contact_id
              LEFT JOIN conversations cv ON cv.id = a.conversation_id

@@ -102,7 +102,14 @@ const NAVIGATION_ROUTE_DEFINITIONS = [
   { id: "channels", pattern: "/admin/channels", titleKey: "nav.items.channels", scope: "tenant" },
   // Platform-scoped, not tenant-scoped: it says what the PRODUCT can do on each
   // channel, which is the same answer for every tenant.
-  { id: "channelCertification", pattern: "/admin/channels/certification", titleKey: "navigation.routes.channelCertification", scope: "platform", parentId: "channels", discoverable: false },
+  // `shared`, not `platform`. The API serves this matrix to super_admin,
+  // tenant_admin and tenant_supervisor alike — it answers what the PRODUCT
+  // certified, which is the same for every tenant — and `roles.ts` reaches it
+  // through the `/admin/channels` rule, which admits a tenant admin and admits
+  // a super_admin only while impersonating. Declaring it platform therefore
+  // named the one role that cannot open it, and pointed the return target of
+  // everyone who can at the platform tenant hub.
+  { id: "channelCertification", pattern: "/admin/channels/certification", titleKey: "navigation.routes.channelCertification", scope: "shared", parentId: "channels", discoverable: false },
   { id: "channelEmail", pattern: "/admin/channels/email", titleKey: "navigation.routes.channelEmail", scope: "tenant", parentId: "channels", discoverable: false },
   { id: "channelInstagram", pattern: "/admin/channels/instagram", titleKey: "navigation.routes.channelInstagram", scope: "tenant", parentId: "channels" },
   { id: "channelInstagramCallback", pattern: "/admin/channels/instagram/callback", titleKey: "navigation.routes.channelInstagramCallback", scope: "tenant", parentId: "channelInstagram", discoverable: false },

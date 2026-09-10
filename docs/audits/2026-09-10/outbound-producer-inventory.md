@@ -65,11 +65,11 @@ llevar a la admisión económica.
 | `modules/conversations/conversations.service.ts:2211` | `sendFlow` | `outbound_queue` | dynamic | 1 (read) |
 | `modules/conversations/conversations.service.ts:5736` | `sendCollectedFlow` | `outbound_queue` | dynamic | 1 (read) |
 | `modules/recall/recall.service.ts:152` | `processForTenant` | `outbound_queue` | dynamic | 1 (read) |
-| `modules/whatsapp/whatsapp.controller.ts:445` | `sendTemplate` | `inline` | dynamic | 1 (read) |
-| `modules/whatsapp/whatsapp.controller.ts:465` | `sendText` | `inline` | dynamic | 1 (read) |
-| `modules/whatsapp/whatsapp.controller.ts:490` | `sendInteractive` | `inline` | dynamic | 1 (read) |
-| `modules/whatsapp/whatsapp.controller.ts:513` | `sendMedia` | `inline` | dynamic | 1 (read) |
-| `modules/whatsapp/whatsapp.controller.ts:537` | `sendLocation` | `inline` | dynamic | 1 (read) |
+| `modules/whatsapp/whatsapp.controller.ts:471` | `sendTemplate` | `inline` | dynamic | 1 (read) |
+| `modules/whatsapp/whatsapp.controller.ts:491` | `sendText` | `inline` | dynamic | 1 (read) |
+| `modules/whatsapp/whatsapp.controller.ts:516` | `sendInteractive` | `inline` | dynamic | 1 (read) |
+| `modules/whatsapp/whatsapp.controller.ts:539` | `sendMedia` | `inline` | dynamic | 1 (read) |
+| `modules/whatsapp/whatsapp.controller.ts:563` | `sendLocation` | `inline` | dynamic | 1 (read) |
 
 ## Donde una respuesta se vuelve varios cargos
 
@@ -216,11 +216,11 @@ mensajes entregados, y un indicador de "escribiendo" no lo es.
 
 | Línea | Método | Primitiva | Carril | Disparador | Canales | Efectos por respuesta | Base |
 |---:|---|---|---|---|---|---|---|
-| 445 | `sendTemplate` | `.sendTemplate` | `inline` | HTTP POST send/template | dynamic | 1 | one effect per invocation; no loop reaches this send |
-| 465 | `sendText` | `.sendTextMessage` | `inline` | HTTP POST send/text | dynamic | 1 | one effect per invocation; no loop reaches this send |
-| 490 | `sendInteractive` | `.sendInteractiveMessage` | `inline` | HTTP POST send/interactive | dynamic | 1 | one effect per invocation; no loop reaches this send |
-| 513 | `sendMedia` | `.sendMediaMessage` | `inline` | HTTP POST send/media | dynamic | 1 | one effect per invocation; no loop reaches this send |
-| 537 | `sendLocation` | `.sendLocationMessage` | `inline` | HTTP POST send/location | dynamic | 1 | one effect per invocation; no loop reaches this send |
+| 471 | `sendTemplate` | `.sendTemplate` | `inline` | HTTP POST send/template | dynamic | 1 | one effect per invocation; no loop reaches this send |
+| 491 | `sendText` | `.sendTextMessage` | `inline` | HTTP POST send/text | dynamic | 1 | one effect per invocation; no loop reaches this send |
+| 516 | `sendInteractive` | `.sendInteractiveMessage` | `inline` | HTTP POST send/interactive | dynamic | 1 | one effect per invocation; no loop reaches this send |
+| 539 | `sendMedia` | `.sendMediaMessage` | `inline` | HTTP POST send/media | dynamic | 1 | one effect per invocation; no loop reaches this send |
+| 563 | `sendLocation` | `.sendLocationMessage` | `inline` | HTTP POST send/location | dynamic | 1 | one effect per invocation; no loop reaches this send |
 
 ## Contraste con el inventario declarado
 

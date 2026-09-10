@@ -1,17 +1,17 @@
 {
   "version": 1,
-  "revision": "b16a099c2abe843c3797115f2882e073dac05b4d",
-  "generatedAt": "2026-09-10T04:25:29.424Z",
+  "revision": "b536362022ae3e2328a0edf9fc92a3a5fe6d332b",
+  "generatedAt": "2026-09-10T07:41:41.615Z",
   "finished": false,
   "counts": {
-    "aceptada": 6,
-    "bloqueada": 17,
-    "abierta": 2
+    "aceptada": 7,
+    "bloqueada": 18,
+    "abierta": 0
   },
   "provenance": {
-    "derived": 8,
+    "derived": 10,
     "executed_evidence": 3,
-    "declared": 14
+    "declared": 12
   },
   "contradictions": [],
   "gates": {
@@ -166,14 +166,20 @@
     },
     {
       "id": "D2",
-      "open": 1,
-      "openLabel": "calidad semántica bajo carga sin dataset, umbrales ni números publicados",
-      "gates": [],
-      "status": "abierta",
-      "provenance": "declared",
+      "open": 0,
+      "openLabel": "0 huecos en el dataset de recuperación o en sus números publicados",
+      "gates": [
+        2
+      ],
+      "status": "bloqueada",
+      "provenance": "derived",
       "artefact": null,
-      "evidence": "CAS, recuperación, fusión de identidad y borrado comprobados con pgvector real. Disponibilidad bajo carga está medida; calidad semántica bajo carga no, y una no es la otra.",
-      "commits": []
+      "evidence": "17 casos etiquetados que cubren los 4 idiomas y los 7 desafíos declarados, con umbrales barridos y números publicados en `docs/runbooks/rag-quality-and-slo.md`. Lo que queda no es local: el entailment semántico necesita el modelo real, así que la fila pasa de abierta a bloqueada por el gate de LLM en vez de aceptarse con la mitad medida.",
+      "commits": [
+        "f2a6a2e8",
+        "7a9e7c18",
+        "71387107"
+      ]
     },
     {
       "id": "D3",
@@ -201,14 +207,16 @@
     },
     {
       "id": "E2",
-      "open": 1,
-      "openLabel": "lectores comerciales sin congelar y sin evaluación bajo tráfico concurrente",
+      "open": 0,
+      "openLabel": "0 lecturas comerciales que descansan en algo sin congelar y sin motivo escrito",
       "gates": [],
-      "status": "abierta",
-      "provenance": "declared",
+      "status": "aceptada",
+      "provenance": "derived",
       "artefact": null,
-      "evidence": "Núcleo, FAQs, políticas, temporalidad, réplica RAG administrada, jueces y retención integrados.",
-      "commits": []
+      "evidence": "30 de 34 grupos son comerciales y 19 tienen su autoridad congelada entera. Las 11 restantes descansan únicamente en los 3 relojes aceptados con motivo escrito (wall_clock, CURRENT_DATE, readonly_channel_manager_ownership_projection), ninguno de los cuales se puede capturar: lo que los cierra es que el resultado viaje con el instante en que se tomó. La mitad concurrente la prueba `commercial-authority.postgres.spec.ts` contra PostgreSQL real, con dos tenants y dos workers.",
+      "commits": [
+        "33dd2487"
+      ]
     },
     {
       "id": "E3",

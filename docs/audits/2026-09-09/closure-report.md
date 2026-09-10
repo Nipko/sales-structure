@@ -5,10 +5,10 @@ el estado sale de ella: con una condición local sin cumplir la fila está `abie
 cumplida y un gate externo nombrado está `bloqueada`; sólo sin condición y sin gate está `aceptada`.
 Cerrar un hueco cambia esta tabla cambiando el código, y reabrirlo la cambia de vuelta.
 
-Revisión: `b16a099c2abe843c3797115f2882e073dac05b4d`.
+Revisión: `b536362022ae3e2328a0edf9fc92a3a5fe6d332b`.
 
-**El programa no está terminado.** 6 filas aceptadas, 17 bloqueadas por un
-gate externo concreto y 2 abiertas; 0 perfiles certificados
+**El programa no está terminado.** 7 filas aceptadas, 18 bloqueadas por un
+gate externo concreto y 0 abiertas; 0 perfiles certificados
 de 76.
 
 Sin contradicciones: ninguna fila se declara aceptada con una condición abierta o un gate pendiente, ninguna se declara bloqueada sin nombrar el gate y ninguna se declara abierta sin decir qué falta.
@@ -35,10 +35,10 @@ Sin contradicciones: ninguna fila se declara aceptada con una condición abierta
 | C2 | **aceptada** | contador | — | Ciclos de agenda y de mascotas con recibos atómicos comprobados. El cierre de esta fila es el mismo que el de A1. | — |
 | C3 | **bloqueada** por gate 2 | contador | — | Contratos MCP y dependencias base implementados. El ejecutor está cableado a servicio, cola y endpoint, y se ensaya sin proveedor; la cobertura por tarea la decide una corrida real: 0 perfiles certificados de 76. | — |
 | D1 | **bloqueada** por gate 3 | **declaración** | — | Muestreo, revisión humana con CAS y anotaciones RAG implementados. No se certifica veracidad global y el propio informe lo dice; una revisión de muestra necesita personas. | — |
-| D2 | **abierta** | **declaración** | calidad semántica bajo carga sin dataset, umbrales ni números publicados | CAS, recuperación, fusión de identidad y borrado comprobados con pgvector real. Disponibilidad bajo carga está medida; calidad semántica bajo carga no, y una no es la otra. | — |
+| D2 | **bloqueada** por gate 2 | contador | — | 17 casos etiquetados que cubren los 4 idiomas y los 7 desafíos declarados, con umbrales barridos y números publicados en `docs/runbooks/rag-quality-and-slo.md`. Lo que queda no es local: el entailment semántico necesita el modelo real, así que la fila pasa de abierta a bloqueada por el gate de LLM en vez de aceptarse con la mitad medida. | `f2a6a2e8` `7a9e7c18` `71387107` |
 | D3 | **bloqueada** por gate 3 | **declaración** | — | Atribución observable y diagnóstico técnico probados. No equivalen a veracidad ni a entailment, y el informe lo dice. | — |
 | E1 | **aceptada** | contador | — | 76 perfiles, 268 tareas, 146 que comprometen al negocio, y cero tareas sin caso positivo propio o sin verificador fuera de las 5 declaradas: `file_claim` en las cinco subtipos de seguros existe para probar que el escalón de identidad la rechaza, así que no hay efecto que verificar y un "positivo" sería el agente haciendo lo que no debe. Certificar estas tareas es H1. | — |
-| E2 | **abierta** | **declaración** | lectores comerciales sin congelar y sin evaluación bajo tráfico concurrente | Núcleo, FAQs, políticas, temporalidad, réplica RAG administrada, jueces y retención integrados. | — |
+| E2 | **aceptada** | contador | — | 30 de 34 grupos son comerciales y 19 tienen su autoridad congelada entera. Las 11 restantes descansan únicamente en los 3 relojes aceptados con motivo escrito (wall_clock, CURRENT_DATE, readonly_channel_manager_ownership_projection), ninguno de los cuales se puede capturar: lo que los cierra es que el resultado viaje con el instante en que se tomó. La mitad concurrente la prueba `commercial-authority.postgres.spec.ts` contra PostgreSQL real, con dos tenants y dos workers. | `33dd2487` |
 | E3 | **bloqueada** por gate 5 y 1 | **declaración** | — | Outbox durable, transporte estricto, recuperación, reconciliación con actor y evidencia, pantalla de operador y alerta real. El interruptor sigue apagado por defecto: encenderlo es una activación. | — |
 | F1 | **bloqueada** por gate 2 | contador | — | Assessment común implementado y probado; su cierre es una corrida real de certificación, cuyo ejecutor ya existe y se ensaya sin proveedor. | — |
 | F2 | **aceptada** | contador | — | Cada blocker y cada recomendación del assessment tiene resolución declarada, con prueba de cobertura que falla al aparecer un código sin ella; el universo lo produce el código que emite los códigos, no un barrido de texto. Las 8 operaciones que Assist no ejecuta declaran requisitos no secretos, preparación, pantalla exacta y qué releer al volver. | `37411849` `f2a976d6` |
@@ -53,9 +53,9 @@ Sin contradicciones: ninguna fila se declara aceptada con una condición abierta
 
 ## De dónde sale cada fila
 
-8 filas salen de un contador leído del código: cerrar el hueco las cambia solo.
+10 filas salen de un contador leído del código: cerrar el hueco las cambia solo.
 3 descansan sobre un artefacto de una corrida real, nombrado en la tabla.
-**14 son declaraciones humanas pendientes de revisión**: A2, A3, A4, C1, D1, D2, D3, E2, E3, F3, F4, G2, G3, H2. Cambiar el código de esas áreas no cambia su estado, y por eso se dicen aparte en vez de presentarse como calculadas.
+**12 son declaraciones humanas pendientes de revisión**: A2, A3, A4, C1, D1, D3, E3, F3, F4, G2, G3, H2. Cambiar el código de esas áreas no cambia su estado, y por eso se dicen aparte en vez de presentarse como calculadas.
 
 ## Los contadores de los que sale la tabla
 

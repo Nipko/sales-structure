@@ -37,6 +37,12 @@ const api = name => require(path.join(root, 'apps/api/src', name));
 const shared = require(path.join(root, 'packages/shared/src/index.ts'));
 
 const { buildTaskCompetenceMatrix } = api('modules/simulation/task-competence-matrix.ts');
+const {
+    ACCEPTED_UNFROZEN, commercialCoverage, commercialReadersWithoutFrozenAuthority,
+} = api('modules/evaluation-revision/commercial-reader-inventory.ts');
+const {
+    RETRIEVAL_CASES, RETRIEVAL_CHALLENGES, RETRIEVAL_LANGUAGES,
+} = api('modules/knowledge/evaluation/retrieval-dataset.ts');
 const { AGENT_OUTPUT_STORES, openAgentOutputStores } = api('modules/learning/agent-output-inventory.ts');
 const { FAMILY_TERMS_BINDINGS, familiesWithUnboundCharge, familiesWithUnboundCommand } =
     api('modules/conversations/terms-binding-inventory.ts');
@@ -101,6 +107,29 @@ const certificationTables = CERTIFICATION_LEDGER_DDL
 const benchmarkTables = BENCHMARK_LEDGER_DDL.filter(statement => statement.includes('CREATE TABLE')).length;
 
 /** The five external gates, named exactly once so no row can invent a sixth. */
+/**
+ * D2 and E2 used to be `declared` with a hand-written `open: 1`, and both said
+ * something that had stopped being true: D2 claimed no dataset, no thresholds
+ * and no published numbers while all three existed, and E2 claimed unfrozen
+ * commercial readers while every one of them rested on a clock nobody can
+ * capture, each accepted with a written reason. A table that says a closed thing
+ * is open is the same defect as one that says an open thing is closed — it just
+ * fails in the flattering direction on the next row.
+ *
+ * So both now read the authority the product itself reads.
+ */
+const retrievalGaps = [
+    ...RETRIEVAL_LANGUAGES.filter(language => !RETRIEVAL_CASES.some(row => row.language === language))
+        .map(language => `idioma sin caso: ${language}`),
+    ...RETRIEVAL_CHALLENGES.filter(challenge => !RETRIEVAL_CASES.some(row => row.challenge === challenge))
+        .map(challenge => `desafío sin caso: ${challenge}`),
+    ...(fs.existsSync(path.join(root, 'docs/runbooks/rag-quality-and-slo.md')) ? [] : ['runbook sin publicar']),
+];
+
+const coverage = commercialCoverage();
+const unexplainedUnfrozen = commercialReadersWithoutFrozenAuthority()
+    .filter(reader => reader.unfrozen.some(token => !(token in ACCEPTED_UNFROZEN)));
+
 const GATES = {
     1: 'credenciales y cuentas de canal para pilotos reales (WhatsApp, Instagram, Messenger, Telegram)',
     2: 'credenciales de proveedor LLM, modelo, techo de gasto y autorización de ejecución',
@@ -179,10 +208,16 @@ const ROWS = [
         evidence: `Contratos MCP y dependencias base implementados. El ejecutor está cableado a servicio, cola y endpoint, y se ensaya sin proveedor; la cobertura por tarea la decide una corrida real: ${matrix.summary.certifiedProfiles} perfiles certificados de ${matrix.summary.profiles}.`,
     }),
     row('D1', { provenance: 'declared',  gates: [3], evidence: 'Muestreo, revisión humana con CAS y anotaciones RAG implementados. No se certifica veracidad global y el propio informe lo dice; una revisión de muestra necesita personas.' }),
-    row('D2', { provenance: 'declared',
-        open: 1,
-        openLabel: 'calidad semántica bajo carga sin dataset, umbrales ni números publicados',
-        evidence: 'CAS, recuperación, fusión de identidad y borrado comprobados con pgvector real. Disponibilidad bajo carga está medida; calidad semántica bajo carga no, y una no es la otra.',
+    row('D2', { provenance: 'derived',
+        open: retrievalGaps.length,
+        openLabel: `${retrievalGaps.length} huecos en el dataset de recuperación o en sus números publicados`,
+        gates: retrievalGaps.length ? [] : [2],
+        evidence: `${RETRIEVAL_CASES.length} casos etiquetados que cubren los ${RETRIEVAL_LANGUAGES.length} idiomas y `
+            + `los ${RETRIEVAL_CHALLENGES.length} desafíos declarados, con umbrales barridos y números publicados en `
+            + '`docs/runbooks/rag-quality-and-slo.md`. Lo que queda no es local: el entailment semántico necesita el '
+            + 'modelo real, así que la fila pasa de abierta a bloqueada por el gate de LLM en vez de aceptarse '
+            + 'con la mitad medida.',
+        commits: ['f2a6a2e8', '7a9e7c18', '71387107'],
     }),
     row('D3', { provenance: 'declared',  gates: [3], evidence: 'Atribución observable y diagnóstico técnico probados. No equivalen a veracidad ni a entailment, y el informe lo dice.' }),
     row('E1', { provenance: 'derived',
@@ -194,10 +229,16 @@ const ROWS = [
             + 'seguros existe para probar que el escalón de identidad la rechaza, así que no hay efecto que verificar '
             + 'y un "positivo" sería el agente haciendo lo que no debe. Certificar estas tareas es H1.',
     }),
-    row('E2', { provenance: 'declared',
-        open: 1,
-        openLabel: 'lectores comerciales sin congelar y sin evaluación bajo tráfico concurrente',
-        evidence: 'Núcleo, FAQs, políticas, temporalidad, réplica RAG administrada, jueces y retención integrados.',
+    row('E2', { provenance: 'derived',
+        open: unexplainedUnfrozen.length,
+        openLabel: `${unexplainedUnfrozen.length} lecturas comerciales que descansan en algo sin congelar y sin motivo escrito`,
+        evidence: `${coverage.commercial} de ${coverage.readers} grupos son comerciales y ${coverage.frozen} tienen `
+            + `su autoridad congelada entera. Las ${coverage.unfrozen} restantes descansan únicamente en los `
+            + `${Object.keys(ACCEPTED_UNFROZEN).length} relojes aceptados con motivo escrito `
+            + `(${Object.keys(ACCEPTED_UNFROZEN).join(', ')}), ninguno de los cuales se puede capturar: lo que los `
+            + 'cierra es que el resultado viaje con el instante en que se tomó. La mitad concurrente la prueba '
+            + '`commercial-authority.postgres.spec.ts` contra PostgreSQL real, con dos tenants y dos workers.',
+        commits: ['33dd2487'],
     }),
     row('E3', { provenance: 'declared',  gates: [5, 1], evidence: 'Outbox durable, transporte estricto, recuperación, reconciliación con actor y evidencia, pantalla de operador y alerta real. El interruptor sigue apagado por defecto: encenderlo es una activación.' }),
     row('F1', { provenance: 'derived',

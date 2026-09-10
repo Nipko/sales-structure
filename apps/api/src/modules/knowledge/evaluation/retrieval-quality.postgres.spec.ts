@@ -306,6 +306,48 @@ const url = process.env.KNOWLEDGE_MEMORY_TEST_DATABASE_URL;
         await reseed();
     });
 
+    it('scores the answer-shaped metrics on what retrieval actually returned', async () => {
+        await reseed();
+
+        // Two synthetic answerers, and what they are for is worth stating: they
+        // measure the METRIC, not the agent. A grounded answerer quotes the top
+        // hit it was given; a sloppy one cites a passage it never received and
+        // says something the corpus does not. Running both over the same real
+        // retrieval output is how citation precision and lexical support get
+        // exercised end to end without a model.
+        //
+        // The real generative answer and the entailment judge need credentials
+        // and stay behind the LLM gate. Nothing here is a claim about them:
+        // `semanticEntailment` is `not_evaluated` in both reports.
+        const grounded = record('grounded answerer',
+            await runRetrievalCases(searchWith(0.15), {
+                similarityThreshold: 0.15, k: 5,
+                answer: (row, hits) => {
+                    const cited = hits.map(hit => (hit.metadata as any)?.chunkId)
+                        .filter((id: unknown): id is string => typeof id === 'string'
+                            && row.expected.kind === 'answer' && row.expected.authorisedCitations.includes(id));
+                    const support = row.expected.kind === 'answer' ? row.expected.support.join(' ') : '';
+                    return { citations: cited, text: cited.length ? support : 'No tengo esa información.' };
+                },
+            }));
+        expect(grounded.overall.citationPrecision).toBe(1);
+        expect(grounded.overall.lexicalSupportRate).toBeGreaterThan(0);
+        expect(grounded.overall.semanticEntailment).toBe('not_evaluated');
+
+        const sloppy = await runRetrievalCases(searchWith(0.15), {
+            similarityThreshold: 0.15, k: 5,
+            answer: () => ({ citations: ['es-retired-promo-0'], text: 'Sí, tenemos un 2x1 vigente.' }),
+        });
+        // Citing a withdrawn promotion it was never given, and saying something
+        // no retrieved passage supports. Both columns have to notice.
+        expect(sloppy.overall.citationPrecision).toBe(0);
+        expect(sloppy.overall.lexicalSupportRate).toBe(0);
+        // And retrieval was identical in both runs — the difference is entirely
+        // the answer, which is what makes these columns about the answer.
+        expect(sloppy.overall.recallAtK).toBe(grounded.overall.recallAtK);
+        expect(sloppy.overall.leaks).toBe(0);
+    });
+
     it('publishes every metric the report claims to have, per challenge', async () => {
         await reseed();
         const report = await runRetrievalCases(searchWith(0.15), { similarityThreshold: 0.15, k: 5 });

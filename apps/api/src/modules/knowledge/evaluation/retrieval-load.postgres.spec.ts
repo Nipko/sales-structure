@@ -211,6 +211,36 @@ const DISTRACTORS = 300;
         metrics.count('saturated_searches', CONCURRENT_SEARCHERS * 2);
     });
 
+    it('keeps answering when the embedding itself degrades', async () => {
+        const [tenant] = tenants;
+        const question = '¿Hasta cuándo puedo cancelar sin que me cobren?';
+        const healthy = await search(tenant.tenantId, question, 'es');
+        expect(healthy.length).toBeGreaterThan(0);
+
+        // A degraded embedding is not a broken one: the provider answers, the
+        // vector is just worse — a truncated model, a version drift, a cold
+        // cache returning a stale shape. The pipeline has to keep producing
+        // ANSWERS, because the alternative is an outage dressed as an
+        // abstention, and nothing downstream can tell those apart.
+        const degrade = jest.spyOn(knowledge, 'generateEmbedding').mockImplementation(async (text: string) => {
+            const vector = deterministicEmbedding(text);
+            // Half the dimensions zeroed: the direction survives, the precision
+            // does not. Renormalised, because an unnormalised vector would be
+            // measuring arithmetic rather than degradation.
+            const damaged = vector.map((value, index) => (index % 2 === 0 ? value : 0));
+            const norm = Math.sqrt(damaged.reduce((total, value) => total + value * value, 0)) || 1;
+            return damaged.map(value => value / norm);
+        });
+        try {
+            const hits = await metrics.time('search_degraded_embedding',
+                () => search(tenant.tenantId, question, 'es'));
+            expect(hits.length).toBeGreaterThan(0);
+            metrics.note(`degraded embedding: ${healthy.length} hits → ${hits.length}`);
+        } finally {
+            degrade.mockImplementation(async (text: string) => deterministicEmbedding(text));
+        }
+    });
+
     it('keeps answering with the keyword half of the index gone', async () => {
         const [tenant] = tenants;
         await local(tenant.schema, 'UPDATE knowledge_embeddings SET search_tsv = NULL');

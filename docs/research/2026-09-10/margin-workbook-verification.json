@@ -1,0 +1,218 @@
+{
+  "file": "C:\\Users\\USER\\Desktop\\Sales_Structure\\docs\\research\\2026-09-10\\modelo-rentabilidad-planes-whatsapp.xlsx",
+  "checks": [
+    {
+      "case": "base",
+      "plan": "emprendedor",
+      "expected": {
+        "gross": 125700,
+        "net": 125700,
+        "turns": 1000,
+        "llm": 8000,
+        "other": 16000,
+        "fee": 5828,
+        "meta": 3240.0499999999997,
+        "servicePaid": 900,
+        "marginPre": 0.7627048528241845,
+        "marginAfter": 0.7627048528241845,
+        "totalTenant": 128940.05,
+        "minimumPrice": 95384.61538461536,
+        "sustainableQuota": 1985
+      }
+    },
+    {
+      "case": "base",
+      "plan": "starter",
+      "expected": {
+        "gross": 276900,
+        "net": 276900,
+        "turns": 5000,
+        "llm": 40000,
+        "other": 32000,
+        "fee": 11876,
+        "meta": 18556.649999999998,
+        "servicePaid": 6100,
+        "marginPre": 0.6970892018779342,
+        "marginAfter": 0.6970892018779342,
+        "totalTenant": 295456.65,
+        "minimumPrice": 279999.99999999994,
+        "sustainableQuota": 4899
+      }
+    },
+    {
+      "case": "base",
+      "plan": "pro",
+      "expected": {
+        "gross": 757700,
+        "net": 757700,
+        "turns": 25000,
+        "llm": 200000,
+        "other": 80000,
+        "fee": 31108,
+        "meta": 95139.65000000001,
+        "servicePaid": 32100,
+        "marginPre": 0.5894047776164709,
+        "marginAfter": 0.5894047776164709,
+        "totalTenant": 852839.65,
+        "minimumPrice": 1079999.9999999998,
+        "sustainableQuota": 14525
+      }
+    },
+    {
+      "case": "base",
+      "plan": "enterprise",
+      "expected": {
+        "gross": 1789800,
+        "net": 1789800,
+        "turns": 100000,
+        "llm": 800000,
+        "other": 200000,
+        "fee": 72392,
+        "meta": 382325.89999999997,
+        "servicePaid": 129600,
+        "marginPre": 0.4008313778075763,
+        "marginAfter": 0.4008313778075763,
+        "totalTenant": 2172125.9,
+        "minimumPrice": 3849230.769230768,
+        "sustainableQuota": 33068
+      }
+    },
+    {
+      "case": "pais-peru",
+      "marginAfter": 0.7627048528241845,
+      "meta": 121499.95
+    },
+    {
+      "case": "absorbe-meta",
+      "marginAfter": 0.736928798727128,
+      "meta": 3240.0499999999997
+    },
+    {
+      "case": "anual",
+      "marginAfter": 0.7347515871901664,
+      "meta": 3240.0499999999997
+    },
+    {
+      "case": "ia-cara",
+      "marginAfter": 0.5717740652346858,
+      "meta": 3240.0499999999997
+    },
+    {
+      "case": "waba-usd",
+      "marginAfter": 0.7627048528241845,
+      "meta": 3520.0000000000005
+    },
+    {
+      "case": "precio-usd",
+      "marginAfter": 0.6647619047619048,
+      "meta": 0.8100124999999999
+    },
+    {
+      "case": "iva-incluido",
+      "marginAfter": 0.7176187748607796,
+      "meta": 3240.0499999999997
+    },
+    {
+      "case": "47-markets-absorbed-quota-integer",
+      "passed": true
+    },
+    {
+      "case": "service-999",
+      "paid": 0
+    },
+    {
+      "case": "service-1000",
+      "paid": 0
+    },
+    {
+      "case": "service-1001",
+      "paid": 1
+    },
+    {
+      "case": "custom-blank-vs-zero",
+      "passed": true
+    }
+  ],
+  "errors": "{\"kind\":\"notice\",\"message\":\"Cell search matched 0 entries.\"}",
+  "base": [
+    {
+      "plan": "emprendedor",
+      "gross": 125700,
+      "net": 125700,
+      "turns": 1000,
+      "llm": 8000,
+      "other": 16000,
+      "fee": 5828,
+      "meta": 3240.0499999999997,
+      "servicePaid": 900,
+      "marginPre": 0.7627048528241845,
+      "marginAfter": 0.7627048528241845,
+      "totalTenant": 128940.05,
+      "minimumPrice": 95384.61538461536,
+      "sustainableQuota": 1985
+    },
+    {
+      "plan": "starter",
+      "gross": 276900,
+      "net": 276900,
+      "turns": 5000,
+      "llm": 40000,
+      "other": 32000,
+      "fee": 11876,
+      "meta": 18556.649999999998,
+      "servicePaid": 6100,
+      "marginPre": 0.6970892018779342,
+      "marginAfter": 0.6970892018779342,
+      "totalTenant": 295456.65,
+      "minimumPrice": 279999.99999999994,
+      "sustainableQuota": 4899
+    },
+    {
+      "plan": "pro",
+      "gross": 757700,
+      "net": 757700,
+      "turns": 25000,
+      "llm": 200000,
+      "other": 80000,
+      "fee": 31108,
+      "meta": 95139.65000000001,
+      "servicePaid": 32100,
+      "marginPre": 0.5894047776164709,
+      "marginAfter": 0.5894047776164709,
+      "totalTenant": 852839.65,
+      "minimumPrice": 1079999.9999999998,
+      "sustainableQuota": 14525
+    },
+    {
+      "plan": "enterprise",
+      "gross": 1789800,
+      "net": 1789800,
+      "turns": 100000,
+      "llm": 800000,
+      "other": 200000,
+      "fee": 72392,
+      "meta": 382325.89999999997,
+      "servicePaid": 129600,
+      "marginPre": 0.4008313778075763,
+      "marginAfter": 0.4008313778075763,
+      "totalTenant": 2172125.9,
+      "minimumPrice": 3849230.769230768,
+      "sustainableQuota": 33068
+    }
+  ],
+  "reimportValidated": true,
+  "cacheAudit": {
+    "formulaCells": 223,
+    "missingCache": [],
+    "errorCells": []
+  },
+  "renderedSheets": 4,
+  "renderedRanges": 6,
+  "limitations": [
+    "Costs and FX are editable hypotheses, not actuals.",
+    "No native Excel application execution; Artifact Tool recalculation and exported/reimported workbook checked.",
+    "One number; one destination market; no FEP, volume tiers or Meta tax modeled.",
+    "USD annual unavailable because source does not define a contract.",
+    "When Meta is absorbed, sustainable quota conservatively reserves at most one extra service message for delivery rounding."
+  ]
+}

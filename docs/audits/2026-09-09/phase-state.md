@@ -26,9 +26,9 @@ suya y `npm run verify:artifacts` falla si se separan del código.
 | 5 — ejecutor de certificación | **cerrada localmente** | `executed_evidence`: los 76 perfiles planificados, particionados, procesados por el worker real y reportados por perfil, con gasto cero. Recuperación de leases vencidos. Paridad de schema bajo las tres rutas | C3/F1 siguen bloqueadas **sólo** por el gate de LLM. La progresión de 4 etapas está escrita y no lanzada |
 | 6 — benchmark operable | **cerrada localmente** | `executed_evidence`: techo, deadline, cancel, pause/resume y recuperación por lease probados; reserva antes de llamar al modelo; revisión ciega; rechazo de corpus derivado | Cuentas externas y revisores humanos siguen siendo el único gate |
 | 7 — Playwright | **cerrada localmente** | `executed_evidence`: 168 pruebas, landing y dashboard, escritorio y móvil, cuatro idiomas, cuatro roles, aislamiento de tenant, teclado, landmarks, contraste medido con axe en los dos temas, reflow a 320 px y al 200 %, cero hostnames productivos y cero requests no declaradas. Dos corridas completas seguidas en verde | Publicar el agente se cubre como **destino** del traspaso, no como acto: `publication.agent.publish` abre `/admin/agent` y ahí se detiene. Las secciones del editor (herramientas, conocimiento, políticas, horario) se cubren por su pantalla, no campo por campo |
-| 8 — revisión adversarial | **parcial** | `derived`: barrido de los 125 controllers en tres categorías, cada excepción con su motivo. `executed_evidence`: un hueco real cerrado (el CRM del tenant lo podía desconectar un agente de inbox) | **Falta**: la revisión commit por commit de los 24 anteriores a esta tanda |
+| 8 — revisión adversarial | **cerrada localmente** | `derived`: barrido de los 125 controllers en tres categorías, cada excepción con su motivo; barrido mecánico del diff entero contra las clases de defecto que este repositorio ya conoce (cadena opcional corta, `$n` sin cast, `NOW()` en vencimientos, ruta sin guarda, clave i18n en menos de cuatro idiomas). `executed_evidence`: los 35 commits que cambian runtime leídos, los de dinero y privacidad línea por línea; cuatro huecos reales cerrados —uno de comportamiento, dos de cobertura y una etiqueta que contradecía a quien puede abrir la página—, cada uno con su prueba y su mutación | — |
 | 9 — verificación integral | **cerrada** | `executed_evidence`: tsc en frío en api/dashboard/whatsapp/landing/mobile/shared; builds de los cinco; bootstrap de Nest; **tres órdenes de suite** (por defecto, semilla 4711, semilla 90210) con 602 suites y 6.553 pruebas, cero falladas y **cero omitidas**; migraciones bajo escritura concurrente; `git diff --check` limpio; artefactos regenerados sin diff | — |
-| 10 — rama de revisión y draft PR | **bloqueada por su propia condición** | — | El documento la autoriza «cuando haya cero pendientes locales». La fase 8 no lo está, así que no se hizo push |
+| 10 — rama de revisión y draft PR | **pendiente de la verificación integral** | — | Su condición —«cuando haya cero pendientes locales»— ya se cumple en fases. Falta repetir la fase 9 entera sobre este HEAD: la tanda tocó API, dashboard, shared y e2e, y una verificación de hace tres días no dice nada sobre este código |
 | 11 — staging | **bloqueada** | — | Requiere credenciales de staging |
 
 ## Lo que esta tanda encontró y arregló
@@ -87,6 +87,33 @@ empezó a medirse.
     así que la excepción se iba al límite de error del recorrido y dejaba la
     única pantalla que una cuenta nueva no puede saltear girando sin mensaje.
 
+### Lo que encontró leer los commits uno por uno (fase 8)
+
+15. **Un rechazo con número y sin moneda no se contaba.** El cobro de una cita
+    lee `COALESCE(amount_due, <precio acordado>)`, y `amount_due` —la columna de
+    la seña— es anterior al atado de términos. Una fila creada entre las dos
+    vuelve con un número y una moneda nula: el resolutor la rechaza bien, por el
+    chequeo de tres letras, y `isMissingAgreedTermsRefusal` sólo miraba el
+    importe. O sea que ese rechazo era mudo: una persona con un enlace de seña
+    que no funciona, sin avisarle a nadie, idéntico a un error de tipeo en la
+    referencia — que es justamente la distinción que esa función existe para
+    hacer.
+16. **El cobro de citas estaba probado por su texto SQL, no por su
+    comportamiento.** La familia hermana —pedidos de catálogo— se probó contra
+    PostgreSQL real, positivo y negativo; la que más vende se probó con un grep.
+    Ahora tiene sus cinco casos sobre el DDL de producción, y la mutación que
+    devuelve el precio de catálogo al camino del dinero los pone en rojo.
+17. **La guarda `to_regclass` no tenía prueba de la rama que existe para
+    cubrir.** Se agregó a los cuatro lectores de `outbound_payloads` sin un solo
+    caso con la tabla ausente, que es exactamente cuando importa: estas
+    funciones corren dentro de la transacción de otro —un borrado, un retiro— y
+    una consulta contra una relación inexistente aborta todo lo que sigue.
+18. **Una página decía ser de plataforma y era la única que la plataforma no
+    podía abrir.** `/admin/channels/certification` se registró con
+    `scope: "platform"` mientras el API la sirve a tres roles de tenant y
+    `roles.ts` la alcanza por la regla de `/admin/channels`, que admite al
+    administrador del tenant y al super_admin sólo mientras impersona.
+
 ## Cómo reproducir todo esto
 
 - Suite completa, sin nada omitido: `docs/runbooks/full-api-suite.md`.
@@ -100,13 +127,18 @@ empezó a medirse.
 
 El programa **no** está listo para publicar. Lo que falta:
 
-- **La revisión commit por commit** (fase 8). El barrido de controllers cerró una
-  clase entera de riesgo; los 24 commits anteriores a esta tanda no se leyeron
-  uno por uno.
 - **Publicar el agente, como acto.** La fase 7 recorre el circuito hasta guardar
   el borrador y ofrecer probarlo. Publicar sale hacia los clientes del tenant y
   vive en su propia pantalla; el traspaso llega hasta la puerta y se detiene ahí,
   que es lo que el registro promete y no más.
+- **Certificar un solo perfil.** El catálogo de 76 sigue en cero y la corrida
+  entera cuesta US$677,40 en 139.940 llamadas: necesita una autorización
+  explícita de modelo y de techo que nadie ha dado.
+- **Staging.** Requiere credenciales que no existen acá.
+
+Lo que sí está: las diez fases locales cerradas, con la evidencia que dice cada
+fila y con el tipo de evidencia declarado. Ninguna se cierra por haber construido
+la infraestructura que la mediría.
 
 Y por encima de las dos: **ningún perfil está certificado**. El catálogo de 76
 sigue en cero, la corrida completa cuesta US$677,40 en 139.940 llamadas, y eso

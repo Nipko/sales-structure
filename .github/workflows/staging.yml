@@ -1,0 +1,465 @@
+name: Staging (manual)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# A place to be wrong before customers are.
+#
+# There is no staging environment today. Every change this repository has ever
+# shipped went from a green test suite to production, which means the first time
+# a migration, a container order or a channel adapter met a real host was the
+# time it mattered. This workflow is the code half of fixing that: the
+# infrastructure and the secrets do not exist yet, and NOTHING here has been
+# executed against a host. Until it has, staging is prepared, not done.
+#
+# Three rules shape everything below.
+#
+# 1. It never runs by itself. `workflow_dispatch` only, with an explicit typed
+#    confirmation. A staging deploy that can be triggered by a push is one
+#    mis-merged branch away from being a production deploy.
+#
+# 2. It refuses to share anything with production. The first job compares the
+#    staging secrets against salted digests of the production ones and aborts on
+#    a match, a production hostname, or the production database name. A staging
+#    environment that shares a JWT secret with production is production: a
+#    session minted here would be valid there.
+#
+# 3. Its data is synthetic. `STAGING_SEED_SOURCE` must be `synthetic`; the guard
+#    refuses anything else. Copying a production database into a lower
+#    environment moves real people's messages, phone numbers and payment
+#    records somewhere with weaker access control, and it is not a thing a
+#    workflow input can authorise.
+#
+# The deploy half mirrors `deploy.yml` deliberately — same order, same
+# fail-closed behaviour, same pre-flight — because a staging run whose sequence
+# differs from production's proves the sequence it ran, not the one that ships.
+# ─────────────────────────────────────────────────────────────────────────────
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: What to do on the staging host
+        required: true
+        default: deploy
+        type: choice
+        options: [deploy, rollback]
+      image_tag:
+        description: Image tag to run (a commit SHA). Required for both actions.
+        required: true
+        type: string
+      confirm:
+        description: Type "staging" to confirm this touches the staging host
+        required: true
+        type: string
+
+# One staging host. Two runs migrating and restarting the same stack at once is
+# the same defect production's concurrency group exists to prevent.
+concurrency:
+  group: parallext-staging-host
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: read
+
+env:
+  REGISTRY: ghcr.io
+  API_IMAGE: ghcr.io/nipko/parallext-api
+  WORKER_IMAGE: ghcr.io/nipko/parallext-worker
+  DASHBOARD_IMAGE: ghcr.io/nipko/parallext-dashboard
+  WHATSAPP_IMAGE: ghcr.io/nipko/parallext-whatsapp
+  LANDING_IMAGE: ghcr.io/nipko/parallext-landing
+  PROJECT_PATH: /opt/parallext-staging
+
+jobs:
+  # ──────────────────────────────────────────────────────────────────────────
+  # JOB 1 — the door. Nothing reaches a host until this passes.
+  # ──────────────────────────────────────────────────────────────────────────
+  guard:
+    name: Staging isolation contract
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - name: Confirmation typed
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          if [ "$CONFIRM" != "staging" ]; then
+            echo "::error::Confirmation not typed. This workflow deploys to a host; it does not run on a shrug."
+            exit 1
+          fi
+
+      - name: Image tag is a commit, not a moving label
+        env:
+          IMAGE_TAG: ${{ inputs.image_tag }}
+        run: |
+          # `latest` moves. A staging run pinned to a moving tag cannot say which
+          # code produced its evidence, and its rollback has nothing to return to.
+          if ! printf '%s' "$IMAGE_TAG" | grep -Eq '^[0-9a-f]{7,40}$'; then
+            echo "::error::image_tag must be a commit SHA (got '$IMAGE_TAG'). 'latest' is not a version."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - run: mkdir -p artifacts
+
+      # The isolation contract itself. Its logic is `staging-isolation.ts` and is
+      # unit-tested; this step is the invocation, and it aborts the whole run.
+      #
+      # PRODUCTION_SECRET_DIGESTS is NOT a production credential: it is a list of
+      # salted SHA-256 digests produced once by the owner with
+      # `scripts/print-production-secret-digests.cjs`. A staging workflow that
+      # could read the production secrets in order to compare them would be the
+      # very coupling it is meant to prevent.
+      - name: Staging shares nothing with production
+        env:
+          STAGING_SERVER_HOST: ${{ secrets.STAGING_SERVER_HOST }}
+          STAGING_SERVER_USER: ${{ secrets.STAGING_SERVER_USER }}
+          STAGING_SERVER_SSH_KEY: ${{ secrets.STAGING_SERVER_SSH_KEY }}
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+          STAGING_DIRECT_DATABASE_URL: ${{ secrets.STAGING_DIRECT_DATABASE_URL }}
+          STAGING_DATABASE_PASSWORD: ${{ secrets.STAGING_DATABASE_PASSWORD }}
+          STAGING_REDIS_HOST: ${{ secrets.STAGING_REDIS_HOST }}
+          STAGING_REDIS_PASSWORD: ${{ secrets.STAGING_REDIS_PASSWORD }}
+          STAGING_JWT_SECRET: ${{ secrets.STAGING_JWT_SECRET }}
+          STAGING_JWT_REFRESH_SECRET: ${{ secrets.STAGING_JWT_REFRESH_SECRET }}
+          STAGING_INTERNAL_JWT_SECRET: ${{ secrets.STAGING_INTERNAL_JWT_SECRET }}
+          STAGING_INTERNAL_API_KEY: ${{ secrets.STAGING_INTERNAL_API_KEY }}
+          STAGING_ENCRYPTION_KEY: ${{ secrets.STAGING_ENCRYPTION_KEY }}
+          STAGING_CLOUDFLARE_TUNNEL_TOKEN: ${{ secrets.STAGING_CLOUDFLARE_TUNNEL_TOKEN }}
+          STAGING_PUBLIC_API_URL: ${{ vars.STAGING_PUBLIC_API_URL }}
+          STAGING_PUBLIC_DASHBOARD_URL: ${{ vars.STAGING_PUBLIC_DASHBOARD_URL }}
+          STAGING_SEED_SOURCE: ${{ vars.STAGING_SEED_SOURCE }}
+          PRODUCTION_SECRET_DIGESTS: ${{ secrets.PRODUCTION_SECRET_DIGESTS }}
+          STAGING_ISOLATION_DIGEST_SALT: ${{ secrets.STAGING_ISOLATION_DIGEST_SALT }}
+          PRODUCTION_HOSTS: ${{ vars.PRODUCTION_HOSTS }}
+        run: node apps/api/scripts/assert-staging-isolation.cjs --json artifacts/staging-isolation.json
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: staging-isolation-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/staging-isolation.json
+          if-no-files-found: error
+          retention-days: 90
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # JOB 2 — the host. Same order as production, on purpose.
+  # ──────────────────────────────────────────────────────────────────────────
+  deploy:
+    name: Deploy to the staging host
+    needs: guard
+    if: inputs.action == 'deploy'
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Staging host is configured
+        id: host
+        env:
+          HOST: ${{ secrets.STAGING_SERVER_HOST }}
+        run: |
+          if [ -z "$HOST" ]; then
+            # Loud, not skipped. A staging workflow that reports success without
+            # a host is exactly the false green this whole effort is about.
+            echo "::error::STAGING_SERVER_HOST is not set. Staging infrastructure does not exist yet; this run cannot prove anything."
+            exit 1
+          fi
+          echo "configured=true" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy
+        uses: appleboy/ssh-action@v1.2.2
+        env:
+          GHCR_PAT: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          IMAGE_TAG: ${{ inputs.image_tag }}
+          STG_DB_PASSWORD: ${{ secrets.STAGING_DATABASE_PASSWORD }}
+          STG_REDIS_HOST: ${{ secrets.STAGING_REDIS_HOST }}
+          STG_REDIS_PASSWORD: ${{ secrets.STAGING_REDIS_PASSWORD }}
+          STG_JWT_SECRET: ${{ secrets.STAGING_JWT_SECRET }}
+          STG_JWT_REFRESH_SECRET: ${{ secrets.STAGING_JWT_REFRESH_SECRET }}
+          STG_INTERNAL_JWT_SECRET: ${{ secrets.STAGING_INTERNAL_JWT_SECRET }}
+          STG_INTERNAL_API_KEY: ${{ secrets.STAGING_INTERNAL_API_KEY }}
+          STG_ENCRYPTION_KEY: ${{ secrets.STAGING_ENCRYPTION_KEY }}
+          STG_TUNNEL_TOKEN: ${{ secrets.STAGING_CLOUDFLARE_TUNNEL_TOKEN }}
+          STG_PUBLIC_API_URL: ${{ vars.STAGING_PUBLIC_API_URL }}
+          STG_PUBLIC_DASHBOARD_URL: ${{ vars.STAGING_PUBLIC_DASHBOARD_URL }}
+        with:
+          host: ${{ secrets.STAGING_SERVER_HOST }}
+          username: ${{ secrets.STAGING_SERVER_USER }}
+          key: ${{ secrets.STAGING_SERVER_SSH_KEY }}
+          port: ${{ secrets.STAGING_SERVER_PORT || 22 }}
+          command_timeout: 30m
+          envs: GHCR_PAT,GITHUB_ACTOR,IMAGE_TAG,STG_DB_PASSWORD,STG_REDIS_HOST,STG_REDIS_PASSWORD,STG_JWT_SECRET,STG_JWT_REFRESH_SECRET,STG_INTERNAL_JWT_SECRET,STG_INTERNAL_API_KEY,STG_ENCRYPTION_KEY,STG_TUNNEL_TOKEN,STG_PUBLIC_API_URL,STG_PUBLIC_DASHBOARD_URL
+          script: |
+            set -e
+            cd /opt/parallext-staging
+            DC="docker compose -f infra/docker/docker-compose.prod.yml"
+
+            echo "===> [staging] Recording the image that is serving now (the rollback target)..."
+            # Read BEFORE anything changes. A rollback target discovered after the
+            # fact is the tag that just failed.
+            PREVIOUS_TAG="$(grep -E '^IMAGE_TAG=' .env 2>/dev/null | cut -d= -f2 || true)"
+            if [ -n "$PREVIOUS_TAG" ]; then
+              echo "$PREVIOUS_TAG" > .staging-previous-image-tag
+              echo "  previous IMAGE_TAG=$PREVIOUS_TAG"
+            else
+              echo "::warning::No previous IMAGE_TAG on the host; this looks like a first deploy and has no image to roll back to."
+            fi
+
+            echo "===> [staging] Logging into GHCR..."
+            echo "$GHCR_PAT" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+
+            echo "===> [staging] Pulling images for $IMAGE_TAG..."
+            IMAGE_TAG="$IMAGE_TAG" $DC pull
+
+            echo "===> [staging] Generating staging .env..."
+            # Synthetic and staging-only. No Meta app, no payment provider, no
+            # alerting destination: a staging run must not be able to message a
+            # real customer, charge a real card or page a real person.
+            > .env
+            echo "# Parallext Engine - STAGING. Synthetic data only." >> .env
+            echo "NODE_ENV=production" >> .env
+            echo "PARALLLY_ENVIRONMENT=staging" >> .env
+            echo "LOG_LEVEL=debug" >> .env
+            echo "IMAGE_TAG=${IMAGE_TAG}" >> .env
+            echo "DATABASE_URL=postgresql://parallext:${STG_DB_PASSWORD}@pgbouncer:5432/parallext_staging?pgbouncer=true&connection_limit=8" >> .env
+            echo "DIRECT_DATABASE_URL=postgresql://parallext:${STG_DB_PASSWORD}@postgres:5432/parallext_staging" >> .env
+            echo "DB_PASSWORD=${STG_DB_PASSWORD}" >> .env
+            echo "REDIS_HOST=${STG_REDIS_HOST}" >> .env
+            echo "REDIS_PORT=6379" >> .env
+            echo "REDIS_PASSWORD=${STG_REDIS_PASSWORD}" >> .env
+            echo "JWT_SECRET=${STG_JWT_SECRET}" >> .env
+            echo "JWT_REFRESH_SECRET=${STG_JWT_REFRESH_SECRET}" >> .env
+            echo "INTERNAL_JWT_SECRET=${STG_INTERNAL_JWT_SECRET}" >> .env
+            echo "INTERNAL_API_KEY=${STG_INTERNAL_API_KEY}" >> .env
+            echo "ENCRYPTION_KEY=${STG_ENCRYPTION_KEY}" >> .env
+            echo "TUNNEL_TOKEN=${STG_TUNNEL_TOKEN}" >> .env
+            echo "NEXT_PUBLIC_API_URL=${STG_PUBLIC_API_URL}" >> .env
+            echo "NEXT_PUBLIC_DASHBOARD_URL=${STG_PUBLIC_DASHBOARD_URL}" >> .env
+            chmod 600 .env
+
+            echo "===> [staging] Ensuring postgres, pgbouncer and redis are healthy..."
+            $DC up -d postgres pgbouncer redis
+            for i in $(seq 1 30); do
+              if $DC exec -T postgres pg_isready -U parallext -d parallext_staging >/dev/null 2>&1; then break; fi
+              [ "$i" = "30" ] && { echo "::error::postgres never became ready"; exit 1; }
+              sleep 2
+            done
+
+            echo "===> [staging] Pre-migration backup (rollback point)..."
+            # Same fail-closed rule as production: no backup, no migration. It is
+            # synthetic data, and the point is to rehearse the control, not to
+            # protect the rows.
+            mkdir -p backups
+            if ! $DC exec -T postgres pg_dumpall -U parallext > "backups/staging-$(date +%Y%m%d-%H%M%S).sql"; then
+              echo "::error::Pre-migration backup FAILED — refusing to migrate"
+              exit 1
+            fi
+
+            echo "===> [staging] Pre-flight: rows this release would stop being able to charge..."
+            # The SAME control production runs, in the SAME position: after the
+            # backup, before either migration, in the candidate image. Rehearsing
+            # it here is most of the reason staging exists.
+            if PREFLIGHT_OUT="$($DC run --rm api node scripts/preflight-agreed-terms.cjs 2>&1)"; then
+              PREFLIGHT_RC=0
+            else
+              PREFLIGHT_RC=$?
+            fi
+            printf '%s\n' "$PREFLIGHT_OUT"
+            if [ "$PREFLIGHT_RC" -ne 0 ]; then
+              echo "::error::Staging deploy blocked by the agreed-terms pre-flight (exit $PREFLIGHT_RC)."
+              exit 1
+            fi
+            if ! printf '%s\n' "$PREFLIGHT_OUT" | grep -q 'AGREED_TERMS_PREFLIGHT .*blocks=0'; then
+              echo "::error::The agreed-terms pre-flight did not report a clean summary line"
+              exit 1
+            fi
+
+            echo "===> [staging] Running Prisma public schema migrations..."
+            $DC run --rm api npx prisma migrate deploy
+
+            echo "===> [staging] Running tenant schema migration (idempotent)..."
+            TENANT_OUT="$($DC run --rm api node scripts/migrate-tenants.js 2>&1)"
+            printf '%s\n' "$TENANT_OUT"
+            if ! printf '%s\n' "$TENANT_OUT" | grep -q 'MIGRATE_TENANTS_SUMMARY '; then
+              echo "::error::tenant migration produced no summary line; refusing to recreate containers on an unknown result"
+              exit 1
+            fi
+
+            echo "===> [staging] Recreating containers..."
+            $DC up -d --remove-orphans
+
+            echo "===> [staging] Waiting for API health (max 3 min)..."
+            for i in $(seq 1 36); do
+              if $DC exec -T api wget -q -O- http://localhost:3000/health >/dev/null 2>&1; then
+                echo "  [OK] API healthy"; break
+              fi
+              [ "$i" = "36" ] && { echo "::error::API never became healthy"; exit 1; }
+              sleep 5
+            done
+
+            echo "===> [staging] Deploy complete on $IMAGE_TAG"
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # JOB 3 — what the deploy is FOR. A deploy that only proves it deployed is a
+  # restart with extra steps.
+  # ──────────────────────────────────────────────────────────────────────────
+  verify:
+    name: Synthetic seed, smoke, publication walk and outbox pilot
+    needs: deploy
+    if: inputs.action == 'deploy'
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Exercise the staging host
+        uses: appleboy/ssh-action@v1.2.2
+        env:
+          IMAGE_TAG: ${{ inputs.image_tag }}
+          STG_PUBLIC_API_URL: ${{ vars.STAGING_PUBLIC_API_URL }}
+        with:
+          host: ${{ secrets.STAGING_SERVER_HOST }}
+          username: ${{ secrets.STAGING_SERVER_USER }}
+          key: ${{ secrets.STAGING_SERVER_SSH_KEY }}
+          port: ${{ secrets.STAGING_SERVER_PORT || 22 }}
+          command_timeout: 30m
+          envs: IMAGE_TAG,STG_PUBLIC_API_URL
+          script: |
+            set -e
+            cd /opt/parallext-staging
+            DC="docker compose -f infra/docker/docker-compose.prod.yml"
+            mkdir -p artifacts
+
+            echo "===> [staging] Seeding synthetic tenants from scratch..."
+            # From scratch, every run. A staging database that accumulates state
+            # across runs stops telling you whether THIS release provisions a
+            # tenant correctly, which is one of the two things it is here to say.
+            $DC run --rm api node scripts/seed-staging-synthetic.cjs --reset --json /tmp/seed.json
+            $DC exec -T api cat /tmp/seed.json > artifacts/staging-seed.json
+
+            echo "===> [staging] Health of every surface..."
+            $DC exec -T api wget -q -O- http://localhost:3000/health/detailed > artifacts/health-api.json
+            $DC exec -T dashboard wget -q --spider http://localhost:3001 && echo "  [OK] dashboard"
+            $DC exec -T whatsapp wget -q -O- http://localhost:3002/health > artifacts/health-whatsapp.json
+            $DC exec -T landing wget -q --spider http://localhost:80 && echo "  [OK] landing"
+
+            echo "===> [staging] Smoke: API, dashboard, widget, WhatsApp webhook..."
+            $DC run --rm api node scripts/staging-smoke.cjs --json /tmp/smoke.json
+            $DC exec -T api cat /tmp/smoke.json > artifacts/staging-smoke.json
+
+            echo "===> [staging] Publishing an agent, and rolling it back..."
+            # The same walk the API integration suite runs against a disposable
+            # database, here against the real stack: draft, approved candidate,
+            # publish, resolve by connection, turn, rollback, turn again.
+            $DC run --rm api node scripts/staging-publication-walk.cjs --json /tmp/publication.json
+            $DC exec -T api cat /tmp/publication.json > artifacts/staging-publication.json
+
+            echo "===> [staging] Outbox pilot: ON for one synthetic tenant and channel..."
+            # A pilot list of exactly one synthetic tenant, and only a channel no
+            # real person can receive. The switch is turned OFF again below, in a
+            # step that runs even if the ones between it and here fail.
+            $DC run --rm api node scripts/staging-dispatch-pilot.cjs --enable --json /tmp/pilot-on.json
+            $DC run --rm api node scripts/staging-smoke.cjs --dispatch --json /tmp/pilot-smoke.json
+            $DC exec -T api cat /tmp/pilot-smoke.json > artifacts/staging-dispatch-pilot.json
+
+            echo "===> [staging] Capturing metrics and logs, with no customer text..."
+            # Counters and levels only. A staging artefact that carried message
+            # bodies would move synthetic-looking-but-possibly-real text into an
+            # artifact store with different retention than the database.
+            $DC exec -T api wget -q -O- http://localhost:3000/health/detailed > artifacts/metrics-after.json
+            $DC logs --no-color --tail 400 api worker \
+              | sed -E 's/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+/<email>/g; s/\+?[0-9]{7,15}/<phone>/g' \
+              | grep -E '^\S+\s+\|?\s*\[?(Nest|ERROR|WARN)' > artifacts/staging-logs.txt || true
+
+      - name: Turn the outbox pilot off again
+        if: always()
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.STAGING_SERVER_HOST }}
+          username: ${{ secrets.STAGING_SERVER_USER }}
+          key: ${{ secrets.STAGING_SERVER_SSH_KEY }}
+          port: ${{ secrets.STAGING_SERVER_PORT || 22 }}
+          script: |
+            set -e
+            cd /opt/parallext-staging
+            # `always()`: a pilot left switched on by a failed run is a switch
+            # nobody remembers, and the next run inherits it.
+            docker compose -f infra/docker/docker-compose.prod.yml \
+              run --rm api node scripts/staging-dispatch-pilot.cjs --disable
+
+      - name: Collect the evidence
+        if: always()
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.STAGING_SERVER_HOST }}
+          username: ${{ secrets.STAGING_SERVER_USER }}
+          key: ${{ secrets.STAGING_SERVER_SSH_KEY }}
+          port: ${{ secrets.STAGING_SERVER_PORT || 22 }}
+          script: cd /opt/parallext-staging && tar -czf /tmp/staging-artifacts.tgz artifacts
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # JOB 4 — the way back. Runs when asked, and when the deploy or the
+  # verification failed.
+  # ──────────────────────────────────────────────────────────────────────────
+  rollback:
+    name: Roll back to the previous image
+    needs: [deploy, verify]
+    if: always() && (inputs.action == 'rollback' || needs.deploy.result == 'failure' || needs.verify.result == 'failure')
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - name: Return to the previous image and prove it took
+        uses: appleboy/ssh-action@v1.2.2
+        env:
+          REQUESTED_TAG: ${{ inputs.image_tag }}
+          ACTION: ${{ inputs.action }}
+        with:
+          host: ${{ secrets.STAGING_SERVER_HOST }}
+          username: ${{ secrets.STAGING_SERVER_USER }}
+          key: ${{ secrets.STAGING_SERVER_SSH_KEY }}
+          port: ${{ secrets.STAGING_SERVER_PORT || 22 }}
+          command_timeout: 20m
+          envs: REQUESTED_TAG,ACTION
+          script: |
+            set -e
+            cd /opt/parallext-staging
+            DC="docker compose -f infra/docker/docker-compose.prod.yml"
+
+            if [ "$ACTION" = "rollback" ]; then
+              TARGET="$REQUESTED_TAG"
+            else
+              TARGET="$(cat .staging-previous-image-tag 2>/dev/null || true)"
+            fi
+            if [ -z "$TARGET" ]; then
+              echo "::error::No image to roll back to. The stack is left as it is rather than restarted onto an unknown tag."
+              exit 1
+            fi
+
+            echo "===> [staging] Rolling back to $TARGET"
+            # Images only. Migrations are additive by contract, so the previous
+            # code runs against the newer schema — which is the same property the
+            # production deploy relies on, and rolling the schema back would break
+            # it rather than restore it.
+            sed -i "s/^IMAGE_TAG=.*/IMAGE_TAG=${TARGET}/" .env
+            IMAGE_TAG="$TARGET" $DC up -d --no-deps --force-recreate api worker dashboard whatsapp landing
+
+            echo "===> [staging] Verifiable success criterion..."
+            # Not "the command exited 0": the running container has to report the
+            # tag we asked for, and the API has to answer.
+            for i in $(seq 1 36); do
+              if $DC exec -T api wget -q -O- http://localhost:3000/health >/dev/null 2>&1; then break; fi
+              [ "$i" = "36" ] && { echo "::error::API did not become healthy after the rollback"; exit 1; }
+              sleep 5
+            done
+            RUNNING="$(docker inspect --format '{{index .Config.Image}}' parallext-api)"
+            case "$RUNNING" in
+              *":${TARGET}") echo "  [OK] parallext-api is running ${RUNNING}" ;;
+              *) echo "::error::Rollback did not take: parallext-api is running ${RUNNING}, expected tag ${TARGET}"; exit 1 ;;
+            esac

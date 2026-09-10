@@ -1,4 +1,4 @@
-import { Injectable, Logger, BadRequestException, NotFoundException, Optional, UnauthorizedException } from '@nestjs/common';
+import { Inject, Injectable, Logger, BadRequestException, NotFoundException, Optional, UnauthorizedException, forwardRef } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ConfigService } from '@nestjs/config';
 import { OUTBOUND_CONTRACT_VERSION, type OutboundCredentialRef } from '@parallext/shared';
@@ -7,7 +7,14 @@ import { WhatsappCryptoService } from './whatsapp-crypto.service';
 import { TenantThrottleService } from '../../throttle/tenant-throttle.service';
 import { AGENT_QUALITY_DEPENDENCIES_UPDATED } from '../../quality/agent-quality-events';
 import { ConnectionRefusedError } from '../../channels/connection-refusal';
-import type { ResolvedConnection, SendContextRequest } from '../../channels/channel-token.service';
+// One place decides whether a connection may send and whether its credential
+// may sign, so this resolver and `ChannelTokenService` cannot drift apart
+// again — which is exactly how one of them started answering with a revoked
+// token for a number the tenant had disconnected.
+import { assertUsable, assessConnection, assessCredential, sendableChannelSql }
+    from '../../channels/connection-usability';
+import { ChannelTokenService, type ResolvedConnection, type SendContextRequest }
+    from '../../channels/channel-token.service';
 // Validated by the very function that will price with it: a zone this cannot
 // format is a zone every later charge would refuse, so accepting one here would
 // only move the failure to the first message somebody tries to send.
@@ -66,6 +73,12 @@ export class WhatsappConnectionService {
     private readonly cryptoService: WhatsappCryptoService,
     private readonly configService: ConfigService,
     private readonly throttle: TenantThrottleService,
+    // Optional and injected late on purpose:  and this one
+    // are a forwardRef pair, and a required dependency here would make the
+    // graph resolution order matter. What it buys is that a connect or a
+    // rotation can clear the cached secret it just replaced.
+    @Optional() @Inject(forwardRef(() => ChannelTokenService))
+    private readonly channelToken?: ChannelTokenService,
     @Optional() private readonly events?: EventEmitter2,
   ) {}
 
@@ -265,6 +278,16 @@ export class WhatsappConnectionService {
       });
     }
 
+    // Connect, reconnect and rotation all land here, and all three replace
+    // the secret cached under this number. Clearing exactly this number key
+    // — not the tenant — keeps a sibling connection answering, which is the
+    // difference between a reconnect and a five-minute outage for every
+    // other number the tenant has. After the writes, never before: an
+    // invalidation that runs first races the entry it is removing.
+    await this.channelToken?.invalidateCache('whatsapp', tenantId, String(phoneNumberId))
+      .catch((e: any) => this.logger.error(
+        `Connection saved but the token cache for ${phoneNumberId} was not cleared: ${e?.message}`));
+
     this.logger.log(`WhatsApp channel connected for schema ${schemaName}`);
     this.events?.emit(AGENT_QUALITY_DEPENDENCIES_UPDATED, {
       tenantId,
@@ -394,7 +417,7 @@ export class WhatsappConnectionService {
     // `access_token_ref` is selected HERE, with the row's identity, so the
     // credential fallback below cannot read it from a different row.
     const columns = `id, phone_number_id, meta_waba_id, meta_business_id,
-        display_phone_number, access_token_ref`;
+        display_phone_number, access_token_ref, channel_status`;
 
     if (phoneNumberId) {
       const rows = await this.prisma.executeInTenantSchema<any[]>(
@@ -409,6 +432,10 @@ export class WhatsappConnectionService {
         throw new ConnectionRefusedError('connection_not_found',
           { tenantId, channelType: 'whatsapp', requestedAccountId: phoneNumberId });
       }
+      // Exists is not the same as may send. A named number that is
+      // disconnected is told so, rather than reported missing.
+      assertUsable(await this.connectionUsable(tenantId, rows[0]),
+        { tenantId, channelType: 'whatsapp', requestedAccountId: phoneNumberId });
       return rows[0];
     }
 
@@ -417,13 +444,29 @@ export class WhatsappConnectionService {
     // no phone_number_id cannot send at all (onboarding leaves them while Meta
     // has not issued one), so they neither answer this request nor make it
     // ambiguous.
+    // Only rows that may send are candidates, so a disconnected sibling
+    // neither answers this request nor makes it ambiguous.
     const rows = await this.prisma.executeInTenantSchema<any[]>(
       schemaName,
       `SELECT ${columns} FROM whatsapp_channels
         WHERE phone_number_id IS NOT NULL AND phone_number_id <> ''
+          AND ${sendableChannelSql()}
         ORDER BY connected_at ASC NULLS LAST LIMIT 2`,
     );
     if (!rows?.length) {
+      const [existing] = await this.prisma.executeInTenantSchema<any[]>(
+        schemaName,
+        `SELECT channel_status FROM whatsapp_channels
+          WHERE phone_number_id IS NOT NULL AND phone_number_id <> '' LIMIT 1`,
+      );
+      // Nothing connected, versus something present and not connected. The
+      // fix is different for each, so the code has to be different too.
+      if (existing) {
+        throw new ConnectionRefusedError('connection_disconnected', {
+          tenantId, channelType: 'whatsapp',
+          detail: `channel_status=${existing.channel_status ?? 'unset'}`,
+        });
+      }
       throw new ConnectionRefusedError('connection_absent', { tenantId, channelType: 'whatsapp' });
     }
     if (rows.length > 1) {
@@ -431,7 +474,34 @@ export class WhatsappConnectionService {
         + 'refusing rather than choosing which account pays');
       throw new ConnectionRefusedError('connection_ambiguous', { tenantId, channelType: 'whatsapp' });
     }
+    assertUsable(await this.connectionUsable(tenantId, rows[0]),
+      { tenantId, channelType: 'whatsapp', requestedAccountId: String(rows[0].phone_number_id) });
     return rows[0];
+  }
+
+  /**
+   * The tenant's channel row AND the global account row, asked together.
+   *
+   * Disconnect writes `channel_accounts.is_active = false` and, since this
+   * batch, `whatsapp_channels.channel_status = 'disconnected'`. Asking only
+   * one of them is how a disconnected number kept sending.
+   */
+  private async connectionUsable(tenantId: string, channel: any) {
+    const phoneNumberId = String(channel?.phone_number_id ?? '');
+    let accountActive: boolean | undefined;
+    try {
+      const account = await this.prisma.channelAccount.findFirst({
+        where: { tenantId, channelType: 'whatsapp', accountId: phoneNumberId },
+        select: { isActive: true },
+      });
+      // Absent is not inactive: a tenant provisioned before that table was
+      // populated has no row, and reading absence as `false` would
+      // disconnect every one of them at once.
+      accountActive = account ? account.isActive !== false : undefined;
+    } catch (error: any) {
+      this.logger.warn(`channel_accounts unreadable for ${tenantId}/${phoneNumberId}: ${error?.message}`);
+    }
+    return assessConnection({ channelStatus: channel?.channel_status, accountActive });
   }
 
   /** The credential of THIS connection, or a refusal. Never a sibling's. */
@@ -451,6 +521,12 @@ export class WhatsappConnectionService {
     });
 
     if (cred?.encryptedValue) {
+      // Revoked on disconnect, mid-rotation, or past its own expiry. None of
+      // those may sign a request, and falling through to the channel row
+      // would present a different secret than the one last authorised.
+      assertUsable(assessCredential(cred), {
+        tenantId, channelType: 'whatsapp', requestedAccountId: base.phoneNumberId,
+      });
       let accessToken: string;
       try {
         accessToken = this.cryptoService.decryptToken(cred.encryptedValue);

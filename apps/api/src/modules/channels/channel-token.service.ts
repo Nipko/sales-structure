@@ -10,6 +10,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { WhatsappCryptoService } from '../whatsapp/services/whatsapp-crypto.service';
 import { ConnectionRefusedError } from './connection-refusal';
+import { assertUsable, assessConnection, assessCredential, sendableChannelSql } from './connection-usability';
 
 export interface ChannelCredentials {
     accessToken: string;
@@ -155,7 +156,7 @@ export class ChannelTokenService {
     private async findWhatsAppChannel(tenantId: string, phoneNumberId: string | null): Promise<any> {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
         const columns = `id, phone_number_id, meta_waba_id, meta_business_id,
-            display_phone_number, access_token_ref`;
+            display_phone_number, access_token_ref, channel_status`;
 
         if (phoneNumberId) {
             const rows = await this.prisma.executeInTenantSchema<any[]>(
@@ -169,6 +170,13 @@ export class ChannelTokenService {
                 throw new ConnectionRefusedError('connection_not_found',
                     { tenantId, channelType: 'whatsapp', requestedAccountId: phoneNumberId });
             }
+            // A named row that exists but cannot send is refused HERE rather
+            // than filtered out of the query: the caller asked for THIS number
+            // and deserves to be told it is disconnected, not that it is
+            // missing. Filtering would also turn it into `connection_absent`,
+            // which sends an operator looking for something to create.
+            assertUsable(await this.connectionUsable(tenantId, rows[0]),
+                { tenantId, channelType: 'whatsapp', requestedAccountId: phoneNumberId });
             return rows[0];
         }
 
@@ -177,13 +185,31 @@ export class ChannelTokenService {
         // Rows without a phone_number_id cannot send at all (onboarding leaves
         // them while the number is still pending), so they neither answer this
         // request nor make it ambiguous.
+        // Only rows that may send are candidates. A disconnected sibling is
+        // not one, so a tenant with one live number and one disconnected one
+        // resolves instead of being refused as ambiguous — and a tenant whose
+        // only number is disconnected is told exactly that below.
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
             `SELECT ${columns} FROM whatsapp_channels
               WHERE phone_number_id IS NOT NULL AND phone_number_id <> ''
+                AND ${sendableChannelSql()}
               ORDER BY connected_at ASC NULLS LAST LIMIT 2`,
         );
         if (!rows?.length) {
+            // Tell the two cases apart: nothing was ever connected, versus
+            // something is there and is not connected right now.
+            const [any] = await this.prisma.executeInTenantSchema<any[]>(
+                schemaName,
+                `SELECT channel_status FROM whatsapp_channels
+                  WHERE phone_number_id IS NOT NULL AND phone_number_id <> '' LIMIT 1`,
+            );
+            if (any) {
+                throw new ConnectionRefusedError('connection_disconnected', {
+                    tenantId, channelType: 'whatsapp',
+                    detail: `channel_status=${any.channel_status ?? 'unset'}`,
+                });
+            }
             throw new ConnectionRefusedError('connection_absent', { tenantId, channelType: 'whatsapp' });
         }
         if (rows.length > 1) {
@@ -191,7 +217,38 @@ export class ChannelTokenService {
                 + 'refusing rather than choosing which account pays');
             throw new ConnectionRefusedError('connection_ambiguous', { tenantId, channelType: 'whatsapp' });
         }
+        // The sole survivor still has to clear the GLOBAL account row, which
+        // the disconnect endpoint deactivates and the tenant schema does not
+        // know about.
+        assertUsable(await this.connectionUsable(tenantId, rows[0]),
+            { tenantId, channelType: 'whatsapp', requestedAccountId: String(rows[0].phone_number_id) });
         return rows[0];
+    }
+
+    /**
+     * The three authorities, asked together.
+     *
+     * The tenant's channel row says whether the connection is live; the
+     * global `channel_accounts` row says whether the tenant switched it off.
+     * Disconnect writes the second and used to leave the first untouched, so
+     * asking only one of them was how a disconnected number kept sending.
+     */
+    private async connectionUsable(tenantId: string, channel: any) {
+        const phoneNumberId = String(channel?.phone_number_id ?? '');
+        let accountActive: boolean | undefined;
+        try {
+            const account = await this.prisma.channelAccount.findFirst({
+                where: { tenantId, channelType: 'whatsapp', accountId: phoneNumberId },
+                select: { isActive: true },
+            });
+            // No global row is not the same as an inactive one: a tenant
+            // provisioned before that table was populated has none, and
+            // reading absence as `false` would disconnect them all at once.
+            accountActive = account ? account.isActive !== false : undefined;
+        } catch (error: any) {
+            this.logger.warn(`channel_accounts unreadable for ${tenantId}/${phoneNumberId}: ${error?.message}`);
+        }
+        return assessConnection({ channelStatus: channel?.channel_status, accountActive });
     }
 
     private async credentialForWhatsApp(tenantId: string, channel: any): Promise<CachedWhatsAppConnection> {
@@ -209,6 +266,14 @@ export class ChannelTokenService {
         });
 
         if (cred?.encryptedValue) {
+            // Revoked on disconnect, mid-rotation, or past its own expiry.
+            // None of those may sign a request, and falling through to the
+            // channel row would present a DIFFERENT secret than the one the
+            // tenant last authorised — the substitution this file exists to
+            // refuse, wearing a different hat.
+            assertUsable(assessCredential(cred), {
+                tenantId, channelType: 'whatsapp', requestedAccountId: base.phoneNumberId,
+            });
             let accessToken: string;
             try {
                 accessToken = this.cryptoService.decryptToken(cred.encryptedValue);

@@ -23,7 +23,8 @@ describe('a connection refusal answers with a status, not a 500', () => {
     const detail = { tenantId: 'tenant-1', channelType: 'whatsapp', requestedAccountId: '15551234' };
 
     const CODES: ConnectionRefusalCode[] = ['connection_not_found', 'connection_ambiguous',
-        'connection_absent', 'credential_missing', 'credential_undecryptable'];
+        'connection_absent', 'credential_missing', 'credential_undecryptable',
+        'connection_disconnected', 'credential_revoked', 'credential_expired'];
 
     it.each(CODES)('%s never answers 500', code => {
         const refusal = new ConnectionRefusedError(code, detail);
@@ -43,6 +44,23 @@ describe('a connection refusal answers with a status, not a 500', () => {
         }
         // The status these endpoints used to give, kept deliberately.
         expect(new NotFoundException().getStatus()).toBe(HttpStatus.NOT_FOUND);
+    });
+
+    it('answers 409 for a connection that is there and is not connected', () => {
+        // Not 404: the number has not gone anywhere, and the request becomes
+        // answerable the moment somebody reconnects it. A 404 would send an
+        // operator looking for something to create.
+        expect(new ConnectionRefusedError('connection_disconnected', detail).getStatus())
+            .toBe(HttpStatus.CONFLICT);
+    });
+
+    it('answers 424 for a credential that may no longer sign', () => {
+        // Revoked on disconnect, mid-rotation, or past its own expiry. No
+        // change to the request fixes any of them.
+        for (const code of ['credential_revoked', 'credential_expired'] as ConnectionRefusalCode[]) {
+            expect({ code, status: new ConnectionRefusedError(code, detail).getStatus() })
+                .toEqual({ code, status: HttpStatus.FAILED_DEPENDENCY });
+        }
     });
 
     it('answers 409 when more than one account could pay', () => {

@@ -26,7 +26,21 @@ export type ConnectionRefusalCode =
     /** The connection exists but no usable credential is stored for it. */
     | 'credential_missing'
     /** A credential is stored and could not be decrypted — rotation, wrong key. */
-    | 'credential_undecryptable';
+    | 'credential_undecryptable'
+    /**
+     * The connection exists and is not in a state that may send: the tenant
+     * disconnected it, Meta restricted it, or onboarding never finished.
+     * Distinct from `connection_absent` on purpose — there IS something here,
+     * and what it needs is reconnecting rather than creating.
+     */
+    | 'connection_disconnected'
+    /**
+     * A credential exists and may no longer be used: revoked on disconnect, or
+     * mid-rotation, where the replacement may already be the live one at Meta.
+     */
+    | 'credential_revoked'
+    /** A credential exists and its own expiry has passed. */
+    | 'credential_expired';
 
 export interface ConnectionRefusalDetail {
     readonly tenantId: string;
@@ -65,6 +79,14 @@ const REFUSAL_STATUS: Readonly<Record<ConnectionRefusalCode, HttpStatus>> = {
     connection_ambiguous: HttpStatus.CONFLICT,
     credential_missing: HttpStatus.FAILED_DEPENDENCY,
     credential_undecryptable: HttpStatus.FAILED_DEPENDENCY,
+    // 409, not 404: the connection is there and the request becomes
+    // answerable again the moment somebody reconnects it. A 404 would send
+    // an operator looking for a number that has not gone anywhere.
+    connection_disconnected: HttpStatus.CONFLICT,
+    // 424: the credential is what failed, and no change to the request fixes
+    // it — the same reasoning as the two above it.
+    credential_revoked: HttpStatus.FAILED_DEPENDENCY,
+    credential_expired: HttpStatus.FAILED_DEPENDENCY,
 };
 
 /**
@@ -123,6 +145,14 @@ function describeRefusal(code: ConnectionRefusalCode, detail: ConnectionRefusalD
             return `No ${detail.channelType} credentials${named} for tenant ${detail.tenantId}${suffix}`;
         case 'credential_undecryptable':
             return `Failed to decrypt ${detail.channelType} credentials${named} for tenant ${detail.tenantId}${suffix}`;
+        case 'connection_disconnected':
+            return `The ${detail.channelType} connection${named} of tenant ${detail.tenantId} is not connected`
+                + `; reconnect it before sending${suffix}`;
+        case 'credential_revoked':
+            return `The ${detail.channelType} credential${named} of tenant ${detail.tenantId} is revoked`
+                + ` or being rotated${suffix}`;
+        case 'credential_expired':
+            return `The ${detail.channelType} credential${named} of tenant ${detail.tenantId} has expired${suffix}`;
         default:
             return `Could not resolve a ${detail.channelType} connection for tenant ${detail.tenantId}${suffix}`;
     }

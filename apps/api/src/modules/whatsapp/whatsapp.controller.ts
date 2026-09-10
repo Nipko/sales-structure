@@ -224,6 +224,30 @@ export class WhatsappController {
       }
     }
 
+    // The tenant's OWN authority, which this endpoint used to leave saying
+    // `connected` while the global row said inactive. Both resolvers read
+    // the tenant row first, so leaving it alone was the difference between
+    // a disconnect and a disconnect that still sent.
+    if (tenant?.schemaName) {
+      try {
+        await this.prisma.executeInTenantSchema(tenant.schemaName,
+          `UPDATE whatsapp_channels SET channel_status = 'disconnected', updated_at = NOW()
+            WHERE channel_status <> 'disconnected'`);
+      } catch (e: any) {
+        // Loud, and not swallowed into the success path: a tenant row still
+        // saying `connected` is a number that can still spend money.
+        this.logger.error(`Disconnect could not mark whatsapp_channels for ${tenantId}: ${e?.message}`);
+        metaError = metaError ?? `local_channel_not_marked: ${e?.message}`;
+      }
+    }
+
+    // AFTER both authorities are written, never before: an invalidation that
+    // runs first races the five-minute entry it is trying to remove, and the
+    // revoked token answers by name until it expires on its own.
+    await this.channelToken.invalidateCache('whatsapp', tenantId)
+      .catch((e: any) => this.logger.error(
+        `Disconnect could not clear the WhatsApp token cache for ${tenantId}: ${e?.message}`));
+
     this.events?.emit(AGENT_QUALITY_DEPENDENCIES_UPDATED, {
       tenantId,
       source: 'channel_connection',

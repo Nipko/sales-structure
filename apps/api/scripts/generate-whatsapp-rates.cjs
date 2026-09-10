@@ -53,31 +53,32 @@ function fail(message) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Column letter → category. This is the contract with the rate card itself.
+ * Category → the header text that names its column.
  *
  * Meta publishes one row per market and one column per category, and the only
- * thing tying a number to a meaning is its position. If a future card moves
- * Service from G to H, every service message in the platform would silently be
- * priced as something else. So the header is read and compared, and a mismatch
- * stops the generator instead of producing a plausible-looking table.
+ * thing tying a number to a meaning is its position — so the position is READ
+ * from each card's own header rather than written down here. A card that moves
+ * Service from G to H is then read correctly instead of repricing the platform
+ * in silence, and a constant claiming Utility is in column E cannot exist to be
+ * wrong, because there is no such constant.
+ *
+ * A mutation run is what asked for this. Utility and Authentication carry
+ * identical values in all four preserved cards, so swapping their hardcoded
+ * letters changed nothing observable and no check noticed. The class of bug is
+ * gone now rather than the one instance of it.
  */
-const CATEGORY_COLUMNS = Object.freeze({
-    marketing: 'C',
-    utility: 'D',
-    authentication: 'E',
-    authentication_international: 'F',
-    service: 'G',
+const CATEGORY_HEADER_LABEL = Object.freeze({
+    marketing: 'Marketing',
+    utility: 'Utility',
+    authentication: 'Authentication',
+    authentication_international: 'Authentication- International',
+    service: 'Service',
 });
 
-const EXPECTED_HEADER = Object.freeze({
-    A: 'Market',
-    B: 'Currency',
-    C: 'Marketing',
-    D: 'Utility',
-    E: 'Authentication',
-    F: 'Authentication- International',
-    G: 'Service',
-});
+const CATEGORIES = Object.freeze(Object.keys(CATEGORY_HEADER_LABEL));
+
+/** The two columns that identify a row rather than price it. */
+const IDENTITY_HEADER = Object.freeze({ A: 'Market', B: 'Currency' });
 
 /**
  * Market name → ISO 3166-1 alpha-2, for the markets Meta names as countries.
@@ -244,6 +245,33 @@ const COLUMN_LETTERS = ['A', 'B', 'C', 'D', 'E', 'F', 'G'];
 const squash = value => String(value ?? '').replace(/\s+/g, ' ').trim();
 
 /**
+ * Work out which column holds which category, from the card's own header.
+ *
+ * Every category must be found exactly once. A card that drops a column, adds a
+ * second one with the same name, or renames one stops the generator, because
+ * any of those means the shape we know how to read has changed.
+ */
+function categoryColumnsFromHeader(sourceFile, locator, headerCells) {
+    for (const [letter, want] of Object.entries(IDENTITY_HEADER)) {
+        const found = squash(headerCells[letter]);
+        if (found !== want) {
+            fail(`${sourceFile} ${locator}: column ${letter} is "${found}", expected "${want}"`);
+        }
+    }
+
+    const columns = {};
+    for (const category of CATEGORIES) {
+        const label = CATEGORY_HEADER_LABEL[category];
+        const matches = COLUMN_LETTERS.filter(letter => squash(headerCells[letter]) === label);
+        if (matches.length !== 1) {
+            fail(`${sourceFile} ${locator}: found ${matches.length} columns headed "${label}", expected exactly one`);
+        }
+        columns[category] = matches[0];
+    }
+    return columns;
+}
+
+/**
  * Locate every market's physical position in the source file it was read from.
  *
  * CSV cards give a line number; XLSX cards give the spreadsheet row that the
@@ -255,16 +283,14 @@ function locateCsvCard(card) {
     const raw = fs.readFileSync(path.join(researchDir, card.source_file), 'utf8');
     const records = readCsvRecords(raw);
 
-    const headerIndex = records.findIndex(r => squash(r.fields[0]) === EXPECTED_HEADER.A);
+    const headerIndex = records.findIndex(r => squash(r.fields[0]) === IDENTITY_HEADER.A);
     if (headerIndex < 0) fail(`${card.source_file}: no header record starting with "Market"`);
     const header = records[headerIndex];
-    COLUMN_LETTERS.forEach((letter, column) => {
-        const found = squash(header.fields[column]);
-        const want = EXPECTED_HEADER[letter];
-        if (found !== want) {
-            fail(`${card.source_file} line ${header.startLine}: column ${letter} is "${found}", expected "${want}"`);
-        }
-    });
+    const headerCells = {};
+    COLUMN_LETTERS.forEach((letter, column) => { headerCells[letter] = header.fields[column]; });
+    const categoryColumns = categoryColumnsFromHeader(
+        card.source_file, `line ${header.startLine}`, headerCells,
+    );
 
     const byMarket = new Map();
     for (const record of records.slice(headerIndex + 1)) {
@@ -274,19 +300,15 @@ function locateCsvCard(card) {
         COLUMN_LETTERS.forEach((letter, column) => { cells[letter] = squash(record.fields[column]); });
         byMarket.set(market, { locator: `line ${record.startLine}`, cells });
     }
-    return { headerLocator: `line ${header.startLine}`, byMarket };
+    return { headerLocator: `line ${header.startLine}`, categoryColumns, byMarket };
 }
 
 function locateSheetCard(card) {
-    const headerRow = card.rows.find(r => squash(r.cells.A) === EXPECTED_HEADER.A);
+    const headerRow = card.rows.find(r => squash(r.cells.A) === IDENTITY_HEADER.A);
     if (!headerRow) fail(`${card.source_file}: no sheet row whose column A is "Market"`);
-    for (const letter of COLUMN_LETTERS) {
-        const found = squash(headerRow.cells[letter]);
-        const want = EXPECTED_HEADER[letter];
-        if (found !== want) {
-            fail(`${card.source_file} row ${headerRow.row}: column ${letter} is "${found}", expected "${want}"`);
-        }
-    }
+    const categoryColumns = categoryColumnsFromHeader(
+        card.source_file, `row ${headerRow.row}`, headerRow.cells,
+    );
 
     const byMarket = new Map();
     for (const row of card.rows) {
@@ -297,7 +319,7 @@ function locateSheetCard(card) {
         for (const letter of COLUMN_LETTERS) cells[letter] = squash(row.cells[letter]);
         byMarket.set(market, { locator: `row ${row.row}`, cells });
     }
-    return { headerLocator: `row ${headerRow.row}`, byMarket };
+    return { headerLocator: `row ${headerRow.row}`, categoryColumns, byMarket };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -390,7 +412,7 @@ const built = rateCards.map(card => {
         }
 
         const micros = {};
-        for (const [category, letter] of Object.entries(CATEGORY_COLUMNS)) {
+        for (const [category, letter] of Object.entries(located.categoryColumns)) {
             const extracted = String(rate[category]);
             const inFile = position.cells[letter];
             if (extracted !== inFile) {
@@ -473,10 +495,10 @@ out.push('/** A price the card did not state. Never coerce this to a number. */'
 out.push("export type UnavailableRate = 'unavailable';");
 out.push('');
 out.push('export type WhatsAppMessageCategory =');
-out.push(Object.keys(CATEGORY_COLUMNS).map(c => `    | ${q(c)}`).join('\n') + ';');
+out.push(CATEGORIES.map(c => `    | ${q(c)}`).join('\n') + ';');
 out.push('');
 out.push('export const WHATSAPP_MESSAGE_CATEGORIES: readonly WhatsAppMessageCategory[] = Object.freeze([');
-out.push(Object.keys(CATEGORY_COLUMNS).map(c => `    ${q(c)},`).join('\n'));
+out.push(CATEGORIES.map(c => `    ${q(c)},`).join('\n'));
 out.push(']);');
 out.push('');
 out.push('/** Micro-units per whole currency unit. The exponent this table is written in. */');
@@ -521,7 +543,7 @@ for (const card of built) {
     for (const entry of card.entries) {
         const m = entry.micros;
         out.push(`            { market: ${q(entry.market)}, locator: ${q(entry.locator)}, micros: Object.freeze({ `
-            + Object.keys(CATEGORY_COLUMNS).map(c => `${key(c)}: ${cell(m[c])}`).join(', ')
+            + CATEGORIES.map(c => `${key(c)}: ${cell(m[c])}`).join(', ')
             + ' }) },');
     }
     out.push('        ]),');
@@ -615,7 +637,7 @@ function summary() {
                 (n, e) => n + Object.values(e.micros).filter(v => v === 'unavailable').length, 0,
             ),
         })),
-        pricesTotal: built.reduce((n, c) => n + c.entries.length * Object.keys(CATEGORY_COLUMNS).length, 0),
+        pricesTotal: built.reduce((n, c) => n + c.entries.length * CATEGORIES.length, 0),
         unavailableTotal: unavailableReasons.length,
         isoAliases: Object.keys(ISO_ALPHA2_BY_MARKET).length,
         freeAllowance: allowance.deliveries,

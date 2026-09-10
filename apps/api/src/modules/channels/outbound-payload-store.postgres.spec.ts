@@ -137,4 +137,55 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
               WHERE payload IS NOT NULL AND (redacted_at IS NOT NULL OR sent_at IS NOT NULL)`);
         expect(Number(rows.n)).toBe(0);
     }, 120000);
+
+    /**
+     * A tenant that has never had the table, which is every tenant provisioned
+     * before this store existed.
+     *
+     * The guard in front of each read is not a courtesy: these helpers run
+     * inside SOMEBODY ELSE'S transaction — a contact erasure, a release
+     * retirement — and a query against a missing relation does not return
+     * nothing, it aborts every statement after it and takes the COMMIT with it.
+     * Catching the error does not save it. So the fix was to ask `to_regclass`
+     * first, and the branch that matters is the one where the answer is no —
+     * which nothing exercised.
+     */
+    describe('a tenant that does not have the table yet', () => {
+        const bare = `outbound_bare_${randomUUID().replace(/-/g, '')}`;
+        const inBare = async <T>(work: (query: OutboundPayloadQuery) => Promise<T>): Promise<T> => {
+            const client = await pool.connect();
+            try {
+                await client.query('BEGIN');
+                await client.query(`SET LOCAL search_path TO "${bare}"`);
+                const value = await work((async (text: string, params: any[] = []) =>
+                    (await client.query(text, params)).rows) as OutboundPayloadQuery);
+                // The whole point: work AFTER the helper, and a COMMIT that has
+                // to succeed. A poisoned transaction fails both.
+                await client.query('CREATE TABLE IF NOT EXISTS proof_of_life (id INT)');
+                await client.query('COMMIT');
+                return value;
+            } catch (error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
+        };
+
+        beforeAll(async () => {
+            await transaction(query => query(`CREATE SCHEMA "${bare}"`));
+        }, 60000);
+
+        afterAll(async () => {
+            await transaction(query => query(`DROP SCHEMA IF EXISTS "${bare}" CASCADE`));
+        });
+
+        it('answers every read without poisoning the transaction it runs in', async () => {
+            expect(await inBare(query => loadOutboundPayload(query, randomUUID()))).toBeNull();
+            expect(await inBare(query => redactOutboundPayloadsForRelease(query, ['release-1']))).toBe(0);
+            expect(await inBare(query => redactOutboundPayloadsForContact(query, [contactId]))).toBe(0);
+            await expect(inBare(query => markOutboundPayloadSent(query, randomUUID()))).resolves.toBeUndefined();
+            // Four transactions committed, each with a statement after the
+            // helper. Before the guard, the first read would have aborted them.
+            const [rows] = await transaction(query =>
+                query(`SELECT count(*)::int AS n FROM information_schema.tables
+                        WHERE table_schema = $1 AND table_name = 'proof_of_life'`, [bare]));
+            expect(Number(rows.n)).toBe(1);
+        }, 120000);
+    });
 });

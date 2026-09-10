@@ -28,7 +28,7 @@ gastó un centavo.**
 | Migraciones | limpio ✅, upgrade desde estado previo ✅, escritores concurrentes ✅ |
 | `git diff --check` | limpio |
 | Árbol de trabajo | limpio salvo las entradas ajenas preservadas |
-| Checks remotos | ninguno ejecutado por mí hasta el push; ver §7 |
+| Checks remotos | verdes tras el push, **incluido el job de integración que nunca había corrido**; ver §7 |
 
 ---
 
@@ -246,8 +246,22 @@ Leí los disparadores y los jobs antes de tocar nada.
 | `release` | los tres, incluido `weekly` | **inyecta `secrets.VERTICAL_EVAL_OPENAI_API_KEY`, `secrets.VERTICAL_RELEASE_DATABASE_URL` y `secrets.VERTICAL_RELEASE_REDIS_URL`, con `REQUIRE_EXTERNAL_GATES: true`.** Es credencial real y gasto real. |
 
 Así que el nivel `release` **no** cumple la condición del encargo y no lo
-disparé. Corrí lo que sí la cumple. Lo que falta para `release`, con nombre y
-apellido:
+disparé. Corrí lo que sí la cumple: **`workflow_dispatch` con `tier=integration`
+sobre esta rama, run [34505286042](https://github.com/Nipko/sales-structure/actions/runs/34505286042)**.
+
+Resultado, que cierra un hueco nombrado en la verdad de partida —«no corrió
+`Merge and nightly infrastructure evidence`»—:
+
+| Job | Resultado |
+|---|---|
+| PR contract and unit evidence | ✅ éxito |
+| **Merge and nightly infrastructure evidence** | ✅ **éxito** — migraciones sobre base limpia, migración de schemas de tenant, regresión de ciclo de vida/pipeline/purga, **bootstrap real de Nest** y snapshot de readiness |
+| Weekly full regression and release preflight | ⏭️ omitido, como corresponde a este nivel — y es exactamente el job que `release` habría encendido con credenciales reales |
+
+Los dos checks automáticos del PR (Chromium smoke y el contrato) también quedaron
+verdes en el mismo push.
+
+Lo que falta para `release`, con nombre y apellido:
 
 - `VERTICAL_EVAL_OPENAI_API_KEY` (secreto) — credencial de modelo;
 - `VERTICAL_RELEASE_DATABASE_URL` y `VERTICAL_RELEASE_REDIS_URL` (secretos) — un

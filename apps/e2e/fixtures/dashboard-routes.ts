@@ -59,3 +59,29 @@ export const dashboardShell = (tenantId = TENANT): ApiRoutes => ({
   "health/incidents/summary": ok({ open: 0, acknowledged: 0, incidents: [] }),
   "financials/activation": ok({ activated: 0, pending: 0 }),
 });
+
+/**
+ * What the eight screens Assist hands people to ask for, on top of the shell.
+ *
+ * Separate from `dashboardShell` because these are destinations, not the frame:
+ * a spec that never opens `/admin/appointments` should not have to declare the
+ * appointment calls, or the strictness stops meaning anything. Read off the
+ * pages by probe, same as the shell.
+ */
+export const handoffDestinations = (tenantId = TENANT): ApiRoutes => ({
+  // `/admin/users`
+  "auth/users": ok([]),
+  // `/admin/settings/integrations/payments`
+  [`tenant-payments/${tenantId}/config`]: ok({ provider: null, connected: false }),
+  // `/admin/appointments`
+  [`appointments/${tenantId}/calendar/integrations`]: ok([]),
+  [`appointments/${tenantId}/services`]: ok([]),
+  [`appointments/${tenantId}`]: ok([]),
+  // `/admin/catalog/offers`
+  [`offers/${tenantId}`]: ok([]),
+  // `/admin/catalog/campaigns`
+  [`catalog/campaigns/${tenantId}`]: ok([]),
+  [`catalog/courses/${tenantId}`]: ok([]),
+  // The navigation cost counter, which every operational surface posts to.
+  [`analytics/navigation-telemetry/${tenantId}`]: ok({ recorded: true }),
+});

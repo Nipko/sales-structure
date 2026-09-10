@@ -70,6 +70,12 @@ export default defineConfig({
     {
       name: "landing-chromium",
       testMatch: "**/landing/**/*.spec.ts",
+      // Next compiles each route the first time it is asked for, and the
+      // readiness probe only warms `/`. With the dashboard's own dev server
+      // building beside it, that first compile has taken longer than the shared
+      // 45s and failed `/soluciones/[slug]` once in a full run — a machine under
+      // load, not a slow page. More patience, not a weaker assertion.
+      timeout: 90_000,
       use: {
         ...devices["Desktop Chrome"],
         baseURL: landingUrl,
@@ -90,7 +96,7 @@ export default defineConfig({
       // Kept as a project rather than a viewport override inside each test so
       // adding a spec covers both sizes without anybody remembering to.
       name: "dashboard-mobile",
-      testMatch: /dashboard[\/](session-and-roles|locales-and-access)\.spec\.ts$/,
+      testMatch: /dashboard[\/](session-and-roles|locales-and-access|assist-handoffs)\.spec\.ts$/,
       use: {
         ...devices["Pixel 7"],
         baseURL: dashboardUrl,

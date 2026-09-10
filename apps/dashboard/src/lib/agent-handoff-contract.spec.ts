@@ -9,6 +9,7 @@ import {
 } from "@parallext/shared";
 import type { VerticalCapability } from "@parallext/shared";
 import { NAVIGATION_ROUTES } from "./navigation-contract";
+import { canAccessPath, type Role } from "./roles";
 import {
     getVerticalDashboardItemForPath,
     resolveVerticalDashboard,
@@ -69,6 +70,25 @@ describe("traspaso de Assist a la pantalla que decide", () => {
             }
         }
         expect({ unread }).toEqual({ unread: [] });
+    });
+
+    it("todo rol al que se le ofrece la pantalla puede abrirla", () => {
+        // `roles.ts` deniega por defecto y es el que decide de verdad. Que el
+        // registro declare un rol no lo hace entrar: declarar `tenant_agent` en
+        // una operación cuya pantalla lo rechaza es prometerle un viaje que
+        // termina en el panel devolviéndolo.
+        const refused: string[] = [];
+        for (const operation of AGENT_OPERATION_REGISTRY) {
+            for (const role of operation.roles) {
+                // El super_admin no tiene tenant implícito: llega por
+                // impersonación, que es el segundo argumento.
+                const impersonating = role === "super_admin";
+                if (!canAccessPath(operation.route, role as Role, impersonating)) {
+                    refused.push(`${operation.key}: ${operation.route} rechaza a ${role}`);
+                }
+            }
+        }
+        expect({ refused }).toEqual({ refused: [] });
     });
 
     /**

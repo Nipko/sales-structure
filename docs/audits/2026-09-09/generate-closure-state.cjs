@@ -40,9 +40,12 @@ const { channelCertificationRuntime } = api('modules/channels/channel-certificat
 const { AGENT_OUTPUT_STORES, openAgentOutputStores } = api('modules/learning/agent-output-inventory.ts');
 const { FAMILY_TERMS_BINDINGS, familiesWithUnboundCharge, familiesWithUnboundCommand } =
     api('modules/conversations/terms-binding-inventory.ts');
+const { ACCEPTED_UNFROZEN, commercialCoverage, commercialReadersWithoutFrozenAuthority } =
+    api('modules/evaluation-revision/commercial-reader-inventory.ts');
 const { CONVERSATIONAL_CHANNELS } = require(path.join(root, 'packages/shared/src/index.ts'));
 
 const revision = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
+const commercial = commercialCoverage();
 
 /**
  * `--check` regenerates in memory and fails when the committed artefact does not
@@ -166,6 +169,26 @@ const markdown = [
         : ['Ninguno. Cada store declara qué lo alcanza y por qué; los que siguen sin llegar a algo lo',
             'dicen como límite aceptado (`by_design`) con el motivo, no como pendiente.']),
     '',
+    '## Lecturas que mueven plata',
+    '',
+    `${commercial.commercial} de ${commercial.readers} grupos de lectura deciden un hecho comercial. `
+    + `**${commercial.frozen} con autoridad congelada entera**; ${commercial.unfrozen} descansan en algo que no `
+    + 'se puede capturar, y cada uno de esos dice por qué.',
+    '',
+    '| Dimensión | Lectores |',
+    '|---|---:|',
+    ...Object.entries(commercial.dimensions).map(([dimension, count]) => `| ${dimension} | ${count} |`),
+    '',
+    ...(Object.keys(commercial.restingOn).length
+        ? ['| Sin congelar | Lectores | Por qué se acepta |', '|---|---:|---|',
+            ...Object.entries(commercial.restingOn).map(([token, count]) =>
+                `| \`${token}\` | ${count} | ${ACCEPTED_UNFROZEN[token] || 'sin motivo declarado'} |`)]
+        : ['Ninguna lectura comercial descansa en algo sin congelar.']),
+    '',
+    'Congelado acá no significa que el valor no pueda cambiar —el tenant cambia un precio cuando quiere—,',
+    'sino que el valor es dependencia del manifiesto: un resultado medido antes del cambio y uno medido',
+    'después no se confunden, porque la revisión difiere y `assertCurrent` rechaza la mezcla.',
+    '',
     '## Términos que el cliente aceptó',
     '',
     `${FAMILY_TERMS_BINDINGS.length} familias. Sin comando vinculado: ${list(unboundCommand.map(row => row.family))}.`,
@@ -182,5 +205,8 @@ else process.stdout.write(JSON.stringify({
     plan: { cases: plan.totals.requiredCases, calls: plan.totals.modelCalls, cents: plan.totals.maxCostUsdCents },
     channels: { certified: channelSummary.certified, operating: channelSummary.operating, implemented: channelSummary.implemented },
     outputs: { stores: AGENT_OUTPUT_STORES.length, open: openStores.length },
+    commercialReaders: { total: commercial.readers, commercial: commercial.commercial,
+        frozen: commercial.frozen, unfrozen: commercial.unfrozen,
+        withoutFrozenAuthority: commercialReadersWithoutFrozenAuthority().map(reader => reader.id) },
     terms: { families: FAMILY_TERMS_BINDINGS.length, unboundCommand: unboundCommand.length, unboundCharge: unboundCharge.length },
 }) + '\n');

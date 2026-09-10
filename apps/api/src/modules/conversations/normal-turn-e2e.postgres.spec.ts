@@ -487,7 +487,10 @@ const ready = !!databaseUrl && !!redisUrl;
             { detectOptOut: jest.fn(() => false), processOptOut: jest.fn(async () => undefined) } as any,
             { getValidAccessToken: jest.fn(async () => ({ accessToken: 'synthetic-token' })) } as any,
             { markAsRead: jest.fn(async () => undefined) } as any,
-            redis);
+            redis,
+            // Template status is not what this suite proves; it is here so
+            // the webhook has its one writer instead of a second copy.
+            { applyStatusUpdate: jest.fn(async () => undefined) } as any);
         controller = new ChannelsController(
             channelGateway, {} as any, {} as any, {} as any, {} as any,
             prisma, webhookService, config, redis, channelToken, inboundProducer);

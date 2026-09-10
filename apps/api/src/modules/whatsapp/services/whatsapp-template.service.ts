@@ -145,10 +145,37 @@ export class WhatsappTemplateService {
      * finished; it has no catalogue to seed and cannot send.
      */
     private async sendableNumbers(schemaName: string): Promise<string[]> {
+        return (await this.oneNumberPerWaba(schemaName)).map(entry => entry.phoneNumberId);
+    }
+
+    /**
+     * ONE number per WABA, oldest first.
+     *
+     * A template catalogue belongs to the WhatsApp Business Account, not to a
+     * phone number. Iterating numbers meant a tenant with two numbers on the
+     * SAME WABA submitted every seed template twice — two POSTs to Meta for
+     * one catalogue, the second answered with a duplicate-name error, and a
+     * sync that wrote the same rows through two channel ids.
+     *
+     * Grouping here rather than at each call site is deliberate: three
+     * operations need this rule and three copies of it would drift.
+     */
+    private async oneNumberPerWaba(schemaName: string):
+        Promise<{ phoneNumberId: string; wabaId: string }[]> {
         const status = await this.connectionService.getChannelStatus(schemaName);
-        return (status.channels || [])
-            .map((channel: any) => String(channel.phone_number_id || '').trim())
-            .filter((phoneNumberId: string) => phoneNumberId.length > 0);
+        const byWaba = new Map<string, { phoneNumberId: string; wabaId: string }>();
+        for (const channel of status.channels || []) {
+            const phoneNumberId = String(channel.phone_number_id || '').trim();
+            // A row with no phone number is an onboarding Meta has not
+            // finished: no catalogue to seed and nothing that can send.
+            if (!phoneNumberId) continue;
+            // A missing WABA id would collapse every such row onto one key and
+            // seed only one of them, so those are kept separate under their own
+            // number rather than merged.
+            const wabaId = String(channel.meta_waba_id || '').trim() || `unknown:${phoneNumberId}`;
+            if (!byWaba.has(wabaId)) byWaba.set(wabaId, { phoneNumberId, wabaId });
+        }
+        return [...byWaba.values()];
     }
 
     private async seedTemplatesForNumber(tenantId: string, schemaName: string, phoneNumberId: string):
@@ -222,26 +249,48 @@ export class WhatsappTemplateService {
             message_template_language: string;
             event: string;
             reason?: string;
+            /**
+             * The WABA the event came from.
+             *
+             * A template catalogue belongs to a WABA, and the fallback match is
+             * on `(name, language)` — two strings a tenant's second WABA is very
+             * likely to reuse, because they are OUR seed template names. So an
+             * approval on one WABA was projecting onto the identically named
+             * template of the other, marking as APPROVED something Meta had
+             * never approved there and letting a send fail at the provider.
+             *
+             * Optional so an older caller still compiles, and when it is absent
+             * the fallback match is dropped instead of widened: `meta_template_id`
+             * alone is globally unique, so the update is still correct, just
+             * narrower.
+             */
+            wabaId?: string | null;
         },
     ): Promise<void> {
+        const waba = String(event.wabaId ?? '').trim();
         await this.prisma.executeInTenantSchema(
             schemaName,
-            `UPDATE whatsapp_templates
+            `UPDATE whatsapp_templates t
                 SET approval_status = $1,
                     rejected_reason = $2,
                     last_sync_at = NOW(),
                     updated_at = NOW()
-              WHERE meta_template_id = $3
-                 OR (name = $4 AND language = $5)`,
+              FROM whatsapp_channels c
+              WHERE c.id = t.channel_id
+                AND ($6 = '' OR c.meta_waba_id = $6)
+                AND (t.meta_template_id = $3
+                     OR ($6 <> '' AND t.name = $4 AND t.language = $5))`,
             [
                 event.event || 'PENDING',
                 event.reason && event.reason !== 'NONE' ? event.reason : null,
                 event.message_template_id,
                 event.message_template_name,
                 event.message_template_language,
+                waba,
             ],
         );
-        this.logger.log(`Template status updated: ${event.message_template_name} → ${event.event}${event.reason ? ` (${event.reason})` : ''}`);
+        this.logger.log(`Template status updated: ${event.message_template_name} → ${event.event}`
+            + `${event.reason ? ` (${event.reason})` : ''}${waba ? ` on WABA ${waba}` : ''}`);
     }
 
     /**

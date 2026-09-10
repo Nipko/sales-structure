@@ -5,6 +5,7 @@ import { InboundQueueService } from '../../inbound/inbound-queue.service';
 import { InboundNotDurableError } from '../../inbound/inbound-queue.constants';
 import { ComplianceService } from '../../analytics/compliance.service';
 import { WhatsappConnectionService } from './whatsapp-connection.service';
+import { WhatsappTemplateService } from './whatsapp-template.service';
 import { WhatsAppAdapter } from '../../channels/whatsapp/whatsapp.adapter';
 import { RedisService } from '../../redis/redis.service';
 import * as crypto from 'crypto';
@@ -29,6 +30,11 @@ export class WhatsappWebhookService {
     private readonly whatsappConnection: WhatsappConnectionService,
     private readonly whatsappAdapter: WhatsAppAdapter,
     private readonly redis: RedisService,
+    // forwardRef because the template service resolves connections and this
+    // file is reached from the same module graph. What it buys is one writer
+    // for template status instead of two copies of the same UPDATE.
+    @Inject(forwardRef(() => WhatsappTemplateService))
+    private readonly templateService: WhatsappTemplateService,
   ) {}
 
   /**
@@ -159,19 +165,12 @@ export class WhatsappWebhookService {
         reason: value?.reason ? String(value.reason) : undefined,
       };
 
-      await this.prisma.executeInTenantSchema(
-        tenantInfo.schemaName,
-        `UPDATE whatsapp_templates
-            SET approval_status = $1,
-                rejected_reason = $2,
-                last_sync_at = NOW(),
-                updated_at = NOW()
-          WHERE meta_template_id = $3
-             OR (name = $4 AND language = $5)`,
-        [event.event, event.reason && event.reason !== 'NONE' ? event.reason : null,
-         event.message_template_id, event.message_template_name, event.message_template_language],
-      );
-      this.logger.log(`Template status applied: ${event.message_template_name} (${event.message_template_language}) → ${event.event}`);
+      // Delegated instead of duplicated. This file carried its own copy of
+      // the UPDATE, so the WABA restriction had to be added twice or it was
+      // added to the copy nobody called. One writer, one rule.
+      await this.templateService.applyStatusUpdate(tenantInfo.schemaName, { ...event, wabaId });
+      this.logger.log(`Template status applied: ${event.message_template_name} `
+        + `(${event.message_template_language}) → ${event.event} on WABA ${wabaId}`);
     } catch (err: any) {
       this.logger.warn(`Failed to process template status update for WABA ${wabaId}: ${err.message}`);
     }

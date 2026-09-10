@@ -804,11 +804,30 @@ export class KnowledgeService {
                     keywordHit: inTs || keywordBoost > 0,
                     score,
                     _rrf: rrf,
+                    _bm25: inTs,
                 };
             })
-            // Keep a chunk if it clears the relevance bar OR it's a keyword match
-            // (the BM25 win the pure-vector path would have dropped on threshold).
-            .filter(r => r.score >= similarityThreshold || r.keywordHit)
+            // Keep a chunk if it clears the relevance bar OR it is a real BM25
+            // match — the win the pure-vector path would have dropped on
+            // threshold, which is what this exception was written for.
+            //
+            // `_bm25` and NOT `keywordHit`, and the difference is the whole
+            // point. `keywordHit` is graded and generous by design: it turns
+            // true when ANY single query token longer than three characters
+            // appears as a substring of the chunk, because that makes a useful
+            // nudge to the SCORE. Used as an admission ticket it made
+            // `similarityThreshold` stop being a threshold — one shared common
+            // word ("habitaciones", "appointment") let a chunk through at any
+            // cut, so a caller asking for 0.35 got whatever shared a word with
+            // the question. The measured cost was abstention: the corpus could
+            // not answer, retrieval returned something anyway, and the agent
+            // built a confident reply on it.
+            //
+            // `_bm25` is the tsvector match, and `plainto_tsquery` ANDs every
+            // lexeme of the question — so it means the chunk contains all of
+            // them. That is the exact-term recall the exception exists to
+            // protect, and nothing wider.
+            .filter(r => r.score >= similarityThreshold || r._bm25)
             .sort((a, b) => b._rrf - a._rrf || b.score - a.score);
 
         // Optional LLM reranker over the top-N of the fused pool — best-effort, gated by
@@ -828,7 +847,7 @@ export class KnowledgeService {
         const conflictEvidence = this.conflicts ? await this.conflicts.annotations(schema,
             [...new Set(reranked.slice(0,topK).map(row => row.document_id))],
             {audience,agentId,jurisdiction}, options?.executionContext) : null;
-        const enriched = reranked.slice(0, topK).map(({ _rrf, ...rest }) => ({
+        const enriched = reranked.slice(0, topK).map(({ _rrf, _bm25, ...rest }) => ({
             ...rest, retrievalId: crypto.randomUUID(), retrievalBatchId,
             ...(conflictEvidence ? {conflictReviewStatus: conflictEvidence.available ? 'available' as const : 'unavailable' as const,
                 conflicts: (conflictEvidence.annotations[rest.document_id] || []).filter(note => rest.chunk_text.includes(note.quote))} : {}),

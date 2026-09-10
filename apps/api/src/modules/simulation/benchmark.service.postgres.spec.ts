@@ -45,7 +45,7 @@ const TENANT_ADMIN = { id: '22222222-2222-4222-8222-222222222222', role: 'tenant
     const sql = (text: string, params: any[] = []): Promise<any[]> =>
         transaction(query => query(text, params)) as Promise<any[]>;
 
-    const body = (over: Record<string, unknown> = {}) => ({
+    const body = (over: Record<string, unknown> = {}): Record<string, any> => ({
         corpusId: 'local-compare', seed: 'seed-one',
         profiles, languages: ['es'], channels: ['whatsapp'], perStratum: 1,
         subjects: [
@@ -148,6 +148,129 @@ const TENANT_ADMIN = { id: '22222222-2222-4222-8222-222222222222', role: 'tenant
         await expect(service.process(job)).rejects.toMatchObject({
             response: { error: 'benchmark_corpus_drifted' },
         });
+    }, 120000);
+
+    // ── The ceiling, the clock, the stop button and the retry ───────────────
+
+    it('refuses to publish a run with Parallly in it and no ceiling', async () => {
+        const withSelf = body({
+            subjects: [
+                { id: 'parallly', kind: 'self' as const, label: 'Parallly', blindLabel: 'sujeto-P', setupMinutes: 5 },
+                { id: 'alpha', kind: 'alternative' as const, label: 'Alfa', blindLabel: 'sujeto-A', setupMinutes: 20 },
+            ],
+        });
+        // The Parallly runner calls a model for every task. An uncapped pass
+        // over a catalogue is a bill nobody approved, and the refusal happens
+        // before anything is published rather than after money is spent.
+        await expect(service.start(tenantId, withSelf as any, SUPER_ADMIN))
+            .rejects.toMatchObject({ response: { error: 'benchmark_budget_required' } });
+        // Synthetic subjects cost nothing, so they need no ceiling.
+        await expect(service.start(tenantId, body() as any, SUPER_ADMIN)).resolves.toMatchObject({ subjects: 2 });
+    }, 120000);
+
+    it('opens one run for one request key, however many times start is called', async () => {
+        const request = body({ requestKey: `key-${randomUUID()}` });
+        const first = await service.start(tenantId, request as any, SUPER_ADMIN);
+        const again = await service.start(tenantId, request as any, SUPER_ADMIN);
+        expect(again.runId).toBe(first.runId);
+        const [rows] = await sql('SELECT count(*)::int AS n FROM benchmark_runs WHERE request_key=$1',
+            [request.requestKey]);
+        // A second run over the same corpus would double the spend and make
+        // "did the subject agree with itself" mean nothing.
+        expect(Number(rows.n)).toBe(1);
+    }, 120000);
+
+    it('stops on the ceiling instead of finishing the pass', async () => {
+        // The synthetic runner charges a cent a task and the corpus has four,
+        // so a two-cent ceiling has to stop the pass half way through.
+        const request = body({
+            corpusId: 'budget-compare', seed: 'seed-budget', requestKey: `key-${randomUUID()}`, budgetUsdCents: 2,
+            subjects: [{ id: 'alpha', kind: 'alternative' as const, label: 'Alfa', blindLabel: 'sujeto-A', setupMinutes: 1 }],
+        });
+        const run = await service.start(tenantId, request as any, SUPER_ADMIN);
+        const outcome = await service.process(queued[queued.length - 1].data);
+        expect(outcome.stopReason).toBe('budget_exhausted');
+        expect(outcome.attempts).toBe(2);
+        const state = await service.runState(tenantId, run.runId, SUPER_ADMIN);
+        // Spent up to the ceiling and not a cent past it. A ceiling checked once
+        // at the start of a pass is a ceiling that authorises the whole pass.
+        expect(state).toMatchObject({ budgetUsdCents: 2, spentUsdCents: 2 });
+    }, 120000);
+
+    it('stops on a deadline that has already passed', async () => {
+        const request = body({
+            requestKey: `key-${randomUUID()}`,
+            deadlineAt: new Date(Date.now() - 60_000).toISOString(),
+        });
+        const run = await service.start(tenantId, request as any, SUPER_ADMIN);
+        const outcome = await service.process(queued[queued.length - 1].data);
+        // Nothing runs, and the reason is the deadline rather than a silent zero.
+        expect(outcome).toMatchObject({ attempts: 0, stopReason: 'deadline_passed' });
+        expect((await service.runState(tenantId, run.runId, SUPER_ADMIN))?.deadlineAt).not.toBeNull();
+    }, 120000);
+
+    it('cancels, and a worker that arrives afterwards takes nothing', async () => {
+        const request = body({ requestKey: `key-${randomUUID()}` });
+        const run = await service.start(tenantId, request as any, SUPER_ADMIN);
+        expect(await service.cancel(tenantId, run.runId, SUPER_ADMIN)).toMatchObject({ cancelled: true });
+        const outcome = await service.process(queued[queued.length - 1].data);
+        expect(outcome).toMatchObject({ attempts: 0, stopReason: 'cancelled' });
+        // Terminal: resuming a cancelled run does not reopen it.
+        expect(await service.resume(tenantId, run.runId, SUPER_ADMIN)).toMatchObject({ resumed: false });
+        expect(audits.some(row => row.action === 'benchmark.cancelled')).toBe(true);
+    }, 120000);
+
+    it('pauses without losing the run, and resumes it', async () => {
+        const request = body({ requestKey: `key-${randomUUID()}` });
+        const run = await service.start(tenantId, request as any, SUPER_ADMIN);
+        await service.pause(tenantId, run.runId, SUPER_ADMIN);
+        expect(await service.process(queued[queued.length - 1].data))
+            .toMatchObject({ attempts: 0, stopReason: 'paused' });
+        await service.resume(tenantId, run.runId, SUPER_ADMIN);
+        expect((await service.runState(tenantId, run.runId, SUPER_ADMIN))?.state).toBe('running');
+    }, 120000);
+
+    it('does not answer the same task twice when a job is retried', async () => {
+        const request = body({
+            corpusId: 'retry-compare', seed: 'seed-retry', requestKey: `key-${randomUUID()}`,
+            subjects: [{ id: 'alpha', kind: 'alternative' as const, label: 'Alfa', blindLabel: 'sujeto-A', setupMinutes: 1 }],
+        });
+        await service.start(tenantId, request as any, SUPER_ADMIN);
+        const job = queued[queued.length - 1].data;
+        const first = await service.process(job);
+        expect(first.attempts).toBeGreaterThan(0);
+        // The same job again, which is what BullMQ does after a worker dies.
+        // Before the claim, every task was answered again — by a real model, at
+        // a real price — and the answer thrown away on the unique index.
+        const retried = await service.process(job);
+        expect(retried).toMatchObject({ attempts: 0, skipped: first.attempts });
+        const [rows] = await sql(
+            `SELECT count(*)::int AS n FROM benchmark_attempts WHERE corpus_id='retry-compare' AND subject_id='alpha'`);
+        expect(Number(rows.n)).toBe(first.attempts);
+    }, 120000);
+
+    it('lets another worker take a task a dead one was holding', async () => {
+        const request = body({
+            corpusId: 'lease-compare', seed: 'seed-lease', requestKey: `key-${randomUUID()}`,
+            subjects: [{ id: 'alpha', kind: 'alternative' as const, label: 'Alfa', blindLabel: 'sujeto-A', setupMinutes: 1 }],
+        });
+        await service.start(tenantId, request as any, SUPER_ADMIN);
+        const job = queued[queued.length - 1].data;
+        const done = await service.process(job);
+        // Not vacuous: a run with nothing to do would make the recovery below
+        // pass by comparing zero to zero.
+        expect(done.attempts).toBeGreaterThan(0);
+        // Every task back to `claimed` with an expiry in the past: a worker that
+        // died holding all of them.
+        await sql(`UPDATE benchmark_attempts SET state='claimed', lease_expires_at=NOW()-INTERVAL '1 minute'
+                    WHERE corpus_id='lease-compare'`);
+        const recovered = await service.process(job);
+        // Recoverable, or one crash strands the run until somebody notices.
+        expect(recovered.attempts).toBe(done.attempts);
+        const [rows] = await sql(
+            `SELECT count(*)::int AS n FROM benchmark_attempts
+              WHERE corpus_id='lease-compare' AND state='claimed'`);
+        expect(Number(rows.n)).toBe(0);
     }, 120000);
 
     it('keeps operating it a platform decision', async () => {

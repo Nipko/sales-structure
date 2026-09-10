@@ -96,6 +96,29 @@ BEGIN
                         ON %s."agent_certification_cases" (run_id, state, lease_expires_at)
         $ddl$, target);
         EXECUTE format($ddl$
+            CREATE TABLE IF NOT EXISTS %s."benchmark_runs" (
+                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                        corpus_id TEXT NOT NULL,
+                        corpus_hash TEXT NOT NULL,
+                        run_index INTEGER NOT NULL DEFAULT 1,
+                        request_key TEXT NOT NULL,
+                        state TEXT NOT NULL DEFAULT 'running',
+                        stop_reason TEXT,
+                        budget_usd_cents INTEGER,
+                        spent_usd_cents INTEGER NOT NULL DEFAULT 0,
+                        deadline_at TIMESTAMPTZ,
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        CONSTRAINT benchmark_runs_state
+                            CHECK (state IN ('running','paused','cancelled','finished')),
+                        CONSTRAINT benchmark_runs_spent CHECK (spent_usd_cents >= 0)
+                    )
+        $ddl$, target);
+        EXECUTE format($ddl$
+            CREATE UNIQUE INDEX IF NOT EXISTS uidx_benchmark_run_request
+                        ON %s."benchmark_runs" (request_key)
+        $ddl$, target);
+        EXECUTE format($ddl$
             CREATE TABLE IF NOT EXISTS %s."benchmark_attempts" (
                         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                         corpus_id TEXT NOT NULL,
@@ -103,6 +126,9 @@ BEGIN
                         subject_id TEXT NOT NULL,
                         task_key TEXT NOT NULL,
                         run_index INTEGER NOT NULL DEFAULT 1,
+                        run_id UUID,
+                        state TEXT NOT NULL DEFAULT 'recorded',
+                        lease_expires_at TIMESTAMPTZ,
                         confirmed BOOLEAN,
                         cost_usd_cents INTEGER,
                         latency_ms INTEGER,

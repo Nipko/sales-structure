@@ -209,6 +209,46 @@ export function syntheticBenchmarkRunner(options: {
 // ─── Durable attempts and blind reviews ─────────────────────────────────────
 
 export const BENCHMARK_LEDGER_DDL: readonly string[] = Object.freeze([
+    `CREATE TABLE IF NOT EXISTS benchmark_runs (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        corpus_id TEXT NOT NULL,
+        corpus_hash TEXT NOT NULL,
+        run_index INTEGER NOT NULL DEFAULT 1,
+        /** Stable across retries, so a re-published start joins the same run. */
+        request_key TEXT NOT NULL,
+        state TEXT NOT NULL DEFAULT 'running',
+        stop_reason TEXT,
+        /** The ceiling. A live run without one is refused, like certification. */
+        budget_usd_cents INTEGER,
+        spent_usd_cents INTEGER NOT NULL DEFAULT 0,
+        deadline_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CONSTRAINT benchmark_runs_state
+            CHECK (state IN ('running','paused','cancelled','finished')),
+        CONSTRAINT benchmark_runs_spent CHECK (spent_usd_cents >= 0)
+    )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS uidx_benchmark_run_request
+        ON benchmark_runs (request_key)`,
+    /**
+     * `state`, `run_id` and `lease_expires_at` are claimed BEFORE the model is
+     * called, not written after it.
+     *
+     * The original loop ran the runner and THEN inserted with `ON CONFLICT DO
+     * NOTHING`. On a retried job that meant every task was answered again — by
+     * a real model, for a real price — and the answer thrown away by the
+     * conflict. The most expensive path in the programme paid twice for work it
+     * already had.
+     *
+     * A claimed row also gives the budget something to charge and the lease
+     * something to expire, which is what makes a dead worker recoverable
+     * instead of a run that never finishes.
+     *
+     * No CHECK on `state`. It has two values, both written by one function in
+     * this file, and a constraint that existed only on tenants created after
+     * today would be worse than none: the parity between a fresh schema and an
+     * upgraded one is the thing that has to hold.
+     */
     `CREATE TABLE IF NOT EXISTS benchmark_attempts (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         corpus_id TEXT NOT NULL,
@@ -216,6 +256,9 @@ export const BENCHMARK_LEDGER_DDL: readonly string[] = Object.freeze([
         subject_id TEXT NOT NULL,
         task_key TEXT NOT NULL,
         run_index INTEGER NOT NULL DEFAULT 1,
+        run_id UUID,
+        state TEXT NOT NULL DEFAULT 'recorded',
+        lease_expires_at TIMESTAMPTZ,
         confirmed BOOLEAN,
         cost_usd_cents INTEGER,
         latency_ms INTEGER,
@@ -241,9 +284,137 @@ export const BENCHMARK_LEDGER_DDL: readonly string[] = Object.freeze([
         ON benchmark_reviews (corpus_hash, task_key, blind_label, reviewer_id)`,
 ]);
 
+/**
+ * The same three columns, for a tenant whose `benchmark_attempts` predates them.
+ *
+ * Separate from the create list because they are a different risk and belong in
+ * a different migration: `CREATE TABLE IF NOT EXISTS` on a table that exists is
+ * a no-op, while `ADD COLUMN` on one that exists is a change to live rows.
+ * Additive and nullable, which is what expand-contract permits in one deploy —
+ * the old code never reads them.
+ */
+export const BENCHMARK_ATTEMPT_UPGRADE_DDL: readonly string[] = Object.freeze([
+    `ALTER TABLE benchmark_attempts
+        ADD COLUMN IF NOT EXISTS run_id UUID,
+        ADD COLUMN IF NOT EXISTS state TEXT NOT NULL DEFAULT 'recorded',
+        ADD COLUMN IF NOT EXISTS lease_expires_at TIMESTAMPTZ`,
+]);
+
 export async function ensureBenchmarkLedger(query: BenchmarkQuery): Promise<void> {
     for (const statement of BENCHMARK_LEDGER_DDL) await query(statement);
+    for (const statement of BENCHMARK_ATTEMPT_UPGRADE_DDL) await query(statement);
 }
+
+export type BenchmarkStopReason =
+    | 'complete' | 'cancelled' | 'paused' | 'budget_exhausted' | 'deadline_passed';
+
+export interface BenchmarkRunRecord {
+    readonly id: string;
+    readonly state: 'running' | 'paused' | 'cancelled' | 'finished';
+    readonly stopReason: BenchmarkStopReason | null;
+    readonly budgetUsdCents: number | null;
+    readonly spentUsdCents: number;
+    readonly deadlineAt: string | null;
+}
+
+const projectRun = (row: any): BenchmarkRunRecord => Object.freeze({
+    id: String(row.id),
+    state: row.state,
+    stopReason: row.stop_reason ?? null,
+    budgetUsdCents: row.budget_usd_cents == null ? null : Number(row.budget_usd_cents),
+    spentUsdCents: Number(row.spent_usd_cents ?? 0),
+    deadlineAt: row.deadline_at ? new Date(row.deadline_at).toISOString() : null,
+});
+
+/**
+ * Opens the run, or returns the one this request already opened.
+ *
+ * Idempotent by `request_key` for the same reason certification is: a start
+ * that failed after publishing half its jobs has to be safe to call again, and
+ * a second run over the same corpus would double the spend and make the
+ * reliability count — "did the subject agree with itself" — meaningless.
+ */
+export async function openBenchmarkRun(query: BenchmarkQuery, input: {
+    corpusId: string; corpusHash: string; requestKey: string; runIndex?: number;
+    budgetUsdCents?: number | null; deadlineAt?: string | null;
+}): Promise<BenchmarkRunRecord> {
+    const rows = await query<any[]>(
+        `INSERT INTO benchmark_runs
+            (corpus_id, corpus_hash, run_index, request_key, budget_usd_cents, deadline_at)
+         VALUES ($1,$2,$3,$4,$5,$6::timestamptz)
+         ON CONFLICT (request_key) DO UPDATE SET updated_at = NOW()
+         RETURNING *`,
+        [input.corpusId, input.corpusHash, Math.max(1, Math.trunc(input.runIndex ?? 1)),
+            input.requestKey, input.budgetUsdCents ?? null, input.deadlineAt ?? null]);
+    return projectRun(rows[0]);
+}
+
+export async function benchmarkRunProgress(
+    query: BenchmarkQuery, runId: string,
+): Promise<BenchmarkRunRecord | null> {
+    const [row] = await query<any[]>('SELECT * FROM benchmark_runs WHERE id = $1::uuid', [runId]);
+    return row ? projectRun(row) : null;
+}
+
+/**
+ * May another task run, and if not, why.
+ *
+ * Asked before every task rather than once per subject: a ceiling checked at
+ * the start of a hundred-task pass is a ceiling that authorises the whole pass.
+ */
+export async function benchmarkRunGate(
+    query: BenchmarkQuery, runId: string, reserveUsdCents = 0,
+): Promise<{ allowed: boolean; reason: BenchmarkStopReason | null }> {
+    const [row] = await query<any[]>(
+        `SELECT state, budget_usd_cents, spent_usd_cents,
+                deadline_at IS NOT NULL AND deadline_at <= clock_timestamp() AS expired
+           FROM benchmark_runs WHERE id = $1::uuid`, [runId]);
+    if (!row) return { allowed: false, reason: 'cancelled' };
+    if (row.state === 'cancelled') return { allowed: false, reason: 'cancelled' };
+    if (row.state === 'paused') return { allowed: false, reason: 'paused' };
+    // `clock_timestamp()`, not `NOW()`: inside a long transaction `NOW()` is
+    // frozen at BEGIN, so a deadline that passed mid-pass would never be seen.
+    if (row.expired) return { allowed: false, reason: 'deadline_passed' };
+    if (row.budget_usd_cents != null) {
+        const spent = Number(row.spent_usd_cents);
+        const budget = Number(row.budget_usd_cents);
+        // Two conditions, and the first one is the one that is easy to miss:
+        // with nothing reserved, `spent + 0 > budget` still lets a task run when
+        // the ceiling is exactly reached, and that task then spends past it. A
+        // ceiling overshot by one task is a ceiling.
+        if (spent >= budget || spent + Math.max(0, reserveUsdCents) > budget) {
+            return { allowed: false, reason: 'budget_exhausted' };
+        }
+    }
+    return { allowed: true, reason: null };
+}
+
+/** Adds what a task actually cost. Atomic, so two workers cannot both fit. */
+export async function chargeBenchmarkRun(
+    query: BenchmarkQuery, runId: string, usdCents: number,
+): Promise<void> {
+    if (!Number.isFinite(usdCents) || usdCents <= 0) return;
+    await query(
+        `UPDATE benchmark_runs SET spent_usd_cents = spent_usd_cents + $2, updated_at = NOW()
+          WHERE id = $1::uuid`, [runId, Math.round(usdCents)]);
+}
+
+const setRunState = async (
+    query: BenchmarkQuery, runId: string, state: string, reason: BenchmarkStopReason | null,
+): Promise<boolean> => {
+    const rows = await query<any[]>(
+        `UPDATE benchmark_runs SET state = $2, stop_reason = $3, updated_at = NOW()
+          WHERE id = $1::uuid AND state <> 'cancelled' RETURNING id`, [runId, state, reason]);
+    return !!rows?.length;
+};
+
+/** Terminal. A worker that arrives afterwards takes nothing. */
+export const cancelBenchmarkRun = (query: BenchmarkQuery, runId: string) =>
+    setRunState(query, runId, 'cancelled', 'cancelled');
+export const pauseBenchmarkRun = (query: BenchmarkQuery, runId: string) =>
+    setRunState(query, runId, 'paused', 'paused');
+export const resumeBenchmarkRun = (query: BenchmarkQuery, runId: string) =>
+    setRunState(query, runId, 'running', null);
 
 /**
  * Runs a corpus for one subject and stores every attempt.
@@ -258,10 +429,42 @@ export async function runBenchmarkSubject(input: {
     readonly subject: BenchmarkSubject;
     readonly runner: BenchmarkRunner;
     readonly runIndex?: number;
-}): Promise<{ attempts: number; confirmed: number }> {
+    /** When present, every task is gated and charged against this run. */
+    readonly runId?: string;
+    /** How long a claimed task may be held before another worker may take it. */
+    readonly leaseSeconds?: number;
+}): Promise<{ attempts: number; confirmed: number; skipped: number; stopReason: BenchmarkStopReason }> {
     const runIndex = Math.max(1, Math.trunc(input.runIndex ?? 1));
-    let attempts = 0, confirmed = 0;
+    const leaseSeconds = Math.max(30, Math.trunc(input.leaseSeconds ?? 900));
+    let attempts = 0, confirmed = 0, skipped = 0;
+    let stopReason: BenchmarkStopReason = 'complete';
+
     for (const task of input.corpus.tasks) {
+        if (input.runId) {
+            const gate = await benchmarkRunGate(input.query, input.runId);
+            if (!gate.allowed) { stopReason = gate.reason ?? 'cancelled'; break; }
+        }
+
+        // Claim BEFORE the runner. The loop used to call the model and then
+        // insert with `ON CONFLICT DO NOTHING`, so a retried job answered every
+        // task again — at a real price — and threw the answer away on the
+        // conflict. Claiming first makes a retry skip what is already done, and
+        // gives a dead worker's task an expiry somebody else can take.
+        const claimed = await input.query<any[]>(
+            `INSERT INTO benchmark_attempts
+                (corpus_id, corpus_hash, subject_id, task_key, run_index, run_id, state, lease_expires_at)
+             VALUES ($1,$2,$3,$4,$5,$6::uuid,'claimed', clock_timestamp() + ($7 || ' seconds')::interval)
+             ON CONFLICT (corpus_hash, subject_id, task_key, run_index) DO UPDATE
+                 SET lease_expires_at = clock_timestamp() + ($7 || ' seconds')::interval,
+                     run_id = COALESCE(benchmark_attempts.run_id, EXCLUDED.run_id)
+               WHERE benchmark_attempts.state = 'claimed'
+                 AND benchmark_attempts.lease_expires_at IS NOT NULL
+                 AND benchmark_attempts.lease_expires_at < clock_timestamp()
+             RETURNING id`,
+            [input.corpus.id, input.corpus.contentHash, input.subject.id, task.key, runIndex,
+                input.runId ?? null, String(leaseSeconds)]);
+        if (!claimed?.length) { skipped++; continue; }
+
         let outcome: Awaited<ReturnType<BenchmarkRunner>>;
         try {
             outcome = await input.runner(input.subject, task);
@@ -274,17 +477,22 @@ export async function runBenchmarkSubject(input: {
             };
         }
         await input.query(
-            `INSERT INTO benchmark_attempts
-                (corpus_id, corpus_hash, subject_id, task_key, run_index, confirmed, cost_usd_cents, latency_ms, transcript, error)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10)
-             ON CONFLICT (corpus_hash, subject_id, task_key, run_index) DO NOTHING`,
-            [input.corpus.id, input.corpus.contentHash, input.subject.id, task.key, runIndex,
-                outcome.confirmed, outcome.costUsdCents, outcome.latencyMs,
+            `UPDATE benchmark_attempts
+                SET state = 'recorded', lease_expires_at = NULL, confirmed = $2,
+                    cost_usd_cents = $3, latency_ms = $4, transcript = $5::jsonb, error = $6
+              WHERE id = $1::uuid`,
+            [claimed[0].id, outcome.confirmed, outcome.costUsdCents, outcome.latencyMs,
                 JSON.stringify(outcome.transcript ?? []), outcome.error ?? null]);
+        // Charged after the fact, at what it actually cost: the reservation is
+        // the gate above, and a run that pretended to spend its estimate would
+        // stop early on work it never did.
+        if (input.runId && outcome.costUsdCents) {
+            await chargeBenchmarkRun(input.query, input.runId, outcome.costUsdCents);
+        }
         attempts++;
         if (outcome.confirmed === true) confirmed++;
     }
-    return { attempts, confirmed };
+    return { attempts, confirmed, skipped, stopReason };
 }
 
 /**
@@ -312,8 +520,11 @@ export async function loadBenchmarkEvidence(
     query: BenchmarkQuery, corpusHash: string,
 ): Promise<{ attempts: readonly BenchmarkAttempt[]; reviews: readonly BenchmarkReview[] }> {
     const attemptRows = await query<any[]>(
+        // `state = 'recorded'`: a claimed row is a task somebody is holding, not
+        // an attempt. Counting it would report an answer nobody has given yet.
         `SELECT subject_id, task_key, corpus_hash, confirmed, cost_usd_cents, latency_ms, transcript, error
-           FROM benchmark_attempts WHERE corpus_hash = $1 ORDER BY subject_id, task_key, run_index`, [corpusHash]);
+           FROM benchmark_attempts WHERE corpus_hash = $1 AND state = 'recorded'
+          ORDER BY subject_id, task_key, run_index`, [corpusHash]);
     const reviewRows = await query<any[]>(
         `SELECT task_key, blind_label, reviewer_id, score, notes
            FROM benchmark_reviews WHERE corpus_hash = $1 ORDER BY task_key, blind_label`, [corpusHash]);

@@ -5400,6 +5400,25 @@ CREATE UNIQUE INDEX IF NOT EXISTS uidx_certification_case_attempt
         ON "{{SCHEMA_NAME}}"."agent_certification_cases" (run_id, case_key, attempt);
 CREATE INDEX IF NOT EXISTS idx_certification_case_claimable
         ON "{{SCHEMA_NAME}}"."agent_certification_cases" (run_id, state, lease_expires_at);
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."benchmark_runs" (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        corpus_id TEXT NOT NULL,
+        corpus_hash TEXT NOT NULL,
+        run_index INTEGER NOT NULL DEFAULT 1,
+        request_key TEXT NOT NULL,
+        state TEXT NOT NULL DEFAULT 'running',
+        stop_reason TEXT,
+        budget_usd_cents INTEGER,
+        spent_usd_cents INTEGER NOT NULL DEFAULT 0,
+        deadline_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CONSTRAINT benchmark_runs_state
+            CHECK (state IN ('running','paused','cancelled','finished')),
+        CONSTRAINT benchmark_runs_spent CHECK (spent_usd_cents >= 0)
+    );
+CREATE UNIQUE INDEX IF NOT EXISTS uidx_benchmark_run_request
+        ON "{{SCHEMA_NAME}}"."benchmark_runs" (request_key);
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."benchmark_attempts" (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         corpus_id TEXT NOT NULL,
@@ -5407,6 +5426,9 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."benchmark_attempts" (
         subject_id TEXT NOT NULL,
         task_key TEXT NOT NULL,
         run_index INTEGER NOT NULL DEFAULT 1,
+        run_id UUID,
+        state TEXT NOT NULL DEFAULT 'recorded',
+        lease_expires_at TIMESTAMPTZ,
         confirmed BOOLEAN,
         cost_usd_cents INTEGER,
         latency_ms INTEGER,
@@ -5542,3 +5564,19 @@ CREATE INDEX IF NOT EXISTS idx_crm_note_receipt_contact
 CREATE INDEX IF NOT EXISTS idx_crm_note_receipt_pending
         ON "{{SCHEMA_NAME}}"."crm_note_receipts" (updated_at) WHERE state = 'retract_pending';
 -- END CRM NOTE RECEIPTS
+
+-- BEGIN BENCHMARK ATTEMPT CLAIM
+-- Un intento se RESERVA antes de llamar al modelo, no se escribe después.
+-- El bucle anterior corría el runner y recién entonces insertaba con ON
+-- CONFLICT DO NOTHING: en un job reintentado eso volvía a contestar cada
+-- tarea —con un modelo real, a precio real— y tiraba la respuesta por el
+-- conflicto. El camino más caro del programa pagaba dos veces por trabajo
+-- que ya tenía. La fila reservada además le da al presupuesto algo que
+-- cobrar y al lease algo que vencer.
+-- Generado desde la constante DDL que ejecuta el runtime
+-- (prisma/generate-benchmark-attempt-upgrade.cjs).
+ALTER TABLE "{{SCHEMA_NAME}}"."benchmark_attempts"
+        ADD COLUMN IF NOT EXISTS run_id UUID,
+        ADD COLUMN IF NOT EXISTS state TEXT NOT NULL DEFAULT 'recorded',
+        ADD COLUMN IF NOT EXISTS lease_expires_at TIMESTAMPTZ;
+-- END BENCHMARK ATTEMPT CLAIM

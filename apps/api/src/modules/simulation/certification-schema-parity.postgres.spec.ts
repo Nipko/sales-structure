@@ -28,7 +28,7 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
 const integration = connection ? describe : describe.skip;
 
 const TABLES = ['agent_certification_runs', 'agent_certification_subjects', 'agent_certification_cases',
-    'benchmark_attempts', 'benchmark_reviews', 'commitment_proposals', 'outbound_payloads'];
+    'benchmark_runs', 'benchmark_attempts', 'benchmark_reviews', 'commitment_proposals', 'outbound_payloads'];
 
 integration('the three definitions of the certification tables agree', () => {
     const suffix = randomUUID().replace(/-/g, '');
@@ -151,6 +151,6 @@ integration('the three definitions of the certification tables agree', () => {
             expect(statement).not.toMatch(/^\s*(DROP|ALTER|UPDATE|DELETE|INSERT INTO|TRUNCATE)\b/i);
         }
         expect(migration).not.toMatch(/\bDROP\s+(TABLE|COLUMN|INDEX)\b|\bALTER\s+TABLE\b/i);
-        expect((migration.match(/CREATE TABLE IF NOT EXISTS/g) ?? []).length).toBe(7);
+        expect((migration.match(/CREATE TABLE IF NOT EXISTS/g) ?? []).length).toBe(8);
     });
 });

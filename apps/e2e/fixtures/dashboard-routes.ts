@@ -40,6 +40,10 @@ export const dashboardShell = (tenantId = TENANT): ApiRoutes => ({
   "billing/public/plans": ok([]),
   [`fiscal/${tenantId}/data`]: ok({ required: false, complete: true }),
   [`quality/${tenantId}/attention-summary`]: ok({ total: 0, items: [] }),
+  // Tenants predate durable quality snapshots, so the shell bootstraps one the
+  // first time the summary proves an agent has never been evaluated. It is a
+  // POST, and it is the shell's, not any screen's.
+  [`quality/${tenantId}/reconcile`]: ok({ total: 0, items: [] }),
   [`analytics/overview/${tenantId}`]: ok({ conversations: 0, messages: 0 }),
   [`analytics/commercial-overview/${tenantId}`]: ok({ revenue: 0, opportunities: 0 }),
   "channels/overview": ok({ channels: [] }),
@@ -84,4 +88,71 @@ export const handoffDestinations = (tenantId = TENANT): ApiRoutes => ({
   [`catalog/courses/${tenantId}`]: ok([]),
   // The navigation cost counter, which every operational surface posts to.
   [`analytics/navigation-telemetry/${tenantId}`]: ok({ recorded: true }),
+});
+
+/**
+ * A business that is already running, on top of the shell.
+ *
+ * The shell's `setup-status` is deliberately the shape of a brand-new account,
+ * which is why `/admin` routes on to the setup wizard for a tenant admin: the
+ * stage derives to `account_created` and the guide sends them there. That is the
+ * right default for a first-login test and the wrong one for everything else —
+ * a tour of the panel cannot start on the one route tours refuse to leave.
+ *
+ * `hasAnyChannel` is the fact that moves the stage. Nothing here claims the
+ * setup is FINISHED: the card still has open items, which is the ordinary state
+ * of a business a few days in and the state in which tours are offered.
+ */
+export const readyBusiness = (tenantId = TENANT): ApiRoutes => ({
+  [`persona/${tenantId}/setup-status`]: ok({
+    onboardingStage: "channel_connected",
+    hasAnyChannel: true,
+    connectedChannelTypes: ["whatsapp"],
+    setupWizardCompleted: true,
+    hasPersona: true,
+    timezone: "America/Bogota",
+  }),
+  "channels/overview": ok({
+    channels: [{ type: "whatsapp", accounts: 1, health: "ok", connected: true }],
+  }),
+});
+
+const AGENT = "77777777-7777-4777-8777-777777777777";
+
+/**
+ * The assessment, in the shape the setup card and the quality banner read.
+ *
+ * "What is still missing before this account works" has exactly one answer in
+ * this product — `AgentAssessment.tasks`, computed server-side against the same
+ * preparation checks Agent health is graded on. The card renders that answer and
+ * nothing else, so a fixture that is merely assessment-SHAPED renders "no
+ * pudimos verificar estos pasos" and proves nothing. The task list below is the
+ * real projection: the same hrefs and tours the API pairs each key with.
+ */
+export const pendingAssessment = (tenantId = TENANT): ApiRoutes => ({
+  [`copilot/assessment/${tenantId}`]: ok({
+    version: 1,
+    revision: "e2e-1",
+    generatedAt: "2026-09-09T12:00:00.000Z",
+    agent: { id: AGENT, name: "Laura Sofía", version: 3, isActive: true },
+    overview: null,
+    mission: {
+      source: "template_derived", templateId: "support", profileId: null,
+      definition: null, availableIntentKeys: [], unsupportedIntents: [],
+    },
+    channels: [],
+    tasks: [
+      { key: "business", status: "fail", state: "pending", checks: [],
+        href: "/admin/settings/business-info", tourId: "business_identity", dependsOn: [] },
+      { key: "knowledge", status: "fail", state: "pending", checks: [],
+        href: "/admin/knowledge", tourId: "knowledge_base", dependsOn: ["business"] },
+      { key: "hours", status: "pass", state: "operating", checks: [],
+        href: "/admin/settings/business-hours", tourId: "business_hours", dependsOn: [] },
+    ],
+    state: "pending",
+    nextTask: "business",
+    requiredTests: [],
+    blockers: [],
+    recommendations: [],
+  }),
 });

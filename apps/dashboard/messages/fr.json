@@ -4083,6 +4083,8 @@
       "oauthConnecting": "Connexion...",
       "connectSuccess": "Canal Instagram connecte avec succes.",
       "connectFailed": "Echec de la connexion Instagram. Veuillez reessayer.",
+      "connectTimeout": "Nous n'avons pas pu confirmer la connexion à temps. Elle a peut-être abouti : rouvrez Canaux pour vérifier avant de réessayer.",
+      "connectAlreadyUsed": "Cette autorisation a déjà été utilisée. Ouvrez Canaux pour voir si Instagram est connecté ; sinon, recommencez depuis là.",
       "connectedAccount": "Compte connecte",
       "tokenExpiresIn": "Le token expire dans {days} jours",
       "tokenExpired": "Token expire. Veuillez reconnecter votre compte.",

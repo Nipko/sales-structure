@@ -52,6 +52,16 @@ export interface HermeticState {
   undeclared: string[];
   /** Every API path the page asked for, in order. */
   observed: string[];
+  /**
+   * `METHOD path` for everything that was not a GET.
+   *
+   * Separate from `observed` because "did this change anything" is a different
+   * question from "what did it read", and it is the one a guided tour has to
+   * answer with an empty list: a tour opens screens and points at them, and a
+   * tour that saved something would be changing a business's configuration
+   * while claiming to explain it.
+   */
+  writes: string[];
 }
 
 /** `null` tenant is the real shape of a super_admin: platform mode, no implicit tenant. */
@@ -140,6 +150,7 @@ export async function hermeticDashboard(
     productionRequests: [],
     undeclared: [],
     observed: [],
+    writes: [],
   };
   const keys = Object.keys(routes).sort((a, b) => b.length - a.length);
 
@@ -168,6 +179,8 @@ export async function hermeticDashboard(
     }
     const path = url.pathname.replace(/^.*\/api\/v1\/?/, "");
     state.observed.push(path);
+    const method = route.request().method();
+    if (method !== "GET") state.writes.push(`${method} ${path}`);
     const key = keys.find((candidate) => path.startsWith(candidate));
     if (!key) {
       // Answered, not hung: a timeout would say nothing about which call was

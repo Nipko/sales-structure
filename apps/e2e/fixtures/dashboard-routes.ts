@@ -1,3 +1,4 @@
+import { VERTICAL_CAPABILITY_MANIFEST } from "@parallext/shared";
 import { ok, type ApiRoutes } from "./dashboard-session";
 
 /**
@@ -155,4 +156,21 @@ export const pendingAssessment = (tenantId = TENANT): ApiRoutes => ({
     blockers: [],
     recommendations: [],
   }),
+});
+
+/**
+ * The vertical catalogue the signup wizard fills its industry selector from.
+ *
+ * Derived from the shared manifest rather than typed out, because the dashboard
+ * refuses a catalogue that does not have exactly the canonical number of
+ * industries — a hand-copied list would silently become a fixture that renders
+ * an empty selector and a test that proves nothing about the real one.
+ */
+export const verticalCatalog = (): ApiRoutes => ({
+  "verticals/definitions/all": ok(Object.fromEntries(
+    Object.entries(VERTICAL_CAPABILITY_MANIFEST).map(([industry, entry]) => [
+      industry,
+      entry.subtypes.map((key) => ({ key, label: { es: key, en: key, pt: key, fr: key } })),
+    ]),
+  )),
 });

@@ -190,7 +190,17 @@ export default function SetupWizardPage() {
             const current = configuration?.success ? configuration.data ?? null : null;
             workspaceRef.current = current; setWorkspace(current);
             if (hasAgentRef.current && !current) setError(tDraft('loadUnavailable'));
-            const editable = current?.draft?.body ?? current?.operational.body;
+            // `?.` all the way down, not one level short.
+            //
+            // `current` was already treated as possibly absent — the line above
+            // sets an error for it — but `current?.operational.body` still
+            // throws for a workspace that arrives without `operational`. The
+            // throw escapes into the tour's error boundary and the wizard is
+            // left on its spinner forever: no message, no retry, and the one
+            // screen a new account cannot get past. The contract says
+            // `operational` is always there; if it ever is not, the person gets
+            // the error this file already writes instead of a white page.
+            const editable = current?.draft?.body ?? current?.operational?.body;
             const templateConfig = ownTemplateId
                 ? (templates.find((tmpl) => tmpl.id === ownTemplateId)?.config
                     ?? templates.find((tmpl) => tmpl.id === ownTemplateId)?.config_json)
@@ -222,7 +232,7 @@ export default function SetupWizardPage() {
                 if (draft && typeof draft.step === "number") {
                     setStep(Math.min(LAST_STEP, Math.max(0, draft.step)) as StepIndex);
                 }
-                const matchingBase = draft?.operationalVersion === current?.operational.version && draft?.revisionId === (current?.draft?.id ?? null);
+                const matchingBase = draft?.operationalVersion === current?.operational?.version && draft?.revisionId === (current?.draft?.id ?? null);
                 if (matchingBase && typeof draft?.agentName === "string" && draft.agentName.trim() && draft.agentName !== name) {
                     setAgentName(draft.agentName);
                     dirtyRef.current = true;
@@ -243,7 +253,7 @@ export default function SetupWizardPage() {
         if (!draftKey || loading) return;
         try {
             localStorage.setItem(draftKey, JSON.stringify({ step, agentName, greeting,
-                operationalVersion: workspace?.operational.version, revisionId: workspace?.draft?.id ?? null }));
+                operationalVersion: workspace?.operational?.version, revisionId: workspace?.draft?.id ?? null }));
         } catch { /* noop */ }
     }, [agentName, draftKey, greeting, loading, step, workspace]);
 

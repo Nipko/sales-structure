@@ -348,11 +348,13 @@ export default function SignupPage() {
                             teléfono, que es desde donde se registra la mayoría. */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3.5">
                             <div>
-                                <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">{t('firstName')} <span className="text-rose-500">*</span></label>
+                                <label htmlFor="signup-first-name" className="block text-[13px] text-muted-foreground mb-1.5 font-medium">{t('firstName')} <span className="text-rose-500">*</span></label>
                                 <div className="relative">
                                     <User size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground/50" />
                                     <input
+                                        id="signup-first-name"
                                         type="text"
+                                        autoComplete="given-name"
                                         value={form.firstName}
                                         onChange={(e) => updateField("firstName", e.target.value)}
                                         placeholder={t('firstNamePlaceholder')}
@@ -362,11 +364,13 @@ export default function SignupPage() {
                                 </div>
                             </div>
                             <div>
-                                <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">{t('lastName')} <span className="text-rose-500">*</span></label>
+                                <label htmlFor="signup-last-name" className="block text-[13px] text-muted-foreground mb-1.5 font-medium">{t('lastName')} <span className="text-rose-500">*</span></label>
                                 <div className="relative">
                                     <User size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground/50" />
                                     <input
+                                        id="signup-last-name"
                                         type="text"
+                                        autoComplete="family-name"
                                         value={form.lastName}
                                         onChange={(e) => updateField("lastName", e.target.value)}
                                         placeholder={t('lastNamePlaceholder')}
@@ -379,13 +383,15 @@ export default function SignupPage() {
 
                         {/* Email */}
                         <div className="mb-3.5">
-                            <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">
+                            <label htmlFor="signup-email" className="block text-[13px] text-muted-foreground mb-1.5 font-medium">
                                 {t('corporateEmail')} <span className="text-rose-500">*</span>
                             </label>
                             <div className="relative">
                                 <Mail size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground/50" />
                                 <input
+                                    id="signup-email"
                                     type="email"
+                                    autoComplete="email"
                                     value={form.email}
                                     onChange={(e) => updateField("email", e.target.value)}
                                     placeholder={t('emailPlaceholder')}
@@ -397,10 +403,11 @@ export default function SignupPage() {
 
                         {/* Password */}
                         <div className="mb-6">
-                            <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">
+                            <label htmlFor="signup-password" className="block text-[13px] text-muted-foreground mb-1.5 font-medium">
                                 {t('password')} <span className="text-rose-500">*</span>
                             </label>
                             <PasswordInput
+                                id="signup-password"
                                 value={form.password}
                                 onChange={(v) => updateField("password", v)}
                                 showValidation={true}

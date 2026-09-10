@@ -1,6 +1,6 @@
 # Revisión independiente de la primera tanda de control de gasto de WhatsApp
 
-Fecha: 2026-09-10  
+Fecha: 2026-09-10
 Revisión: `80f56077..2df6922af5e3b1893fc84ae0845231467745e25a` (31 commits)
 
 ## Dictamen
@@ -196,4 +196,3 @@ motor económico, quedan 26 productores cobrables fuera del carril durable y los
 fallos anteriores afectan continuidad, identidad y revocación. Los gates de
 cuentas reales, tarjeta, proveedor y evaluación sólo deben abrirse después de
 cerrar estos bloqueos locales.
-

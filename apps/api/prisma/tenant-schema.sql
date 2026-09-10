@@ -5580,3 +5580,82 @@ ALTER TABLE "{{SCHEMA_NAME}}"."benchmark_attempts"
         ADD COLUMN IF NOT EXISTS state TEXT NOT NULL DEFAULT 'recorded',
         ADD COLUMN IF NOT EXISTS lease_expires_at TIMESTAMPTZ;
 -- END BENCHMARK ATTEMPT CLAIM
+
+-- BEGIN WHATSAPP SPEND LEDGER
+-- Reserva monetaria y contador por alcance para cada saliente de WhatsApp.
+-- Desde el 1-oct-2026 Meta cobra el mensaje de servicio entregado, así que la
+-- autorización tiene que existir ANTES del efecto y sobrevivir a un COMMIT
+-- incierto. Formas y razones en
+-- modules/billing/whatsapp-rates/RESERVATION-DESIGN.md (secciones 2 a 5).
+--
+-- cap_minor y cap_deliveries son excluyentes: una fila limita dinero o limita
+-- mensajes, nunca las dos, porque "10 dólares" y "1.000 mensajes" son techos
+-- distintos y mezclarlos hace ambiguo cuál se agotó.
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."whatsapp_spend_counters" (
+        scope_kind TEXT NOT NULL,
+        scope_key TEXT NOT NULL,
+        period_key TEXT NOT NULL,
+        cap_minor BIGINT,
+        cap_deliveries INTEGER,
+        reserved_minor BIGINT NOT NULL DEFAULT 0,
+        settled_minor BIGINT NOT NULL DEFAULT 0,
+        used_deliveries INTEGER NOT NULL DEFAULT 0,
+        currency TEXT,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+        PRIMARY KEY (scope_kind, scope_key, period_key),
+        CONSTRAINT whatsapp_spend_counters_scope CHECK (scope_kind IN
+            ('account','business','contact','number_month')),
+        CONSTRAINT whatsapp_spend_counters_one_cap
+            CHECK (num_nonnulls(cap_minor, cap_deliveries) <= 1),
+        CONSTRAINT whatsapp_spend_counters_non_negative CHECK (
+            reserved_minor >= 0 AND settled_minor >= 0 AND used_deliveries >= 0)
+    );
+-- effect_key es único y DERIVABLE del efecto: es lo que hace que un reintento
+-- encuentre su propia reserva en vez de tomar una segunda, que sería cobrar dos
+-- veces por un mensaje que quizá ya salió.
+--
+-- lease_expires_at es NOT NULL a propósito. Una fila 'held' sin lease sería
+-- invisible para el barredor (lease < clock_timestamp() da NULL, no true) y
+-- dejaría presupuesto tomado para siempre. El barredor además la mueve a
+-- 'indeterminate', nunca a 'released': la exposición queda visible.
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."whatsapp_spend_reservations" (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        effect_key TEXT NOT NULL,
+        state TEXT NOT NULL DEFAULT 'held',
+        decision TEXT NOT NULL,
+        basis TEXT NOT NULL,
+        scope_kind TEXT,
+        scope_key TEXT,
+        period_key TEXT,
+        reserved_minor BIGINT NOT NULL,
+        unit_ceiling_minor BIGINT NOT NULL,
+        charged_minor BIGINT,
+        currency TEXT NOT NULL,
+        free_deliveries INTEGER NOT NULL DEFAULT 0,
+        charged_deliveries INTEGER NOT NULL DEFAULT 0,
+        rate_version TEXT,
+        applied_local_date DATE,
+        exact_micros BIGINT NOT NULL DEFAULT 0,
+        reason TEXT,
+        lease_expires_at TIMESTAMPTZ NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+        CONSTRAINT whatsapp_spend_reservations_state CHECK (state IN
+            ('held','settled','released','pending_reconciliation','indeterminate')),
+        CONSTRAINT whatsapp_spend_reservations_decision
+            CHECK (decision IN ('accepted','unknown')),
+        CONSTRAINT whatsapp_spend_reservations_charged
+            CHECK ((state = 'settled') = (charged_minor IS NOT NULL)),
+        CONSTRAINT whatsapp_spend_reservations_non_negative CHECK (
+            reserved_minor >= 0 AND unit_ceiling_minor >= 0 AND exact_micros >= 0
+            AND free_deliveries >= 0 AND charged_deliveries >= 0
+            AND (charged_minor IS NULL OR charged_minor >= 0))
+    );
+CREATE UNIQUE INDEX IF NOT EXISTS uidx_whatsapp_spend_effect
+        ON "{{SCHEMA_NAME}}"."whatsapp_spend_reservations" (effect_key);
+CREATE INDEX IF NOT EXISTS idx_whatsapp_spend_open
+        ON "{{SCHEMA_NAME}}"."whatsapp_spend_reservations" (lease_expires_at)
+        WHERE state IN ('held','pending_reconciliation','indeterminate');
+CREATE INDEX IF NOT EXISTS idx_whatsapp_spend_scope
+        ON "{{SCHEMA_NAME}}"."whatsapp_spend_reservations" (scope_kind, scope_key, period_key);
+-- END WHATSAPP SPEND LEDGER

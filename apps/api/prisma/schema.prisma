@@ -214,6 +214,21 @@ model ChannelAccount {
   webhookSecret String?  @map("webhook_secret")
   isActive      Boolean  @default(true) @map("is_active")
   metadata      Json     @default("{}")
+  /// IANA zone of the WhatsApp Business Account Meta bills (`America/Bogota`).
+  ///
+  /// From 1 October 2026 Meta charges per delivered service message, the rate
+  /// depends on the effective date, and the free thousand resets per number per
+  /// calendar month. Both questions are "what day, and what month, is it for
+  /// THIS account?" and only the WABA's own zone answers them: a tenant can
+  /// hold numbers in two countries, and 23:30 on 30 September in Bogota is
+  /// already October in UTC. Distinct from `Tenant.operatingTimezone` (where
+  /// the business operates) and `BillingSubscription.billingTimezone` (when WE
+  /// charge them) — three questions that today happen to share an answer.
+  ///
+  /// NULL means unknown, and the rate resolver refuses to price rather than
+  /// defaulting. Never Meta's `timezone_id`, which is a numeric Facebook id;
+  /// a CHECK constraint refuses one.
+  wabaTimezone  String?  @map("waba_timezone") @db.VarChar(64)
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @default(now()) @map("updated_at")
 

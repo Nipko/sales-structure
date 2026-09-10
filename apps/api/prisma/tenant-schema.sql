@@ -5191,6 +5191,14 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_turn_ledger" (
     CONSTRAINT agent_turn_ledger_result
         CHECK (state = 'open' OR envelope IS NOT NULL OR redacted_at IS NOT NULL)
 );
+-- El resultado del turno, agregado despues de que la tabla existia, asi que
+-- llega como sentencia aditiva propia: el deploy migra ANTES de recrear los
+-- contenedores y el binario anterior sigue corriendo contra este schema.
+-- Un turno que no produjo efecto (wait / suppress) se registra aca en vez de
+-- quedar como una linea de log.
+-- Generado desde TURN_LEDGER_DDL (modules/conversations/agent-turn-ledger.ts).
+ALTER TABLE "{{SCHEMA_NAME}}"."agent_turn_ledger"
+    ADD COLUMN IF NOT EXISTS outcome JSONB;
 CREATE INDEX IF NOT EXISTS idx_agent_turn_ledger_conversation
     ON "{{SCHEMA_NAME}}"."agent_turn_ledger"(conversation_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_agent_turn_ledger_contact

@@ -88,6 +88,12 @@ export class LoadMetrics {
             lines.push(`  ${name.padEnd(30)} n=${String(timings.count).padStart(5)}`
                 + `  p50=${round(timings.percentile(50)).padStart(8)}ms`
                 + `  p95=${round(timings.percentile(95)).padStart(8)}ms`
+                // p99 as well as p95, because the two answer different
+                // questions: p95 is the experience of a bad moment, p99 is the
+                // one a customer waits through before deciding nobody is there.
+                // With nearest rank both are latencies the run actually saw, so
+                // a small n simply makes them equal rather than invented.
+                + `  p99=${round(timings.percentile(99)).padStart(8)}ms`
                 + `  max=${round(timings.max).padStart(8)}ms`);
         }
         if (this.counters.size) {

@@ -241,4 +241,50 @@ describe('what replaced staging', () => {
             expect(workflow).toMatch(/if \[ "\$CONFIRM" != "candidate" \]/);
         });
     });
+
+    describe('generated artefacts are checked by CI, not by memory', () => {
+        // Each of these files is checked in AND produced by a script, and the
+        // only thing that kept the two equal was somebody remembering to run
+        // the generator. That already failed: every closure artefact described
+        // a revision one or two commits behind the one it claimed. The rate
+        // table is the same failure with money attached — it would price a
+        // delivery Meta bills at a number nobody authorised.
+        //
+        // `verify-artifacts.cjs` was written for exactly this and was never
+        // wired into a workflow, so it only ran when someone typed it.
+        const CHECKS = [
+            'node apps/api/scripts/generate-whatsapp-rates.cjs --check',
+            'node docs/audits/2026-09-09/verify-artifacts.cjs',
+        ];
+
+        // Commands, not comments. A check that cannot tell a `run:` line from
+        // the paragraph explaining it goes green on a workflow that does
+        // nothing, and teaches the next person to delete the paragraph.
+        const commandsOf = (file: string) => readFileSync(resolve(ROOT, file), 'utf8')
+            .split(/\r?\n/).filter(line => !/^\s*#/.test(line));
+
+        it.each([
+            ['.github/workflows/candidate.yml'],
+            ['.github/workflows/vertical-quality.yml'],
+        ])('%s runs every generator in --check mode', file => {
+            const commands = commandsOf(file);
+            for (const check of CHECKS) {
+                expect({ file, check, run: commands.some(line => line.includes(check)) })
+                    .toEqual({ file, check, run: true });
+            }
+        });
+
+        it('checks only, so CI can never rewrite the artefact it is judging', () => {
+            // Without `--check` these scripts WRITE. A workflow that regenerates
+            // and then compares is comparing a file with itself, and every drift
+            // it exists to catch passes.
+            for (const file of ['.github/workflows/candidate.yml', '.github/workflows/vertical-quality.yml']) {
+                for (const line of commandsOf(file)) {
+                    if (!line.includes('generate-whatsapp-rates.cjs')) continue;
+                    expect({ file, line: line.trim() })
+                        .toEqual({ file, line: expect.stringContaining('--check') });
+                }
+            }
+        });
+    });
 });

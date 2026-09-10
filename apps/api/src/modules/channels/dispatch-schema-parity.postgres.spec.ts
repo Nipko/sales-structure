@@ -85,7 +85,8 @@ integration('the three definitions of the dispatch tables agree', () => {
                 '20260908180000_add_agent_turn_ledger',
                 '20260908190000_add_agent_handoff_effects',
                 '20260908200000_add_dispatch_resolution_ledger',
-                '20260910130000_add_agent_turn_outcome']) {
+                '20260910130000_add_agent_turn_outcome',
+                '20260910140000_widen_agent_turn_result']) {
                 await q(readFileSync(resolve(__dirname,
                     `../../../prisma/migrations/${name}/migration.sql`), 'utf8'));
             }

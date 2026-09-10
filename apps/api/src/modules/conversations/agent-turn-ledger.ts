@@ -50,6 +50,9 @@ export const TURN_LEDGER_DDL: readonly string[] = Object.freeze([
         envelope JSONB,
         writers JSONB NOT NULL DEFAULT '[]'::jsonb,
         handoff JSONB,
+        -- What the turn decided, including deciding to say nothing. The ALTER
+        -- below still exists for a table created before this column did.
+        outcome JSONB,
         delivery_route TEXT NOT NULL DEFAULT 'unknown',
         redacted_at TIMESTAMPTZ,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -60,12 +63,43 @@ export const TURN_LEDGER_DDL: readonly string[] = Object.freeze([
             CHECK (delivery_route IN ('unknown','durable','legacy','draft','none')),
         CONSTRAINT agent_turn_ledger_attempts CHECK (attempts >= 1),
         CONSTRAINT agent_turn_ledger_result
-            CHECK (state = 'open' OR envelope IS NOT NULL OR redacted_at IS NOT NULL)
+            CHECK (state = 'open' OR envelope IS NOT NULL OR outcome IS NOT NULL
+                       OR redacted_at IS NOT NULL)
     )`,
     // Added after the table existed, so it arrives as its own additive
     // statement: the deploy migrates before it recreates the containers, and the
     // previous binary has to keep running against this schema for minutes.
     `ALTER TABLE agent_turn_ledger ADD COLUMN IF NOT EXISTS outcome JSONB`,
+    // A turn that deliberately said nothing has an `outcome` and no `envelope`,
+    // and the original constraint demanded an envelope for every state but
+    // `open`. So settling a silence was refused by PostgreSQL and the row stayed
+    // `result_recorded` forever — the ledger disagreeing with the decision it
+    // was asked to record. Widened, not dropped: a state past `open` still has
+    // to carry SOMETHING, or the row says nothing happened when something did.
+    //
+    // `NOT VALID` then `VALIDATE`: the new rule is implied by the old one, so
+    // every existing row already satisfies it, and this way the exclusive lock
+    // is momentary instead of held for a full scan while the previous binary is
+    // still serving turns against this schema.
+    `DO $turn_result$
+     DECLARE current_def TEXT;
+     BEGIN
+        SELECT pg_get_constraintdef(con.oid) INTO current_def
+          FROM pg_constraint con
+          JOIN pg_class rel ON rel.oid = con.conrelid
+          JOIN pg_namespace nsp ON nsp.oid = rel.relnamespace
+         WHERE nsp.nspname = current_schema()
+           AND rel.relname = 'agent_turn_ledger'
+           AND con.conname = 'agent_turn_ledger_result';
+        IF current_def IS NULL OR position('outcome' in current_def) = 0 THEN
+            ALTER TABLE agent_turn_ledger DROP CONSTRAINT IF EXISTS agent_turn_ledger_result;
+            ALTER TABLE agent_turn_ledger ADD CONSTRAINT agent_turn_ledger_result
+                CHECK (state = 'open' OR envelope IS NOT NULL OR outcome IS NOT NULL
+                       OR redacted_at IS NOT NULL) NOT VALID;
+            ALTER TABLE agent_turn_ledger VALIDATE CONSTRAINT agent_turn_ledger_result;
+        END IF;
+     END
+     $turn_result$`,
     `CREATE INDEX IF NOT EXISTS idx_agent_turn_ledger_conversation
         ON agent_turn_ledger(conversation_id, created_at DESC)`,
     `CREATE INDEX IF NOT EXISTS idx_agent_turn_ledger_contact

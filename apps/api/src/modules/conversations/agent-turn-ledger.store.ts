@@ -150,11 +150,56 @@ export class AgentTurnLedgerStore {
         }
     }
 
-    async settle(schema: string, inboundMessageId: string): Promise<void> {
+    /**
+     * Close the turn, and say out loud when it could not be closed.
+     *
+     * This used to swallow the failure at `warn`. It mattered: the result
+     * constraint refused a silent turn — `outcome` with no `envelope` — so every
+     * `wait` and every `suppress` failed to settle, stayed `result_recorded`
+     * forever, and the only trace was a line nobody greps for. The constraint is
+     * fixed; this is the half that makes the next one visible.
+     *
+     * Still not fatal to the turn: the customer has already been answered (or
+     * deliberately not), and throwing here would undo nothing and retry an
+     * effect. What changes is that the row stays in a state a sweep can find,
+     * and the failure is an ERROR with the reason attached rather than a shrug.
+     */
+    async settle(schema: string, inboundMessageId: string): Promise<boolean> {
         try {
             await this.run(schema, query => settleTurnLedger(query, schema, inboundMessageId));
+            return true;
         } catch (error: any) {
-            this.logger.warn(`[TurnLedger] turn not settled for ${inboundMessageId}: ${error?.message}`);
+            this.logger.error(
+                `[TurnLedger] turn ${inboundMessageId} is UNSETTLED and recoverable: ${error?.message}`);
+            return false;
+        }
+    }
+
+    /**
+     * Turns that produced a result and never closed, oldest first.
+     *
+     * The recovery path for the failure above: a row past `open` that is not
+     * `settled` is work somebody has to look at, and until this existed there
+     * was no way to ask for the list.
+     */
+    async unsettled(schema: string, olderThan: Date, limit = 100):
+        Promise<readonly { inboundMessageId: string; state: string; updatedAt: Date }[]> {
+        try {
+            return await this.run(schema, async query => {
+                const rows = await query<any[]>(
+                    `SELECT inbound_message_id, state, updated_at
+                       FROM "${schema}".agent_turn_ledger
+                      WHERE state <> 'settled' AND state <> 'open' AND updated_at < $1
+                      ORDER BY updated_at ASC LIMIT $2`, [olderThan, limit]);
+                return rows.map(row => ({
+                    inboundMessageId: String(row.inbound_message_id),
+                    state: String(row.state),
+                    updatedAt: new Date(row.updated_at),
+                }));
+            });
+        } catch (error: any) {
+            this.logger.error(`[TurnLedger] unsettled turns unreadable for ${schema}: ${error?.message}`);
+            return [];
         }
     }
 

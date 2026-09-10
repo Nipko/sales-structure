@@ -5179,6 +5179,10 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_turn_ledger" (
     envelope JSONB,
     writers JSONB NOT NULL DEFAULT '[]'::jsonb,
     handoff JSONB,
+    -- Lo que el turno decidio, incluido decidir no responder. Ver el ALTER de
+    -- mas abajo: la columna llego despues, asi que un tenant viejo la recibe por
+    -- ahi y uno nuevo por aca, y las dos formas terminan iguales.
+    outcome JSONB,
     delivery_route TEXT NOT NULL DEFAULT 'unknown',
     redacted_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -5189,7 +5193,8 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_turn_ledger" (
         CHECK (delivery_route IN ('unknown','durable','legacy','draft','none')),
     CONSTRAINT agent_turn_ledger_attempts CHECK (attempts >= 1),
     CONSTRAINT agent_turn_ledger_result
-        CHECK (state = 'open' OR envelope IS NOT NULL OR redacted_at IS NOT NULL)
+        CHECK (state = 'open' OR envelope IS NOT NULL OR outcome IS NOT NULL
+                   OR redacted_at IS NOT NULL)
 );
 -- El resultado del turno, agregado despues de que la tabla existia, asi que
 -- llega como sentencia aditiva propia: el deploy migra ANTES de recrear los

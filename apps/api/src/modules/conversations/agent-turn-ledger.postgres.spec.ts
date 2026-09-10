@@ -277,6 +277,73 @@ integration('the durable record of a turn', () => {
             expect(recent).toHaveLength(0);
         });
 
+        /**
+         * ═══ A SILENT TURN HAS TO BE ABLE TO CLOSE ═══
+         *
+         * `agent_turn_ledger_result` demanded an `envelope` for every state past
+         * `open`. A turn that deliberately said nothing has an `outcome` and NO
+         * envelope, so `settled` was refused by PostgreSQL and the row stayed
+         * `result_recorded` forever — the ledger contradicting the decision it
+         * had just been asked to record. The store only logged a warning, so it
+         * was invisible.
+         *
+         * These walk the whole path the runtime walks, for both silent kinds.
+         */
+        it.each(['wait', 'suppress'] as const)(
+            'takes a %s from open to settled, which the old constraint refused', async kind => {
+                const bind = binding();
+                await openTurnLedger(query, schema, bind);
+                expect((await readTurnLedger(query, schema, bind.inboundMessageId))?.state).toBe('open');
+
+                const resume = kind === 'wait' ? new Date(Date.now() + 600_000).toISOString() : undefined;
+                await recordTurnOutcome(query, schema, { inboundMessageId: bind.inboundMessageId,
+                    outcome: outcome(kind, `${kind}_reason`, resume) });
+                // No envelope anywhere on this row: that is the whole point.
+                const recorded = await readTurnLedger(query, schema, bind.inboundMessageId);
+                expect(recorded?.envelope).toBeNull();
+                expect(recorded?.outcome).toMatchObject({ kind, effects: [] });
+
+                await expect(settleTurnLedger(query, schema, bind.inboundMessageId)).resolves.toBeTruthy();
+                const settled = await readTurnLedger(query, schema, bind.inboundMessageId);
+                expect({ state: settled?.state, envelope: settled?.envelope })
+                    .toEqual({ state: 'settled', envelope: null });
+            });
+
+        it('still refuses a row past open that carries neither answer nor decision', async () => {
+            // Widened, not dropped. A settled row with nothing on it would say
+            // the turn produced no result when it produced one and lost it.
+            const bind = binding();
+            await openTurnLedger(query, schema, bind);
+            await expect(query(`UPDATE "${schema}".agent_turn_ledger SET state = 'settled'
+                                 WHERE inbound_message_id = $1::uuid`, [bind.inboundMessageId]))
+                .rejects.toThrow(/agent_turn_ledger_result/);
+        });
+
+        it('replays a settled silence from the ledger alone, with no Redis in the picture', async () => {
+            // The recovery question after a restart: was this inbound already
+            // decided? For a silent turn the answer lived only in Redis, and
+            // Redis is a cache. Now it is a row, and the row survives.
+            const bind = binding();
+            await openTurnLedger(query, schema, bind);
+            await recordTurnOutcome(query, schema, { inboundMessageId: bind.inboundMessageId,
+                outcome: outcome('suppress', 'turn_produced_nothing') });
+            await settleTurnLedger(query, schema, bind.inboundMessageId);
+
+            // A fresh connection is the closest thing to "the process restarted":
+            // nothing in memory, nothing in a cache, only what was committed.
+            const replay = new Client({ connectionString: connection });
+            await replay.connect();
+            try {
+                const rows = (await replay.query(
+                    `SELECT state, outcome, envelope FROM "${schema}".agent_turn_ledger
+                      WHERE inbound_message_id = $1::uuid`, [bind.inboundMessageId])).rows;
+                expect(rows).toHaveLength(1);
+                expect(rows[0].state).toBe('settled');
+                expect(rows[0].outcome).toMatchObject({ kind: 'suppress' });
+                expect(rows[0].envelope).toBeNull();
+            } finally { await replay.end(); }
+        });
+
         it('lets an old episode fall out of the window', async () => {
             const conversationId = randomUUID();
             const bind = binding({ conversationId });

@@ -62,13 +62,12 @@ export const MAX_FAILURE_NOTICES_PER_EPISODE = 1;
  * while the answer is still "wait" teaches an operator to ignore the field.
  */
 export function waitResumesAt(
-    recent: readonly { outcome: TurnOutcome; createdAt: Date }[], now: Date = new Date(),
+    recent: readonly DeliveredTurnOutcome[], now: Date = new Date(),
 ): Date {
-    const floor = now.getTime() - FAILURE_EPISODE_MS;
+    // The same evidence rule: the window is anchored on a notice the customer
+    // received, never on one that failed to leave.
     const counted = recent
-        .filter(entry => entry.createdAt.getTime() >= floor
-            && entry.outcome?.kind === 'send'
-            && entry.outcome?.reason === TURN_OUTCOME_REASONS.failureNotice)
+        .filter(entry => deliveredFailureNotice(entry, now))
         .map(entry => entry.createdAt.getTime());
     const oldest = counted.length ? Math.min(...counted) : now.getTime();
     return new Date(oldest + FAILURE_EPISODE_MS);
@@ -109,14 +108,40 @@ const outcome = (kind: TurnOutcome['kind'], reason: string | null,
  * message rather than a person left in silence by a database problem.
  */
 export function failureNoticesInEpisode(
-    recent: readonly { outcome: TurnOutcome; createdAt: Date }[],
+    recent: readonly DeliveredTurnOutcome[],
     now: Date = new Date(),
 ): number {
-    const floor = now.getTime() - FAILURE_EPISODE_MS;
-    return recent.filter(entry =>
-        entry.createdAt.getTime() >= floor
+    return recent.filter(entry => deliveredFailureNotice(entry, now)).length;
+}
+
+/**
+ * A decision, and what the provider said became of it.
+ *
+ * `deliveredEffects` may be absent for a caller that has no evidence to
+ * offer; absent reads as ZERO, which errs towards speaking. Silence is the
+ * expensive mistake here — the cheap one is one more message.
+ */
+export interface DeliveredTurnOutcome {
+    readonly outcome: TurnOutcome;
+    readonly createdAt: Date;
+    readonly deliveredEffects?: number;
+}
+
+/**
+ * Was this a failure notice the customer actually received?
+ *
+ * The decision is recorded before the dispatch, so a row saying `send` proves
+ * only that a turn INTENDED to speak. A crash before admission, a provider
+ * rejection, an unknown outcome — each leaves that row untouched and the
+ * customer with nothing. Counting it would then answer the next message with
+ * silence on the grounds of a message that was never sent, which is the worst
+ * failure this whole feature can produce: a person told nothing, twice.
+ */
+function deliveredFailureNotice(entry: DeliveredTurnOutcome, now: Date): boolean {
+    return entry.createdAt.getTime() >= now.getTime() - FAILURE_EPISODE_MS
         && entry.outcome?.kind === 'send'
-        && entry.outcome?.reason === TURN_OUTCOME_REASONS.failureNotice).length;
+        && entry.outcome?.reason === TURN_OUTCOME_REASONS.failureNotice
+        && (entry.deliveredEffects ?? 0) > 0;
 }
 
 /**

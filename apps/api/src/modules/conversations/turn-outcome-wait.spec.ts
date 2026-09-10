@@ -8,10 +8,21 @@ import {
 
 const NOW = new Date('2026-10-01T12:00:00.000Z');
 
-const sent = (reason: string, at: Date): { outcome: TurnOutcome; createdAt: Date } => ({
-    createdAt: at,
-    outcome: { version: 1, kind: 'send', reason, effects: [] },
+/**
+ * A decision the provider acknowledged.
+ *
+ * `deliveredEffects` is how many of the turn's effects actually arrived. It
+ * matters because the decision row is written BEFORE the dispatch it asks
+ * for — otherwise a crash would lose the intent and send the notice twice —
+ * so the row on its own proves only that a turn meant to speak.
+ */
+const sent = (reason: string, at: Date, deliveredEffects = 1) => ({
+    createdAt: at, deliveredEffects,
+    outcome: { version: 1, kind: 'send', reason, effects: [] } as TurnOutcome,
 });
+
+/** The same decision, with nothing to show for it. */
+const decidedOnly = (reason: string, at: Date) => sent(reason, at, 0);
 
 describe('deciding not to answer, and what that costs', () => {
     it('lets the first failure notice through — a customer is told once', () => {
@@ -113,17 +124,66 @@ describe('counting only our own failure notices', () => {
 
     it('does not count an ordinary answer as a failure notice', () => {
         expect(failureNoticesInEpisode([
-            { createdAt: new Date(NOW.getTime() - 60_000), outcome: { version: 1, kind: 'send', effects: [] } },
+            { createdAt: new Date(NOW.getTime() - 60_000), deliveredEffects: 1,
+                outcome: { version: 1, kind: 'send', effects: [] } as TurnOutcome },
         ], NOW)).toBe(0);
+    });
+
+    /**
+     * ═══ A DECISION IS NOT A DELIVERY ═══
+     *
+     * Between deciding to send the notice and the customer's phone there is a
+     * commit, a queue, a lease and a POST. Each of them can fail, and each
+     * leaves the decision row exactly as it was. Counting that row would
+     * answer the customer's NEXT message with silence, on the strength of a
+     * message they never received — a person told nothing, twice, which is
+     * the worst outcome this feature can produce.
+     */
+    it.each([
+        ['a crash before the batch was admitted'],
+        ['a provider rejection'],
+        ['an outcome nobody could resolve'],
+        ['an acceptance with no delivery evidence'],
+    ])('does not count a notice that never arrived: %s', () => {
+        // All four end the same way in the ledger — a `send` decision with no
+        // acknowledged effect — so all four must be counted the same way.
+        const undelivered = decidedOnly(TURN_OUTCOME_REASONS.failureNotice,
+            new Date(NOW.getTime() - 60_000));
+        expect(failureNoticesInEpisode([undelivered], NOW)).toBe(0);
+        // And the customer is answered rather than left waiting.
+        expect(decideTurnOutcome({
+            hasEffects: true, isFailureNotice: true,
+            priorFailureNotices: failureNoticesInEpisode([undelivered], NOW), now: NOW,
+        }).deliver).toBe(true);
+    });
+
+    it('counts it once the provider acknowledged it, and then stays quiet', () => {
+        const delivered = sent(TURN_OUTCOME_REASONS.failureNotice, new Date(NOW.getTime() - 60_000));
+        expect(failureNoticesInEpisode([delivered], NOW)).toBe(1);
+        expect(decideTurnOutcome({
+            hasEffects: true, isFailureNotice: true,
+            priorFailureNotices: failureNoticesInEpisode([delivered], NOW),
+            episodeEndsAt: waitResumesAt([delivered], NOW), now: NOW,
+        }).deliver).toBe(false);
+    });
+
+    it('anchors the wait on a notice that arrived, never on one that did not', () => {
+        // Otherwise an older decision that failed to leave would push the
+        // deadline back and hold the silence open longer than the episode.
+        const ghost = decidedOnly(TURN_OUTCOME_REASONS.failureNotice,
+            new Date(NOW.getTime() - 25 * 60_000));
+        const real = sent(TURN_OUTCOME_REASONS.failureNotice, new Date(NOW.getTime() - 5 * 60_000));
+        expect(waitResumesAt([ghost, real], NOW).toISOString())
+            .toBe(new Date(real.createdAt.getTime() + FAILURE_EPISODE_MS).toISOString());
     });
 
     it('does not count a previous wait — silence is not a notice', () => {
         // Otherwise one wait would justify the next forever, and a conversation
         // that recovered would still be treated as failing.
         expect(failureNoticesInEpisode([{
-            createdAt: new Date(NOW.getTime() - 60_000),
+            createdAt: new Date(NOW.getTime() - 60_000), deliveredEffects: 0,
             outcome: { version: 1, kind: 'wait', reason: TURN_OUTCOME_REASONS.failureNoticeAlreadySent,
-                resumeAfter: NOW.toISOString(), effects: [] },
+                resumeAfter: NOW.toISOString(), effects: [] } as TurnOutcome,
         }], NOW)).toBe(0);
     });
 

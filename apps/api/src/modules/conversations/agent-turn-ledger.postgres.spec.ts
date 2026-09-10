@@ -7,6 +7,7 @@ import {
     type TurnBinding, type TurnEnvelope,
 } from './agent-turn-ledger';
 import { failureNoticesInEpisode } from './turn-outcome-wait';
+import { DISPATCH_OUTBOX_DDL } from '../channels/agent-dispatch-outbox';
 
 /**
  * The turn ledger against a real PostgreSQL.
@@ -54,6 +55,9 @@ integration('the durable record of a turn', () => {
         await query(`CREATE SCHEMA "${schema}"`);
         await query(`SET search_path TO "${schema}"`);
         for (const statement of TURN_LEDGER_DDL) await query(statement);
+        // The evidence side of the same question: whether the notice this
+        // turn decided to send was actually acknowledged by the provider.
+        for (const statement of DISPATCH_OUTBOX_DDL) await query(statement);
     });
 
     afterAll(async () => {
@@ -248,6 +252,20 @@ integration('the durable record of a turn', () => {
             })).rejects.toThrow('turn_outcome_wait_needs_deadline');
         });
 
+        /** An outbox row for a turn, in whatever state the case is about. */
+        const effect = async (bind: any, state: string, receipt: string | null) => {
+            await query(
+                `INSERT INTO "${schema}".agent_dispatch_outbox
+                    (batch_id, conversation_id, contact_id, inbound_message_id, channel_type,
+                     channel_account_id, recipient, item_index, item_kind, payload, state, receipt,
+                     lease_token, lease_expires_at)
+                 VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,'whatsapp','acct','57300',0,'text',
+                     '{"text":"no te entendi"}'::jsonb,$5,$6,
+                     CASE WHEN $5 = 'admitted' THEN gen_random_uuid() END,
+                     CASE WHEN $5 = 'admitted' THEN NOW() + INTERVAL '1 minute' END)`,
+                [randomUUID(), bind.conversationId, bind.contactId, bind.inboundMessageId, state, receipt]);
+        };
+
         it('finds the notices already sent on this conversation, newest first', async () => {
             const conversationId = randomUUID();
             const first = binding({ conversationId });
@@ -256,6 +274,7 @@ integration('the durable record of a turn', () => {
             await openTurnLedger(query, schema, second);
             await recordTurnOutcome(query, schema, { inboundMessageId: first.inboundMessageId,
                 outcome: outcome('send', 'failure_notice') });
+            await effect(first, 'sent', `wamid.OUT.${randomUUID()}`);
             await recordTurnOutcome(query, schema, { inboundMessageId: second.inboundMessageId,
                 outcome: outcome('suppress', 'turn_produced_nothing') });
             const recent = await readRecentTurnOutcomes(query, schema, {
@@ -263,6 +282,51 @@ integration('the durable record of a turn', () => {
             expect(recent.map(entry => entry.outcome.kind)).toEqual(
                 expect.arrayContaining(['send', 'suppress']));
             expect(failureNoticesInEpisode(recent as any)).toBe(1);
+        });
+
+        /**
+         * ═══ THE DECISION AND THE DELIVERY ARE DIFFERENT FACTS ═══
+         *
+         * The decision row is written BEFORE the dispatch it asks for, because
+         * writing it after would lose the intent to a crash and send the same
+         * notice twice. So the row alone proves only that a turn meant to speak.
+         * Between it and the customer's phone there is a commit, a queue, a lease
+         * and a POST — and each case below is one of those ending badly.
+         *
+         * Counted as delivered, any of them answers the customer's NEXT message
+         * with silence on the strength of a message they never received.
+         */
+        it.each([
+            ['a crash before admission leaves the item prepared', 'prepared', null, 0],
+            ['a provider rejection', 'failed', null, 0],
+            ['an outcome nobody could resolve', 'reconciliation_required', null, 0],
+            ['an acceptance the provider never receipted', 'sent', null, 0],
+            ['a delivery the provider acknowledged', 'sent', 'wamid.OUT.ok', 1],
+        ])('counts %s as evidence or not', async (_label, state, receipt, expected) => {
+            const conversationId = randomUUID();
+            const bind = binding({ conversationId });
+            await openTurnLedger(query, schema, bind);
+            await recordTurnOutcome(query, schema, { inboundMessageId: bind.inboundMessageId,
+                outcome: outcome('send', 'failure_notice') });
+            await effect(bind, state as string, receipt as string | null);
+            const recent = await readRecentTurnOutcomes(query, schema, {
+                conversationId, since: new Date(Date.now() - 3_600_000) });
+            expect({ state, counted: failureNoticesInEpisode(recent as any) })
+                .toEqual({ state, counted: expected });
+        });
+
+        it('counts nothing at all for a turn that never reached the outbox', async () => {
+            // The crash before the batch was even prepared. There is no row to
+            // find, and the customer is owed a notice.
+            const conversationId = randomUUID();
+            const bind = binding({ conversationId });
+            await openTurnLedger(query, schema, bind);
+            await recordTurnOutcome(query, schema, { inboundMessageId: bind.inboundMessageId,
+                outcome: outcome('send', 'failure_notice') });
+            const recent = await readRecentTurnOutcomes(query, schema, {
+                conversationId, since: new Date(Date.now() - 3_600_000) });
+            expect(recent).toHaveLength(1);
+            expect(failureNoticesInEpisode(recent as any)).toBe(0);
         });
 
         it('does not read another conversation\'s notices as this one\'s', async () => {

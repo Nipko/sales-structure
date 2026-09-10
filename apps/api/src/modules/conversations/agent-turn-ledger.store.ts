@@ -6,6 +6,7 @@ import {
     TURN_LEDGER_DDL, TurnLedgerError,
     openTurnLedger, readRecentTurnOutcomes, readTurnLedger, recordTurnDelivery, recordTurnHandoff,
     recordTurnOutcome, recordTurnResult, redactTurnLedger, settleTurnLedger,
+    type RecentTurnOutcome,
     type TurnBinding, type TurnDeliveryRoute, type TurnEnvelope, type TurnHandoffRecord,
     type TurnLedgerRedactionScope, type TurnLedgerRow, type TurnWriterRecord,
 } from './agent-turn-ledger';
@@ -140,7 +141,7 @@ export class AgentTurnLedgerStore {
      * cost is one message rather than a customer left in silence.
      */
     async recentOutcomes(schema: string, conversationId: string, since: Date, limit = 20):
-        Promise<readonly { outcome: TurnOutcome; createdAt: Date }[]> {
+        Promise<readonly RecentTurnOutcome[]> {
         try {
             return await this.run(schema, query =>
                 readRecentTurnOutcomes(query, schema, { conversationId, since, limit }));

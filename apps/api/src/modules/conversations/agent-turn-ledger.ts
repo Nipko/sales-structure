@@ -392,19 +392,53 @@ export async function recordTurnOutcome(query: TurnLedgerQuery, schema: string, 
  */
 export async function readRecentTurnOutcomes(query: TurnLedgerQuery, schema: string, input: {
     conversationId: string; since: Date; limit?: number;
-}): Promise<readonly { outcome: TurnOutcome; createdAt: Date }[]> {
+}): Promise<readonly RecentTurnOutcome[]> {
     if (!UUID.test(input.conversationId || '')) fail('turn_ledger_conversation_invalid');
     const limit = Math.min(Math.max(1, Math.trunc(input.limit ?? 20)), 100);
-    const rows = await query<any[]>(
-        `SELECT outcome, created_at FROM "${schema}".agent_turn_ledger
-          WHERE conversation_id = $1::uuid AND outcome IS NOT NULL AND created_at >= $2
-          ORDER BY created_at DESC LIMIT ${limit}`,
+    // The join is the point. A decision is recorded BEFORE the dispatch it
+    // asks for, because recording it afterwards would lose the intent to a
+    // crash and send the same notice twice. That makes the decision alone
+    // useless as proof that the customer heard anything: between the row and
+    // the provider there is a commit, a queue, a lease and a POST that can
+    // each fail. So the count that decides to STAY SILENT reads what the
+    // outbox says actually arrived, and a turn whose notice never left is
+    // simply a turn that owes the customer a notice.
+    //
+    // `sent`/`stored` with a receipt is the provider's own acknowledgement.
+    // `LEFT JOIN LATERAL` so a turn with no outbox row at all — the legacy
+    // lane, a draft, a suppressed turn — reads as zero rather than dropping
+    // out of the window entirely.
+    //
+    // A tenant that has never dispatched through the outbox has no such table.
+    // Naming it would be a parse error, not a zero, so the shape of the query is
+    // chosen from what exists. Both shapes answer the same question; the second
+    // one simply has no evidence to offer, which reads as "speak again".
+    const [probe] = await query<any[]>(
+        `SELECT to_regclass($1) IS NOT NULL AS present`, [`${schema}.agent_dispatch_outbox`]);
+    const rows = probe?.present ? await query<any[]>(
+        `SELECT l.outcome, l.created_at, l.delivery_route, COALESCE(d.arrived, 0)::int AS arrived
+           FROM "${schema}".agent_turn_ledger l
+           LEFT JOIN LATERAL (
+                SELECT count(*) AS arrived FROM "${schema}".agent_dispatch_outbox o
+                 WHERE o.inbound_message_id = l.inbound_message_id
+                   AND o.state IN ('sent','stored') AND o.receipt IS NOT NULL
+           ) d ON true
+          WHERE l.conversation_id = $1::uuid AND l.outcome IS NOT NULL AND l.created_at >= $2
+          ORDER BY l.created_at DESC LIMIT ${limit}`,
+        [input.conversationId, input.since.toISOString()],
+    ) : await query<any[]>(
+        `SELECT l.outcome, l.created_at, l.delivery_route, 0 AS arrived
+           FROM "${schema}".agent_turn_ledger l
+          WHERE l.conversation_id = $1::uuid AND l.outcome IS NOT NULL AND l.created_at >= $2
+          ORDER BY l.created_at DESC LIMIT ${limit}`,
         [input.conversationId, input.since.toISOString()]);
     return Object.freeze(rows
         .filter(row => row.outcome && typeof row.outcome === 'object')
         .map(row => Object.freeze({
             outcome: Object.freeze(row.outcome) as TurnOutcome,
             createdAt: new Date(row.created_at),
+            deliveredEffects: Number(row.arrived) || 0,
+            deliveryRoute: (row.delivery_route ?? 'unknown') as TurnDeliveryRoute,
         })));
 }
 
@@ -417,6 +451,20 @@ export async function settleTurnLedger(query: TurnLedgerQuery, schema: string,
             SET state = 'settled', updated_at = NOW()
           WHERE inbound_message_id = $1::uuid RETURNING *`, [inboundMessageId]);
     return rows[0] ? mapRow(rows[0]) : null;
+}
+
+/**
+ * One recorded decision, with the evidence of what became of it.
+ *
+ * `deliveredEffects` is how many of this turn's remote effects the provider
+ * acknowledged. It exists so that "we already told them" is a fact about the
+ * customer's phone and not about our own intention.
+ */
+export interface RecentTurnOutcome {
+    readonly outcome: TurnOutcome;
+    readonly createdAt: Date;
+    readonly deliveredEffects: number;
+    readonly deliveryRoute: TurnDeliveryRoute;
 }
 
 export interface TurnLedgerRedactionScope {

@@ -2,10 +2,11 @@ import { randomUUID } from 'crypto';
 import { Client } from 'pg';
 import {
     TURN_LEDGER_DDL, TurnLedgerError,
-    openTurnLedger, readTurnLedger, recordTurnDelivery, recordTurnHandoff,
-    recordTurnResult, redactPendingDrafts, redactTurnLedger, settleTurnLedger,
+    openTurnLedger, readRecentTurnOutcomes, readTurnLedger, recordTurnDelivery, recordTurnHandoff,
+    recordTurnOutcome, recordTurnResult, redactPendingDrafts, redactTurnLedger, settleTurnLedger,
     type TurnBinding, type TurnEnvelope,
 } from './agent-turn-ledger';
+import { failureNoticesInEpisode } from './turn-outcome-wait';
 
 /**
  * The turn ledger against a real PostgreSQL.
@@ -197,6 +198,97 @@ integration('the durable record of a turn', () => {
         } finally {
             await query(`DROP SCHEMA IF EXISTS "${empty}" CASCADE`);
         }
+    });
+
+    /**
+     * Silence, written down.
+     *
+     * Before Meta charged per message, "we are not answering right now" was an
+     * absence: a log line the next tick could not read. Now the difference
+     * between a recorded wait and an absence is a loop of "¿podrías repetirlo?"
+     * that the business pays for, so it has to survive a restart.
+     */
+    describe('what the turn decided, silence included', () => {
+        const outcome = (kind: any, reason: string | null, resumeAfter?: string): any => ({
+            version: 1, kind, ...(reason ? { reason } : {}),
+            ...(resumeAfter ? { resumeAfter } : {}), effects: [],
+        });
+
+        it('keeps a wait, with its reason and its deadline, across a read', async () => {
+            const bind = binding();
+            await openTurnLedger(query, schema, bind);
+            const resume = new Date(Date.now() + 600_000).toISOString();
+            await recordTurnOutcome(query, schema, { inboundMessageId: bind.inboundMessageId,
+                outcome: outcome('wait', 'failure_notice_already_sent', resume) });
+            const row = await readTurnLedger(query, schema, bind.inboundMessageId);
+            expect(row?.outcome).toMatchObject({
+                kind: 'wait', reason: 'failure_notice_already_sent', resumeAfter: resume, effects: [],
+            });
+        });
+
+        it('refuses to store a silence that carries an effect', async () => {
+            // The one thing this column must never hold: a chargeable message
+            // wearing the label of silence.
+            const bind = binding();
+            await openTurnLedger(query, schema, bind);
+            await expect(recordTurnOutcome(query, schema, {
+                inboundMessageId: bind.inboundMessageId,
+                outcome: { version: 1, kind: 'wait', reason: 'x', resumeAfter: new Date().toISOString(),
+                    effects: ['dispatch-1'] } as any,
+            })).rejects.toThrow('turn_outcome_silence_cannot_send');
+            expect((await readTurnLedger(query, schema, bind.inboundMessageId))?.outcome).toBeNull();
+        });
+
+        it('refuses a wait with no deadline, which is a silence nobody revisits', async () => {
+            const bind = binding();
+            await openTurnLedger(query, schema, bind);
+            await expect(recordTurnOutcome(query, schema, {
+                inboundMessageId: bind.inboundMessageId,
+                outcome: { version: 1, kind: 'wait', reason: 'x', effects: [] } as any,
+            })).rejects.toThrow('turn_outcome_wait_needs_deadline');
+        });
+
+        it('finds the notices already sent on this conversation, newest first', async () => {
+            const conversationId = randomUUID();
+            const first = binding({ conversationId });
+            const second = binding({ conversationId });
+            await openTurnLedger(query, schema, first);
+            await openTurnLedger(query, schema, second);
+            await recordTurnOutcome(query, schema, { inboundMessageId: first.inboundMessageId,
+                outcome: outcome('send', 'failure_notice') });
+            await recordTurnOutcome(query, schema, { inboundMessageId: second.inboundMessageId,
+                outcome: outcome('suppress', 'turn_produced_nothing') });
+            const recent = await readRecentTurnOutcomes(query, schema, {
+                conversationId, since: new Date(Date.now() - 3_600_000) });
+            expect(recent.map(entry => entry.outcome.kind)).toEqual(
+                expect.arrayContaining(['send', 'suppress']));
+            expect(failureNoticesInEpisode(recent as any)).toBe(1);
+        });
+
+        it('does not read another conversation\'s notices as this one\'s', async () => {
+            // Two customers failing at once must not silence each other.
+            const mine = randomUUID();
+            const theirs = binding();
+            await openTurnLedger(query, schema, theirs);
+            await recordTurnOutcome(query, schema, { inboundMessageId: theirs.inboundMessageId,
+                outcome: outcome('send', 'failure_notice') });
+            const recent = await readRecentTurnOutcomes(query, schema, {
+                conversationId: mine, since: new Date(Date.now() - 3_600_000) });
+            expect(recent).toHaveLength(0);
+        });
+
+        it('lets an old episode fall out of the window', async () => {
+            const conversationId = randomUUID();
+            const bind = binding({ conversationId });
+            await openTurnLedger(query, schema, bind);
+            await recordTurnOutcome(query, schema, { inboundMessageId: bind.inboundMessageId,
+                outcome: outcome('send', 'failure_notice') });
+            await query(`UPDATE "${schema}".agent_turn_ledger SET created_at = NOW() - INTERVAL '2 hours'
+                          WHERE inbound_message_id = $1::uuid`, [bind.inboundMessageId]);
+            const recent = await readRecentTurnOutcomes(query, schema, {
+                conversationId, since: new Date(Date.now() - 1_800_000) });
+            expect(recent).toHaveLength(0);
+        });
     });
 
     describe('the draft a person was one click from sending', () => {

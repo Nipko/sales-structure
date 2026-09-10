@@ -1,10 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
+import type { TurnOutcome } from '@parallext/shared';
 import { hasAgentSourceFence } from '../../common/utils/agent-source-fence';
 import { PrismaService } from '../prisma/prisma.service';
 import {
     TURN_LEDGER_DDL, TurnLedgerError,
-    openTurnLedger, readTurnLedger, recordTurnDelivery, recordTurnHandoff,
-    recordTurnResult, redactTurnLedger, settleTurnLedger,
+    openTurnLedger, readRecentTurnOutcomes, readTurnLedger, recordTurnDelivery, recordTurnHandoff,
+    recordTurnOutcome, recordTurnResult, redactTurnLedger, settleTurnLedger,
     type TurnBinding, type TurnDeliveryRoute, type TurnEnvelope, type TurnHandoffRecord,
     type TurnLedgerRedactionScope, type TurnLedgerRow, type TurnWriterRecord,
 } from './agent-turn-ledger';
@@ -108,6 +109,44 @@ export class AgentTurnLedgerStore {
             await this.run(schema, query => recordTurnHandoff(query, schema, { inboundMessageId, handoff }));
         } catch (error: any) {
             this.logger.warn(`[TurnLedger] handoff not recorded for ${inboundMessageId}: ${error?.message}`);
+        }
+    }
+
+    /**
+     * What this turn decided, silence included.
+     *
+     * A failure to record it is logged and swallowed like the other
+     * non-authoritative writes here — except when the outcome itself is invalid.
+     * That one rethrows: `assertTurnOutcome` refusing a `wait` that carries
+     * effects is the boundary doing its job, and swallowing it would let the
+     * caller believe silence was recorded while a chargeable message went out.
+     */
+    async recordOutcome(schema: string, inboundMessageId: string, outcome: TurnOutcome): Promise<void> {
+        try {
+            await this.run(schema, query => recordTurnOutcome(query, schema, { inboundMessageId, outcome }));
+        } catch (error: any) {
+            if (String(error?.message || '').startsWith('turn_outcome_')) throw error;
+            this.logger.warn(`[TurnLedger] outcome not recorded for ${inboundMessageId}: ${error?.message}`);
+        }
+    }
+
+    /**
+     * Recent decisions on this conversation.
+     *
+     * Returns an empty list when the ledger cannot answer — and the caller must
+     * read that as "we do not know", not as "nothing was said". Treating an
+     * unavailable ledger as "no notice yet" errs towards speaking once too
+     * often, which is the safe direction: a customer hears an answer, and the
+     * cost is one message rather than a customer left in silence.
+     */
+    async recentOutcomes(schema: string, conversationId: string, since: Date, limit = 20):
+        Promise<readonly { outcome: TurnOutcome; createdAt: Date }[]> {
+        try {
+            return await this.run(schema, query =>
+                readRecentTurnOutcomes(query, schema, { conversationId, since, limit }));
+        } catch (error: any) {
+            this.logger.warn(`[TurnLedger] recent outcomes unavailable for ${conversationId}: ${error?.message}`);
+            return [];
         }
     }
 

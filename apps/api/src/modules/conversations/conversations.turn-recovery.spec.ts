@@ -25,6 +25,11 @@ describe('recovering a turn from its ledger', () => {
             recordResult: jest.fn(async (_schema: string, input: any) => ({ ...input, state: 'result_recorded' })),
             recordDelivery: jest.fn().mockResolvedValue(undefined),
             recordHandoff: jest.fn().mockResolvedValue(undefined),
+            // What the turn decided, silence included. The double has to carry
+            // the whole surface of the store: a fake missing a method the turn
+            // now calls is a fake that agrees with an older version of itself.
+            recordOutcome: jest.fn().mockResolvedValue(undefined),
+            recentOutcomes: jest.fn().mockResolvedValue([]),
             settle: jest.fn().mockResolvedValue(undefined),
         };
         const sends: any[] = [];

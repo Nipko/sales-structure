@@ -29,6 +29,10 @@ import { buildDispatchItems } from '../channels/dispatch-items';
 import {
     compactTurnAnswer, toDispatchTurnOutput, type CompactedTurnAnswer,
 } from './turn-outcome-effects';
+import { burstBufferKeys } from './burst-debounce-key';
+import {
+    FAILURE_EPISODE_MS, decideAndAssertTurnOutcome, failureNoticesInEpisode, waitResumesAt,
+} from './turn-outcome-wait';
 import { ChannelTokenService } from '../channels/channel-token.service';
 import { ConversationsGateway } from './conversations.gateway';
 import { HandoffService } from '../handoff/handoff.service';
@@ -1198,6 +1202,43 @@ export class ConversationsService {
         // enqueue and before the state was written sent the form a second time.
         const turnHasEffects = !!response || !!turnEffects.flow
             || turnEffects.paymentLinks.length > 0 || turnEffects.media.length > 0;
+
+        // What this turn decided, before anything acts on it.
+        //
+        // The failure notice — "tuve un problema, ¿podrías repetirlo?" — is a
+        // delivered WhatsApp message that explicitly asks for another inbound.
+        // If the cause has not gone away, that inbound fails too, and the pair
+        // repeats: a loop the business pays for and the customer gives up on.
+        // Telling them once is honest and stays; the second one in the same
+        // episode becomes a durable `wait` that produces no effect at all.
+        //
+        // Nothing here reads what the customer wrote. It counts what WE already
+        // said, so a complaint, a person struggling to be understood, another
+        // language or a request for a human cannot become a reason to stop
+        // answering somebody.
+        const failureNotice = isErrorFallback(response);
+        const episode = failureNotice && this.turnLedger && priorTurn
+            ? await this.turnLedger.recentOutcomes(
+                schemaName, String(conversation.id), new Date(Date.now() - FAILURE_EPISODE_MS))
+            : [];
+        const decision = decideAndAssertTurnOutcome({
+            hasEffects: turnHasEffects,
+            isFailureNotice: failureNotice,
+            priorFailureNotices: failureNoticesInEpisode(episode),
+            // When the answer could genuinely change, not a round number: the
+            // moment the notice that caused the wait leaves the window.
+            episodeEndsAt: waitResumesAt(episode),
+            draft: draftMode && !!response,
+        });
+        if (this.turnLedger && priorTurn) {
+            await this.turnLedger.recordOutcome(schemaName, ledgerInboundId, decision.outcome);
+        }
+        if (decision.outcome.kind === 'wait') {
+            this.logger.warn(`[Pipeline] Not answering ${ledgerInboundId}: ${decision.outcome.reason} — `
+                + `reconsidered after ${decision.outcome.resumeAfter}. No message sent, nothing charged.`);
+            this.recordAgentSignal(tenantId, 'turn_waited');
+            return;
+        }
 
         // 7. Send Response via Channel Gateway
         // NOTE: Never block responses to inbound messages. If a customer writes,
@@ -4533,9 +4574,11 @@ export class ConversationsService {
         const text = msg.content?.type === 'text' ? (msg.content?.text || '') : '';
         if (!text) return undefined; // media/buttons are distinct turns — no debounce
 
-        const base = `buf:conv:${msg.tenantId}:${msg.channelType}:${msg.contactId}`;
-        const seqKey = `${base}:seq`;
-        const msgsKey = `${base}:msgs`;
+        // Keyed by the CONNECTION, not just the channel. A tenant with a sales
+        // number and a support number has customers who write to both, and one
+        // shared buffer made the sales line answer a question asked of support
+        // while the support line answered nothing at all.
+        const { seqKey, msgsKey } = burstBufferKeys(msg);
 
         let mySeq: number;
         try {
@@ -4688,7 +4731,7 @@ export class ConversationsService {
      */
     private async restoreBurst(msg: NormalizedMessage, combinedText: string): Promise<void> {
         if (!combinedText.trim()) return;
-        const base = `buf:conv:${msg.tenantId}:${msg.channelType}:${msg.contactId}`;
+        const { base } = burstBufferKeys(msg);
         try {
             await this.redis.rpush(`${base}:msgs`, combinedText);
             await this.redis.expire(`${base}:msgs`, 60);

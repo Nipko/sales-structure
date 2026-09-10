@@ -1,3 +1,4 @@
+import { assertTurnOutcome, type TurnOutcome } from '@parallext/shared';
 import type { RuntimeLearningFootprint } from '../learning/learning-runtime-footprint';
 
 /**
@@ -61,6 +62,10 @@ export const TURN_LEDGER_DDL: readonly string[] = Object.freeze([
         CONSTRAINT agent_turn_ledger_result
             CHECK (state = 'open' OR envelope IS NOT NULL OR redacted_at IS NOT NULL)
     )`,
+    // Added after the table existed, so it arrives as its own additive
+    // statement: the deploy migrates before it recreates the containers, and the
+    // previous binary has to keep running against this schema for minutes.
+    `ALTER TABLE agent_turn_ledger ADD COLUMN IF NOT EXISTS outcome JSONB`,
     `CREATE INDEX IF NOT EXISTS idx_agent_turn_ledger_conversation
         ON agent_turn_ledger(conversation_id, created_at DESC)`,
     `CREATE INDEX IF NOT EXISTS idx_agent_turn_ledger_contact
@@ -116,6 +121,8 @@ export interface TurnLedgerRow {
     readonly envelope: TurnEnvelope | null;
     readonly writers: readonly TurnWriterRecord[];
     readonly handoff: TurnHandoffRecord | null;
+    /** What this turn decided: send, wait, suppress or escalate. */
+    readonly outcome: TurnOutcome | null;
     readonly deliveryRoute: TurnDeliveryRoute;
     readonly redacted: boolean;
     readonly createdAt: Date;
@@ -187,6 +194,10 @@ function mapRow(row: any): TurnLedgerRow {
         envelope: redacted ? null : normaliseEnvelope(row.envelope),
         writers: normaliseWriters(row.writers),
         handoff: row.handoff && typeof row.handoff === 'object' ? Object.freeze(row.handoff) : null,
+        // Survives redaction on purpose: it holds our own reason codes and a
+        // deadline, no customer words, and it is the fact that stops a resumed
+        // turn from re-deciding a silence somebody already decided.
+        outcome: row.outcome && typeof row.outcome === 'object' ? Object.freeze(row.outcome) as TurnOutcome : null,
         deliveryRoute: (TURN_DELIVERY_ROUTES as readonly string[]).includes(row.delivery_route)
             ? row.delivery_route as TurnDeliveryRoute : 'unknown',
         redacted,
@@ -306,6 +317,61 @@ export async function recordTurnHandoff(query: TurnLedgerQuery, schema: string, 
           WHERE inbound_message_id = $1::uuid RETURNING *`,
         [input.inboundMessageId, JSON.stringify(input.handoff || {})]);
     return rows[0] ? mapRow(rows[0]) : null;
+}
+
+/**
+ * Record what this turn decided, including deciding not to speak.
+ *
+ * Silence used to be an absence: a log line, a metric, and nothing a later
+ * process could read. That was survivable while a reply was free. Now a turn
+ * that says "un momento" costs money, and a loop of them costs it repeatedly,
+ * so "we are not answering, for this reason, until this time" has to be a row.
+ *
+ * `assertTurnOutcome` runs BEFORE the write, so the invariant that makes this
+ * worth having is enforced at the boundary: a `wait` or a `suppress` carrying
+ * effects is a chargeable message wearing the label of silence, and it is
+ * refused rather than stored.
+ */
+export async function recordTurnOutcome(query: TurnLedgerQuery, schema: string, input: {
+    inboundMessageId: string; outcome: TurnOutcome;
+}): Promise<TurnLedgerRow | null> {
+    if (!UUID.test(input.inboundMessageId || '')) fail('turn_ledger_inbound_invalid');
+    assertTurnOutcome(input.outcome);
+    const rows = await query<any[]>(
+        `UPDATE "${schema}".agent_turn_ledger
+            SET outcome = $2::jsonb, updated_at = NOW()
+          WHERE inbound_message_id = $1::uuid
+          RETURNING *`,
+        [input.inboundMessageId, JSON.stringify(input.outcome)]);
+    return rows[0] ? mapRow(rows[0]) : null;
+}
+
+/**
+ * What this conversation's recent turns decided.
+ *
+ * Read to answer one question: has this customer already been told, in this
+ * episode, that we could not understand them? Telling them once is honest.
+ * Telling them five times is a bill and a loop, and it is also what makes a
+ * person who is struggling give up — so the second one becomes a `wait`.
+ *
+ * Ordered newest first and bounded, because it runs on the turn path.
+ */
+export async function readRecentTurnOutcomes(query: TurnLedgerQuery, schema: string, input: {
+    conversationId: string; since: Date; limit?: number;
+}): Promise<readonly { outcome: TurnOutcome; createdAt: Date }[]> {
+    if (!UUID.test(input.conversationId || '')) fail('turn_ledger_conversation_invalid');
+    const limit = Math.min(Math.max(1, Math.trunc(input.limit ?? 20)), 100);
+    const rows = await query<any[]>(
+        `SELECT outcome, created_at FROM "${schema}".agent_turn_ledger
+          WHERE conversation_id = $1::uuid AND outcome IS NOT NULL AND created_at >= $2
+          ORDER BY created_at DESC LIMIT ${limit}`,
+        [input.conversationId, input.since.toISOString()]);
+    return Object.freeze(rows
+        .filter(row => row.outcome && typeof row.outcome === 'object')
+        .map(row => Object.freeze({
+            outcome: Object.freeze(row.outcome) as TurnOutcome,
+            createdAt: new Date(row.created_at),
+        })));
 }
 
 /** The turn is over. Equivalent in meaning to the Redis marker, and durable. */

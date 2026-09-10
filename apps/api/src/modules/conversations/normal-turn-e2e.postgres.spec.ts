@@ -145,6 +145,16 @@ const ready = !!databaseUrl && !!redisUrl;
     const PAYMENT_LINK = 'https://pay.example.test/canonical-receipt';
     const MEDIA_URL = 'https://cdn.example.test/comprobante.jpg';
     const MEDIA_CAPTION = 'Tu comprobante';
+    /**
+     * The words and the canonical link now leave as ONE charged message.
+     *
+     * Meta bills a delivered service message from 1 October, so a reply and the
+     * link it hands over were two charges for one answer. The server appends the
+     * URL verbatim from the tool receipt — the model never retypes it — and the
+     * item keeps the `payment_link` kind, so the provenance a dispute reads
+     * survives the fold.
+     */
+    const REPLY_WITH_LINK = `${REPLY_TEXT}\n\n${PAYMENT_LINK}`;
 
     let client: PrismaClient;
     let prisma: any;
@@ -640,11 +650,13 @@ const ready = !!databaseUrl && !!redisUrl;
             // replay knows the business already ran.
             expect(ledger.writers).toEqual([expect.objectContaining({ tool: 'create_payment_link' })]);
 
-            // LEG 3b — the batch. Four effects, in the order a person would send them.
+            // LEG 3b — the batch. THREE effects now, in the order a person would
+            // send them: the words carry the link, the picture is its own effect,
+            // and the caption is still separate because one acceptance from the
+            // provider has to mean exactly one effect.
             const rows = await outboxRows(inboundMessageId);
             expect(rows.map(row => [row.item_kind, bodyOf(row.payload)])).toEqual([
-                ['text', REPLY_TEXT],
-                ['payment_link', PAYMENT_LINK],
+                ['payment_link', REPLY_WITH_LINK],
                 ['media', MEDIA_URL],
                 ['text', MEDIA_CAPTION],
             ]);
@@ -652,14 +664,14 @@ const ready = !!databaseUrl && !!redisUrl;
 
             // LEG 4 — the outbound queue and the strict transport.
             expect(remoteEffects.map(effect => effect.body)).toEqual(
-                [REPLY_TEXT, PAYMENT_LINK, MEDIA_URL, MEDIA_CAPTION]);
+                [REPLY_WITH_LINK, MEDIA_URL, MEDIA_CAPTION]);
             expect(remoteEffects.every(effect => effect.via === 'strict')).toBe(true);
 
             // The history says `sent`, not `delivered`: an acceptance is not an
             // arrival, and only the provider gets to say the second thing.
             const beforeStatus = await historyRows();
             expect(beforeStatus.filter(row => row.direction === 'outbound').map(row => row.status))
-                .toEqual(['sent', 'sent', 'sent', 'sent']);
+                .toEqual(['sent', 'sent', 'sent']);
 
             // LEG 5 — the provider's status webhook, through the one shared writer.
             const receipts = rows.map(row => String(row.receipt));
@@ -718,9 +730,9 @@ const ready = !!databaseUrl && !!redisUrl;
 
             const inboundMessageId = await inboundMessageIdFor(wamid);
             expect(await sql('SELECT id FROM messages WHERE external_id=$1', [wamid])).toHaveLength(1);
-            expect((await outboxRows(inboundMessageId))).toHaveLength(4);
-            expect(remoteEffects).toHaveLength(4);
-            expect(new Set(remoteEffects.map(effect => effect.body)).size).toBe(4);
+            expect((await outboxRows(inboundMessageId))).toHaveLength(3);
+            expect(remoteEffects).toHaveLength(3);
+            expect(new Set(remoteEffects.map(effect => effect.body)).size).toBe(3);
         });
 
         it('applies a repeated and an out-of-order status without moving the record backwards', async () => {
@@ -740,7 +752,7 @@ const ready = !!databaseUrl && !!redisUrl;
             await postWebhook(statusBody(receipt, 'read'));
             expect(await statusOf()).toBe('read');
             // And the same event twice never produces a second remote effect.
-            expect(remoteEffects).toHaveLength(4);
+            expect(remoteEffects).toHaveLength(3);
         });
 
         it('never lets a late failure overwrite a delivered or a read the provider already reported', async () => {
@@ -772,7 +784,7 @@ const ready = !!databaseUrl && !!redisUrl;
             (conversations as any).__pmid = wamid;
             // The first bubble is refused permanently; the batch must not carry
             // on pretending the customer got it, and nothing may be re-sent.
-            strictOutcome = async request => bodyOf(request.payload) === REPLY_TEXT
+            strictOutcome = async request => bodyOf(request.payload) === REPLY_WITH_LINK
                 ? { kind: 'rejected', errorCode: 'wa_131047', retryable: false }
                 : { kind: 'accepted', receipt: `wamid.OUT.${randomUUID()}` };
             await postWebhook(messageBody(wamid, 'me lo rechazan'));
@@ -781,13 +793,13 @@ const ready = !!databaseUrl && !!redisUrl;
             const inboundMessageId = await inboundMessageIdFor(wamid);
             const rows = await outboxRows(inboundMessageId);
             expect(rows[0]).toMatchObject({ state: 'suppressed', error_code: 'wa_131047', receipt: null });
-            expect(remoteEffects.filter(effect => effect.body === REPLY_TEXT)).toHaveLength(1);
+            expect(remoteEffects.filter(effect => effect.body === REPLY_WITH_LINK)).toHaveLength(1);
 
             // An unknown outcome on a fresh item: uncertain, never retried.
             const second = `wamid.IN.${randomUUID()}`;
             (conversations as any).__pmid = second;
             remoteEffects = [];
-            strictOutcome = async request => bodyOf(request.payload) === REPLY_TEXT
+            strictOutcome = async request => bodyOf(request.payload) === REPLY_WITH_LINK
                 ? { kind: 'unknown', errorCode: 'timeout' }
                 : { kind: 'accepted', receipt: `wamid.OUT.${randomUUID()}` };
             await postWebhook(messageBody(second, 'no sé si llegó'));
@@ -800,11 +812,11 @@ const ready = !!databaseUrl && !!redisUrl;
             const [history] = await sql('SELECT status FROM messages WHERE id=$1::uuid',
                 [uncertain[0].message_id]);
             expect(history.status).toBe('pending');
-            expect(remoteEffects.filter(effect => effect.body === REPLY_TEXT)).toHaveLength(1);
+            expect(remoteEffects.filter(effect => effect.body === REPLY_WITH_LINK)).toHaveLength(1);
             // Recovery must not resurrect it either.
             await recovery.recoverPending();
             await settleQueues();
-            expect(remoteEffects.filter(effect => effect.body === REPLY_TEXT)).toHaveLength(1);
+            expect(remoteEffects.filter(effect => effect.body === REPLY_WITH_LINK)).toHaveLength(1);
         });
     });
 
@@ -827,7 +839,7 @@ const ready = !!databaseUrl && !!redisUrl;
             const inboundMessageId = await inboundMessageIdFor(wamid);
             expect((await ledgerRow(inboundMessageId)).state).toBe('settled');
             expect(remoteEffects.map(effect => effect.body))
-                .toEqual([REPLY_TEXT, PAYMENT_LINK, MEDIA_URL, MEDIA_CAPTION]);
+                .toEqual([REPLY_WITH_LINK, MEDIA_URL, MEDIA_CAPTION]);
         });
 
         /**
@@ -847,13 +859,13 @@ const ready = !!databaseUrl && !!redisUrl;
 
             const inboundMessageId = await inboundMessageIdFor(wamid);
             const rows = await outboxRows(inboundMessageId);
-            expect(rows).toHaveLength(4);
+            expect(rows).toHaveLength(3);
             expect(remoteEffects.map(effect => effect.body))
-                .toEqual([REPLY_TEXT, PAYMENT_LINK, MEDIA_URL, MEDIA_CAPTION]);
+                .toEqual([REPLY_WITH_LINK, MEDIA_URL, MEDIA_CAPTION]);
             expect(remoteEffects.every(effect => effect.via === 'strict')).toBe(true);
             // Exactly one copy of every word, and the ledger says the durable
             // path owned it from the first attempt.
-            expect(new Set(remoteEffects.map(effect => effect.body)).size).toBe(4);
+            expect(new Set(remoteEffects.map(effect => effect.body)).size).toBe(3);
             expect((await ledgerRow(inboundMessageId)).delivery_route).toBe('durable');
         });
 
@@ -868,7 +880,11 @@ const ready = !!databaseUrl && !!redisUrl;
             let reachedSecond!: () => void;
             const secondInFlight = new Promise<void>(resolve => { reachedSecond = resolve; });
             strictOutcome = async request => {
-                if (bodyOf(request.payload) === PAYMENT_LINK) {
+                // The first item now carries the words AND the canonical link,
+                // and it is also the one to hang on. Hanging on the media item
+                // instead would refuse the caption behind it — which is correct
+                // behaviour, and a different property from the one under test.
+                if (bodyOf(request.payload) === REPLY_WITH_LINK) {
                     reachedSecond();
                     // Never answers: the process dies holding the permission.
                     return new Promise<StrictDispatchOutcome>(() => undefined);
@@ -896,9 +912,10 @@ const ready = !!databaseUrl && !!redisUrl;
 
             const rows = await outboxRows(inboundMessageId);
             expect(rows.map(row => row.state))
-                .toEqual(['sent', 'reconciliation_required', 'sent', 'sent']);
-            // The link left this process exactly once, uncertain or not.
-            expect(remoteEffects.filter(effect => effect.body === PAYMENT_LINK)).toHaveLength(1);
+                .toEqual(['reconciliation_required', 'sent', 'sent']);
+            // The words and their link left this process exactly once, uncertain
+            // or not, and the items behind them still went out in order.
+            expect(remoteEffects.filter(effect => effect.body === REPLY_WITH_LINK)).toHaveLength(1);
             // And the caption still follows its own picture.
             expect(remoteEffects.map(effect => effect.body).indexOf(MEDIA_CAPTION))
                 .toBeGreaterThan(remoteEffects.map(effect => effect.body).indexOf(MEDIA_URL));
@@ -923,7 +940,7 @@ const ready = !!databaseUrl && !!redisUrl;
             expect((await postWebhook(messageBody(wamid, 'muero antes de anotar el resultado'))).status).toBe(200);
             await until('the retry to deliver the whole batch', async () =>
                 (await queueIdle(inboundQueue)) && (await queueIdle(outboundQueue))
-                && remoteEffects.length >= 4, 120_000);
+                && remoteEffects.length >= 3, 120_000);
             await settleQueues();
 
             const inboundMessageId = await inboundMessageIdFor(wamid);
@@ -939,12 +956,12 @@ const ready = !!databaseUrl && !!redisUrl;
                 paymentLinks: [PAYMENT_LINK], media: [{ url: MEDIA_URL, caption: MEDIA_CAPTION }],
             });
             expect((await outboxRows(inboundMessageId)).map(row => row.state))
-                .toEqual(['sent', 'sent', 'sent', 'sent']);
+                .toEqual(['sent', 'sent', 'sent']);
 
             // Once, in order, and through the strict transport — no second copy
             // and nothing left on the loose gateway.
             expect(remoteEffects.map(effect => effect.body))
-                .toEqual([REPLY_TEXT, PAYMENT_LINK, MEDIA_URL, MEDIA_CAPTION]);
+                .toEqual([REPLY_WITH_LINK, MEDIA_URL, MEDIA_CAPTION]);
             expect(remoteEffects.every(effect => effect.via === 'strict')).toBe(true);
         });
 
@@ -973,10 +990,10 @@ const ready = !!databaseUrl && !!redisUrl;
 
             const inboundMessageId = await inboundMessageIdFor(wamid);
             expect((await outboxRows(inboundMessageId)).map(row => row.state))
-                .toEqual(['sent', 'sent', 'sent', 'sent']);
+                .toEqual(['sent', 'sent', 'sent']);
             // The whole answer went out exactly once, through the outbox…
             expect(remoteEffects.map(effect => effect.body))
-                .toEqual([REPLY_TEXT, PAYMENT_LINK, MEDIA_URL, MEDIA_CAPTION]);
+                .toEqual([REPLY_WITH_LINK, MEDIA_URL, MEDIA_CAPTION]);
             // …and nothing at all went out through the legacy route.
             expect(remoteEffects.filter(effect => effect.via === 'loose')).toHaveLength(0);
             // The Redis marker is gone and the row is what says this is finished.

@@ -15,6 +15,30 @@ de modelos que usa el router, y el alcance sale del catálogo de perfiles.
 
 ---
 
+## Las decisiones, en una lista
+
+Cinco, en el orden en que conviene tomarlas. Ninguna se puede tomar desde acá.
+
+1. **Qué modelo y con qué techo** para certificar el catálogo. Es una sola
+   autorización con dos números, y la diferencia entre ellos es de veinte veces:
+   las mismas 139.940 llamadas cuestan **US$258,80** con `gpt-4o-mini` y
+   **US$5.466,20** con `claude-sonnet-4-6`. Desbloquea C3, D2, F1, H1 y H3, y es
+   lo único que separa el catálogo de 0 perfiles certificados.
+2. **Si se crea un entorno de staging**, y con qué datos. Hoy no existe: no es
+   una credencial que falte, es un entorno que no está.
+3. **Qué cuentas de canal de prueba** se usan para el piloto — una WABA, una
+   cuenta de Instagram, una página y un bot, del negocio y no de un cliente.
+4. **Contra qué alternativas** se compara el agente, y quiénes son los revisores
+   ciegos.
+5. **Si el PR se revisa y se aprueba** para merge, despliegue y activación
+   gradual — y en ese orden, mirando antes el contador de huérfanos de cobro de
+   cada tenant.
+
+Las tres primeras son independientes entre sí. La quinta es la única que toca
+producción.
+
+---
+
 ## Gate 1 — cuentas de canal para pilotos reales
 
 Bloquea: A2, A3, A4, C1, E3 (junto con el 5), F3, G3.

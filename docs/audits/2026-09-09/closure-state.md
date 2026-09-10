@@ -5,7 +5,7 @@ Generado por `docs/audits/2026-09-09/generate-closure-state.cjs`. **Ningún núm
 programa que sí se escribieron a mano envejecieron —el 32/10 de la matriz, el `complete` de canales,
 «otras salidas», «faltan términos en otras familias»—, y ése es exactamente el motivo.
 
-Revisión: `e9f77b844b163c106839a2ff5589fb9d7648b3da`. Sin base de datos, sin modelo, sin proveedor, sin tenant.
+Revisión: `608ecc48d526293ade7dd14f258fed1202381d21`. Sin base de datos, sin modelo, sin proveedor, sin tenant.
 
 ## Matriz de tareas
 
@@ -18,9 +18,9 @@ Revisión: `e9f77b844b163c106839a2ff5589fb9d7648b3da`. Sin base de datos, sin mo
 Un modelo (`gpt-4.1-mini`), 5 canales, 4 idiomas, k=1:
 
 - **78.120** casos requeridos
-- **139.940** llamadas al modelo (derivadas de los mensajes de cliente de cada escenario)
-- techo **US$677.40** con un límite declarado de 8000 tokens de entrada y 1000 de salida por turno
-- **233 h** de tiempo de modelo
+- **218.060** llamadas al modelo (derivadas de los mensajes de cliente de cada escenario)
+- techo **US$795.80** con un límite declarado de 8000 tokens de entrada y 1000 de salida por turno
+- **363 h** de tiempo de modelo
 - rechazos del plan: —
 
 ## Certificación de canales

@@ -73,6 +73,18 @@ export interface CertificationPlanCell {
     readonly model: string;
     readonly scenarios: number;
     readonly turns: number;
+    /** Conversation turns answered by the subject model: `turns x k`. */
+    readonly subjectCalls: number;
+    /**
+     * The judge, once per finished attempt.
+     *
+     * `runPassK` calls `judgeTranscript` after each attempt, and that is a
+     * model call with its own model and its own price. The plan counted only
+     * the conversation, so the figure it asked permission for was a third
+     * short: 408 subject calls where the runtime makes at least 612.
+     */
+    readonly judgeCalls: number;
+    /** Everything a run of this cell will ask a provider for. */
     readonly modelCalls: number;
     readonly maxCostUsdCents: number;
     readonly maxSeconds: number;
@@ -93,16 +105,31 @@ export interface CertificationPlan {
         readonly cells: number;
         /** Equal to the `requiredCases` the certification report demands. */
         readonly requiredCases: number;
+        readonly subjectCalls: number;
+        readonly judgeCalls: number;
         readonly modelCalls: number;
         readonly maxCostUsdCents: number;
         readonly maxSeconds: number;
     };
+    /** The model that grades every attempt, and what its own calls cost. */
+    readonly judge: { readonly model: string; readonly inputPerTurn: number; readonly outputPerTurn: number };
     /**
      * What the plan will NOT do and why. A plan that quietly dropped an unknown
      * model would under-report the spend it is asking permission for.
      */
     readonly refusals: readonly string[];
 }
+
+/**
+ * The model that grades every attempt, and the bound it declares.
+ *
+ * `QualityService.judgeTranscript` pins `gpt-4o-mini` and `maxTokens: 500`. It
+ * is a model call the plan did not count at all, so a run asked permission for
+ * two thirds of the calls it would make. Named here rather than guessed, and
+ * refused loudly if the catalogue stops carrying it.
+ */
+export const JUDGE_MODEL = 'gpt-4o-mini';
+export const JUDGE_BOUND = Object.freeze({ inputPerTurn: 8000, outputPerTurn: 500 });
 
 export function planCertificationRun(input: CertificationPlanInput): CertificationPlan {
     const refusals: string[] = [];
@@ -144,8 +171,13 @@ export function planCertificationRun(input: CertificationPlanInput): Certificati
     const tokenBound = input.tokenBound ?? DEFAULT_TOKEN_BOUND;
     const secondsPerTurn = Math.max(1, input.secondsPerTurn ?? DEFAULT_SECONDS_PER_TURN);
 
+    // The judge is a second model, priced from the same catalogue. Its bound is
+    // the one `judgeTranscript` actually sets: the transcript in, 500 tokens out.
+    const judgeRate = rates.get(JUDGE_MODEL);
+    if (!judgeRate) refusals.push(`judge_model_not_in_catalogue:${JUDGE_MODEL}`);
+
     const cells: CertificationPlanCell[] = [];
-    let requiredCases = 0, modelCalls = 0, maxCostUsdCents = 0, maxSeconds = 0;
+    let requiredCases = 0, subjectCalls = 0, judgeCalls = 0, modelCalls = 0, maxCostUsdCents = 0, maxSeconds = 0;
 
     for (const profileId of profiles) {
         for (const language of languages) {
@@ -159,21 +191,32 @@ export function planCertificationRun(input: CertificationPlanInput): Certificati
             for (const channel of channels) {
                 for (const model of models) {
                     const rate = rates.get(model)!;
-                    const calls = turns * k;
+                    const subject = turns * k;
+                    // One judge call per finished attempt, not per turn.
+                    const judged = scenarios * k;
+                    const calls = subject + judged;
                     // Ceiling, from the declared bound and the catalogue's own
                     // rates. Rounded UP: a budget that rounds down is a budget
-                    // that gets exceeded.
-                    const cost = Math.ceil(calls
+                    // that gets exceeded. Rounded up ONCE at the end of the
+                    // cell, so the plan and the per-case reservation are the
+                    // same arithmetic rather than two roundings of it.
+                    const subjectCost = subject
                         * ((tokenBound.inputPerTurn / 1000) * rate.costInPer1k
-                            + (tokenBound.outputPerTurn / 1000) * rate.costOutPer1k)
-                        * 100);
+                            + (tokenBound.outputPerTurn / 1000) * rate.costOutPer1k);
+                    const judgeCost = judgeRate
+                        ? judged * ((JUDGE_BOUND.inputPerTurn / 1000) * judgeRate.costInPer1k
+                            + (JUDGE_BOUND.outputPerTurn / 1000) * judgeRate.costOutPer1k)
+                        : 0;
+                    const cost = Math.ceil((subjectCost + judgeCost) * 100);
                     const seconds = calls * secondsPerTurn;
                     cells.push(Object.freeze({
                         profileId, language, channel, model,
-                        scenarios, turns, modelCalls: calls,
+                        scenarios, turns, subjectCalls: subject, judgeCalls: judged, modelCalls: calls,
                         maxCostUsdCents: cost, maxSeconds: seconds,
                     }));
                     requiredCases += scenarios;
+                    subjectCalls += subject;
+                    judgeCalls += judged;
                     modelCalls += calls;
                     maxCostUsdCents += cost;
                     maxSeconds += seconds;
@@ -185,7 +228,8 @@ export function planCertificationRun(input: CertificationPlanInput): Certificati
     const body = {
         version: 1 as const,
         profiles, languages, channels, models, k, tokenBound, secondsPerTurn,
-        totals: { cells: cells.length, requiredCases, modelCalls, maxCostUsdCents, maxSeconds },
+        judge: { model: JUDGE_MODEL, ...JUDGE_BOUND },
+        totals: { cells: cells.length, requiredCases, subjectCalls, judgeCalls, modelCalls, maxCostUsdCents, maxSeconds },
     };
     return Object.freeze({
         ...body,

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "revision": "e9f77b844b163c106839a2ff5589fb9d7648b3da",
+  "revision": "608ecc48d526293ade7dd14f258fed1202381d21",
   "generatedFrom": [
     "modules/simulation/certification-plan.ts",
     "modules/simulation/certification-ledger.ts",
@@ -37,10 +37,10 @@
       "tier": "tier_2_standard",
       "envVar": "OPENAI_API_KEY",
       "requiredCases": 78120,
-      "modelCalls": 139940,
-      "maxCostUsdCents": 25880,
-      "maxHours": 233,
-      "planHash": "39775678093b906547ffa1f1ceaf4e60906fd8cb2a8e7b1d9a85baba184f857d"
+      "modelCalls": 218060,
+      "maxCostUsdCents": 37580,
+      "maxHours": 363,
+      "planHash": "75284897a00de6615a1b0309be5e801a328e46de665b526dde016aad5259cc63"
     },
     {
       "model": "grok-4-1-fast-non-reasoning",
@@ -48,10 +48,10 @@
       "tier": "tier_2_standard",
       "envVar": "XAI_API_KEY",
       "requiredCases": 78120,
-      "modelCalls": 139940,
-      "maxCostUsdCents": 30100,
-      "maxHours": 233,
-      "planHash": "e76767d9517b50e396d5c2e16153c57b133213fbd2beb0aa17565aa666c7b934"
+      "modelCalls": 218060,
+      "maxCostUsdCents": 41900,
+      "maxHours": 363,
+      "planHash": "b7e03dd68b17fbcce6e3f64d5da24afffd1c019b369d12277287539ca3da569f"
     },
     {
       "model": "deepseek-chat",
@@ -59,10 +59,10 @@
       "tier": "tier_4_budget",
       "envVar": "DEEPSEEK_API_KEY",
       "requiredCases": 78120,
-      "modelCalls": 139940,
-      "maxCostUsdCents": 46420,
-      "maxHours": 233,
-      "planHash": "04708bab557d76cfb4d3f234725db36b53e6d7be2b9fad8db7ae0b3507d51283"
+      "modelCalls": 218060,
+      "maxCostUsdCents": 58140,
+      "maxHours": 363,
+      "planHash": "3069ea1cfac480a0ae16c1d4dacd58e2d6cf6f84bd3a8a8aeaff189214de1f09"
     },
     {
       "model": "gpt-4.1-mini",
@@ -70,10 +70,10 @@
       "tier": "tier_2_standard",
       "envVar": "OPENAI_API_KEY",
       "requiredCases": 78120,
-      "modelCalls": 139940,
-      "maxCostUsdCents": 67740,
-      "maxHours": 233,
-      "planHash": "f754c052d6f2f9b41f5e3962f21d285f7b79cbbb79e41245f2f078c3d4010adb"
+      "modelCalls": 218060,
+      "maxCostUsdCents": 79580,
+      "maxHours": 363,
+      "planHash": "0799714f8b0ad80c43fdee21e04d9f5b8f5c37a725136473682ffa569bc33a57"
     },
     {
       "model": "gpt-4o",
@@ -81,10 +81,10 @@
       "tier": "tier_1_premium",
       "envVar": "OPENAI_API_KEY",
       "requiredCases": 78120,
-      "modelCalls": 139940,
-      "maxCostUsdCents": 419820,
-      "maxHours": 233,
-      "planHash": "b959dababd3df1feb4780ba1ec9d1678f8e13938a49f5a2fb569e11e9f55efc8"
+      "modelCalls": 218060,
+      "maxCostUsdCents": 432100,
+      "maxHours": 363,
+      "planHash": "221a6c9a89bbcc399eb80e0adc4284bffd5b9363b46f9244f78835f8b01bb8a6"
     },
     {
       "model": "claude-sonnet-4-6",
@@ -92,10 +92,10 @@
       "tier": "tier_1_premium",
       "envVar": "ANTHROPIC_API_KEY",
       "requiredCases": 78120,
-      "modelCalls": 139940,
-      "maxCostUsdCents": 546620,
-      "maxHours": 233,
-      "planHash": "83ca495899e6892bca26d8ea1f6bac196b69602e1d9fafc08a8d968773d0e1d0"
+      "modelCalls": 218060,
+      "maxCostUsdCents": 558320,
+      "maxHours": 363,
+      "planHash": "bd6577e935d54327b87e13e3c636f84bc899afe1b0e24cbbe71bfe66b3823d1d"
     }
   ],
   "excludedModels": [

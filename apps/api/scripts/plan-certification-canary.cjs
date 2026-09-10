@@ -26,14 +26,24 @@
 const { writeFileSync } = require('node:fs');
 const { resolve } = require('node:path');
 
+/**
+ * Source first, build second.
+ *
+ * It was the other way round, and on a machine where both exist that means the
+ * script keeps answering with the LAST BUILD. The canary went on printing 408
+ * calls and US$0.76 for a while after the planner had been corrected to 612 and
+ * US$1.08 — a stale number presented as a current one, which for a spending
+ * proposal is the whole risk. Inside the image there is no `src` and no
+ * ts-node, so this falls through to `dist` immediately.
+ */
 function load(module) {
-    try { return require(`../dist/${module}.js`); }
-    catch (compiled) {
-        try {
-            require('ts-node/register/transpile-only');
-            return require(resolve(__dirname, `../src/${module}.ts`));
-        } catch (source) {
-            console.error(`::error::${module} unavailable: ${compiled && compiled.message} / ${source && source.message}`);
+    try {
+        require('ts-node/register/transpile-only');
+        return require(resolve(__dirname, `../src/${module}.ts`));
+    } catch (source) {
+        try { return require(`../dist/${module}.js`); }
+        catch (compiled) {
+            console.error(`::error::${module} unavailable: ${source && source.message} / ${compiled && compiled.message}`);
             process.exit(2);
         }
     }
@@ -72,7 +82,8 @@ console.log(`  model     ${plan.models.join(', ') || '(none)'}   k=${plan.k}`);
 console.log(`  bound     ${plan.tokenBound.inputPerTurn} in / ${plan.tokenBound.outputPerTurn} out per turn`);
 console.log('');
 console.log(`  cases         ${plan.totals.requiredCases}`);
-console.log(`  model calls   ${plan.totals.modelCalls}`);
+console.log(`  model calls   ${plan.totals.modelCalls}`
+    + `  (${plan.totals.subjectCalls} subject + ${plan.totals.judgeCalls} judge @ ${plan.judge.model})`);
 console.log(`  cost ceiling  ${usd(plan.totals.maxCostUsdCents)}`);
 console.log(`  wall clock    ${(plan.totals.maxSeconds / 60).toFixed(0)} min at ${plan.secondsPerTurn}s per turn`);
 console.log(`  plan hash     ${plan.planHash}`);
@@ -83,6 +94,7 @@ if (plan.refusals.length) {
 }
 console.log('');
 console.log(`CERTIFICATION_CANARY cases=${plan.totals.requiredCases} calls=${plan.totals.modelCalls} `
+    + `subject=${plan.totals.subjectCalls} judge=${plan.totals.judgeCalls} `
     + `cents=${plan.totals.maxCostUsdCents} refusals=${plan.refusals.length}`);
 console.log('  nothing was executed: this script has no provider client and opens no connection');
 

@@ -1,6 +1,6 @@
 import { CONVERSATIONAL_CHANNELS, EVAL_LANGUAGES, listCanonicalSubtypeExperienceProfileIds } from '@parallext/shared';
 import { certifyProfiles } from './agent-certification';
-import { DEFAULT_TOKEN_BOUND, planCertificationRun } from './certification-plan';
+import { DEFAULT_TOKEN_BOUND, JUDGE_BOUND, JUDGE_MODEL, planCertificationRun } from './certification-plan';
 
 /**
  * The number somebody has to authorise before a single model call is made.
@@ -26,13 +26,20 @@ describe('what certifying the catalogue would cost', () => {
         expect(report.summary.verifiedCases).toBe(0);
     });
 
-    it('counts model calls from the conversation, not from the case', () => {
+    it('counts the conversation AND the judge, because the runtime calls both', () => {
         const profiles = listCanonicalSubtypeExperienceProfileIds().slice(0, 1);
         const plan = planCertificationRun({ profiles, channels: ['whatsapp'], models });
         // A scenario is a conversation: every customer message is a turn and
         // every turn is at least one call. Counting cases would undercount.
         expect(plan.totals.modelCalls).toBeGreaterThan(plan.totals.requiredCases);
-        for (const cell of plan.cells) expect(cell.modelCalls).toBe(cell.turns * plan.k);
+        for (const cell of plan.cells) expect(cell.subjectCalls).toBe(cell.turns * plan.k);
+        // And `runPassK` grades every finished attempt with `judgeTranscript`,
+        // which is a model call with its own model and its own price. The plan
+        // counted only the conversation, so it asked permission for two thirds
+        // of what a run would actually spend.
+        for (const cell of plan.cells) expect(cell.judgeCalls).toBe(cell.scenarios * plan.k);
+        expect(plan.totals.modelCalls).toBe(plan.totals.subjectCalls + plan.totals.judgeCalls);
+        expect(plan.judge.model).toBe(JUDGE_MODEL);
     });
 
     it('multiplies by k, because pass^k means k attempts', () => {
@@ -48,12 +55,22 @@ describe('what certifying the catalogue would cost', () => {
         const cheap = planCertificationRun({ profiles, channels: ['whatsapp'], models: ['gpt-4o-mini'] });
         const dear = planCertificationRun({ profiles, channels: ['whatsapp'], models: ['claude-sonnet-4-6'] });
         expect(dear.totals.maxCostUsdCents).toBeGreaterThan(cheap.totals.maxCostUsdCents);
-        // The bound is declared, so the arithmetic can be checked by hand.
+        // Both bounds are declared, so the arithmetic can be checked by hand:
+        // the subject at its own bound, plus the judge at the 500 output tokens
+        // `judgeTranscript` pins.
         const cell = cheap.cells[0];
         expect(cheap.tokenBound).toEqual(DEFAULT_TOKEN_BOUND);
-        expect(cell.maxCostUsdCents).toBe(Math.ceil(cell.modelCalls
-            * ((DEFAULT_TOKEN_BOUND.inputPerTurn / 1000) * 0.00015
-                + (DEFAULT_TOKEN_BOUND.outputPerTurn / 1000) * 0.0006) * 100));
+        const perSubjectCall = (DEFAULT_TOKEN_BOUND.inputPerTurn / 1000) * 0.00015
+            + (DEFAULT_TOKEN_BOUND.outputPerTurn / 1000) * 0.0006;
+        const perJudgeCall = (JUDGE_BOUND.inputPerTurn / 1000) * 0.00015
+            + (JUDGE_BOUND.outputPerTurn / 1000) * 0.0006;
+        expect(cell.maxCostUsdCents).toBe(Math.ceil(
+            (cell.subjectCalls * perSubjectCall + cell.judgeCalls * perJudgeCall) * 100));
+        // Rounded once, at the end of the cell — not once per component — so the
+        // plan and a per-case reservation are the same arithmetic rather than
+        // two different roundings of it.
+        expect(cell.maxCostUsdCents).toBeGreaterThan(Math.floor(
+            (cell.subjectCalls * perSubjectCall + cell.judgeCalls * perJudgeCall) * 100) - 1);
     });
 
     it('refuses what it will not run instead of quietly dropping it', () => {

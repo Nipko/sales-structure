@@ -24,15 +24,28 @@ CERTIFICATION CANARY — planned, not executed
   bound     8000 in / 1000 out per turn
 
   cases         204
-  model calls   408
-  cost ceiling  US$0.76
-  wall clock    41 min at 6s per turn
-  plan hash     62bc39a4ab1939fd6a12981b8bbb8af8ed9c2e128e1d9146c5490c32580186f8
+  model calls   612  (408 subject + 204 judge @ gpt-4o-mini)
+  cost ceiling  US$1.08
+  wall clock    61 min at 6s per turn
+  plan hash     98a70ce88f1f2327665132aa66965460960aff11b9d9aa196ef945cd2a464530
 ```
 
-**US$0,76** contra US$258,80 de la matriz completa con el mismo modelo: el
+**US$1,08** contra US$375,80 de la matriz completa con el mismo modelo: el
 canario cuesta el 0,3% y contesta la única pregunta que hace falta contestar
 primero.
+
+### Corrección: la cifra anterior estaba corta en un tercio
+
+Este documento decía **408 llamadas y US$0,76**, y una revisión independiente lo
+refutó. El planificador contaba la conversación y no al **juez**: `runPassK`
+llama a `judgeTranscript` una vez por intento terminado, y eso es una llamada a
+un modelo con su propio modelo (`gpt-4o-mini`) y su propio techo (500 tokens de
+salida). Son 204 llamadas más — un 50% sobre las 408 — y 32 centavos más.
+
+Cambió también la matriz completa: de 139.940 a **218.060 llamadas**, y de
+US$677,40 a **US$795,80** con `gpt-4.1-mini`. Los artefactos derivados
+(`closure-state.md`, `certification-manifest.md`) se regeneraron con sus propios
+generadores; ninguna cifra se editó a mano.
 
 Los números salen de `planCertificationRun` y del catálogo del propio router, el
 mismo que usa `generate-certification-manifest.cjs` para la matriz completa. La

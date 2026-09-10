@@ -1,5 +1,5 @@
 {
-  "revision": "e9f77b844b163c106839a2ff5589fb9d7648b3da",
+  "revision": "608ecc48d526293ade7dd14f258fed1202381d21",
   "generatedFrom": [
     "modules/simulation/task-competence-matrix.ts",
     "modules/simulation/certification-plan.ts",
@@ -40,9 +40,9 @@
       "outputPerTurn": 1000
     },
     "requiredCases": 78120,
-    "modelCalls": 139940,
-    "maxCostUsdCents": 67740,
-    "maxSeconds": 839640,
+    "modelCalls": 218060,
+    "maxCostUsdCents": 79580,
+    "maxSeconds": 1308360,
     "refusals": []
   },
   "channelCertification": {

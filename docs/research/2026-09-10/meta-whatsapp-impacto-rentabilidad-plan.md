@@ -157,6 +157,8 @@ Los hallazgos por archivo y las fuentes específicas están en [economía](plan-
 
 ## 6. Enfoque competitivo y aprendizaje de conversaciones
 
+**Ampliación competitiva del 10-sep:** la [investigación para landing](landing-positioning-and-content-plan.md) distingue el agente directo en WhatsApp Business, otras superficies Meta y su API empresarial. La oferta directa tiene capacidades propias de Calendar, Drive y aprendizaje; el anuncio de acceso gratuito no es la tarifa de API. No usar la comparación de tokens que sigue como precio obligatorio del agente nativo.
+
 Meta Business Agent ya documenta conocimiento, tono, conectores, reservas, pagos, handoff y evaluación. No podemos posicionarnos afirmando que sólo responde FAQs. Su tarifa por tokens tampoco basta para probar quién resuelve más barato. [Overview oficial](https://developers.facebook.com/documentation/meta-business-agent/overview), [tarificación](https://developers.facebook.com/documentation/business-messaging/whatsapp/pricing/non-template-messages)
 
 La ventaja defendible de Parallly debe demostrarse en **resolución de tareas de negocio con continuidad entre canales**: condiciones acordadas, inventario/calendario correctos, transacción trazable, conocimiento pertinente, seguimiento y recuperación. Medir costo total por tarea resuelta, exactitud, conversión atribuible, incidentes, esfuerzo de configuración y satisfacción. Mantener el benchmark y la certificación pendientes como tales; no anunciarnos como “el mejor” antes de medirlo.

@@ -2,6 +2,8 @@
 
 Entrada principal: [impacto, rentabilidad y plan](meta-whatsapp-impacto-rentabilidad-plan.md).
 
+Ampliación comercial: [comparación Meta y contenido de toda la landing](landing-positioning-and-content-plan.md), [evidencia Meta por superficie](meta-agent-competitive-evidence.md), [30 capacidades Parallly](parallly-differentiation-evidence.md), [auditoría de landing](landing-claims-and-content-audit.md), [copy de pagos en cuatro idiomas](landing-billing-copy.i18n.json) y [directiva de implementación](../../handoffs/2026-09-10/claude-landing-meta-comparison.md).
+
 El paquete contiene cuatro auditorías temáticas, el informe ejecutivo, tarifas oficiales originales/normalizadas, un modelo de margen y la [adenda para Claude](../../handoffs/2026-09-10/claude-meta-whatsapp-adaptation.md). El código de producto no fue modificado por esta investigación.
 
 ## Usar la calculadora

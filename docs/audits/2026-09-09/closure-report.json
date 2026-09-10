@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "revision": "e9f77b844b163c106839a2ff5589fb9d7648b3da",
-  "generatedAt": "2026-09-10T03:03:17.930Z",
+  "revision": "b16a099c2abe843c3797115f2882e073dac05b4d",
+  "generatedAt": "2026-09-10T04:25:29.424Z",
   "finished": false,
   "counts": {
     "aceptada": 6,
@@ -357,7 +357,7 @@
       "status": "bloqueada",
       "provenance": "executed_evidence",
       "artefact": "docs/audits/2026-09-09/adversarial-validation.md",
-      "evidence": "Harness local construido: corpus generado y estratificado desde el catálogo con verificadores de resultado, sujetos sintéticos ejecutados, 2 tablas de intentos y revisión ciega, y una negativa a enunciar comparación cuando falta el otro sujeto. Correr una alternativa necesita su cuenta.",
+      "evidence": "Harness local construido: corpus generado y estratificado desde el catálogo con verificadores de resultado, sujetos sintéticos ejecutados, 3 tablas de intentos y revisión ciega, y una negativa a enunciar comparación cuando falta el otro sujeto. Correr una alternativa necesita su cuenta.",
       "commits": [
         "aaf41d62"
       ]

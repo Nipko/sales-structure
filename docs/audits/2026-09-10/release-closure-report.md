@@ -20,7 +20,7 @@ gastó un centavo.**
 | Archivos cambiados | 1.028 (+158.088 / −8.759) |
 | Suites de API | 610, **0 falladas, 0 omitidas** |
 | Pruebas de API | 6.655 |
-| Órdenes de suite ejecutadas | 4 (por defecto + semillas 20260910, 777, 31415) |
+| Órdenes de suite ejecutadas | 4 sobre `3b51ab5a` (por defecto + semillas 20260910, 777, 31415), más una corrida confirmatoria sobre `d2c2d07b`, el HEAD final: mismo 610/6.655. Lo único entre los dos son commits de documentación y un script que ninguna suite lee |
 | Playwright | 186 pruebas × 2 corridas completas (landing + dashboard escritorio + dashboard Pixel 7), 0 falladas |
 | Typecheck en frío | 6/6 (api, dashboard, whatsapp, landing, mobile, shared) |
 | Builds | 4/4 (api, whatsapp, landing, dashboard) + shared |

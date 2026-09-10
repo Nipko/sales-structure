@@ -14,8 +14,39 @@
  * be exactly the base database, or the base with a `_wN_` worker infix. Nothing
  * else passes, and a production name cannot.
  */
-export const DISPOSABLE_EVAL_DATABASE = 'parallly_eval_isolation';
-export const DISPOSABLE_KNOWLEDGE_DATABASE = 'parallly_knowledge_eval_isolation';
+const DEFAULT_EVAL_DATABASE = 'parallly_eval_isolation';
+const DEFAULT_KNOWLEDGE_DATABASE = 'parallly_knowledge_eval_isolation';
+
+/**
+ * The base name comes from the URL the runner was actually pointed at.
+ *
+ * It was the constant above, and that broke the moment two people ran suites at
+ * the same time. Parallel work needs distinct databases — `parallly_fronta_…`,
+ * `parallly_frontb_…` — or the per-worker copies collide and one run truncates
+ * the other's tables mid-suite. With a hardcoded base, every suite using the
+ * default FAILED under such an environment rather than running, which reads as a
+ * broken suite and is really a misconfigured guard.
+ *
+ * Deriving it from the environment gives back nothing this guard was protecting:
+ * the name must still end in `_eval_isolation` and the host must still be
+ * loopback, so a production instance is refused however the variable is set.
+ * What is dropped is only the assumption that there is exactly one disposable
+ * database in the world.
+ */
+function baseFrom(variable: string, fallback: string): string {
+    const raw = process.env[variable];
+    if (!raw) return fallback;
+    try {
+        const name = decodeURIComponent(new URL(raw).pathname.replace(/^\//, ''));
+        // The worker copies are derived FROM the base, so a URL that already
+        // names one still yields the base rather than a base with `_wN` in it.
+        const base = name.replace(/_w\d+_eval_isolation$/, '_eval_isolation');
+        return /^[a-z_]+_eval_isolation$/.test(base) ? base : fallback;
+    } catch { return fallback; }
+}
+
+export const DISPOSABLE_EVAL_DATABASE = baseFrom('PARALLLY_ISOLATION_TEST_URL', DEFAULT_EVAL_DATABASE);
+export const DISPOSABLE_KNOWLEDGE_DATABASE = baseFrom('KNOWLEDGE_TEST_DATABASE_URL', DEFAULT_KNOWLEDGE_DATABASE);
 
 const LOOPBACK = ['127.0.0.1', 'localhost', '[::1]'];
 

@@ -19,9 +19,18 @@ export async function readSealedRunEvidence(
 ): Promise<readonly { evidence: AgentReleaseRunEvidence; agentVersion: number | null }[]> {
     const [present] = await query<any[]>('SELECT to_regclass($1)::text AS name', [`${schema}.eval_runs`]);
     if (!present?.name) return Object.freeze([]);
+    // A run whose learning release was withdrawn keeps its transcripts and stops
+    // being proof. The column is asked for rather than assumed: this function
+    // already tolerates a tenant with no `eval_runs` at all, so it must also
+    // tolerate one whose table predates the mark.
+    const columns = await query<any[]>(
+        `SELECT column_name FROM information_schema.columns
+          WHERE table_schema = $1 AND table_name = 'eval_runs'`, [schema]);
+    const marked = columns.some(column => String(column.column_name) === 'invalidated_at');
     const rows = await query<any[]>(
         `SELECT release_evidence, agent_snapshot FROM eval_runs
           WHERE agent_id = $1::uuid AND release_evidence IS NOT NULL
+            ${marked ? 'AND invalidated_at IS NULL' : ''}
           ORDER BY created_at DESC LIMIT $2`, [agentId, Math.min(Math.max(limit, 1), 200)]);
     return Object.freeze(rows
         .map(row => ({

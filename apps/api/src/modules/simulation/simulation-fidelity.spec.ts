@@ -34,7 +34,7 @@ describe('simulation execution fidelity', () => {
         (f.service as any).redis=redis;
         await f.service.ensureTables('tenant_test');
         expect(f.prisma.executeInTenantSchema.mock.calls.some((call:any[])=>call[1].includes('ADD COLUMN IF NOT EXISTS evaluation_snapshot JSONB'))).toBe(true);
-        expect(redis.set).toHaveBeenCalledWith('simulation_cols:v4:tenant_test','1',86400);
+        expect(redis.set).toHaveBeenCalledWith('simulation_cols:v5:tenant_test','1',86400);
     });
     it('reruns a previous result when its customer script changed under the same scenario key',async()=>{
         const f=simulation();const old=scenario('same');const changed={...old,replayMessages:['Nouvelle demande']};

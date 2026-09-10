@@ -71,7 +71,7 @@ const deferred = () => { let resolve!: () => void; const promise = new Promise<v
         await pool.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);await pool.end();
     });
     it('migrates despite the v2 cache and records opinion, exact config and coverage without verifying a booking',async () => {
-        expect(cache.get(`quality_cols:v3:${schema}`)).toBe('1');
+        expect(cache.get(`quality_cols:v4:${schema}`)).toBe('1');
         expect((await service.scoreConversation(tenantId,conversationId)).status).toBe('scored');
         const [row]=await sql('SELECT * FROM conversation_quality_scores');
         expect(row.resolution_verified).toBeNull();expect(row.operational_outcome).toBe('unknown');

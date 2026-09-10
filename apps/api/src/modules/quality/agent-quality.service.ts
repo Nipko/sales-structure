@@ -506,14 +506,14 @@ export class AgentQualityService {
             safe<any[]>(
                 `SELECT id, k, threshold, passed, avg_score, eval_activable, trigger, created_at
                    FROM eval_runs
-                  WHERE agent_id = $1::uuid
+                  WHERE agent_id = $1::uuid AND invalidated_at IS NULL
                ORDER BY created_at DESC
                   LIMIT 1`, [],
             ),
             safe<any[]>(
                 `SELECT id, persona_version, scenario_source, status, scenario_count, avg_score, resolved_rate, created_at, completed_at
                    FROM simulation_runs
-                  WHERE agent_id = $1::uuid AND status = 'completed'
+                  WHERE agent_id = $1::uuid AND status = 'completed' AND invalidated_at IS NULL
                ORDER BY completed_at DESC NULLS LAST, created_at DESC
                   LIMIT 1`, [],
             ),
@@ -582,6 +582,7 @@ export class AgentQualityService {
                            AND cqs.agent_config_version = $2
                            AND cqs.source_revision = c.qa_revision AND cqs.rubric_version = 'v3' AND cqs.rubric_hash = $3
                            AND NOT EXISTS (SELECT 1 FROM customer_memory_erasure e WHERE e.contact_id=c.contact_id)
+                           AND cqs.invalidated_at IS NULL
                            AND COALESCE(c.agent_attribution_conflicted, false) = false
                            AND COALESCE(c.was_handed_off, false) = false
                            AND cqs.created_at >= NOW() - INTERVAL '30 days'
@@ -619,6 +620,7 @@ export class AgentQualityService {
                            AND cqs.agent_config_version = $2
                            AND cqs.source_revision = c.qa_revision AND cqs.rubric_version = 'v3' AND cqs.rubric_hash = $3
                            AND NOT EXISTS (SELECT 1 FROM customer_memory_erasure e WHERE e.contact_id=c.contact_id)
+                           AND cqs.invalidated_at IS NULL
                            AND COALESCE(c.agent_attribution_conflicted, false) = false
                            AND COALESCE(c.was_handed_off, false) = false
                            AND cqs.created_at >= NOW() - INTERVAL '30 days'

@@ -1,6 +1,7 @@
 import { PrismaService } from '../prisma/prisma.service';
 import type { JudgeResult } from './quality.service';
 import { QUALITY_MESSAGE_LIMIT, QUALITY_RUBRIC_VERSION, qualityHash, qualityTranscript } from './quality-evidence';
+import { releasesForMessages } from '../learning/agent-evidence-provenance';
 
 /** The shared privacy fence spans provider I/O and persistence. Erasure either wins
  * before any transcript leaves the DB or waits, then deletes all derived evidence. */
@@ -60,13 +61,20 @@ export async function scoreProductionEvidence(
         const current = await query<any[]>(`SELECT qa_revision FROM conversations WHERE id=$1::uuid FOR UPDATE`, [conversationId]);
         if (String(current[0]?.qa_revision) !== String(conversation.qa_revision)) throw new Error('quality_source_changed');
         const clamp = (n: number) => Math.max(0, Math.min(10, Math.round(n * 10) / 10));
+        // Which learning the judged turns actually ran on. Read now, inside the
+        // same transaction that writes the verdict, because a later retraction
+        // nulls the envelope these ids come from: a verdict that did not copy
+        // them while they existed could never be matched to its release again.
+        // An empty array is a real answer — no learning produced this — and it
+        // is the one thing a retraction correctly leaves alone.
+        const releaseIds = await releasesForMessages(query, selected.messageIds);
         const rows = await query<any[]>(`INSERT INTO conversation_quality_scores
             (conversation_id, agent_id, agent_config_version, overall_score,resolution_score,tone_score,accuracy_score,empathy_score,
              flags,resolution_type,resolution_verified,verification_reason,scored_by,rubric_version,
              source_revision,source_message_ids,transcript_hash,coverage,rubric_hash,configuration_snapshot,
-             conversational_resolved,conversational_resolution_reason,operational_outcome)
+             conversational_resolved,conversational_resolution_reason,operational_outcome,source_release_ids)
             VALUES ($1::uuid,$2::uuid,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,NULL,NULL,'ai',$11,
-                $12::bigint,$13::uuid[],$14,$15::jsonb,$16,$17::jsonb,$18,$19,'unknown')
+                $12::bigint,$13::uuid[],$14,$15::jsonb,$16,$17::jsonb,$18,$19,'unknown',$20::text[])
             ON CONFLICT (conversation_id,source_revision,rubric_hash) DO NOTHING RETURNING id`, [
             conversationId, agentId, agentConfigVersion, clamp(judge.overall), clamp(judge.resolution),
             clamp(judge.tone), clamp(judge.accuracy), clamp(judge.empathy),
@@ -74,6 +82,7 @@ export async function scoreProductionEvidence(
             QUALITY_RUBRIC_VERSION, String(conversation.qa_revision), selected.messageIds,
             qualityHash(selected.transcript), JSON.stringify(selected.coverage), rubricHash, JSON.stringify(configuration),
             selected.coverage.complete ? judge.resolved : null, judge.resolutionReason.slice(0,500),
+            releaseIds,
         ]);
         // No write to conversations.resolution_verified: only a future operational
         // verifier with an explicit source may write that independent field.

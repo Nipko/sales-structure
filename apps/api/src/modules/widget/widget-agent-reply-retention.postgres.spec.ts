@@ -8,6 +8,7 @@ import { learningHash, learningSnapshotHash } from '../learning/learning-contrac
 import { retireLearningReleases } from '../learning/learning-evaluation-retention';
 import { ComplianceService } from '../compliance/compliance.service';
 import { redactWidgetAgentReplies, WIDGET_AGENT_REPLY_DDL } from './widget-agent-reply-retention';
+import { ensureEvidenceProvenance } from '../learning/agent-evidence-provenance';
 import { ensureSyntheticGlobalTables } from '../../common/__fixtures__/synthetic-global-tables';
 
 const databaseUrl = process.env.LEARNING_EVIDENCE_TEST_DATABASE_URL;
@@ -42,11 +43,17 @@ const databaseUrl = process.env.LEARNING_EVIDENCE_TEST_DATABASE_URL;
         await sql('CREATE TABLE customer_memory_erasure(contact_id UUID PRIMARY KEY,erased_at TIMESTAMPTZ DEFAULT NOW())');
         await sql('CREATE TABLE customer_memory_facts(id UUID PRIMARY KEY,owner_kind TEXT,owner_id UUID,source_contact_id UUID)');
         await sql('CREATE TABLE customer_memories(contact_id UUID PRIMARY KEY)');
+        // Two of the five evidence stores, so the retirement path can be watched
+        // reaching them: one that names its release inside a snapshot it already
+        // had, one that had no key at all until this codebase gave it a column.
+        await sql('CREATE TABLE eval_runs(id UUID PRIMARY KEY DEFAULT gen_random_uuid(),agent_snapshot JSONB,results JSONB)');
+        await sql('CREATE TABLE conversation_quality_scores(id UUID PRIMARY KEY DEFAULT gen_random_uuid(),conversation_id UUID)');
+        await prisma.transactionInTenantSchema(schema,query => ensureEvidenceProvenance(query as any));
         learning = new LearningService(prisma,{} as any,{} as any);
         await learning.ensureTables(schema);
     });
     beforeEach(async () => {
-        await sql('TRUNCATE widget_agent_reply_sources,widget_agent_replies,messages,conversations,contacts,contact_identities,customer_memory_erasure,customer_memory_facts,customer_memories,learning_sources,learning_releases CASCADE');
+        await sql('TRUNCATE widget_agent_reply_sources,widget_agent_replies,messages,conversations,contacts,contact_identities,customer_memory_erasure,customer_memory_facts,customer_memories,learning_sources,learning_releases,eval_runs,conversation_quality_scores CASCADE');
         await sql('TRUNCATE widget_agent_reply_sources,widget_agent_replies,messages,conversations,contacts CASCADE',[],foreign);
     });
     afterAll(async () => {
@@ -174,6 +181,31 @@ const databaseUrl = process.env.LEARNING_EVIDENCE_TEST_DATABASE_URL;
             expect(await retireLearningReleases(query,{sourceIds:[f.sources[0].id]})).toBe(0);
         });
         await assertRedacted(f);
+    });
+    it('stops the evidence that rested on a withdrawn release from certifying anything',async () => {
+        const f=await fixture(), other=randomUUID();
+        // One run and one verdict that rest on the release about to be withdrawn,
+        // and one of each that rest on a release nobody touched.
+        await sql('INSERT INTO eval_runs(agent_snapshot,results) VALUES($1::jsonb,$3::jsonb),($2::jsonb,$3::jsonb)',
+            [JSON.stringify({learningReleaseId:f.release}),JSON.stringify({learningReleaseId:other}),
+                JSON.stringify([{transcript:['Derived text']}])]);
+        await sql('INSERT INTO conversation_quality_scores(conversation_id,source_release_ids) VALUES($1::uuid,$2::text[]),($1::uuid,$3::text[])',
+            [f.conversation,[f.release],[other]]);
+        await prisma.transactionInTenantSchema(schema,async query => {
+            await query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))::text',[`agent-privacy:${schema}`]);
+            expect(await retireLearningReleases(query,{releaseIds:[f.release]})).toBe(1);
+        });
+        const runs=await sql("SELECT agent_snapshot->>'learningReleaseId' AS release,invalidated_at,invalidated_reason,results FROM eval_runs ORDER BY invalidated_at NULLS LAST");
+        expect(runs).toHaveLength(2);
+        expect(runs[0]).toMatchObject({release:f.release,invalidated_reason:'release_retired'});
+        // Not deleted: that evaluation really did run, and unwriting it would make
+        // the history lie. What stops is its standing as proof.
+        expect(runs[0].results).toEqual([{transcript:['Derived text']}]);
+        expect(runs[1]).toMatchObject({release:other,invalidated_at:null,invalidated_reason:null});
+        const scores=await sql('SELECT source_release_ids,invalidated_at FROM conversation_quality_scores ORDER BY invalidated_at NULLS LAST');
+        expect(scores[0]).toMatchObject({source_release_ids:[f.release]});
+        expect(scores[0].invalidated_at).not.toBeNull();
+        expect(scores[1]).toMatchObject({source_release_ids:[other],invalidated_at:null});
     });
     it('Compliance expands a linked source family and redacts another recipient under the same erasure fence',async () => {
         const f=await fixture(), linked=randomUUID(), profile=randomUUID();

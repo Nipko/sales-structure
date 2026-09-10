@@ -1,3 +1,5 @@
+import { evidenceProvenanceDdl } from '../../learning/agent-evidence-provenance';
+
 export const QUALITY_REGRESSION_SCHEMA = [
     `CREATE TABLE IF NOT EXISTS quality_regression_cases (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(), agent_id UUID NOT NULL REFERENCES agent_personas(id) ON DELETE CASCADE,
@@ -22,4 +24,7 @@ export const QUALITY_REGRESSION_SCHEMA = [
         checks JSONB NOT NULL,note TEXT NOT NULL,reviewed_by UUID NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`,
     `CREATE INDEX IF NOT EXISTS idx_quality_regression_source ON quality_regression_cases(source_conversation_id,source_revision)`,
     `CREATE INDEX IF NOT EXISTS idx_quality_regression_agent ON quality_regression_cases(agent_id,state,updated_at)`,
+    // A frozen case names the releases that produced the reply it froze, so a
+    // withdrawn release stops it gating a deploy without erasing the evidence.
+    ...evidenceProvenanceDdl('quality_regression_cases'),
 ];

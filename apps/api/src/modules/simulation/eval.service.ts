@@ -3,6 +3,7 @@ import { revisionHash } from '../evaluation-revision/evaluation-revision';
 import { assessAgentRelease, releaseRunContext, sealReleaseRun, scenarioAppliesToMission } from './agent-release-policy';
 import { regressionAppliesToSnapshot, withReviewedRegressionScenarios } from '../quality/regressions/quality-regression-runtime';
 import { AGENT_TEST_EXECUTION_CONTEXT } from '../../common/types/execution-context';
+import { evidenceProvenanceDdl } from '../learning/agent-evidence-provenance';
 import { IsolatedEvalNamespace, type EvalNamespaceLease } from './isolated-eval-namespace';
 import { Injectable, Logger, BadRequestException, Optional, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -276,6 +277,9 @@ export class EvalService {
                 "ALTER TABLE eval_runs ADD COLUMN IF NOT EXISTS regression_case_ids UUID[] NOT NULL DEFAULT '{}'::uuid[]",
                 'ALTER TABLE eval_runs ADD COLUMN IF NOT EXISTS release_evidence JSONB',
                 'ALTER TABLE eval_runs ADD COLUMN IF NOT EXISTS release_readiness JSONB',
+                // A run whose learning release is later withdrawn stays here with
+                // its transcripts intact and stops counting as proof.
+                ...evidenceProvenanceDdl('eval_runs'),
             ]) await this.prisma.executeInTenantSchema(schema, ddl);
             this.ensured.add(schema);
         } catch (e: any) {

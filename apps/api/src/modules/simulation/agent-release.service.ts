@@ -100,7 +100,7 @@ export class AgentReleaseService {
     private async dispatch(tenantId:string,agentId:string,candidateId:string):Promise<void>{
         const schema=await this.prisma.getTenantSchemaName(tenantId);
         const rows=await this.prisma.executeInTenantSchema<any[]>(schema,
-            `SELECT id FROM agent_release_evaluations WHERE candidate_id=$1::uuid
+            `SELECT id FROM agent_release_evaluations WHERE candidate_id=$1::uuid AND invalidated_at IS NULL
              AND ((status IN ('pending','failed','budget_deferred') AND next_attempt_at<=NOW()) OR (status='running' AND lease_until<NOW()))`,[candidateId]);
         for(const row of rows){
             const jobId=`agent-release-${tenantId}-${row.id}`,existing=await this.queue.getJob(jobId);
@@ -116,7 +116,7 @@ export class AgentReleaseService {
             const schema=await this.prisma.getTenantSchemaName(tenant.id);
             const candidates=await this.prisma.transactionInTenantSchema(schema,async q=>!await this.store.exists(q)?[]:q<any[]>(
                 `SELECT c.id,c.agent_id FROM agent_release_candidates c WHERE c.status IN ('pending','evaluating')
-                 AND EXISTS(SELECT 1 FROM agent_release_evaluations e WHERE e.candidate_id=c.id
+                 AND EXISTS(SELECT 1 FROM agent_release_evaluations e WHERE e.candidate_id=c.id AND e.invalidated_at IS NULL
                     AND ((e.status IN ('pending','failed','budget_deferred') AND e.next_attempt_at<=NOW())
                         OR (e.status='running' AND e.lease_until<NOW()))) ORDER BY c.created_at,c.id LIMIT 50`));
             for(const candidate of candidates)await this.dispatch(tenant.id,candidate.agent_id,candidate.id);

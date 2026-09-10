@@ -174,52 +174,60 @@ export const AGENT_OUTPUT_STORES: readonly AgentOutputStore[] = Object.freeze([
     store({
         id: 'eval_runs',
         store: 'eval_runs.results (per-scenario transcripts) and agent_snapshot',
-        sources: ['modules/simulation/eval.service.ts'],
+        sources: ['modules/simulation/eval.service.ts', 'modules/simulation/agent-release-evidence.ts'],
         carriesProvenance: true,
-        reachedByRetraction: 'no',
-        reachedByContactErasure: 'no',
-        status: 'open',
-        rationale: 'Carries a `learningReleaseId` in its snapshot and holds whole agent transcripts. Nothing invalidates '
-            + 'it when the release it names is retired; the only deleter is the regression-case path.',
-        remedy: 'Invalidate the run when its release is retired — the snapshot already names it — and reach it from the '
-            + 'contact-erasure fan-out the way simulation replays already are.',
+        reachedByRetraction: 'yes',
+        reachedByContactErasure: 'yes',
+        status: 'closed',
+        rationale: 'Carries a `learningReleaseId` in its snapshot. A retraction marks the run invalid and leaves the '
+            + 'transcripts — that evaluation really did run — while `readSealedRunEvidence` stops counting it as proof, '
+            + 'which is what kept a withdrawn release certifying an agent. An erasure reaches it two ways and clears '
+            + 'the words on both: `eraseContactRegressionArtifacts` deletes any run built on that person\'s frozen '
+            + 'case, and `eraseContactSources` withdraws their learning sources, which retires the releases and blanks '
+            + '`results` and `release_evidence` on every run that named one. The run itself executes against a '
+            + 'reserved synthetic contact, so those are the only two routes a real person\'s words can take into it.',
     }),
     store({
         id: 'simulation_runs',
         store: 'simulation_runs.results (agent transcripts) and evaluation_snapshot',
         sources: ['modules/simulation/simulation.service.ts'],
         carriesProvenance: true,
-        reachedByRetraction: 'no',
+        reachedByRetraction: 'yes',
         reachedByContactErasure: 'yes',
-        status: 'open',
-        rationale: 'Reached by contact erasure through the replay retention path, but not by a retraction, although its '
-            + 'snapshot names the release.',
-        remedy: 'Same as `eval_runs`: invalidate by release id when the release is retired.',
+        status: 'closed',
+        rationale: 'Reached by contact erasure through the replay retention path, and now by a retraction too: its '
+            + 'snapshot names the release, so retiring one marks the run invalid without deleting the replay it holds.',
     }),
     store({
         id: 'agent_release_evidence',
         store: 'agent_release_candidates.agent_snapshot and agent_release_evaluations.results',
         sources: ['modules/simulation/agent-release-store.ts', 'modules/simulation/agent-release-contract.ts'],
         carriesProvenance: true,
-        reachedByRetraction: 'no',
-        reachedByContactErasure: 'no',
-        status: 'open',
-        rationale: 'Release evidence holding transcripts and a snapshot that names a learning release. Invalidated only '
-            + 'when a regression case changes.',
-        remedy: 'Invalidate on retirement of the release the snapshot names, and join the contact-erasure fan-out.',
+        reachedByRetraction: 'yes',
+        reachedByContactErasure: 'yes',
+        status: 'closed',
+        rationale: 'Release evidence holding transcripts and a snapshot that names a learning release, reached through '
+            + 'the candidate. Retiring the release marks the evaluation invalid, and `releaseReviewEvidence` then '
+            + 'counts it as neither proof nor completeness — so a candidate resting on withdrawn learning cannot be '
+            + 'approved, and a review already open conflicts on a moved evidence hash instead. An erasure clears the '
+            + 'words as well as marking: through the regression-case fan-out, which already invalidated the candidate '
+            + 'and emptied its evaluations, and through the source withdrawal that retires the release and blanks '
+            + '`results` and `evidence`.',
     }),
     store({
         id: 'quality_regression_cases',
         store: 'quality_regression_cases.proposal.observedReplies',
         sources: ['modules/quality/regressions/quality-regression-contracts.ts',
             'modules/quality/regressions/quality-regression.service.ts'],
-        carriesProvenance: false,
-        reachedByRetraction: 'no',
+        carriesProvenance: true,
+        reachedByRetraction: 'yes',
         reachedByContactErasure: 'yes',
-        status: 'open',
-        rationale: 'Freezes real agent replies as permanent test evidence with a source contact but no release id, so a '
-            + 'retraction structurally cannot find it. Contact erasure does reach it.',
-        remedy: 'Record the release id beside the source contact id when the case is frozen, so a retraction has a key.',
+        status: 'closed',
+        rationale: 'Freezes real agent replies as permanent test evidence. It had a source contact and no release id, '
+            + 'so a retraction structurally could not find it; `source_release_ids` is now recorded when the case is '
+            + 'frozen, read off the turn ledger of the very messages being frozen. A withdrawn release marks the case '
+            + 'invalid, and the gate then shows it blocked with the reason on it rather than quietly shrinking. '
+            + 'Contact erasure deletes it outright, as before.',
     }),
 
     // ── Traces and operator text ─────────────────────────────────────────────
@@ -292,13 +300,15 @@ export const AGENT_OUTPUT_STORES: readonly AgentOutputStore[] = Object.freeze([
         id: 'quality_scores',
         store: 'conversation_quality_scores (judge verdict and its free-text resolution reason)',
         sources: ['modules/quality/quality.service.ts', 'modules/quality/quality-production-evidence.ts'],
-        carriesProvenance: false,
-        reachedByRetraction: 'no',
+        carriesProvenance: true,
+        reachedByRetraction: 'yes',
         reachedByContactErasure: 'yes',
-        status: 'open',
-        rationale: 'Holds a judgement about a conversation and a free-text reason, keyed by transcript hash and source '
-            + 'message ids — no release id, so a retraction structurally cannot find it. Contact erasure does reach it.',
-        remedy: 'Record the release ids of the turn being judged, so a withdrawn release can take its verdicts with it.',
+        status: 'closed',
+        rationale: 'Holds a judgement about a conversation and a free-text reason. It was keyed by transcript hash and '
+            + 'source message ids and named no release, so a retraction structurally could not find it; the verdict '
+            + 'now records `source_release_ids` — a SET, because a judged transcript can cross two releases — read off '
+            + 'the turn ledger inside the same transaction that writes it, before a later retraction nulls the '
+            + 'envelope those ids come from. Contact erasure deletes it outright, as before.',
     }),
     store({
         id: 'benchmark_attempts',

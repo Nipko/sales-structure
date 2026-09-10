@@ -35,7 +35,12 @@ export function assertReleaseChannels(snapshot:AgentEvaluationSnapshot):string[]
 /** Evidence is taken only from persisted worker results. Request bodies cannot contribute a score or a transcript. */
 export function releaseReviewEvidence(candidate:any,evaluations:any[]) {
     const snapshot=candidate.agent_snapshot as AgentEvaluationSnapshot;
-    const runs=evaluations.filter(row=>row.status==='completed').map(row=>row.evidence as AgentReleaseRunEvidence);
+    // A run whose learning release was withdrawn keeps its transcripts and stops
+    // counting: not proof, and not completeness either, so a candidate resting on
+    // one cannot be approved. The evidence hash moves with it, which is what makes
+    // a review that was already open conflict instead of approving on dead learning.
+    const standing=(row:any)=>row.status==='completed'&&!row.invalidated_at;
+    const runs=evaluations.filter(standing).map(row=>row.evidence as AgentReleaseRunEvidence);
     const readiness=assessAgentRelease({agentId:candidate.agent_id,dependencyRevision:snapshot?.manifest?.revision||'',
         configHash:snapshot?.configHash||'',scope:snapshot?.releaseScope,runs});
     const samples:Array<{channel:string;language:string;scenario:string;transcript:any[];hash:string}>=[];
@@ -48,7 +53,7 @@ export function releaseReviewEvidence(candidate:any,evaluations:any[]) {
         samples.push({...sample,hash:revisionHash(sample)});
     }
     const expectedSamples=(candidate.channels?.length||0)*(snapshot?.releaseScope?.languages?.length||0);
-    const complete=evaluations.length===(candidate.channels?.length||0)&&evaluations.every(row=>row.status==='completed')
+    const complete=evaluations.length===(candidate.channels?.length||0)&&evaluations.every(standing)
         &&new Set(evaluations.map(row=>row.channel_type)).size===evaluations.length
         &&evaluations.every(row=>candidate.channels.includes(row.channel_type)&&row.evidence?.channelType===row.channel_type);
     const body={candidateId:candidate.id,configurationRevisionId:candidate.configuration_revision_id,

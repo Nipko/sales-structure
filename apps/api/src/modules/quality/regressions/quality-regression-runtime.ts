@@ -30,6 +30,10 @@ export async function assertReviewedRegressionScenarios(query:RegressionQuery,sc
     for(const scenario of scenarios.filter(item=>ids.includes(item.regressionCaseId))){
         const row=rows.find(item=>item.id===scenario.regressionCaseId);
         const {id:_displayId,regressionApprovedHash,...definition}=scenario;
+        // `invalidated_at` is read off the row rather than filtered in SQL: this
+        // runs on tenants whose table may predate the column, and an absent
+        // column must read as "not invalidated", not abort the transaction.
+        if(row?.invalidated_at)throw new ConflictException({error:'regression_release_retired'});
         if(!row||row.state!=='approved'||Number(row.revision)!==Number(scenario.regressionRevision)
             ||!row.source_hash||!row.approved_hash||!row.approved_scenario||row.approved_hash!==qualityHash(row.approved_scenario)
             ||row.approved_hash!==qualityHash(definition)||row.approved_hash!==regressionApprovedHash
@@ -62,8 +66,12 @@ export async function fetchReviewedRegressionScenarios(query:RegressionQuery):Pr
         // Stale approvals remain visible as blocked cases; they cannot silently certify a changed source.
         let current=true;
         try{await assertRegressionCaseSource(query,row);}catch{current=false;}
+        // A case whose learning release was withdrawn is blocked the same way a
+        // changed source is: visible, with the reason on it. Dropping it from
+        // the list would quietly shrink the gate and nobody would know why.
+        const blocked=row.invalidated_at?'release_retired':(current?null:'source_changed');
         scenarios.push({...row.approved_scenario,id:row.id,regressionApprovedHash:row.approved_hash,
-            ...(current?{}:{seedState:'review_required',regressionBlocked:'source_changed'})});
+            ...(blocked?{seedState:'review_required',regressionBlocked:blocked}:{})});
     }
     return scenarios;
 }

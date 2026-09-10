@@ -4,6 +4,7 @@ import { redactWidgetAgentReplies } from '../widget/widget-agent-reply-retention
 import { redactPendingDrafts, redactTurnLedger } from '../conversations/agent-turn-ledger';
 import { redactDispatchOutbox } from '../channels/agent-dispatch-outbox';
 import { redactOutboundPayloadsForRelease } from '../channels/outbound-payload-store';
+import { invalidateEvidenceByRelease } from './agent-evidence-provenance';
 
 export interface LearningEvaluationNamespace extends EvalNamespaceLease { attemptId:string;workerToken?:string; }
 
@@ -85,6 +86,16 @@ export async function retireLearningReleases(query:LearningSourceQuery,input:{re
     // Redis job with no release id on them. They live in a row now, so a
     // withdrawn release takes back what has not gone out yet.
     if(rows.length)await redactOutboundPayloadsForRelease(query as any,rows.map(row=>String(row.id)));
+    // And the evidence that rested on the release. Not deleted — that evaluation
+    // really did run, and unwriting it would make the history lie — but marked
+    // invalid, which is what stops it certifying an agent whose learning nobody
+    // may use any more.
+    // An erasure clears their words from it; an operator's rollback keeps the
+    // transcript and only stops it counting. Same distinction as `deliveredReplies`
+    // above, and the same reason: a release is withdrawn by a decision, a person
+    // is erased by a right.
+    if(rows.length)await invalidateEvidenceByRelease(query as any,rows.map(row=>String(row.id)),
+        {derivedText:input.deliveredReplies==='retain'?'retain':'redact'});
     // And the envelope a turn would be resumed from, which carries the same
     // footprints. The recursive lineage above is what makes release ids enough:
     // the ledger cannot filter by source id, and by here every affected release

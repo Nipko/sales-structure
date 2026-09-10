@@ -4,6 +4,7 @@ import { retireSimulationReplayRuns, type SimulationReplayQuery } from './simula
 import { bindCanonicalEvalFixtures } from './eval-canonical-fixtures';
 import { revisionHash } from '../evaluation-revision/evaluation-revision';
 import { AGENT_TEST_EXECUTION_CONTEXT } from '../../common/types/execution-context';
+import { evidenceProvenanceDdl } from '../learning/agent-evidence-provenance';
 import { Injectable, Logger, BadRequestException, Optional } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -104,7 +105,7 @@ export class SimulationService {
     // Table bootstrap
     // ---------------------------------------------------------------------
     async ensureTables(schemaName: string): Promise<void> {
-        const cacheKey = `simulation_cols:v4:${schemaName}`;
+        const cacheKey = `simulation_cols:v5:${schemaName}`;
         const cached = await this.redis.get(cacheKey);
         if (cached) return;
 
@@ -148,6 +149,9 @@ export class SimulationService {
         await this.prisma.executeInTenantSchema(schemaName, 'ALTER TABLE simulation_runs ADD COLUMN IF NOT EXISTS replay_authority JSONB');
         await this.prisma.executeInTenantSchema(schemaName, 'ALTER TABLE simulation_runs ADD COLUMN IF NOT EXISTS retired_at TIMESTAMPTZ');
         await this.prisma.executeInTenantSchema(schemaName, 'ALTER TABLE simulation_runs ADD COLUMN IF NOT EXISTS replay_namespace_leases JSONB');
+        // A run whose learning release is later withdrawn stays here with its
+        // transcripts intact and stops counting as proof.
+        for (const ddl of evidenceProvenanceDdl('simulation_runs')) await this.prisma.executeInTenantSchema(schemaName, ddl);
         const retiredSnapshots: AgentEvaluationSnapshot[] = [];
         await this.prisma.transactionInTenantSchema(schemaName, async query => {
             await query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))::text', ['agent-privacy:' + schemaName]);

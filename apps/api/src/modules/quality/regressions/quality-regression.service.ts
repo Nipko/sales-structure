@@ -3,6 +3,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { QualityService } from '../quality.service';
 import { QUALITY_RUBRIC_HASH } from '../quality-rubric';
 import { QUALITY_REGRESSION_SCHEMA } from './quality-regression-schema';
+import { releasesForMessages } from '../../learning/agent-evidence-provenance';
 import { assertRegressionCaseSource, readRegressionSource, type RegressionSourceKind, type RegressionQuery } from './quality-regression-source';
 import { invalidateRegressionArtifacts } from './quality-regression-retention';
 import { missionMetrics } from '../mission-metrics';
@@ -111,13 +112,17 @@ export class QualityRegressionService {
             if(!proposal.messages.length)throw new ConflictException({error:'regression_customer_request_missing'});
             // Source and all selected messages must still belong to the same
             // conversation revision at publication; edits trigger qa_revision.
+            // The releases the frozen reply actually ran on. A case is permanent
+            // test evidence: without this it could keep gating deploys on learning
+            // that was withdrawn, and nothing could find it to say so.
+            const releaseIds=await releasesForMessages(query,messages.map(row=>String(row.id)));
             const rows=await query<any[]>(`INSERT INTO quality_regression_cases
                 (agent_id,source_contact_id,source_conversation_id,source_kind,source_evidence_id,source_message_ids,
-                 source_revision,source_hash,source_agent_version,source_configuration_hash,scope,proposal,created_by)
-                VALUES($1::uuid,$2::uuid,$3::uuid,$4,$5::uuid,$6::uuid[],$7::bigint,$8,$9,$10,$11::jsonb,$12::jsonb,$13::uuid)
+                 source_revision,source_hash,source_agent_version,source_configuration_hash,scope,proposal,created_by,source_release_ids)
+                VALUES($1::uuid,$2::uuid,$3::uuid,$4,$5::uuid,$6::uuid[],$7::bigint,$8,$9,$10,$11::jsonb,$12::jsonb,$13::uuid,$14::text[])
                 ON CONFLICT(agent_id,source_kind,source_evidence_id,source_hash) DO NOTHING RETURNING *`,[agentId,source.contact_id,source.conversation_id,input.kind,input.evidenceId,
                 messages.map(row=>row.id),String(source.qa_revision),source.fingerprint,source.agent_config_version,
-                source.configuration_snapshot?.state==='captured'?source.configuration_snapshot.hash:null,JSON.stringify(scope),JSON.stringify(proposal),actorId]);
+                source.configuration_snapshot?.state==='captured'?source.configuration_snapshot.hash:null,JSON.stringify(scope),JSON.stringify(proposal),actorId,releaseIds]);
             if(!rows.length){const duplicate=await query<any[]>(`SELECT * FROM quality_regression_cases WHERE agent_id=$1::uuid AND source_kind=$2 AND source_evidence_id=$3::uuid AND source_hash=$4`,[agentId,input.kind,input.evidenceId,source.fingerprint]);return this.project(duplicate[0]);}
             await query(`INSERT INTO quality_regression_revisions(case_id,revision,proposal,scope,created_by) VALUES($1::uuid,1,$2::jsonb,$3::jsonb,$4::uuid)`,[rows[0].id,JSON.stringify(proposal),JSON.stringify(scope),actorId]);
             return this.project(rows[0]);

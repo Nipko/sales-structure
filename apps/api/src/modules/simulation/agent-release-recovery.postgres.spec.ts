@@ -14,7 +14,7 @@ const connection=process.env.PARALLLY_ISOLATION_TEST_URL;
         await query(`CREATE SCHEMA "${schema}"`);
         // Scheduling projections only; the canonical release store has separate full-DDL PG coverage.
         await query(`CREATE TABLE "${schema}".agent_release_candidates(id uuid PRIMARY KEY,agent_id uuid,status text,created_at timestamptz)`);
-        await query(`CREATE TABLE "${schema}".agent_release_evaluations(id uuid PRIMARY KEY,candidate_id uuid REFERENCES "${schema}".agent_release_candidates(id),status text,next_attempt_at timestamptz,lease_until timestamptz)`);
+        await query(`CREATE TABLE "${schema}".agent_release_evaluations(id uuid PRIMARY KEY,candidate_id uuid REFERENCES "${schema}".agent_release_candidates(id),status text,next_attempt_at timestamptz,lease_until timestamptz,invalidated_at timestamptz)`);
         const prisma:any={tenant:{findMany:async()=>[{id:tenantId}]},getTenantSchemaName:async()=>schema,
             transactionInTenantSchema:async(_schema:string,work:any)=>{
                 const client=await pool.connect();await client.query('BEGIN');

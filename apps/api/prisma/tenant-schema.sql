@@ -5478,3 +5478,30 @@ CREATE INDEX IF NOT EXISTS idx_outbound_payload_contact
 CREATE INDEX IF NOT EXISTS idx_outbound_payload_release
         ON "{{SCHEMA_NAME}}"."outbound_payloads" USING GIN (release_ids) WHERE payload IS NOT NULL;
 -- END AGENT CERTIFICATION LEDGER
+
+-- BEGIN AGENT EVIDENCE PROVENANCE
+-- Una retractación retira un RELEASE; no deshace la evaluación que ocurrió.
+-- Por eso la fila sobrevive con su transcripción intacta y se la marca inválida:
+-- la marca es lo que impide que siga certificando a un agente cuyo aprendizaje
+-- ya nadie puede usar. Los dos stores que no tenían ninguna clave reciben una,
+-- y es un conjunto: una conversación juzgada pudo cruzar dos releases, y elegir
+-- uno solo sería desconocer al otro en silencio.
+-- Generado desde el registro que ejecuta el runtime (prisma/generate-evidence-provenance.cjs).
+ALTER TABLE "{{SCHEMA_NAME}}"."eval_runs"
+    ADD COLUMN IF NOT EXISTS invalidated_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS invalidated_reason TEXT;
+ALTER TABLE "{{SCHEMA_NAME}}"."simulation_runs"
+    ADD COLUMN IF NOT EXISTS invalidated_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS invalidated_reason TEXT;
+ALTER TABLE "{{SCHEMA_NAME}}"."agent_release_evaluations"
+    ADD COLUMN IF NOT EXISTS invalidated_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS invalidated_reason TEXT;
+ALTER TABLE "{{SCHEMA_NAME}}"."quality_regression_cases"
+    ADD COLUMN IF NOT EXISTS invalidated_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS invalidated_reason TEXT,
+    ADD COLUMN IF NOT EXISTS source_release_ids TEXT[];
+ALTER TABLE "{{SCHEMA_NAME}}"."conversation_quality_scores"
+    ADD COLUMN IF NOT EXISTS invalidated_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS invalidated_reason TEXT,
+    ADD COLUMN IF NOT EXISTS source_release_ids TEXT[];
+-- END AGENT EVIDENCE PROVENANCE

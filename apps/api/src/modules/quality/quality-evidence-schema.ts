@@ -1,3 +1,5 @@
+import { evidenceProvenanceDdl } from '../learning/agent-evidence-provenance';
+
 /** Tenant search_path is set by PrismaService. Each statement runs separately for PgBouncer. */
 export const QUALITY_EVIDENCE_DDL = [
     `CREATE TABLE IF NOT EXISTS customer_memory_erasure (contact_id UUID PRIMARY KEY, erased_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`,
@@ -19,6 +21,9 @@ export const QUALITY_EVIDENCE_DDL = [
     `ALTER TABLE conversation_quality_scores ADD COLUMN IF NOT EXISTS conversational_resolved BOOLEAN`,
     `ALTER TABLE conversation_quality_scores ADD COLUMN IF NOT EXISTS conversational_resolution_reason TEXT`,
     `ALTER TABLE conversation_quality_scores ADD COLUMN IF NOT EXISTS operational_outcome TEXT NOT NULL DEFAULT 'unknown'`,
+    // A verdict names the releases that produced the turns it judged, so a
+    // withdrawn release can stop it certifying anything without deleting it.
+    ...evidenceProvenanceDdl('conversation_quality_scores'),
     `CREATE UNIQUE INDEX IF NOT EXISTS idx_cqs_revision_rubric ON conversation_quality_scores(conversation_id,source_revision,rubric_hash)`,
     `CREATE OR REPLACE FUNCTION qa_conversation_revision() RETURNS trigger LANGUAGE plpgsql AS $qa$
     BEGIN

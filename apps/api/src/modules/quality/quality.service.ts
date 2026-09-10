@@ -67,7 +67,7 @@ export class QualityService {
     }
 
     async ensureTables(schemaName: string): Promise<void> {
-        const cacheKey = `quality_cols:v3:${schemaName}`;
+        const cacheKey = `quality_cols:v4:${schemaName}`;
         const cached = await this.redis.get(cacheKey);
         if (cached) return;
 

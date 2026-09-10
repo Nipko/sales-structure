@@ -492,13 +492,26 @@ export class ChannelManagementController {
     @RequiresVerifiedEmail('send_outbound')
     @ApiOperation({ summary: 'Send a test message through the connected Telegram bot' })
     async testTelegram(
-        @Body() body: { chatId: string },
+        @Body() body: { chatId: string; accountId?: string },
         @Req() req: any,
     ) {
         const tenantId = req.user?.tenantId;
         if (!tenantId) throw new BadRequestException('Tenant ID required');
 
-        const creds = await this.channelToken.getChannelToken(tenantId, 'telegram');
+        // Which bot to test used to be whichever one the resolver happened to
+        // return. A tenant with two got a test that proved nothing about the one
+        // it was looking at, so `accountId` names it. Left optional: with a
+        // single bot the question does not arise, and that is most tenants.
+        let creds: { accessToken: string; accountId: string };
+        try {
+            creds = await this.channelToken.getChannelToken(tenantId, 'telegram', body.accountId);
+        } catch (error: any) {
+            if (error?.code === 'connection_ambiguous') {
+                throw new BadRequestException(
+                    'Tienes más de un bot de Telegram conectado: indicá cuál querés probar (accountId)');
+            }
+            throw new BadRequestException('No hay bot de Telegram conectado');
+        }
         if (!creds?.accessToken) {
             throw new BadRequestException('No hay bot de Telegram conectado');
         }
@@ -1188,32 +1201,62 @@ export class ChannelManagementController {
         let sessionExpired = false;
 
         try {
-            const creds = await this.channelToken.getChannelToken(tenantId, 'instagram');
-            if (!creds?.accessToken) {
-                providerError = 'No active Instagram credentials';
-                // No token to call DELETE with — same practical outcome as
-                // an expired session: the local row gets cleaned up and
-                // nothing can flow either way.
-                sessionExpired = true;
-            } else {
-                const res = await fetch(
-                    `https://graph.instagram.com/me/permissions?access_token=${creds.accessToken}`,
-                    { method: 'DELETE' },
-                );
-                if (res.ok) {
-                    providerOk = true;
-                    this.logger.log(`Instagram permissions revoked for tenant ${tenantId}`);
-                } else {
-                    const body = await res.text().catch(() => '');
-                    providerError = `Instagram returned ${res.status}: ${body.substring(0, 200)}`;
-                    if (this.isMetaSessionExpiredError(body)) {
-                        sessionExpired = true;
-                        this.logger.log(`Instagram disconnect soft-success (token expired) for tenant ${tenantId}`);
-                    } else {
-                        this.logger.warn(providerError);
+            // EVERY connected account, not the one the resolver happened to
+            // return. `finalizeChannelDisconnect` deactivates all the rows of the
+            // type, so a tenant with two Instagram accounts had both switched off
+            // locally while only one had its permissions revoked at Meta — the
+            // other stayed subscribed, delivering to an inactive row. Telegram
+            // and Messenger already iterate; Instagram was the one left behind.
+            const accounts = await this.prisma.channelAccount.findMany({
+                where: { tenantId, channelType: 'instagram', isActive: true },
+                select: { accountId: true },
+            });
+            const targets: Array<string | undefined> = accounts.length
+                ? accounts.map(a => a.accountId)
+                : [undefined]; // legacy tenant with no per-account row
+            const errors: string[] = [];
+            let okCount = 0;
+            let expiredCount = 0;
+
+            for (const target of targets) {
+                const label = target ?? 'legacy';
+                try {
+                    const creds = await this.channelToken.getChannelToken(tenantId, 'instagram', target);
+                    if (!creds?.accessToken) {
+                        // No token to call DELETE with — same practical outcome as
+                        // an expired session: the local row gets cleaned up and
+                        // nothing can flow either way.
+                        expiredCount++;
+                        errors.push(`${label}: No active Instagram credentials`);
+                        continue;
                     }
+                    const res = await fetch(
+                        `https://graph.instagram.com/me/permissions?access_token=${creds.accessToken}`,
+                        { method: 'DELETE' },
+                    );
+                    if (res.ok) {
+                        okCount++;
+                        this.logger.log(`Instagram permissions revoked for ${label} (tenant ${tenantId})`);
+                    } else {
+                        const body = await res.text().catch(() => '');
+                        errors.push(`${label}: Instagram returned ${res.status}: ${body.substring(0, 200)}`);
+                        if (this.isMetaSessionExpiredError(body)) {
+                            expiredCount++;
+                            this.logger.log(`Instagram disconnect soft-success (token expired) for ${label}`);
+                        } else {
+                            this.logger.warn(`Instagram disconnect error for ${label}: ${res.status}`);
+                        }
+                    }
+                } catch (e: any) {
+                    errors.push(`${label}: ${e?.message || 'unknown error'}`);
                 }
             }
+
+            providerOk = okCount > 0;
+            // Only "everything we could not revoke was already dead" counts as a
+            // soft success; one live account we failed to revoke does not.
+            sessionExpired = okCount + expiredCount === targets.length && expiredCount > 0;
+            if (errors.length) providerError = errors.join('; ');
         } catch (err: any) {
             providerError = err?.message || 'unknown error calling Instagram';
             this.logger.warn(`Instagram disconnect error for tenant ${tenantId}: ${providerError}`);

@@ -346,6 +346,45 @@ const enabled = !!databaseUrl && !!redisUrl;
             .toBe('refused:connection_not_found');
     });
 
+    // ── 3b · THE CREDENTIAL HAS TO BELONG TO THE ACCOUNT ──────────────────────
+
+    it('refuses a shared credential it cannot attribute to one of several accounts', async () => {
+        // A legacy row holds the `encrypted_ref` placeholder and resolution falls
+        // back to the tenant's single shared `{channel}_token` credential. That is
+        // a fallback about WHICH SECRET, not which account — and it is only sound
+        // while the tenant has one account. The daily Instagram refresh writes
+        // whichever account ran last into that shared row, so on a two-account
+        // tenant it hands one account the other's token: the same substitution,
+        // one layer down, and invisible in the account id that comes back.
+        await client.$executeRawUnsafe(
+            `UPDATE public.channel_accounts SET access_token='encrypted_ref'
+              WHERE tenant_id=$1::uuid AND account_id=$2`, tenantA.id, igAccounts.a2);
+        await client.$executeRawUnsafe(
+            `INSERT INTO public.whatsapp_credentials(id,tenant_id,credential_type,encrypted_value)
+             VALUES($1::uuid,$2::uuid,'instagram_token',$3)`,
+            randomUUID(), tenantA.id, crypto.encryptToken(`token-${igAccounts.a1}`));
+
+        expect(await outcome(service.getChannelToken(tenantA.id, 'instagram', igAccounts.a2)))
+            .toBe('refused:credential_missing');
+    });
+
+    it('still uses the shared credential for a tenant that has exactly one account', async () => {
+        await client.$executeRawUnsafe(
+            `DELETE FROM public.channel_accounts WHERE tenant_id=$1::uuid AND channel_type='instagram'
+              AND account_id<>$2`, tenantA.id, igAccounts.a1);
+        await client.$executeRawUnsafe(
+            `UPDATE public.channel_accounts SET access_token='encrypted_ref'
+              WHERE tenant_id=$1::uuid AND account_id=$2`, tenantA.id, igAccounts.a1);
+        await client.$executeRawUnsafe(
+            `INSERT INTO public.whatsapp_credentials(id,tenant_id,credential_type,encrypted_value)
+             VALUES($1::uuid,$2::uuid,'instagram_token',$3)`,
+            randomUUID(), tenantA.id, crypto.encryptToken('the-tenants-only-instagram-token'));
+
+        const resolved = await service.getChannelToken(tenantA.id, 'instagram', igAccounts.a1);
+        expect(resolved.accountId).toBe(igAccounts.a1);
+        expect(resolved.accessToken).toBe('the-tenants-only-instagram-token');
+    });
+
     // ── 4 · THE CONTEXT THAT TRAVELS WITH THE EFFECT ──────────────────────────
 
     it('produces a send context carrying the exact connection and the account that pays', async () => {

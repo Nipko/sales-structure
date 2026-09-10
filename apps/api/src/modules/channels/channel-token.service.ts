@@ -364,6 +364,27 @@ export class ChannelTokenService {
             }
         }
 
+        // The shared per-tenant credential is one row with no account on it, so
+        // it can only be attributed to an account while the tenant has one. With
+        // two, the daily Instagram refresh writes whichever account ran last into
+        // that row, and handing it to the other one presents a credential that is
+        // not its own — the same substitution as picking the wrong connection,
+        // one layer down and invisible in the returned account id.
+        //
+        // WhatsApp is the deliberate exception and takes a different path: its
+        // system_user_token really is tenant-wide under the Tech Provider model,
+        // and it is recorded as `system_user` so the sharing is visible.
+        const siblings = await this.prisma.channelAccount.count({
+            where: { tenantId, channelType, isActive: true },
+        });
+        if (siblings > 1) {
+            throw new ConnectionRefusedError('credential_missing', {
+                tenantId, channelType, requestedAccountId: account.accountId,
+                detail: 'this connection has no credential of its own and the tenant\'s shared one '
+                    + 'cannot be attributed to any single account; reconnect this account',
+            });
+        }
+
         const credType = `${channelType}_token`; // instagram_token, messenger_token, ...
         const cred = await this.prisma.whatsappCredential.findFirst({
             where: { tenantId, credentialType: credType },

@@ -2,6 +2,7 @@ import { Injectable, Logger, Optional } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PROVIDER_BILLED_CHANNELS, type OutboundSendContext } from '@parallext/shared';
 import { recipientIso, recipientMarket, describeRecipientMarket } from '../whatsapp-rates';
+import { describeCurrency, resolveCurrency } from '../../whatsapp/waba-currency-authority';
 import {
     declaredCategory, resolveMessageCategory, type CategoryEvidence,
 } from './message-category';
@@ -219,11 +220,25 @@ export class WhatsappSendAdmissionService {
      */
     async admit(request: AdmissionRequest): Promise<Admission> {
         const channel = String(request.connection.channelType || '').toLowerCase();
+
+        // ── The canonical category, BEFORE the key that hashes it ───────────
+        //
+        // The key includes the category, and it was being built from
+        // `request.category || 'service'` — the raw value a producer happened to
+        // pass, or the cheapest default. So the same message could be keyed as
+        // `service` and reserved as `marketing`, and two attempts at one effect
+        // could land on two different keys.
+        const category = this.categoryFor(request);
+        const keyCategory = category.kind === 'resolved' ? category.category : 'category_unknown';
+
         const effectKey = this.spend.effectKey({
             tenantId: request.connection.tenantId,
             channelAccountId: request.connection.channelAccountId,
             recipientRef: request.recipientRef,
-            category: request.category || 'service',
+            // `category_unknown` rather than `service`: an unclassified message
+            // must not share a key with a classified one, and must not be keyed
+            // as the cheapest thing Meta sells.
+            category: keyCategory,
             producer: request.producer,
             ordinal: request.ordinal ?? 0,
             contentDigest: request.contentDigest,
@@ -267,26 +282,74 @@ export class WhatsappSendAdmissionService {
 
         const account = await this.accountFacts(request.connection.tenantId, request.connection.channelAccountId);
 
+        // ── The currency, with provenance or not at all ─────────────────────
+        //
+        // A substituted default plus a real market and category produced
+        // `basis: 'priced'` — an exact amount in money nobody established. That
+        // is worse than the refusal it replaced, because it reads as
+        // authoritative. The reservation still happens; what it must not do is
+        // claim a price.
+        const currency = resolveCurrency(account.metadata);
+        const currencyEstablished = currency.kind === 'established';
+        if (!currencyEstablished && enforcement === 'enforce') {
+            // Under enforcement the effect is DEFERRED rather than sent
+            // unpriced: a tenant that asked for a ceiling asked for a ceiling
+            // that means something, and a ceiling cannot be applied to an
+            // amount nobody can compute.
+            return Object.freeze({
+                permitted: false, effectKey, enforcement,
+                block: spendBlock('currency_unknown', describeCurrency(currency)),
+            });
+        }
+        if (currency.kind === 'established' && currency.stale) {
+            this.logger.warn(`[Spend] pricing ${request.connection.channelAccountId} in `
+                + `${currency.currency}, last confirmed ${Math.floor(currency.ageMs / 86_400_000)} `
+                + `day(s) ago`);
+        }
+
         // ── The country being messaged, read before the address is hashed ───
         //
         // Meta charges by the RECIPIENT'S country. The old code read one fixed
         // `billingMarket` off the sending number, which is wrong for every
         // tenant with a customer abroad. Only the ISO survives into the ledger.
         const market = recipientMarket(request.recipientAddress ?? null);
-        const marketIso = market.kind === 'resolved' ? market.iso : (account.market ?? null);
+        // NOT `account.market`. Falling back to the sending number's country is
+        // the very defect this replaced: it prices a Mexican customer at the
+        // Colombian rate and looks entirely plausible doing it. An
+        // unresolvable destination stays unknown, and the rate card's own
+        // unnamed bucket answers for it.
+        const marketIso = market.kind === 'resolved' ? market.iso : null;
+        if (!marketIso) {
+            this.logger.log(`[Spend] market unresolved for ${request.producer}: `
+                + `${describeRecipientMarket(market)}`);
+        }
 
-        // ── Which of Meta's five categories this is ─────────────────────────
-        //
-        // A fact about the message, not a default. Every lane used to pass
-        // nothing and get `service`, so campaigns and one-time passwords priced
-        // as the cheapest thing Meta sells.
-        const category = this.categoryFor(request);
+        // Which of Meta's five categories this is was resolved above, before
+        // the key. A fact about the message, not a default: every lane used to
+        // pass nothing and get `service`, so campaigns and one-time passwords
+        // priced as the cheapest thing Meta sells.
         if (category.kind === 'unknown' && enforcement === 'enforce') {
+            // Deferred, not sent unpriced. A proactive message nobody can
+            // classify is the one most likely to be expensive.
             return Object.freeze({
                 permitted: false, effectKey, enforcement,
                 block: spendBlock('category_unknown', category.detail),
             });
         }
+
+        // What makes a price impossible, as opposed to merely hard to find.
+        // Either of these makes the rate card inapplicable, so nothing is asked
+        // of it and the reservation carries the declared ceiling as exposure.
+        const costUnknowable = !currencyEstablished
+            ? { reason: `currency_unestablished: ${describeCurrency(currency)}` }
+            : category.kind === 'unknown'
+                ? { reason: `category_unknown: ${category.detail}` }
+                : !marketIso
+                    // A destination whose country cannot be named has no rate
+                    // line. The resolver would fall into an unnamed bucket and
+                    // return a number; that number is for a different country.
+                    ? { reason: `market_unknown: ${describeRecipientMarket(market)}` }
+                    : null;
 
         const result: SpendAuthorizeResult = await this.spend.authorize(request.schema, {
             effectKey,
@@ -310,7 +373,10 @@ export class WhatsappSendAdmissionService {
                 // basis, which is visible — rather than pricing as a reply.
                 category: category.kind === 'resolved' ? category.category : 'service',
                 market: marketIso,
-                currency: account.currency ?? ASSUMED_CURRENCY,
+                // The ledger column is NOT NULL, so an unestablished currency is
+                // still written — but `costUnknowable` below makes sure nothing
+                // is ever priced in it.
+                currency: currencyEstablished ? currency.currency : ASSUMED_CURRENCY,
             },
             binding: request.binding,
             contactId: request.contactId,
@@ -331,8 +397,8 @@ export class WhatsappSendAdmissionService {
             // rule, and an assumed currency is too. Both are recorded with
             // `basis: 'unknown'`, which is what makes the exposure visible
             // instead of confidently wrong.
-            allowUnknownCost: enforcement === 'observe'
-                || category.kind === 'unknown' || !account.currency,
+            allowUnknownCost: enforcement === 'observe' || Boolean(costUnknowable),
+            costUnknowable,
         });
 
         if (result.outcome !== 'blocked') {
@@ -536,8 +602,10 @@ export class WhatsappSendAdmissionService {
      * date nobody ever notices.
      */
     private async accountFacts(tenantId: string, channelAccountId: string): Promise<{
-        timeZone: string | null; currency: string | null; market: string | null;
+        timeZone: string | null; market: string | null;
         wabaId: string | null; businessId: string | null; address: string | null;
+        /** The raw metadata, so the currency authority can read its own evidence. */
+        metadata: Record<string, any>;
     }> {
         try {
             const account = await this.prisma.channelAccount.findFirst({
@@ -547,15 +615,19 @@ export class WhatsappSendAdmissionService {
             const metadata = (account?.metadata ?? {}) as Record<string, any>;
             return {
                 timeZone: account?.wabaTimezone ?? null,
-                currency: metadata.billingCurrency ?? null,
+                // NOT the currency: that comes from the authority, which refuses
+                // a value with no provenance. Reading it here would be the same
+                // unprovenanced guess wearing a different name.
                 market: metadata.billingMarket ?? null,
                 wabaId: metadata.wabaId ?? null,
                 businessId: metadata.businessId ?? null,
                 address: account?.displayName ?? null,
+                metadata,
             };
         } catch (error: any) {
             this.logger.warn(`[Spend] account facts unreadable for ${channelAccountId}: ${error?.message}`);
-            return { timeZone: null, currency: null, market: null, wabaId: null, businessId: null, address: null };
+            return { timeZone: null, market: null, wabaId: null, businessId: null,
+                address: null, metadata: {} };
         }
     }
 

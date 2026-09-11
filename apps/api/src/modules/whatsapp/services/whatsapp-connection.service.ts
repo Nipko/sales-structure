@@ -23,6 +23,9 @@ import {
     contradictoryWabas, describeResolution, resolveZone,
     type NumberZone, type ZoneEvidence, type ZoneResolution,
 } from '../waba-timezone-authority';
+import {
+    currencyFromMeta, describeCurrency, resolveCurrency,
+} from '../waba-currency-authority';
 
 const META_GRAPH = 'https://graph.facebook.com/v21.0';
 
@@ -232,6 +235,20 @@ export class WhatsappConnectionService {
             // `waba_timezone` refuses one. Storing it means the mapping can be
             // done later without asking Meta again for every connection.
             ...(data.timezoneId ? { metaTimezoneId: String(data.timezoneId) } : {}),
+            // Meta's own billing currency for this WABA, with provenance.
+            // A bare code with no source and no date cannot be used to price:
+            // it is indistinguishable from something somebody typed, and a
+            // confident amount in the wrong money is worse than no amount.
+            ...(currencyFromMeta(data.currency, wabaId)
+                ? { billingCurrencyEvidence: { ...currencyFromMeta(data.currency, wabaId)! } }
+                : {}),
+            // Meta's own billing currency for this WABA, with provenance.
+            // A bare code with no source and no date cannot be used to price:
+            // it is indistinguishable from something somebody typed, and a
+            // confident amount in the wrong money is worse than no amount.
+            ...(currencyFromMeta(data.currency, wabaId)
+                ? { billingCurrencyEvidence: { ...currencyFromMeta(data.currency, wabaId)! } }
+                : {}),
           },
         },
       });
@@ -696,7 +713,8 @@ export class WhatsappConnectionService {
     numbers: readonly {
       channelAccountId: string; wabaId: string | null; timezoneId: number | null;
       zone: string | null; evidence: ZoneEvidence | null; resolution: ZoneResolution;
-      guidance: string;
+      guidance: string; currency: string | null; currencyStale: boolean;
+      currencyGuidance: string;
     }[];
     contradictions: ReturnType<typeof contradictoryWabas>;
   }> {
@@ -704,7 +722,7 @@ export class WhatsappConnectionService {
       where: { tenantId, channelType: 'whatsapp' },
       select: { accountId: true, wabaTimezone: true, metadata: true },
     });
-    const numbers: NumberZone[] = accounts.map(account => {
+    const numbers: (NumberZone & { metadata: Record<string, any> })[] = accounts.map(account => {
       const metadata = (account.metadata ?? {}) as Record<string, any>;
       return {
         channelAccountId: account.accountId,
@@ -712,12 +730,22 @@ export class WhatsappConnectionService {
         timezoneId: Number(metadata.metaTimezoneId) || null,
         zone: account.wabaTimezone ?? null,
         evidence: (metadata.wabaTimezoneEvidence ?? null) as ZoneEvidence | null,
+        metadata,
       };
     });
     return {
       numbers: numbers.map(number => {
         const resolution = resolveZone(number, numbers);
-        return { ...number, resolution, guidance: describeResolution(number, resolution) };
+        const currency = resolveCurrency(number.metadata);
+        return {
+          ...number, resolution, guidance: describeResolution(number, resolution),
+          // Both halves of "can this number price anything": the zone dates the
+          // rate, and the currency chooses the card. A screen that showed one
+          // would send somebody to fix a field that was not the problem.
+          currency: currency.kind === 'established' ? currency.currency : null,
+          currencyStale: currency.kind === 'established' ? currency.stale : false,
+          currencyGuidance: describeCurrency(currency),
+        };
       }),
       contradictions: contradictoryWabas(numbers),
     };

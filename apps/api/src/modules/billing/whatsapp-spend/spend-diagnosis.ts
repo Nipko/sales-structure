@@ -18,6 +18,7 @@ export const SPEND_BLOCK_CODES = [
     'rate_unknown',
     'currency_unknown',
     'category_unknown',
+    'market_unknown',
     'cap_exhausted',
     'cap_soft_stop',
     'duplicate_recent_send',
@@ -73,6 +74,16 @@ Object.freeze({
     currency_unknown: {
         scope: 'account',
         resolution: 'The WhatsApp account\'s billing currency is not one we hold a rate card for.',
+    },
+    market_unknown: {
+        scope: 'contact',
+        // The tariff follows the destination country, and some destinations
+        // cannot be identified from the number alone: +1 is twenty countries
+        // and +7 is two that Meta prices differently. Guessing is a wrong
+        // invoice line, so the effect is counted and left unpriced.
+        resolution: 'The country of this recipient could not be identified from the number, so '
+            + 'no rate line applies. The message is still counted; its exact cost comes from '
+            + 'reconciliation against what Meta bills.',
     },
     category_unknown: {
         scope: 'account',

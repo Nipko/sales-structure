@@ -2,8 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { createHash } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
-    priceDeliveries, resolveWhatsAppRate, unitCeiling,
-    wabaCalendarMonth, wabaLocalDate,
+    highestRatePerMessage, priceDeliveries, resolveWhatsAppRate, unitCeiling,
+    wabaCalendarMonth, wabaLocalDate, WHATSAPP_RATE_TABLE_VERSION,
 } from '../whatsapp-rates';
 import {
     adoptReservation, claimReservation, claimTransmission, declareTaskBudget, ensureCounters,
@@ -187,6 +187,20 @@ export class WhatsappSpendService {
         readonly repetition?: RepetitionPolicy;
         /** Send at the declared ceiling when no rate can be resolved. */
         readonly allowUnknownCost?: boolean;
+        /**
+         * Refuse to price at all, whatever the rate card would say.
+         *
+         * Not the same as `allowUnknownCost`, and conflating them was a defect:
+         * that flag permits an unknown rate, it does not PRODUCE one. With a
+         * substituted currency and a real market and category, the resolver
+         * found a genuine row and returned `basis: 'priced'` — an exact amount,
+         * in money nobody established, reading as authoritative.
+         *
+         * This is structural. When the currency or the category could not be
+         * established, there is no price to be had and the reservation carries
+         * `basis: 'unknown'` with the ceiling as its exposure.
+         */
+        readonly costUnknowable?: { readonly reason: string } | null;
     }): Promise<SpendAuthorizeResult> {
         const at = input.at ?? new Date();
 
@@ -212,7 +226,13 @@ export class WhatsappSpendService {
         }
 
         // ── 2. Price. `unknown` is an outcome, not an error. ─────────────────
-        const rate = resolveWhatsAppRate({
+        //
+        // And sometimes it is the ONLY honest outcome. A currency or a category
+        // that could not be established makes the rate card inapplicable, not
+        // merely hard to read: asking it anyway returns a real row for the money
+        // we substituted, which is a confident wrong answer.
+        const rate = input.costUnknowable ? unpriceable(input.costUnknowable.reason, at, zone)
+            : resolveWhatsAppRate({
             category: input.identity.category as any,
             recipient: input.identity.market
                 ? { kind: 'iso_alpha2', value: input.identity.market }
@@ -301,8 +321,27 @@ export class WhatsappSpendService {
             const priced = rate.basis === 'priced'
                 ? priceDeliveries(rate.rate, chargeable) : null;
             const ceiling = rate.basis === 'priced' ? unitCeiling(rate.rate) : null;
-            const reservedMinor = priced?.kind === 'priced' ? priced.money.minor : 0;
-            const unitCeilingMinor = ceiling?.minor ?? 0;
+
+            // ── WHAT AN UNPRICEABLE EFFECT STILL RESERVES ───────────────────
+            //
+            // Not zero. Zero is the one answer that is certainly wrong — the
+            // message WILL be billed — and it made the exposure report show an
+            // empty month for an account that was spending.
+            //
+            // The highest price the current card prints for this currency is a
+            // DERIVED upper bound, not an invented estimate: the card itself
+            // says nothing in it costs more. The reservation still carries
+            // `basis: 'unknown'`, so nothing reads it as a price, and
+            // reconciliation settles it against what Meta actually billed.
+            //
+            // Deliberately pessimistic. Under a ceiling, stopping too early is
+            // recoverable by raising the ceiling; overspending is not.
+            const unknownBound = rate.basis === 'priced'
+                ? null : highestRatePerMessage(currency);
+            const reservedMinor = priced?.kind === 'priced'
+                ? priced.money.minor
+                : (unknownBound ? unknownBound.minor * chargeable : 0);
+            const unitCeilingMinor = ceiling?.minor ?? unknownBound?.minor ?? 0;
             const exactMicros = priced?.kind === 'priced' ? priced.exactMicros : 0;
 
             const identity: ReservationIdentity = {
@@ -570,6 +609,25 @@ export function joinForHash(parts: readonly string[]): string {
 }
 
 /** A cap said no. Carried as a throw so the transaction rolls back with it. */
+/**
+ * A rate that cannot be asked for, shaped like one the resolver refused.
+ *
+ * Built here rather than by calling the resolver with a placeholder, because a
+ * placeholder is exactly what produced a confident price in money nobody
+ * established. The reservation that carries this reserves at the declared
+ * ceiling and settles against whatever Meta actually bills.
+ */
+function unpriceable(reason: string, at: Date, zone: string) {
+    return {
+        basis: 'unknown' as const,
+        reason: 'market_not_in_rate_card' as const,
+        detail: reason,
+        rateVersion: null,
+        tableVersion: WHATSAPP_RATE_TABLE_VERSION,
+        appliedOnLocalDate: wabaLocalDate(at, zone),
+    };
+}
+
 class SpendRefused extends Error {
     constructor(readonly block: SpendBlock) { super(block.code); }
 }

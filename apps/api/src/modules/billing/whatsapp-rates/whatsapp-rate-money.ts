@@ -1,5 +1,6 @@
 import type { Money } from '@parallext/shared';
 import { CURRENCY_MINOR_EXPONENT, MICROS_PER_UNIT } from './whatsapp-rate-table.generated';
+import { WHATSAPP_RATE_CARDS } from './whatsapp-rate-table.generated';
 
 /**
  * A published Meta rate, in MICRO-UNITS per delivered message.
@@ -150,5 +151,50 @@ export function priceDeliveries(rate: RatePerMessageMicros, deliveries: number):
  */
 export function unitCeiling(rate: RatePerMessageMicros): Money | null {
     const priced = priceDeliveries(rate, 1);
+    return priced.kind === 'priced' ? priced.money : null;
+}
+
+/**
+ * ═══ WHAT A MESSAGE CANNOT COST MORE THAN ═══
+ *
+ * For an effect whose price cannot be computed — the account's billing currency
+ * was never established, the recipient's country cannot be named, the template's
+ * category never synced — there is still a question worth answering:
+ *
+ *     how much might this be?
+ *
+ * Reserving nothing answers it with "nothing", which is the one answer that is
+ * certainly wrong: the message will be billed. It also makes the exposure report
+ * show an empty month for an account that is spending.
+ *
+ * So an unpriceable effect reserves the HIGHEST price the current card prints
+ * for that currency. That is a derived upper bound, not an invented estimate:
+ * the card itself says nothing in it costs more. The reservation carries
+ * `basis: 'unknown'` so nothing reads it as a price, and reconciliation settles
+ * it against what Meta actually billed.
+ *
+ * It is deliberately pessimistic. Under a ceiling, a pessimistic bound stops
+ * sending sooner than necessary, which is recoverable by raising the ceiling; an
+ * optimistic one overspends, which is not.
+ */
+export function highestRatePerMessage(currency: string): Money | null {
+    const wanted = String(currency).toUpperCase();
+    let worst = 0;
+    let found = false;
+    for (const card of WHATSAPP_RATE_CARDS) {
+        if (card.currency.toUpperCase() !== wanted) continue;
+        for (const entry of card.entries) {
+            for (const micros of Object.values(entry.micros)) {
+                if (typeof micros !== 'number') continue;
+                found = true;
+                if (micros > worst) worst = micros;
+            }
+        }
+    }
+    if (!found) return null;
+    // Through the same rounding the real price uses, so the bound and the price
+    // it bounds are computed by one function rather than two that will
+    // eventually disagree about a half minor unit.
+    const priced = priceDeliveries({ microsPerMessage: worst, currency: wanted }, 1);
     return priced.kind === 'priced' ? priced.money : null;
 }

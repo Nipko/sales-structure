@@ -46,6 +46,19 @@ const prismaWith = (account: Record<string, unknown> | null,
 /** A tenant that has opted into enforcement, where nothing is waved through. */
 const ENFORCING = { whatsappSpend: { enforcement: 'enforce' } };
 
+/**
+ * A currency Meta actually reported, with the provenance that makes it usable.
+ *
+ * A bare `billingCurrency: 'COP'` is deliberately NOT this: a code with no
+ * source and no date is indistinguishable from something somebody typed, and
+ * pricing from it produces a confident amount in money nobody established.
+ */
+const metaCurrency = (currency: string) => ({
+    billingCurrencyEvidence: {
+        currency, source: 'meta_waba', observedAt: new Date().toISOString(), wabaId: 'waba-1',
+    },
+});
+
 const spendDouble = () => {
     const authorize = jest.fn(async () => ({
         // 'held' because that is what a reservation IS when it is first taken.
@@ -119,9 +132,9 @@ describe('the identity that reaches the money authority', () => {
     });
 
     it('reserves even when the account currency is not known yet', async () => {
-        // The refusal that became an unmeasured POST. A reservation at an
-        // assumed currency and an unknown basis is visible and reconcilable; no
-        // reservation at all is neither.
+        // The refusal that became an unmeasured POST. A reservation whose cost
+        // is structurally unknown is visible and reconcilable; no reservation at
+        // all is neither.
         const spend = spendDouble();
         const service = new WhatsappSendAdmissionService(
             prismaWith({ wabaTimezone: 'America/Bogota', metadata: {} }), spend);
@@ -130,44 +143,75 @@ describe('the identity that reaches the money authority', () => {
 
         expect(admission.reservationId).toBe('r1');
         const [, input] = spend.authorize.mock.calls[0];
-        expect(input.identity.currency).toBe('USD');
         expect(input.allowUnknownCost).toBe(true);
+        expect(input.costUnknowable?.reason).toContain('currency_unestablished');
     });
 
-    it('uses the account currency when it IS known, and prices for real', async () => {
+    it('uses the account currency when Meta reported it, and prices for real', async () => {
         // Under ENFORCE, because observe allows an unknown cost by design —
         // the point of observing is to find out how many effects have no price.
         // Only an enforcing tenant shows whether anything was assumed.
         const spend = spendDouble();
         const service = new WhatsappSendAdmissionService(
-            prismaWith({ wabaTimezone: 'America/Bogota', metadata: { billingCurrency: 'COP' } },
+            prismaWith({ wabaTimezone: 'America/Bogota', metadata: metaCurrency('COP') },
                 ENFORCING), spend);
 
         await service.admit(request({ category: 'marketing' }) as any);
 
         const [, input] = spend.authorize.mock.calls[0];
         expect(input.identity.currency).toBe('COP');
-        // Nothing was assumed, so nothing needs the unknown-cost escape hatch.
+        // Nothing was assumed, so nothing is structurally unpriceable and
+        // nothing needs the unknown-cost escape hatch.
+        expect(input.costUnknowable).toBeNull();
         expect(input.allowUnknownCost).toBe(false);
     });
 
-    it('still allows an unknown cost under enforce when the currency is missing', async () => {
-        // The alternative was refusing to reserve, which is precisely how
-        // `currency_unknown` turned every send into an unmeasured POST.
+    it('refuses a currency stored with no source and no date', async () => {
+        // The shape that used to be read. Honouring it is how a price in the
+        // wrong money comes to look authoritative.
+        const spend = spendDouble();
+        const service = new WhatsappSendAdmissionService(
+            prismaWith({ wabaTimezone: 'America/Bogota', metadata: { billingCurrency: 'COP' } }), spend);
+
+        await service.admit(request({ category: 'marketing' }) as any);
+
+        const [, input] = spend.authorize.mock.calls[0];
+        expect(input.costUnknowable?.reason).toContain('currency_unestablished');
+    });
+
+    it('defers under enforce when the currency was never established', async () => {
+        // A tenant that asked for a ceiling asked for one that MEANS something,
+        // and a ceiling cannot be applied to an amount nobody can compute. So
+        // enforcement defers the effect instead of sending it unpriced.
         const spend = spendDouble();
         const service = new WhatsappSendAdmissionService(
             prismaWith({ wabaTimezone: 'America/Bogota', metadata: {} }, ENFORCING), spend);
 
         const admission = await service.admit(request({ category: 'marketing' }) as any);
 
-        expect(admission.reservationId).toBe('r1');
-        expect(spend.authorize.mock.calls[0][1].allowUnknownCost).toBe(true);
+        expect({ permitted: admission.permitted, code: admission.block?.code })
+            .toEqual({ permitted: false, code: 'currency_unknown' });
+        expect(spend.authorize).not.toHaveBeenCalled();
+    });
+
+    it('never asks the rate card for a price it cannot have', async () => {
+        // The defect this replaced: a substituted currency plus a real market
+        // and category found a genuine row and returned `basis: 'priced'` — an
+        // exact amount in money nobody established. `costUnknowable` makes that
+        // impossible structurally rather than by convention.
+        const spend = spendDouble();
+        const service = new WhatsappSendAdmissionService(
+            prismaWith({ wabaTimezone: 'America/Bogota', metadata: {} }), spend);
+
+        await service.admit(request({ category: 'marketing' }) as any);
+
+        expect(spend.authorize.mock.calls[0][1].costUnknowable).not.toBeNull();
     });
 });
 
 describe('the category that reaches it', () => {
     const serviceWith = (spend: any) => new WhatsappSendAdmissionService(
-        prismaWith({ wabaTimezone: 'America/Bogota', metadata: { billingCurrency: 'USD' } }), spend);
+        prismaWith({ wabaTimezone: 'America/Bogota', metadata: metaCurrency('USD') }), spend);
 
     it('is what Meta approved the template as', async () => {
         const spend = spendDouble();
@@ -230,5 +274,51 @@ describe('what a connection with no WABA still produces', () => {
         expect({ permitted: admission.permitted, code: admission.block?.code })
             .toEqual({ permitted: true, code: 'payer_unknown' });
         expect(spend.authorize.mock.calls[0][1].identity.payerKind).toBe('unknown');
+    });
+});
+
+describe('the market that reaches it', () => {
+    const serviceWith = (spend: any, metadata: Record<string, unknown>) =>
+        new WhatsappSendAdmissionService(
+            prismaWith({ wabaTimezone: 'America/Bogota', metadata }, {}), spend);
+
+    it('is nothing for a NANP number, and never the sender country', async () => {
+        // `+1` is the United States, Canada and twenty more. Falling back to the
+        // sending number's country would price a Dominican customer at the
+        // Colombian rate, and look entirely plausible doing it.
+        const spend = spendDouble();
+        await serviceWith(spend, { ...metaCurrency('USD'), billingMarket: 'CO' })
+            .admit(request({ recipientAddress: '+13055551234', insideServiceWindow: true }) as any);
+
+        const [, input] = spend.authorize.mock.calls[0];
+        expect(input.identity.market).toBeNull();
+        expect(input.costUnknowable?.reason).toContain('market_unknown');
+    });
+
+    it('is nothing for +7, which is two markets Meta prices differently', async () => {
+        const spend = spendDouble();
+        await serviceWith(spend, metaCurrency('USD'))
+            .admit(request({ recipientAddress: '+77011234567', insideServiceWindow: true }) as any);
+        expect(spend.authorize.mock.calls[0][1].identity.market).toBeNull();
+    });
+
+    it('is nothing for a number that is not a number', async () => {
+        const spend = spendDouble();
+        await serviceWith(spend, metaCurrency('USD'))
+            .admit(request({ recipientAddress: 'not-a-phone', insideServiceWindow: true }) as any);
+        expect(spend.authorize.mock.calls[0][1].identity.market).toBeNull();
+    });
+
+    it('follows the destination across three countries from ONE sending number', async () => {
+        // The property in one test: same account, same everything, three
+        // customers. A fixed market on the sender reports one answer for all.
+        const seen: (string | null)[] = [];
+        for (const address of ['+573001234567', '+5215512345678', '+5511998887766']) {
+            const spend = spendDouble();
+            await serviceWith(spend, { ...metaCurrency('USD'), billingMarket: 'CO' })
+                .admit(request({ recipientAddress: address, insideServiceWindow: true }) as any);
+            seen.push(spend.authorize.mock.calls[0][1].identity.market);
+        }
+        expect(seen).toEqual(['CO', 'MX', 'BR']);
     });
 });

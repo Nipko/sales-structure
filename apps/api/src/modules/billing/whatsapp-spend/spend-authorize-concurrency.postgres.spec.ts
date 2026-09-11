@@ -170,6 +170,50 @@ integration('authorising one effect from two places at once', () => {
             .toEqual({ used: 1, free: 1 });
     });
 
+    it('never writes a price for a cost it could not compute', async () => {
+        // The defect: a substituted currency plus a real market and category
+        // found a genuine row and wrote `basis: 'priced'` with an exact amount
+        // — in money nobody established. Asserted on the ROW, because that is
+        // what a reconciliation and an invoice comparison will read.
+        const effectKey = `unpriceable-${randomUUID().replace(/-/g, '')}`;
+        await service().authorize(schema, {
+            effectKey,
+            identity: identity() as any,
+            contactId: 'contact-1', deliveries: 1,
+            wabaTimeZone: 'America/Bogota', admissionReason: 'inbound_reply',
+            disposition: 'reactive', allowUnknownCost: true,
+            costUnknowable: { reason: 'currency_unestablished: no evidence' },
+            at: new Date('2026-10-05T12:00:00.000Z'),
+        });
+        const [row] = await q(
+            `SELECT basis, decision, reserved_minor, charged_minor
+               FROM "${schema}".whatsapp_spend_reservations WHERE effect_key = $1`, [effectKey]);
+        expect({ basis: row.basis, decision: row.decision, charged: row.charged_minor })
+            .toEqual({ basis: 'unknown', decision: 'unknown', charged: null });
+        // And the exposure is the declared ceiling, which is the honest number
+        // to reconcile against — not zero, and not an invented price.
+        expect(Number(row.reserved_minor)).toBeGreaterThan(0);
+    });
+
+    it('does write a price when everything needed was established', async () => {
+        // The control. Without it the test above passes against an engine that
+        // never prices anything.
+        const effectKey = `priceable-${randomUUID().replace(/-/g, '')}`;
+        await service().authorize(schema, {
+            effectKey,
+            identity: identity({ category: 'marketing' }) as any,
+            contactId: 'contact-1', deliveries: 1,
+            wabaTimeZone: 'America/Bogota', admissionReason: 'campaign',
+            disposition: 'proactive', allowUnknownCost: false,
+            at: new Date('2026-10-05T12:00:00.000Z'),
+        });
+        const [row] = await q(
+            `SELECT basis, decision FROM "${schema}".whatsapp_spend_reservations
+              WHERE effect_key = $1`, [effectKey]);
+        expect({ basis: row.basis, decision: row.decision })
+            .toEqual({ basis: 'priced', decision: 'accepted' });
+    });
+
     it('still lets two DIFFERENT effects both through', async () => {
         // The lock is per effect key. A lock that serialised everything would
         // turn the busiest path in the platform into a queue of one.

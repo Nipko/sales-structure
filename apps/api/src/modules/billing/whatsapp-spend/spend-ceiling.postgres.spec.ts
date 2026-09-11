@@ -232,6 +232,66 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
         });
     });
 
+    describe('two systems answering each other', () => {
+        it('bounds a runaway loop on one contact once a ceiling is set', async () => {
+            // Bot against bot: two automated systems answering each other on one
+            // contact. Every reply is a delivered message and therefore a
+            // charge, and nobody is reading any of them. The repetition policy
+            // catches it only while the text stays identical, and the
+            // turn-outcome wait counts failure notices — neither sees a loop
+            // that is producing perfectly ordinary, slightly different replies.
+            //
+            // The `contact` scope is what bounds it. This drives a hundred
+            // turns at one contact against a ceiling of ten and asserts the
+            // loop stops at ten — not at eleven, and not never.
+            const on = scope('contact');
+            await declareSpendCeiling(query, schema,
+                { scope: on, capDeliveries: 10, warnPermille: 999, softPermille: 1000 });
+            let allowed = 0;
+            for (let turn = 0; turn < 100; turn++) {
+                if ((await spend(on, { amountMinor: 1, disposition: 'reactive' })).ok) allowed += 1;
+            }
+            expect(allowed).toBe(10);
+        });
+
+        it('does NOT bound it while the contact is only being observed', async () => {
+            // The honest half, asserted rather than left to be discovered: a
+            // scope with no ceiling set measures and refuses nothing. Every
+            // scope but the free-allowance counter is created that way, so a
+            // loop on a tenant who configured nothing runs until somebody
+            // notices the bill.
+            //
+            // Choosing a default that fires on a runaway loop and never on a
+            // long legitimate conversation is a product decision with a real
+            // number in it, and this programme has already shipped one ceiling
+            // whose guessed threshold stopped exactly the thing it was meant to
+            // allow. Recorded here, unresolved, rather than guessed.
+            const on = scope('contact');
+            await declareSpendCeiling(query, schema, { scope: on });
+            let allowed = 0;
+            for (let turn = 0; turn < 50; turn++) {
+                if ((await spend(on, { amountMinor: 1, disposition: 'reactive' })).ok) allowed += 1;
+            }
+            expect(allowed).toBe(50);
+        });
+
+        it('stops the narrowest thing it can: one contact, not the account', async () => {
+            // A loop with one person must not silence the business's replies to
+            // everybody else.
+            const period = `2028-0${Math.floor(Math.random() * 9) + 1}`;
+            const looping = { kind: 'contact' as const, key: `loop-${randomUUID()}`, period };
+            const other = { kind: 'contact' as const, key: `ok-${randomUUID()}`, period };
+            await declareSpendCeiling(query, schema,
+                { scope: looping, capDeliveries: 2, warnPermille: 999, softPermille: 1000 });
+            await declareSpendCeiling(query, schema,
+                { scope: other, capDeliveries: 2, warnPermille: 999, softPermille: 1000 });
+            await spend(looping, { disposition: 'reactive' });
+            await spend(looping, { disposition: 'reactive' });
+            expect((await spend(looping, { disposition: 'reactive' })).ok).toBe(false);
+            expect((await spend(other, { disposition: 'reactive' })).ok).toBe(true);
+        });
+    });
+
     describe('reading them back', () => {
         it('lists every scope in a period with what is committed against it', async () => {
             const period = `2026-${String(Math.floor(Math.random() * 9) + 1).padStart(2, '0')}`;

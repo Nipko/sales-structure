@@ -151,10 +151,12 @@ export const ACCEPTANCE_MATRIX: readonly AcceptanceScenario[] = Object.freeze([
         scenario: 'Bot contra bot y ráfaga de contactos',
         evidence: 'Pausa/contacto y techo agregado; avisos acotados',
         covered: null,
-        missing: 'el debounce mantiene separadas las ráfagas de dos personas y el alcance '
-            + '`contact` existe, pero nada ejercita DOS automatismos contestándose. La parte que '
-            + 'falta no es el techo sino el bucle: dos sistemas que se responden consumen el techo '
-            + 'agregado sin que ninguna persona lo lea',
+        missing: 'el MECANISMO está probado —cien turnos contra un techo de diez se detienen en '
+            + 'diez, y el bucle de un contacto no silencia a los demás— pero NO hay techo por '
+            + 'contacto por defecto: todo alcance salvo la franquicia se crea en `observe`, así '
+            + 'que en un tenant que no configuró nada el bucle corre hasta que alguien ve la '
+            + 'factura. Elegir ese número es una decisión de producto, y este programa ya publicó '
+            + 'un techo cuyo umbral adivinado frenó exactamente lo que debía permitir',
     },
     {
         scenario: 'Humano, REST, campaña y recordatorio',

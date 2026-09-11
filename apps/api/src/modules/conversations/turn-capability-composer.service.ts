@@ -42,6 +42,8 @@ export interface ComposeTurnCapabilityInput {
     /** Server-only evaluation adapter: already captured and integrity-checked, never a public DTO field. */
     evaluationInputs?: { providerHealth: Record<string, any>; mcp: { tools: ToolDefinition[]; discoveredCount: number; approvedCount: number } };
     executionContext?: ServiceExecutionContext;
+    /** Diagnostics request a fresh operational-data check after setup changes. */
+    refreshReadiness?: boolean;
     tenantId: string;
     schemaName: string;
     config: TenantConfig;
@@ -123,6 +125,7 @@ export class TurnCapabilityComposerService {
         const cfgTools = input.config.tools ?? {};
         const deniedTools = [...subpermissionDeniedToolNames(cfgTools)];
         let providers: Readonly<Record<string, ProviderHealthInput>> | undefined;
+        let providerOwnershipUnavailable = false;
 
         try {
             const health = input.evaluationInputs?.providerHealth ?? await this.verticalIntegrations.getAllHealth(input.tenantId);
@@ -163,6 +166,7 @@ export class TurnCapabilityComposerService {
                     },
                 ]));
             } catch (bindingError: any) {
+                providerOwnershipUnavailable = true;
                 this.logger.debug(
                     `Provider ownership unavailable for ${input.tenantId}: ${bindingError?.message}`,
                 );
@@ -183,7 +187,9 @@ export class TurnCapabilityComposerService {
                 operatingCountry: input.operatingCountry,
                 jurisdiction: input.jurisdiction,
                 providers,
+                providerOwnershipUnavailable,
                 executionContext: input.executionContext,
+                refreshReadiness: input.refreshReadiness,
             });
         } catch (error: any) {
             this.logger.warn(`Capability contract unresolved for ${input.tenantId}: ${error?.message}`);
@@ -242,7 +248,7 @@ export class TurnCapabilityComposerService {
                             ? CAPABILITY_EXCLUSION_TEXT.provider_unavailable
                             : CAPABILITY_EXCLUSION_TEXT.plan_missing_feature,
                         repairRoute: paymentCapability.planEnabled
-                            ? '/admin/settings/integrations/vertical'
+                            ? '/admin/settings/integrations/payments'
                             : '/admin/settings/billing',
                     });
                 }
@@ -252,7 +258,7 @@ export class TurnCapabilityComposerService {
                     subject: 'payments',
                     reason: 'provider_unavailable',
                     detail: CAPABILITY_EXCLUSION_TEXT.provider_unavailable,
-                    repairRoute: '/admin/settings/integrations/vertical',
+                    repairRoute: '/admin/settings/integrations/payments',
                 });
                 this.logger.warn(`Payment capability unavailable for ${input.tenantId}: ${error?.message}`);
             }

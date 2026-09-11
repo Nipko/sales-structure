@@ -98,6 +98,8 @@ export interface ProviderHealthInput {
  * honesta es "lo confirma el equipo".
  */
 export interface ProviderIntegrationPolicy {
+    /** The agent's family toggle also controls provider-backed reads. */
+    toolGroup: VerticalToolGroup;
     /**
      * Las industrias donde este proveedor significa algo. Fuera de esta lista
      * no se publica ni una tool suya, aunque la conexión esté sana: un dato
@@ -116,6 +118,7 @@ export interface ProviderIntegrationPolicy {
 
 const PROVIDER_POLICIES: Readonly<Record<string, ProviderIntegrationPolicy>> = Object.freeze({
     toast: Object.freeze({
+        toolGroup: 'restaurants',
         profileIds: PROVIDER_PROFILE_IDS.toast,
         tools: Object.freeze(['get_restaurant_menu']),
         // Toast es el POS. Publicar su menú y crear/cancelar el pedido sólo en
@@ -123,6 +126,7 @@ const PROVIDER_POLICIES: Readonly<Record<string, ProviderIntegrationPolicy>> = O
         localWritersDisplaced: Object.freeze(['place_order', 'cancel_order']),
     }),
     mindbody: Object.freeze({
+        toolGroup: 'gyms',
         profileIds: PROVIDER_PROFILE_IDS.mindbody,
         tools: Object.freeze(['get_fitness_schedule']),
         // Mindbody ES la agenda del gimnasio. Consultar los cupos allá y
@@ -130,6 +134,7 @@ const PROVIDER_POLICIES: Readonly<Record<string, ProviderIntegrationPolicy>> = O
         localWritersDisplaced: Object.freeze(['book_class', 'cancel_class_booking']),
     }),
     cliniko: Object.freeze({
+        toolGroup: 'appointments',
         profileIds: PROVIDER_PROFILE_IDS.cliniko,
         tools: Object.freeze(['list_clinic_services', 'check_clinic_availability']),
         // Lo mismo con la agenda clínica, donde el turno vendido dos veces se
@@ -195,6 +200,7 @@ export class EffectiveCapabilityService {
 
     async resolve(input: {
         executionContext?: ServiceExecutionContext;
+        refreshReadiness?: boolean;
         tenantId: string;
         schemaName: string;
         industry: string;
@@ -225,6 +231,8 @@ export class EffectiveCapabilityService {
          * duplicarla sería pagarla dos veces por turno.
          */
         providers?: Readonly<Record<string, ProviderHealthInput>>;
+        /** Both durable ownership lookups failed; this is not evidence of an unbound domain. */
+        providerOwnershipUnavailable?: boolean;
     }): Promise<EffectiveCapabilityContract> {
         const profile = resolveSubtypeExperienceProfile(input.industry, input.subType);
         const excluded: ExcludedCapability[] = [];
@@ -318,8 +326,9 @@ export class EffectiveCapabilityService {
             .filter((key): key is NonNullable<typeof key> => !!key);
 
         const readinessReport = this.readiness
-            ? await this.readiness
-                .evaluate(input.tenantId, input.schemaName, [...new Set(readinessKeys)], input.executionContext)
+            ? await (input.refreshReadiness
+                ? this.readiness.evaluate(input.tenantId, input.schemaName, [...new Set(readinessKeys)], input.executionContext, { refresh: true })
+                : this.readiness.evaluate(input.tenantId, input.schemaName, [...new Set(readinessKeys)], input.executionContext))
                 .catch(() => null)
             : null;
         if (this.readiness && !readinessReport) degraded = true;
@@ -369,6 +378,7 @@ export class EffectiveCapabilityService {
         const now = Date.now();
         /** Escritores locales que un binding autoritativo desplaza en este turno. */
         const displacedWriters = new Set<string>();
+        const ownershipUnknownWriters = new Set<string>();
         for (const [providerName, policy] of Object.entries(PROVIDER_POLICIES)) {
             const providerTools = policy.tools;
             // ═══ EL TECHO DEL SUBTIPO TAMBIÉN ALCANZA A LO EXTERNO ═══
@@ -388,6 +398,17 @@ export class EffectiveCapabilityService {
                 }
                 continue;
             }
+            if (input.providerOwnershipUnavailable) {
+                degraded = true;
+                for (const writer of policy.localWritersDisplaced) ownershipUnknownWriters.add(writer);
+                excluded.push({
+                    subject: providerName,
+                    reason: 'provider_unavailable',
+                    detail: CAPABILITY_EXCLUSION_TEXT.provider_unavailable,
+                    repairRoute: '/admin/settings/integrations/vertical',
+                });
+                continue;
+            }
             const health = input.providers?.[providerName];
 
             // Ownership is durable; health is ephemeral. Once the tenant has
@@ -400,6 +421,11 @@ export class EffectiveCapabilityService {
             if (authoritativeBinding) {
                 for (const writer of policy.localWritersDisplaced) displacedWriters.add(writer);
             }
+
+            // Ownership survives the toggle, publication does not. Use the
+            // subtype/plan-approved family before local-data readiness: a live
+            // provider can have data even when the native catalogue is empty.
+            if (!withinPlan.includes(policy.toolGroup)) continue;
 
             if (!health) {
                 // Sin canal de medicion no hay puerta que fallara: el llamador
@@ -454,6 +480,19 @@ export class EffectiveCapabilityService {
             }
 
             publishedTools = [...publishedTools, ...availableProviderTools];
+        }
+
+        if (ownershipUnknownWriters.size) {
+            const unavailable = publishedTools.filter(tool => ownershipUnknownWriters.has(tool));
+            publishedTools = publishedTools.filter(tool => !ownershipUnknownWriters.has(tool));
+            if (unavailable.length) {
+                excluded.push({
+                    subject: unavailable.join(', '),
+                    reason: 'provider_unavailable',
+                    detail: CAPABILITY_EXCLUSION_TEXT.provider_unavailable,
+                    repairRoute: '/admin/settings/integrations/vertical',
+                });
+            }
         }
 
         if (displacedWriters.size) {

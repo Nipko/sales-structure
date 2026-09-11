@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import type { VerticalReadinessKey } from '@parallext/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
@@ -193,15 +194,15 @@ export class VerticalReadinessService {
      * Evaluate the readiness keys a subtype declares.
      *
      * Cached briefly because this runs on every turn that resolves the
-     * capability contract; two minutes is short enough that a tenant who just
-     * loaded their catalogue sees the agent come alive while they are still
-     * looking at the screen.
+     * capability contract. Owner assessments explicitly refresh so completing
+     * configuration is visible immediately, including to the next live turn.
      */
     async evaluate(
         tenantId: string,
         schemaName: string,
         keys: readonly VerticalReadinessKey[],
         executionContext?: ServiceExecutionContext,
+        options?: { refresh?: boolean },
     ): Promise<ReadinessReport> {
         if (!keys.length) {
             return { checks: [], unmet: [], evaluatedAt: new Date().toISOString(), degraded: false };
@@ -210,10 +211,21 @@ export class VerticalReadinessService {
         // Read-only previews must see the selected schema, never a production
         // cache entry. A namespace remains isolated even if an older caller
         // omitted executionContext. No test result may populate live Redis.
-        const useCache = !persistenceDisabled(executionContext) && !schemaName.startsWith('tenant_eval_');
-        const cacheKey = `readiness:${tenantId}:${schemaName}:${[...keys].sort().join(',')}`;
+        let useCache = !persistenceDisabled(executionContext) && !schemaName.startsWith('tenant_eval_');
+        let generation = 'initial';
+        if (useCache) {
+            try {
+                if (options?.refresh) await this.invalidate(tenantId);
+                generation = await this.redis.get(`readiness-generation:${tenantId}`) ?? 'initial';
+            } catch {
+                // An unreadable generation cannot authorize reusing an old
+                // report. The database remains usable even when Redis is not.
+                useCache = false;
+            }
+        }
+        const cacheKey = `readiness:${tenantId}:${schemaName}:${[...keys].sort().join(',')}:${generation}`;
         try {
-            const cached = useCache ? await this.redis.getJson<ReadinessReport>(cacheKey) : null;
+            const cached = useCache && !options?.refresh ? await this.redis.getJson<ReadinessReport>(cacheKey) : null;
             if (cached) return cached;
         } catch { /* A cache miss is not a failure. */ }
 
@@ -262,8 +274,10 @@ export class VerticalReadinessService {
     }
 
     async invalidate(tenantId: string): Promise<void> {
-        // Keys are per-subtype combination; the short TTL bounds staleness.
-        await this.redis.del(`readiness:${tenantId}`).catch(() => undefined);
+        // Every schema/key combination shares a generation. Old reports expire
+        // by TTL; an in-flight old evaluation can only repopulate its old key.
+        // A failed invalidation is observable so a refresh falls back to SQL.
+        await this.redis.set(`readiness-generation:${tenantId}`, randomUUID());
     }
 
     /** Row count, or null when the lookup itself failed. */

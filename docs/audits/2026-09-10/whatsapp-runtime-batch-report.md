@@ -1,6 +1,6 @@
 # Tanda de runtime WhatsApp — informe derivado
 
-**Rango exacto:** `584d15c3..4c375f7b` (16 commits nuevos en esta ejecución;
+**Rango exacto:** `584d15c3..e2d621b0` (18 commits nuevos en esta ejecución;
 `584d15c3` era el HEAD al emitir la instrucción).
 **Estado:** NO es cierre local. Quedan brechas locales enumeradas abajo.
 
@@ -28,6 +28,7 @@ cuenta como brecha abierta, no como cerrada.
 | 11 | `3fbdc27d` | Un envío proactivo que no puede nombrar su número **fallaba en silencio**. Ahora levanta una tarea de configuración en el panel del negocio y sigue sin elegir. Y `resolveChannelCredentials` devolvía `{accessToken: ''}`, que los llamadores encolaban. |
 | 12 | `aa57d4dd` | El panel mostraba la pausa y **no ofrecía nada**; el dinero trabado era invisible. Botón de reanudación por rol y bloque de "envíos que nadie puede confirmar", en cuatro idiomas. |
 | 13 | `4c375f7b` | **`Dockerfile.dashboard` descartaba cinco valores que producción sí pasa**: Instagram (app y redirect), Messenger, VAPID y `META_SOLUTION_ID` (ARG sin ENV). Es producción hoy. Y el `workflow_dispatch` de `candidate.yml` nunca funcionó: leía su propio output todavía no escrito. |
+| 14 | `e2d621b0` | El lector del manifiesto aceptaba un **repositorio ajeno con digest válido**, un tag que no nombra su propio commit, un salto de línea que agrega un `command:` al compose, y una versión que no entiende. Allowlist, tag exacto, rechazo de escalares peligrosos y versión por identidad. |
 
 Los otros tres (`e95b0a37`, `3daa0f8e`, `0ce6984e`) son de la tanda anterior
 dentro del mismo rango.
@@ -57,7 +58,7 @@ prueba que lo encontró es la que vale:
 
 | Capa | Comando | Resultado |
 |------|---------|-----------|
-| Suite API completa, PostgreSQL + PgBouncer + Valkey | `scratchpad/full-suite.sh` | **662/662 suites, 7446/7446 tests, 0 omitidos** |
+| Suite API completa, PostgreSQL + PgBouncer + Valkey | `scratchpad/full-suite.sh` | **662/662 suites, 7452/7452 tests, 0 omitidos** |
 | Tres órdenes, una base compartida | suite entera → shard 2/2 + 1/2 → suite entera | 7446 / (3271+4175) / 7446, todas verdes |
 | Dashboard | `jest --config jest.config.cjs` | **810/810** en 72 suites |
 | Playwright | `npx playwright test` | **186/186** (escritorio + móvil) |
@@ -117,13 +118,15 @@ gate externo:
    0 fuera de la frontera), pero la DURABILIDAD no: un productor que no pasa por
    el outbox no tiene fila propia que sobreviva a un reinicio. Migración
    pendiente.
-2. **`candidate.yml` / cutover, ítems 2 y 4–10:** autorización ligada al SHA con
-   environment protegido, endurecimiento del manifiesto (versión 2, allowlist de
-   repos, tag exacto, YAML seguro), no publicar artefactos de un run rojo, correr
-   PostgreSQL/Dashboard/Playwright en candidate, reordenar el runbook con barrera
-   global de escritura, `/evidence` persistente, unificar `pg_dump`/restore, y
-   fijar cwd/compose/`GIT_SHA`/cinco digests. Sólo se cerraron el ítem 1 (dispatch
-   SHA) y el 3 (los once build args).
+2. **`candidate.yml` / cutover, ítems 2 y 5–10:** autorización ligada al SHA con
+   environment protegido y permisos por job, no publicar artefactos consumibles de
+   un run rojo, correr PostgreSQL/Dashboard/Playwright en candidate, reordenar el
+   runbook con barrera global de escritura, `/evidence` persistente, unificar
+   `pg_dump`/restore con comandos exactos fail-closed, y fijar cwd/compose/
+   `GIT_SHA`/cinco digests. Cerrados: ítem 1 (dispatch SHA), ítem 3 (los once
+   build args, más los cinco que el Dockerfile descartaba) e ítem 4 (manifiesto
+   endurecido: versión estricta, allowlist de repos, tag exacto y rechazo de
+   `#`, espacios, comillas, saltos de línea y esquemas).
 3. **Producto, ítems restantes:** recorrido guiado completo, accesibilidad,
    landing, manuales y `apps/api/kb/assistant/{es,en,pt,fr}`. El panel por número
    y mes WABA existe; la reanudación y el bloque de "nadie puede confirmar" se

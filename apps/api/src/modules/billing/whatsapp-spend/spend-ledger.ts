@@ -652,11 +652,33 @@ export interface ReserveAgainstCounter {
     readonly currency: string;
     /** Defaults to `proactive`: the expensive reading, when nobody said. */
     readonly disposition?: SpendDisposition;
+    /**
+     * Count this even though the ceiling would have refused it.
+     *
+     * ONLY for a tenant in `observe`, where the point is to learn what a limit
+     * would have stopped without stopping it. The message is going out whatever
+     * this function says, so the choice is not "count it or refuse it" — it is
+     * "count it or lose it", and losing it means a chargeable POST with no
+     * exposure, no ceiling movement and nothing to reconcile against.
+     *
+     * The currency test still applies. That one is not a ceiling: adding COP
+     * centavos to a USD counter would not be a measurement, it would be a
+     * wrong number that looks like one.
+     */
+    readonly overCap?: boolean;
 }
 
 export interface ReserveOutcome {
     /** May the effect proceed against THIS counter? */
     readonly ok: boolean;
+    /**
+     * The ceiling refused, and the amount was counted anyway.
+     *
+     * Only ever true under `overCap`. It is the difference between "this
+     * tenant is inside their limit" and "this tenant is over it and nobody is
+     * stopping them yet", which is exactly what an observation is for.
+     */
+    readonly overCap?: boolean;
     /** Present only on a refusal, and `cap` unless stated otherwise. */
     readonly refusal?: ReserveRefusal;
     /** The currency the counter is already keeping, when that is the problem. */
@@ -738,6 +760,35 @@ export async function reserveAgainstCounter(query: SpendQuery, schema: string,
     // RETURNING sees the row AFTER the update, so `0` is the right addend: the
     // amount is already in `reserved_minor`.
     if (rows[0]) return { ok: true, pressure: String(rows[0].pressure) as SpendPressure };
+
+    // ── OBSERVED: THE CEILING SAID NO AND THE MESSAGE IS GOING ANYWAY ───────
+    //
+    // A tenant in `observe` has no enforcement, so refusing here would not stop
+    // the send — it would only stop the ACCOUNTING of a send that happens
+    // regardless. That was the old behaviour, and it produced exactly the state
+    // nobody can recover from: a chargeable POST with no reservation, no
+    // exposure, no transmission right and nothing for a receipt to resolve.
+    //
+    // So the amount is recorded, over the ceiling, and said out loud.
+    if (entry.overCap) {
+        const forced = await query<any[]>(
+            `UPDATE "${schema}".whatsapp_spend_counters AS c
+                SET reserved_minor = reserved_minor + $4,
+                    used_deliveries = used_deliveries + $5,
+                    updated_at = clock_timestamp()
+              WHERE scope_kind=$1 AND scope_key=$2 AND period_key=$3
+                -- The currency still decides. A measurement in the wrong units
+                -- is not a measurement.
+                AND (currency IS NULL OR currency = $6)
+              RETURNING ${pressureSql('c', '0', '0')} AS pressure`,
+            [scope.kind, scope.key, scope.period, amountMinor, deliveries, entry.currency]);
+        if (forced[0]) {
+            return {
+                ok: true, overCap: true,
+                pressure: String(forced[0].pressure) as SpendPressure,
+            };
+        }
+    }
 
     // Refused. Say WHICH height refused it, which needs the pressure the
     // reservation WOULD have produced — hence the amount as an addend here.
@@ -1131,7 +1182,15 @@ export async function claimTransmission(query: SpendQuery, schema: string, input
     // already sent it and we do not know what happened" and "it is over" are
     // three different things to the caller and to an operator.
     const [current] = await query<any[]>(
-        `SELECT state, transmit_state, transmit_expires_at
+        // `lease_expired` is computed BY THE DATABASE, against the same
+        // `clock_timestamp()` the UPDATE above used. Comparing a
+        // database-generated timestamp with the application's own clock would
+        // make this answer depend on how far the two have drifted — and the
+        // two answers are "wait for the holder" and "nobody may ever send this
+        // again", which is not a difference to leave to NTP.
+        `SELECT state, transmit_state, transmit_expires_at,
+                (transmit_expires_at IS NOT NULL
+                 AND transmit_expires_at < clock_timestamp()) AS lease_expired
            FROM "${schema}".whatsapp_spend_reservations WHERE effect_key = $1`,
         [input.effectKey]);
     if (!current) return Object.freeze({ kind: 'not_transmittable' as const, state: null });
@@ -1142,8 +1201,7 @@ export async function claimTransmission(query: SpendQuery, schema: string, input
     }
     const expiresAt = current.transmit_expires_at
         ? new Date(current.transmit_expires_at) : null;
-    if (String(current.transmit_state) === 'in_flight'
-        && expiresAt && expiresAt.getTime() < Date.now()) {
+    if (String(current.transmit_state) === 'in_flight' && current.lease_expired === true) {
         // Resolved here and now rather than left for the sweeper. The caller is
         // about to decide what to do with this effect, and leaving it `held`
         // means the NEXT caller asks the same question and gets the same answer

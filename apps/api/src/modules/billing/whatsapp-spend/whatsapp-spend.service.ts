@@ -255,6 +255,21 @@ export class WhatsappSpendService {
          * the guess is wrong precisely when a utility template went out.
          */
         readonly freeAllowanceEligible?: boolean;
+        /**
+         * Whether a CEILING may stop this effect.
+         *
+         * `observe` does not mean "do less bookkeeping". It means the tenant
+         * has not turned enforcement on, so a ceiling that would have refused
+         * records what it would have stopped and lets the message go. The
+         * reservation, the identity, the allocation and the transmission right
+         * all still happen — without them a chargeable POST has no exposure and
+         * nothing for a receipt to resolve, which is the one state nobody can
+         * recover from.
+         *
+         * Defaults to `enforce`: a caller that has not thought about it gets
+         * the answer that spends less.
+         */
+        readonly caps?: SpendEnforcementMode;
     }): Promise<SpendAuthorizeResult> {
         const at = input.at ?? new Date();
 
@@ -425,6 +440,8 @@ export class WhatsappSpendService {
                 scope: SpendScope; amountMinor: number; deliveries: number; currency: string;
             }[] = [];
             const pressures: SpendPressure[] = [];
+            /** Ceilings that refused while nobody was enforcing them. */
+            const observed: SpendBlock[] = [];
             // ── THE ALLOWANCE IS A PROVISIONAL ALLOCATION, NOT A SPEND ──────
             //
             // Its slots were taken above, before the POST. They have to be able
@@ -447,8 +464,17 @@ export class WhatsappSpendService {
                 const entry = {
                     scope, amountMinor: reservedMinor, deliveries: chargeable, currency,
                 };
+                const observing = (input.caps ?? 'enforce') === 'observe';
                 const outcome = await reserveAgainstCounter(query as SpendQuery, schema,
-                    { ...entry, disposition });
+                    { ...entry, disposition, overCap: observing });
+                if (outcome.overCap) {
+                    // Counted over the ceiling, and named. The caller reports
+                    // it as what enforcement WOULD have stopped, which is the
+                    // entire product of an observation.
+                    observed.push(spendBlock(
+                        scope.kind === 'task' ? 'task_budget_exhausted' : 'cap_exhausted',
+                        scopeId(scope), { avoidedMinor: reservedMinor, currency }));
+                }
                 if (!outcome.ok) {
                     if (outcome.refusal === 'currency') {
                         // NOT a ceiling. The counter is keeping its numbers in
@@ -517,7 +543,13 @@ export class WhatsappSpendService {
             for (const entry of allocations) {
                 await recordAllocation(query as SpendQuery, schema, reservation.id, entry, currency);
             }
-            return { outcome: 'reserved' as const, reservation, pressure };
+            return {
+                outcome: 'reserved' as const, reservation, pressure,
+                // Present only when a ceiling was crossed with enforcement off.
+                // The effect is fully accounted for; this says what would have
+                // stopped it.
+                observedBlock: observed[0] ?? null,
+            };
         }).catch((error: unknown) => {
             if (error instanceof SpendRefused) return blocked(error.block);
             throw error;
@@ -1176,9 +1208,23 @@ export type SpendAuthorizeResult =
      * warning that is only emitted when something is refused arrives after the
      * thing it was supposed to warn about.
      */
-    | { readonly outcome: 'reserved'; readonly reservation: ReservationRow; readonly pressure: SpendPressure }
+    | {
+        readonly outcome: 'reserved'; readonly reservation: ReservationRow;
+        readonly pressure: SpendPressure;
+        /**
+         * A ceiling this effect crossed while nobody was enforcing it.
+         *
+         * The effect is reserved, allocated and recoverable exactly like any
+         * other — this is the DIAGNOSIS, not a permission. Under `enforce` the
+         * same condition is a refusal.
+         */
+        readonly observedBlock?: SpendBlock | null;
+    }
     | { readonly outcome: 'adopted'; readonly reservation: ReservationRow; readonly pressure: SpendPressure }
     | { readonly outcome: 'blocked'; readonly block: SpendBlock };
+
+/** Whether a ceiling may refuse, or only record what it would have refused. */
+export type SpendEnforcementMode = 'enforce' | 'observe';
 
 const blocked = (block: SpendBlock): SpendAuthorizeResult =>
     Object.freeze({ outcome: 'blocked' as const, block });

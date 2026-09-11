@@ -278,10 +278,26 @@ describe('what a connection with no WABA still produces', () => {
             })),
         } as any);
 
-        // In `observe` the message still goes — that is what observing is — but
-        // the diagnosis is carried, which is how an operator finds out.
+        // ── OBSERVING MAY IGNORE A CEILING; IT MAY NOT IGNORE THIS ──────────
+        //
+        // This used to pass with `permitted: true`, on the reasoning that
+        // observing means not stopping messages. But a ceiling and an
+        // unidentifiable payer are not the same kind of refusal:
+        //
+        //   · a ceiling refusal knows exactly whose money it is and how much —
+        //     it is a budget decision, and under `observe` the effect is
+        //     reserved, allocated and recorded over the limit so the business
+        //     can see what a limit WOULD have stopped;
+        //   · `payer_unknown` means nobody can say which WABA is billed. There
+        //     is no reservation to write, no counter to move and no receipt
+        //     that could ever resolve it. Permitting it produced a chargeable
+        //     POST with no accounting at all — and it did so precisely for the
+        //     tenants nobody was watching yet.
+        //
+        // So the ceiling is observed and the identity is refused, in both
+        // modes, and the log line says which of the two happened.
         expect({ permitted: admission.permitted, code: admission.block?.code })
-            .toEqual({ permitted: true, code: 'payer_unknown' });
+            .toEqual({ permitted: false, code: 'payer_unknown' });
         expect(spend.authorize.mock.calls[0][1].identity.payerKind).toBe('unknown');
     });
 });

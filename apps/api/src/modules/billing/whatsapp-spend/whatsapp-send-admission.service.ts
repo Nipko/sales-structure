@@ -465,6 +465,19 @@ export class WhatsappSendAdmissionService {
             // instead of confidently wrong.
             allowUnknownCost: enforcement === 'observe' || Boolean(costUnknowable),
             costUnknowable,
+            // ── OBSERVING IS NOT DOING LESS BOOKKEEPING ─────────────────────
+            //
+            // Under `observe` a ceiling records what it would have stopped and
+            // lets the message go — but the reservation, the allocation, the
+            // identity and the transmission right all still happen. They used
+            // not to: a cap refusal rolled the whole transaction back and the
+            // caller was told `permitted: true` with no reservation at all, so
+            // a chargeable POST went out with no exposure, no ceiling movement,
+            // no transmission right and nothing for a receipt to resolve.
+            //
+            // That is the one failure this whole subsystem cannot recover from,
+            // and it happened precisely to the tenants nobody was watching yet.
+            caps: enforcement,
         });
 
         if (result.outcome !== 'blocked') {
@@ -535,18 +548,34 @@ export class WhatsappSendAdmissionService {
             return Object.freeze({
                 permitted: true, effectKey, reservationId: result.reservation.id, enforcement,
                 pressure: result.pressure, transmit: claim.grant,
+                // What enforcement WOULD have stopped. The effect is fully
+                // accounted for either way; this is the diagnosis that is the
+                // entire product of an observation.
+                block: result.outcome === 'reserved' ? (result.observedBlock ?? undefined) : undefined,
             });
         }
 
-        // Blocked. In `observe` the message still goes; the diagnosis is the
-        // product, and an operator sees what enforcement WOULD have stopped.
+        // ── BLOCKED BY SOMETHING THAT IS NOT A CEILING ──────────────────────
+        //
+        // A ceiling under `observe` no longer reaches here: it records the
+        // exposure, keeps the reservation and reports itself as `observedBlock`
+        // above. What is left are the conditions that make an effect
+        // UNACCOUNTABLE rather than merely over budget — no time zone, no
+        // payer, a repetition guard, an effect already resolved.
+        //
+        // Those refuse in BOTH modes, and that is the separation the review
+        // asked for: observing may ignore a ceiling in order to measure it, and
+        // may never turn an infrastructure, payer, timezone or identity failure
+        // into permission. A message admitted on one of those would be a
+        // chargeable POST whose reservation could not be written.
         const line = describeBlock(result.block);
         if (enforcement === 'enforce') {
             this.logger.warn(`[Spend] refused ${request.producer}: ${line}`);
-            return Object.freeze({ permitted: false, effectKey, block: result.block, enforcement });
+        } else {
+            this.logger.warn(`[Spend] refused ${request.producer} even under observation, `
+                + `because the effect cannot be accounted for: ${line}`);
         }
-        this.logger.log(`[Spend] would refuse ${request.producer} under enforcement: ${line}`);
-        return Object.freeze({ permitted: true, effectKey, block: result.block, enforcement });
+        return Object.freeze({ permitted: false, effectKey, block: result.block, enforcement });
     }
 
     // ── `admitBySchema` IS GONE, AND ITS ABSENCE IS THE POINT ────────────────

@@ -8,7 +8,7 @@ import { Roles } from '../../../common/decorators/roles.decorator';
 import { PrismaService } from '../../prisma/prisma.service';
 import { WhatsappSpendService } from './whatsapp-spend.service';
 import { SPEND_BLOCK_CODES } from './spend-diagnosis';
-import { AccountPauseStore } from '../../channels/account-pause-store';
+import { AccountPauseStore, PauseStateUnavailable } from '../../channels/account-pause-store';
 import { describePause, isPaused } from '../../channels/account-send-pause';
 
 /**
@@ -218,19 +218,33 @@ export class WhatsappSpendController {
             select: { accountId: true, displayName: true },
         });
         const rows = await Promise.all(accounts.map(async account => {
-            const pause = await this.pauses.current(tenantId, account.accountId);
-            return { account, pause };
+            try {
+                return { account, pause: await this.pauses.current(tenantId, account.accountId), unknown: false };
+            } catch (error) {
+                // The screen says UNKNOWN rather than "running". A panel that
+                // renders an unreadable state as a healthy one is how an
+                // operator concludes nothing is wrong while nothing is going
+                // out — the same mistake the admission used to make, wearing a
+                // user interface.
+                if (!(error instanceof PauseStateUnavailable)) throw error;
+                return { account, pause: null, unknown: true };
+            }
         }));
         return {
             success: true,
             data: {
-                numbers: rows.map(({ account, pause }) => ({
+                numbers: rows.map(({ account, pause, unknown }) => ({
                     channelAccountId: account.accountId,
                     displayName: account.displayName ?? null,
                     paused: isPaused(pause),
+                    /** True when we could not find out. Never the same as `false`. */
+                    stateUnknown: unknown,
                     // The operator's sentence, built where the rule lives rather
                     // than assembled again in a component.
-                    explanation: pause ? describePause(pause) : null,
+                    explanation: unknown
+                        ? 'No pudimos leer el estado de cobro de este número. No es una pausa: '
+                            + 'es que no pudimos comprobarlo, y mientras tanto no se envía.'
+                        : (pause ? describePause(pause) : null),
                     since: pause?.since ?? null,
                     observations: pause?.observations ?? 0,
                     clearedAt: pause?.clearedAt ?? null,

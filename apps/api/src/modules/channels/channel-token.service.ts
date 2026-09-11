@@ -248,18 +248,35 @@ export class ChannelTokenService {
      * the outgoing half of a rotation for five more minutes.
      */
     async revokeCachedCredentials(channelType: string, tenantId: string): Promise<void> {
+        const key = epochKey(channelType, tenantId);
         try {
             const client = this.redis.getClient();
-            const key = epochKey(channelType, tenantId);
             await client.incr(key);
             await client.expire(key, this.EPOCH_TTL);
+            return;
         } catch (error: any) {
-            // Said loudly. A bump that did not land means warm entries keep
-            // answering until their own TTL runs out, which is the window this
-            // exists to close.
             this.logger.error(`could not bump the revocation epoch for ${channelType}/`
-                + `${tenantId}: ${error?.message}. Cached credentials may answer for up to `
-                + `${this.CACHE_TTL}s.`);
+                + `${tenantId}: ${error?.message}. Falling back to deleting the counter.`);
+        }
+        // ── A BUMP THAT DID NOT LAND MUST STILL REVOKE ──────────────────────
+        //
+        // The old code logged and returned, so a Redis hiccup during a
+        // disconnect left every warm entry answering for the rest of its TTL —
+        // with the revoked token, for the account somebody had just switched
+        // off.
+        //
+        // Deleting the counter has the same effect as bumping it and is the one
+        // operation that still works when `INCR` does not: a missing epoch
+        // reads as 0, every stamped value carries a non-zero epoch, and
+        // nothing matches. It also restores monotonicity after a Redis restart
+        // wipes the key — the counter comes back at 0 while cached values still
+        // carry 3, so they fail the comparison rather than passing it.
+        try {
+            await this.redis.del(key);
+        } catch (error: any) {
+            this.logger.error(`the revocation epoch for ${channelType}/${tenantId} could not `
+                + `be cleared either: ${error?.message}. Cached credentials may answer for up `
+                + `to ${this.CACHE_TTL}s.`);
         }
     }
 
@@ -357,7 +374,22 @@ export class ChannelTokenService {
             // reading absence as `false` would disconnect them all at once.
             accountActive = account ? account.isActive !== false : undefined;
         } catch (error: any) {
+            // ── UNREADABLE IS NOT ACTIVE ────────────────────────────────────
+            //
+            // This used to leave `accountActive` undefined, which
+            // `assessConnection` reads as "this tenant predates the global
+            // table" and allows. So a PostgreSQL blip made every disconnected
+            // number usable again for the length of it — the disconnect
+            // endpoint writes that row and nothing else records the decision.
+            //
+            // `undefined` has to keep meaning "no row", because reading absence
+            // as false would disconnect every legacy tenant at once. So an
+            // unreadable row raises instead of borrowing that meaning.
             this.logger.warn(`channel_accounts unreadable for ${tenantId}/${phoneNumberId}: ${error?.message}`);
+            throw new ConnectionRefusedError('connection_state_unreadable', {
+                tenantId, channelType: 'whatsapp', requestedAccountId: phoneNumberId,
+                detail: String(error?.message ?? error).slice(0, 200),
+            });
         }
         return assessConnection({ channelStatus: channel?.channel_status, accountActive });
     }
@@ -438,6 +470,10 @@ export class ChannelTokenService {
         // An entry stamped with an older epoch was written before something was
         // revoked. An entry with no stamp at all was written by the version of
         // this service that had none, and cannot be checked either way.
+        // Equality, not `>=`. A value stamped HIGHER than the counter is not
+        // "newer": it is a value that survived a Redis restart which reset the
+        // counter, so the revocations it was supposed to respect are gone. It
+        // is discarded for the same reason a lower one is.
         if (typeof cached.epoch !== 'number' || cached.epoch !== epoch) {
             await this.redis.del(key);
             return null;

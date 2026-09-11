@@ -28,6 +28,7 @@ export const SPEND_BLOCK_CODES = [
     'counter_currency_mismatch',
     'task_budget_exhausted',
     'account_paused',
+    'account_pause_unknown',
     'effect_identity_missing',
 ] as const;
 
@@ -170,6 +171,16 @@ Object.freeze({
     account_paused: {
         scope: 'account',
         resolution: 'This number is paused. Resolve the reason shown beside it and resume sending.',
+    },
+    account_pause_unknown: {
+        scope: 'account',
+        // Deliberately separate from `account_paused`. One says Meta refused to
+        // bill this account; the other says we could not find out. They need
+        // different words because they need different actions: the first is a
+        // card, the second is us.
+        resolution: 'No se pudo leer si este número está pausado por un problema de cobro en '
+            + 'Meta, así que no se envía. No es una pausa: es que no pudimos comprobarlo. Se '
+            + 'reintenta solo en cuanto la base responda; si persiste, es un incidente nuestro.',
     },
     effect_identity_missing: {
         scope: 'account',

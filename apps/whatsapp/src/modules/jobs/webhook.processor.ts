@@ -323,6 +323,7 @@ export class WebhookProcessor extends WorkerHost {
       `;
 
       let updated = 0;
+      const unreachable: string[] = [];
       for (const tenant of tenants) {
         try {
           const rows = await this.prisma.executeInTenantSchema<any[]>(
@@ -339,15 +340,42 @@ export class WebhookProcessor extends WorkerHost {
             [data.newStatus, data.messageTemplateName, wabaId],
           );
           updated += rows?.length ?? 0;
-        } catch {
-          // Tenant may not have this template, ignore
+        } catch (error: any) {
+          // ── A MISSING TABLE AND A BROKEN DATABASE ARE NOT THE SAME ──────
+          //
+          // This used to swallow everything with "tenant may not have this
+          // template". Most tenants genuinely do not — the loop visits every
+          // schema — but the same catch hid a PgBouncer timeout, and the job
+          // then COMPLETED. Meta does not redeliver a template status, so the
+          // catalogue kept saying PENDING for a template that had been
+          // approved, or APPROVED for one Meta had rejected — and every send
+          // of it failed at the door until somebody resynced by hand.
+          //
+          // `42P01` is "relation does not exist": that schema has no template
+          // table, which is the ordinary case and really is nothing. Anything
+          // else is ours, and the job must fail so BullMQ tries again.
+          const code = String(error?.code ?? error?.meta?.code ?? '');
+          if (code !== '42P01' && !/does not exist/i.test(String(error?.message ?? ''))) {
+            unreachable.push(`${tenant.schema_name}:${error?.message}`);
+          }
         }
       }
 
+      if (unreachable.length) {
+        // Thrown AFTER the loop, so one unreachable tenant does not stop the
+        // other ninety-nine from being corrected. The retry re-runs all of
+        // them, which is safe: the statement is idempotent by value.
+        throw new Error(`template status not applied in ${unreachable.length} schema(s): `
+          + unreachable.slice(0, 3).join('; '));
+      }
       this.logger.log(`Updated ${updated} row(s) of template ${data.messageTemplateName} `
         + `to ${data.newStatus} on WABA ${wabaId}`);
     } catch (error: any) {
-      this.logger.warn(`Template update processing failed: ${error.message}`);
+      // Re-raised, not logged away. A status update that silently did not
+      // happen leaves the catalogue disagreeing with Meta, and every send of
+      // that template fails at the door until somebody notices.
+      this.logger.error(`Template update processing failed: ${error.message} — will retry`);
+      throw error;
     }
   }
 

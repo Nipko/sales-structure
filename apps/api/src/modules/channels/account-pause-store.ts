@@ -6,6 +6,20 @@ import {
 import { fundingSignalFrom } from './meta-funding-signals';
 
 /**
+ * The pause state could not be read.
+ *
+ * Its own type rather than a `null`, because `null` already means something
+ * precise — "this account is not paused" — and the whole defect was those two
+ * answers being the same value.
+ */
+export class PauseStateUnavailable extends Error {
+    constructor(readonly channelAccountId: string, readonly cause?: unknown) {
+        super(`pause_state_unavailable:${channelAccountId}`);
+        this.name = 'PauseStateUnavailable';
+    }
+}
+
+/**
  * Where a paused number's state is written, read and undone.
  *
  * Kept apart from the pure model in `account-send-pause.ts` so the rules can be
@@ -33,7 +47,26 @@ export class AccountPauseStore {
         return `${tenantId}:${channelAccountId}`;
     }
 
-    /** Is this number currently stopped from sending anything chargeable? */
+    /**
+     * Is this number currently stopped from sending anything chargeable?
+     *
+     * ═══ AND WHY AN UNREADABLE ANSWER IS NOT "NO" ═══
+     *
+     * This used to catch a database failure and return `null`, on the argument
+     * that a database problem must not silence an account and that the messages
+     * which then fail do so visibly at the provider.
+     *
+     * That argument was true while a failed WhatsApp message cost nothing. From
+     * 1 October 2026 the pause exists precisely because every attempt from a
+     * number Meta will not bill is an attempt against a wall: the queue fills,
+     * the customer hears nothing, and the logs fill with one identical error.
+     * "I could not read whether this account is stopped" is not evidence that
+     * it is running, and answering as if it were turns a thirty-second
+     * PostgreSQL blip into the exact storm the pause was built to prevent.
+     *
+     * So it raises. A caller that can defer defers; a caller that cannot treats
+     * it as a refusal. Neither may read it as permission.
+     */
     async current(tenantId: string, channelAccountId: string): Promise<SendPause | null> {
         const key = this.key(tenantId, channelAccountId);
         const cached = this.cache.get(key);
@@ -46,18 +79,28 @@ export class AccountPauseStore {
             });
             pause = readPause(account?.metadata);
         } catch (error: any) {
-            // Unreadable means "no pause". A database problem must not silence
-            // an account; the messages that then fail do so visibly, at the
-            // provider, which is where the truth is anyway.
             this.logger.warn(`[Pause] state unreadable for ${channelAccountId}: ${error?.message}`);
-            return null;
+            throw new PauseStateUnavailable(channelAccountId, error);
         }
         this.cache.set(key, { pause, until: Date.now() + this.TTL_MS });
         return pause;
     }
 
+    /**
+     * The same question for a caller that wants a boolean.
+     *
+     * An unreadable state answers TRUE — "treat this as stopped" — because the
+     * only two mistakes available are "held a message that could have gone" and
+     * "spent money on an account that cannot pay", and only the second is
+     * irreversible.
+     */
     async isPaused(tenantId: string, channelAccountId: string): Promise<boolean> {
-        return isPaused(await this.current(tenantId, channelAccountId));
+        try {
+            return isPaused(await this.current(tenantId, channelAccountId));
+        } catch (error) {
+            if (error instanceof PauseStateUnavailable) return true;
+            throw error;
+        }
     }
 
     /**

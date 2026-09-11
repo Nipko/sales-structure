@@ -335,43 +335,19 @@ const enabled = !!databaseUrl;
     });
 
     // ── 4 · THE CONTEXT THAT TRAVELS WITH THE EFFECT ──────────────────────────
+    //
+    // Three tests lived here describing THIS file's own `resolveSendContext`.
+    // They passed, and what they pinned was a divergence: a second resolver
+    // that answered `payer.kind: 'unknown'` with the WABA id in hand, which
+    // under `enforce` is a refusal.
+    //
+    // The copy is gone. The behaviour it was supposed to have is proven against
+    // the one remaining resolver in
+    // `channels/connection-selection.postgres.spec.ts`, and
+    // `one-send-context-resolver.spec.ts` fails if a second appears.
 
-    it('produces a send context carrying the exact connection and the account that pays', async () => {
-        const resolved = await service.resolveSendContext({
-            tenantId: tenantB.id, channelType: 'whatsapp', channelAccountId: numbers.b2,
-            recipient: { scope: 'customer', contactId: randomUUID(), address: '+573001112233' },
-        });
-        expect(isOutboundSendContext(resolved.context)).toBe(true);
-        expect(resolved.context.channelAccountId).toBe(numbers.b2);
-        expect(resolved.context.payer.wabaId).toBe(waba.b2);
-        // The WABA is known; how it is funded is a separate probe that has not run.
-        expect(resolved.context.payer.kind).toBe('unknown');
-        expect(resolved.context.credential.source).toBe('channel_account');
-        // The credential that came back belongs to the account it came back for.
-        expect(resolved.accessToken).toBe(tokenOf(numbers.b2));
-    });
-
-    it('makes a retry that moved to another connection visible field by field', async () => {
-        const recipient = { scope: 'customer' as const, contactId: randomUUID(), address: '+573001112233' };
-        const first = await service.resolveSendContext(
-            { tenantId: tenantB.id, channelType: 'whatsapp', channelAccountId: numbers.b1, recipient });
-        const same = await service.resolveSendContext(
-            { tenantId: tenantB.id, channelType: 'whatsapp', channelAccountId: numbers.b1, recipient });
-        const moved = await service.resolveSendContext(
-            { tenantId: tenantB.id, channelType: 'whatsapp', channelAccountId: numbers.b2, recipient });
-
-        expect(sameSendContext(first.context, same.context).same).toBe(true);
-        expect(sameSendContext(first.context, moved.context).changed)
-            .toEqual(expect.arrayContaining(['channelAccountId', 'payer.wabaId', 'credential.id']));
-    });
-
-    it('never produces a send context for a connection it could not authorise', async () => {
-        const recipient = { scope: 'customer' as const, contactId: randomUUID(), address: '+573001112233' };
-        expect(await outcome(service.resolveSendContext(
-            { tenantId: tenantA.id, channelType: 'whatsapp', channelAccountId: numbers.b1, recipient })))
+    it('never hands back a credential for a connection it could not authorise', async () => {
+        expect(await outcome(service.getValidAccessToken(tenantA.schema, numbers.b1)))
             .toBe('refused:connection_not_found');
-        expect(await outcome(service.resolveSendContext(
-            { tenantId: tenantA.id, channelType: 'whatsapp', recipient })))
-            .toBe('refused:connection_ambiguous');
     });
 });

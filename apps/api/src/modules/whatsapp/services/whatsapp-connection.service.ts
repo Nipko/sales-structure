@@ -389,39 +389,23 @@ export class WhatsappConnectionService {
     };
   }
 
-  /**
-   * The connection, the account Meta will bill and the credential, as the one
-   * immutable record a retry can compare itself against.
-   *
-   * Same shape and same contract version as `ChannelTokenService.resolveSendContext`,
-   * and deliberately the same `SendContextRequest` type rather than a parallel
-   * one — a second description of the same fact is how the two resolvers drifted
-   * apart in the first place. Handing a bare token to a transport loses the only
-   * facts that make an outbound effect legitimate after 1 October: which number
-   * it goes out from and whose WABA pays for it.
-   *
-   * `payer.kind` is `unknown` even when the WABA id is known. Knowing WHICH
-   * account Meta bills is a different fact from knowing HOW it is funded, and
-   * nothing here has asked Meta; `business_direct` would be a claim about
-   * somebody's card.
-   */
-  async resolveSendContext(request: SendContextRequest): Promise<ResolvedConnection> {
-    const schemaName = await this.prisma.getTenantSchemaName(request.tenantId);
-    const resolved = await this.resolveConnection(schemaName, request.channelAccountId);
-    return {
-      accessToken: resolved.accessToken,
-      context: {
-        version: OUTBOUND_CONTRACT_VERSION,
-        tenantId: resolved.tenantId,
-        channelType: 'whatsapp',
-        channelAccountId: resolved.phoneNumberId,
-        channelAddress: resolved.displayPhoneNumber,
-        payer: { kind: 'unknown', wabaId: resolved.wabaId ?? null, businessId: resolved.businessId },
-        credential: { id: resolved.credentialId, source: resolved.credentialSource },
-        recipient: request.recipient,
-      },
-    };
-  }
+  // ══ THE SECOND `resolveSendContext` IS GONE, AND ITS ABSENCE IS THE POINT ══
+  //
+  // This file used to carry its own copy. It had the same name, the same
+  // request type and the same contract version as
+  // `ChannelTokenService.resolveSendContext`, and it disagreed about the one
+  // field that decides who is billed: it answered `payer.kind: 'unknown'` even
+  // when the WABA id was right there in the row.
+  //
+  // Under `enforce` that is a refusal — `payer_unknown` — so any sink that had
+  // ever been pointed at this copy would have gone silent while the queue lane,
+  // which asks the other resolver, kept working. It had no production callers,
+  // which is exactly what made it dangerous: a second implementation nobody
+  // exercises is a trap for the next person who needs one and finds this file
+  // first.
+  //
+  // There is one resolver. `channel-token.service.ts` owns it, and
+  // `one-send-context-resolver.spec.ts` fails if a second one appears.
 
   /** The connection and its own credential, or a refusal. Never another number. */
   private async resolveConnection(

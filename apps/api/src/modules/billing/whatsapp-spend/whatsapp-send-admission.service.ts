@@ -13,7 +13,7 @@ import { resolveRepetitionPolicy, type RepetitionPolicy } from './spend-repetiti
 import { describeBlock, spendBlock, type SpendBlock } from './spend-diagnosis';
 import { consumesFreeAllowance, freeAllowanceFromMetadata } from './free-allowance';
 import { SpendMeterUnavailable } from './spend-unavailable';
-import { AccountPauseStore } from '../../channels/account-pause-store';
+import { AccountPauseStore, PauseStateUnavailable } from '../../channels/account-pause-store';
 import { describePause } from '../../channels/account-send-pause';
 
 /**
@@ -324,8 +324,27 @@ export class WhatsappSendAdmissionService {
         // pointless — every attempt is identical — so the refusal is returned
         // regardless of enforcement mode. `observe` exists to avoid stopping
         // messages that WOULD have gone out; these would not.
-        const pause = await this.pauses?.current(
-            request.connection.tenantId, request.connection.channelAccountId).catch(() => null);
+        // ── AN UNREADABLE PAUSE IS NOT "NOT PAUSED" ─────────────────────────
+        //
+        // `.catch(() => null)` turned every database blip into permission to
+        // send from a number Meta may already have refused to bill. That is the
+        // one direction this check cannot afford to be wrong in: the pause
+        // exists because every attempt from such a number is identical, fails
+        // identically, and fills the queue while the customer hears nothing.
+        let pause: Awaited<ReturnType<AccountPauseStore['current']>> = null;
+        try {
+            pause = (await this.pauses?.current(
+                request.connection.tenantId, request.connection.channelAccountId)) ?? null;
+        } catch (error) {
+            if (!(error instanceof PauseStateUnavailable)) throw error;
+            this.logger.warn(`[Spend] refusing ${request.producer}: the pause state of `
+                + `${request.connection.channelAccountId} could not be read`);
+            return Object.freeze({
+                permitted: false, effectKey, enforcement,
+                block: spendBlock('account_pause_unknown',
+                    `account=${request.connection.channelAccountId}`),
+            });
+        }
         if (pause && !pause.clearedAt) {
             return Object.freeze({
                 permitted: false, effectKey, enforcement,

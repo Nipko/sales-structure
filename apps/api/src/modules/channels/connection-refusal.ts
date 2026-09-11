@@ -40,7 +40,16 @@ export type ConnectionRefusalCode =
      */
     | 'credential_revoked'
     /** A credential exists and its own expiry has passed. */
-    | 'credential_expired';
+    | 'credential_expired'
+    /**
+     * Whether this connection may send could not be READ.
+     *
+     * Distinct from every code above, all of which are answers. This one is the
+     * absence of an answer, and it exists because the alternative was reading a
+     * database failure as "no row, therefore allowed": a PostgreSQL blip made
+     * every disconnected number usable again for the length of it.
+     */
+    | 'connection_state_unreadable';
 
 export interface ConnectionRefusalDetail {
     readonly tenantId: string;
@@ -87,6 +96,10 @@ const REFUSAL_STATUS: Readonly<Record<ConnectionRefusalCode, HttpStatus>> = {
     // it — the same reasoning as the two above it.
     credential_revoked: HttpStatus.FAILED_DEPENDENCY,
     credential_expired: HttpStatus.FAILED_DEPENDENCY,
+    // 503, and it is the only one here that is OURS. The others describe a
+    // connection; this one says our own storage did not answer, so the caller
+    // should try again rather than change anything.
+    connection_state_unreadable: HttpStatus.SERVICE_UNAVAILABLE,
 };
 
 /**

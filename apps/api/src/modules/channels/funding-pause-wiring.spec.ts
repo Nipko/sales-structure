@@ -1,4 +1,4 @@
-import { AccountPauseStore } from './account-pause-store';
+import { AccountPauseStore, PauseStateUnavailable } from './account-pause-store';
 import { applyFundingSignal } from './account-send-pause';
 import { fundingSignalFrom } from './meta-funding-signals';
 import { WhatsappSendAdmissionService } from '../billing/whatsapp-spend/whatsapp-send-admission.service';
@@ -106,10 +106,26 @@ describe('a number Meta refuses to bill', () => {
         expect(store.current).not.toHaveBeenCalled();
     });
 
-    it('lets the message through when the pause store itself is broken', async () => {
-        // A money gate that silences a platform because its own dependency
-        // threw is worse than the bill it prevents.
-        const broken = { current: jest.fn(async () => { throw new Error('down'); }) } as any;
+    it('refuses when the pause store cannot say whether the number is stopped', async () => {
+        // ═══ THIS TEST USED TO ASSERT THE OPPOSITE ═══
+        //
+        // "A money gate that silences a platform because its own dependency
+        // threw is worse than the bill it prevents." That was true while a
+        // failed WhatsApp message cost nothing.
+        //
+        // From 1 October 2026 the pause exists precisely because every attempt
+        // from a number Meta will not bill is identical, fails identically, and
+        // fills the queue while the customer hears nothing. "I could not read
+        // whether this account is stopped" is not evidence that it is running,
+        // and treating it as such turns a thirty-second database blip into the
+        // storm the pause was built to prevent.
+        //
+        // The refusal is named separately from `account_paused`, because one
+        // says Meta refused to bill the account and the other says we could not
+        // find out — a card versus an incident of ours.
+        const broken = {
+            current: jest.fn(async () => { throw new PauseStateUnavailable('15550001111'); }),
+        } as any;
         const spend = {
             effectKey: () => 'key',
             authorize: jest.fn(async () => ({
@@ -125,6 +141,28 @@ describe('a number Meta refuses to bill', () => {
             })),
         } as any;
         const service = new WhatsappSendAdmissionService(observingPrisma(), spend, broken);
+        const admission = await service.admit(request() as any);
+        expect({ permitted: admission.permitted, code: admission.block?.code })
+            .toEqual({ permitted: false, code: 'account_pause_unknown' });
+        // And nothing was reserved: the refusal happens before the money moves.
+        expect(spend.authorize).not.toHaveBeenCalled();
+    });
+
+    it('still sends when the store says plainly that there is no pause', async () => {
+        // The control. Without it, "fail closed" could be "never send".
+        const open = { current: jest.fn(async () => null) } as any;
+        const spend = {
+            effectKey: () => 'key',
+            authorize: jest.fn(async () => ({
+                outcome: 'reserved', reservation: { id: 'r1', state: 'held' }, pressure: 'clear',
+            })),
+            claimTransmission: jest.fn(async () => ({
+                kind: 'granted',
+                grant: { effectKey: 'key', token: '00000000-0000-4000-8000-000000000000',
+                    expiresAt: new Date(Date.now() + 900000) },
+            })),
+        } as any;
+        const service = new WhatsappSendAdmissionService(observingPrisma(), spend, open);
         expect((await service.admit(request() as any)).permitted).toBe(true);
     });
 });

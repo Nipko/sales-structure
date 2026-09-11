@@ -7,10 +7,12 @@ import {
 } from '../whatsapp-rates';
 import {
     adoptReservation, claimReservation, ensureCounters, findReservation, grantFreeDeliveries,
-    readExposure, recordAllocation, releaseReservation, reserveAgainstCounter, retainReservation,
+    readExposure, readPressure, recordAllocation, releaseReservation, reserveAgainstCounter,
+    retainReservation,
     settleReservation, sweepExpiredLeases,
+    worstPressure,
     type ReservationBinding, type ReservationIdentity, type ReservationRow, type SpendExposure,
-    type SpendQuery,
+    type SpendDisposition, type SpendPressure, type SpendQuery,
 } from './spend-ledger';
 import { scopeId, scopesFor, type SpendScope } from './spend-scopes';
 import { spendBlock, type SpendBlock } from './spend-diagnosis';
@@ -106,6 +108,16 @@ export class WhatsappSpendService {
         readonly wabaTimeZone?: string | null;
         readonly at?: Date;
         readonly admissionReason: string;
+        /**
+         * Did WE start this exchange, or did the customer?
+         *
+         * Only the producer knows, and only the producer may say: inferring it
+         * from the content would be deciding that a person asking for help is a
+         * marketing blast. Defaults to `proactive` — the reading that spends
+         * less — precisely because a caller that has not thought about it should
+         * not be handed the permissive answer.
+         */
+        readonly disposition?: SpendDisposition;
         /** Send at the declared ceiling when no rate can be resolved. */
         readonly allowUnknownCost?: boolean;
     }): Promise<SpendAuthorizeResult> {
@@ -163,7 +175,15 @@ export class WhatsappSpendService {
                     input.effectKey, this.LEASE_SECONDS);
                 this.logger.log(`[Spend] adopting ${input.effectKey.slice(0, 12)} in state `
                     + `${adopted?.state ?? existing.state}; not reserving twice`);
-                return { outcome: 'adopted' as const, reservation: adopted ?? existing };
+                // Nothing is added here — the amount was counted by the attempt
+                // being adopted — but the caller is still owed an honest reading
+                // of how full the ceiling is. Answering `clear` because this
+                // path reserved nothing would report a full account as empty on
+                // every single retry.
+                return {
+                    outcome: 'adopted' as const, reservation: adopted ?? existing,
+                    pressure: await readPressure(query as SpendQuery, schema, scopes),
+                };
             }
 
             await ensureCounters(query as SpendQuery, schema, scopes, currency);
@@ -193,21 +213,34 @@ export class WhatsappSpendService {
             } as ReservationIdentity;
 
             // ── 6. Reserve against every ceiling, in the one lock order. ────
+            const disposition = input.disposition ?? 'proactive';
             const allocations: { scope: SpendScope; amountMinor: number; deliveries: number }[] = [];
+            const pressures: SpendPressure[] = [];
             for (const scope of scopes) {
                 if (scope.kind === 'number_month') continue; // already granted above
                 const entry = { scope, amountMinor: reservedMinor, deliveries: chargeable };
-                const allowed = await reserveAgainstCounter(query as SpendQuery, schema, entry);
-                if (!allowed) {
+                const outcome = await reserveAgainstCounter(query as SpendQuery, schema,
+                    { ...entry, disposition });
+                if (!outcome.ok) {
                     // Rolled back by the caller's transaction. Nothing was sent
                     // and nothing was charged; the operator gets the scope that
-                    // said no rather than a generic failure.
-                    const code = scope.kind === 'task' ? 'task_budget_exhausted' : 'cap_exhausted';
+                    // said no, at the height that said it, rather than a generic
+                    // failure. `soft_stop` and `hard_stop` are different human
+                    // tasks: one is "your campaign is paused, the replies still
+                    // work", the other is "nothing is going out".
+                    const code = outcome.pressure === 'soft_stop'
+                        ? 'cap_soft_stop'
+                        : (scope.kind === 'task' ? 'task_budget_exhausted' : 'cap_exhausted');
                     throw new SpendRefused(spendBlock(code, scopeId(scope),
                         { avoidedMinor: reservedMinor, currency }));
                 }
+                pressures.push(outcome.pressure);
                 allocations.push(entry);
             }
+            // One number for the whole effect: the fullest scope decides, because
+            // a tenant with room on the account and none on the contact is not
+            // "mostly fine".
+            const pressure = worstPressure(pressures);
 
             const reservation = await claimReservation(query as SpendQuery, schema, {
                 effectKey: input.effectKey,
@@ -227,12 +260,12 @@ export class WhatsappSpendService {
                 // Somebody claimed it between our read and our insert. Adopt.
                 const adopted = await adoptReservation(query as SpendQuery, schema,
                     input.effectKey, this.LEASE_SECONDS);
-                return { outcome: 'adopted' as const, reservation: adopted! };
+                return { outcome: 'adopted' as const, reservation: adopted!, pressure };
             }
             for (const entry of allocations) {
                 await recordAllocation(query as SpendQuery, schema, reservation.id, entry, currency);
             }
-            return { outcome: 'reserved' as const, reservation };
+            return { outcome: 'reserved' as const, reservation, pressure };
         }).catch((error: unknown) => {
             if (error instanceof SpendRefused) return blocked(error.block);
             throw error;
@@ -335,8 +368,14 @@ class SpendRefused extends Error {
 }
 
 export type SpendAuthorizeResult =
-    | { readonly outcome: 'reserved'; readonly reservation: ReservationRow }
-    | { readonly outcome: 'adopted'; readonly reservation: ReservationRow }
+    /**
+     * `pressure` travels with a PERMITTED effect on purpose. It is the only
+     * moment the platform knows how full a ceiling is without asking, and a
+     * warning that is only emitted when something is refused arrives after the
+     * thing it was supposed to warn about.
+     */
+    | { readonly outcome: 'reserved'; readonly reservation: ReservationRow; readonly pressure: SpendPressure }
+    | { readonly outcome: 'adopted'; readonly reservation: ReservationRow; readonly pressure: SpendPressure }
     | { readonly outcome: 'blocked'; readonly block: SpendBlock };
 
 const blocked = (block: SpendBlock): SpendAuthorizeResult =>

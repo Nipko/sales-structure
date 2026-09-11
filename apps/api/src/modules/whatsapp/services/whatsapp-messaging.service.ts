@@ -296,6 +296,12 @@ export class WhatsappMessagingService {
         // that is bound the reservation carries `template` and prices as
         // unknown rather than as cheap.
         category: templateName ? 'template' : 'service',
+        // A template is an initiation by definition — it exists to open a
+        // conversation outside the 24-hour window — and a session message can
+        // only be sent inside one, which means somebody wrote first. The
+        // distinction comes from WhatsApp's own rules, not from a guess about
+        // what the message says.
+        disposition: templateName ? 'proactive' : 'reactive',
         producer: templateName ? 'whatsapp_rest_template' : `whatsapp_rest_${String(payload?.type ?? 'text')}`,
         contentDigest: createHash('sha256').update(JSON.stringify(payload ?? null)).digest('hex').slice(0, 32),
         admissionReason: 'whatsapp_messaging_service',

@@ -620,6 +620,12 @@ export class AgentConsoleService {
                 // Hashed before it travels: this reaches an effect key and log lines.
                 recipientRef: createHash('sha256').update(String(recipient ?? '')).digest('hex').slice(0, 32),
                 producer: 'agent_console_reply',
+                // A human agent is answering a live conversation. If a soft stop
+                // silenced this, the platform would be telling a person at a
+                // keyboard that the customer in front of them cannot be
+                // answered — while the budget it is protecting was spent by
+                // automation.
+                disposition: 'reactive',
                 contentDigest: createHash('sha256').update(JSON.stringify(content ?? null)).digest('hex').slice(0, 32),
                 admissionReason: 'human_agent_reply',
             });

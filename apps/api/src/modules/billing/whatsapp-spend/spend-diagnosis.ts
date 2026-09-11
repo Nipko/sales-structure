@@ -18,6 +18,7 @@ export const SPEND_BLOCK_CODES = [
     'rate_unknown',
     'currency_unknown',
     'cap_exhausted',
+    'cap_soft_stop',
     'task_budget_exhausted',
     'account_paused',
 ] as const;
@@ -72,6 +73,16 @@ Object.freeze({
     cap_exhausted: {
         scope: 'account',
         resolution: 'Raise the spending limit for this scope, or wait for the period to roll over.',
+    },
+    cap_soft_stop: {
+        scope: 'account',
+        // Deliberately a different sentence from cap_exhausted. This one is not
+        // an outage: replies to customers are still going out, and what stopped
+        // is what the business itself started. Reading them as the same thing is
+        // how somebody raises a ceiling in a panic that did not need raising.
+        resolution: 'The spending limit is nearly reached, so campaigns, reminders and follow-ups '
+            + 'are paused. Replies to customers who write in are still being sent. Raise the limit, '
+            + 'raise its soft-stop threshold, or wait for the period to roll over.',
     },
     task_budget_exhausted: {
         scope: 'task',

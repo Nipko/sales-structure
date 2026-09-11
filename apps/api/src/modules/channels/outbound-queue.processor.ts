@@ -95,6 +95,7 @@ export class OutboundQueueProcessor extends WorkerHost {
         tenantId: string; schema?: string | null; channelType: string; channelAccountId: string;
         recipient: string; producer: string; contentDigest: string;
         contactId?: string | null; conversationId?: string | null;
+        disposition?: 'reactive' | 'proactive';
         binding?: Record<string, unknown>;
     }) {
         if (!this.spendGate) return null;
@@ -117,6 +118,7 @@ export class OutboundQueueProcessor extends WorkerHost {
                 producer: input.producer,
                 contentDigest: input.contentDigest,
                 admissionReason: input.producer,
+                disposition: input.disposition,
                 binding: input.binding as any,
             });
         } catch (error: any) {
@@ -252,6 +254,11 @@ export class OutboundQueueProcessor extends WorkerHost {
             channelAccountId: admitted.row.binding!.channelAccountId,
             recipient: String(admitted.row.binding!.recipient ?? ''),
             producer: `dispatch_${admitted.row.itemKind}`,
+            // An outbox item bound to an inbound message is an ANSWER: somebody
+            // wrote and this is the reply. One with no inbound message is
+            // something the platform started. The binding is the evidence; no
+            // reading of the content is involved.
+            disposition: admitted.row.binding!.inboundMessageId ? 'reactive' : 'proactive',
             contentDigest: String(dispatchId),
             contactId: admitted.row.binding!.contactId ?? null,
             binding: { dispatchItemId: dispatchId, batchId: admitted.row.batchId,
@@ -347,13 +354,15 @@ export class OutboundQueueProcessor extends WorkerHost {
      * `null` means there is no gate wired; anything else is the admission whose
      * outcome has to be recorded once the provider has answered.
      */
-    private async gateOrSuppress(outbound: OutboundMessage, producer: string) {
+    private async gateOrSuppress(outbound: OutboundMessage, producer: string,
+        disposition: 'reactive' | 'proactive') {
         const admission = await this.admitSpend({
             tenantId: outbound.tenantId,
             channelType: outbound.channelType,
             channelAccountId: String(outbound.channelAccountId ?? ''),
             recipient: String(outbound.to ?? ''),
             producer,
+            disposition,
             // The body is digested, never carried: this value reaches an effect
             // key, a log line and a queue id, and none of those may hold a
             // customer's words.
@@ -397,7 +406,7 @@ export class OutboundQueueProcessor extends WorkerHost {
             return this.operationalNotices.deliver(reference,{prepare:async outbound=>{
                 const creds=await this.channelToken.getChannelToken(outbound.tenantId,outbound.channelType,outbound.channelAccountId);
                 return async()=>{
-                    const admission = await this.gateOrSuppress(outbound, 'operational_notice');
+                    const admission = await this.gateOrSuppress(outbound, 'operational_notice', 'proactive');
                     if (admission === 'refused') return null;
                     const result=await this.channelGateway.sendMessage(outbound,creds.accessToken);
                     await this.recordSpend(outbound, admission, result);
@@ -422,7 +431,7 @@ export class OutboundQueueProcessor extends WorkerHost {
                 if (outbound.metadata?.approvalEffectKind === 'handoff') return async () => null;
                 const creds = await this.channelToken.getChannelToken(outbound.tenantId, outbound.channelType, outbound.channelAccountId);
                 return async () => {
-                    const admission = await this.gateOrSuppress(outbound, 'approved_effect');
+                    const admission = await this.gateOrSuppress(outbound, 'approved_effect', 'reactive');
                     if (admission === 'refused') throw new ApprovalEffectSuppressed('spend_refused');
                     const result = await this.channelGateway.sendMessage(outbound, creds.accessToken);
                     await this.recordSpend(outbound, admission, result);
@@ -540,7 +549,11 @@ export class OutboundQueueProcessor extends WorkerHost {
         // proactive message that is not on the durable outbox. Gated here so
         // that "every chargeable send is authorised" is a property of the
         // code and not of a list somebody keeps up to date.
-        const admission = await this.gateOrSuppress(outbound, 'outbound_queue');
+        const admission = await this.gateOrSuppress(outbound, 'outbound_queue',
+            // A job carrying a conversation is a reply inside one; a job
+            // without one is a campaign, a reminder or a drip step. Read from
+            // the job, not from the words.
+            (outbound.metadata as any)?.conversationId ? 'reactive' : 'proactive');
         if (admission === 'refused') {
             this.logger.warn(`[Outbound] refused on spend for tenant=${outbound.tenantId}`);
             return 'skipped:spend_refused';

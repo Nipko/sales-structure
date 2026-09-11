@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PROVIDER_BILLED_CHANNELS } from '@parallext/shared';
 import { WhatsappSpendService, type SpendAuthorizeResult } from './whatsapp-spend.service';
+import type { SpendDisposition, SpendPressure } from './spend-ledger';
 import { describeBlock, type SpendBlock } from './spend-diagnosis';
 
 /**
@@ -60,6 +61,19 @@ export interface AdmissionRequest {
     readonly taskId?: string | null;
     /** Which producer asked. Part of the effect key, so it must be stable. */
     readonly producer: string;
+    /**
+     * Did WE start this exchange, or did the customer?
+     *
+     * Declared by the producer, never inferred from the message: deciding from
+     * a body that a person asking for help is a marketing blast is exactly the
+     * invented intent this whole layer is supposed to avoid. It is what the
+     * soft stop reads — a budget nearly spent pauses the campaigns and keeps
+     * answering the people who wrote in — so getting it wrong either silences
+     * customers or lets a broadcast run to the ceiling.
+     *
+     * Omitted means `proactive`: the reading that spends less.
+     */
+    readonly disposition?: SpendDisposition;
     readonly ordinal?: number;
     /** What is being sent, as a digest. The content itself never travels. */
     readonly contentDigest: string;
@@ -80,6 +94,12 @@ export interface Admission {
     /** Why it would have been refused, whether or not it was. */
     readonly block?: SpendBlock | null;
     readonly enforcement: SpendEnforcement;
+    /**
+     * How full the fullest ceiling is now. Carried on a PERMITTED admission too:
+     * a warning only emitted on refusal arrives after the thing it was meant to
+     * warn about.
+     */
+    readonly pressure?: SpendPressure;
     /** True when this channel is not billed by a provider at all. */
     readonly notBilled?: boolean;
 }
@@ -157,14 +177,23 @@ export class WhatsappSendAdmissionService {
             deliveries: Math.max(1, request.deliveries ?? 1),
             wabaTimeZone: account.timeZone,
             admissionReason: request.admissionReason,
+            disposition: request.disposition,
             // In observe mode an unknown rate must not stop the recording: the
             // point of observing is to find out how many effects have no price.
             allowUnknownCost: enforcement === 'observe',
         });
 
         if (result.outcome !== 'blocked') {
+            if (result.pressure === 'warning' || result.pressure === 'soft_stop') {
+                // Said once per admission rather than once per period: a ceiling
+                // that fills over an afternoon should be visible all afternoon,
+                // not in one line somebody scrolled past at 14:03.
+                this.logger.warn(`[Spend] ${result.pressure} on ${request.producer} `
+                    + `for account ${request.connection.channelAccountId}`);
+            }
             return Object.freeze({
                 permitted: true, effectKey, reservationId: result.reservation.id, enforcement,
+                pressure: result.pressure,
             });
         }
 

@@ -5618,6 +5618,11 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."whatsapp_spend_counters" (
         released_minor BIGINT NOT NULL DEFAULT 0,
         used_deliveries INTEGER NOT NULL DEFAULT 0,
         free_deliveries INTEGER NOT NULL DEFAULT 0,
+        -- Las tres alturas del mismo techo, como fraccion de el: avisar,
+        -- detener lo proactivo, detener todo. Ver la migracion
+        -- 20260910160000_add_whatsapp_spend_thresholds para el porque.
+        warn_permille SMALLINT NOT NULL DEFAULT 800,
+        soft_permille SMALLINT NOT NULL DEFAULT 950,
         updated_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
         PRIMARY KEY (scope_kind, scope_key, period_key),
         CONSTRAINT whatsapp_spend_counters_scope CHECK (scope_kind IN
@@ -5630,6 +5635,9 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."whatsapp_spend_counters" (
             CHECK ((cap_kind = 'deliveries') = (cap_deliveries IS NOT NULL)),
         CONSTRAINT whatsapp_spend_counters_currency
             CHECK (cap_kind <> 'money' OR currency IS NOT NULL),
+        CONSTRAINT whatsapp_spend_counters_thresholds
+            CHECK (warn_permille > 0 AND warn_permille <= soft_permille
+                   AND soft_permille <= 1000),
         CONSTRAINT whatsapp_spend_counters_non_negative CHECK (
             reserved_minor >= 0 AND settled_minor >= 0 AND released_minor >= 0
             AND used_deliveries >= 0 AND free_deliveries >= 0

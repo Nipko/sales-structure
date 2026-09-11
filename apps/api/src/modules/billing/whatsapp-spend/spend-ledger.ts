@@ -55,6 +55,9 @@ export interface SpendCounterRow {
     readonly releasedMinor: number;
     readonly usedDeliveries: number;
     readonly freeDeliveries: number;
+    /** Where "warn" and "stop the proactive" sit, as a fraction of the cap. */
+    readonly warnPermille: number;
+    readonly softPermille: number;
 }
 
 export type ReservationState =
@@ -233,6 +236,8 @@ export async function lockCounters(query: SpendQuery, schema: string, scopes: re
             releasedMinor: Number(rows[0].released_minor),
             usedDeliveries: Number(rows[0].used_deliveries),
             freeDeliveries: Number(rows[0].free_deliveries),
+            warnPermille: Number(rows[0].warn_permille),
+            softPermille: Number(rows[0].soft_permille),
         }));
     }
     return locked;
@@ -288,10 +293,118 @@ export async function grantFreeDeliveries(query: SpendQuery, schema: string, sco
     return rows[0] ? Number(rows[0].free_granted) : 0;
 }
 
+/**
+ * How close this counter is to its ceiling, AFTER the reservation being asked
+ * about.
+ *
+ * A single number — the ceiling — can only do one thing: let everything through
+ * until, from one message to the next, it lets nothing through. To the business
+ * owner that is indistinguishable from an outage, and it makes no distinction
+ * between the campaign they scheduled and the customer who just wrote in.
+ *
+ *   · `clear`     — nothing to say.
+ *   · `warning`   — tell somebody. Stops nothing.
+ *   · `soft_stop` — stop what WE start: campaigns, drips, reminders, follow-ups.
+ *                   A person who wrote to the business still gets answered.
+ *   · `hard_stop` — stop everything chargeable.
+ *
+ * The soft stop is the one that earns its keep. Spending is not one thing: a
+ * budget exhausted by a broadcast should not silence the reply to a customer
+ * asking where their order is, and a platform that cannot tell those apart has
+ * to choose between overspending and going mute.
+ */
+export type SpendPressure = 'clear' | 'warning' | 'soft_stop' | 'hard_stop';
+
+/**
+ * Did WE start this exchange, or did the customer?
+ *
+ * Read from the producer, never inferred from the content: guessing intent from
+ * a message body is how a platform decides that a person asking for help is a
+ * marketing blast. `reactive` passes the soft stop; `proactive` does not.
+ */
+export type SpendDisposition = 'reactive' | 'proactive';
+
+const PRESSURE_ORDER: Readonly<Record<SpendPressure, number>> =
+    Object.freeze({ clear: 0, warning: 1, soft_stop: 2, hard_stop: 3 });
+
+/** The highest pressure of a set of scopes — one full scope decides for all. */
+export function worstPressure(values: readonly SpendPressure[]): SpendPressure {
+    return values.reduce<SpendPressure>((worst, value) =>
+        PRESSURE_ORDER[value] > PRESSURE_ORDER[worst] ? value : worst, 'clear');
+}
+
+/**
+ * The pressure of a counter, in SQL, from whichever row version is in scope.
+ *
+ * Written once and used from both the `UPDATE … RETURNING` (which sees the NEW
+ * row, so the answer is the state the reservation just produced) and the
+ * refusal read (which sees the current row plus the amount that was asked for).
+ * Two hand-written copies of this arithmetic would eventually disagree, and the
+ * one place they would disagree is the boundary between "warned" and "stopped".
+ *
+ * No division anywhere: comparing `used * 1000` against `cap * permille` avoids
+ * both integer truncation and a division by a zero cap. A zero cap therefore
+ * reads as `hard_stop`, which is what a zero cap means.
+ */
+function pressureSql(alias: string, addMinor: string, addDeliveries: string): string {
+    const spent = `(${alias}.settled_minor + ${alias}.reserved_minor - ${alias}.released_minor + ${addMinor})`;
+    const used = `(${alias}.used_deliveries + ${addDeliveries})`;
+    return `CASE
+        WHEN ${alias}.cap_kind = 'observe' THEN 'clear'
+        WHEN ${alias}.cap_kind = 'money' THEN CASE
+            WHEN ${spent} >= ${alias}.cap_minor THEN 'hard_stop'
+            WHEN ${spent} * 1000 >= ${alias}.cap_minor * ${alias}.soft_permille THEN 'soft_stop'
+            WHEN ${spent} * 1000 >= ${alias}.cap_minor * ${alias}.warn_permille THEN 'warning'
+            ELSE 'clear' END
+        ELSE CASE
+            WHEN ${used} >= ${alias}.cap_deliveries THEN 'hard_stop'
+            WHEN ${used} * 1000 >= ${alias}.cap_deliveries * ${alias}.soft_permille THEN 'soft_stop'
+            WHEN ${used} * 1000 >= ${alias}.cap_deliveries * ${alias}.warn_permille THEN 'warning'
+            ELSE 'clear' END
+    END`;
+}
+
+/**
+ * How full these ceilings are right now, with nothing added.
+ *
+ * Needed by the adoption path, which reserves nothing — the amount was counted
+ * by the attempt being adopted — but still owes the caller an honest answer
+ * about how close the ceiling is. Returning [H[2J[3J there because no reservation
+ * happened would report a full account as empty on every retry.
+ */
+export async function readPressure(query: SpendQuery, schema: string,
+    scopes: readonly SpendScope[]): Promise<SpendPressure> {
+    assertSchema(schema);
+    const values: SpendPressure[] = [];
+    for (const scope of scopes) {
+        const [row] = await query<any[]>(
+            `SELECT ${pressureSql('c', '0', '0')} AS pressure
+               FROM "${schema}".whatsapp_spend_counters AS c
+              WHERE scope_kind=$1 AND scope_key=$2 AND period_key=$3`,
+            [scope.kind, scope.key, scope.period]);
+        if (row) values.push(String(row.pressure) as SpendPressure);
+    }
+    return worstPressure(values);
+}
+
 export interface ReserveAgainstCounter {
     readonly scope: SpendScope;
     readonly amountMinor: number;
     readonly deliveries: number;
+    /** Defaults to `proactive`: the expensive reading, when nobody said. */
+    readonly disposition?: SpendDisposition;
+}
+
+export interface ReserveOutcome {
+    /** May the effect proceed against THIS counter? */
+    readonly ok: boolean;
+    /**
+     * The pressure the reservation produced, or — when it was refused — the
+     * pressure it would have produced. Either way it names which of the three
+     * heights is in play, so the refusal can say `soft_stop` rather than the
+     * undifferentiated `cap_exhausted` that tells an operator nothing.
+     */
+    readonly pressure: SpendPressure;
 }
 
 /**
@@ -303,11 +416,23 @@ export interface ReserveAgainstCounter {
  * An `observe` counter always allows: it exists to know, not to stop.
  */
 export async function reserveAgainstCounter(query: SpendQuery, schema: string,
-    entry: ReserveAgainstCounter): Promise<boolean> {
+    entry: ReserveAgainstCounter): Promise<ReserveOutcome> {
     assertSchema(schema);
     const { scope, amountMinor, deliveries } = entry;
+    const proactive = (entry.disposition ?? 'proactive') === 'proactive';
+    // The soft stop is a PREDICATE, not a check the caller runs afterwards. Read
+    // first and decide second is the same race the cap itself exists to close:
+    // two campaign workers would both read 94 % and both go.
+    const softClause = proactive
+        ? `AND (cap_kind = 'observe'
+                OR (cap_kind = 'money'
+                    AND (settled_minor + reserved_minor - released_minor + $4) * 1000
+                        < cap_minor * soft_permille)
+                OR (cap_kind = 'deliveries'
+                    AND (used_deliveries + $5) * 1000 < cap_deliveries * soft_permille))`
+        : '';
     const rows = await query<any[]>(
-        `UPDATE "${schema}".whatsapp_spend_counters
+        `UPDATE "${schema}".whatsapp_spend_counters AS c
             SET reserved_minor = reserved_minor + $4,
                 used_deliveries = used_deliveries + $5,
                 updated_at = clock_timestamp()
@@ -317,9 +442,23 @@ export async function reserveAgainstCounter(query: SpendQuery, schema: string,
                      AND cap_minor - settled_minor - reserved_minor + released_minor >= $4)
                  OR (cap_kind = 'deliveries'
                      AND cap_deliveries - used_deliveries >= $5))
-          RETURNING scope_kind`,
+            ${softClause}
+          RETURNING ${pressureSql('c', '0', '0')} AS pressure`,
         [scope.kind, scope.key, scope.period, amountMinor, deliveries]);
-    return rows.length > 0;
+    // RETURNING sees the row AFTER the update, so `0` is the right addend: the
+    // amount is already in `reserved_minor`.
+    if (rows[0]) return { ok: true, pressure: String(rows[0].pressure) as SpendPressure };
+
+    // Refused. Say WHICH height refused it, which needs the pressure the
+    // reservation WOULD have produced — hence the amount as an addend here.
+    const [current] = await query<any[]>(
+        `SELECT ${pressureSql('c', '$4', '$5')} AS pressure
+           FROM "${schema}".whatsapp_spend_counters AS c
+          WHERE scope_kind=$1 AND scope_key=$2 AND period_key=$3`,
+        [scope.kind, scope.key, scope.period, amountMinor, deliveries]);
+    // A counter that vanished between the two statements cannot be reasoned
+    // about, and "the ceiling is unknown" must never read as "there is room".
+    return { ok: false, pressure: current ? String(current.pressure) as SpendPressure : 'hard_stop' };
 }
 
 /**

@@ -4,8 +4,8 @@ import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import {
     adoptReservation, claimReservation, ensureCounters, findReservation, grantFreeDeliveries,
-    readExposure, recordAllocation, releaseReservation, reserveAgainstCounter, retainReservation,
-    settleReservation, sweepExpiredLeases,
+    readExposure, readPressure, recordAllocation, releaseReservation, reserveAgainstCounter,
+    retainReservation, settleReservation, sweepExpiredLeases,
     type ReservationIdentity, type SpendQuery,
 } from './spend-ledger';
 import { scopesFor } from './spend-scopes';
@@ -69,20 +69,21 @@ integration('the WhatsApp spend engine', () => {
           WHERE scope_kind='account' AND scope_key=$1 AND period_key='2026-10'`, [scopeKey]))[0];
 
     /** One full reserve: lock, check the cap, claim, allocate. In one transaction. */
-    const reserveOn = async (runner: Client, scopeKey: string, effectKey: string, amount: number) => {
+    const reserveOn = async (runner: Client, scopeKey: string, effectKey: string, amount: number,
+        disposition: 'reactive' | 'proactive' = 'reactive') => {
         const run: SpendQuery = async <R = any[]>(sql: string, params: any[] = []): Promise<R> =>
             (await runner.query(sql, params)).rows as any;
         const scope = { kind: 'account' as const, key: scopeKey, period: '2026-10' };
-        const allowed = await reserveAgainstCounter(run, schema, {
-            scope, amountMinor: amount, deliveries: 1,
+        const outcome = await reserveAgainstCounter(run, schema, {
+            scope, amountMinor: amount, deliveries: 1, disposition,
         });
-        if (!allowed) return { allowed: false as const };
+        if (!outcome.ok) return { allowed: false as const, pressure: outcome.pressure };
         const reservation = await claimReservation(run, schema, {
             effectKey, identity: identity(), money: money(amount), leaseSeconds: 60,
         });
         if (reservation) await recordAllocation(run, schema, reservation.id,
             { scope, amountMinor: amount, deliveries: 1 }, 'USD');
-        return { allowed: true as const, reservation };
+        return { allowed: true as const, reservation, pressure: outcome.pressure };
     };
 
     /** How many backends are currently blocked on a lock in this database. */
@@ -429,7 +430,8 @@ integration('the WhatsApp spend engine', () => {
             const money = scopes.filter(scope => scope.kind !== 'number_month');
             for (const scope of money) {
                 expect(await reserveAgainstCounter(query, schema,
-                    { scope, amountMinor: 8, deliveries: 1 })).toBe(true);
+                    { scope, amountMinor: 8, deliveries: 1, disposition: 'reactive' }))
+                    .toEqual({ ok: true, pressure: 'clear' });
             }
             const reservation = await claimReservation(query, schema, {
                 effectKey, identity: identity(), money: {
@@ -472,17 +474,200 @@ integration('the WhatsApp spend engine', () => {
                 WHERE scope_kind='contact' AND scope_key=$1`, [tight.key]);
 
             expect(await reserveAgainstCounter(query, schema,
-                { scope: generous, amountMinor: 8, deliveries: 1 })).toBe(true);
+                { scope: generous, amountMinor: 8, deliveries: 1, disposition: 'reactive' }))
+                .toEqual({ ok: true, pressure: 'clear' });
             expect(await reserveAgainstCounter(query, schema,
-                { scope: tight, amountMinor: 8, deliveries: 1 })).toBe(false);
+                { scope: tight, amountMinor: 8, deliveries: 1, disposition: 'reactive' }))
+                .toEqual({ ok: false, pressure: 'hard_stop' });
         });
 
         it('never refuses on an observe-only counter', async () => {
             // Where every tenant starts: counting, stopping nobody.
             const scope = { kind: 'account' as const, key: `observe-${randomUUID()}`, period: '2026-10' };
             await ensureCounters(query, schema, [scope], 'USD');
+            // And reports `clear`, not a warning: an observe counter has no
+            // ceiling to be a fraction of, so there is nothing to be near.
             expect(await reserveAgainstCounter(query, schema,
-                { scope, amountMinor: 999_999, deliveries: 1 })).toBe(true);
+                { scope, amountMinor: 999_999, deliveries: 1, disposition: 'proactive' }))
+                .toEqual({ ok: true, pressure: 'clear' });
+        });
+    });
+
+    describe('the three heights of one ceiling', () => {
+        /**
+         * A ceiling with thresholds, and a reservation asked for by one or the
+         * other kind of producer.
+         *
+         * Everything here is about one question: can the platform stop a
+         * campaign without stopping a reply? A single ceiling cannot — it lets
+         * everything through and then nothing — and to a business owner that is
+         * indistinguishable from an outage.
+         */
+        const tieredCounter = async (scopeKey: string, capMinor: number,
+            warn = 800, soft = 950) => {
+            await query(`INSERT INTO "${schema}".whatsapp_spend_counters
+                (scope_kind, scope_key, period_key, cap_kind, cap_minor, currency,
+                 warn_permille, soft_permille)
+                VALUES ('account',$1,'2026-10','money',$2,'USD',$3,$4)
+                ON CONFLICT (scope_kind, scope_key, period_key)
+                DO UPDATE SET cap_kind='money', cap_minor=$2, currency='USD',
+                    warn_permille=$3, soft_permille=$4,
+                    reserved_minor=0, settled_minor=0, released_minor=0, used_deliveries=0`,
+                [scopeKey, capMinor, warn, soft]);
+        };
+
+        const reserve = (scopeKey: string, amount: number,
+            disposition: 'reactive' | 'proactive') =>
+            reserveAgainstCounter(query, schema, {
+                scope: { kind: 'account', key: scopeKey, period: '2026-10' },
+                amountMinor: amount, deliveries: 1, disposition,
+            });
+
+        it('says nothing until the warning line, then names it', async () => {
+            const scopeKey = `tier-warn-${randomUUID()}`;
+            await tieredCounter(scopeKey, 1000);           // warn at 800, soft at 950
+            expect((await reserve(scopeKey, 700, 'reactive')).pressure).toBe('clear');
+            // 700 + 100 = 800, exactly the warning line. Inclusive on purpose:
+            // a threshold that only fires above itself never fires on a round
+            // number, and round numbers are what people configure.
+            expect((await reserve(scopeKey, 100, 'reactive')).pressure).toBe('warning');
+        });
+
+        it('pauses what we start and keeps answering who wrote in', async () => {
+            const scopeKey = `tier-soft-${randomUUID()}`;
+            await tieredCounter(scopeKey, 1000);
+            await reserve(scopeKey, 940, 'reactive');
+
+            // A campaign asking for 20 would cross 950. Refused, and told which
+            // height refused it — `soft_stop`, not the undifferentiated
+            // "exhausted" that would send somebody to raise a ceiling that has
+            // 6 % left.
+            const campaign = await reserve(scopeKey, 20, 'proactive');
+            expect(campaign).toEqual({ ok: false, pressure: 'soft_stop' });
+
+            // The same 20 for a customer who wrote in goes through.
+            const reply = await reserve(scopeKey, 20, 'reactive');
+            expect(reply.ok).toBe(true);
+            expect(Number((await counterRow(scopeKey)).reserved_minor)).toBe(960);
+        });
+
+        it('stops the reply too at the ceiling itself', async () => {
+            const scopeKey = `tier-hard-${randomUUID()}`;
+            await tieredCounter(scopeKey, 1000);
+            await reserve(scopeKey, 990, 'reactive');
+            // 990 + 20 is over the ceiling. The soft stop protects the reply
+            // from the campaign; nothing protects it from the ceiling, and
+            // pretending otherwise would be spending money nobody authorised.
+            expect(await reserve(scopeKey, 20, 'reactive')).toEqual({ ok: false, pressure: 'hard_stop' });
+            expect(Number((await counterRow(scopeKey)).reserved_minor)).toBe(990);
+        });
+
+        it('honours a ceiling configured as a cliff', async () => {
+            // warn = soft = 1000 turns all three heights into one. Somebody who
+            // wants the old behaviour must be able to have it, or "configurable"
+            // is a word rather than a feature.
+            const scopeKey = `tier-cliff-${randomUUID()}`;
+            await tieredCounter(scopeKey, 1000, 1000, 1000);
+            const campaign = await reserve(scopeKey, 999, 'proactive');
+            expect(campaign).toEqual({ ok: true, pressure: 'clear' });
+            expect((await reserve(scopeKey, 1, 'proactive')).pressure).toBe('hard_stop');
+        });
+
+        it('counts a delivery ceiling by the same three heights', async () => {
+            // The free monthly allowance is a delivery cap, not a money cap, and
+            // an operator watching "how full is it" must get the same three
+            // answers from both or the UI has to explain two vocabularies.
+            const scopeKey = `tier-deliv-${randomUUID()}`;
+            await query(`INSERT INTO "${schema}".whatsapp_spend_counters
+                (scope_kind, scope_key, period_key, cap_kind, cap_deliveries, currency,
+                 warn_permille, soft_permille)
+                VALUES ('account',$1,'2026-10','deliveries',100,'USD',800,950)
+                ON CONFLICT (scope_kind, scope_key, period_key) DO UPDATE
+                    SET cap_kind='deliveries', cap_deliveries=100, used_deliveries=0`,
+                [scopeKey]);
+            const step = (deliveries: number, disposition: 'reactive' | 'proactive') =>
+                reserveAgainstCounter(query, schema, {
+                    scope: { kind: 'account', key: scopeKey, period: '2026-10' },
+                    amountMinor: 0, deliveries, disposition,
+                });
+            expect((await step(79, 'reactive')).pressure).toBe('clear');
+            expect((await step(1, 'reactive')).pressure).toBe('warning');
+            expect(await step(15, 'proactive')).toEqual({ ok: false, pressure: 'soft_stop' });
+            expect((await step(15, 'reactive')).pressure).toBe('soft_stop');
+            expect(await step(10, 'reactive')).toEqual({ ok: false, pressure: 'hard_stop' });
+        });
+
+        it('refuses two campaigns that would cross the soft stop together', async () => {
+            // The soft stop has to be a predicate inside the statement, not a
+            // check the caller runs first. Read-then-decide is the same race the
+            // ceiling itself exists to close: two campaign workers would both
+            // read 94 % and both go, landing at 102 %.
+            const scopeKey = `tier-race-${randomUUID()}`;
+            await tieredCounter(scopeKey, 1000);
+            await reserve(scopeKey, 940, 'reactive');
+
+            const [left, right] = [new Client({ connectionString: connection }),
+                new Client({ connectionString: connection })];
+            await Promise.all([left.connect(), right.connect()]);
+            try {
+                await left.query('BEGIN');
+                await right.query('BEGIN');
+                const runner = (client_: Client): SpendQuery =>
+                    async <R = any[]>(sql: string, params: any[] = []): Promise<R> =>
+                        (await client_.query(sql, params)).rows as any;
+                const ask = (run: SpendQuery) => reserveAgainstCounter(run, schema, {
+                    scope: { kind: 'account', key: scopeKey, period: '2026-10' },
+                    amountMinor: 5, deliveries: 1, disposition: 'proactive',
+                });
+                // 940 + 5 = 945, still under 950. Both would pass alone.
+                const first = await ask(runner(left));
+                const contending = ask(runner(right));
+                await until('the second campaign worker to be waiting on the row lock',
+                    async () => (await blockedBackends()) > 0);
+                await left.query('COMMIT');
+                const second = await contending;
+                await right.query('COMMIT');
+                expect(first.ok).toBe(true);
+                // 945 + 5 = 950, which IS the soft stop. Re-evaluated against
+                // what the first committed, so the second is refused.
+                expect(second).toEqual({ ok: false, pressure: 'soft_stop' });
+                expect(Number((await counterRow(scopeKey)).reserved_minor)).toBe(945);
+            } finally { await Promise.all([left.end(), right.end()]); }
+        });
+
+        it('reads a ceiling as full even when it reserves nothing', async () => {
+            // What the adoption path needs: a retry adds no amount, and a reading
+            // of `clear` because nothing was added would report a full account as
+            // empty on every retry.
+            const scopeKey = `tier-read-${randomUUID()}`;
+            const scope = [{ kind: 'account' as const, key: scopeKey, period: '2026-10' }];
+            await tieredCounter(scopeKey, 1000);
+
+            await reserve(scopeKey, 990, 'reactive');
+            // 990 of 1,000 is past the soft stop and NOT at the ceiling — which
+            // is the whole point of having both. Asserting `hard_stop` here would
+            // be asserting that 99 % and 100 % are the same state.
+            expect(await readPressure(query, schema, scope)).toBe('soft_stop');
+
+            await reserve(scopeKey, 10, 'reactive');
+            expect(await readPressure(query, schema, scope)).toBe('hard_stop');
+        });
+
+        it('refuses to let a zero ceiling read as room', async () => {
+            const scopeKey = `tier-zero-${randomUUID()}`;
+            await tieredCounter(scopeKey, 0);
+            expect(await reserve(scopeKey, 1, 'reactive')).toEqual({ ok: false, pressure: 'hard_stop' });
+        });
+
+        it('refuses the thresholds themselves when they are out of order', async () => {
+            // `warn <= soft <= ceiling` is a CHECK and not a convention. Inverted,
+            // the warning would arrive after the cut and the soft stop would fire
+            // before the warning — worse than having neither.
+            await expect(query(`INSERT INTO "${schema}".whatsapp_spend_counters
+                (scope_kind, scope_key, period_key, cap_kind, cap_minor, currency,
+                 warn_permille, soft_permille)
+                VALUES ('account',$1,'2026-10','money',1000,'USD',950,800)`,
+                [`tier-bad-${randomUUID()}`])).rejects.toThrow(/whatsapp_spend_counters_thresholds/);
         });
     });
 

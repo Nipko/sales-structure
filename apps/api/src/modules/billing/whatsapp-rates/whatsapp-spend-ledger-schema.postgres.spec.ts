@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import { readFileSync } from 'fs';
+import { readdirSync, readFileSync } from 'fs';
 import { resolve } from 'path';
 import { Client } from 'pg';
 import { ensureSyntheticGlobalTables } from '../../../common/__fixtures__/synthetic-global-tables';
@@ -29,7 +29,27 @@ const integration = connection ? describe : describe.skip;
 
 const TABLES = ['whatsapp_spend_counters', 'whatsapp_spend_reservations',
     'whatsapp_spend_allocations'];
-const MIGRATION = '20260910120000_add_whatsapp_spend_ledger';
+const MIGRATIONS_DIR = resolve(__dirname, '../../../../prisma/migrations');
+
+/**
+ * Every spend-ledger migration, in the order the deploy applies them.
+ *
+ * Derived from the directory rather than named here, and the reason is the
+ * failure this spec exists to catch. Naming one migration meant the fresh
+ * definition and the migrated one were compared across DIFFERENT sets of
+ * changes: the fresh side got a column added by a later migration, the migrated
+ * side never ran it, and the parity check reported a divergence that did not
+ * exist — or, far worse, would have missed a real one by comparing a new
+ * definition against a partially migrated schema.
+ *
+ * A third spend migration written next month is picked up with no edit here.
+ */
+const SPEND_MIGRATIONS = readdirSync(MIGRATIONS_DIR)
+    .filter(name => /whatsapp_spend/.test(name))
+    .sort();
+
+const migrationSql = () => SPEND_MIGRATIONS
+    .map(name => readFileSync(resolve(MIGRATIONS_DIR, name, 'migration.sql'), 'utf8'));
 
 integration('the two definitions of the WhatsApp spend ledger agree', () => {
     const suffix = randomUUID().replace(/-/g, '');
@@ -96,8 +116,9 @@ integration('the two definitions of the WhatsApp spend ledger agree', () => {
         await q(`CREATE SCHEMA "${migrated}"`);
         await ensureSyntheticGlobalTables(sql => q(sql));
         await q('INSERT INTO public.tenants(id, schema_name) VALUES(gen_random_uuid(), $1)', [migrated]);
-        await q(readFileSync(resolve(__dirname,
-            `../../../../prisma/migrations/${MIGRATION}/migration.sql`), 'utf8'));
+        // Every one of them, in order, exactly as the deploy runs them.
+        if (!SPEND_MIGRATIONS.length) throw new Error('no_spend_migrations_found');
+        for (const sql of migrationSql()) await q(sql);
     });
 
     afterAll(async () => {
@@ -347,8 +368,7 @@ integration('the two definitions of the WhatsApp spend ledger agree', () => {
 
     it('is safe to apply twice, which is what a re-run of the deploy does', async () => {
         await q('SAVEPOINT rerun');
-        await q(readFileSync(resolve(__dirname,
-            `../../../../prisma/migrations/${MIGRATION}/migration.sql`), 'utf8'));
+        for (const sql of migrationSql()) await q(sql);
         // Same shape after, not merely no exception: a second ADD CONSTRAINT
         // swallowed by the wrong exception class would leave the CHECK behind.
         const [column] = await q(

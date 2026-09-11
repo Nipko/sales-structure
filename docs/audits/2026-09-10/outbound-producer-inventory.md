@@ -47,15 +47,15 @@ llevar a la admisión económica.
 | Archivo:línea | Método | Carril | Canales | Efectos por respuesta |
 |---|---|---|---|---|
 | `modules/agent-console/agent-console.service.ts:552` | `sendAgentMessage` | `inline` | dynamic | 1 (read) |
-| `modules/appointments/appointment-notifications.service.ts:462` | `sendMessage` | `outbound_queue` | dynamic | 1 (read) |
+| `modules/appointments/appointment-notifications.service.ts:472` | `sendMessage` | `outbound_queue` | dynamic | 1 (read) |
 | `modules/appointments/appointment-reminders.service.ts:388` | `sendReminderTemplate` | `inline` | dynamic | n (derived) |
 | `modules/appointments/appointment-reminders.service.ts:469` | `sendAttendanceTemplate` | `inline` | dynamic | n (derived) |
 | `modules/automation/automation-jobs.processor.ts:237` | `handleSendTemplate` | `inline` | dynamic | 1 (read) |
 | `modules/automation/drip-sequence.service.ts:649` | `executeStepAction` | `inline` | dynamic | 1 (read) |
 | `modules/automation/drip-sequence.service.ts:674` | `executeStepAction` | `outbound_queue` | dynamic | 1 (read) |
 | `modules/automation/drip-sequence.service.ts:691` | `executeStepAction` | `outbound_queue` | dynamic | 1 (read) |
-| `modules/automation/nurturing.service.ts:740` | `sendFollowUpText` | `outbound_queue` | dynamic | 1 (read) |
-| `modules/automation/nurturing.service.ts:787` | `sendWhatsAppTemplate` | `inline` | whatsapp | 1 (read) |
+| `modules/automation/nurturing.service.ts:746` | `sendFollowUpText` | `outbound_queue` | dynamic | 1 (read) |
+| `modules/automation/nurturing.service.ts:796` | `sendWhatsAppTemplate` | `inline` | whatsapp | 1 (read) |
 | `modules/broadcast/broadcast-queue.processor.ts:118` | `sendWhatsApp` | `inline` | dynamic | 1 (read) |
 | `modules/channels/channel-management.controller.ts:519` | `testTelegram` | `inline` | telegram | 1 (read) |
 | `modules/channels/channel-management.controller.ts:1483` | `testSms` | `inline` | sms | 1 (read) |
@@ -115,7 +115,7 @@ mensajes entregados, y un indicador de "escribiendo" no lo es.
 
 | Línea | Método | Primitiva | Carril | Disparador | Canales | Efectos por respuesta | Base |
 |---:|---|---|---|---|---|---|---|
-| 462 | `sendMessage` | `outboundQueue.enqueue` | `outbound_queue` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
+| 472 | `sendMessage` | `outboundQueue.enqueue` | `outbound_queue` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
 
 ### `apps/api/src/modules/appointments/appointment-payment.listener.ts`
 
@@ -150,8 +150,8 @@ mensajes entregados, y un indicador de "escribiendo" no lo es.
 
 | Línea | Método | Primitiva | Carril | Disparador | Canales | Efectos por respuesta | Base |
 |---:|---|---|---|---|---|---|---|
-| 740 | `sendFollowUpText` | `outboundQueue.enqueue` | `outbound_queue` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
-| 787 | `sendWhatsAppTemplate` | `.sendTemplate` | `inline` | called by another service | whatsapp | 1 | one effect per invocation; no loop reaches this send |
+| 746 | `sendFollowUpText` | `outboundQueue.enqueue` | `outbound_queue` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
+| 796 | `sendWhatsAppTemplate` | `.sendTemplate` | `inline` | called by another service | whatsapp | 1 | one effect per invocation; no loop reaches this send |
 
 ### `apps/api/src/modules/broadcast/broadcast-queue.processor.ts`
 
@@ -281,7 +281,7 @@ buscar una llamada a la autoridad economica en el codigo del archivo.
 | Archivo:linea | Metodo | Carril | Termina en | Admision |
 |---|---|---|---|---|
 | `modules/agent-console/agent-console.service.ts:552` | `sendAgentMessage` | `inline` | `modules/agent-console/agent-console.service.ts` | si |
-| `modules/appointments/appointment-notifications.service.ts:462` | `sendMessage` | `outbound_queue` | `modules/channels/outbound-queue.processor.ts` | si |
+| `modules/appointments/appointment-notifications.service.ts:472` | `sendMessage` | `outbound_queue` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/appointments/appointment-payment.listener.ts:89` | `onPaid` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/appointments/appointment-payment.listener.ts:107` | `onPaid` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/appointments/appointment-payment.listener.ts:115` | `onPaid` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
@@ -291,8 +291,8 @@ buscar una llamada a la autoridad economica en el codigo del archivo.
 | `modules/automation/drip-sequence.service.ts:649` | `executeStepAction` | `inline` | `modules/whatsapp/services/whatsapp-messaging.service.ts` | si |
 | `modules/automation/drip-sequence.service.ts:674` | `executeStepAction` | `outbound_queue` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/automation/drip-sequence.service.ts:691` | `executeStepAction` | `outbound_queue` | `modules/channels/outbound-queue.processor.ts` | si |
-| `modules/automation/nurturing.service.ts:740` | `sendFollowUpText` | `outbound_queue` | `modules/channels/outbound-queue.processor.ts` | si |
-| `modules/automation/nurturing.service.ts:787` | `sendWhatsAppTemplate` | `inline` | `modules/whatsapp/services/whatsapp-messaging.service.ts` | si |
+| `modules/automation/nurturing.service.ts:746` | `sendFollowUpText` | `outbound_queue` | `modules/channels/outbound-queue.processor.ts` | si |
+| `modules/automation/nurturing.service.ts:796` | `sendWhatsAppTemplate` | `inline` | `modules/whatsapp/services/whatsapp-messaging.service.ts` | si |
 | `modules/broadcast/broadcast-queue.processor.ts:118` | `sendWhatsApp` | `inline` | `modules/whatsapp/services/whatsapp-messaging.service.ts` | si |
 | `modules/conversations/conversations.service.ts:1883` | `sendAfterHoursMessage` | `outbound_queue` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/conversations/conversations.service.ts:2156` | `sendResponse` | `outbound_queue` | `modules/channels/outbound-queue.processor.ts` | si |

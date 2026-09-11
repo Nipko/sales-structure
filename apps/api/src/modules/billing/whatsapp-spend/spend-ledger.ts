@@ -2002,6 +2002,61 @@ export async function rememberReceipt(
     return rows.length > 0;
 }
 
+/**
+ * How long a receipt waits for the send path to write its `wamid`.
+ *
+ * Meta's `sent` webhook can arrive before the POST's own answer has been
+ * committed — the round trip to our database is not always faster than the round
+ * trip from Meta's — so "no reservation names this message" does not mean "not
+ * ours". It means "not ours YET", for a window measured in seconds.
+ *
+ * Twenty minutes, because the association is written inside the send's own
+ * transaction: if it has not appeared by then, the sending process died before
+ * the commit and no amount of further waiting will produce it. After that the
+ * receipt really does belong to something else — a message sent before metering
+ * existed, or another tool on the same number — and saying so is correct.
+ */
+export const UNASSOCIATED_RECEIPT_GRACE_MS = 20 * 60_000;
+
+/**
+ * A receipt that matched no reservation, held rather than filed.
+ *
+ * Returns whether it is still within the grace window. `false` means the row
+ * was marked `applied` as genuinely-not-ours; `true` means it stays `pending`
+ * and the sweep will ask again.
+ *
+ * Written as one statement so the decision and the write cannot straddle the
+ * moment the send path commits: reading `first_seen_at`, deciding in
+ * JavaScript, then writing would let two sweepers reach opposite conclusions
+ * about the same row.
+ */
+export async function holdUnassociatedReceipt(
+    query: SpendQuery, schema: string,
+    receipt: { readonly providerMessageId: string; readonly status: ReceiptInboxStatus },
+    graceMs = UNASSOCIATED_RECEIPT_GRACE_MS,
+): Promise<boolean> {
+    assertSchema(schema);
+    const rows = await query<any[]>(
+        `UPDATE "${schema}".whatsapp_receipt_inbox
+            SET attempts = attempts + 1,
+                updated_at = clock_timestamp(),
+                state = CASE
+                    WHEN first_seen_at <= clock_timestamp() - make_interval(secs => $3::double precision)
+                        THEN 'applied' ELSE 'pending' END,
+                outcome = CASE
+                    WHEN first_seen_at <= clock_timestamp() - make_interval(secs => $3::double precision)
+                        THEN 'unknown_receipt' ELSE outcome END,
+                last_error = CASE
+                    WHEN first_seen_at <= clock_timestamp() - make_interval(secs => $3::double precision)
+                        THEN NULL ELSE 'no_reservation_names_this_message_yet' END,
+                next_attempt_at = clock_timestamp()
+                    + (LEAST(POWER(2, LEAST(attempts + 1, 6)), 60) || ' seconds')::interval
+          WHERE provider_message_id = $1 AND status = $2 AND state = 'pending'
+         RETURNING state`,
+        [receipt.providerMessageId, receipt.status, Math.max(0, Math.trunc(graceMs / 1000))]);
+    return rows[0] ? String(rows[0].state) === 'pending' : false;
+}
+
 /** Both consequences landed. Nothing will retry this receipt again. */
 export async function markReceiptApplied(
     query: SpendQuery, schema: string,

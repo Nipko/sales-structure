@@ -8,6 +8,7 @@ import {
 import {
     abandonExhaustedReceipts, adoptReservation, claimReservation, claimTransmission,
     declareTaskBudget, ensureCounters,
+    holdUnassociatedReceipt,
     markReceiptApplied, noteReceiptFailure, pendingReceipts, rememberReceipt,
     findReservation, findReservationByProviderMessage, grantFreeDeliveries,
     estimateDeliveredEffects,
@@ -815,6 +816,28 @@ export class WhatsappSpendService {
         try {
             const outcome = await this.resolveReceipt(schema, receipt);
             await this.observeReceiptFunding(receipt);
+            // ── "NOT OURS" AND "NOT OURS YET" ARE DIFFERENT ANSWERS ─────────
+            //
+            // Meta's `sent` webhook can arrive before the POST's own answer has
+            // been committed: the round trip from Meta is not always slower
+            // than the round trip to our own database. Filing that as
+            // `unknown_receipt` — which is what happened — made it TERMINAL.
+            // The `wamid` appeared a second later, and nothing ever came back
+            // to resolve the reservation: the money stayed counted for ever for
+            // a message that had been delivered, and the row said the receipt
+            // had been applied.
+            //
+            // Held instead, with a backoff, until either the association
+            // appears or enough time passes that it never will.
+            if (outcome === 'unknown_receipt') {
+                const held = await this.prisma.transactionInTenantSchema(schema, query =>
+                    holdUnassociatedReceipt(query as SpendQuery, schema, receipt));
+                if (held) {
+                    this.logger.debug(`[Spend] receipt ${receipt.providerMessageId} names no `
+                        + 'reservation yet; held for the sweep');
+                }
+                return outcome;
+            }
             await this.prisma.transactionInTenantSchema(schema, query =>
                 markReceiptApplied(query as SpendQuery, schema, receipt, outcome));
             return outcome;

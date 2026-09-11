@@ -128,8 +128,158 @@ integration('the durable inbox of delivery receipts', () => {
         });
         expect(outcome).toBe('unknown_receipt');
         const row = await inbox('wamid.ORPHAN', 'delivered');
-        expect(row.state).toBe('applied');
-        expect(row.outcome).toBe('unknown_receipt');
+        // ── HELD, NOT FILED ─────────────────────────────────────────────────
+        //
+        // See the race below. "No reservation names this message" is not the
+        // same statement as "this message is not ours", and treating it as one
+        // is how a delivered message stayed counted for ever.
+        expect(row.state).toBe('pending');
+        expect(row.last_error).toBe('no_reservation_names_this_message_yet');
+    });
+
+    /**
+     * ═══ THE RECEIPT THAT ARRIVES BEFORE THE SEND HAS COMMITTED ═══
+     *
+     * The POST answers with a `wamid`, and the sending transaction writes it on
+     * the reservation. Meta's `sent` webhook is a separate round trip that
+     * starts at the same moment — and the trip from Meta is not reliably slower
+     * than the trip to our own database.
+     *
+     * So a receipt routinely arrives while no reservation names that message
+     * yet. That answered `unknown_receipt`, which the inbox filed as APPLIED:
+     * terminal, never retried. A second later the `wamid` appeared, and nothing
+     * ever came back to resolve the reservation. The money stayed counted for a
+     * message that had been delivered, the ceiling filled with it, and the
+     * receipt inbox said the event had been handled.
+     *
+     * It is not a rare race. It is the ordinary shape of a fast network.
+     */
+    describe('a receipt that is not ours YET', () => {
+        /** A reservation with no `wamid` on it: the send has not committed. */
+        const unsent = async () => {
+            const effectKey = `race-${randomUUID().replace(/-/g, '')}`;
+            const providerMessageId = `wamid.${randomUUID().replace(/-/g, '')}`;
+            expect((await authorize(effectKey)).outcome).toBe('reserved');
+            return { effectKey, providerMessageId };
+        };
+
+        it('keeps it pending instead of filing it as somebody else’s', async () => {
+            const effect = await unsent();
+            await service().applyDeliveryReceipt(schema,
+                { providerMessageId: effect.providerMessageId, status: 'delivered' });
+            const row = await inbox(effect.providerMessageId, 'delivered');
+            expect(row.state).toBe('pending');
+            expect(Number(row.attempts)).toBe(1);
+        });
+
+        it('resolves it once the send commits its wamid', async () => {
+            // THE REPRODUCTION, end to end. Receipt first, association second,
+            // and the sweep is what closes the gap.
+            const effect = await unsent();
+            await service().applyDeliveryReceipt(schema,
+                { providerMessageId: effect.providerMessageId, status: 'delivered' });
+            expect((await reservation(effect.effectKey)).state).toBe('held');
+
+            // The POST's own transaction, landing a moment later.
+            await q(`UPDATE "${schema}".whatsapp_spend_reservations
+                        SET provider_message_id = $2 WHERE effect_key = $1`,
+                [effect.effectKey, effect.providerMessageId]);
+
+            const swept = await service().retryPendingReceipts(schema,
+                { at: new Date(Date.now() + 3_600_000) });
+            expect(swept).toMatchObject({ applied: 1 });
+            expect((await reservation(effect.effectKey)).state).toBe('settled');
+            expect((await inbox(effect.providerMessageId, 'delivered')).state).toBe('applied');
+        });
+
+        it('releases on a `failed` that arrived before the association', async () => {
+            const effect = await unsent();
+            await service().applyDeliveryReceipt(schema, {
+                providerMessageId: effect.providerMessageId, status: 'failed',
+                errorCode: 'wa_131026',
+            });
+            await q(`UPDATE "${schema}".whatsapp_spend_reservations
+                        SET provider_message_id = $2 WHERE effect_key = $1`,
+                [effect.effectKey, effect.providerMessageId]);
+            await service().retryPendingReceipts(schema, { at: new Date(Date.now() + 3_600_000) });
+            expect((await reservation(effect.effectKey)).state).toBe('released');
+        });
+
+        it('pauses the number on a 131042 that arrived before the association', async () => {
+            // The funding signal must not be lost to the race either: a number
+            // that cannot be billed keeps burning attempts until somebody says
+            // so, and the receipt that says so is exactly this one.
+            const effect = await unsent();
+            const pauses = { observeFunding: jest.fn(async () => ({ state: 'paused' })) };
+            await service(pauses).applyDeliveryReceipt(schema, {
+                providerMessageId: effect.providerMessageId, status: 'failed',
+                errorCode: 'wa_131042', tenantId: TENANT, channelAccountId: '15550001111',
+            });
+            expect(pauses.observeFunding).toHaveBeenCalled();
+            expect((await inbox(effect.providerMessageId, 'failed')).state).toBe('pending');
+        });
+
+        it('keeps the three events of one message apart while they wait', async () => {
+            // `sent`, `delivered` and `read` are three rows, and a redelivery of
+            // any of them is a no-op. Holding them must not collapse them.
+            const effect = await unsent();
+            for (const status of ['sent', 'delivered', 'read'] as const) {
+                await service().applyDeliveryReceipt(schema,
+                    { providerMessageId: effect.providerMessageId, status });
+                await service().applyDeliveryReceipt(schema,
+                    { providerMessageId: effect.providerMessageId, status });
+            }
+            const rows = await q(
+                `SELECT status, state FROM "${schema}".whatsapp_receipt_inbox
+                  WHERE provider_message_id = $1 ORDER BY status`, [effect.providerMessageId]);
+            expect(rows).toEqual([
+                { status: 'delivered', state: 'pending' },
+                { status: 'read', state: 'pending' },
+                { status: 'sent', state: 'pending' },
+            ]);
+        });
+
+        it('does not let two sweepers resolve it twice', async () => {
+            const effect = await unsent();
+            await service().applyDeliveryReceipt(schema,
+                { providerMessageId: effect.providerMessageId, status: 'delivered' });
+            await q(`UPDATE "${schema}".whatsapp_spend_reservations
+                        SET provider_message_id = $2 WHERE effect_key = $1`,
+                [effect.effectKey, effect.providerMessageId]);
+
+            const at = new Date(Date.now() + 3_600_000);
+            const [first, second] = await Promise.all([
+                service().retryPendingReceipts(schema, { at }),
+                service().retryPendingReceipts(schema, { at }),
+            ]);
+            // Whichever order they ran in, the money moved once: the
+            // reservation refuses to leave `settled`.
+            expect(first.applied + second.applied).toBeLessThanOrEqual(2);
+            const settled = await reservation(effect.effectKey);
+            expect(settled.state).toBe('settled');
+            const [{ count }] = await q(
+                `SELECT count(*)::int AS count FROM "${schema}".whatsapp_spend_reservations
+                  WHERE effect_key = $1 AND state = 'settled'`, [effect.effectKey]);
+            expect(count).toBe(1);
+        });
+
+        it('gives up once no association could plausibly still appear', async () => {
+            // The association is written inside the send's own transaction. If
+            // it has not appeared in twenty minutes the sending process died
+            // before the commit, and the receipt really does belong to
+            // something else — a message sent before metering existed, or
+            // another tool on the same number.
+            await service().applyDeliveryReceipt(schema,
+                { providerMessageId: 'wamid.GENUINELY_NOT_OURS', status: 'delivered' });
+            await q(`UPDATE "${schema}".whatsapp_receipt_inbox
+                        SET first_seen_at = clock_timestamp() - interval '1 hour'
+                      WHERE provider_message_id = $1`, ['wamid.GENUINELY_NOT_OURS']);
+
+            await service().retryPendingReceipts(schema, { at: new Date(Date.now() + 3_600_000) });
+            const row = await inbox('wamid.GENUINELY_NOT_OURS', 'delivered');
+            expect(row.state).toBe('applied');
+            expect(row.outcome).toBe('unknown_receipt');
+        });
     });
 
     it('keeps every field the retry would need', async () => {

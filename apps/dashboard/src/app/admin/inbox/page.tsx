@@ -2279,6 +2279,23 @@ export default function InboxPage() {
                                 {sending ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
                             </button>
                             </div>
+                            {/* ═══ THIS REPLY MAY BE CHARGED ═══════════════════════
+                                Since 1 October 2026 Meta bills the business's own
+                                WhatsApp account per delivered message. An agent
+                                typing in this box is spending the tenant's money,
+                                and until now nothing on the screen said so.
+
+                                One quiet line, not a banner and not an alert: an
+                                inbox where every reply raises a warning is an
+                                inbox where the warning that matters is ignored.
+                                WhatsApp only — Instagram, Messenger and Telegram
+                                are not charged this way, and saying they might be
+                                would be a different untruth. */}
+                            {selectedConv.channel === 'whatsapp' && (
+                                <p className="px-4 md:px-5 pb-2 text-[11px] leading-relaxed text-muted-foreground">
+                                    {t("whatsappMayBeCharged")}
+                                </p>
+                            )}
                         </div>
                         )}
                     </>

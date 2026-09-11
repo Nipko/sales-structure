@@ -1790,7 +1790,8 @@
     "notDelivered": "Not delivered",
     "notConfirmed": "Unconfirmed",
     "sendNotDelivered": "Your reply was saved, but the channel did not accept it. The customer does not have it yet.",
-    "sendNotConfirmed": "Your reply was saved, but we could not confirm it left through the channel."
+    "sendNotConfirmed": "Your reply was saved, but we could not confirm it left through the channel.",
+    "whatsappMayBeCharged": "Replying on WhatsApp may cost money: Meta charges your account for every delivered message."
   },
   "smsNotificationsIntegration": {
     "title": "SMS alerts",
@@ -3797,7 +3798,10 @@
         "winnerSelected": "Winning variant selected"
       }
     },
-    "resourceLabel": "broadcast campaigns"
+    "resourceLabel": "broadcast campaigns",
+    "sendConfirmTitle": "Send “{name}” now",
+    "sendConfirmCta": "Send now",
+    "sendConfirmSending": "Sending…"
   },
   "channelCertification": {
     "title": "Channel certification",
@@ -14539,6 +14543,28 @@
     "onlyWhatWeSent": "These figures count only what Parallly sent. The same WhatsApp account can be charged by another app or by someone writing from Meta's own inbox, so this is not the whole bill.",
     "undated": "{count} record(s) that could not be dated or priced. They belong to no month and have to be reviewed separately.",
     "currency": "Currency",
-    "exposureCaption": "WhatsApp spend by currency over the selected window"
+    "exposureCaption": "WhatsApp spend by currency over the selected window",
+    "campaignIsAPurchase": "This send has a cost",
+    "campaignUpTo": "{count} recipients. Meta charges your own WhatsApp Business account for every delivered message, so this send may produce up to {count} charged deliveries. A message that is not delivered is not charged, so this is an upper bound and not a forecast.",
+    "campaignUpToMoney": "Up to {money} if every priced message is delivered. That is a bound in {currency}, not a forecast.",
+    "campaignTotalNotRepresentable": "The parts could be priced and the total cannot be expressed in {currency}. This is not zero: it is a total we cannot show.",
+    "campaignMarketRecipients": "{count} recipients",
+    "campaignNoEstimate": "We cannot work out the amount here yet: it depends on each recipient's country and on the template's approved category. What we do know is how many deliveries this may produce, and that each one can be charged.",
+    "campaignUnpriced": "{count} recipients with no price",
+    "campaignUnpricedNotFree": "A destination the rate card cannot place is NOT free. These recipients are counted beside the total and never inside it: their cost comes from reconciliation against what Meta bills.",
+    "campaignNoFreeAllowance": "The free deliveries per number per calendar month are for SERVICE messages. A campaign goes out as an approved template, so it neither consumes them nor is discounted by them.",
+    "unpricedReason": {
+      "invalid_instant": "the date of the estimate is not valid",
+      "unsupported_time_zone": "the WhatsApp account's time zone is not recognised",
+      "no_rate_card_for_currency": "there is no rate card for the account's currency",
+      "no_rate_card_effective_yet": "no rate card is in force on that date",
+      "market_not_in_rate_card": "the recipient's country is not in the rate card",
+      "category_not_priced_in_rate_card": "the card does not price that category for that country",
+      "no_destination": "the recipient has no number to send to",
+      "category_unknown": "the template has no approved category synced",
+      "market_ambiguous": "the number's calling code is shared by several countries Meta prices differently",
+      "market_unlisted": "the number's calling code is not in the market table",
+      "total_not_representable": "the total cannot be expressed in the account's currency"
+    }
   }
 }

@@ -1790,7 +1790,8 @@
     "notDelivered": "Non remis",
     "notConfirmed": "Non confirmé",
     "sendNotDelivered": "Votre réponse a été enregistrée, mais le canal ne l'a pas acceptée. Le client ne l'a pas encore.",
-    "sendNotConfirmed": "Votre réponse a été enregistrée, mais nous n'avons pas pu confirmer son départ par le canal."
+    "sendNotConfirmed": "Votre réponse a été enregistrée, mais nous n'avons pas pu confirmer son départ par le canal.",
+    "whatsappMayBeCharged": "Répondre sur WhatsApp peut avoir un coût : Meta facture votre compte pour chaque message livré."
   },
   "smsNotificationsIntegration": {
     "title": "Alertes SMS",
@@ -3797,7 +3798,10 @@
         "winnerSelected": "Variante gagnante sélectionnée"
       }
     },
-    "resourceLabel": "campagnes de diffusion"
+    "resourceLabel": "campagnes de diffusion",
+    "sendConfirmTitle": "Envoyer « {name} » maintenant",
+    "sendConfirmCta": "Envoyer maintenant",
+    "sendConfirmSending": "Envoi en cours…"
   },
   "channelCertification": {
     "title": "Certification des canaux",
@@ -14539,6 +14543,28 @@
     "onlyWhatWeSent": "Ces chiffres ne comptent que ce que Parallly a envoyé. Le même compte WhatsApp peut être facturé par une autre application ou par quelqu'un qui écrit depuis la boîte de réception de Meta : ce n'est donc pas la facture complète.",
     "undated": "{count} enregistrement(s) qui n'ont pu être ni datés ni tarifés. Ils n'entrent dans aucun mois : il faut les examiner à part.",
     "currency": "Devise",
-    "exposureCaption": "Dépense WhatsApp par devise sur la période sélectionnée"
+    "exposureCaption": "Dépense WhatsApp par devise sur la période sélectionnée",
+    "campaignIsAPurchase": "Cet envoi a un coût",
+    "campaignUpTo": "{count} destinataires. Meta facture votre propre compte WhatsApp Business pour chaque message livré : cet envoi peut donc produire jusqu'à {count} livraisons facturées. Un message non livré n'est pas facturé, c'est donc un plafond et non une prévision.",
+    "campaignUpToMoney": "Jusqu'à {money} si tous les messages tarifés sont livrés. C'est un plafond en {currency}, pas une prévision.",
+    "campaignTotalNotRepresentable": "Les parties ont pu être tarifées mais le total ne peut pas être exprimé en {currency}. Ce n'est pas zéro : c'est un total que nous ne pouvons pas afficher.",
+    "campaignMarketRecipients": "{count} destinataires",
+    "campaignNoEstimate": "Nous ne pouvons pas encore calculer le montant ici : il dépend du pays de chaque destinataire et de la catégorie approuvée du modèle. Ce que nous savons, c'est combien de livraisons cet envoi peut produire, et que chacune peut être facturée.",
+    "campaignUnpriced": "{count} destinataires sans tarif",
+    "campaignUnpricedNotFree": "Une destination que la grille tarifaire ne situe pas n'est PAS gratuite. Ces destinataires sont comptés à côté du total et jamais dedans : leur coût provient du rapprochement avec ce que Meta facture.",
+    "campaignNoFreeAllowance": "Les livraisons gratuites par numéro et par mois calendaire concernent les messages de SERVICE. Une campagne part comme modèle approuvé : elle ne les consomme pas et n'en bénéficie pas.",
+    "unpricedReason": {
+      "invalid_instant": "la date de l'estimation n'est pas valide",
+      "unsupported_time_zone": "le fuseau horaire du compte WhatsApp n'est pas reconnu",
+      "no_rate_card_for_currency": "il n'existe pas de grille tarifaire pour la devise du compte",
+      "no_rate_card_effective_yet": "aucune grille n'est en vigueur à cette date",
+      "market_not_in_rate_card": "le pays du destinataire n'est pas dans la grille tarifaire",
+      "category_not_priced_in_rate_card": "la grille ne tarife pas cette catégorie pour ce pays",
+      "no_destination": "le destinataire n'a pas de numéro où envoyer",
+      "category_unknown": "le modèle n'a pas de catégorie approuvée synchronisée",
+      "market_ambiguous": "l'indicatif du numéro est partagé par plusieurs pays que Meta tarife différemment",
+      "market_unlisted": "l'indicatif du numéro n'est pas dans la table des marchés",
+      "total_not_representable": "le total ne peut pas être exprimé dans la devise du compte"
+    }
   }
 }

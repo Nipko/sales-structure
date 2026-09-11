@@ -12,6 +12,7 @@ import { usePlanLimits } from "@/hooks/usePlanLimits";
 import { DataSourceBadge } from "@/hooks/useApiData";
 import { UpgradeBanner } from "@/components/ui/upgrade-banner";
 import { LoadFailureNotice } from "@/components/ui/load-failure";
+import { CampaignSendConfirm } from "@/components/broadcast/CampaignSendConfirm";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
@@ -250,9 +251,20 @@ export default function BroadcastPage() {
     };
 
     const [sendingId, setSendingId] = useState<string | null>(null);
+    /**
+     * The campaign a person has asked to send but has not yet confirmed.
+     *
+     * There was no confirmation at all: one click on a green button launched
+     * the campaign to everybody in it. Since 1 October 2026 Meta charges the
+     * business's own WhatsApp account per delivered message, which makes that
+     * click a purchase — so it now opens a dialogue that says how many
+     * deliveries it may be charged for before anything leaves.
+     */
+    const [pendingSend, setPendingSend] = useState<any | null>(null);
 
     const handleSendNow = async (id: string) => {
         if (!activeTenantId || sendingId) return;
+        setPendingSend(null);
         const previousCampaigns = [...campaigns];
         setCampaigns(campaigns.map(c => c.id === id ? { ...c, status: "active" } : c));
         setSendingId(id);
@@ -398,7 +410,7 @@ export default function BroadcastPage() {
                                         )}
                                         {campaign.status === "draft" && (
                                             <button
-                                                onClick={(e) => { e.stopPropagation(); handleSendNow(campaign.id); }}
+                                                onClick={(e) => { e.stopPropagation(); setPendingSend(campaign); }}
                                                 disabled={sendingId === campaign.id}
                                                 className="mt-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-emerald-500 text-white border-none cursor-pointer hover:bg-emerald-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                             >
@@ -814,6 +826,26 @@ export default function BroadcastPage() {
                     </div>
                 </div>
             )}
+
+            {/* ═══ WHAT THIS SEND MAY COST, BEFORE IT LEAVES ═══════════════════
+                `estimate` is deliberately not passed: no endpoint returns a
+                priced campaign estimate yet, and the rate depends on each
+                recipient's country and on the template's approved Meta category
+                — neither of which the browser can resolve without carrying the
+                rate card, which would let the figure on this screen disagree
+                with the one the reservation charges. So the dialogue states the
+                delivery count, says the free allowance does not apply to
+                campaigns, and says plainly that the amount is not known here.
+                Inventing one would be worse than not having it. */}
+            <CampaignSendConfirm
+                open={pendingSend !== null}
+                campaignName={pendingSend?.name ?? ""}
+                recipients={typeof pendingSend?.totalRecipients === "number"
+                    ? pendingSend.totalRecipients : null}
+                busy={sendingId !== null}
+                onConfirm={() => { if (pendingSend) void handleSendNow(pendingSend.id); }}
+                onCancel={() => setPendingSend(null)}
+            />
 
             {/* Toast */}
             {toast && (

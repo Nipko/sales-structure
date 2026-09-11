@@ -6,6 +6,7 @@ import { firstValueFrom } from 'rxjs';
 import { WhatsappConnectionService } from './whatsapp-connection.service';
 import { toWhatsAppFormatting } from '../../../common/utils/channel-text-format.util';
 import { WhatsappSendAdmissionService, type Admission } from '../../billing/whatsapp-spend/whatsapp-send-admission.service';
+import { AccountPauseStore } from '../../channels/account-pause-store';
 
 const META_GRAPH_VERSION = 'v21.0';
 
@@ -39,6 +40,9 @@ export class WhatsappMessagingService {
     // template, every interactive card and every media message sent from a
     // controller comes through here.
     @Optional() private readonly spendGate?: WhatsappSendAdmissionService,
+    // The first of the two places Meta says the business cannot be billed: the
+    // answer to this very request. The other is a status webhook minutes later.
+    @Optional() private readonly pauses?: AccountPauseStore,
   ) {}
 
   // ============================================================
@@ -250,6 +254,11 @@ export class WhatsappMessagingService {
       // a reconciliation settles it.
       await this.recordSpend(schemaName, admission, { kind: 'delivered_unpriced', providerMessageId: messageId });
 
+      // Meta took a message from this account. That is the only proof billing
+      // works again, and it is produced by the platform rather than claimed by
+      // anybody — so a pause that was in force lifts here, by itself.
+      await this.resumeIfPaused(schemaName, phoneNumberId);
+
       // Loguear en BD
       await this.logMessage(schemaName, channelId, {
         providerMessageId: messageId,
@@ -275,6 +284,13 @@ export class WhatsappMessagingService {
       await this.recordSpend(schemaName, admission, metaError
         ? { kind: 'rejected', errorCode: String(errorCode) }
         : { kind: 'timeout', errorCode: String(errorCode) });
+
+      // "This business account cannot be billed" is not a transport failure and
+      // must not be retried: every attempt is identical and none can succeed
+      // until a person adds a card, in Meta, on their own account. Recorded
+      // here so the NEXT message is refused before it is even priced.
+      await this.observeFunding(schemaName, phoneNumberId, errorCode,
+        metaError?.error_data?.details ?? errorMessage);
 
       // Loguear fallo en BD
       await this.logMessage(schemaName, channelId, {
@@ -343,6 +359,35 @@ export class WhatsappMessagingService {
       this.logger.error(`[Spend] gate unavailable for whatsapp REST: ${error?.message}`);
       return null;
     }
+  }
+
+  /**
+   * Tell the pause store what Meta just said, if what it said was about money.
+   *
+   * Never throws and never blocks: this runs after a message has already
+   * failed, and failing to record why must not become a second failure that
+   * hides the first.
+   */
+  private async observeFunding(schemaName: string, phoneNumberId: string,
+    code: unknown, detail: unknown) {
+    if (!this.pauses || !this.spendGate) return;
+    try {
+      const tenantId = await this.spendGate.tenantForSchema(schemaName);
+      if (!tenantId) return;
+      await this.pauses.observeFunding(tenantId, phoneNumberId,
+        { source: 'http_response', code, detail });
+    } catch (error: any) {
+      this.logger.error(`[Pause] funding signal not recorded: ${error?.message}`);
+    }
+  }
+
+  private async resumeIfPaused(schemaName: string, phoneNumberId: string) {
+    if (!this.pauses || !this.spendGate) return;
+    try {
+      const tenantId = await this.spendGate.tenantForSchema(schemaName);
+      if (!tenantId) return;
+      await this.pauses.clear(tenantId, phoneNumberId, { by: 'provider_accepted' });
+    } catch { /* a resumed account that stays marked paused is visible and safe */ }
   }
 
   private async recordSpend(schemaName: string, admission: unknown, outcome: {

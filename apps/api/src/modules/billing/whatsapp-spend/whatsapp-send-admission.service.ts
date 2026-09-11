@@ -1,10 +1,12 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PROVIDER_BILLED_CHANNELS } from '@parallext/shared';
 import { WhatsappSpendService, type SpendAuthorizeResult } from './whatsapp-spend.service';
 import type { SpendDisposition, SpendPressure } from './spend-ledger';
 import { resolveRepetitionPolicy, type RepetitionPolicy } from './spend-repetition';
-import { describeBlock, type SpendBlock } from './spend-diagnosis';
+import { describeBlock, spendBlock, type SpendBlock } from './spend-diagnosis';
+import { AccountPauseStore } from '../../channels/account-pause-store';
+import { describePause } from '../../channels/account-send-pause';
 
 /**
  * ═══ THE ONE GATE EVERY CHARGEABLE WHATSAPP MESSAGE PASSES ═══
@@ -122,6 +124,10 @@ export class WhatsappSendAdmissionService {
     constructor(
         private readonly prisma: PrismaService,
         private readonly spend: WhatsappSpendService,
+        // Optional for the same reason the whole gate is: a deployment that has
+        // not wired it must still send. When it IS wired, a number Meta refuses
+        // to bill stops trying.
+        @Optional() private readonly pauses?: AccountPauseStore,
     ) {}
 
     /**
@@ -152,6 +158,24 @@ export class WhatsappSendAdmissionService {
         }
 
         const enforcement = await this.enforcementFor(request.connection.tenantId);
+
+        // ── Is Meta refusing to bill this number at all? ────────────────────
+        //
+        // Checked BEFORE pricing and before any reservation, because the answer
+        // is not "this message costs too much" but "no message from this number
+        // can be delivered until a person adds a card in Meta". Retrying is
+        // pointless — every attempt is identical — so the refusal is returned
+        // regardless of enforcement mode. `observe` exists to avoid stopping
+        // messages that WOULD have gone out; these would not.
+        const pause = await this.pauses?.current(
+            request.connection.tenantId, request.connection.channelAccountId).catch(() => null);
+        if (pause && !pause.clearedAt) {
+            return Object.freeze({
+                permitted: false, effectKey, enforcement,
+                block: spendBlock('account_paused', describePause(pause)),
+            });
+        }
+
         const account = await this.accountFacts(request.connection.tenantId, request.connection.channelAccountId);
 
         const result: SpendAuthorizeResult = await this.spend.authorize(request.schema, {

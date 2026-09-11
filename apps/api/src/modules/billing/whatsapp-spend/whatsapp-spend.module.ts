@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { WhatsappSpendService } from './whatsapp-spend.service';
 import { WhatsappSendAdmissionService } from './whatsapp-send-admission.service';
+import { AccountPauseStore } from '../../channels/account-pause-store';
 
 /**
  * The money authority, exported on its own.
@@ -14,7 +15,10 @@ import { WhatsappSendAdmissionService } from './whatsapp-send-admission.service'
  */
 @Module({
     imports: [PrismaModule],
-    providers: [WhatsappSpendService, WhatsappSendAdmissionService],
-    exports: [WhatsappSpendService, WhatsappSendAdmissionService],
+    // `AccountPauseStore` is declared here rather than in `ChannelsModule`
+    // on purpose: importing that module would close a cycle through the
+    // processor, and the store is a leaf that needs only Prisma.
+    providers: [WhatsappSpendService, WhatsappSendAdmissionService, AccountPauseStore],
+    exports: [WhatsappSpendService, WhatsappSendAdmissionService, AccountPauseStore],
 })
 export class WhatsappSpendModule {}

@@ -1,4 +1,4 @@
-import { Injectable, Logger, BadRequestException, Inject, forwardRef } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, Inject, Optional, forwardRef } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { InboundQueueService } from '../../inbound/inbound-queue.service';
@@ -9,7 +9,9 @@ import { WhatsappTemplateService } from './whatsapp-template.service';
 import { WhatsAppAdapter } from '../../channels/whatsapp/whatsapp.adapter';
 import { RedisService } from '../../redis/redis.service';
 import * as crypto from 'crypto';
-import { parseMetaDeliveryStatuses, recordChannelDeliveryStatuses } from '../../channels/channel-delivery-status';
+import { parseMetaDeliveryStatuses, recordChannelDeliveryStatuses,
+    type ChannelDeliveryStatusEvent } from '../../channels/channel-delivery-status';
+import { AccountPauseStore } from '../../channels/account-pause-store';
 
 @Injectable()
 export class WhatsappWebhookService {
@@ -35,6 +37,11 @@ export class WhatsappWebhookService {
     // for template status instead of two copies of the same UPDATE.
     @Inject(forwardRef(() => WhatsappTemplateService))
     private readonly templateService: WhatsappTemplateService,
+    // The SECOND place Meta says the business cannot be billed. The first is
+    // the answer to the send itself; this one arrives minutes later, on a
+    // message that was accepted and then failed — which is the shape a funding
+    // problem usually has, because eligibility is checked at delivery.
+    @Optional() private readonly pauses?: AccountPauseStore,
   ) {}
 
   /**
@@ -222,8 +229,13 @@ export class WhatsappWebhookService {
    * endpoint the deployed WhatsApp worker calls: one rule, one place.
    */
   private async recordDeliveryStatuses(phoneNumberId: string, statuses: any[] | undefined): Promise<void> {
+    const events = parseMetaDeliveryStatuses(statuses);
+    // Read BEFORE the writer runs, and never conditional on it: a database
+    // problem while recording receipts must not also lose the one signal that
+    // stops an account spending into a wall.
+    await this.observeFundingFailures(phoneNumberId, events);
     await recordChannelDeliveryStatuses(
-      parseMetaDeliveryStatuses(statuses),
+      events,
       { channelType: 'whatsapp', channelAccountId: phoneNumberId },
       {
         store: this.prisma,
@@ -235,6 +247,35 @@ export class WhatsappWebhookService {
         },
       },
     );
+  }
+
+  /**
+   * Notice, among the failures Meta just reported, the one that means "no card".
+   *
+   * Runs for every failed receipt rather than only the first, because the
+   * signal can arrive on any of them and the pause itself de-duplicates: a
+   * second sighting bumps the count and leaves `since` where it was.
+   */
+  private async observeFundingFailures(
+    phoneNumberId: string, events: readonly ChannelDeliveryStatusEvent[],
+  ): Promise<void> {
+    if (!this.pauses) return;
+    const failures = events.filter(event => event.status === 'failed');
+    if (!failures.length) return;
+    try {
+      const tenantId = await this.resolveTenantId(phoneNumberId);
+      if (!tenantId) return;
+      for (const failure of failures) {
+        const pause = await this.pauses.observeFunding(tenantId, phoneNumberId, {
+          source: 'status_webhook', code: failure.errorCode, detail: failure.errorDetail,
+        });
+        // One is enough: the account is paused and every later failure in the
+        // same batch says the same thing.
+        if (pause) break;
+      }
+    } catch (error: any) {
+      this.logger.error(`[Pause] funding signal not recorded from webhook: ${error?.message}`);
+    }
   }
 
   private async processMessageEvent(phoneNumberId: string, value: any) {

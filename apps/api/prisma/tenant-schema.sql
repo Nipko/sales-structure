@@ -5595,80 +5595,161 @@ ALTER TABLE "{{SCHEMA_NAME}}"."benchmark_attempts"
 -- END BENCHMARK ATTEMPT CLAIM
 
 -- BEGIN WHATSAPP SPEND LEDGER
--- Reserva monetaria y contador por alcance para cada saliente de WhatsApp.
--- Desde el 1-oct-2026 Meta cobra el mensaje de servicio entregado, así que la
--- autorización tiene que existir ANTES del efecto y sobrevivir a un COMMIT
--- incierto. Formas y razones en
--- modules/billing/whatsapp-rates/RESERVATION-DESIGN.md (secciones 2 a 5).
+-- Reserva monetaria, contadores por alcance y la asignacion entre los dos.
+-- Desde el 1-oct-2026 Meta cobra el mensaje de servicio entregado, asi que la
+-- autorizacion tiene que existir ANTES del efecto y sobrevivir a un COMMIT
+-- incierto. Razones en modules/billing/whatsapp-rates/RESERVATION-DESIGN.md.
 --
--- cap_minor y cap_deliveries son excluyentes: una fila limita dinero o limita
--- mensajes, nunca las dos, porque "10 dólares" y "1.000 mensajes" son techos
--- distintos y mezclarlos hace ambiguo cuál se agotó.
+-- cap_kind dice que limita esta fila: dinero, mensajes, o nada mas que observar.
+-- "10 dolares" y "1.000 mensajes" son techos distintos y una fila que llevara
+-- los dos haria ambiguo cual se agoto; una fila `observe` existe para contar sin
+-- frenar, que es el estado en el que empieza un tenant que todavia no configuro
+-- ningun tope.
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."whatsapp_spend_counters" (
         scope_kind TEXT NOT NULL,
         scope_key TEXT NOT NULL,
         period_key TEXT NOT NULL,
+        cap_kind TEXT NOT NULL,
         cap_minor BIGINT,
         cap_deliveries INTEGER,
+        currency TEXT,
         reserved_minor BIGINT NOT NULL DEFAULT 0,
         settled_minor BIGINT NOT NULL DEFAULT 0,
+        released_minor BIGINT NOT NULL DEFAULT 0,
         used_deliveries INTEGER NOT NULL DEFAULT 0,
-        currency TEXT,
+        free_deliveries INTEGER NOT NULL DEFAULT 0,
         updated_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
         PRIMARY KEY (scope_kind, scope_key, period_key),
         CONSTRAINT whatsapp_spend_counters_scope CHECK (scope_kind IN
-            ('account','business','contact','number_month')),
-        CONSTRAINT whatsapp_spend_counters_one_cap
-            CHECK (num_nonnulls(cap_minor, cap_deliveries) <= 1),
+            ('account','business','contact','number_month','task')),
+        CONSTRAINT whatsapp_spend_counters_cap_kind CHECK (cap_kind IN
+            ('money','deliveries','observe')),
+        CONSTRAINT whatsapp_spend_counters_money
+            CHECK ((cap_kind = 'money') = (cap_minor IS NOT NULL)),
+        CONSTRAINT whatsapp_spend_counters_deliveries
+            CHECK ((cap_kind = 'deliveries') = (cap_deliveries IS NOT NULL)),
+        CONSTRAINT whatsapp_spend_counters_currency
+            CHECK (cap_kind <> 'money' OR currency IS NOT NULL),
         CONSTRAINT whatsapp_spend_counters_non_negative CHECK (
-            reserved_minor >= 0 AND settled_minor >= 0 AND used_deliveries >= 0)
+            reserved_minor >= 0 AND settled_minor >= 0 AND released_minor >= 0
+            AND used_deliveries >= 0 AND free_deliveries >= 0
+            AND (cap_minor IS NULL OR cap_minor >= 0)
+            AND (cap_deliveries IS NULL OR cap_deliveries >= 0))
     );
--- effect_key es único y DERIVABLE del efecto: es lo que hace que un reintento
--- encuentre su propia reserva en vez de tomar una segunda, que sería cobrar dos
--- veces por un mensaje que quizá ya salió.
+-- effect_key es unico y DERIVABLE del efecto: es lo que hace que un reintento
+-- encuentre su propia reserva en vez de tomar una segunda, que seria cobrar dos
+-- veces por un mensaje que quiza ya salio.
 --
--- lease_expires_at es NOT NULL a propósito. Una fila 'held' sin lease sería
+-- La identidad va congelada en la fila, no por punteros. Un reintento que
+-- resuelve de nuevo puede elegir otro numero cuando el primero esta caido: eso
+-- se lee como resiliencia y es cobrarle a otra cuenta un mensaje que el cliente
+-- ve llegar de un numero que no reconoce.
+--
+-- lease_expires_at es NOT NULL a proposito. Una fila 'held' sin lease seria
 -- invisible para el barredor (lease < clock_timestamp() da NULL, no true) y
--- dejaría presupuesto tomado para siempre. El barredor además la mueve a
--- 'indeterminate', nunca a 'released': la exposición queda visible.
+-- dejaria presupuesto tomado para siempre. El barredor la mueve a
+-- 'indeterminate', nunca a 'released': la exposicion queda visible.
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."whatsapp_spend_reservations" (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         effect_key TEXT NOT NULL,
-        state TEXT NOT NULL DEFAULT 'held',
-        decision TEXT NOT NULL,
-        basis TEXT NOT NULL,
-        scope_kind TEXT,
-        scope_key TEXT,
-        period_key TEXT,
-        reserved_minor BIGINT NOT NULL,
-        unit_ceiling_minor BIGINT NOT NULL,
-        charged_minor BIGINT,
+        inbound_message_id UUID,
+        batch_id UUID,
+        dispatch_item_id UUID,
+        item_index INTEGER,
+        tenant_id UUID NOT NULL,
+        channel_type TEXT NOT NULL,
+        channel_account_id TEXT NOT NULL,
+        channel_address TEXT,
+        payer_kind TEXT NOT NULL,
+        payer_waba_id TEXT,
+        payer_business_id TEXT,
+        credential_id TEXT NOT NULL,
+        credential_source TEXT NOT NULL,
+        recipient_scope TEXT NOT NULL,
+        recipient_ref TEXT NOT NULL,
+        category TEXT NOT NULL,
+        market TEXT,
         currency TEXT NOT NULL,
-        free_deliveries INTEGER NOT NULL DEFAULT 0,
-        charged_deliveries INTEGER NOT NULL DEFAULT 0,
         rate_version TEXT,
         applied_local_date DATE,
+        admission_reason TEXT NOT NULL,
+        basis TEXT NOT NULL,
+        decision TEXT NOT NULL,
+        reserved_minor BIGINT NOT NULL,
+        unit_ceiling_minor BIGINT NOT NULL,
         exact_micros BIGINT NOT NULL DEFAULT 0,
+        charged_minor BIGINT,
+        free_deliveries INTEGER NOT NULL DEFAULT 0,
+        charged_deliveries INTEGER NOT NULL DEFAULT 0,
+        state TEXT NOT NULL DEFAULT 'held',
+        provider_message_id TEXT,
+        remote_state TEXT,
+        evidence TEXT,
         reason TEXT,
         lease_expires_at TIMESTAMPTZ NOT NULL,
+        attempts INTEGER NOT NULL DEFAULT 1,
+        adopted INTEGER NOT NULL DEFAULT 0,
         created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
         CONSTRAINT whatsapp_spend_reservations_state CHECK (state IN
             ('held','settled','released','pending_reconciliation','indeterminate')),
         CONSTRAINT whatsapp_spend_reservations_decision
             CHECK (decision IN ('accepted','unknown')),
+        CONSTRAINT whatsapp_spend_reservations_payer
+            CHECK (payer_kind IN ('business_direct','partner','unknown')),
+        CONSTRAINT whatsapp_spend_reservations_credential
+            CHECK (credential_source IN ('channel_account','tenant_credential','system_user')),
+        CONSTRAINT whatsapp_spend_reservations_recipient
+            CHECK (recipient_scope IN ('customer','test_recipient','internal','synthetic')),
+        CONSTRAINT whatsapp_spend_reservations_basis CHECK (basis IN
+            ('priced','free_allowance','free_entry_point','unknown')),
+        CONSTRAINT whatsapp_spend_reservations_remote CHECK (remote_state IS NULL
+            OR remote_state IN ('accepted','rejected','unknown','delivered','read','failed')),
         CONSTRAINT whatsapp_spend_reservations_charged
             CHECK ((state = 'settled') = (charged_minor IS NOT NULL)),
+        CONSTRAINT whatsapp_spend_reservations_evidence
+            CHECK (state NOT IN ('settled','released') OR evidence IS NOT NULL),
         CONSTRAINT whatsapp_spend_reservations_non_negative CHECK (
             reserved_minor >= 0 AND unit_ceiling_minor >= 0 AND exact_micros >= 0
             AND free_deliveries >= 0 AND charged_deliveries >= 0
+            AND attempts >= 1 AND adopted >= 0
             AND (charged_minor IS NULL OR charged_minor >= 0))
+    );
+-- Una reserva toca VARIOS techos a la vez: la cuenta, el negocio, el contacto,
+-- la franquicia del numero en el mes y la tarea que la disparo. La clave
+-- primaria compuesta impide tocar dos veces el mismo contador, por reintento o
+-- por carrera; la foranea impide asignar contra un contador que no existe.
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."whatsapp_spend_allocations" (
+        reservation_id UUID NOT NULL
+            REFERENCES "{{SCHEMA_NAME}}"."whatsapp_spend_reservations"(id) ON DELETE CASCADE,
+        scope_kind TEXT NOT NULL,
+        scope_key TEXT NOT NULL,
+        period_key TEXT NOT NULL,
+        amount_minor BIGINT NOT NULL DEFAULT 0,
+        deliveries INTEGER NOT NULL DEFAULT 0,
+        currency TEXT,
+        state TEXT NOT NULL DEFAULT 'reserved',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+        PRIMARY KEY (reservation_id, scope_kind, scope_key, period_key),
+        FOREIGN KEY (scope_kind, scope_key, period_key)
+            REFERENCES "{{SCHEMA_NAME}}"."whatsapp_spend_counters"(scope_kind, scope_key, period_key),
+        CONSTRAINT whatsapp_spend_allocations_state
+            CHECK (state IN ('reserved','settled','released')),
+        CONSTRAINT whatsapp_spend_allocations_non_negative
+            CHECK (amount_minor >= 0 AND deliveries >= 0)
     );
 CREATE UNIQUE INDEX IF NOT EXISTS uidx_whatsapp_spend_effect
         ON "{{SCHEMA_NAME}}"."whatsapp_spend_reservations" (effect_key);
 CREATE INDEX IF NOT EXISTS idx_whatsapp_spend_open
         ON "{{SCHEMA_NAME}}"."whatsapp_spend_reservations" (lease_expires_at)
         WHERE state IN ('held','pending_reconciliation','indeterminate');
-CREATE INDEX IF NOT EXISTS idx_whatsapp_spend_scope
-        ON "{{SCHEMA_NAME}}"."whatsapp_spend_reservations" (scope_kind, scope_key, period_key);
+CREATE INDEX IF NOT EXISTS idx_whatsapp_spend_receipt
+        ON "{{SCHEMA_NAME}}"."whatsapp_spend_reservations" (provider_message_id)
+        WHERE provider_message_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_whatsapp_spend_dispatch
+        ON "{{SCHEMA_NAME}}"."whatsapp_spend_reservations" (dispatch_item_id)
+        WHERE dispatch_item_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_whatsapp_spend_alloc_counter
+        ON "{{SCHEMA_NAME}}"."whatsapp_spend_allocations" (scope_kind, scope_key, period_key);
 -- END WHATSAPP SPEND LEDGER

@@ -27,9 +27,35 @@ const consumer = require(SCRIPT);
 const SHA = 'a'.repeat(40);
 const digest = (seed: string) => `sha256:${seed.repeat(64).slice(0, 64)}`;
 
+/** The eight ids and keys whose provenance the manifest records as a digest. */
+const BUILD_INPUT_DIGESTS = {
+    NEXT_PUBLIC_META_APP_ID: '0123456789abcdef',
+    NEXT_PUBLIC_META_CONFIG_ID: '1123456789abcdef',
+    NEXT_PUBLIC_META_SOLUTION_ID: '2123456789abcdef',
+    NEXT_PUBLIC_GOOGLE_CLIENT_ID: '3123456789abcdef',
+    NEXT_PUBLIC_MESSENGER_FB_LOGIN_CONFIG_ID: '4123456789abcdef',
+    NEXT_PUBLIC_VAPID_PUBLIC_KEY: '5123456789abcdef',
+    NEXT_PUBLIC_INSTAGRAM_APP_ID: '6123456789abcdef',
+    NEXT_PUBLIC_INSTAGRAM_REDIRECT_URI: '7123456789abcdef',
+};
+
 const manifest = (over: Record<string, unknown> = {}) => ({
-    version: 2,
+    version: 3,
     sha: SHA,
+    verification: {
+        workflow: 'candidate',
+        runId: '1234567890',
+        runAttempt: '1',
+        repository: 'Nipko/sales-structure',
+        conclusion: 'success',
+    },
+    dashboardBuildInputs: {
+        urls: {
+            NEXT_PUBLIC_API_URL: 'https://api.parallly-chat.cloud',
+            NEXT_PUBLIC_WA_SERVICE_URL: 'https://wa.parallly-chat.cloud',
+        },
+        digests: { ...BUILD_INPUT_DIGESTS },
+    },
     images: {
         api: { tag: 'ghcr.io/nipko/parallext-api:candidate-' + SHA, digest: digest('1') },
         worker: { tag: 'ghcr.io/nipko/parallext-worker:candidate-' + SHA, digest: digest('2') },
@@ -101,11 +127,13 @@ describe('a manifest is untrusted input', () => {
     };
 
     it('refuses a version it was not written for', () => {
-        // Version 1 named tags; version 2 names digests. Reading a version-1
-        // file with version-2 rules would pin nothing and report success.
-        refuses({ version: 1 }, 'is not 2');
-        refuses({ version: undefined }, 'is not 2');
-        refuses({ version: '2' }, 'is not 2');
+        // Version 1 named tags; version 2 names digests; version 3 also names
+        // the run that verified them. Reading a version-2 file with version-3
+        // rules would accept a manifest no green run stands behind.
+        refuses({ version: 1 }, 'is not 3');
+        refuses({ version: 2 }, 'is not 3');
+        refuses({ version: undefined }, 'is not 3');
+        refuses({ version: '3' }, 'is not 3');
     });
 
     it('refuses a repository that is not ours', () => {
@@ -234,11 +262,66 @@ describe('a manifest is untrusted input', () => {
         }, 'looks like a URL');
     });
 
+    describe('the four things a manifest has to bind together', () => {
+        /**
+         * A file naming five digests and nothing else can be written by a RED
+         * run — the old workflow proved it could: `upload-artifact` carried
+         * `if: always()`, so a run whose suite failed still published a
+         * consumable manifest, and the cut-over's first step is to download
+         * exactly that artefact and turn it into what a production host starts.
+         */
+        it('refuses a manifest with no verification run behind it', () => {
+            refuses({ verification: undefined }, 'names no verification run');
+            refuses({ verification: {} }, 'not "success"');
+        });
+
+        it('refuses a verification that concluded anything but success', () => {
+            for (const conclusion of ['failure', 'cancelled', 'skipped', '', 'SUCCESS']) {
+                refuses({ verification: { runId: '1', conclusion } }, 'not "success"');
+            }
+        });
+
+        it('refuses a green verification that names no run', () => {
+            // "It passed" with no run id is a sentence, not evidence: nobody can
+            // open the log and see what passed.
+            refuses({ verification: { conclusion: 'success' } }, 'names no run id');
+            refuses({ verification: { conclusion: 'success', runId: 'latest' } }, 'names no run id');
+        });
+
+        it('refuses a manifest that does not record what the bundle was built from', () => {
+            // A missing `NEXT_PUBLIC_*` does not fail a Next.js build: it bakes
+            // an empty string. The manifest is the only place that says which
+            // values the approved bundle carries.
+            refuses({ dashboardBuildInputs: undefined }, 'records no dashboard build inputs');
+            refuses({ dashboardBuildInputs: { urls: {}, digests: { ...BUILD_INPUT_DIGESTS } } },
+                'do not record NEXT_PUBLIC_API_URL');
+            const short = { ...BUILD_INPUT_DIGESTS, NEXT_PUBLIC_VAPID_PUBLIC_KEY: '' };
+            refuses({ dashboardBuildInputs: {
+                urls: { NEXT_PUBLIC_API_URL: 'https://a', NEXT_PUBLIC_WA_SERVICE_URL: 'https://b' },
+                digests: short } }, 'do not record a digest for NEXT_PUBLIC_VAPID_PUBLIC_KEY');
+        });
+
+        it('carries the commit, the run, the inputs and five digests into what it returns', () => {
+            const parsed = withFile(manifest(), file => consumer.readManifest(file));
+            expect(parsed.sha).toBe(SHA);
+            expect(parsed.verification).toEqual({ runId: '1234567890', conclusion: 'success' });
+            expect(parsed.buildInputs.urls.NEXT_PUBLIC_API_URL).toBe('https://api.parallly-chat.cloud');
+            expect(Object.keys(parsed.buildInputs.digests).sort())
+                .toEqual(Object.keys(BUILD_INPUT_DIGESTS).sort());
+            expect(Object.keys(parsed.images)).toHaveLength(5);
+        });
+
+        it('writes the run that verified it into the override a host reads', () => {
+            const parsed = withFile(manifest(), file => consumer.readManifest(file));
+            expect(consumer.renderOverride(parsed)).toContain('Verified by run 1234567890');
+        });
+    });
+
     it('still accepts the manifest the workflow actually writes', () => {
         // The control. Every refusal above is worthless if the real shape is
         // refused too, and this is the shape `candidate.yml` emits.
         const parsed = withFile(manifest(), file => consumer.readManifest(file));
-        expect(parsed.version).toBe(2);
+        expect(parsed.version).toBe(3);
         expect(Object.keys(parsed.images).sort())
             .toEqual(['api', 'dashboard', 'landing', 'whatsapp', 'worker']);
     });

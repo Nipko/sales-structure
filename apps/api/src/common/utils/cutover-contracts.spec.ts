@@ -206,12 +206,14 @@ describe('what replaced staging', () => {
             // Without the explicit `ref`, this would build whatever main is and
             // label it with the candidate's SHA — worse than not building.
             //
-            // The SHA is resolved once, in a step, because there are now two
+            // The SHA is resolved once, in ONE JOB, because there are now two
             // triggers: a dispatch names it, a labelled pull request supplies
             // its own head. Resolving it twice is how a workflow builds one
-            // commit and labels it with another.
+            // commit and labels it with another. It moved from a step output to
+            // a job output when authorisation, verification and publication
+            // became three jobs with three different amounts of power.
             expect(workflow).toMatch(/\^\[0-9a-f\]\{40\}\$/);
-            expect(workflow).toContain('ref: ${{ steps.subject.outputs.sha }}');
+            expect(workflow).toContain('ref: ${{ needs.authorize.outputs.sha }}');
             expect(workflow).toContain('checkout resolved to');
         });
 
@@ -220,12 +222,17 @@ describe('what replaced staging', () => {
             // the DEFAULT branch, so a candidate workflow written on a branch
             // was unreachable from exactly the branch it was written for.
             expect(workflow).toContain('pull_request:');
-            expect(workflow).toContain("contains(github.event.pull_request.labels.*.name, 'build-candidate')");
+            // And the label that starts it NAMES A COMMIT. A bare
+            // `build-candidate` outlived the commit it was applied to, and with
+            // `synchronize` in the trigger list one approval kept authorising
+            // every later push — with secrets and `packages: write`.
+            expect(workflow).toContain("startsWith(github.event.label.name, 'build-candidate-')");
+            expect(workflow).not.toContain("contains(github.event.pull_request.labels.*.name, 'build-candidate')");
         });
 
         it('never tags latest, which is what the production compose falls back to', () => {
             expect(workflow).not.toMatch(/:latest/);
-            expect(workflow).toContain('candidate-${{ steps.subject.outputs.sha }}');
+            expect(workflow).toContain('candidate-${{ needs.authorize.outputs.sha }}');
         });
 
         it('publishes a digest per image, and refuses to publish a manifest without one', () => {

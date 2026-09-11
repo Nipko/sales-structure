@@ -103,10 +103,46 @@ const DIGEST = /^sha256:[0-9a-f]{64}$/;
  *     Refusing is the only safe answer, and the strings this accepts have no
  *     legitimate reason to contain any of them;
  *   · a version this script does not understand. Version 1 named tags; version
- *     2 names digests. Reading a version-1 file with version-2 rules would pin
- *     nothing and say it had.
+ *     2 names digests; version 3 also names the run that verified them.
+ *     Reading a version-2 file with version-3 rules would accept a manifest
+ *     that no green run stands behind, and say it had checked.
  */
-const MANIFEST_VERSION = 2;
+const MANIFEST_VERSION = 3;
+
+/**
+ * ═══ THE FOUR THINGS A MANIFEST MUST BIND TOGETHER ═══
+ *
+ * A file naming five digests and nothing else can be written by a RED run. The
+ * old workflow proved it could: `upload-artifact` carried `if: always()`, so a
+ * run whose suite failed still published a consumable manifest — and the
+ * cut-over's first step is to download exactly that artefact and turn it into
+ * the compose override a production host starts.
+ *
+ * Version 3 binds, and this reader refuses a file missing any of them:
+ *
+ *   1. the COMMIT           — `sha`, a full 40 characters;
+ *   2. the VERIFICATION     — which run proved it, and that it concluded
+ *                             `success`. Any other conclusion is a refusal, and
+ *                             so is a missing one;
+ *   3. the BUNDLE INPUTS    — the two dashboard URLs verbatim (the most useful
+ *                             question about a candidate dashboard is which API
+ *                             it reads from, and a digest cannot answer it) plus
+ *                             a SHA-256 of every id and key, which proves what
+ *                             was verified and what was approved were built from
+ *                             the same values without being any of them;
+ *   4. the FIVE DIGESTS     — complete. Four out of five is not a pinned system.
+ */
+const REQUIRED_BUILD_INPUT_URLS = Object.freeze(['NEXT_PUBLIC_API_URL', 'NEXT_PUBLIC_WA_SERVICE_URL']);
+const REQUIRED_BUILD_INPUT_DIGESTS = Object.freeze([
+    'NEXT_PUBLIC_META_APP_ID',
+    'NEXT_PUBLIC_META_CONFIG_ID',
+    'NEXT_PUBLIC_META_SOLUTION_ID',
+    'NEXT_PUBLIC_GOOGLE_CLIENT_ID',
+    'NEXT_PUBLIC_MESSENGER_FB_LOGIN_CONFIG_ID',
+    'NEXT_PUBLIC_VAPID_PUBLIC_KEY',
+    'NEXT_PUBLIC_INSTAGRAM_APP_ID',
+    'NEXT_PUBLIC_INSTAGRAM_REDIRECT_URI',
+]);
 
 /**
  * The only repositories a manifest may name. Ours, and exactly ours.
@@ -167,6 +203,42 @@ function readManifest(file) {
     if (!/^[0-9a-f]{40}$/.test(sha)) {
         throw new ManifestError('manifest has no full commit sha');
     }
+
+    // ── The run that stands behind these digests ─────────────────────────────
+    const verification = parsed.verification;
+    if (!verification || typeof verification !== 'object') {
+        throw new ManifestError('manifest names no verification run; five digests with nothing '
+            + 'behind them can be written by a failed build');
+    }
+    const conclusion = String(verification.conclusion || '');
+    if (conclusion !== 'success') {
+        throw new ManifestError(`the verification of this candidate concluded `
+            + `"${conclusion || 'nothing'}", not "success"; these images were never proven`);
+    }
+    const verificationRunId = String(verification.runId || '');
+    if (!/^[0-9]+$/.test(verificationRunId)) {
+        throw new ManifestError('the verification names no run id, so nobody can go and read it');
+    }
+
+    // ── What the dashboard bundle was built from ─────────────────────────────
+    const inputs = parsed.dashboardBuildInputs;
+    if (!inputs || typeof inputs !== 'object') {
+        throw new ManifestError('manifest records no dashboard build inputs; a `NEXT_PUBLIC_*` that '
+            + 'was empty at build time bakes an empty string and ships a page that cannot sign in');
+    }
+    const urls = inputs.urls && typeof inputs.urls === 'object' ? inputs.urls : {};
+    for (const name of REQUIRED_BUILD_INPUT_URLS) {
+        if (!String(urls[name] || '')) {
+            throw new ManifestError(`the dashboard build inputs do not record ${name}`);
+        }
+    }
+    const inputDigests = inputs.digests && typeof inputs.digests === 'object' ? inputs.digests : {};
+    for (const name of REQUIRED_BUILD_INPUT_DIGESTS) {
+        if (!/^[0-9a-f]{16,64}$/.test(String(inputDigests[name] || ''))) {
+            throw new ManifestError(`the dashboard build inputs do not record a digest for ${name}`);
+        }
+    }
+
     const images = parsed.images;
     if (!images || typeof images !== 'object') throw new ManifestError('manifest names no images');
 
@@ -215,7 +287,13 @@ function readManifest(file) {
         refuseUnsafeScalar(`the image reference of "${key}"`, reference);
         resolved[key] = { repository, digest, reference };
     }
-    return { sha, version: MANIFEST_VERSION, images: resolved };
+    return {
+        sha,
+        version: MANIFEST_VERSION,
+        verification: { runId: verificationRunId, conclusion },
+        buildInputs: { urls: { ...urls }, digests: { ...inputDigests } },
+        images: resolved,
+    };
 }
 
 /**
@@ -230,6 +308,10 @@ function renderOverride(manifest) {
         '# GENERATED — do not edit by hand.',
         `# Produced by infra/scripts/apply-candidate-manifest.cjs from the candidate`,
         `# manifest for commit ${manifest.sha}.`,
+        '#',
+        `# Verified by run ${manifest.verification.runId}, which concluded `
+            + `${manifest.verification.conclusion}. A manifest whose verification concluded`,
+        '# anything else is refused before this file is written.',
         '#',
         '# Every image is named by its immutable digest, so `docker compose up` can',
         '# start these bytes and no others. Pass it explicitly:',

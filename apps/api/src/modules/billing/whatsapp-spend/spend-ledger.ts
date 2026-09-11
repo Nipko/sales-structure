@@ -1506,3 +1506,152 @@ export async function readExposure(query: SpendQuery, schema: string, input: {
         chargedDeliveries: Number(row.charged_deliveries),
     })));
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+// THE DURABLE INBOX OF DELIVERY RECEIPTS
+//
+// What Meta said, written down before anything tries to act on it.
+//
+// A receipt changes two records that live in two transactions: the customer's
+// history and the money. When the second failed, the event survived only in a
+// log line; the webhook was acknowledged, Meta never redelivered it, and the
+// reservation stayed counted for ever. Nothing looked broken.
+//
+// The honest fix is not a distributed transaction — there is no such thing
+// between "what Meta already told us" and "what our database managed to write".
+// It is to make the FACT durable first, and to mark it applied only once its
+// consequences actually landed.
+// ════════════════════════════════════════════════════════════════════════════
+
+export type ReceiptInboxStatus = 'sent' | 'delivered' | 'read' | 'failed';
+
+export interface DurableReceipt {
+    readonly providerMessageId: string;
+    readonly status: ReceiptInboxStatus;
+    readonly tenantId?: string | null;
+    readonly channelAccountId?: string | null;
+    readonly errorCode?: string | null;
+    readonly errorDetail?: string | null;
+    readonly pricing?: unknown;
+}
+
+/**
+ * Write the receipt down. Idempotent by `(receipt, status)`.
+ *
+ * `ON CONFLICT DO NOTHING` rather than an upsert: a redelivery of the same
+ * event carries the same facts, and overwriting would reset `attempts` and
+ * `next_attempt_at` — turning Meta's own retry cadence into a way of keeping a
+ * failing receipt permanently at the front of the queue.
+ *
+ * Returns whether this call was the first sighting, which is what lets a caller
+ * tell a genuine duplicate from work it still has to do.
+ */
+export async function rememberReceipt(
+    query: SpendQuery, schema: string, receipt: DurableReceipt,
+): Promise<boolean> {
+    assertSchema(schema);
+    const rows = await query<any[]>(
+        `INSERT INTO "${schema}".whatsapp_receipt_inbox
+             (provider_message_id, status, tenant_id, channel_account_id,
+              error_code, error_detail, pricing)
+         VALUES ($1, $2, $3::uuid, $4, $5, $6, $7::jsonb)
+         ON CONFLICT (provider_message_id, status) DO NOTHING
+         RETURNING provider_message_id`,
+        [
+            receipt.providerMessageId, receipt.status, receipt.tenantId ?? null,
+            receipt.channelAccountId ?? null, receipt.errorCode ?? null,
+            receipt.errorDetail ?? null,
+            receipt.pricing ? JSON.stringify(receipt.pricing) : null,
+        ]);
+    return rows.length > 0;
+}
+
+/** Both consequences landed. Nothing will retry this receipt again. */
+export async function markReceiptApplied(
+    query: SpendQuery, schema: string,
+    receipt: { readonly providerMessageId: string; readonly status: ReceiptInboxStatus },
+    outcome: string,
+): Promise<void> {
+    assertSchema(schema);
+    await query(
+        `UPDATE "${schema}".whatsapp_receipt_inbox
+            SET state = 'applied', outcome = $3, last_error = NULL,
+                attempts = attempts + 1, updated_at = clock_timestamp()
+          WHERE provider_message_id = $1 AND status = $2 AND state <> 'applied'`,
+        [receipt.providerMessageId, receipt.status, outcome.slice(0, 80)]);
+}
+
+/**
+ * A consequence did not land. The row stays `pending` and backs off.
+ *
+ * The backoff is exponential and capped, computed in SQL from the attempt
+ * count that the same statement writes — so two workers that both fail on the
+ * same receipt cannot compute different next attempts from a value they read
+ * before the other wrote.
+ */
+export async function noteReceiptFailure(
+    query: SpendQuery, schema: string,
+    receipt: { readonly providerMessageId: string; readonly status: ReceiptInboxStatus },
+    error: string,
+): Promise<void> {
+    assertSchema(schema);
+    await query(
+        `UPDATE "${schema}".whatsapp_receipt_inbox
+            SET attempts = attempts + 1,
+                last_error = $3,
+                updated_at = clock_timestamp(),
+                next_attempt_at = clock_timestamp()
+                    + (LEAST(POWER(2, LEAST(attempts + 1, 8)), 900) || ' seconds')::interval
+          WHERE provider_message_id = $1 AND status = $2 AND state = 'pending'`,
+        [receipt.providerMessageId, receipt.status, error.slice(0, 400)]);
+}
+
+/**
+ * The receipts whose consequences never landed, due for another try.
+ *
+ * `FOR UPDATE SKIP LOCKED` so two sweepers on two workers divide the work
+ * instead of fighting over it.
+ */
+export async function pendingReceipts(
+    query: SpendQuery, schema: string, input: { readonly limit?: number; readonly at?: Date } = {},
+): Promise<readonly DurableReceipt[]> {
+    assertSchema(schema);
+    const rows = await query<any[]>(
+        `SELECT provider_message_id, status, tenant_id, channel_account_id,
+                error_code, error_detail, pricing
+           FROM "${schema}".whatsapp_receipt_inbox
+          WHERE state = 'pending' AND next_attempt_at <= $1::timestamptz
+          ORDER BY next_attempt_at
+          LIMIT $2
+            FOR UPDATE SKIP LOCKED`,
+        [(input.at ?? new Date()).toISOString(), input.limit ?? 100]);
+    return Object.freeze(rows.map(row => Object.freeze({
+        providerMessageId: String(row.provider_message_id),
+        status: String(row.status) as ReceiptInboxStatus,
+        tenantId: row.tenant_id ?? null,
+        channelAccountId: row.channel_account_id ?? null,
+        errorCode: row.error_code ?? null,
+        errorDetail: row.error_detail ?? null,
+        pricing: row.pricing ?? null,
+    })));
+}
+
+/**
+ * Stop retrying a receipt no number of attempts can resolve.
+ *
+ * `abandoned` is deliberately a state and not a deletion: a receipt nobody
+ * could apply is evidence, and the operator asking why a reservation is still
+ * held needs to find it.
+ */
+export async function abandonExhaustedReceipts(
+    query: SpendQuery, schema: string, input: { readonly maxAttempts?: number } = {},
+): Promise<number> {
+    assertSchema(schema);
+    const rows = await query<any[]>(
+        `UPDATE "${schema}".whatsapp_receipt_inbox
+            SET state = 'abandoned', updated_at = clock_timestamp()
+          WHERE state = 'pending' AND attempts >= $1
+          RETURNING provider_message_id`,
+        [input.maxAttempts ?? 24]);
+    return rows.length;
+}

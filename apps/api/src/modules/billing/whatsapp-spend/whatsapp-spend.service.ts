@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { createHash } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
@@ -6,7 +6,9 @@ import {
     wabaCalendarMonth, wabaLocalDate, WHATSAPP_RATE_TABLE_VERSION,
 } from '../whatsapp-rates';
 import {
-    adoptReservation, claimReservation, claimTransmission, declareTaskBudget, ensureCounters,
+    abandonExhaustedReceipts, adoptReservation, claimReservation, claimTransmission,
+    declareTaskBudget, ensureCounters,
+    markReceiptApplied, noteReceiptFailure, pendingReceipts, rememberReceipt,
     findReservation, findReservationByProviderMessage, grantFreeDeliveries,
     markTransmissionInFlight, ownEffect, reconcileDeliveredEffects, RESOLVABLE_STATES,
     staleIndeterminateEffects,
@@ -15,6 +17,7 @@ import {
     reserveAgainstCounter, retainReservation,
     settleReservation, sweepExpiredLeases,
     worstPressure,
+    type DurableReceipt, type ReceiptInboxStatus,
     type ReservationBinding, type ReservationIdentity, type ReservationRow, type SpendExposure,
     type SpendDisposition, type SpendPressure, type SpendQuery, type TaskBudget,
     type TransmissionClaim, type TransmissionGrant,
@@ -22,6 +25,8 @@ import {
 import { scopeId, scopesFor, type SpendScope } from './spend-scopes';
 import { consumesFreeAllowance, freeAllowanceFor } from './free-allowance';
 import { spendBlock, type SpendBlock } from './spend-diagnosis';
+import { AccountPauseStore } from '../../channels/account-pause-store';
+import { fundingSignalFrom } from '../../channels/meta-funding-signals';
 import {
     DEFAULT_REPETITION_POLICY, describeRepetition, judgeRepetition,
     type RepetitionPolicy,
@@ -64,7 +69,21 @@ export class WhatsappSpendService {
      */
     private readonly LEASE_SECONDS = 900;
 
-    constructor(private readonly prisma: PrismaService) {}
+    constructor(
+        private readonly prisma: PrismaService,
+        /**
+         * The OTHER economic consequence of a receipt.
+         *
+         * `131042` arriving on a status webhook means the business account
+         * cannot be billed, and the correct answer is to stop sending from that
+         * number rather than retry it forever. It is optional only so the
+         * PostgreSQL suites can build this service without the channel graph;
+         * in the running application it is always injected, and a receipt whose
+         * pause could not be written stays in the inbox instead of being
+         * marked applied.
+         */
+        @Optional() private readonly pauses?: AccountPauseStore,
+    ) {}
 
     /**
      * The key an effect is claimed under, derived and never generated.
@@ -668,6 +687,11 @@ export class WhatsappSpendService {
         readonly providerMessageId: string;
         readonly status: 'sent' | 'delivered' | 'read' | 'failed';
         readonly errorCode?: string | null;
+        /** Meta's own words, when the numeric code alone is generic. */
+        readonly errorDetail?: string | null;
+        /** Who owns the number, so a funding refusal can pause it. */
+        readonly tenantId?: string | null;
+        readonly channelAccountId?: string | null;
         /**
          * Meta's own `pricing` block, when the webhook carried one.
          *
@@ -676,6 +700,115 @@ export class WhatsappSpendService {
          * was inside the free allowance or a free entry point. Nothing else may
          * decide that, because everything else would be guessing.
          */
+        readonly pricing?: { readonly billable?: boolean | null;
+            readonly category?: string | null; readonly model?: string | null } | null;
+    }): Promise<'settled' | 'released' | 'ignored' | 'unknown_receipt'> {
+        // ── 1. THE FACT, DURABLE, BEFORE ANY CONSEQUENCE ────────────────────
+        //
+        // Its own committed statement. If this raises, nothing has been
+        // recorded and nothing has been acted on: the caller owns a retryable
+        // job and re-delivering the identical event costs nothing. If it
+        // succeeds and the process dies on the next line, the sweep finds it.
+        await this.prisma.transactionInTenantSchema(schema, query =>
+            rememberReceipt(query as SpendQuery, schema, {
+                providerMessageId: receipt.providerMessageId,
+                status: receipt.status,
+                tenantId: receipt.tenantId ?? null,
+                channelAccountId: receipt.channelAccountId ?? null,
+                errorCode: receipt.errorCode ?? null,
+                errorDetail: receipt.errorDetail ?? null,
+                pricing: receipt.pricing ?? null,
+            }));
+
+        // ── 2. AND THEN ITS CONSEQUENCES ────────────────────────────────────
+        try {
+            const outcome = await this.resolveReceipt(schema, receipt);
+            await this.observeReceiptFunding(receipt);
+            await this.prisma.transactionInTenantSchema(schema, query =>
+                markReceiptApplied(query as SpendQuery, schema, receipt, outcome));
+            return outcome;
+        } catch (error: any) {
+            // Left `pending`, with a backoff. Never swallowed into a log line:
+            // that is precisely how a reservation stayed counted for ever.
+            await this.prisma.transactionInTenantSchema(schema, query =>
+                noteReceiptFailure(query as SpendQuery, schema, receipt,
+                    String(error?.message ?? error))).catch(() => { /* the throw below is the signal */ });
+            throw error;
+        }
+    }
+
+    /**
+     * Retry the receipts whose consequences never landed.
+     *
+     * Runs from the maintenance pass. Each receipt is replayed through the same
+     * entry point that first tried it, so there is exactly one rule about what
+     * a receipt means — and replaying a receipt that did land is a no-op,
+     * because the reservation refuses to leave `settled` or `released`.
+     */
+    async retryPendingReceipts(schema: string, input: {
+        readonly limit?: number; readonly at?: Date; readonly maxAttempts?: number;
+    } = {}): Promise<{ retried: number; applied: number; abandoned: number }> {
+        // Give up on the hopeless ones FIRST, so this pass does not spend its
+        // budget re-attempting them and then decide they were hopeless. In the
+        // other order a queue of exhausted receipts would crowd out the ones
+        // that are merely late.
+        const abandoned = await this.prisma.transactionInTenantSchema(schema, query =>
+            abandonExhaustedReceipts(query as SpendQuery, schema, input));
+        const due = await this.prisma.transactionInTenantSchema(schema, query =>
+            pendingReceipts(query as SpendQuery, schema, input));
+        let applied = 0;
+        for (const pending of due) {
+            try {
+                await this.applyDeliveryReceipt(schema, {
+                    providerMessageId: pending.providerMessageId,
+                    status: pending.status,
+                    errorCode: pending.errorCode ?? null,
+                    errorDetail: pending.errorDetail ?? null,
+                    tenantId: pending.tenantId ?? null,
+                    channelAccountId: pending.channelAccountId ?? null,
+                    pricing: (pending.pricing ?? null) as any,
+                });
+                applied += 1;
+            } catch (error: any) {
+                this.logger.warn(`[Spend] recibo ${pending.providerMessageId}/${pending.status} `
+                    + `sigue sin aplicarse: ${error?.message}`);
+            }
+        }
+        return { retried: due.length, applied, abandoned };
+    }
+
+    /**
+     * The funding half of a receipt: Meta saying this account cannot be billed.
+     *
+     * Deliberately not swallowed. `observeFunding` never throws on its own, so
+     * a failure to persist the pause would otherwise be invisible — and an
+     * invisible failure here means the number keeps burning attempts against a
+     * wall nobody can see. Raising leaves the receipt `pending` and the sweep
+     * tries again.
+     */
+    private async observeReceiptFunding(receipt: {
+        readonly status: string;
+        readonly errorCode?: string | null;
+        readonly errorDetail?: string | null;
+        readonly tenantId?: string | null;
+        readonly channelAccountId?: string | null;
+    }): Promise<void> {
+        if (receipt.status !== 'failed') return;
+        if (!this.pauses || !receipt.tenantId || !receipt.channelAccountId) return;
+        const signal = fundingSignalFrom({
+            source: 'status_webhook', code: receipt.errorCode, detail: receipt.errorDetail,
+        });
+        if (!signal) return;
+        const pause = await this.pauses.observeFunding(
+            receipt.tenantId, receipt.channelAccountId,
+            { source: 'status_webhook', code: receipt.errorCode, detail: receipt.errorDetail });
+        if (!pause) throw new Error('funding_pause_not_recorded');
+    }
+
+    private async resolveReceipt(schema: string, receipt: {
+        readonly providerMessageId: string;
+        readonly status: 'sent' | 'delivered' | 'read' | 'failed';
+        readonly errorCode?: string | null;
         readonly pricing?: { readonly billable?: boolean | null;
             readonly category?: string | null; readonly model?: string | null } | null;
     }): Promise<'settled' | 'released' | 'ignored' | 'unknown_receipt'> {

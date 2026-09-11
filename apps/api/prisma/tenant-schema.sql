@@ -5804,4 +5804,38 @@ CREATE INDEX IF NOT EXISTS idx_whatsapp_spend_proactive_recipient
         WHERE disposition = 'proactive';
 CREATE INDEX IF NOT EXISTS idx_whatsapp_spend_alloc_counter
         ON "{{SCHEMA_NAME}}"."whatsapp_spend_allocations" (scope_kind, scope_key, period_key);
+-- El buzon durable de recibos de entrega.
+--
+-- Un recibo cambia dos registros que viven en transacciones distintas: la
+-- historia del cliente y el dinero. Si el segundo fallaba, el evento quedaba
+-- solo en un log, el webhook se confirmaba y Meta no lo reenviaba nunca mas:
+-- la reserva quedaba contada para siempre. El hecho se hace durable ACA antes
+-- de intentar sus consecuencias, y solo pasa a `applied` cuando ambas salieron.
+-- Clave por (recibo, estado) porque Meta manda varios eventos del mismo
+-- mensaje y reenvia cada uno: una clave por recibo colapsaria los tres.
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."whatsapp_receipt_inbox" (
+        provider_message_id TEXT NOT NULL,
+        status TEXT NOT NULL,
+        tenant_id UUID,
+        channel_account_id TEXT,
+        error_code TEXT,
+        error_detail TEXT,
+        pricing JSONB,
+        state TEXT NOT NULL DEFAULT 'pending',
+        outcome TEXT,
+        attempts INTEGER NOT NULL DEFAULT 0,
+        last_error TEXT,
+        first_seen_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+        next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+        PRIMARY KEY (provider_message_id, status),
+        CONSTRAINT whatsapp_receipt_inbox_state
+            CHECK (state IN ('pending','applied','abandoned')),
+        CONSTRAINT whatsapp_receipt_inbox_status
+            CHECK (status IN ('sent','delivered','read','failed')),
+        CONSTRAINT whatsapp_receipt_inbox_attempts CHECK (attempts >= 0)
+    );
+CREATE INDEX IF NOT EXISTS idx_whatsapp_receipt_inbox_pending
+        ON "{{SCHEMA_NAME}}"."whatsapp_receipt_inbox" (next_attempt_at)
+        WHERE state = 'pending';
 -- END WHATSAPP SPEND LEDGER

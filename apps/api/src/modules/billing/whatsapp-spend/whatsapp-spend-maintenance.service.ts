@@ -85,7 +85,7 @@ export class WhatsappSpendMaintenanceService {
         expired: number; reconciled: number; needsPerson: number; failed: number;
     }> {
         const totals = { tenants: 0, skipped: 0, recovered: 0, uncertain: 0, expired: 0,
-            reconciled: 0, needsPerson: 0, failed: 0 };
+            reconciled: 0, needsPerson: 0, receipts: 0, abandoned: 0, failed: 0 };
         for (const tenant of await this.spendingTenants()) {
             const until = this.backoff.get(tenant.id);
             if (until && until > at.getTime()) { totals.skipped += 1; continue; }
@@ -97,6 +97,8 @@ export class WhatsappSpendMaintenanceService {
                 totals.expired += outcome.expired;
                 totals.reconciled += outcome.reconciled;
                 totals.needsPerson += outcome.needsPerson;
+                totals.receipts += outcome.receipts;
+                totals.abandoned += outcome.abandoned;
                 this.backoff.delete(tenant.id);
             } catch (error: any) {
                 totals.failed += 1;
@@ -112,14 +114,20 @@ export class WhatsappSpendMaintenanceService {
         return totals;
     }
 
-    /** The three passes, in the order that makes each one see less work. */
+    /** The four passes, in the order that makes each one see less work. */
     async sweepTenant(schema: string, at: Date = new Date()): Promise<{
         recovered: number; uncertain: number; expired: number;
-        reconciled: number; needsPerson: number;
+        reconciled: number; needsPerson: number; receipts: number; abandoned: number;
     }> {
-        // 1. Transmission leases first. A worker that died holding the right to
-        //    send leaves an effect nobody may claim; recovering it is the only
-        //    one of the three that puts a message back on its way to a person.
+        // 0. The receipts Meta already gave us and whose consequences never
+        //    landed. FIRST, because every later pass is about effects nobody
+        //    resolved, and a receipt sitting in the inbox is an effect somebody
+        //    DID resolve — applying it now keeps the lease sweep from turning a
+        //    delivered message into exposure that needs a person.
+        const receipts = await this.spend.retryPendingReceipts(schema, { limit: this.BATCH, at });
+        // 1. Transmission leases. A worker that died holding the right to send
+        //    leaves an effect nobody may claim; recovering it is the only one of
+        //    these that puts a message back on its way to a person.
         const transmissions = await this.spend.sweepTransmissions(schema, this.BATCH);
         // 2. Reservation leases. `held` past its lease with no outcome becomes
         //    `indeterminate` — visible exposure, never a quiet release.
@@ -136,6 +144,8 @@ export class WhatsappSpendMaintenanceService {
             expired: expired.length,
             reconciled: reconciled.settled,
             needsPerson: reconciled.needsPerson,
+            receipts: receipts.applied,
+            abandoned: receipts.abandoned,
         };
     }
 
@@ -169,11 +179,13 @@ export class WhatsappSpendMaintenanceService {
      */
     private async report(totals: { tenants: number; skipped: number; recovered: number;
         uncertain: number; expired: number; reconciled: number; needsPerson: number;
-        failed: number }): Promise<void> {
+        receipts: number; abandoned: number; failed: number }): Promise<void> {
         this.logger.log(`[Spend] maintenance: ${totals.tenants} tenant(s), `
+            + `${totals.receipts} late receipt(s) applied, `
             + `${totals.recovered} transmission lease(s) recovered, ${totals.uncertain} left `
             + `uncertain mid-POST, ${totals.expired} reservation(s) expired, `
             + `${totals.reconciled} reconciled, ${totals.needsPerson} awaiting a person, `
+            + `${totals.abandoned} receipt(s) abandoned, `
             + `${totals.failed} failed, ${totals.skipped} in backoff`);
         if (!this.incidents) return;
         try {
@@ -191,6 +203,19 @@ export class WhatsappSpendMaintenanceService {
                     + 'respuesta del proveedor. El dinero sigue contado contra la cuenta y sólo '
                     + 'una persona puede decidir si se entregaron.',
                     totals.needsPerson);
+            }
+            if (totals.abandoned) {
+                // A receipt nobody could apply after two dozen tries is not a
+                // transient failure any more. Its reservation is still counted
+                // and no further pass will touch it, so it needs a person —
+                // and saying so is the difference between a known gap in the
+                // books and a number that is quietly wrong.
+                await this.incidents.record('whatsapp_receipt_inbox_abandoned', 'warning',
+                    'Hay recibos de entrega que el libro de gasto nunca pudo aplicar',
+                    `${totals.abandoned} recibo(s) de Meta agotaron sus reintentos. Lo que dijo `
+                    + 'Meta quedó guardado, pero la reserva correspondiente sigue contada y '
+                    + 'requiere revisión manual.',
+                    totals.abandoned);
             }
         } catch (error: any) {
             this.logger.warn(`[Spend] maintenance metrics not reported: ${error?.message}`);

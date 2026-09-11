@@ -1,5 +1,10 @@
 # Addendum para Claude: cierre paralelo seguro desde `0da81979`
 
+Actualización de alcance: incorporar también
+[herramientas, 76 tipos de negocio y Assist](./claude-tools-business-profile-alignment.md).
+Sus pendientes locales forman parte del mismo cierre; no quedan resueltos por
+terminar el carril durable de WhatsApp.
+
 ## Mandato
 
 Continúa el programa de cierre definido en

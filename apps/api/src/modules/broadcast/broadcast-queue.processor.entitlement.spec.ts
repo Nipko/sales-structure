@@ -27,6 +27,11 @@ describe('BroadcastQueueProcessor subscription boundary', () => {
         };
         const abTest = { updateVariantStats: jest.fn() };
         const tenantSms = { send: jest.fn() };
+        // The lane and this processor's own queue. Neither is reached here:
+        // the entitlement gate refuses before anything is committed, which is
+        // the whole point of the case.
+        const proactive = { send: jest.fn(), policyAuthority: jest.fn(), conversationFor: jest.fn() };
+        const queue = { add: jest.fn() };
         const processor = new BroadcastQueueProcessor(
             messaging as any,
             crypto as any,
@@ -35,6 +40,8 @@ describe('BroadcastQueueProcessor subscription boundary', () => {
             broadcast as any,
             abTest as any,
             tenantSms as any,
+            proactive as any,
+            queue as any,
         );
         const job: any = {
             id: 'job-1',
@@ -57,6 +64,8 @@ describe('BroadcastQueueProcessor subscription boundary', () => {
             'payment_method_required',
         );
         expect(messaging.sendTemplate).not.toHaveBeenCalled();
+        expect(proactive.send).not.toHaveBeenCalled();
+        expect(queue.add).not.toHaveBeenCalled();
         expect(email.send).not.toHaveBeenCalled();
         expect(tenantSms.send).not.toHaveBeenCalled();
     });

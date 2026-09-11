@@ -9,6 +9,7 @@ import { WhatsappModule } from '../whatsapp/whatsapp.module';
 import { EmailModule } from '../email/email.module';
 import { SmsCreditsModule } from '../sms-credits/sms-credits.module';
 import { WhatsappSpendModule } from '../billing/whatsapp-spend/whatsapp-spend.module';
+import { ChannelsModule } from '../channels/channels.module';
 
 @Module({
     imports: [
@@ -18,6 +19,9 @@ import { WhatsappSpendModule } from '../billing/whatsapp-spend/whatsapp-spend.mo
         SmsCreditsModule,
         // A campaign declares its own ceiling before it fans out.
         WhatsappSpendModule,
+        // And each of its messages commits an `agent_dispatch_outbox` row
+        // before it is sent, so the processor needs the lane that writes one.
+        forwardRef(() => ChannelsModule),
         BullModule.registerQueue({
             name: BROADCAST_QUEUE,
         }),

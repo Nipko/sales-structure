@@ -111,10 +111,10 @@ export const ACCEPTANCE_MATRIX: readonly AcceptanceScenario[] = Object.freeze([
     {
         scenario: 'Cuenta con otro proveedor',
         evidence: 'Alcance y beneficio incierto explícitos',
-        covered: null,
-        missing: 'nada dice, en una prueba, que un techo acota lo que envía Parallly y no los '
-            + 'cargos que otra aplicación hace en la misma cuenta de WhatsApp. Hoy es una frase '
-            + 'en un comentario, y una frase no impide que una pantalla prometa un techo absoluto',
+        covered: {
+            file: 'modules/billing/whatsapp-spend/spend-scopes.spec.ts',
+            title: 'says what a ceiling CANNOT promise, wherever a ceiling is the reason',
+        },
     },
     {
         scenario: 'Pregunta resuelta y cinco "gracias"',
@@ -127,10 +127,10 @@ export const ACCEPTANCE_MATRIX: readonly AcceptanceScenario[] = Object.freeze([
     {
         scenario: 'Cliente confundido o reclamando',
         evidence: 'Reparación/atención legítima; no etiqueta automática de abuso',
-        covered: null,
-        missing: 'nada prueba que un reclamo, una dificultad de comprensión, una negativa, otro '
-            + 'idioma o pedir una persona NO se clasifiquen como abuso. Es el falso positivo más '
-            + 'caro que puede tener un límite de repetición',
+        covered: {
+            file: 'modules/conversations/turn-outcome-wait.spec.ts',
+            title: 'answers a complaint, a rephrasing, another language and a request for a person',
+        },
     },
     {
         scenario: 'Misma pregunta requerida sin progreso',
@@ -142,16 +142,19 @@ export const ACCEPTANCE_MATRIX: readonly AcceptanceScenario[] = Object.freeze([
     {
         scenario: 'Nueva necesidad después de pausa',
         evidence: 'Revisión de intención sin reiniciar límites financieros',
-        covered: null,
-        missing: 'falta la prueba de que un objetivo nuevo continúa DENTRO de los presupuestos ya '
-            + 'acumulados: reiniciar la conversación no reinicia el gasto del contacto',
+        covered: {
+            file: 'modules/billing/whatsapp-spend/spend-ceiling.postgres.spec.ts',
+            title: 'raises one without losing what has been counted',
+        },
     },
     {
         scenario: 'Bot contra bot y ráfaga de contactos',
         evidence: 'Pausa/contacto y techo agregado; avisos acotados',
         covered: null,
-        missing: 'falta la prueba de dos automatismos contestándose y de una ráfaga de contactos '
-            + 'contra el techo agregado. El alcance `contact` existe y nada ejercita el bucle',
+        missing: 'el debounce mantiene separadas las ráfagas de dos personas y el alcance '
+            + '`contact` existe, pero nada ejercita DOS automatismos contestándose. La parte que '
+            + 'falta no es el techo sino el bucle: dos sistemas que se responden consumen el techo '
+            + 'agregado sin que ninguna persona lo lea',
     },
     {
         scenario: 'Humano, REST, campaña y recordatorio',

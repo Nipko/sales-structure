@@ -5,7 +5,7 @@ el estado sale de ella: con una condición local sin cumplir la fila está `abie
 cumplida y un gate externo nombrado está `bloqueada`; sólo sin condición y sin gate está `aceptada`.
 Cerrar un hueco cambia esta tabla cambiando el código, y reabrirlo la cambia de vuelta.
 
-Revisión: `64fab2610cea09e62795d71c977bbc86ef3603c2`.
+Revisión: `c67708e8fabbf8e4cf4e67924147e7c7e064ba5e`.
 
 **El programa no está terminado.** 10 filas aceptadas, 20 bloqueadas por un
 gate externo concreto y 9 abiertas; 0 perfiles certificados
@@ -64,7 +64,7 @@ Sin contradicciones: ninguna fila se declara aceptada con una condición abierta
 | R2 | **aceptada** | contador | — | Esperar y suprimir son resultados durables y distintos de error, resolución y handoff, así que ningún catch los convierte en un texto cobrable. La política por defecto admite 1 mensaje(s) idéntico(s) en 10 minutos, con un enfriamiento de 10 minutos, y es revisable por tarea e idioma. | — |
 | R3 | **bloqueada** por gate 4 | contador | — | Los 5 alcances se reservan en orden fijo dentro de una transacción, así que dos workers peleando por el último importe no pueden asignarlo dos veces. El mercado sale de la dirección del destinatario, nunca del país de la empresa, y un destino desconocido no tiene tarifa cero. | — |
 | R4 | **abierta** | contador | 7 productores todavía pueden emitir sin fila durable (1 en `inline`, 6 en `outbound_queue`) | La consola humana, la API REST y las campañas necesitan la misma admisión que el agente: un handoff detiene la IA, pero las respuestas humanas siguen generando cargos. La autoridad de operador humano existe desde este HEAD; lo que falta es que cada productor la use, y eso se cuenta arriba. | — |
-| R5 | **abierta** | contador | 6 de 18 escenarios de la matriz de aceptación sin prueba que los conteste: Cuenta con otro proveedor; Pregunta resuelta y cinco "gracias"; Cliente confundido o reclamando; Misma pregunta requerida sin progreso; Nueva necesidad después de pausa; Bot contra bot y ráfaga de contactos | La matriz dejó de ser una tabla en un documento: sus 18 filas son datos, cada una nombra el archivo y el título de la prueba que la contesta, y una comprobación verifica que ese título exista de verdad. Un escenario sin prueba figura con `null` y dice qué haría falta, en vez de quedar fuera de la tabla para que la columna parezca llena — que es exactamente cómo un contador llega a cero sin que nadie cierre nada. | — |
+| R5 | **abierta** | contador | 3 de 18 escenarios de la matriz de aceptación sin prueba que los conteste: Pregunta resuelta y cinco "gracias"; Misma pregunta requerida sin progreso; Bot contra bot y ráfaga de contactos | La matriz dejó de ser una tabla en un documento: sus 18 filas son datos, cada una nombra el archivo y el título de la prueba que la contesta, y una comprobación verifica que ese título exista de verdad. Un escenario sin prueba figura con `null` y dice qué haría falta, en vez de quedar fuera de la tabla para que la columna parezca llena — que es exactamente cómo un contador llega a cero sin que nadie cierre nada. | — |
 | R6 | **abierta** | contador | 7 productores pueden entregar fuera de la autorización aplicable (y después, gate 1 y 5 y 7) | El criterio principal de R6, textual: **ningún productor de WhatsApp puede generar una entrega fuera de la autorización aplicable**. Mientras el contador sea distinto de cero la fila está abierta, y después seguirá bloqueada por el modo observación, el canario con techo explícito y la autorización de activar `enforce`. | — |
 
 ## De dónde sale cada fila

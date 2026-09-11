@@ -105,4 +105,29 @@ describe('why an effect was not authorised', () => {
         expect(spendBlock('funding_not_ready', 'x').resolution)
             .toContain('Parallly subscription is a separate payment');
     });
+
+    it('says what a ceiling CANNOT promise, wherever a ceiling is the reason', () => {
+        // A limit bounds what PARALLLY sends. The same WhatsApp account can be
+        // charged by another app on the same WABA, or by somebody using Meta's
+        // own inbox, and the invoice will show all of it.
+        //
+        // This is the sentence a person reads when the bill is larger than the
+        // ceiling they set. A limit that quietly implies it governs the whole
+        // account is a promise the product cannot keep — and the moment it
+        // breaks is the moment they stop believing every other number we show.
+        for (const code of ['cap_exhausted', 'task_budget_exhausted'] as const) {
+            const resolution = spendBlock(code, 'x').resolution;
+            expect(resolution).toContain('what Parallly sends');
+            expect(resolution).toMatch(/another app|Meta inbox/);
+        }
+    });
+
+    it('does NOT put that caveat on a refusal that is not about a ceiling', () => {
+        // A funding problem, a paused account or an unknown category are not
+        // ceilings, and repeating a scope disclaimer on every message is how a
+        // caveat stops being read at all.
+        for (const code of ['funding_not_ready', 'account_paused', 'category_unknown'] as const) {
+            expect(spendBlock(code, 'x').resolution).not.toContain('what Parallly sends');
+        }
+    });
 });

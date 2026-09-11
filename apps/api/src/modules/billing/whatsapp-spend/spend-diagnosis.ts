@@ -141,7 +141,21 @@ Object.freeze({
     },
     cap_exhausted: {
         scope: 'account',
-        resolution: 'Raise the spending limit for this scope, or wait for the period to roll over.',
+        // ── AND WHAT A CEILING CANNOT PROMISE ───────────────────────────────
+        //
+        // It bounds what PARALLLY sends. The same WhatsApp account can be
+        // charged by another app on the same WABA, by somebody using Meta's own
+        // inbox, or by an obligation from before the limit existed — and the
+        // invoice will show all of it.
+        //
+        // Said here rather than only on a screen, because this sentence is what
+        // a person reads when the bill is larger than the ceiling they set. A
+        // limit that quietly implies it governs the whole account is a promise
+        // the product cannot keep, and the moment it is broken is the moment
+        // somebody stops believing every other number we show them.
+        resolution: 'Raise the spending limit for this scope, or wait for the period to roll over. '
+            + 'This limit covers what Parallly sends from this number; charges another app or '
+            + 'by the Meta inbox on the same WhatsApp account are outside it.',
     },
     transmission_held_elsewhere: {
         scope: 'contact',
@@ -206,7 +220,9 @@ Object.freeze({
     },
     task_budget_exhausted: {
         scope: 'task',
-        resolution: 'This campaign or automation reached its own budget. Raise it to continue.',
+        resolution: 'This campaign or automation reached its own budget. Raise it to continue. '
+            + 'The budget covers what Parallly sends; it does not govern charges another app '
+            + 'makes on the same WhatsApp account.',
     },
     account_paused: {
         scope: 'account',

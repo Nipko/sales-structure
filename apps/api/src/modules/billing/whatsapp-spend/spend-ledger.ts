@@ -633,6 +633,120 @@ export async function recentIdenticalDeliveries(query: SpendQuery, schema: strin
 }
 
 /**
+ * ═══ SIGNALS, NOT SENTENCES ═══
+ *
+ * What the ledger can honestly say about where a month's money went, so that a
+ * business owner can act on it instead of guessing.
+ *
+ * Every one of these READS. Nothing here blocks anything, and nothing here is a
+ * judgement about a person: the ceilings and the repetition rule are separate
+ * mechanisms, and neither they nor this ever look at what a customer wrote. The
+ * strongest statement any of these makes is "this is what WE did".
+ *
+ * That distinction is the reason `disposition` is stored. "Twenty messages to
+ * somebody who never wrote back" is a count of our own sends. "A difficult
+ * customer" would be an invented intent, and this deliberately cannot produce
+ * one.
+ */
+export interface CostlyRecipient {
+    /** The hashed address or contact id. Never a phone number. */
+    readonly recipientRef: string;
+    readonly currency: string;
+    /** Messages WE started. */
+    readonly proactive: number;
+    /** Messages that answered somebody who wrote in. */
+    readonly reactive: number;
+    readonly settledMinor: number;
+    /** Money held against outcomes that never resolved. Exposure, not cost. */
+    readonly uncertainMinor: number;
+}
+
+export interface CategorySpend {
+    readonly category: string;
+    readonly market: string | null;
+    readonly currency: string;
+    readonly deliveries: number;
+    readonly settledMinor: number;
+    readonly proactive: number;
+}
+
+export interface SpendSignals {
+    /**
+     * Who cost the most, and whether any of it was a conversation.
+     *
+     * A row with a high `proactive` and a `reactive` of zero is the signal
+     * worth acting on: the platform wrote to somebody twenty times and they
+     * never once wrote back. That is not a statement about them — it is a
+     * statement about twenty messages that produced no conversation.
+     */
+    readonly costliestRecipients: readonly CostlyRecipient[];
+    /** Where the money goes by category and market, never summed across currencies. */
+    readonly byCategory: readonly CategorySpend[];
+}
+
+/**
+ * Read the signals for one window.
+ *
+ * Grouped by currency everywhere, because adding pesos to dollars produces a
+ * number that is wrong in a way nobody notices until they act on it.
+ */
+export async function readSpendSignals(query: SpendQuery, schema: string, input: {
+    readonly since: Date;
+    readonly channelAccountId?: string | null;
+    readonly limit?: number;
+}): Promise<SpendSignals> {
+    assertSchema(schema);
+    const limit = Math.max(1, Math.min(200, input.limit ?? 20));
+    const account = input.channelAccountId ?? null;
+
+    const recipients = await query<any[]>(
+        `SELECT recipient_ref, currency,
+                count(*) FILTER (WHERE disposition = 'proactive')::int AS proactive,
+                count(*) FILTER (WHERE disposition = 'reactive')::int AS reactive,
+                COALESCE(sum(charged_minor) FILTER (WHERE state = 'settled'), 0)::bigint AS settled_minor,
+                COALESCE(sum(reserved_minor) FILTER (
+                    WHERE state IN ('pending_reconciliation','indeterminate')), 0)::bigint AS uncertain_minor
+           FROM "${schema}".whatsapp_spend_reservations
+          WHERE created_at >= $1 AND state <> 'released'
+            AND ($2::text IS NULL OR channel_account_id = $2)
+          GROUP BY recipient_ref, currency
+          ORDER BY settled_minor DESC, proactive DESC
+          LIMIT ${limit}`,
+        [input.since.toISOString(), account]);
+
+    const categories = await query<any[]>(
+        `SELECT category, market, currency,
+                count(*)::int AS deliveries,
+                COALESCE(sum(charged_minor) FILTER (WHERE state = 'settled'), 0)::bigint AS settled_minor,
+                count(*) FILTER (WHERE disposition = 'proactive')::int AS proactive
+           FROM "${schema}".whatsapp_spend_reservations
+          WHERE created_at >= $1 AND state <> 'released'
+            AND ($2::text IS NULL OR channel_account_id = $2)
+          GROUP BY category, market, currency
+          ORDER BY settled_minor DESC`,
+        [input.since.toISOString(), account]);
+
+    return Object.freeze({
+        costliestRecipients: Object.freeze(recipients.map(row => Object.freeze({
+            recipientRef: String(row.recipient_ref),
+            currency: String(row.currency),
+            proactive: Number(row.proactive),
+            reactive: Number(row.reactive),
+            settledMinor: Number(row.settled_minor),
+            uncertainMinor: Number(row.uncertain_minor),
+        }))),
+        byCategory: Object.freeze(categories.map(row => Object.freeze({
+            category: String(row.category),
+            market: row.market === null ? null : String(row.market),
+            currency: String(row.currency),
+            deliveries: Number(row.deliveries),
+            settledMinor: Number(row.settled_minor),
+            proactive: Number(row.proactive),
+        }))),
+    });
+}
+
+/**
  * Claim this effect, or discover that somebody already did.
  *
  * `ON CONFLICT DO NOTHING RETURNING id` is the whole mechanism: no row returned
@@ -646,6 +760,8 @@ export async function claimReservation(query: SpendQuery, schema: string, input:
     readonly binding?: ReservationBinding;
     /** What is being said, as a digest. Enables the "again?" question. */
     readonly contentDigest?: string | null;
+    /** Did we start this exchange, or did the customer? */
+    readonly disposition?: SpendDisposition | null;
     readonly leaseSeconds: number;
 }): Promise<ReservationRow | null> {
     assertSchema(schema);
@@ -661,12 +777,12 @@ export async function claimReservation(query: SpendQuery, schema: string, input:
             payer_kind, payer_waba_id, payer_business_id,
             credential_id, credential_source, recipient_scope, recipient_ref,
             category, market, currency, rate_version, applied_local_date, admission_reason,
-            content_digest,
+            content_digest, disposition,
             basis, decision, reserved_minor, unit_ceiling_minor, exact_micros,
             free_deliveries, charged_deliveries, lease_expires_at)
          VALUES ($1,$2::uuid,$3::uuid,$4::uuid,$5,$6::uuid,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,
-                 $17,$18,$19,$20,$21::date,$22,$23,$24,$25,$26,$27,$28,$29,$30,
-                 clock_timestamp() + make_interval(secs => $31::double precision))
+                 $17,$18,$19,$20,$21::date,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,
+                 clock_timestamp() + make_interval(secs => $32::double precision))
          ON CONFLICT (effect_key) DO NOTHING
          RETURNING *`,
         [
@@ -681,7 +797,7 @@ export async function claimReservation(query: SpendQuery, schema: string, input:
             input.identity.category, input.identity.market ?? null, input.identity.currency,
             input.identity.rateVersion ?? null, input.identity.appliedLocalDate ?? null,
             input.identity.admissionReason,
-            input.contentDigest ?? null,
+            input.contentDigest ?? null, input.disposition ?? null,
             input.money.basis, input.money.decision, input.money.reservedMinor,
             input.money.unitCeilingMinor, input.money.exactMicros,
             input.money.freeDeliveries, input.money.chargedDeliveries,

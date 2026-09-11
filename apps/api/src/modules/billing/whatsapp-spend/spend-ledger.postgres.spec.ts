@@ -5,8 +5,9 @@ import { resolve } from 'path';
 import {
     adoptReservation, claimReservation, declareTaskBudget, ensureCounters, findReservation,
     grantFreeDeliveries,
-    readExposure, readPressure, recentIdenticalDeliveries, recordAllocation, releaseReservation,
-    reserveAgainstCounter, retainReservation, settleReservation, sweepExpiredLeases,
+    readExposure, readPressure, readSpendSignals, recentIdenticalDeliveries, recordAllocation,
+    releaseReservation, reserveAgainstCounter, retainReservation, settleReservation,
+    sweepExpiredLeases,
     type ReservationIdentity, type SpendQuery,
 } from './spend-ledger';
 import { scopesFor } from './spend-scopes';
@@ -957,6 +958,149 @@ integration('the WhatsApp spend engine', () => {
             }
             const rows = await readExposure(query, schema, { channelAccountId: account, since });
             expect(rows.map(row => row.currency).sort()).toEqual(['COP', 'USD']);
+        });
+    });
+
+    describe('what the ledger can honestly say about the month', () => {
+        /**
+         * Signals, not sentences.
+         *
+         * The point of `disposition` being stored: "twenty messages to somebody
+         * who never wrote back" is a count of OUR sends, and the platform is
+         * deliberately incapable of turning it into a statement about that
+         * customer. Nothing here reads a word anybody typed.
+         */
+        // A fresh number per case. Sharing one made the category assertion pass
+        // against a row a DIFFERENT test had written — the aggregate is grouped
+        // by account, so every earlier case was still in it.
+        const newAccount = () => `1555000${randomUUID().replace(/-/g, '').slice(0, 10)}`;
+
+        const send = async (over: {
+            account: string;
+            recipient: string; disposition: 'reactive' | 'proactive';
+            category?: string; market?: string; currency?: string;
+            settle?: number | null; retain?: boolean;
+        }) => {
+            const effectKey = `sig-${randomUUID()}`;
+            await claimReservation(query, schema, {
+                effectKey,
+                identity: identity({
+                    channelAccountId: over.account, recipientRef: over.recipient,
+                    category: over.category ?? 'service',
+                    market: over.market ?? 'CO',
+                    currency: over.currency ?? 'USD',
+                }),
+                money: money(10), disposition: over.disposition,
+                contentDigest: `c-${randomUUID()}`, leaseSeconds: 60,
+            });
+            if (over.retain) {
+                await retainReservation(query, schema,
+                    { effectKey, state: 'pending_reconciliation', reason: 'timeout' });
+            } else if (over.settle !== null && over.settle !== undefined) {
+                await settleReservation(query, schema, {
+                    effectKey, chargedMinor: over.settle, evidence: 'status_webhook',
+                });
+            }
+            return effectKey;
+        };
+
+        const signals = (account: string) => readSpendSignals(query, schema, {
+            since: new Date(Date.now() - 60 * 60 * 1000), channelAccountId: account,
+        });
+
+        it('names the contact we wrote to who never wrote back', async () => {
+            const account = newAccount();
+            await send({ account, recipient: 'only-cost', disposition: 'proactive', settle: 8 });
+            await send({ account, recipient: 'only-cost', disposition: 'proactive', settle: 8 });
+            await send({ account, recipient: 'real-talk', disposition: 'proactive', settle: 8 });
+            await send({ account, recipient: 'real-talk', disposition: 'reactive', settle: 8 });
+
+            const rows = (await signals(account)).costliestRecipients;
+            const lonely = rows.find(row => row.recipientRef === 'only-cost');
+            const talking = rows.find(row => row.recipientRef === 'real-talk');
+            // Two sends and no conversation, versus one send that started one.
+            expect({ proactive: lonely?.proactive, reactive: lonely?.reactive })
+                .toEqual({ proactive: 2, reactive: 0 });
+            expect({ proactive: talking?.proactive, reactive: talking?.reactive })
+                .toEqual({ proactive: 1, reactive: 1 });
+        });
+
+        it('separates money spent from money merely at risk', async () => {
+            // An uncertain outcome is exposure, not cost. Reporting it as spend
+            // would overstate the bill; reporting it as nothing would hide the
+            // one number an operator actually has to chase.
+            const account = newAccount();
+            const recipient = `risk-${randomUUID().slice(0, 8)}`;
+            await send({ account, recipient, disposition: 'proactive', settle: 7 });
+            await send({ account, recipient, disposition: 'proactive', retain: true });
+
+            const row = (await signals(account)).costliestRecipients
+                .find(entry => entry.recipientRef === recipient);
+            expect({ settled: row?.settledMinor, uncertain: row?.uncertainMinor })
+                .toEqual({ settled: 7, uncertain: 10 });
+        });
+
+        it('forgets a proven rejection entirely', async () => {
+            // Released means the provider refused with no message id: nothing
+            // was delivered and nothing was charged, so it is not a cost and
+            // not a message this contact ever received.
+            const account = newAccount();
+            const recipient = `rejected-${randomUUID().slice(0, 8)}`;
+            const effectKey = await send({ account, recipient, disposition: 'proactive', settle: null });
+            await releaseReservation(query, schema,
+                { effectKey, evidence: 'provider_rejected_without_message_id' });
+            expect((await signals(account)).costliestRecipients
+                .find(entry => entry.recipientRef === recipient)).toBeUndefined();
+        });
+
+        it('never adds pesos to dollars', async () => {
+            // The failure this prevents is a single number that is wrong in a
+            // way nobody notices until they act on it.
+            const account = newAccount();
+            const recipient = `two-currencies-${randomUUID().slice(0, 8)}`;
+            await send({ account, recipient, disposition: 'proactive', currency: 'USD', settle: 5 });
+            await send({ account, recipient, disposition: 'proactive', currency: 'COP', settle: 900 });
+
+            const rows = (await signals(account)).costliestRecipients
+                .filter(entry => entry.recipientRef === recipient);
+            expect(rows.map(row => ({ currency: row.currency, settled: row.settledMinor }))
+                .sort((left, right) => left.currency.localeCompare(right.currency)))
+                .toEqual([{ currency: 'COP', settled: 900 }, { currency: 'USD', settled: 5 }]);
+        });
+
+        it('shows which category and which market the money went to', async () => {
+            const account = newAccount();
+            const marker = randomUUID().slice(0, 8);
+            await send({ account, recipient: `cat-${marker}`, disposition: 'proactive',
+                category: 'marketing', market: 'MX', settle: 40 });
+            await send({ account, recipient: `cat-${marker}`, disposition: 'reactive',
+                category: 'service', market: 'CO', settle: 4 });
+
+            const rows = (await signals(account)).byCategory;
+            const marketing = rows.find(row => row.category === 'marketing' && row.market === 'MX');
+            expect({ settled: marketing?.settledMinor, proactive: marketing?.proactive })
+                .toEqual({ settled: 40, proactive: 1 });
+            // And the cheap answer to somebody who wrote in is a separate row,
+            // so "marketing in Mexico costs ten times a reply" is readable.
+            expect(rows.find(row => row.category === 'service' && row.market === 'CO')?.settledMinor)
+                .toBe(4);
+        });
+
+        it('leaves rows written before the column out of the disposition counts', async () => {
+            // Every reservation older than the migration has NULL there. NULL
+            // equals nothing, so those rows are counted as neither — which is
+            // right, because we do not know which they were.
+            const account = newAccount();
+            const recipient = `legacy-${randomUUID().slice(0, 8)}`;
+            await claimReservation(query, schema, {
+                effectKey: `sig-legacy-${randomUUID()}`,
+                identity: identity({ channelAccountId: account, recipientRef: recipient }),
+                money: money(10), leaseSeconds: 60,
+            });
+            const row = (await signals(account)).costliestRecipients
+                .find(entry => entry.recipientRef === recipient);
+            expect({ proactive: row?.proactive, reactive: row?.reactive })
+                .toEqual({ proactive: 0, reactive: 0 });
         });
     });
 

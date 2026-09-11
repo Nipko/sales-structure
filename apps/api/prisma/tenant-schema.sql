@@ -5687,6 +5687,11 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."whatsapp_spend_reservations" (
         -- mismo a esta persona hace un rato. Nullable: una fila anterior a la
         -- migracion no tiene digest y no puede inventarse uno.
         content_digest TEXT,
+        -- Lo empezamos nosotros, o contesto a alguien que escribio. Lo lee el
+        -- soft stop, y guardado permite separar "a quien le escribimos sin que
+        -- nos escriba" de "a quien le contestamos". Nullable: una fila anterior
+        -- a la migracion no tiene disposicion y no puede inventarse una.
+        disposition TEXT,
         basis TEXT NOT NULL,
         decision TEXT NOT NULL,
         reserved_minor BIGINT NOT NULL,
@@ -5717,6 +5722,8 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."whatsapp_spend_reservations" (
             CHECK (recipient_scope IN ('customer','test_recipient','internal','synthetic')),
         CONSTRAINT whatsapp_spend_reservations_basis CHECK (basis IN
             ('priced','free_allowance','free_entry_point','unknown')),
+        CONSTRAINT whatsapp_spend_reservations_disposition
+            CHECK (disposition IS NULL OR disposition IN ('reactive','proactive')),
         CONSTRAINT whatsapp_spend_reservations_remote CHECK (remote_state IS NULL
             OR remote_state IN ('accepted','rejected','unknown','delivered','read','failed')),
         CONSTRAINT whatsapp_spend_reservations_charged
@@ -5773,6 +5780,12 @@ CREATE INDEX IF NOT EXISTS idx_whatsapp_spend_recent_identical
         (channel_account_id, recipient_ref, content_digest, created_at DESC)
         WHERE content_digest IS NOT NULL
           AND state IN ('held','settled','pending_reconciliation','indeterminate');
+-- El indice de "a quien le escribimos sin que nos escriba": por cuenta y
+-- destinatario, solo sobre lo que nosotros iniciamos.
+CREATE INDEX IF NOT EXISTS idx_whatsapp_spend_proactive_recipient
+        ON "{{SCHEMA_NAME}}"."whatsapp_spend_reservations"
+        (channel_account_id, recipient_ref, created_at DESC)
+        WHERE disposition = 'proactive';
 CREATE INDEX IF NOT EXISTS idx_whatsapp_spend_alloc_counter
         ON "{{SCHEMA_NAME}}"."whatsapp_spend_allocations" (scope_kind, scope_key, period_key);
 -- END WHATSAPP SPEND LEDGER

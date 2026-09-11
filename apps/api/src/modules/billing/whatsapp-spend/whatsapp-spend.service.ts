@@ -8,8 +8,8 @@ import {
 import {
     adoptReservation, claimReservation, declareTaskBudget, ensureCounters, findReservation,
     grantFreeDeliveries, recentIdenticalDeliveries,
-    readExposure, readPressure, recordAllocation, releaseReservation, reserveAgainstCounter,
-    retainReservation,
+    readExposure, readPressure, readSpendSignals, recordAllocation, releaseReservation,
+    reserveAgainstCounter, retainReservation,
     settleReservation, sweepExpiredLeases,
     worstPressure,
     type ReservationBinding, type ReservationIdentity, type ReservationRow, type SpendExposure,
@@ -294,6 +294,7 @@ export class WhatsappSpendService {
                 },
                 binding: input.binding,
                 contentDigest: input.contentDigest ?? null,
+                disposition,
                 leaseSeconds: this.LEASE_SECONDS,
             });
             if (!reservation) {
@@ -339,6 +340,23 @@ export class WhatsappSpendService {
                 // ceiling counts messages, which no currency changes.
                 currency: String(input.currency ?? 'USD').toUpperCase(),
             }));
+    }
+
+    /**
+     * Where this month's money went, as facts about what the platform did.
+     *
+     * Reads only. Nothing here blocks anything and nothing here is a judgement
+     * about a person: "twenty messages to somebody who never wrote back" is a
+     * count of OUR sends, and the platform is deliberately incapable of turning
+     * it into a statement about that customer.
+     */
+    async signals(schema: string, input: {
+        readonly since: Date;
+        readonly channelAccountId?: string | null;
+        readonly limit?: number;
+    }) {
+        return this.prisma.transactionInTenantSchema(schema, async query =>
+            readSpendSignals(query as SpendQuery, schema, input));
     }
 
     /**

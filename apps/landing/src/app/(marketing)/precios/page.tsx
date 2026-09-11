@@ -452,7 +452,13 @@ export default function PricingPage() {
           <h2 className="text-3xl font-bold mb-4">{t("faqTitle")}</h2>
         </div>
         <div className="max-w-3xl mx-auto space-y-3">
-          {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
+          {/*
+            9 is the Meta WhatsApp charge. It is not ours and it is not in the
+            plan, and from 1 October 2026 it decides whether a number delivers
+            at all — so it gets asked and answered on the pricing page rather
+            than discovered on somebody else's invoice.
+          */}
+          {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
             <FAQItem
               key={n}
               idx={n}

@@ -7,6 +7,9 @@ const probes = [
   "Tu agente nunca inventa precios y garantiza que dos clientes jamás reserven el mismo horario. Ahorrá 17% anual.",
   "Two-way sync with Google Calendar. You only pay extra if you exceed AI limits.",
   "Automatically reply to comments and DMs on Instagram.",
+  // Meta bills the tenant's own WhatsApp account and revises its rates
+  // quarterly: both halves of this sentence must be rejected.
+  "Parallly pays Meta for you, so each WhatsApp reply costs you US$0.0008.",
 ];
 
 for (const probe of probes) {

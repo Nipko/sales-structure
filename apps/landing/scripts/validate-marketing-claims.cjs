@@ -269,6 +269,21 @@ const frozenClaimPatterns = [
     label: "instant human-handoff promise",
     pattern: /(?:\b(?:hands? off|passes? the conversation|pasa la conversaci[oó]n|passa a conversa|transf[eè]re la conversation)\b.{0,70}\b(?:instantly|al instante|instantaneamente|instantan[eé]ment)\b)/i,
   },
+  {
+    // Parallly is not the payer. From 1 October 2026 Meta bills the tenant's
+    // own WhatsApp Business account, and a page that says otherwise promises
+    // to absorb a cost that is unbounded outside Colombia — one number in an
+    // expensive market can owe Meta several times the price of its plan.
+    label: "unsupported absorption of Meta's WhatsApp charge",
+    pattern: /(?:\b(?:Parallly|we)\s+(?:pays?|paga|paie|absorbs?|absorbe|assume)\b[^.\n]{0,20}\bMeta\b|\b(?:WhatsApp\s+messages?|mensajes\s+de\s+WhatsApp|mensagens\s+do\s+WhatsApp|messages\s+WhatsApp)\b[^.\n]{0,30}\b(?:included in (?:the|your) plan|incluidos en (?:el|tu) plan|inclu[íi]das no plano|inclus dans le forfait)\b)/i,
+  },
+  {
+    // Meta revises its rate cards quarterly and prices by the RECIPIENT's
+    // country, so any sub-cent figure printed here is a number that will be
+    // wrong at the next revision and right for almost nobody in the meantime.
+    label: "hard-coded Meta per-message rate",
+    pattern: /(?:US\$|USD|COP|\$|€)\s*0[.,]\d{3,}/i,
+  },
 ];
 
 // Regression fixtures ensure every high-risk branch remains executable. The
@@ -303,6 +318,8 @@ const frozenClaimRegressionSamples = [
   ["unverified customer outcome testimonial", "Real LatAm businesses that stopped losing sales"],
   ["absolute error-free booking promise", "Error-free booking engine"],
   ["instant human-handoff promise", "Passes the conversation to your team instantly"],
+  ["unsupported absorption of Meta's WhatsApp charge", "Parallly pays Meta for you"],
+  ["hard-coded Meta per-message rate", "Each WhatsApp reply costs US$0.0008"],
 ];
 for (const [label, sample] of frozenClaimRegressionSamples) {
   const rule = frozenClaimPatterns.find((claim) => claim.label === label);
@@ -388,6 +405,68 @@ for (const claim of unsupportedClaims) {
   );
 }
 
+// ─── The charge that is not ours ────────────────────────────────────────────
+//
+// From 1 October 2026 Meta bills the tenant's OWN WhatsApp Business account per
+// delivered service message, and an account with no payment method stops
+// delivering rather than degrading. A pricing page that answers "are there
+// hidden fees?" without naming that charge is not merely incomplete: on the day
+// it starts, it is wrong.
+//
+// Both figures below are read from the rate table the engine prices against,
+// never retyped here. Change the allowance or move the start date in that table
+// and this validator goes red, which is the point: marketing copy about
+// somebody else's money must not be able to drift away from what the product
+// counts.
+const whatsappRates = loadTsModule(path.join(
+  "..", "..", "apps", "api", "src", "modules", "billing", "whatsapp-rates",
+  "whatsapp-rate-table.generated.ts",
+));
+const freeServiceAllowance = whatsappRates.WHATSAPP_FREE_SERVICE_ALLOWANCE;
+assert(
+  freeServiceAllowance?.scope === "per_phone_number_per_calendar_month"
+    && freeServiceAllowance?.rollsOver === false,
+  "WhatsApp free allowance must still be per number, per calendar month, with no rollover",
+);
+const [chargeYear, chargeMonth, chargeDay] = String(freeServiceAllowance.effectiveFrom)
+  .split("-")
+  .map(Number);
+// Only an October start has copy written for it. Any other month means Meta
+// moved the date and the four locales must be rewritten deliberately, rather
+// than a stale sentence passing because the check was month-agnostic.
+assert(chargeMonth === 10, `Landing copy is written for an October start, not month ${chargeMonth}`);
+const metaChargeDatePatterns = {
+  es: new RegExp(`\\b${chargeDay}\\s+de\\s+octubre\\s+de\\s+${chargeYear}\\b`, "i"),
+  en: new RegExp(`\\b${chargeDay}\\s+October\\s+${chargeYear}\\b`, "i"),
+  pt: new RegExp(`\\b${chargeDay}º?\\s+de\\s+outubro\\s+de\\s+${chargeYear}\\b`, "i"),
+  fr: new RegExp(`\\b${chargeDay}(?:er)?\\s+octobre\\s+${chargeYear}\\b`, "i"),
+};
+// How each locale writes the thousand. The digits are checked against the table
+// so a change to Meta's allowance cannot be papered over by the separator.
+const allowanceTextByLocale = { es: "1.000", en: "1,000", pt: "1.000", fr: "1 000" };
+for (const [locale, text] of Object.entries(allowanceTextByLocale)) {
+  assert(
+    Number(text.replace(/\D/g, "")) === freeServiceAllowance.deliveries,
+    `${locale}: free-allowance copy says ${text}, the rate table says ${freeServiceAllowance.deliveries}`,
+  );
+}
+
+function assertMetaChargeDisclosure(locale, messages, label) {
+  const disclosure = `${messages?.pricingPage?.faqA3 || ""} ${messages?.pricingPage?.faqA9 || ""}`;
+  assert(
+    /\bMeta\b/.test(disclosure) && /WhatsApp Business/i.test(disclosure),
+    `${label}: the pricing FAQ must say Meta charges the business's own WhatsApp Business account`,
+  );
+  assert(
+    metaChargeDatePatterns[locale].test(disclosure),
+    `${label}: the pricing FAQ must date the WhatsApp service-message charge`,
+  );
+  assert(
+    (messages?.pricingPage?.faqA9 || "").includes(allowanceTextByLocale[locale]),
+    `${label}: the pricing FAQ must state the free service-message allowance per number`,
+  );
+}
+
 for (const locale of locales) {
   const messages = loadJson(locale);
   const allLandingCopy = JSON.stringify(messages);
@@ -438,6 +517,8 @@ for (const locale of locales) {
     assert(!claim.pattern.test(allLandingCopy), `${locale}: frozen marketing claim (${claim.label})`);
   }
 
+  assertMetaChargeDisclosure(locale, messages, locale);
+
   const statLabels = [1, 2, 3, 4, 5].map((index) => messages?.socialProof?.[`stat${index}Label`]);
   assert(
     statLabels.every((label) => typeof label === "string" && label.trim().length > 0),
@@ -457,6 +538,10 @@ const spanish = loadJson("es");
 const argentinaOverlay = loadJson("es-AR");
 const argentinaMessages = deepMerge(spanish, argentinaOverlay);
 assert(Object.keys(argentinaOverlay).length > 0, "es-AR: regional overlay must be present and valid JSON");
+// The overlay overrides the hidden-fees answer, so it can silently revert the
+// disclosure for the one market where Meta's service rate is among the highest
+// we sell into. Checked on the merged result, which is what a visitor reads.
+assertMetaChargeDisclosure("es", argentinaMessages, "es-AR");
 for (const claim of frozenClaimPatterns) {
   assert(
     !claim.pattern.test(JSON.stringify(argentinaMessages)),

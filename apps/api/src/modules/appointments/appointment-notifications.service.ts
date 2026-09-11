@@ -4,6 +4,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { OutboundQueueService } from '../channels/outbound-queue.service';
 import { ChannelTokenService } from '../channels/channel-token.service';
+import { ProactiveSendConnection } from '../channels/proactive-connection';
 import { EmailTemplatesService } from '../email-templates/email-templates.service';
 import { APPOINTMENT_EMAIL_SLUGS } from '../email-templates/appointment-email-layout';
 import type { OutboundMessage } from '@parallext/shared';
@@ -50,6 +51,8 @@ export class AppointmentNotificationsService {
         private eventEmitter: EventEmitter2,
         private outboundQueue: OutboundQueueService,
         private channelToken: ChannelTokenService,
+        // Which number a reminder leaves from, when the contact does not say.
+        private connections: ProactiveSendConnection,
         private emailTemplates: EmailTemplatesService,
         private regionalProfile: RegionalProfileService,
     ) {}
@@ -435,20 +438,27 @@ export class AppointmentNotificationsService {
 
     private async sendMessage(
         tenantId: string,
-        contact: { phone: string; channel_type?: string },
+        contact: { phone: string; channel_type?: string; channel_account_id?: string | null },
         text: string,
         metadata: Record<string, unknown>,
     ) {
         const channelType = (contact.channel_type || 'whatsapp') as 'whatsapp' | 'instagram' | 'messenger' | 'telegram';
 
-        let credentials: { accessToken: string; accountId: string };
-        try {
-            const creds = await this.channelToken.getChannelToken(tenantId, channelType);
-            credentials = { accessToken: creds.accessToken, accountId: creds.accountId };
-        } catch {
-            this.logger.warn(`No ${channelType} credentials for tenant ${tenantId}`);
-            return;
-        }
+        // ── A REMINDER INHERITS NOTHING, SO SOMEBODY HAS TO CHOOSE ─────────
+        //
+        // This used to swallow the refusal: a tenant with two WhatsApp numbers
+        // and no choice recorded got `connection_ambiguous`, a warning in a
+        // container log, and no reminder — for every appointment, silently, for
+        // as long as nobody read the logs. The resolver raises a task in the
+        // place that business already looks at, and still refuses to pick.
+        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
+        if (!schemaName) return;
+        const credentials = await this.connections.resolve({
+            tenantId, schemaName, channelType,
+            channelAccountId: contact.channel_account_id ?? null,
+            purpose: 'los recordatorios de turnos',
+        });
+        if (!credentials) return;
 
         const outbound: OutboundMessage = {
             tenantId,

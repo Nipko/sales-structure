@@ -4,6 +4,7 @@ import { WidgetChannelAdapter } from './widget.adapter';
 import { Module, OnModuleInit, forwardRef } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { ChannelGatewayService } from './channel-gateway.service';
+import { ProactiveSendConnection } from './proactive-connection';
 import { ChannelsController } from './channels.controller';
 import { WhatsAppAdapter } from './whatsapp/whatsapp.adapter';
 import { InstagramAdapter } from './instagram/instagram.adapter';
@@ -55,6 +56,7 @@ import { WhatsappSpendModule } from '../billing/whatsapp-spend/whatsapp-spend.mo
         DispatchRolloutController],
     providers: [
         ChannelGatewayService,
+        ProactiveSendConnection,
         WidgetChannelAdapter,
         WhatsAppAdapter,
         InstagramAdapter,
@@ -74,7 +76,7 @@ import { WhatsappSpendModule } from '../billing/whatsapp-spend/whatsapp-spend.mo
         WhatsappTokenHealthService,
         WebhookTapService,
     ],
-    exports: [ChannelGatewayService, WhatsAppAdapter, SmsAdapter, EmailAdapter, EmailChannelService, OutboundQueueService, ChannelTokenService, WebhookTapService, AgentDispatchOutboxStore, DispatchRolloutService],
+    exports: [ChannelGatewayService, ProactiveSendConnection, WhatsAppAdapter, SmsAdapter, EmailAdapter, EmailChannelService, OutboundQueueService, ChannelTokenService, WebhookTapService, AgentDispatchOutboxStore, DispatchRolloutService],
 })
 export class ChannelsModule implements OnModuleInit {
     constructor(

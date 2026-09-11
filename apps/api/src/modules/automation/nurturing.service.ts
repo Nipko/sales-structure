@@ -8,6 +8,7 @@ import { PersonaService } from '../persona/persona.service';
 import { LLMRouterService } from '../ai/router/llm-router.service';
 import { OutboundQueueService } from '../channels/outbound-queue.service';
 import { ChannelTokenService } from '../channels/channel-token.service';
+import { ProactiveSendConnection } from '../channels/proactive-connection';
 import { ComplianceService } from '../analytics/compliance.service';
 import { WhatsappMessagingService } from '../whatsapp/services/whatsapp-messaging.service';
 import { OutboundMessage } from '@parallext/shared';
@@ -54,6 +55,9 @@ export class NurturingService {
         private readonly llmRouter: LLMRouterService,
         private readonly outboundQueue: OutboundQueueService,
         private readonly channelToken: ChannelTokenService,
+        // A follow-up inherits its conversation's number when there is one and
+        // raises a task for the business when there is not. Never the oldest.
+        private readonly connections: ProactiveSendConnection,
         private readonly compliance: ComplianceService,
         // The only compliant way to send an approved template. The queue cannot
         // do it: `metadata.isTemplate` is read by nothing, so a "template" put
@@ -727,17 +731,19 @@ export class NurturingService {
         }
 
         // Within 24h window: send free-form text
-        const { accessToken, accountId } = await this.resolveChannelCredentials(tenantId, channelType);
+        const credentials = await this.resolveChannelCredentials(tenantId, schemaName, channelType,
+            conversation?.channel_account_id ?? null);
+        if (!credentials) return false;
 
         const outbound: OutboundMessage = {
             tenantId,
             channelType,
-            channelAccountId: conversation?.channel_account_id || accountId,
+            channelAccountId: conversation?.channel_account_id || credentials.accountId,
             to: phone,
             content: { type: 'text', text },
         };
 
-        await this.outboundQueue.enqueue(outbound, accessToken);
+        await this.outboundQueue.enqueue(outbound, credentials.accessToken);
         await this.saveOutboundMessage(schemaName, conversationId, text);
         return true;
     }
@@ -774,8 +780,11 @@ export class NurturingService {
         // The number this conversation belongs to, never "the tenant's first
         // WhatsApp number": a tenant with two numbers would open the follow-up
         // from a number the customer has never seen.
-        const sender = conversation?.channel_account_id
-            || (await this.resolveChannelCredentials(tenantId, 'whatsapp')).accountId;
+        const resolved = conversation?.channel_account_id
+            ? { accountId: conversation.channel_account_id }
+            : await this.resolveChannelCredentials(tenantId, schemaName, 'whatsapp');
+        if (!resolved) return;
+        const sender = resolved.accountId;
         // Approved IN a language. Meta refuses a template in one it was not
         // approved for, and `'es'` was hardcoded while every other line of this
         // follow-up already resolved the conversation's own language.
@@ -1042,20 +1051,28 @@ export class NurturingService {
         return updated;
     }
 
-    private async resolveChannelCredentials(tenantId: string, channelType = 'whatsapp'): Promise<{ accessToken: string; accountId: string }> {
-        try {
-            const creds = await this.channelToken.getChannelToken(tenantId, channelType);
-            return { accessToken: creds.accessToken, accountId: creds.accountId };
-        } catch (e: any) {
-            this.logger.warn(`Could not resolve ${channelType} token for tenant ${tenantId}: ${e.message}`);
-            return { accessToken: '', accountId: '' };
-        }
-    }
-
-    /** @deprecated Use resolveChannelCredentials instead */
-    private async resolveAccessToken(tenantId: string): Promise<string> {
-        const { accessToken } = await this.resolveChannelCredentials(tenantId);
-        return accessToken;
+    /**
+     * The connection this follow-up leaves from, or nothing.
+     *
+     * ── IT USED TO RETURN AN EMPTY TOKEN ────────────────────────────────────
+     *
+     * On any refusal it logged a warning and returned
+     * `{ accessToken: '', accountId: '' }`, which its callers then enqueued: an
+     * outbound message with no credential and no sender, travelling to a
+     * transport that could only fail. The customer got nothing, the tenant was
+     * told nothing, and the failure surfaced as a provider error about an
+     * invalid token rather than as "you have two numbers and have not said
+     * which one your follow-ups come from".
+     *
+     * `null` now, and the resolver raises the configuration task on the way.
+     */
+    private async resolveChannelCredentials(tenantId: string, schemaName: string,
+        channelType = 'whatsapp', channelAccountId?: string | null,
+    ): Promise<{ accessToken: string; accountId: string } | null> {
+        return this.connections.resolve({
+            tenantId, schemaName, channelType, channelAccountId,
+            purpose: 'los seguimientos automáticos',
+        });
     }
 
     private buildJobId(tenantId: string, conversationId: string, attempt: number): string {

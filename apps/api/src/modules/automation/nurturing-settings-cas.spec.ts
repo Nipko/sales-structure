@@ -24,6 +24,7 @@ describe('Nurturing settings CAS', () => {
             {} as any,
             {} as any,
             {} as any,
+            {} as any,
         );
         const fallback: NurturingConfig = {
             enabled: false,

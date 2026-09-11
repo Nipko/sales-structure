@@ -51,12 +51,19 @@ describe('a nurturing follow-up outside the 24-hour window', () => {
             sendTemplate: jest.fn(async (..._args: unknown[]) => ({ success: true, messageId: 'wamid.TPL' })),
         };
         const compliance = { isBlocked: jest.fn(async () => Boolean(options.optedOut)) };
+        // The resolver that refuses to pick a number. This suite's tenant has
+        // one, so it answers; the refusal path is proven beside the resolver.
+        const connections = {
+            resolve: jest.fn(async () => ({ accessToken: 't', accountId: 'phone-1' })),
+        };
         const service = new NurturingService(
             {} as any, prisma,
             { del: jest.fn(), getJson: jest.fn(async () => null), setJson: jest.fn() } as any,
             {} as any, {} as any,
-            outboundQueue as any, { getChannelToken: jest.fn(async () => ({ accessToken: 't', accountId: 'phone-1' })) } as any,
-            compliance as any, whatsappMessaging as any, {} as any, {} as any,
+            outboundQueue as any,
+            { getChannelToken: jest.fn(async () => ({ accessToken: 't', accountId: 'phone-1' })) } as any,
+            connections as any, compliance as any, whatsappMessaging as any,
+            {} as any, {} as any,
         );
         jest.spyOn((service as any), 'isWithinMessagingWindow')
             .mockResolvedValue(options.withinWindow ?? false);
@@ -65,7 +72,7 @@ describe('a nurturing follow-up outside the 24-hour window', () => {
         jest.spyOn((service as any).logger, 'log').mockImplementation(() => undefined);
         jest.spyOn((service as any).logger, 'warn').mockImplementation(() => undefined);
         jest.spyOn((service as any).logger, 'debug').mockImplementation(() => undefined);
-        return { service, prisma, outboundQueue, whatsappMessaging, compliance, rows };
+        return { service, prisma, outboundQueue, whatsappMessaging, compliance, connections, rows };
     }
 
     const attempt2 = (h: ReturnType<typeof harness>) =>

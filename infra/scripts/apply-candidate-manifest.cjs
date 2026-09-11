@@ -52,6 +52,57 @@ const SERVICES = Object.freeze({
 
 const DIGEST = /^sha256:[0-9a-f]{64}$/;
 
+/**
+ * ═══ THE MANIFEST IS UNTRUSTED INPUT ═══
+ *
+ * It arrives as a downloaded artefact and decides what a production host
+ * starts. Everything below treats it that way, because the interesting attacks
+ * are not exotic — they are a file that looks right:
+ *
+ *   · a repository that is not ours. `ghcr.io/someone-else/parallext-api` pins
+ *     a perfectly valid digest of somebody else's image, and every check that
+ *     only looked at the digest would pass it;
+ *   · a tag that is not `candidate-<sha>`. The tag is thrown away when the
+ *     override is written, which is right — but a manifest whose tag disagrees
+ *     with its own commit was produced by something other than the workflow,
+ *     and that is worth stopping on rather than ignoring;
+ *   · a `#`, a space or a newline inside a value. The override is YAML written
+ *     by hand: a newline ends the line and starts a new key, so a crafted
+ *     repository could add a `command:` or a `volumes:` entry to a service.
+ *     Refusing is the only safe answer, and the strings this accepts have no
+ *     legitimate reason to contain any of them;
+ *   · a version this script does not understand. Version 1 named tags; version
+ *     2 names digests. Reading a version-1 file with version-2 rules would pin
+ *     nothing and say it had.
+ */
+const MANIFEST_VERSION = 2;
+
+/** The only repositories a manifest may name. Ours, and exactly ours. */
+const ALLOWED_REPOSITORIES = Object.freeze([
+    'ghcr.io/nipko/parallext-api',
+    'ghcr.io/nipko/parallext-worker',
+    'ghcr.io/nipko/parallext-dashboard',
+    'ghcr.io/nipko/parallext-whatsapp',
+    'ghcr.io/nipko/parallext-landing',
+]);
+
+/**
+ * Anything that could end a YAML scalar, start a comment, or carry a scheme.
+ *
+ * Checked on the value that is about to be written, not on a sanitised copy:
+ * sanitising would silently change what the host runs, and a manifest that
+ * needed sanitising is a manifest nobody should be applying.
+ */
+function refuseUnsafeScalar(what, value) {
+    if (/[\s#'"\\]/.test(value) || value.includes('\n') || value.includes('\r')) {
+        throw new ManifestError(`${what} contains a character that cannot appear in a `
+            + `compose value ("${value}")`);
+    }
+    if (/^[a-z][a-z0-9+.-]*:\/\//i.test(value)) {
+        throw new ManifestError(`${what} looks like a URL, not an image reference ("${value}")`);
+    }
+}
+
 class ManifestError extends Error {}
 
 /**
@@ -71,7 +122,18 @@ function readManifest(file) {
         throw new ManifestError(`manifest unreadable at ${file}: ${error.message}`);
     }
     if (!parsed || typeof parsed !== 'object') throw new ManifestError('manifest is not an object');
-    if (!/^[0-9a-f]{40}$/.test(String(parsed.sha || ''))) {
+    // The version FIRST. Everything below is written for version 2's shape, and
+    // reading a version-1 file with version-2 rules would pin nothing while
+    // reporting success.
+    // Identity, not coercion. `Number('2')` is 2, and a manifest carrying a
+    // STRING where the workflow writes a number was produced by something
+    // else — which is the whole question this check is asking.
+    if (parsed.version !== MANIFEST_VERSION) {
+        throw new ManifestError(`manifest version ${JSON.stringify(parsed.version)} is not `
+            + `${MANIFEST_VERSION}; this script cannot pin it`);
+    }
+    const sha = String(parsed.sha || '');
+    if (!/^[0-9a-f]{40}$/.test(sha)) {
         throw new ManifestError('manifest has no full commit sha');
     }
     const images = parsed.images;
@@ -86,6 +148,7 @@ function readManifest(file) {
             throw new ManifestError(`"${key}" has no sha256 digest (got "${digest || 'nothing'}")`);
         }
         const tag = String(entry.tag || '');
+        refuseUnsafeScalar(`the tag of "${key}"`, tag);
         // The repository is the part before the tag. Everything after the last
         // colon that follows the last slash is the tag, which is thrown away on
         // purpose: it is the mutable half.
@@ -93,9 +156,24 @@ function readManifest(file) {
         const colon = tag.indexOf(':', lastSlash + 1);
         const repository = colon === -1 ? tag : tag.slice(0, colon);
         if (!repository) throw new ManifestError(`"${key}" has no repository in its tag`);
-        resolved[key] = { repository, digest, reference: `${repository}@${digest}` };
+        if (!ALLOWED_REPOSITORIES.includes(repository)) {
+            // A valid digest of somebody else's image is still somebody else's
+            // image. This is the check a digest cannot make for itself.
+            throw new ManifestError(`"${key}" names "${repository}", which is not one of `
+                + `this project's repositories`);
+        }
+        // The tag is discarded, and it still has to be the right one: a
+        // manifest whose tag disagrees with its own commit was produced by
+        // something that is not the candidate workflow.
+        const expectedTag = `${repository}:candidate-${sha}`;
+        if (tag !== expectedTag) {
+            throw new ManifestError(`"${key}" is tagged "${tag}", not "${expectedTag}"`);
+        }
+        const reference = `${repository}@${digest}`;
+        refuseUnsafeScalar(`the image reference of "${key}"`, reference);
+        resolved[key] = { repository, digest, reference };
     }
-    return { sha: parsed.sha, version: Number(parsed.version) || 1, images: resolved };
+    return { sha, version: MANIFEST_VERSION, images: resolved };
 }
 
 /**

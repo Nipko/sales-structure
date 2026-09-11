@@ -37,10 +37,11 @@ describe('which number a proactive message leaves from', () => {
                 return { accessToken: 'token', accountId: 'phone-1' };
             }),
         };
-        const service = new ProactiveSendConnection(prisma, channelToken as any);
+        const incidents = { record: jest.fn(async (..._args: unknown[]) => undefined) };
+        const service = new ProactiveSendConnection(prisma, channelToken as any, incidents as any);
         jest.spyOn((service as any).logger, 'warn').mockImplementation(() => undefined);
         jest.spyOn((service as any).logger, 'error').mockImplementation(() => undefined);
-        return { service, prisma, channelToken, writes };
+        return { service, prisma, channelToken, writes, incidents };
     }
 
     const resolve = (h: ReturnType<typeof harness>, channelAccountId?: string | null) =>
@@ -103,13 +104,75 @@ describe('which number a proactive message leaves from', () => {
         expect(task!.sql).toContain("status = 'pending'");
     });
 
-    it('raises no task when the failure is ours rather than theirs', async () => {
-        // A database that could not be read is not a decision anybody can make.
-        // A task would send somebody to change a setting that is not the
-        // problem, and it would stay open after the outage ended.
-        const h = harness(new Error('pool exhausted'));
+    // ═══ THE TWO FAILURES NEED OPPOSITE ANSWERS ═══
+    //
+    // A configuration refusal belongs to the business: somebody has to choose a
+    // number, and until they do, nothing this code can do will change the
+    // outcome. A database that could not be read belongs to us, may well work
+    // in a minute, and used to produce the same `null` — so a caller could not
+    // tell "stop asking" from "ask again", and both became "drop the message".
+    describe('an infrastructure failure, which is not a decision anybody can make', () => {
+        it('raises no task, because no setting is the problem', async () => {
+            // A task would send somebody to change something that is fine, and
+            // it would stay open long after the outage ended.
+            const h = harness(new Error('pool exhausted'));
+            await expect(resolve(h)).rejects.toThrow('proactive_connection_unavailable');
+            expect(h.writes).toEqual([]);
+        });
+
+        it('raises an incident, so it does not end at a log line', async () => {
+            // What it used to be: `logger.error` and a `return null`. Every
+            // proactive message of that tenant stopped going out and the only
+            // trace was a line in a container log nobody reads.
+            const h = harness(new Error('pool exhausted'));
+            await resolve(h).catch(() => undefined);
+            expect(h.incidents.record).toHaveBeenCalledWith(
+                'proactive_connection_unavailable_whatsapp', 'warning',
+                expect.any(String), expect.stringContaining('pool exhausted'), 1);
+        });
+
+        it('throws, so a caller that owns a retryable job retries', async () => {
+            // The difference that makes the message durable rather than
+            // dropped. `null` is a decision; this is an outage.
+            const h = harness(new Error('pool exhausted'));
+            await expect(resolve(h)).rejects.toMatchObject({
+                name: 'ProactiveConnectionUnavailable',
+                purpose: 'los recordatorios de turnos',
+            });
+        });
+
+        it('still refuses to send when the incident writer is missing', async () => {
+            // The alert is a nice-to-have; refusing to invent a connection is
+            // not. Reversing that would mean the degraded deployment is the one
+            // that starts guessing which number pays.
+            const prisma: any = { executeInTenantSchema: jest.fn(async () => []) };
+            const channelToken = {
+                getChannelToken: jest.fn(async () => { throw new Error('pool exhausted'); }),
+            };
+            const service = new ProactiveSendConnection(prisma, channelToken as any);
+            jest.spyOn((service as any).logger, 'error').mockImplementation(() => undefined);
+            await expect(service.resolve({
+                tenantId, schemaName: 'tenant_acme', channelType: 'whatsapp',
+                purpose: 'los seguimientos automáticos',
+            })).rejects.toThrow('proactive_connection_unavailable');
+        });
+
+        it('does not let a failing incident writer hide the failure it describes', async () => {
+            const h = harness(new Error('pool exhausted'));
+            h.incidents.record = jest.fn(async () => { throw new Error('ops center down'); });
+            await expect(resolve(h)).rejects.toThrow('proactive_connection_unavailable');
+        });
+    });
+
+    it('still answers null — not a throw — for a choice the business has to make', async () => {
+        // The other half of the same rule. A configuration refusal must NOT
+        // retry: a reminder cron that threw on `connection_ambiguous` would
+        // re-run for ever against a tenant who has simply not chosen yet.
+        const h = harness(new ConnectionRefusedError('connection_ambiguous',
+            { tenantId, channelType: 'whatsapp' }));
         await expect(resolve(h)).resolves.toBeNull();
-        expect(h.writes).toEqual([]);
+        expect(h.incidents.record).not.toHaveBeenCalled();
+        expect(h.writes.some(write => write.sql.includes('INSERT INTO tasks'))).toBe(true);
     });
 
     it('is what the proactive producers actually use', () => {

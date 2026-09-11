@@ -1065,6 +1065,13 @@ export class NurturingService {
      * which one your follow-ups come from".
      *
      * `null` now, and the resolver raises the configuration task on the way.
+     *
+     * An INFRASTRUCTURE failure is a different thing and is deliberately not
+     * caught here: the resolver raises `ProactiveConnectionUnavailable` and it
+     * propagates to the BullMQ job that called this, which retries. Swallowing
+     * it would turn a database that was busy for ten seconds into a follow-up
+     * that never happens — the message is dropped, the sequence moves on, and
+     * nothing in the product says a step was skipped.
      */
     private async resolveChannelCredentials(tenantId: string, schemaName: string,
         channelType = 'whatsapp', channelAccountId?: string | null,

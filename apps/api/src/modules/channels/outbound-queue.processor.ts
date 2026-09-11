@@ -610,8 +610,51 @@ export class OutboundQueueProcessor extends WorkerHost {
      */
     private readonly fallbackAdmissions = new WeakMap<OutboundMessage, unknown>();
 
+    /**
+     * Flows that Meta refused CONCLUSIVELY, whether or not a text replaced them.
+     *
+     * Marked the moment the gateway asks whether a fallback may be sent, which
+     * it only does after classifying the failure as a definite refusal — the
+     * ambiguous ones never reach the hook at all.
+     *
+     * Without this mark, a refusal the fallback could not follow was recorded
+     * as a TIMEOUT: no message id came back, so the outcome reader assumed
+     * nobody could say what happened and retained the whole reservation as
+     * `indeterminate`. But somebody could say: Meta had said no. The money was
+     * held for a message provably never sent, the ceiling filled with it, and a
+     * person was eventually asked to resolve by hand an effect whose answer was
+     * already in a log line.
+     */
+    private readonly conclusivelyRefusedFlows = new WeakSet<OutboundMessage>();
+
+    /**
+     * The two hooks every gateway call has to pass, built in one place.
+     *
+     * Written as a helper rather than repeated at each sink because the first
+     * thing `admitFallback` now does is record a fact about the FLOW — and a
+     * fact that four call sites each remember to record is a fact three of them
+     * will eventually forget.
+     */
+    private flowHooks(outbound: OutboundMessage, producer: string,
+        disposition: 'reactive' | 'proactive',
+        durable?: { messageId?: string | null; jobId?: string | null }) {
+        return {
+            admitFallback: async (code: string) => {
+                // BEFORE anything is decided about a replacement: whether the
+                // Flow died is Meta's answer and whether a text may follow is
+                // ours, and tying them together is what let a refusal with no
+                // authorised fallback be filed as "we do not know".
+                this.conclusivelyRefusedFlows.add(outbound);
+                return this.admitFlowFallback(outbound, producer, disposition, code, durable);
+            },
+            observeFailure: (error: unknown) => this.observeFunding(outbound, error),
+        };
+    }
+
     private async recordSpend(outbound: OutboundMessage, admission: unknown, result: string | null) {
         if (!this.spendGate) return;
+        const refused = this.conclusivelyRefusedFlows.has(outbound);
+        if (refused) this.conclusivelyRefusedFlows.delete(outbound);
         // A Flow that was refused and fell back produced TWO effects. The Flow
         // is over — conclusively rejected, so its money goes back — and the text
         // is the one that carries the receipt.
@@ -622,6 +665,18 @@ export class OutboundQueueProcessor extends WorkerHost {
             await this.settle(outbound, fallback, result
                 ? { kind: 'accepted', providerMessageId: result }
                 : { kind: 'timeout' });
+            return;
+        }
+        // ── A REFUSAL NOBODY COULD REPLACE IS STILL A REFUSAL ───────────────
+        //
+        // No fallback was authorised — the money authority said no, or could
+        // not be reached. That changes nothing about the FLOW: Meta refused it
+        // definitively and nothing was delivered, so the reservation goes back.
+        // Recording it as a timeout held the whole amount as `indeterminate`
+        // for a message provably never sent.
+        if (refused) {
+            await this.settle(outbound, admission,
+                { kind: 'rejected', errorCode: 'flow_rejected_without_fallback' });
             return;
         }
         await this.settle(outbound, admission, result
@@ -666,10 +721,8 @@ export class OutboundQueueProcessor extends WorkerHost {
                     if (admission === 'refused') return null;
                     if (!(await this.beginOrStandDown(outbound, admission))) return null;
                     const result=await this.channelGateway.sendMessage(outbound,creds.accessToken,
-                        { admitFallback: code => this.admitFlowFallback(
-                            outbound, 'operational_notice', 'proactive', code,
-                            { messageId: `notice:${reference.noticeId}` }),
-                          observeFailure: error => this.observeFunding(outbound, error) });
+                        this.flowHooks(outbound, 'operational_notice', 'proactive',
+                            { messageId: `notice:${reference.noticeId}` }));
                     await this.recordSpend(outbound, admission, result);
                     if (result) await this.resumeIfPaused(outbound);
                     if(result)await this.throttle.recordUsage(reference.tenantId,'outbound').catch(()=>{});
@@ -702,10 +755,8 @@ export class OutboundQueueProcessor extends WorkerHost {
                         throw new ApprovalEffectSuppressed('transmission_not_owned');
                     }
                     const result = await this.channelGateway.sendMessage(outbound, creds.accessToken,
-                        { admitFallback: code => this.admitFlowFallback(
-                            outbound, 'approved_effect', 'reactive', code,
-                            { messageId: `effect:${reference.ticketId}:${reference.effectId}` }),
-                          observeFailure: error => this.observeFunding(outbound, error) });
+                        this.flowHooks(outbound, 'approved_effect', 'reactive',
+                            { messageId: `effect:${reference.ticketId}:${reference.effectId}` }));
                     await this.recordSpend(outbound, admission, result);
                     if (result) await this.resumeIfPaused(outbound);
                     if (result) await this.throttle.recordUsage(reference.tenantId, 'outbound').catch(() => {});
@@ -838,10 +889,9 @@ export class OutboundQueueProcessor extends WorkerHost {
             return 'skipped:transmission_not_owned';
         }
         const result = await this.channelGateway.sendMessage(outbound, creds.accessToken, {
-            admitFallback: code => this.admitFlowFallback(outbound, 'outbound_queue',
-                (outbound.metadata as any)?.conversationId ? 'reactive' : 'proactive', code,
+            ...this.flowHooks(outbound, 'outbound_queue',
+                (outbound.metadata as any)?.conversationId ? 'reactive' : 'proactive',
                 { jobId: job.id ?? null }),
-            observeFailure: error => this.observeFunding(outbound, error),
         });
         await this.recordSpend(outbound, admission, result);
         if (result) await this.resumeIfPaused(outbound);

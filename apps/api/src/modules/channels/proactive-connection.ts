@@ -1,7 +1,24 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ChannelTokenService } from './channel-token.service';
 import { isConnectionRefusal } from './connection-refusal';
+import { IncidentService } from '../health/incident.service';
+
+/**
+ * The connection could not be READ. Nobody chose anything wrong.
+ *
+ * Thrown rather than returned, because the two failures need opposite
+ * treatment and a single `null` gave them the same one: a configuration
+ * refusal means stop and ask a person, and this means try again later. A
+ * caller that owns a retryable job re-runs on the throw; a caller that does
+ * not still gets the incident, which is the part that stops it disappearing.
+ */
+export class ProactiveConnectionUnavailable extends Error {
+    constructor(readonly purpose: string, readonly cause?: unknown) {
+        super(`proactive_connection_unavailable:${purpose}`);
+        this.name = 'ProactiveConnectionUnavailable';
+    }
+}
 
 /**
  * ═══ WHICH NUMBER A PROACTIVE MESSAGE LEAVES FROM ═══
@@ -41,15 +58,37 @@ export class ProactiveSendConnection {
     constructor(
         private readonly prisma: PrismaService,
         private readonly channelToken: ChannelTokenService,
+        /**
+         * Where an infrastructure failure goes so it does not vanish.
+         *
+         * A configuration refusal belongs to the business — it becomes a task
+         * in their own product. A database or credential store that could not
+         * be read belongs to us, and used to be a `logger.error` and nothing
+         * else: every proactive message of that tenant stopped going out and
+         * the only trace was a line in a container log.
+         */
+        @Optional() private readonly incidents?: IncidentService,
     ) {}
 
     /**
-     * The connection this proactive send leaves from, or `null` with a task
-     * raised for the person who has to choose.
+     * The connection this proactive send leaves from.
      *
-     * Never throws, and never picks. Returning `null` means the message does
-     * not go out, which is the honest outcome: the alternative is sending from
-     * a number chosen by row order.
+     * Three outcomes, and they are three because they need three answers:
+     *
+     *   · credentials — send.
+     *   · `null` — a CONFIGURATION refusal. The business has to choose a
+     *     number, or connect one. A task is raised in their own product and
+     *     this send does not happen. Retrying changes nothing, so nothing
+     *     retries.
+     *   · a thrown `ProactiveConnectionUnavailable` — INFRASTRUCTURE. Nobody
+     *     chose anything wrong; something could not be read. It may well work
+     *     in a minute, so a caller that owns a retryable job must retry rather
+     *     than drop the message, and an incident is raised either way.
+     *
+     * It never picks a number. Returning nothing is the honest outcome when
+     * there is a real choice to make: the alternative is writing to somebody's
+     * customers from a number they have never seen, billed to a WABA the
+     * business did not choose.
      */
     async resolve(input: {
         readonly tenantId: string;
@@ -68,15 +107,48 @@ export class ProactiveSendConnection {
         } catch (error: any) {
             if (!isConnectionRefusal(error)) {
                 // Not a decision anybody can make — a database or a credential
-                // store that could not be read. Logged and dropped, the way it
-                // already was; a task would send somebody to change a setting
-                // that is not the problem.
+                // store that could not be read. This used to be logged and
+                // dropped, which meant every proactive message of that tenant
+                // stopped going out with nothing but a container log to say so.
+                //
+                // A task would be wrong: it would send somebody to change a
+                // setting that is not the problem. An incident is right, and so
+                // is raising, so a caller with a retryable job tries again.
                 this.logger.error(`[Proactive] ${input.purpose} could not resolve a `
                     + `${input.channelType} connection: ${error?.message}`);
-                return null;
+                await this.raiseIncident(input, error);
+                throw new ProactiveConnectionUnavailable(input.purpose, error);
             }
             await this.raiseConfigurationTask(input, error.code ?? 'connection_unusable');
             return null;
+        }
+    }
+
+    /**
+     * Say it in the Ops Center, where an outage belongs.
+     *
+     * Deduplicated by key inside the incident service, so a cron that fails
+     * every few minutes raises one incident with a rising count rather than a
+     * wall of them. Never throws: the caller is already handling a failure and
+     * a second one here would hide the first.
+     */
+    private async raiseIncident(input: {
+        tenantId: string; channelType: string; purpose: string;
+    }, error: any): Promise<void> {
+        if (!this.incidents) return;
+        try {
+            await this.incidents.record(
+                `proactive_connection_unavailable_${input.channelType}`,
+                'warning',
+                'No se pudo resolver la conexión de un envío proactivo',
+                `${input.purpose} no pudo resolver una conexión de ${input.channelType} del `
+                + `tenant ${input.tenantId}: ${String(error?.message ?? error).slice(0, 200)}. `
+                + 'No es una decisión del negocio: algo no se pudo leer. Los mensajes '
+                + 'proactivos de ese tenant no están saliendo.',
+                1);
+        } catch (incidentError: any) {
+            this.logger.error(`[Proactive] the incident itself could not be recorded: `
+                + `${incidentError?.message}`);
         }
     }
 

@@ -10,6 +10,7 @@ import {
     WhatsappSendAdmissionService, fromSendContext, type Admission,
 } from '../billing/whatsapp-spend/whatsapp-send-admission.service';
 import { SpendMeterUnavailable } from '../billing/whatsapp-spend/spend-unavailable';
+import { isConnectionRefusal } from './connection-refusal';
 import { ChannelTokenService } from './channel-token.service';
 import { RedisService } from '../redis/redis.service';
 import { OutboundMessage } from '@parallext/shared';
@@ -133,28 +134,22 @@ export class OutboundQueueProcessor extends WorkerHost {
             // depend on whether an optional parameter happened to be supplied —
             // and none of the three sinks supplied it, so every authorisation
             // failed on `payer_unknown`.
-            let connection = {
-                tenantId: input.tenantId, channelType: input.channelType,
+            //
+            // There is no fallback triple any more. A hand-made
+            // `{tenantId, channelType, channelAccountId}` has no payer and no
+            // credential, so the authority answered `payer_unknown` for it —
+            // which under `enforce` would have silenced this lane while
+            // looking like a budget decision. A connection that will not
+            // resolve REFUSES, with the resolver's own diagnosis attached.
+            const resolved = await this.channelToken.resolveSendContext({
+                tenantId: input.tenantId, channelType: input.channelType as any,
                 channelAccountId: input.channelAccountId,
-            } as any;
-            try {
-                const resolved = await this.channelToken.resolveSendContext({
-                    tenantId: input.tenantId, channelType: input.channelType as any,
-                    channelAccountId: input.channelAccountId,
-                    recipient: { scope: 'customer', address: input.recipient,
-                        contactId: input.contactId ?? null },
-                });
-                connection = fromSendContext(resolved.context);
-            } catch (error: any) {
-                // A connection that cannot be resolved cannot be charged
-                // either. The admission then blocks with its own diagnosis
-                // rather than this lane inventing one.
-                this.logger.warn(`[Spend] connection unresolved for ${input.producer}: `
-                    + `${error?.message}`);
-            }
+                recipient: { scope: 'customer', address: input.recipient,
+                    contactId: input.contactId ?? null },
+            });
             return await this.spendGate.admit({
                 schema,
-                connection,
+                connection: fromSendContext(resolved.context),
                 // Read to derive the tariff country and then dropped: what
                 // reaches the ledger is the hash below, never the number.
                 recipientAddress: input.recipient,
@@ -171,6 +166,12 @@ export class OutboundQueueProcessor extends WorkerHost {
                 binding: input.binding as any,
             });
         } catch (error: any) {
+            // A refused connection is an ANSWER, not an outage: a disconnected
+            // number, a revoked credential, two numbers and none named. It
+            // carries its own code and its own HTTP status, and re-raising it
+            // unchanged keeps that diagnosis instead of burying it under a
+            // retry the condition will outlive.
+            if (isConnectionRefusal(error)) throw error;
             // ── AN UNAVAILABLE METER DEFERS. IT NEVER PERMITS. ──────────────
             //
             // This used to return `null`, which every caller read as "no gate

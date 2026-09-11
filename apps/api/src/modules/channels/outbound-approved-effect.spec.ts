@@ -2,7 +2,7 @@ import { OutboundQueueService } from './outbound-queue.service';
 import { OutboundQueueProcessor } from './outbound-queue.processor';
 import { ApprovalEffectSuppressed } from './approved-effect-delivery.port';
 import { resolveTenantSubscriptionAccess } from '../../common/utils/subscription-entitlement.util';
-import { permissiveSpendGate, schemaNamingPrisma } from './__fixtures__/spend-gate-double';
+import { permissiveSpendGate, resolvingChannelToken, schemaNamingPrisma } from './__fixtures__/spend-gate-double';
 jest.mock('../../common/utils/subscription-entitlement.util',()=>({resolveTenantSubscriptionAccess:jest.fn()}));
 const reference={tenantId:'11111111-1111-4111-8111-111111111111',ticketId:'22222222-2222-4222-8222-222222222222',effectId:'33333333-3333-4333-8333-333333333333'};
 describe('approved delivery queue boundary',()=>{
@@ -22,7 +22,7 @@ describe('approved delivery queue boundary',()=>{
     it('resolves fresh entitlement and credentials through the hydration port, never from a queue payload',async()=>{
         (resolveTenantSubscriptionAccess as jest.Mock).mockResolvedValue({allowed:true});
         const outbound:any={tenantId:reference.tenantId,to:'private',channelType:'whatsapp',channelAccountId:'bound',content:{type:'image',mediaUrl:'https://example.test'}};
-        const gateway={sendMessage:jest.fn(async()=> 'ack')},token={getChannelToken:jest.fn(async()=>({accessToken:'fresh'}))};
+        const gateway={sendMessage:jest.fn(async()=> 'ack')},token=resolvingChannelToken({getChannelToken:jest.fn(async()=>({accessToken:'fresh'}))});
         const deliver=jest.fn(async(ref,transport)=>{expect(ref).toEqual(reference);return (await transport.prepare(outbound))();});
         const processor=new OutboundQueueProcessor(gateway as any,{isOverLimit:async()=>false,recordUsage:async()=>{}} as any,token as any,{} as any,{} as any,schemaNamingPrisma(),permissiveSpendGate(),{deliver});
         expect(await processor.process({data:{approvalEffect:reference}} as any)).toBe('ack');

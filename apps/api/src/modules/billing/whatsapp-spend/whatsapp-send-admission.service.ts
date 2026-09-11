@@ -473,33 +473,20 @@ export class WhatsappSendAdmissionService {
         return Object.freeze({ permitted: true, effectKey, block: result.block, enforcement });
     }
 
-    /**
-     * The same verdict, for a caller that only knows the schema.
-     *
-     * `WhatsappMessagingService` is schema-first: it never receives a tenant id
-     * because every one of its queries is already scoped by the schema name.
-     * Rather than thread a tenant id through five public methods and their
-     * callers, the mapping is resolved here — it is one row, it never changes
-     * for the life of a tenant, and it is cached for that reason.
-     *
-     * Returns `null` when the schema belongs to no tenant, which is not a
-     * spending decision: the caller proceeds, and the send is simply unmetered.
-     * A message stopped because a lookup came back empty would be a silence
-     * caused by the meter rather than by a budget.
-     */
-    async admitBySchema(schema: string, request: Omit<AdmissionRequest, 'schema' | 'connection'> & {
-        readonly channelType: string;
-        readonly channelAccountId: string;
-        readonly channelAddress?: string | null;
-    }): Promise<Admission | null> {
-        const tenantId = await this.tenantForSchema(schema);
-        if (!tenantId) return null;
-        const { channelType, channelAccountId, channelAddress, ...rest } = request;
-        return this.admit({
-            ...rest, schema,
-            connection: { tenantId, channelType, channelAccountId, channelAddress },
-        });
-    }
+    // ── `admitBySchema` IS GONE, AND ITS ABSENCE IS THE POINT ────────────────
+    //
+    // It took a channel type and an account id and built a connection out of
+    // them: `{tenantId, channelType, channelAccountId, channelAddress}`. No
+    // payer, no credential — because a call site cannot know those. So every
+    // send through it arrived with `payerKind` undefined, the authority
+    // answered `payer_unknown`, and under `enforce` the REST surface and the
+    // agent console would have gone silent while the queue lane, which asked
+    // the resolver, kept working.
+    //
+    // There is now exactly one way to build an `AdmissionConnection`, and it is
+    // `fromSendContext` over a context the resolver produced. A sink that
+    // cannot resolve its connection cannot send: that is a refusal with a
+    // diagnosis, not an identity assembled from whatever was in scope.
 
     /** Schema → tenant. Immutable for the life of a tenant, so cached for good. */
     private readonly schemaTenants = new Map<string, string | null>();

@@ -1,5 +1,5 @@
 import { AgentConsoleService } from './agent-console.service';
-import { permissiveSpendGate } from '../channels/__fixtures__/spend-gate-double';
+import { permissiveSpendGate, resolvingChannelToken } from '../channels/__fixtures__/spend-gate-double';
 
 const TENANT = '11111111-1111-4111-8111-111111111111';
 const CONVERSATION = '22222222-2222-4222-8222-222222222222';
@@ -47,7 +47,8 @@ describe('what becomes of a human agent reply', () => {
             if (options.sendFails) throw new Error('token expired');
             return { messageId: 'wamid.OUT' };
         }) };
-        const channelToken: any = { getChannelToken: jest.fn(async () => ({ accessToken: 'token', accountId: 'acc-1' })) };
+        const channelToken: any = resolvingChannelToken({
+            getChannelToken: jest.fn(async () => ({ accessToken: 'token', accountId: 'acc-1' })) });
 
         // A complete authority, because this spec is about what the console
         // TELLS the agent, not about money. An incomplete one would refuse

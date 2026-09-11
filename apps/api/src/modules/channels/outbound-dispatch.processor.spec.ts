@@ -2,7 +2,7 @@ import { DelayedError } from 'bullmq';
 import { OutboundQueueProcessor } from './outbound-queue.processor';
 import { DispatchOutboxError, type DispatchRow } from './agent-dispatch-outbox';
 import type { StrictDispatchOutcome } from './strict-dispatch-transport';
-import { permissiveSpendGate } from './__fixtures__/spend-gate-double';
+import { permissiveSpendGate, resolvingChannelToken } from './__fixtures__/spend-gate-double';
 
 const tenantId = '11111111-1111-4111-8111-111111111111';
 const dispatchId = '22222222-2222-4222-8222-222222222222';
@@ -41,10 +41,11 @@ describe('OutboundQueueProcessor durable dispatch', () => {
             isOverLimit: jest.fn(async () => options.overLimit === true),
             recordUsage: jest.fn(async () => undefined),
         };
-        const channelToken = { getChannelToken: jest.fn(async () => {
-            if (options.credentials === false) throw new Error('token expired');
-            return { accessToken: 'token' };
-        }) };
+        const channelToken = resolvingChannelToken({
+            getChannelToken: jest.fn(async () => {
+                if (options.credentials === false) throw new Error('token expired');
+                return { accessToken: 'token' };
+            }) });
         const settle = jest.fn(async (_t: string, _d: string, _l: string, outcome: any) => {
             if (options.settleFails) throw new Error('settle write failed');
             return row({ state: outcome.kind === 'sent' ? 'sent'

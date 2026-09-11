@@ -7,7 +7,12 @@ import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { WhatsappConnectionService } from './whatsapp-connection.service';
 import { toWhatsAppFormatting } from '../../../common/utils/channel-text-format.util';
-import { WhatsappSendAdmissionService, type Admission } from '../../billing/whatsapp-spend/whatsapp-send-admission.service';
+import {
+  WhatsappSendAdmissionService, fromSendContext, type Admission,
+} from '../../billing/whatsapp-spend/whatsapp-send-admission.service';
+import { SpendMeterUnavailable } from '../../billing/whatsapp-spend/spend-unavailable';
+import { ChannelTokenService } from '../../channels/channel-token.service';
+import { isConnectionRefusal } from '../../channels/connection-refusal';
 import { AccountPauseStore } from '../../channels/account-pause-store';
 
 const META_GRAPH_VERSION = 'v21.0';
@@ -48,6 +53,11 @@ export class WhatsappMessagingService {
     // template, every interactive card and every media message sent from a
     // controller comes through here. NOT optional, for the same reason.
     private readonly spendGate: WhatsappSendAdmissionService,
+    // The one thing that knows WHO PAYS for a send: which WABA Meta bills,
+    // which credential it travels on, which number it leaves from. This
+    // service used to assemble that identity from the arguments in scope,
+    // which is how every REST send arrived with no payer at all.
+    private readonly channelToken: ChannelTokenService,
     // The first of the two places Meta says the business cannot be billed: the
     // answer to this very request. The other is a status webhook minutes later.
     @Optional() private readonly pauses?: AccountPauseStore,
@@ -239,10 +249,10 @@ export class WhatsappMessagingService {
     // The intent to send, written BEFORE the request. After it, it would
     // distinguish nothing: anything recorded then already presupposes the POST
     // happened, and the point is to tell a crash before sending from one after.
-    if (admission && admission !== 'refused' && this.spendGate
+    if (admission && admission !== 'refused'
       && !(await this.spendGate.beginTransmission(schemaName, admission as Admission))) {
       throw new BadRequestException(
-        'Otro intento ya tiene el derecho de enviar este mensaje; no se envio dos veces.');
+        'Otro intento ya tiene el derecho de enviar este mensaje; no se envió dos veces.');
     }
     if (admission === 'refused') {
       throw new BadRequestException(
@@ -328,13 +338,12 @@ export class WhatsappMessagingService {
   /**
    * Ask the money gate for this one message.
    *
-   * `'refused'` means a ceiling said no. `null` means there is no gate, or the
-   * schema maps to no tenant, and the send proceeds unmetered rather than being
-   * stopped by its own meter.
+   * `'refused'` means the send must not happen — a ceiling said no, or the
+   * connection could not be named and so nobody could be charged for it.
+   * A meter that cannot answer raises, and the REST caller gets a 503.
    */
   private async admitSpend(schemaName: string, phoneNumberId: string, payload: any,
     templateName?: string, spend?: WhatsappSendSpendContext) {
-    if (!this.spendGate) return null;
     try {
       // The approval category, from the row the template sync wrote. Read here
       // rather than demanded from every caller: five public methods and a dozen
@@ -343,9 +352,29 @@ export class WhatsappMessagingService {
       const category = spend?.templateCategory ?? (templateName
         ? await this.templateCategory(schemaName, templateName)
         : null);
-      const admission = await this.spendGate.admitBySchema(schemaName, {
-        channelType: 'whatsapp',
-        channelAccountId: phoneNumberId,
+      // ── THE IDENTITY COMES FROM THE RESOLVER, NEVER FROM THIS SCOPE ──
+      //
+      // A phone number id is not a connection. Who pays, on which credential,
+      // from which display number: all of it is a property of the connection,
+      // and this service used to hand the authority a triple it had assembled
+      // itself. `payerKind` then came back undefined and the verdict was
+      // `payer_unknown` — on EVERY template, card, image and location sent
+      // from a controller.
+      const tenantId = await this.spendGate.tenantForSchema(schemaName);
+      if (!tenantId) {
+        // Not "unmetered, carry on". A schema that maps to no tenant is a
+        // lookup that failed or a schema that should not be sending; either
+        // way nothing here can name a payer.
+        throw new SpendMeterUnavailable(`schema ${schemaName} maps to no tenant`);
+      }
+      const resolved = await this.channelToken.resolveSendContext({
+        tenantId, channelType: 'whatsapp', channelAccountId: phoneNumberId,
+        recipient: { scope: 'customer', address: String(payload?.to ?? ''),
+          contactId: spend?.contactId ?? null },
+      });
+      const admission = await this.spendGate.admit({
+        schema: schemaName,
+        connection: fromSendContext(resolved.context),
         // The recipient is hashed before it travels: this value ends up in an
         // effect key and in log lines.
         recipientRef: createHash('sha256').update(String(payload?.to ?? '')).digest('hex').slice(0, 32),
@@ -382,6 +411,14 @@ export class WhatsappMessagingService {
       if (admission && !admission.permitted) return 'refused' as const;
       return admission;
     } catch (error: any) {
+      // ── A REFUSED CONNECTION IS NOT AN OUTAGE ───────────────────────
+      //
+      // "This number is not connected", "the credential was revoked", "you
+      // named an account this tenant does not have" are answers, not
+      // failures, and each already carries its own status and diagnosis.
+      // Wrapping them in a 503 would tell the caller to try again in a
+      // moment — for a condition that will still be true tomorrow.
+      if (isConnectionRefusal(error)) throw error;
       // An unavailable meter DEFERS. Returning null here read as "no gate
       // wired — carry on", so a database that blinked produced a message on a
       // phone, a charge on the account and no record of either.
@@ -391,8 +428,8 @@ export class WhatsappMessagingService {
       this.logger.error(`[Spend] meter unavailable for whatsapp REST: ${error?.message}. `
         + `Deferring rather than sending unmeasured.`);
       throw new ServiceUnavailableException(
-        'El control de gasto de WhatsApp no esta disponible ahora mismo. El mensaje no se envio; '
-        + 'intentalo de nuevo en unos segundos.');
+        'El control de gasto de WhatsApp no está disponible ahora mismo. El mensaje no se envió; '
+        + 'inténtalo de nuevo en unos segundos.');
     }
   }
 
@@ -405,7 +442,7 @@ export class WhatsappMessagingService {
    */
   private async observeFunding(schemaName: string, phoneNumberId: string,
     code: unknown, detail: unknown) {
-    if (!this.pauses || !this.spendGate) return;
+    if (!this.pauses) return;
     try {
       const tenantId = await this.spendGate.tenantForSchema(schemaName);
       if (!tenantId) return;
@@ -417,7 +454,7 @@ export class WhatsappMessagingService {
   }
 
   private async resumeIfPaused(schemaName: string, phoneNumberId: string) {
-    if (!this.pauses || !this.spendGate) return;
+    if (!this.pauses) return;
     try {
       const tenantId = await this.spendGate.tenantForSchema(schemaName);
       if (!tenantId) return;
@@ -452,7 +489,7 @@ export class WhatsappMessagingService {
     kind: 'delivered_priced' | 'delivered_unpriced' | 'rejected' | 'timeout';
     providerMessageId?: string | null; errorCode?: string | null;
   }) {
-    if (!admission || admission === 'refused' || !this.spendGate) return;
+    if (!admission || admission === 'refused') return;
     try {
       await this.spendGate.record(schemaName, admission as Admission, outcome);
     } catch (error: any) {

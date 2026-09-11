@@ -63,3 +63,31 @@ export function schemaNamingPrisma(overrides: Record<string, unknown> = {}) {
         ...overrides,
     } as any;
 }
+
+/**
+ * A connection resolver that answers with a COMPLETE send context.
+ *
+ * `fromSendContext` reads `payer` and `credential`, and there is no longer any
+ * other way to build an admission connection. A double missing either half
+ * would make the sink refuse — so a spec about transport would end up proving
+ * something about money instead.
+ */
+export function resolvingChannelToken(overrides: Record<string, unknown> = {}) {
+    return {
+        getChannelToken: jest.fn(async () => ({ accessToken: 'token', accountId: 'acc-1' })),
+        resolveSendContext: jest.fn(async (request: any) => ({
+            accessToken: 'token',
+            context: {
+                version: 'outbound-send-context-1',
+                tenantId: request.tenantId,
+                channelType: request.channelType,
+                channelAccountId: request.channelAccountId ?? 'acc-1',
+                channelAddress: '+573000000000',
+                payer: { kind: 'business_direct', wabaId: 'waba-1', businessId: 'biz-1' },
+                credential: { id: 'cred-1', source: 'channel_account' },
+                recipient: request.recipient,
+            },
+        })),
+        ...overrides,
+    } as any;
+}

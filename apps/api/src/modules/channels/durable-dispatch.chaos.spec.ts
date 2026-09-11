@@ -15,7 +15,7 @@ import { operationalConfigurationHash } from '../persona/agent-configuration-rev
 import type { StrictDispatchOutcome } from './strict-dispatch-transport';
 import { ensureSyntheticGlobalTables } from '../../common/__fixtures__/synthetic-global-tables';
 import { LoadMetrics } from '../../common/__fixtures__/load-metrics';
-import { permissiveSpendGate } from './__fixtures__/spend-gate-double';
+import { permissiveSpendGate, resolvingChannelToken } from './__fixtures__/spend-gate-double';
 
 const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
 const redisUrl = process.env.DISPATCH_QUEUE_TEST_REDIS_URL;
@@ -186,7 +186,8 @@ const ready = !!databaseUrl && !!redisUrl;
             { getStrictTransport: () => ({ channelType: 'whatsapp', sendStrict }), sendMessage: jest.fn() } as any,
             { isOverLimit: jest.fn(async () => false), recordUsage: jest.fn(async () => undefined),
                 getPriority: jest.fn(async () => 1), getMaxPendingJobs: jest.fn(async () => Infinity) } as any,
-            { getChannelToken: jest.fn(async () => ({ accessToken: 'token' })) } as any,
+            resolvingChannelToken({
+                getChannelToken: jest.fn(async () => ({ accessToken: 'token' })) }),
             { get: jest.fn(), set: jest.fn(), incr: jest.fn(), expire: jest.fn(), incrBy: jest.fn() } as any,
             { send: jest.fn() } as any, prisma as any, permissiveSpendGate(), undefined, undefined, store);
         service = new OutboundQueueService(queue as any,

@@ -2,7 +2,7 @@ import { AppointmentRemindersService } from '../appointments/appointment-reminde
 import { DripSequenceService } from '../automation/drip-sequence.service';
 import { AutomationJobsProcessor } from '../automation/automation-jobs.processor';
 import { WhatsappMessagingService } from './services/whatsapp-messaging.service';
-import { permissiveSpendGate } from '../channels/__fixtures__/spend-gate-double';
+import { permissiveSpendGate, resolvingChannelToken } from '../channels/__fixtures__/spend-gate-double';
 
 /**
  * ═══ EVERY CHARGED SEND SAYS WHICH ACCOUNT PAYS ═══
@@ -245,12 +245,13 @@ describe('every charged WhatsApp producer names the account that pays', () => {
             const getValidAccessToken = jest.fn().mockResolvedValue({
                 accessToken: 't', phoneNumberId: NUMBER, channelId: 'ch', wabaId: 'w',
             });
-            // prisma, httpService, connectionService, spendGate.
+            // prisma, httpService, connectionService, spendGate, channelToken.
             const service = new WhatsappMessagingService(
                 { executeInTenantSchema: jest.fn().mockResolvedValue([]) } as any,
                 { post: jest.fn().mockReturnValue({ subscribe: jest.fn() }) } as any,
                 { getValidAccessToken } as any,
                 permissiveSpendGate(),
+                resolvingChannelToken(),
             );
             // The transport is not the subject here; the resolver argument is.
             (service as any).sendToMeta = jest.fn().mockResolvedValue({ success: true, messageId: 'm' });

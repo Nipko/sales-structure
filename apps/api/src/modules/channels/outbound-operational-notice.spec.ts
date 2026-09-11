@@ -1,10 +1,10 @@
 import { OutboundQueueProcessor } from './outbound-queue.processor';
-import { permissiveSpendGate, schemaNamingPrisma } from './__fixtures__/spend-gate-double';
+import { permissiveSpendGate, resolvingChannelToken, schemaNamingPrisma } from './__fixtures__/spend-gate-double';
 describe('operational notice transport boundary',()=>{
     const reference={tenantId:'11111111-1111-4111-8111-111111111111',noticeId:'22222222-2222-4222-8222-222222222222'};
     it('uses fresh canonical hydration and channel credentials through the common gateway',async()=>{
         const outbound:any={tenantId:reference.tenantId,channelType:'telegram',channelAccountId:'current',to:'current-contact',content:{type:'text',text:'canonical'}};
-        const gateway={sendMessage:jest.fn().mockResolvedValue('provider-message')},tokens={getChannelToken:jest.fn().mockResolvedValue({accessToken:'fresh'})};
+        const gateway={sendMessage:jest.fn().mockResolvedValue('provider-message')},tokens=resolvingChannelToken({getChannelToken:jest.fn().mockResolvedValue({accessToken:'fresh'})});
         const deliver=jest.fn(async(ref,transport)=>{expect(ref).toEqual(reference);return (await transport.prepare(outbound))();});
         const processor=new OutboundQueueProcessor(gateway as any,{isOverLimit:async()=>false,recordUsage:async()=>{}} as any,tokens as any,{} as any,{} as any,schemaNamingPrisma(),permissiveSpendGate(),undefined,{deliver});
         expect(await processor.process({data:{operationalNotice:reference}} as any)).toBe('provider-message');

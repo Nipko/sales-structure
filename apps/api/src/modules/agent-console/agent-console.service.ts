@@ -15,7 +15,9 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { ChannelGatewayService } from '../channels/channel-gateway.service';
 import { ChannelTokenService } from '../channels/channel-token.service';
-import { WhatsappSendAdmissionService, type Admission } from '../billing/whatsapp-spend/whatsapp-send-admission.service';
+import {
+    WhatsappSendAdmissionService, fromSendContext, type Admission,
+} from '../billing/whatsapp-spend/whatsapp-send-admission.service';
 import { WhatsappConnectionService } from '../whatsapp/services/whatsapp-connection.service';
 import { LLMRouterService } from '../ai/router/llm-router.service';
 import { AiResolutionService } from '../analytics/ai-resolution.service';
@@ -493,7 +495,8 @@ export class AgentConsoleService {
             // Buscar el canal activo de la conversación para saber a qué número enviar
             const convRows = await this.prisma.executeInTenantSchema<any[]>(
                 schemaName,
-                `SELECT c.channel_type, COALESCE(ct.phone, ct.external_id) as phone, c.channel_account_id
+                `SELECT c.channel_type, COALESCE(ct.phone, ct.external_id) as phone,
+                        c.channel_account_id, c.contact_id
                  FROM conversations c
                  LEFT JOIN contacts ct ON c.contact_id = ct.id
                  WHERE c.id = $1::uuid LIMIT 1`,
@@ -510,8 +513,9 @@ export class AgentConsoleService {
                     ? { type: contentType, mediaUrl: this.absoluteMediaUrl(mediaUrl), caption: caption || content || undefined, ...(filename ? { filename } : {}) }
                     : { type: 'text', text: content };
                 // Reserved before the request, like every other lane.
-                const admission = await this.admitAgentSend(schemaName, channelType,
-                    conv.channel_account_id || creds.accountId, conv.phone, outContent);
+                const admission = await this.admitAgentSend(tenantId, schemaName, channelType,
+                    conv.channel_account_id || creds.accountId, conv.phone, outContent,
+                    conv.contact_id ?? null);
                 if (admission === 'refused') {
                     // The agent has to SEE this. A reply that silently did not
                     // leave is worse than one that visibly did not: they would
@@ -621,17 +625,29 @@ export class AgentConsoleService {
     /**
      * Ask the money gate for one human-agent reply.
      *
-     * `'refused'` means the reply must not be sent — either a ceiling said no
-     * or the meter could not answer. `null` means the authority itself says
-     * this send is unmetered: a channel whose provider does not bill per
-     * message. It never means "no gate wired" any more.
+     * `'refused'` means the reply must not be sent — a ceiling said no, the
+     * connection could not be named, or the meter could not answer. `null`
+     * means the authority itself says this send is unmetered: a channel whose
+     * provider does not bill per message. It never means "no gate wired".
      */
-    private async admitAgentSend(schemaName: string, channelType: string,
-        channelAccountId: string, recipient: string, content: any) {
+    private async admitAgentSend(tenantId: string, schemaName: string, channelType: string,
+        channelAccountId: string, recipient: string, content: any, contactId: string | null) {
         try {
-            const admission = await this.spendGate.admitBySchema(schemaName, {
-                channelType,
+            // ── THE IDENTITY COMES FROM THE RESOLVER, NEVER FROM THIS SCOPE ──
+            //
+            // A channel type and an account id are not a connection: they say
+            // nothing about which WABA Meta bills or which credential carries
+            // the message. Assembling one here is what made every human reply
+            // arrive with `payerKind` undefined and come back `payer_unknown`.
+            const resolved = await this.channelToken.resolveSendContext({
+                tenantId, channelType: channelType as any,
                 channelAccountId: String(channelAccountId ?? ''),
+                recipient: { scope: 'customer', address: String(recipient ?? ''), contactId },
+            });
+            const admission = await this.spendGate.admit({
+                schema: schemaName,
+                connection: fromSendContext(resolved.context),
+                contactId,
                 // Hashed before it travels: this reaches an effect key and log lines.
                 recipientRef: createHash('sha256').update(String(recipient ?? '')).digest('hex').slice(0, 32),
                 producer: 'agent_console_reply',
@@ -657,7 +673,12 @@ export class AgentConsoleService {
             // An unavailable meter defers, and the agent is TOLD. A reply that
             // silently did not leave is worse than one that visibly did not:
             // they would go on believing the customer was answered.
-            this.logger.error(`[Spend] meter unavailable for agent reply: ${error?.message}`);
+            //
+            // A refused connection lands here too, and belongs here: a number
+            // that is disconnected, ambiguous or has no usable credential
+            // cannot carry this reply either, and the agent needs to see that
+            // rather than watch it disappear.
+            this.logger.error(`[Spend] agent reply not authorised: ${error?.message}`);
             return 'refused' as const;
         }
     }

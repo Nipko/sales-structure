@@ -32,7 +32,7 @@ import { redactTurnLedger } from './agent-turn-ledger';
 import { operationalConfigurationHash } from '../persona/agent-configuration-revision';
 import { ensureSyntheticGlobalTables } from '../../common/__fixtures__/synthetic-global-tables';
 import type { StrictDispatchOutcome, StrictDispatchRequest } from '../channels/strict-dispatch-transport';
-import { permissiveSpendGate } from '../channels/__fixtures__/spend-gate-double';
+import { permissiveSpendGate, resolvingChannelToken } from '../channels/__fixtures__/spend-gate-double';
 
 const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
 const redisUrl = process.env.DISPATCH_QUEUE_TEST_REDIS_URL;
@@ -402,7 +402,8 @@ const ready = !!databaseUrl && !!redisUrl;
             hasAiMessageQuota: jest.fn(async () => true),
             incrementAiMessageCount: jest.fn(async () => undefined),
         };
-        const channelToken: any = { getChannelToken: jest.fn(async () => ({ accessToken: 'synthetic-token' })) };
+        const channelToken: any = resolvingChannelToken({
+            getChannelToken: jest.fn(async () => ({ accessToken: 'synthetic-token' })) });
 
         outbox = new AgentDispatchOutboxStore(prisma, redis);
         turnLedger = new AgentTurnLedgerStore(prisma);

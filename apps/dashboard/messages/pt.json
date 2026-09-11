@@ -14514,12 +14514,31 @@
       "cap_soft_stop": "O limite está quase no fim: as campanhas ficam pausadas e as respostas a quem escreve continuam saindo.",
       "task_budget_exhausted": "Esta campanha atingiu o próprio orçamento.",
       "account_paused": "Este número está pausado.",
-      "duplicate_recent_send": "Esta mesma mensagem já foi entregue a este contato agora há pouco."
+      "duplicate_recent_send": "Esta mesma mensagem já foi entregue a este contato agora há pouco.",
+      "category_unknown": "Não foi possível classificar esta mensagem em uma das cinco categorias que o WhatsApp cobra. Sincronize os modelos deste número.",
+      "market_unknown": "Não foi possível identificar o país do destinatário pelo número, então nenhuma tarifa se aplica. A mensagem continua sendo contada.",
+      "transmission_held_elsewhere": "Outra tentativa já tem o direito de enviar esta mensagem, então esta se afastou. Nada se perde.",
+      "transmission_outcome_unknown": "Uma tentativa anterior caiu com a requisição já iniciada. Ninguém pode saber se a Meta a processou, então não é reenviada: uma pessoa decide.",
+      "counter_currency_mismatch": "O contador deste período mantém seus valores em uma moeda e esta mensagem está tarifada em outra. É preciso decidir a moeda do período.",
+      "account_pause_unknown": "Não foi possível ler se este número está pausado por um problema de cobrança na Meta. Não é uma pausa: é que não conseguimos verificar.",
+      "effect_already_resolved": "Esta mensagem já tem um resultado, então nenhuma outra tentativa é autorizada. Enviá-la de novo seria uma mensagem nova.",
+      "effect_identity_missing": "Este envio não traz uma identidade durável, então uma nova tentativa não poderia ser distinguida de uma segunda mensagem. É um defeito de quem o produz."
     },
     "resume": "Retomar envios",
     "resumeConfirm": "Você já adicionou ou corrigiu a forma de pagamento na Meta? Vamos liberar os envios deste número de novo. Se a Meta recusar a cobrança outra vez, o número se pausa sozinho na próxima tentativa e você verá o motivo aqui.",
     "resumeDone": "Este número pode enviar de novo.",
     "awaitingResolution": "Envios que ninguém consegue confirmar",
-    "awaitingResolutionHint": "A Meta nunca nos disse o que aconteceu com {count} mensagem(ns) enviada(s) há mais de {hours} h. O dinheiro continua contado na sua conta porque pode ter sido gasto; esperar mais não vai decidir isso. Um administrador pode resolvê-las dizendo se chegaram ou não."
+    "awaitingResolutionHint": "A Meta nunca nos disse o que aconteceu com {count} mensagem(ns) enviada(s) há mais de {hours} h. O dinheiro continua contado na sua conta porque pode ter sido gasto; esperar mais não vai decidir isso. Um administrador pode resolvê-las dizendo se chegaram ou não.",
+    "pauseUnknown": "Não conseguimos ler o estado de cobrança",
+    "pauseUnknownHint": "Não é uma pausa: não conseguimos verificar se a Meta consegue cobrar desta conta. Enquanto isso nada é enviado. A verificação é repetida sozinha; se continuar, o problema é nosso.",
+    "thisMonth": "Este mês, número por número",
+    "noMonth": "Ainda não há consumo registrado no mês de faturamento de nenhum número.",
+    "monthLabel": "Mês de faturamento {month}",
+    "chargedThisMonth": "{count} entregas cobradas neste mês.",
+    "allowanceProgressLabel": "Mensagens de serviço gratuitas usadas pelo número {number}",
+    "onlyWhatWeSent": "Estes valores contam apenas o que a Parallly enviou. A mesma conta do WhatsApp pode receber cobranças de outro aplicativo ou de alguém escrevendo pela caixa de entrada da Meta, então esta não é a fatura completa.",
+    "undated": "{count} registro(s) que não puderam ser datados nem tarifados. Não entram em nenhum mês: precisam ser revisados à parte.",
+    "currency": "Moeda",
+    "exposureCaption": "Gasto do WhatsApp por moeda na janela selecionada"
   }
 }

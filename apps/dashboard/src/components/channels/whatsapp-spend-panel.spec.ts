@@ -1,6 +1,7 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { WhatsappSpendPanel, type WhatsappReadinessNumber } from './WhatsappSpendPanel';
+import { WhatsappSpendPanel } from './WhatsappSpendPanel';
+import type { WhatsappConsumption, WhatsappNumberPause } from '@/lib/whatsapp-spend';
 
 let mockLocale = 'es';
 const namespaces: Record<string, any> = Object.fromEntries(['es', 'en', 'pt', 'fr']
@@ -38,12 +39,36 @@ jest.mock('next-intl', () => ({
  * tests are about is whether the sentence and the control are THERE, in every
  * language the product ships.
  */
-const paused = (over: Partial<WhatsappReadinessNumber> = {}): WhatsappReadinessNumber => ({
+/**
+ * A pause exactly as `GET /whatsapp/spend/pauses` sends one.
+ *
+ * The previous fixture built a billing-time-zone row and set `paused: true` on
+ * it by hand — a field that endpoint has never returned. Every assertion below
+ * passed while the shipped screen showed nothing, because both sides of the
+ * seam agreed with each other and disagreed with production. The shape here is
+ * copied from the controller, field for field, so that stops being possible.
+ */
+const paused = (over: Partial<WhatsappNumberPause> = {}): WhatsappNumberPause => ({
     channelAccountId: '15550001111',
-    zone: 'America/Bogota',
-    resolution: { kind: 'mapped' },
-    guidance: 'Meta rechazó el cobro de este número.',
+    displayName: null,
     paused: true,
+    stateUnknown: false,
+    explanation: 'Meta rechazó el cobro de este número.',
+    since: '2026-10-02T09:00:00.000Z',
+    observations: 3,
+    clearedAt: null,
+    ...over,
+});
+
+const consumption = (over: Partial<WhatsappConsumption> = {}): WhatsappConsumption => ({
+    months: 12,
+    freeServiceDeliveriesPerNumberMonth: 1000,
+    consumption: [{
+        month: '2026-10', channelAccountId: '15550001111',
+        freeDeliveries: 640, chargedDeliveries: 212,
+        money: [{ currency: 'USD', settledMinor: 1240, retainedMinor: 0 }],
+        byMarketCategory: [],
+    }],
     ...over,
 });
 
@@ -55,7 +80,7 @@ describe('the WhatsApp spend panel', () => {
 
     it('offers a way out of a pause to somebody who can take it', () => {
         const markup = render({
-            summary: null, readiness: [paused()], onResume: async () => undefined,
+            summary: null, pauses: [paused()], onResume: async () => undefined,
         });
         expect(markup).toContain('Reanudar envíos');
         // And the number it is about, so a tenant with two knows which.
@@ -67,9 +92,65 @@ describe('the WhatsApp spend panel', () => {
         // decision about the business's own billing. A control that refuses
         // after being pressed teaches people the screen is broken, so it is
         // absent rather than disabled.
-        const markup = render({ summary: null, readiness: [paused()] });
+        const markup = render({ summary: null, pauses: [paused()] });
         expect(markup).toContain('Meta rechazó el cobro');
         expect(markup).not.toContain('Reanudar envíos');
+    });
+
+    it('says "we could not find out" instead of implying the number is fine', () => {
+        // `stateUnknown` is not `paused: false`. While it holds, nothing is
+        // sent — so rendering it as a healthy number would let an operator
+        // conclude nothing is wrong while nothing is going out.
+        const markup = render({
+            summary: null,
+            pauses: [paused({ paused: false, stateUnknown: true, explanation: null })],
+        });
+        expect(markup).toContain('No pudimos leer el estado de cobro');
+        // And not as the red "stopped" block, which would send somebody to add
+        // a card they may not need.
+        expect(markup).not.toContain('Envío pausado');
+    });
+
+    it('gives each number its own allowance for its own billing month', () => {
+        // Per number and per WABA-local calendar month, with the allowance
+        // itself coming from the payload. The panel used to add every number's
+        // free deliveries over a rolling thirty days and clamp the total at a
+        // hardcoded thousand, which reported an exhausted allowance to a tenant
+        // whose numbers each had hundreds left.
+        const markup = render({ summary: null, consumption: consumption() });
+        expect(markup).toContain('640 / 1000');
+        expect(markup).toContain('2026-10');
+        expect(markup).toContain('212');
+    });
+
+    it('never puts two currencies on one line', () => {
+        // Two currencies are two totals. Adding them would need an exchange
+        // rate nobody agreed to, so each is rendered beside its own code and
+        // there is no line underneath them.
+        const markup = render({
+            summary: null,
+            consumption: consumption({
+                consumption: [{
+                    month: '2026-10', channelAccountId: '15550001111',
+                    freeDeliveries: 10, chargedDeliveries: 4,
+                    money: [
+                        { currency: 'USD', settledMinor: 1240, retainedMinor: 0 },
+                        { currency: 'COP', settledMinor: 5100000, retainedMinor: 0 },
+                    ],
+                    byMarketCategory: [],
+                }],
+            }),
+        });
+        expect(markup).toContain('USD');
+        expect(markup).toContain('COP');
+    });
+
+    it('says these figures are not the whole bill', () => {
+        // What Parallly sent is not what Meta charged: the same account can be
+        // billed by another app or by a person using Meta's own inbox. A panel
+        // that implied otherwise would be read as a promise.
+        expect(render({ summary: null, consumption: consumption() }))
+            .toContain('cuentan solo lo que envió Parallly');
     });
 
     it('says how many sends nobody can confirm, and why the money is still counted', () => {
@@ -97,7 +178,7 @@ describe('the WhatsApp spend panel', () => {
             mockLocale = locale;
             const markup = render({
                 summary: null,
-                readiness: [paused()],
+                pauses: [paused()],
                 awaiting: { graceHours: 72, effects: [{ effectKey: 'a' }] },
                 onResume: async () => undefined,
             });

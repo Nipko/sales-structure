@@ -7,7 +7,9 @@ import {
     type WhatsappAwaitingResolution,
     type WhatsappReadinessNumber,
 } from "@/components/channels/WhatsappSpendPanel";
-import type { WhatsappSpendSummary } from "@/lib/whatsapp-spend";
+import type {
+    WhatsappConsumption, WhatsappNumberPause, WhatsappSpendSummary,
+} from "@/lib/whatsapp-spend";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
@@ -82,6 +84,18 @@ export default function WhatsAppSetupPage() {
     const [spend, setSpend] = useState<WhatsappSpendSummary | null>(null);
     const [awaiting, setAwaiting] = useState<WhatsappAwaitingResolution | null>(null);
     const [readiness, setReadiness] = useState<WhatsappReadinessNumber[]>([]);
+    // Which numbers Meta will not bill, from the endpoint that knows.
+    //
+    // This used to be inferred from a `paused` field on the billing-TIME-ZONE
+    // reading, which has never had one — so the filter was permanently empty,
+    // the explanation never rendered, and a number that had stopped delivering
+    // sat behind a green "Conectado" pill with nothing on screen connecting the
+    // two.
+    const [pauses, setPauses] = useState<WhatsappNumberPause[]>([]);
+    // Per number per WABA-local calendar month: the period the invoice uses and
+    // the period the free allowance resets in. The rolling summary above
+    // answers a different question and cannot answer this one.
+    const [consumption, setConsumption] = useState<WhatsappConsumption | null>(null);
 
     const loadData = async () => {
         setLoading(true);
@@ -123,17 +137,27 @@ export default function WhatsAppSetupPage() {
      * that is not connected yet has no spend to show, which is not an error.
      */
     const loadSpend = async () => {
-        const [summaryRes, readinessRes, awaitingRes] = await Promise.all([
+        const [summaryRes, readinessRes, awaitingRes, pausesRes, consumptionRes] = await Promise.all([
             api.fetch("/whatsapp/spend/summary?days=30").catch(() => null),
             api.fetch("/whatsapp/connection/billing-readiness").catch(() => null),
             // Effects whose delivery nobody can confirm. Read separately and
             // failing separately: money waiting on a person is worth showing
             // even when the summary could not be read, and vice versa.
             api.fetch("/whatsapp/spend/awaiting-resolution").catch(() => null),
+            // Which numbers Meta refused to bill. Its own endpoint, because it
+            // is its own fact: a pause is not a property of the billing zone,
+            // and reading it from there is how the panel came to be silent
+            // about the one thing that stops messages entirely.
+            api.fetch("/whatsapp/spend/pauses").catch(() => null),
+            // The calendar month Meta invoices, per number. Twelve so a tenant
+            // comparing a bill from a few months ago still finds the month.
+            api.fetch("/whatsapp/spend/consumption?months=12").catch(() => null),
         ]);
         setSpend((summaryRes as any)?.data ?? null);
         setReadiness(((readinessRes as any)?.data?.numbers ?? []) as WhatsappReadinessNumber[]);
         setAwaiting(((awaitingRes as any)?.data ?? null) as WhatsappAwaitingResolution | null);
+        setPauses(((pausesRes as any)?.data?.numbers ?? []) as WhatsappNumberPause[]);
+        setConsumption(((consumptionRes as any)?.data ?? null) as WhatsappConsumption | null);
     };
 
     /**
@@ -519,6 +543,8 @@ export default function WhatsAppSetupPage() {
                 <div className="mb-6">
                     <WhatsappSpendPanel
                         summary={spend}
+                        consumption={consumption}
+                        pauses={pauses}
                         readiness={readiness}
                         awaiting={awaiting}
                         // Resuming is a decision about the business's own

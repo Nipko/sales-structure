@@ -14514,12 +14514,31 @@
       "cap_soft_stop": "The limit is nearly reached: campaigns are paused and replies to people who write in are still going out.",
       "task_budget_exhausted": "This campaign reached its own budget.",
       "account_paused": "This number is paused.",
-      "duplicate_recent_send": "This exact message was already delivered to this contact moments ago."
+      "duplicate_recent_send": "This exact message was already delivered to this contact moments ago.",
+      "category_unknown": "This message could not be classified into one of the five categories WhatsApp charges by. Sync this number's templates.",
+      "market_unknown": "The recipient's country could not be identified from the number, so no rate line applies. The message is still counted.",
+      "transmission_held_elsewhere": "Another attempt already holds the right to send this message, so this one stood down. Nothing is lost.",
+      "transmission_outcome_unknown": "An earlier attempt died with the request already started. Nobody can know whether Meta processed it, so it is not sent again: a person decides.",
+      "counter_currency_mismatch": "This period's counter keeps its figures in one currency and this message is priced in another. The currency for the period has to be decided.",
+      "account_pause_unknown": "We could not read whether this number is paused over a billing problem at Meta. It is not a pause: we could not check it.",
+      "effect_already_resolved": "This message already has an outcome, so no further attempt is authorised. Sending it again would be a new message.",
+      "effect_identity_missing": "This send carries no durable identity, so a retry could not be told apart from a second message. It is a defect in the producer."
     },
     "resume": "Resume sending",
     "resumeConfirm": "Have you added or fixed the payment method in Meta? We will allow this number to send again. If Meta refuses the charge again, the number pauses itself on the next attempt and you will see the reason here.",
     "resumeDone": "This number can send again.",
     "awaitingResolution": "Sends nobody can confirm",
-    "awaitingResolutionHint": "Meta never told us what happened to {count} message(s) sent more than {hours} h ago. The money is still counted against your account because it may well have been spent; waiting longer will not decide it. An administrator can resolve them by saying whether they arrived."
+    "awaitingResolutionHint": "Meta never told us what happened to {count} message(s) sent more than {hours} h ago. The money is still counted against your account because it may well have been spent; waiting longer will not decide it. An administrator can resolve them by saying whether they arrived.",
+    "pauseUnknown": "We could not read this number's billing state",
+    "pauseUnknownHint": "This is not a pause: we could not check whether Meta can bill this account. Nothing goes out meanwhile. It is retried automatically; if it persists, the problem is on our side.",
+    "thisMonth": "This month, number by number",
+    "noMonth": "No usage recorded yet in any number's billing month.",
+    "monthLabel": "Billing month {month}",
+    "chargedThisMonth": "{count} charged deliveries this month.",
+    "allowanceProgressLabel": "Free service messages used by number {number}",
+    "onlyWhatWeSent": "These figures count only what Parallly sent. The same WhatsApp account can be charged by another app or by someone writing from Meta's own inbox, so this is not the whole bill.",
+    "undated": "{count} record(s) that could not be dated or priced. They belong to no month and have to be reviewed separately.",
+    "currency": "Currency",
+    "exposureCaption": "WhatsApp spend by currency over the selected window"
   }
 }

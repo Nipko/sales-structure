@@ -1,10 +1,11 @@
 "use client";
 
 import { useLocale, useTranslations } from "next-intl";
-import { AlertTriangle, Clock, Info, PauseCircle, Wallet } from "lucide-react";
+import { AlertTriangle, Clock, HelpCircle, Info, PauseCircle, Wallet } from "lucide-react";
 import {
-    allowanceRemaining, formatMinor, hasUnresolvedExposure,
-    type WhatsappSpendSummary,
+    formatMinor, hasUnresolvedExposure, latestMonthPerNumber, pausesWorthShowing,
+    undatedConsumption,
+    type WhatsappConsumption, type WhatsappNumberPause, type WhatsappSpendSummary,
 } from "@/lib/whatsapp-spend";
 
 /**
@@ -22,6 +23,12 @@ import {
  * explanation is not a tooltip or a help link — it is the first paragraph, and
  * it says whose money it is, where the card lives, and that the Parallly
  * subscription is separate and unchanged.
+ *
+ * ── AND THE THING IT MUST NOT DO ────────────────────────────────────────────
+ *
+ * Add two currencies. Every money figure below is rendered beside its own
+ * currency code and never against another; a row in pesos and a row in dollars
+ * are two rows, and there is no line at the bottom.
  */
 
 export interface WhatsappReadinessNumber {
@@ -29,7 +36,20 @@ export interface WhatsappReadinessNumber {
     zone: string | null;
     resolution: { kind: string; zones?: readonly string[] };
     guidance: string;
-    paused?: boolean;
+    /**
+     * Both halves of "can this number price anything": the zone dates the rate,
+     * the currency chooses the card.
+     *
+     * There is deliberately no `paused` here. This shape comes from
+     * `GET /whatsapp/connection/billing-readiness`, which is about the billing
+     * TIME ZONE and returns no such field — the panel used to filter on one
+     * anyway, so the pause block never rendered and the number that had stopped
+     * sending looked healthy. Pause state has its own endpoint and its own
+     * prop.
+     */
+    currency?: string | null;
+    currencyStale?: boolean;
+    currencyGuidance?: string;
 }
 
 /** Effects that outlived the grace period with no answer from the provider. */
@@ -38,8 +58,12 @@ export interface WhatsappAwaitingResolution {
     effects: ReadonlyArray<{ effectKey: string }>;
 }
 
-export function WhatsappSpendPanel({ summary, readiness, awaiting, onResume }: {
+export function WhatsappSpendPanel({ summary, consumption, pauses, readiness, awaiting, onResume }: {
     summary: WhatsappSpendSummary | null;
+    /** Per number per WABA-local calendar month: the period the invoice uses. */
+    consumption?: WhatsappConsumption | null;
+    /** Which numbers Meta will not bill, and which ones we could not ask about. */
+    pauses?: readonly WhatsappNumberPause[];
     readiness?: readonly WhatsappReadinessNumber[];
     awaiting?: WhatsappAwaitingResolution | null;
     /**
@@ -56,11 +80,14 @@ export function WhatsappSpendPanel({ summary, readiness, awaiting, onResume }: {
     const t = useTranslations("whatsappSpend");
     const locale = useLocale();
 
-    const allowance = allowanceRemaining(summary?.exposure ?? []);
     const unresolved = hasUnresolvedExposure(summary?.exposure ?? []);
     const pending = (readiness ?? []).filter(number => number.resolution.kind === "unmapped");
     const contradictory = (readiness ?? []).filter(number => number.resolution.kind === "contradictory");
-    const paused = (readiness ?? []).filter(number => number.paused);
+    const attention = pausesWorthShowing(pauses);
+    const stopped = attention.filter(number => number.paused);
+    const unreadable = attention.filter(number => !number.paused && number.stateUnknown);
+    const months = latestMonthPerNumber(consumption);
+    const undated = undatedConsumption(consumption);
 
     return (
         <section className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-5 space-y-5">
@@ -76,27 +103,33 @@ export function WhatsappSpendPanel({ summary, readiness, awaiting, onResume }: {
             </header>
 
             {/* ── Anything stopping a send comes first ─────────────────────── */}
-            {paused.length > 0 && (
-                <div className="rounded-lg border border-[var(--danger)]/40 bg-[var(--danger)]/10 p-4 space-y-2">
+            {stopped.length > 0 && (
+                <div role="alert"
+                    className="rounded-lg border border-[var(--danger)]/40 bg-[var(--danger)]/10 p-4 space-y-2">
                     <p className="flex items-center gap-2 text-sm text-[var(--text-primary)]">
                         <PauseCircle className="h-4 w-4 text-[var(--danger)]" aria-hidden />
+                        {/* The word "pausado" carries the state, so the red does not
+                            have to. A person who cannot see the colour reads the
+                            same fact in the same place. */}
                         {t("paused")}
                     </p>
                     <p className="text-sm text-[var(--text-secondary)]">{t("pausedHint")}</p>
                     <ul className="space-y-2">
-                        {paused.map(number => (
+                        {stopped.map(number => (
                             <li key={number.channelAccountId}
                                 className="text-sm text-[var(--text-secondary)] flex flex-wrap items-center gap-2">
                                 <span>
-                                    <span className="text-[var(--text-primary)]">{number.channelAccountId}</span>
-                                    {" — "}{number.guidance}
+                                    <span className="text-[var(--text-primary)]">
+                                        {number.displayName ?? number.channelAccountId}
+                                    </span>
+                                    {number.explanation ? " — " : ""}{number.explanation ?? ""}
                                 </span>
                                 {/* ── THE WAY OUT THAT NEEDS NO SEND ──────────────
                                     A pause lifts by itself when Meta accepts a
                                     message. A paused number sends nothing, so
                                     that proof can never arrive on its own: without
                                     this button the only exit would be the POST the
-                                    pause exists to prevent. */}
+                                    pause itself prevents. */}
                                 {onResume && (
                                     <button
                                         type="button"
@@ -105,11 +138,35 @@ export function WhatsappSpendPanel({ summary, readiness, awaiting, onResume }: {
                                             void onResume(number.channelAccountId);
                                         }}
                                         className="rounded-md border border-[var(--border)] px-2 py-1 text-xs
-                                                   text-[var(--text-primary)] hover:bg-[var(--bg-secondary)]"
+                                                   text-[var(--text-primary)] hover:bg-[var(--bg-secondary)]
+                                                   focus-visible:outline focus-visible:outline-2
+                                                   focus-visible:outline-offset-2"
                                     >
                                         {t("resume")}
                                     </button>
                                 )}
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+            )}
+
+            {/* ── "We could not find out" is not "it is running" ───────────── */}
+            {unreadable.length > 0 && (
+                <div role="alert"
+                    className="rounded-lg border border-[var(--warning)]/40 bg-[var(--warning)]/10 p-4 space-y-2">
+                    <p className="flex items-center gap-2 text-sm text-[var(--text-primary)]">
+                        <HelpCircle className="h-4 w-4 text-[var(--warning)]" aria-hidden />
+                        {t("pauseUnknown")}
+                    </p>
+                    <p className="text-sm text-[var(--text-secondary)]">{t("pauseUnknownHint")}</p>
+                    <ul className="space-y-1">
+                        {unreadable.map(number => (
+                            <li key={number.channelAccountId} className="text-sm text-[var(--text-secondary)]">
+                                <span className="text-[var(--text-primary)]">
+                                    {number.displayName ?? number.channelAccountId}
+                                </span>
+                                {number.explanation ? " — " : ""}{number.explanation ?? ""}
                             </li>
                         ))}
                     </ul>
@@ -160,27 +217,96 @@ export function WhatsappSpendPanel({ summary, readiness, awaiting, onResume }: {
                 </div>
             )}
 
-            {/* ── The free thousand ────────────────────────────────────────── */}
-            <div className="space-y-2">
-                <div className="flex items-baseline justify-between gap-3">
-                    <span className="text-sm text-[var(--text-secondary)]">{t("freeAllowance")}</span>
-                    <span className="text-sm text-[var(--text-primary)] tabular-nums">
-                        {allowance.used} / {allowance.total}
-                    </span>
-                </div>
-                <div className="h-2 rounded-full bg-[var(--bg-secondary)] overflow-hidden">
-                    <div
-                        className="h-full bg-[var(--accent)]"
-                        style={{ width: `${Math.round((allowance.used / allowance.total) * 100)}%` }}
-                        role="progressbar"
-                        aria-valuenow={allowance.used}
-                        aria-valuemin={0}
-                        aria-valuemax={allowance.total}
-                    />
-                </div>
-                <p className="text-xs text-[var(--text-secondary)]">
-                    {t("freeAllowanceHint", { used: allowance.used, total: allowance.total })}
-                </p>
+            {/* ══ THIS CALENDAR MONTH, PER NUMBER ══════════════════════════════
+                The period Meta invoices and the period the free allowance
+                resets in — both counted in the WhatsApp account's own time
+                zone, and both per NUMBER. The rolling window below answers a
+                different question and is kept visibly separate from this one. */}
+            <div className="space-y-3" aria-live="polite">
+                <h3 className="text-sm text-[var(--text-primary)]">{t("thisMonth")}</h3>
+                {months.length === 0 ? (
+                    <p className="text-sm text-[var(--text-secondary)]">{t("noMonth")}</p>
+                ) : (
+                    <ul className="space-y-4">
+                        {months.map(number => {
+                            const used = Math.min(number.freeDeliveries, number.allowance);
+                            const percent = number.allowance > 0
+                                ? Math.round((used / number.allowance) * 100) : 0;
+                            return (
+                                <li key={number.channelAccountId} className="space-y-2">
+                                    <div className="flex flex-wrap items-baseline justify-between gap-2">
+                                        <span className="text-sm text-[var(--text-primary)]">
+                                            {number.channelAccountId}
+                                        </span>
+                                        <span className="text-xs text-[var(--text-secondary)]">
+                                            {t("monthLabel", { month: number.month })}
+                                        </span>
+                                    </div>
+                                    <div className="flex items-baseline justify-between gap-3">
+                                        <span className="text-sm text-[var(--text-secondary)]">
+                                            {t("freeAllowance")}
+                                        </span>
+                                        <span className="text-sm text-[var(--text-primary)] tabular-nums">
+                                            {number.freeDeliveries} / {number.allowance}
+                                        </span>
+                                    </div>
+                                    <div className="h-2 rounded-full bg-[var(--bg-secondary)] overflow-hidden">
+                                        <div
+                                            className="h-full bg-[var(--accent)]"
+                                            style={{ width: percent + "%" }}
+                                            role="progressbar"
+                                            aria-label={t("allowanceProgressLabel", {
+                                                number: number.channelAccountId,
+                                            })}
+                                            aria-valuenow={used}
+                                            aria-valuemin={0}
+                                            aria-valuemax={number.allowance}
+                                        />
+                                    </div>
+                                    <p className="text-xs text-[var(--text-secondary)]">
+                                        {t("freeAllowanceHint", {
+                                            used: number.freeDeliveries, total: number.allowance,
+                                        })}
+                                    </p>
+                                    <p className="text-sm text-[var(--text-secondary)]">
+                                        {t("chargedThisMonth", { count: number.chargedDeliveries })}
+                                    </p>
+                                    {/* One line per currency, and no line under them.
+                                        Two accounts in two currencies are two totals;
+                                        adding them would need a rate nobody agreed to. */}
+                                    <ul className="space-y-1">
+                                        {number.money.map(money => (
+                                            <li key={money.currency}
+                                                className="flex flex-wrap items-baseline justify-between gap-3
+                                                           text-sm text-[var(--text-secondary)]">
+                                                <span>{t("settled")} · {money.currency}</span>
+                                                <span className="text-[var(--text-primary)] tabular-nums">
+                                                    {formatMinor(money.settledMinor, money.currency, locale)}
+                                                    {money.retainedMinor > 0 && (
+                                                        <>
+                                                            {" · "}{t("retained")}{" "}
+                                                            {formatMinor(money.retainedMinor, money.currency, locale)}
+                                                        </>
+                                                    )}
+                                                </span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </li>
+                            );
+                        })}
+                    </ul>
+                )}
+                {/* A ceiling, and every figure above it, bounds only what Parallly
+                    sent. The same WhatsApp account can be charged by another app
+                    or by a person using Meta's own inbox, so this must not be read
+                    as the whole bill. */}
+                <p className="text-xs text-[var(--text-secondary)]">{t("onlyWhatWeSent")}</p>
+                {undated.length > 0 && (
+                    <p className="text-xs text-[var(--warning)]">
+                        {t("undated", { count: undated.length })}
+                    </p>
+                )}
             </div>
 
             {/* ── What it cost, per currency, never summed ─────────────────── */}
@@ -195,18 +321,26 @@ export function WhatsappSpendPanel({ summary, readiness, awaiting, onResume }: {
                     </div>
                     <div className="overflow-x-auto">
                         <table className="w-full text-sm">
+                            <caption className="sr-only">{t("exposureCaption")}</caption>
                             <thead>
                                 <tr className="text-left text-[var(--text-secondary)]">
-                                    <th className="py-1 pr-4 font-normal">{t("settled")}</th>
-                                    <th className="py-1 pr-4 font-normal">{t("reserved")}</th>
-                                    <th className="py-1 pr-4 font-normal">{t("retained")}</th>
-                                    <th className="py-1 pr-4 font-normal">{t("released")}</th>
-                                    <th className="py-1 font-normal">{t("delivered")}</th>
+                                    <th scope="col" className="py-1 pr-4 font-normal">{t("currency")}</th>
+                                    <th scope="col" className="py-1 pr-4 font-normal">{t("settled")}</th>
+                                    <th scope="col" className="py-1 pr-4 font-normal">{t("reserved")}</th>
+                                    <th scope="col" className="py-1 pr-4 font-normal">{t("retained")}</th>
+                                    <th scope="col" className="py-1 pr-4 font-normal">{t("released")}</th>
+                                    <th scope="col" className="py-1 font-normal">{t("delivered")}</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {summary.exposure.map(row => (
                                     <tr key={row.currency} className="text-[var(--text-primary)]">
+                                        {/* The currency in its own cell rather than only
+                                            inside each formatted amount: a reader
+                                            scanning the row has to be able to see which
+                                            money this line is, and a screen reader has
+                                            to be able to announce it once. */}
+                                        <th scope="row" className="py-1 pr-4 font-normal">{row.currency}</th>
                                         <td className="py-1 pr-4 tabular-nums">
                                             {formatMinor(row.settledMinor, row.currency, locale)}
                                         </td>
@@ -238,12 +372,13 @@ export function WhatsappSpendPanel({ summary, readiness, awaiting, onResume }: {
                     <h3 className="text-sm text-[var(--text-primary)]">{t("byCategory")}</h3>
                     <div className="overflow-x-auto">
                         <table className="w-full text-sm">
+                            <caption className="sr-only">{t("byCategory")}</caption>
                             <thead>
                                 <tr className="text-left text-[var(--text-secondary)]">
-                                    <th className="py-1 pr-4 font-normal">{t("category")}</th>
-                                    <th className="py-1 pr-4 font-normal">{t("market")}</th>
-                                    <th className="py-1 pr-4 font-normal">{t("settled")}</th>
-                                    <th className="py-1 font-normal">{t("started")}</th>
+                                    <th scope="col" className="py-1 pr-4 font-normal">{t("category")}</th>
+                                    <th scope="col" className="py-1 pr-4 font-normal">{t("market")}</th>
+                                    <th scope="col" className="py-1 pr-4 font-normal">{t("settled")}</th>
+                                    <th scope="col" className="py-1 font-normal">{t("started")}</th>
                                 </tr>
                             </thead>
                             <tbody>

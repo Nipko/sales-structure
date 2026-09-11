@@ -14514,12 +14514,31 @@
       "cap_soft_stop": "La limite est presque atteinte : les campagnes sont en pause et les réponses aux personnes qui écrivent partent toujours.",
       "task_budget_exhausted": "Cette campagne a atteint son propre budget.",
       "account_paused": "Ce numéro est en pause.",
-      "duplicate_recent_send": "Ce message exact vient d’être livré à ce contact."
+      "duplicate_recent_send": "Ce message exact vient d’être livré à ce contact.",
+      "category_unknown": "Ce message n'a pas pu être classé dans l'une des cinq catégories facturées par WhatsApp. Synchronisez les modèles de ce numéro.",
+      "market_unknown": "Le pays du destinataire n'a pas pu être identifié à partir du numéro, aucun tarif ne s'applique donc. Le message est quand même compté.",
+      "transmission_held_elsewhere": "Une autre tentative détient déjà le droit d'envoyer ce message, celle-ci s'est donc retirée. Rien n'est perdu.",
+      "transmission_outcome_unknown": "Une tentative précédente s'est interrompue alors que la requête avait déjà commencé. Personne ne peut savoir si Meta l'a traitée : le message n'est donc pas renvoyé, une personne tranche.",
+      "counter_currency_mismatch": "Le compteur de cette période tient ses chiffres dans une devise et ce message est tarifé dans une autre. Il faut décider de la devise de la période.",
+      "account_pause_unknown": "Impossible de lire si ce numéro est en pause à cause d'un problème de facturation chez Meta. Ce n'est pas une pause : nous n'avons pas pu le vérifier.",
+      "effect_already_resolved": "Ce message a déjà un résultat, aucune nouvelle tentative n'est donc autorisée. Le renvoyer serait un nouveau message.",
+      "effect_identity_missing": "Cet envoi ne porte pas d'identité durable : une nouvelle tentative serait indiscernable d'un second message. C'est un défaut du producteur."
     },
     "resume": "Reprendre les envois",
     "resumeConfirm": "Avez-vous ajouté ou corrigé le moyen de paiement dans Meta ? Nous allons réautoriser les envois depuis ce numéro. Si Meta refuse à nouveau le paiement, le numéro se met en pause de lui-même au prochain essai et vous en verrez la raison ici.",
     "resumeDone": "Ce numéro peut de nouveau envoyer.",
     "awaitingResolution": "Envois que personne ne peut confirmer",
-    "awaitingResolutionHint": "Meta ne nous a jamais dit ce qu’il est advenu de {count} message(s) envoyé(s) il y a plus de {hours} h. La somme reste comptée sur votre compte car elle a peut-être été dépensée ; attendre davantage ne le décidera pas. Un administrateur peut les résoudre en indiquant s’ils sont arrivés."
+    "awaitingResolutionHint": "Meta ne nous a jamais dit ce qu’il est advenu de {count} message(s) envoyé(s) il y a plus de {hours} h. La somme reste comptée sur votre compte car elle a peut-être été dépensée ; attendre davantage ne le décidera pas. Un administrateur peut les résoudre en indiquant s’ils sont arrivés.",
+    "pauseUnknown": "Nous n'avons pas pu lire l'état de facturation",
+    "pauseUnknownHint": "Ce n'est pas une pause : nous n'avons pas pu vérifier si Meta peut facturer ce compte. Rien n'est envoyé entre-temps. La vérification est relancée automatiquement ; si cela persiste, le problème vient de chez nous.",
+    "thisMonth": "Ce mois-ci, numéro par numéro",
+    "noMonth": "Aucune consommation enregistrée pour l'instant dans le mois de facturation d'un numéro.",
+    "monthLabel": "Mois de facturation {month}",
+    "chargedThisMonth": "{count} livraisons facturées ce mois-ci.",
+    "allowanceProgressLabel": "Messages de service gratuits utilisés par le numéro {number}",
+    "onlyWhatWeSent": "Ces chiffres ne comptent que ce que Parallly a envoyé. Le même compte WhatsApp peut être facturé par une autre application ou par quelqu'un qui écrit depuis la boîte de réception de Meta : ce n'est donc pas la facture complète.",
+    "undated": "{count} enregistrement(s) qui n'ont pu être ni datés ni tarifés. Ils n'entrent dans aucun mois : il faut les examiner à part.",
+    "currency": "Devise",
+    "exposureCaption": "Dépense WhatsApp par devise sur la période sélectionnée"
   }
 }

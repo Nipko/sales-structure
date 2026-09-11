@@ -1,0 +1,553 @@
+import { randomUUID } from 'crypto';
+import { Client } from 'pg';
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
+import {
+    adoptReservation, claimReservation, ensureCounters, findReservation, grantFreeDeliveries,
+    readExposure, recordAllocation, releaseReservation, reserveAgainstCounter, retainReservation,
+    settleReservation, sweepExpiredLeases,
+    type ReservationIdentity, type SpendQuery,
+} from './spend-ledger';
+import { scopesFor } from './spend-scopes';
+
+/**
+ * ═══ THE MONEY ENGINE AGAINST A REAL POSTGRESQL ═══
+ *
+ * Every case here is one of the three failures the design exists for, and none
+ * of them can be shown with a doubled database:
+ *
+ *   1. Two producers take the last budget at the same time. Concurrent
+ *      transactions on real rows, not sequential calls — a sequential test
+ *      passes against a design that has no locking at all.
+ *   2. A timeout after acceptance. The reservation must stay counted; releasing
+ *      it is how money gets spent with nothing holding it.
+ *   3. An uncertain COMMIT. The worker reconnects and reaches the SAME
+ *      reservation through `effect_key`, or discovers there is none.
+ */
+const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
+const integration = connection ? describe : describe.skip;
+
+integration('the WhatsApp spend engine', () => {
+    const schema = `tenant_spendengine_${randomUUID().replace(/-/g, '')}`;
+    const TENANT = randomUUID();
+    let client: Client;
+    jest.setTimeout(120_000);
+
+    const query: SpendQuery = async <R = any[]>(sql: string, params: any[] = []): Promise<R> =>
+        (await client.query(sql, params)).rows as any;
+
+    const identity = (over: Partial<ReservationIdentity> = {}): ReservationIdentity => ({
+        tenantId: TENANT, channelType: 'whatsapp', channelAccountId: '15550001111',
+        channelAddress: '+1 555 000 1111',
+        payerKind: 'business_direct', payerWabaId: 'waba-1', payerBusinessId: 'biz-1',
+        credentialId: 'cred-1', credentialSource: 'system_user',
+        recipientScope: 'customer', recipientRef: 'contact-1',
+        category: 'service', market: 'CO', currency: 'USD',
+        rateVersion: 'card-2026-10', appliedLocalDate: '2026-10-05',
+        admissionReason: 'inbound_reply', ...over,
+    });
+
+    const money = (reservedMinor: number, over: Record<string, unknown> = {}) => ({
+        basis: 'priced' as const, decision: 'accepted' as const,
+        reservedMinor, unitCeilingMinor: 100, exactMicros: reservedMinor * 10_000,
+        freeDeliveries: 0, chargedDeliveries: 1, ...over,
+    });
+
+    /** A counter with a money ceiling, reset for each case. */
+    const moneyCounter = async (scopeKey: string, capMinor: number) => {
+        await query(`INSERT INTO "${schema}".whatsapp_spend_counters
+            (scope_kind, scope_key, period_key, cap_kind, cap_minor, currency)
+            VALUES ('account',$1,'2026-10','money',$2,'USD')
+            ON CONFLICT (scope_kind, scope_key, period_key)
+            DO UPDATE SET cap_kind='money', cap_minor=$2, currency='USD',
+                reserved_minor=0, settled_minor=0, released_minor=0, used_deliveries=0`,
+            [scopeKey, capMinor]);
+    };
+
+    const counterRow = async (scopeKey: string) => (await query<any[]>(
+        `SELECT * FROM "${schema}".whatsapp_spend_counters
+          WHERE scope_kind='account' AND scope_key=$1 AND period_key='2026-10'`, [scopeKey]))[0];
+
+    /** One full reserve: lock, check the cap, claim, allocate. In one transaction. */
+    const reserveOn = async (runner: Client, scopeKey: string, effectKey: string, amount: number) => {
+        const run: SpendQuery = async <R = any[]>(sql: string, params: any[] = []): Promise<R> =>
+            (await runner.query(sql, params)).rows as any;
+        const scope = { kind: 'account' as const, key: scopeKey, period: '2026-10' };
+        const allowed = await reserveAgainstCounter(run, schema, {
+            scope, amountMinor: amount, deliveries: 1,
+        });
+        if (!allowed) return { allowed: false as const };
+        const reservation = await claimReservation(run, schema, {
+            effectKey, identity: identity(), money: money(amount), leaseSeconds: 60,
+        });
+        if (reservation) await recordAllocation(run, schema, reservation.id,
+            { scope, amountMinor: amount, deliveries: 1 }, 'USD');
+        return { allowed: true as const, reservation };
+    };
+
+    /** How many backends are currently blocked on a lock in this database. */
+    const blockedBackends = async (): Promise<number> => {
+        const [row] = await query<any[]>(
+            `SELECT count(*)::int AS waiting FROM pg_stat_activity
+              WHERE wait_event_type = 'Lock' AND datname = current_database()`);
+        return Number(row?.waiting ?? 0);
+    };
+
+    /** Wait on a condition, never on the clock. */
+    const until = async (what: string, condition: () => Promise<boolean>, timeoutMs = 15_000) => {
+        const deadline = Date.now() + timeoutMs;
+        for (;;) {
+            if (await condition()) return;
+            if (Date.now() > deadline) throw new Error(`timed_out_waiting_for: ${what}`);
+            await new Promise(resolve => setTimeout(resolve, 20));
+        }
+    };
+
+    beforeAll(async () => {
+        const url = new URL(connection!);
+        if (!['127.0.0.1', 'localhost'].includes(url.hostname) || !url.pathname.endsWith('_eval_isolation')) {
+            throw new Error('disposable_loopback_database_required');
+        }
+        client = new Client({ connectionString: connection });
+        await client.connect();
+        await query(`CREATE SCHEMA "${schema}"`);
+        // The real DDL, from the checked-in definition of a tenant.
+        const tenantSchema = readFileSync(resolve(__dirname, '../../../../prisma/tenant-schema.sql'), 'utf8');
+        const block = tenantSchema.split('-- BEGIN WHATSAPP SPEND LEDGER')[1]
+            ?.split('-- END WHATSAPP SPEND LEDGER')[0];
+        if (!block) throw new Error('tenant_schema_block_missing');
+        for (const statement of block.replace(/^\s*--.*$/gm, '').split(';').filter(value => value.trim())) {
+            await query(statement.replaceAll('{{SCHEMA_NAME}}', schema));
+        }
+    });
+
+    afterAll(async () => {
+        if (!client) return;
+        try {
+            if (!/^tenant_spendengine_[a-f0-9]{32}$/.test(schema)) throw new Error('invalid_cleanup_scope');
+            await query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
+        } finally { await client.end(); }
+    });
+
+    describe('two producers and one last amount', () => {
+        it('lets exactly one through, and the sum never exceeds the cap', async () => {
+            // 80 cents left, two producers each wanting 60.
+            //
+            // The interleaving is written out rather than raced with
+            // `Promise.all`, because the second transaction BLOCKS on the row
+            // lock until the first commits — and a `Promise.all` that awaits
+            // both before committing either simply hangs. Spelling it out is
+            // also what makes the assertion meaningful: the second writer is
+            // provably still holding a lock when the first commits, so what
+            // refuses it is the re-evaluated predicate and not luck.
+            const scopeKey = `race-${randomUUID()}`;
+            await moneyCounter(scopeKey, 80);
+
+            const [left, right] = [new Client({ connectionString: connection }),
+                new Client({ connectionString: connection })];
+            await Promise.all([left.connect(), right.connect()]);
+            try {
+                await left.query('BEGIN');
+                await right.query('BEGIN');
+
+                // The first takes the row and holds it.
+                const first = await reserveOn(left, scopeKey, `race-a-${randomUUID()}`, 60);
+                expect(first.allowed).toBe(true);
+
+                // The second starts and blocks. Not awaited yet, on purpose.
+                const contending = reserveOn(right, scopeKey, `race-b-${randomUUID()}`, 60);
+                await until('the second writer to be waiting on the row lock',
+                    async () => (await blockedBackends()) > 0);
+
+                await left.query('COMMIT');
+                const second = await contending;
+                await right.query('COMMIT');
+
+                // The predicate re-evaluated against what the first committed.
+                expect(second.allowed).toBe(false);
+                const counter = await counterRow(scopeKey);
+                expect(Number(counter.reserved_minor)).toBe(60);
+                expect(Number(counter.reserved_minor)).toBeLessThanOrEqual(Number(counter.cap_minor));
+            } finally { await Promise.all([left.end(), right.end()]); }
+        });
+
+        it('lets both through when both fit, so the refusal is the cap and not the lock', async () => {
+            const scopeKey = `fits-${randomUUID()}`;
+            await moneyCounter(scopeKey, 200);
+            const [left, right] = [new Client({ connectionString: connection }),
+                new Client({ connectionString: connection })];
+            await Promise.all([left.connect(), right.connect()]);
+            try {
+                await left.query('BEGIN');
+                await right.query('BEGIN');
+                const first = await reserveOn(left, scopeKey, `fit-a-${randomUUID()}`, 60);
+                const contending = reserveOn(right, scopeKey, `fit-b-${randomUUID()}`, 60);
+                await until('the second writer to be waiting on the row lock',
+                    async () => (await blockedBackends()) > 0);
+                await left.query('COMMIT');
+                const second = await contending;
+                await right.query('COMMIT');
+                // Same contention, different ceiling: both fit, so both pass.
+                expect([first.allowed, second.allowed]).toEqual([true, true]);
+                expect(Number((await counterRow(scopeKey)).reserved_minor)).toBe(120);
+            } finally { await Promise.all([left.end(), right.end()]); }
+        });
+    });
+
+    describe('two producers and the thousandth free delivery', () => {
+        it('grants it to one of them and prices the other', async () => {
+            // 999 used of 1,000. Deciding the split before the lock is the same
+            // read-then-write bug: both would see one free and only one is.
+            const scopeKey = `free-${randomUUID()}`;
+            await query(`INSERT INTO "${schema}".whatsapp_spend_counters
+                (scope_kind, scope_key, period_key, cap_kind, cap_deliveries, used_deliveries)
+                VALUES ('number_month',$1,'2026-10','deliveries',1000,999)`, [scopeKey]);
+            const scope = { kind: 'number_month' as const, key: scopeKey, period: '2026-10' };
+            const asQuery = (runner: Client): SpendQuery =>
+                async <R = any[]>(sql: string, params: any[] = []): Promise<R> =>
+                    (await runner.query(sql, params)).rows as any;
+
+            const [left, right] = [new Client({ connectionString: connection }),
+                new Client({ connectionString: connection })];
+            await Promise.all([left.connect(), right.connect()]);
+            try {
+                await left.query('BEGIN');
+                await right.query('BEGIN');
+                const first = await grantFreeDeliveries(asQuery(left), schema, scope, 1);
+                const contending = grantFreeDeliveries(asQuery(right), schema, scope, 1);
+                await until('the second writer to be waiting on the allowance row',
+                    async () => (await blockedBackends()) > 0);
+                await left.query('COMMIT');
+                const second = await contending;
+                await right.query('COMMIT');
+                // One free, one priced. Never two free out of one.
+                expect([first, second].sort()).toEqual([0, 1]);
+            } finally { await Promise.all([left.end(), right.end()]); }
+        });
+    });
+
+    describe('a timeout after acceptance', () => {
+        it('keeps the whole amount counted and never releases', async () => {
+            const effectKey = `timeout-${randomUUID()}`;
+            const scopeKey = `timeout-${randomUUID()}`;
+            await moneyCounter(scopeKey, 1000);
+            await reserveOn(client, scopeKey, effectKey, 8);
+
+            const retained = await retainReservation(query, schema, {
+                effectKey, state: 'indeterminate', reason: 'timeout_without_message_id',
+                remoteState: 'unknown',
+            });
+            expect(retained?.state).toBe('indeterminate');
+            // The exposure is the FULL amount, not zero and not a fraction.
+            const counter = await counterRow(scopeKey);
+            expect(Number(counter.reserved_minor)).toBe(8);
+            expect(Number(counter.released_minor)).toBe(0);
+        });
+
+        it('is not turned into a release by the lease sweeper', async () => {
+            // A reservation held by a crashed worker would otherwise pin budget
+            // forever. But the attempt may have reached the provider, so the
+            // sweeper makes it VISIBLE rather than giving the money back.
+            const effectKey = `sweep-${randomUUID()}`;
+            const scopeKey = `sweep-${randomUUID()}`;
+            await moneyCounter(scopeKey, 1000);
+            await reserveOn(client, scopeKey, effectKey, 8);
+            await query(`UPDATE "${schema}".whatsapp_spend_reservations
+                SET lease_expires_at = clock_timestamp() - INTERVAL '1 minute'
+                WHERE effect_key = $1`, [effectKey]);
+
+            expect(await sweepExpiredLeases(query, schema)).toContain(effectKey);
+            const row = await findReservation(query, schema, effectKey);
+            expect(row?.state).toBe('indeterminate');
+            expect(Number((await counterRow(scopeKey)).released_minor)).toBe(0);
+        });
+
+        it('leaves a live lease alone', async () => {
+            const effectKey = `live-${randomUUID()}`;
+            const scopeKey = `live-${randomUUID()}`;
+            await moneyCounter(scopeKey, 1000);
+            await reserveOn(client, scopeKey, effectKey, 8);
+            expect(await sweepExpiredLeases(query, schema)).not.toContain(effectKey);
+            expect((await findReservation(query, schema, effectKey))?.state).toBe('held');
+        });
+    });
+
+    describe('an uncertain COMMIT', () => {
+        it('finds the same reservation through the effect key when it committed', async () => {
+            const effectKey = `commit-yes-${randomUUID()}`;
+            const scopeKey = `commit-yes-${randomUUID()}`;
+            await moneyCounter(scopeKey, 1000);
+            const first = await reserveOn(client, scopeKey, effectKey, 8);
+
+            // A different connection is the closest thing to "the worker
+            // reconnected": nothing in memory, only what was committed.
+            const reconnected = new Client({ connectionString: connection });
+            await reconnected.connect();
+            try {
+                const found = await findReservation(async (sql, params) =>
+                    (await reconnected.query(sql, params as any[])).rows as any, schema, effectKey);
+                expect(found?.id).toBe(first.reservation!.id);
+            } finally { await reconnected.end(); }
+        });
+
+        it('finds nothing when it did not commit, so the retry claims cleanly', async () => {
+            const effectKey = `commit-no-${randomUUID()}`;
+            const scopeKey = `commit-no-${randomUUID()}`;
+            await moneyCounter(scopeKey, 1000);
+
+            const doomed = new Client({ connectionString: connection });
+            await doomed.connect();
+            try {
+                await doomed.query('BEGIN');
+                await reserveOn(doomed, scopeKey, effectKey, 8);
+                await doomed.query('ROLLBACK');
+            } finally { await doomed.end(); }
+
+            expect(await findReservation(query, schema, effectKey)).toBeNull();
+            // And the counter has nothing held for a reservation that never was.
+            expect(Number((await counterRow(scopeKey)).reserved_minor)).toBe(0);
+            // The retry then claims for real.
+            const retry = await reserveOn(client, scopeKey, effectKey, 8);
+            expect(retry.allowed).toBe(true);
+        });
+
+        it('adopts rather than claiming a second time', async () => {
+            const effectKey = `adopt-${randomUUID()}`;
+            const scopeKey = `adopt-${randomUUID()}`;
+            await moneyCounter(scopeKey, 1000);
+            const first = await reserveOn(client, scopeKey, effectKey, 8);
+
+            const again = await claimReservation(query, schema, {
+                effectKey, identity: identity(), money: money(8), leaseSeconds: 60,
+            });
+            expect(again).toBeNull(); // the unique key refused the second claim
+
+            const adopted = await adoptReservation(query, schema, effectKey, 60);
+            expect(adopted?.id).toBe(first.reservation!.id);
+            expect(adopted?.adopted).toBe(1);
+            // One reservation, one exposure. Not two.
+            expect(Number((await counterRow(scopeKey)).reserved_minor)).toBe(8);
+        });
+
+        it('adopts a retained reservation with its uncertainty, not a fresh one', async () => {
+            // A retry inherits the original doubt. Giving it a clean reservation
+            // would be the platform forgetting that a message may already have
+            // gone out.
+            const effectKey = `adopt-unknown-${randomUUID()}`;
+            const scopeKey = `adopt-unknown-${randomUUID()}`;
+            await moneyCounter(scopeKey, 1000);
+            await reserveOn(client, scopeKey, effectKey, 8);
+            await retainReservation(query, schema, {
+                effectKey, state: 'indeterminate', reason: 'timeout_without_message_id',
+            });
+            const adopted = await adoptReservation(query, schema, effectKey, 60);
+            expect(adopted?.state).toBe('indeterminate');
+        });
+    });
+
+    describe('settling and releasing', () => {
+        it('settles once, gives back the surplus and refuses a second settle', async () => {
+            const effectKey = `settle-${randomUUID()}`;
+            const scopeKey = `settle-${randomUUID()}`;
+            await moneyCounter(scopeKey, 1000);
+            await reserveOn(client, scopeKey, effectKey, 10);
+
+            const settled = await settleReservation(query, schema, {
+                effectKey, chargedMinor: 6, evidence: 'provider_reported_price',
+                providerMessageId: 'wamid.OUT', remoteState: 'delivered',
+            });
+            expect(settled?.state).toBe('settled');
+            const counter = await counterRow(scopeKey);
+            expect(Number(counter.settled_minor)).toBe(6);
+            // The four cents of rounding come back rather than staying held.
+            expect(Number(counter.released_minor)).toBe(4);
+            expect(Number(counter.reserved_minor)).toBe(0);
+
+            // Zero rows the second time is success, not an error to retry.
+            expect(await settleReservation(query, schema, {
+                effectKey, chargedMinor: 6, evidence: 'provider_reported_price',
+            })).toBeNull();
+            expect(Number((await counterRow(scopeKey)).settled_minor)).toBe(6);
+        });
+
+        it('releases a proven rejection in full', async () => {
+            const effectKey = `reject-${randomUUID()}`;
+            const scopeKey = `reject-${randomUUID()}`;
+            await moneyCounter(scopeKey, 1000);
+            await reserveOn(client, scopeKey, effectKey, 8);
+
+            const released = await releaseReservation(query, schema, {
+                effectKey, evidence: 'provider_rejected_without_message_id',
+                reason: 'wa_131047', remoteState: 'rejected',
+            });
+            expect(released?.state).toBe('released');
+            const counter = await counterRow(scopeKey);
+            expect(Number(counter.released_minor)).toBe(8);
+            expect(Number(counter.settled_minor)).toBe(0);
+            expect(Number(counter.reserved_minor)).toBe(0);
+        });
+
+        it('will not settle or release something already retained', async () => {
+            // Only a reconciliation may move a retained row, and it is not this.
+            const effectKey = `retained-${randomUUID()}`;
+            const scopeKey = `retained-${randomUUID()}`;
+            await moneyCounter(scopeKey, 1000);
+            await reserveOn(client, scopeKey, effectKey, 8);
+            await retainReservation(query, schema, {
+                effectKey, state: 'pending_reconciliation', reason: 'delivered_without_price',
+            });
+            expect(await settleReservation(query, schema, {
+                effectKey, chargedMinor: 8, evidence: 'late' })).toBeNull();
+            expect(await releaseReservation(query, schema, {
+                effectKey, evidence: 'late' })).toBeNull();
+            expect(Number((await counterRow(scopeKey)).reserved_minor)).toBe(8);
+        });
+    });
+
+    describe('several ceilings at once', () => {
+        it('reserves against every scope and releases every one of them', async () => {
+            // The reason the allocation table exists: one effect crosses the
+            // account, the contact and the campaign, and a release that returns
+            // to one of them leaves the other two permanently short.
+            const run = randomUUID();
+            const scopes = scopesFor({
+                channelAccountId: `acct-${run}`, payerBusinessId: `biz-${run}`,
+                contactId: `contact-${run}`, taskId: `task-${run}`,
+                allowanceMonth: '2026-10', spendPeriod: '2026-10',
+            });
+            await ensureCounters(query, schema, scopes, 'USD');
+            // Give the money scopes a real ceiling; the allowance stays observe.
+            for (const scope of scopes) {
+                if (scope.kind === 'number_month') continue;
+                await query(`UPDATE "${schema}".whatsapp_spend_counters
+                    SET cap_kind='money', cap_minor=100, currency='USD'
+                    WHERE scope_kind=$1 AND scope_key=$2 AND period_key=$3`,
+                    [scope.kind, scope.key, scope.period]);
+            }
+
+            const effectKey = `multi-${run}`;
+            const money = scopes.filter(scope => scope.kind !== 'number_month');
+            for (const scope of money) {
+                expect(await reserveAgainstCounter(query, schema,
+                    { scope, amountMinor: 8, deliveries: 1 })).toBe(true);
+            }
+            const reservation = await claimReservation(query, schema, {
+                effectKey, identity: identity(), money: {
+                    basis: 'priced', decision: 'accepted', reservedMinor: 8,
+                    unitCeilingMinor: 100, exactMicros: 80_000,
+                    freeDeliveries: 0, chargedDeliveries: 1,
+                }, leaseSeconds: 60,
+            });
+            for (const scope of money) {
+                await recordAllocation(query, schema, reservation!.id,
+                    { scope, amountMinor: 8, deliveries: 1 }, 'USD');
+            }
+
+            await releaseReservation(query, schema, {
+                effectKey, evidence: 'provider_rejected_without_message_id',
+            });
+            for (const scope of money) {
+                const [row] = await query<any[]>(`SELECT reserved_minor, released_minor
+                    FROM "${schema}".whatsapp_spend_counters
+                    WHERE scope_kind=$1 AND scope_key=$2 AND period_key=$3`,
+                    [scope.kind, scope.key, scope.period]);
+                expect({ scope: scope.kind, reserved: Number(row.reserved_minor),
+                    released: Number(row.released_minor) })
+                    .toEqual({ scope: scope.kind, reserved: 0, released: 8 });
+            }
+        });
+
+        it('refuses the whole effect when any one ceiling says no', async () => {
+            // The strictest ceiling wins. A contact limit of zero stops a send
+            // the account could easily afford.
+            const run = randomUUID();
+            const generous = { kind: 'account' as const, key: `wide-${run}`, period: '2026-10' };
+            const tight = { kind: 'contact' as const, key: `tight-${run}`, period: '2026-10' };
+            await ensureCounters(query, schema, [generous, tight], 'USD');
+            await query(`UPDATE "${schema}".whatsapp_spend_counters
+                SET cap_kind='money', cap_minor=10000, currency='USD'
+                WHERE scope_kind='account' AND scope_key=$1`, [generous.key]);
+            await query(`UPDATE "${schema}".whatsapp_spend_counters
+                SET cap_kind='money', cap_minor=0, currency='USD'
+                WHERE scope_kind='contact' AND scope_key=$1`, [tight.key]);
+
+            expect(await reserveAgainstCounter(query, schema,
+                { scope: generous, amountMinor: 8, deliveries: 1 })).toBe(true);
+            expect(await reserveAgainstCounter(query, schema,
+                { scope: tight, amountMinor: 8, deliveries: 1 })).toBe(false);
+        });
+
+        it('never refuses on an observe-only counter', async () => {
+            // Where every tenant starts: counting, stopping nobody.
+            const scope = { kind: 'account' as const, key: `observe-${randomUUID()}`, period: '2026-10' };
+            await ensureCounters(query, schema, [scope], 'USD');
+            expect(await reserveAgainstCounter(query, schema,
+                { scope, amountMinor: 999_999, deliveries: 1 })).toBe(true);
+        });
+    });
+
+    describe('what the platform can report', () => {
+        it('separates reserved, settled, retained and released, per currency', async () => {
+            // One number for two currencies is not money. And "we owe this" and
+            // "we might owe this" are different answers to an operator.
+            const account = `report-${randomUUID()}`;
+            const scopeKey = `report-${randomUUID()}`;
+            await moneyCounter(scopeKey, 10_000);
+            const since = new Date(Date.now() - 60_000);
+
+            const held = `rep-held-${randomUUID()}`;
+            const done = `rep-settled-${randomUUID()}`;
+            const lost = `rep-unknown-${randomUUID()}`;
+            for (const [key, amount] of [[held, 10], [done, 20], [lost, 30]] as const) {
+                await reserveAgainstCounter(query, schema,
+                    { scope: { kind: 'account', key: scopeKey, period: '2026-10' },
+                        amountMinor: amount, deliveries: 1 });
+                const row = await claimReservation(query, schema, {
+                    effectKey: key, identity: identity({ channelAccountId: account }),
+                    money: money(amount), leaseSeconds: 600,
+                });
+                await recordAllocation(query, schema, row!.id,
+                    { scope: { kind: 'account', key: scopeKey, period: '2026-10' },
+                        amountMinor: amount, deliveries: 1 }, 'USD');
+            }
+            await settleReservation(query, schema,
+                { effectKey: done, chargedMinor: 18, evidence: 'provider_reported_price' });
+            await retainReservation(query, schema,
+                { effectKey: lost, state: 'indeterminate', reason: 'timeout_without_message_id' });
+
+            const [exposure] = await readExposure(query, schema, { channelAccountId: account, since });
+            expect(exposure).toMatchObject({
+                currency: 'USD', reservedMinor: 10, settledMinor: 18, retainedMinor: 30,
+            });
+        });
+
+        it('reports two currencies as two rows rather than one sum', async () => {
+            const account = `two-cur-${randomUUID()}`;
+            const scopeKey = `two-cur-${randomUUID()}`;
+            await moneyCounter(scopeKey, 10_000);
+            const since = new Date(Date.now() - 60_000);
+            for (const currency of ['USD', 'COP']) {
+                await claimReservation(query, schema, {
+                    effectKey: `cur-${currency}-${randomUUID()}`,
+                    identity: identity({ channelAccountId: account, currency }),
+                    money: money(10), leaseSeconds: 600,
+                });
+            }
+            const rows = await readExposure(query, schema, { channelAccountId: account, since });
+            expect(rows.map(row => row.currency).sort()).toEqual(['COP', 'USD']);
+        });
+    });
+
+    describe('what the key refuses', () => {
+        it('refuses an effect key with a colon, which BullMQ rejects as a job id', async () => {
+            await expect(claimReservation(query, schema, {
+                effectKey: 'tenant:effect:1', identity: identity(), money: money(8), leaseSeconds: 60,
+            })).rejects.toThrow('spend_effect_key_has_colon');
+        });
+
+        it('refuses a schema name that is not a tenant schema', async () => {
+            await expect(findReservation(query, 'public', 'anything'))
+                .rejects.toThrow('spend_schema_invalid');
+        });
+    });
+});

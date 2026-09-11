@@ -19,7 +19,9 @@ import { join, resolve } from 'path';
 const SCRIPT = resolve(__dirname, '..', '..', '..', '..', '..',
     'infra', 'scripts', 'apply-candidate-manifest.cjs');
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
+// A .cjs script, loaded the way the command line loads it. Importing it
+// would compile a copy; requiring it exercises the file CI runs.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const consumer = require(SCRIPT);
 
 const SHA = 'a'.repeat(40);

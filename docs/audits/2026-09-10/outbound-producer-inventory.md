@@ -67,11 +67,11 @@ llevar a la admisión económica.
 | `modules/conversations/conversations.service.ts:2258` | `sendFlow` | `outbound_queue` | dynamic | 1 (read) |
 | `modules/conversations/conversations.service.ts:5848` | `sendCollectedFlow` | `outbound_queue` | dynamic | 1 (read) |
 | `modules/recall/recall.service.ts:152` | `processForTenant` | `outbound_queue` | dynamic | 1 (read) |
-| `modules/whatsapp/whatsapp.controller.ts:495` | `sendTemplate` | `inline` | dynamic | 1 (read) |
-| `modules/whatsapp/whatsapp.controller.ts:515` | `sendText` | `inline` | dynamic | 1 (read) |
-| `modules/whatsapp/whatsapp.controller.ts:540` | `sendInteractive` | `inline` | dynamic | 1 (read) |
-| `modules/whatsapp/whatsapp.controller.ts:563` | `sendMedia` | `inline` | dynamic | 1 (read) |
-| `modules/whatsapp/whatsapp.controller.ts:587` | `sendLocation` | `inline` | dynamic | 1 (read) |
+| `modules/whatsapp/whatsapp.controller.ts:528` | `sendTemplate` | `inline` | dynamic | 1 (read) |
+| `modules/whatsapp/whatsapp.controller.ts:548` | `sendText` | `inline` | dynamic | 1 (read) |
+| `modules/whatsapp/whatsapp.controller.ts:573` | `sendInteractive` | `inline` | dynamic | 1 (read) |
+| `modules/whatsapp/whatsapp.controller.ts:596` | `sendMedia` | `inline` | dynamic | 1 (read) |
+| `modules/whatsapp/whatsapp.controller.ts:620` | `sendLocation` | `inline` | dynamic | 1 (read) |
 
 ## Donde una respuesta se vuelve varios cargos
 
@@ -218,11 +218,11 @@ mensajes entregados, y un indicador de "escribiendo" no lo es.
 
 | Línea | Método | Primitiva | Carril | Disparador | Canales | Efectos por respuesta | Base |
 |---:|---|---|---|---|---|---|---|
-| 495 | `sendTemplate` | `.sendTemplate` | `inline` | HTTP POST send/template | dynamic | 1 | one effect per invocation; no loop reaches this send |
-| 515 | `sendText` | `.sendTextMessage` | `inline` | HTTP POST send/text | dynamic | 1 | one effect per invocation; no loop reaches this send |
-| 540 | `sendInteractive` | `.sendInteractiveMessage` | `inline` | HTTP POST send/interactive | dynamic | 1 | one effect per invocation; no loop reaches this send |
-| 563 | `sendMedia` | `.sendMediaMessage` | `inline` | HTTP POST send/media | dynamic | 1 | one effect per invocation; no loop reaches this send |
-| 587 | `sendLocation` | `.sendLocationMessage` | `inline` | HTTP POST send/location | dynamic | 1 | one effect per invocation; no loop reaches this send |
+| 528 | `sendTemplate` | `.sendTemplate` | `inline` | HTTP POST send/template | dynamic | 1 | one effect per invocation; no loop reaches this send |
+| 548 | `sendText` | `.sendTextMessage` | `inline` | HTTP POST send/text | dynamic | 1 | one effect per invocation; no loop reaches this send |
+| 573 | `sendInteractive` | `.sendInteractiveMessage` | `inline` | HTTP POST send/interactive | dynamic | 1 | one effect per invocation; no loop reaches this send |
+| 596 | `sendMedia` | `.sendMediaMessage` | `inline` | HTTP POST send/media | dynamic | 1 | one effect per invocation; no loop reaches this send |
+| 620 | `sendLocation` | `.sendLocationMessage` | `inline` | HTTP POST send/location | dynamic | 1 | one effect per invocation; no loop reaches this send |
 
 ## La frontera economica: cero productores cobrables fuera de ella
 
@@ -311,11 +311,11 @@ buscar una llamada a la autoridad economica en el codigo del archivo.
 | `modules/education/education-enrollment-commands.ts:111` | `promote` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/gyms/gyms.service.ts:598` | `promoteFromWaitlist` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/recall/recall.service.ts:152` | `processForTenant` | `outbound_queue` | `modules/channels/outbound-queue.processor.ts` | si |
-| `modules/whatsapp/whatsapp.controller.ts:495` | `sendTemplate` | `inline` | `modules/whatsapp/services/whatsapp-messaging.service.ts` | si |
-| `modules/whatsapp/whatsapp.controller.ts:515` | `sendText` | `inline` | `modules/whatsapp/services/whatsapp-messaging.service.ts` | si |
-| `modules/whatsapp/whatsapp.controller.ts:540` | `sendInteractive` | `inline` | `modules/whatsapp/services/whatsapp-messaging.service.ts` | si |
-| `modules/whatsapp/whatsapp.controller.ts:563` | `sendMedia` | `inline` | `modules/whatsapp/services/whatsapp-messaging.service.ts` | si |
-| `modules/whatsapp/whatsapp.controller.ts:587` | `sendLocation` | `inline` | `modules/whatsapp/services/whatsapp-messaging.service.ts` | si |
+| `modules/whatsapp/whatsapp.controller.ts:528` | `sendTemplate` | `inline` | `modules/whatsapp/services/whatsapp-messaging.service.ts` | si |
+| `modules/whatsapp/whatsapp.controller.ts:548` | `sendText` | `inline` | `modules/whatsapp/services/whatsapp-messaging.service.ts` | si |
+| `modules/whatsapp/whatsapp.controller.ts:573` | `sendInteractive` | `inline` | `modules/whatsapp/services/whatsapp-messaging.service.ts` | si |
+| `modules/whatsapp/whatsapp.controller.ts:596` | `sendMedia` | `inline` | `modules/whatsapp/services/whatsapp-messaging.service.ts` | si |
+| `modules/whatsapp/whatsapp.controller.ts:620` | `sendLocation` | `inline` | `modules/whatsapp/services/whatsapp-messaging.service.ts` | si |
 
 ### Lo que esta comprobacion no puede ver
 

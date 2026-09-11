@@ -26,7 +26,9 @@ const ROOT = resolve(__dirname, '..', '..', '..', '..', '..');
 const SCRIPT = resolve(ROOT, 'apps', 'api', 'scripts', 'outbound-producer-inventory.cjs');
 const API_SRC = resolve(ROOT, 'apps', 'api', 'src');
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
+// A .cjs script, loaded the way the command line loads it. Importing it
+// would compile a copy; requiring it exercises the file CI runs.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const inventory = require(SCRIPT);
 
 /** The census, recomputed from the source tree — never from the committed report. */

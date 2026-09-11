@@ -224,7 +224,7 @@ cerrado. Mientras tanto, la frase honesta es «staging está preparado».
 ## 6. El canario de certificación: con precio, sin ejecutar
 
 `plan-certification-canary.cjs` planifica un perfil, cuatro idiomas, chat web,
-k=1: **204 casos, 408 llamadas, techo US$0,76 con `gpt-4o-mini`**, ~41 minutos.
+k=1: **204 casos, 612 llamadas, techo US$1,08 con `gpt-4o-mini`**, ~41 minutos.
 El 0,3% de la matriz completa con el mismo modelo. El script no abre conexión, no
 lee credencial y no tiene cliente de proveedor. Detalle en
 `docs/audits/2026-09-10/certification-canary.md`.

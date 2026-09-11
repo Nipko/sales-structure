@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "revision": "d3cd50f292c26eb49ad35dcfb8aa80698c9390b5",
-  "generatedAt": "2026-09-11T21:30:46.060Z",
+  "revision": "1a88d93902ecb11c2f4c266823d85f3b08d5681f",
+  "generatedAt": "2026-09-11T22:07:44.085Z",
   "finished": false,
   "counts": {
     "aceptada": 11,
@@ -37,13 +37,13 @@
     "channelsCertified": 0,
     "routedOperations": 8,
     "resolutionDefects": [],
-    "egressCallSites": 34,
-    "chargeableCallSites": 30,
+    "egressCallSites": 21,
+    "chargeableCallSites": 17,
     "chargeableOutsideGate": 0,
-    "chargeableOffDurableLane": 20,
+    "chargeableOffDurableLane": 7,
     "chargeableOffDurableByLane": {
-      "inline": 10,
-      "outbound_queue": 10
+      "inline": 1,
+      "outbound_queue": 6
     },
     "censusArtefactStale": false,
     "proactivePolicies": [
@@ -417,13 +417,13 @@
       "status": "aceptada",
       "provenance": "derived",
       "artefact": null,
-      "evidence": "Censo derivado del árbol: 34 call sites, 30 cobrables, 0 fuera de la autoridad económica. El inventario de efectos declara 61 productores y 49 con al menos una propiedad en `none`. La condición es que el artefacto versionado se regenere desde el mismo HEAD, no que alguien lo haya leído.",
+      "evidence": "Censo derivado del árbol: 21 call sites, 17 cobrables, 0 fuera de la autoridad económica. El inventario de efectos declara 61 productores y 45 con al menos una propiedad en `none`. La condición es que el artefacto versionado se regenere desde el mismo HEAD, no que alguien lo haya leído.",
       "commits": []
     },
     {
       "id": "M1",
-      "open": 27,
-      "openLabel": "18 productores de mensajería sin autoridad y 9 sin idempotencia",
+      "open": 20,
+      "openLabel": "14 productores de mensajería sin autoridad y 6 sin idempotencia",
       "gates": [
         1,
         4
@@ -473,8 +473,8 @@
     },
     {
       "id": "M5",
-      "open": 16,
-      "openLabel": "16 productores de mensajería sin borrado alcanzable",
+      "open": 12,
+      "openLabel": "12 productores de mensajería sin borrado alcanzable",
       "gates": [
         1,
         6
@@ -500,13 +500,13 @@
     },
     {
       "id": "R0",
-      "open": 20,
-      "openLabel": "20 productores cobrables fuera del carril durable (10 en `inline`, 10 en `outbound_queue`)",
+      "open": 7,
+      "openLabel": "7 productores cobrables fuera del carril durable (1 en `inline`, 6 en `outbound_queue`)",
       "gates": [],
       "status": "abierta",
       "provenance": "derived",
       "artefact": null,
-      "evidence": "De 30 call sites cobrables, 20 usan un carril que no escribe fila antes del POST — Redis es el registro, o no hay registro. Un productor ahí no puede contestar \"¿esto salió?\" después de un reinicio. El criterio principal de R6 es exactamente este número en cero.",
+      "evidence": "De 17 call sites cobrables, 7 usan un carril que no escribe fila antes del POST — Redis es el registro, o no hay registro. Un productor ahí no puede contestar \"¿esto salió?\" después de un reinicio. El criterio principal de R6 es exactamente este número en cero.",
       "commits": []
     },
     {
@@ -546,8 +546,8 @@
     },
     {
       "id": "R4",
-      "open": 20,
-      "openLabel": "20 productores todavía pueden emitir sin fila durable (10 en `inline`, 10 en `outbound_queue`)",
+      "open": 7,
+      "openLabel": "7 productores todavía pueden emitir sin fila durable (1 en `inline`, 6 en `outbound_queue`)",
       "gates": [],
       "status": "abierta",
       "provenance": "derived",
@@ -568,8 +568,8 @@
     },
     {
       "id": "R6",
-      "open": 20,
-      "openLabel": "20 productores pueden entregar fuera de la autorización aplicable",
+      "open": 7,
+      "openLabel": "7 productores pueden entregar fuera de la autorización aplicable",
       "gates": [
         1,
         5,

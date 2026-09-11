@@ -741,45 +741,92 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         id: 'automation.nurturing',
         effect: 'Nurturing follow-ups: the second and third attempt at a quiet conversation, stale '
             + 'conversation nudges and abandoned booking recovery',
-        lane: 'outbound_queue',
+        // Moved off the legacy queue. The sweep no longer finds an egress
+        // primitive in this file because there is no longer one to find, which
+        // is why the derivation is `declared` rather than `census`.
+        lane: 'dispatch_outbox',
         status: 'live',
-        derivation: 'census',
+        derivation: 'declared',
         source: 'modules/automation/nurturing.service.ts',
         symbol: 'NurturingService',
-        egress: 'OutboundQueueService.enqueue from three crons',
-        properties: queued(partial('no `dedupeId`. `hasNurturingSentToday` and `recordAttempt` are soft '
-            + 'guards written around the send, not an identity the queue can enforce')),
+        egress: 'ProactiveDispatchService.send commits an `agent_dispatch_outbox` row; the outbound '
+            + 'processor performs the Graph call',
+        properties: {
+            authority: durable('the `nurturing_followup` policy is revalidated inside the transaction '
+                + 'that grants the lease, and its revision carries the time of the last INBOUND '
+                + 'message — so a customer answering between preparing the nudge and sending it '
+                + 'suppresses it. "¿Seguís ahí?" one minute after somebody wrote is the thing this '
+                + 'producer most needed stopping'),
+            idempotency: durable('the origin is derived from the conversation and which attempt this '
+                + 'is, so a second cron pass finds the same row. `hasNurturingSentToday` stopped '
+                + 'being the only thing between one nudge and two'),
+            receipt: durable('the outbox row carries the provider id and the history row written in '
+                + 'the same transaction'),
+            uncertainOutcome: durable('a timeout leaves the row admitted with its lease; the sweep '
+                + 'moves it to reconciliation rather than sending again'),
+            erasure: durable('the outbox payload is cleared by the GDPR fan-out like every other '
+                + 'dispatch row'),
+            recovery: durable('the recovery pass republishes any row nothing ever published'),
+        },
     }),
 
     producer({
         id: 'automation.drip_sequence',
         effect: 'Each step of a drip sequence a contact was enrolled in, by hand or by segment',
-        lane: 'outbound_queue',
+        // Both branches moved: the text steps off the legacy queue and the
+        // template steps off the inline Graph call. One lane now, and the sweep
+        // finds no egress primitive here any more.
+        lane: 'dispatch_outbox',
         status: 'live',
-        derivation: 'census',
+        derivation: 'declared',
         source: 'modules/automation/drip-sequence.service.ts',
         symbol: 'DripSequenceService',
-        egress: 'OutboundQueueService.enqueue for text steps, WhatsappMessagingService.sendTemplate '
-            + 'directly for template steps',
-        properties: queued(none('no `dedupeId`, and the template branch does not touch the queue at all')),
+        egress: 'ProactiveDispatchService.send commits an `agent_dispatch_outbox` row with a `text` '
+            + 'or `template` item; the outbound processor performs the Graph call',
+        properties: {
+            authority: durable('the `drip_step` policy is revalidated inside the lease transaction. '
+                + 'An enrolment that stopped, completed or was paused is GONE, so the next step of '
+                + 'a journey somebody left is suppressed rather than sent'),
+            idempotency: durable('the origin is derived from the enrolment and the step, so a second '
+                + 'pass finds the same row and publishes nothing new'),
+            receipt: durable('the outbox row carries the provider id and the history row written in '
+                + 'the same transaction'),
+            uncertainOutcome: durable('a timeout leaves the row admitted with its lease; the sweep '
+                + 'moves it to reconciliation rather than sending again'),
+            erasure: durable('the outbox payload is cleared by the GDPR fan-out like every other '
+                + 'dispatch row'),
+            recovery: durable('the recovery pass republishes any row nothing ever published'),
+        },
     }),
 
     producer({
         id: 'automation.rule_template',
         effect: 'The WhatsApp template an automation rule sends when its trigger and conditions match',
-        lane: 'domain_queue',
+        // Moved off the inline Graph call inside the `automation-jobs` queue.
+        // The job still schedules the work; what it schedules now commits a row
+        // before anything is sent.
+        lane: 'dispatch_outbox',
         status: 'live',
-        derivation: 'census',
+        derivation: 'declared',
         source: 'modules/automation/automation-jobs.processor.ts',
         symbol: 'handleSendTemplate',
-        egress: 'WhatsappMessagingService.sendTemplate from the `automation-jobs` queue',
+        egress: 'ProactiveDispatchService.send commits an `agent_dispatch_outbox` row with a '
+            + '`template` item; the outbound processor performs the Graph call',
         properties: {
-            authority: none('no admission record; the job is the only trace'),
-            idempotency: none('the queue add carries no `jobId`, so a retried job sends the template again'),
-            receipt: partial('the Meta id reaches `whatsapp_messages` through `logMessage`'),
-            uncertainOutcome: none('a timeout raises, the job retries, and the customer may receive it twice'),
-            erasure: none('`whatsapp_messages` is not in the GDPR erasure fan-out'),
-            recovery: partial('BullMQ retries; nothing durable records the intent'),
+            authority: durable('the `automation_rule_action` policy is revalidated inside the lease '
+                + 'transaction. A rule somebody switched off between the trigger firing and the '
+                + 'message leaving sends nothing, and its actions are hashed so editing which '
+                + 'template it sends does not let the old one go out under the new rule'),
+            idempotency: durable('the origin is derived from the rule execution, so a retried job '
+                + 'finds the same row. The retry used to send the template again — and did, because '
+                + 'every terminal write of this processor was throwing on a JSONB cast'),
+            receipt: durable('the outbox row carries the provider id and the history row written in '
+                + 'the same transaction'),
+            uncertainOutcome: durable('a timeout leaves the row admitted with its lease; the sweep '
+                + 'moves it to reconciliation rather than sending again'),
+            erasure: durable('the outbox payload is cleared by the GDPR fan-out like every other '
+                + 'dispatch row'),
+            recovery: durable('the recovery pass republishes any row nothing ever published'),
         },
     }),
 

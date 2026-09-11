@@ -44,6 +44,7 @@
 
 import { carriesNativeCaption, foldableCaption, NATIVE_CAPTION_CHANNELS } from '../channels/native-caption';
 import { mediaKindFor } from '../channels/media-kind';
+import { telegramParsedLength } from '../../common/utils/channel-text-format.util';
 
 /** What one turn decided to say, before it becomes transport effects. */
 export interface TurnAnswer {
@@ -97,6 +98,22 @@ const SAFETY_MARGIN = 96;
 
 export function textLimitFor(channelType: string): number {
     return Math.max(0, (CHANNEL_TEXT_LIMIT[channelType] ?? DEFAULT_TEXT_LIMIT) - SAFETY_MARGIN);
+}
+
+/**
+ * How long this body is by the CHANNEL'S own measure.
+ *
+ * Every channel but Telegram takes the text as written, so the raw length is
+ * the bound. Telegram applies its 4,096 to the text "after entities parsing",
+ * which is neither the raw markdown nor the escaped HTML: `**negrita**` is ten
+ * characters here and six to Telegram.
+ *
+ * Measuring the raw string split answers that would have fitted in one bubble —
+ * two messages instead of one, which the customer sees and, on a billed
+ * channel, somebody pays for.
+ */
+export function bodyLengthFor(channelType: string, body: string): number {
+    return channelType === 'telegram' ? telegramParsedLength(body) : body.length;
 }
 
 /**
@@ -193,7 +210,7 @@ export function compactTurnAnswer(answer: TurnAnswer, options: {
         notes.push(note('merge_bubbles', false, 'already_one_bubble'));
     } else {
         const merged = chunks.join('\n\n');
-        if (merged.length <= limit) {
+        if (bodyLengthFor(options.channelType, merged) <= limit) {
             const saved = chunks.length - 1;
             chunks = [merged];
             notes.push(note('merge_bubbles', true, 'whole_answer_fits_one_body', saved));
@@ -229,7 +246,11 @@ export function compactTurnAnswer(answer: TurnAnswer, options: {
                 continue;
             }
             const candidate = `${body}\n\n${link}`;
-            if (candidate.length > limit) break; // and every later link too: order is kept
+            // The channel's measure, not JavaScript's: a body that fits
+            // Telegram's parsed limit may look too long as raw markdown.
+            if (bodyLengthFor(options.channelType, candidate) > limit) {
+                break; // and every later link too: order is kept
+            }
             body = candidate;
             folded.push(link);
         }

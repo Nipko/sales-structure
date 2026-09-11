@@ -178,6 +178,46 @@ export function toTelegramHtml(text: string): string {
 }
 
 /**
+ * ═══ WHAT TELEGRAM ACTUALLY COUNTS ═══
+ *
+ * Telegram's limits are documented as "N characters AFTER ENTITIES PARSING".
+ * That phrase decides three different numbers, and two places were using the
+ * wrong one:
+ *
+ *   · the RAW string the model wrote. `**negrita**` is ten characters here and
+ *     six to Telegram, so splitting on this sends two messages where one would
+ *     have fitted — and from October a WhatsApp-style per-message charge makes
+ *     an unnecessary split a real cost, on top of arriving as two bubbles;
+ *   · the ESCAPED HTML on the wire. One `&` becomes `&amp;`, so a caption of a
+ *     thousand ampersands measures five thousand and is refused a fold it was
+ *     always entitled to;
+ *   · the PARSED length, which is what Telegram applies its limit to: markup
+ *     removed, entities decoded back to one character each.
+ *
+ * Counted in UTF-16 code units, which is what `String.length` gives and what
+ * Telegram uses. An astral emoji is two units to both — deliberately NOT
+ * `[...text].length`, which would count it as one and let a message of four
+ * thousand emoji through at twice the real size.
+ */
+const TELEGRAM_TAG = /<\/?(?:b|strong|i|em|u|ins|s|strike|del|code|pre|span|tg-spoiler|blockquote|a)(?:\s[^>]*)?>/gi;
+
+export function telegramParsedLength(text: string): number {
+    if (!text) return 0;
+    const wire = toTelegramHtml(text);
+    // Tags first, then entities: decoding first would turn an escaped `&lt;b&gt;`
+    // — a literal the customer is meant to READ — into a tag and delete it.
+    const withoutTags = wire.replace(TELEGRAM_TAG, '');
+    const decoded = withoutTags
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        // `&amp;` last, so `&amp;lt;` decodes to the literal `&lt;` rather than
+        // to `<`. Any other order double-decodes.
+        .replace(/&amp;/g, '&');
+    return decoded.length;
+}
+
+/**
  * Strip Markdown for channels that render nothing: Instagram, Messenger, the
  * web chat widget and SMS all show the raw string, so every marker the model
  * emits is literal noise in front of the customer.

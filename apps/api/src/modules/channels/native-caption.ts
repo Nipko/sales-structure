@@ -1,4 +1,4 @@
-import { toTelegramHtml } from '../../common/utils/channel-text-format.util';
+import { telegramParsedLength } from '../../common/utils/channel-text-format.util';
 
 /**
  * When a caption and its attachment are ONE message, and when they are two.
@@ -74,22 +74,26 @@ export function foldableCaption(
     const body = String(caption ?? '').trim();
     if (!body) return null;
     if (!carriesNativeCaption(channelType, mediaType)) return null;
-    // Measured as the PROVIDER will receive it, not as the model wrote it.
-    // Telegram captions are sent as HTML, and `toTelegramHtml` escapes on
-    // the way out: 1,024 ampersands become 5,120 characters of payload. The
-    // fold was decided on the raw string, so the request was rejected — and
-    // by then the separate caption item no longer existed to fall back to.
+    // Measured the way the PROVIDER measures it, which on Telegram is neither
+    // the string the model wrote nor the escaped HTML on the wire: the limit is
+    // "1024 characters after entities parsing".
     return renderedCaptionLength(channelType, body) <= MAX_NATIVE_CAPTION ? body : null;
 }
 
 /**
- * How long this caption is once the transport has serialised it.
+ * How long this caption is BY THE PROVIDER'S OWN MEASURE.
  *
- * WhatsApp sends the caption as text and only rewrites markdown, which
- * cannot grow it past its own input. Telegram sends HTML.
+ * WhatsApp sends the caption as text and only rewrites markdown, which cannot
+ * grow it past its own input, so the raw length is the honest bound.
+ *
+ * Telegram sends HTML and applies its 1,024 to the text "after entities
+ * parsing". This used to measure the ESCAPED payload, so a caption of a
+ * thousand ampersands measured five thousand and was refused a fold it was
+ * always entitled to — an extra message and, after October, an extra charge,
+ * to avoid a rejection Telegram was never going to make.
  */
 export function renderedCaptionLength(channelType: string | null | undefined, caption: string): number {
     const channel = String(channelType ?? '').trim().toLowerCase();
-    if (channel === 'telegram') return toTelegramHtml(caption).length;
+    if (channel === 'telegram') return telegramParsedLength(caption);
     return caption.length;
 }

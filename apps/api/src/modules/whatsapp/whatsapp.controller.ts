@@ -520,13 +520,24 @@ export class WhatsappController {
     templateName: string;
     language: string;
     components?: any[];
-    // Multi-número: desde qué número sale (default: el más antiguo conectado)
+    /**
+     * Which of the tenant's numbers sends, and therefore which WhatsApp
+     * Business Account Meta bills.
+     *
+     * Optional: a tenant with one number does not have to say. With several and
+     * none named, the send is REFUSED rather than charged to whichever
+     * connected first — the money goes to a real account and nobody may choose
+     * it by row order.
+     */
     phoneNumberId?: string;
+    /** @deprecated The old name on three of these five routes. See `senderOf`. */
+    fromPhoneNumberId?: string;
   }) {
     const schemaName = await this.resolveSchema(req);
     if (!schemaName) throw new BadRequestException('User does not belong to a tenant');
     return this.messagingService.sendTemplate(
-      schemaName, body.toPhone, body.templateName, body.language, body.components || [], body.phoneNumberId
+      schemaName, body.toPhone, body.templateName, body.language, body.components || [],
+      this.senderOf(body),
     );
   }
 
@@ -540,13 +551,23 @@ export class WhatsappController {
     toPhone: string;
     text: string;
     conversationId?: string;
-    // Multi-número: desde qué número sale (default: el más antiguo conectado)
+    /**
+     * Which of the tenant's numbers sends, and therefore which WhatsApp
+     * Business Account Meta bills.
+     *
+     * Optional: a tenant with one number does not have to say. With several and
+     * none named, the send is REFUSED rather than charged to whichever
+     * connected first — the money goes to a real account and nobody may choose
+     * it by row order.
+     */
     phoneNumberId?: string;
+    /** @deprecated The old name on three of these five routes. See `senderOf`. */
+    fromPhoneNumberId?: string;
   }) {
     const schemaName = await this.resolveSchema(req);
     if (!schemaName) throw new BadRequestException('User does not belong to a tenant');
     return this.messagingService.sendTextMessage(
-      schemaName, body.toPhone, body.text, body.conversationId, body.phoneNumberId
+      schemaName, body.toPhone, body.text, body.conversationId, this.senderOf(body),
     );
   }
 
@@ -562,16 +583,21 @@ export class WhatsappController {
     conversationId?: string;
     /**
      * Which of the tenant's numbers sends, and therefore which WhatsApp
-     * Business Account Meta bills. Optional: a tenant with one number does not
-     * have to say. With several and none named, the send is refused rather than
-     * charged to whichever connected first.
+     * Business Account Meta bills.
+     *
+     * Optional: a tenant with one number does not have to say. With several and
+     * none named, the send is REFUSED rather than charged to whichever
+     * connected first — the money goes to a real account and nobody may choose
+     * it by row order.
      */
+    phoneNumberId?: string;
+    /** @deprecated The old name on three of these five routes. See `senderOf`. */
     fromPhoneNumberId?: string;
   }) {
     const schemaName = await this.resolveSchema(req);
     if (!schemaName) throw new BadRequestException('User does not belong to a tenant');
     return this.messagingService.sendInteractiveMessage(
-      schemaName, body.toPhone, body.interactive, body.conversationId, body.fromPhoneNumberId
+      schemaName, body.toPhone, body.interactive, body.conversationId, this.senderOf(body),
     );
   }
 
@@ -588,14 +614,24 @@ export class WhatsappController {
     caption?: string;
     filename?: string;
     conversationId?: string;
-    /** Which number sends, and therefore which WABA Meta bills. */
+    /**
+     * Which of the tenant's numbers sends, and therefore which WhatsApp
+     * Business Account Meta bills.
+     *
+     * Optional: a tenant with one number does not have to say. With several and
+     * none named, the send is REFUSED rather than charged to whichever
+     * connected first — the money goes to a real account and nobody may choose
+     * it by row order.
+     */
+    phoneNumberId?: string;
+    /** @deprecated The old name on three of these five routes. See `senderOf`. */
     fromPhoneNumberId?: string;
   }) {
     const schemaName = await this.resolveSchema(req);
     if (!schemaName) throw new BadRequestException('User does not belong to a tenant');
     return this.messagingService.sendMediaMessage(
       schemaName, body.toPhone, body.mediaType, body.mediaUrl, body.caption, body.filename,
-      body.conversationId, body.fromPhoneNumberId
+      body.conversationId, this.senderOf(body),
     );
   }
 
@@ -612,15 +648,57 @@ export class WhatsappController {
     name?: string;
     address?: string;
     conversationId?: string;
-    /** Which number sends, and therefore which WABA Meta bills. */
+    /**
+     * Which of the tenant's numbers sends, and therefore which WhatsApp
+     * Business Account Meta bills.
+     *
+     * Optional: a tenant with one number does not have to say. With several and
+     * none named, the send is REFUSED rather than charged to whichever
+     * connected first — the money goes to a real account and nobody may choose
+     * it by row order.
+     */
+    phoneNumberId?: string;
+    /** @deprecated The old name on three of these five routes. See `senderOf`. */
     fromPhoneNumberId?: string;
   }) {
     const schemaName = await this.resolveSchema(req);
     if (!schemaName) throw new BadRequestException('User does not belong to a tenant');
     return this.messagingService.sendLocationMessage(
       schemaName, body.toPhone, body.latitude, body.longitude, body.name, body.address,
-      body.conversationId, body.fromPhoneNumberId
+      body.conversationId, this.senderOf(body),
     );
+  }
+
+  /**
+   * ═══ ONE NAME FOR THE NUMBER THAT PAYS ═══
+   *
+   * These five routes send the same kind of thing and named the sender two
+   * different ways: `phoneNumberId` on template and text, `fromPhoneNumberId`
+   * on interactive, media and location. Nothing rejected the wrong one — an
+   * unknown field in a JSON body is simply ignored — so a caller that used the
+   * name from the route next door sent with NO sender named. On a
+   * single-number tenant that worked, which is why it survived; on a tenant
+   * with two it is either a refusal or, before the resolver started refusing, a
+   * message from the wrong number billed to the wrong WABA.
+   *
+   * `phoneNumberId` is canonical. `fromPhoneNumberId` is still accepted because
+   * an integration may be using it and a silent behaviour change is exactly
+   * what this is fixing, but it is deprecated and both routes now mean the same
+   * thing on all five.
+   *
+   * Deliberately NOT a merge of the two: if a caller sends both and they
+   * disagree, there is no defensible way to pick, and picking would be the
+   * original defect with extra steps.
+   */
+  private senderOf(body: { phoneNumberId?: string; fromPhoneNumberId?: string }): string | undefined {
+    const canonical = String(body?.phoneNumberId ?? '').trim();
+    const legacy = String(body?.fromPhoneNumberId ?? '').trim();
+    if (canonical && legacy && canonical !== legacy) {
+      throw new BadRequestException(
+        'phoneNumberId y fromPhoneNumberId nombran números distintos. `fromPhoneNumberId` '
+        + 'está obsoleto: mandá sólo `phoneNumberId`.');
+    }
+    return canonical || legacy || undefined;
   }
 
   // ======================== WEBHOOKS ========================

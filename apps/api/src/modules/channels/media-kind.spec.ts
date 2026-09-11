@@ -113,22 +113,40 @@ describe('the kind of an attachment survives to the transport', () => {
         });
     });
 
-    describe('the Telegram caption limit is measured on what is sent', () => {
-        it('counts the escaped HTML, not the characters the model typed', () => {
-            // `toTelegramHtml` escapes on the way out: one `&` becomes `&amp;`.
+    /**
+     * ═══ WHICH OF THREE LENGTHS TELEGRAM MEANS ═══
+     *
+     * These tests used to assert the ESCAPED length, on the belief that a
+     * caption of 1 024 ampersands — 5 120 characters of payload — would be
+     * rejected. Telegram's documentation says otherwise, in as many words:
+     * "0-1024 characters AFTER ENTITIES PARSING". `&amp;` is one character to
+     * Telegram, and so is `&`.
+     *
+     * The old rule never rejected anything; it declined a fold the caption was
+     * entitled to, so the picture and its words arrived as two messages instead
+     * of one. On a channel nobody bills that is a worse-looking conversation;
+     * on a billed one it is a second charge — and it failed quietly, which is
+     * why it survived.
+     *
+     * The detailed boundary cases live in `telegram-parsed-length.spec.ts`.
+     */
+    describe('the Telegram caption limit is measured the way Telegram measures it', () => {
+        it('counts an escaped character as the one it becomes, not the five it costs', () => {
             const raw = '&'.repeat(300);
-            expect(renderedCaptionLength('telegram', raw)).toBeGreaterThan(raw.length);
+            expect(renderedCaptionLength('telegram', raw)).toBe(raw.length);
             expect(renderedCaptionLength('whatsapp', raw)).toBe(raw.length);
         });
 
-        it('refuses to fold a caption that only fits before escaping', () => {
-            // 1,024 ampersands are 5,120 characters of payload. Folded on the raw
-            // length, Telegram rejected the request — and by then the separate
-            // caption item no longer existed to fall back to.
+        it('does not count the markup it parses away', () => {
+            // `**negrita**` is eleven characters of markdown and seven of
+            // message. Measuring the markdown declines folds unnecessarily.
+            expect(renderedCaptionLength('telegram', '**negrita**')).toBe(7);
+        });
+
+        it('folds a caption of 1024 ampersands, which the old rule measured as 5120', () => {
             const raw = '&'.repeat(MAX_NATIVE_CAPTION);
             expect(raw.length).toBe(MAX_NATIVE_CAPTION);
-            expect(foldableCaption('telegram', 'image', raw)).toBeNull();
-            // The same string is fine on WhatsApp, which does not escape it.
+            expect(foldableCaption('telegram', 'image', raw)).toBe(raw);
             expect(foldableCaption('whatsapp', 'image', raw)).toBe(raw);
         });
 
@@ -137,9 +155,23 @@ describe('the kind of an attachment survives to the transport', () => {
             expect(foldableCaption('telegram', 'image', plain)).toBe(plain);
         });
 
-        it('keeps the caption as its own effect when the fold is refused', () => {
+        it('still refuses one that is genuinely over the limit', () => {
+            // The measure changed; the ceiling did not.
+            expect(foldableCaption('telegram', 'image', 'a'.repeat(MAX_NATIVE_CAPTION + 1)))
+                .toBeNull();
+        });
+
+        it('sends the picture and its words as ONE effect', () => {
             const items = buildDispatchItems({
                 media: [{ url: 'https://cdn.test/a.jpg', caption: '&'.repeat(MAX_NATIVE_CAPTION) }],
+            }, { channelType: 'telegram' });
+            expect(items.map(item => item.kind)).toEqual(['media']);
+        });
+
+        it('keeps the caption as its own effect when it really does not fit', () => {
+            const items = buildDispatchItems({
+                media: [{ url: 'https://cdn.test/a.jpg',
+                    caption: 'a'.repeat(MAX_NATIVE_CAPTION + 1) }],
             }, { channelType: 'telegram' });
             expect(items.map(item => item.kind)).toEqual(['media', 'text']);
         });

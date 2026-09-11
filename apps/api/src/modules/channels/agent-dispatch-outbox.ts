@@ -34,7 +34,17 @@ const SCHEMA = /^tenant_[a-z0-9_]+$/;
 /** Bounded preflight failures. A definite refusal must not retry forever. */
 export const DISPATCH_MAX_ATTEMPTS = 5;
 
-export const DISPATCH_ITEM_KINDS = ['text', 'media', 'payment_link', 'flow'] as const;
+/**
+ * The shapes one remote effect can take.
+ *
+ * `template` is the odd one and the reason it was missing: the first four are
+ * what an ANSWER looks like, and this lane was built for answers. A reminder, an
+ * attendance check and a drip step outside the 24-hour window go out as an
+ * APPROVED TEMPLATE — a different Graph call with a name, a language and
+ * components — so the producers that send one had no row they could write, went
+ * straight to the adapter, and lost or repeated their message across a restart.
+ */
+export const DISPATCH_ITEM_KINDS = ['text', 'media', 'payment_link', 'flow', 'template'] as const;
 export type DispatchItemKind = (typeof DISPATCH_ITEM_KINDS)[number];
 
 export const DISPATCH_STATES = [
@@ -90,7 +100,7 @@ export const DISPATCH_OUTBOX_DDL: readonly string[] = Object.freeze([
         CONSTRAINT agent_dispatch_outbox_state
             CHECK (state IN ('prepared','queued','admitted','sent','stored','suppressed','failed','reconciliation_required')),
         CONSTRAINT agent_dispatch_outbox_kind
-            CHECK (item_kind IN ('text','media','payment_link','flow')),
+            CHECK (item_kind IN ('text','media','payment_link','flow','template')),
         CONSTRAINT agent_dispatch_outbox_item_index CHECK (item_index >= 0),
         CONSTRAINT agent_dispatch_outbox_lease
             CHECK ((state = 'admitted') = (lease_token IS NOT NULL AND lease_expires_at IS NOT NULL)),
@@ -250,6 +260,21 @@ function mapRow(row: any): DispatchRow {
 /** What the inbox shows for one effect. A Flow is recorded by its body text. */
 function historyContent(item: DispatchItem): { contentType: string; text: string | null; mediaUrl: string | null } {
     const payload = item.payload || {};
+    if (item.kind === 'template') {
+        // What the customer will SEE is rendered by Meta from the approved body
+        // and the components, which this process does not have. The history
+        // records the template that was sent and the values that filled it —
+        // enough for an agent reading the thread to know what went out, and
+        // honest about the fact that we did not compose the words.
+        const name = String(payload.templateName ?? '');
+        const values = Array.isArray(payload.components)
+            ? JSON.stringify(payload.components).slice(0, 2_000) : '';
+        return {
+            contentType: 'template',
+            text: `[plantilla: ${name}]${values ? ` ${values}` : ''}`,
+            mediaUrl: null,
+        };
+    }
     if (item.kind === 'media') {
         const requested = String(payload.mediaType ?? 'image');
         return {

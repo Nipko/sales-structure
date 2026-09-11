@@ -16,15 +16,60 @@ efectos puede llegar a producir **una sola respuesta lógica** en cada uno.
 
 | | |
 |---|---|
-| Sitios de llamada encontrados | **37** |
-| De ellos, que producen un mensaje cobrable | **36** |
+| Sitios de llamada encontrados | **35** |
+| De ellos, que producen un mensaje cobrable | **34** |
 | De ellos, presencia (no cobra Meta) | **1** |
-| Archivos productores distintos | **16** |
-| Sitios que **no** pasan por un carril durable | **25** |
-| Sitios que pueden alcanzar WhatsApp (literal o dinámico) | **34** |
-| Sitios donde **una respuesta puede volverse varios cargos** | **12** |
-| Productores WhatsApp cobrables **fuera de la frontera economica** | **0** |
-| Salidas al proveedor **sin admision ni camino declarado** | **0** |
+| Archivos productores distintos | **15** |
+| Sitios que **no** pasan por un carril durable | **23** |
+| Sitios que pueden alcanzar WhatsApp (literal o dinámico) | **32** |
+| Sitios donde **una respuesta puede volverse varios cargos** | **10** |
+
+### Los cinco números que importan
+
+El conteo de arriba mezcla tres cosas distintas: un botón de prueba de Telegram
+que no pasa por un carril durable no es un agujero en una factura de WhatsApp.
+Estas cinco filas separan lo que realmente se está midiendo, y la última es el
+objetivo: **cero productores cobrables fuera del carril durable**.
+
+| | |
+|---|---|
+| Sitios de llamada, en total | **35** |
+| De ellos, capaces de alcanzar WhatsApp | **33** |
+| De ellos, **cobrables por Meta** | **32** |
+| De ellos, dentro de la frontera económica | **32** |
+| De ellos, dentro del **carril durable** | **11** |
+
+| | |
+|---|---|
+| Cobrables **fuera de la frontera económica** | **0** |
+| Cobrables **fuera del carril durable** | **21** |
+| Salidas al proveedor **sin admisión ni camino declarado** | **0** |
+
+Los que todavía están fuera del carril durable:
+
+| Archivo:línea | Método | Carril |
+|---|---|---|
+| `modules/agent-console/agent-console.service.ts:552` | `sendAgentMessage` | `inline` |
+| `modules/appointments/appointment-notifications.service.ts:472` | `sendMessage` | `outbound_queue` |
+| `modules/automation/automation-jobs.processor.ts:237` | `handleSendTemplate` | `inline` |
+| `modules/automation/drip-sequence.service.ts:649` | `executeStepAction` | `inline` |
+| `modules/automation/drip-sequence.service.ts:674` | `executeStepAction` | `outbound_queue` |
+| `modules/automation/drip-sequence.service.ts:691` | `executeStepAction` | `outbound_queue` |
+| `modules/automation/nurturing.service.ts:746` | `sendFollowUpText` | `outbound_queue` |
+| `modules/automation/nurturing.service.ts:796` | `sendWhatsAppTemplate` | `inline` |
+| `modules/broadcast/broadcast-queue.processor.ts:118` | `sendWhatsApp` | `inline` |
+| `modules/conversations/conversations.service.ts:1883` | `sendAfterHoursMessage` | `outbound_queue` |
+| `modules/conversations/conversations.service.ts:2156` | `sendResponse` | `outbound_queue` |
+| `modules/conversations/conversations.service.ts:2185` | `sendPaymentLink` | `outbound_queue` |
+| `modules/conversations/conversations.service.ts:2208` | `sendMedia` | `outbound_queue` |
+| `modules/conversations/conversations.service.ts:2258` | `sendFlow` | `outbound_queue` |
+| `modules/conversations/conversations.service.ts:5848` | `sendCollectedFlow` | `outbound_queue` |
+| `modules/recall/recall.service.ts:152` | `processForTenant` | `outbound_queue` |
+| `modules/whatsapp/whatsapp.controller.ts:538` | `sendTemplate` | `inline` |
+| `modules/whatsapp/whatsapp.controller.ts:569` | `sendText` | `inline` |
+| `modules/whatsapp/whatsapp.controller.ts:599` | `sendInteractive` | `inline` |
+| `modules/whatsapp/whatsapp.controller.ts:632` | `sendMedia` | `inline` |
+| `modules/whatsapp/whatsapp.controller.ts:666` | `sendLocation` | `inline` |
 
 Por carril:
 
@@ -35,7 +80,7 @@ Por carril:
 | `operational_notice` | 6 | `operational_notice_outbox`, written in the business transaction |
 | `handoff_effects` | 1 | one row per destination of one transfer |
 | `outbound_queue` | 11 | legacy BullMQ `send` job; Redis is the only record |
-| `inline` | 14 | straight to the adapter, on the caller's stack |
+| `inline` | 12 | straight to the adapter, on the caller's stack |
 
 ## Los que esquivan el carril durable
 
@@ -48,8 +93,6 @@ llevar a la admisión económica.
 |---|---|---|---|---|
 | `modules/agent-console/agent-console.service.ts:552` | `sendAgentMessage` | `inline` | dynamic | 1 (read) |
 | `modules/appointments/appointment-notifications.service.ts:472` | `sendMessage` | `outbound_queue` | dynamic | 1 (read) |
-| `modules/appointments/appointment-reminders.service.ts:388` | `sendReminderTemplate` | `inline` | dynamic | n (derived) |
-| `modules/appointments/appointment-reminders.service.ts:469` | `sendAttendanceTemplate` | `inline` | dynamic | n (derived) |
 | `modules/automation/automation-jobs.processor.ts:237` | `handleSendTemplate` | `inline` | dynamic | 1 (read) |
 | `modules/automation/drip-sequence.service.ts:649` | `executeStepAction` | `inline` | dynamic | 1 (read) |
 | `modules/automation/drip-sequence.service.ts:674` | `executeStepAction` | `outbound_queue` | dynamic | 1 (read) |
@@ -66,11 +109,11 @@ llevar a la admisión económica.
 | `modules/conversations/conversations.service.ts:2258` | `sendFlow` | `outbound_queue` | dynamic | 1 (read) |
 | `modules/conversations/conversations.service.ts:5848` | `sendCollectedFlow` | `outbound_queue` | dynamic | 1 (read) |
 | `modules/recall/recall.service.ts:152` | `processForTenant` | `outbound_queue` | dynamic | 1 (read) |
-| `modules/whatsapp/whatsapp.controller.ts:528` | `sendTemplate` | `inline` | dynamic | 1 (read) |
-| `modules/whatsapp/whatsapp.controller.ts:548` | `sendText` | `inline` | dynamic | 1 (read) |
-| `modules/whatsapp/whatsapp.controller.ts:573` | `sendInteractive` | `inline` | dynamic | 1 (read) |
-| `modules/whatsapp/whatsapp.controller.ts:596` | `sendMedia` | `inline` | dynamic | 1 (read) |
-| `modules/whatsapp/whatsapp.controller.ts:620` | `sendLocation` | `inline` | dynamic | 1 (read) |
+| `modules/whatsapp/whatsapp.controller.ts:538` | `sendTemplate` | `inline` | dynamic | 1 (read) |
+| `modules/whatsapp/whatsapp.controller.ts:569` | `sendText` | `inline` | dynamic | 1 (read) |
+| `modules/whatsapp/whatsapp.controller.ts:599` | `sendInteractive` | `inline` | dynamic | 1 (read) |
+| `modules/whatsapp/whatsapp.controller.ts:632` | `sendMedia` | `inline` | dynamic | 1 (read) |
+| `modules/whatsapp/whatsapp.controller.ts:666` | `sendLocation` | `inline` | dynamic | 1 (read) |
 
 ## Donde una respuesta se vuelve varios cargos
 
@@ -84,8 +127,6 @@ reparto**, que es donde una sola respuesta lógica se multiplica.
 | `modules/appointments/appointment-payment.listener.ts:89` | `onPaid` | `operational_notice` | **n** | one effect per entry of `rows` (fan-out at line 51) |
 | `modules/appointments/appointment-payment.listener.ts:107` | `onPaid` | `operational_notice` | **n** | one effect per entry of `rows` (fan-out at line 51) |
 | `modules/appointments/appointment-payment.listener.ts:115` | `onPaid` | `operational_notice` | **n** | one effect per entry of `rows` (fan-out at line 51) |
-| `modules/appointments/appointment-reminders.service.ts:388` | `sendReminderTemplate` | `inline` | **n** | one effect per entry of `appointments` (fan-out at line 226) |
-| `modules/appointments/appointment-reminders.service.ts:469` | `sendAttendanceTemplate` | `inline` | **n** | one effect per entry of `appointments` (fan-out at line 422) |
 | `modules/conversations/conversations.service.ts:2156` | `sendResponse` | `outbound_queue` | **n(bubbles)** | one effect per text bubble (fan-out at line 1354) |
 | `modules/conversations/conversations.service.ts:2185` | `sendPaymentLink` | `outbound_queue` | **n(links)** | one effect per canonical link (fan-out at line 1371) |
 | `modules/conversations/conversations.service.ts:2208` | `sendMedia` | `outbound_queue` | **n(media)** | one effect per attachment (fan-out at line 1378) |
@@ -124,13 +165,6 @@ mensajes entregados, y un indicador de "escribiendo" no lo es.
 | 89 | `onPaid` | `enqueueOperationalNotice` | `operational_notice` | event 'tenant_payment.succeeded' | dynamic | n | one effect per entry of `rows` (fan-out at line 51) |
 | 107 | `onPaid` | `enqueueOperationalNotice` | `operational_notice` | event 'tenant_payment.succeeded' | dynamic | n | one effect per entry of `rows` (fan-out at line 51) |
 | 115 | `onPaid` | `enqueueOperationalNotice` | `operational_notice` | event 'tenant_payment.succeeded' | dynamic | n | one effect per entry of `rows` (fan-out at line 51) |
-
-### `apps/api/src/modules/appointments/appointment-reminders.service.ts`
-
-| Línea | Método | Primitiva | Carril | Disparador | Canales | Efectos por respuesta | Base |
-|---:|---|---|---|---|---|---|---|
-| 388 | `sendReminderTemplate` | `.sendTemplate` | `inline` | called by another service | dynamic | n | one effect per entry of `appointments` (fan-out at line 226) |
-| 469 | `sendAttendanceTemplate` | `.sendTemplate` | `inline` | called by another service | dynamic | n | one effect per entry of `appointments` (fan-out at line 422) |
 
 ### `apps/api/src/modules/automation/automation-jobs.processor.ts`
 
@@ -216,11 +250,11 @@ mensajes entregados, y un indicador de "escribiendo" no lo es.
 
 | Línea | Método | Primitiva | Carril | Disparador | Canales | Efectos por respuesta | Base |
 |---:|---|---|---|---|---|---|---|
-| 528 | `sendTemplate` | `.sendTemplate` | `inline` | HTTP POST send/template | dynamic | 1 | one effect per invocation; no loop reaches this send |
-| 548 | `sendText` | `.sendTextMessage` | `inline` | HTTP POST send/text | dynamic | 1 | one effect per invocation; no loop reaches this send |
-| 573 | `sendInteractive` | `.sendInteractiveMessage` | `inline` | HTTP POST send/interactive | dynamic | 1 | one effect per invocation; no loop reaches this send |
-| 596 | `sendMedia` | `.sendMediaMessage` | `inline` | HTTP POST send/media | dynamic | 1 | one effect per invocation; no loop reaches this send |
-| 620 | `sendLocation` | `.sendLocationMessage` | `inline` | HTTP POST send/location | dynamic | 1 | one effect per invocation; no loop reaches this send |
+| 538 | `sendTemplate` | `.sendTemplate` | `inline` | HTTP POST send/template | dynamic | 1 | one effect per invocation; no loop reaches this send |
+| 569 | `sendText` | `.sendTextMessage` | `inline` | HTTP POST send/text | dynamic | 1 | one effect per invocation; no loop reaches this send |
+| 599 | `sendInteractive` | `.sendInteractiveMessage` | `inline` | HTTP POST send/interactive | dynamic | 1 | one effect per invocation; no loop reaches this send |
+| 632 | `sendMedia` | `.sendMediaMessage` | `inline` | HTTP POST send/media | dynamic | 1 | one effect per invocation; no loop reaches this send |
+| 666 | `sendLocation` | `.sendLocationMessage` | `inline` | HTTP POST send/location | dynamic | 1 | one effect per invocation; no loop reaches this send |
 
 ## La frontera economica: cero productores cobrables fuera de ella
 
@@ -263,17 +297,17 @@ buscar una llamada a la autoridad economica en el codigo del archivo.
 | `apps/api/src/modules/channels/messenger/messenger.adapter.ts:148` | Graph `/{phone_number_id}/messages` POST | camino | Messenger is not billed per message by its provider |
 | `apps/api/src/modules/channels/messenger/messenger.adapter.ts:176` | Graph `/{phone_number_id}/messages` POST | camino | Messenger is not billed per message by its provider |
 | `apps/api/src/modules/channels/outbound-queue.processor.ts:302` | strict dispatch transport | si | pide permiso antes de emitir |
-| `apps/api/src/modules/channels/outbound-queue.processor.ts:564` | `ChannelGatewayService.sendMessage` | si | pide permiso antes de emitir |
-| `apps/api/src/modules/channels/outbound-queue.processor.ts:600` | `ChannelGatewayService.sendMessage` | si | pide permiso antes de emitir |
-| `apps/api/src/modules/channels/outbound-queue.processor.ts:736` | `ChannelGatewayService.sendMessage` | si | pide permiso antes de emitir |
+| `apps/api/src/modules/channels/outbound-queue.processor.ts:598` | `ChannelGatewayService.sendMessage` | si | pide permiso antes de emitir |
+| `apps/api/src/modules/channels/outbound-queue.processor.ts:632` | `ChannelGatewayService.sendMessage` | si | pide permiso antes de emitir |
+| `apps/api/src/modules/channels/outbound-queue.processor.ts:766` | `ChannelGatewayService.sendMessage` | si | pide permiso antes de emitir |
 | `apps/api/src/modules/channels/whatsapp/whatsapp.adapter.ts:34` | Graph `/{phone_number_id}/messages` POST | camino | the adapter; reachable only through `ChannelGatewayService.sendMessage` or the strict transport, and every call site of both is classified above |
-| `apps/api/src/modules/channels/whatsapp/whatsapp.adapter.ts:106` | Graph `/{phone_number_id}/messages` POST | camino | the adapter; reachable only through `ChannelGatewayService.sendMessage` or the strict transport, and every call site of both is classified above |
-| `apps/api/src/modules/channels/whatsapp/whatsapp.adapter.ts:135` | Graph `/{phone_number_id}/messages` POST | camino | the adapter; reachable only through `ChannelGatewayService.sendMessage` or the strict transport, and every call site of both is classified above |
-| `apps/api/src/modules/channels/whatsapp/whatsapp.adapter.ts:224` | Graph `/{phone_number_id}/messages` POST | camino | the adapter; reachable only through `ChannelGatewayService.sendMessage` or the strict transport, and every call site of both is classified above |
-| `apps/api/src/modules/channels/whatsapp/whatsapp.adapter.ts:262` | Graph `/{phone_number_id}/messages` POST | camino | the adapter; reachable only through `ChannelGatewayService.sendMessage` or the strict transport, and every call site of both is classified above |
-| `apps/api/src/modules/channels/whatsapp/whatsapp.adapter.ts:403` | Graph `/{phone_number_id}/messages` POST | camino | the adapter; reachable only through `ChannelGatewayService.sendMessage` or the strict transport, and every call site of both is classified above |
-| `apps/api/src/modules/channels/whatsapp/whatsapp.adapter.ts:453` | Graph `/{phone_number_id}/messages` POST | camino | the adapter; reachable only through `ChannelGatewayService.sendMessage` or the strict transport, and every call site of both is classified above |
-| `apps/api/src/modules/channels/whatsapp/whatsapp.adapter.ts:501` | Graph `/{phone_number_id}/messages` POST | camino | the adapter; reachable only through `ChannelGatewayService.sendMessage` or the strict transport, and every call site of both is classified above |
+| `apps/api/src/modules/channels/whatsapp/whatsapp.adapter.ts:127` | Graph `/{phone_number_id}/messages` POST | camino | the adapter; reachable only through `ChannelGatewayService.sendMessage` or the strict transport, and every call site of both is classified above |
+| `apps/api/src/modules/channels/whatsapp/whatsapp.adapter.ts:156` | Graph `/{phone_number_id}/messages` POST | camino | the adapter; reachable only through `ChannelGatewayService.sendMessage` or the strict transport, and every call site of both is classified above |
+| `apps/api/src/modules/channels/whatsapp/whatsapp.adapter.ts:245` | Graph `/{phone_number_id}/messages` POST | camino | the adapter; reachable only through `ChannelGatewayService.sendMessage` or the strict transport, and every call site of both is classified above |
+| `apps/api/src/modules/channels/whatsapp/whatsapp.adapter.ts:283` | Graph `/{phone_number_id}/messages` POST | camino | the adapter; reachable only through `ChannelGatewayService.sendMessage` or the strict transport, and every call site of both is classified above |
+| `apps/api/src/modules/channels/whatsapp/whatsapp.adapter.ts:424` | Graph `/{phone_number_id}/messages` POST | camino | the adapter; reachable only through `ChannelGatewayService.sendMessage` or the strict transport, and every call site of both is classified above |
+| `apps/api/src/modules/channels/whatsapp/whatsapp.adapter.ts:474` | Graph `/{phone_number_id}/messages` POST | camino | the adapter; reachable only through `ChannelGatewayService.sendMessage` or the strict transport, and every call site of both is classified above |
+| `apps/api/src/modules/channels/whatsapp/whatsapp.adapter.ts:522` | Graph `/{phone_number_id}/messages` POST | camino | the adapter; reachable only through `ChannelGatewayService.sendMessage` or the strict transport, and every call site of both is classified above |
 | `apps/api/src/modules/whatsapp/services/whatsapp-messaging.service.ts:248` | Graph `/{phone_number_id}/messages` POST | si | pide permiso antes de emitir |
 
 ### Productores cobrables y su sumidero
@@ -285,8 +319,6 @@ buscar una llamada a la autoridad economica en el codigo del archivo.
 | `modules/appointments/appointment-payment.listener.ts:89` | `onPaid` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/appointments/appointment-payment.listener.ts:107` | `onPaid` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/appointments/appointment-payment.listener.ts:115` | `onPaid` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
-| `modules/appointments/appointment-reminders.service.ts:388` | `sendReminderTemplate` | `inline` | `modules/whatsapp/services/whatsapp-messaging.service.ts` | si |
-| `modules/appointments/appointment-reminders.service.ts:469` | `sendAttendanceTemplate` | `inline` | `modules/whatsapp/services/whatsapp-messaging.service.ts` | si |
 | `modules/automation/automation-jobs.processor.ts:237` | `handleSendTemplate` | `inline` | `modules/whatsapp/services/whatsapp-messaging.service.ts` | si |
 | `modules/automation/drip-sequence.service.ts:649` | `executeStepAction` | `inline` | `modules/whatsapp/services/whatsapp-messaging.service.ts` | si |
 | `modules/automation/drip-sequence.service.ts:674` | `executeStepAction` | `outbound_queue` | `modules/channels/outbound-queue.processor.ts` | si |
@@ -308,11 +340,11 @@ buscar una llamada a la autoridad economica en el codigo del archivo.
 | `modules/education/education-enrollment-commands.ts:111` | `promote` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/gyms/gyms.service.ts:598` | `promoteFromWaitlist` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/recall/recall.service.ts:152` | `processForTenant` | `outbound_queue` | `modules/channels/outbound-queue.processor.ts` | si |
-| `modules/whatsapp/whatsapp.controller.ts:528` | `sendTemplate` | `inline` | `modules/whatsapp/services/whatsapp-messaging.service.ts` | si |
-| `modules/whatsapp/whatsapp.controller.ts:548` | `sendText` | `inline` | `modules/whatsapp/services/whatsapp-messaging.service.ts` | si |
-| `modules/whatsapp/whatsapp.controller.ts:573` | `sendInteractive` | `inline` | `modules/whatsapp/services/whatsapp-messaging.service.ts` | si |
-| `modules/whatsapp/whatsapp.controller.ts:596` | `sendMedia` | `inline` | `modules/whatsapp/services/whatsapp-messaging.service.ts` | si |
-| `modules/whatsapp/whatsapp.controller.ts:620` | `sendLocation` | `inline` | `modules/whatsapp/services/whatsapp-messaging.service.ts` | si |
+| `modules/whatsapp/whatsapp.controller.ts:538` | `sendTemplate` | `inline` | `modules/whatsapp/services/whatsapp-messaging.service.ts` | si |
+| `modules/whatsapp/whatsapp.controller.ts:569` | `sendText` | `inline` | `modules/whatsapp/services/whatsapp-messaging.service.ts` | si |
+| `modules/whatsapp/whatsapp.controller.ts:599` | `sendInteractive` | `inline` | `modules/whatsapp/services/whatsapp-messaging.service.ts` | si |
+| `modules/whatsapp/whatsapp.controller.ts:632` | `sendMedia` | `inline` | `modules/whatsapp/services/whatsapp-messaging.service.ts` | si |
+| `modules/whatsapp/whatsapp.controller.ts:666` | `sendLocation` | `inline` | `modules/whatsapp/services/whatsapp-messaging.service.ts` | si |
 
 ### Lo que esta comprobacion no puede ver
 
@@ -351,6 +383,7 @@ esperada y su clasificación queda **fuera del alcance de este generador**.
 |---|---|---|---|
 | `analytics.scheduled_reports` | `inline` | `live` | `modules/analytics/scheduled-reports.service.ts` |
 | `analytics.threshold_alerts` | `inline` | `live` | `modules/analytics/alerts.service.ts` |
+| `appointments.reminders` | `inline` | `live` | `modules/appointments/appointment-reminders.service.ts` |
 | `auth.transactional_email` | `inline` | `live` | `modules/auth/auth.service.ts` |
 | `auth.two_factor_sms` | `inline` | `off` | `modules/auth/platform-sms.service.ts` |
 | `automation.http_request` | `domain_queue` | `live` | `modules/automation/handlers/http-request.handler.ts` |
@@ -428,6 +461,7 @@ el conductor):
 - `modules/channels/outbound-queue.processor.ts`
 - `modules/channels/agent-dispatch-outbox.ts`
 - `modules/channels/agent-dispatch-outbox.store.ts`
+- `modules/channels/proactive-dispatch.service.ts`
 - `modules/channels/dispatch-items.ts`
 - `modules/channels/external-effect-inventory.ts`
 - `modules/channels/strict-dispatch.ts`

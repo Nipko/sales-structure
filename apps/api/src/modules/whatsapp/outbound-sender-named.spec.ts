@@ -34,6 +34,17 @@ describe('every charged WhatsApp producer names the account that pays', () => {
         /** Both reminder crons run the same path; only the flag column differs. */
         const remindersWith = (appointment: Record<string, unknown>) => {
             const messaging = { sendTemplate: jest.fn().mockResolvedValue({ success: true, messageId: 'm' }) };
+            // The reminder no longer calls `sendTemplate`: it commits a row to
+            // the durable lane and the processor sends it. What this suite is
+            // about — which number pays — is now the `channelAccountId` on that
+            // row, so the double records what the lane was asked to write.
+            const dispatched: any[] = [];
+            const proactive = {
+                send: jest.fn(async (_tenantId: string, input: any) => {
+                    dispatched.push(input); return 'origin';
+                }),
+                conversationFor: jest.fn(async () => '44444444-4444-4444-8444-444444444444'),
+            };
             const queries: string[] = [];
             const prisma = {
                 $queryRaw: jest.fn().mockResolvedValue([{ id: TENANT, schema_name: SCHEMA, settings: {} }]),
@@ -61,8 +72,9 @@ describe('every charged WhatsApp producer names the account that pays', () => {
                     timezoneFor: jest.fn().mockResolvedValue('America/Bogota'),
                     timezoneForSchema: jest.fn().mockResolvedValue('America/Bogota'),
                 } as any,
+                proactive as any,
             );
-            return { service, messaging, queries };
+            return { service, messaging, queries, dispatched, proactive };
         };
 
         const appointment = (extra: Record<string, unknown> = {}) => ({
@@ -76,42 +88,79 @@ describe('every charged WhatsApp producer names the account that pays', () => {
         });
 
         it('bills the number the appointment was booked through', async () => {
-            const { service, messaging } = remindersWith(appointment({ conversation_account_id: NUMBER }));
+            const { service, dispatched } = remindersWith(
+                appointment({ conversation_account_id: NUMBER }));
             await service.send24hReminders();
-            expect(messaging.sendTemplate).toHaveBeenCalledTimes(1);
-            // Argument six is the sender. Asserting only that it was called
-            // would pass just as well when the argument is missing.
-            expect(messaging.sendTemplate.mock.calls[0][5]).toBe(NUMBER);
+            expect(dispatched).toHaveLength(1);
+            // The account on the durable row is what the processor will bill.
+            // Asserting only that something was dispatched would pass just as
+            // well when the account is missing.
+            expect(dispatched[0].channelAccountId).toBe(NUMBER);
         });
 
-        it('leaves the sender unset for an appointment that had no conversation', async () => {
+        it('dispatches nothing for an appointment that had no conversation', async () => {
             // A booking made by hand or through the public page arrived through
-            // no connection. Filling one in would charge an account nobody chose;
-            // leaving it undefined lets the resolver serve a single-number tenant
-            // and refuse a multi-number one.
-            const { service, messaging } = remindersWith(appointment({ conversation_account_id: null }));
+            // no connection, so nobody named which account pays.
+            //
+            // This used to send with the sender UNSET and let the resolver
+            // decide — which is honest on a single-number tenant and a refusal
+            // on any other. The durable lane cannot do that: a row has to name
+            // the account it will be billed to BEFORE the processor picks it
+            // up, and inventing one is the substitution this whole batch
+            // refuses. So nothing is committed, the appointment stays
+            // unflagged, and the next pass tries again once somebody has
+            // chosen — which is what `ProactiveSendConnection` raises the
+            // configuration task for.
+            const { service, dispatched } = remindersWith(
+                appointment({ conversation_account_id: null }));
             await service.send24hReminders();
-            expect(messaging.sendTemplate.mock.calls[0][5]).toBeUndefined();
+            expect(dispatched).toEqual([]);
         });
 
         it('does not treat a blank string as a connection', async () => {
-            const { service, messaging } = remindersWith(appointment({ conversation_account_id: '   ' }));
+            const { service, dispatched } = remindersWith(
+                appointment({ conversation_account_id: '   ' }));
             await service.send24hReminders();
-            expect(messaging.sendTemplate.mock.calls[0][5]).toBeUndefined();
+            expect(dispatched).toEqual([]);
         });
 
         it.each(['instagram', 'messenger', 'telegram', 'web_widget'])(
             'lends nothing from an appointment booked over %s', async channel => {
                 // The column holds whichever account the customer wrote to, and
-                // an Instagram id is a perfectly well-formed string. Handing it
-                // to `sendTemplate` asked the WhatsApp resolver for a connection
-                // called `IG_ACCOUNT`.
-                const { service, messaging } = remindersWith(appointment({
+                // an Instagram id is a perfectly well-formed string. Billing a
+                // WhatsApp reminder to it would name an account that is not a
+                // WhatsApp account at all.
+                const { service, dispatched } = remindersWith(appointment({
                     conversation_account_id: 'IG_ACCOUNT', conversation_channel: channel,
                 }));
                 await service.send24hReminders();
-                expect(messaging.sendTemplate.mock.calls[0][5]).toBeUndefined();
+                expect(dispatched).toEqual([]);
             });
+
+        it('commits the reminder as a template, on the durable lane', async () => {
+            // The lane could not carry a template at all until this batch, which
+            // is exactly why both reminders went straight to the adapter.
+            const { service, dispatched } = remindersWith(
+                appointment({ conversation_account_id: NUMBER }));
+            await service.send24hReminders();
+            expect(dispatched[0].items).toEqual([
+                { kind: 'template', payload: expect.objectContaining({
+                    templateName: 'appointment_reminder',
+                }) },
+            ]);
+        });
+
+        it('gives the 24h and the 2h reminder different origins', async () => {
+            // One appointment, two effects. A shared origin would make the
+            // second one a no-op that returns the first one's rows, so the
+            // customer would get one reminder and the record would say two.
+            const { service, dispatched } = remindersWith(
+                appointment({ conversation_account_id: NUMBER }));
+            await service.send24hReminders();
+            await service.send2hReminders();
+            const origins = dispatched.map(entry => entry.originKey);
+            expect(new Set(origins).size).toBe(origins.length);
+        });
 
         it('asks the database for the connection, not just for the appointment', async () => {
             // The column has to be selected or the argument is always undefined

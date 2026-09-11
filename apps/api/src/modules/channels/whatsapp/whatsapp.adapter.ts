@@ -96,6 +96,27 @@ export class WhatsAppAdapter implements IChannelAdapter, StrictDispatchTransport
             if (type === 'document' && payload.filename) media.filename = String(payload.filename);
             return { type, [type]: media };
         }
+        if (request.itemKind === 'template') {
+            // An APPROVED template: Meta renders the words from its own
+            // catalogue, and this call supplies only which template, in which
+            // language, with which values. Refused rather than guessed when
+            // either identifier is missing — a template send with no name is a
+            // 400, and a 400 after the reservation is a charge for nothing.
+            const templateName = String(payload.templateName ?? '');
+            const language = String(payload.language ?? '');
+            if (!templateName.trim() || !language.trim()) {
+                throw new Error('incomplete_template_payload');
+            }
+            return {
+                type: 'template',
+                template: {
+                    name: templateName,
+                    language: { code: language },
+                    ...(Array.isArray(payload.components) && payload.components.length
+                        ? { components: payload.components } : {}),
+                },
+            };
+        }
         const flowId = String(payload.flowId ?? '');
         const flowToken = String(payload.flowToken ?? '');
         if (!flowId.trim() || !flowToken.trim()) throw new Error('incomplete_flow_payload');

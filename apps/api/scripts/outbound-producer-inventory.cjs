@@ -687,7 +687,32 @@ function render(rows, declared, infrastructure, census) {
     const laneCounts = new Map();
     for (const row of billable) laneCounts.set(row.lane, (laneCounts.get(row.lane) || 0) + 1);
 
-    const durableLanes = new Set(['dispatch_outbox', 'approved_effect', 'operational_notice', 'handoff_effects']);
+    // ── THE FIVE NUMBERS, AND WHY THEY ARE FIVE ─────────────────────────────
+    //
+    // "Sites outside the durable lane" was one number doing three jobs, and the
+    // three answers are not the same:
+    //
+    //   · a site that cannot reach WhatsApp at all — a Telegram test button, an
+    //     SMS test — is not a hole in a WhatsApp bill however it sends;
+    //   · a site that reaches WhatsApp but that Meta does not bill (a typing
+    //     indicator) is not one either;
+    //   · a site that CAN put a chargeable WhatsApp message on a phone and has
+    //     no durable row is the whole problem, and it was buried in a count
+    //     that mixed it with the other two.
+    //
+    // The target the handoff names is the last one: zero CHARGEABLE producers
+    // outside the durable lane. Printing the intermediate counts is what makes
+    // that number checkable rather than asserted.
+    const durableLanes = new Set(['dispatch_outbox', 'approved_effect', 'operational_notice',
+        'handoff_effects', 'proactive_dispatch']);
+    const reachesWhatsApp = rows.filter(row =>
+        row.channels.some(channel => channel === 'whatsapp' || channel === 'dynamic'));
+    const chargeableByMeta = reachesWhatsApp.filter(row => row.billable);
+    const insideTheGate = chargeableByMeta.filter(row => !census.bypasses
+        .some(entry => entry.file === row.file && entry.line === row.line));
+    const insideTheDurableLane = chargeableByMeta.filter(row => durableLanes.has(row.lane));
+    const chargeableNotDurable = chargeableByMeta.filter(row => !durableLanes.has(row.lane));
+
     const bypassing = billable.filter(row => !durableLanes.has(row.lane));
     const reachesBilled = billable.filter(row =>
         row.channels.some(channel => BILLED.has(channel) || channel === 'dynamic'));
@@ -732,9 +757,38 @@ function render(rows, declared, infrastructure, census) {
     push(`| Sitios que **no** pasan por un carril durable | **${bypassing.length}** |`);
     push(`| Sitios que pueden alcanzar WhatsApp (literal o dinámico) | **${reachesBilled.length}** |`);
     push(`| Sitios donde **una respuesta puede volverse varios cargos** | **${fanOut.length}** |`);
-    push(`| Productores WhatsApp cobrables **fuera de la frontera economica** | **${census.bypasses.length}** |`);
-    push(`| Salidas al proveedor **sin admision ni camino declarado** | **${census.ungatedEgress.length}** |`);
     push('');
+    push('### Los cinco números que importan');
+    push('');
+    push('El conteo de arriba mezcla tres cosas distintas: un botón de prueba de Telegram');
+    push('que no pasa por un carril durable no es un agujero en una factura de WhatsApp.');
+    push('Estas cinco filas separan lo que realmente se está midiendo, y la última es el');
+    push('objetivo: **cero productores cobrables fuera del carril durable**.');
+    push('');
+    push('| | |');
+    push('|---|---|');
+    push(`| Sitios de llamada, en total | **${rows.length}** |`);
+    push(`| De ellos, capaces de alcanzar WhatsApp | **${reachesWhatsApp.length}** |`);
+    push(`| De ellos, **cobrables por Meta** | **${chargeableByMeta.length}** |`);
+    push(`| De ellos, dentro de la frontera económica | **${insideTheGate.length}** |`);
+    push(`| De ellos, dentro del **carril durable** | **${insideTheDurableLane.length}** |`);
+    push('');
+    push('| | |');
+    push('|---|---|');
+    push(`| Cobrables **fuera de la frontera económica** | **${census.bypasses.length}** |`);
+    push(`| Cobrables **fuera del carril durable** | **${chargeableNotDurable.length}** |`);
+    push(`| Salidas al proveedor **sin admisión ni camino declarado** | **${census.ungatedEgress.length}** |`);
+    push('');
+    if (chargeableNotDurable.length) {
+        push('Los que todavía están fuera del carril durable:');
+        push('');
+        push('| Archivo:línea | Método | Carril |');
+        push('|---|---|---|');
+        for (const row of chargeableNotDurable) {
+            push(`| \`${row.file}:${row.line}\` | \`${row.method}\` | \`${row.lane}\` |`);
+        }
+        push('');
+    }
     push('Por carril:');
     push('');
     push('| Carril | Sitios | Qué garantiza |');

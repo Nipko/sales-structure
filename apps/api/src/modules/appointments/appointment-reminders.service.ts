@@ -11,6 +11,7 @@ import { resolveTenantSubscriptionAccess } from '../../common/utils/subscription
 import { EmailTemplatesService } from '../email-templates/email-templates.service';
 import { APPOINTMENT_EMAIL_SLUGS } from '../email-templates/appointment-email-layout';
 import { formatDuration, normaliseLang, LANG_LOCALE } from './appointment-notifications-i18n';
+import { ProactiveDispatchService } from '../channels/proactive-dispatch.service';
 import { RegionalProfileService } from '../tenants/regional-profile.service';
 import { whatsappSenderFrom } from '../channels/whatsapp-sender-origin';
 import {
@@ -59,7 +60,88 @@ export class AppointmentRemindersService {
         private readonly eventEmitter: EventEmitter2,
         private readonly emailTemplates: EmailTemplatesService,
         private readonly regionalProfile: RegionalProfileService,
+        /**
+         * The durable lane, which a reminder could not use until it learned to
+         * carry an effect nobody asked for.
+         *
+         * Before this, both reminders went straight to `sendTemplate`: no row,
+         * no lease, no receipt of their own. A restart between "this
+         * appointment needs a reminder" and the POST either lost it — the
+         * customer simply never heard — or, if the flag had not been written
+         * yet, sent it again on the next pass. From October each repeat is a
+         * charge.
+         */
+        private readonly proactive: ProactiveDispatchService,
     ) {}
+
+    /**
+     * Hand one reminder to the durable lane.
+     *
+     * Returns whether it was committed. `false` means nothing was written and
+     * nothing was sent, so the caller must NOT mark the appointment as
+     * reminded: the flag says "the customer was told", and writing it for a
+     * message that never left is how a reminder disappears with the record
+     * saying it happened.
+     */
+    private async dispatchTemplate(tenantId: string, schemaName: string, appt: any, input: {
+        readonly originKey: string;
+        readonly sender: string | undefined;
+        readonly templateName: string;
+        readonly language: string;
+        readonly components: any[];
+    }): Promise<boolean> {
+        const channelType = (appt.contact_channel || 'whatsapp') as string;
+        // ONLY what `senderOf` allowed. Falling back to the raw column would
+        // undo the check it exists to make: that column holds whichever account
+        // the customer wrote to, and an Instagram id is a perfectly well-formed
+        // string to bill a WhatsApp reminder to.
+        const sender = String(input.sender ?? '').trim();
+        if (!sender) {
+            // Without a sender there is no account to bill and no number to send
+            // from. The connection resolver refuses the same way, and refusing
+            // here keeps the row from being written for an effect that cannot
+            // leave.
+            this.logger.warn(`[Reminders] appointment ${appt.id} has no sender — nothing dispatched`);
+            return false;
+        }
+        const conversationId = appt.conversation_id
+            ?? await this.proactive.conversationFor(schemaName, {
+                contactId: String(appt.contact_id ?? ''),
+                channelType, channelAccountId: sender,
+            });
+        if (!conversationId || !appt.contact_id) {
+            this.logger.warn(`[Reminders] appointment ${appt.id} has no thread to write into `
+                + '— nothing dispatched');
+            return false;
+        }
+        try {
+            await this.proactive.send(tenantId, {
+                originKey: input.originKey,
+                conversationId: String(conversationId),
+                contactId: String(appt.contact_id),
+                channelType, channelAccountId: sender,
+                recipient: String(appt.contact_phone ?? ''),
+                items: [{ kind: 'template', payload: {
+                    templateName: input.templateName,
+                    language: input.language,
+                    components: input.components,
+                } }],
+                operationalScope: {
+                    tenantId, schemaName, channelType, channelAccountId: sender,
+                },
+            });
+            return true;
+        } catch (error: any) {
+            // Committed or not, never both. A failure here wrote nothing, so
+            // the appointment stays unflagged and the next pass tries again —
+            // and because the origin is derived from the appointment and the
+            // reminder kind, that retry finds its own row rather than making a
+            // second one.
+            this.logger.error(`[Reminders] appointment ${appt.id} could not be committed to the `
+                + `durable lane: ${error?.message}`);
+            return false;
+        }
+    }
 
     /**
      * Every 15 minutes: find appointments needing 24h reminders.
@@ -392,15 +474,18 @@ export class AppointmentRemindersService {
             },
         ];
 
-        await this.whatsappMessaging.sendTemplate(
-            schemaName,
-            appt.contact_phone,
-            'appointment_reminder',
-            normalizeMetaLanguage(lang),
-            components,
-            sender,
-        );
-        this.logger.log(`Sent ${type} template reminder to ${appt.contact_phone} for appointment ${appt.id}`);
+        // ── THE DURABLE LANE, WHICH THIS COULD NOT USE BEFORE ───────────────
+        //
+        // The origin is the appointment and WHICH reminder, so the 24h and the
+        // 2h are two different effects of one appointment and a retry of either
+        // finds its own row.
+        const committed = await this.dispatchTemplate(tenantId, schemaName, appt, {
+            originKey: `appointment_reminder:${appt.id}:${type}`,
+            sender, templateName: 'appointment_reminder',
+            language: normalizeMetaLanguage(lang), components,
+        });
+        if (!committed) return;
+        this.logger.log(`Committed the ${type} reminder for appointment ${appt.id} to the durable lane`);
     }
 
     private async processAttendanceChecks(tenantId: string, schemaName: string) {
@@ -475,15 +560,13 @@ export class AppointmentRemindersService {
             },
         ];
 
-        await this.whatsappMessaging.sendTemplate(
-            schemaName,
-            appt.contact_phone,
-            'attendance_check',
-            normalizeMetaLanguage(lang),
-            components,
-            sender,
-        );
-        this.logger.log(`Sent attendance check template to ${appt.contact_phone} for appointment ${appt.id}`);
+        const committed = await this.dispatchTemplate(tenantId, schemaName, appt, {
+            originKey: `attendance_check:${appt.id}`,
+            sender, templateName: 'attendance_check',
+            language: normalizeMetaLanguage(lang), components,
+        });
+        if (!committed) return;
+        this.logger.log(`Committed the attendance check for appointment ${appt.id} to the durable lane`);
     }
 
     private async canSendTenantWork(tenantId: string): Promise<boolean> {

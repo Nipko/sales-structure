@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { createHash } from 'crypto';
+import { PrismaService } from '../prisma/prisma.service';
 import { AgentDispatchOutboxStore } from './agent-dispatch-outbox.store';
 import { OutboundQueueService } from './outbound-queue.service';
 import type { DispatchItem } from './agent-dispatch-outbox';
@@ -45,9 +46,68 @@ export class ProactiveDispatchService {
     private readonly logger = new Logger(ProactiveDispatchService.name);
 
     constructor(
+        private readonly prisma: PrismaService,
         private readonly outbox: AgentDispatchOutboxStore,
         private readonly queue: OutboundQueueService,
     ) {}
+
+    /**
+     * The thread this proactive message belongs to, creating it if there is none.
+     *
+     * ── WHY A PROACTIVE EFFECT NEEDS A CONVERSATION AT ALL ──────────────────
+     *
+     * Because the durable lane writes the outbound into `messages` in the same
+     * transaction as the row, and a message belongs to a thread. That history
+     * row is not bookkeeping: it is what the customer's agent reads, what the
+     * receipt ties back to, and what erasure clears.
+     *
+     * An appointment booked by hand or through the public page has no
+     * conversation, and a reminder for it is still part of the conversation
+     * this business is having with that person — a customer who replies to it
+     * expects the answer to land in the same thread, and it will.
+     *
+     * ── AND WHY IT IS FOUND RATHER THAN ALWAYS CREATED ──────────────────────
+     *
+     * A second thread for the same person on the same number splits their
+     * history in two: the agent sees half of it, the identity service sees two
+     * customers, and the reminder arrives looking like it came from a stranger.
+     * The existing active thread wins whenever there is one.
+     */
+    async conversationFor(schemaName: string, input: {
+        readonly contactId: string;
+        readonly channelType: string;
+        readonly channelAccountId: string;
+    }): Promise<string | null> {
+        try {
+            const [existing] = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+                `SELECT id FROM conversations
+                  WHERE contact_id = $1::uuid AND channel_type = $2
+                    AND channel_account_id = $3
+                  ORDER BY (status = 'active') DESC, updated_at DESC
+                  LIMIT 1`,
+                [input.contactId, input.channelType, input.channelAccountId]);
+            if (existing?.id) return String(existing.id);
+            const [created] = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+                // `ON CONFLICT DO NOTHING` is not available here — there is no
+                // unique index on the triple — so two producers racing for the
+                // same contact could both insert. That is a duplicate THREAD,
+                // not a duplicate message: both reminders still go out once
+                // each, and the identity service merges the threads. Losing the
+                // reminder to avoid a merge would be the worse trade.
+                `INSERT INTO conversations(contact_id, channel_type, channel_account_id, status)
+                 VALUES($1::uuid, $2, $3, 'active') RETURNING id`,
+                [input.contactId, input.channelType, input.channelAccountId]);
+            return created?.id ? String(created.id) : null;
+        } catch (error: any) {
+            // Never invent one. A caller that gets `null` sends nothing, which
+            // is the honest outcome: without a thread there is no history row,
+            // and without a history row the effect has no receipt and no way
+            // back.
+            this.logger.error(`[Proactive] no conversation for contact ${input.contactId} `
+                + `on ${input.channelType}: ${error?.message}`);
+            return null;
+        }
+    }
 
     /**
      * A UUID that is a function of what the producer already knows.

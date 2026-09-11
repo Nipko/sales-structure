@@ -29,6 +29,10 @@ describe('AppointmentRemindersService subscription boundary', () => {
             { emit: jest.fn() } as any,
             emailTemplates as any,
             { timezoneFor: jest.fn().mockResolvedValue('America/Bogota'), timezoneForSchema: jest.fn().mockResolvedValue('America/Bogota') } as any,
+            // The durable lane. A locked tenant must not reach it either: a
+            // committed row is a message that WILL go out, so writing one is a
+            // send as much as the POST is.
+            { send: jest.fn(), conversationFor: jest.fn() } as any,
         );
 
         await service.send24hReminders();

@@ -764,6 +764,59 @@ export async function readSpendSignals(query: SpendQuery, schema: string, input:
 }
 
 /**
+ * ═══ WHO OWNS THIS EFFECT, DECIDED BEFORE ANY MONEY MOVES ═══
+ *
+ * `claimReservation` is unique on `effect_key`, so only one row can ever exist
+ * for an effect. That is necessary and it is not sufficient, because the old
+ * order granted the free allowance and incremented every counter FIRST and
+ * claimed the row last:
+ *
+ *     A: find → nothing      B: find → nothing
+ *     A: grant, reserve×N     B: grant, reserve×N      ← both moved money
+ *     A: claim → wins         B: claim → nothing, adopts A's row
+ *
+ * B commits its increments and holds no allocations, so nothing can ever give
+ * them back. One effect, one reservation, two charges against every ceiling —
+ * and the ceilings are the only thing standing between a bug and a bill.
+ *
+ * A transaction-scoped advisory lock on the effect key closes it. The lock and
+ * the read are one act: whoever holds it either finds the row and adopts, or
+ * finds nothing and is the owner for the rest of the transaction. The loser
+ * blocks until the winner commits and then SEES the row, so it never reaches a
+ * counter at all.
+ *
+ * The lock is released by COMMIT or ROLLBACK, always, because it is
+ * transaction-scoped — a worker that dies mid-authorisation does not pin the
+ * effect.
+ *
+ * ── WHY THIS RETURNS A TOKEN RATHER THAN A BOOLEAN ──────────────────────────
+ *
+ * So that the counter primitives cannot be reached without it. A boolean is a
+ * fact the caller may forget to check; a value the rest of the path needs is
+ * one it cannot.
+ */
+export interface EffectOwnership {
+    readonly effectKey: string;
+    /** True only for the transaction that may move money for this effect. */
+    readonly owned: boolean;
+    /** The row that already exists, when somebody else got there first. */
+    readonly existing: ReservationRow | null;
+}
+
+export async function ownEffect(query: SpendQuery, schema: string,
+    effectKey: string): Promise<EffectOwnership> {
+    assertSchema(schema);
+    if (!String(effectKey || '').trim()) throw new SpendLedgerError('spend_effect_key_empty');
+    // `::text` because the primitive this runs through rejects a `void` column —
+    // a lock taken without it fails with "column of type void", which reads like
+    // a syntax error and is really a missing cast.
+    await query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))::text AS held`,
+        [`whatsapp-spend-effect:${schema}:${effectKey}`]);
+    const existing = await findReservation(query, schema, effectKey);
+    return Object.freeze({ effectKey, owned: !existing, existing: existing ?? null });
+}
+
+/**
  * Claim this effect, or discover that somebody already did.
  *
  * `ON CONFLICT DO NOTHING RETURNING id` is the whole mechanism: no row returned

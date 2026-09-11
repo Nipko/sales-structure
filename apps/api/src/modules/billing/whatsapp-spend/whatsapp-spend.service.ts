@@ -7,7 +7,7 @@ import {
 } from '../whatsapp-rates';
 import {
     adoptReservation, claimReservation, declareTaskBudget, ensureCounters, findReservation,
-    grantFreeDeliveries, recentIdenticalDeliveries,
+    grantFreeDeliveries, ownEffect, recentIdenticalDeliveries,
     readExposure, readPressure, readSpendSignals, recordAllocation, releaseReservation,
     reserveAgainstCounter, retainReservation,
     settleReservation, sweepExpiredLeases,
@@ -182,8 +182,18 @@ export class WhatsappSpendService {
         });
 
         return this.prisma.transactionInTenantSchema(schema, async query => {
-            // ── 3. Adopt, never re-resolve. ─────────────────────────────────
-            const existing = await findReservation(query as SpendQuery, schema, input.effectKey);
+            // ── 3. Own the effect BEFORE any money moves. ───────────────────
+            //
+            // The read and the lock are one act. Previously this path granted
+            // the free allowance and incremented every ceiling first and claimed
+            // the unique row last, so two authorisations of the SAME effect
+            // could both move money and only one could hold allocations to give
+            // it back. The loser committed increments nothing could reverse.
+            //
+            // Now the loser blocks until the winner commits, then SEES the row,
+            // and adopts without reaching a counter at all.
+            const ownership = await ownEffect(query as SpendQuery, schema, input.effectKey);
+            const existing = ownership.existing;
             if (existing) {
                 const adopted = await adoptReservation(query as SpendQuery, schema,
                     input.effectKey, this.LEASE_SECONDS);

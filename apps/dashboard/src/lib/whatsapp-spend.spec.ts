@@ -1,5 +1,5 @@
 import {
-    deliveryReadiness, formatMinor, fundingIsActionable, hasUnresolvedExposure,
+    deliveryReadiness, formatMinor, fundingFromPause, fundingIsActionable, hasUnresolvedExposure,
     latestMonthPerNumber, pausesWorthShowing, undatedConsumption,
     FUNDING_READINESS_STATES,
     type SpendExposureRow, type WhatsappConsumption, type WhatsappMonthRow,
@@ -177,6 +177,30 @@ describe('whether a number can keep delivering', () => {
         // job. Putting it in front of a person is how a warning becomes noise
         // and the real one gets ignored.
         expect(FUNDING_READINESS_STATES.filter(fundingIsActionable)).toEqual(['absent', 'restricted']);
+    });
+
+    it('does not read "not paused" as "the card works"', () => {
+        // The tempting mapping, and the one that costs a tenant an afternoon: a
+        // pause is raised when Meta REFUSES a send, so an account whose card
+        // expires tonight is unpaused right up to the moment its first message
+        // tomorrow fails. Absence of a refusal is not evidence of funding.
+        const healthy = fundingFromPause(pause());
+        expect(healthy).toBe('not_checked');
+        expect(deliveryReadiness(healthy)).toBe('unestablished');
+        // And therefore nothing a person is asked to do — which is what keeps
+        // every working number off the screen.
+        expect(fundingIsActionable(healthy)).toBe(false);
+    });
+
+    it('never claims a number is ready, because nothing here can establish it', () => {
+        // `attached` requires reading the WhatsApp Business Account on the Graph
+        // API with the funding field explicitly requested, and no endpoint
+        // exposes that to the dashboard. So no green tick for funding can be
+        // rendered from this data — which is the honest outcome anyway.
+        const states = [pause(), pause({ paused: true }), pause({ stateUnknown: true })]
+            .map(fundingFromPause);
+        expect(states).toEqual(['not_checked', 'restricted', 'unknown']);
+        expect(states.map(deliveryReadiness)).not.toContain('ready');
     });
 
     it('does not turn an attached card into a promise that it will work', () => {

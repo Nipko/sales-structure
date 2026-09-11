@@ -272,6 +272,33 @@ export function fundingIsActionable(state: FundingReadinessState): boolean {
 }
 
 /**
+ * What one number's pause row says about its funding, and no more.
+ *
+ * ── WHY A NUMBER THAT IS SENDING FINE IS `not_checked` ──────────────────────
+ *
+ * The tempting mapping is "not paused, therefore the card works". It is wrong
+ * in the direction that costs a tenant an afternoon: a pause is raised when
+ * Meta REFUSES a send, so an account whose card expires tonight is unpaused
+ * right up to the moment its first message tomorrow fails. Absence of a refusal
+ * is not evidence of funding, and `not_checked` says exactly that.
+ *
+ * Nothing here can ever produce `attached`. Establishing that requires reading
+ * the WhatsApp Business Account on the Graph API with the funding field
+ * explicitly requested, and no endpoint exposes that reading to the dashboard.
+ * So the panel never shows a green tick for funding — which is the honest
+ * outcome anyway, because `attached` is not solvency: a card can be attached
+ * and declined, expired or over its limit, and Meta will still report it
+ * attached.
+ */
+export function fundingFromPause(row: WhatsappNumberPause): FundingReadinessState {
+    // Meta refused to bill this business. An observed refusal, not a reading.
+    if (row.paused) return 'restricted';
+    // We could not find out. Not the same as finding out there is nothing.
+    if (row.stateUnknown) return 'unknown';
+    return 'not_checked';
+}
+
+/**
  * Minor units to something a person reads, in THEIR locale.
  *
  * `Intl` is given the currency rather than a hard-coded divisor because minor

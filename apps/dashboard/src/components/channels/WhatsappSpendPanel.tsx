@@ -3,8 +3,8 @@
 import { useLocale, useTranslations } from "next-intl";
 import { AlertTriangle, Clock, HelpCircle, Info, PauseCircle, Wallet } from "lucide-react";
 import {
-    formatMinor, hasUnresolvedExposure, latestMonthPerNumber, pausesWorthShowing,
-    undatedConsumption,
+    deliveryReadiness, formatMinor, fundingFromPause, fundingIsActionable,
+    hasUnresolvedExposure, latestMonthPerNumber, pausesWorthShowing, undatedConsumption,
     type WhatsappConsumption, type WhatsappNumberPause, type WhatsappSpendSummary,
 } from "@/lib/whatsapp-spend";
 
@@ -83,9 +83,28 @@ export function WhatsappSpendPanel({ summary, consumption, pauses, readiness, aw
     const unresolved = hasUnresolvedExposure(summary?.exposure ?? []);
     const pending = (readiness ?? []).filter(number => number.resolution.kind === "unmapped");
     const contradictory = (readiness ?? []).filter(number => number.resolution.kind === "contradictory");
+    /**
+     * ── FUNDING READINESS, DERIVED RATHER THAN RESTATED ─────────────────────
+     *
+     * The engine has three answers about whether a number can keep delivering,
+     * and the screen uses the same function rather than a second opinion:
+     *
+     *   · `not_ready` (Meta refused to bill) is the ONLY one a person is asked
+     *     to act on, and it gets the block at the top;
+     *   · `unestablished` covers both "we could not read the state" and "nobody
+     *     has established anything". The second is every healthy number, and it
+     *     produces NOTHING on screen — the thing to do about it is ask again,
+     *     which is the system's job. Putting it in front of somebody is how a
+     *     warning becomes noise and the real one gets ignored. Only the first
+     *     is shown, because while it holds nothing is being sent;
+     *   · `ready` cannot be produced from this data at all, so no green tick is
+     *     rendered for funding anywhere. That is the honest outcome regardless:
+     *     `attached` is not solvency, and a card can be attached and declined.
+     */
     const attention = pausesWorthShowing(pauses);
-    const stopped = attention.filter(number => number.paused);
-    const unreadable = attention.filter(number => !number.paused && number.stateUnknown);
+    const stopped = attention.filter(number => fundingIsActionable(fundingFromPause(number)));
+    const unreadable = attention.filter(number =>
+        deliveryReadiness(fundingFromPause(number)) === "unestablished" && number.stateUnknown);
     const months = latestMonthPerNumber(consumption);
     const undated = undatedConsumption(consumption);
 

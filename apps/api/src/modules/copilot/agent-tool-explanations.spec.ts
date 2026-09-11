@@ -125,8 +125,9 @@ describe('what a tenant is told about one tool', () => {
         expect(find(broken, 'create_appointment').state).toBe('degraded');
     });
 
-    it.each(TOOL_FAMILIES.flatMap(family => family.tools.map(tool => [family.key, String(tool.name)])))
-        ('links the exact %s family exclusion to %s', (family, tool) => {
+    it.each(TOOL_FAMILIES.flatMap(family =>
+        family.tools.map(tool => [family.key, String(tool.name)])))(
+        'links the exact %s family exclusion to %s', (family, tool) => {
             const rows = build({
                 domain: { ...domain, intents: [{ ...intent, toolPlan: [tool] }] },
                 contract: contract({ publishedTools: [], excluded: [{ subject: family,

@@ -61,6 +61,26 @@ id) y los que no participan.
 
 ## Paso 1 — Construir el candidato, sin fusionar
 
+Hay **dos** maneras de arrancarlo, y cuál sirve depende de si el commit ya está
+en `main`.
+
+**Antes de fusionar** —que es el caso para el que existe todo esto— la única que
+funciona es la etiqueta sobre el pull request:
+
+```
+Pull request del candidato → Labels → build-candidate
+```
+
+`workflow_dispatch` **no aparece** para un workflow que todavía no está en la
+rama por defecto. No es un error de configuración: es cómo funciona el disparador,
+y es exactamente lo que hacía imposible validar un candidato antes de fusionarlo.
+El disparador `pull_request` corre desde la rama del propio PR. Está detrás de una
+etiqueta y no de cada push porque publica imágenes, porque poner una etiqueta es
+un acto **revisable** con un nombre detrás, y porque un PR desde un fork no tiene
+permiso de escritura al registro y fallaría de forma confusa.
+
+**Después de fusionar**, o para reconstruir un commit cualquiera:
+
 ```
 Actions → "Candidate images (manual)" → Run workflow
   sha:     <SHA completo de 40 caracteres>
@@ -70,8 +90,10 @@ Actions → "Candidate images (manual)" → Run workflow
 Lo que hace y lo que deliberadamente no:
 
 - hace checkout **de ese commit** y verifica que `git rev-parse HEAD` coincide;
-- corre typecheck y los tres contratos de lint, así que un candidato no sale de
-  un árbol que no habría podido fusionarse;
+- corre typecheck, los tres contratos de lint, **la suite completa** y los builds
+  del paquete compartido y de la landing, así que un candidato no sale de un
+  árbol que no habría podido fusionarse ni de uno que compila y liquida dos veces
+  el mismo mensaje;
 - publica las cinco imágenes con la etiqueta `candidate-<sha>` y **nunca**
   `latest` —el compose de producción cae a `latest`, así que una imagen así
   etiquetada sería lo que arranca un `docker compose up` a mano—;
@@ -82,8 +104,49 @@ Lo que hace y lo que deliberadamente no:
 
 ⚠️ **El dashboard hornea `NEXT_PUBLIC_*` en su bundle en tiempo de build.** La
 API a la que llama se decide en este paso y no cambia después con un `.env` en el
-host. `CANDIDATE_PUBLIC_API_URL` / `CANDIDATE_PUBLIC_WA_URL` tienen que ser las
-del entorno donde se va a verificar.
+host. Son **once** valores, no dos: además de `CANDIDATE_PUBLIC_API_URL` y
+`CANDIDATE_PUBLIC_WA_URL`, el build necesita los ids de Meta (app, config,
+solution), el de Google, el de Messenger, los de Instagram, la versión y la clave
+VAPID. Un `NEXT_PUBLIC_*` ausente **no falla el build**: hornea una cadena vacía,
+y el candidato sale con el Embedded Signup que no abre, el botón de Google que no
+entra y las notificaciones que no se suscriben. El workflow los verifica todos
+antes de construir nada y se detiene nombrando los que falten.
+
+La procedencia de esos valores queda en el manifiesto: las dos URLs tal cual
+—porque la pregunta más útil sobre un dashboard candidato es contra qué API lee, y
+un digest no la contesta— y un digest SHA-256 de cada id o clave, que alcanza para
+probar que lo verificado y lo aprobado se construyeron con los mismos valores y no
+alcanza para ser ninguno de ellos.
+
+### Consumir el manifiesto: de un archivo a lo que el host arranca
+
+El manifiesto por sí solo no cambia nada. El host arranca contenedores desde
+`docker-compose.prod.yml`, que resuelve las imágenes por `IMAGE_TAG` —una
+etiqueta, que se mueve, y que cae a `latest`—. Decir «fijado por digest» mientras
+el host consume una etiqueta es una afirmación sobre un archivo que nadie lee.
+
+```bash
+# 1. Bajar el artefacto `candidate-<sha>-<runId>` del run y descomprimirlo.
+# 2. Convertirlo en algo que compose entienda:
+node infra/scripts/apply-candidate-manifest.cjs \
+  --manifest candidate-manifest.json \
+  --out infra/docker/docker-compose.candidate.yml
+
+# 3. Arrancar con el override EXPLÍCITO. Es un override y no una edición porque
+#    el deploy hace `git reset --hard` y revierte en silencio un archivo trackeado.
+docker compose -f docker-compose.prod.yml -f docker-compose.candidate.yml up -d
+
+# 4. Comprobar que lo que está contestando ES el candidato aprobado:
+node infra/scripts/apply-candidate-manifest.cjs \
+  --manifest candidate-manifest.json --verify
+```
+
+El paso 4 es el que vuelve honesto al paso 2. Un override generado prueba que se
+escribió un archivo; la verificación prueba que los contenedores que atienden
+peticiones son los bytes que se aprobaron. Un contenedor cuya imagen no tiene
+digest de registro cuenta como **discrepancia y no como desconocido**: se
+construyó en el host o se cargó de un tarball, y nada lo ata a lo que alguien
+revisó.
 
 ## Paso 2 — Ensayo de backup y restore, en un destino desechable
 
@@ -189,6 +252,14 @@ la imagen**: un mensaje entregado se entregó.
 - No hay medida real de tamaño, de duración de la ventana ni del restore.
 - Ninguna cuenta de canal real ha enviado nada.
 - 0 de 76 perfiles certificados con un modelo real.
+- El disparador por etiqueta **no se ha corrido en GitHub**: existe en el archivo
+  y está fijado por un contrato de test, y su primera ejecución real será la
+  primera vez que un PR lleve la etiqueta. No se puede ensayar antes sin empujar,
+  que es justamente lo que esta tanda no hace.
+- El consumidor del manifiesto **sí** se ensayó localmente, contra un manifiesto
+  real y contra un estado de contenedores simulado: genera el override, fija los
+  cinco digests, y termina en 1 nombrando cada servicio que no coincide. Lo que
+  no se ensayó es ese mismo comando contra los contenedores del VPS.
 
 ## Lo que falta de afuera
 
@@ -197,6 +268,10 @@ la imagen**: un mensaje entregado se entregó.
 2. Los ids de los tenants del piloto y de los que no participan.
 3. Cuenta/número de prueba elegible, método de pago del negocio, destinatario
    con consentimiento y presupuesto autorizado.
-4. `CANDIDATE_PUBLIC_API_URL` y `CANDIDATE_PUBLIC_WA_URL` para el build del
-   candidato.
+4. Los **once** `NEXT_PUBLIC_*` del build del candidato: `CANDIDATE_PUBLIC_API_URL`
+   y `CANDIDATE_PUBLIC_WA_URL` como variables de repositorio, y los secretos
+   `META_APP_ID`, `META_CONFIG_ID`, `META_SOLUTION_ID`, `GOOGLE_OAUTH_CLIENT_ID`,
+   `MESSENGER_FB_LOGIN_CONFIG_ID` y `VAPID_PUBLIC_KEY`. Sin ellos el workflow se
+   detiene antes de construir, que es lo correcto: un candidato a medias
+   horneadas se verificaría como si fuera el producto.
 5. Aprobación explícita del candidato y de la activación.

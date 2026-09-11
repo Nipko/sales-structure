@@ -39,6 +39,14 @@ export const SHARED_URL_VARS = [
     'KNOWLEDGE_TEST_DATABASE_URL',
     'LEARNING_EVIDENCE_TEST_DATABASE_URL',
     'KNOWLEDGE_CONFLICT_TEST_DATABASE_URL',
+    // Added after a failure poisoned every later run: the migration-under-load
+    // suite creates eight tenant schemas and registers them in `public.tenants`,
+    // and this variable was the one shared URL the split did not cover. One
+    // deadlocked cleanup left those rows behind, and from then on every run of
+    // every migration iterated a half-created schema and failed on a column
+    // that did not exist there. A per-worker database that is dropped and
+    // recreated each run cannot carry a previous failure forward.
+    'PARALLLY_MIGRATION_TEST_URL',
     'DATABASE_URL',
 ];
 

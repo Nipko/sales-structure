@@ -125,11 +125,23 @@ const WRITERS = 6;
         await prisma?.__client?.$disconnect().catch(() => undefined);
         if (!admin) return;
         try {
+            // The registration goes FIRST, and every step is independent.
+            //
+            // This used to drop the schemas and then delete the rows, all in one
+            // try. A deadlock in the middle left eight `public.tenants` rows
+            // pointing at half-created schemas — and from then on EVERY run of
+            // EVERY migration iterated them and failed on a column that did not
+            // exist there. One flaky cleanup poisoned the database for good.
+            //
+            // Removing the registration first means a failure below leaves
+            // orphan schemas, which cost disk and nothing else, instead of
+            // orphan rows, which cost every future run.
+            await admin.query('DELETE FROM public.tenants WHERE schema_name = ANY($1::text[])', [schemas])
+                .catch(() => undefined);
             for (const schema of schemas) {
                 if (!/^tenant_migload_[a-f0-9]{32}$/.test(schema)) throw new Error('invalid_cleanup_scope');
-                await admin.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
+                await admin.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`).catch(() => undefined);
             }
-            await admin.query('DELETE FROM public.tenants WHERE schema_name = ANY($1::text[])', [schemas]);
         } finally { await admin.end(); }
     });
 

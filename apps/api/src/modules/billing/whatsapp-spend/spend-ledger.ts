@@ -1369,6 +1369,79 @@ export async function sweepExpiredLeases(query: SpendQuery, schema: string, limi
     return Object.freeze(rows.map(row => String(row.effect_key)));
 }
 
+/**
+ * Effects that are known to have ARRIVED and are still waiting for a price.
+ *
+ * `pending_reconciliation` is the state a send leaves behind when Meta accepted
+ * the message and nobody could say what it cost: a timeout carrying a wamid, a
+ * delivery whose rate card had no row, a currency that was never established.
+ * The money stays counted, which is correct — it WAS spent — but the row sits
+ * there for ever unless something resolves it.
+ *
+ * After a grace period the honest resolution is the reservation's own amount.
+ * For a priced effect that is the published rate; for an unpriceable one it is
+ * the derived ceiling, which the card itself says nothing exceeds. Both are
+ * upper bounds, and settling at an upper bound overstates a bill rather than
+ * hiding one — the direction a business can check and correct.
+ *
+ * Deliberately does NOT touch `indeterminate`. That state means nobody knows
+ * whether the message arrived, and no amount of waiting turns not-knowing into
+ * evidence. Those go to a person.
+ */
+export async function reconcileDeliveredEffects(query: SpendQuery, schema: string, input: {
+    readonly olderThan: Date;
+    readonly limit?: number;
+}): Promise<readonly ReservationRow[]> {
+    assertSchema(schema);
+    const limit = Math.max(1, Math.trunc(input.limit ?? 200));
+    const due = await query<any[]>(
+        `SELECT effect_key FROM "${schema}".whatsapp_spend_reservations
+          WHERE state = 'pending_reconciliation' AND updated_at < $1
+          ORDER BY updated_at ASC LIMIT ${limit}`, [input.olderThan]);
+    const settled: ReservationRow[] = [];
+    for (const row of due) {
+        // One at a time and through the normal writer, so the counters move by
+        // the same code path every other settlement uses. A bulk UPDATE here
+        // would be a second implementation of `applyToCounters`, and the last
+        // time this rule existed twice the two copies disagreed.
+        const effectKey = String(row.effect_key);
+        const current = await findReservation(query, schema, effectKey);
+        if (!current) continue;
+        const resolved = await settleReservation(query, schema, {
+            effectKey,
+            chargedMinor: current.money.reservedMinor,
+            evidence: 'reconciled_at_reserved_amount',
+            fromStates: ['pending_reconciliation'],
+        });
+        if (resolved) settled.push(resolved);
+    }
+    return Object.freeze(settled);
+}
+
+/**
+ * Effects nobody can resolve without a person looking.
+ *
+ * A read, never a write. `indeterminate` means the request went out and no
+ * answer ever came back — no receipt, no rejection, nothing. Meta sends a
+ * status for everything it accepted, so a row that has sat here past the grace
+ * period is either a lost webhook or a message that never existed, and those
+ * two have opposite answers. Guessing either way is how a business is charged
+ * for something that did not happen, or stops being charged for something that
+ * did.
+ */
+export async function staleIndeterminateEffects(query: SpendQuery, schema: string, input: {
+    readonly olderThan: Date;
+    readonly limit?: number;
+}): Promise<readonly ReservationRow[]> {
+    assertSchema(schema);
+    const limit = Math.max(1, Math.trunc(input.limit ?? 200));
+    const rows = await query<any[]>(
+        `SELECT * FROM "${schema}".whatsapp_spend_reservations
+          WHERE state = 'indeterminate' AND updated_at < $1
+          ORDER BY updated_at ASC LIMIT ${limit}`, [input.olderThan]);
+    return Object.freeze(rows.map(mapReservation));
+}
+
 /** What is reserved, settled, retained, released and free — never one number. */
 export interface SpendExposure {
     readonly currency: string;

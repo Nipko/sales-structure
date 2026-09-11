@@ -1,4 +1,6 @@
-import { BadRequestException, Controller, Get, Query, Request, UseGuards } from '@nestjs/common';
+import {
+    BadRequestException, Body, Controller, Get, Post, Query, Request, UseGuards,
+} from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { RolesGuard } from '../../../common/guards/roles.guard';
@@ -85,5 +87,115 @@ export class WhatsappSpendController {
                 refusalCodes: SPEND_BLOCK_CODES,
             },
         };
+    }
+
+    /**
+     * The effects nobody can decide without a person.
+     *
+     * `indeterminate` past the grace period: the request went out and no answer
+     * ever came back — no receipt, no rejection, nothing. The money is counted
+     * against the account and no amount of waiting will settle it, because Meta
+     * sends a status for everything it accepted, so a row still here is either a
+     * lost webhook or a message that never existed. Those have opposite answers.
+     *
+     * Read by the same three roles that read the summary: the person watching
+     * the inbox is usually the first to notice, and making them ask somebody
+     * else to look is how a stuck figure stays stuck for a month.
+     */
+    @Get('awaiting-resolution')
+    @UseGuards(AuthGuard('jwt'), RolesGuard)
+    @Roles('super_admin', 'tenant_admin', 'tenant_supervisor')
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'WhatsApp effects whose delivery nobody can confirm' })
+    async awaitingResolution(@Request() req: any, @Query('graceHours') graceHours?: string) {
+        const schema = await this.schemaFor(req);
+        const grace = Math.min(720, Math.max(1, Number(graceHours) || 72));
+        const rows = await this.spend.awaitingResolution(schema, { graceHours: grace, limit: 200 });
+        return {
+            success: true,
+            data: {
+                graceHours: grace,
+                // Only what a person needs to decide, and nothing that would
+                // put a customer's phone number on a screen that does not
+                // already show it: the ledger holds a hash, and it stays a hash.
+                effects: rows.map(row => ({
+                    effectKey: row.effectKey,
+                    channelAccountId: row.identity.channelAccountId,
+                    category: row.identity.category,
+                    currency: row.identity.currency,
+                    reservedMinor: row.money.reservedMinor,
+                    basis: row.money.basis,
+                    providerMessageId: row.providerMessageId,
+                    reason: row.reason,
+                    attempts: row.attempts,
+                    createdAt: row.createdAt,
+                })),
+            },
+        };
+    }
+
+    /**
+     * A person deciding one of them.
+     *
+     * `tenant_supervisor` is deliberately NOT here. Reading the list is
+     * operational; changing what a business is recorded as having spent is not,
+     * and the reason is stored against whoever did it.
+     */
+    @Post('resolve')
+    @UseGuards(AuthGuard('jwt'), RolesGuard)
+    @Roles('super_admin', 'tenant_admin')
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Decide an effect whose delivery could not be confirmed' })
+    async resolve(@Request() req: any, @Body() body: {
+        effectKey?: string; decision?: string; reason?: string; chargedMinor?: number;
+    }) {
+        const schema = await this.schemaFor(req);
+        const effectKey = String(body?.effectKey ?? '').trim();
+        if (!effectKey) throw new BadRequestException('effectKey is required');
+        if (body?.decision !== 'delivered' && body?.decision !== 'not_delivered') {
+            throw new BadRequestException('decision must be "delivered" or "not_delivered"');
+        }
+        const reason = String(body?.reason ?? '').trim();
+        // Required, and required HERE rather than only in the service: a
+        // spending record adjusted with no stated reason is indistinguishable
+        // from a mistake six months later, and the person making it is the only
+        // one who can say which it was.
+        if (reason.length < 8) {
+            throw new BadRequestException(
+                'reason is required and must say what evidence this decision is based on');
+        }
+        const charged = body?.chargedMinor;
+        if (charged !== undefined && (!Number.isInteger(charged) || charged < 0)) {
+            throw new BadRequestException('chargedMinor must be a whole number of minor units');
+        }
+        const resolved = await this.spend.resolveManually(schema, {
+            effectKey, decision: body.decision, reason,
+            actorId: String(req.user?.id ?? req.user?.userId ?? 'unknown'),
+            chargedMinor: charged ?? null,
+        });
+        if (!resolved) {
+            // Either it does not exist, or its money already moved. Both are
+            // "there is nothing here to decide", and neither is a server fault.
+            throw new BadRequestException(
+                'That effect is not awaiting a decision: it does not exist, or it was already '
+                + 'settled or released.');
+        }
+        return {
+            success: true,
+            data: {
+                effectKey: resolved.effectKey,
+                state: resolved.state,
+                chargedMinor: resolved.chargedMinor,
+                currency: resolved.identity.currency,
+            },
+        };
+    }
+
+    private async schemaFor(req: any): Promise<string> {
+        const tenantId = req.user?.tenantId;
+        if (!tenantId) throw new BadRequestException('User does not belong to a tenant');
+        const schema = await this.prisma.getTenantSchemaName(tenantId);
+        if (!schema) throw new BadRequestException('Tenant has no schema');
+        return schema;
     }
 }

@@ -8,7 +8,8 @@ import {
 import {
     adoptReservation, claimReservation, claimTransmission, declareTaskBudget, ensureCounters,
     findReservation, findReservationByProviderMessage, grantFreeDeliveries,
-    markTransmissionInFlight, ownEffect, RESOLVABLE_STATES,
+    markTransmissionInFlight, ownEffect, reconcileDeliveredEffects, RESOLVABLE_STATES,
+    staleIndeterminateEffects,
     recentIdenticalDeliveries, releaseTransmission, sweepTransmissionLeases,
     readExposure, readPressure, readSpendSignals, recordAllocation, releaseReservation,
     reserveAgainstCounter, retainReservation,
@@ -702,6 +703,122 @@ export class WhatsappSpendService {
                 fromStates: RESOLVABLE_STATES,
             });
             return settled ? 'settled' as const : 'ignored' as const;
+        });
+    }
+
+    /**
+     * Close the effects that arrived and were never priced.
+     *
+     * The reconciler, in one sentence: after the grace period, a delivery whose
+     * cost nobody could compute settles at the amount that was reserved for it.
+     * That amount is an upper bound by construction — the published rate, or the
+     * highest the card prints for that currency — so this overstates a bill
+     * rather than hiding one, which is the direction a business can check.
+     *
+     * Runs on a schedule and is safe to run twice: `settleReservation` moves out
+     * of `pending_reconciliation` and nothing else, so the second pass finds
+     * nothing to do rather than charging again.
+     */
+    async reconcile(schema: string, input: {
+        readonly graceHours?: number; readonly limit?: number; readonly at?: Date;
+    } = {}): Promise<{ settled: number; settledMinor: number; needsPerson: number }> {
+        const at = input.at ?? new Date();
+        const olderThan = new Date(at.getTime() - (input.graceHours ?? 72) * 3_600_000);
+        const settled = await this.prisma.transactionInTenantSchema(schema, query =>
+            reconcileDeliveredEffects(query as SpendQuery, schema,
+                { olderThan, limit: input.limit }));
+        const stuck = await this.prisma.transactionInTenantSchema(schema, query =>
+            staleIndeterminateEffects(query as SpendQuery, schema,
+                { olderThan, limit: input.limit }));
+        const settledMinor = settled.reduce((total, row) => total + (row.chargedMinor ?? 0), 0);
+        if (settled.length) {
+            this.logger.log(`[Spend] reconciled ${settled.length} delivered effect(s) in ${schema} `
+                + `at their reserved amount (${settledMinor} minor units)`);
+        }
+        if (stuck.length) {
+            // Said at warning level and with a count, because the number is the
+            // signal: one is a lost webhook, fifty is something systematic and
+            // the money in them is real exposure nobody is watching.
+            this.logger.warn(`[Spend] ${stuck.length} effect(s) in ${schema} have been `
+                + 'indeterminate past the grace period and need a person: nobody can say '
+                + 'whether they were delivered, and waiting longer will not decide it.');
+        }
+        return { settled: settled.length, settledMinor, needsPerson: stuck.length };
+    }
+
+    /** The effects waiting on a person, for the panel that shows them. */
+    async awaitingResolution(schema: string, input: {
+        readonly graceHours?: number; readonly limit?: number; readonly at?: Date;
+    } = {}): Promise<readonly ReservationRow[]> {
+        const at = input.at ?? new Date();
+        const olderThan = new Date(at.getTime() - (input.graceHours ?? 72) * 3_600_000);
+        return this.prisma.transactionInTenantSchema(schema, query =>
+            staleIndeterminateEffects(query as SpendQuery, schema,
+                { olderThan, limit: input.limit }));
+    }
+
+    /**
+     * A person deciding what nothing else can decide.
+     *
+     * The only way an `indeterminate` effect leaves that state, and deliberately
+     * so: it means the request went out and no answer ever came back, and the
+     * two possible truths — it arrived, it did not — have opposite consequences
+     * for somebody's bill. A scheduler picking one would be inventing evidence.
+     *
+     * The reason is REQUIRED and stored. An adjustment to a business's spending
+     * record with no stated reason is indistinguishable from a mistake, and in
+     * six months nobody will remember which it was.
+     */
+    async resolveManually(schema: string, input: {
+        readonly effectKey: string;
+        readonly decision: 'delivered' | 'not_delivered';
+        readonly reason: string;
+        readonly actorId: string;
+        readonly chargedMinor?: number | null;
+    }): Promise<ReservationRow | null> {
+        const reason = String(input.reason ?? '').trim();
+        if (!reason) throw new Error('spend_manual_resolution_requires_a_reason');
+        return this.prisma.transactionInTenantSchema(schema, async query => {
+            const current = await findReservation(query as SpendQuery, schema, input.effectKey);
+            if (!current) return null;
+            // Only what is genuinely unresolved. A settled or released effect is
+            // finished, and re-deciding it here would be an edit to a record of
+            // money that already moved.
+            if (current.state === 'settled' || current.state === 'released') return null;
+            const evidence = `manual:${input.actorId}:${reason}`.slice(0, 500);
+            if (input.decision === 'not_delivered') {
+                return releaseReservation(query as SpendQuery, schema, {
+                    effectKey: input.effectKey, evidence,
+                    reason: 'manually_resolved_not_delivered',
+                    // `failed` rather than a new word: the column holds what the
+                    // PROVIDER's vocabulary can express, and a person saying it
+                    // never arrived is asserting the same fact a failed receipt
+                    // would have. Inventing a value here violates the CHECK and
+                    // takes the whole transaction with it.
+                    remoteState: 'failed',
+                    fromStates: RESOLVABLE_STATES,
+                });
+            }
+            // A person may know the real figure from Meta's invoice. Absent
+            // that, the reservation's own amount stands — the same upper bound
+            // the reconciler uses.
+            //
+            // Above the reservation it is REFUSED rather than clamped. The
+            // counters can only return what they allocated, so a larger figure
+            // would be silently truncated: the row would say 500 and the
+            // account would move by 200, and the two numbers a person compares
+            // would disagree for ever. A bill that exceeded its own ceiling is
+            // a real event and deserves its own correction, not a rounding.
+            const charged = input.chargedMinor ?? current.money.reservedMinor;
+            if (charged > current.money.reservedMinor) {
+                throw new Error('spend_manual_charge_exceeds_reservation');
+            }
+            return settleReservation(query as SpendQuery, schema, {
+                effectKey: input.effectKey,
+                chargedMinor: charged,
+                evidence, remoteState: 'delivered',
+                fromStates: RESOLVABLE_STATES,
+            });
         });
     }
 

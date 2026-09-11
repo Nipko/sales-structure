@@ -4,6 +4,8 @@ import { WhatsappSpendService } from './whatsapp-spend.service';
 import { WhatsappSendAdmissionService } from './whatsapp-send-admission.service';
 import { AccountPauseStore } from '../../channels/account-pause-store';
 import { WhatsappSpendController } from './whatsapp-spend.controller';
+import { WhatsappSpendMaintenanceService } from './whatsapp-spend-maintenance.service';
+import { IncidentService } from '../../health/incident.service';
 
 /**
  * The money authority, exported on its own.
@@ -19,8 +21,18 @@ import { WhatsappSpendController } from './whatsapp-spend.controller';
     controllers: [WhatsappSpendController],
     // `AccountPauseStore` is declared here rather than in `ChannelsModule`
     // on purpose: importing that module would close a cycle through the
-    // processor, and the store is a leaf that needs only Prisma.
-    providers: [WhatsappSpendService, WhatsappSendAdmissionService, AccountPauseStore],
-    exports: [WhatsappSpendService, WhatsappSendAdmissionService, AccountPauseStore],
+    // processor, and the store is a leaf that needs only Prisma. `IncidentService`
+    // is declared for the same reason and with the same shape — importing
+    // `HealthModule` for one writer would drag the whole monitoring graph in,
+    // and an alert nobody can raise is how the sweep came to exist with no
+    // caller in the first place.
+    providers: [
+        WhatsappSpendService, WhatsappSendAdmissionService, AccountPauseStore,
+        IncidentService, WhatsappSpendMaintenanceService,
+    ],
+    exports: [
+        WhatsappSpendService, WhatsappSendAdmissionService, AccountPauseStore,
+        WhatsappSpendMaintenanceService,
+    ],
 })
 export class WhatsappSpendModule {}

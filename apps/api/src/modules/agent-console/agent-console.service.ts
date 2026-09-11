@@ -128,11 +128,16 @@ export class AgentConsoleService {
         private llmRouter: LLMRouterService,
         private eventEmitter: EventEmitter2,
         private aiResolutionService: AiResolutionService,
-        @Optional() private widgetMessages?: WidgetMessageStore,
         // A human agent's reply is billed by Meta exactly like the agent's.
         // Leaving this lane ungated would mean a tenant at its ceiling keeps
         // spending as long as a person is the one typing.
-        @Optional() private spendGate?: WhatsappSendAdmissionService,
+        //
+        // NOT optional, and placed before the optional store for that reason:
+        // a required parameter cannot follow an optional one, so the position
+        // is part of the statement. Nest refuses to build the module when no
+        // authority is wired, at boot, where a person is watching.
+        private spendGate: WhatsappSendAdmissionService,
+        @Optional() private widgetMessages?: WidgetMessageStore,
     ) { }
 
     /**
@@ -519,7 +524,7 @@ export class AgentConsoleService {
                 }
                 // The intent to send, written before the request — so a crash
                 // here is provably "sent nothing" rather than "nobody knows".
-                if (admission && this.spendGate
+                if (admission
                     && !(await this.spendGate.beginTransmission(schemaName, admission as Admission))) {
                     await settle('failed', 'transmission_not_owned');
                     return {
@@ -616,13 +621,13 @@ export class AgentConsoleService {
     /**
      * Ask the money gate for one human-agent reply.
      *
-     * `'refused'` means a ceiling said no and the reply must not be sent.
-     * `null` means unmetered: no gate wired, or a channel whose provider does
-     * not bill per message.
+     * `'refused'` means the reply must not be sent — either a ceiling said no
+     * or the meter could not answer. `null` means the authority itself says
+     * this send is unmetered: a channel whose provider does not bill per
+     * message. It never means "no gate wired" any more.
      */
     private async admitAgentSend(schemaName: string, channelType: string,
         channelAccountId: string, recipient: string, content: any) {
-        if (!this.spendGate) return null;
         try {
             const admission = await this.spendGate.admitBySchema(schemaName, {
                 channelType,
@@ -649,14 +654,16 @@ export class AgentConsoleService {
             if (admission && !admission.permitted) return 'refused' as const;
             return admission;
         } catch (error: any) {
-            // An unreachable gate must never stop an agent answering a customer.
-            this.logger.error(`[Spend] gate unavailable for agent reply: ${error?.message}`);
-            return null;
+            // An unavailable meter defers, and the agent is TOLD. A reply that
+            // silently did not leave is worse than one that visibly did not:
+            // they would go on believing the customer was answered.
+            this.logger.error(`[Spend] meter unavailable for agent reply: ${error?.message}`);
+            return 'refused' as const;
         }
     }
 
     private async recordAgentSend(schemaName: string, admission: unknown, result: string | null) {
-        if (!admission || admission === 'refused' || !this.spendGate) return;
+        if (!admission || admission === 'refused') return;
         try {
             await this.spendGate.record(schemaName, admission as Admission, result
                 ? { kind: 'delivered_unpriced', providerMessageId: result }

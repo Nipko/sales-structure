@@ -9,6 +9,7 @@ import { ChannelGatewayService } from './channel-gateway.service';
 import {
     WhatsappSendAdmissionService, fromSendContext, type Admission,
 } from '../billing/whatsapp-spend/whatsapp-send-admission.service';
+import { SpendMeterUnavailable } from '../billing/whatsapp-spend/spend-unavailable';
 import { ChannelTokenService } from './channel-token.service';
 import { RedisService } from '../redis/redis.service';
 import { OutboundMessage } from '@parallext/shared';
@@ -75,23 +76,30 @@ export class OutboundQueueProcessor extends WorkerHost {
         private redis: RedisService,
         private tenantSms: TenantNotificationSmsService,
         private prisma: PrismaService,
+        // The economic boundary. NOT optional: this processor can send
+        // WhatsApp, and a deployment with a WhatsApp sender and no money
+        // authority is exactly the configuration that produced unmeasured
+        // sends. Nest refuses to build the module instead, at boot, where a
+        // person is watching — rather than at 3am on a customer message.
+        //
+        // It sits BEFORE the optional ports because it is not optional, and a
+        // required parameter after an optional one is not expressible: the
+        // position itself is part of the statement.
+        private spendGate: WhatsappSendAdmissionService,
         @Optional() @Inject(APPROVED_EFFECT_DELIVERY) private approvalEffects?: ApprovedEffectDeliveryPort,
         @Optional() @Inject(OPERATIONAL_NOTICE_DELIVERY) private operationalNotices?: OperationalNoticeDeliveryPort,
         @Optional() private dispatchOutbox?: AgentDispatchOutboxStore,
-        // The economic boundary. Optional so a deployment that has not
-        // wired it still SENDS — a money gate that silences a platform when
-        // its own dependency is missing is worse than the bill it prevents.
-        // When it is present, nothing chargeable leaves without passing it.
-        @Optional() private spendGate?: WhatsappSendAdmissionService,
     ) {
         super();
     }
 
     /**
-     * Ask the money gate, in the one shape both lanes use.
+     * Ask the money gate, in the one shape every lane uses.
      *
-     * Returns `null` when there is no gate wired at all, which the callers
-     * read as "proceed, and record nothing".
+     * It either returns an admission or THROWS. There is no third answer any
+     * more: the old `null` meant "no gate wired — carry on", and every caller
+     * obligingly carried on, which is how an unreachable database turned into
+     * an unmeasured message and an unrecorded charge.
      */
     private async admitSpend(input: {
         tenantId: string; schema?: string | null; channelType: string; channelAccountId: string;
@@ -102,11 +110,19 @@ export class OutboundQueueProcessor extends WorkerHost {
         insideServiceWindow?: boolean;
         binding?: Record<string, unknown>;
     }) {
-        if (!this.spendGate) return null;
+        if (!this.spendGate) {
+            // Not optional any more. A deployment reaching this line has a
+            // WhatsApp sender and no money authority, which is the
+            // configuration that produced unmeasured sends.
+            throw new SpendMeterUnavailable('no spend authority is wired into this process');
+        }
         let schema = input.schema ?? null;
         if (!schema) {
             try { schema = await this.prisma.getTenantSchemaName(input.tenantId); }
-            catch { return null; }
+            catch (error) {
+                throw new SpendMeterUnavailable(
+                    `tenant schema unresolved for ${input.tenantId}`, error);
+            }
         }
         try {
             // ── The identity comes from the RESOLVER, not from this call site ──
@@ -155,11 +171,21 @@ export class OutboundQueueProcessor extends WorkerHost {
                 binding: input.binding as any,
             });
         } catch (error: any) {
-            // An infrastructure failure in the gate must not stop a customer
-            // being answered. It is logged loudly because an ungated send is
-            // exactly what this whole boundary exists to make impossible.
-            this.logger.error(`[Spend] gate unavailable for ${input.producer}: ${error?.message}`);
-            return null;
+            // ── AN UNAVAILABLE METER DEFERS. IT NEVER PERMITS. ──────────────
+            //
+            // This used to return `null`, which every caller read as "no gate
+            // wired — carry on". So a schema that could not be resolved or a
+            // database that blinked produced a message on a customer's phone, a
+            // charge on the business's account, and no record of either.
+            //
+            // Throwing hands the job back to BullMQ, which retries it with
+            // backoff. The customer waits seconds; nobody is billed for a
+            // message nothing counted. Inbound is untouched.
+            this.logger.error(`[Spend] meter unavailable for ${input.producer}: `
+                + `${error?.message}. Deferring the effect rather than sending it unmeasured.`);
+            throw error instanceof SpendMeterUnavailable
+                ? error
+                : new SpendMeterUnavailable(`admission failed for ${input.producer}`, error);
         }
     }
 
@@ -402,7 +428,10 @@ export class OutboundQueueProcessor extends WorkerHost {
      * the whole point is to tell "crashed before sending" from "crashed after".
      */
     private async beginOrStandDown(outbound: OutboundMessage, admission: unknown): Promise<boolean> {
-        if (!this.spendGate || !admission || admission === 'refused') return true;
+        // No `!this.spendGate` escape here. There is always a gate now, and a
+        // branch that said "no gate, go ahead" would be the one branch that
+        // sends without a transmission right.
+        if (!admission || admission === 'refused') return true;
         try {
             const schema = await this.prisma.getTenantSchemaName(outbound.tenantId);
             return await this.spendGate.beginTransmission(schema, admission as Admission);
@@ -458,20 +487,33 @@ export class OutboundQueueProcessor extends WorkerHost {
      */
     private async admitFlowFallback(outbound: OutboundMessage, producer: string,
         disposition: 'reactive' | 'proactive', errorCode: string): Promise<boolean> {
-        if (!this.spendGate) return true;
-        const admission = await this.admitSpend({
-            tenantId: outbound.tenantId,
-            channelType: outbound.channelType,
-            channelAccountId: String(outbound.channelAccountId ?? ''),
-            recipient: String(outbound.to ?? ''),
-            producer: `${producer}_flow_fallback`,
-            disposition,
-            contentDigest: createHash('sha256')
-                .update(`flow_fallback:${errorCode}:${JSON.stringify(outbound.content ?? null)}`)
-                .digest('hex').slice(0, 32),
-            conversationId: (outbound.metadata as any)?.conversationId ?? null,
-            contactId: (outbound.metadata as any)?.contactId ?? null,
-        });
+        let admission: Admission | null;
+        try {
+            admission = await this.admitSpend({
+                tenantId: outbound.tenantId,
+                channelType: outbound.channelType,
+                channelAccountId: String(outbound.channelAccountId ?? ''),
+                recipient: String(outbound.to ?? ''),
+                producer: `${producer}_flow_fallback`,
+                disposition,
+                contentDigest: createHash('sha256')
+                    .update(`flow_fallback:${errorCode}:${JSON.stringify(outbound.content ?? null)}`)
+                    .digest('hex').slice(0, 32),
+                conversationId: (outbound.metadata as any)?.conversationId ?? null,
+                contactId: (outbound.metadata as any)?.contactId ?? null,
+            });
+        } catch (error: any) {
+            // ── WHY THIS ONE CATCHES INSTEAD OF DEFERRING ───────────────────
+            //
+            // This hook runs AFTER the Flow POST. Throwing would hand the whole
+            // job back to BullMQ, and the retry would post the Flow again. So
+            // the honest answer here is the one the doc comment already
+            // promised: send nothing. The customer is no worse off than if the
+            // Flow had simply failed, and no unmeasured message goes out.
+            this.logger.error(`[Spend] the text fallback could not be authorised: `
+                + `${error?.message}. Sending nothing.`);
+            return false;
+        }
         if (admission && !admission.permitted) {
             this.logger.warn(`[Spend] the text fallback for a refused Flow was itself refused`);
             return false;
@@ -518,7 +560,13 @@ export class OutboundQueueProcessor extends WorkerHost {
             const schema = await this.prisma.getTenantSchemaName(outbound.tenantId);
             await this.spendGate.record(schema, admission as Admission, outcome);
         } catch (error: any) {
-            this.logger.error(`[Spend] outcome not recorded: ${error?.message}`);
+            // Deliberately NOT fatal, and the asymmetry is the point: the
+            // message has already gone out. Throwing here would retry a
+            // delivered message, which costs a second charge to fix a
+            // bookkeeping problem. The lease sweeper turns an unrecorded
+            // outcome into visible exposure, which is the honest state.
+            this.logger.error(`[Spend] outcome not recorded after sending: ${error?.message}. `
+                + `The lease sweeper will surface it as exposure.`);
         }
     }
 

@@ -1,4 +1,5 @@
 import { AgentConsoleService } from './agent-console.service';
+import { permissiveSpendGate } from '../channels/__fixtures__/spend-gate-double';
 
 /**
  * Regression cover for the "Mías" inbox filter returning a 500.
@@ -36,6 +37,7 @@ describe('AgentConsoleService.getInbox — assigned_to is VARCHAR, not UUID', ()
         const service = new AgentConsoleService(
             prisma, redis as any, {} as any, {} as any,
             {} as any, {} as any, { emit: jest.fn() } as any, {} as any,
+            permissiveSpendGate(),
         );
         return { service, sqls };
     }
@@ -125,6 +127,7 @@ describe('AgentConsoleService.getConversation — exposes who holds the conversa
         return new AgentConsoleService(
             prisma, redis as any, {} as any, {} as any,
             {} as any, {} as any, { emit: jest.fn() } as any, {} as any,
+            permissiveSpendGate(),
         );
     }
 

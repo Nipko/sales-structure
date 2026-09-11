@@ -396,9 +396,13 @@ const enabled = !!databaseUrl && !!redisUrl;
         expect(isOutboundSendContext(resolved.context)).toBe(true);
         expect(resolved.context.channelAccountId).toBe(numbers.a2);
         expect(resolved.context.payer.wabaId).toBe(waba.a2);
-        // The WABA is known; how it is funded is a separate probe that has not
-        // run. `business_direct` would be a guess about somebody's money.
-        expect(resolved.context.payer.kind).toBe('unknown');
+        // A known WABA id ANSWERS who pays: under a Tech Provider arrangement
+        // Meta bills that WABA's own account. This used to assert `unknown` on
+        // the grounds that funding had not been probed — which conflated WHO
+        // pays with WHETHER THEY CAN, left `payer.kind` permanently unknown,
+        // and made the money authority refuse every send with `payer_unknown`.
+        // Funding readiness is its own signal and its own refusal.
+        expect(resolved.context.payer.kind).toBe('business_direct');
         expect(resolved.context.credential.source).toBe('system_user');
         expect(resolved.accessToken).toBeTruthy();
     });

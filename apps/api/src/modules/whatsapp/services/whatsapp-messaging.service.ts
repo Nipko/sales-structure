@@ -1,4 +1,6 @@
-import { Injectable, Logger, BadRequestException, Optional } from '@nestjs/common';
+import {
+  Injectable, Logger, BadRequestException, Optional, ServiceUnavailableException,
+} from '@nestjs/common';
 import { createHash } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { HttpService } from '@nestjs/axios';
@@ -44,8 +46,8 @@ export class WhatsappMessagingService {
     // The third and last sink. This service builds its own payload and posts
     // it to Meta itself, so a gate on the queue would never see it — and every
     // template, every interactive card and every media message sent from a
-    // controller comes through here.
-    @Optional() private readonly spendGate?: WhatsappSendAdmissionService,
+    // controller comes through here. NOT optional, for the same reason.
+    private readonly spendGate: WhatsappSendAdmissionService,
     // The first of the two places Meta says the business cannot be billed: the
     // answer to this very request. The other is a status webhook minutes later.
     @Optional() private readonly pauses?: AccountPauseStore,
@@ -380,11 +382,17 @@ export class WhatsappMessagingService {
       if (admission && !admission.permitted) return 'refused' as const;
       return admission;
     } catch (error: any) {
-      // An unreachable gate must not stop a customer being answered. It is
-      // logged loudly because an ungated send is exactly what this boundary
-      // exists to make impossible.
-      this.logger.error(`[Spend] gate unavailable for whatsapp REST: ${error?.message}`);
-      return null;
+      // An unavailable meter DEFERS. Returning null here read as "no gate
+      // wired — carry on", so a database that blinked produced a message on a
+      // phone, a charge on the account and no record of either.
+      //
+      // A 503 so the caller retries: this is a synchronous REST surface, and
+      // the honest answer is "try again in a moment", not a silent send.
+      this.logger.error(`[Spend] meter unavailable for whatsapp REST: ${error?.message}. `
+        + `Deferring rather than sending unmeasured.`);
+      throw new ServiceUnavailableException(
+        'El control de gasto de WhatsApp no esta disponible ahora mismo. El mensaje no se envio; '
+        + 'intentalo de nuevo en unos segundos.');
     }
   }
 

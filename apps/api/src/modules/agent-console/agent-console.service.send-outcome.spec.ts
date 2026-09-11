@@ -1,4 +1,5 @@
 import { AgentConsoleService } from './agent-console.service';
+import { permissiveSpendGate } from '../channels/__fixtures__/spend-gate-double';
 
 const TENANT = '11111111-1111-4111-8111-111111111111';
 const CONVERSATION = '22222222-2222-4222-8222-222222222222';
@@ -47,8 +48,14 @@ describe('what becomes of a human agent reply', () => {
             return { messageId: 'wamid.OUT' };
         }) };
         const channelToken: any = { getChannelToken: jest.fn(async () => ({ accessToken: 'token', accountId: 'acc-1' })) };
+
+        // A complete authority, because this spec is about what the console
+        // TELLS the agent, not about money. An incomplete one would refuse
+        // every reply and the three outcomes below would all read 'failed'.
+        const spendGate = permissiveSpendGate();
         const service = new AgentConsoleService(prisma, { get: jest.fn(), set: jest.fn(), del: jest.fn() } as any,
-            channelGateway, channelToken, {} as any, {} as any, { emit: jest.fn() } as any, {} as any);
+            channelGateway, channelToken, {} as any, {} as any, { emit: jest.fn() } as any, {} as any,
+            spendGate);
         jest.spyOn((service as any).logger, 'warn').mockImplementation(() => undefined);
         jest.spyOn((service as any).logger, 'error').mockImplementation(() => undefined);
         return { service, statements, channelGateway };

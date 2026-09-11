@@ -11,6 +11,7 @@ import type { TransmissionGrant } from './spend-ledger';
 import type { SpendDisposition, SpendPressure } from './spend-ledger';
 import { resolveRepetitionPolicy, type RepetitionPolicy } from './spend-repetition';
 import { describeBlock, spendBlock, type SpendBlock } from './spend-diagnosis';
+import { SpendMeterUnavailable } from './spend-unavailable';
 import { AccountPauseStore } from '../../channels/account-pause-store';
 import { describePause } from '../../channels/account-send-pause';
 
@@ -625,9 +626,12 @@ export class WhatsappSendAdmissionService {
                 metadata,
             };
         } catch (error: any) {
-            this.logger.warn(`[Spend] account facts unreadable for ${channelAccountId}: ${error?.message}`);
-            return { timeZone: null, market: null, wabaId: null, businessId: null,
-                address: null, metadata: {} };
+            // The account row IS the identity: the time zone that dates the
+            // rate, the WABA that pays, the currency evidence. Proceeding
+            // without it would send an unmeasured message rather than a
+            // mismeasured one.
+            throw new SpendMeterUnavailable(
+                `account facts unreadable for ${channelAccountId}`, error);
         }
     }
 
@@ -672,10 +676,12 @@ export class WhatsappSendAdmissionService {
             const configured = (tenant?.settings as any)?.whatsappSpend?.enforcement;
             if (configured === 'enforce') mode = 'enforce';
         } catch (error: any) {
-            // Unreadable settings mean the tenant never opted in, which is the
-            // same as not having opted in. Failing closed here would stop a
-            // platform because one row could not be read.
-            this.logger.warn(`[Spend] enforcement unreadable for ${tenantId}: ${error?.message}`);
+            // The tenant row could not be read. That is not "they never opted
+            // in" — it is "we do not know", and the difference matters: an
+            // enforcing tenant would have every ceiling silently lifted for as
+            // long as the database was unhappy.
+            throw new SpendMeterUnavailable(
+                `enforcement mode unreadable for tenant ${tenantId}`, error);
         }
         this.modeCache.set(tenantId, { mode, until: Date.now() + this.MODE_TTL_MS });
         return mode;

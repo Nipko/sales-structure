@@ -9,6 +9,7 @@ import { DISPATCH_OUTBOX_DDL, type DispatchBinding, type DispatchItem } from './
 import { operationalConfigurationHash } from '../persona/agent-configuration-revision';
 import type { StrictDispatchOutcome } from './strict-dispatch-transport';
 import { ensureSyntheticGlobalTables } from '../../common/__fixtures__/synthetic-global-tables';
+import { permissiveSpendGate } from './__fixtures__/spend-gate-double';
 
 const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
 const redisUrl = process.env.DISPATCH_QUEUE_TEST_REDIS_URL;
@@ -94,7 +95,7 @@ const ready = !!databaseUrl && !!redisUrl;
                 getPriority: jest.fn(async () => 1), getMaxPendingJobs: jest.fn(async () => Infinity) } as any,
             { getChannelToken: jest.fn(async () => ({ accessToken: 'token' })) } as any,
             { get: jest.fn(), set: jest.fn(), incr: jest.fn(), expire: jest.fn(), incrBy: jest.fn() } as any,
-            { send: jest.fn() } as any, prisma as any, undefined, undefined, store);
+            { send: jest.fn() } as any, prisma as any, permissiveSpendGate(), undefined, undefined, store);
         service = new OutboundQueueService(queue as any,
             { getPriority: jest.fn(async () => 1), getMaxPendingJobs: jest.fn(async () => Infinity) } as any,
             { incr: jest.fn(), expire: jest.fn() } as any);

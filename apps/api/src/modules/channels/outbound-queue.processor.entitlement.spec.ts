@@ -1,4 +1,5 @@
 import { OutboundQueueProcessor } from './outbound-queue.processor';
+import { permissiveSpendGate } from './__fixtures__/spend-gate-double';
 
 describe('OutboundQueueProcessor subscription boundary', () => {
     function harness(subscriptionStatus: string) {
@@ -31,6 +32,7 @@ describe('OutboundQueueProcessor subscription boundary', () => {
             redis as any,
             tenantSms as any,
             prisma as any,
+            permissiveSpendGate(),
         );
         const job: any = {
             id: undefined,

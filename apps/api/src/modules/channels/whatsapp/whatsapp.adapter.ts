@@ -4,6 +4,7 @@ import { IChannelAdapter } from '../channel-gateway.service';
 import { NormalizedMessage, ChannelType } from '@parallext/shared';
 import { v4 as uuid } from 'uuid';
 import { toWhatsAppFormatting } from '../../../common/utils/channel-text-format.util';
+import { FlowSendFailed } from '../flow-fallback';
 import {
     classifyTransportFailure, metaGraphAnswer, metaGraphClassifier,
     type StrictDispatchOutcome, type StrictDispatchRequest, type StrictDispatchTransport,
@@ -576,7 +577,12 @@ export class WhatsAppAdapter implements IChannelAdapter, StrictDispatchTransport
         if (opts?.footerText) interactive.footer = { text: opts.footerText.slice(0, 60) };
 
         this.logger.log(`[WhatsApp] Sending Flow message (flow_id=${flowId})`);
-        const response = await fetch(url, {
+        // Every failure below carries what it knows. A bare `Error(message)` is
+        // what made a ten-second timeout indistinguishable from a 400 for an
+        // unpublished flow — and the caller then sent a second message on both.
+        let response: Response;
+        try {
+            response = await fetch(url, {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -587,12 +593,18 @@ export class WhatsAppAdapter implements IChannelAdapter, StrictDispatchTransport
                 interactive,
             }),
             signal: AbortSignal.timeout(10_000),
-        });
-        const data = await response.json() as any;
+            });
+        } catch (error: any) {
+            // No answer at all. The request may have been processed.
+            throw new FlowSendFailed(String(error?.message || error), { cause: error });
+        }
+        let data: any = null;
+        try { data = await response.json(); } catch { data = null; }
         if (!response.ok) {
             this.logger.error(`WhatsApp Flow message failed: ${JSON.stringify(data)}`);
-            throw new Error(data.error?.message || 'Flow message failed');
+            throw new FlowSendFailed(data?.error?.message || 'Flow message failed',
+                { status: response.status, body: data });
         }
-        return data.messages?.[0]?.id || '';
+        return data?.messages?.[0]?.id || '';
     }
 }

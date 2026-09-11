@@ -3,6 +3,24 @@ import { NormalizedMessage, ChannelType, OutboundMessage } from '@parallext/shar
 import { WebhookTapService } from './webhook-tap.service';
 import { channelSafeImageUrl } from '../../common/utils/media-url.util';
 import type { StrictDispatchTransport } from './strict-dispatch-transport';
+import { classifyFlowFailure } from './flow-fallback';
+
+/**
+ * What the gateway must ask its caller before doing something the caller did
+ * not authorise.
+ *
+ * There is exactly one such thing today: a text message sent because a Flow was
+ * conclusively refused. That is a second remote effect with its own charge, and
+ * the reservation the caller holds covers the first one.
+ */
+export interface GatewaySendHooks {
+    /**
+     * May a text fallback be sent as a NEW effect? Returning false sends
+     * nothing, which is the safe answer when the money authority cannot be
+     * reached.
+     */
+    readonly admitFallback?: (errorCode: string) => Promise<boolean>;
+}
 
 /**
  * Abstract interface that all channel adapters must implement.
@@ -109,7 +127,8 @@ export class ChannelGatewayService {
     /**
      * Send an outbound message to any channel
      */
-    async sendMessage(outbound: OutboundMessage, accessToken: string): Promise<string | null> {
+    async sendMessage(outbound: OutboundMessage, accessToken: string,
+        hooks?: GatewaySendHooks): Promise<string | null> {
         const adapter = this.adapters.get(outbound.channelType);
         if (!adapter) {
             this.logger.warn(`No adapter for channel: ${outbound.channelType}`);
@@ -140,9 +159,31 @@ export class ChannelGatewayService {
                         },
                     );
                 } catch (e: any) {
-                    // Flow rejected by Meta (draft/unpublished/bad id) — don't leave the
-                    // customer with nothing: fall through to the text body below.
-                    this.logger.warn(`Flow send failed (${e?.message}); falling back to text`);
+                    // ── A SECOND POST NEEDS PROOF AND PERMISSION ───────────
+                    //
+                    // This used to catch everything and send text. A 400 for an
+                    // unpublished flow and a ten-second timeout took the same
+                    // branch — and on a timeout the Flow may well have been
+                    // delivered, so the customer got two messages and the
+                    // business two charges, under one reservation that can only
+                    // settle once.
+                    const verdict = classifyFlowFailure(e);
+                    if (!verdict.mayFallBack) {
+                        this.logger.warn(`Flow send is ${verdict.kind} (${verdict.errorCode}); `
+                            + `NOT falling back — a second message would be a guess`);
+                        return null;
+                    }
+                    // Conclusively refused: nothing was delivered, so a text is
+                    // honest. It is a NEW remote effect, so it needs its own
+                    // authorisation — and if the caller cannot give one, it does
+                    // not happen.
+                    if (hooks?.admitFallback && !(await hooks.admitFallback(verdict.errorCode))) {
+                        this.logger.warn(`Flow rejected (${verdict.errorCode}) and the text fallback `
+                            + `was not authorised; sending nothing`);
+                        return null;
+                    }
+                    this.logger.warn(`Flow conclusively rejected (${verdict.errorCode}); `
+                        + `falling back to text as a separate effect`);
                 }
             }
 

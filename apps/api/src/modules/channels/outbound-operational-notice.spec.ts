@@ -8,7 +8,11 @@ describe('operational notice transport boundary',()=>{
         const processor=new OutboundQueueProcessor(gateway as any,{isOverLimit:async()=>false,recordUsage:async()=>{}} as any,tokens as any,{} as any,{} as any,{} as any,undefined,{deliver});
         expect(await processor.process({data:{operationalNotice:reference}} as any)).toBe('provider-message');
         expect(tokens.getChannelToken).toHaveBeenCalledWith(reference.tenantId,'telegram','current');
-        expect(gateway.sendMessage).toHaveBeenCalledWith(outbound,'fresh');
+        // The third argument is the hook that authorises a text fallback as its own
+        // effect. Asserted by shape rather than pinned to a function identity:
+        // what matters is that the lane offers one, not which closure it is.
+        expect(gateway.sendMessage).toHaveBeenCalledWith(outbound,'fresh',
+            expect.objectContaining({admitFallback:expect.any(Function)}));
     });
     it('does not resolve a recipient or send when the durable delivery port is missing',async()=>{
         const gateway={sendMessage:jest.fn()},tokens={getChannelToken:jest.fn()};

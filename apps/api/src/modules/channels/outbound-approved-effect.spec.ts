@@ -26,7 +26,11 @@ describe('approved delivery queue boundary',()=>{
         const processor=new OutboundQueueProcessor(gateway as any,{isOverLimit:async()=>false,recordUsage:async()=>{}} as any,token as any,{} as any,{} as any,{} as any,{deliver});
         expect(await processor.process({data:{approvalEffect:reference}} as any)).toBe('ack');
         expect(token.getChannelToken).toHaveBeenCalledWith(reference.tenantId,'whatsapp','bound');
-        expect(gateway.sendMessage).toHaveBeenCalledWith(outbound,'fresh');
+        // The third argument is the hook that authorises a text fallback as its own
+        // effect; a Flow that Meta conclusively refuses may not become a second
+        // charge without one.
+        expect(gateway.sendMessage).toHaveBeenCalledWith(outbound,'fresh',
+            expect.objectContaining({admitFallback:expect.any(Function)}));
         (resolveTenantSubscriptionAccess as jest.Mock).mockResolvedValue({allowed:false,restrictionLevel:'suspended'});
         await expect(processor.process({data:{approvalEffect:reference}} as any)).rejects.toBeInstanceOf(ApprovalEffectSuppressed);
         expect(gateway.sendMessage).toHaveBeenCalledTimes(1);

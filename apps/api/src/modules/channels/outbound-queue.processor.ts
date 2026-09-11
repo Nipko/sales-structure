@@ -383,13 +383,80 @@ export class OutboundQueueProcessor extends WorkerHost {
      * it cost. No result at all is a timeout, which never releases, because a
      * request whose answer was lost may well have put a message on a phone.
      */
+    /**
+     * Authorise the text a conclusively-refused Flow becomes.
+     *
+     * It is a SECOND remote effect — its own POST, its own charge, its own
+     * receipt — so it gets its own reservation rather than riding on the one
+     * that covered the Flow. The effect key differs because the producer does:
+     * `…_flow_fallback` is not `…`, so a retry of either finds its own row.
+     *
+     * Returns false when the money authority refuses or cannot be reached.
+     * Sending nothing is the honest answer there: the customer is no worse off
+     * than if the Flow had simply failed, and nobody is billed for a message
+     * that nothing authorised.
+     */
+    private async admitFlowFallback(outbound: OutboundMessage, producer: string,
+        disposition: 'reactive' | 'proactive', errorCode: string): Promise<boolean> {
+        if (!this.spendGate) return true;
+        const admission = await this.admitSpend({
+            tenantId: outbound.tenantId,
+            channelType: outbound.channelType,
+            channelAccountId: String(outbound.channelAccountId ?? ''),
+            recipient: String(outbound.to ?? ''),
+            producer: `${producer}_flow_fallback`,
+            disposition,
+            contentDigest: createHash('sha256')
+                .update(`flow_fallback:${errorCode}:${JSON.stringify(outbound.content ?? null)}`)
+                .digest('hex').slice(0, 32),
+            conversationId: (outbound.metadata as any)?.conversationId ?? null,
+            contactId: (outbound.metadata as any)?.contactId ?? null,
+        });
+        if (admission && !admission.permitted) {
+            this.logger.warn(`[Spend] the text fallback for a refused Flow was itself refused`);
+            return false;
+        }
+        this.fallbackAdmissions.set(outbound, admission);
+        return true;
+    }
+
+    /**
+     * The fallback's admission, parked between the hook and the outcome.
+     *
+     * A `WeakMap` keyed on the message being sent: the hook runs deep inside the
+     * gateway and the outcome is recorded by the lane that called it, and
+     * threading a value back through a callback signature would change the
+     * gateway's contract for every channel to serve one of them.
+     */
+    private readonly fallbackAdmissions = new WeakMap<OutboundMessage, unknown>();
+
     private async recordSpend(outbound: OutboundMessage, admission: unknown, result: string | null) {
+        if (!this.spendGate) return;
+        // A Flow that was refused and fell back produced TWO effects. The Flow
+        // is over — conclusively rejected, so its money goes back — and the text
+        // is the one that carries the receipt.
+        const fallback = this.fallbackAdmissions.get(outbound);
+        if (fallback) {
+            this.fallbackAdmissions.delete(outbound);
+            await this.settle(outbound, admission, { kind: 'rejected', errorCode: 'flow_rejected' });
+            await this.settle(outbound, fallback, result
+                ? { kind: 'delivered_unpriced', providerMessageId: result }
+                : { kind: 'timeout' });
+            return;
+        }
+        await this.settle(outbound, admission, result
+            ? { kind: 'delivered_unpriced', providerMessageId: result }
+            : { kind: 'timeout' });
+    }
+
+    private async settle(outbound: OutboundMessage, admission: unknown, outcome: {
+        kind: 'delivered_priced' | 'delivered_unpriced' | 'rejected' | 'timeout';
+        providerMessageId?: string | null; errorCode?: string | null;
+    }) {
         if (!admission || admission === 'refused' || !this.spendGate) return;
         try {
             const schema = await this.prisma.getTenantSchemaName(outbound.tenantId);
-            await this.spendGate.record(schema, admission as Admission, result
-                ? { kind: 'delivered_unpriced', providerMessageId: result }
-                : { kind: 'timeout' });
+            await this.spendGate.record(schema, admission as Admission, outcome);
         } catch (error: any) {
             this.logger.error(`[Spend] outcome not recorded: ${error?.message}`);
         }
@@ -408,7 +475,9 @@ export class OutboundQueueProcessor extends WorkerHost {
                 return async()=>{
                     const admission = await this.gateOrSuppress(outbound, 'operational_notice', 'proactive');
                     if (admission === 'refused') return null;
-                    const result=await this.channelGateway.sendMessage(outbound,creds.accessToken);
+                    const result=await this.channelGateway.sendMessage(outbound,creds.accessToken,
+                        { admitFallback: code => this.admitFlowFallback(
+                            outbound, 'operational_notice', 'proactive', code) });
                     await this.recordSpend(outbound, admission, result);
                     if(result)await this.throttle.recordUsage(reference.tenantId,'outbound').catch(()=>{});
                     return result;
@@ -433,7 +502,9 @@ export class OutboundQueueProcessor extends WorkerHost {
                 return async () => {
                     const admission = await this.gateOrSuppress(outbound, 'approved_effect', 'reactive');
                     if (admission === 'refused') throw new ApprovalEffectSuppressed('spend_refused');
-                    const result = await this.channelGateway.sendMessage(outbound, creds.accessToken);
+                    const result = await this.channelGateway.sendMessage(outbound, creds.accessToken,
+                        { admitFallback: code => this.admitFlowFallback(
+                            outbound, 'approved_effect', 'reactive', code) });
                     await this.recordSpend(outbound, admission, result);
                     if (result) await this.throttle.recordUsage(reference.tenantId, 'outbound').catch(() => {});
                     return result;
@@ -558,7 +629,10 @@ export class OutboundQueueProcessor extends WorkerHost {
             this.logger.warn(`[Outbound] refused on spend for tenant=${outbound.tenantId}`);
             return 'skipped:spend_refused';
         }
-        const result = await this.channelGateway.sendMessage(outbound, creds.accessToken);
+        const result = await this.channelGateway.sendMessage(outbound, creds.accessToken, {
+            admitFallback: code => this.admitFlowFallback(outbound, 'outbound_queue',
+                (outbound.metadata as any)?.conversationId ? 'reactive' : 'proactive', code),
+        });
         await this.recordSpend(outbound, admission, result);
 
         if (!result) {

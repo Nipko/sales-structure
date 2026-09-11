@@ -3,7 +3,6 @@ import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
 import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../prisma/prisma.service';
-import { WhatsappMessagingService } from '../whatsapp/services/whatsapp-messaging.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { AUTOMATION_JOBS_QUEUE } from './automation-listener.service';
 import { HttpRequestHandler } from './handlers/http-request.handler';
@@ -11,6 +10,7 @@ import { LeadCapturedEvent } from './events/lead-captured.event';
 import { senderOriginProblem, whatsappSenderFrom } from '../channels/whatsapp-sender-origin';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { resolveTenantSubscriptionAccess } from '../../common/utils/subscription-entitlement.util';
+import { ProactiveDispatchService, producerMayAdvance } from '../channels/proactive-dispatch.service';
 
 export interface AutomationJobData {
     tenantId: string;
@@ -51,10 +51,20 @@ export class AutomationJobsProcessor extends WorkerHost {
 
     constructor(
         private readonly prisma: PrismaService,
-        private readonly whatsappMessaging: WhatsappMessagingService,
         private readonly throttle: TenantThrottleService,
         private readonly httpRequestHandler: HttpRequestHandler,
         private readonly pipelineService: PipelineService,
+        /**
+         * The durable lane, which this rule action could not use before.
+         *
+         * `send_template` went straight to `WhatsappMessagingService.sendTemplate`
+         * on this worker's stack: no row, no lease, no receipt of its own. A
+         * restart between "the trigger matched" and the POST either lost the
+         * message — the customer simply never heard — or, because the queue add
+         * carries no `jobId`, sent it again on the retry. From October each
+         * repeat is a charge on the tenant's own WABA.
+         */
+        private readonly proactive: ProactiveDispatchService,
     ) {
         super();
     }
@@ -73,7 +83,7 @@ export class AutomationJobsProcessor extends WorkerHost {
                 await this.prisma.executeInTenantSchema(
                     schemaName,
                     `UPDATE automation_executions
-                     SET status = 'failed', finished_at = CURRENT_TIMESTAMP, result_json = $2
+                     SET status = 'failed', finished_at = CURRENT_TIMESTAMP, result_json = $2::jsonb
                      WHERE id = $1::uuid`,
                     [executionId, JSON.stringify({ error: reason, skipped: true })],
                 );
@@ -98,7 +108,8 @@ export class AutomationJobsProcessor extends WorkerHost {
 
             switch (action.type) {
                 case 'send_template':
-                    result = await this.handleSendTemplate(schemaName, action, event);
+                    result = await this.handleSendTemplate(
+                        tenantId, schemaName, job.data.executionId, job.data.ruleId, action, event);
                     break;
 
                 case 'create_task':
@@ -140,7 +151,7 @@ export class AutomationJobsProcessor extends WorkerHost {
                 await this.prisma.executeInTenantSchema(
                     schemaName,
                     `UPDATE automation_executions
-                     SET status = 'success', finished_at = CURRENT_TIMESTAMP, result_json = $2
+                     SET status = 'success', finished_at = CURRENT_TIMESTAMP, result_json = $2::jsonb
                      WHERE id = $1::uuid`,
                     [executionId, JSON.stringify(result || {})],
                 );
@@ -162,7 +173,7 @@ export class AutomationJobsProcessor extends WorkerHost {
                     await this.prisma.executeInTenantSchema(
                         schemaName,
                         `UPDATE automation_executions
-                         SET status = 'failed', finished_at = CURRENT_TIMESTAMP, result_json = $2
+                         SET status = 'failed', finished_at = CURRENT_TIMESTAMP, result_json = $2::jsonb
                          WHERE id = $1::uuid`,
                         [executionId, JSON.stringify({ error: error.message })],
                     ).catch(e => this.logger.warn(`No se pudo actualizar ejecucion fallida: ${e.message}`));
@@ -175,9 +186,32 @@ export class AutomationJobsProcessor extends WorkerHost {
 
     /**
      * Envia una plantilla WhatsApp pre-aprobada al lead capturado.
+     *
+     * ═══ IT COMMITS A ROW NOW, AND THE ROW IS THE RECORD ═══
+     *
+     * This used to call `sendTemplate` on this worker's own stack. Three things
+     * followed from that and none of them were visible from outside:
+     *
+     *   · a restart between the decision and the POST lost the message, and the
+     *     execution row said `queued` for ever;
+     *   · the queue add carries no `jobId`, so a retry after an ambiguous
+     *     timeout sent the same template a second time — from October, a second
+     *     charge on the tenant's own WABA;
+     *   · nothing re-checked the rule. An operator who switched the rule off
+     *     while the action sat in its delay (up to three days, for the seeded
+     *     templates) still got the message, which is the one case they
+     *     explicitly tried to prevent.
+     *
+     * The durable lane answers all three: the row commits before anything is
+     * published, its origin is derived from the execution so two attempts
+     * collide on one row, and the authority is revalidated against the rule
+     * inside the transaction that grants the lease.
      */
     private async handleSendTemplate(
+        tenantId: string,
         schemaName: string,
+        executionId: string | undefined,
+        ruleId: string,
         action: AutomationJobData['action'],
         event: LeadCapturedEvent,
     ) {
@@ -229,26 +263,77 @@ export class AutomationJobsProcessor extends WorkerHost {
             // Actionable, not silent: an operator has to be able to tell
             // "the rule has no number" from "the rule sent from the wrong
             // number", and from outside those look identical.
-            this.logger.warn(`[AutomationJobs] '${templateName}' has no WhatsApp sender `
-                + `(${problem ?? 'unknown'}); the resolver will refuse on a multi-number tenant. `
-                + 'Name a connection on the rule to fix it.');
+            //
+            // And it REFUSES now rather than sending unnamed. A durable row has
+            // to name the account it will be billed to before the processor
+            // picks it up; letting the resolver choose would put the oldest
+            // connection on the row, which is a property of row order and not of
+            // any decision anybody made.
+            throw new Error(`automation_rule_action_sin_conexion:${problem ?? 'unknown'}`);
+        }
+        // The execution row is the rule firing's own durable identity, and the
+        // origin is derived from it together with what this action sends. Two
+        // attempts at the same action collide on one outbox row; two DIFFERENT
+        // template actions in one rule stay two effects.
+        if (!executionId) throw new Error('automation_rule_action_sin_ejecucion');
+        const contactId = String(event.contactId ?? '').trim();
+        if (!contactId) throw new Error('automation_rule_action_sin_contacto');
+
+        const channelType = 'whatsapp';
+        // Resolved against the SENDER, never taken from the event: the outbox
+        // refuses a binding whose conversation belongs to another connection,
+        // and a rule that overrides the number is precisely the case where the
+        // event's own thread is the wrong one.
+        const conversationId = await this.proactive.conversationFor(schemaName, {
+            contactId, channelType, channelAccountId: fromPhoneNumberId,
+        });
+        if (!conversationId) throw new Error('automation_rule_action_sin_conversacion');
+
+        // ── THE AUTHORITY, READ FROM THE RULE ───────────────────────────────
+        //
+        // Built by reading `automation_rules`, so the revision describes the
+        // rule as it IS — active, with these actions. The store revalidates it
+        // inside the transaction that grants the lease, which is what makes a
+        // rule switched off during the action's delay a suppression instead of
+        // a message nobody currently authorises.
+        const operationalScope = await this.proactive.policyAuthority(schemaName, {
+            tenantId, producer: 'automation_rule_action', channelType,
+            channelAccountId: fromPhoneNumberId, entityId: ruleId,
+        });
+        if (!operationalScope) {
+            // Switched off, edited, or gone. Nothing is owed, so the execution
+            // is closed rather than retried every five seconds for three tries.
+            this.logger.log(`[AutomationJobs] la regla ${ruleId} ya no autoriza `
+                + `'${templateName}' — suprimido`);
+            return { action: 'send_template', templateName, phone, suppressed: 'rule_no_longer_authorises' };
         }
 
-        const result = await this.whatsappMessaging.sendTemplate(
-            schemaName,
-            phone,
-            templateName,
-            language,
-            components,
-            fromPhoneNumberId,
-        );
+        const result = await this.proactive.send(tenantId, {
+            originKey: `automation_rule_action:${executionId}:${templateName}`
+                + `:${JSON.stringify(components)}`,
+            conversationId: String(conversationId),
+            contactId,
+            channelType,
+            channelAccountId: fromPhoneNumberId,
+            recipient: phone,
+            items: [{ kind: 'template', payload: { templateName, language, components } }],
+            operationalScope,
+        });
+        // Thrown, not returned. `process` writes `automation_executions.status =
+        // 'success'` on whatever this returns, and an execution marked
+        // successful for a message that was never committed is the same lie the
+        // reminders used to tell about an appointment.
+        if (!producerMayAdvance(result)) {
+            throw new Error(`automation_rule_action_no_despachada:${result.kind}`
+                + `:${'reason' in result ? result.reason : ''}`);
+        }
 
         return {
             action: 'send_template',
             templateName,
             phone,
-            messageId: result.messageId,
-            success: result.success,
+            dispatch: result.kind,
+            originId: 'originId' in result ? result.originId : null,
         };
     }
 

@@ -168,7 +168,9 @@ export class InternalController {
       providerMessageId: string;
       status: string;
       errorCode?: string | number | null;
+      errorDetail?: string | null;
       recipient?: string | null;
+      pricing?: unknown;
     },
   ) {
     this.assertInternalService(request);
@@ -202,12 +204,19 @@ export class InternalController {
         status: body.status,
         recipient: typeof body.recipient === 'string' ? body.recipient : null,
         errorCode: namespaceProviderErrorCode(body.channelType, body.errorCode ?? null),
+        // Meta's own words behind a generic code — the payment problem is
+        // sometimes explained in prose and numbered generically.
+        errorDetail: typeof body.errorDetail === 'string' ? body.errorDetail.slice(0, 400) : null,
         // Meta's own `pricing` block, forwarded verbatim by the worker when it
         // has one. `billable: false` is the single authority that can settle a
         // delivered message at zero, so it must survive the hop.
-        pricing: parseProviderPricing((body as any).pricing),
+        pricing: parseProviderPricing(body.pricing),
       }],
-      { channelType: body.channelType, channelAccountId: body.channelAccountId },
+      {
+        channelType: body.channelType,
+        channelAccountId: body.channelAccountId,
+        tenantId: body.tenantId,
+      },
       {
         store: this.prisma,
         logger: this.logger,
@@ -218,6 +227,15 @@ export class InternalController {
           });
           return tenant?.schemaName || null;
         },
+        // ── THE HALF THAT WAS NEVER CONNECTED ───────────────────────────────
+        //
+        // `wa.parallly-chat.cloud` is what Meta posts to, so this endpoint —
+        // not the API's own webhook — is where the platform's receipts actually
+        // land. It was injected into the constructor and never handed to the
+        // writer, so on the deployed road `delivered` settled nothing, `failed`
+        // released nothing, and a late `131042` paused no number. The test that
+        // was supposed to catch it searched this FILE for the word.
+        spendLedger: this.spendLedger,
       },
     );
     const [result] = report.results;

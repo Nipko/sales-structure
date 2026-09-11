@@ -53,6 +53,16 @@ export interface ChannelDeliveryStatusEvent {
 export interface ChannelDeliveryStatusContext {
     readonly channelType: string;
     readonly channelAccountId: string;
+    /**
+     * Who owns the connection.
+     *
+     * Carried because the money's half of a receipt has a second consequence
+     * besides resolving a reservation: Meta's `131042` on a failed delivery
+     * means this business account cannot be billed, and the number has to stop
+     * sending rather than retry into a wall. Pausing is per (tenant, account),
+     * so the ledger cannot do it from the schema name alone.
+     */
+    readonly tenantId?: string | null;
 }
 
 /**
@@ -120,6 +130,9 @@ export interface DeliveryReceiptLedger {
         providerMessageId: string;
         status: 'sent' | 'delivered' | 'read' | 'failed';
         errorCode?: string | null;
+        errorDetail?: string | null;
+        tenantId?: string | null;
+        channelAccountId?: string | null;
         pricing?: ProviderPricingSignal | null;
     }): Promise<unknown>;
 }
@@ -340,6 +353,9 @@ export async function recordChannelDeliveryStatuses(
                     providerMessageId: event.providerMessageId,
                     status: event.status as 'sent' | 'delivered' | 'read' | 'failed',
                     errorCode: event.errorCode ?? null,
+                    errorDetail: event.errorDetail ?? null,
+                    tenantId: context.tenantId ?? null,
+                    channelAccountId: context.channelAccountId,
                     pricing: event.pricing ?? null,
                 });
             } catch (error: any) {

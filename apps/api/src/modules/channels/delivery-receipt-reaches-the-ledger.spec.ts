@@ -148,19 +148,55 @@ describe('a delivery receipt reaches the money as well as the history', () => {
             .toEqual({ billable: null, category: null, model: 'PMP' });
     });
 
-    it('has all three status ingresses wired to the ledger', () => {
-        // Structural, because the alternative is discovering in production that
-        // the road Meta actually uses was the one nobody connected. The API's
-        // own webhook, the endpoint the deployed WhatsApp worker posts to, and
-        // the generic channel webhook.
+    it('carries the tenant, so the receipt can pause the number that cannot pay', async () => {
+        // A `131042` on a failed delivery means this business account cannot be
+        // billed, and the answer is to stop sending from it. The pause is keyed
+        // on (tenant, account); the schema name identifies neither.
+        const spendLedger = { applyDeliveryReceipt: jest.fn(async () => 'released') };
+        await recordChannelDeliveryStatuses(
+            [event({ status: 'failed', errorCode: 'wa_131042', errorDetail: 'no payment method' })],
+            { channelType: 'whatsapp', channelAccountId: 'phone-1', tenantId: 'tenant-uuid' },
+            deps(spendLedger) as any);
+
+        expect(spendLedger.applyDeliveryReceipt).toHaveBeenCalledWith('tenant_acme',
+            expect.objectContaining({
+                tenantId: 'tenant-uuid', channelAccountId: 'phone-1',
+                errorCode: 'wa_131042', errorDetail: 'no payment method',
+            }));
+    });
+
+    /**
+     * ═══ WHY THIS IS NOT A GREP ═══
+     *
+     * There used to be a test here that read three source files and asserted
+     * each contained the string `spendLedger`. All three did — one of them only
+     * in its constructor, where the injected service sat unused while the
+     * handler called the writer without it. The road Meta actually uses was the
+     * one nobody had connected, and the test said it was fine for weeks.
+     *
+     * What replaces it is a list of the ingresses with the test that exercises
+     * each one for real. The list is the reminder; the tests are the evidence.
+     */
+    it('names, for every ingress, the test that exercises it', () => {
         const root = path.join(__dirname, '..');
-        for (const relative of [
-            'whatsapp/services/whatsapp-webhook.service.ts',
-            'internal/internal.controller.ts',
-            'channels/channels.controller.ts',
-        ]) {
-            const source = fs.readFileSync(path.join(root, relative), 'utf8');
-            expect(source).toContain('spendLedger');
+        const ingresses: Array<[string, string]> = [
+            // The endpoint the DEPLOYED whatsapp worker posts to — the road
+            // Meta's receipts actually travel on this platform.
+            ['internal/internal.controller.ts',
+                'internal/internal-receipt-to-the-ledger.spec.ts'],
+            // The API's own Meta webhook, for numbers pointed at `api.`.
+            ['whatsapp/services/whatsapp-webhook.service.ts',
+                'whatsapp/services/whatsapp-webhook-receipts.spec.ts'],
+            // Instagram/Messenger, which reach this writer and are not billed
+            // per message — the test proves the ledger is NOT called.
+            ['channels/channels.controller.ts',
+                'channels/delivery-receipt-reaches-the-ledger.spec.ts'],
+        ];
+        for (const [ingress, proof] of ingresses) {
+            expect({ ingress, exists: fs.existsSync(path.join(root, ingress)) })
+                .toEqual({ ingress, exists: true });
+            expect({ proof, exists: fs.existsSync(path.join(root, proof)) })
+                .toEqual({ proof, exists: true });
         }
     });
 });

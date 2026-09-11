@@ -347,7 +347,24 @@ export function worstPressure(values: readonly SpendPressure[]): SpendPressure {
  * reads as `hard_stop`, which is what a zero cap means.
  */
 function pressureSql(alias: string, addMinor: string, addDeliveries: string): string {
-    const spent = `(${alias}.settled_minor + ${alias}.reserved_minor - ${alias}.released_minor + ${addMinor})`;
+    // ── WHAT A CEILING HAS COMMITTED ────────────────────────────────────────
+    //
+    // Settled plus still-held. NOT minus released, and the difference is not a
+    // refinement — it is the difference between a limit and a way to mint one.
+    //
+    // `applyToCounters` already takes the amount OUT of `reserved_minor` when a
+    // reservation settles or is released. Subtracting `released_minor` here as
+    // well gives the money back a second time: reserve 10 and settle 6 leaves
+    // (reserved 0, settled 6, released 4), and the old formula read that as
+    // "2 used" and offered cap − 2 when only cap − 6 was left. Worse, a refused
+    // reservation of 8 leaves (0, 0, 8) and the formula offered cap + 8 — so a
+    // recipient who rejects everything became a way to raise the ceiling, once
+    // per rejection, for ever.
+    //
+    // `released_minor` stays on the row as the honest historical metric it was
+    // always documented to be: "what did this account reserve and not use". It
+    // is simply not part of the operational balance.
+    const spent = `(${alias}.settled_minor + ${alias}.reserved_minor + ${addMinor})`;
     const used = `(${alias}.used_deliveries + ${addDeliveries})`;
     return `CASE
         WHEN ${alias}.cap_kind = 'observe' THEN 'clear'
@@ -522,7 +539,7 @@ export async function reserveAgainstCounter(query: SpendQuery, schema: string,
         ? `AND (soft_permille >= 1000
                 OR cap_kind = 'observe'
                 OR (cap_kind = 'money'
-                    AND (settled_minor + reserved_minor - released_minor + $4) * 1000
+                    AND (settled_minor + reserved_minor + $4) * 1000
                         < cap_minor * soft_permille)
                 OR (cap_kind = 'deliveries'
                     AND (used_deliveries + $5) * 1000 < cap_deliveries * soft_permille))`
@@ -535,7 +552,7 @@ export async function reserveAgainstCounter(query: SpendQuery, schema: string,
           WHERE scope_kind=$1 AND scope_key=$2 AND period_key=$3
             AND (cap_kind = 'observe'
                  OR (cap_kind = 'money'
-                     AND cap_minor - settled_minor - reserved_minor + released_minor >= $4)
+                     AND cap_minor - settled_minor - reserved_minor >= $4)
                  OR (cap_kind = 'deliveries'
                      AND cap_deliveries - used_deliveries >= $5))
             ${softClause}
@@ -933,6 +950,12 @@ export async function retainReservation(query: SpendQuery, schema: string, input
  * `released_minor` is tracked separately rather than subtracted from
  * `reserved_minor`, so "what did this account actually spend this month" and
  * "what did it reserve and not use" stay two different numbers.
+ *
+ * That was always the intent, and for a while the predicates disagreed with it:
+ * they subtracted `released_minor` from the balance a second time, after this
+ * function had already taken the amount out of `reserved_minor`. The result was
+ * a ceiling that grew by the amount of every rejection. The balance now reads
+ * `settled + reserved` and nothing else; see `pressureSql`.
  */
 async function applyToCounters(query: SpendQuery, schema: string, reservationId: string,
     state: 'settled' | 'released', reservedMinor: number, chargedMinor: number): Promise<void> {

@@ -909,6 +909,174 @@ integration('the WhatsApp spend engine', () => {
         });
     });
 
+    describe('the balance, against an oracle that does not share its arithmetic', () => {
+        /**
+         * ═══ WHAT A COUNTER MAY STILL AUTHORISE ═══
+         *
+         * Computed here from first principles and NOT from the SQL, because a
+         * test that asks the implementation what the answer should be agrees
+         * with it about a wrong answer. The rule, in words:
+         *
+         *     a ceiling may still authorise what it has not already committed,
+         *     and it has committed what it SETTLED plus what it is still HOLDING.
+         *
+         * Money that was handed back is gone from the commitment — it is not a
+         * second credit. `released_minor` is a historical metric: "what did this
+         * account reserve and not use". Subtracting it from the balance a second
+         * time turns every rejection into new budget.
+         */
+        const oracleAvailable = (row: {
+            cap_minor: number | string; settled_minor: number | string;
+            reserved_minor: number | string;
+        }) => Number(row.cap_minor) - Number(row.settled_minor) - Number(row.reserved_minor);
+
+        const tiered = async (scopeKey: string, capMinor: number) => {
+            await query(`INSERT INTO "${schema}".whatsapp_spend_counters
+                (scope_kind, scope_key, period_key, cap_kind, cap_minor, currency,
+                 warn_permille, soft_permille)
+                VALUES ('account',$1,'2026-10','money',$2,'USD',1000,1000)
+                ON CONFLICT (scope_kind, scope_key, period_key) DO UPDATE
+                    SET cap_kind='money', cap_minor=$2, currency='USD',
+                        warn_permille=1000, soft_permille=1000,
+                        reserved_minor=0, settled_minor=0, released_minor=0, used_deliveries=0`,
+                [scopeKey, capMinor]);
+        };
+
+        /** One whole effect: reserve, claim, allocate. */
+        const effect = async (scopeKey: string, amount: number) => {
+            const scope = { kind: 'account' as const, key: scopeKey, period: '2026-10' };
+            const effectKey = `arith-${randomUUID()}`;
+            const outcome = await reserveAgainstCounter(query, schema,
+                { scope, amountMinor: amount, deliveries: 1, disposition: 'reactive' });
+            if (!outcome.ok) return { effectKey, admitted: false as const };
+            const reservation = await claimReservation(query, schema, {
+                effectKey, identity: identity(), money: money(amount), leaseSeconds: 60,
+            });
+            await recordAllocation(query, schema, reservation!.id,
+                { scope, amountMinor: amount, deliveries: 1 }, 'USD');
+            return { effectKey, admitted: true as const };
+        };
+
+        /**
+         * How much MORE this counter will actually authorise.
+         *
+         * Found by ASKING THE ENGINE — `reserveAgainstCounter` itself, inside a
+         * transaction that is rolled back — and never by re-stating its
+         * predicate here. A probe that copies the SQL is the same helper on both
+         * sides of the comparison, and it would have agreed with the very bug
+         * these tests exist to catch.
+         */
+        const reallyAvailable = async (scopeKey: string, ceiling: number) => {
+            const scope = { kind: 'account' as const, key: scopeKey, period: '2026-10' };
+            let low = 0;
+            let high = ceiling;
+            while (low < high) {
+                const probe = Math.ceil((low + high + 1) / 2);
+                await query('BEGIN');
+                let fits = false;
+                try {
+                    fits = (await reserveAgainstCounter(query, schema,
+                        { scope, amountMinor: probe, deliveries: 0, disposition: 'reactive' })).ok;
+                } finally {
+                    await query('ROLLBACK');
+                }
+                if (fits) low = probe; else high = probe - 1;
+            }
+            return low;
+        };
+
+        const counter = async (scopeKey: string) => (await query<any[]>(
+            `SELECT cap_minor, reserved_minor, settled_minor, released_minor
+               FROM "${schema}".whatsapp_spend_counters
+              WHERE scope_kind='account' AND scope_key=$1 AND period_key='2026-10'`,
+            [scopeKey]))[0];
+
+        it('does not invent budget when a reservation settles for less', async () => {
+            // Reserve 10, settle 6. Four were never spent and were handed back.
+            // The ceiling has committed 6, so it may still authorise cap - 6.
+            const scopeKey = `arith-partial-${randomUUID()}`;
+            await tiered(scopeKey, 100);
+            const first = await effect(scopeKey, 10);
+            await settleReservation(query, schema,
+                { effectKey: first.effectKey, chargedMinor: 6, evidence: 'status_webhook' });
+
+            const row = await counter(scopeKey);
+            expect({ reserved: Number(row.reserved_minor), settled: Number(row.settled_minor),
+                released: Number(row.released_minor) })
+                .toEqual({ reserved: 0, settled: 6, released: 4 });
+            expect(await reallyAvailable(scopeKey, 200)).toBe(oracleAvailable(row));
+        });
+
+        it('does not turn a rejection into new budget', async () => {
+            // The worst shape: reserve 8 against a ceiling of 8 and have Meta
+            // refuse it. Nothing was spent, so the whole ceiling is available
+            // again — and not one unit more.
+            const scopeKey = `arith-reject-${randomUUID()}`;
+            await tiered(scopeKey, 8);
+            const first = await effect(scopeKey, 8);
+            await releaseReservation(query, schema,
+                { effectKey: first.effectKey, evidence: 'provider_rejected_without_message_id' });
+
+            const row = await counter(scopeKey);
+            expect(Number(row.released_minor)).toBe(8);
+            expect(await reallyAvailable(scopeKey, 100)).toBe(oracleAvailable(row));
+        });
+
+        it('does not let repeated rejections raise the ceiling', async () => {
+            // Each release adds to `released_minor`. Subtracted from the balance,
+            // a contact that rejects everything becomes a way to mint budget.
+            const scopeKey = `arith-repeat-${randomUUID()}`;
+            await tiered(scopeKey, 20);
+            for (let i = 0; i < 3; i++) {
+                const one = await effect(scopeKey, 20);
+                expect(one.admitted).toBe(true);
+                await releaseReservation(query, schema,
+                    { effectKey: one.effectKey, evidence: 'provider_rejected_without_message_id' });
+            }
+            const row = await counter(scopeKey);
+            expect(Number(row.released_minor)).toBe(60);
+            expect(await reallyAvailable(scopeKey, 500)).toBe(oracleAvailable(row));
+        });
+
+        it('keeps the ceiling honest across a settle and a later reservation', async () => {
+            // The sequence the audit named: settle part of one effect, then ask
+            // for another. The second must see what the first really cost.
+            const scopeKey = `arith-then-${randomUUID()}`;
+            await tiered(scopeKey, 10);
+            const first = await effect(scopeKey, 10);
+            await settleReservation(query, schema,
+                { effectKey: first.effectKey, chargedMinor: 6, evidence: 'status_webhook' });
+
+            const second = await effect(scopeKey, 5);
+            // 10 − 6 = 4 left. Five does not fit.
+            expect(second.admitted).toBe(false);
+            const third = await effect(scopeKey, 4);
+            expect(third.admitted).toBe(true);
+            expect(await reallyAvailable(scopeKey, 100)).toBe(oracleAvailable(await counter(scopeKey)));
+        });
+
+        it('reports pressure from what is committed, not from what came back', async () => {
+            // The same arithmetic drives the three heights. A ceiling reading
+            // `clear` because half its money was rejected would warn nobody.
+            const scopeKey = `arith-pressure-${randomUUID()}`;
+            await tiered(scopeKey, 100);
+            const first = await effect(scopeKey, 100);
+            await settleReservation(query, schema,
+                { effectKey: first.effectKey, chargedMinor: 100, evidence: 'status_webhook' });
+            expect(await readPressure(query, schema,
+                [{ kind: 'account', key: scopeKey, period: '2026-10' }])).toBe('hard_stop');
+
+            const other = `arith-pressure-b-${randomUUID()}`;
+            await tiered(other, 100);
+            const rejected = await effect(other, 100);
+            await releaseReservation(query, schema,
+                { effectKey: rejected.effectKey, evidence: 'provider_rejected_without_message_id' });
+            // Nothing was spent: the ceiling is empty again, not negative.
+            expect(await readPressure(query, schema,
+                [{ kind: 'account', key: other, period: '2026-10' }])).toBe('clear');
+        });
+    });
+
     describe('what the platform can report', () => {
         it('separates reserved, settled, retained and released, per currency', async () => {
             // One number for two currencies is not money. And "we owe this" and

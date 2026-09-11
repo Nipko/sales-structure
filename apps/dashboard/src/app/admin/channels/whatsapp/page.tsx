@@ -2,6 +2,8 @@
 
 import { useTranslations } from "next-intl";
 import { useState, useEffect } from "react";
+import { WhatsappSpendPanel, type WhatsappReadinessNumber } from "@/components/channels/WhatsappSpendPanel";
+import type { WhatsappSpendSummary } from "@/lib/whatsapp-spend";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
@@ -65,6 +67,11 @@ export default function WhatsAppSetupPage() {
     const [disconnecting, setDisconnecting] = useState(false);
     const [showDisconnectModal, setShowDisconnectModal] = useState(false);
     const [message, setMessage] = useState({ type: "", text: "" });
+    // What Meta is charging this business, and whether anything is stopping a
+    // send. Two reads rather than one because they answer different questions
+    // and either can be unavailable without the other being useless.
+    const [spend, setSpend] = useState<WhatsappSpendSummary | null>(null);
+    const [readiness, setReadiness] = useState<WhatsappReadinessNumber[]>([]);
 
     const loadData = async () => {
         setLoading(true);
@@ -77,6 +84,7 @@ export default function WhatsAppSetupPage() {
                 setPhoneNumberId(channelData.phone_number_id || channelData.metadata?.phoneNumberId || channelData.accountId || "");
             }
             setStatusUnavailable(false);
+            void loadSpend();
         } catch (e) {
             // A failed status read is not a disconnected number. This page used
             // to paint the red "Desconectado" pill from a network error, on the
@@ -95,6 +103,22 @@ export default function WhatsAppSetupPage() {
             else if ((configRes as any)?.webhookUrl) setConfig(configRes as any);
         } catch (e) { console.error("Failed to load WA config", e); }
         setLoading(false);
+    };
+
+    /**
+     * The billing panel's own data, kept out of `loadData`'s try block.
+     *
+     * A spend read that fails must not make the page believe the CHANNEL is
+     * unavailable — the connection is fine, one panel is empty — and a channel
+     * that is not connected yet has no spend to show, which is not an error.
+     */
+    const loadSpend = async () => {
+        const [summaryRes, readinessRes] = await Promise.all([
+            api.fetch("/whatsapp/spend/summary?days=30").catch(() => null),
+            api.fetch("/whatsapp/connection/billing-readiness").catch(() => null),
+        ]);
+        setSpend((summaryRes as any)?.data ?? null);
+        setReadiness(((readinessRes as any)?.data?.numbers ?? []) as WhatsappReadinessNumber[]);
     };
 
     useEffect(() => { loadData(); }, []);
@@ -447,6 +471,13 @@ export default function WhatsAppSetupPage() {
                             </div>
                         </div>
                     )}
+                </div>
+            )}
+
+            {/* ═══════════ WHATSAPP CHARGES — META, NOT US (connected only) ═══════════ */}
+            {isConnected && (
+                <div className="mb-6">
+                    <WhatsappSpendPanel summary={spend} readiness={readiness} />
                 </div>
             )}
 

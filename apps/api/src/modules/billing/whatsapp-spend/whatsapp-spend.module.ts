@@ -3,6 +3,7 @@ import { PrismaModule } from '../../prisma/prisma.module';
 import { WhatsappSpendService } from './whatsapp-spend.service';
 import { WhatsappSendAdmissionService } from './whatsapp-send-admission.service';
 import { AccountPauseStore } from '../../channels/account-pause-store';
+import { WhatsappSpendController } from './whatsapp-spend.controller';
 
 /**
  * The money authority, exported on its own.
@@ -15,6 +16,7 @@ import { AccountPauseStore } from '../../channels/account-pause-store';
  */
 @Module({
     imports: [PrismaModule],
+    controllers: [WhatsappSpendController],
     // `AccountPauseStore` is declared here rather than in `ChannelsModule`
     // on purpose: importing that module would close a cycle through the
     // processor, and the store is a leaf that needs only Prisma.

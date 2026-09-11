@@ -186,10 +186,36 @@ describe('every charged WhatsApp producer names the account that pays', () => {
         });
     });
 
+    /**
+     * The lane a proactive producer writes to, doubled at its edge.
+     *
+     * These producers no longer call `sendTemplate`: they commit a row and the
+     * processor sends it. What this suite is about — which account pays — is now
+     * the `channelAccountId` on that row, so the double records what the lane
+     * was asked to write. The authority's real construction is proven against
+     * real PostgreSQL in the two `*-durable-lane.postgres.spec.ts` suites.
+     */
+    const dispatchDouble = () => {
+        const dispatched: any[] = [];
+        return {
+            dispatched,
+            lane: {
+                send: jest.fn(async (_tenantId: string, input: any) => {
+                    dispatched.push(input);
+                    return { kind: 'prepared', originId: 'origin' };
+                }),
+                conversationFor: jest.fn(async () => '44444444-4444-4444-8444-444444444444'),
+                policyAuthority: jest.fn(async (_schema: string, input: any) => ({
+                    kind: 'proactive_policy', ...input, entityRevision: 'a'.repeat(64),
+                    policyVersion: 1, schemaName: SCHEMA,
+                })),
+            },
+        };
+    };
+
     describe('drip sequences', () => {
         const dripWith = (channelAccountId: string | null, channelType = 'whatsapp') => {
-            const messaging = { sendTemplate: jest.fn().mockResolvedValue({ success: true, messageId: 'm' }) };
-            const channelToken = { getChannelToken: jest.fn().mockResolvedValue({ accessToken: 't', accountId: NUMBER }) };
+            const { dispatched, lane } = dispatchDouble();
             const prisma = {
                 executeInTenantSchema: jest.fn(async (_schema: string, sql: string) => {
                     if (sql.includes('FROM conversations')) {
@@ -199,61 +225,66 @@ describe('every charged WhatsApp producer names the account that pays', () => {
                     return [];
                 }),
             };
-            // queue, prisma, redis, throttle, outboundQueue, channelToken,
-            // persona, llmRouter, compliance, segments, whatsappMessaging.
+            // queue, prisma, redis, throttle, channelToken, persona, llmRouter,
+            // compliance, segments, proactive.
             const service = new DripSequenceService(
                 { add: jest.fn() } as any, prisma as any, {} as any, {} as any, {} as any,
-                channelToken as any, {} as any, {} as any, {} as any, {} as any,
-                messaging as any,
+                {} as any, {} as any, {} as any, {} as any, lane as any,
             );
-            return { service, messaging, channelToken };
+            return { service, dispatched, lane };
         };
 
         const step = { message_type: 'template', template_name: 'follow_up', template_language: 'es' };
-        const enrolment = { contact_id: 'c', conversation_id: '44444444-4444-4444-8444-444444444444' };
+        const enrolment = { id: '55555555-5555-4555-8555-555555555555', contact_id: 'c',
+            conversation_id: '44444444-4444-4444-8444-444444444444' };
 
         it('bills the number the enrolment’s conversation belongs to', async () => {
-            const { service, messaging, channelToken } = dripWith(NUMBER);
-            await (service as any).executeStepAction(TENANT, SCHEMA, enrolment, step);
-            expect(messaging.sendTemplate.mock.calls[0][5]).toBe(NUMBER);
-            // And the credential is resolved for the same number, not separately:
-            // a token from one account with another account's identity is the
-            // defect this whole batch exists to close.
-            expect(channelToken.getChannelToken).toHaveBeenCalledWith(TENANT, 'whatsapp', NUMBER);
+            const { service, dispatched, lane } = dripWith(NUMBER);
+            await (service as any).executeStepAction(TENANT, SCHEMA, enrolment, step, 0);
+            expect(dispatched[0].channelAccountId).toBe(NUMBER);
+            // And the authority names the same account: an effect prepared for
+            // one number must not be admitted against another.
+            expect(lane.policyAuthority).toHaveBeenCalledWith(SCHEMA,
+                expect.objectContaining({ channelAccountId: NUMBER, producer: 'drip_step' }));
         });
 
-        it('leaves it unset when the conversation names no connection', async () => {
-            const { service, messaging, channelToken } = dripWith(null);
-            await (service as any).executeStepAction(TENANT, SCHEMA, enrolment, step);
-            expect(messaging.sendTemplate.mock.calls[0][5]).toBeUndefined();
-            expect(channelToken.getChannelToken).toHaveBeenCalledWith(TENANT, 'whatsapp', undefined);
+        it('dispatches nothing when the conversation names no connection', async () => {
+            // This used to send with the sender unset and let the resolver
+            // choose. A durable row has to name the account it will be billed
+            // to before the processor picks it up, and inventing one is the
+            // substitution this batch refuses.
+            const { service, dispatched } = dripWith(null);
+            const outcome = await (service as any)
+                .executeStepAction(TENANT, SCHEMA, enrolment, step, 0);
+            expect(outcome).toMatchObject({ kind: 'refused' });
+            expect(dispatched).toEqual([]);
         });
 
         it('lends nothing from an enrolment whose conversation is not WhatsApp', async () => {
-            const { service, messaging, channelToken } = dripWith('IG_ACCOUNT', 'instagram');
-            await (service as any).executeStepAction(TENANT, SCHEMA, enrolment, step);
-            expect(messaging.sendTemplate.mock.calls[0][5]).toBeUndefined();
-            // And the credential is not resolved for it either: the same wrong
-            // id would have picked the same wrong account.
-            expect(channelToken.getChannelToken).toHaveBeenCalledWith(TENANT, 'whatsapp', undefined);
+            const { service, dispatched } = dripWith('IG_ACCOUNT', 'instagram');
+            const outcome = await (service as any)
+                .executeStepAction(TENANT, SCHEMA, enrolment, step, 0);
+            expect(outcome).toMatchObject({ kind: 'refused' });
+            expect(dispatched).toEqual([]);
         });
     });
 
     describe('automation rules', () => {
-        const processorWith = () => {
-            const messaging = { sendTemplate: jest.fn().mockResolvedValue({ success: true, messageId: 'm' }) };
-            const processor = new AutomationJobsProcessor(
-                {} as any, messaging as any, {} as any, {} as any, {} as any,
-            );
-            return { processor, messaging };
-        };
         const send = async (action: Record<string, unknown>, event: Record<string, unknown>) => {
-            const { processor, messaging } = processorWith();
-            await (processor as any).handleSendTemplate(SCHEMA,
+            const { dispatched, lane } = dispatchDouble();
+            // prisma, throttle, httpRequestHandler, pipeline, proactive.
+            const processor = new AutomationJobsProcessor(
+                {} as any, {} as any, {} as any, {} as any, lane as any,
+            );
+            await (processor as any).handleSendTemplate(TENANT, SCHEMA,
+                '66666666-6666-4666-8666-666666666666', '77777777-7777-4777-8777-777777777777',
                 { type: 'send_template', template_name: 'welcome', ...action },
                 { tenantId: TENANT, schemaName: SCHEMA, leadId: 'l', contactId: 'c',
-                    phone: '+573001112233', source: 'whatsapp_inbound', ...event });
-            return messaging.sendTemplate.mock.calls[0][5];
+                    phone: '+573001112233', source: 'whatsapp_inbound', ...event })
+                // A rule that cannot name the account that pays refuses outright
+                // now, so "unset" is an absent dispatch rather than an unnamed one.
+                .catch(() => undefined);
+            return dispatched[0]?.channelAccountId;
         };
 
         it('bills the number the lead wrote to', async () => {

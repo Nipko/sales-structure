@@ -4,17 +4,17 @@ import { Queue } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
-import { OutboundQueueService } from '../channels/outbound-queue.service';
 import { ChannelTokenService } from '../channels/channel-token.service';
 import { PersonaService } from '../persona/persona.service';
 import { LLMRouterService } from '../ai/router/llm-router.service';
 import { ComplianceService } from '../analytics/compliance.service';
 import { SegmentsService } from '../crm/services/segments/segments.service';
-import { WhatsappMessagingService } from '../whatsapp/services/whatsapp-messaging.service';
 import { NURTURING_QUEUE } from './nurturing.service';
 import { LANG_NAME } from './nurturing-i18n';
-import { OutboundMessage } from '@parallext/shared';
 import { whatsappSenderFrom } from '../channels/whatsapp-sender-origin';
+import {
+    ProactiveDispatchService, producerMayAdvance, type ProactiveSendResult,
+} from '../channels/proactive-dispatch.service';
 
 // Cold-prospecting opener fallback (customer-facing) used when the LLM is
 // unavailable. Keyed by 2-letter language; falls back to es. A cold prospect has
@@ -60,13 +60,21 @@ export class DripSequenceService {
         private readonly prisma: PrismaService,
         private readonly redis: RedisService,
         private readonly throttle: TenantThrottleService,
-        private readonly outboundQueue: OutboundQueueService,
         private readonly channelToken: ChannelTokenService,
         private readonly personaService: PersonaService,
         private readonly llmRouter: LLMRouterService,
         private readonly compliance: ComplianceService,
         private readonly segmentsService: SegmentsService,
-        private readonly whatsappMessaging: WhatsappMessagingService,
+        /**
+         * The durable lane, which a drip step could not use before.
+         *
+         * The template branch went straight to the adapter and the two text
+         * branches went onto the legacy queue, where Redis is the only record
+         * and nothing carries an identity: a restart lost the step, and a retry
+         * sent it twice. Both also wrote a history row saying `delivered`
+         * before anything had left.
+         */
+        private readonly proactive: ProactiveDispatchService,
     ) {}
 
     // ─── Lazy Table Migration ────────────────────────────────────
@@ -505,11 +513,29 @@ export class DripSequenceService {
         const stepIndex = enrollment.current_step;
 
         if (stepIndex >= steps.length) {
+            // ═══ THE CLOSING PASS, WHICH IS NOW A PASS OF ITS OWN ═══
+            //
+            // Completing the enrolment used to happen in the same breath as
+            // sending the last step. On the durable lane that is fatal: the
+            // enrolment's revision includes its `status`, the policy reads
+            // anything other than `active` as "the journey is over and its next
+            // step is not owed", and the last step — already committed and
+            // waiting for a lease — would be suppressed at admission. The
+            // customer would never receive the final message of any sequence.
+            //
+            // So the last step schedules this pass instead, and it waits for
+            // that effect to be admitted before closing the journey. Once a
+            // lease is granted the revision has already been checked and the
+            // POST no longer depends on it.
+            if (await this.lastEffectAwaitingAdmission(schemaName, enrollmentId, steps.length - 1)) {
+                throw new Error(`drip_last_step_awaiting_admission:${enrollmentId}`);
+            }
             await this.prisma.executeInTenantSchema(
                 schemaName,
                 `UPDATE drip_enrollments SET status = 'completed', completed_at = NOW() WHERE id = $1::uuid`,
                 [enrollmentId],
             );
+            this.logger.log(`Drip enrollment ${enrollmentId} completed (all steps done)`);
             return;
         }
 
@@ -554,45 +580,109 @@ export class DripSequenceService {
             return;
         }
 
+        // ═══ THE ENROLMENT MOVES FIRST, AND IS PUT BACK IF NOTHING WAS OWED ═══
+        //
+        // Not an inversion of "the flag follows the effect" but the only way to
+        // honour it here. `current_step` is part of the enrolment's revision —
+        // deliberately, so that somebody moved to another step does not receive
+        // the one they left — and the effect sits on the lane for as long as it
+        // takes to get a lease. Advancing AFTER preparing would make every step
+        // stale at admission and nothing would ever be delivered.
+        //
+        // So the enrolment is advanced, the authority is read from the advanced
+        // state, and the advance is UNDONE when no durable effect exists. The
+        // end state is the one the invariant asks for: the enrolment never
+        // stands advanced over a step the customer was not owed.
+        const nextStep = stepIndex + 1;
+        await this.moveEnrolmentTo(schemaName, enrollmentId, nextStep);
+        let outcome: ProactiveSendResult;
         try {
-            await this.executeStepAction(tenantId, schemaName, enrollment, step);
+            outcome = await this.executeStepAction(tenantId, schemaName, enrollment, step, stepIndex);
         } catch (e: any) {
             this.logger.error(`Drip step execution failed for enrollment ${enrollmentId}: ${e.message}`);
+            outcome = { kind: 'deferred', reason: String(e?.message ?? e).slice(0, 200) };
+        }
+        if (!producerMayAdvance(outcome)) {
+            // Nothing was committed, and the reason may pass. The enrolment goes
+            // back to the step it was on so the next attempt sends it, instead
+            // of the journey silently skipping a message nobody received.
+            await this.moveEnrolmentTo(schemaName, enrollmentId, stepIndex);
+            throw new Error(`drip_step_not_dispatched:${outcome.kind}`
+                + `:${'reason' in outcome ? outcome.reason : ''}`);
         }
 
-        const nextStep = stepIndex + 1;
-        if (nextStep >= steps.length) {
-            await this.prisma.executeInTenantSchema(
+        const terminal = nextStep >= steps.length;
+        const delayMs = terminal
+            // The closing pass. It waits for the last effect to be admitted, and
+            // BullMQ's own backoff is what gives it something to wait with.
+            ? 30_000
+            : (steps[nextStep].delay_seconds || 0) * 1000;
+        await this.nurturingQueue.add('drip-step', {
+            tenantId,
+            enrollmentId,
+            sequenceId: enrollment.sequence_id,
+            stepIndex: nextStep,
+        } as DripStepJobData, {
+            jobId: `drip_${tenantId}_${enrollmentId}_${nextStep}`,
+            delay: delayMs,
+            attempts: terminal ? 5 : 2,
+            backoff: { type: 'fixed', delay: 30_000 },
+            removeOnComplete: { age: 3600 },
+            removeOnFail: { age: 86400 },
+        });
+
+        this.logger.log(`Drip enrollment ${enrollmentId} ${outcome.kind} step ${stepIndex}; `
+            + `${terminal ? 'closing pass' : `step ${nextStep}`} scheduled in ${delayMs / 1000}s`);
+    }
+
+    /** Move the enrolment to a step, and nothing else. Used forwards and back. */
+    private async moveEnrolmentTo(schemaName: string, enrollmentId: string, step: number): Promise<void> {
+        await this.prisma.executeInTenantSchema(
+            schemaName,
+            `UPDATE drip_enrollments SET current_step = $2, last_step_at = NOW() WHERE id = $1::uuid`,
+            [enrollmentId, step],
+        );
+    }
+
+    /**
+     * Is the last step's effect still waiting for a lease?
+     *
+     * `prepared` and `queued` are the two states in which the admission has not
+     * happened yet, and the admission is where the enrolment's revision is
+     * checked. Completing the enrolment before then turns the final message into
+     * a suppression; after then the lease is granted and the POST no longer
+     * depends on the enrolment's status.
+     *
+     * A tenant whose schema has never dispatched has no table, and that is an
+     * answer rather than an error: nothing is in flight.
+     */
+    private async lastEffectAwaitingAdmission(
+        schemaName: string, enrollmentId: string, lastStepIndex: number,
+    ): Promise<boolean> {
+        if (lastStepIndex < 0) return false;
+        const originId = ProactiveDispatchService.originId(
+            `drip_step:${enrollmentId}:${lastStepIndex}`);
+        try {
+            // Asked separately: a missing table is a PARSE failure, so it
+            // cannot be guarded inside the query that reads it.
+            const [present] = await this.prisma.executeInTenantSchema<any[]>(
+                schemaName, 'SELECT to_regclass($1)::text AS relation',
+                [`${schemaName}.agent_dispatch_outbox`]);
+            if (!present?.relation) return false;
+            const rows = await this.prisma.executeInTenantSchema<any[]>(
                 schemaName,
-                `UPDATE drip_enrollments SET current_step = $2, last_step_at = NOW(), status = 'completed', completed_at = NOW() WHERE id = $1::uuid`,
-                [enrollmentId, nextStep],
+                `SELECT state FROM agent_dispatch_outbox
+                  WHERE inbound_message_id = $1::uuid AND state IN ('prepared','queued')
+                  LIMIT 1`,
+                [originId],
             );
-            this.logger.log(`Drip enrollment ${enrollmentId} completed (all steps done)`);
-        } else {
-            await this.prisma.executeInTenantSchema(
-                schemaName,
-                `UPDATE drip_enrollments SET current_step = $2, last_step_at = NOW() WHERE id = $1::uuid`,
-                [enrollmentId, nextStep],
-            );
-
-            const nextStepDef = steps[nextStep];
-            const delayMs = (nextStepDef.delay_seconds || 0) * 1000;
-
-            await this.nurturingQueue.add('drip-step', {
-                tenantId,
-                enrollmentId,
-                sequenceId: enrollment.sequence_id,
-                stepIndex: nextStep,
-            } as DripStepJobData, {
-                jobId: `drip_${tenantId}_${enrollmentId}_${nextStep}`,
-                delay: delayMs,
-                attempts: 2,
-                backoff: { type: 'fixed', delay: 30_000 },
-                removeOnComplete: { age: 3600 },
-                removeOnFail: { age: 86400 },
-            });
-
-            this.logger.log(`Drip enrollment ${enrollmentId} advanced to step ${nextStep}, scheduled in ${delayMs / 1000}s`);
+            return !!rows?.length;
+        } catch (e: any) {
+            // Never read an outage as "nothing is in flight": that is exactly
+            // the reading that would complete the enrolment and suppress the
+            // final message. The closing pass retries.
+            this.logger.warn(`Could not read the last drip effect of ${enrollmentId}: ${e.message}`);
+            return true;
         }
     }
 
@@ -603,11 +693,14 @@ export class DripSequenceService {
         schemaName: string,
         enrollment: any,
         step: DripStep,
-    ): Promise<void> {
+        stepIndex: number,
+    ): Promise<ProactiveSendResult> {
         const contact = await this.getContact(schemaName, enrollment.contact_id);
         if (!contact) {
+            // Gone, and not coming back. Suppressed rather than deferred: the
+            // journey moves on instead of retrying a contact that was deleted.
             this.logger.warn(`Contact ${enrollment.contact_id} not found — skipping drip step`);
-            return;
+            return { kind: 'suppressed', reason: 'contact_gone' };
         }
 
         // The drip sends via WhatsApp, so the recipient MUST be an E.164 phone. For a
@@ -620,7 +713,7 @@ export class DripSequenceService {
             : (phoneRe.test(String(contact.external_id || '')) ? String(contact.external_id) : '');
         if (!phone) {
             this.logger.warn(`No WhatsApp phone for contact ${enrollment.contact_id} — skipping drip step`);
-            return;
+            return { kind: 'suppressed', reason: 'no_whatsapp_phone' };
         }
 
         const channelType = 'whatsapp';
@@ -630,67 +723,105 @@ export class DripSequenceService {
         // was going out unnamed: `resolveChannelCredentials` asked for the
         // tenant's token without saying which number, so the resolver returned
         // the oldest connection and that account paid — a property of row order,
-        // not of a decision. Naming it here fixes the template branch and the
-        // custom one at once, because both read from this.
+        // not of a decision. Naming it here fixes all three branches at once,
+        // because they all read from this.
         const connection = await this.connectionOfEnrolment(schemaName, enrollment.conversation_id);
-        const { accessToken, accountId } = await this.resolveChannelCredentials(
-            tenantId, channelType, connection);
+        if (!connection) {
+            // Refused, not guessed. A durable row names the account it will be
+            // billed to before the processor picks it up, and there is nobody
+            // to pick a number on the business's behalf. The enrolment stays on
+            // this step until somebody names one.
+            this.logger.warn(`Drip enrolment ${enrollment.id} has no WhatsApp connection `
+                + '— nothing dispatched');
+            return { kind: 'refused', reason: 'no_connection' };
+        }
+        const conversationId = String(enrollment.conversation_id ?? '');
+        if (!conversationId) {
+            // The connection came FROM a conversation, so this cannot normally
+            // happen; if it ever does, there is no thread to write the history
+            // row into and therefore no receipt and no way back.
+            return { kind: 'refused', reason: 'no_conversation' };
+        }
 
+        const item = await this.stepItem(tenantId, contact, phone, step);
+        if (!item) return { kind: 'suppressed', reason: 'step_has_nothing_to_say' };
+
+        // ── THE AUTHORITY, READ FROM THE ENROLMENT ──────────────────────────
+        //
+        // Built by reading `drip_enrollments`, so the revision describes the
+        // journey as it IS — active, on this step, for this contact. The store
+        // revalidates it inside the transaction that grants the lease, which is
+        // what stops somebody who replied, unenrolled or was moved on from
+        // receiving a step they left behind.
+        const operationalScope = await this.proactive.policyAuthority(schemaName, {
+            tenantId, producer: 'drip_step', channelType,
+            channelAccountId: connection, entityId: String(enrollment.id),
+        });
+        if (!operationalScope) {
+            this.logger.log(`Drip enrolment ${enrollment.id} no longer justifies a step — suppressed`);
+            return { kind: 'suppressed', reason: 'enrolment_no_longer_active' };
+        }
+
+        return this.proactive.send(tenantId, {
+            // The step index, not the current step: a retry of step 3 has to
+            // find step 3's own row, and the enrolment has already moved on.
+            originKey: `drip_step:${enrollment.id}:${stepIndex}`,
+            conversationId,
+            contactId: String(enrollment.contact_id),
+            channelType,
+            channelAccountId: connection,
+            recipient: phone,
+            items: [item],
+            operationalScope,
+        });
+    }
+
+    /**
+     * What this step actually sends, or nothing.
+     *
+     * The three branches used to differ in far more than their content: the
+     * template went straight to the adapter and the two texts went onto the
+     * legacy queue, so "which lane, which record, which identity" depended on
+     * what the tenant had typed into the step. They differ only in the item now.
+     */
+    private async stepItem(tenantId: string, contact: any, phone: string, step: DripStep):
+        Promise<{ kind: 'template' | 'text'; payload: Record<string, any> } | null> {
         if (step.message_type === 'template') {
-            // Approved Meta template — the ONLY compliant way to open a cold conversation
-            // outside the 24h window. Sends the real template via WhatsappMessagingService
-            // (the broadcast/automation path); the old literal "[Template: x]" never delivered.
-            const templateName = step.template_name || 'follow_up';
-            const language = step.template_language || 'es';
-            const components = [
-                { type: 'body', parameters: [{ type: 'text', text: contact.name || 'cliente' }] },
-            ];
-            try {
-                await this.whatsappMessaging.sendTemplate(
-                    schemaName, phone, templateName, language, components, connection);
-                await this.saveOutboundMessage(schemaName, enrollment.conversation_id, `[Plantilla: ${templateName}]`);
-            } catch (e: any) {
-                this.logger.error(`Drip template send failed (${templateName}) for ${phone}: ${e.message}`);
-            }
-        } else if (step.message_type === 'custom') {
-            const text = step.content || '';
-            if (!text) {
-                this.logger.warn(`Empty custom message in drip step — skipping`);
-                return;
-            }
-
-            const personalizedText = text
+            // An approved Meta template is the ONLY compliant way to open a cold
+            // conversation outside the 24h window. The literal `[Template: x]`
+            // this once put on the queue was never a template at all.
+            return {
+                kind: 'template',
+                payload: {
+                    templateName: step.template_name || 'follow_up',
+                    language: step.template_language || 'es',
+                    components: [
+                        { type: 'body', parameters: [{ type: 'text', text: contact.name || 'cliente' }] },
+                    ],
+                },
+            };
+        }
+        if (step.message_type === 'custom') {
+            const text = String(step.content || '')
                 .replace(/\{name\}/g, contact.name || 'cliente')
                 .replace(/\{phone\}/g, phone);
-
-            const outbound: OutboundMessage = {
-                tenantId,
-                channelType,
-                channelAccountId: accountId,
-                to: phone,
-                content: { type: 'text', text: personalizedText },
-            };
-
-            await this.outboundQueue.enqueue(outbound, accessToken);
-            await this.saveOutboundMessage(schemaName, enrollment.conversation_id, personalizedText);
-        } else if (step.message_type === 'ai_generated') {
-            // The agent "opens" the prospecting conversation with a personalized message
-            // in the tenant's persona voice. step.content (optional) is the angle/reason.
-            const text = await this.generateOpener(tenantId, contact, step.content);
-            if (!text) {
-                this.logger.warn(`AI opener returned empty — skipping drip step`);
-                return;
+            if (!text.trim()) {
+                this.logger.warn('Empty custom message in drip step — skipping');
+                return null;
             }
-            const outbound: OutboundMessage = {
-                tenantId,
-                channelType,
-                channelAccountId: accountId,
-                to: phone,
-                content: { type: 'text', text },
-            };
-            await this.outboundQueue.enqueue(outbound, accessToken);
-            await this.saveOutboundMessage(schemaName, enrollment.conversation_id, text);
+            return { kind: 'text', payload: { text } };
         }
+        if (step.message_type === 'ai_generated') {
+            // The agent "opens" the prospecting conversation in the tenant's
+            // persona voice. `step.content` (optional) is the angle.
+            const text = await this.generateOpener(tenantId, contact, step.content);
+            if (!text?.trim()) {
+                this.logger.warn('AI opener returned empty — skipping drip step');
+                return null;
+            }
+            return { kind: 'text', payload: { text } };
+        }
+        return null;
     }
 
     /** AI-written prospecting opener in the agent's persona voice, with a safe fallback. */
@@ -739,15 +870,12 @@ export class DripSequenceService {
         return rows?.[0] || null;
     }
 
-    private async saveOutboundMessage(schemaName: string, conversationId: string | null, text: string): Promise<void> {
-        if (!conversationId) return;
-        await this.prisma.executeInTenantSchema(
-            schemaName,
-            `INSERT INTO messages (conversation_id, direction, content_type, content_text, status, metadata)
-             VALUES ($1::uuid, 'outbound', 'text', $2, 'delivered', '{"source":"drip_sequence"}'::jsonb)`,
-            [conversationId, text],
-        );
-    }
+    // `saveOutboundMessage` used to live here. It wrote the history row itself,
+    // as `delivered`, before anything had left the process — so a step that the
+    // queue dropped, or that Meta refused, appeared in the customer's thread as
+    // a message they had received and ignored. The durable lane writes that row
+    // in the same transaction as the effect, and it says `pending` until a
+    // provider accepts it.
 
     /**
      * The connection an enrolment belongs to: the number the customer wrote to.

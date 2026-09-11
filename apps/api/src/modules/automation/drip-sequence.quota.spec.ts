@@ -12,12 +12,13 @@ describe('DripSequenceService quota serialization', () => {
         };
         const redis = { get: jest.fn().mockResolvedValue('1') };
         const throttle = { enforcePlanLimit: jest.fn().mockResolvedValue(undefined) };
+        // queue, prisma, redis, throttle, channelToken, persona, llmRouter,
+        // compliance, segments, proactive.
         const service = new DripSequenceService(
             {} as any,
             prisma as any,
             redis as any,
             throttle as any,
-            {} as any,
             {} as any,
             {} as any,
             {} as any,

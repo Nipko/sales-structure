@@ -17,6 +17,7 @@ export const SPEND_BLOCK_CODES = [
     'funding_not_ready',
     'rate_unknown',
     'currency_unknown',
+    'category_unknown',
     'cap_exhausted',
     'cap_soft_stop',
     'duplicate_recent_send',
@@ -70,6 +71,16 @@ Object.freeze({
     currency_unknown: {
         scope: 'account',
         resolution: 'The WhatsApp account\'s billing currency is not one we hold a rate card for.',
+    },
+    category_unknown: {
+        scope: 'account',
+        // Named because the fix is concrete and nobody guesses it from a
+        // generic failure: a template whose Meta approval never synced has no
+        // category, and pricing it as a service reply understates a marketing
+        // send several times over.
+        resolution: 'This message could not be classified as one of the five billable '
+            + 'WhatsApp categories. Sync the templates for this number so the approved '
+            + 'category from Meta is known, or state the category on the producer.',
     },
     cap_exhausted: {
         scope: 'account',

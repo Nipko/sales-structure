@@ -620,6 +620,13 @@ export class AgentConsoleService {
                 // Hashed before it travels: this reaches an effect key and log lines.
                 recipientRef: createHash('sha256').update(String(recipient ?? '')).digest('hex').slice(0, 32),
                 producer: 'agent_console_reply',
+                // The destination, read to derive the tariff country — Meta
+                // charges by the recipient's country, not the sender's — and
+                // then dropped in favour of the hash above.
+                recipientAddress: String(recipient ?? ''),
+                // A human answering a live conversation is inside the window by
+                // construction: Meta would refuse a free-form message otherwise.
+                insideServiceWindow: true,
                 // A human agent is answering a live conversation. If a soft stop
                 // silenced this, the platform would be telling a person at a
                 // keyboard that the customer in front of them cannot be

@@ -6,7 +6,9 @@ import { Job, DelayedError } from 'bullmq';
 import * as Sentry from '@sentry/nestjs';
 import { createHash } from 'crypto';
 import { ChannelGatewayService } from './channel-gateway.service';
-import { WhatsappSendAdmissionService, type Admission } from '../billing/whatsapp-spend/whatsapp-send-admission.service';
+import {
+    WhatsappSendAdmissionService, fromSendContext, type Admission,
+} from '../billing/whatsapp-spend/whatsapp-send-admission.service';
 import { ChannelTokenService } from './channel-token.service';
 import { RedisService } from '../redis/redis.service';
 import { OutboundMessage } from '@parallext/shared';
@@ -96,6 +98,8 @@ export class OutboundQueueProcessor extends WorkerHost {
         recipient: string; producer: string; contentDigest: string;
         contactId?: string | null; conversationId?: string | null;
         disposition?: 'reactive' | 'proactive';
+        template?: { name?: string | null; category?: string | null } | null;
+        insideServiceWindow?: boolean;
         binding?: Record<string, unknown>;
     }) {
         if (!this.spendGate) return null;
@@ -105,12 +109,39 @@ export class OutboundQueueProcessor extends WorkerHost {
             catch { return null; }
         }
         try {
+            // ── The identity comes from the RESOLVER, not from this call site ──
+            //
+            // Who pays, which credential, which display number: all of it is a
+            // property of the connection, and the resolver is the one thing that
+            // knows. Passing a hand-made triple here is what made `payer.kind`
+            // depend on whether an optional parameter happened to be supplied —
+            // and none of the three sinks supplied it, so every authorisation
+            // failed on `payer_unknown`.
+            let connection = {
+                tenantId: input.tenantId, channelType: input.channelType,
+                channelAccountId: input.channelAccountId,
+            } as any;
+            try {
+                const resolved = await this.channelToken.resolveSendContext({
+                    tenantId: input.tenantId, channelType: input.channelType as any,
+                    channelAccountId: input.channelAccountId,
+                    recipient: { scope: 'customer', address: input.recipient,
+                        contactId: input.contactId ?? null },
+                });
+                connection = fromSendContext(resolved.context);
+            } catch (error: any) {
+                // A connection that cannot be resolved cannot be charged
+                // either. The admission then blocks with its own diagnosis
+                // rather than this lane inventing one.
+                this.logger.warn(`[Spend] connection unresolved for ${input.producer}: `
+                    + `${error?.message}`);
+            }
             return await this.spendGate.admit({
                 schema,
-                connection: {
-                    tenantId: input.tenantId, channelType: input.channelType,
-                    channelAccountId: input.channelAccountId,
-                },
+                connection,
+                // Read to derive the tariff country and then dropped: what
+                // reaches the ledger is the hash below, never the number.
+                recipientAddress: input.recipient,
                 // The recipient is hashed before it travels: this value ends
                 // up in an effect key, a log line and a queue id.
                 recipientRef: createHash('sha256').update(String(input.recipient)).digest('hex').slice(0, 32),
@@ -119,6 +150,8 @@ export class OutboundQueueProcessor extends WorkerHost {
                 contentDigest: input.contentDigest,
                 admissionReason: input.producer,
                 disposition: input.disposition,
+                template: input.template ?? null,
+                insideServiceWindow: input.insideServiceWindow,
                 binding: input.binding as any,
             });
         } catch (error: any) {

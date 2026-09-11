@@ -502,12 +502,26 @@ export class ChannelTokenService {
      * and whose WhatsApp Business Account pays for it. `sameSendContext` can then
      * say, field by field, that a retry stayed on the same connection.
      *
-     * `payer.kind` is `unknown` here even when the WABA id is known, and that is
-     * not caution for its own sake: knowing WHICH account Meta bills is a
-     * different fact from knowing HOW it is funded. `business_direct` is a claim
-     * about somebody's card, and nothing in this resolver has asked Meta. The
-     * funding probe answers that separately, and until it does, `unknown` keeps
-     * the exposure where the contract says it belongs.
+     * ── WHO PAYS, AND WHETHER THEY CAN ─────────────────────────────────────
+     *
+     * These were one field and they are two questions.
+     *
+     * WHO pays is what `payer.kind` answers, and a known WABA id answers it:
+     * Parallly is a Tech Provider, so Meta bills that business account directly.
+     * That is `business_direct`, and it is a fact about the connection this
+     * resolver has in its hands.
+     *
+     * WHETHER they can pay is a different fact, owned by funding readiness and
+     * by Meta's own 131042 — which pauses the number when Meta says the account
+     * cannot be billed. Conflating the two made `payer.kind` permanently
+     * `unknown`, and the money authority then refused EVERY send with
+     * `payer_unknown`: under `enforce` the platform would have gone silent, and
+     * under `observe` the refusal became permission with no reservation behind
+     * it, so the POST went out unmeasured.
+     *
+     * A connection with no WABA id at all stays `unknown`. That one is a real
+     * gap — nobody can name the account Meta would bill — and it blocks with a
+     * diagnosis that says to reconnect through Embedded Signup.
      */
     async resolveSendContext(request: SendContextRequest): Promise<ResolvedConnection> {
         const { tenantId, channelType, recipient } = request;
@@ -520,7 +534,9 @@ export class ChannelTokenService {
                     tenantId, channelType,
                     channelAccountId: wa.phoneNumberId,
                     channelAddress: wa.displayPhoneNumber,
-                    payer: { kind: 'unknown', wabaId: wa.wabaId ?? null, businessId: wa.businessId },
+                    payer: wa.wabaId
+                        ? { kind: 'business_direct', wabaId: wa.wabaId, businessId: wa.businessId }
+                        : { kind: 'unknown', wabaId: null, businessId: wa.businessId },
                     credential: { id: wa.credentialId, source: wa.credentialSource },
                     recipient,
                 },

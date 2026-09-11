@@ -1,6 +1,10 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { PROVIDER_BILLED_CHANNELS } from '@parallext/shared';
+import { PROVIDER_BILLED_CHANNELS, type OutboundSendContext } from '@parallext/shared';
+import { recipientIso, recipientMarket, describeRecipientMarket } from '../whatsapp-rates';
+import {
+    declaredCategory, resolveMessageCategory, type CategoryEvidence,
+} from './message-category';
 import { WhatsappSpendService, type SpendAuthorizeResult } from './whatsapp-spend.service';
 import type { SpendDisposition, SpendPressure } from './spend-ledger';
 import { resolveRepetitionPolicy, type RepetitionPolicy } from './spend-repetition';
@@ -41,15 +45,55 @@ import { describePause } from '../../channels/account-send-pause';
  */
 export type SpendEnforcement = 'observe' | 'enforce';
 
+/**
+ * The currency used when the account's own is not known yet.
+ *
+ * Not a guess about the tenant: it is the currency Meta publishes its rate
+ * cards in for most markets, and the reservation that uses it is marked
+ * `basis: 'unknown'` so the exposure reads as unpriced rather than as priced in
+ * the wrong money. The alternative was refusing to reserve at all, which is how
+ * `currency_unknown` turned every send into an unmeasured POST.
+ */
+const ASSUMED_CURRENCY = 'USD';
+
+/**
+ * The connection an effect is authorised against.
+ *
+ * Every field is what the CONNECTION RESOLVER returned, not what a caller
+ * happened to know. `payerKind` in particular was being decided by the presence
+ * of an optional parameter — if a sink passed `payerWabaId`, the payer was
+ * `business_direct`, and if it did not, the payer was `unknown` and the whole
+ * send was refused. None of the three sinks passed it, so every authorisation
+ * failed on `payer_unknown`: silence under `enforce`, and under `observe` a
+ * refusal that turned into permission with no reservation behind it.
+ *
+ * `fromSendContext` is the only way this should be built in production code.
+ */
 export interface AdmissionConnection {
     readonly tenantId: string;
     readonly channelType: string;
     readonly channelAccountId: string;
     readonly channelAddress?: string | null;
+    readonly payerKind?: 'business_direct' | 'partner' | 'unknown';
     readonly payerWabaId?: string | null;
     readonly payerBusinessId?: string | null;
     readonly credentialId?: string | null;
     readonly credentialSource?: 'channel_account' | 'tenant_credential' | 'system_user' | null;
+}
+
+/** Build an admission connection out of a resolved send context, losing nothing. */
+export function fromSendContext(context: OutboundSendContext): AdmissionConnection {
+    return Object.freeze({
+        tenantId: context.tenantId,
+        channelType: context.channelType,
+        channelAccountId: context.channelAccountId,
+        channelAddress: context.channelAddress ?? null,
+        payerKind: context.payer.kind,
+        payerWabaId: context.payer.wabaId ?? null,
+        payerBusinessId: context.payer.businessId ?? null,
+        credentialId: context.credential.id,
+        credentialSource: context.credential.source,
+    });
 }
 
 export interface AdmissionRequest {
@@ -58,8 +102,28 @@ export interface AdmissionRequest {
     /** A contact id or a hashed address. NEVER the raw phone number. */
     readonly recipientRef: string;
     readonly contactId?: string | null;
-    /** `service`, `marketing`, `utility`, `authentication`. */
+    /**
+     * The destination, in whatever shape the sink carries it. Read ONLY to
+     * derive the tariff country, and never stored — `recipientRef` is what
+     * reaches the ledger.
+     */
+    readonly recipientAddress?: string | null;
+    /**
+     * One of Meta's five, when the producer genuinely knows. Anything else is
+     * ignored rather than passed through: a category the rate card does not
+     * price is not a category.
+     */
     readonly category?: string | null;
+    /** Meta's own approval for the template being sent, when this is one. */
+    readonly template?: {
+        readonly name?: string | null;
+        /** `MARKETING`, `UTILITY`, `AUTHENTICATION`, as Meta approved it. */
+        readonly category?: string | null;
+    } | null;
+    /** False only where the producer can PROVE the 24-hour window has closed. */
+    readonly insideServiceWindow?: boolean;
+    /** An authentication template whose recipient is in another country. */
+    readonly authenticationInternational?: boolean;
     /** The campaign, broadcast or automation this belongs to, when there is one. */
     readonly taskId?: string | null;
     /** Which producer asked. Part of the effect key, so it must be stable. */
@@ -178,6 +242,27 @@ export class WhatsappSendAdmissionService {
 
         const account = await this.accountFacts(request.connection.tenantId, request.connection.channelAccountId);
 
+        // ── The country being messaged, read before the address is hashed ───
+        //
+        // Meta charges by the RECIPIENT'S country. The old code read one fixed
+        // `billingMarket` off the sending number, which is wrong for every
+        // tenant with a customer abroad. Only the ISO survives into the ledger.
+        const market = recipientMarket(request.recipientAddress ?? null);
+        const marketIso = market.kind === 'resolved' ? market.iso : (account.market ?? null);
+
+        // ── Which of Meta's five categories this is ─────────────────────────
+        //
+        // A fact about the message, not a default. Every lane used to pass
+        // nothing and get `service`, so campaigns and one-time passwords priced
+        // as the cheapest thing Meta sells.
+        const category = this.categoryFor(request);
+        if (category.kind === 'unknown' && enforcement === 'enforce') {
+            return Object.freeze({
+                permitted: false, effectKey, enforcement,
+                block: spendBlock('category_unknown', category.detail),
+            });
+        }
+
         const result: SpendAuthorizeResult = await this.spend.authorize(request.schema, {
             effectKey,
             identity: {
@@ -185,16 +270,22 @@ export class WhatsappSendAdmissionService {
                 channelType: channel,
                 channelAccountId: request.connection.channelAccountId,
                 channelAddress: request.connection.channelAddress ?? account.address,
-                payerKind: request.connection.payerWabaId ? 'business_direct' : 'unknown',
+                // Derived from the RESOLVED connection, never from whether an
+                // optional parameter happened to be passed.
+                payerKind: request.connection.payerKind
+                    ?? (request.connection.payerWabaId || account.wabaId ? 'business_direct' : 'unknown'),
                 payerWabaId: request.connection.payerWabaId ?? account.wabaId,
                 payerBusinessId: request.connection.payerBusinessId ?? account.businessId,
                 credentialId: request.connection.credentialId || 'unknown',
                 credentialSource: request.connection.credentialSource || 'system_user',
                 recipientScope: 'customer',
                 recipientRef: request.recipientRef,
-                category: request.category || 'service',
-                market: account.market,
-                currency: account.currency,
+                // `service` only when something actually established it. An
+                // unknown category still reserves in `observe` — at the unknown
+                // basis, which is visible — rather than pricing as a reply.
+                category: category.kind === 'resolved' ? category.category : 'service',
+                market: marketIso,
+                currency: account.currency ?? ASSUMED_CURRENCY,
             },
             binding: request.binding,
             contactId: request.contactId,
@@ -210,7 +301,13 @@ export class WhatsappSendAdmissionService {
             repetition: await this.repetitionFor(request.connection.tenantId),
             // In observe mode an unknown rate must not stop the recording: the
             // point of observing is to find out how many effects have no price.
-            allowUnknownCost: enforcement === 'observe',
+            //
+            // A category nobody could establish is an unknown rate by the same
+            // rule, and an assumed currency is too. Both are recorded with
+            // `basis: 'unknown'`, which is what makes the exposure visible
+            // instead of confidently wrong.
+            allowUnknownCost: enforcement === 'observe'
+                || category.kind === 'unknown' || !account.currency,
         });
 
         if (result.outcome !== 'blocked') {
@@ -285,6 +382,27 @@ export class WhatsappSendAdmissionService {
         }
         this.schemaTenants.set(schema, tenantId);
         return tenantId;
+    }
+
+    /**
+     * Which of Meta's five categories this message is.
+     *
+     * A producer that states one outright is believed, but only if it names one
+     * of the five — the REST lane used to pass the literal `'template'`, which
+     * matched no row in the rate card, so the effect priced as unknown and the
+     * exposure was invisible.
+     */
+    private categoryFor(request: AdmissionRequest) {
+        const declared = declaredCategory(request.category);
+        if (declared) return declared;
+        return resolveMessageCategory({
+            isTemplate: Boolean(request.template),
+            templateCategory: request.template?.category ?? null,
+            templateName: request.template?.name ?? null,
+            insideServiceWindow: request.insideServiceWindow,
+            authenticationInternational: request.template?.category?.toUpperCase() === 'AUTHENTICATION'
+                && Boolean(request.authenticationInternational),
+        } as CategoryEvidence);
     }
 
     /** What the provider said, recorded against the reservation this admitted. */

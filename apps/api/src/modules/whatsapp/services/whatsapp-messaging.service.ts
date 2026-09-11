@@ -25,6 +25,12 @@ export interface WhatsappSendSpendContext {
     readonly contactId?: string | null;
     /** Distinguishes the second message of one effect from a repeat of the first. */
     readonly ordinal?: number;
+    /**
+     * Meta's own approved category for the template — `MARKETING`, `UTILITY`,
+     * `AUTHENTICATION`. Supplied by the caller when it already read the
+     * template row; otherwise this service reads it itself.
+     */
+    readonly templateCategory?: string | null;
 }
 
 @Injectable()
@@ -320,19 +326,32 @@ export class WhatsappMessagingService {
     templateName?: string, spend?: WhatsappSendSpendContext) {
     if (!this.spendGate) return null;
     try {
+      // The approval category, from the row the template sync wrote. Read here
+      // rather than demanded from every caller: five public methods and a dozen
+      // producers would each have had to remember, and the one that forgot
+      // would have priced a campaign as a reply.
+      const category = spend?.templateCategory ?? (templateName
+        ? await this.templateCategory(schemaName, templateName)
+        : null);
       const admission = await this.spendGate.admitBySchema(schemaName, {
         channelType: 'whatsapp',
         channelAccountId: phoneNumberId,
         // The recipient is hashed before it travels: this value ends up in an
         // effect key and in log lines.
         recipientRef: createHash('sha256').update(String(payload?.to ?? '')).digest('hex').slice(0, 32),
-        // A template outside the 24h window is `utility` or `marketing` and is
-        // priced differently from a service reply. Guessing `service` for all
-        // of them would underprice every campaign, so the distinction is kept:
-        // what a template's category actually IS comes from Meta, and until
-        // that is bound the reservation carries `template` and prices as
-        // unknown rather than as cheap.
-        category: templateName ? 'template' : 'service',
+        // ── The category, from Meta's own approval ─────────────────────
+        //
+        // This used to pass the literal `'template'`, which is not one of
+        // Meta's five: the rate card had no row for it, so every template send
+        // priced as unknown and its exposure was invisible. The real category
+        // is the one Meta approved the template AS, and it is read from the
+        // templates table below.
+        template: templateName ? { name: templateName, category } : null,
+        // A session message can only be delivered inside the window — Meta
+        // refuses it otherwise — so a non-template send here IS `service`.
+        insideServiceWindow: templateName ? undefined : true,
+        // The destination, read to derive the tariff country and then dropped.
+        recipientAddress: String(payload?.to ?? ''),
         // A template is an initiation by definition — it exists to open a
         // conversation outside the 24-hour window — and a session message can
         // only be sent inside one, which means somebody wrote first. The
@@ -388,6 +407,29 @@ export class WhatsappMessagingService {
       if (!tenantId) return;
       await this.pauses.clear(tenantId, phoneNumberId, { by: 'provider_accepted' });
     } catch { /* a resumed account that stays marked paused is visible and safe */ }
+  }
+
+  /**
+   * Meta's approved category for one template, from the row the sync wrote.
+   *
+   * Returns null rather than throwing: a lookup that fails leaves the category
+   * unknown, which is a diagnosis the admission already knows how to give. It
+   * must never become a reason not to send.
+   */
+  private async templateCategory(schemaName: string, templateName: string): Promise<string | null> {
+    try {
+      const rows = await this.prisma.executeInTenantSchema<any[]>(
+        schemaName,
+        `SELECT category FROM whatsapp_templates
+          WHERE name = $1 AND category IS NOT NULL
+          ORDER BY last_sync_at DESC NULLS LAST LIMIT 1`,
+        [templateName],
+      );
+      return rows?.[0]?.category ?? null;
+    } catch (error: any) {
+      this.logger.warn(`[Spend] template category unreadable for ${templateName}: ${error?.message}`);
+      return null;
+    }
   }
 
   private async recordSpend(schemaName: string, admission: unknown, outcome: {

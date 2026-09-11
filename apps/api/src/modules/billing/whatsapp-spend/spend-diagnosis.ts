@@ -25,6 +25,7 @@ export const SPEND_BLOCK_CODES = [
     'effect_already_resolved',
     'transmission_held_elsewhere',
     'transmission_outcome_unknown',
+    'counter_currency_mismatch',
     'task_budget_exhausted',
     'account_paused',
     'effect_identity_missing',
@@ -109,6 +110,16 @@ Object.freeze({
         resolution: 'Another attempt already holds the right to send this message, so this one '
             + 'stood down. Nothing is lost: the message goes out once, from whichever attempt '
             + 'claimed it.',
+    },
+    counter_currency_mismatch: {
+        scope: 'account',
+        // Not a limit and not a fault of this message. The period's counter is
+        // keeping its numbers in one currency and this effect is priced in
+        // another; adding them would be arithmetic on two different things.
+        resolution: 'El contador de este período lleva sus cifras en una moneda y este mensaje '
+            + 'está tarifado en otra. Sumarlas daría un número sin sentido, así que se rechaza. '
+            + 'Hay que decidir en qué moneda va el período —normalmente la de la WABA que paga— '
+            + 'y migrar el contador explícitamente.',
     },
     transmission_outcome_unknown: {
         scope: 'contact',

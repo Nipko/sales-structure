@@ -78,14 +78,14 @@ integration('the WhatsApp spend engine', () => {
             (await runner.query(sql, params)).rows as any;
         const scope = { kind: 'account' as const, key: scopeKey, period: '2026-10' };
         const outcome = await reserveAgainstCounter(run, schema, {
-            scope, amountMinor: amount, deliveries: 1, disposition,
+            scope, amountMinor: amount, deliveries: 1, currency: 'USD', disposition,
         });
         if (!outcome.ok) return { allowed: false as const, pressure: outcome.pressure };
         const reservation = await claimReservation(run, schema, {
             effectKey, identity: identity(), money: money(amount), leaseSeconds: 60,
         });
         if (reservation) await recordAllocation(run, schema, reservation.id,
-            { scope, amountMinor: amount, deliveries: 1 }, 'USD');
+            { scope, amountMinor: amount, deliveries: 1, currency: 'USD' }, 'USD');
         return { allowed: true as const, reservation, pressure: outcome.pressure };
     };
 
@@ -433,8 +433,8 @@ integration('the WhatsApp spend engine', () => {
             const money = scopes.filter(scope => scope.kind !== 'number_month');
             for (const scope of money) {
                 expect(await reserveAgainstCounter(query, schema,
-                    { scope, amountMinor: 8, deliveries: 1, disposition: 'reactive' }))
-                    .toEqual({ ok: true, pressure: 'clear' });
+                    { scope, amountMinor: 8, deliveries: 1, currency: 'USD', disposition: 'reactive' }))
+                    .toMatchObject({ ok: true, pressure: 'clear' });
             }
             const reservation = await claimReservation(query, schema, {
                 effectKey, identity: identity(), money: {
@@ -445,7 +445,7 @@ integration('the WhatsApp spend engine', () => {
             });
             for (const scope of money) {
                 await recordAllocation(query, schema, reservation!.id,
-                    { scope, amountMinor: 8, deliveries: 1 }, 'USD');
+                    { scope, amountMinor: 8, deliveries: 1, currency: 'USD' }, 'USD');
             }
 
             await releaseReservation(query, schema, {
@@ -477,11 +477,11 @@ integration('the WhatsApp spend engine', () => {
                 WHERE scope_kind='contact' AND scope_key=$1`, [tight.key]);
 
             expect(await reserveAgainstCounter(query, schema,
-                { scope: generous, amountMinor: 8, deliveries: 1, disposition: 'reactive' }))
-                .toEqual({ ok: true, pressure: 'clear' });
+                { scope: generous, amountMinor: 8, deliveries: 1, currency: 'USD', disposition: 'reactive' }))
+                .toMatchObject({ ok: true, pressure: 'clear' });
             expect(await reserveAgainstCounter(query, schema,
-                { scope: tight, amountMinor: 8, deliveries: 1, disposition: 'reactive' }))
-                .toEqual({ ok: false, pressure: 'hard_stop' });
+                { scope: tight, amountMinor: 8, deliveries: 1, currency: 'USD', disposition: 'reactive' }))
+                .toMatchObject({ ok: false, refusal: 'cap', pressure: 'hard_stop' });
         });
 
         it('never refuses on an observe-only counter', async () => {
@@ -491,8 +491,8 @@ integration('the WhatsApp spend engine', () => {
             // And reports `clear`, not a warning: an observe counter has no
             // ceiling to be a fraction of, so there is nothing to be near.
             expect(await reserveAgainstCounter(query, schema,
-                { scope, amountMinor: 999_999, deliveries: 1, disposition: 'proactive' }))
-                .toEqual({ ok: true, pressure: 'clear' });
+                { scope, amountMinor: 999_999, deliveries: 1, currency: 'USD', disposition: 'proactive' }))
+                .toMatchObject({ ok: true, pressure: 'clear' });
         });
     });
 
@@ -523,7 +523,7 @@ integration('the WhatsApp spend engine', () => {
             disposition: 'reactive' | 'proactive') =>
             reserveAgainstCounter(query, schema, {
                 scope: { kind: 'account', key: scopeKey, period: '2026-10' },
-                amountMinor: amount, deliveries: 1, disposition,
+                amountMinor: amount, deliveries: 1, currency: 'USD', disposition,
             });
 
         it('says nothing until the warning line, then names it', async () => {
@@ -546,7 +546,7 @@ integration('the WhatsApp spend engine', () => {
             // "exhausted" that would send somebody to raise a ceiling that has
             // 6 % left.
             const campaign = await reserve(scopeKey, 20, 'proactive');
-            expect(campaign).toEqual({ ok: false, pressure: 'soft_stop' });
+            expect(campaign).toMatchObject({ ok: false, pressure: 'soft_stop' });
 
             // The same 20 for a customer who wrote in goes through.
             const reply = await reserve(scopeKey, 20, 'reactive');
@@ -561,7 +561,7 @@ integration('the WhatsApp spend engine', () => {
             // 990 + 20 is over the ceiling. The soft stop protects the reply
             // from the campaign; nothing protects it from the ceiling, and
             // pretending otherwise would be spending money nobody authorised.
-            expect(await reserve(scopeKey, 20, 'reactive')).toEqual({ ok: false, pressure: 'hard_stop' });
+            expect(await reserve(scopeKey, 20, 'reactive')).toMatchObject({ ok: false, refusal: 'cap', pressure: 'hard_stop' });
             expect(Number((await counterRow(scopeKey)).reserved_minor)).toBe(990);
         });
 
@@ -577,11 +577,11 @@ integration('the WhatsApp spend engine', () => {
             // written on it, for proactive sends only, silently.
             const scopeKey = `tier-cliff-${randomUUID()}`;
             await tieredCounter(scopeKey, 1000, 1000, 1000);
-            expect(await reserve(scopeKey, 999, 'proactive')).toEqual({ ok: true, pressure: 'clear' });
+            expect(await reserve(scopeKey, 999, 'proactive')).toMatchObject({ ok: true, pressure: 'clear' });
             // The thousandth minor unit is inside the ceiling and must go.
-            expect(await reserve(scopeKey, 1, 'proactive')).toEqual({ ok: true, pressure: 'hard_stop' });
+            expect(await reserve(scopeKey, 1, 'proactive')).toMatchObject({ ok: true, pressure: 'hard_stop' });
             // The thousand-and-first is not.
-            expect(await reserve(scopeKey, 1, 'proactive')).toEqual({ ok: false, pressure: 'hard_stop' });
+            expect(await reserve(scopeKey, 1, 'proactive')).toMatchObject({ ok: false, refusal: 'cap', pressure: 'hard_stop' });
         });
 
         it('counts a delivery ceiling by the same three heights', async () => {
@@ -599,13 +599,13 @@ integration('the WhatsApp spend engine', () => {
             const step = (deliveries: number, disposition: 'reactive' | 'proactive') =>
                 reserveAgainstCounter(query, schema, {
                     scope: { kind: 'account', key: scopeKey, period: '2026-10' },
-                    amountMinor: 0, deliveries, disposition,
+                    amountMinor: 0, deliveries, currency: 'USD', disposition,
                 });
             expect((await step(79, 'reactive')).pressure).toBe('clear');
             expect((await step(1, 'reactive')).pressure).toBe('warning');
-            expect(await step(15, 'proactive')).toEqual({ ok: false, pressure: 'soft_stop' });
+            expect(await step(15, 'proactive')).toMatchObject({ ok: false, pressure: 'soft_stop' });
             expect((await step(15, 'reactive')).pressure).toBe('soft_stop');
-            expect(await step(10, 'reactive')).toEqual({ ok: false, pressure: 'hard_stop' });
+            expect(await step(10, 'reactive')).toMatchObject({ ok: false, refusal: 'cap', pressure: 'hard_stop' });
         });
 
         it('refuses two campaigns that would cross the soft stop together', async () => {
@@ -628,7 +628,7 @@ integration('the WhatsApp spend engine', () => {
                         (await client_.query(sql, params)).rows as any;
                 const ask = (run: SpendQuery) => reserveAgainstCounter(run, schema, {
                     scope: { kind: 'account', key: scopeKey, period: '2026-10' },
-                    amountMinor: 5, deliveries: 1, disposition: 'proactive',
+                    amountMinor: 5, deliveries: 1, currency: 'USD', disposition: 'proactive',
                 });
                 // 940 + 5 = 945, still under 950. Both would pass alone.
                 const first = await ask(runner(left));
@@ -641,7 +641,7 @@ integration('the WhatsApp spend engine', () => {
                 expect(first.ok).toBe(true);
                 // 945 + 5 = 950, which IS the soft stop. Re-evaluated against
                 // what the first committed, so the second is refused.
-                expect(second).toEqual({ ok: false, pressure: 'soft_stop' });
+                expect(second).toMatchObject({ ok: false, pressure: 'soft_stop' });
                 expect(Number((await counterRow(scopeKey)).reserved_minor)).toBe(945);
             } finally { await Promise.all([left.end(), right.end()]); }
         });
@@ -667,7 +667,7 @@ integration('the WhatsApp spend engine', () => {
         it('refuses to let a zero ceiling read as room', async () => {
             const scopeKey = `tier-zero-${randomUUID()}`;
             await tieredCounter(scopeKey, 0);
-            expect(await reserve(scopeKey, 1, 'reactive')).toEqual({ ok: false, pressure: 'hard_stop' });
+            expect(await reserve(scopeKey, 1, 'reactive')).toMatchObject({ ok: false, refusal: 'cap', pressure: 'hard_stop' });
         });
 
         it('refuses the thresholds themselves when they are out of order', async () => {
@@ -699,7 +699,8 @@ integration('the WhatsApp spend engine', () => {
         const task = (taskId: string) => ({ kind: 'task' as const, key: taskId, period: '2026-10' });
 
         const send = (run: SpendQuery, taskId: string) => reserveAgainstCounter(run, schema, {
-            scope: task(taskId), amountMinor: 0, deliveries: 1, disposition: 'proactive',
+            scope: task(taskId), amountMinor: 0, deliveries: 1,
+            currency: 'USD', disposition: 'proactive',
         });
 
         it('declares a ceiling in deliveries, which needs no rate card', async () => {
@@ -717,7 +718,7 @@ integration('the WhatsApp spend engine', () => {
             const taskId = `budget-exact-${randomUUID()}`;
             await budget(taskId, 3);
             for (let i = 0; i < 3; i++) expect((await send(query, taskId)).ok).toBe(true);
-            expect(await send(query, taskId)).toEqual({ ok: false, pressure: 'hard_stop' });
+            expect(await send(query, taskId)).toMatchObject({ ok: false, refusal: 'cap', pressure: 'hard_stop' });
         });
 
         it('holds when two workers reach the last slot together', async () => {
@@ -745,7 +746,7 @@ integration('the WhatsApp spend engine', () => {
                 const second = await contending;
                 await right.query('COMMIT');
                 expect(first.ok).toBe(true);
-                expect(second).toEqual({ ok: false, pressure: 'hard_stop' });
+                expect(second).toMatchObject({ ok: false, refusal: 'cap', pressure: 'hard_stop' });
                 const [row] = await query<any[]>(
                     `SELECT used_deliveries, cap_deliveries FROM "${schema}".whatsapp_spend_counters
                       WHERE scope_kind='task' AND scope_key=$1 AND period_key='2026-10'`, [taskId]);
@@ -761,14 +762,14 @@ integration('the WhatsApp spend engine', () => {
             const taskId = `budget-relaunch-${randomUUID()}`;
             await budget(taskId, 5);
             for (let i = 0; i < 5; i++) await send(query, taskId);
-            expect(await send(query, taskId)).toEqual({ ok: false, pressure: 'hard_stop' });
+            expect(await send(query, taskId)).toMatchObject({ ok: false, refusal: 'cap', pressure: 'hard_stop' });
 
             expect(await budget(taskId, 2)).toEqual({
                 capKind: 'deliveries', capDeliveries: 7, capMinor: null, usedDeliveries: 5,
             });
             expect((await send(query, taskId)).ok).toBe(true);
             expect((await send(query, taskId)).ok).toBe(true);
-            expect(await send(query, taskId)).toEqual({ ok: false, pressure: 'hard_stop' });
+            expect(await send(query, taskId)).toMatchObject({ ok: false, refusal: 'cap', pressure: 'hard_stop' });
         });
 
         it('has no soft stop of its own, because nothing else shares it', async () => {
@@ -794,12 +795,13 @@ integration('the WhatsApp spend engine', () => {
                 taskId, period: '2026-10', capMinor: 250, currency: 'USD',
             })).toEqual({ capKind: 'money', capMinor: 250, capDeliveries: null, usedDeliveries: 0 });
             const spend = (amount: number) => reserveAgainstCounter(query, schema, {
-                scope: task(taskId), amountMinor: amount, deliveries: 1, disposition: 'proactive',
+                scope: task(taskId), amountMinor: amount, deliveries: 1,
+                currency: 'USD', disposition: 'proactive',
             });
             expect((await spend(200)).ok).toBe(true);
             // 200 of 250 is 80 %: the warning line, and still permitted.
             expect((await spend(0)).pressure).toBe('warning');
-            expect(await spend(60)).toEqual({ ok: false, pressure: 'hard_stop' });
+            expect(await spend(60)).toMatchObject({ ok: false, refusal: 'cap', pressure: 'hard_stop' });
         });
     });
 
@@ -947,13 +949,13 @@ integration('the WhatsApp spend engine', () => {
             const scope = { kind: 'account' as const, key: scopeKey, period: '2026-10' };
             const effectKey = `arith-${randomUUID()}`;
             const outcome = await reserveAgainstCounter(query, schema,
-                { scope, amountMinor: amount, deliveries: 1, disposition: 'reactive' });
+                { scope, amountMinor: amount, deliveries: 1, currency: 'USD', disposition: 'reactive' });
             if (!outcome.ok) return { effectKey, admitted: false as const };
             const reservation = await claimReservation(query, schema, {
                 effectKey, identity: identity(), money: money(amount), leaseSeconds: 60,
             });
             await recordAllocation(query, schema, reservation!.id,
-                { scope, amountMinor: amount, deliveries: 1 }, 'USD');
+                { scope, amountMinor: amount, deliveries: 1, currency: 'USD' }, 'USD');
             return { effectKey, admitted: true as const };
         };
 
@@ -976,7 +978,7 @@ integration('the WhatsApp spend engine', () => {
                 let fits = false;
                 try {
                     fits = (await reserveAgainstCounter(query, schema,
-                        { scope, amountMinor: probe, deliveries: 0, disposition: 'reactive' })).ok;
+                        { scope, amountMinor: probe, deliveries: 0, currency: 'USD', disposition: 'reactive' })).ok;
                 } finally {
                     await query('ROLLBACK');
                 }
@@ -1092,14 +1094,14 @@ integration('the WhatsApp spend engine', () => {
             for (const [key, amount] of [[held, 10], [done, 20], [lost, 30]] as const) {
                 await reserveAgainstCounter(query, schema,
                     { scope: { kind: 'account', key: scopeKey, period: '2026-10' },
-                        amountMinor: amount, deliveries: 1 });
+                        amountMinor: amount, deliveries: 1, currency: 'USD' });
                 const row = await claimReservation(query, schema, {
                     effectKey: key, identity: identity({ channelAccountId: account }),
                     money: money(amount), leaseSeconds: 600,
                 });
                 await recordAllocation(query, schema, row!.id,
                     { scope: { kind: 'account', key: scopeKey, period: '2026-10' },
-                        amountMinor: amount, deliveries: 1 }, 'USD');
+                        amountMinor: amount, deliveries: 1, currency: 'USD' }, 'USD');
             }
             await settleReservation(query, schema,
                 { effectKey: done, chargedMinor: 18, evidence: 'provider_reported_price' });

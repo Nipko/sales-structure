@@ -590,10 +590,27 @@ export async function declareTaskBudget(query: SpendQuery, schema: string, input
     });
 }
 
+/**
+ * What a reservation was refused FOR.
+ *
+ * `cap` is the ordinary answer: the ceiling said no. `currency` is not a
+ * ceiling at all — it is the counter and the reservation disagreeing about what
+ * the numbers in them MEAN, which no amount of budget would fix and which a
+ * caller must never retry its way out of.
+ */
+export type ReserveRefusal = 'cap' | 'currency';
+
 export interface ReserveAgainstCounter {
     readonly scope: SpendScope;
     readonly amountMinor: number;
     readonly deliveries: number;
+    /**
+     * What `amountMinor` is denominated in.
+     *
+     * Required, and compared against the counter's own: minor units of what is
+     * a fact about the counter, not about the arithmetic.
+     */
+    readonly currency: string;
     /** Defaults to `proactive`: the expensive reading, when nobody said. */
     readonly disposition?: SpendDisposition;
 }
@@ -601,6 +618,10 @@ export interface ReserveAgainstCounter {
 export interface ReserveOutcome {
     /** May the effect proceed against THIS counter? */
     readonly ok: boolean;
+    /** Present only on a refusal, and `cap` unless stated otherwise. */
+    readonly refusal?: ReserveRefusal;
+    /** The currency the counter is already keeping, when that is the problem. */
+    readonly counterCurrency?: string | null;
     /**
      * The pressure the reservation produced, or — when it was refused — the
      * pressure it would have produced. Either way it names which of the three
@@ -617,6 +638,21 @@ export interface ReserveOutcome {
  * error, a decision — and the caller rolls back rather than sending.
  *
  * An `observe` counter always allows: it exists to know, not to stop.
+ *
+ * ═══ AND ONLY IF THE TWO AGREE WHAT THE NUMBERS MEAN ═══
+ *
+ * `reserved_minor` is a count of MINOR UNITS, and minor units of what is a fact
+ * about the counter, not about the arithmetic. The primary key is (scope,
+ * period) with the currency as an ordinary column, so a month that opened with
+ * a USD reservation and later received a COP one used to add 3 500 COP centavos
+ * to a counter of US cents: off by a factor of four thousand, in the direction
+ * that makes a ceiling look full.
+ *
+ * The currency test is a PREDICATE in the same statement as the cap, for the
+ * same reason the cap is: read-then-write leaves a window two workers can both
+ * pass through. The refusal is deliberately NOT a cap refusal — a caller must
+ * not retry its way out of it, and an operator must not resolve it by raising a
+ * limit. It needs a decision about which currency the period is in.
  */
 export async function reserveAgainstCounter(query: SpendQuery, schema: string,
     entry: ReserveAgainstCounter): Promise<ReserveOutcome> {
@@ -649,6 +685,9 @@ export async function reserveAgainstCounter(query: SpendQuery, schema: string,
                 used_deliveries = used_deliveries + $5,
                 updated_at = clock_timestamp()
           WHERE scope_kind=$1 AND scope_key=$2 AND period_key=$3
+            -- A counter with no currency yet has not committed to one. A
+            -- counter WITH one only accepts amounts denominated in it.
+            AND (currency IS NULL OR currency = $6)
             AND (cap_kind = 'observe'
                  OR (cap_kind = 'money'
                      AND cap_minor - settled_minor - reserved_minor >= $4)
@@ -656,7 +695,7 @@ export async function reserveAgainstCounter(query: SpendQuery, schema: string,
                      AND cap_deliveries - used_deliveries >= $5))
             ${softClause}
           RETURNING ${pressureSql('c', '0', '0')} AS pressure`,
-        [scope.kind, scope.key, scope.period, amountMinor, deliveries]);
+        [scope.kind, scope.key, scope.period, amountMinor, deliveries, entry.currency]);
     // RETURNING sees the row AFTER the update, so `0` is the right addend: the
     // amount is already in `reserved_minor`.
     if (rows[0]) return { ok: true, pressure: String(rows[0].pressure) as SpendPressure };
@@ -664,13 +703,26 @@ export async function reserveAgainstCounter(query: SpendQuery, schema: string,
     // Refused. Say WHICH height refused it, which needs the pressure the
     // reservation WOULD have produced — hence the amount as an addend here.
     const [current] = await query<any[]>(
-        `SELECT ${pressureSql('c', '$4', '$5')} AS pressure
+        `SELECT currency, ${pressureSql('c', '$4', '$5')} AS pressure
            FROM "${schema}".whatsapp_spend_counters AS c
           WHERE scope_kind=$1 AND scope_key=$2 AND period_key=$3`,
         [scope.kind, scope.key, scope.period, amountMinor, deliveries]);
     // A counter that vanished between the two statements cannot be reasoned
     // about, and "the ceiling is unknown" must never read as "there is room".
-    return { ok: false, pressure: current ? String(current.pressure) as SpendPressure : 'hard_stop' };
+    if (!current) return { ok: false, refusal: 'cap', pressure: 'hard_stop' };
+    const counterCurrency = current.currency ?? null;
+    if (counterCurrency && counterCurrency !== entry.currency) {
+        // Not a ceiling. The two disagree about what their numbers mean, and
+        // raising a limit would not change that.
+        return {
+            ok: false, refusal: 'currency', counterCurrency,
+            pressure: String(current.pressure) as SpendPressure,
+        };
+    }
+    return {
+        ok: false, refusal: 'cap', counterCurrency,
+        pressure: String(current.pressure) as SpendPressure,
+    };
 }
 
 /**

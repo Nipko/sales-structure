@@ -421,14 +421,32 @@ export class WhatsappSpendService {
 
             // ── 6. Reserve against every ceiling, in the one lock order. ────
             const disposition = input.disposition ?? 'proactive';
-            const allocations: { scope: SpendScope; amountMinor: number; deliveries: number }[] = [];
+            const allocations: {
+                scope: SpendScope; amountMinor: number; deliveries: number; currency: string;
+            }[] = [];
             const pressures: SpendPressure[] = [];
             for (const scope of scopes) {
                 if (scope.kind === 'number_month') continue; // already granted above
-                const entry = { scope, amountMinor: reservedMinor, deliveries: chargeable };
+                const entry = {
+                    scope, amountMinor: reservedMinor, deliveries: chargeable, currency,
+                };
                 const outcome = await reserveAgainstCounter(query as SpendQuery, schema,
                     { ...entry, disposition });
                 if (!outcome.ok) {
+                    if (outcome.refusal === 'currency') {
+                        // NOT a ceiling. The counter is keeping its numbers in
+                        // one currency and this reservation is denominated in
+                        // another, so adding them would be arithmetic on two
+                        // different things — off by a factor of four thousand
+                        // between COP centavos and US cents, in the direction
+                        // that makes a ceiling look full. No budget fixes it and
+                        // no retry gets past it: somebody has to decide which
+                        // currency the period is in.
+                        throw new SpendRefused(spendBlock('counter_currency_mismatch',
+                            `${scopeId(scope)} keeps ${outcome.counterCurrency}, `
+                            + `this effect is ${currency}`,
+                            { avoidedMinor: reservedMinor, currency }));
+                    }
                     // Rolled back by the caller's transaction. Nothing was sent
                     // and nothing was charged; the operator gets the scope that
                     // said no, at the height that said it, rather than a generic

@@ -1,4 +1,4 @@
-import { inLockOrder, scopeId, type SpendScope } from './spend-scopes';
+import { inLockOrder, scopeId, type SpendScope, type SpendScopeKind } from './spend-scopes';
 
 /**
  * The money engine's SQL, as pure functions over a caller's transaction.
@@ -42,7 +42,7 @@ function assertSchema(schema: string): void {
 }
 
 /** What a counter row limits. `observe` counts without ever refusing. */
-export type SpendCapKind = 'money' | 'deliveries' | 'observe';
+export type SpendCapKind = 'money' | 'deliveries' | 'observe' | 'both';
 
 export interface SpendCounterRow {
     readonly scope: SpendScope;
@@ -504,18 +504,41 @@ function pressureSql(alias: string, addMinor: string, addDeliveries: string): st
     // is simply not part of the operational balance.
     const spent = `(${alias}.settled_minor + ${alias}.reserved_minor + ${addMinor})`;
     const used = `(${alias}.used_deliveries + ${addDeliveries})`;
-    return `CASE
-        WHEN ${alias}.cap_kind = 'observe' THEN 'clear'
-        WHEN ${alias}.cap_kind = 'money' THEN CASE
+    // ── MONEY AND MESSAGES APPLY TOGETHER, AND THE WORSE ONE WINS ───────────
+    //
+    // A ceiling used to be one or the other, which leaves unprotected exactly
+    // what has to be protected from October. The thousand free service
+    // deliveries per number per month are a MESSAGE quota that costs no money:
+    // a money ceiling does not limit them at all. A tenant can burn the whole
+    // franchise without spending a cent, and from then on every message is
+    // charged — which is the moment the money ceiling starts working, already
+    // too late.
+    //
+    // `both` carries the two columns and takes the WORSE pressure: whichever
+    // fills first is the one that decides.
+    const moneyPressure = `CASE
             WHEN ${spent} >= ${alias}.cap_minor THEN 'hard_stop'
             WHEN ${spent} * 1000 >= ${alias}.cap_minor * ${alias}.soft_permille THEN 'soft_stop'
             WHEN ${spent} * 1000 >= ${alias}.cap_minor * ${alias}.warn_permille THEN 'warning'
-            ELSE 'clear' END
-        ELSE CASE
+            ELSE 'clear' END`;
+    const deliveryPressure = `CASE
             WHEN ${used} >= ${alias}.cap_deliveries THEN 'hard_stop'
             WHEN ${used} * 1000 >= ${alias}.cap_deliveries * ${alias}.soft_permille THEN 'soft_stop'
             WHEN ${used} * 1000 >= ${alias}.cap_deliveries * ${alias}.warn_permille THEN 'warning'
-            ELSE 'clear' END
+            ELSE 'clear' END`;
+    // Ordered worst-first, so `LEAST` over the rank picks the worse of the two
+    // without needing the vocabulary repeated in SQL.
+    const rank = (expression: string) => `CASE ${expression}
+            WHEN 'hard_stop' THEN 0 WHEN 'soft_stop' THEN 1
+            WHEN 'warning' THEN 2 ELSE 3 END`;
+    return `CASE
+        WHEN ${alias}.cap_kind = 'observe' THEN 'clear'
+        WHEN ${alias}.cap_kind = 'money' THEN ${moneyPressure}
+        WHEN ${alias}.cap_kind = 'both' THEN CASE
+            LEAST(${rank(moneyPressure)}, ${rank(deliveryPressure)})
+            WHEN 0 THEN 'hard_stop' WHEN 1 THEN 'soft_stop'
+            WHEN 2 THEN 'warning' ELSE 'clear' END
+        ELSE ${deliveryPressure}
     END`;
 }
 
@@ -570,6 +593,164 @@ export interface TaskBudget {
  * queues only the recipients still pending, and a ceiling of "the pending count"
  * would hard-stop a campaign that had already sent half of itself.
  */
+/**
+ * ═══ A CEILING AN OPERATOR SET, ON A CONNECTION THEY OWN ═══
+ *
+ * `declareTaskBudget` is the size of ONE batch, declared by the producer that
+ * launches it. This is the other kind: a standing limit a person put on an
+ * account, a business or a number's month, which every producer then spends
+ * against.
+ *
+ * Nothing wrote one. `whatsapp_spend_counters` has had the columns since the
+ * ledger was built and the reservation path has always honoured them, but the
+ * only rows anybody created were the free-allowance counter and per-task
+ * budgets — so a tenant could not say "never more than fifty dollars a month on
+ * this number", which is the first thing somebody asks for when messages start
+ * costing money.
+ *
+ * ── MONEY AND MESSAGES TOGETHER ─────────────────────────────────────────────
+ *
+ * Both may be set at once, and the worse one decides. A money ceiling alone
+ * does not protect the thousand free service deliveries, because those cost
+ * nothing: the whole franchise can be spent without the money ceiling moving,
+ * and from then on every message is charged.
+ *
+ * ── WHAT LOWERING A CEILING MEANS ───────────────────────────────────────────
+ *
+ * A standing ceiling is ABSOLUTE, unlike a task budget — which tops itself up
+ * from where the task already is, so a relaunch is not capped below its own
+ * progress. Somebody lowering a monthly limit below what has already been spent
+ * means "stop", and the pressure predicate reads that as `hard_stop` on the
+ * next reservation without any special case here. Silently raising it to what
+ * was already spent would be the system overruling the person.
+ *
+ * ── AND WHAT A CEILING CANNOT PROMISE ───────────────────────────────────────
+ *
+ * It bounds what PARALLLY sends. The same WhatsApp account can be charged by
+ * another app, by a person using Meta's own inbox, or by an obligation from
+ * before the limit existed. The product has to say so where the number is
+ * shown; here it is enough that the function does not pretend otherwise.
+ */
+export interface SpendCeiling {
+    readonly scopeKind: SpendScopeKind;
+    readonly scopeKey: string;
+    readonly periodKey: string;
+    readonly capKind: 'money' | 'deliveries' | 'observe' | 'both';
+    readonly capMinor: number | null;
+    readonly capDeliveries: number | null;
+    readonly currency: string | null;
+    readonly warnPermille: number;
+    readonly softPermille: number;
+    /** What has already been committed against it, so the caller can show it. */
+    readonly settledMinor: number;
+    readonly reservedMinor: number;
+    readonly usedDeliveries: number;
+}
+
+/**
+ * Set, change or remove a standing ceiling.
+ *
+ * Passing neither a money nor a delivery ceiling sets `observe`: the counter
+ * keeps measuring and stops refusing. That is a real operator choice — "I want
+ * to see it before I limit it" — and it is deliberately not the same as
+ * deleting the row, which would also throw away what has been counted.
+ */
+export async function declareSpendCeiling(query: SpendQuery, schema: string, input: {
+    readonly scope: SpendScope;
+    readonly capMinor?: number | null;
+    readonly capDeliveries?: number | null;
+    readonly currency?: string | null;
+    readonly warnPermille?: number;
+    readonly softPermille?: number;
+}): Promise<SpendCeiling> {
+    assertSchema(schema);
+    const money = Number.isFinite(Number(input.capMinor)) && Number(input.capMinor) >= 0
+        ? Math.trunc(Number(input.capMinor)) : null;
+    const deliveries = Number.isFinite(Number(input.capDeliveries)) && Number(input.capDeliveries) >= 0
+        ? Math.trunc(Number(input.capDeliveries)) : null;
+    const capKind = money !== null && deliveries !== null ? 'both'
+        : money !== null ? 'money'
+            : deliveries !== null ? 'deliveries' : 'observe';
+    // The currency belongs to the WhatsApp account being billed, and a money
+    // ceiling without one cannot be compared to anything. Refused rather than
+    // defaulted: a ceiling of "50" in a currency nobody named is a number that
+    // will be read as whichever currency the reader expects.
+    const currency = input.currency ? String(input.currency).toUpperCase() : null;
+    if ((capKind === 'money' || capKind === 'both') && !currency) {
+        throw new SpendLedgerError('spend_ceiling_currency_required',
+            'un techo de dinero necesita la moneda de la cuenta de WhatsApp');
+    }
+    const warn = clampPermille(input.warnPermille, 800);
+    const soft = clampPermille(input.softPermille, 950);
+    if (warn > soft) {
+        throw new SpendLedgerError('spend_ceiling_thresholds_out_of_order',
+            `aviso ${warn} por mil no puede ir despues del freno ${soft}`);
+    }
+
+    const [row] = await query<any[]>(
+        `INSERT INTO "${schema}".whatsapp_spend_counters
+            (scope_kind, scope_key, period_key, cap_kind, cap_minor, cap_deliveries, currency,
+             warn_permille, soft_permille)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         ON CONFLICT (scope_kind, scope_key, period_key) DO UPDATE
+            SET cap_kind = EXCLUDED.cap_kind,
+                -- Absolute, NOT topped up from what is already spent. Somebody
+                -- lowering a limit below the spend means stop, and the pressure
+                -- predicate reads that as a hard stop on the next reservation.
+                cap_minor = EXCLUDED.cap_minor,
+                cap_deliveries = EXCLUDED.cap_deliveries,
+                currency = EXCLUDED.currency,
+                warn_permille = EXCLUDED.warn_permille,
+                soft_permille = EXCLUDED.soft_permille,
+                updated_at = clock_timestamp()
+         RETURNING scope_kind, scope_key, period_key, cap_kind, cap_minor, cap_deliveries,
+                   currency, warn_permille, soft_permille,
+                   settled_minor, reserved_minor, used_deliveries`,
+        [input.scope.kind, input.scope.key, input.scope.period, capKind,
+            money, deliveries, currency, warn, soft]);
+    return mapCeiling(row);
+}
+
+/** Every standing ceiling on one period, for the screen that shows them. */
+export async function readSpendCeilings(query: SpendQuery, schema: string, input: {
+    readonly periodKey?: string | null;
+    readonly scopeKind?: SpendScopeKind | null;
+}): Promise<readonly SpendCeiling[]> {
+    assertSchema(schema);
+    const rows = await query<any[]>(
+        `SELECT scope_kind, scope_key, period_key, cap_kind, cap_minor, cap_deliveries,
+                currency, warn_permille, soft_permille,
+                settled_minor, reserved_minor, used_deliveries
+           FROM "${schema}".whatsapp_spend_counters
+          WHERE ($1::text IS NULL OR period_key = $1)
+            AND ($2::text IS NULL OR scope_kind = $2)
+          ORDER BY period_key DESC, scope_kind, scope_key`,
+        [input.periodKey ?? null, input.scopeKind ?? null]);
+    return Object.freeze(rows.map(mapCeiling));
+}
+
+const clampPermille = (value: unknown, fallback: number): number => {
+    const number = Math.trunc(Number(value));
+    return Number.isFinite(number) && number > 0 && number <= 1000 ? number : fallback;
+};
+
+function mapCeiling(row: any): SpendCeiling {
+    return Object.freeze({
+        scopeKind: String(row.scope_kind) as SpendScopeKind,
+        scopeKey: String(row.scope_key),
+        periodKey: String(row.period_key),
+        capKind: String(row.cap_kind) as SpendCeiling['capKind'],
+        capMinor: row.cap_minor === null ? null : Number(row.cap_minor),
+        capDeliveries: row.cap_deliveries === null ? null : Number(row.cap_deliveries),
+        currency: row.currency === null ? null : String(row.currency),
+        warnPermille: Number(row.warn_permille),
+        softPermille: Number(row.soft_permille),
+        settledMinor: Number(row.settled_minor),
+        reservedMinor: Number(row.reserved_minor),
+        usedDeliveries: Number(row.used_deliveries),
+    });
+}
+
 export async function declareTaskBudget(query: SpendQuery, schema: string, input: {
     readonly taskId: string;
     readonly period: string;
@@ -731,14 +912,23 @@ export async function reserveAgainstCounter(query: SpendQuery, schema: string,
     // ceiling for a proactive send `cap - 1`: a batch of three could send two,
     // and a ceiling "configured as a cliff" would quietly be one lower than the
     // number written on it.
+    // `both` has to satisfy BOTH sides, which is why each clause names the
+    // kinds it applies to rather than being an either/or chain: a ceiling that
+    // carries money and messages must be under its money soft line AND under
+    // its message soft line, or the half that is full lets the other half
+    // through.
+    // Each clause is "if this ceiling HAS a money side, be under it" — not "be
+    // a money ceiling and be under it". The second reading refuses a
+    // messages-only ceiling outright, because its money disjunct can never
+    // hold; the suite caught exactly that, on the plain money path.
     const softClause = proactive
         ? `AND (soft_permille >= 1000
-                OR cap_kind = 'observe'
-                OR (cap_kind = 'money'
-                    AND (settled_minor + reserved_minor + $4) * 1000
-                        < cap_minor * soft_permille)
-                OR (cap_kind = 'deliveries'
-                    AND (used_deliveries + $5) * 1000 < cap_deliveries * soft_permille))`
+                OR cap_kind NOT IN ('money','both')
+                OR (settled_minor + reserved_minor + $4) * 1000
+                    < cap_minor * soft_permille)
+           AND (soft_permille >= 1000
+                OR cap_kind NOT IN ('deliveries','both')
+                OR (used_deliveries + $5) * 1000 < cap_deliveries * soft_permille)`
         : '';
     const rows = await query<any[]>(
         `UPDATE "${schema}".whatsapp_spend_counters AS c
@@ -749,11 +939,15 @@ export async function reserveAgainstCounter(query: SpendQuery, schema: string,
             -- A counter with no currency yet has not committed to one. A
             -- counter WITH one only accepts amounts denominated in it.
             AND (currency IS NULL OR currency = $6)
-            AND (cap_kind = 'observe'
-                 OR (cap_kind = 'money'
-                     AND cap_minor - settled_minor - reserved_minor >= $4)
-                 OR (cap_kind = 'deliveries'
-                     AND cap_deliveries - used_deliveries >= $5))
+            -- Two clauses ANDed rather than one either/or chain, for the same
+            -- reason as the soft line: a ceiling carrying BOTH has to have room
+            -- on the money side AND on the message side. An OR would let a full
+            -- message quota through because the money side still had room,
+            -- which is precisely the hole this kind exists to close.
+            AND (cap_kind NOT IN ('money','both')
+                 OR cap_minor - settled_minor - reserved_minor >= $4)
+            AND (cap_kind NOT IN ('deliveries','both')
+                 OR cap_deliveries - used_deliveries >= $5)
             ${softClause}
           RETURNING ${pressureSql('c', '0', '0')} AS pressure`,
         [scope.kind, scope.key, scope.period, amountMinor, deliveries, entry.currency]);

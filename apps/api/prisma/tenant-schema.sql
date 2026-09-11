@@ -5649,14 +5649,17 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."whatsapp_spend_counters" (
         PRIMARY KEY (scope_kind, scope_key, period_key),
         CONSTRAINT whatsapp_spend_counters_scope CHECK (scope_kind IN
             ('account','business','contact','number_month','task')),
+        -- `both` lleva las dos columnas a la vez, y la presion es la PEOR de
+        -- las dos. Las 1.000 entregas gratuitas son una cuota de MENSAJES que no
+        -- cuesta dinero: un techo de dinero no la limita en absoluto.
         CONSTRAINT whatsapp_spend_counters_cap_kind CHECK (cap_kind IN
-            ('money','deliveries','observe')),
+            ('money','deliveries','observe','both')),
         CONSTRAINT whatsapp_spend_counters_money
-            CHECK ((cap_kind = 'money') = (cap_minor IS NOT NULL)),
+            CHECK ((cap_kind IN ('money','both')) = (cap_minor IS NOT NULL)),
         CONSTRAINT whatsapp_spend_counters_deliveries
-            CHECK ((cap_kind = 'deliveries') = (cap_deliveries IS NOT NULL)),
+            CHECK ((cap_kind IN ('deliveries','both')) = (cap_deliveries IS NOT NULL)),
         CONSTRAINT whatsapp_spend_counters_currency
-            CHECK (cap_kind <> 'money' OR currency IS NOT NULL),
+            CHECK (cap_kind NOT IN ('money','both') OR currency IS NOT NULL),
         CONSTRAINT whatsapp_spend_counters_thresholds
             CHECK (warn_permille > 0 AND warn_permille <= soft_permille
                    AND soft_permille <= 1000),

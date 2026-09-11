@@ -32,8 +32,154 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiConsumes } from '@nestjs/swagger';
 import { Request as ExpressRequest } from 'express';
 import { ChannelTokenService } from '../channels/channel-token.service';
+import {
+  ProactiveDispatchService, effectIsDurable, type ProactiveSendResult,
+} from '../channels/proactive-dispatch.service';
+import type { DispatchItem } from '../channels/agent-dispatch-outbox';
 import { AGENT_QUALITY_DEPENDENCIES_UPDATED } from '../quality/agent-quality-events';
 import { RequiresVerifiedEmail } from '../../common/decorators/requires-verified-email.decorator';
+import { createHash } from 'crypto';
+
+/**
+ * ═══ WHAT A REST SEND IS, ONCE IT HAS TO SURVIVE A RESTART ═══
+ *
+ * These five routes used to POST to Meta on the request's own stack. There was
+ * no row, no lease and no receipt: a restart between the decision and the call
+ * lost the message, and a caller retrying a request whose answer never arrived
+ * sent it twice. Nothing could refuse the spend before it happened, and from
+ * 1 October 2026 every one of those is a separate charge.
+ *
+ * They now commit a row on the durable lane and answer with what happened to
+ * it. Three things had to be decided to make that possible, and each is a rule
+ * rather than a default:
+ *
+ * ── 1. WHAT MAKES THIS SEND *THIS* SEND ─────────────────────────────────────
+ *
+ * The lane identifies an effect by a key the producer can recompute, so two
+ * attempts at the same effect collide on one row instead of arriving twice. A
+ * REST caller has two ways to give one:
+ *
+ *   · `Idempotency-Key` (header) or `idempotencyKey` (body) — CANONICAL. The
+ *     caller states what makes this send distinct, so two DELIBERATE identical
+ *     messages ("¿seguís ahí?" twice) stay two effects.
+ *   · absent — DERIVED from the request's own durable content: the tenant, the
+ *     paying number, the recipient, the item kind and the payload. A client
+ *     that timed out and retried sends the identical bytes, so the retry finds
+ *     the first row and is told `already_present` instead of charging twice.
+ *
+ * The derived form has a cost, and it is stated rather than hidden: with no
+ * key, two deliberate identical sends to the same person from the same number
+ * collapse into one, and the answer says so (`duplicate: true`). That is the
+ * honest trade — a caller who needs both sends says so with a key. The
+ * alternative, a random id, turns every retry into a second charge, which is
+ * the precise failure this lane exists to end.
+ *
+ * ── 2. WHICH NUMBER PAYS ────────────────────────────────────────────────────
+ *
+ * Explicit, never implicit. `phoneNumberId` names it; omitted, the resolver
+ * answers only while the tenant has exactly one sendable number and REFUSES
+ * (`connection_ambiguous`) otherwise. Nobody chooses which WhatsApp Business
+ * Account is billed by row order.
+ *
+ * ── 3. WHO IS SENDING, AND WHETHER THEY STILL MAY ───────────────────────────
+ *
+ * A `HumanOperatorAuthority` over the REAL acting user — during impersonation
+ * the super_admin, not the tenant admin they are acting as. Authentication at
+ * the edge proves who ASKED; the authority is re-read inside the transaction
+ * that authorises the POST, so an account deactivated in between sends nothing.
+ *
+ * ── AND WHAT THE ANSWER MEANS NOW ───────────────────────────────────────────
+ *
+ * `messageId` is gone and is not replaced by a fake. Delivery happens on the
+ * lane, so at the moment this returns there is no provider receipt to report,
+ * and inventing one would be the defect this programme exists to remove.
+ * `success` is true only when a durable effect exists.
+ */
+export type WhatsappRestItemKind = 'template' | 'text' | 'interactive' | 'media' | 'location';
+
+/** What a send route answers. `success` is true only for a committed effect. */
+export interface WhatsappRestSendResult {
+  readonly success: boolean;
+  /** The lane's own word: `prepared` or `already_present`. */
+  readonly status: ProactiveSendResult['kind'];
+  /** This effect's durable identity, stable across retries of the same send. */
+  readonly originId: string;
+  /** True when this request found an effect a previous attempt already owned. */
+  readonly duplicate: boolean;
+  /** The number that will be billed. Echoed so a caller can see what it chose. */
+  readonly phoneNumberId: string;
+  /** The thread the effect was recorded in, for a caller that wants to follow it. */
+  readonly conversationId: string;
+}
+
+/**
+ * The same question `effectIsDurable` answers, phrased so the compiler can use
+ * it. It DELEGATES rather than re-deciding: a second copy of the rule here is
+ * how two places end up disagreeing about whether a message was committed.
+ */
+function committed(result: ProactiveSendResult):
+result is Extract<ProactiveSendResult, { readonly originId: string }> {
+  return effectIsDurable(result);
+}
+
+/** The recipient as Meta wants it, or empty when the caller named nobody. */
+export function restRecipient(toPhone: unknown): string {
+  return String(toPhone ?? '').replace(/[+\s-]/g, '').trim();
+}
+
+/**
+ * A key that is a function of the request, for a caller that supplied none.
+ *
+ * The payload is serialised with its keys SORTED, so two encodings of one
+ * request produce one key: a client library that reorders JSON fields must not
+ * turn a retry into a second charge. Hashed rather than concatenated because a
+ * payload can be large and this is an identity, not a record.
+ */
+export function derivedRestIdempotencyKey(input: {
+  readonly tenantId: string;
+  readonly channelAccountId: string;
+  readonly recipient: string;
+  readonly kind: WhatsappRestItemKind;
+  readonly payload: Record<string, any>;
+}): string {
+  const stable = (value: any): any => {
+    if (Array.isArray(value)) return value.map(stable);
+    if (value && typeof value === 'object') {
+      return Object.fromEntries(Object.keys(value).sort().map(key => [key, stable(value[key])]));
+    }
+    return value;
+  };
+  const digest = createHash('sha256')
+    .update(JSON.stringify(stable(input.payload) ?? null)).digest('hex');
+  return `wa_rest:${input.tenantId}:${input.channelAccountId}:${input.recipient}:`
+    + `${input.kind}:${digest}`;
+}
+
+/**
+ * The real person behind the request.
+ *
+ * During impersonation `req.user` IS the tenant user being impersonated, and
+ * attributing a customer-facing message to them would record the customer's own
+ * admin as the sender of something a platform operator sent. The delegation
+ * claim carries the real super_admin; `audit-actor.util.ts` follows the same
+ * rule for audit rows, for the same reason.
+ */
+export function realActingUserId(user: any): string {
+  const impersonator = user?.isImpersonation ? String(user?.impersonatedBy ?? '').trim() : '';
+  return impersonator || String(user?.id ?? user?.sub ?? '').trim();
+}
+
+/** The lane's `interactive` payload, from the Graph-shaped body these routes take. */
+export function interactiveDispatchPayload(interactive: any): Record<string, any> {
+  const shape = interactive ?? {};
+  return {
+    type: String(shape.type ?? ''),
+    body: String(shape.body?.text ?? shape.body ?? ''),
+    action: shape.action,
+    ...(shape.header?.text ? { headerText: String(shape.header.text) } : {}),
+    ...(shape.footer?.text ? { footerText: String(shape.footer.text) } : {}),
+  };
+}
 
 @ApiTags('whatsapp')
 @Controller('channels/whatsapp')
@@ -49,6 +195,12 @@ export class WhatsappController {
     private readonly configService: ConfigService,
     private readonly channelToken: ChannelTokenService,
     @Optional() private readonly events?: EventEmitter2,
+    /**
+     * The durable lane. Not optional in the module graph; declared after the
+     * optional `events` only because a required parameter cannot precede it
+     * without changing every existing construction site.
+     */
+    @Optional() private readonly dispatch?: ProactiveDispatchService,
   ) {}
 
   private async resolveSchema(req: any): Promise<string | null> {
@@ -532,13 +684,17 @@ export class WhatsappController {
     phoneNumberId?: string;
     /** @deprecated The old name on three of these five routes. See `senderOf`. */
     fromPhoneNumberId?: string;
-  }) {
-    const schemaName = await this.resolveSchema(req);
-    if (!schemaName) throw new BadRequestException('User does not belong to a tenant');
-    return this.messagingService.sendTemplate(
-      schemaName, body.toPhone, body.templateName, body.language, body.components || [],
-      this.senderOf(body),
-    );
+    /** What makes this send distinct. See the header comment of this file. */
+    idempotencyKey?: string;
+  }, @Headers('idempotency-key') headerKey?: string) {
+    return this.dispatchRest(req, body, headerKey, {
+      kind: 'template',
+      payload: {
+        templateName: String(body.templateName ?? ''),
+        language: String(body.language ?? ''),
+        components: Array.isArray(body.components) ? body.components : [],
+      },
+    });
   }
 
   @Post('send/text')
@@ -563,12 +719,11 @@ export class WhatsappController {
     phoneNumberId?: string;
     /** @deprecated The old name on three of these five routes. See `senderOf`. */
     fromPhoneNumberId?: string;
-  }) {
-    const schemaName = await this.resolveSchema(req);
-    if (!schemaName) throw new BadRequestException('User does not belong to a tenant');
-    return this.messagingService.sendTextMessage(
-      schemaName, body.toPhone, body.text, body.conversationId, this.senderOf(body),
-    );
+    /** What makes this send distinct. See the header comment of this file. */
+    idempotencyKey?: string;
+  }, @Headers('idempotency-key') headerKey?: string) {
+    return this.dispatchRest(req, body, headerKey,
+      { kind: 'text', payload: { text: String(body.text ?? '') } });
   }
 
   @Post('send/interactive')
@@ -593,12 +748,15 @@ export class WhatsappController {
     phoneNumberId?: string;
     /** @deprecated The old name on three of these five routes. See `senderOf`. */
     fromPhoneNumberId?: string;
-  }) {
-    const schemaName = await this.resolveSchema(req);
-    if (!schemaName) throw new BadRequestException('User does not belong to a tenant');
-    return this.messagingService.sendInteractiveMessage(
-      schemaName, body.toPhone, body.interactive, body.conversationId, this.senderOf(body),
-    );
+    /** What makes this send distinct. See the header comment of this file. */
+    idempotencyKey?: string;
+  }, @Headers('idempotency-key') headerKey?: string) {
+    // The menu is not flattened into text anywhere on this path. A list that
+    // arrives as prose loses the tap, and the tap is what makes the customer's
+    // next message unambiguous — so an unusable shape is refused downstream
+    // rather than downgraded here.
+    return this.dispatchRest(req, body, headerKey,
+      { kind: 'interactive', payload: interactiveDispatchPayload(body.interactive) });
   }
 
   @Post('send/media')
@@ -626,13 +784,18 @@ export class WhatsappController {
     phoneNumberId?: string;
     /** @deprecated The old name on three of these five routes. See `senderOf`. */
     fromPhoneNumberId?: string;
-  }) {
-    const schemaName = await this.resolveSchema(req);
-    if (!schemaName) throw new BadRequestException('User does not belong to a tenant');
-    return this.messagingService.sendMediaMessage(
-      schemaName, body.toPhone, body.mediaType, body.mediaUrl, body.caption, body.filename,
-      body.conversationId, this.senderOf(body),
-    );
+    /** What makes this send distinct. See the header comment of this file. */
+    idempotencyKey?: string;
+  }, @Headers('idempotency-key') headerKey?: string) {
+    return this.dispatchRest(req, body, headerKey, {
+      kind: 'media',
+      payload: {
+        mediaType: String(body.mediaType ?? 'image'),
+        mediaUrl: String(body.mediaUrl ?? ''),
+        ...(body.caption ? { caption: String(body.caption) } : {}),
+        ...(body.filename ? { filename: String(body.filename) } : {}),
+      },
+    });
   }
 
   @Post('send/location')
@@ -660,13 +823,177 @@ export class WhatsappController {
     phoneNumberId?: string;
     /** @deprecated The old name on three of these five routes. See `senderOf`. */
     fromPhoneNumberId?: string;
-  }) {
+    /** What makes this send distinct. See the header comment of this file. */
+    idempotencyKey?: string;
+  }, @Headers('idempotency-key') headerKey?: string) {
+    return this.dispatchRest(req, body, headerKey, {
+      kind: 'location',
+      payload: {
+        latitude: Number(body.latitude),
+        longitude: Number(body.longitude),
+        ...(body.name ? { name: String(body.name) } : {}),
+        ...(body.address ? { address: String(body.address) } : {}),
+      },
+    });
+  }
+
+  /**
+   * Commit one REST send on the durable lane, and say what happened to it.
+   *
+   * The order is deliberate and every step can refuse:
+   *
+   *   1. the tenant, from the authenticated request;
+   *   2. the PAYING NUMBER — named, or resolved only while there is exactly
+   *      one and refused otherwise. This is the money, so it is never guessed;
+   *   3. the recipient, cleaned the way Meta wants it;
+   *   4. the thread — the exact conversation and contact the effect belongs to,
+   *      because the lane records the outbound in `messages` and a message
+   *      belongs to a conversation;
+   *   5. the AUTHORITY of the real acting person, which is `undefined` when
+   *      they may no longer send from this connection;
+   *   6. the identity of the effect, so a retry collides on one row.
+   *
+   * Only `prepared` and `already_present` are success. Everything else is
+   * reported as a failure with the lane's own reason: a route that answers 200
+   * when nothing durable was written is the defect this programme exists to
+   * remove.
+   */
+  private async dispatchRest(
+    req: any,
+    body: {
+      toPhone?: string; conversationId?: string;
+      phoneNumberId?: string; fromPhoneNumberId?: string; idempotencyKey?: string;
+    },
+    headerKey: string | undefined,
+    item: DispatchItem & { kind: WhatsappRestItemKind },
+  ): Promise<WhatsappRestSendResult> {
     const schemaName = await this.resolveSchema(req);
-    if (!schemaName) throw new BadRequestException('User does not belong to a tenant');
-    return this.messagingService.sendLocationMessage(
-      schemaName, body.toPhone, body.latitude, body.longitude, body.name, body.address,
-      body.conversationId, this.senderOf(body),
-    );
+    const tenantId = String(req?.user?.tenantId ?? '').trim();
+    if (!schemaName || !tenantId) throw new BadRequestException('User does not belong to a tenant');
+    if (!this.dispatch) {
+      // No silent fall back to the inline POST. A message that leaves with no
+      // row is exactly what this route stopped doing, and a degraded mode that
+      // quietly restores it would make the guarantee unprovable.
+      throw new BadRequestException('El carril durable no está disponible; no se envió nada.');
+    }
+    const recipient = restRecipient(body.toPhone);
+    if (!recipient) throw new BadRequestException('toPhone es obligatorio');
+
+    // Refuses with `connection_ambiguous` when the tenant has more than one
+    // sendable number and the caller named none. An HttpException, so the
+    // status and the code reach the caller unchanged.
+    const connection = await this.channelToken.getWhatsAppToken(tenantId, this.senderOf(body));
+    const channelAccountId = String(connection.phoneNumberId);
+
+    const thread = await this.threadFor(schemaName, recipient, channelAccountId, body.conversationId);
+
+    const userId = realActingUserId(req?.user);
+    const operationalScope = await this.dispatch.operatorAuthority(schemaName, {
+      tenantId, userId, surface: 'tenant_api',
+      channelType: 'whatsapp', channelAccountId,
+    });
+    if (!operationalScope) {
+      // Deactivated, demoted, moved or gone. There is nobody to attribute the
+      // message to, and a message with no attributable sender is what the
+      // outbox exists to refuse — so it is refused here, before a row.
+      throw new UnauthorizedException(
+        'Quien pide el envío ya no puede enviar desde esta conexión.');
+    }
+
+    const supplied = String(body.idempotencyKey ?? headerKey ?? '').trim();
+    const originKey = supplied
+      ? `wa_rest:${tenantId}:${channelAccountId}:${supplied}`
+      : derivedRestIdempotencyKey({
+        tenantId, channelAccountId, recipient, kind: item.kind, payload: item.payload,
+      });
+
+    const result = await this.dispatch.send(tenantId, {
+      originKey,
+      conversationId: thread.conversationId,
+      contactId: thread.contactId,
+      channelType: 'whatsapp',
+      channelAccountId,
+      recipient,
+      items: [item],
+      operationalScope,
+      // An API send answers nothing: the business started it. Billing it as a
+      // reply would misprice it and let it past a ceiling meant for campaigns.
+      originKind: 'proactive',
+    });
+    if (!committed(result)) {
+      this.logger.warn(`[WA REST] ${item.kind} to ${recipient} from ${channelAccountId} was `
+        + `${result.kind}: ${result.reason}`);
+      throw new BadRequestException(
+        `El envío no se registró (${result.kind}): ${result.reason}`);
+    }
+    return {
+      success: true,
+      status: result.kind,
+      originId: result.originId,
+      duplicate: result.kind === 'already_present',
+      phoneNumberId: channelAccountId,
+      conversationId: thread.conversationId,
+    };
+  }
+
+  /**
+   * The exact conversation and contact this effect belongs to.
+   *
+   * A caller may name the conversation, and then it is READ rather than
+   * trusted: its contact is the contact, and a thread on another connection or
+   * another channel is refused instead of written into. Without one, the
+   * contact is found or created by the channel's own identifier — for WhatsApp
+   * that is the phone number — and the lane picks the live thread on this
+   * number, or opens one.
+   *
+   * `phone_normalized` is deliberately left null on a contact created here.
+   * That column is what crosses identities between channels, and inventing a
+   * country for a number written without a prefix merges two different people
+   * with no way to undo it. A missed match is fixable; a merge is not.
+   */
+  private async threadFor(
+    schemaName: string, recipient: string, channelAccountId: string, conversationId?: string,
+  ): Promise<{ conversationId: string; contactId: string }> {
+    if (conversationId && /^[0-9a-f-]{36}$/i.test(conversationId)) {
+      const [row] = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+        `SELECT contact_id, channel_type, channel_account_id
+           FROM conversations WHERE id = $1::uuid`, [conversationId]);
+      if (!row) throw new BadRequestException('La conversación indicada no existe.');
+      if (row.channel_type !== 'whatsapp' || String(row.channel_account_id) !== channelAccountId) {
+        throw new BadRequestException(
+          'La conversación indicada pertenece a otra conexión; no se envió nada.');
+      }
+      if (!row.contact_id) throw new BadRequestException('La conversación no tiene contacto.');
+      return { conversationId, contactId: String(row.contact_id) };
+    }
+    const contactId = await this.contactFor(schemaName, recipient);
+    const resolved = await this.dispatch!.conversationFor(schemaName, {
+      contactId, channelType: 'whatsapp', channelAccountId,
+    });
+    if (!resolved) {
+      throw new BadRequestException('No se pudo abrir la conversación; no se envió nada.');
+    }
+    return { conversationId: resolved, contactId };
+  }
+
+  /**
+   * The contact behind a number, created once.
+   *
+   * `ON CONFLICT DO NOTHING` on the channel identity, then a read: two requests
+   * for the same new customer arriving together must not become two contacts,
+   * and the unique index is what decides rather than a read-then-insert that
+   * both would lose.
+   */
+  private async contactFor(schemaName: string, recipient: string): Promise<string> {
+    const [created] = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+      `INSERT INTO contacts (external_id, channel_type, name, phone)
+       VALUES ($1, 'whatsapp', 'Unknown', $1)
+       ON CONFLICT (channel_type, external_id) DO NOTHING RETURNING id`, [recipient]);
+    if (created?.id) return String(created.id);
+    const [existing] = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+      `SELECT id FROM contacts WHERE channel_type = 'whatsapp' AND external_id = $1`, [recipient]);
+    if (!existing?.id) throw new BadRequestException('No se pudo resolver el contacto destino.');
+    return String(existing.id);
   }
 
   /**

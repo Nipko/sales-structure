@@ -112,6 +112,42 @@ const appointmentRevision = async (
 };
 
 /**
+ * A CANCELLATION notice is the one message about an appointment that exists
+ * precisely because the appointment is cancelled.
+ *
+ * `appointmentRevision` returns `null` for any status outside `pending` and
+ * `confirmed`, which is right for a reminder — there is nothing to remind
+ * somebody of — and exactly wrong here. `AppointmentsService.cancel` commits
+ * `status='cancelled'` BEFORE it emits, so a cancellation notice asking that
+ * policy for an authority is told the entity no longer justifies the message,
+ * the lane reads that as "suppress and advance", and the customer is never told
+ * their appointment was cancelled. That is not de-duplicating a message; it is
+ * deleting one.
+ *
+ * So the accepted status is inverted, and `status` stays inside the hash: an
+ * appointment re-confirmed between preparing the notice and sending it makes
+ * the prepared notice STALE, because "your appointment was cancelled" is false
+ * about a booking that is back on.
+ */
+const cancelledAppointmentRevision = async (
+    query: RevisionQuery, _schema: string, entityId: string,
+): Promise<string | null> => {
+    const [row] = await query<any[]>(
+        `SELECT id, status, start_at, service_name, contact_id, conversation_id
+           FROM appointments WHERE id = $1::uuid FOR SHARE`, [entityId]);
+    if (!row) return null;
+    // Only a cancelled appointment justifies a cancellation notice.
+    if (String(row.status) !== 'cancelled') return null;
+    return revisionHash({
+        status: row.status,
+        startAt: row.start_at ? new Date(row.start_at).toISOString() : null,
+        serviceName: row.service_name ?? null,
+        contactId: row.contact_id ?? null,
+        conversationId: row.conversation_id ?? null,
+    });
+};
+
+/**
  * A drip step is about the ENROLMENT, not about the sequence.
  *
  * Somebody who left the sequence, finished it, or was moved to another step by
@@ -286,6 +322,11 @@ export const PROACTIVE_POLICIES: Readonly<Record<string, ProactivePolicy>> = Obj
         producer: 'appointment_notification',
         describes: 'un aviso sobre un turno',
         revision: appointmentRevision,
+    }),
+    appointment_cancellation: Object.freeze({
+        producer: 'appointment_cancellation',
+        describes: 'el aviso de que un turno se canceló',
+        revision: cancelledAppointmentRevision,
     }),
     drip_step: Object.freeze({
         producer: 'drip_step',

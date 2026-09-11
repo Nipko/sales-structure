@@ -169,8 +169,8 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
             // drip, the nurturing nudge, the campaign, the rule action and the
             // recall were still on the legacy queue.
             expect(Object.keys(PROACTIVE_POLICIES).sort()).toEqual([
-                'appointment_notification', 'appointment_reminder', 'attendance_check',
-                'automation_rule_action', 'broadcast_message', 'drip_step',
+                'appointment_cancellation', 'appointment_notification', 'appointment_reminder',
+                'attendance_check', 'automation_rule_action', 'broadcast_message', 'drip_step',
                 'nurturing_followup', 'recall_reminder',
             ]);
         });
@@ -193,6 +193,54 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
 
         it('refuses an authority for a producer nobody registered', async () => {
             expect(await authorityFor('whatever_i_invented', randomUUID())).toBeUndefined();
+        });
+
+        describe('a cancellation notice', () => {
+            const appointment = async (status: string) => {
+                const id = randomUUID();
+                await sql(`INSERT INTO appointments(id, contact_id, conversation_id, service_name,
+                                start_at, status)
+                           VALUES($1::uuid,$2::uuid,$3::uuid,'Consulta',
+                                  (NOW() AT TIME ZONE 'America/Bogota') + interval '24 hours',$4)`,
+                    [id, contactId, conversationId, status]);
+                return id;
+            };
+
+            it('is authorised precisely BECAUSE the appointment is cancelled', async () => {
+                // The reminder policy refuses a cancelled appointment, which is
+                // right for a reminder and exactly wrong here: `cancel` commits
+                // the status before it emits, so a notice asking that policy is
+                // told to suppress — and the customer is never told. That is
+                // not de-duplicating a message; it is deleting one.
+                expect(await authorityFor('appointment_cancellation', await appointment('cancelled')))
+                    .toBeDefined();
+            });
+
+            it.each(['pending', 'confirmed', 'completed'])(
+                'is not authorised for a %s appointment', async status => {
+                    expect(await authorityFor('appointment_cancellation', await appointment(status)))
+                        .toBeUndefined();
+                });
+
+            it('is suppressed when the appointment is re-confirmed before it goes out', async () => {
+                // "Your appointment was cancelled" is false about a booking
+                // that is back on.
+                const id = await appointment('cancelled');
+                const result = await send(await authorityFor('appointment_cancellation', id));
+                expect(result.kind).toBe('prepared');
+                await sql(`UPDATE appointments SET status = 'confirmed' WHERE id = $1::uuid`, [id]);
+                await expect(store.admit(tenantId, (await sql(
+                    'SELECT id FROM agent_dispatch_outbox LIMIT 1'))[0].id))
+                    .rejects.toMatchObject({ code: 'dispatch_effect_superseded' });
+                expect((await stateOf((result as any).originId)).state).toBe('suppressed');
+            });
+
+            it('is not the same policy as a reminder about the same appointment', async () => {
+                // Two policies, two opposite accepted statuses, one entity.
+                const id = await appointment('cancelled');
+                expect(await authorityFor('appointment_cancellation', id)).toBeDefined();
+                expect(await authorityFor('appointment_reminder', id)).toBeUndefined();
+            });
         });
 
         describe('a drip step', () => {

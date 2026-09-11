@@ -369,7 +369,7 @@ function pressureSql(alias: string, addMinor: string, addDeliveries: string): st
  *
  * Needed by the adoption path, which reserves nothing — the amount was counted
  * by the attempt being adopted — but still owes the caller an honest answer
- * about how close the ceiling is. Returning [H[2J[3J there because no reservation
+ * about how close the ceiling is. Returning `clear` there because no reservation
  * happened would report a full account as empty on every retry.
  */
 export async function readPressure(query: SpendQuery, schema: string,
@@ -576,6 +576,63 @@ export async function recordAllocation(query: SpendQuery, schema: string, reserv
 }
 
 /**
+ * ═══ "¿YA LE DIJIMOS ESTO MISMO, HACE UN RATO?" ═══
+ *
+ * A different question from the one `effect_key` answers. That key mixes the
+ * producer and the ordinal into the hash, so it recognises a RETRY of one
+ * effect. It cannot recognise the same sentence arriving by another road, and
+ * from 1 October those are the two most expensive invisible wastes:
+ *
+ *   · Two producers, one message. The appointment reminder and the drip step
+ *     say the same thing to the same customer ten minutes apart. Two effect
+ *     keys, two charges, two identical notifications on somebody's phone.
+ *   · The agent repeating itself. A turn that makes no progress produces the
+ *     answer the previous turn produced. The customer writes again, the turn
+ *     makes no progress again, and the loop is billed in full.
+ *
+ * Note what is measured: what WE said. Nothing here reads the customer's words,
+ * so a complaint, a person insisting, somebody writing in another language or
+ * asking for a human is indistinguishable from any other message and can never
+ * become a reason to stop answering them.
+ *
+ * Only states that PROVE the message existed are counted. A `released`
+ * reservation is a proven rejection — the customer received nothing — so trying
+ * again is not repeating.
+ */
+export interface IdenticalDelivery {
+    readonly effectKey: string;
+    readonly producer: string;
+    readonly createdAt: Date;
+    readonly state: ReservationState;
+}
+
+export async function recentIdenticalDeliveries(query: SpendQuery, schema: string, input: {
+    readonly channelAccountId: string;
+    readonly recipientRef: string;
+    readonly contentDigest: string;
+    readonly since: Date;
+    readonly limit?: number;
+}): Promise<readonly IdenticalDelivery[]> {
+    assertSchema(schema);
+    if (!String(input.contentDigest || '').trim()) return [];
+    const rows = await query<any[]>(
+        `SELECT effect_key, admission_reason, created_at, state
+           FROM "${schema}".whatsapp_spend_reservations
+          WHERE channel_account_id = $1 AND recipient_ref = $2 AND content_digest = $3
+            AND created_at >= $4
+            AND state IN ('held','settled','pending_reconciliation','indeterminate')
+          ORDER BY created_at DESC
+          LIMIT ${Math.max(1, Math.min(50, input.limit ?? 10))}`,
+        [input.channelAccountId, input.recipientRef, input.contentDigest, input.since.toISOString()]);
+    return Object.freeze(rows.map(row => Object.freeze({
+        effectKey: String(row.effect_key),
+        producer: String(row.admission_reason),
+        createdAt: new Date(row.created_at),
+        state: String(row.state) as ReservationState,
+    })));
+}
+
+/**
  * Claim this effect, or discover that somebody already did.
  *
  * `ON CONFLICT DO NOTHING RETURNING id` is the whole mechanism: no row returned
@@ -587,6 +644,8 @@ export async function claimReservation(query: SpendQuery, schema: string, input:
     readonly identity: ReservationIdentity;
     readonly money: ReservationMoney;
     readonly binding?: ReservationBinding;
+    /** What is being said, as a digest. Enables the "again?" question. */
+    readonly contentDigest?: string | null;
     readonly leaseSeconds: number;
 }): Promise<ReservationRow | null> {
     assertSchema(schema);
@@ -602,11 +661,12 @@ export async function claimReservation(query: SpendQuery, schema: string, input:
             payer_kind, payer_waba_id, payer_business_id,
             credential_id, credential_source, recipient_scope, recipient_ref,
             category, market, currency, rate_version, applied_local_date, admission_reason,
+            content_digest,
             basis, decision, reserved_minor, unit_ceiling_minor, exact_micros,
             free_deliveries, charged_deliveries, lease_expires_at)
          VALUES ($1,$2::uuid,$3::uuid,$4::uuid,$5,$6::uuid,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,
-                 $17,$18,$19,$20,$21::date,$22,$23,$24,$25,$26,$27,$28,$29,
-                 clock_timestamp() + make_interval(secs => $30::double precision))
+                 $17,$18,$19,$20,$21::date,$22,$23,$24,$25,$26,$27,$28,$29,$30,
+                 clock_timestamp() + make_interval(secs => $31::double precision))
          ON CONFLICT (effect_key) DO NOTHING
          RETURNING *`,
         [
@@ -621,6 +681,7 @@ export async function claimReservation(query: SpendQuery, schema: string, input:
             input.identity.category, input.identity.market ?? null, input.identity.currency,
             input.identity.rateVersion ?? null, input.identity.appliedLocalDate ?? null,
             input.identity.admissionReason,
+            input.contentDigest ?? null,
             input.money.basis, input.money.decision, input.money.reservedMinor,
             input.money.unitCeilingMinor, input.money.exactMicros,
             input.money.freeDeliveries, input.money.chargedDeliveries,

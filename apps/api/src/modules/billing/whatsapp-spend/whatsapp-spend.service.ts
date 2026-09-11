@@ -7,7 +7,7 @@ import {
 } from '../whatsapp-rates';
 import {
     adoptReservation, claimReservation, declareTaskBudget, ensureCounters, findReservation,
-    grantFreeDeliveries,
+    grantFreeDeliveries, recentIdenticalDeliveries,
     readExposure, readPressure, recordAllocation, releaseReservation, reserveAgainstCounter,
     retainReservation,
     settleReservation, sweepExpiredLeases,
@@ -17,6 +17,10 @@ import {
 } from './spend-ledger';
 import { scopeId, scopesFor, type SpendScope } from './spend-scopes';
 import { spendBlock, type SpendBlock } from './spend-diagnosis';
+import {
+    DEFAULT_REPETITION_POLICY, describeRepetition, judgeRepetition,
+    type RepetitionPolicy,
+} from './spend-repetition';
 
 /**
  * ═══ THE ONE AUTHORITY THAT LETS A WHATSAPP MESSAGE COST MONEY ═══
@@ -119,6 +123,15 @@ export class WhatsappSpendService {
          * not be handed the permissive answer.
          */
         readonly disposition?: SpendDisposition;
+        /**
+         * What is being said, as a digest — the same value that went into the
+         * effect key. Kept separately because the effect key also hashes the
+         * producer and the ordinal, so it can recognise a RETRY of one effect
+         * and cannot recognise the same sentence arriving by another road.
+         */
+        readonly contentDigest?: string | null;
+        /** How often an identical message may be repeated. */
+        readonly repetition?: RepetitionPolicy;
         /** Send at the declared ceiling when no rate can be resolved. */
         readonly allowUnknownCost?: boolean;
     }): Promise<SpendAuthorizeResult> {
@@ -185,6 +198,31 @@ export class WhatsappSpendService {
                     outcome: 'adopted' as const, reservation: adopted ?? existing,
                     pressure: await readPressure(query as SpendQuery, schema, scopes),
                 };
+            }
+
+            // ── 3b. Are we about to say the same thing to the same person? ──
+            //
+            // AFTER adoption and BEFORE reserving. After, because a retry of one
+            // effect must find its own reservation rather than be refused as its
+            // own duplicate. Before, because the whole point is to spend nothing.
+            //
+            // What is compared is a digest of what is being sent — never the
+            // customer's words. A complaint, a person insisting, somebody asking
+            // for a human: all indistinguishable from any other message here, so
+            // none of them can become a reason to stop answering.
+            const repetition = input.repetition ?? DEFAULT_REPETITION_POLICY;
+            if (input.contentDigest) {
+                const identical = await recentIdenticalDeliveries(query as SpendQuery, schema, {
+                    channelAccountId: input.identity.channelAccountId,
+                    recipientRef: input.identity.recipientRef,
+                    contentDigest: input.contentDigest,
+                    since: new Date(at.getTime() - repetition.windowMs),
+                });
+                const verdict = judgeRepetition(identical, repetition, at);
+                if (!verdict.allowed) {
+                    throw new SpendRefused(spendBlock('duplicate_recent_send',
+                        describeRepetition(verdict), { currency }));
+                }
             }
 
             await ensureCounters(query as SpendQuery, schema, scopes, currency);
@@ -255,6 +293,7 @@ export class WhatsappSpendService {
                     freeDeliveries: freeGranted, chargedDeliveries: chargeable,
                 },
                 binding: input.binding,
+                contentDigest: input.contentDigest ?? null,
                 leaseSeconds: this.LEASE_SECONDS,
             });
             if (!reservation) {

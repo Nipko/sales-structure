@@ -5681,6 +5681,12 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."whatsapp_spend_reservations" (
         rate_version TEXT,
         applied_local_date DATE,
         admission_reason TEXT NOT NULL,
+        -- Lo que se dijo, como digest. Existe aparte de `effect_key` porque esa
+        -- clave mezcla productor y ordinal: sirve para que un reintento
+        -- encuentre su propia reserva, no para preguntar si ya le dijimos esto
+        -- mismo a esta persona hace un rato. Nullable: una fila anterior a la
+        -- migracion no tiene digest y no puede inventarse uno.
+        content_digest TEXT,
         basis TEXT NOT NULL,
         decision TEXT NOT NULL,
         reserved_minor BIGINT NOT NULL,
@@ -5758,6 +5764,15 @@ CREATE INDEX IF NOT EXISTS idx_whatsapp_spend_receipt
 CREATE INDEX IF NOT EXISTS idx_whatsapp_spend_dispatch
         ON "{{SCHEMA_NAME}}"."whatsapp_spend_reservations" (dispatch_item_id)
         WHERE dispatch_item_id IS NOT NULL;
+-- El indice de la pregunta "ya le mandamos exactamente esto, hace un rato".
+-- Parcial sobre los estados que prueban que el mensaje existio: una reserva
+-- `released` es un rechazo probado, el cliente no recibio nada, y volver a
+-- intentarlo no es repetir.
+CREATE INDEX IF NOT EXISTS idx_whatsapp_spend_recent_identical
+        ON "{{SCHEMA_NAME}}"."whatsapp_spend_reservations"
+        (channel_account_id, recipient_ref, content_digest, created_at DESC)
+        WHERE content_digest IS NOT NULL
+          AND state IN ('held','settled','pending_reconciliation','indeterminate');
 CREATE INDEX IF NOT EXISTS idx_whatsapp_spend_alloc_counter
         ON "{{SCHEMA_NAME}}"."whatsapp_spend_allocations" (scope_kind, scope_key, period_key);
 -- END WHATSAPP SPEND LEDGER

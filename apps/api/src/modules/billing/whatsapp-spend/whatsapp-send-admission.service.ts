@@ -3,6 +3,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { PROVIDER_BILLED_CHANNELS } from '@parallext/shared';
 import { WhatsappSpendService, type SpendAuthorizeResult } from './whatsapp-spend.service';
 import type { SpendDisposition, SpendPressure } from './spend-ledger';
+import { resolveRepetitionPolicy, type RepetitionPolicy } from './spend-repetition';
 import { describeBlock, type SpendBlock } from './spend-diagnosis';
 
 /**
@@ -178,6 +179,11 @@ export class WhatsappSendAdmissionService {
             wabaTimeZone: account.timeZone,
             admissionReason: request.admissionReason,
             disposition: request.disposition,
+            // The digest travels on its own as well as inside the effect key:
+            // the key hashes the producer too, so it recognises a retry of ONE
+            // effect and not the same sentence arriving by another road.
+            contentDigest: request.contentDigest,
+            repetition: await this.repetitionFor(request.connection.tenantId),
             // In observe mode an unknown rate must not stop the recording: the
             // point of observing is to find out how many effects have no price.
             allowUnknownCost: enforcement === 'observe',
@@ -305,6 +311,36 @@ export class WhatsappSendAdmissionService {
             this.logger.warn(`[Spend] account facts unreadable for ${channelAccountId}: ${error?.message}`);
             return { timeZone: null, currency: null, market: null, wabaId: null, businessId: null, address: null };
         }
+    }
+
+    /**
+     * How often a tenant is willing to say the same thing twice.
+     *
+     * Cached beside the enforcement mode and for the same reason: the busiest
+     * path in the platform must not be two settings reads, and sixty seconds is
+     * short enough that a change takes effect while the person who made it is
+     * still looking at the screen.
+     */
+    private readonly repetitionCache = new Map<string, { policy: RepetitionPolicy; until: number }>();
+
+    private async repetitionFor(tenantId: string): Promise<RepetitionPolicy> {
+        const cached = this.repetitionCache.get(tenantId);
+        if (cached && cached.until > Date.now()) return cached.policy;
+        let configured: unknown;
+        try {
+            const tenant = await this.prisma.tenant.findUnique({
+                where: { id: tenantId }, select: { settings: true },
+            });
+            configured = (tenant?.settings as any)?.whatsappSpend?.repetition;
+        } catch (error: any) {
+            // Unreadable settings mean the tenant configured nothing, which
+            // resolves to the shipped default. Failing closed here would stop a
+            // platform because one row could not be read.
+            this.logger.warn(`[Spend] repetition policy unreadable for ${tenantId}: ${error?.message}`);
+        }
+        const policy = resolveRepetitionPolicy(configured);
+        this.repetitionCache.set(tenantId, { policy, until: Date.now() + this.MODE_TTL_MS });
+        return policy;
     }
 
     private async enforcementFor(tenantId: string): Promise<SpendEnforcement> {

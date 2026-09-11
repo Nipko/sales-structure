@@ -19,6 +19,7 @@ export const SPEND_BLOCK_CODES = [
     'currency_unknown',
     'cap_exhausted',
     'cap_soft_stop',
+    'duplicate_recent_send',
     'task_budget_exhausted',
     'account_paused',
 ] as const;
@@ -73,6 +74,18 @@ Object.freeze({
     cap_exhausted: {
         scope: 'account',
         resolution: 'Raise the spending limit for this scope, or wait for the period to roll over.',
+    },
+    duplicate_recent_send: {
+        scope: 'contact',
+        // Named for what it is, so nobody reads it as a fault. The message was
+        // not lost and nothing is broken: this exact sentence was already
+        // delivered to this person a moment ago, by this producer or another
+        // one, and sending it again would buy a second charge and a second
+        // buzz on their phone for no new information.
+        resolution: 'This exact message was already delivered to this contact moments ago. '
+            + 'Check whether two automations cover the same event, or whether the agent is '
+            + 'repeating itself because a step cannot complete. An identical message is '
+            + 'allowed again once the repeat window passes.',
     },
     cap_soft_stop: {
         scope: 'account',

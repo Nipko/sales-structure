@@ -5,11 +5,12 @@ import { resolve } from 'path';
 import {
     adoptReservation, claimReservation, declareTaskBudget, ensureCounters, findReservation,
     grantFreeDeliveries,
-    readExposure, readPressure, recordAllocation, releaseReservation, reserveAgainstCounter,
-    retainReservation, settleReservation, sweepExpiredLeases,
+    readExposure, readPressure, recentIdenticalDeliveries, recordAllocation, releaseReservation,
+    reserveAgainstCounter, retainReservation, settleReservation, sweepExpiredLeases,
     type ReservationIdentity, type SpendQuery,
 } from './spend-ledger';
 import { scopesFor } from './spend-scopes';
+import { DEFAULT_REPETITION_POLICY, judgeRepetition } from './spend-repetition';
 
 /**
  * ═══ THE MONEY ENGINE AGAINST A REAL POSTGRESQL ═══
@@ -798,6 +799,112 @@ integration('the WhatsApp spend engine', () => {
             // 200 of 250 is 80 %: the warning line, and still permitted.
             expect((await spend(0)).pressure).toBe('warning');
             expect(await spend(60)).toEqual({ ok: false, pressure: 'hard_stop' });
+        });
+    });
+
+    describe('the same thing, to the same person, again', () => {
+        /**
+         * A different question from the one `effect_key` answers.
+         *
+         * That key mixes the producer and the ordinal into the hash, so it
+         * recognises a RETRY of one effect. It cannot recognise the same
+         * sentence arriving by another road — which is exactly how the
+         * appointment reminder and the drip step end up buying two charges and
+         * two identical buzzes on one person's phone.
+         */
+        const claim = async (over: {
+            effectKey: string; digest: string | null; recipient?: string;
+            producer?: string; account?: string;
+        }) => claimReservation(query, schema, {
+            effectKey: over.effectKey,
+            identity: identity({
+                channelAccountId: over.account ?? '15550009999',
+                recipientRef: over.recipient ?? 'contact-repeat',
+                admissionReason: over.producer ?? 'outbound_queue',
+            }),
+            money: money(8), contentDigest: over.digest, leaseSeconds: 60,
+        });
+
+        const recent = (over: { digest: string; recipient?: string; account?: string }) =>
+            recentIdenticalDeliveries(query, schema, {
+                channelAccountId: over.account ?? '15550009999',
+                recipientRef: over.recipient ?? 'contact-repeat',
+                contentDigest: over.digest,
+                since: new Date(Date.now() - DEFAULT_REPETITION_POLICY.windowMs),
+            });
+
+        it('finds the sentence another producer already delivered', async () => {
+            const digest = `d-${randomUUID()}`;
+            await claim({ effectKey: `rep-a-${randomUUID()}`, digest,
+                producer: 'appointment_reminder' });
+            const found = await recent({ digest });
+            expect(found.map(entry => entry.producer)).toEqual(['appointment_reminder']);
+            expect(judgeRepetition(found).allowed).toBe(false);
+        });
+
+        it('does not confuse two people who were sent the same sentence', async () => {
+            // The comparison is per recipient. A template sent to a thousand
+            // customers is one message each, not a thousand repeats.
+            const digest = `d-${randomUUID()}`;
+            await claim({ effectKey: `rep-b-${randomUUID()}`, digest, recipient: 'contact-one' });
+            expect(await recent({ digest, recipient: 'contact-two' })).toEqual([]);
+        });
+
+        it('does not confuse two numbers of the same tenant', async () => {
+            // A sales line and a support line are different senders, and a
+            // customer who hears the same thing from both heard it from two
+            // businesses as far as they are concerned.
+            const digest = `d-${randomUUID()}`;
+            await claim({ effectKey: `rep-c-${randomUUID()}`, digest, account: '15550001111' });
+            expect(await recent({ digest, account: '15550002222' })).toEqual([]);
+        });
+
+        it('does not count a proven rejection as something the customer heard', async () => {
+            // `released` means the provider refused it with no message id: the
+            // customer received nothing, so trying again is not repeating.
+            const digest = `d-${randomUUID()}`;
+            const effectKey = `rep-d-${randomUUID()}`;
+            await claim({ effectKey, digest });
+            await releaseReservation(query, schema,
+                { effectKey, evidence: 'provider_rejected_without_message_id' });
+            expect(await recent({ digest })).toEqual([]);
+            expect(judgeRepetition(await recent({ digest })).allowed).toBe(true);
+        });
+
+        it('counts an uncertain outcome, because the message may well have arrived', async () => {
+            const digest = `d-${randomUUID()}`;
+            const effectKey = `rep-e-${randomUUID()}`;
+            await claim({ effectKey, digest });
+            await retainReservation(query, schema,
+                { effectKey, state: 'pending_reconciliation', reason: 'timeout' });
+            expect((await recent({ digest })).length).toBe(1);
+        });
+
+        it('ignores rows that predate the digest column instead of guessing', async () => {
+            // Every reservation written before this migration has `NULL` there.
+            // `NULL` equals nothing, so those rows simply do not count as
+            // repeats — which is right: we do not know what they said.
+            const effectKey = `rep-f-${randomUUID()}`;
+            await claim({ effectKey, digest: null });
+            const [row] = await query<any[]>(
+                `SELECT content_digest FROM "${schema}".whatsapp_spend_reservations
+                  WHERE effect_key = $1`, [effectKey]);
+            expect(row.content_digest).toBeNull();
+            expect(await recent({ digest: 'anything' })).toEqual([]);
+        });
+
+        it('leaves a retry of one effect to adoption, not to the duplicate rule', async () => {
+            // The order inside `authorize` is what makes this work: adopt first,
+            // then ask about repeats. Reversed, every retry of a message would
+            // be refused as its own duplicate and the effect would never
+            // complete.
+            const digest = `d-${randomUUID()}`;
+            const effectKey = `rep-g-${randomUUID()}`;
+            expect(await claim({ effectKey, digest })).not.toBeNull();
+            // The retry finds ITSELF through the effect key.
+            expect((await findReservation(query, schema, effectKey))?.effectKey).toBe(effectKey);
+            // And it is the same single row the repeat check would see.
+            expect((await recent({ digest })).map(entry => entry.effectKey)).toEqual([effectKey]);
         });
     });
 

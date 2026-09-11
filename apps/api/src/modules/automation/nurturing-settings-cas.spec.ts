@@ -12,11 +12,12 @@ describe('Nurturing settings CAS', () => {
             (next) => { settings = next; },
         ));
         const redis: any = { del: jest.fn().mockResolvedValue(1) };
+        // queue, prisma, redis, persona, llmRouter, channelToken,
+        // connections, compliance, proactive, cronLock, pipeline.
         const service = new NurturingService(
             {} as any,
             prisma,
             redis,
-            {} as any,
             {} as any,
             {} as any,
             {} as any,

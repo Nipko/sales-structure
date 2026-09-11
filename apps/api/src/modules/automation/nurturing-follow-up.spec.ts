@@ -46,9 +46,20 @@ describe('a nurturing follow-up outside the 24-hour window', () => {
                     ? '' : (options.templateName ?? 'seguimiento_ana'),
             } } }]),
         };
-        const outboundQueue = { enqueue: jest.fn(async () => undefined) };
-        const whatsappMessaging = {
-            sendTemplate: jest.fn(async (..._args: unknown[]) => ({ success: true, messageId: 'wamid.TPL' })),
+        // The lane, doubled at its edge. The follow-up no longer calls a
+        // provider or a queue: it commits a row and the processor sends it, so
+        // what this suite reads is what the lane was asked to write.
+        const dispatched: any[] = [];
+        const proactive: any = {
+            send: jest.fn(async (_tenantId: string, input: any) => {
+                dispatched.push(input);
+                return { kind: 'prepared', originId: 'origin' };
+            }),
+            conversationFor: jest.fn(async () => conversationId),
+            policyAuthority: jest.fn(async (_schema: string, input: any) => ({
+                kind: 'proactive_policy', ...input, entityRevision: 'a'.repeat(64),
+                policyVersion: 1, schemaName: 'tenant_acme',
+            })),
         };
         const compliance = { isBlocked: jest.fn(async () => Boolean(options.optedOut)) };
         // The resolver that refuses to pick a number. This suite's tenant has
@@ -56,13 +67,14 @@ describe('a nurturing follow-up outside the 24-hour window', () => {
         const connections = {
             resolve: jest.fn(async () => ({ accessToken: 't', accountId: 'phone-1' })),
         };
+        // queue, prisma, redis, persona, llmRouter, channelToken, connections,
+        // compliance, proactive, cronLock, pipeline.
         const service = new NurturingService(
             {} as any, prisma,
             { del: jest.fn(), getJson: jest.fn(async () => null), setJson: jest.fn() } as any,
             {} as any, {} as any,
-            outboundQueue as any,
             { getChannelToken: jest.fn(async () => ({ accessToken: 't', accountId: 'phone-1' })) } as any,
-            connections as any, compliance as any, whatsappMessaging as any,
+            connections as any, compliance as any, proactive as any,
             {} as any, {} as any,
         );
         jest.spyOn((service as any), 'isWithinMessagingWindow')
@@ -72,7 +84,7 @@ describe('a nurturing follow-up outside the 24-hour window', () => {
         jest.spyOn((service as any).logger, 'log').mockImplementation(() => undefined);
         jest.spyOn((service as any).logger, 'warn').mockImplementation(() => undefined);
         jest.spyOn((service as any).logger, 'debug').mockImplementation(() => undefined);
-        return { service, prisma, outboundQueue, whatsappMessaging, compliance, connections, rows };
+        return { service, prisma, proactive, dispatched, compliance, connections, rows };
     }
 
     const attempt2 = (h: ReturnType<typeof harness>) =>
@@ -82,11 +94,13 @@ describe('a nurturing follow-up outside the 24-hour window', () => {
         const h = harness();
         await attempt2(h);
 
-        expect(h.whatsappMessaging.sendTemplate).toHaveBeenCalledTimes(1);
-        // Nothing on the queue: a free-form message outside the window is
-        // refused by Meta, and enqueueing one is how the follow-up silently
-        // never happened.
-        expect(h.outboundQueue.enqueue).not.toHaveBeenCalled();
+        expect(h.dispatched).toHaveLength(1);
+        // A TEMPLATE item, not a text one: a free-form message outside the
+        // window is refused by Meta, and committing one is how the follow-up
+        // silently never happened.
+        expect(h.dispatched[0].items).toEqual([
+            { kind: 'template', payload: expect.objectContaining({ templateName: 'seguimiento_ana' }) },
+        ]);
     });
 
     it('sends it in the conversation’s own language, not always Spanish', async () => {
@@ -95,9 +109,7 @@ describe('a nurturing follow-up outside the 24-hour window', () => {
         // resolved the conversation's language.
         const h = harness();
         await attempt2(h);
-        expect(h.whatsappMessaging.sendTemplate).toHaveBeenCalledWith(
-            'tenant_acme', contact.phone, 'seguimiento_ana', 'pt',
-            expect.any(Array), 'phone-1', expect.any(Object));
+        expect(h.dispatched[0].items[0].payload.language).toBe('pt');
     });
 
     it('sends it from the number this conversation belongs to', async () => {
@@ -105,9 +117,10 @@ describe('a nurturing follow-up outside the 24-hour window', () => {
         // whichever number resolved first — one the customer has never seen.
         const h = harness();
         await attempt2(h);
-        expect(h.whatsappMessaging.sendTemplate).toHaveBeenCalledWith(
-            expect.anything(), expect.anything(), expect.anything(), expect.anything(),
-            expect.anything(), 'phone-1', expect.anything());
+        expect(h.dispatched[0].channelAccountId).toBe('phone-1');
+        // And the authority names the same account, or the admission refuses it.
+        expect(h.proactive.policyAuthority).toHaveBeenCalledWith('tenant_acme',
+            expect.objectContaining({ channelAccountId: 'phone-1', producer: 'nurturing_followup' }));
     });
 
     it('sends nothing at all when no template is configured', async () => {
@@ -116,21 +129,20 @@ describe('a nurturing follow-up outside the 24-hour window', () => {
         // history concludes the customer was contacted and ignored them.
         const h = harness({ templateName: null });
         await attempt2(h);
-        expect(h.whatsappMessaging.sendTemplate).not.toHaveBeenCalled();
-        expect(h.outboundQueue.enqueue).not.toHaveBeenCalled();
+        expect(h.dispatched).toEqual([]);
     });
 
     it('never contacts somebody who opted out', async () => {
         const h = harness({ optedOut: true });
         await attempt2(h);
         expect(h.compliance.isBlocked).toHaveBeenCalledWith(tenantId, contact.phone);
-        expect(h.whatsappMessaging.sendTemplate).not.toHaveBeenCalled();
+        expect(h.dispatched).toEqual([]);
     });
 
     it('respects the one-a-day cap it used to skip entirely', async () => {
         const h = harness({ sentToday: true });
         await attempt2(h);
-        expect(h.whatsappMessaging.sendTemplate).not.toHaveBeenCalled();
+        expect(h.dispatched).toEqual([]);
     });
 
     it('sends free-form text when the window is genuinely open', async () => {
@@ -138,27 +150,32 @@ describe('a nurturing follow-up outside the 24-hour window', () => {
         // attempt that had simply stopped sending anything.
         const h = harness({ withinWindow: true });
         await attempt2(h);
-        expect(h.outboundQueue.enqueue).toHaveBeenCalledTimes(1);
-        expect(h.whatsappMessaging.sendTemplate).not.toHaveBeenCalled();
+        expect(h.dispatched).toHaveLength(1);
+        expect(h.dispatched[0].items[0].kind).toBe('text');
     });
 
-    it('never writes a history row that claims delivery it has no evidence of', async () => {
-        // `delivered` was written unconditionally, before anything was sent.
+    it('writes no history row of its own any more', async () => {
+        // It used to insert one itself, as `delivered`, before anything had
+        // been sent. The lane writes that row inside the transaction that
+        // commits the effect, as `pending`, so a second writer here would be a
+        // second, unreconciled story about the same message.
         const h = harness({ withinWindow: true });
         await attempt2(h);
-        const inserted = h.rows.find(row => row.sql.includes('INSERT INTO messages'));
-        expect(inserted).toBeDefined();
-        expect(inserted!.params).toContain('pending');
-        expect(inserted!.params).not.toContain('delivered');
+        expect(h.rows.find(row => row.sql.includes('INSERT INTO messages'))).toBeUndefined();
     });
 
-    it('records the provider receipt when the template went out inline', async () => {
-        // The template path has an answer from Meta in hand, so it says `sent`
-        // and keeps the id a status webhook will settle the money against.
-        const h = harness();
+    it('marks the conversation as nudged today only over a durable effect', async () => {
+        // The once-a-day cap used to count history rows carrying
+        // `metadata.source = 'nurturing'`. The lane writes that row without any
+        // metadata of ours, so the cap needed a mark of its own — and it is
+        // written only when a row exists.
+        const h = harness({ withinWindow: true });
         await attempt2(h);
-        const inserted = h.rows.find(row => row.sql.includes('INSERT INTO messages'));
-        expect(inserted!.params).toContain('sent');
-        expect(inserted!.params).toContain('wamid.TPL');
+        expect(h.rows.some(row => row.sql.includes("'{nurturing_last_sent_at}'"))).toBe(true);
+
+        const refused = harness({ withinWindow: true });
+        refused.proactive.send = jest.fn(async () => ({ kind: 'deferred', reason: 'busy' }));
+        await attempt2(refused);
+        expect(refused.rows.some(row => row.sql.includes("'{nurturing_last_sent_at}'"))).toBe(false);
     });
 });

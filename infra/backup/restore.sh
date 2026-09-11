@@ -110,12 +110,28 @@ echo "Parallext Restore — $(date '+%Y-%m-%d %H:%M')"
 echo "Archive: ${ARCHIVE}"
 echo "========================================"
 
-# ── Extract archive ──
-echo "[1] Extracting archive..."
+# ── Extract archive, or accept a bare dump ──
+#
+# The pre-deploy safety net writes ONE custom-format dump
+# (`/backup/pre-deploy/predeploy_*.dump`), not a nightly tarball. This script
+# only accepted `.tar.gz`, so the backup taken specifically to be restored
+# after a bad migration could not be restored by the restore script — the one
+# moment somebody reaches for it is the one moment it refused.
+echo "[1] Reading ${ARCHIVE}..."
 cd "${WORK_DIR}"
-tar -xzf "${ARCHIVE}"
-BACKUP_SUBDIR=$(ls -d */ | head -1)
-cd "${BACKUP_SUBDIR}"
+case "${ARCHIVE}" in
+  *.dump)
+    # A single dump has no directory and no manifest. Named `public.dump` so
+    # the restore below finds it exactly as it finds one from a tarball.
+    cp "${ARCHIVE}" "${WORK_DIR}/public.dump"
+    cd "${WORK_DIR}"
+    ;;
+  *)
+    tar -xzf "${ARCHIVE}"
+    BACKUP_SUBDIR=$(ls -d */ | head -1)
+    cd "${BACKUP_SUBDIR}"
+    ;;
+esac
 
 echo "  Contents:"
 ls -lh
@@ -139,17 +155,38 @@ if [ "${FLAG}" = "--dry-run" ]; then
 fi
 
 # ── Restore database ──
+#
+# ═══ A FAILED RESTORE IS FATAL, AND "OK" MEANS IT WORKED ═══
+#
+# Both restores used to end in `|| echo "WARN: ... (usually safe)"`, and the
+# script then printed "OK — all schemas restored" unconditionally. So a restore
+# that restored NOTHING — wrong container, wrong credentials, a truncated dump,
+# a schema that does not exist — printed OK and exited 0.
+#
+# That is the worst possible failure mode for this particular script, because
+# the only two moments anybody runs it are a disaster and a drill. In the
+# disaster it says the data is back when it is not. In the drill it certifies a
+# restore path that does not work, which is how the drill comes to be the thing
+# that hides the problem.
+#
+# `--exit-on-error` as well: without it `pg_restore` continues past a failed
+# statement and exits 0, so even a checked exit code would have said yes.
 if [ "${FLAG}" != "--media-only" ]; then
   echo "[2] Restoring database..."
+  RESTORE_FAILURES=0
 
   # Public schema
   if [ -f "public.dump" ]; then
     echo "  Restoring public schema..."
-    docker exec -i -e PGPASSWORD="${DB_PASSWORD:-}" "${PG_CONTAINER}" \
-      pg_restore -U "${DB_USER}" -d "${DB_NAME}" \
+    if docker exec -i -e PGPASSWORD="${DB_PASSWORD:-}" "${PG_CONTAINER}" \
+      pg_restore -U "${DB_USER}" -d "${DB_NAME}" --exit-on-error \
       --schema=public --clean --if-exists --no-owner --no-privileges \
-      < "public.dump" 2>&1 || echo "  WARN: Some public schema restore warnings (usually safe)"
-    echo "  OK — public schema"
+      < "public.dump" 2>&1; then
+      echo "  OK — public schema"
+    else
+      echo "  FAILED — public schema did not restore"
+      RESTORE_FAILURES=$((RESTORE_FAILURES + 1))
+    fi
   fi
 
   # Tenant schemas
@@ -157,12 +194,26 @@ if [ "${FLAG}" != "--media-only" ]; then
     if [ -f "${DUMP}" ]; then
       SCHEMA="${DUMP%.dump}"
       echo "  Restoring ${SCHEMA}..."
-      docker exec -i -e PGPASSWORD="${DB_PASSWORD:-}" "${PG_CONTAINER}" \
-        pg_restore -U "${DB_USER}" -d "${DB_NAME}" \
+      if docker exec -i -e PGPASSWORD="${DB_PASSWORD:-}" "${PG_CONTAINER}" \
+        pg_restore -U "${DB_USER}" -d "${DB_NAME}" --exit-on-error \
         --schema="${SCHEMA}" --clean --if-exists --no-owner --no-privileges \
-        < "${DUMP}" 2>&1 || echo "  WARN: ${SCHEMA} restore warnings"
+        < "${DUMP}" 2>&1; then
+        echo "  OK — ${SCHEMA}"
+      else
+        echo "  FAILED — ${SCHEMA} did not restore"
+        RESTORE_FAILURES=$((RESTORE_FAILURES + 1))
+      fi
     fi
   done
+
+  if [ "${RESTORE_FAILURES}" -gt 0 ]; then
+    echo ""
+    echo "ERROR: ${RESTORE_FAILURES} schema(s) did not restore. NOTHING further will run."
+    echo "  The database is now in a PARTIAL state: some schemas may have been"
+    echo "  dropped by --clean and not recreated. Do not start the application"
+    echo "  against it. Investigate, then re-run this script."
+    exit 1
+  fi
   echo "  OK — all schemas restored"
 fi
 

@@ -1,0 +1,54 @@
+# ═══ WHAT RUNS ON LINUX IS STORED AND CHECKED OUT AS LF ═══
+#
+# `core.autocrlf` is true on the Windows machines this repository is developed
+# on, so every text file is rewritten to CRLF on checkout. For a `.ts` file that
+# is invisible. For a file that a Linux kernel executes it is not:
+#
+#   · a shell script with CRLF line endings fails at its shebang or at the
+#     first `set -o pipefail`, with an error that names neither — `bash` sees
+#     `pipefail\r` and says it is not a valid option;
+#   · the deploy does `git reset --hard`, so the VPS gets exactly what the
+#     checkout rules produce. A script that works locally and is broken there
+#     is the worst version of this, because it is discovered during a deploy;
+#   · a multi-line assertion against a repository file passes on Linux CI and
+#     fails on a Windows checkout about a file neither machine changed. This
+#     programme has already lost time to that twice.
+#
+# Only the file types where the ending is load-bearing are pinned. A blanket
+# `* text=auto` would renormalise the whole tree in one commit, which is a
+# large diff for a small problem and hides the next real change inside it.
+
+# Shell scripts: executed by Linux, by cron and by the deploy.
+*.sh            text eol=lf
+*.bash          text eol=lf
+
+# SQL the migration runner and psql read, including the tenant template whose
+# content is compared byte for byte by the schema-parity checks.
+*.sql           text eol=lf
+
+# Container and CI definitions, read by Linux tooling.
+Dockerfile*     text eol=lf
+*.dockerfile    text eol=lf
+*.yml           text eol=lf
+*.yaml          text eol=lf
+
+# Generated artefacts that a `--check` compares against a fresh render. The
+# comparison is on bytes, so an ending rewritten on checkout reports a stale
+# artefact for a file nobody touched.
+*.cjs           text eol=lf
+
+# Binary, so nothing tries.
+*.png           binary
+*.jpg           binary
+*.jpeg          binary
+*.gif           binary
+*.webp          binary
+*.ico           binary
+*.pdf           binary
+*.woff          binary
+*.woff2         binary
+*.ttf           binary
+*.otf           binary
+*.mp4           binary
+*.zip           binary
+*.gz            binary

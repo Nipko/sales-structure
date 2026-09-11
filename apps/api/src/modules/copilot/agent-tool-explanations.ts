@@ -1,8 +1,12 @@
-import { composeSubtypeEvalPack, localizeCapabilityText, rollUpOperationalState,
+import { composeSubtypeEvalPack, localizeCapabilityText, rollUpOperationalState, TOOL_GROUP_READINESS,
     type AgentOperationalState, type EffectiveCapabilityContract,
-    type VerticalDomainContractV2 } from '@parallext/shared';
-import { TOOL_POLICY_REGISTRY } from '../conversations/tool-policy-registry';
+    type VerticalDomainContractV2, type VerticalToolGroup } from '@parallext/shared';
+import { TOOL_POLICY_REGISTRY, toolOrigin } from '../conversations/tool-policy-registry';
+import { TOOL_FAMILIES } from '../conversations/agent-tool-registry';
+import { PAYMENT_CREATE_TOOLS, PAYMENT_STATUS_TOOLS, REFUND_PAYMENT_TOOL } from '../conversations/tools/payment-tools';
+import { APPLY_DISCOUNT_TOOL } from '../conversations/tools/ecommerce-tools';
 import { CORE_PREREQUISITES } from '../conversations/tool-task-dependencies';
+import { PROVIDER_INTEGRATION_POLICIES } from '../conversations/effective-capability.service';
 import type { IntentEvidence } from '../simulation/agent-release-evidence';
 
 /**
@@ -69,6 +73,34 @@ const NOT_PUBLISHED_STATES: Readonly<Record<string, AgentOperationalState>> = Ob
     provider_unavailable: 'degraded',
 });
 
+/** Exact ownership from the same definitions the runtime publishes. */
+function exclusionFamilies(tool: string): ReadonlySet<string> {
+    const families = new Set(TOOL_FAMILIES.filter(family => family.tools.some(definition => definition.name === tool))
+        .map(family => String(family.key)));
+    if ([...PAYMENT_CREATE_TOOLS, ...PAYMENT_STATUS_TOOLS, REFUND_PAYMENT_TOOL].some(definition => definition.name === tool)) {
+        families.add('payments');
+    }
+    if (tool === APPLY_DISCOUNT_TOOL.name) families.add('ecommerce');
+    if (toolOrigin(tool) === 'mcp') families.add('mcp');
+    for (const policy of Object.values(PROVIDER_INTEGRATION_POLICIES)) {
+        if (policy.tools.includes(tool)) families.add(policy.toolGroup);
+    }
+    return families;
+}
+
+function providerSubjects(tool: string): ReadonlySet<string> {
+    return new Set(Object.entries(PROVIDER_INTEGRATION_POLICIES)
+        .filter(([, policy]) => policy.tools.includes(tool)).map(([name]) => name));
+}
+
+/** Provider reads have their own health gate, not a native-table prerequisite. */
+function readinessForTools(tools: readonly string[]): readonly string[] {
+    return [...new Set(tools.flatMap(tool => TOOL_FAMILIES
+        .filter(family => family.tools.some(definition => definition.name === tool))
+        .map(family => TOOL_GROUP_READINESS[family.key as VerticalToolGroup])
+        .filter((key): key is NonNullable<typeof key> => !!key)))];
+}
+
 /**
  * A sentence a customer of THIS business would say for this task.
  *
@@ -86,7 +118,10 @@ function businessExample(profileId: string | null, intentKey: string | undefined
         const canonical = pack.find(scenario => scenario.key.startsWith(`intent_${intentKey}_canonical_`))
             ?? pack.find(scenario => scenario.key.startsWith(`intent_${intentKey}_`));
         const first = canonical?.messages?.[0];
-        return typeof first === 'string' && first.trim() ? first : null;
+        // Fixtures require the evaluation snapshot, which the explanation does
+        // not own. Do not expose placeholders or invent tenant data to fill them.
+        return typeof first === 'string' && first.trim() && !/\{\{|\}\}|\[EVAL\]/i.test(first)
+            ? first : null;
     } catch { return null; }
 }
 
@@ -100,6 +135,8 @@ export function buildAgentToolExplanations(input: {
     language?: string;
     /** Tools Agent Test may exercise without reaching a customer. */
     safeToolNames: ReadonlySet<string>;
+    /** Explain the same tool universe on each real channel before aggregating. */
+    toolNames?: readonly string[];
 }): readonly AgentToolExplanation[] {
     const language = input.language || 'es';
     const intents = input.domain.intents.filter(intent => input.missionIntentKeys.includes(intent.key));
@@ -108,17 +145,26 @@ export function buildAgentToolExplanations(input: {
     const wanted = new Set<string>([
         ...intents.flatMap(intent => intent.toolPlan),
         ...(input.contract?.publishedTools ?? []),
+        ...(input.toolNames ?? []),
     ]);
     const published = new Set(input.contract?.publishedTools ?? []);
-    const excluded = new Map((input.contract?.excluded ?? []).map(entry => [entry.subject, entry]));
+    const excluded = input.contract?.excluded ?? [];
 
     return Object.freeze([...wanted].sort().map(tool => {
         const policy = (TOOL_POLICY_REGISTRY as any)[tool];
         const using = intents.filter(intent => intent.toolPlan.includes(tool));
         const prerequisites = CORE_PREREQUISITES[tool] ?? [];
-        // A family exclusion names the family, a tool exclusion names the tool.
-        const exclusion = excluded.get(tool)
-            ?? [...excluded.values()].find(entry => tool.includes(entry.subject));
+        const readiness = readinessForTools([tool, ...prerequisites]);
+        const missingReadiness = (input.contract?.unmetReadiness ?? []).filter(key => readiness.includes(key));
+        // A writer displaced by an external system can be named in a list;
+        // prefer that specific decision over a broad family exclusion. A family
+        // name is not a substring contract: appointments owns check_availability.
+        const families = exclusionFamilies(tool);
+        const providers = providerSubjects(tool);
+        const exclusion = excluded.find(entry => entry.subject === tool)
+            ?? excluded.find(entry => entry.subject.split(',').some(subject => subject.trim() === tool))
+            ?? excluded.find(entry => providers.has(entry.subject))
+            ?? excluded.find(entry => families.has(entry.subject));
         const evidence = using.map(intent => input.evidenceByIntent[intent.key] ?? 'not_verified');
         const worstEvidence: IntentEvidence = evidence.includes('failed') ? 'failed'
             : evidence.includes('not_verified') || !evidence.length ? 'not_verified'
@@ -144,14 +190,13 @@ export function buildAgentToolExplanations(input: {
             missionIntents: Object.freeze(using.map(intent => intent.key)),
             requires: Object.freeze({
                 prerequisites: Object.freeze([...prerequisites]),
-                readiness: Object.freeze([...(input.contract?.unmetReadiness ?? [])]
-                    .filter(() => !!exclusion && exclusion.reason === 'readiness_unmet')),
+                readiness: Object.freeze([...readiness]),
             }),
             missing: Object.freeze({
                 reason: exclusion?.reason ?? null,
                 detail: exclusion ? localizeCapabilityText(exclusion.detail, language) : null,
                 repairRoute: exclusion?.repairRoute ?? null,
-                readiness: Object.freeze([...(input.contract?.unmetReadiness ?? [])]),
+                readiness: Object.freeze(missingReadiness),
             }),
             example: businessExample(input.contract?.subtypeProfileId ?? null, using[0]?.key, language),
             safeTest: Object.freeze({

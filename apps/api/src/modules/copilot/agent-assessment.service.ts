@@ -66,7 +66,7 @@ export class AgentAssessmentService {
                 const scope = channelType ? 'assigned' as const : 'preview' as const;
                 try {
                     const result = await this.capabilities.resolve({ tenantId, schemaName: schema, agentId: agent.id, config,
-                        industry, subType, role: 'tenant_agent', channelType: channelType ?? undefined });
+                        industry, subType, role: 'tenant_agent', channelType: channelType ?? undefined, refreshReadiness: true });
                     return { channelType, scope, status: result.contract ? 'known' as const : 'unavailable' as const, contract: result.contract };
                 } catch { return { channelType, scope, status: 'unavailable' as const, contract: null }; }
             })),
@@ -143,6 +143,9 @@ export class AgentAssessmentService {
         const sealedRuns = await this.prisma.transactionInTenantSchema(schema, query =>
             readSealedRunEvidence(query, schema, agent.id)).catch(() => []);
         const requiredTests = domain.intents.filter(intent => definition.intentKeys.includes(intent.key)).map(intent => {
+            // Assessment does not capture the current evaluation dependency
+            // manifest. Version alone cannot prove this configuration: until a
+            // snapshot authority is available the evidence reader stays unverified.
             const evidence = intentEvidence(intent.key, Number(agent.version) || null, sealedRuns);
             return {
             intentKey: intent.key, toolPlan: [...intent.toolPlan], terminalStates: [...intent.states], confirmation: intent.confirmation,
@@ -158,6 +161,25 @@ export class AgentAssessmentService {
                 : channel.contract?.degraded ? ('degraded' as const)
                     : channel.contract ? ('prepared' as const) : ('pending' as const),
         }));
+        const toolNames = [...new Set(channels.flatMap(channel => channel.contract?.publishedTools ?? []))];
+        const channelTools = statedChannels.map(channel => buildAgentToolExplanations({
+            contract: channel.contract, domain, missionIntentKeys: definition.intentKeys, toolNames,
+            evidenceByIntent: Object.fromEntries(requiredTests.map(test => [test.intentKey, test.evidence])),
+            agentId: agent.id, language: typeof config.language === 'string' ? config.language : 'es',
+            safeToolNames: new Set(AGENT_TEST_SAFE_TOOL_NAMES),
+        }));
+        const tools = (channelTools[0] ?? []).map(first => {
+            const entries = channelTools.map(items => items.find(item => item.tool === first.tool)!);
+            const state = rollUpOperationalState(entries.map(entry => entry.state));
+            // Preserve the actual channel's explanation for the limiting state;
+            // never combine published names into a fabricated runtime contract.
+            const limiting = entries.find(entry => entry.state === state)!;
+            return { ...limiting, state,
+                requires: { prerequisites: [...new Set(entries.flatMap(entry => entry.requires.prerequisites))],
+                    readiness: [...new Set(entries.flatMap(entry => entry.requires.readiness))] },
+                missing: { ...limiting.missing, readiness: [...new Set(entries.flatMap(entry => entry.missing.readiness))] },
+            };
+        });
         const assessment: AgentAssessment = {
             version: 1, revision: '', generatedAt: new Date().toISOString(), agent: overview.agent, overview,
             mission: { source: configured ? 'configured' : 'template_derived', templateId: agent.template_id ?? null, profileId: domain.profileId, definition, availableIntentKeys: domain.intents.map(intent => intent.key), unsupportedIntents },
@@ -170,13 +192,7 @@ export class AgentAssessmentService {
                 ...tasks.map(task => task.state),
                 ...statedChannels.map(channel => channel.state),
             ]),
-            tools: buildAgentToolExplanations({
-                contract: statedChannels.find(channel => channel.contract)?.contract ?? null,
-                domain, missionIntentKeys: definition.intentKeys,
-                evidenceByIntent: Object.fromEntries(requiredTests.map(test => [test.intentKey, test.evidence])),
-                agentId: agent.id, language: typeof config.language === 'string' ? config.language : 'es',
-                safeToolNames: new Set(AGENT_TEST_SAFE_TOOL_NAMES),
-            }) as any,
+            tools: tools as any,
             configuration: { persona: { name: text(config.persona?.name), role: text(config.persona?.role), greeting: text(config.persona?.greeting), fallbackMessage: text(config.persona?.fallbackMessage),
                 personality: { tone: text(config.persona?.personality?.tone), formality: text(config.persona?.personality?.formality) } },
                 behavior: { rules: strings(config.behavior?.rules), forbiddenTopics: strings(config.behavior?.forbiddenTopics), handoffTriggers: strings(config.behavior?.handoffTriggers) },

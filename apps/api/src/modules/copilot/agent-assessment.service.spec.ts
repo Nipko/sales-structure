@@ -30,6 +30,7 @@ describe('shared agent assessment', () => {
         const assessment = await service.getAssessment(TENANT);
         expect(prisma.executeInTenantSchema.mock.calls[0][2]).toEqual([null]);
         expect(capabilities.resolve).toHaveBeenCalledWith(expect.objectContaining({ tenantId: TENANT, agentId: AGENT, channelType: 'whatsapp', role: 'tenant_agent' }));
+        expect(capabilities.resolve).toHaveBeenCalledWith(expect.objectContaining({ refreshReadiness: true }));
         expect(capabilities.resolve).toHaveBeenCalledWith(expect.objectContaining({ channelType: 'telegram' }));
         expect(assessment.mission.source).toBe('template_derived');
         // Nothing has been run, so nothing is verified — but it is now the
@@ -42,6 +43,36 @@ describe('shared agent assessment', () => {
         const { service } = harness({ unknown: true });
         const result = await service.getAssessment(TENANT, AGENT);
         expect(result.tasks.find(task => task.key === 'knowledge')?.status).toBe('unknown');
+    });
+
+    it('keeps a blocked second channel visible in the tool summary', async () => {
+        const { service, capabilities } = harness();
+        capabilities.resolve.mockImplementation(async (input: any) => ({ contract: input.channelType === 'whatsapp'
+            ? { publishedTools: ['search_menu'], excluded: [], degraded: false }
+            : { publishedTools: [], excluded: [{ subject: 'search_menu', reason: 'provider_unavailable',
+                detail: { es: 'Revisá la conexión.', en: 'x', pt: 'x', fr: 'x' }, repairRoute: '/admin/channels/telegram' }], degraded: false } }) as any);
+        const result = await service.getAssessment(TENANT, AGENT);
+        expect(result.tools.find(tool => tool.tool === 'search_menu')).toMatchObject({ state: 'degraded',
+            missing: { reason: 'provider_unavailable', repairRoute: '/admin/channels/telegram' } });
+    });
+
+    it('does not hide a tool that only the second channel published', async () => {
+        const { service, capabilities } = harness();
+        capabilities.resolve.mockImplementation(async (input: any) => ({ contract: {
+            publishedTools: input.channelType === 'whatsapp' ? [] : ['search_products'], excluded: [], degraded: false,
+        } }) as any);
+        const result = await service.getAssessment(TENANT, AGENT);
+        expect(result.tools.find(tool => tool.tool === 'search_products')?.state).toBe('pending');
+    });
+
+    it('does not call a tool prepared if another assigned channel could not be read', async () => {
+        const { service, capabilities } = harness();
+        capabilities.resolve.mockImplementation(async (input: any) => {
+            if (input.channelType === 'telegram') throw new Error('unreadable');
+            return { contract: { publishedTools: ['search_menu'], excluded: [], degraded: false } } as any;
+        });
+        const result = await service.getAssessment(TENANT, AGENT);
+        expect(result.tools.find(tool => tool.tool === 'search_menu')?.state).toBe('unknown');
     });
     it('says every task in the one vocabulary the surfaces share', async () => {
         const { service } = harness();

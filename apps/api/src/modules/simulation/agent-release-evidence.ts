@@ -1,4 +1,6 @@
-import { evidenceIsValid, releaseScenarioPassed, type AgentReleaseRunEvidence } from './agent-release-policy';
+import { buildDomainContractDraft, composeSubtypeEvalPack, CONVERSATIONAL_CHANNELS, EVAL_LANGUAGES,
+    listCanonicalSubtypeExperienceProfileIds, type AddressForm } from '@parallext/shared';
+import { evidenceIsValid, releaseScenarioDefinition, releaseScenarioPassed, type AgentReleaseRunEvidence } from './agent-release-policy';
 
 /**
  * The sealed runs stored for an agent, read without going through the eval
@@ -12,6 +14,16 @@ import { evidenceIsValid, releaseScenarioPassed, type AgentReleaseRunEvidence } 
  */
 
 export type IntentEvidence = 'not_verified' | 'verified' | 'failed' | 'stale';
+
+/** Current authority must be supplied by the snapshot reader, never inferred from a past run. */
+export interface IntentEvidenceScope {
+    agentId: string;
+    dependencyRevision: string;
+    configHash: string;
+    profileId: string;
+    channels: readonly string[];
+    languages: readonly string[];
+}
 
 export async function readSealedRunEvidence(
     query: <R = any[]>(sql: string, params?: any[]) => Promise<R>,
@@ -51,20 +63,50 @@ export async function readSealedRunEvidence(
  * used to.
  */
 export function intentEvidence(intentKey: string, currentAgentVersion: number | null,
-    runs: readonly { evidence: AgentReleaseRunEvidence; agentVersion: number | null }[]): IntentEvidence {
-    const prefix = `intent_${intentKey}_`;
-    let sawCurrent = false, sawOlder = false, failedCurrent = false;
-    for (const run of runs) {
-        const scenarios = (run.evidence.scenarios || []).filter((scenario: any) =>
-            typeof scenario?.key === 'string' && scenario.key.startsWith(prefix));
-        if (!scenarios.length) continue;
-        const current = currentAgentVersion !== null && run.agentVersion === currentAgentVersion;
-        if (!current) { sawOlder = true; continue; }
-        sawCurrent = true;
-        if (scenarios.some((scenario: any) => !releaseScenarioPassed(scenario, run.evidence))) failedCurrent = true;
+    runs: readonly { evidence: AgentReleaseRunEvidence; agentVersion: number | null }[],
+    scope?: IntentEvidenceScope): IntentEvidence {
+    const relevant = runs.filter(run => evidenceIsValid(run.evidence) && run.evidence.scenarios.some((scenario: any) =>
+        typeof scenario?.managedSeedKey === 'string' && scenario.managedSeedKey.startsWith(`intent_${intentKey}_`)));
+    const older = relevant.some(run => currentAgentVersion === null || run.agentVersion !== currentAgentVersion);
+    // Version alone does not identify knowledge, tool policy, channel or scenario
+    // definitions. A caller without the current snapshot cannot certify a task.
+    if (!scope || !/^[a-f0-9]{64}$/.test(scope.configHash) || !/^[a-f0-9]{64}$/.test(scope.dependencyRevision)
+        || !listCanonicalSubtypeExperienceProfileIds().includes(scope.profileId)
+        || !scope.channels.length || scope.channels.some(channel => !(CONVERSATIONAL_CHANNELS as readonly string[]).includes(channel))
+        || !scope.languages.length || scope.languages.some(language => !(EVAL_LANGUAGES as readonly string[]).includes(language))) {
+        return older ? 'stale' : 'not_verified';
     }
-    if (failedCurrent) return 'failed';
-    if (sawCurrent) return 'verified';
-    if (sawOlder) return 'stale';
+    const [industry, subtype] = scope.profileId.split('/');
+    if (!buildDomainContractDraft(industry, subtype).intents.some(intent => intent.key === intentKey)) return 'not_verified';
+    const matchingAgent = relevant.filter(run => run.evidence.agentId === scope.agentId);
+    const current = matchingAgent.filter(run => currentAgentVersion !== null && run.agentVersion === currentAgentVersion
+        && run.evidence.configHash === scope.configHash && run.evidence.dependencyRevision === scope.dependencyRevision);
+    let required = 0, proven = 0;
+    for (const language of [...new Set(scope.languages)]) {
+        const expected = new Map<string, Set<string>>();
+        for (const addressForm of (language === 'es' ? [null, 'tu', 'usted', 'vos'] : [null]) as Array<AddressForm | null>) {
+            for (const scenario of composeSubtypeEvalPack({ industry, subtype, language, addressForm })) {
+                if (!scenario.key.startsWith(`intent_${intentKey}_`)) continue;
+                const definitions = expected.get(scenario.key) ?? new Set<string>();
+                definitions.add(releaseScenarioDefinition(scenario));
+                expected.set(scenario.key, definitions);
+            }
+        }
+        for (const channel of [...new Set(scope.channels)]) {
+            for (const [key, definitions] of expected) {
+                required++;
+                const matching = current.filter(run => run.evidence.channelType === channel).flatMap(run =>
+                    run.evidence.scenarios.filter((scenario: any) => scenario.profileId === scope.profileId
+                        && scenario.language === language && scenario.managedSeedKey === key
+                        && definitions.has(releaseScenarioDefinition(scenario)))
+                        .map((scenario: any) => ({ scenario, evidence: run.evidence })));
+                if (matching.some(({ scenario, evidence }) => !releaseScenarioPassed(scenario, evidence))) return 'failed';
+                if (matching.some(({ scenario, evidence }) => releaseScenarioPassed(scenario, evidence))) proven++;
+            }
+        }
+    }
+    if (required > 0 && proven === required) return 'verified';
+    if (!current.length && matchingAgent.some(run => run.agentVersion !== currentAgentVersion
+        || run.evidence.configHash !== scope.configHash || run.evidence.dependencyRevision !== scope.dependencyRevision)) return 'stale';
     return 'not_verified';
 }

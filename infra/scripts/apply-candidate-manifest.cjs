@@ -50,6 +50,37 @@ const SERVICES = Object.freeze({
     landing: 'landing',
 });
 
+/**
+ * Manifest key → the ONE repository that service may ever be started from.
+ *
+ * ── WHY THIS IS A MAP AND NOT A LIST ────────────────────────────────────────
+ *
+ * It used to be a list: five allowed repositories, and every service checked
+ * against all five. That accepts a manifest in which `api` names the dashboard
+ * image and `dashboard` names the API image — reproduced, not suspected: the
+ * generator emitted
+ *
+ *     api:       image: ghcr.io/nipko/parallext-dashboard@sha256:14c2…
+ *     dashboard: image: ghcr.io/nipko/parallext-api@sha256:66cd…
+ *
+ * and exited 0. Every other check passes, because each one asks a question the
+ * swap does not change: both digests are real, both repositories are ours, and
+ * the expected tag is derived FROM the repository, so `candidate-<sha>` matches
+ * whichever repository is there. The host then starts a Next.js server where the
+ * API belongs and NestJS where the dashboard belongs; both fail their health
+ * checks and the failure reads like a bad build rather than a bad manifest, in
+ * the middle of a cut-over window with the write barrier already down.
+ *
+ * A service is not "one of ours". It is exactly one of ours.
+ */
+const REPOSITORY_OF = Object.freeze({
+    api: 'ghcr.io/nipko/parallext-api',
+    worker: 'ghcr.io/nipko/parallext-worker',
+    dashboard: 'ghcr.io/nipko/parallext-dashboard',
+    whatsapp: 'ghcr.io/nipko/parallext-whatsapp',
+    landing: 'ghcr.io/nipko/parallext-landing',
+});
+
 const DIGEST = /^sha256:[0-9a-f]{64}$/;
 
 /**
@@ -77,14 +108,14 @@ const DIGEST = /^sha256:[0-9a-f]{64}$/;
  */
 const MANIFEST_VERSION = 2;
 
-/** The only repositories a manifest may name. Ours, and exactly ours. */
-const ALLOWED_REPOSITORIES = Object.freeze([
-    'ghcr.io/nipko/parallext-api',
-    'ghcr.io/nipko/parallext-worker',
-    'ghcr.io/nipko/parallext-dashboard',
-    'ghcr.io/nipko/parallext-whatsapp',
-    'ghcr.io/nipko/parallext-landing',
-]);
+/**
+ * The only repositories a manifest may name. Ours, and exactly ours.
+ *
+ * Derived from the per-service map so the two can never disagree: a sixth image
+ * added to one and forgotten in the other is how "allowed" and "correct" drift
+ * apart.
+ */
+const ALLOWED_REPOSITORIES = Object.freeze(Object.values(REPOSITORY_OF));
 
 /**
  * Anything that could end a YAML scalar, start a comment, or carry a scheme.
@@ -161,6 +192,17 @@ function readManifest(file) {
             // image. This is the check a digest cannot make for itself.
             throw new ManifestError(`"${key}" names "${repository}", which is not one of `
                 + `this project's repositories`);
+        }
+        if (repository !== REPOSITORY_OF[key]) {
+            // Ours, and the wrong one of ours. Every other check passes: the
+            // digest is real, the repository is in the allow-list, and the
+            // expected tag is derived from the repository so it matches too.
+            // Only this comparison can tell that `api` was handed the dashboard.
+            const belongsTo = Object.keys(REPOSITORY_OF)
+                .find(other => REPOSITORY_OF[other] === repository);
+            throw new ManifestError(`"${key}" names "${repository}", which is the `
+                + `"${belongsTo}" image; "${key}" may only be started from `
+                + `"${REPOSITORY_OF[key]}"`);
         }
         // The tag is discarded, and it still has to be the right one: a
         // manifest whose tag disagrees with its own commit was produced by
@@ -329,4 +371,4 @@ function main(argv) {
 }
 
 if (require.main === module) process.exit(main(process.argv));
-module.exports = { readManifest, renderOverride, verify, SERVICES, ManifestError };
+module.exports = { readManifest, renderOverride, verify, SERVICES, REPOSITORY_OF, ManifestError };

@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync, readFileSync } from 'fs';
+import { existsSync, mkdtempSync, rmSync, writeFileSync, readFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join, resolve } from 'path';
 
@@ -114,6 +114,88 @@ describe('a manifest is untrusted input', () => {
         refuses({ images: { ...manifest().images,
             api: { tag: 'ghcr.io/someone-else/parallext-api:candidate-' + SHA, digest: digest('1') } },
         }, 'not one of');
+    });
+
+    describe('a repository that is ours and belongs to a different service', () => {
+        /**
+         * ═══ THE MUTATION: SWAP API AND DASHBOARD ═══
+         *
+         * Reproduced before it was fixed. The reader checked each repository
+         * against a LIST of five, so a manifest in which `api` names the
+         * dashboard image and `dashboard` names the API image was accepted and
+         * the generator wrote, exit code 0:
+         *
+         *     api:       image: ghcr.io/nipko/parallext-dashboard@sha256:14c2…
+         *     dashboard: image: ghcr.io/nipko/parallext-api@sha256:66cd…
+         *
+         * Nothing else could catch it. Both digests are real. Both repositories
+         * are ours. The expected tag is derived FROM the repository, so
+         * `candidate-<sha>` matches whichever one is there. The host starts a
+         * Next.js server where the API belongs, both health checks fail, and the
+         * failure reads like a bad build — during a window with the write
+         * barrier already down.
+         */
+        const swapped = () => {
+            const images = manifest().images as Record<string, { tag: string; digest: string }>;
+            return { images: { ...images,
+                api: { tag: images.dashboard.tag.replace('candidate-', 'candidate-'), digest: images.api.digest },
+                dashboard: { tag: images.api.tag, digest: images.dashboard.digest } } };
+        };
+
+        it('is refused, and names both the service and the image it was handed', () => {
+            refuses(swapped(), 'which is the "dashboard" image');
+            refuses(swapped(), 'may only be started from "ghcr.io/nipko/parallext-api"');
+        });
+
+        it('writes no override file when it refuses', () => {
+            // A refusal that still leaves a compose override on disk is a
+            // refusal somebody can `-f` by accident.
+            const dir = mkdtempSync(join(tmpdir(), 'candidate-manifest-swap-'));
+            try {
+                const file = join(dir, 'manifest.json');
+                const out = join(dir, 'docker-compose.candidate.yml');
+                writeFileSync(file, JSON.stringify(manifest(swapped())), 'utf8');
+                expect(() => consumer.readManifest(file)).toThrow();
+                expect(existsSync(out)).toBe(false);
+            } finally {
+                rmSync(dir, { recursive: true, force: true });
+            }
+        });
+
+        it('holds for every pair, not just the one that was reported', () => {
+            // The bug was a missing per-service identity, so the fix has to be
+            // per service. Twenty ordered pairs; every one of them a refusal.
+            const keys = Object.keys(consumer.SERVICES) as string[];
+            const base = manifest().images as Record<string, { tag: string; digest: string }>;
+            for (const key of keys) {
+                for (const other of keys) {
+                    if (key === other) continue;
+                    expect({ key, other, refused: (() => {
+                        try {
+                            withFile(manifest({ images: { ...base, [key]: {
+                                tag: base[other].tag, digest: base[key].digest } } }),
+                            file => consumer.readManifest(file));
+                            return false;
+                        } catch { return true; }
+                    })() }).toEqual({ key, other, refused: true });
+                }
+            }
+        });
+
+        it('maps each service to exactly one repository, with no service left out', () => {
+            // The map is what makes the check possible; a service missing from
+            // it would fall back to "any of ours" without anything going red.
+            expect(consumer.REPOSITORY_OF).toEqual({
+                api: 'ghcr.io/nipko/parallext-api',
+                worker: 'ghcr.io/nipko/parallext-worker',
+                dashboard: 'ghcr.io/nipko/parallext-dashboard',
+                whatsapp: 'ghcr.io/nipko/parallext-whatsapp',
+                landing: 'ghcr.io/nipko/parallext-landing',
+            });
+            expect(Object.keys(consumer.REPOSITORY_OF).sort())
+                .toEqual(Object.keys(consumer.SERVICES).sort());
+            expect(new Set(Object.values(consumer.REPOSITORY_OF)).size).toBe(5);
+        });
     });
 
     it('refuses a tag that does not name this commit', () => {

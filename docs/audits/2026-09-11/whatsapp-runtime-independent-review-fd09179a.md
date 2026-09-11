@@ -1,7 +1,9 @@
 # Revisión independiente del runtime WhatsApp en `fd09179a`
 
-**Fecha:** 11-sep-2026  
-**Rango revisado:** `584d15c3..fd09179a` — 21 commits  
+**Fecha:** 11-sep-2026
+
+**Rango revisado:** `584d15c3..fd09179a` — 21 commits
+
 **Dictamen:** **NO-GO para despliegue, piloto o activación de `enforce`.**
 
 Esta revisión contrasta el informe de la tanda con los caminos que realmente

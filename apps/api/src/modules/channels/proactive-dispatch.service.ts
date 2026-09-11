@@ -3,9 +3,15 @@ import { createHash } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { AgentDispatchOutboxStore } from './agent-dispatch-outbox.store';
 import { OutboundQueueService } from './outbound-queue.service';
-import type { DispatchItem } from './agent-dispatch-outbox';
+import type { DispatchItem, DispatchOriginKind } from './agent-dispatch-outbox';
 import { DispatchOutboxError } from './agent-dispatch-outbox';
 import { proactivePolicyAuthority } from '../persona/proactive-policy-authority';
+import {
+    humanOperatorAuthority, type HumanOperatorSurface,
+} from '../persona/human-operator-authority';
+
+/** The shape a persisted identifier has. A derived one has it too, by design. */
+const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 
 /**
  * ═══ WHAT HAPPENED, SAID IN A WAY A PRODUCER CAN ACT ON ═══
@@ -208,6 +214,31 @@ export class ProactiveDispatchService {
      * the entity no longer justifies the message, and both are reasons not to
      * prepare anything.
      */
+    /**
+     * The authority a PERSON sends under.
+     *
+     * Same shape of promise as `policyAuthority`, over a different fact: not
+     * "is this appointment still the appointment", but "may this person still
+     * speak for this business on this connection". Built by reading the user
+     * row, so the revision describes their standing as it is rather than as the
+     * request that queued the message remembers it.
+     *
+     * `undefined` means they may not — deactivated, demoted, moved or gone —
+     * and the caller prepares nothing. There is nobody to attribute the message
+     * to, and a message with no attributable sender is exactly what the outbox
+     * exists to refuse.
+     */
+    async operatorAuthority(schemaName: string, input: {
+        readonly tenantId: string;
+        readonly userId: string;
+        readonly surface: HumanOperatorSurface;
+        readonly channelType: string;
+        readonly channelAccountId: string;
+    }) {
+        return this.prisma.transactionInTenantSchema(schemaName, query =>
+            humanOperatorAuthority(query as any, schemaName, input));
+    }
+
     async policyAuthority(schemaName: string, input: {
         readonly tenantId: string;
         readonly producer: string;
@@ -238,11 +269,40 @@ export class ProactiveDispatchService {
         readonly items: readonly DispatchItem[];
         /** Who the effect is served on behalf of. The outbox refuses without it. */
         readonly operationalScope: any;
+        /**
+         * What caused this effect, and therefore how Meta bills it.
+         *
+         * `proactive` by default, which is what a scheduled behaviour is. A
+         * message a person sends IN ANSWER to a customer who just wrote is
+         * `inbound_reply` — it is a service reply inside the window, and
+         * calling it proactive would both misprice it and subject it to a soft
+         * stop meant for campaigns. When it is `inbound_reply`, `originKey` is
+         * ignored and the caller must pass the real inbound message id as
+         * `inboundMessageId`: the outbox checks that row exists on this
+         * conversation, which is what stops a producer claiming a reply to
+         * something nobody wrote.
+         */
+        readonly originKind?: DispatchOriginKind;
+        /** The customer message being answered. Required for `inbound_reply`. */
+        readonly inboundMessageId?: string;
     }): Promise<ProactiveSendResult> {
         if (!input.operationalScope) {
             return { kind: 'suppressed', reason: 'policy_authority_unavailable' };
         }
-        const originId = ProactiveDispatchService.originId(input.originKey);
+        const originKind: DispatchOriginKind = input.originKind === 'inbound_reply'
+            ? 'inbound_reply' : 'proactive';
+        // An answer is identified by the message it answers; anything else is
+        // identified by the producer's own durable key, hashed into a UUID so
+        // two attempts at the same effect collide on one row.
+        const originId = originKind === 'inbound_reply'
+            ? String(input.inboundMessageId ?? '')
+            : ProactiveDispatchService.originId(input.originKey);
+        if (originKind === 'inbound_reply' && !UUID.test(originId)) {
+            // Refused rather than fabricated. A derived id here would let a
+            // producer claim a reply to a message that does not exist, and the
+            // whole point of the column is that it cannot.
+            return { kind: 'refused', reason: 'inbound_message_required_for_reply' };
+        }
         const binding = {
             conversationId: input.conversationId,
             contactId: input.contactId,
@@ -256,7 +316,7 @@ export class ProactiveDispatchService {
             prepared = await this.outbox.prepare(tenantId, {
                 binding, items: input.items,
                 operationalScope: input.operationalScope,
-                originKind: 'proactive',
+                originKind,
             });
         } catch (error: any) {
             if (error instanceof DispatchOutboxError) {

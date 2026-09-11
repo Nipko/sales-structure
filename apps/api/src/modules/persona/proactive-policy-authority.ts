@@ -111,6 +111,166 @@ const appointmentRevision = async (
     });
 };
 
+/**
+ * A drip step is about the ENROLMENT, not about the sequence.
+ *
+ * Somebody who left the sequence, finished it, or was moved to another step by
+ * a reply that arrived while the step sat in the queue must not receive step 3
+ * of a journey they are no longer on. `current_step` is part of the revision
+ * precisely so an advanced enrolment makes the prepared step stale rather than
+ * delivering the wrong one.
+ */
+const dripEnrolmentRevision = async (
+    query: RevisionQuery, _schema: string, entityId: string,
+): Promise<string | null> => {
+    const [row] = await query<any[]>(
+        `SELECT id, sequence_id, status, current_step, contact_id, conversation_id
+           FROM drip_enrollments WHERE id = $1::uuid FOR SHARE`, [entityId]);
+    if (!row) return null;
+    // Stopped, completed or paused: the journey is over and its next step is
+    // not owed. Suppressed, not failed.
+    if (String(row.status) !== 'active') return null;
+    return revisionHash({
+        status: row.status,
+        sequenceId: row.sequence_id ?? null,
+        currentStep: Number(row.current_step ?? 0),
+        contactId: row.contact_id ?? null,
+        conversationId: row.conversation_id ?? null,
+    });
+};
+
+/**
+ * A nurturing nudge is about the CONVERSATION.
+ *
+ * Its whole premise is "they went quiet", and the one thing that must stop it
+ * is the customer answering. The attempt counter and the thread's status both
+ * live on the conversation, and so does the time of the last inbound message,
+ * so the revision is taken there: a reply between preparing the nudge and
+ * sending it makes the prepared effect stale. A nudge asking whether anybody is
+ * still there, arriving a minute after somebody wrote, is the most irritating
+ * thing this lane can do — and it is billed.
+ */
+const nurturedConversationRevision = async (
+    query: RevisionQuery, _schema: string, entityId: string,
+): Promise<string | null> => {
+    const [row] = await query<any[]>(
+        `SELECT c.id, c.status, c.contact_id, c.channel_type, c.channel_account_id,
+                COALESCE(c.metadata->>'nurturing_last_attempt', '0') AS attempt,
+                (SELECT MAX(m.created_at) FROM messages m
+                  WHERE m.conversation_id = c.id AND m.direction = 'inbound') AS last_inbound
+           FROM conversations c WHERE c.id = $1::uuid FOR SHARE`, [entityId]);
+    if (!row) return null;
+    // A thread somebody closed, or one already handed to a person, is not a
+    // thread to nudge.
+    if (['resolved', 'archived', 'with_human'].includes(String(row.status ?? ''))) return null;
+    return revisionHash({
+        status: row.status ?? null,
+        contactId: row.contact_id ?? null,
+        channelType: row.channel_type ?? null,
+        channelAccountId: row.channel_account_id ?? null,
+        attempt: String(row.attempt ?? '0'),
+        lastInbound: row.last_inbound ? new Date(row.last_inbound).toISOString() : null,
+    });
+};
+
+/**
+ * A campaign message is about ONE recipient row, and about the campaign above
+ * it.
+ *
+ * A paused or cancelled campaign whose queued messages keep going out is the
+ * worst thing this lane can do, because it is the one an operator explicitly
+ * tried to prevent: they pressed pause and the messages carried on, each one
+ * billed. So the campaign's own status is inside the recipient's revision, and
+ * a recipient already sent or failed is GONE rather than stale.
+ */
+const campaignRecipientRevision = async (
+    query: RevisionQuery, _schema: string, entityId: string,
+): Promise<string | null> => {
+    const [row] = await query<any[]>(
+        `SELECT r.id, r.status, r.contact_id, r.campaign_id,
+                c.status AS campaign_status, c.wa_template_name
+           FROM campaign_recipients r
+           LEFT JOIN campaigns c ON c.id = r.campaign_id
+          WHERE r.id = $1::uuid
+          -- Locked with OF r rather than with a bare FOR SHARE: PostgreSQL
+          -- refuses to lock the nullable side of an outer join, and the
+          -- recipient is the row that must not move between this check and
+          -- the lease. The campaign above it is read, not locked: one paused
+          -- a microsecond later is caught by the next admission, and locking
+          -- the campaign row from inside one recipient's lease would
+          -- serialise every message in it.
+          FOR SHARE OF r`, [entityId]);
+    if (!row) return null;
+    // Only a recipient still waiting is owed a message, and only while the
+    // campaign is running.
+    if (!['pending', 'queued'].includes(String(row.status ?? ''))) return null;
+    if (row.campaign_status !== null && row.campaign_status !== undefined
+        && !['active', 'draft'].includes(String(row.campaign_status))) return null;
+    return revisionHash({
+        status: row.status,
+        campaignId: row.campaign_id ?? null,
+        campaignStatus: row.campaign_status ?? null,
+        templateName: row.wa_template_name ?? null,
+        contactId: row.contact_id ?? null,
+    });
+};
+
+/**
+ * A rule action is about the RULE.
+ *
+ * A rule somebody switched off between the trigger firing and the message
+ * leaving must send nothing: switching it off is the operator saying stop. The
+ * actions are hashed too, so editing which template a rule sends does not let
+ * the old one go out under the new rule's authority.
+ */
+const automationRuleRevision = async (
+    query: RevisionQuery, _schema: string, entityId: string,
+): Promise<string | null> => {
+    const [row] = await query<any[]>(
+        `SELECT id, active, trigger_type, actions_json, conditions_json
+           FROM automation_rules WHERE id = $1::uuid FOR SHARE`, [entityId]);
+    if (!row) return null;
+    if (row.active !== true) return null;
+    return revisionHash({
+        triggerType: row.trigger_type ?? null,
+        actions: row.actions_json ?? null,
+        conditions: row.conditions_json ?? null,
+    });
+};
+
+/**
+ * A recall is about the CONTACT, and specifically about their cooldown.
+ *
+ * `next_recall_at` is what stops the same person being recalled every day. It
+ * is inside the revision so a recall that already went out — moving the clock
+ * forward — makes any second prepared recall stale, instead of a duplicate the
+ * customer reads as spam and the business pays for twice.
+ */
+const recallContactRevision = async (
+    query: RevisionQuery, _schema: string, entityId: string,
+): Promise<string | null> => {
+    const [row] = await query<any[]>(
+        `SELECT id, phone, next_recall_at, last_contact_at
+           FROM contacts WHERE id = $1::uuid FOR SHARE`, [entityId]);
+    if (!row) return null;
+    // No number, nothing to send to.
+    if (!String(row.phone ?? '').trim()) return null;
+    return revisionHash({
+        phone: row.phone,
+        nextRecallAt: row.next_recall_at ? new Date(row.next_recall_at).toISOString() : null,
+        lastContactAt: row.last_contact_at ? new Date(row.last_contact_at).toISOString() : null,
+    });
+};
+
+/**
+ * ═══ THE CLOSED REGISTRY ═══
+ *
+ * A producer that is not here cannot obtain an authority, and therefore cannot
+ * put a row on the durable lane at all. That is deliberate: the price of a new
+ * scheduled behaviour is saying, IN CODE, what makes its message untrue. The
+ * alternative — an open map with a permissive default — is how a cancelled
+ * appointment gets a reminder and a paused campaign keeps sending.
+ */
 export const PROACTIVE_POLICIES: Readonly<Record<string, ProactivePolicy>> = Object.freeze({
     appointment_reminder: Object.freeze({
         producer: 'appointment_reminder',
@@ -121,6 +281,36 @@ export const PROACTIVE_POLICIES: Readonly<Record<string, ProactivePolicy>> = Obj
         producer: 'attendance_check',
         describes: 'una confirmación de asistencia',
         revision: appointmentRevision,
+    }),
+    appointment_notification: Object.freeze({
+        producer: 'appointment_notification',
+        describes: 'un aviso sobre un turno',
+        revision: appointmentRevision,
+    }),
+    drip_step: Object.freeze({
+        producer: 'drip_step',
+        describes: 'un paso de una secuencia de goteo',
+        revision: dripEnrolmentRevision,
+    }),
+    nurturing_followup: Object.freeze({
+        producer: 'nurturing_followup',
+        describes: 'un seguimiento a una conversación sin respuesta',
+        revision: nurturedConversationRevision,
+    }),
+    broadcast_message: Object.freeze({
+        producer: 'broadcast_message',
+        describes: 'un mensaje de campaña',
+        revision: campaignRecipientRevision,
+    }),
+    automation_rule_action: Object.freeze({
+        producer: 'automation_rule_action',
+        describes: 'una acción de una regla de automatización',
+        revision: automationRuleRevision,
+    }),
+    recall_reminder: Object.freeze({
+        producer: 'recall_reminder',
+        describes: 'un mensaje de reactivación',
+        revision: recallContactRevision,
     }),
 });
 

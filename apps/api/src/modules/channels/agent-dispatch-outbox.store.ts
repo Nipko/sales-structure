@@ -25,6 +25,9 @@ import {
     revalidateProactivePolicy, validProactivePolicyAuthority,
     type ProactivePolicyAuthority,
 } from '../persona/proactive-policy-authority';
+import {
+    revalidateHumanOperator, validHumanOperatorAuthority, type HumanOperatorAuthority,
+} from '../persona/human-operator-authority';
 import { assertRuntimeLearningFootprint, type RuntimeLearningFootprint } from '../learning/learning-runtime-footprint';
 
 /**
@@ -98,12 +101,39 @@ export class AgentDispatchOutboxStore {
         // reminders passed an object with no `kind` and no hash, this check
         // refused it, and the migration would have died at the first real row.
         //
-        // The union is closed on purpose. Anything that is neither is refused,
-        // so a future producer has to say what it is served on behalf of rather
-        // than inheriting a permissive default.
+        // A message a PERSON sent is served by neither. An agent in the
+        // console and a tenant calling the send API are both effects whose
+        // authority is a human being and a role, and those six call sites had
+        // no authority they could honestly carry — which is why they were still
+        // on the legacy queue rather than here.
+        //
+        // The union is closed on purpose. Anything that is none of the three is
+        // refused, so a future producer has to say what it is served on behalf
+        // of rather than inheriting a permissive default.
         if (!validServedAgentAuthority(input.operationalScope, schema, tenantId)
-            && !validProactivePolicyAuthority(input.operationalScope, schema, tenantId)) {
+            && !validProactivePolicyAuthority(input.operationalScope, schema, tenantId)
+            && !validHumanOperatorAuthority(input.operationalScope, schema, tenantId)) {
             throw new DispatchOutboxError('dispatch_authority_required');
+        }
+        // ── AND THE AUTHORITY HAS TO BE ABOUT THIS CONNECTION ───────────────
+        //
+        // Two of the three name a connection of their own, and it must be the
+        // one the binding will send from: the account on the row is the account
+        // Meta bills, so an authority granted for one number cannot cover a
+        // message leaving another.
+        //
+        // This was checked only at ADMIT. The row committed, published, took a
+        // lease and only then refused — hours later for a reminder, with a
+        // `dispatch_binding_changed` that reads like the thread moved when in
+        // fact the producer built the two halves inconsistently. Refusing here
+        // costs the producer one synchronous error at the moment it can still
+        // be fixed.
+        const declared = input.operationalScope as { channelType?: string; channelAccountId?: string };
+        if ((validProactivePolicyAuthority(input.operationalScope, schema, tenantId)
+                || validHumanOperatorAuthority(input.operationalScope, schema, tenantId))
+            && (declared.channelType !== input.binding.channelType
+                || declared.channelAccountId !== input.binding.channelAccountId)) {
+            throw new DispatchOutboxError('dispatch_binding_changed');
         }
         const result = await this.prisma.transactionInTenantSchema(schema, async query => {
             await this.privacy(query, schema, tenantId);
@@ -229,7 +259,7 @@ export class AgentDispatchOutboxStore {
             if (!current) throw new DispatchOutboxError('dispatch_unavailable');
             if (current.redacted || !current.binding) throw new DispatchOutboxError('dispatch_redacted');
             const scope = current.operationalScope as unknown as
-                ServedAgentAuthority | ProactivePolicyAuthority;
+                ServedAgentAuthority | ProactivePolicyAuthority | HumanOperatorAuthority;
             if (validProactivePolicyAuthority(scope, schema, tenantId)) {
                 // ── IS THIS STILL THE EFFECT THE POLICY AUTHORISED? ─────────
                 //
@@ -264,6 +294,32 @@ export class AgentDispatchOutboxStore {
                         dispatchId, leaseToken,
                         outcome: { kind: 'suppressed',
                             errorCode: `proactive_${verdict.kind}:${verdict.detail}`.slice(0, 120) },
+                    });
+                }
+            } else if (validHumanOperatorAuthority(scope, schema, tenantId)) {
+                // ── MAY THIS PERSON STILL SEND THIS? ────────────────────────
+                //
+                // Authentication happened at the edge, minutes or hours ago,
+                // and proves who ASKED — not who may still speak. Between then
+                // and now the account can be deactivated, the role reduced, the
+                // user moved to another tenant. A queued message going out
+                // after somebody was removed is the case an operator most
+                // specifically tried to stop.
+                if (scope.channelType !== current.binding.channelType
+                    || scope.channelAccountId !== current.binding.channelAccountId) {
+                    throw new DispatchOutboxError('dispatch_binding_changed');
+                }
+                const verdict = await revalidateHumanOperator(query, schema, scope);
+                if (verdict.kind !== 'current') {
+                    // Suppressed inside this transaction and reported after it
+                    // commits, exactly as a stale policy is: throwing from in
+                    // here would roll the suppression back and the next pass
+                    // would send what was just revoked.
+                    await admitDispatch(query, schema, { dispatchId, leaseToken, leaseSeconds });
+                    return settleDispatch(query, schema, {
+                        dispatchId, leaseToken,
+                        outcome: { kind: 'suppressed',
+                            errorCode: `human_${verdict.kind}:${verdict.detail}`.slice(0, 120) },
                     });
                 }
             } else if (validServedAgentAuthority(scope, schema, tenantId)) {

@@ -352,10 +352,15 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
             await sql(`UPDATE persona_config SET config_json = $1::jsonb WHERE is_active = true`,
                 [JSON.stringify({ persona: { name: 'Otro' } })]);
             const [row] = await rows();
+            // SUPPRESSED rather than refused-and-retried. The condition is a
+            // configuration that changed, and no retry brings the old hash
+            // back — so the row used to burn five attempts against a rule it
+            // could never satisfy.
             await expect(store.admit(tenantId, String(row.id)))
-                .rejects.toMatchObject({ code: 'agent_operational_revision_changed' });
-            const [after] = await sql('SELECT state, receipt FROM agent_dispatch_outbox');
-            expect(after.state).not.toBe('admitted');
+                .rejects.toMatchObject({ code: 'dispatch_effect_superseded' });
+            const [after] = await sql('SELECT state, receipt, error_code FROM agent_dispatch_outbox');
+            expect(after.state).toBe('suppressed');
+            expect(after.error_code).toContain('agent_operational_revision_changed');
             expect(after.receipt).toBeNull();
         });
 

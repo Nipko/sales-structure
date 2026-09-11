@@ -492,7 +492,99 @@ const LEGACY_CONFIG = Object.freeze({ tone: 'cordial', goals: ['agendar'] });
         });
     });
 
-    // ── 5. THE TWO SHAPES THE LANE COULD NOT EXPRESS ────────────────────────
+    // ── 5. WHAT `queued` MEANS ──────────────────────────────────────────────
+
+    describe('the state a row is left in when publishing fails', () => {
+        it('stays `prepared` when the publish threw, because nothing was published', async () => {
+            // The publish failure is swallowed on purpose: the row is the
+            // record and the recovery pass republishes anything nothing ever
+            // published. That asymmetry is why this lane exists.
+            //
+            // But the row was marked `queued` regardless — a state that says a
+            // job exists for it. Nothing broke, because `queued` is still
+            // available and recovery still finds it; the row simply said
+            // something that had not happened, and an operator reading "queued"
+            // while no job exists cannot tell that from a worker being behind.
+            const { row } = await rowFor({ originKind: 'proactive' });
+            const published = await store.publishBatch(tenantId, [row],
+                async () => { throw new Error('redis is down'); });
+            expect(published).toBe(1);
+            const [raw] = await sql(
+                'SELECT state FROM agent_dispatch_outbox WHERE id = $1::uuid', [row.id]);
+            expect(raw.state).toBe('prepared');
+        });
+
+        it('says `queued` when the publish actually happened', async () => {
+            const { row } = await rowFor({ originKind: 'proactive' });
+            await store.publishBatch(tenantId, [row], async () => undefined);
+            const [raw] = await sql(
+                'SELECT state FROM agent_dispatch_outbox WHERE id = $1::uuid', [row.id]);
+            expect(raw.state).toBe('queued');
+        });
+
+        it('leaves a row that failed to publish claimable by the recovery pass', async () => {
+            // `prepared` is available, so this is not a regression in
+            // behaviour — only in what the row claims about itself.
+            const { row } = await rowFor({ originKind: 'proactive' });
+            await store.publishBatch(tenantId, [row],
+                async () => { throw new Error('redis is down'); });
+            expect((await store.admit(tenantId, row.id)).row.state).toBe('admitted');
+        });
+    });
+
+    // ── 6. WHAT HAPPENS WHEN THE AGENT IS EDITED MID-FLIGHT ─────────────────
+
+    describe('a reply whose agent changed while it waited', () => {
+        it('is suppressed, not retried against a rule it can never satisfy', async () => {
+            // A changed `ServedAgentAuthority` used to escape as a retryable
+            // preflight failure: the row stayed available and the next pass
+            // tried again. But the condition is a configuration that CHANGED,
+            // and no number of retries brings the old hash back — so an edited
+            // agent's queued reply burned five attempts over hours against a
+            // rule it could never satisfy, and only then stopped.
+            //
+            // The words were composed by a persona that no longer exists in
+            // that form. Delivering them later is exactly what the authority is
+            // for, so it suppresses like the other two kinds do.
+            const { row } = await rowFor({ originKind: 'inbound_reply' });
+            await sql('UPDATE persona_config SET config_json = $1::jsonb',
+                [JSON.stringify({ ...LEGACY_CONFIG, tone: 'seco' })]);
+            try {
+                await expect(store.admit(tenantId, row.id))
+                    .rejects.toMatchObject({ code: 'dispatch_effect_superseded' });
+                const [raw] = await sql(
+                    'SELECT state, error_code FROM agent_dispatch_outbox WHERE id = $1::uuid',
+                    [row.id]);
+                expect(raw.state).toBe('suppressed');
+                expect(raw.error_code).toContain('agent_');
+            } finally {
+                await sql('UPDATE persona_config SET config_json = $1::jsonb',
+                    [JSON.stringify(LEGACY_CONFIG)]);
+            }
+        });
+
+        it('admits normally when the agent did not change', async () => {
+            const { row } = await rowFor({ originKind: 'inbound_reply' });
+            expect((await store.admit(tenantId, row.id)).row.state).toBe('admitted');
+        });
+
+        it('leaves a suppressed row terminal rather than available', async () => {
+            // The point of suppressing instead of failing: nothing tries again.
+            const { row } = await rowFor({ originKind: 'inbound_reply' });
+            await sql('UPDATE persona_config SET config_json = $1::jsonb',
+                [JSON.stringify({ ...LEGACY_CONFIG, tone: 'otro' })]);
+            try {
+                await store.admit(tenantId, row.id).catch(() => undefined);
+                await expect(store.admit(tenantId, row.id))
+                    .rejects.toMatchObject({ code: 'dispatch_terminal:suppressed' });
+            } finally {
+                await sql('UPDATE persona_config SET config_json = $1::jsonb',
+                    [JSON.stringify(LEGACY_CONFIG)]);
+            }
+        });
+    });
+
+    // ── 7. THE TWO SHAPES THE LANE COULD NOT EXPRESS ────────────────────────
 
     describe('a menu and a map pin, on the durable lane', () => {
         const historyOf = async (conversationId: string) => (await sql(
@@ -546,7 +638,7 @@ const LEGACY_CONFIG = Object.freeze({ tone: 'cordial', goals: ['agendar'] });
         });
     });
 
-    // ── 6. THE FOUR IDENTIFIERS ARE ONE FACT ────────────────────────────────
+    // ── 8. THE FOUR IDENTIFIERS ARE ONE FACT ────────────────────────────────
 
     describe('a binding that names four things', () => {
         const bindingFor = (conversationId: string, over: Record<string, unknown>) => ({

@@ -240,6 +240,50 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
         expect(await outboxRows()).toHaveLength(1);
     });
 
+    it('sends nothing when another worker advanced between the read and the claim', async () => {
+        // The race above is decided by timing: when both workers read step 0
+        // they collide on the origin and the outbox refuses the second. The
+        // DANGEROUS interleaving is the other one — the second worker reads
+        // step 1, the FIRST one's own advance, and prepares a different step.
+        // Two rows, two charges, and the customer receives two steps of the
+        // journey at once. `Promise.allSettled` hits it only sometimes: this
+        // suite passed on a quiet machine and failed inside a full run, which
+        // is the only reason it was found.
+        //
+        // So the interleaving is staged rather than hoped for. The competing
+        // advance is applied at the exact moment a worker has read the
+        // enrolment and not yet claimed it, through the service's own query
+        // path — no doubles, no reimplementation of the step logic.
+        const drip = await enrolment();
+        const real = service.prisma.executeInTenantSchema.bind(service.prisma);
+        let raced = false;
+        service.prisma = {
+            ...service.prisma,
+            executeInTenantSchema: async (schemaName: string, text: string, params: any[] = []) => {
+                const rows = await real(schemaName, text, params);
+                if (!raced && /SELECT \* FROM drip_enrollments WHERE id/.test(text)) {
+                    raced = true;
+                    // Another worker claims step 0 → 1 while this one holds a
+                    // row that says step 0.
+                    await real(schemaName,
+                        'UPDATE drip_enrollments SET current_step = 1 WHERE id = $1::uuid',
+                        [drip.id]);
+                }
+                return rows;
+            },
+        };
+        try {
+            await run(drip.id).catch(() => undefined);
+        } finally {
+            service.prisma = { ...service.prisma, executeInTenantSchema: real };
+        }
+        expect(raced).toBe(true);
+        expect(await outboxRows()).toHaveLength(0);
+        // And the enrolment is left where the winner put it, not dragged back
+        // to a step the customer is already being sent.
+        expect(Number((await enrolmentRow(drip.id)).current_step)).toBe(1);
+    });
+
     it('gives each step of a journey its own effect', async () => {
         const drip = await enrolment();
         await run(drip.id);

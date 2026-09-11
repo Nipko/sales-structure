@@ -593,8 +593,26 @@ export class DripSequenceService {
         // state, and the advance is UNDONE when no durable effect exists. The
         // end state is the one the invariant asks for: the enrolment never
         // stands advanced over a step the customer was not owed.
+        // ── AND THE ADVANCE IS A CLAIM, NOT A WRITE ─────────────────────────
+        //
+        // An unconditional `SET current_step = next` does not stop a second
+        // worker: it stops a second worker from sending the SAME step, and
+        // nothing more. Two crons on one enrolment read steps 0 and 1 — the
+        // second reading the first's own advance — and each prepares a
+        // different message. Two rows, two charges, and the customer receives
+        // two steps of the journey at once.
+        //
+        // Compare-and-set on the step this worker actually read makes the
+        // advance the CLAIM: exactly one worker moves 0 → 1, and the loser
+        // affects no rows and returns without preparing anything. The race test
+        // for this passed on a quiet machine and failed in a full suite run,
+        // which is the only reason it was found.
         const nextStep = stepIndex + 1;
-        await this.moveEnrolmentTo(schemaName, enrollmentId, nextStep);
+        if (!(await this.claimEnrolmentStep(schemaName, enrollmentId, stepIndex, nextStep))) {
+            this.logger.log(`Drip enrollment ${enrollmentId} step ${stepIndex} was claimed by `
+                + 'another worker; this one sends nothing');
+            return;
+        }
         let outcome: ProactiveSendResult;
         try {
             outcome = await this.executeStepAction(tenantId, schemaName, enrollment, step, stepIndex);
@@ -606,7 +624,12 @@ export class DripSequenceService {
             // Nothing was committed, and the reason may pass. The enrolment goes
             // back to the step it was on so the next attempt sends it, instead
             // of the journey silently skipping a message nobody received.
-            await this.moveEnrolmentTo(schemaName, enrollmentId, stepIndex);
+            //
+            // Conditional on the claim still being ours, for the same reason it
+            // was taken that way: an unconditional rewind would drag an
+            // enrolment a later worker has legitimately advanced back to a step
+            // the customer already received.
+            await this.claimEnrolmentStep(schemaName, enrollmentId, nextStep, stepIndex);
             throw new Error(`drip_step_not_dispatched:${outcome.kind}`
                 + `:${'reason' in outcome ? outcome.reason : ''}`);
         }
@@ -635,13 +658,24 @@ export class DripSequenceService {
             + `${terminal ? 'closing pass' : `step ${nextStep}`} scheduled in ${delayMs / 1000}s`);
     }
 
-    /** Move the enrolment to a step, and nothing else. Used forwards and back. */
-    private async moveEnrolmentTo(schemaName: string, enrollmentId: string, step: number): Promise<void> {
-        await this.prisma.executeInTenantSchema(
+    /**
+     * Move the enrolment from one step to another, and say whether it worked.
+     *
+     * Conditional on `from`, so it is a claim rather than a write: two workers
+     * on one enrolment cannot both move it, and the loser is told so instead of
+     * quietly proceeding with a step somebody else is already sending. Used
+     * forwards to claim and backwards to release.
+     */
+    private async claimEnrolmentStep(schemaName: string, enrollmentId: string,
+        from: number, to: number): Promise<boolean> {
+        const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
-            `UPDATE drip_enrollments SET current_step = $2, last_step_at = NOW() WHERE id = $1::uuid`,
-            [enrollmentId, step],
+            `UPDATE drip_enrollments SET current_step = $3, last_step_at = NOW()
+              WHERE id = $1::uuid AND current_step = $2
+              RETURNING id`,
+            [enrollmentId, from, to],
         );
+        return (rows?.length ?? 0) > 0;
     }
 
     /**

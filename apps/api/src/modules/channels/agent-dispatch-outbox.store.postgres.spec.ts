@@ -251,19 +251,33 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
             expect(granted.leaseToken).toMatch(/^[a-f0-9-]{36}$/);
         });
 
-        it('refuses after the agent revision changed', async () => {
+        it('SUPPRESSES after the agent revision changed, rather than retrying', async () => {
+            // This used to answer `agent_operational_revision_changed` and
+            // leave the row `prepared` with `attempts: 0` — a retryable
+            // preflight failure. The condition is a configuration that CHANGED,
+            // and no number of retries brings the old hash back, so the row
+            // burned five attempts over hours against a rule it could never
+            // satisfy and only then stopped.
+            //
+            // The words were composed by a persona that no longer exists in
+            // that form. Delivering them later is exactly what the authority
+            // exists to prevent, and the other two authority kinds already
+            // suppress for the same shape of reason.
             const { rows } = await prepare(await fixture());
             await sql('UPDATE agent_personas SET version=2 WHERE id=$1::uuid', [agentId]);
-            expect(await reason(store.admit(tenantId, rows[0].id))).toBe('agent_operational_revision_changed');
-            expect((await store.read(tenantId, rows[0].id))!).toMatchObject({ state: 'prepared', attempts: 0 });
+            expect(await reason(store.admit(tenantId, rows[0].id))).toBe('dispatch_effect_superseded');
+            const settled = (await store.read(tenantId, rows[0].id))!;
+            expect(settled.state).toBe('suppressed');
+            expect(settled.errorCode).toContain('agent_operational_revision_changed');
         });
 
-        it('refuses after another agent won this exact connection', async () => {
+        it('SUPPRESSES after another agent won this exact connection', async () => {
             const { rows } = await prepare(await fixture());
             // The original agent keeps its own version and hash; only routing moved.
             await sql(`INSERT INTO agent_personas VALUES($1::uuid,'Otro','{"persona":{"name":"Otro"}}','{}',
                 ARRAY[$2],'24_7',true,false,1)`, [randomUUID(), 'whatsapp:phone-1']);
-            expect(await reason(store.admit(tenantId, rows[0].id))).toBe('agent_operational_revision_changed');
+            expect(await reason(store.admit(tenantId, rows[0].id))).toBe('dispatch_effect_superseded');
+            expect((await store.read(tenantId, rows[0].id))!.state).toBe('suppressed');
         });
 
         it('refuses after a source behind the payload was retired, train or holdout', async () => {

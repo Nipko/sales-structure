@@ -19,7 +19,8 @@ import {
     type DispatchOutcome, type DispatchRow,
 } from './agent-dispatch-outbox';
 import {
-    assertServedAgentConnectionAuthority, validServedAgentAuthority, type ServedAgentAuthority,
+    assertServedAgentConnectionAuthority, ServedAgentAuthorityError,
+    validServedAgentAuthority, type ServedAgentAuthority,
 } from '../persona/served-agent-authority';
 import {
     revalidateProactivePolicy, validProactivePolicyAuthority,
@@ -186,9 +187,24 @@ export class AgentDispatchOutboxStore {
             .filter(row => !row.redacted && ['prepared', 'queued', 'failed'].includes(row.state))
             .sort((left, right) => left.itemIndex - right.itemIndex)[0];
         if (!head) return 0;
-        await publish(head.id, 0).catch(() => undefined);
+        // ── `queued` MEANS PUBLISHED, AND IS ONLY WRITTEN WHEN IT WAS ───────
+        //
+        // The publish failure is swallowed on purpose: the row is the record,
+        // and the recovery pass republishes anything nothing ever published.
+        // That asymmetry is the whole reason this lane exists.
+        //
+        // But `markQueued` ran regardless, so a row whose publish threw was
+        // written `queued` — a state that says a job exists for it. Nothing
+        // broke, because `queued` is still available and recovery still finds
+        // it; the row simply said something that had not happened, and an
+        // operator reading "queued" while no job exists has no way to tell that
+        // from a worker being behind.
+        //
+        // Left `prepared` when the publish failed, which is exactly what it is.
+        let published = true;
+        await publish(head.id, 0).catch(() => { published = false; });
         void gapMs;
-        await this.markQueued(tenantId, [head.id]).catch(() => undefined);
+        if (published) await this.markQueued(tenantId, [head.id]).catch(() => undefined);
         return 1;
     }
 
@@ -326,8 +342,38 @@ export class AgentDispatchOutboxStore {
                 // Another agent can win this connection without changing the
                 // first one's own version or hash, so the routing itself is
                 // re-checked.
-                await assertServedAgentConnectionAuthority(query, schema, scope,
-                    current.binding.channelType, current.binding.channelAccountId);
+                //
+                // ── AND A CHANGED AGENT SUPPRESSES, IT DOES NOT RETRY ───────
+                //
+                // This used to let `ServedAgentAuthorityError` escape, which
+                // the processor reads as a retryable preflight failure: the row
+                // stays available and the next pass tries again. But the
+                // condition is a configuration that CHANGED — the persona was
+                // edited, or another agent won this connection — and no number
+                // of retries brings the old hash back. So an edited agent's
+                // queued reply burned five attempts over hours against a rule
+                // it could never satisfy, and only then stopped.
+                //
+                // The other two authorities already suppress for the same
+                // shape of reason, and this is the same answer: the words were
+                // composed by a persona that no longer exists in that form, and
+                // delivering them later is exactly what the authority is for.
+                try {
+                    await assertServedAgentConnectionAuthority(query, schema, scope,
+                        current.binding.channelType, current.binding.channelAccountId);
+                } catch (error: any) {
+                    if (!(error instanceof ServedAgentAuthorityError)) throw error;
+                    // Admitted and settled in ONE transaction, reported after
+                    // it commits — the same shape as a stale policy, for the
+                    // same reason: throwing from in here would roll the
+                    // suppression back with everything else.
+                    await admitDispatch(query, schema, { dispatchId, leaseToken, leaseSeconds });
+                    return settleDispatch(query, schema, {
+                        dispatchId, leaseToken,
+                        outcome: { kind: 'suppressed',
+                            errorCode: `agent_${error.code}`.slice(0, 120) },
+                    });
+                }
             } else {
                 throw new DispatchOutboxError('dispatch_authority_required');
             }

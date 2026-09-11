@@ -3,7 +3,7 @@ id: solucion-problemas
 title: "Solução de problemas frequentes"
 routes: ["/admin/channels", "/admin/agent", "/admin/inbox", "/admin/broadcast", "/admin/appointments", "/admin/settings/billing"]
 roles: ["tenant_admin", "tenant_supervisor", "tenant_agent"]
-keywords: ["problemas", "não funciona", "não chegam mensagens", "não responde", "o bot não responde", "canal desconectado", "token expirado", "reconectar", "campanha não envia", "modelo rejeitado", "limite do plano", "limite atingido", "agendamento não aparece", "calendário não sincroniza", "e-mail de verificação", "não chega o código", "erro", "ajuda", "suporte", "falar com o suporte"]
+keywords: ["problemas", "não funciona", "não chegam mensagens", "não responde", "o bot não responde", "canal desconectado", "token expirado", "reconectar", "campanha não envia", "modelo rejeitado", "limite do plano", "limite atingido", "agendamento não aparece", "calendário não sincroniza", "e-mail de verificação", "não chega o código", "erro", "ajuda", "suporte", "falar com o suporte", "envio pausado", "meta nao pode faturar", "o agente parou de responder no whatsapp", "forma de pagamento do whatsapp", "retomar envios"]
 ---
 
 # Solução de problemas frequentes
@@ -46,6 +46,7 @@ Confira esta lista na ordem; quase sempre a causa é uma destas:
 4. **O modo de resposta está correto?** Em **Comportamento**, se o modo estiver em "sempre humano", a IA nunca responde sozinha. Mude para "sempre IA" ou "híbrido", conforme o que você precisa.
 5. **A conversa está com um humano?** Se você ou alguém da equipe assumiu a conversa na **Caixa de entrada** (ou o cliente pediu para falar com uma pessoa), a IA fica pausada nessa conversa até que se clique em **Resolver**. É o comportamento esperado, não uma falha.
 6. **A capacidade de mensagens de IA acabou?** Abra **Plano e faturamento** e confira a barra de uso e as opções atuais.
+7. **É o WhatsApp, com o envio pausado?** A partir de **1º de outubro de 2026** a Meta cobra da sua conta do WhatsApp Business cada mensagem de serviço entregue; se a Meta não puder faturar aquela conta, ela deixa de entregar e a Parallly pausa os envios daquele número. Abra **Canais → WhatsApp** e veja o cartão **Cobrança do WhatsApp (Meta)**: se disser **Envio pausado**, corrija a forma de pagamento nas ferramentas da Meta e depois toque em **Retomar envios**. As mensagens que chegam continuam sendo recebidas enquanto isso.
 
 Se o agente **responde, mas responde mal** (inventa dados, não conhece seus preços ou foge do assunto):
 

@@ -3,7 +3,7 @@ id: solucion-problemas
 title: "Troubleshooting common issues"
 routes: ["/admin/channels", "/admin/agent", "/admin/inbox", "/admin/broadcast", "/admin/appointments", "/admin/settings/billing"]
 roles: ["tenant_admin", "tenant_supervisor", "tenant_agent"]
-keywords: ["troubleshooting", "not working", "messages not arriving", "not responding", "bot not responding", "channel disconnected", "token expired", "reconnect", "campaign won't send", "template rejected", "plan limit", "limit reached", "appointment missing", "calendar not syncing", "verification email", "code not arriving", "error", "help", "support", "contact support"]
+keywords: ["troubleshooting", "not working", "messages not arriving", "not responding", "bot not responding", "channel disconnected", "token expired", "reconnect", "campaign won't send", "template rejected", "plan limit", "limit reached", "appointment missing", "calendar not syncing", "verification email", "code not arriving", "error", "help", "support", "contact support", "sending paused", "meta cannot bill", "agent stopped replying on whatsapp", "whatsapp payment method", "resume sending"]
 ---
 
 # Troubleshooting common issues
@@ -46,6 +46,7 @@ Run through this list in order; the cause is almost always one of these:
 4. **Is the response mode correct?** Under **Behavior**, if the mode is set to "always human", the AI never replies on its own. Switch it to "always AI" or "hybrid" depending on what you need.
 5. **Is the conversation with a human?** If you or someone on the team took over the conversation in the **Inbox** (or the customer asked to speak with a person), the AI stays paused in that conversation until **Resolve** is clicked. This is expected behavior, not a failure.
 6. **Did you run out of AI message capacity?** Open **Plan & Billing** and review the usage bar and current options.
+7. **Is it WhatsApp, with sending paused?** From **1 October 2026** Meta charges your WhatsApp Business account for every delivered service message; if Meta cannot bill that account it stops delivering, and Parallly pauses that number's sends. Open **Channels → WhatsApp** and look at the **WhatsApp charges (Meta)** card: if it says **Sending paused**, fix the payment method in Meta's tools and then press **Resume sending**. Incoming messages keep being received in the meantime.
 
 If the agent **responds, but responds poorly** (makes up data, doesn't know your prices, or goes off topic):
 

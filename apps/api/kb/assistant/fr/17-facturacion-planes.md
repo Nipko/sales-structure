@@ -3,7 +3,7 @@ id: facturacion-planes
 title: "Forfaits, facturation et données fiscales"
 routes: ["/admin/settings/billing", "/admin/settings/fiscal"]
 roles: ["tenant_admin"]
-keywords: ["forfaits", "tarifs", "facturation", "paiement", "moyen de paiement", "changer de forfait", "essai", "cycle", "facture", "historique des paiements", "donnees fiscales", "limite du forfait", "credits sms", "coupon", "annuler abonnement"]
+keywords: ["forfaits", "tarifs", "facturation", "paiement", "moyen de paiement", "changer de forfait", "essai", "cycle", "facture", "historique des paiements", "donnees fiscales", "limite du forfait", "credits sms", "coupon", "annuler abonnement", "meta facture a part", "le forfait inclut whatsapp", "facturation whatsapp", "deux paiements", "facture meta"]
 ---
 
 # Forfaits, facturation et données fiscales
@@ -40,6 +40,16 @@ Ces actions ne sont disponibles que lorsqu'elles apparaissent sur la page. Avant
 
 Les barres d'utilisation indiquent la période et la capacité en vigueur. Lorsqu'une limite est atteinte, le comportement dépend de la ressource : la page précise s'il faut libérer de l'espace, attendre la période suivante ou choisir une autre option. N'utilisez pas de quotas copiés depuis un autre compte.
 
+## Ce que Meta facture à part pour WhatsApp
+
+Votre abonnement Parallly paie le logiciel. **Il ne paie pas les messages livrés par WhatsApp.**
+
+À partir du **1er octobre 2026**, Meta facture à **votre propre compte WhatsApp Business** chaque message de service livré, avec le moyen de paiement que vous avez enregistré **chez Meta**. Parallly ne le facture pas, ne le règle pas à votre place et ne l'inclut pas dans le forfait ; changer de forfait ici ne change pas ce que Meta facture. Chaque numéro dispose de **1 000 messages de service gratuits par mois civil**.
+
+Cette facture n'apparaît pas dans **Forfait et facturation** : c'est Meta qui l'émet et elle se consulte dans les outils de Meta. Ce que vous voyez dans Parallly, sous **Canaux → WhatsApp**, c'est où en est le quota gratuit et quels numéros ont l'envoi en pause. Les détails sont dans l'article **Connecter WhatsApp**.
+
+Si un compte WhatsApp Business se retrouve sans moyen de paiement valide, il cesse de livrer les messages de service : l'agent ne répond plus, même si votre abonnement Parallly est à jour.
+
 ## Questions fréquentes
 
 **Puis-je changer de forfait ou annuler ?**
@@ -47,6 +57,9 @@ Uniquement lorsque l'action est activée. Lisez le récapitulatif de confirmatio
 
 **L'essai exige-t-il un moyen de paiement ?**
 Cela dépend de l'option disponible. L'inscription et **Forfait et facturation** affichent le prérequis et toute date avant confirmation.
+
+**Mon forfait Parallly inclut-il ce que Meta facture pour WhatsApp ?**
+Non. Ce sont deux paiements distincts : le forfait, c'est le logiciel ; les messages livrés par WhatsApp sont payés par votre entreprise à Meta avec le moyen de paiement enregistré sur votre compte WhatsApp Business.
 
 **Comment obtenir une facture ?**
 Consultez l'historique et les **Données fiscales**. Si aucun téléchargement ni état d'émission n'apparaît, contactez le support ; ne supposez pas qu'une intégration fiscale est active.

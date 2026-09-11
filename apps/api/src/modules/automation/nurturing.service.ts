@@ -9,6 +9,7 @@ import { LLMRouterService } from '../ai/router/llm-router.service';
 import { OutboundQueueService } from '../channels/outbound-queue.service';
 import { ChannelTokenService } from '../channels/channel-token.service';
 import { ComplianceService } from '../analytics/compliance.service';
+import { WhatsappMessagingService } from '../whatsapp/services/whatsapp-messaging.service';
 import { OutboundMessage } from '@parallext/shared';
 import { nurtureMsg, LANG_NAME } from './nurturing-i18n';
 import { CronLockService } from '../redis/cron-lock.service';
@@ -54,6 +55,10 @@ export class NurturingService {
         private readonly outboundQueue: OutboundQueueService,
         private readonly channelToken: ChannelTokenService,
         private readonly compliance: ComplianceService,
+        // The only compliant way to send an approved template. The queue cannot
+        // do it: `metadata.isTemplate` is read by nothing, so a "template" put
+        // on the queue travels as whatever its `content.text` happens to say.
+        private readonly whatsappMessaging: WhatsappMessagingService,
         private readonly cronLock: CronLockService,
         private readonly pipelineService: PipelineService,
     ) {}
@@ -537,46 +542,29 @@ export class NurturingService {
         conversationId: string,
         contact: any,
     ): Promise<void> {
-        const phone = contact?.external_id || contact?.phone;
-        if (!phone) {
-            this.logger.warn(`No phone for contact in conversation ${conversationId} — cannot send template`);
-            return;
-        }
-
+        // ═══ THIS USED TO BYPASS EVERY GUARD THE OTHER TWO ATTEMPTS USE ═══
+        //
+        // It built its own outbound and put it on the queue directly, which
+        // skipped, in order: the opt-out check, the allowed-channel list, the
+        // one-per-day cap, and the 24-hour window. Then it logged "Attempt 2:
+        // Template sent" — for a free-form text.
+        //
+        // Attempt 2 fires a day after the customer stopped replying, so it is
+        // OUTSIDE the window almost by definition, and a free-form message
+        // outside the window is refused by Meta. The whole attempt failed
+        // silently, its catch sent another text that failed the same way, and
+        // the conversation log said a template had gone out.
+        //
+        // It now goes through `sendFollowUpText`, like attempts 1 and 3 —
+        // which, outside the window, sends the tenant's configured APPROVED
+        // TEMPLATE and skips when there is none. The config field for that
+        // template already existed and nothing had ever read it.
         const lang = await this.resolveFollowUpLanguage(schemaName, conversationId, tenantId);
         const i18n = nurtureMsg(lang);
-        const displayName = contact?.name || 'estimado cliente';
-
-        // Try to send a template. If the tenant has a nurturing template configured, use it.
-        // Otherwise, fall back to a text message (if within 24h window).
-        try {
-            const { accessToken, accountId } = await this.resolveChannelCredentials(tenantId);
-            const outbound: OutboundMessage = {
-                tenantId,
-                channelType: 'whatsapp',
-                channelAccountId: accountId,
-                to: phone,
-                content: {
-                    type: 'text' as any,
-                    text: i18n.attempt2TemplateText(displayName),
-                },
-            };
-
-            await this.outboundQueue.enqueue(outbound, accessToken);
-
-            // Save as outbound message — the [Plantilla…] prefix is intentional as a
-            // technical audit marker visible to agents reviewing the conversation log.
-            // It is NOT shown to the customer (the `content.text` above is sent instead).
-            await this.saveOutboundMessage(schemaName, conversationId,
-                i18n.attempt2SavedText(displayName));
-
-            this.logger.log(`Attempt 2: Template sent for conversation ${conversationId}`);
-        } catch (e: any) {
-            this.logger.warn(`Template send failed for attempt 2, falling back to text: ${e.message}`);
-            // Fallback: send text if within 24h window
-            await this.sendFollowUpText(tenantId, schemaName, conversationId, contact,
-                i18n.attempt2CatchFallback(contact?.name || ''));
-        }
+        const sent = await this.sendFollowUpText(tenantId, schemaName, conversationId, contact,
+            i18n.attempt2TemplateText(contact?.name || 'estimado cliente'));
+        this.logger.log(`Attempt 2 for conversation ${conversationId}: `
+            + `${sent ? 'sent' : 'not sent (opted out, capped, or no template outside the window)'}`);
     }
 
     /**
@@ -755,7 +743,22 @@ export class NurturingService {
     }
 
     /**
-     * Send a WhatsApp approved template (HSM) for follow-up outside 24h window.
+     * Send a WhatsApp approved template for a follow-up outside the 24h window.
+     *
+     * ── WHY THIS DOES NOT GO THROUGH THE QUEUE ──────────────────────────────
+     *
+     * It used to. It built an outbound whose `content.text` was the literal
+     * string `[Template: nurture_followup]` and put the real template name in
+     * `metadata.isTemplate`/`templateName` — which is read by NOTHING. No
+     * adapter, no processor, no sink. So either the customer received that
+     * literal marker, or Meta refused it for being free-form outside the
+     * window; both end with the follow-up never arriving and the conversation
+     * log saying it did.
+     *
+     * The drip sequence hit the same bug and its fix is the one used here:
+     * `WhatsappMessagingService.sendTemplate`, which is the only road that
+     * builds a real template payload — and the road that asks the money
+     * authority first.
      */
     private async sendWhatsAppTemplate(
         tenantId: string,
@@ -767,37 +770,30 @@ export class NurturingService {
         const phone = contact?.external_id || contact?.phone;
         if (!phone) return;
 
-        const { accessToken, accountId } = await this.resolveChannelCredentials(tenantId, 'whatsapp');
+        const conversation = await this.getConversation(schemaName, conversationId);
+        // The number this conversation belongs to, never "the tenant's first
+        // WhatsApp number": a tenant with two numbers would open the follow-up
+        // from a number the customer has never seen.
+        const sender = conversation?.channel_account_id
+            || (await this.resolveChannelCredentials(tenantId, 'whatsapp')).accountId;
+        // Approved IN a language. Meta refuses a template in one it was not
+        // approved for, and `'es'` was hardcoded while every other line of this
+        // follow-up already resolved the conversation's own language.
+        const language = await this.resolveFollowUpLanguage(schemaName, conversationId, tenantId);
+        const components = [
+            { type: 'body', parameters: [{ type: 'text', text: contact?.name || 'cliente' }] },
+        ];
 
-        const outbound: OutboundMessage = {
-            tenantId,
-            channelType: 'whatsapp',
-            channelAccountId: accountId,
-            to: phone,
-            content: {
-                type: 'text',
-                text: `[Template: ${templateName}]`,
-            },
-            metadata: {
-                isTemplate: true,
-                templateName,
-                templateLanguage: 'es',
-                templateComponents: [
-                    {
-                        type: 'body',
-                        parameters: [
-                            { type: 'text', text: contact?.name || 'cliente' },
-                        ],
-                    },
-                ],
-            },
-        };
+        const result = await this.whatsappMessaging.sendTemplate(
+            schemaName, phone, templateName, language, components, sender,
+            { contactId: conversation?.contact_id ?? contact?.id ?? null });
 
-        await this.outboundQueue.enqueue(outbound, accessToken);
         await this.saveOutboundMessage(schemaName, conversationId,
-            `[Plantilla WA: ${templateName}] Seguimiento enviado a ${contact?.name || 'cliente'}`);
+            `[Plantilla WA: ${templateName}] Seguimiento enviado a ${contact?.name || 'cliente'}`,
+            { status: 'sent', providerMessageId: result?.messageId ?? null });
 
-        this.logger.log(`[Nurturing] WhatsApp template "${templateName}" sent for conv ${conversationId}`);
+        this.logger.log(`[Nurturing] WhatsApp template "${templateName}" (${language}) `
+            + `sent for conv ${conversationId}`);
     }
 
     /**
@@ -834,11 +830,25 @@ export class NurturingService {
         return result?.[0]?.within_window === true;
     }
 
-    private async saveOutboundMessage(schemaName: string, conversationId: string, text: string): Promise<void> {
+    /**
+     * Record the follow-up in the conversation, with the status it has earned.
+     *
+     * `delivered` was written unconditionally, before anything had been sent.
+     * A follow-up that was queued and never left, or that Meta refused, showed
+     * in the customer's history as delivered — and an agent reading that
+     * history concludes the customer was contacted and ignored them.
+     *
+     * `pending` is the honest default for something handed to a queue. A
+     * template sent inline has a provider receipt in hand, so it says `sent`
+     * and carries the id a status webhook will settle against.
+     */
+    private async saveOutboundMessage(schemaName: string, conversationId: string, text: string,
+        outcome: { status?: string; providerMessageId?: string | null } = {}): Promise<void> {
         await this.prisma.executeInTenantSchema(schemaName,
-            `INSERT INTO messages (conversation_id, direction, content_type, content_text, status, metadata)
-             VALUES ($1::uuid, 'outbound', 'text', $2, 'delivered', '{"source":"nurturing"}'::jsonb)`,
-            [conversationId, text],
+            `INSERT INTO messages (conversation_id, direction, content_type, content_text,
+                                   status, external_id, metadata)
+             VALUES ($1::uuid, 'outbound', 'text', $2, $3, $4, '{"source":"nurturing"}'::jsonb)`,
+            [conversationId, text, outcome.status ?? 'pending', outcome.providerMessageId ?? null],
         );
     }
 

@@ -101,9 +101,16 @@ describe('the free allowance, which belongs to a number and to a month', () => {
         // it is missing.
         const payload = consumption([
             month({ month: '2026-10', freeDeliveries: 10 }),
-            month({ month: null, chargedDeliveries: 7 }),
+            month({ month: null, freeDeliveries: 999, chargedDeliveries: 7 }),
         ]);
-        expect(latestMonthPerNumber(payload)).toHaveLength(1);
+        // The month AND its figures, not just the count of rows. Asserting only
+        // the length let a mutation that gave the undated row a month of its own
+        // pass: it replaced the real month's numbers and the array stayed one
+        // entry long, which is exactly the shape of the bug.
+        expect(latestMonthPerNumber(payload)).toEqual([{
+            channelAccountId: '15550001111', month: '2026-10',
+            freeDeliveries: 10, allowance: 1000, chargedDeliveries: 0, money: [],
+        }]);
         expect(undatedConsumption(payload).map(undated => undated.chargedDeliveries)).toEqual([7]);
     });
 

@@ -1262,6 +1262,52 @@ export async function releaseTransmission(query: SpendQuery, schema: string,
 }
 
 /**
+ * ═══ A REFUSAL THE PROVIDER INVITED US TO REPEAT ═══
+ *
+ * A 429, a documented rate limit, a `is_transient: true`. The provider REFUSED
+ * — nothing was created, nothing was delivered, nobody was billed — and its own
+ * contract says the identical request may succeed later.
+ *
+ * That is an outcome of the ATTEMPT, not of the EFFECT. The message is still
+ * owed to the customer. Recording it as a rejection released the reservation
+ * and resolved the transmission right, so the retry found a `released` row,
+ * `mayTransmit` said no, and the effect was refused as `effect_already_resolved`
+ * — one rate limit, one message silently abandoned for ever. Recording it as a
+ * timeout was worse: it retains money for a message that provably never
+ * existed, and never releases.
+ *
+ * So the reservation stays `held` — same amount, same identity, no second
+ * reservation — and only the send right goes back to `idle`. The next attempt
+ * re-claims THE SAME row, which is what makes "no duplicate reservation and no
+ * duplicate POST" true rather than hoped for.
+ *
+ * From `in_flight` as well as `claimed`, and that is safe precisely because the
+ * provider answered: a refusal is evidence the request was processed and
+ * declined, which is the one thing an ordinary `in_flight` timeout can never
+ * establish.
+ */
+export async function returnTransmissionAfterRefusal(query: SpendQuery, schema: string, input: {
+    readonly effectKey: string;
+    /** The right the caller held. A worker whose lease lapsed may not do this. */
+    readonly transmitToken: string;
+    readonly reason: string;
+}): Promise<boolean> {
+    assertSchema(schema);
+    const rows = await query<any[]>(
+        `UPDATE "${schema}".whatsapp_spend_reservations
+            SET transmit_state = 'idle', transmit_token = NULL, transmit_expires_at = NULL,
+                reason = $3,
+                remote_state = 'rejected',
+                updated_at = clock_timestamp()
+          WHERE effect_key = $1 AND transmit_token = $2::uuid
+            AND state = 'held'
+            AND transmit_state IN ('claimed','in_flight')
+         RETURNING effect_key`,
+        [input.effectKey, input.transmitToken, input.reason.slice(0, 200)]);
+    return rows.length > 0;
+}
+
+/**
  * Expired transmission rights, resolved by what they can prove.
  *
  * `claimed` goes back to `idle` — provably nothing was sent, so the effect is

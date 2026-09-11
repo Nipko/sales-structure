@@ -17,6 +17,7 @@ import {
     recentIdenticalDeliveries, releaseTransmission, sweepTransmissionLeases,
     readExposure, readPressure, readSpendSignals, recordAllocation, releaseReservation,
     reserveAgainstCounter, retainReservation, returnFreeDeliveries,
+    returnTransmissionAfterRefusal,
     settleReservation, sweepExpiredLeases,
     worstPressure,
     type DurableReceipt, type ProviderInvoiceLine, type ReceiptInboxStatus,
@@ -671,7 +672,8 @@ export class WhatsappSpendService {
      * it exists to enforce is that a timeout NEVER releases.
      */
     async recordOutcome(schema: string, effectKey: string, outcome: {
-        readonly kind: 'delivered_priced' | 'accepted' | 'rejected' | 'timeout';
+        readonly kind: 'delivered_priced' | 'accepted' | 'rejected'
+            | 'rejected_retryable' | 'timeout';
         readonly providerMessageId?: string | null;
         readonly chargedMinor?: number | null;
         readonly errorCode?: string | null;
@@ -715,6 +717,27 @@ export class WhatsappSpendService {
                         providerMessageId: outcome.providerMessageId, remoteState: 'accepted',
                         transmitToken,
                     });
+                case 'rejected_retryable': {
+                    // A 429, a documented rate limit, an explicit transient
+                    // flag. The provider refused and INVITED a repeat, so this
+                    // is an outcome of the attempt and not of the effect: the
+                    // message is still owed. The reservation stays `held` and
+                    // only the send right goes back, so the next attempt
+                    // re-claims the same row — no second reservation, no second
+                    // POST.
+                    if (!transmitToken) {
+                        // A writer that did not transmit cannot hand back a
+                        // right it never held. Nothing to do, and inventing a
+                        // release here would return money for a message that
+                        // is still going to be sent.
+                        return findReservation(query as SpendQuery, schema, effectKey);
+                    }
+                    await returnTransmissionAfterRefusal(query as SpendQuery, schema, {
+                        effectKey, transmitToken,
+                        reason: outcome.errorCode ?? 'provider_refused_retryable',
+                    });
+                    return findReservation(query as SpendQuery, schema, effectKey);
+                }
                 case 'rejected':
                     // The only positive negative: an explicit refusal with no
                     // message id. Nothing left, so nothing is owed.

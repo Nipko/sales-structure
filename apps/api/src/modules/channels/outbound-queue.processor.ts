@@ -393,12 +393,25 @@ export class OutboundQueueProcessor extends WorkerHost {
                 this.logger.error(`[Dispatch] ${dispatchId} outcome unknown (${outcome.errorCode}) — reconciliation required`);
                 return `dispatch:reconciliation_required:${outcome.errorCode}`;
             }
+            // ── THREE ANSWERS, NOT TWO ──────────────────────────────────────
+            //
             // A refusal with no message id is the one positive negative that
-            // releases the money. A retryable failure is not: the attempt may
-            // still land, so the reservation is retained for the retry to adopt.
+            // releases the money. A RETRYABLE refusal is neither that nor a
+            // timeout: the provider answered, so nothing was created — but its
+            // own contract invites the identical request again.
+            //
+            // Recording it as a timeout retained the money and moved the
+            // reservation to `indeterminate`, which `mayTransmit` refuses. So
+            // the outbox dutifully scheduled the retry and the spend gate
+            // turned it away as `effect_already_resolved`: one rate limit, one
+            // message abandoned for ever, with the row saying `failed` and
+            // nothing saying why it never came back.
+            //
+            // `rejected_retryable` keeps the reservation `held` and hands the
+            // send right back, so the retry re-claims THE SAME row.
             if (admission) await this.spendGate!.record(await this.prisma.getTenantSchemaName(tenantId),
                 admission, outcome.retryable
-                    ? { kind: 'timeout', errorCode: outcome.errorCode }
+                    ? { kind: 'rejected_retryable', errorCode: outcome.errorCode }
                     : { kind: 'rejected', errorCode: outcome.errorCode })
                 .catch(() => undefined);
             const settled = await this.dispatchOutbox.settle(tenantId, dispatchId, admitted.leaseToken,
@@ -685,7 +698,7 @@ export class OutboundQueueProcessor extends WorkerHost {
     }
 
     private async settle(outbound: OutboundMessage, admission: unknown, outcome: {
-        kind: 'delivered_priced' | 'accepted' | 'rejected' | 'timeout';
+        kind: 'delivered_priced' | 'accepted' | 'rejected' | 'rejected_retryable' | 'timeout';
         providerMessageId?: string | null; errorCode?: string | null;
     }) {
         if (!admission || admission === 'refused' || !this.spendGate) return;

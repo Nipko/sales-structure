@@ -14,6 +14,10 @@ import { SpendMeterUnavailable } from '../../billing/whatsapp-spend/spend-unavai
 import { ChannelTokenService } from '../../channels/channel-token.service';
 import { isConnectionRefusal } from '../../channels/connection-refusal';
 import { AccountPauseStore } from '../../channels/account-pause-store';
+import {
+    classifyTransportFailure, metaGraphAnswer, metaGraphClassifier,
+} from '../../channels/provider-error-classification';
+import { IncidentService } from '../../health/incident.service';
 
 const META_GRAPH_VERSION = 'v21.0';
 
@@ -73,6 +77,15 @@ export class WhatsappMessagingService {
     // The first of the two places Meta says the business cannot be billed: the
     // answer to this very request. The other is a status webhook minutes later.
     @Optional() private readonly pauses?: AccountPauseStore,
+    /**
+     * Where a broken provider contract goes.
+     *
+     * A 2xx with no message id is neither a transport failure nor a refusal:
+     * it is Meta answering something its own documentation says it does not.
+     * The effect may be on a phone and cannot be named, which no automatic
+     * behaviour can resolve — so a person has to reconcile it.
+     */
+    @Optional() private readonly incidents?: IncidentService,
   ) {}
 
   // ============================================================
@@ -286,7 +299,37 @@ export class WhatsappMessagingService {
         })
       );
 
-      const messageId = response.data?.messages?.[0]?.id || `unknown-${Date.now()}`;
+      // ── A 2xx IS NOT AN ACCEPTANCE UNTIL IT NAMES THE MESSAGE ───────────
+      //
+      // `messages[0].id` used to fall back to `unknown-${Date.now()}`. That
+      // value is a lie with three consequences, and all of them are silent: the
+      // caller is handed a receipt that identifies nothing; the ledger records
+      // an ACCEPTANCE, so the reservation waits for a webhook that can never
+      // match; and the log carries an id no support engineer can look up.
+      //
+      // Meta's contract is that a Graph answer either creates the message and
+      // returns its id, or returns an error and creates nothing. A 2xx with
+      // neither is the contract being broken, which is an INDETERMINATE
+      // outcome — the effect may exist and cannot be named — and an incident,
+      // not a success.
+      const answer = metaGraphAnswer(response.status ?? 200, response.data, 'messages');
+      const verdict = metaGraphClassifier(answer);
+      if (verdict.kind !== 'accepted') {
+        // Retained, never released and never re-sent: a message that may be on
+        // a phone must not be paid for twice nor sent twice.
+        await this.recordSpend(schemaName, admission,
+          { kind: 'timeout', errorCode: verdict.errorCode });
+        await this.reportContractBreach(schemaName, phoneNumberId, verdict.errorCode);
+        // Marked so the catch below re-throws it untouched. Without the mark it
+        // falls into the generic failure handler and the outcome is recorded a
+        // SECOND time — two spend records for one message, the second of them
+        // describing an exception this code raised itself.
+        throw Object.assign(new BadRequestException(
+          'Meta respondió 2xx sin identificar el mensaje. No se puede confirmar el envío ni '
+          + 'reintentarlo automáticamente: quedó en conciliación.'),
+        { parallllyOutcomeRecorded: true });
+      }
+      const messageId = verdict.receipt;
       this.logger.log(`Message sent successfully: ${messageId}`);
 
       // Accepted, not priced: Meta answers with an id long before it says what
@@ -312,18 +355,37 @@ export class WhatsappMessagingService {
       return { success: true, messageId };
 
     } catch (error: any) {
+      // Already accounted for on the way out. Recording it again would file one
+      // message twice, and the second record would describe our own exception
+      // rather than anything the provider said.
+      if (error?.parallllyOutcomeRecorded) throw error;
       const metaError = error?.response?.data?.error;
       const errorMessage = metaError?.message || error.message;
       const errorCode = metaError?.code || 'UNKNOWN';
 
       this.logger.error(`Failed to send message: [${errorCode}] ${errorMessage}`);
 
-      // A refusal Meta names is proof nothing was delivered, so the money goes
-      // back. Anything else — a timeout, a socket reset, a 5xx — may still have
-      // put a message on a phone, and that reservation is retained.
-      await this.recordSpend(schemaName, admission, metaError
-        ? { kind: 'rejected', errorCode: String(errorCode) }
-        : { kind: 'timeout', errorCode: String(errorCode) });
+      // ── ONE CLASSIFIER, NOT A SECOND OPINION ────────────────────────────
+      //
+      // This used to read `metaError ? rejected : timeout`, which collapses the
+      // three answers a provider can give into two and gets the middle one
+      // exactly backwards. A 429 or a documented rate limit carries a Graph
+      // error object, so it was recorded as a REJECTION: the reservation was
+      // released and its transmission right resolved, so the retry found a
+      // finished effect and was refused as `effect_already_resolved`. One rate
+      // limit, one message abandoned for ever, with nothing in the product
+      // saying so.
+      //
+      // `metaGraphClassifier` is the same rule the strict transport uses, and
+      // it reads Meta's own documented transient codes rather than the presence
+      // of an envelope.
+      const failureAnswer = error?.response
+        ? metaGraphAnswer(error.response.status ?? 0, error.response.data, 'messages')
+        : null;
+      const failure = failureAnswer
+        ? metaGraphClassifier(failureAnswer)
+        : classifyTransportFailure(error);
+      await this.recordSpend(schemaName, admission, this.spendOutcomeFor(failure));
 
       // "This business account cannot be billed" is not a transport failure and
       // must not be retried: every attempt is identical and none can succeed
@@ -346,6 +408,55 @@ export class WhatsappMessagingService {
       throw new BadRequestException(
         `Error al enviar mensaje de WhatsApp: ${errorMessage}`
       );
+    }
+  }
+
+  /**
+   * What the classifier's verdict does to the money.
+   *
+   * The three kinds are three different statements about whether the effect
+   * happened, and they need three different answers:
+   *
+   *   · `accepted`            it exists and is named. Not reached here.
+   *   · `rejected` + retryable  it does NOT exist and the provider invited a
+   *                           repeat. The reservation stays, the send right
+   *                           goes back, the next attempt re-claims the same
+   *                           row — no second reservation, no second POST.
+   *   · `rejected` permanent  it does not exist and never will. Money back.
+   *   · `unknown`             it may exist and cannot be named. Retained,
+   *                           never released, never re-sent.
+   */
+  private spendOutcomeFor(verdict: { kind: string; errorCode?: string; retryable?: boolean }): {
+    kind: 'accepted' | 'rejected' | 'rejected_retryable' | 'timeout';
+    errorCode?: string | null;
+  } {
+    const errorCode = String((verdict as any).errorCode ?? 'unknown');
+    if (verdict.kind === 'rejected') {
+      return { kind: (verdict as any).retryable ? 'rejected_retryable' : 'rejected', errorCode };
+    }
+    return { kind: 'timeout', errorCode };
+  }
+
+  /**
+   * Say out loud that the provider broke its own contract.
+   *
+   * A 2xx with no message id is not a transport problem and not a refusal: it
+   * is Meta answering something its documentation says it does not answer. It
+   * leaves an effect that may be on a phone and cannot be named, which no
+   * automatic behaviour can resolve — so it goes to the Ops Center, where a
+   * person can reconcile it against Meta's own record.
+   */
+  private async reportContractBreach(
+    schemaName: string, phoneNumberId: string, detail: string,
+  ): Promise<void> {
+    try {
+      await this.incidents?.record('whatsapp_graph_contract_breach', 'warning',
+        'Meta respondió 2xx sin identificar el mensaje',
+        `El número ${phoneNumberId} (${schemaName}) recibió una respuesta 2xx sin `
+        + `\`messages[0].id\` (${detail}). El efecto puede existir y no se puede nombrar: `
+        + 'quedó retenido en conciliación y no se reintenta solo.', 1);
+    } catch (error: any) {
+      this.logger.error(`[WhatsApp] contract breach not recorded: ${error?.message}`);
     }
   }
 
@@ -537,7 +648,7 @@ export class WhatsappMessagingService {
   }
 
   private async recordSpend(schemaName: string, admission: unknown, outcome: {
-    kind: 'delivered_priced' | 'accepted' | 'rejected' | 'timeout';
+    kind: 'delivered_priced' | 'accepted' | 'rejected' | 'rejected_retryable' | 'timeout';
     providerMessageId?: string | null; errorCode?: string | null;
   }) {
     if (!admission || admission === 'refused') return;

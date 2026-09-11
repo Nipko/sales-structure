@@ -600,25 +600,33 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         id: 'appointments.reminders',
         effect: '24h and 2h appointment reminders, the attendance check and the no-show follow-up, on '
             + 'WhatsApp and by email',
-        lane: 'inline',
+        // Moved off `inline`. The two WhatsApp reminders commit a durable row
+        // and the processor sends it; the sweep no longer finds an egress
+        // primitive in this file because there is no longer one to find, which
+        // is why the derivation is `declared` rather than `census`.
+        lane: 'dispatch_outbox',
         status: 'live',
-        derivation: 'census',
+        derivation: 'declared',
         source: 'modules/appointments/appointment-reminders.service.ts',
         symbol: 'AppointmentRemindersService',
-        egress: 'WhatsappMessagingService.sendTemplate directly, plus '
-            + 'EmailTemplatesService.renderAndSend for the email copy',
+        egress: 'ProactiveDispatchService.send commits an `agent_dispatch_outbox` row with a '
+            + '`template` item; the outbound processor performs the Graph call. The email copy '
+            + 'still goes through EmailTemplatesService.renderAndSend inline',
         properties: {
-            authority: none('the cron calls Meta inline; nothing records that an attempt was permitted'),
-            idempotency: partial('`reminder_24h_sent`, `reminder_2h_sent` and `no_show_followed_up` are '
-                + 'set AFTER the send, so a crash in that window sends the reminder twice on the next '
-                + 'cron pass'),
-            receipt: partial('the WhatsApp id reaches `whatsapp_messages` through `logMessage`; the '
-                + 'email copy records nothing'),
-            uncertainOutcome: none('a timeout throws before the flag is written, so an accepted reminder '
-                + 'is retried'),
-            erasure: none('`whatsapp_messages` is not in the GDPR erasure fan-out'),
-            recovery: partial('the next cron pass picks up anything whose flag is unset, which cannot '
-                + 'tell a lost attempt from a completed one'),
+            authority: durable('the processor admits the row through the spend gate before the POST, so '
+                + 'the ceiling, the payer and the transmission right are all settled before Meta is '
+                + 'called'),
+            idempotency: durable('the origin is derived from the appointment and WHICH reminder, so a '
+                + 'second pass before the flag is written finds the same row and publishes nothing '
+                + 'new. The flag stopped being the only thing standing between one reminder and two'),
+            receipt: durable('the outbox row carries the provider id and the history row it wrote in the '
+                + 'same transaction'),
+            uncertainOutcome: durable('a timeout leaves the row admitted with its lease; the lease sweep '
+                + 'moves it to reconciliation rather than sending again'),
+            erasure: durable('the outbox payload is cleared by the GDPR fan-out like every other '
+                + 'dispatch row'),
+            recovery: durable('the recovery pass republishes any row nothing ever published, which is '
+                + 'exactly the case the cron flag could not tell from a completed one'),
         },
     }),
 

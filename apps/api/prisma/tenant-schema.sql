@@ -5260,7 +5260,15 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_dispatch_outbox" (
     batch_id UUID NOT NULL,
     conversation_id UUID,
     contact_id UUID,
+    -- EL ORIGEN: la cosa durable que causo este lote. Para una respuesta es
+    -- el mensaje entrante. Para un efecto proactivo es un UUID derivado de la
+    -- identidad durable del productor (id del recordatorio, paso del goteo,
+    -- destinatario de la campana), asi que dos intentos del mismo efecto
+    -- producen el mismo origen y la unicidad de abajo hace lo correcto sin una
+    -- linea nueva de logica. El nombre quedo impreciso; renombrarlo es un
+    -- expand-contract de dos deploys.
     inbound_message_id UUID NOT NULL,
+    origin_kind TEXT NOT NULL DEFAULT 'inbound_reply',
     channel_type TEXT NOT NULL,
     channel_account_id TEXT NOT NULL,
     recipient TEXT,
@@ -5282,6 +5290,8 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_dispatch_outbox" (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT agent_dispatch_outbox_identity UNIQUE (inbound_message_id, item_index),
+    CONSTRAINT agent_dispatch_outbox_origin
+        CHECK (origin_kind IN ('inbound_reply','proactive')),
     CONSTRAINT agent_dispatch_outbox_state
         CHECK (state IN ('prepared','queued','admitted','sent','stored','suppressed','failed','reconciliation_required')),
     CONSTRAINT agent_dispatch_outbox_kind
@@ -5301,6 +5311,10 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_dispatch_outbox_sources" (
 CREATE INDEX IF NOT EXISTS idx_agent_dispatch_outbox_pending ON "{{SCHEMA_NAME}}"."agent_dispatch_outbox"(available_at, id) WHERE state IN ('prepared','queued','failed');
 CREATE INDEX IF NOT EXISTS idx_agent_dispatch_outbox_lease ON "{{SCHEMA_NAME}}"."agent_dispatch_outbox"(lease_expires_at) WHERE state = 'admitted';
 CREATE INDEX IF NOT EXISTS idx_agent_dispatch_outbox_batch ON "{{SCHEMA_NAME}}"."agent_dispatch_outbox"(batch_id, item_index);
+-- Un efecto proactivo no tiene conversacion del cliente ni mensaje entrante que
+-- mirar, asi que el barrido que los busca necesita su propio indice. Parcial:
+-- son pocas filas frente al total.
+CREATE INDEX IF NOT EXISTS idx_agent_dispatch_outbox_proactive ON "{{SCHEMA_NAME}}"."agent_dispatch_outbox"(state, available_at) WHERE origin_kind = 'proactive';
 -- Provider id -> conversation record. The webhook resolves a wamid here because
 -- messages.external_id holds our own deduplication identity, not the provider's.
 CREATE INDEX IF NOT EXISTS idx_agent_dispatch_outbox_receipt ON "{{SCHEMA_NAME}}"."agent_dispatch_outbox"(receipt) WHERE receipt IS NOT NULL;

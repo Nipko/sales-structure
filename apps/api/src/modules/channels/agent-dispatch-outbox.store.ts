@@ -15,7 +15,8 @@ import {
     redactSettledDispatchOutbox,
     type DispatchReconciliationBacklog, type DispatchReconciliationEntry, type DispatchResolution,
     type DispatchResolutionRecord,
-    type DispatchBinding, type DispatchItem, type DispatchOutcome, type DispatchRow,
+    type DispatchBinding, type DispatchItem, type DispatchOriginKind,
+    type DispatchOutcome, type DispatchRow,
 } from './agent-dispatch-outbox';
 import {
     assertServedAgentConnectionAuthority, validServedAgentAuthority, type ServedAgentAuthority,
@@ -82,6 +83,8 @@ export class AgentDispatchOutboxStore {
         operationalScope: ServedAgentAuthority;
         learningFootprints?: readonly RuntimeLearningFootprint[];
         sources?: readonly { id: string; sourceContactId?: string | null }[];
+        /** `proactive` for an effect nobody asked for. Defaults to a reply. */
+        originKind?: DispatchOriginKind;
     }): Promise<{ schemaName: string; batchId: string; rows: DispatchRow[] }> {
         const schema = await this.schemaFor(tenantId);
         if (!validServedAgentAuthority(input.operationalScope, schema, tenantId))
@@ -93,6 +96,7 @@ export class AgentDispatchOutboxStore {
                 operationalScope: input.operationalScope as unknown as Record<string, any>,
                 learningFootprint: input.learningFootprints as readonly any[] | undefined,
                 sources: input.sources,
+                originKind: input.originKind,
             });
         });
         return { schemaName: schema, ...result };

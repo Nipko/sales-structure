@@ -63,6 +63,7 @@ export const DISPATCH_OUTBOX_DDL: readonly string[] = Object.freeze([
         conversation_id UUID,
         contact_id UUID,
         inbound_message_id UUID NOT NULL,
+        origin_kind TEXT NOT NULL DEFAULT 'inbound_reply',
         channel_type TEXT NOT NULL,
         channel_account_id TEXT NOT NULL,
         recipient TEXT,
@@ -84,6 +85,8 @@ export const DISPATCH_OUTBOX_DDL: readonly string[] = Object.freeze([
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         CONSTRAINT agent_dispatch_outbox_identity UNIQUE (inbound_message_id, item_index),
+        CONSTRAINT agent_dispatch_outbox_origin
+            CHECK (origin_kind IN ('inbound_reply','proactive')),
         CONSTRAINT agent_dispatch_outbox_state
             CHECK (state IN ('prepared','queued','admitted','sent','stored','suppressed','failed','reconciliation_required')),
         CONSTRAINT agent_dispatch_outbox_kind
@@ -107,6 +110,11 @@ export const DISPATCH_OUTBOX_DDL: readonly string[] = Object.freeze([
         ON agent_dispatch_outbox(lease_expires_at) WHERE state = 'admitted'`,
     `CREATE INDEX IF NOT EXISTS idx_agent_dispatch_outbox_batch
         ON agent_dispatch_outbox(batch_id, item_index)`,
+    // A proactive effect has no customer conversation and no inbound message to
+    // sweep from, so the pass that finds them needs its own index. Partial:
+    // they are few beside everything else.
+    `CREATE INDEX IF NOT EXISTS idx_agent_dispatch_outbox_proactive
+        ON agent_dispatch_outbox(state, available_at) WHERE origin_kind = 'proactive'`,
     `CREATE INDEX IF NOT EXISTS idx_agent_dispatch_outbox_receipt
         ON agent_dispatch_outbox(receipt) WHERE receipt IS NOT NULL`,
     `CREATE INDEX IF NOT EXISTS idx_agent_dispatch_outbox_contact
@@ -147,9 +155,33 @@ export const DISPATCH_OUTBOX_DDL: readonly string[] = Object.freeze([
         ON agent_dispatch_resolutions(created_at) WHERE exported_at IS NULL`,
 ]);
 
+/**
+ * ═══ WHAT CAUSED THIS BATCH ═══
+ *
+ * `inbound_reply` is the original and still the common case: a customer wrote,
+ * and these rows are the answer. The origin is the inbound message itself.
+ *
+ * `proactive` is a reminder, a drip step, a campaign recipient, a REST send —
+ * something the business started. There is no inbound message, and requiring
+ * one is the entire reason twenty-five producers could not use this lane and
+ * therefore had no durable row at all: a restart between the decision and the
+ * POST lost the effect or repeated it.
+ *
+ * Their origin is a UUID DERIVED from the producer's own durable identity, so
+ * two attempts at the same effect produce the same origin and the existing
+ * `UNIQUE (inbound_message_id, item_index)` does exactly the right thing with
+ * no new logic.
+ */
+export type DispatchOriginKind = 'inbound_reply' | 'proactive';
+
 export interface DispatchBinding {
     readonly conversationId: string;
     readonly contactId: string;
+    /**
+     * THE ORIGIN. An inbound message id for a reply; a derived UUID for a
+     * proactive effect. The column keeps its old name until an
+     * expand-contract deploy can rename it.
+     */
     readonly inboundMessageId: string;
     readonly channelType: string;
     readonly channelAccountId: string;
@@ -248,7 +280,11 @@ export async function prepareDispatchBatch(query: DispatchOutboxQuery, schema: s
     operationalScope: Record<string, any>;
     learningFootprint?: readonly any[];
     sources?: readonly { id: string; sourceContactId?: string | null }[];
+    /** Defaults to `inbound_reply`, which is what every existing caller is. */
+    originKind?: DispatchOriginKind;
 }): Promise<{ batchId: string; rows: DispatchRow[] }> {
+    const originKind: DispatchOriginKind = input?.originKind === 'proactive'
+        ? 'proactive' : 'inbound_reply';
     if (!SCHEMA.test(schema) || !input || !validBinding(input.binding)
         || !Array.isArray(input.items) || !input.items.length || input.items.length > 32
         || input.items.some(item => !item || !DISPATCH_ITEM_KINDS.includes(item.kind)
@@ -273,11 +309,21 @@ export async function prepareDispatchBatch(query: DispatchOutboxQuery, schema: s
     }
     // The inbound must already be persisted, so a recovered batch can always be
     // tied back to the customer message that caused it.
-    const [inbound] = await query<any[]>(
-        `SELECT id FROM messages WHERE id = $1::uuid AND conversation_id = $2::uuid
-         AND direction = 'inbound' FOR SHARE`,
-        [input.binding.inboundMessageId, input.binding.conversationId]);
-    if (!inbound) fail('dispatch_inbound_unavailable');
+    //
+    // A PROACTIVE batch has no such message — that is what makes it proactive —
+    // and its origin is derived from the producer's own durable identity
+    // instead. Checking for a `messages` row would refuse every reminder on the
+    // platform, which is precisely the requirement that kept them off this lane.
+    if (originKind === 'inbound_reply') {
+        const [inbound] = await query<any[]>(
+            `SELECT id FROM messages WHERE id = $1::uuid AND conversation_id = $2::uuid
+             AND direction = 'inbound' FOR SHARE`,
+            [input.binding.inboundMessageId, input.binding.conversationId]);
+        if (!inbound) fail('dispatch_inbound_unavailable');
+    }
+    // The conversation is checked either way. A proactive effect still writes
+    // its history into a conversation, and a binding naming a conversation that
+    // belongs to another contact is a conflict in both directions.
     const [conversation] = await query<any[]>(
         'SELECT id FROM conversations WHERE id = $1::uuid AND contact_id = $2::uuid FOR SHARE',
         [input.binding.conversationId, input.binding.contactId]);
@@ -296,6 +342,9 @@ export async function prepareDispatchBatch(query: DispatchOutboxQuery, schema: s
         // writes, so a failure could leave one of them; and the history row said
         // 'delivered' before anything had been sent. It now says 'pending' until
         // a provider actually accepts the effect it describes.
+        // The origin, not "the inbound": for a proactive effect it is the
+        // derived id, which is what makes a retry find its own history row
+        // instead of writing a second one.
         const externalId = `out:dispatch:${input.binding.inboundMessageId}:${index}`;
         const content = historyContent(item);
         const columns = `INSERT INTO messages(conversation_id, direction, content_type, content_text, media_url,
@@ -320,14 +369,15 @@ export async function prepareDispatchBatch(query: DispatchOutboxQuery, schema: s
         if (!messageId) fail('dispatch_history_unavailable');
         const [inserted] = await query<any[]>(
             `INSERT INTO agent_dispatch_outbox(batch_id, conversation_id, contact_id, inbound_message_id,
-                channel_type, channel_account_id, recipient, item_index, item_kind, payload,
+                origin_kind, channel_type, channel_account_id, recipient, item_index, item_kind, payload,
                 operational_scope, learning_footprint, message_id, state)
-             VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5,$6,$7,$8,$9,$10::jsonb,$11::jsonb,$12::jsonb,$13::uuid,'prepared')
+             VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$14,$5,$6,$7,$8,$9,$10::jsonb,$11::jsonb,$12::jsonb,$13::uuid,'prepared')
              RETURNING *`,
             [batchId, input.binding.conversationId, input.binding.contactId, input.binding.inboundMessageId,
                 input.binding.channelType, input.binding.channelAccountId, input.binding.recipient,
                 index, item.kind, JSON.stringify(item.payload),
-                JSON.stringify(input.operationalScope), JSON.stringify(footprint), messageId]);
+                JSON.stringify(input.operationalScope), JSON.stringify(footprint), messageId,
+                originKind]);
         for (const source of sources) {
             await query(`INSERT INTO agent_dispatch_outbox_sources(dispatch_id, source_id, source_contact_id)
                 VALUES($1::uuid,$2::uuid,$3::uuid)`,

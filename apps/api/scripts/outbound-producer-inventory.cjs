@@ -131,6 +131,7 @@ const ROADS = [
     'modules/channels/outbound-queue.processor.ts',
     'modules/channels/agent-dispatch-outbox.ts',
     'modules/channels/agent-dispatch-outbox.store.ts',
+    'modules/channels/proactive-dispatch.service.ts',
     'modules/channels/dispatch-items.ts',
     'modules/channels/external-effect-inventory.ts',
     'modules/channels/strict-dispatch.ts',

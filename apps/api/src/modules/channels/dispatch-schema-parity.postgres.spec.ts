@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import { readFileSync } from 'fs';
+import { existsSync, readdirSync, readFileSync } from 'fs';
 import { resolve } from 'path';
 import { Client } from 'pg';
 import { DISPATCH_OUTBOX_DDL } from './agent-dispatch-outbox';
@@ -78,17 +78,26 @@ integration('the three definitions of the dispatch tables agree', () => {
         const tenantId = randomUUID();
         await q('INSERT INTO public.tenants(id, schema_name) VALUES($1::uuid,$2)', [tenantId, schemas.migrated]);
         try {
-            // Every migration that touches these tables, in the order the deploy
-            // applies them. A table added by a later one is as much part of the
-            // production shape as the first.
-            for (const name of ['20260908150000_backfill_agent_dispatch_tenant_tables',
-                '20260908180000_add_agent_turn_ledger',
-                '20260908190000_add_agent_handoff_effects',
-                '20260908200000_add_dispatch_resolution_ledger',
-                '20260910130000_add_agent_turn_outcome',
-                '20260910140000_widen_agent_turn_result']) {
-                await q(readFileSync(resolve(__dirname,
-                    `../../../prisma/migrations/${name}/migration.sql`), 'utf8'));
+            // Every migration that touches these tables, in the order the
+            // deploy applies them — chosen by CONTENT, not by a list of names.
+            //
+            // The list used to be written here by hand, and the first migration
+            // to touch these tables under a name nobody remembered to add was
+            // silently excluded: the fresh side got the change and the migrated
+            // side did not, so the two definitions drifted apart under a test
+            // whose entire purpose is to notice that. A migration that mentions
+            // one of these tables is a migration that shapes them.
+            const migrationsDir = resolve(__dirname, '../../../prisma/migrations');
+            const touches = /agent_dispatch_outbox|agent_turn_ledger|agent_handoff_effects|dispatch_resolution/;
+            const names = readdirSync(migrationsDir)
+                .filter(name => {
+                    const file = resolve(migrationsDir, name, 'migration.sql');
+                    return existsSync(file) && touches.test(readFileSync(file, 'utf8'));
+                })
+                .sort();
+            if (!names.length) throw new Error('no_dispatch_migrations_found');
+            for (const name of names) {
+                await q(readFileSync(resolve(migrationsDir, name, 'migration.sql'), 'utf8'));
             }
         } finally {
             await q('DELETE FROM public.tenants WHERE id=$1::uuid', [tenantId]);

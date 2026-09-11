@@ -1537,6 +1537,10 @@ export const EGRESS_INFRASTRUCTURE: readonly EgressInfrastructure[] = Object.fre
             + 'already committed' },
     { source: 'modules/channels/dispatch-recovery.service.ts', kind: 'road',
         reason: 'republishes outbox rows and retires lapsed permissions. It creates no new effect' },
+    { source: 'modules/channels/proactive-dispatch.service.ts', kind: 'road',
+        reason: 'the durable entrance for an effect nobody asked for: it commits the outbox row and '
+            + 'publishes it. Every decision about whether the message may be sent belongs to the '
+            + 'processor that picks the row up, so this originates nothing of its own' },
     { source: 'modules/channels/channels.module.ts', kind: 'road', reason: 'dependency injection wiring' },
     { source: 'modules/health/health.module.ts', kind: 'road', reason: 'dependency injection wiring' },
     { source: 'modules/sms-credits/sms-credits.module.ts', kind: 'road', reason: 'dependency injection wiring' },

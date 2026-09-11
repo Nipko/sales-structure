@@ -117,6 +117,53 @@ export class WhatsAppAdapter implements IChannelAdapter, StrictDispatchTransport
                 },
             };
         }
+        if (request.itemKind === 'interactive') {
+            // Buttons and lists. The shape Meta accepts is `{type, body,
+            // action}` with an optional header and footer, and the caller hands
+            // it over already shaped — this method does not invent options.
+            //
+            // Refused rather than downgraded when the shape is wrong: a menu
+            // flattened into a text message loses the tap, and the tap is the
+            // whole point. The customer would be asked to type an answer the
+            // agent then has to guess at.
+            const type = String(payload.type ?? '');
+            if (!['button', 'list'].includes(type)) throw new Error('unsupported_interactive_type');
+            const body = String(payload.body ?? payload.text ?? '');
+            if (!body.trim()) throw new Error('empty_interactive_payload');
+            const action = payload.action;
+            if (!action || typeof action !== 'object' || Array.isArray(action)) {
+                throw new Error('empty_interactive_payload');
+            }
+            const interactiveMenu: Record<string, any> = {
+                type,
+                body: { text: toWhatsAppFormatting(body).slice(0, 1024) },
+                action,
+            };
+            if (payload.headerText) {
+                interactiveMenu.header = { type: 'text', text: String(payload.headerText).slice(0, 60) };
+            }
+            if (payload.footerText) {
+                interactiveMenu.footer = { text: String(payload.footerText).slice(0, 60) };
+            }
+            return { type: 'interactive', interactive: interactiveMenu };
+        }
+        if (request.itemKind === 'location') {
+            // A pin the customer opens in their own maps app. Coordinates are
+            // the message: without both there is nothing to send, and sending
+            // the address as text instead is a different message that the
+            // customer has to copy out by hand.
+            const latitude = Number(payload.latitude);
+            const longitude = Number(payload.longitude);
+            if (!Number.isFinite(latitude) || !Number.isFinite(longitude)
+                || Math.abs(latitude) > 90 || Math.abs(longitude) > 180) {
+                throw new Error('invalid_location_payload');
+            }
+            return { type: 'location', location: {
+                latitude, longitude,
+                ...(payload.name ? { name: String(payload.name).slice(0, 1000) } : {}),
+                ...(payload.address ? { address: String(payload.address).slice(0, 1000) } : {}),
+            } };
+        }
         const flowId = String(payload.flowId ?? '');
         const flowToken = String(payload.flowToken ?? '');
         if (!flowId.trim() || !flowToken.trim()) throw new Error('incomplete_flow_payload');

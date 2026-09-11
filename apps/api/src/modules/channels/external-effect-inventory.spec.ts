@@ -225,12 +225,14 @@ describe('the lanes match the code that owns them', () => {
     it('claims durable dispatch only for the item kinds the outbox can carry', () => {
         // The outbox refuses anything outside this set, so a producer claiming
         // the lane for something else would be claiming a row that cannot exist.
-        // `template` is the fifth, and it is what lets a reminder or an
-        // out-of-window drip step use this lane at all: those go out as an
-        // approved template, which is a different Graph call, and without the
-        // kind they had no row to write and went straight to the adapter.
+        // `template` is what lets a reminder or an out-of-window drip step use
+        // this lane at all: those go out as an approved template, a different
+        // Graph call, and without the kind they had no row to write and went
+        // straight to the adapter. `interactive` and `location` are the same
+        // story for the menus and map pins the REST lane sends every day.
         expect([...DISPATCH_ITEM_KINDS].sort())
-            .toEqual(['flow', 'media', 'payment_link', 'template', 'text']);
+            .toEqual(['flow', 'interactive', 'location', 'media', 'payment_link',
+                'template', 'text']);
         const durableReply = EXTERNAL_EFFECT_PRODUCERS.find(row => row.id === 'agent.reply.durable')!;
         expect(durableReply.lane).toBe('dispatch_outbox');
         // And it is not on by default, which is the honest half of that claim.

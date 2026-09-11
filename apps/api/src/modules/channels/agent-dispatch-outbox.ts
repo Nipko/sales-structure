@@ -43,8 +43,23 @@ export const DISPATCH_MAX_ATTEMPTS = 5;
  * APPROVED TEMPLATE — a different Graph call with a name, a language and
  * components — so the producers that send one had no row they could write, went
  * straight to the adapter, and lost or repeated their message across a restart.
+ *
+ * `interactive` and `location` are the two the REST lane sends every day and
+ * this one could not express:
+ *
+ *   · `interactive` is the quick-reply buttons and the list the agent uses to
+ *     ask "which service?" — `type: interactive` at the Graph API, not a text
+ *     message with options written into it. Flattening one into text loses the
+ *     tap, and the tap is what makes the answer unambiguous;
+ *   · `location` is the shop's address as a map pin, which the customer opens
+ *     in their own maps app. As text they have to copy and paste it, and most
+ *     do not.
+ *
+ * Both existed only outside the outbox, so each one went out with no row, no
+ * lease and no receipt.
  */
-export const DISPATCH_ITEM_KINDS = ['text', 'media', 'payment_link', 'flow', 'template'] as const;
+export const DISPATCH_ITEM_KINDS = ['text', 'media', 'payment_link', 'flow', 'template',
+    'interactive', 'location'] as const;
 export type DispatchItemKind = (typeof DISPATCH_ITEM_KINDS)[number];
 
 export const DISPATCH_STATES = [
@@ -100,7 +115,8 @@ export const DISPATCH_OUTBOX_DDL: readonly string[] = Object.freeze([
         CONSTRAINT agent_dispatch_outbox_state
             CHECK (state IN ('prepared','queued','admitted','sent','stored','suppressed','failed','reconciliation_required')),
         CONSTRAINT agent_dispatch_outbox_kind
-            CHECK (item_kind IN ('text','media','payment_link','flow','template')),
+            CHECK (item_kind IN ('text','media','payment_link','flow','template',
+                                 'interactive','location')),
         CONSTRAINT agent_dispatch_outbox_item_index CHECK (item_index >= 0),
         CONSTRAINT agent_dispatch_outbox_lease
             CHECK ((state = 'admitted') = (lease_token IS NOT NULL AND lease_expires_at IS NOT NULL)),
@@ -271,6 +287,22 @@ function mapRow(row: any): DispatchRow {
     });
 }
 
+/** The tappable labels of an interactive message, in the order they appear. */
+export function interactiveOptionLabels(payload: Record<string, any>): string[] {
+    const action = payload?.action ?? {};
+    const fromButtons = Array.isArray(action.buttons)
+        ? action.buttons.map((button: any) => String(button?.reply?.title ?? button?.title ?? '').trim())
+        : [];
+    const fromSections = Array.isArray(action.sections)
+        ? action.sections.flatMap((section: any) => Array.isArray(section?.rows)
+            ? section.rows.map((row: any) => String(row?.title ?? '').trim()) : [])
+        : [];
+    return [...fromButtons, ...fromSections].filter(Boolean).slice(0, 30);
+}
+
+const nlJoin = (labels: string[]) =>
+    labels.map(label => '\n\u00b7 ' + label).join('');
+
 /** What the inbox shows for one effect. A Flow is recorded by its body text. */
 function historyContent(item: DispatchItem): { contentType: string; text: string | null; mediaUrl: string | null } {
     const payload = item.payload || {};
@@ -294,6 +326,30 @@ function historyContent(item: DispatchItem): { contentType: string; text: string
         return {
             contentType: ['image', 'document', 'audio', 'video'].includes(requested) ? requested : 'image',
             text: null, mediaUrl: String(payload.mediaUrl ?? '') || null,
+        };
+    }
+    if (item.kind === 'interactive') {
+        // The agent reading the thread needs to see the QUESTION and the
+        // options, because the customer's next message is one of them. Storing
+        // only the body would make "Lunes 10:00" arrive as an answer to nothing.
+        const body = String(payload.body ?? payload.text ?? '');
+        const labels = interactiveOptionLabels(payload);
+        return {
+            contentType: 'interactive',
+            text: `${body}${labels.length ? `${nlJoin(labels)}` : ''}` || null,
+            mediaUrl: null,
+        };
+    }
+    if (item.kind === 'location') {
+        // Coordinates alone are unreadable in a transcript. The name and the
+        // address are what the customer saw on the pin.
+        const name = String(payload.name ?? '').trim();
+        const address = String(payload.address ?? '').trim();
+        const at = `${payload.latitude}, ${payload.longitude}`;
+        return {
+            contentType: 'location',
+            text: `[ubicación] ${[name, address].filter(Boolean).join(' — ') || at}`,
+            mediaUrl: null,
         };
     }
     return { contentType: 'text', text: String(payload.text ?? '') || null, mediaUrl: null };

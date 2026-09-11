@@ -5295,7 +5295,8 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_dispatch_outbox" (
     CONSTRAINT agent_dispatch_outbox_state
         CHECK (state IN ('prepared','queued','admitted','sent','stored','suppressed','failed','reconciliation_required')),
     CONSTRAINT agent_dispatch_outbox_kind
-        CHECK (item_kind IN ('text','media','payment_link','flow','template')),
+        CHECK (item_kind IN ('text','media','payment_link','flow','template',
+                             'interactive','location')),
     CONSTRAINT agent_dispatch_outbox_item_index CHECK (item_index >= 0),
     CONSTRAINT agent_dispatch_outbox_lease
         CHECK ((state = 'admitted') = (lease_token IS NOT NULL AND lease_expires_at IS NOT NULL)),

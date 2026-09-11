@@ -84,7 +84,10 @@ export class InstagramAdapter implements IChannelAdapter, StrictDispatchTranspor
             // No caption here on purpose: that is the second effect.
             return { attachment: { type: requested, payload: { url: mediaUrl, is_reusable: true } } };
         }
-        throw new Error('unsupported_item_kind:flow');
+        // The kind is NAMED. This said `flow` whatever arrived, so a
+        // refusal to send a menu or a location was diagnosed as a Flow
+        // problem and the operator went looking in the wrong place.
+        throw new Error(`unsupported_item_kind:${request.itemKind}`);
     }
 
     /**

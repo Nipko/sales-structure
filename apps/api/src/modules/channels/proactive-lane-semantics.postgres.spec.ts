@@ -492,7 +492,61 @@ const LEGACY_CONFIG = Object.freeze({ tone: 'cordial', goals: ['agendar'] });
         });
     });
 
-    // ── 5. THE FOUR IDENTIFIERS ARE ONE FACT ────────────────────────────────
+    // ── 5. THE TWO SHAPES THE LANE COULD NOT EXPRESS ────────────────────────
+
+    describe('a menu and a map pin, on the durable lane', () => {
+        const historyOf = async (conversationId: string) => (await sql(
+            `SELECT content_type, content_text FROM messages
+              WHERE conversation_id = $1::uuid AND direction = 'outbound'`,
+            [conversationId]))[0];
+
+        it('writes a row for an interactive message the database accepts', async () => {
+            // `item_kind` refused anything outside five values, so a menu had no
+            // row to write: it went straight to the adapter with no lease and no
+            // receipt, and a restart between deciding and posting lost it or
+            // repeated it.
+            const { row, conversationId } = await rowFor({
+                originKind: 'inbound_reply',
+                item: { kind: 'interactive', payload: {
+                    type: 'list', body: '¿Qué horario te sirve?',
+                    action: { sections: [{ rows: [{ title: '10:00' }, { title: '15:00' }] }] },
+                } },
+            });
+            expect(row.itemKind).toBe('interactive');
+            const history = await historyOf(conversationId);
+            expect(history.content_type).toBe('interactive');
+            // The QUESTION and the options, because the customer's next message
+            // is one of them: a thread holding only the body makes "10:00"
+            // arrive as an answer to nothing.
+            expect(history.content_text).toContain('¿Qué horario te sirve?');
+            expect(history.content_text).toContain('10:00');
+            expect(history.content_text).toContain('15:00');
+        });
+
+        it('writes a row for a location, recorded by the place rather than the numbers', async () => {
+            const { row, conversationId } = await rowFor({
+                originKind: 'inbound_reply',
+                item: { kind: 'location', payload: {
+                    latitude: 4.711, longitude: -74.0721,
+                    name: 'Salón Centro', address: 'Cra 7 #12-34',
+                } },
+            });
+            expect(row.itemKind).toBe('location');
+            const history = await historyOf(conversationId);
+            expect(history.content_type).toBe('location');
+            expect(history.content_text).toContain('Salón Centro');
+            expect(history.content_text).toContain('Cra 7 #12-34');
+        });
+
+        it('still refuses a kind nobody defined', async () => {
+            await expect(rowFor({
+                originKind: 'inbound_reply',
+                item: { kind: 'carousel', payload: { text: 'hola' } },
+            })).rejects.toMatchObject({ code: 'dispatch_invalid_batch' });
+        });
+    });
+
+    // ── 6. THE FOUR IDENTIFIERS ARE ONE FACT ────────────────────────────────
 
     describe('a binding that names four things', () => {
         const bindingFor = (conversationId: string, over: Record<string, unknown>) => ({

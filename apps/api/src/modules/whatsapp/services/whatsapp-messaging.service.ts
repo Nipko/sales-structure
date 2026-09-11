@@ -14,6 +14,7 @@ import { SpendMeterUnavailable } from '../../billing/whatsapp-spend/spend-unavai
 import { ChannelTokenService } from '../../channels/channel-token.service';
 import { isConnectionRefusal } from '../../channels/connection-refusal';
 import { AccountPauseStore } from '../../channels/account-pause-store';
+import { approvedTemplateCategory } from '../../channels/dispatch-price-facts';
 import {
     classifyTransportFailure, metaGraphAnswer, metaGraphClassifier,
 } from '../../channels/provider-error-classification';
@@ -616,31 +617,11 @@ export class WhatsappMessagingService {
       // marketing rate — or, worse, the other way round — because the sibling
       // WABA happened to sync last.
       //
-      // Unnamed sender: the same rule the connection resolver uses. "The
-      // tenant's catalogue" has one referent exactly while the tenant has one
-      // WABA; with two, `null` is the honest answer, and the admission already
-      // knows how to treat an unknown category — as expensive, not as cheap.
-      const sender = String(phoneNumberId ?? '').trim();
-      const rows = await this.prisma.executeInTenantSchema<any[]>(
-        schemaName,
-        `SELECT t.category
-           FROM whatsapp_templates t
-           JOIN whatsapp_channels c ON c.id = t.channel_id
-          WHERE t.name = $1 AND t.category IS NOT NULL
-            AND c.meta_waba_id IS NOT NULL
-            AND c.meta_waba_id = CASE
-                WHEN $2 <> '' THEN (
-                    SELECT meta_waba_id FROM whatsapp_channels
-                     WHERE phone_number_id = $2 LIMIT 1)
-                ELSE (
-                    SELECT MIN(meta_waba_id) FROM whatsapp_channels
-                     WHERE meta_waba_id IS NOT NULL
-                    HAVING COUNT(DISTINCT meta_waba_id) = 1)
-                END
-          ORDER BY t.last_sync_at DESC NULLS LAST LIMIT 1`,
-        [templateName, sender],
-      );
-      return rows?.[0]?.category ?? null;
+      // The query itself lives in `dispatch-price-facts` so this lane and the
+      // durable lane cannot drift into pricing the same template two ways.
+      return await approvedTemplateCategory(
+        (sql, params) => this.prisma.executeInTenantSchema(schemaName, sql, params ?? []),
+        { templateName, channelAccountId: phoneNumberId ?? null });
     } catch (error: any) {
       this.logger.warn(`[Spend] template category unreadable for ${templateName}: ${error?.message}`);
       return null;

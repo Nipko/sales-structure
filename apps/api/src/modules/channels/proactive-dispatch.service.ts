@@ -115,7 +115,24 @@ export class ProactiveDispatchService {
      * A second thread for the same person on the same number splits their
      * history in two: the agent sees half of it, the identity service sees two
      * customers, and the reminder arrives looking like it came from a stranger.
-     * The existing active thread wins whenever there is one.
+     *
+     * ── AND WHY AN ARCHIVED THREAD IS NOT A THREAD ──────────────────────────
+     *
+     * `ORDER BY (status = 'active') DESC` PREFERRED an active one and settled
+     * for anything else, so a reminder could land in a conversation somebody
+     * had closed months ago — the agent console does not show it, the customer
+     * replies into a thread nobody is watching, and the reply looks like it
+     * came from nowhere. Only a live thread is reused; a closed one is left
+     * closed and a new one opened beside it.
+     *
+     * ── AND WHY THE WHOLE THING IS ONE TRANSACTION ──────────────────────────
+     *
+     * Read-then-insert across two statements is a race two crons lose together:
+     * both read nothing, both insert, and the person now has two threads on one
+     * number. There is no unique index to lean on — the same (contact, channel,
+     * account) legitimately has several conversations over time — so the
+     * serialisation is an advisory lock on exactly that triple, held for the
+     * transaction. It costs one lock on a path that runs a few times a minute.
      */
     async conversationFor(schemaName: string, input: {
         readonly contactId: string;
@@ -123,25 +140,30 @@ export class ProactiveDispatchService {
         readonly channelAccountId: string;
     }): Promise<string | null> {
         try {
-            const [existing] = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-                `SELECT id FROM conversations
-                  WHERE contact_id = $1::uuid AND channel_type = $2
-                    AND channel_account_id = $3
-                  ORDER BY (status = 'active') DESC, updated_at DESC
-                  LIMIT 1`,
-                [input.contactId, input.channelType, input.channelAccountId]);
-            if (existing?.id) return String(existing.id);
-            const [created] = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-                // `ON CONFLICT DO NOTHING` is not available here — there is no
-                // unique index on the triple — so two producers racing for the
-                // same contact could both insert. That is a duplicate THREAD,
-                // not a duplicate message: both reminders still go out once
-                // each, and the identity service merges the threads. Losing the
-                // reminder to avoid a merge would be the worse trade.
-                `INSERT INTO conversations(contact_id, channel_type, channel_account_id, status)
-                 VALUES($1::uuid, $2, $3, 'active') RETURNING id`,
-                [input.contactId, input.channelType, input.channelAccountId]);
-            return created?.id ? String(created.id) : null;
+            return await this.prisma.transactionInTenantSchema(schemaName, async query => {
+                // Serialised on the triple itself, so two producers asking at
+                // the same moment cannot both decide there is no thread.
+                await query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))::text',
+                    [`proactive-conversation:${schemaName}:${input.contactId}`
+                        + `:${input.channelType}:${input.channelAccountId}`]);
+                const [existing] = await query<any[]>(
+                    `SELECT id FROM conversations
+                      WHERE contact_id = $1::uuid AND channel_type = $2
+                        AND channel_account_id = $3
+                        -- LIVE only. A resolved or archived thread is a closed
+                        -- conversation, and writing into one puts the message
+                        -- where nobody is looking.
+                        AND COALESCE(status, 'active') NOT IN ('resolved', 'archived')
+                      ORDER BY updated_at DESC
+                      LIMIT 1`,
+                    [input.contactId, input.channelType, input.channelAccountId]);
+                if (existing?.id) return String(existing.id);
+                const [created] = await query<any[]>(
+                    `INSERT INTO conversations(contact_id, channel_type, channel_account_id, status)
+                     VALUES($1::uuid, $2, $3, 'active') RETURNING id`,
+                    [input.contactId, input.channelType, input.channelAccountId]);
+                return created?.id ? String(created.id) : null;
+            });
         } catch (error: any) {
             // Never invent one. A caller that gets `null` sends nothing, which
             // is the honest outcome: without a thread there is no history row,

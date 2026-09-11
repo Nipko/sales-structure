@@ -282,13 +282,11 @@ export class AgentDispatchOutboxStore {
                 await assertRuntimeLearningFootprint(query, schema,
                     { tenantId, agentId: footprint?.agentId }, footprint, { mode: 'admission' });
             }
-            // Shared read of the destination binding: this transaction must not
-            // update the conversation or the contact, nor escalate their locks.
-            const [conversation] = await query<any[]>(
-                `SELECT c.id FROM conversations c WHERE c.id=$1::uuid AND c.contact_id=$2::uuid
-                 AND c.channel_type=$3 FOR SHARE`,
-                [current.binding.conversationId, current.binding.contactId, current.binding.channelType]);
-            if (!conversation) throw new DispatchOutboxError('dispatch_binding_changed');
+            // The destination binding is checked inside `admitDispatch`, in this
+            // same transaction and against all FOUR identifiers. It used to be
+            // checked here as well, on three of them and with a different rule
+            // about a NULL connection — two answers to one question, in one
+            // transaction, which is how the two drift apart.
             return admitDispatch(query, schema, { dispatchId, leaseToken, leaseSeconds });
         });
         // Only a granted permission is timed. A refused admission is a different

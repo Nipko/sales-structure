@@ -129,8 +129,11 @@ const REPLICAS_PER_TURN = 3;
         pool = new Pool({ connectionString: databaseUrl, max: POOL_SIZE,
             options: `-c search_path=${schema},public` });
         await sql('CREATE TABLE contacts(id UUID PRIMARY KEY, name TEXT)');
+        // `channel_account_id` is NOT NULL in production, and the binding is
+        // checked on all four identifiers — a harness without it cannot see a
+        // row that would leave from a connection the thread does not belong to.
         await sql(`CREATE TABLE conversations(id UUID PRIMARY KEY, contact_id UUID REFERENCES contacts(id),
-            channel_type TEXT, status TEXT DEFAULT 'active')`);
+            channel_type TEXT, status TEXT DEFAULT 'active', channel_account_id TEXT)`);
         await sql(`CREATE TABLE messages(id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             conversation_id UUID REFERENCES conversations(id), direction TEXT, content_type TEXT,
             content_text TEXT, media_url TEXT, status TEXT, external_id TEXT,
@@ -156,7 +159,8 @@ const REPLICAS_PER_TURN = 3;
     async function conversationFixture(): Promise<{ conversationId: string; contactId: string }> {
         const contactId = randomUUID(), conversationId = randomUUID();
         await sql("INSERT INTO contacts VALUES($1::uuid,'Cliente sintético')", [contactId]);
-        await sql("INSERT INTO conversations VALUES($1::uuid,$2::uuid,'whatsapp','active')",
+        await sql(`INSERT INTO conversations(id,contact_id,channel_type,status,channel_account_id)
+            VALUES($1::uuid,$2::uuid,'whatsapp','active','wa-main')`,
             [conversationId, contactId]);
         return { conversationId, contactId };
     }

@@ -218,6 +218,17 @@ export interface DispatchRow {
     /** When this row may next be admitted. PostgreSQL is the only scheduler. */
     readonly availableAt: Date;
     readonly redacted: boolean;
+    /**
+     * What caused this batch.
+     *
+     * Read from the column, never inferred from the binding. The processor used
+     * to decide `reactive` vs `proactive` from "does this row name an inbound
+     * message" — and a proactive origin also derives a UUID for that column, so
+     * every reminder and every campaign was billed as an ANSWER. Reactive
+     * traffic escapes the soft stop by design, so a ceiling meant to pause
+     * campaigns paused nothing.
+     */
+    readonly originKind: DispatchOriginKind;
     readonly binding: DispatchBinding | null;
     readonly payload: Record<string, any> | null;
     readonly operationalScope: Record<string, any>;
@@ -243,6 +254,9 @@ function mapRow(row: any): DispatchRow {
         errorCode: row.error_code ?? null,
         availableAt: row.available_at instanceof Date ? row.available_at : new Date(row.available_at),
         redacted,
+        // Defaulted for rows written by the binary that predates the column,
+        // which are all replies by construction.
+        originKind: (row.origin_kind === 'proactive' ? 'proactive' : 'inbound_reply'),
         binding: redacted ? null : Object.freeze({
             conversationId: String(row.conversation_id),
             contactId: String(row.contact_id),
@@ -284,6 +298,28 @@ function historyContent(item: DispatchItem): { contentType: string; text: string
     }
     return { contentType: 'text', text: String(payload.text ?? '') || null, mediaUrl: null };
 }
+
+/**
+ * ═══ THE FOUR IDENTIFIERS ARE ONE FACT, NOT FOUR ═══
+ *
+ * A binding names a conversation, a contact, a channel type and a connection,
+ * and they only mean something TOGETHER. Checking `(conversation, contact)` and
+ * taking the channel on trust admits a row that writes its history into a
+ * WhatsApp thread and sends the message out of a Telegram connection: the
+ * console shows a reply the customer never got, the customer gets a message
+ * from a number with no history behind it, and the spend lands on the wrong
+ * connection's meter — so a ceiling on one number is consumed by another.
+ *
+ * Plain equality on all four, with no tolerance for `NULL`: both channel
+ * columns are `NOT NULL` on `conversations`, so a null here would mean the
+ * table is not the table this engine ships, and guessing on its behalf is how
+ * a lane sends from a number nobody chose. A mismatch refuses loudly with
+ * `dispatch_binding_changed` rather than delivering somewhere unexpected.
+ */
+const BINDING_STILL_HOLDS = `SELECT id FROM conversations
+     WHERE id = $1::uuid AND contact_id = $2::uuid
+       AND channel_type = $3 AND channel_account_id = $4
+     FOR SHARE`;
 
 function validBinding(binding: DispatchBinding): boolean {
     return !!binding
@@ -348,10 +384,11 @@ export async function prepareDispatchBatch(query: DispatchOutboxQuery, schema: s
     }
     // The conversation is checked either way. A proactive effect still writes
     // its history into a conversation, and a binding naming a conversation that
-    // belongs to another contact is a conflict in both directions.
-    const [conversation] = await query<any[]>(
-        'SELECT id FROM conversations WHERE id = $1::uuid AND contact_id = $2::uuid FOR SHARE',
-        [input.binding.conversationId, input.binding.contactId]);
+    // belongs to another contact — or to another connection — is a conflict in
+    // both directions.
+    const [conversation] = await query<any[]>(BINDING_STILL_HOLDS,
+        [input.binding.conversationId, input.binding.contactId,
+            input.binding.channelType, input.binding.channelAccountId]);
     if (!conversation) fail('dispatch_binding_changed');
     const footprint = Array.isArray(input.learningFootprint) ? input.learningFootprint : [];
     const sources = [...new Map((input.sources || []).map(source => [String(source.id), source])).values()];
@@ -504,8 +541,12 @@ export async function admitDispatch(query: DispatchOutboxQuery, schema: string, 
     // that locks the row: an application clock skewed against PostgreSQL must
     // never be what decides that a permission is still alive.
     const [row] = await query<any[]>(
-        `SELECT *, (lease_expires_at IS NOT NULL AND lease_expires_at > NOW()) AS lease_active,
-            (available_at > NOW()) AS waiting_backoff
+        // `clock_timestamp()`, never `now()`: `now()` is the instant the
+        // TRANSACTION began, so a lease that expired while this transaction was
+        // waiting on the row lock still reads as alive — and the item is
+        // refused as `reconciliation_required` when it is simply free.
+        `SELECT *, (lease_expires_at IS NOT NULL AND lease_expires_at > clock_timestamp()) AS lease_active,
+            (available_at > clock_timestamp()) AS waiting_backoff
          FROM agent_dispatch_outbox WHERE id = $1::uuid FOR UPDATE`, [input.dispatchId]);
     if (!row) fail('dispatch_unavailable');
     if (row.redacted_at) fail('dispatch_redacted');
@@ -548,6 +589,17 @@ export async function admitDispatch(query: DispatchOutboxQuery, schema: string, 
             if (row.item_kind === 'text' && previous.item_kind === 'media') fail('dispatch_predecessor_failed');
         }
     }
+    // ── AND IT IS RE-CHECKED HERE, NOT ONLY AT PREPARE ──────────────────────
+    //
+    // Minutes pass between preparing a batch and admitting an item — longer for
+    // a reminder scheduled hours ahead — and in that gap a thread can be
+    // reassigned to another number, a contact merged into another, a
+    // conversation deleted. Prepare's check answered about a moment that has
+    // passed; this one answers inside the transaction that grants the lease, so
+    // what the POST is authorised against is what is true when it goes out.
+    const [stillBound] = await query<any[]>(BINDING_STILL_HOLDS,
+        [row.conversation_id, row.contact_id, row.channel_type, row.channel_account_id]);
+    if (!stillBound) fail('dispatch_binding_changed');
     const [admitted] = await query<any[]>(
         `UPDATE agent_dispatch_outbox SET state='admitted', lease_token=$2::uuid,
             lease_expires_at=NOW() + make_interval(secs => $3::double precision), attempts=attempts+1,

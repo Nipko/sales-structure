@@ -84,8 +84,11 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
         prisma = Object.create(PrismaService.prototype);
         prisma.$transaction = client.$transaction.bind(client);
         await sql('CREATE TABLE contacts(id UUID PRIMARY KEY, name TEXT)');
+        // `channel_account_id` is NOT NULL in production, and the binding is
+        // checked on all four identifiers — a harness without it cannot see a
+        // row that would leave from a connection the thread does not belong to.
         await sql(`CREATE TABLE conversations(id UUID PRIMARY KEY, contact_id UUID REFERENCES contacts(id),
-            channel_type TEXT, status TEXT DEFAULT 'active')`);
+            channel_type TEXT, status TEXT DEFAULT 'active', channel_account_id TEXT)`);
         await sql(`CREATE TABLE messages(id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             conversation_id UUID REFERENCES conversations(id), direction TEXT, content_type TEXT,
             content_text TEXT, media_url TEXT, status TEXT, external_id TEXT,
@@ -94,8 +97,8 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
             WHERE external_id IS NOT NULL`);
         for (const statement of DISPATCH_OUTBOX_DDL) await sql(statement);
         await sql('INSERT INTO contacts(id,name) VALUES($1::uuid,$2)', [contactId, 'Ana']);
-        await sql(`INSERT INTO conversations(id,contact_id,channel_type)
-            VALUES($1::uuid,$2::uuid,'whatsapp')`, [conversationId, contactId]);
+        await sql(`INSERT INTO conversations(id,contact_id,channel_type,channel_account_id)
+            VALUES($1::uuid,$2::uuid,'whatsapp','15550001111')`, [conversationId, contactId]);
     });
 
     afterAll(async () => {

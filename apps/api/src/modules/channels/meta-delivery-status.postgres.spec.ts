@@ -68,8 +68,11 @@ const OTHER_PSID = '2345678909999999';
         prisma = Object.create(PrismaService.prototype);
         prisma.$transaction = client.$transaction.bind(client);
         await sql('CREATE TABLE contacts(id UUID PRIMARY KEY, name TEXT)');
+        // `channel_account_id` is NOT NULL in production, and the binding is
+        // checked on all four identifiers — a harness without it cannot see a
+        // row that would leave from a connection the thread does not belong to.
         await sql(`CREATE TABLE conversations(id UUID PRIMARY KEY, contact_id UUID REFERENCES contacts(id),
-            channel_type TEXT, status TEXT DEFAULT 'active')`);
+            channel_type TEXT, status TEXT DEFAULT 'active', channel_account_id TEXT)`);
         await sql(`CREATE TABLE messages(id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             conversation_id UUID REFERENCES conversations(id), direction TEXT, content_type TEXT,
             content_text TEXT, media_url TEXT, status TEXT, external_id TEXT,
@@ -99,13 +102,20 @@ const OTHER_PSID = '2345678909999999';
 
     async function binding(over: Partial<DispatchBinding> = {}): Promise<DispatchBinding> {
         const contactId = randomUUID(), conversationId = randomUUID(), inboundMessageId = randomUUID();
+        const bound = { conversationId, contactId, inboundMessageId,
+            channelType: 'messenger', channelAccountId: PAGE_ID, recipient: PSID, ...over };
         await sql("INSERT INTO contacts VALUES($1::uuid,'Cliente sintético')", [contactId]);
-        await sql("INSERT INTO conversations VALUES($1::uuid,$2::uuid,'messenger','active')",
-            [conversationId, contactId]);
+        // The thread is opened on the connection the binding will CLAIM. It
+        // used to be opened as `messenger` whatever the caller asked for, so an
+        // Instagram binding described a Messenger thread — a shape the engine
+        // now refuses, and rightly: the history and the send would go to two
+        // different places.
+        await sql(`INSERT INTO conversations(id,contact_id,channel_type,status,channel_account_id)
+            VALUES($1::uuid,$2::uuid,$3,'active',$4)`,
+            [conversationId, contactId, bound.channelType, bound.channelAccountId]);
         await sql(`INSERT INTO messages(id,conversation_id,direction,content_type,content_text,status)
             VALUES($1::uuid,$2::uuid,'inbound','text','Hola','delivered')`, [inboundMessageId, conversationId]);
-        return { conversationId, contactId, inboundMessageId,
-            channelType: 'messenger', channelAccountId: PAGE_ID, recipient: PSID, ...over };
+        return bound;
     }
 
     /** Otro turno en la MISMA conversación: un batch se ata a un inbound. */

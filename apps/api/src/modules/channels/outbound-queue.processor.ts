@@ -23,6 +23,7 @@ import { resolveTenantSubscriptionAccess } from '../../common/utils/subscription
 import { AgentDispatchOutboxStore } from './agent-dispatch-outbox.store';
 import { DISPATCH_TERMINAL_STATES } from './agent-dispatch-outbox';
 import { transportNotAvailable } from './strict-dispatch-transport';
+import { dispatchPriceFacts } from './dispatch-price-facts';
 import { OutboundQueueService } from './outbound-queue.service';
 import { loadOutboundPayload, markOutboundPayloadSent } from './outbound-payload-store';
 
@@ -317,22 +318,84 @@ export class OutboundQueueProcessor extends WorkerHost {
         //
         // The money is reserved BEFORE the request, never after: reserving
         // afterwards means it is spent before anything counts it.
-        const admission = await this.admitSpend({
-            tenantId, channelType: admitted.row.binding!.channelType,
-            channelAccountId: admitted.row.binding!.channelAccountId,
-            recipient: String(admitted.row.binding!.recipient ?? ''),
-            producer: `dispatch_${admitted.row.itemKind}`,
-            // An outbox item bound to an inbound message is an ANSWER: somebody
-            // wrote and this is the reply. One with no inbound message is
-            // something the platform started. The binding is the evidence; no
-            // reading of the content is involved.
-            disposition: admitted.row.binding!.inboundMessageId ? 'reactive' : 'proactive',
-            contentDigest: String(dispatchId),
-            contactId: admitted.row.binding!.contactId ?? null,
-            binding: { dispatchItemId: dispatchId, batchId: admitted.row.batchId,
-                inboundMessageId: admitted.row.binding!.inboundMessageId,
-                itemIndex: admitted.row.itemIndex },
-        });
+        // ── WHO STARTED THIS, AND WHAT IT IS ────────────────────────────────
+        //
+        // `origin_kind` is a column, and it is read rather than inferred. The
+        // old rule was "does this row name an inbound message" — but a
+        // PROACTIVE origin also derives a UUID for that column, so every
+        // reminder and every campaign was billed as an ANSWER. Reactive traffic
+        // escapes the soft stop by design, so a ceiling meant to pause
+        // campaigns paused nothing at all.
+        const proactive = admitted.row.originKind === 'proactive';
+        // And the producer is the POLICY's own name when there is one, not
+        // `dispatch_text`. A census that cannot tell a reminder from a campaign
+        // cannot tell an operator which of them filled their ceiling, and a
+        // repetition guard keyed on it cannot tell them apart either.
+        const scope = admitted.row.operationalScope as Record<string, any>;
+        const producer = proactive && typeof scope?.producer === 'string' && scope.producer
+            ? `proactive_${scope.producer}`
+            : `dispatch_${admitted.row.itemKind}`;
+        // ── WHAT DECIDES THE PRICE, READ RATHER THAN GUESSED ────────────────
+        //
+        // Meta charges by the template's APPROVED category and by whether the
+        // 24-hour service window is open. Both are written down in this
+        // tenant's own database, and this lane was passing neither: every
+        // template arrived as `template_category_missing`, which under
+        // `enforce` refuses an approved template and under `observe` prices it
+        // at the ceiling — for a fact one join away.
+        let schemaPromise: Promise<string> | null = null;
+        const priceFacts = await dispatchPriceFacts(
+            async (sql, params) => {
+                schemaPromise ??= this.prisma.getTenantSchemaName(tenantId);
+                return this.prisma.executeInTenantSchema(await schemaPromise, sql, params ?? []);
+            },
+            {
+                itemKind: admitted.row.itemKind,
+                templateName: (admitted.row.payload as any)?.templateName ?? null,
+                channelAccountId: admitted.row.binding!.channelAccountId,
+                conversationId: admitted.row.binding!.conversationId ?? null,
+                onUnreadable: (what, error: any) => this.logger.warn(
+                    `[Dispatch] ${dispatchId}: ${what} unreadable (${error?.message}); `
+                    + 'the admission will price it as unestablished'),
+            });
+        // ── THE LEASE MUST NOT OUTLIVE A FAILED DECISION ────────────────────
+        //
+        // `admitSpend` raises when the meter cannot answer, and that happens
+        // BEFORE `sendStrict`, so this attempt provably sent nothing. Letting
+        // the exception escape left the row `admitted` with a live lease, and
+        // the lease sweep later turned it into `reconciliation_required` — the
+        // state that means "somebody may have sent this". A meter outage was
+        // being recorded as a possible duplicate delivery, and a person had to
+        // resolve by hand something nobody had attempted.
+        //
+        // Handed back instead: `failed` is retryable, the row keeps its
+        // payload, and the next pass re-admits it.
+        let admission: Awaited<ReturnType<OutboundQueueProcessor['admitSpend']>>;
+        try {
+            admission = await this.admitSpend({
+                tenantId, channelType: admitted.row.binding!.channelType,
+                channelAccountId: admitted.row.binding!.channelAccountId,
+                recipient: String(admitted.row.binding!.recipient ?? ''),
+                producer,
+                disposition: proactive ? 'proactive' : 'reactive',
+                contentDigest: String(dispatchId),
+                contactId: admitted.row.binding!.contactId ?? null,
+                template: priceFacts.template,
+                insideServiceWindow: priceFacts.insideServiceWindow,
+                binding: { dispatchItemId: dispatchId, batchId: admitted.row.batchId,
+                    inboundMessageId: admitted.row.binding!.inboundMessageId,
+                    itemIndex: admitted.row.itemIndex },
+            });
+        } catch (error: any) {
+            const settled = await this.dispatchOutbox.settle(tenantId, dispatchId,
+                admitted.leaseToken,
+                { kind: 'failed', errorCode: 'spend_meter_unavailable' })
+                .catch(() => null);
+            this.logger.error(`[Dispatch] ${dispatchId}: the spend meter could not answer `
+                + `(${error?.message}); the lease was handed back and nothing was sent`);
+            if (settled?.state === 'failed') await waitUntil(settled.availableAt, 'spend_meter_unavailable');
+            return 'dispatch:failed:spend_meter_unavailable';
+        }
         if (admission && admission.permitted
             && !(await this.beginOrStandDown({ tenantId } as OutboundMessage, admission))) {
             // The send right was taken while this worker prepared, or the intent

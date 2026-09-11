@@ -4,6 +4,50 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AgentDispatchOutboxStore } from './agent-dispatch-outbox.store';
 import { OutboundQueueService } from './outbound-queue.service';
 import type { DispatchItem } from './agent-dispatch-outbox';
+import { DispatchOutboxError } from './agent-dispatch-outbox';
+import { proactivePolicyAuthority } from '../persona/proactive-policy-authority';
+
+/**
+ * ═══ WHAT HAPPENED, SAID IN A WAY A PRODUCER CAN ACT ON ═══
+ *
+ * This used to return `string | null`, and the reminders read `null` as "it did
+ * not work" and `void` as "carry on" — then marked the appointment as reminded
+ * either way. A producer that writes its "sent" flag on anything other than
+ * "the durable effect now exists" is a producer that loses messages silently,
+ * which is the entire failure the durable lane exists to end.
+ *
+ * Five answers, and each one calls for something different:
+ *
+ *   · `prepared`        the row exists and is published. Write the flag.
+ *   · `already_present` the row existed from a previous attempt. Write the
+ *                       flag: the effect is owed exactly once and it is owed.
+ *   · `suppressed`      the policy says this should NOT be sent — the
+ *                       appointment was cancelled, the entity is gone. Write
+ *                       the flag: nothing is owed any more, and leaving it
+ *                       unset means trying again every fifteen minutes for
+ *                       ever.
+ *   · `deferred`        nothing was written and the reason may pass. Leave the
+ *                       flag alone so the next pass retries.
+ *   · `refused`         nothing was written and retrying cannot help — no
+ *                       sender, no thread, an authority nobody can build.
+ *                       Leave the flag alone and let the producer say so.
+ */
+export type ProactiveSendResult =
+    | { readonly kind: 'prepared'; readonly originId: string }
+    | { readonly kind: 'already_present'; readonly originId: string }
+    | { readonly kind: 'suppressed'; readonly reason: string }
+    | { readonly kind: 'deferred'; readonly reason: string }
+    | { readonly kind: 'refused'; readonly reason: string };
+
+/** Did this result leave a durable effect that will be delivered exactly once? */
+export function effectIsDurable(result: ProactiveSendResult): boolean {
+    return result.kind === 'prepared' || result.kind === 'already_present';
+}
+
+/** May the producer stop trying? True for anything that is not worth retrying. */
+export function producerMayAdvance(result: ProactiveSendResult): boolean {
+    return effectIsDurable(result) || result.kind === 'suppressed';
+}
 
 /**
  * ═══ THE DURABLE LANE, FOR THINGS NOBODY ASKED FOR ═══
@@ -134,13 +178,32 @@ export class ProactiveDispatchService {
     }
 
     /**
+     * The authority a scheduled behaviour sends under.
+     *
+     * Built by READING the domain row, in its own transaction, so the revision
+     * it carries describes the appointment as it actually is rather than as the
+     * producer remembers it. `undefined` means either the policy is unknown or
+     * the entity no longer justifies the message, and both are reasons not to
+     * prepare anything.
+     */
+    async policyAuthority(schemaName: string, input: {
+        readonly tenantId: string;
+        readonly producer: string;
+        readonly channelType: string;
+        readonly channelAccountId: string;
+        readonly entityId: string;
+    }) {
+        return this.prisma.transactionInTenantSchema(schemaName, query =>
+            proactivePolicyAuthority(query as any, schemaName, input));
+    }
+
+    /**
      * Commit this effect, then publish it. In that order, always.
      *
-     * Returns the origin id, so a caller can record what it wrote, and `null`
-     * only when the outbox refused the batch — which it does for a binding that
-     * names a conversation belonging to another contact, and for a second batch
-     * whose SHAPE disagrees with the first. Both are conflicts to surface, not
-     * to paper over.
+     * Every answer is one of five named outcomes. It used to be `string | null`,
+     * and a producer cannot tell "already done" from "could not" from "must not"
+     * with a null — the reminders read `null` as nothing at all and marked the
+     * appointment reminded regardless.
      */
     async send(tenantId: string, input: {
         /** What makes this effect THIS effect, in the producer's own terms. */
@@ -153,7 +216,10 @@ export class ProactiveDispatchService {
         readonly items: readonly DispatchItem[];
         /** Who the effect is served on behalf of. The outbox refuses without it. */
         readonly operationalScope: any;
-    }): Promise<string | null> {
+    }): Promise<ProactiveSendResult> {
+        if (!input.operationalScope) {
+            return { kind: 'suppressed', reason: 'policy_authority_unavailable' };
+        }
         const originId = ProactiveDispatchService.originId(input.originKey);
         const binding = {
             conversationId: input.conversationId,
@@ -163,16 +229,39 @@ export class ProactiveDispatchService {
             channelAccountId: input.channelAccountId,
             recipient: input.recipient,
         };
-        const prepared = await this.outbox.prepare(tenantId, {
-            binding, items: input.items,
-            operationalScope: input.operationalScope,
-            originKind: 'proactive',
-        });
+        let prepared: Awaited<ReturnType<AgentDispatchOutboxStore['prepare']>>;
+        try {
+            prepared = await this.outbox.prepare(tenantId, {
+                binding, items: input.items,
+                operationalScope: input.operationalScope,
+                originKind: 'proactive',
+            });
+        } catch (error: any) {
+            if (error instanceof DispatchOutboxError) {
+                // A conflict is a decision, not an outage: the binding names
+                // somebody else's conversation, or a second batch disagrees
+                // with the first about the shape of the answer. Retrying sends
+                // the identical thing and gets the identical refusal.
+                this.logger.error(`[Proactive] ${input.originKey} refused by the outbox: `
+                    + `${error.message}`);
+                return { kind: 'refused', reason: error.message };
+            }
+            // Everything else may pass. Nothing was written, so the producer
+            // leaves its flag alone and the next pass tries again.
+            this.logger.warn(`[Proactive] ${input.originKey} could not be committed: `
+                + `${error?.message}`);
+            return { kind: 'deferred', reason: String(error?.message ?? error).slice(0, 200) };
+        }
+        // `prepare` returns the FIRST batch when one already exists, so a
+        // repeat is recognisable by its rows already having left `prepared`.
+        const fresh = prepared.rows.some(row => row.state === 'prepared');
         // Published AFTER the rows are committed, and a failure to publish is
         // not a failure to send: the row is the record, and the recovery pass
         // reads it. This is exactly the asymmetry the durable lane exists for.
         await this.outbox.publishBatch(tenantId, prepared.rows,
             (dispatchId, delayMs) => this.queue.enqueueDispatch(tenantId, dispatchId, delayMs));
-        return originId;
+        return fresh
+            ? { kind: 'prepared', originId }
+            : { kind: 'already_present', originId };
     }
 }

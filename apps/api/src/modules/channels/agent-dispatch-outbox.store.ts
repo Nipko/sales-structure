@@ -21,6 +21,10 @@ import {
 import {
     assertServedAgentConnectionAuthority, validServedAgentAuthority, type ServedAgentAuthority,
 } from '../persona/served-agent-authority';
+import {
+    revalidateProactivePolicy, validProactivePolicyAuthority,
+    type ProactivePolicyAuthority,
+} from '../persona/proactive-policy-authority';
 import { assertRuntimeLearningFootprint, type RuntimeLearningFootprint } from '../learning/learning-runtime-footprint';
 
 /**
@@ -87,8 +91,20 @@ export class AgentDispatchOutboxStore {
         originKind?: DispatchOriginKind;
     }): Promise<{ schemaName: string; batchId: string; rows: DispatchRow[] }> {
         const schema = await this.schemaFor(tenantId);
-        if (!validServedAgentAuthority(input.operationalScope, schema, tenantId))
+        // ── TWO KINDS OF AUTHORITY, BECAUSE THERE ARE TWO KINDS OF EFFECT ────
+        //
+        // A reply is served by an agent persona at a version. A reminder is
+        // served by a POLICY over a domain row, and has no persona at all — the
+        // reminders passed an object with no `kind` and no hash, this check
+        // refused it, and the migration would have died at the first real row.
+        //
+        // The union is closed on purpose. Anything that is neither is refused,
+        // so a future producer has to say what it is served on behalf of rather
+        // than inheriting a permissive default.
+        if (!validServedAgentAuthority(input.operationalScope, schema, tenantId)
+            && !validProactivePolicyAuthority(input.operationalScope, schema, tenantId)) {
             throw new DispatchOutboxError('dispatch_authority_required');
+        }
         const result = await this.prisma.transactionInTenantSchema(schema, async query => {
             await this.privacy(query, schema, tenantId);
             return prepareDispatchBatch(query, schema, {
@@ -212,13 +228,53 @@ export class AgentDispatchOutboxStore {
             const current = await readDispatchRow(query, schema, dispatchId);
             if (!current) throw new DispatchOutboxError('dispatch_unavailable');
             if (current.redacted || !current.binding) throw new DispatchOutboxError('dispatch_redacted');
-            const scope = current.operationalScope as unknown as ServedAgentAuthority;
-            if (!validServedAgentAuthority(scope, schema, tenantId))
+            const scope = current.operationalScope as unknown as
+                ServedAgentAuthority | ProactivePolicyAuthority;
+            if (validProactivePolicyAuthority(scope, schema, tenantId)) {
+                // ── IS THIS STILL THE EFFECT THE POLICY AUTHORISED? ─────────
+                //
+                // In THIS transaction, the one that grants the lease. A check
+                // that commits separately answers about a moment that has
+                // already passed, and the window between it and the POST is
+                // exactly where a cancellation lands.
+                //
+                // The connection is re-checked too: an effect prepared for one
+                // number must not be sent from another, because the account on
+                // the row is the account Meta bills.
+                if (scope.channelType !== current.binding.channelType
+                    || scope.channelAccountId !== current.binding.channelAccountId) {
+                    throw new DispatchOutboxError('dispatch_binding_changed');
+                }
+                const verdict = await revalidateProactivePolicy(query, schema, scope);
+                if (verdict.kind !== 'current') {
+                    // ── SUPPRESSED, AND THE SUPPRESSION HAS TO COMMIT ───────
+                    //
+                    // The appointment moved or was cancelled: sending "your
+                    // appointment is tomorrow at 3" about a row that now says
+                    // Thursday is worse than sending nothing, and a retry says
+                    // the same false thing.
+                    //
+                    // Admitted and settled in ONE transaction, then reported by
+                    // the caller AFTER it commits. Throwing from in here rolled
+                    // the suppression back with everything else, so the row
+                    // stayed `queued` and the next pass tried again — a
+                    // refusal that refused nothing.
+                    await admitDispatch(query, schema, { dispatchId, leaseToken, leaseSeconds });
+                    return settleDispatch(query, schema, {
+                        dispatchId, leaseToken,
+                        outcome: { kind: 'suppressed',
+                            errorCode: `proactive_${verdict.kind}:${verdict.detail}`.slice(0, 120) },
+                    });
+                }
+            } else if (validServedAgentAuthority(scope, schema, tenantId)) {
+                // Another agent can win this connection without changing the
+                // first one's own version or hash, so the routing itself is
+                // re-checked.
+                await assertServedAgentConnectionAuthority(query, schema, scope,
+                    current.binding.channelType, current.binding.channelAccountId);
+            } else {
                 throw new DispatchOutboxError('dispatch_authority_required');
-            // Another agent can win this connection without changing the first
-            // one's own version or hash, so the routing itself is re-checked.
-            await assertServedAgentConnectionAuthority(query, schema, scope,
-                current.binding.channelType, current.binding.channelAccountId);
+            }
             // Words derived from a retired example may not go out under a new
             // permission, even though the words themselves have not changed.
             for (const footprint of [...(current.learningFootprint || [])]
@@ -239,6 +295,9 @@ export class AgentDispatchOutboxStore {
         // event with a different distribution, and folding the two together
         // would let a burst of cheap rejections hide a slow admission path.
         await recordDispatchLatency(this.redis, 'admit', Date.now() - startedAt);
+        // Reported after the commit, so the suppression is durable before
+        // anybody is told about it.
+        if (row.state === 'suppressed') throw new DispatchOutboxError('dispatch_effect_superseded');
         return { schemaName: schema, leaseToken, row };
     }
 

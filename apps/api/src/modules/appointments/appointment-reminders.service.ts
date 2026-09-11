@@ -11,7 +11,24 @@ import { resolveTenantSubscriptionAccess } from '../../common/utils/subscription
 import { EmailTemplatesService } from '../email-templates/email-templates.service';
 import { APPOINTMENT_EMAIL_SLUGS } from '../email-templates/appointment-email-layout';
 import { formatDuration, normaliseLang, LANG_LOCALE } from './appointment-notifications-i18n';
-import { ProactiveDispatchService } from '../channels/proactive-dispatch.service';
+import {
+    ProactiveDispatchService, producerMayAdvance, type ProactiveSendResult,
+} from '../channels/proactive-dispatch.service';
+
+/**
+ * Nothing durable was written, so the appointment must stay unflagged.
+ *
+ * An exception rather than a return value because the flag is written by the
+ * CALLER, after this. A quiet `return` leaves that write happening for a
+ * message that was refused — which is precisely the defect: the customer never
+ * hears, and the record says they were told.
+ */
+class ReminderNotDispatched extends Error {
+    constructor(readonly appointmentId: string, readonly result: ProactiveSendResult) {
+        super(`reminder_not_dispatched:${result.kind}:${appointmentId}`);
+        this.name = 'ReminderNotDispatched';
+    }
+}
 import { RegionalProfileService } from '../tenants/regional-profile.service';
 import { whatsappSenderFrom } from '../channels/whatsapp-sender-origin';
 import {
@@ -77,19 +94,30 @@ export class AppointmentRemindersService {
     /**
      * Hand one reminder to the durable lane.
      *
-     * Returns whether it was committed. `false` means nothing was written and
-     * nothing was sent, so the caller must NOT mark the appointment as
-     * reminded: the flag says "the customer was told", and writing it for a
+     * ═══ THE FLAG FOLLOWS THE EFFECT, NEVER THE ATTEMPT ═══
+     *
+     * `reminder_24h_sent` means "the customer was told". Writing it for a
      * message that never left is how a reminder disappears with the record
-     * saying it happened.
+     * saying it happened — and this method used to return a boolean the caller
+     * then ignored, so an appointment with no sender was marked reminded.
+     *
+     * It returns the lane's own five-way answer now, and the caller advances
+     * only on the three that mean "nothing further is owed":
+     *
+     *   · prepared / already_present — the durable effect exists;
+     *   · suppressed — the policy says it must NOT be sent, so nothing is owed.
+     *     Leaving the flag unset there would retry every fifteen minutes for
+     *     ever against an appointment that was cancelled;
+     *   · deferred / refused — nothing was written. The flag stays false.
      */
     private async dispatchTemplate(tenantId: string, schemaName: string, appt: any, input: {
         readonly originKey: string;
+        readonly producer: string;
         readonly sender: string | undefined;
         readonly templateName: string;
         readonly language: string;
         readonly components: any[];
-    }): Promise<boolean> {
+    }): Promise<ProactiveSendResult> {
         const channelType = (appt.contact_channel || 'whatsapp') as string;
         // ONLY what `senderOf` allowed. Falling back to the raw column would
         // undo the check it exists to make: that column holds whichever account
@@ -98,11 +126,12 @@ export class AppointmentRemindersService {
         const sender = String(input.sender ?? '').trim();
         if (!sender) {
             // Without a sender there is no account to bill and no number to send
-            // from. The connection resolver refuses the same way, and refusing
-            // here keeps the row from being written for an effect that cannot
-            // leave.
+            // from. Refused rather than deferred: nobody is going to pick a
+            // number on the platform's behalf, and retrying every fifteen
+            // minutes would only repeat the same refusal. The configuration
+            // task `ProactiveSendConnection` raises is what moves this.
             this.logger.warn(`[Reminders] appointment ${appt.id} has no sender — nothing dispatched`);
-            return false;
+            return { kind: 'refused', reason: 'no_sender' };
         }
         const conversationId = appt.conversation_id
             ?? await this.proactive.conversationFor(schemaName, {
@@ -112,35 +141,39 @@ export class AppointmentRemindersService {
         if (!conversationId || !appt.contact_id) {
             this.logger.warn(`[Reminders] appointment ${appt.id} has no thread to write into `
                 + '— nothing dispatched');
-            return false;
+            return { kind: 'refused', reason: 'no_conversation' };
         }
-        try {
-            await this.proactive.send(tenantId, {
-                originKey: input.originKey,
-                conversationId: String(conversationId),
-                contactId: String(appt.contact_id),
-                channelType, channelAccountId: sender,
-                recipient: String(appt.contact_phone ?? ''),
-                items: [{ kind: 'template', payload: {
-                    templateName: input.templateName,
-                    language: input.language,
-                    components: input.components,
-                } }],
-                operationalScope: {
-                    tenantId, schemaName, channelType, channelAccountId: sender,
-                },
-            });
-            return true;
-        } catch (error: any) {
-            // Committed or not, never both. A failure here wrote nothing, so
-            // the appointment stays unflagged and the next pass tries again —
-            // and because the origin is derived from the appointment and the
-            // reminder kind, that retry finds its own row rather than making a
-            // second one.
-            this.logger.error(`[Reminders] appointment ${appt.id} could not be committed to the `
-                + `durable lane: ${error?.message}`);
-            return false;
+        // ── THE AUTHORITY, READ FROM THE ROW RATHER THAN ASSERTED ───────────
+        //
+        // Built by reading the appointment, so the revision it carries
+        // describes the appointment as it IS. The store revalidates it inside
+        // the transaction that grants the lease, which is what makes a
+        // cancellation between preparing and sending a suppression rather than
+        // a message about a turn that no longer exists.
+        const operationalScope = await this.proactive.policyAuthority(schemaName, {
+            tenantId, producer: input.producer, channelType,
+            channelAccountId: sender, entityId: String(appt.id),
+        });
+        if (!operationalScope) {
+            // The appointment no longer justifies this message — cancelled,
+            // completed, gone. Nothing is owed, so the caller advances.
+            this.logger.log(`[Reminders] appointment ${appt.id} no longer justifies `
+                + `${input.producer} — suppressed`);
+            return { kind: 'suppressed', reason: 'entity_no_longer_eligible' };
         }
+        return this.proactive.send(tenantId, {
+            originKey: input.originKey,
+            conversationId: String(conversationId),
+            contactId: String(appt.contact_id),
+            channelType, channelAccountId: sender,
+            recipient: String(appt.contact_phone ?? ''),
+            items: [{ kind: 'template', payload: {
+                templateName: input.templateName,
+                language: input.language,
+                components: input.components,
+            } }],
+            operationalScope,
+        });
     }
 
     /**
@@ -479,13 +512,23 @@ export class AppointmentRemindersService {
         // The origin is the appointment and WHICH reminder, so the 24h and the
         // 2h are two different effects of one appointment and a retry of either
         // finds its own row.
-        const committed = await this.dispatchTemplate(tenantId, schemaName, appt, {
+        // The origin is the appointment and WHICH reminder, so the 24h and the
+        // 2h are two different effects of one appointment and a retry of either
+        // finds its own row.
+        const result = await this.dispatchTemplate(tenantId, schemaName, appt, {
             originKey: `appointment_reminder:${appt.id}:${type}`,
+            producer: 'appointment_reminder',
             sender, templateName: 'appointment_reminder',
             language: normalizeMetaLanguage(lang), components,
         });
-        if (!committed) return;
-        this.logger.log(`Committed the ${type} reminder for appointment ${appt.id} to the durable lane`);
+        // Thrown, not returned: the caller writes the flag after this call, and
+        // an exception is the only thing that reliably stops it. A `return` here
+        // would leave the flag being written for a message that was refused,
+        // which is the defect this whole change is about.
+        if (!producerMayAdvance(result)) {
+            throw new ReminderNotDispatched(String(appt.id), result);
+        }
+        this.logger.log(`${result.kind} the ${type} reminder for appointment ${appt.id}`);
     }
 
     private async processAttendanceChecks(tenantId: string, schemaName: string) {
@@ -560,13 +603,16 @@ export class AppointmentRemindersService {
             },
         ];
 
-        const committed = await this.dispatchTemplate(tenantId, schemaName, appt, {
+        const result = await this.dispatchTemplate(tenantId, schemaName, appt, {
             originKey: `attendance_check:${appt.id}`,
+            producer: 'attendance_check',
             sender, templateName: 'attendance_check',
             language: normalizeMetaLanguage(lang), components,
         });
-        if (!committed) return;
-        this.logger.log(`Committed the attendance check for appointment ${appt.id} to the durable lane`);
+        if (!producerMayAdvance(result)) {
+            throw new ReminderNotDispatched(String(appt.id), result);
+        }
+        this.logger.log(`${result.kind} the attendance check for appointment ${appt.id}`);
     }
 
     private async canSendTenantWork(tenantId: string): Promise<boolean> {

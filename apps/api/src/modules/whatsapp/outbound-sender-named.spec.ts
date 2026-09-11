@@ -41,9 +41,20 @@ describe('every charged WhatsApp producer names the account that pays', () => {
             const dispatched: any[] = [];
             const proactive = {
                 send: jest.fn(async (_tenantId: string, input: any) => {
-                    dispatched.push(input); return 'origin';
+                    dispatched.push(input);
+                    return { kind: 'prepared', originId: 'origin' };
                 }),
                 conversationFor: jest.fn(async () => '44444444-4444-4444-8444-444444444444'),
+                // The authority the reminder sends under. Its real construction
+                // — reading the appointment and hashing the fields the message
+                // depends on — is proven against real PostgreSQL in
+                // `appointments/reminder-durable-lane.postgres.spec.ts`. Here
+                // it only has to exist, so the subject stays "which account
+                // pays".
+                policyAuthority: jest.fn(async (_schema: string, input: any) => ({
+                    kind: 'proactive_policy', ...input, entityRevision: 'a'.repeat(64),
+                    policyVersion: 1, schemaName: SCHEMA,
+                })),
             };
             const queries: string[] = [];
             const prisma = {

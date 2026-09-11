@@ -583,17 +583,55 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
 
     // -- Scheduled and event-driven messages to customers -----------------------
 
+    // One file, two lanes, and splitting the entry is the honest way to say so:
+    // the confirmation was migrated and the cancellation could not be. The
+    // second entry says why.
     producer({
-        id: 'appointments.lifecycle_notice',
-        effect: 'The message to a customer when their appointment is created or cancelled',
+        id: 'appointments.booking_confirmation',
+        effect: 'The message to a customer when their appointment is confirmed',
+        // Moved off `outbound_queue`. The sweep still finds an egress primitive
+        // in this file, but it belongs to the cancellation below rather than to
+        // this producer — which is why this one is `declared`.
+        lane: 'dispatch_outbox',
+        status: 'live',
+        derivation: 'declared',
+        source: 'modules/appointments/appointment-notifications.service.ts',
+        symbol: 'dispatchConfirmation',
+        egress: 'ProactiveDispatchService.send commits an `agent_dispatch_outbox` row with a `text` '
+            + 'item; the outbound processor performs the channel call. The email copy still goes '
+            + 'through EmailTemplatesService.renderAndSend inline',
+        properties: {
+            authority: durable('the processor admits the row through the spend gate before the POST, '
+                + 'under a `proactive_policy` authority read from the appointment row'),
+            idempotency: durable('the origin is derived from the appointment id, so a replayed '
+                + '`appointment.created` collides on the row that already exists instead of '
+                + 'confirming the customer a second time'),
+            receipt: durable('the outbox row carries the provider id and the history row it wrote in '
+                + 'the same transaction'),
+            uncertainOutcome: durable('a timeout leaves the row admitted with its lease; the lease '
+                + 'sweep moves it to reconciliation rather than sending again'),
+            erasure: durable('the outbox payload is cleared by the GDPR fan-out like every other '
+                + 'dispatch row'),
+            recovery: durable('the recovery pass republishes any row nothing ever published — the '
+                + 'case a fire-and-forget event could not survive at all'),
+        },
+    }),
+
+    producer({
+        id: 'appointments.cancellation_notice',
+        effect: 'The message to a customer when their appointment is cancelled',
         lane: 'outbound_queue',
         status: 'live',
         derivation: 'census',
         source: 'modules/appointments/appointment-notifications.service.ts',
         symbol: 'AppointmentNotificationsService',
         egress: 'OutboundQueueService.enqueue',
-        properties: queued(none('no `dedupeId`, so a replayed `appointment.created` event sends the '
-            + 'confirmation again')),
+        properties: queued(none('no `dedupeId`, so a replayed `appointment.cancelled` event sends the '
+            + 'notice again. It could NOT move with the confirmation: the closed registry maps '
+            + '`appointment_notification` onto a revision that answers null for a cancelled '
+            + 'appointment, and `AppointmentsService.cancel` commits the status before it emits, so '
+            + 'the lane would suppress the message rather than de-duplicate it. It needs an '
+            + '`appointment_cancellation` policy whose revision accepts `cancelled`')),
     }),
 
     producer({
@@ -733,14 +771,33 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         id: 'recall.win_back',
         effect: 'The win-back message to a contact who went quiet, from the daily recall cron or from an '
             + 'operator pressing "run now"',
-        lane: 'outbound_queue',
+        // Moved off `outbound_queue`. The sweep no longer finds an egress
+        // primitive in this file because there is no longer one to find, which
+        // is why the derivation is `declared` rather than `census`.
+        lane: 'dispatch_outbox',
         status: 'live',
-        derivation: 'census',
+        derivation: 'declared',
         source: 'modules/recall/recall.service.ts',
         symbol: 'RecallService',
-        egress: 'OutboundQueueService.enqueue',
-        properties: queued(none('no `dedupeId`; the cron and the manual trigger share no identity, so '
-            + 'running it by hand after the cron sends a second message')),
+        egress: 'ProactiveDispatchService.send commits an `agent_dispatch_outbox` row with a `text` '
+            + 'item; the outbound processor performs the channel call',
+        properties: {
+            authority: durable('the processor admits the row through the spend gate before the POST, '
+                + 'under a `recall_reminder` authority read from the contact row'),
+            idempotency: durable('the cooldown is CLAIMED before the effect is prepared, so the cron '
+                + 'and the manual trigger cannot both take the same cycle, and the origin is derived '
+                + 'from the cooldown boundary that made the contact due — so a retry of that cycle '
+                + 'finds the same row instead of sending a second win-back'),
+            receipt: durable('the outbox row carries the provider id and the history row it wrote in '
+                + 'the same transaction'),
+            uncertainOutcome: durable('a timeout leaves the row admitted with its lease; the lease '
+                + 'sweep moves it to reconciliation rather than sending again'),
+            erasure: durable('the outbox payload is cleared by the GDPR fan-out like every other '
+                + 'dispatch row'),
+            recovery: durable('the recovery pass republishes any row nothing ever published, and a '
+                + 'result that left nothing durable releases the claimed cooldown so the next sweep '
+                + 'retries from the same boundary'),
+        },
     }),
 
     producer({

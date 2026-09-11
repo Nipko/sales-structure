@@ -20,19 +20,52 @@ RUN npm install
 COPY packages/shared/ ./packages/shared/
 COPY apps/dashboard/ ./apps/dashboard/
 
-# Build-time env vars (Next.js bakes NEXT_PUBLIC_* into the client bundle)
+# ═══ THE ELEVEN VALUES NEXT.JS BAKES INTO THE CLIENT BUNDLE ═══
+#
+# `NEXT_PUBLIC_*` is read at BUILD time and written into the JavaScript the
+# browser downloads. A missing one does not fail the build: it bakes an empty
+# string, and the page ships looking healthy with a feature that cannot work.
+#
+# Five of them were missing here while BOTH workflows passed them, so the image
+# silently dropped values production had gone to the trouble of supplying:
+#
+#   · `META_SOLUTION_ID` had an ARG and no ENV — declared, received, discarded;
+#   · `INSTAGRAM_APP_ID` and `INSTAGRAM_REDIRECT_URI` were absent, so the
+#     Instagram connect button opened an authorisation for no app;
+#   · `MESSENGER_FB_LOGIN_CONFIG_ID` was absent, so Messenger login had no
+#     configuration to open;
+#   · `VAPID_PUBLIC_KEY` was absent, so push could not subscribe.
+#
+# Nothing failed. The features were simply dead in the shipped bundle, and the
+# only evidence was a browser console nobody was reading. The contract test in
+# `apps/dashboard/src/lib/public-build-inputs.spec.ts` now crosses this file
+# with the two workflows and with the dashboard source, so a twelfth value
+# cannot be added to one of the four and forgotten in the others.
+#
+# ARG and ENV are BOTH required and are not the same statement: ARG receives the
+# value from the builder, ENV puts it where `next build` can read it. An ARG
+# without its ENV is the defect above.
 ARG NEXT_PUBLIC_API_URL=https://api.parallly-chat.cloud/api/v1
 ARG NEXT_PUBLIC_WA_SERVICE_URL=https://wa.parallly-chat.cloud/api/v1
 ARG NEXT_PUBLIC_META_APP_ID
 ARG NEXT_PUBLIC_META_CONFIG_ID
 ARG NEXT_PUBLIC_META_SOLUTION_ID
 ARG NEXT_PUBLIC_GOOGLE_CLIENT_ID
+ARG NEXT_PUBLIC_MESSENGER_FB_LOGIN_CONFIG_ID
+ARG NEXT_PUBLIC_INSTAGRAM_APP_ID
+ARG NEXT_PUBLIC_INSTAGRAM_REDIRECT_URI
+ARG NEXT_PUBLIC_VAPID_PUBLIC_KEY
 ARG NEXT_PUBLIC_APP_VERSION
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_WA_SERVICE_URL=$NEXT_PUBLIC_WA_SERVICE_URL
 ENV NEXT_PUBLIC_META_APP_ID=$NEXT_PUBLIC_META_APP_ID
 ENV NEXT_PUBLIC_META_CONFIG_ID=$NEXT_PUBLIC_META_CONFIG_ID
+ENV NEXT_PUBLIC_META_SOLUTION_ID=$NEXT_PUBLIC_META_SOLUTION_ID
 ENV NEXT_PUBLIC_GOOGLE_CLIENT_ID=$NEXT_PUBLIC_GOOGLE_CLIENT_ID
+ENV NEXT_PUBLIC_MESSENGER_FB_LOGIN_CONFIG_ID=$NEXT_PUBLIC_MESSENGER_FB_LOGIN_CONFIG_ID
+ENV NEXT_PUBLIC_INSTAGRAM_APP_ID=$NEXT_PUBLIC_INSTAGRAM_APP_ID
+ENV NEXT_PUBLIC_INSTAGRAM_REDIRECT_URI=$NEXT_PUBLIC_INSTAGRAM_REDIRECT_URI
+ENV NEXT_PUBLIC_VAPID_PUBLIC_KEY=$NEXT_PUBLIC_VAPID_PUBLIC_KEY
 ENV NEXT_PUBLIC_APP_VERSION=$NEXT_PUBLIC_APP_VERSION
 
 # Build (standalone output mode configured in next.config.ts)

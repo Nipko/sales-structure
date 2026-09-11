@@ -289,26 +289,26 @@ buscar una llamada a la autoridad economica en el codigo del archivo.
 |---|---|---|---|
 | `apps/api/src/modules/agent-console/agent-console.service.ts:523` | `ChannelGatewayService.sendMessage` | si | pide permiso antes de emitir |
 | `apps/api/src/modules/channels/instagram/instagram.adapter.ts:34` | Graph `/{phone_number_id}/messages` POST | camino | Instagram is not billed per message by its provider |
-| `apps/api/src/modules/channels/instagram/instagram.adapter.ts:136` | Graph `/{phone_number_id}/messages` POST | camino | Instagram is not billed per message by its provider |
-| `apps/api/src/modules/channels/instagram/instagram.adapter.ts:152` | Graph `/{phone_number_id}/messages` POST | camino | Instagram is not billed per message by its provider |
-| `apps/api/src/modules/channels/instagram/instagram.adapter.ts:179` | Graph `/{phone_number_id}/messages` POST | camino | Instagram is not billed per message by its provider |
+| `apps/api/src/modules/channels/instagram/instagram.adapter.ts:139` | Graph `/{phone_number_id}/messages` POST | camino | Instagram is not billed per message by its provider |
+| `apps/api/src/modules/channels/instagram/instagram.adapter.ts:155` | Graph `/{phone_number_id}/messages` POST | camino | Instagram is not billed per message by its provider |
+| `apps/api/src/modules/channels/instagram/instagram.adapter.ts:182` | Graph `/{phone_number_id}/messages` POST | camino | Instagram is not billed per message by its provider |
 | `apps/api/src/modules/channels/messenger/messenger.adapter.ts:30` | Graph `/{phone_number_id}/messages` POST | camino | Messenger is not billed per message by its provider |
-| `apps/api/src/modules/channels/messenger/messenger.adapter.ts:132` | Graph `/{phone_number_id}/messages` POST | camino | Messenger is not billed per message by its provider |
-| `apps/api/src/modules/channels/messenger/messenger.adapter.ts:148` | Graph `/{phone_number_id}/messages` POST | camino | Messenger is not billed per message by its provider |
-| `apps/api/src/modules/channels/messenger/messenger.adapter.ts:176` | Graph `/{phone_number_id}/messages` POST | camino | Messenger is not billed per message by its provider |
-| `apps/api/src/modules/channels/outbound-queue.processor.ts:302` | strict dispatch transport | si | pide permiso antes de emitir |
-| `apps/api/src/modules/channels/outbound-queue.processor.ts:598` | `ChannelGatewayService.sendMessage` | si | pide permiso antes de emitir |
-| `apps/api/src/modules/channels/outbound-queue.processor.ts:632` | `ChannelGatewayService.sendMessage` | si | pide permiso antes de emitir |
-| `apps/api/src/modules/channels/outbound-queue.processor.ts:766` | `ChannelGatewayService.sendMessage` | si | pide permiso antes de emitir |
+| `apps/api/src/modules/channels/messenger/messenger.adapter.ts:135` | Graph `/{phone_number_id}/messages` POST | camino | Messenger is not billed per message by its provider |
+| `apps/api/src/modules/channels/messenger/messenger.adapter.ts:151` | Graph `/{phone_number_id}/messages` POST | camino | Messenger is not billed per message by its provider |
+| `apps/api/src/modules/channels/messenger/messenger.adapter.ts:179` | Graph `/{phone_number_id}/messages` POST | camino | Messenger is not billed per message by its provider |
+| `apps/api/src/modules/channels/outbound-queue.processor.ts:365` | strict dispatch transport | si | pide permiso antes de emitir |
+| `apps/api/src/modules/channels/outbound-queue.processor.ts:674` | `ChannelGatewayService.sendMessage` | si | pide permiso antes de emitir |
+| `apps/api/src/modules/channels/outbound-queue.processor.ts:708` | `ChannelGatewayService.sendMessage` | si | pide permiso antes de emitir |
+| `apps/api/src/modules/channels/outbound-queue.processor.ts:842` | `ChannelGatewayService.sendMessage` | si | pide permiso antes de emitir |
 | `apps/api/src/modules/channels/whatsapp/whatsapp.adapter.ts:34` | Graph `/{phone_number_id}/messages` POST | camino | the adapter; reachable only through `ChannelGatewayService.sendMessage` or the strict transport, and every call site of both is classified above |
-| `apps/api/src/modules/channels/whatsapp/whatsapp.adapter.ts:127` | Graph `/{phone_number_id}/messages` POST | camino | the adapter; reachable only through `ChannelGatewayService.sendMessage` or the strict transport, and every call site of both is classified above |
-| `apps/api/src/modules/channels/whatsapp/whatsapp.adapter.ts:156` | Graph `/{phone_number_id}/messages` POST | camino | the adapter; reachable only through `ChannelGatewayService.sendMessage` or the strict transport, and every call site of both is classified above |
-| `apps/api/src/modules/channels/whatsapp/whatsapp.adapter.ts:245` | Graph `/{phone_number_id}/messages` POST | camino | the adapter; reachable only through `ChannelGatewayService.sendMessage` or the strict transport, and every call site of both is classified above |
-| `apps/api/src/modules/channels/whatsapp/whatsapp.adapter.ts:283` | Graph `/{phone_number_id}/messages` POST | camino | the adapter; reachable only through `ChannelGatewayService.sendMessage` or the strict transport, and every call site of both is classified above |
-| `apps/api/src/modules/channels/whatsapp/whatsapp.adapter.ts:424` | Graph `/{phone_number_id}/messages` POST | camino | the adapter; reachable only through `ChannelGatewayService.sendMessage` or the strict transport, and every call site of both is classified above |
-| `apps/api/src/modules/channels/whatsapp/whatsapp.adapter.ts:474` | Graph `/{phone_number_id}/messages` POST | camino | the adapter; reachable only through `ChannelGatewayService.sendMessage` or the strict transport, and every call site of both is classified above |
-| `apps/api/src/modules/channels/whatsapp/whatsapp.adapter.ts:522` | Graph `/{phone_number_id}/messages` POST | camino | the adapter; reachable only through `ChannelGatewayService.sendMessage` or the strict transport, and every call site of both is classified above |
-| `apps/api/src/modules/whatsapp/services/whatsapp-messaging.service.ts:248` | Graph `/{phone_number_id}/messages` POST | si | pide permiso antes de emitir |
+| `apps/api/src/modules/channels/whatsapp/whatsapp.adapter.ts:174` | Graph `/{phone_number_id}/messages` POST | camino | the adapter; reachable only through `ChannelGatewayService.sendMessage` or the strict transport, and every call site of both is classified above |
+| `apps/api/src/modules/channels/whatsapp/whatsapp.adapter.ts:203` | Graph `/{phone_number_id}/messages` POST | camino | the adapter; reachable only through `ChannelGatewayService.sendMessage` or the strict transport, and every call site of both is classified above |
+| `apps/api/src/modules/channels/whatsapp/whatsapp.adapter.ts:292` | Graph `/{phone_number_id}/messages` POST | camino | the adapter; reachable only through `ChannelGatewayService.sendMessage` or the strict transport, and every call site of both is classified above |
+| `apps/api/src/modules/channels/whatsapp/whatsapp.adapter.ts:330` | Graph `/{phone_number_id}/messages` POST | camino | the adapter; reachable only through `ChannelGatewayService.sendMessage` or the strict transport, and every call site of both is classified above |
+| `apps/api/src/modules/channels/whatsapp/whatsapp.adapter.ts:471` | Graph `/{phone_number_id}/messages` POST | camino | the adapter; reachable only through `ChannelGatewayService.sendMessage` or the strict transport, and every call site of both is classified above |
+| `apps/api/src/modules/channels/whatsapp/whatsapp.adapter.ts:521` | Graph `/{phone_number_id}/messages` POST | camino | the adapter; reachable only through `ChannelGatewayService.sendMessage` or the strict transport, and every call site of both is classified above |
+| `apps/api/src/modules/channels/whatsapp/whatsapp.adapter.ts:569` | Graph `/{phone_number_id}/messages` POST | camino | the adapter; reachable only through `ChannelGatewayService.sendMessage` or the strict transport, and every call site of both is classified above |
+| `apps/api/src/modules/whatsapp/services/whatsapp-messaging.service.ts:255` | Graph `/{phone_number_id}/messages` POST | si | pide permiso antes de emitir |
 
 ### Productores cobrables y su sumidero
 
@@ -383,7 +383,7 @@ esperada y su clasificación queda **fuera del alcance de este generador**.
 |---|---|---|---|
 | `analytics.scheduled_reports` | `inline` | `live` | `modules/analytics/scheduled-reports.service.ts` |
 | `analytics.threshold_alerts` | `inline` | `live` | `modules/analytics/alerts.service.ts` |
-| `appointments.reminders` | `inline` | `live` | `modules/appointments/appointment-reminders.service.ts` |
+| `appointments.reminders` | `dispatch_outbox` | `live` | `modules/appointments/appointment-reminders.service.ts` |
 | `auth.transactional_email` | `inline` | `live` | `modules/auth/auth.service.ts` |
 | `auth.two_factor_sms` | `inline` | `off` | `modules/auth/platform-sms.service.ts` |
 | `automation.http_request` | `domain_queue` | `live` | `modules/automation/handlers/http-request.handler.ts` |

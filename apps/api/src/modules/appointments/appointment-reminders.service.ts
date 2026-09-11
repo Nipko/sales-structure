@@ -349,9 +349,16 @@ export class AppointmentRemindersService {
             return;
         }
 
-        const template = await this.getApprovedTemplate(schemaName, 'appointment_reminder');
+        // The catalogue belongs to the SENDER's WABA, so the sender is resolved
+        // before the template rather than after: a template approved on a
+        // sibling WABA is not a template this number may send. An appointment
+        // that arrived through no conversation lends no sender, and the lookup
+        // then answers only while the tenant has one WABA.
+        const sender = senderOf(appt);
+        const template = await this.getApprovedTemplate(schemaName, 'appointment_reminder', sender);
         if (!template) {
-            this.logger.warn(`No approved appointment_reminder template for tenant ${tenantId} — skipping`);
+            this.logger.warn(`No approved appointment_reminder template on the WABA of `
+                + `${sender ?? 'this tenant'} (${tenantId}) — skipping`);
             return;
         }
 
@@ -391,7 +398,7 @@ export class AppointmentRemindersService {
             'appointment_reminder',
             normalizeMetaLanguage(lang),
             components,
-            senderOf(appt),
+            sender,
         );
         this.logger.log(`Sent ${type} template reminder to ${appt.contact_phone} for appointment ${appt.id}`);
     }
@@ -436,9 +443,11 @@ export class AppointmentRemindersService {
             return;
         }
 
-        const template = await this.getApprovedTemplate(schemaName, 'attendance_check');
+        const sender = senderOf(appt);
+        const template = await this.getApprovedTemplate(schemaName, 'attendance_check', sender);
         if (!template) {
-            this.logger.warn(`No approved attendance_check template for tenant ${tenantId} — skipping`);
+            this.logger.warn(`No approved attendance_check template on the WABA of `
+                + `${sender ?? 'this tenant'} (${tenantId}) — skipping`);
             return;
         }
 
@@ -472,7 +481,7 @@ export class AppointmentRemindersService {
             'attendance_check',
             normalizeMetaLanguage(lang),
             components,
-            senderOf(appt),
+            sender,
         );
         this.logger.log(`Sent attendance check template to ${appt.contact_phone} for appointment ${appt.id}`);
     }
@@ -587,12 +596,47 @@ export class AppointmentRemindersService {
 
     // ── Utility methods ─────────────────────────────────────────────
 
-    private async getApprovedTemplate(schemaName: string, templateName: string): Promise<any | null> {
+    /**
+     * ═══ AN APPROVED TEMPLATE, ON THE CATALOGUE THAT WILL SEND IT ═══
+     *
+     * Approval belongs to a WhatsApp Business Account. A tenant with two WABAs
+     * — a second brand, a migration in progress — can have
+     * `appointment_reminder` approved on one and rejected on the other, and
+     * this returned whichever row came back first. The reminder then went out
+     * from a number whose WABA had never had that template approved, Meta
+     * refused it at the door, and the failure looked like a transport problem
+     * rather than the wrong catalogue.
+     *
+     * ── AND WHEN NOBODY NAMED A SENDER ──────────────────────────────────────
+     *
+     * A booking made by hand or through the public page arrived through no
+     * conversation, so there is no connection to inherit. That is not a reason
+     * to refuse: it is the same question the connection resolver answers, and
+     * it has an answer exactly when the tenant has ONE WABA. With one, "the
+     * catalogue" is unambiguous. With two, it is not, and returning a row from
+     * either is picking which brand's template a customer receives.
+     */
+    private async getApprovedTemplate(schemaName: string, templateName: string,
+        phoneNumberId?: string | null): Promise<any | null> {
+        const sender = String(phoneNumberId ?? '').trim();
         const rows = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-            `SELECT id, name, language, approval_status FROM whatsapp_templates
-             WHERE name = $1 AND approval_status = 'APPROVED'
-             LIMIT 1`,
-            [templateName],
+            `SELECT t.id, t.name, t.language, t.approval_status
+               FROM whatsapp_templates t
+               JOIN whatsapp_channels c ON c.id = t.channel_id
+              WHERE t.name = $1 AND t.approval_status = 'APPROVED'
+                AND c.meta_waba_id IS NOT NULL
+                AND c.meta_waba_id = CASE
+                    WHEN $2 <> '' THEN (
+                        SELECT meta_waba_id FROM whatsapp_channels
+                         WHERE phone_number_id = $2 LIMIT 1)
+                    -- Unnamed: only while "the tenant's WABA" has one referent.
+                    ELSE (
+                        SELECT MIN(meta_waba_id) FROM whatsapp_channels
+                         WHERE meta_waba_id IS NOT NULL
+                        HAVING COUNT(DISTINCT meta_waba_id) = 1)
+                    END
+              LIMIT 1`,
+            [templateName, sender],
         );
         return rows?.[0] || null;
     }

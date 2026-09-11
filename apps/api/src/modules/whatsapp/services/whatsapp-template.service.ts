@@ -159,11 +159,26 @@ export class WhatsappTemplateService {
      *
      * Grouping here rather than at each call site is deliberate: three
      * operations need this rule and three copies of it would drift.
+     *
+     * ── AND THE REPRESENTATIVE HAS TO BE ABLE TO SEND ───────────────────────
+     *
+     * "Oldest first" alone picked whichever row came back first, including a
+     * DISCONNECTED one. Every operation then resolved credentials for that
+     * number, was refused, and logged "not usable" — so a WABA with one
+     * disconnected number and one working one had no catalogue seeded, no
+     * template statuses synced and no categories resolved, because the broken
+     * sibling was standing in front of the working one.
+     *
+     * Usable rows are preferred, oldest first among them. An unusable row is
+     * still returned when it is the ONLY one for its WABA: the operation then
+     * fails with a diagnosis naming that WABA, which is the honest outcome and
+     * is what an operator needs. Silently dropping it would turn "your number
+     * is disconnected" into "nothing happened".
      */
     private async oneNumberPerWaba(schemaName: string):
         Promise<{ phoneNumberId: string; wabaId: string }[]> {
         const status = await this.connectionService.getChannelStatus(schemaName);
-        const byWaba = new Map<string, { phoneNumberId: string; wabaId: string }>();
+        const byWaba = new Map<string, { phoneNumberId: string; wabaId: string; usable: boolean }>();
         for (const channel of status.channels || []) {
             const phoneNumberId = String(channel.phone_number_id || '').trim();
             // A row with no phone number is an onboarding Meta has not
@@ -173,9 +188,15 @@ export class WhatsappTemplateService {
             // seed only one of them, so those are kept separate under their own
             // number rather than merged.
             const wabaId = String(channel.meta_waba_id || '').trim() || `unknown:${phoneNumberId}`;
-            if (!byWaba.has(wabaId)) byWaba.set(wabaId, { phoneNumberId, wabaId });
+            const usable = String(channel.channel_status ?? '').trim().toLowerCase() === 'connected';
+            const chosen = byWaba.get(wabaId);
+            // First usable wins; otherwise the first of any kind, so the WABA is
+            // still represented and still reports why it could not be used.
+            if (!chosen || (usable && !chosen.usable)) {
+                byWaba.set(wabaId, { phoneNumberId, wabaId, usable });
+            }
         }
-        return [...byWaba.values()];
+        return [...byWaba.values()].map(({ phoneNumberId, wabaId }) => ({ phoneNumberId, wabaId }));
     }
 
     private async seedTemplatesForNumber(tenantId: string, schemaName: string, phoneNumberId: string):

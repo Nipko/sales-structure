@@ -364,7 +364,7 @@ export class WhatsappMessagingService {
       // producers would each have had to remember, and the one that forgot
       // would have priced a campaign as a reply.
       const category = spend?.templateCategory ?? (templateName
-        ? await this.templateCategory(schemaName, templateName)
+        ? await this.templateCategory(schemaName, templateName, phoneNumberId)
         : null);
       // ── THE IDENTITY COMES FROM THE RESOLVER, NEVER FROM THIS SCOPE ──
       //
@@ -493,14 +493,41 @@ export class WhatsappMessagingService {
    * unknown, which is a diagnosis the admission already knows how to give. It
    * must never become a reason not to send.
    */
-  private async templateCategory(schemaName: string, templateName: string): Promise<string | null> {
+  private async templateCategory(schemaName: string, templateName: string,
+    phoneNumberId?: string | null): Promise<string | null> {
     try {
+      // ── THE CATEGORY IS A FACT ABOUT ONE WABA'S CATALOGUE ────────────────
+      //
+      // And the category decides the price: `marketing` and `service` are
+      // different amounts, and from October the difference is billed. This used
+      // to take the most recently synced row of that NAME across every WABA the
+      // tenant has, so a tenant with two could price a service reply at the
+      // marketing rate — or, worse, the other way round — because the sibling
+      // WABA happened to sync last.
+      //
+      // Unnamed sender: the same rule the connection resolver uses. "The
+      // tenant's catalogue" has one referent exactly while the tenant has one
+      // WABA; with two, `null` is the honest answer, and the admission already
+      // knows how to treat an unknown category — as expensive, not as cheap.
+      const sender = String(phoneNumberId ?? '').trim();
       const rows = await this.prisma.executeInTenantSchema<any[]>(
         schemaName,
-        `SELECT category FROM whatsapp_templates
-          WHERE name = $1 AND category IS NOT NULL
-          ORDER BY last_sync_at DESC NULLS LAST LIMIT 1`,
-        [templateName],
+        `SELECT t.category
+           FROM whatsapp_templates t
+           JOIN whatsapp_channels c ON c.id = t.channel_id
+          WHERE t.name = $1 AND t.category IS NOT NULL
+            AND c.meta_waba_id IS NOT NULL
+            AND c.meta_waba_id = CASE
+                WHEN $2 <> '' THEN (
+                    SELECT meta_waba_id FROM whatsapp_channels
+                     WHERE phone_number_id = $2 LIMIT 1)
+                ELSE (
+                    SELECT MIN(meta_waba_id) FROM whatsapp_channels
+                     WHERE meta_waba_id IS NOT NULL
+                    HAVING COUNT(DISTINCT meta_waba_id) = 1)
+                END
+          ORDER BY t.last_sync_at DESC NULLS LAST LIMIT 1`,
+        [templateName, sender],
       );
       return rows?.[0]?.category ?? null;
     } catch (error: any) {

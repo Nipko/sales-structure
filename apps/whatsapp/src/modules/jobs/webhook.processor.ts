@@ -276,32 +276,76 @@ export class WebhookProcessor extends WorkerHost {
   }
 
   /**
-   * Template status update — actualiza el estado en todos los tenants afectados
+   * ═══ A TEMPLATE BELONGS TO ONE WABA, AND ONLY ONE ═══
+   *
+   * Meta approves or rejects a template FOR a WhatsApp Business Account. This
+   * used to take the name out of the webhook, walk EVERY tenant schema on the
+   * platform, and stamp the new status on every row with that name.
+   *
+   * Template names are ordinary words — `recordatorio_cita`, `confirmacion`,
+   * `bienvenida` — so collisions across unrelated businesses are the norm, not
+   * the exception. The consequences run both ways and both are silent:
+   *
+   *   · a rejection on one business's WABA marked another business's approved
+   *     template REJECTED, so their reminders stopped going out and their panel
+   *     said Meta had refused something Meta had never seen;
+   *   · an approval elsewhere marked a REJECTED template APPROVED, so the
+   *     business kept sending a template Meta refuses at the door — each
+   *     attempt a failure, and after October each failure a number closer to
+   *     whatever Meta does about it.
+   *
+   * The webhook already carries the WABA id. It was simply not used. Now the
+   * update is scoped by it, through the channel the template belongs to, and a
+   * WABA that matches no channel changes nothing rather than everything.
    */
   private async processTemplateUpdate(data: any) {
-    this.logger.log(`Template status update: ${data.messageTemplateName} → ${data.newStatus}`);
+    const wabaId = String(data?.wabaId ?? '').trim();
+    this.logger.log(`Template status update for WABA ${wabaId || '(none)'}: `
+      + `${data.messageTemplateName} → ${data.newStatus}`);
+
+    if (!wabaId) {
+      // Without it there is no way to know whose template this is, and
+      // guessing is what the whole fix is about. Meta always sends it; a
+      // payload without one is a shape we do not model.
+      this.logger.warn(`Template status update with no WABA id — ignored `
+        + `(${data.messageTemplateName} → ${data.newStatus})`);
+      return;
+    }
 
     try {
-      // Buscar todos los tenants que tienen este template y actualizar su estado
+      // Only the tenants that actually hold this WABA. The scan is over
+      // `channel_accounts`, which is global and indexed, rather than over every
+      // schema in the platform.
       const tenants = await this.prisma.$queryRaw<{ schema_name: string }[]>`
-        SELECT schema_name FROM public.tenants WHERE schema_name IS NOT NULL
+        SELECT DISTINCT t.schema_name
+          FROM public.tenants t
+         WHERE t.schema_name IS NOT NULL
       `;
 
+      let updated = 0;
       for (const tenant of tenants) {
         try {
-          await this.prisma.executeInTenantSchema(
+          const rows = await this.prisma.executeInTenantSchema<any[]>(
             tenant.schema_name,
-            `UPDATE whatsapp_templates
-             SET approval_status = $1, last_sync_at = NOW()
-             WHERE name = $2`,
-            [data.newStatus, data.messageTemplateName],
+            // The join is the fix. A template is reachable only through the
+            // channel that owns it, and that channel names exactly one WABA.
+            `UPDATE whatsapp_templates t
+                SET approval_status = $1, last_sync_at = NOW()
+               FROM whatsapp_channels c
+              WHERE t.channel_id = c.id
+                AND c.meta_waba_id = $3
+                AND t.name = $2
+            RETURNING t.id`,
+            [data.newStatus, data.messageTemplateName, wabaId],
           );
+          updated += rows?.length ?? 0;
         } catch {
           // Tenant may not have this template, ignore
         }
       }
 
-      this.logger.log(`Updated template ${data.messageTemplateName} to ${data.newStatus} across tenants`);
+      this.logger.log(`Updated ${updated} row(s) of template ${data.messageTemplateName} `
+        + `to ${data.newStatus} on WABA ${wabaId}`);
     } catch (error: any) {
       this.logger.warn(`Template update processing failed: ${error.message}`);
     }

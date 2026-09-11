@@ -237,7 +237,22 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
     it('prepares one row when two workers race the same enrolment', async () => {
         const drip = await enrolment();
         await Promise.allSettled([run(drip.id), run(drip.id)]);
-        expect(await outboxRows()).toHaveLength(1);
+        // ── WHAT IS ACTUALLY INVARIANT HERE ─────────────────────────────────
+        //
+        // NOT "exactly one row". Two workers far enough apart legitimately
+        // advance the journey twice: the second reads the first's advance, and
+        // sending step 2 after step 1 is the sequence working, not a defect.
+        // Asserting one row made this pass on a quiet machine and fail inside a
+        // full suite run, twice.
+        //
+        // What may never happen is the SAME step going out twice, and the
+        // enrolment standing at a step it did not send. Both hold under every
+        // interleaving; the dangerous one is staged deterministically in the
+        // case below.
+        const rows = await outboxRows();
+        const origins = rows.map(row => String(row.operational_scope.entityRevision));
+        expect(new Set(origins).size).toBe(rows.length);
+        expect(Number((await enrolmentRow(drip.id)).current_step)).toBe(rows.length);
     });
 
     it('sends nothing when another worker advanced between the read and the claim', async () => {

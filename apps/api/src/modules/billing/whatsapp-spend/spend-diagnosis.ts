@@ -34,6 +34,46 @@ export const SPEND_BLOCK_CODES = [
 
 export type SpendBlockCode = (typeof SPEND_BLOCK_CODES)[number];
 
+/**
+ * ═══ A CONDITION THAT CLEARS IS NOT A DECISION THAT STANDS ═══
+ *
+ * The dispatch lane settles every refused admission as `suppressed`, on the
+ * reasoning that a ceiling does not become permissive by asking again. That is
+ * right about a ceiling and wrong about the codes below, and the difference is
+ * the difference between delaying a message and deleting one.
+ *
+ * A funding pause clears the moment somebody adds a card. A connection that
+ * cannot be read clears when the credential is repaired. Suppressing a
+ * committed effect for either means the confirmation of an order the customer
+ * already placed is thrown away — and R4 is explicit that a budget pause
+ * cancels no orders and erases no replies.
+ *
+ * So these settle as `failed`, which is retryable and keeps the payload, and
+ * the durable backoff is what stops them spinning. Everything else stays
+ * `suppressed`: a ceiling, a duplicate, an effect already resolved.
+ *
+ * `cap_soft_stop` is deliberately NOT here. It is a real decision — campaigns
+ * stand down so replies keep working — and a proactive effect that waits for
+ * the ceiling to reset is a campaign message arriving a month late.
+ */
+export const TRANSIENT_SPEND_BLOCKS: readonly SpendBlockCode[] = Object.freeze([
+    /** Meta refused to bill this business. Clears when funding is fixed. */
+    'account_paused',
+    /** We could not read the pause state. Clears when the store answers. */
+    'account_pause_unknown',
+    /** Funding was established as missing. Clears when a card is attached. */
+    'funding_not_ready',
+    /** The credential or the connection is unreadable. Clears when repaired. */
+    'connection_unusable',
+    /** The transmission right is held elsewhere right now. */
+    'transmission_held_elsewhere',
+]);
+
+/** Does this refusal describe a condition that can clear on its own? */
+export function refusalMayClear(code: string | null | undefined): boolean {
+    return !!code && (TRANSIENT_SPEND_BLOCKS as readonly string[]).includes(code);
+}
+
 export interface SpendBlock {
     readonly code: SpendBlockCode;
     /** Machine-readable context. Never a credential, never a phone number. */

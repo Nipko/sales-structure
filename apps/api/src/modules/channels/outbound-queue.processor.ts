@@ -10,6 +10,7 @@ import {
     WhatsappSendAdmissionService, fromSendContext, type Admission,
 } from '../billing/whatsapp-spend/whatsapp-send-admission.service';
 import { SpendMeterUnavailable } from '../billing/whatsapp-spend/spend-unavailable';
+import { refusalMayClear } from '../billing/whatsapp-spend/spend-diagnosis';
 import { isConnectionRefusal } from './connection-refusal';
 import { readProviderRefusal } from './funding-failure';
 import { AccountPauseStore } from './account-pause-store';
@@ -404,12 +405,34 @@ export class OutboundQueueProcessor extends WorkerHost {
             return 'dispatch:deferred:transmission_not_owned';
         }
         if (admission && !admission.permitted) {
-            // Refused on money, not on transport. The item is suppressed
-            // rather than retried: a ceiling does not become permissive by
-            // asking again, and the diagnosis says what to change.
+            // ── A CONDITION THAT CLEARS IS NOT A DECISION THAT STANDS ───────
+            //
+            // Refused on money, not on transport. A CEILING is a decision: it
+            // does not become permissive by asking again, so the item is
+            // suppressed and the diagnosis says what to change.
+            //
+            // A funding pause is not that. It clears the moment somebody adds a
+            // card, and this row may be the confirmation of an order the
+            // customer already placed — R4 is explicit that a budget pause
+            // cancels no orders and erases no replies. Suppressing it does not
+            // delay the message, it deletes it, and the customer is left with a
+            // purchase nobody ever acknowledged.
+            //
+            // So a refusal that CAN clear settles as `failed`: retryable, the
+            // payload kept, and the durable backoff is what stops it spinning.
+            const code = admission.block?.code ?? 'refused';
+            if (refusalMayClear(code)) {
+                const settled = await this.dispatchOutbox.settle(tenantId, dispatchId,
+                    admitted.leaseToken, { kind: 'failed', errorCode: `spend_${code}` })
+                    .catch(() => null);
+                this.logger.warn(`[Dispatch] ${dispatchId}: held back by ${code}; `
+                    + 'the effect is kept and retried when the condition clears');
+                if (settled?.state === 'failed') await waitUntil(settled.availableAt, `spend_${code}`);
+                return `dispatch:failed:spend_${code}`;
+            }
             await this.dispatchOutbox.settle(tenantId, dispatchId, admitted.leaseToken,
-                { kind: 'suppressed', errorCode: `spend_${admission.block?.code ?? 'refused'}` });
-            return `dispatch:suppressed:spend_${admission.block?.code ?? 'refused'}`;
+                { kind: 'suppressed', errorCode: `spend_${code}` });
+            return `dispatch:suppressed:spend_${code}`;
         }
         const outcome = await transport.sendStrict({
             itemKind: admitted.row.itemKind, to: admitted.row.binding!.recipient,

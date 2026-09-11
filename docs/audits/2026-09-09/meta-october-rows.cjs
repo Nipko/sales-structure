@@ -87,6 +87,8 @@ function octoberAuthorities({ root, api, shared }) {
     const { SENDING_ROLES } = api('modules/persona/human-operator-authority.ts');
     const { DISPATCH_ITEM_KINDS } = api('modules/channels/agent-dispatch-outbox.ts');
     const { SPEND_SCOPE_KINDS } = api('modules/billing/whatsapp-spend/spend-scopes.ts');
+    const { ACCEPTANCE_MATRIX, uncoveredScenarios } =
+        api('modules/billing/whatsapp-spend/acceptance-matrix.ts');
     const { DEFAULT_REPETITION_POLICY } = api('modules/billing/whatsapp-spend/spend-repetition.ts');
     const { WHATSAPP_MESSAGE_CATEGORIES } = api('modules/billing/whatsapp-rates/index.ts');
     const { FREE_SERVICE_DELIVERIES_PER_MONTH } =
@@ -120,6 +122,8 @@ function octoberAuthorities({ root, api, shared }) {
         sendingRoles: SENDING_ROLES,
         itemKinds: DISPATCH_ITEM_KINDS,
         spendScopes: SPEND_SCOPE_KINDS,
+        acceptanceScenarios: ACCEPTANCE_MATRIX.length,
+        uncoveredScenarios: uncoveredScenarios().map(row => row.scenario),
         repetition: DEFAULT_REPETITION_POLICY,
         categories: WHATSAPP_MESSAGE_CATEGORIES,
         freeAllowance: FREE_SERVICE_DELIVERIES_PER_MONTH,
@@ -266,13 +270,17 @@ function octoberRows(row, A) {
                 + 'generando cargos. La autoridad de operador humano existe desde este HEAD; lo que '
                 + 'falta es que cada productor la use, y eso se cuenta arriba.' }),
 
-        row('R5', { provenance: 'declared', open: 1,
-            openLabel: 'la matriz de aceptación de 18 escenarios no está enlazada a pruebas '
-                + 'nombradas, y el producto de control de gasto no está en canal, Assist ni '
-                + 'activación',
-            evidence: 'Se dice como declaración a propósito: hasta que cada escenario nombre la '
-                + 'prueba que lo cubre, esta fila no puede salir de un contador, y un contador '
-                + 'inventado sería peor que decir que falta.' }),
+        row('R5', { provenance: 'derived',
+            open: A.uncoveredScenarios.length,
+            openLabel: `${A.uncoveredScenarios.length} de ${A.acceptanceScenarios} escenarios de la `
+                + 'matriz de aceptación sin prueba que los conteste: '
+                + A.uncoveredScenarios.join('; '),
+            evidence: `La matriz dejó de ser una tabla en un documento: sus `
+                + `${A.acceptanceScenarios} filas son datos, cada una nombra el archivo y el título `
+                + 'de la prueba que la contesta, y una comprobación verifica que ese título exista '
+                + 'de verdad. Un escenario sin prueba figura con `null` y dice qué haría falta, en '
+                + 'vez de quedar fuera de la tabla para que la columna parezca llena — que es '
+                + 'exactamente cómo un contador llega a cero sin que nadie cierre nada.' }),
 
         row('R6', { provenance: 'derived',
             open: A.offDurable.length + A.bypasses.length,

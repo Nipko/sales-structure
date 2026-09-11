@@ -492,7 +492,87 @@ const LEGACY_CONFIG = Object.freeze({ tone: 'cordial', goals: ['agendar'] });
         });
     });
 
-    // ── 5. WHAT `queued` MEANS ──────────────────────────────────────────────
+    // ── 5. A PAUSE DELAYS A MESSAGE; A CEILING DELETES IT ───────────────────
+
+    describe('what a refused admission leaves behind', () => {
+        /** The processor, with a meter that refuses for a named reason. */
+        const refusedWith = async (dispatchId: string, code: string) => {
+            const delayed: number[] = [];
+            const processor: any = Object.create(OutboundQueueProcessor.prototype);
+            Object.assign(processor, {
+                prisma, dispatchOutbox: store,
+                logger: { log: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
+                throttle: { isOverLimit: async () => false },
+                channelGateway: {
+                    getStrictTransport: () => ({
+                        channelType: 'whatsapp',
+                        sendStrict: async () => {
+                            throw new Error('a refused admission may never reach a provider');
+                        },
+                    }),
+                },
+                channelToken: { getChannelToken: async () => ({ accessToken: 'token' }) },
+            });
+            processor.admitSpend = async () => ({
+                permitted: false, block: { code, detail: '', resolution: '', scope: 'account' },
+            });
+            const job: any = { moveToDelayed: async (at: number) => { delayed.push(at); } };
+            let outcome: string | null = null;
+            try {
+                outcome = await processor.processDispatch({ tenantId, dispatchId }, job, 'tok');
+            } catch (error) {
+                if (!(error instanceof DelayedError)) throw error;
+                outcome = 'dispatch:delayed';
+            }
+            const [raw] = await sql(
+                `SELECT state, error_code, available_at > clock_timestamp() AS waiting
+                   FROM agent_dispatch_outbox WHERE id = $1::uuid`, [dispatchId]);
+            return { raw, outcome, delayed };
+        };
+
+        it.each(['account_paused', 'funding_not_ready', 'connection_unusable'])(
+            'KEEPS the effect when the refusal was %s, because that clears', async code => {
+                // A funding pause clears the moment somebody adds a card, and
+                // this row may be the confirmation of an order the customer
+                // already placed. Suppressing it does not delay the message,
+                // it deletes it — and the customer is left with a purchase
+                // nobody ever acknowledged.
+                const { row } = await rowFor({ originKind: 'proactive' });
+                const { raw, delayed } = await refusedWith(row.id, code);
+                expect(raw.state).toBe('failed');
+                expect(raw.error_code).toBe(`spend_${code}`);
+                expect(raw.waiting).toBe(true);
+                expect(delayed).toHaveLength(1);
+            });
+
+        it.each(['cap_exhausted', 'cap_soft_stop', 'duplicate_recent_send'])(
+            'SUPPRESSES the effect when the refusal was %s, because that stands', async code => {
+                // A ceiling does not become permissive by asking again, and a
+                // proactive effect that waited for one to reset would be a
+                // campaign message arriving a month late.
+                const { row } = await rowFor({ originKind: 'proactive' });
+                const { raw } = await refusedWith(row.id, code);
+                expect(raw.state).toBe('suppressed');
+                expect(raw.error_code).toBe(`spend_${code}`);
+            });
+
+        it('leaves a held-back effect claimable once the condition clears', async () => {
+            const { row } = await rowFor({ originKind: 'proactive' });
+            await refusedWith(row.id, 'account_paused');
+            await sql(`UPDATE agent_dispatch_outbox SET available_at = clock_timestamp()
+                       WHERE id = $1::uuid`, [row.id]);
+            expect((await store.admit(tenantId, row.id)).row.state).toBe('admitted');
+        });
+
+        it('leaves a suppressed effect terminal, so nothing tries again', async () => {
+            const { row } = await rowFor({ originKind: 'proactive' });
+            await refusedWith(row.id, 'cap_exhausted');
+            await expect(store.admit(tenantId, row.id))
+                .rejects.toMatchObject({ code: 'dispatch_terminal:suppressed' });
+        });
+    });
+
+    // ── 6. WHAT `queued` MEANS ──────────────────────────────────────────────
 
     describe('the state a row is left in when publishing fails', () => {
         it('stays `prepared` when the publish threw, because nothing was published', async () => {
@@ -532,7 +612,7 @@ const LEGACY_CONFIG = Object.freeze({ tone: 'cordial', goals: ['agendar'] });
         });
     });
 
-    // ── 6. WHAT HAPPENS WHEN THE AGENT IS EDITED MID-FLIGHT ─────────────────
+    // ── 7. WHAT HAPPENS WHEN THE AGENT IS EDITED MID-FLIGHT ─────────────────
 
     describe('a reply whose agent changed while it waited', () => {
         it('is suppressed, not retried against a rule it can never satisfy', async () => {
@@ -584,7 +664,7 @@ const LEGACY_CONFIG = Object.freeze({ tone: 'cordial', goals: ['agendar'] });
         });
     });
 
-    // ── 7. THE TWO SHAPES THE LANE COULD NOT EXPRESS ────────────────────────
+    // ── 8. THE TWO SHAPES THE LANE COULD NOT EXPRESS ────────────────────────
 
     describe('a menu and a map pin, on the durable lane', () => {
         const historyOf = async (conversationId: string) => (await sql(
@@ -638,7 +718,7 @@ const LEGACY_CONFIG = Object.freeze({ tone: 'cordial', goals: ['agendar'] });
         });
     });
 
-    // ── 8. THE FOUR IDENTIFIERS ARE ONE FACT ────────────────────────────────
+    // ── 9. THE FOUR IDENTIFIERS ARE ONE FACT ────────────────────────────────
 
     describe('a binding that names four things', () => {
         const bindingFor = (conversationId: string, over: Record<string, unknown>) => ({

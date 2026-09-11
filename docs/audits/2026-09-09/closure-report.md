@@ -5,10 +5,10 @@ el estado sale de ella: con una condición local sin cumplir la fila está `abie
 cumplida y un gate externo nombrado está `bloqueada`; sólo sin condición y sin gate está `aceptada`.
 Cerrar un hueco cambia esta tabla cambiando el código, y reabrirlo la cambia de vuelta.
 
-Revisión: `f661349ef21c65d2949bb74fd8040b7acf51f552`.
+Revisión: `64fab2610cea09e62795d71c977bbc86ef3603c2`.
 
-**El programa no está terminado.** 11 filas aceptadas, 20 bloqueadas por un
-gate externo concreto y 8 abiertas; 0 perfiles certificados
+**El programa no está terminado.** 10 filas aceptadas, 20 bloqueadas por un
+gate externo concreto y 9 abiertas; 0 perfiles certificados
 de 76.
 
 Sin contradicciones: ninguna fila se declara aceptada con una condición abierta o un gate pendiente, ninguna se declara bloqueada sin nombrar el gate y ninguna se declara abierta sin decir qué falta.
@@ -52,7 +52,7 @@ Sin contradicciones: ninguna fila se declara aceptada con una condición abierta
 | H1 | **bloqueada** por gate 2 | corrida (`docs/audits/2026-09-09/certification-manifest.md`) | — | Ejecutor durable construido: 3 tablas, arriendo con `clock_timestamp()`, resultado escrito una sola vez, reintento como intento nuevo, presupuesto y deadline verificados antes de entregar trabajo, invalidación por definición de escenario y por autoridad del agente, y el reporte alimentado desde esas filas. El manifiesto de costo por modelo está calculado. Ejecutarlo necesita una credencial y un techo de gasto autorizado. | `e1ac3943` `4ec45699` |
 | H2 | **bloqueada** por gate 2 | **declaración** | — | Regresiones desde QA y ledger, linaje, identidad de misión y denominadores implementados; un resultado desconocido conserva ese estado y no se inventa tasa. Sus denominadores se llenan con la corrida de H1. | — |
 | H3 | **bloqueada** por gate 4 y 1 y 3 | corrida (`docs/audits/2026-09-09/adversarial-validation.md`) | — | Harness local construido: corpus generado y estratificado desde el catálogo con verificadores de resultado, sujetos sintéticos ejecutados, 3 tablas de intentos y revisión ciega, y una negativa a enunciar comparación cuando falta el otro sujeto. Correr una alternativa necesita su cuenta. | `aaf41d62` |
-| M0 | **aceptada** | contador | — | Censo derivado del árbol: 21 call sites, 17 cobrables, 0 fuera de la autoridad económica. El inventario de efectos declara 61 productores y 45 con al menos una propiedad en `none`. La condición es que el artefacto versionado se regenere desde el mismo HEAD, no que alguien lo haya leído. | — |
+| M0 | **abierta** | contador | el censo versionado no corresponde a este HEAD | Censo derivado del árbol: 21 call sites, 17 cobrables, 0 fuera de la autoridad económica. El inventario de efectos declara 61 productores y 45 con al menos una propiedad en `none`. La condición es que el artefacto versionado se regenere desde el mismo HEAD, no que alguien lo haya leído. | — |
 | M1 | **abierta** | contador | 14 productores de mensajería sin autoridad y 6 sin idempotencia (y después, gate 1 y 4) | Remitente, pagador y credencial salen del resolver único; la unión de autoridades cubre agente servido, 9 políticas proactivas (appointment_reminder, attendance_check, appointment_notification, appointment_cancellation, drip_step, nurturing_followup, broadcast_message, automation_rule_action, recall_reminder) y operador humano con 4 roles. BSUID/BISU y la coexistencia con el agente Meta siguen siendo trabajo de un solo escritor y no están en el código: esta fila no puede cerrarse por declaración. | — |
 | M2 | **bloqueada** por gate 4 | contador | — | Tarifas versionadas `meta-ratecards-2026@cdc5b132567ab1e7` con 4 tarjetas, 5 categorías que Meta cobra por separado y undefined entregas de servicio gratuitas por número y mes calendario. La categoría aprobada y la ventana de servicio se leen de la base del tenant antes de admitir. Lo que falta es una cuenta real: tarifa aplicada por Meta al entregar y conciliación contra factura. | — |
 | M3 | **aceptada** | contador | — | Autoridad económica transaccional con 5 alcances (number_month, account, business, contact, task), reserva antes del efecto y liquidación contra el recibo. Cero productores cobrables fuera del gate en este HEAD: lo verifica el censo, no esta frase. | — |
@@ -64,14 +64,14 @@ Sin contradicciones: ninguna fila se declara aceptada con una condición abierta
 | R2 | **aceptada** | contador | — | Esperar y suprimir son resultados durables y distintos de error, resolución y handoff, así que ningún catch los convierte en un texto cobrable. La política por defecto admite 1 mensaje(s) idéntico(s) en 10 minutos, con un enfriamiento de 10 minutos, y es revisable por tarea e idioma. | — |
 | R3 | **bloqueada** por gate 4 | contador | — | Los 5 alcances se reservan en orden fijo dentro de una transacción, así que dos workers peleando por el último importe no pueden asignarlo dos veces. El mercado sale de la dirección del destinatario, nunca del país de la empresa, y un destino desconocido no tiene tarifa cero. | — |
 | R4 | **abierta** | contador | 7 productores todavía pueden emitir sin fila durable (1 en `inline`, 6 en `outbound_queue`) | La consola humana, la API REST y las campañas necesitan la misma admisión que el agente: un handoff detiene la IA, pero las respuestas humanas siguen generando cargos. La autoridad de operador humano existe desde este HEAD; lo que falta es que cada productor la use, y eso se cuenta arriba. | — |
-| R5 | **abierta** | **declaración** | la matriz de aceptación de 18 escenarios no está enlazada a pruebas nombradas, y el producto de control de gasto no está en canal, Assist ni activación | Se dice como declaración a propósito: hasta que cada escenario nombre la prueba que lo cubre, esta fila no puede salir de un contador, y un contador inventado sería peor que decir que falta. | — |
+| R5 | **abierta** | contador | 6 de 18 escenarios de la matriz de aceptación sin prueba que los conteste: Cuenta con otro proveedor; Pregunta resuelta y cinco "gracias"; Cliente confundido o reclamando; Misma pregunta requerida sin progreso; Nueva necesidad después de pausa; Bot contra bot y ráfaga de contactos | La matriz dejó de ser una tabla en un documento: sus 18 filas son datos, cada una nombra el archivo y el título de la prueba que la contesta, y una comprobación verifica que ese título exista de verdad. Un escenario sin prueba figura con `null` y dice qué haría falta, en vez de quedar fuera de la tabla para que la columna parezca llena — que es exactamente cómo un contador llega a cero sin que nadie cierre nada. | — |
 | R6 | **abierta** | contador | 7 productores pueden entregar fuera de la autorización aplicable (y después, gate 1 y 5 y 7) | El criterio principal de R6, textual: **ningún productor de WhatsApp puede generar una entrega fuera de la autorización aplicable**. Mientras el contador sea distinto de cero la fila está abierta, y después seguirá bloqueada por el modo observación, el canario con techo explícito y la autorización de activar `enforce`. | — |
 
 ## De dónde sale cada fila
 
-21 filas salen de un contador leído del código: cerrar el hueco las cambia solo.
+22 filas salen de un contador leído del código: cerrar el hueco las cambia solo.
 3 descansan sobre un artefacto de una corrida real, nombrado en la tabla.
-**15 son declaraciones humanas pendientes de revisión**: A2, A3, A4, C1, D1, D3, E3, F3, F4, G2, G3, H2, M4, M6, R5. Cambiar el código de esas áreas no cambia su estado, y por eso se dicen aparte en vez de presentarse como calculadas.
+**14 son declaraciones humanas pendientes de revisión**: A2, A3, A4, C1, D1, D3, E3, F3, F4, G2, G3, H2, M4, M6. Cambiar el código de esas áreas no cambia su estado, y por eso se dicen aparte en vez de presentarse como calculadas.
 
 ## Los contadores de los que sale la tabla
 

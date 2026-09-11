@@ -350,13 +350,24 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
                 controller().sendText(req(userId), { toPhone: CUSTOMER, text: 'carrera' } as any),
                 controller().sendText(req(userId), { toPhone: CUSTOMER, text: 'carrera' } as any),
             ]);
+            // ONE row and one identity: that is the invariant, and it holds
+            // under every interleaving.
             expect(await rows()).toHaveLength(1);
             expect(a.originId).toBe(b.originId);
-            // Exactly one of them prepared it; the other found it. Neither is
-            // allowed to report a failure for an effect that exists.
-            expect([a.status, b.status].sort())
-                .toEqual(['already_present', 'prepared']);
+            // Both report a durable effect. Neither may report a failure for
+            // something that exists.
             expect(a.success && b.success).toBe(true);
+            for (const status of [a.status, b.status]) {
+                expect(['prepared', 'already_present']).toContain(status);
+            }
+            // Deliberately NOT `['already_present', 'prepared']`. That pair
+            // looks like the stronger assertion and is not an invariant:
+            // `already_present` is computed from the ROW's state — "a previous
+            // attempt got further" — not from "I was second. When both callers
+            // reach `prepare` before either publishes, the row is still
+            // `prepared` and both of them honestly say so. The suite passed for
+            // hours and failed inside a full run, which is the only reason it
+            // was noticed.
         });
 
         it('does not open two threads for the same customer under a race', async () => {

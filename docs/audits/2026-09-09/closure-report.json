@@ -1,17 +1,17 @@
 {
   "version": 1,
-  "revision": "f661349ef21c65d2949bb74fd8040b7acf51f552",
-  "generatedAt": "2026-09-11T22:30:39.511Z",
+  "revision": "64fab2610cea09e62795d71c977bbc86ef3603c2",
+  "generatedAt": "2026-09-11T22:52:13.753Z",
   "finished": false,
   "counts": {
-    "aceptada": 11,
+    "aceptada": 10,
     "bloqueada": 20,
-    "abierta": 8
+    "abierta": 9
   },
   "provenance": {
-    "derived": 21,
+    "derived": 22,
     "executed_evidence": 3,
-    "declared": 15
+    "declared": 14
   },
   "contradictions": [],
   "gates": {
@@ -45,7 +45,7 @@
       "inline": 1,
       "outbound_queue": 6
     },
-    "censusArtefactStale": false,
+    "censusArtefactStale": true,
     "proactivePolicies": [
       "appointment_reminder",
       "attendance_check",
@@ -411,10 +411,10 @@
     },
     {
       "id": "M0",
-      "open": 0,
-      "openLabel": "",
+      "open": 1,
+      "openLabel": "el censo versionado no corresponde a este HEAD",
       "gates": [],
-      "status": "aceptada",
+      "status": "abierta",
       "provenance": "derived",
       "artefact": null,
       "evidence": "Censo derivado del árbol: 21 call sites, 17 cobrables, 0 fuera de la autoridad económica. El inventario de efectos declara 61 productores y 45 con al menos una propiedad en `none`. La condición es que el artefacto versionado se regenere desde el mismo HEAD, no que alguien lo haya leído.",
@@ -557,13 +557,13 @@
     },
     {
       "id": "R5",
-      "open": 1,
-      "openLabel": "la matriz de aceptación de 18 escenarios no está enlazada a pruebas nombradas, y el producto de control de gasto no está en canal, Assist ni activación",
+      "open": 6,
+      "openLabel": "6 de 18 escenarios de la matriz de aceptación sin prueba que los conteste: Cuenta con otro proveedor; Pregunta resuelta y cinco \"gracias\"; Cliente confundido o reclamando; Misma pregunta requerida sin progreso; Nueva necesidad después de pausa; Bot contra bot y ráfaga de contactos",
       "gates": [],
       "status": "abierta",
-      "provenance": "declared",
+      "provenance": "derived",
       "artefact": null,
-      "evidence": "Se dice como declaración a propósito: hasta que cada escenario nombre la prueba que lo cubre, esta fila no puede salir de un contador, y un contador inventado sería peor que decir que falta.",
+      "evidence": "La matriz dejó de ser una tabla en un documento: sus 18 filas son datos, cada una nombra el archivo y el título de la prueba que la contesta, y una comprobación verifica que ese título exista de verdad. Un escenario sin prueba figura con `null` y dice qué haría falta, en vez de quedar fuera de la tabla para que la columna parezca llena — que es exactamente cómo un contador llega a cero sin que nadie cierre nada.",
       "commits": []
     },
     {

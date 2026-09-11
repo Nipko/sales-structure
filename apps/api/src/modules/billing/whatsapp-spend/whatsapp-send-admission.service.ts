@@ -5,7 +5,7 @@ import { recipientIso, recipientMarket, describeRecipientMarket } from '../whats
 import {
     declaredCategory, resolveMessageCategory, type CategoryEvidence,
 } from './message-category';
-import { WhatsappSpendService, type SpendAuthorizeResult } from './whatsapp-spend.service';
+import { mayTransmit, WhatsappSpendService, type SpendAuthorizeResult } from './whatsapp-spend.service';
 import type { SpendDisposition, SpendPressure } from './spend-ledger';
 import { resolveRepetitionPolicy, type RepetitionPolicy } from './spend-repetition';
 import { describeBlock, spendBlock, type SpendBlock } from './spend-diagnosis';
@@ -212,6 +212,16 @@ export class WhatsappSendAdmissionService {
             producer: request.producer,
             ordinal: request.ordinal ?? 0,
             contentDigest: request.contentDigest,
+            // The durable half. Without it two different campaigns sending the
+            // same approved template to the same customer from the same number
+            // produce the same key, and the second adopts the first one's
+            // reservation.
+            logicalEffectId: WhatsappSpendService.logicalEffectId({
+                ...(request.binding ?? {}),
+                taskId: request.taskId ?? null,
+                recipientRef: request.recipientRef,
+                ordinal: request.ordinal ?? 0,
+            }),
         });
 
         // Instagram, Messenger, Telegram and the widget are not billed by their
@@ -311,6 +321,32 @@ export class WhatsappSendAdmissionService {
         });
 
         if (result.outcome !== 'blocked') {
+            // ── ADOPTING A ROW IS NOT PERMISSION TO SEND AGAIN ──────────────
+            //
+            // `mayTransmit` existed and no sink applied it, so a retry that
+            // adopted a `settled` reservation was told to go ahead — sending a
+            // second copy of a message that had already been delivered AND
+            // charged, with nothing left to settle it against. A
+            // `pending_reconciliation` or `indeterminate` row is worse: the
+            // provider may have acted, and another POST is the duplicate the
+            // whole outbox exists to prevent.
+            //
+            // Only a reservation still HELD authorises a request. Everything
+            // else is over, or waiting on evidence nobody here has.
+            if (!mayTransmit(result)) {
+                const state = result.reservation.state;
+                this.logger.warn(`[Spend] ${request.producer} adopted a reservation in state `
+                    + `${state}; no further POST is authorised for this effect`);
+                return Object.freeze({
+                    permitted: false, effectKey, reservationId: result.reservation.id, enforcement,
+                    pressure: result.pressure,
+                    block: spendBlock('effect_already_resolved',
+                        `the effect is ${state}: `
+                        + (state === 'settled' ? 'it was delivered and charged'
+                            : state === 'released' ? 'it was refused and the money returned'
+                                : 'its outcome never came back and is being reconciled')),
+                });
+            }
             if (result.pressure === 'warning' || result.pressure === 'soft_stop') {
                 // Said once per admission rather than once per period: a ceiling
                 // that fills over an afternoon should be visible all afternoon,

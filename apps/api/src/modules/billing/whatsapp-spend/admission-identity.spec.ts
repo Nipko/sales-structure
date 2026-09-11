@@ -48,7 +48,10 @@ const ENFORCING = { whatsappSpend: { enforcement: 'enforce' } };
 
 const spendDouble = () => {
     const authorize = jest.fn(async () => ({
-        outcome: 'reserved', reservation: { id: 'r1' }, pressure: 'clear',
+        // 'held' because that is what a reservation IS when it is first taken.
+        // The double used to omit it, and omitting it hid whether the sink was
+        // consulting the state at all.
+        outcome: 'reserved', reservation: { id: 'r1', state: 'held' }, pressure: 'clear',
     }));
     return { effectKey: () => 'key', authorize } as any;
 };

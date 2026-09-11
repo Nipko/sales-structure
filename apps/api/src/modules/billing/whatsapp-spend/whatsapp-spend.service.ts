@@ -79,11 +79,62 @@ export class WhatsappSpendService {
         readonly producer: string;
         readonly ordinal: number;
         readonly contentDigest: string;
+        /**
+         * The durable identity of the LOGICAL effect, when one exists.
+         *
+         * Without it the key is a hash of who, what and how — and two different
+         * campaigns sending the same approved template to the same customer
+         * from the same number produce the SAME key. The second one then adopts
+         * the first one's reservation and sends on a permission that was never
+         * granted to it; and if the first one settled, the second carries a
+         * charge that belongs to a different campaign.
+         *
+         * A dispatch item, a batch position, a campaign-and-recipient pair or
+         * the inbound message being answered: any of them is durable, survives
+         * a restart, and is recomputable by a retry — which is what makes a
+         * retry find its OWN row instead of minting a second one.
+         */
+        readonly logicalEffectId?: string | null;
     }): string {
         return createHash('sha256').update(joinForHash([
             input.tenantId, input.channelAccountId, input.recipientRef,
             input.category, input.producer, String(input.ordinal), input.contentDigest,
+            // Empty when there is none, which keeps every existing effect's key
+            // exactly where it was: a deploy must not orphan the reservations
+            // in flight when it lands.
+            String(input.logicalEffectId ?? ''),
         ])).digest('hex');
+    }
+
+    /**
+     * The durable identity of an effect, from whatever the producer has.
+     *
+     * Ordered by how specific each one is. A dispatch item names one row in the
+     * outbox; a batch and an index name one position in one batch; a task and a
+     * recipient name one intended message in one campaign; an inbound message
+     * and an ordinal name the nth reply to one customer message.
+     *
+     * Returns null when the producer has nothing durable at all, and that is
+     * not a failure: the key then falls back to the content, which is what a
+     * one-off proactive message actually is.
+     */
+    static logicalEffectId(binding: {
+        dispatchItemId?: string | null; batchId?: string | null; itemIndex?: number | null;
+        inboundMessageId?: string | null; taskId?: string | null; recipientRef?: string | null;
+        ordinal?: number | null;
+    } | null | undefined): string | null {
+        if (!binding) return null;
+        if (binding.dispatchItemId) return `dispatch:${binding.dispatchItemId}`;
+        if (binding.batchId && binding.itemIndex !== null && binding.itemIndex !== undefined) {
+            return `batch:${binding.batchId}:${binding.itemIndex}`;
+        }
+        if (binding.taskId && binding.recipientRef) {
+            return `task:${binding.taskId}:${binding.recipientRef}:${binding.ordinal ?? 0}`;
+        }
+        if (binding.inboundMessageId) {
+            return `inbound:${binding.inboundMessageId}:${binding.ordinal ?? 0}`;
+        }
+        return null;
     }
 
     /** A stable digest of what is being sent, without keeping what is being sent. */

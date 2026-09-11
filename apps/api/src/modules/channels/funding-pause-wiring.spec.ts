@@ -74,7 +74,7 @@ describe('a number Meta refuses to bill', () => {
         const spend = {
             effectKey: () => 'key',
             authorize: jest.fn(async () => ({
-                outcome: 'reserved', reservation: { id: 'r1' }, pressure: 'clear',
+                outcome: 'reserved', reservation: { id: 'r1', state: 'held' }, pressure: 'clear',
             })),
         } as any;
         const service = new WhatsappSendAdmissionService(
@@ -105,7 +105,7 @@ describe('a number Meta refuses to bill', () => {
         const spend = {
             effectKey: () => 'key',
             authorize: jest.fn(async () => ({
-                outcome: 'reserved', reservation: { id: 'r1' }, pressure: 'clear',
+                outcome: 'reserved', reservation: { id: 'r1', state: 'held' }, pressure: 'clear',
             })),
         } as any;
         const service = new WhatsappSendAdmissionService(observingPrisma(), spend, broken);

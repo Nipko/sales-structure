@@ -21,6 +21,7 @@ export const SPEND_BLOCK_CODES = [
     'cap_exhausted',
     'cap_soft_stop',
     'duplicate_recent_send',
+    'effect_already_resolved',
     'task_budget_exhausted',
     'account_paused',
 ] as const;
@@ -85,6 +86,16 @@ Object.freeze({
     cap_exhausted: {
         scope: 'account',
         resolution: 'Raise the spending limit for this scope, or wait for the period to roll over.',
+    },
+    effect_already_resolved: {
+        scope: 'contact',
+        // Not a fault, and not a limit: the message this attempt is for has
+        // already had its outcome. Sending again would be a second copy of
+        // something the customer already received, or a guess about something
+        // nobody knows the result of yet.
+        resolution: 'This message already has an outcome — delivered, refused, or waiting on '
+            + 'reconciliation — so no further attempt is authorised for it. If it needs to be sent '
+            + 'again, that is a new message rather than a retry of this one.',
     },
     duplicate_recent_send: {
         scope: 'contact',

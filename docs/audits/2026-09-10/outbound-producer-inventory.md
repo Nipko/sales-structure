@@ -16,12 +16,12 @@ efectos puede llegar a producir **una sola respuesta lógica** en cada uno.
 
 | | |
 |---|---|
-| Sitios de llamada encontrados | **35** |
-| De ellos, que producen un mensaje cobrable | **34** |
+| Sitios de llamada encontrados | **34** |
+| De ellos, que producen un mensaje cobrable | **33** |
 | De ellos, presencia (no cobra Meta) | **1** |
-| Archivos productores distintos | **15** |
-| Sitios que **no** pasan por un carril durable | **23** |
-| Sitios que pueden alcanzar WhatsApp (literal o dinámico) | **32** |
+| Archivos productores distintos | **14** |
+| Sitios que **no** pasan por un carril durable | **22** |
+| Sitios que pueden alcanzar WhatsApp (literal o dinámico) | **31** |
 | Sitios donde **una respuesta puede volverse varios cargos** | **10** |
 
 ### Los cinco números que importan
@@ -33,16 +33,16 @@ objetivo: **cero productores cobrables fuera del carril durable**.
 
 | | |
 |---|---|
-| Sitios de llamada, en total | **35** |
-| De ellos, capaces de alcanzar WhatsApp | **33** |
-| De ellos, **cobrables por Meta** | **32** |
-| De ellos, dentro de la frontera económica | **32** |
+| Sitios de llamada, en total | **34** |
+| De ellos, capaces de alcanzar WhatsApp | **32** |
+| De ellos, **cobrables por Meta** | **31** |
+| De ellos, dentro de la frontera económica | **31** |
 | De ellos, dentro del **carril durable** | **11** |
 
 | | |
 |---|---|
 | Cobrables **fuera de la frontera económica** | **0** |
-| Cobrables **fuera del carril durable** | **21** |
+| Cobrables **fuera del carril durable** | **20** |
 | Salidas al proveedor **sin admisión ni camino declarado** | **0** |
 
 Los que todavía están fuera del carril durable:
@@ -50,7 +50,7 @@ Los que todavía están fuera del carril durable:
 | Archivo:línea | Método | Carril |
 |---|---|---|
 | `modules/agent-console/agent-console.service.ts:552` | `sendAgentMessage` | `inline` |
-| `modules/appointments/appointment-notifications.service.ts:472` | `sendMessage` | `outbound_queue` |
+| `modules/appointments/appointment-notifications.service.ts:674` | `sendMessage` | `outbound_queue` |
 | `modules/automation/automation-jobs.processor.ts:237` | `handleSendTemplate` | `inline` |
 | `modules/automation/drip-sequence.service.ts:649` | `executeStepAction` | `inline` |
 | `modules/automation/drip-sequence.service.ts:674` | `executeStepAction` | `outbound_queue` |
@@ -64,7 +64,6 @@ Los que todavía están fuera del carril durable:
 | `modules/conversations/conversations.service.ts:2208` | `sendMedia` | `outbound_queue` |
 | `modules/conversations/conversations.service.ts:2258` | `sendFlow` | `outbound_queue` |
 | `modules/conversations/conversations.service.ts:5848` | `sendCollectedFlow` | `outbound_queue` |
-| `modules/recall/recall.service.ts:152` | `processForTenant` | `outbound_queue` |
 | `modules/whatsapp/whatsapp.controller.ts:538` | `sendTemplate` | `inline` |
 | `modules/whatsapp/whatsapp.controller.ts:569` | `sendText` | `inline` |
 | `modules/whatsapp/whatsapp.controller.ts:599` | `sendInteractive` | `inline` |
@@ -79,7 +78,7 @@ Por carril:
 | `approved_effect` | 1 | `tool_approval_effects` row a person approved |
 | `operational_notice` | 6 | `operational_notice_outbox`, written in the business transaction |
 | `handoff_effects` | 1 | one row per destination of one transfer |
-| `outbound_queue` | 11 | legacy BullMQ `send` job; Redis is the only record |
+| `outbound_queue` | 10 | legacy BullMQ `send` job; Redis is the only record |
 | `inline` | 12 | straight to the adapter, on the caller's stack |
 
 ## Los que esquivan el carril durable
@@ -92,7 +91,7 @@ llevar a la admisión económica.
 | Archivo:línea | Método | Carril | Canales | Efectos por respuesta |
 |---|---|---|---|---|
 | `modules/agent-console/agent-console.service.ts:552` | `sendAgentMessage` | `inline` | dynamic | 1 (read) |
-| `modules/appointments/appointment-notifications.service.ts:472` | `sendMessage` | `outbound_queue` | dynamic | 1 (read) |
+| `modules/appointments/appointment-notifications.service.ts:674` | `sendMessage` | `outbound_queue` | dynamic | 1 (read) |
 | `modules/automation/automation-jobs.processor.ts:237` | `handleSendTemplate` | `inline` | dynamic | 1 (read) |
 | `modules/automation/drip-sequence.service.ts:649` | `executeStepAction` | `inline` | dynamic | 1 (read) |
 | `modules/automation/drip-sequence.service.ts:674` | `executeStepAction` | `outbound_queue` | dynamic | 1 (read) |
@@ -108,7 +107,6 @@ llevar a la admisión económica.
 | `modules/conversations/conversations.service.ts:2208` | `sendMedia` | `outbound_queue` | dynamic | n(media) (derived) |
 | `modules/conversations/conversations.service.ts:2258` | `sendFlow` | `outbound_queue` | dynamic | 1 (read) |
 | `modules/conversations/conversations.service.ts:5848` | `sendCollectedFlow` | `outbound_queue` | dynamic | 1 (read) |
-| `modules/recall/recall.service.ts:152` | `processForTenant` | `outbound_queue` | dynamic | 1 (read) |
 | `modules/whatsapp/whatsapp.controller.ts:538` | `sendTemplate` | `inline` | dynamic | 1 (read) |
 | `modules/whatsapp/whatsapp.controller.ts:569` | `sendText` | `inline` | dynamic | 1 (read) |
 | `modules/whatsapp/whatsapp.controller.ts:599` | `sendInteractive` | `inline` | dynamic | 1 (read) |
@@ -156,7 +154,7 @@ mensajes entregados, y un indicador de "escribiendo" no lo es.
 
 | Línea | Método | Primitiva | Carril | Disparador | Canales | Efectos por respuesta | Base |
 |---:|---|---|---|---|---|---|---|
-| 472 | `sendMessage` | `outboundQueue.enqueue` | `outbound_queue` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
+| 674 | `sendMessage` | `outboundQueue.enqueue` | `outbound_queue` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
 
 ### `apps/api/src/modules/appointments/appointment-payment.listener.ts`
 
@@ -240,12 +238,6 @@ mensajes entregados, y un indicador de "escribiendo" no lo es.
 |---:|---|---|---|---|---|---|---|
 | 396 | `executeHandoff` | `admitHandoffEffect` | `handoff_effects` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
 
-### `apps/api/src/modules/recall/recall.service.ts`
-
-| Línea | Método | Primitiva | Carril | Disparador | Canales | Efectos por respuesta | Base |
-|---:|---|---|---|---|---|---|---|
-| 152 | `processForTenant` | `outboundQueue.enqueue` | `outbound_queue` | cron '0 9 * * *' | dynamic | 1 | one effect per invocation; no loop reaches this send |
-
 ### `apps/api/src/modules/whatsapp/whatsapp.controller.ts`
 
 | Línea | Método | Primitiva | Carril | Disparador | Canales | Efectos por respuesta | Base |
@@ -315,7 +307,7 @@ buscar una llamada a la autoridad economica en el codigo del archivo.
 | Archivo:linea | Metodo | Carril | Termina en | Admision |
 |---|---|---|---|---|
 | `modules/agent-console/agent-console.service.ts:552` | `sendAgentMessage` | `inline` | `modules/agent-console/agent-console.service.ts` | si |
-| `modules/appointments/appointment-notifications.service.ts:472` | `sendMessage` | `outbound_queue` | `modules/channels/outbound-queue.processor.ts` | si |
+| `modules/appointments/appointment-notifications.service.ts:674` | `sendMessage` | `outbound_queue` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/appointments/appointment-payment.listener.ts:89` | `onPaid` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/appointments/appointment-payment.listener.ts:107` | `onPaid` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/appointments/appointment-payment.listener.ts:115` | `onPaid` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
@@ -339,7 +331,6 @@ buscar una llamada a la autoridad economica en el codigo del archivo.
 | `modules/education/education-enrollment-commands.ts:106` | `promote` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/education/education-enrollment-commands.ts:111` | `promote` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/gyms/gyms.service.ts:598` | `promoteFromWaitlist` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
-| `modules/recall/recall.service.ts:152` | `processForTenant` | `outbound_queue` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/whatsapp/whatsapp.controller.ts:538` | `sendTemplate` | `inline` | `modules/whatsapp/services/whatsapp-messaging.service.ts` | si |
 | `modules/whatsapp/whatsapp.controller.ts:569` | `sendText` | `inline` | `modules/whatsapp/services/whatsapp-messaging.service.ts` | si |
 | `modules/whatsapp/whatsapp.controller.ts:599` | `sendInteractive` | `inline` | `modules/whatsapp/services/whatsapp-messaging.service.ts` | si |
@@ -366,7 +357,7 @@ direcciones**: lo que el barrido encuentra y ella no nombra, y lo que ella
 nombra y el barrido no encuentra. Un desacuerdo no es un error de ninguno de
 los dos — es exactamente el sitio donde hay que ir a mirar.
 
-Entradas declaradas allí: **58**.
+Entradas declaradas allí: **59**.
 
 ### Encontrados por el barrido y no declarados como productores
 
@@ -417,6 +408,7 @@ esperada y su clasificación queda **fuera del alcance de este generador**.
 | `payments.outcome_notice` | `outbound_queue` | `live` | `modules/conversations/payment-outcome-notifier.service.ts` |
 | `payments.tenant_payment_link` | `inline` | `live` | `modules/tenant-payments/tenant-payments.service.ts` |
 | `public_api.webhook_subscriptions` | `inline` | `live` | `modules/public-api/webhook-subscription.service.ts` |
+| `recall.win_back` | `dispatch_outbox` | `live` | `modules/recall/recall.service.ts` |
 | `reviews.gbp_reply` | `inline` | `live` | `modules/reviews/reviews.service.ts` |
 | `tenant.outbound_webhooks` | `inline` | `live` | `modules/webhooks/webhooks.service.ts` |
 | `verticals.service_request` | `inline` | `live` | `modules/verticals/service-request.listener.ts` |

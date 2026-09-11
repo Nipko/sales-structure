@@ -5,7 +5,7 @@ el estado sale de ella: con una condición local sin cumplir la fila está `abie
 cumplida y un gate externo nombrado está `bloqueada`; sólo sin condición y sin gate está `aceptada`.
 Cerrar un hueco cambia esta tabla cambiando el código, y reabrirlo la cambia de vuelta.
 
-Revisión: `a6ce2dea9b40d979d1cdc8f43b159acf6a77ff34`.
+Revisión: `d3cd50f292c26eb49ad35dcfb8aa80698c9390b5`.
 
 **El programa no está terminado.** 11 filas aceptadas, 20 bloqueadas por un
 gate externo concreto y 8 abiertas; 0 perfiles certificados
@@ -52,20 +52,20 @@ Sin contradicciones: ninguna fila se declara aceptada con una condición abierta
 | H1 | **bloqueada** por gate 2 | corrida (`docs/audits/2026-09-09/certification-manifest.md`) | — | Ejecutor durable construido: 3 tablas, arriendo con `clock_timestamp()`, resultado escrito una sola vez, reintento como intento nuevo, presupuesto y deadline verificados antes de entregar trabajo, invalidación por definición de escenario y por autoridad del agente, y el reporte alimentado desde esas filas. El manifiesto de costo por modelo está calculado. Ejecutarlo necesita una credencial y un techo de gasto autorizado. | `e1ac3943` `4ec45699` |
 | H2 | **bloqueada** por gate 2 | **declaración** | — | Regresiones desde QA y ledger, linaje, identidad de misión y denominadores implementados; un resultado desconocido conserva ese estado y no se inventa tasa. Sus denominadores se llenan con la corrida de H1. | — |
 | H3 | **bloqueada** por gate 4 y 1 y 3 | corrida (`docs/audits/2026-09-09/adversarial-validation.md`) | — | Harness local construido: corpus generado y estratificado desde el catálogo con verificadores de resultado, sujetos sintéticos ejecutados, 3 tablas de intentos y revisión ciega, y una negativa a enunciar comparación cuando falta el otro sujeto. Correr una alternativa necesita su cuenta. | `aaf41d62` |
-| M0 | **aceptada** | contador | — | Censo derivado del árbol: 35 call sites, 31 cobrables, 0 fuera de la autoridad económica. El inventario de efectos declara 60 productores y 50 con al menos una propiedad en `none`. La condición es que el artefacto versionado se regenere desde el mismo HEAD, no que alguien lo haya leído. | — |
-| M1 | **abierta** | contador | 19 productores de mensajería sin autoridad y 10 sin idempotencia (y después, gate 1 y 4) | Remitente, pagador y credencial salen del resolver único; la unión de autoridades cubre agente servido, 8 políticas proactivas (appointment_reminder, attendance_check, appointment_notification, drip_step, nurturing_followup, broadcast_message, automation_rule_action, recall_reminder) y operador humano con 4 roles. BSUID/BISU y la coexistencia con el agente Meta siguen siendo trabajo de un solo escritor y no están en el código: esta fila no puede cerrarse por declaración. | — |
+| M0 | **aceptada** | contador | — | Censo derivado del árbol: 34 call sites, 30 cobrables, 0 fuera de la autoridad económica. El inventario de efectos declara 61 productores y 49 con al menos una propiedad en `none`. La condición es que el artefacto versionado se regenere desde el mismo HEAD, no que alguien lo haya leído. | — |
+| M1 | **abierta** | contador | 18 productores de mensajería sin autoridad y 9 sin idempotencia (y después, gate 1 y 4) | Remitente, pagador y credencial salen del resolver único; la unión de autoridades cubre agente servido, 9 políticas proactivas (appointment_reminder, attendance_check, appointment_notification, appointment_cancellation, drip_step, nurturing_followup, broadcast_message, automation_rule_action, recall_reminder) y operador humano con 4 roles. BSUID/BISU y la coexistencia con el agente Meta siguen siendo trabajo de un solo escritor y no están en el código: esta fila no puede cerrarse por declaración. | — |
 | M2 | **bloqueada** por gate 4 | contador | — | Tarifas versionadas `meta-ratecards-2026@cdc5b132567ab1e7` con 4 tarjetas, 5 categorías que Meta cobra por separado y undefined entregas de servicio gratuitas por número y mes calendario. La categoría aprobada y la ventana de servicio se leen de la base del tenant antes de admitir. Lo que falta es una cuenta real: tarifa aplicada por Meta al entregar y conciliación contra factura. | — |
 | M3 | **aceptada** | contador | — | Autoridad económica transaccional con 5 alcances (number_month, account, business, contact, task), reserva antes del efecto y liquidación contra el recibo. Cero productores cobrables fuera del gate en este HEAD: lo verifica el censo, no esta frase. | — |
 | M4 | **abierta** | **declaración** | la propuesta de precios y la transición de planes son una decisión comercial que nadie ha tomado (y después, gate 5) | Escenarios por país, canal, tarea y ciclo se pueden generar de los cinco planes vigentes, pero el cambio de precio, la capacidad ofrecida y la comunicación a clientes afectados no son trabajo de código. Se dice como declaración porque lo es: cambiar el código de esta área no cambia esta fila. | — |
-| M5 | **abierta** | contador | 17 productores de mensajería sin borrado alcanzable (y después, gate 1 y 6) | Aprendizaje conserva origen y finalidad; publicación y rollback llegan a los derivados. El agente de negocio de Meta sigue apagado. El piloto real necesita cuenta, destinatario consentido y presupuesto autorizado, que son gates, no código. | — |
+| M5 | **abierta** | contador | 16 productores de mensajería sin borrado alcanzable (y después, gate 1 y 6) | Aprendizaje conserva origen y finalidad; publicación y rollback llegan a los derivados. El agente de negocio de Meta sigue apagado. El piloto real necesita cuenta, destinatario consentido y presupuesto autorizado, que son gates, no código. | — |
 | M6 | **abierta** | **declaración** | marketing avanzado, Direct Send, llamadas/grupos y wallet de reventa no están construidos y están fuera del alcance de octubre por decisión explícita (y después, gate 5) | M5 los separa a M6 a propósito, con flags y elegibilidad propias, para que no bloqueen la continuidad básica. Se registra abierta en vez de omitirse: una fila que no aparece se lee como cerrada. | — |
-| R0 | **abierta** | contador | 21 productores cobrables fuera del carril durable (10 en `inline`, 11 en `outbound_queue`) | De 31 call sites cobrables, 21 usan un carril que no escribe fila antes del POST — Redis es el registro, o no hay registro. Un productor ahí no puede contestar "¿esto salió?" después de un reinicio. El criterio principal de R6 es exactamente este número en cero. | — |
+| R0 | **abierta** | contador | 20 productores cobrables fuera del carril durable (10 en `inline`, 10 en `outbound_queue`) | De 30 call sites cobrables, 20 usan un carril que no escribe fila antes del POST — Redis es el registro, o no hay registro. Un productor ahí no puede contestar "¿esto salió?" después de un reinicio. El criterio principal de R6 es exactamente este número en cero. | — |
 | R1 | **aceptada** | contador | — | El carril transporta 7 tipos de item (text, media, payment_link, flow, template, interactive, location), incluidos los menús y las ubicaciones que el carril REST manda todos los días. Los efectos se cuentan DESPUÉS de formarlos: un caption nativo viaja dentro del item donde el proveedor lo cobra como un mensaje, y como item propio donde no. | — |
 | R2 | **aceptada** | contador | — | Esperar y suprimir son resultados durables y distintos de error, resolución y handoff, así que ningún catch los convierte en un texto cobrable. La política por defecto admite 1 mensaje(s) idéntico(s) en 10 minutos, con un enfriamiento de 10 minutos, y es revisable por tarea e idioma. | — |
 | R3 | **bloqueada** por gate 4 | contador | — | Los 5 alcances se reservan en orden fijo dentro de una transacción, así que dos workers peleando por el último importe no pueden asignarlo dos veces. El mercado sale de la dirección del destinatario, nunca del país de la empresa, y un destino desconocido no tiene tarifa cero. | — |
-| R4 | **abierta** | contador | 21 productores todavía pueden emitir sin fila durable (10 en `inline`, 11 en `outbound_queue`) | La consola humana, la API REST y las campañas necesitan la misma admisión que el agente: un handoff detiene la IA, pero las respuestas humanas siguen generando cargos. La autoridad de operador humano existe desde este HEAD; lo que falta es que cada productor la use, y eso se cuenta arriba. | — |
+| R4 | **abierta** | contador | 20 productores todavía pueden emitir sin fila durable (10 en `inline`, 10 en `outbound_queue`) | La consola humana, la API REST y las campañas necesitan la misma admisión que el agente: un handoff detiene la IA, pero las respuestas humanas siguen generando cargos. La autoridad de operador humano existe desde este HEAD; lo que falta es que cada productor la use, y eso se cuenta arriba. | — |
 | R5 | **abierta** | **declaración** | la matriz de aceptación de 18 escenarios no está enlazada a pruebas nombradas, y el producto de control de gasto no está en canal, Assist ni activación | Se dice como declaración a propósito: hasta que cada escenario nombre la prueba que lo cubre, esta fila no puede salir de un contador, y un contador inventado sería peor que decir que falta. | — |
-| R6 | **abierta** | contador | 21 productores pueden entregar fuera de la autorización aplicable (y después, gate 1 y 5 y 7) | El criterio principal de R6, textual: **ningún productor de WhatsApp puede generar una entrega fuera de la autorización aplicable**. Mientras el contador sea distinto de cero la fila está abierta, y después seguirá bloqueada por el modo observación, el canario con techo explícito y la autorización de activar `enforce`. | — |
+| R6 | **abierta** | contador | 20 productores pueden entregar fuera de la autorización aplicable (y después, gate 1 y 5 y 7) | El criterio principal de R6, textual: **ningún productor de WhatsApp puede generar una entrega fuera de la autorización aplicable**. Mientras el contador sea distinto de cero la fila está abierta, y después seguirá bloqueada por el modo observación, el canario con techo explícito y la autorización de activar `enforce`. | — |
 
 ## De dónde sale cada fila
 
@@ -91,13 +91,13 @@ Sin contradicciones: ninguna fila se declara aceptada con una condición abierta
 | Canales certificados | 0 |
 | Operaciones que Assist deriva a una pantalla | 8 |
 | Defectos en la tabla de resolución de Assist | 0 |
-| Call sites de egress censados | 35 |
-| De ellos, cobrables | 31 |
+| Call sites de egress censados | 34 |
+| De ellos, cobrables | 30 |
 | Cobrables fuera del gate económico | 0 |
-| Cobrables fuera del carril durable | 21 |
-| Productores declarados en el inventario de efectos | 60 |
-| De ellos, con alguna propiedad en `none` | 50 |
-| Políticas proactivas registradas | 8 |
+| Cobrables fuera del carril durable | 20 |
+| Productores declarados en el inventario de efectos | 61 |
+| De ellos, con alguna propiedad en `none` | 49 |
+| Políticas proactivas registradas | 9 |
 | Tipos de item que el carril durable transporta | 7 |
 | Alcances de gasto | 5 |
 | Entregas de servicio gratuitas por número y mes | undefined |

@@ -167,6 +167,59 @@ describe('one dump format, and every restore failure fatal', () => {
     });
 });
 
+describe('the runbook and the script say the same thing', () => {
+    const RUNBOOK = readFileSync(resolve(ROOT, 'docs', 'runbooks', 'october-cutover.md'), 'utf8')
+        .replace(/\r\n/g, '\n');
+
+    it('names no dump format that nothing in this repository produces', () => {
+        // The runbook said "tomar el dump por el camino que usa el deploy
+        // (`pg_dumpall`)". The deploy writes `pg_dump --format=custom`. Somebody
+        // following that sentence during a window would have produced a file
+        // `pg_restore` cannot read and called it a return point.
+        //
+        // It may still be NAMED — the runbook keeps the sentence as the defect
+        // it was — but only on a line that carries the correction with it. A
+        // line that names it without saying what the deploy actually writes is
+        // an instruction again.
+        const lines = RUNBOOK.split('\n').filter(line => line.includes('pg_dumpall'));
+        for (const line of lines) {
+            expect({ line: line.trim(), corrected: line.includes('pg_dump --format=custom') })
+                .toEqual({ line: line.trim(), corrected: true });
+        }
+        expect(RUNBOOK).toContain('pg_dump --format=custom');
+    });
+
+    it('points at the executable procedure rather than describing eleven steps', () => {
+        expect(RUNBOOK).toContain('infra/scripts/october-cutover.sh');
+        for (const step of STEPS) {
+            expect({ step, documented: RUNBOOK.includes(`\`${step}\``) })
+                .toEqual({ step, documented: true });
+        }
+    });
+
+    it('records the external gates the script refuses without', () => {
+        // Each of these is a refusal the script makes at start-up. A runbook
+        // that did not list them turns a fail-closed control into a surprise
+        // with the window already booked.
+        for (const gate of ['CANDIDATE_AUTHORIZED_ACTORS', 'candidate-images', 'Node en el host']) {
+            expect({ gate, listed: RUNBOOK.includes(gate) }).toEqual({ gate, listed: true });
+        }
+    });
+
+    it('says out loud that production is on a different PostgreSQL major', () => {
+        // The candidate is proven on 17; `docker-compose.prod.yml` runs
+        // `pgvector/pgvector:pg16`. Raising the production major is a data
+        // migration with its own window, so it is not smuggled into this change
+        // — but a divergence nobody wrote down is one nobody decides about.
+        const compose = readFileSync(resolve(ROOT, 'infra', 'docker', 'docker-compose.prod.yml'), 'utf8');
+        const productionMajor = /pgvector\/pgvector:pg(\d+)/.exec(compose)?.[1];
+        expect(productionMajor).toBeDefined();
+        if (productionMajor !== '17') {
+            expect(RUNBOOK).toContain(`Producción corre PostgreSQL ${productionMajor}`);
+        }
+    });
+});
+
 describe('nothing is relative, guessed or floating', () => {
     it('fails fast rather than tolerating a relative path', () => {
         expect(SCRIPT).toContain('--evidence must be an ABSOLUTE path');

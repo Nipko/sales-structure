@@ -4,9 +4,308 @@
 > entorno operativo existentes**, con activación gradual en los tenants que ya
 > están probando. No se contrata otro host. No se mantienen dos versiones.
 >
-> **Nada de este documento se ha ejecutado todavía.** Describe un procedimiento
-> preparado, con sus scripts y sus abortos. Lo que queda es la ventana, el
+> **Nada de este documento se ha ejecutado contra el VPS todavía.** Lo que
+> cambió es que ya no es un documento a seguir a mano: el procedimiento es
+> [`infra/scripts/october-cutover.sh`](../../infra/scripts/october-cutover.sh),
+> con su orden **impuesto** y su estado en disco. Lo que queda es la ventana, el
 > responsable y la autorización.
+
+## Lo que este documento dejó de ser
+
+La versión anterior era una tabla de once pasos. Una tabla no es un
+procedimiento, y una revisión independiente reprodujo exactamente lo que hacía
+una persona siguiéndola:
+
+| Lo que decía el documento | Lo que pasaba |
+|---|---|
+| «Paso 0: inventario» y después «Paso 1: construir el candidato» con un `compose up` | Los servicios se **reemplazaban antes** de que existiera punto de retorno. El ensayo de restore y la barrera de escritura estaban más abajo en la página |
+| «tomar el dump por el camino que usa el deploy (`pg_dumpall`)» | El deploy escribe `pg_dump --format=custom`; `infra/backup/restore.sh` lee un `.tar.gz`. **Tres formatos y ningún comando** que restaure lo que se tomó |
+| «Pausar productores: worker, crons, colas» | La API, el servicio de WhatsApp y cualquier cosa que llegara por Cloudflare **seguían escribiendo** |
+| Nada sobre reintentos | Una ventana que fallaba en el paso 7 y se reintentaba desde el 1 **volvía a tomar el backup** sobre una base ya migrada a medias |
+
+## El procedimiento
+
+```bash
+sudo -u deploy /opt/parallext/infra/scripts/october-cutover.sh \
+  --manifest  /opt/parallext-evidence/2026-10/candidate-manifest.json \
+  --evidence  /opt/parallext-evidence/2026-10 \
+  --rehearsal-url postgresql://parallext:...@localhost:5432/oct_cutover_rehearsal \
+  --pilot-tenants 4f0c…,9a21…
+```
+
+Once pasos, en el único orden en que se les permite ocurrir:
+
+| # | Paso | Qué hace y cuándo aborta |
+|---:|---|---|
+| 1 | `inventory` | Censo de sólo lectura del host vivo, **hasheado y guardado**. Aborta si `unknown_probes` no es cero: una tabla que no se pudo consultar no es un cero |
+| 2 | `rehearsal` | Dump → **vaciar** el destino desechable → restore → **comparar esquemas y conteo de filas tabla por tabla**. Cualquier fallo es fatal |
+| 3 | `barrier` | Barrera **global**: ingress abajo *y* la base en `default_transaction_read_only` con los backends abiertos terminados |
+| 4 | `drain` | Espera a que no quede trabajo en vuelo. Aborta si sigue habiendo colas activas a los 180 s |
+| 5 | `backup` | El punto de retorno, en el único formato, **leído de vuelta** con `pg_restore --list` y hasheado |
+| 6 | `preflight` | Términos acordados, sobre el esquema **viejo**. Aborta si la línea resumen no dice `blocks=0` |
+| 7 | `migrate` | `public` y después cada schema de tenant. Aborta sin `MIGRATE_TENANTS_SUMMARY` o con `skipped`/`warnings` distintos de cero |
+| 8 | `images` | El **único** `compose up` del archivo, fijado por los cinco digests |
+| 9 | `health` | La API responde **y** los contenedores *son* los bytes aprobados (`--verify`) |
+| 10 | `canary` | Los tenants del piloto, por id. Una lista vacía se lee como **todos**, así que es un rechazo |
+| 11 | `reopen` | Se levanta la barrera y vuelven los escritores |
+
+Cada paso escribe su estado en `<evidence>/state/<paso>.done`, con la hora y el
+**hash del inventario** contra el que corrió. Volver a ejecutar el comando
+reanuda en el primer paso pendiente; `--status` dice dónde quedó una ventana.
+
+**El orden no es un consejo:** el paso N se niega a correr si 1…N-1 no están
+registrados. Eso es lo que convierte «no arrancar contenedores antes de probar
+el restore y abrir la ventana» en una propiedad del programa en vez de una frase
+en una página. Comprobado: `--only rehearsal` y `--only images` sin el
+inventario terminan en 1 nombrando el paso que falta.
+
+### El ensayo de restore, y el defecto que encontró
+
+El paso 2 **no** es «el `pg_restore` no dio error». Eso ya lo decía
+`infra/backup/restore.sh`, que reporta un restore fallido como
+`WARN: some restore warnings (usually safe)` y sigue. El paso compara el nombre
+de cada schema y el **conteo real de filas de cada tabla** en las dos bases.
+
+Escribiendo ese paso apareció un defecto en el propio ensayo: un restore que
+traía **sólo `public`** comparaba limpio y decía «8 tables match, row for row»,
+porque el destino todavía tenía los schemas de tenant de la corrida anterior. Un
+restore que no restaura nada es indistinguible de uno que funciona cuando el
+destino ya contiene la respuesta. Por eso el destino se **vacía y se comprueba
+vacío** antes; con eso puesto, la misma mutación se pone en rojo nombrando las
+seis tablas ausentes.
+
+### Un solo formato
+
+`pg_dump --format=custom`, leído por `pg_restore`. Es lo que ya escribe
+`deploy.yml` para su punto de retorno previo a migrar y lo que escribe
+`infra/backup/backup.sh` cada noche, así que el rollback de esta ventana y el de
+un deploy cualquiera son el mismo archivo leído igual.
+
+Todos los clientes de PostgreSQL corren **dentro** del contenedor
+`parallext-postgres`: el host no tiene `postgresql-client`, y llamar a `pg_dump`
+en el host es exactamente cómo el backup nocturno llegó a producir dumps de
+0 bytes que se veían completos.
+
+## Paso 1 — Construir el candidato, sin fusionar
+
+Hay **dos** maneras de arrancarlo, y cuál sirve depende de si el commit ya está
+en `main`.
+
+**Antes de fusionar** —que es el caso para el que existe todo esto— la única que
+funciona es la etiqueta sobre el pull request, y **la etiqueta nombra el commit**:
+
+```
+Pull request del candidato → Labels → build-candidate-<primeros 12 del SHA de HEAD>
+```
+
+`workflow_dispatch` **no aparece** para un workflow que todavía no está en la
+rama por defecto. No es un error de configuración: es cómo funciona el
+disparador, y es exactamente lo que hacía imposible validar un candidato antes de
+fusionarlo. El disparador `pull_request` corre desde la rama del propio PR.
+
+La etiqueta nombra el commit porque la anterior **no lo hacía**. `build-candidate`
+se quedaba pegada en el PR y el disparador escuchaba `synchronize`, así que una
+aprobación de quien revisó el commit A seguía autorizando B, C… F —cada uno
+corriendo el código de la rama con secretos y `packages: write`—. Ahora
+`labeled` es el único tipo escuchado, un push nuevo deja la etiqueta vieja sin
+valor, y aprobar el commit nuevo es un acto humano nuevo, revisable y con nombre.
+
+Además se comprueban, y no se suponen: que el repositorio es el nuestro, que la
+rama **no viene de un fork** (un fork no puede llegar a un job con secretos) y
+que quien pidió está en `CANDIDATE_AUTHORIZED_ACTORS`. Esa variable **vacía es un
+rechazo**: un control cuyo estado por defecto es «cualquiera» no es un control.
+
+**Después de fusionar**, o para reconstruir un commit cualquiera:
+
+```
+Actions → "Candidate images (manual)" → Run workflow
+  sha:     <SHA completo de 40 caracteres>
+  confirm: candidate
+```
+
+### Los tres jobs, y por qué son tres
+
+| Job | Permisos | Qué puede hacer |
+|---|---|---|
+| `authorize` | **ninguno** | Decide quién pidió y qué commit. No hace checkout ni lee secretos, así que no hay nada que una rama preparada pueda robarle |
+| `verify` | `contents: read`, **sin secretos** | Corre el código del PR: stack real, suites, typechecks, builds, generadores. **No puede escribir en el registro** |
+| `publish` | `contents: read` + `packages: write`, detrás de un **environment protegido** | Construye y publica las cinco imágenes y el manifiesto. Sólo arranca si `verify` terminó en verde |
+
+El `environment` es la puerta: sus revisores, su restricción de rama y sus
+secretos están en la configuración del repositorio, así que la aprobación para
+escribir en el registro queda registrada **fuera** de este archivo y no se
+concede editándolo.
+
+### Qué prueba el candidato
+
+`verify` levanta **PostgreSQL 17**, **PgBouncer en modo transaction** (fijado por
+digest) y **Valkey**, y afirma las tres cosas en vez de configurarlas y confiar:
+la versión del servidor, el `pool_mode` leído de la consola de administración y
+la política de expiración leída de vuelta.
+
+Eso importa porque cada suite respaldada por PostgreSQL, PgBouncer o Valkey **se
+salta a sí misma** cuando su variable no está puesta, y la versión anterior de
+este workflow corría `npx jest --ci` sin ninguna base: el motor de gasto, el
+outbox durable, las migraciones y la semántica de pooling estaban todos omitidos,
+y la corrida era verde.
+[`assert-no-skipped-tests.cjs`](../../infra/scripts/assert-no-skipped-tests.cjs)
+lee el informe JSON de Jest y rechaza una corrida con una sola prueba omitida, y
+**cada** informe que el workflow escribe es juzgado —no sólo el último—.
+
+Además: cinco typechecks (shared, api, dashboard, whatsapp, landing), cinco
+builds, el bootstrap de DI de Nest —que `tsc` no puede ver—, la suite del
+Dashboard, los recorridos de navegador (escritorio y móvil) y los tres
+generadores en modo `--check`.
+
+⚠️ **El dashboard hornea `NEXT_PUBLIC_*` en su bundle en tiempo de build.** La
+API a la que llama se decide en este paso y no cambia después con un `.env` en el
+host. Son **once** valores, no dos: además de `CANDIDATE_PUBLIC_API_URL` y
+`CANDIDATE_PUBLIC_WA_URL`, el build necesita los ids de Meta (app, config,
+solution), el de Google, el de Messenger, los de Instagram, la versión y la clave
+VAPID. Un `NEXT_PUBLIC_*` ausente **no falla el build**: hornea una cadena vacía,
+y el candidato sale con el Embedded Signup que no abre, el botón de Google que no
+entra y las notificaciones que no se suscriben. El workflow los verifica todos
+antes de construir nada y se detiene nombrando los que falten.
+
+### El manifiesto: qué ata, y qué se niega a leer
+
+El manifiesto es **versión 3** y ata cuatro cosas:
+
+1. el **commit**, 40 caracteres;
+2. la **verificación**: qué run lo probó y que concluyó `success`;
+3. los **inputs del bundle**: las dos URLs tal cual —porque la pregunta más útil
+   sobre un dashboard candidato es contra qué API lee, y un digest no la
+   contesta— y un SHA-256 de cada id o clave, que alcanza para probar que lo
+   verificado y lo aprobado se construyeron con los mismos valores y no alcanza
+   para ser ninguno de ellos;
+4. los **cinco digests**, completos.
+
+`apply-candidate-manifest.cjs` rechaza el archivo si falta cualquiera de las
+cuatro, si la verificación concluyó otra cosa, si la verificación no nombra un
+run que alguien pueda abrir, o si un servicio nombra el repositorio equivocado.
+Esto último era real: el lector comprobaba cada repositorio contra una **lista**
+de los cinco, así que un manifiesto donde `api` nombraba la imagen del dashboard
+y `dashboard` la de la API se aceptaba y generaba
+
+```yaml
+api:       image: ghcr.io/nipko/parallext-dashboard@sha256:14c2…
+dashboard: image: ghcr.io/nipko/parallext-api@sha256:66cd…
+```
+
+con código de salida 0. Ninguna otra comprobación podía verlo: los dos digests
+son reales, los dos repositorios son nuestros, y la etiqueta esperada se deriva
+**del** repositorio, así que también coincidía. Hoy cada servicio tiene **un
+solo** repositorio del que puede arrancar.
+
+El artefacto se publica con `if: success()`, nunca `always()`. Publicarlo desde
+una corrida roja era publicar un manifiesto consumible para un candidato que
+nadie avaló —y el primer paso del cutover es descargar exactamente ese archivo—.
+
+### Consumir el manifiesto
+
+El paso 8 del script lo hace solo. A mano, para inspeccionarlo:
+
+```bash
+node infra/scripts/apply-candidate-manifest.cjs \
+  --manifest candidate-manifest.json \
+  --out infra/docker/docker-compose.candidate.yml
+
+node infra/scripts/apply-candidate-manifest.cjs \
+  --manifest candidate-manifest.json --verify
+```
+
+El segundo comando es el que vuelve honesto al primero. Un override generado
+prueba que se escribió un archivo; la verificación prueba que los contenedores
+que atienden peticiones son los bytes que se aprobaron. Un contenedor cuya imagen
+no tiene digest de registro cuenta como **discrepancia y no como desconocido**.
+
+## Migraciones a mano, cuando sean el camino más directo
+
+Permitidas, y con las mismas obligaciones que un script:
+
+1. **Alcance** — qué filas, con la consulta que las selecciona;
+2. **Conteo previo** — cuántas son, guardado;
+3. **Transformación** — la sentencia exacta, en una transacción;
+4. **Comprobación posterior** — el mismo conteo, más la verificación de que la
+   caja ahora las lee;
+5. **Recuperación** — cómo se deshace, o por qué no se puede.
+
+Lo que **no** habilita una migración manual: borrar datos válidos, fabricar un
+consentimiento, alterar un cobro acordado ni repetir un efecto externo. Esas
+obligaciones son de los datos del negocio y no dependen de qué versión del código
+corra.
+
+## Recuperación, según el momento
+
+| Momento | Qué se hace |
+|---|---|
+| Antes de admitir escrituras nuevas (antes del paso 11) | Restaurar el conjunto consistente de datos **e** imágenes del punto de retorno: `<evidence>/return-point.dump`, con su `.sha256` y su `.toc` |
+| Después de admitirlas | **No** restaurar a ciegas: se perderían operaciones posteriores. Detener los efectos afectados y corregir hacia adelante, o ejecutar una reversión de datos probada |
+
+En los dos casos: no se borran efectos pendientes, historial ni reservas. Se
+concilian. Y **los cambios irreversibles del proveedor no se revierten cambiando
+la imagen**: un mensaje entregado se entregó.
+
+**No se construye soporte del binario anterior sobre el esquema nuevo.** El
+rollback de este cambio es de datos e imágenes juntos, antes de admitir
+escrituras nuevas, no un binario viejo hablando con un schema nuevo.
+
+## Lo que sí se ejecutó, y dónde
+
+Contra la instancia desechable de PostgreSQL 17 en loopback, sobre el HEAD de
+esta rama:
+
+| Prueba | Resultado |
+|---|---|
+| Migración **limpia** (base vacía → HEAD) | 63 migraciones aplicadas, 0 sin terminar, 0 revertidas |
+| Migración de **schemas de tenant** sobre esa base | `MIGRATE_TENANTS_SUMMARY ok=1 skipped=0 warnings=0`, 238 tablas en el schema |
+| **Upgrade desde el estado anterior** (39 migraciones previas aplicadas a mano con los checksums reales, filas escritas por el código viejo) | 63 aplicadas, 0 sin terminar, las filas previas intactas |
+| Migración **bajo carga representativa** (`migration-under-load.postgres.spec.ts`) | 23 migraciones mientras corrían 2.038 escrituras en 8 schemas; la más lenta 35 ms; 0 fallidas |
+| **Ensayo de restore** del paso 2 | Dump, vaciado, restore y comparación: 8 tablas coinciden fila por fila |
+| Guardas de orden | `--only rehearsal` y `--only images` sin inventario terminan en 1 nombrando el paso que falta |
+| Destino no desechable | Rechazado por nombre antes de tocar nada |
+
+## Lo que este procedimiento todavía no demuestra
+
+- No se ha ejecutado contra ningún host. El ensayo del paso 2 corrió contra una
+  base de laboratorio, no contra el tamaño real del VPS.
+- No hay medida real de tamaño, de duración de la ventana ni del restore.
+- Ninguna cuenta de canal real ha enviado nada.
+- 0 de 76 perfiles certificados con un modelo real.
+- **El workflow del candidato no se ha corrido en GitHub.** Existe en el archivo
+  y está fijado por contratos de test que parsean el YAML —no lo grepean—, pero
+  su primera ejecución real será la primera vez que un PR lleve la etiqueta. No
+  se puede ensayar antes sin empujar.
+- **Producción corre PostgreSQL 16** (`pgvector/pgvector:pg16` en
+  `docker-compose.prod.yml`) mientras el candidato se prueba sobre **17**. Eso es
+  una divergencia deliberada de esta tanda, no un descuido: subir el major del
+  motor de producción es una migración de datos con su propia ventana, y no se
+  mete de contrabando en el mismo cambio. Decidir si esta ventana la incluye es
+  parte de la autorización.
+
+## Lo que falta de afuera
+
+1. Acceso y capacidad del VPS, inventario actual, responsable y **ventana
+   acordada**.
+2. Los ids de los tenants del piloto y de los que no participan.
+3. Cuenta/número de prueba elegible, método de pago del negocio, destinatario
+   con consentimiento y presupuesto autorizado.
+4. Los **once** `NEXT_PUBLIC_*` del build del candidato: `CANDIDATE_PUBLIC_API_URL`
+   y `CANDIDATE_PUBLIC_WA_URL` como variables de repositorio, y los secretos
+   `META_APP_ID`, `META_CONFIG_ID`, `META_SOLUTION_ID`, `GOOGLE_OAUTH_CLIENT_ID`,
+   `MESSENGER_FB_LOGIN_CONFIG_ID` y `VAPID_PUBLIC_KEY`.
+5. El **environment protegido** `candidate-images` creado en la configuración del
+   repositorio, con sus revisores. Sin él, `publish` no arranca.
+6. La variable de repositorio **`CANDIDATE_AUTHORIZED_ACTORS`** con los logins
+   que pueden autorizar un candidato. Vacía, el workflow se niega.
+7. **Node en el host del VPS.** El consumidor del manifiesto es un script Node y
+   reimplementar sus comprobaciones en shell es cómo los dos se separan; el
+   script lo comprueba al arrancar (`NODE=/ruta/a/node` si no está en el PATH) y
+   se detiene **antes** de abrir la ventana, no durante.
+8. Una base desechable para el paso 2 cuyo nombre **diga** que lo es
+   (`*_eval_isolation` o `*rehearsal*`), alcanzable desde dentro del contenedor
+   `parallext-postgres`.
+9. Aprobación explícita del candidato y de la activación.
 
 ## Por qué ya no hay staging
 
@@ -30,248 +329,3 @@ host operativo y sólo parecían asuntos de staging:
 | Un script destructivo prueba que su destino es desechable | `apps/api/src/common/utils/disposable-target.ts` |
 | Un piloto nombra un tenant y un canal que el transporte sirve | `packages/shared/src/dispatch-pilot-scope.ts` |
 | La evidencia de un host vivo no lleva personas dentro | `apps/api/src/common/utils/operational-evidence.ts` |
-
-## Paso 0 — Inventario, antes de decidir la ventana
-
-```bash
-docker compose -f infra/docker/docker-compose.prod.yml \
-  run --rm api node scripts/vps-inventory.cjs --json /evidence/inventory.json
-```
-
-Sólo lectura, y estructuralmente: abre `BEGIN READ ONLY` con
-`default_transaction_read_only`, así que **no puede escribir aunque alguien
-edite una sección**. Comprobado: un `CREATE TABLE` en esa sesión devuelve 25006.
-
-Lo que hay que leer de su salida antes de fijar nada:
-
-| Dato | Para qué |
-|---|---|
-| `tenants` por id, slug y schema | Saber **quién** está adentro. No todos los tenants presentes son desechables, ni todos sus contactos aceptaron mensajes de prueba |
-| `migrations applied/unfinished` | Desde dónde parte la actualización, y si algo quedó a medias |
-| `schema_sizes` y `database.bytes` | Dimensionar backup y restore **con números**, no con una estimación |
-| `connections.oldest_transaction_seconds` | Una migración detrás de una transacción larga espera; una ventana que no lo presupuestó se pasa |
-| `tenantPending` | Efectos en vuelo que un reinicio interrumpiría |
-| `dispatch_rollout` | Si el outbox durable está encendido y para quién |
-
-`unknown_probes` distinto de cero **no es cero**: es una tabla que no se pudo
-consultar, y la respuesta correcta es averiguar por qué, no seguir.
-
-Con eso, y **sólo** con eso, se eligen: la ventana, los tenants del piloto (por
-id) y los que no participan.
-
-## Paso 1 — Construir el candidato, sin fusionar
-
-Hay **dos** maneras de arrancarlo, y cuál sirve depende de si el commit ya está
-en `main`.
-
-**Antes de fusionar** —que es el caso para el que existe todo esto— la única que
-funciona es la etiqueta sobre el pull request:
-
-```
-Pull request del candidato → Labels → build-candidate
-```
-
-`workflow_dispatch` **no aparece** para un workflow que todavía no está en la
-rama por defecto. No es un error de configuración: es cómo funciona el disparador,
-y es exactamente lo que hacía imposible validar un candidato antes de fusionarlo.
-El disparador `pull_request` corre desde la rama del propio PR. Está detrás de una
-etiqueta y no de cada push porque publica imágenes, porque poner una etiqueta es
-un acto **revisable** con un nombre detrás, y porque un PR desde un fork no tiene
-permiso de escritura al registro y fallaría de forma confusa.
-
-**Después de fusionar**, o para reconstruir un commit cualquiera:
-
-```
-Actions → "Candidate images (manual)" → Run workflow
-  sha:     <SHA completo de 40 caracteres>
-  confirm: candidate
-```
-
-Lo que hace y lo que deliberadamente no:
-
-- hace checkout **de ese commit** y verifica que `git rev-parse HEAD` coincide;
-- corre typecheck, los tres contratos de lint, **la suite completa** y los builds
-  del paquete compartido y de la landing, así que un candidato no sale de un
-  árbol que no habría podido fusionarse ni de uno que compila y liquida dos veces
-  el mismo mensaje;
-- publica las cinco imágenes con la etiqueta `candidate-<sha>` y **nunca**
-  `latest` —el compose de producción cae a `latest`, así que una imagen así
-  etiquetada sería lo que arranca un `docker compose up` a mano—;
-- publica un **manifiesto de digests**. Una etiqueta con forma de SHA sigue
-  siendo una etiqueta: se puede mover. Sólo el digest dice que lo que corrió y lo
-  que se aprobó son los mismos bytes. **Todo lo que sigue fija digests.**
-- no despliega, y no puede: no tiene paso de host ni credenciales de SSH.
-
-⚠️ **El dashboard hornea `NEXT_PUBLIC_*` en su bundle en tiempo de build.** La
-API a la que llama se decide en este paso y no cambia después con un `.env` en el
-host. Son **once** valores, no dos: además de `CANDIDATE_PUBLIC_API_URL` y
-`CANDIDATE_PUBLIC_WA_URL`, el build necesita los ids de Meta (app, config,
-solution), el de Google, el de Messenger, los de Instagram, la versión y la clave
-VAPID. Un `NEXT_PUBLIC_*` ausente **no falla el build**: hornea una cadena vacía,
-y el candidato sale con el Embedded Signup que no abre, el botón de Google que no
-entra y las notificaciones que no se suscriben. El workflow los verifica todos
-antes de construir nada y se detiene nombrando los que falten.
-
-La procedencia de esos valores queda en el manifiesto: las dos URLs tal cual
-—porque la pregunta más útil sobre un dashboard candidato es contra qué API lee, y
-un digest no la contesta— y un digest SHA-256 de cada id o clave, que alcanza para
-probar que lo verificado y lo aprobado se construyeron con los mismos valores y no
-alcanza para ser ninguno de ellos.
-
-### Consumir el manifiesto: de un archivo a lo que el host arranca
-
-El manifiesto por sí solo no cambia nada. El host arranca contenedores desde
-`docker-compose.prod.yml`, que resuelve las imágenes por `IMAGE_TAG` —una
-etiqueta, que se mueve, y que cae a `latest`—. Decir «fijado por digest» mientras
-el host consume una etiqueta es una afirmación sobre un archivo que nadie lee.
-
-```bash
-# 1. Bajar el artefacto `candidate-<sha>-<runId>` del run y descomprimirlo.
-# 2. Convertirlo en algo que compose entienda:
-node infra/scripts/apply-candidate-manifest.cjs \
-  --manifest candidate-manifest.json \
-  --out infra/docker/docker-compose.candidate.yml
-
-# 3. Arrancar con el override EXPLÍCITO. Es un override y no una edición porque
-#    el deploy hace `git reset --hard` y revierte en silencio un archivo trackeado.
-docker compose -f docker-compose.prod.yml -f docker-compose.candidate.yml up -d
-
-# 4. Comprobar que lo que está contestando ES el candidato aprobado:
-node infra/scripts/apply-candidate-manifest.cjs \
-  --manifest candidate-manifest.json --verify
-```
-
-El paso 4 es el que vuelve honesto al paso 2. Un override generado prueba que se
-escribió un archivo; la verificación prueba que los contenedores que atienden
-peticiones son los bytes que se aprobaron. Un contenedor cuya imagen no tiene
-digest de registro cuenta como **discrepancia y no como desconocido**: se
-construyó en el host o se cargó de un tarball, y nada lo ata a lo que alguien
-revisó.
-
-## Paso 2 — Ensayo de backup y restore, en un destino desechable
-
-Antes de tocar el VPS, y con los tamaños del paso 0 en la mano:
-
-1. tomar el dump por el camino que usa el deploy (`pg_dumpall`);
-2. restaurarlo en una base **desechable** —`assertDisposableTarget` exige que el
-   nombre lo diga y rechaza el nombre productivo—;
-3. aplicar sobre ella la migración completa;
-4. correr `vps-inventory.cjs` contra el resultado y comparar conteos con el
-   original: tenants, schemas y filas por familia.
-
-Si el tamaño real hace inviable el ensayo previsto, **medir y ajustar el
-procedimiento antes de tocar el VPS**, no descubrirlo durante la ventana.
-
-**No se construye soporte del binario anterior sobre el esquema nuevo.** El
-rollback de este cambio es de datos e imágenes juntos, antes de admitir
-escrituras nuevas (paso 6), no un binario viejo hablando con un schema nuevo.
-
-## Paso 3 — La ventana: parar de escribir antes de fotografiar
-
-Un preflight es una fotografía. Los procesos anteriores siguen sirviendo y
-escribiendo entre la inspección y la sustitución, así que una fila con formato
-viejo puede nacer justo en esa ventana. El orden existe para cerrarla:
-
-| # | Acción | Aborta si |
-|---:|---|---|
-| 1 | Anunciar la ventana a los tenants del piloto | — |
-| 2 | **Pausar productores**: worker, crons, colas entrantes | quedan jobs `active` tras el drenaje |
-| 3 | Drenar o conservar lo pendiente que el inventario contó | un efecto quedaría sin recibo |
-| 4 | **Backup previo** (punto de retorno) | el dump falla → no se migra |
-| 5 | **Preflight de términos huérfanos** | exit ≠ 0 o la línea resumen no dice `blocks=0` |
-| 6 | Migración `public` | Prisma falla |
-| 7 | Migración de schemas de tenant | no imprime `MIGRATE_TENANTS_SUMMARY` |
-| 8 | Migraciones de transformación manuales, si las hay | ver «Migraciones a mano» |
-| 9 | Recrear contenedores con los **digests** del paso 1 | el digest en ejecución no es el aprobado |
-| 10 | Salud de la API | no responde en 3 min |
-| 11 | Reanudar productores | — |
-
-Los pasos 4 y 5 son los mismos que ya corre `deploy.yml`, en el mismo orden y con
-el mismo carácter fail-closed. El preflight cambió de significado: ahora cuenta
-**lo mismo que la caja rechaza** —metadata NULL, `serviceTerms` nulo o vacío,
-precio no numérico, moneda ausente, propuesta aceptada sin importe—, así que
-puede dar un número mayor que la semana pasada. Eso no es una regresión: es lo
-que estaba sin contar. Ver
-[`agreed-terms-preflight.md`](agreed-terms-preflight.md).
-
-## Migraciones a mano, cuando sean el camino más directo
-
-Permitidas, y con las mismas obligaciones que un script:
-
-1. **Alcance** — qué filas, con la consulta que las selecciona;
-2. **Conteo previo** — cuántas son, guardado;
-3. **Transformación** — la sentencia exacta, en una transacción;
-4. **Comprobación posterior** — el mismo conteo, más la verificación de que la
-   caja ahora las lee;
-5. **Recuperación** — cómo se deshace, o por qué no se puede.
-
-Lo que **no** habilita una migración manual: borrar datos válidos, fabricar un
-consentimiento, alterar un cobro acordado ni repetir un efecto externo. Esas
-obligaciones son de los datos del negocio y no dependen de qué versión del código
-corra.
-
-## Paso 4 — Verificar con los tenants del piloto
-
-Con los ids del paso 0, no «los que parezcan de prueba».
-
-- entrega y duplicados: un efecto, un recibo;
-- costos y reservas inciertas: `retainedExposure` distinto de cero es trabajo
-  pendiente, no un problema resuelto;
-- errores de financiación (131042 y posteriores a aceptación) pausan la cuenta
-  correspondiente sin perder entradas;
-- resolución de tareas y latencia.
-
-El piloto del outbox durable, si se enciende, pasa por
-`assessPilotScope`: **lista de tenants vacía significa todos**, y un canal sin
-transporte estricto se descarta en silencio. Las dos cosas parecen éxito desde
-afuera, así que las dos son un rechazo antes de escribir, y el valor se relee
-después para saber que aterrizó.
-
-## Paso 5 — Abrir el resto de las cuentas
-
-Según criterios fijados **antes**, no improvisados. Y con el calendario de Meta
-en la cabeza: el cambio tarifario del 1 de octubre afecta a cualquier cuenta que
-siga enviando, estén o no encendidas nuestras funciones nuevas. Un canario de
-pocos tenants no protege a los demás. Hace falta el inventario de preparación de
-**todas** las cuentas activas, y resolver las que falten.
-
-## Paso 6 — Recuperación, según el momento
-
-| Momento | Qué se hace |
-|---|---|
-| Antes de admitir escrituras nuevas | Restaurar el conjunto consistente de datos **e** imágenes del punto de retorno |
-| Después de admitirlas | **No** restaurar a ciegas: se perderían operaciones posteriores. Detener los efectos afectados y corregir hacia adelante, o ejecutar una reversión de datos probada |
-
-En los dos casos: no se borran efectos pendientes, historial ni reservas. Se
-concilian. Y **los cambios irreversibles del proveedor no se revierten cambiando
-la imagen**: un mensaje entregado se entregó.
-
-## Lo que este procedimiento todavía no demuestra
-
-- No se ha ejecutado contra ningún host.
-- No hay medida real de tamaño, de duración de la ventana ni del restore.
-- Ninguna cuenta de canal real ha enviado nada.
-- 0 de 76 perfiles certificados con un modelo real.
-- El disparador por etiqueta **no se ha corrido en GitHub**: existe en el archivo
-  y está fijado por un contrato de test, y su primera ejecución real será la
-  primera vez que un PR lleve la etiqueta. No se puede ensayar antes sin empujar,
-  que es justamente lo que esta tanda no hace.
-- El consumidor del manifiesto **sí** se ensayó localmente, contra un manifiesto
-  real y contra un estado de contenedores simulado: genera el override, fija los
-  cinco digests, y termina en 1 nombrando cada servicio que no coincide. Lo que
-  no se ensayó es ese mismo comando contra los contenedores del VPS.
-
-## Lo que falta de afuera
-
-1. Acceso y capacidad del VPS, inventario actual, responsable y **ventana
-   acordada**.
-2. Los ids de los tenants del piloto y de los que no participan.
-3. Cuenta/número de prueba elegible, método de pago del negocio, destinatario
-   con consentimiento y presupuesto autorizado.
-4. Los **once** `NEXT_PUBLIC_*` del build del candidato: `CANDIDATE_PUBLIC_API_URL`
-   y `CANDIDATE_PUBLIC_WA_URL` como variables de repositorio, y los secretos
-   `META_APP_ID`, `META_CONFIG_ID`, `META_SOLUTION_ID`, `GOOGLE_OAUTH_CLIENT_ID`,
-   `MESSENGER_FB_LOGIN_CONFIG_ID` y `VAPID_PUBLIC_KEY`. Sin ellos el workflow se
-   detiene antes de construir, que es lo correcto: un candidato a medias
-   horneadas se verificaría como si fuera el producto.
-5. Aprobación explícita del candidato y de la activación.

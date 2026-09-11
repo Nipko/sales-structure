@@ -16,12 +16,12 @@ efectos puede llegar a producir **una sola respuesta lógica** en cada uno.
 
 | | |
 |---|---|
-| Sitios de llamada encontrados | **38** |
-| De ellos, que producen un mensaje cobrable | **37** |
+| Sitios de llamada encontrados | **37** |
+| De ellos, que producen un mensaje cobrable | **36** |
 | De ellos, presencia (no cobra Meta) | **1** |
 | Archivos productores distintos | **16** |
-| Sitios que **no** pasan por un carril durable | **26** |
-| Sitios que pueden alcanzar WhatsApp (literal o dinámico) | **35** |
+| Sitios que **no** pasan por un carril durable | **25** |
+| Sitios que pueden alcanzar WhatsApp (literal o dinámico) | **34** |
 | Sitios donde **una respuesta puede volverse varios cargos** | **12** |
 | Productores WhatsApp cobrables **fuera de la frontera economica** | **0** |
 | Salidas al proveedor **sin admision ni camino declarado** | **0** |
@@ -34,8 +34,8 @@ Por carril:
 | `approved_effect` | 1 | `tool_approval_effects` row a person approved |
 | `operational_notice` | 6 | `operational_notice_outbox`, written in the business transaction |
 | `handoff_effects` | 1 | one row per destination of one transfer |
-| `outbound_queue` | 13 | legacy BullMQ `send` job; Redis is the only record |
-| `inline` | 13 | straight to the adapter, on the caller's stack |
+| `outbound_queue` | 11 | legacy BullMQ `send` job; Redis is the only record |
+| `inline` | 14 | straight to the adapter, on the caller's stack |
 
 ## Los que esquivan el carril durable
 
@@ -54,9 +54,8 @@ llevar a la admisión económica.
 | `modules/automation/drip-sequence.service.ts:649` | `executeStepAction` | `inline` | dynamic | 1 (read) |
 | `modules/automation/drip-sequence.service.ts:674` | `executeStepAction` | `outbound_queue` | dynamic | 1 (read) |
 | `modules/automation/drip-sequence.service.ts:691` | `executeStepAction` | `outbound_queue` | dynamic | 1 (read) |
-| `modules/automation/nurturing.service.ts:565` | `executeAttempt2` | `outbound_queue` | whatsapp | 1 (read) |
-| `modules/automation/nurturing.service.ts:752` | `sendFollowUpText` | `outbound_queue` | dynamic | 1 (read) |
-| `modules/automation/nurturing.service.ts:796` | `sendWhatsAppTemplate` | `outbound_queue` | dynamic | 1 (read) |
+| `modules/automation/nurturing.service.ts:740` | `sendFollowUpText` | `outbound_queue` | dynamic | 1 (read) |
+| `modules/automation/nurturing.service.ts:787` | `sendWhatsAppTemplate` | `inline` | whatsapp | 1 (read) |
 | `modules/broadcast/broadcast-queue.processor.ts:118` | `sendWhatsApp` | `inline` | dynamic | 1 (read) |
 | `modules/channels/channel-management.controller.ts:519` | `testTelegram` | `inline` | telegram | 1 (read) |
 | `modules/channels/channel-management.controller.ts:1483` | `testSms` | `inline` | sms | 1 (read) |
@@ -151,9 +150,8 @@ mensajes entregados, y un indicador de "escribiendo" no lo es.
 
 | Línea | Método | Primitiva | Carril | Disparador | Canales | Efectos por respuesta | Base |
 |---:|---|---|---|---|---|---|---|
-| 565 | `executeAttempt2` | `outboundQueue.enqueue` | `outbound_queue` | called by another service | whatsapp | 1 | one effect per invocation; no loop reaches this send |
-| 752 | `sendFollowUpText` | `outboundQueue.enqueue` | `outbound_queue` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
-| 796 | `sendWhatsAppTemplate` | `outboundQueue.enqueue` | `outbound_queue` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
+| 740 | `sendFollowUpText` | `outboundQueue.enqueue` | `outbound_queue` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
+| 787 | `sendWhatsAppTemplate` | `.sendTemplate` | `inline` | called by another service | whatsapp | 1 | one effect per invocation; no loop reaches this send |
 
 ### `apps/api/src/modules/broadcast/broadcast-queue.processor.ts`
 
@@ -293,9 +291,8 @@ buscar una llamada a la autoridad economica en el codigo del archivo.
 | `modules/automation/drip-sequence.service.ts:649` | `executeStepAction` | `inline` | `modules/whatsapp/services/whatsapp-messaging.service.ts` | si |
 | `modules/automation/drip-sequence.service.ts:674` | `executeStepAction` | `outbound_queue` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/automation/drip-sequence.service.ts:691` | `executeStepAction` | `outbound_queue` | `modules/channels/outbound-queue.processor.ts` | si |
-| `modules/automation/nurturing.service.ts:565` | `executeAttempt2` | `outbound_queue` | `modules/channels/outbound-queue.processor.ts` | si |
-| `modules/automation/nurturing.service.ts:752` | `sendFollowUpText` | `outbound_queue` | `modules/channels/outbound-queue.processor.ts` | si |
-| `modules/automation/nurturing.service.ts:796` | `sendWhatsAppTemplate` | `outbound_queue` | `modules/channels/outbound-queue.processor.ts` | si |
+| `modules/automation/nurturing.service.ts:740` | `sendFollowUpText` | `outbound_queue` | `modules/channels/outbound-queue.processor.ts` | si |
+| `modules/automation/nurturing.service.ts:787` | `sendWhatsAppTemplate` | `inline` | `modules/whatsapp/services/whatsapp-messaging.service.ts` | si |
 | `modules/broadcast/broadcast-queue.processor.ts:118` | `sendWhatsApp` | `inline` | `modules/whatsapp/services/whatsapp-messaging.service.ts` | si |
 | `modules/conversations/conversations.service.ts:1883` | `sendAfterHoursMessage` | `outbound_queue` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/conversations/conversations.service.ts:2156` | `sendResponse` | `outbound_queue` | `modules/channels/outbound-queue.processor.ts` | si |

@@ -2,12 +2,9 @@ import { Injectable, Logger } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
-import { OutboundQueueService } from '../channels/outbound-queue.service';
-import { ChannelTokenService } from '../channels/channel-token.service';
 import { ProactiveSendConnection } from '../channels/proactive-connection';
 import { EmailTemplatesService } from '../email-templates/email-templates.service';
 import { APPOINTMENT_EMAIL_SLUGS } from '../email-templates/appointment-email-layout';
-import type { OutboundMessage } from '@parallext/shared';
 import { apptMsg, normaliseLang, formatDuration, LANG_LOCALE } from './appointment-notifications-i18n';
 import { RegionalProfileService } from '../tenants/regional-profile.service';
 import {
@@ -45,9 +42,26 @@ interface AppointmentFacts {
      * Read from the row rather than from the event payload because the durable
      * lane writes the outbound message into `messages`, and a message belongs to
      * a thread. It also names the connection the customer actually wrote to —
-     * and therefore the account Meta bills for the confirmation.
+     * and therefore the account Meta bills for the notice.
      */
     conversationId: string | null;
+}
+
+/**
+ * Everything a customer-facing notice needs, whichever notice it is.
+ *
+ * The confirmation and the cancellation differ in exactly three things — the
+ * policy they send under, the origin that identifies them, and the words — so
+ * they share one dispatch and name those three at the top, rather than keeping
+ * two copies of the sender, thread and authority resolution in step by hand.
+ */
+interface AppointmentNoticeInput {
+    readonly tenantId: string;
+    readonly schemaName: string;
+    readonly contactId: string | null;
+    readonly contact: { phone: string; channel_type?: string };
+    readonly facts: AppointmentFacts;
+    readonly text: string;
 }
 
 /**
@@ -61,22 +75,22 @@ export class AppointmentNotificationsService {
     constructor(
         private prisma: PrismaService,
         private eventEmitter: EventEmitter2,
-        private outboundQueue: OutboundQueueService,
-        private channelToken: ChannelTokenService,
-        // Which number a reminder leaves from, when the contact does not say.
+        // Which number a notice leaves from, when the booking thread does not
+        // say. It refuses to pick on a multi-number tenant, and raises a task.
         private connections: ProactiveSendConnection,
         private emailTemplates: EmailTemplatesService,
         private regionalProfile: RegionalProfileService,
         /**
-         * The durable lane, which the confirmation could not use before.
+         * The durable lane. BOTH notices go out on it now, and nothing in
+         * this file reaches the plain outbound queue any more.
          *
-         * The confirmation went out through `outbound_queue`: a BullMQ job whose
-         * only record is Redis. A restart between the appointment committing and
-         * the job being taken either lost the confirmation — the customer books
-         * and hears nothing — or, when the acknowledgement was the part that was
-         * lost, sent it twice. From October each repeat is a charge, and a second
-         * "your appointment is confirmed" is the single most visible duplicate
-         * this product can produce.
+         * They went out through `outbound_queue`: a BullMQ job whose only record
+         * is Redis. A restart between the appointment committing and the job
+         * being taken either lost the notice — the customer books, or is
+         * cancelled on, and hears nothing — or, when the acknowledgement was the
+         * part that was lost, sent it twice. From October each repeat is a
+         * charge, and a second "your appointment is confirmed" is the single
+         * most visible duplicate this product can produce.
          */
         private readonly proactive: ProactiveDispatchService,
     ) {}
@@ -180,9 +194,16 @@ export class AppointmentNotificationsService {
                     apptMsg(lang, 'cancelFooter'),
                 ].filter(Boolean).join('\n');
 
-                await this.sendMessage(tenantId, contact, text, {
-                    source: 'appointment_cancellation',
-                    appointmentId: facts.id,
+                // Same treatment as the confirmation, and for the same reason:
+                // the connection resolver THROWS when it cannot read a
+                // connection, and letting that escape would cost the customer
+                // the cancellation email as well as the message.
+                await this.dispatchCancellation({
+                    tenantId, schemaName, contact,
+                    contactId: appointment.contactId, facts, text,
+                }).catch((err: any) => {
+                    this.logger.error(`[Appointments] the cancellation notice for ${facts.id} `
+                        + `could not be handed to the durable lane: ${err?.message}`);
                 });
             }
 
@@ -192,7 +213,8 @@ export class AppointmentNotificationsService {
                 dateStr, timeStr, reason,
             });
 
-            this.logger.log(`Sent cancellation notice for appointment ${facts.id}`);
+            // Not "Sent", for the same reason as the confirmation above.
+            this.logger.log(`Handled the cancellation notices for appointment ${facts.id}`);
         } catch (err) {
             this.logger.error(`Failed to send cancellation notice: ${err.message}`);
         }
@@ -479,37 +501,75 @@ export class AppointmentNotificationsService {
     }
 
     /**
-     * ═══ THE CONFIRMATION, ON THE LANE THAT REMEMBERS IT ═══
-     *
-     * `appointment.created` fires once and nothing retries it, so before this
-     * the confirmation had exactly one chance and no record: `outboundQueue`
-     * put it in Redis, and a restart between the appointment committing and the
-     * job being taken either lost it or — when the acknowledgement was what got
-     * lost — delivered it twice. A customer who books and hears nothing, or who
-     * gets told twice, is the two most visible failures of this product.
-     *
-     * ── THE ORIGIN IS THE APPOINTMENT, AND WHICH NOTICE ─────────────────────
+     * The booking confirmation.
      *
      * `appointment_notification:<id>:confirmation`. The appointment id is what
      * the domain already keeps durably, so a second `appointment.created` for
      * the same row — a duplicated event, a replayed listener — derives the same
      * origin and collides on the one row that already exists instead of sending
      * a second confirmation.
+     */
+    private dispatchConfirmation(args: AppointmentNoticeInput): Promise<ProactiveSendResult> {
+        return this.dispatchNotice({
+            ...args,
+            producer: 'appointment_notification',
+            originKey: `appointment_notification:${args.facts.id}:confirmation`,
+            describes: 'confirmation',
+        });
+    }
+
+    /**
+     * ═══ THE CANCELLATION NOTICE, WHICH COULD NOT MOVE UNTIL NOW ═══
      *
-     * ── AND THE PAYER IS NAMED, NEVER INHERITED ─────────────────────────────
+     * It stayed on the legacy queue for one reason, and it was not inertia: the
+     * closed registry only knew `appointment_notification`, which reads
+     * `appointmentRevision` and answers null for anything outside `pending` and
+     * `confirmed` — and `AppointmentsService.cancel` commits `cancelled` BEFORE
+     * it emits. Migrating on top of that would have SUPPRESSED every
+     * cancellation notice on the platform while looking like working code.
+     *
+     * `appointment_cancellation` inverts the accepted status and keeps `status`
+     * inside the hash, so the notice is authorised BECAUSE the appointment is
+     * cancelled, and one re-confirmed between preparing the notice and admitting
+     * it makes the prepared notice stale — "your appointment was cancelled" is
+     * false about a booking that is back on.
+     *
+     * The origin is the appointment and nothing else: one cancellation per
+     * appointment, so a replayed `appointment.cancelled` collides on the row
+     * that already exists. It cannot collide with the confirmation's, which
+     * carries its own suffix.
+     */
+    private dispatchCancellation(args: AppointmentNoticeInput): Promise<ProactiveSendResult> {
+        return this.dispatchNotice({
+            ...args,
+            producer: 'appointment_cancellation',
+            originKey: `appointment_cancellation:${args.facts.id}`,
+            describes: 'cancellation notice',
+        });
+    }
+
+    /**
+     * ═══ ONE NOTICE, ON THE LANE THAT REMEMBERS IT ═══
+     *
+     * Both appointment events fire once and nothing retries them, so before
+     * this each notice had exactly one chance and no record: the plain queue
+     * put it in Redis, and a restart between the appointment committing and the
+     * job being taken either lost it or — when the acknowledgement was what got
+     * lost — delivered it twice. A customer who books and hears nothing, or who
+     * is told twice that their appointment is cancelled, is the two most
+     * visible failures of this product.
+     *
+     * ── THE PAYER IS NAMED, NEVER INHERITED ─────────────────────────────────
      *
      * The thread the appointment was booked in names the number the customer
      * actually wrote to, and that is the account Meta bills. Only when there is
      * no such thread does the resolver choose — and it refuses to choose on a
      * multi-number tenant rather than billing a WABA nobody picked.
      */
-    private async dispatchConfirmation(args: {
-        readonly tenantId: string;
-        readonly schemaName: string;
-        readonly contactId: string | null;
-        readonly contact: { phone: string; channel_type?: string };
-        readonly facts: AppointmentFacts;
-        readonly text: string;
+    private async dispatchNotice(args: AppointmentNoticeInput & {
+        readonly producer: 'appointment_notification' | 'appointment_cancellation';
+        readonly originKey: string;
+        readonly describes: string;
     }): Promise<ProactiveSendResult> {
         const { tenantId, schemaName, facts } = args;
         const channelType = (args.contact.channel_type || 'whatsapp') as string;
@@ -519,7 +579,7 @@ export class AppointmentNotificationsService {
             // outbox refuses a binding that names neither. Refused rather than
             // faked: a synthesised contact id would merge strangers.
             this.logger.warn(`[Appointments] appointment ${facts.id} has no contact — `
-                + 'no confirmation dispatched');
+                + `no ${args.describes} dispatched`);
             return { kind: 'refused', reason: 'no_contact' };
         }
 
@@ -544,27 +604,29 @@ export class AppointmentNotificationsService {
             });
         if (!conversationId) {
             this.logger.warn(`[Appointments] appointment ${facts.id} has no thread to write `
-                + 'into — no confirmation dispatched');
+                + `into — no ${args.describes} dispatched`);
             return { kind: 'refused', reason: 'no_conversation' };
         }
 
-        // Built by READING the appointment, so the revision describes the row as
-        // it is. The store revalidates it in the transaction that grants the
-        // lease, which is what turns a cancellation arriving in that window into
-        // a suppression rather than a confirmation of a turn that no longer
-        // exists.
+        // Built by READING the appointment, so the revision describes the row
+        // as it is. The store revalidates it in the transaction that grants the
+        // lease, and the two policies read the status in opposite directions: a
+        // cancellation arriving after a confirmation was prepared suppresses the
+        // confirmation, and a re-confirmation arriving after a cancellation
+        // notice was prepared suppresses the notice. Each is false about the
+        // booking the other now describes.
         const operationalScope = await this.proactive.policyAuthority(schemaName, {
-            tenantId, producer: 'appointment_notification', channelType,
+            tenantId, producer: args.producer, channelType,
             channelAccountId, entityId: String(facts.id),
         });
         if (!operationalScope) {
             this.logger.log(`[Appointments] appointment ${facts.id} no longer justifies a `
-                + 'confirmation — suppressed');
+                + `${args.describes} — suppressed`);
             return { kind: 'suppressed', reason: 'entity_no_longer_eligible' };
         }
 
         const result = await this.proactive.send(tenantId, {
-            originKey: `appointment_notification:${facts.id}:confirmation`,
+            originKey: args.originKey,
             conversationId: String(conversationId),
             contactId,
             channelType, channelAccountId,
@@ -576,10 +638,11 @@ export class AppointmentNotificationsService {
         // retries it — so the only honest thing to do with a non-durable answer
         // is say so loudly rather than log "sent" beside it.
         if (!effectIsDurable(result)) {
-            this.logger.error(`[Appointments] the confirmation for ${facts.id} was `
+            this.logger.error(`[Appointments] the ${args.describes} for ${facts.id} was `
                 + `${result.kind}: ${(result as any).reason ?? ''}`);
         } else {
-            this.logger.log(`[Appointments] ${result.kind} the confirmation for ${facts.id}`);
+            this.logger.log(`[Appointments] ${result.kind} the ${args.describes} `
+                + `for ${facts.id}`);
         }
         return result;
     }
@@ -614,63 +677,5 @@ export class AppointmentNotificationsService {
             this.logger.warn(`Could not read the booking thread ${conversationId}: ${err?.message}`);
             return null;
         }
-    }
-
-    /**
-     * ═══ THE CANCELLATION NOTICE, STILL ON THE LEGACY QUEUE ═══
-     *
-     * NOT an oversight, and not a lane this call site may join today.
-     *
-     * The closed registry in `persona/proactive-policy-authority.ts` maps
-     * `appointment_notification` onto `appointmentRevision`, which answers
-     * `null` for any appointment that is not `pending` or `confirmed` — and
-     * `AppointmentsService.cancel` commits `status = 'cancelled'` BEFORE it
-     * emits `appointment.cancelled`. So the authority for a cancellation notice
-     * can never be built: `policyAuthority` returns `undefined`, the lane reads
-     * that as "the entity no longer justifies this message", and the customer
-     * would never be told their appointment was cancelled.
-     *
-     * That is a one-entry change in a file this worktree does not own: a
-     * `appointment_cancellation` policy whose revision ACCEPTS `cancelled` and
-     * hashes `status` (so a re-confirmation in the window makes the prepared
-     * notice stale). Until it exists, migrating this call site would silently
-     * delete a customer-facing message, which is worse than the duplicate the
-     * migration is meant to prevent. See `appointment-notification-lane.
-     * postgres.spec.ts`, "the cancellation notice cannot obtain an authority".
-     */
-    private async sendMessage(
-        tenantId: string,
-        contact: { phone: string; channel_type?: string; channel_account_id?: string | null },
-        text: string,
-        metadata: Record<string, unknown>,
-    ) {
-        const channelType = (contact.channel_type || 'whatsapp') as 'whatsapp' | 'instagram' | 'messenger' | 'telegram';
-
-        // ── A REMINDER INHERITS NOTHING, SO SOMEBODY HAS TO CHOOSE ─────────
-        //
-        // This used to swallow the refusal: a tenant with two WhatsApp numbers
-        // and no choice recorded got `connection_ambiguous`, a warning in a
-        // container log, and no reminder — for every appointment, silently, for
-        // as long as nobody read the logs. The resolver raises a task in the
-        // place that business already looks at, and still refuses to pick.
-        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
-        if (!schemaName) return;
-        const credentials = await this.connections.resolve({
-            tenantId, schemaName, channelType,
-            channelAccountId: contact.channel_account_id ?? null,
-            purpose: 'los recordatorios de turnos',
-        });
-        if (!credentials) return;
-
-        const outbound: OutboundMessage = {
-            tenantId,
-            to: contact.phone,
-            channelType,
-            channelAccountId: credentials.accountId,
-            content: { type: 'text', text },
-            metadata,
-        };
-
-        await this.outboundQueue.enqueue(outbound, credentials.accessToken);
     }
 }

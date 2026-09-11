@@ -1,3 +1,5 @@
+import * as fs from 'fs';
+import * as path from 'path';
 import { randomUUID } from 'crypto';
 import { PrismaClient } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -45,7 +47,6 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
     let resolveAsked: Array<string | null> = [];
     /** When true the tenant has two numbers and nobody chose: the resolver refuses. */
     let connectionAmbiguous = false;
-    let legacyEnqueued: any[] = [];
     jest.setTimeout(180_000);
 
     const sql = (text: string, params: any[] = []): Promise<any[]> =>
@@ -89,6 +90,26 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
         },
     });
 
+    /** The same appointment, already cancelled — which is the order production has. */
+    const cancelled = async (over: { threadAccount?: string } = {}) => {
+        const appt = await book(over);
+        // `AppointmentsService.cancel` commits the status and THEN emits, which
+        // is the whole reason the confirmation's policy could not serve this
+        // notice. The fixture keeps that order.
+        await sql("UPDATE appointments SET status = 'cancelled' WHERE id = $1::uuid", [appt.id]);
+        return appt;
+    };
+
+    const cancelledEvent = (appt: { id: string; contactId: string }) => ({
+        schemaName: schema,
+        appointment: {
+            id: appt.id, contactId: appt.contactId, status: 'cancelled',
+            serviceName: 'Consulta',
+            startAt: new Date(Date.now() + 86_400_000).toISOString().slice(0, 19),
+        },
+        reason: 'el cliente no puede',
+    });
+
     const outboxRows = async () => sql(
         `SELECT id, item_kind, state, origin_kind, channel_account_id, conversation_id,
                 contact_id, payload, error_code, attempts, operational_scope
@@ -100,10 +121,6 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
             prisma,
             proactive,
             eventEmitter: { emit: () => undefined },
-            outboundQueue: {
-                enqueue: async (message: any) => { legacyEnqueued.push(message); },
-            },
-            channelToken: {},
             connections: {
                 resolve: async (input: any) => {
                     resolveAsked.push(input.channelAccountId ?? null);
@@ -205,7 +222,6 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
         publishFails = false;
         resolveAsked = [];
         connectionAmbiguous = false;
-        legacyEnqueued = [];
         await sql('TRUNCATE agent_dispatch_outbox, messages, appointments, conversations, contacts CASCADE');
     });
 
@@ -223,7 +239,6 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
         expect(rows[0].payload.text).toContain('Consulta');
         expect(rows[0].conversation_id).toBe(appt.conversationId);
         expect(rows[0].contact_id).toBe(appt.contactId);
-        expect(legacyEnqueued).toEqual([]);
     });
 
     it('writes the history row in the same transaction, as pending', async () => {
@@ -263,7 +278,6 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
         await service.onAppointmentCreated(created(await book({ withThread: false })));
         expect(resolveAsked).toEqual([null]);
         expect(await outboxRows()).toEqual([]);
-        expect(legacyEnqueued).toEqual([]);
     });
 
     it('does not lend a thread from another channel to a WhatsApp notice', async () => {
@@ -349,7 +363,6 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
             await sql('ALTER TABLE conversations DROP CONSTRAINT no_new_threads');
         }
         expect(await outboxRows()).toEqual([]);
-        expect(legacyEnqueued).toEqual([]);
     });
 
     // ── THE ROW SURVIVES A QUEUE THAT DOES NOT ──────────────────────────────
@@ -454,56 +467,127 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
         expect(message.status).toBe('sent');
     });
 
-    // ── THE CANCELLATION NOTICE, AND WHY IT IS STILL ON THE OLD LANE ────────
+    // ── THE CANCELLATION NOTICE, WHICH MOVED ONCE IT HAD A POLICY ───────────
 
-    it('BLOCKED: a cancellation notice can obtain no authority today', async () => {
-        // THE BLOCKER, reproduced. `appointment_notification` is registered
-        // against `appointmentRevision`, which answers null for anything that is
-        // not pending or confirmed — and `AppointmentsService.cancel` commits
-        // `status = 'cancelled'` BEFORE emitting `appointment.cancelled`.
-        //
-        // So migrating the cancellation notice would make `policyAuthority`
-        // answer `undefined`, the lane would read that as "the entity no longer
-        // justifies this message", and the customer would never be told their
-        // appointment was cancelled. Deleting a customer-facing message is worse
-        // than the duplicate the migration prevents, so it stays on the legacy
-        // queue until the closed registry gains an `appointment_cancellation`
-        // policy whose revision ACCEPTS `cancelled` and hashes `status`.
-        //
-        // `persona/proactive-policy-authority.ts` belongs to the integrator.
-        const appt = await book();
-        await sql("UPDATE appointments SET status = 'cancelled' WHERE id = $1::uuid", [appt.id]);
-        const authority = await prisma.transactionInTenantSchema(schema, (query: any) =>
-            proactivePolicyAuthority(query, schema, {
-                tenantId, producer: 'appointment_notification', channelType: 'whatsapp',
-                channelAccountId: BOOKED_ON, entityId: appt.id,
-            }));
-        expect(authority).toBeUndefined();
-
-        // And the control that proves the same call works while the appointment
-        // is confirmed — so the `undefined` above is about the status, not about
-        // a broken fixture.
-        await sql("UPDATE appointments SET status = 'confirmed' WHERE id = $1::uuid", [appt.id]);
-        expect(await prisma.transactionInTenantSchema(schema, (query: any) =>
-            proactivePolicyAuthority(query, schema, {
-                tenantId, producer: 'appointment_notification', channelType: 'whatsapp',
-                channelAccountId: BOOKED_ON, entityId: appt.id,
-            }))).toBeDefined();
+    it('prepares the cancellation notice, under the policy that authorises it', async () => {
+        // This test used to assert the opposite, and its name began with
+        // BLOCKED. `appointment_notification` reads `appointmentRevision`, which
+        // answers null for anything outside pending and confirmed, and
+        // `AppointmentsService.cancel` commits `cancelled` BEFORE it emits — so
+        // a cancellation notice on that policy was suppressed every single time
+        // and the customer was never told. `appointment_cancellation` inverts
+        // the accepted status, and this is that inversion arriving.
+        const appt = await cancelled();
+        await service.onAppointmentCancelled(cancelledEvent(appt));
+        const rows = await outboxRows();
+        expect(rows).toHaveLength(1);
+        expect({ kind: rows[0].item_kind, origin: rows[0].origin_kind, state: rows[0].state })
+            .toEqual({ kind: 'text', origin: 'proactive', state: 'queued' });
+        expect(rows[0].operational_scope).toMatchObject({
+            kind: 'proactive_policy', producer: 'appointment_cancellation',
+            entityId: appt.id, channelAccountId: BOOKED_ON, tenantId,
+        });
+        expect(String(rows[0].payload.text)).toContain('Consulta');
+        expect(rows[0].conversation_id).toBe(appt.conversationId);
     });
 
-    it('still delivers the cancellation notice, on the lane it has', async () => {
-        // The regression guard for the blocker above: whatever else is true, the
-        // customer must still be told. If somebody migrates this call site
-        // without the registry entry, this goes red.
+    it('writes the cancellation history row as pending too', async () => {
+        await service.onAppointmentCancelled(cancelledEvent(await cancelled()));
+        const [message] = await sql(
+            "SELECT status, content_type FROM messages WHERE direction = 'outbound'");
+        expect(message).toMatchObject({ status: 'pending', content_type: 'text' });
+    });
+
+    it('commits one row when the cancellation event arrives twice', async () => {
+        // "Your appointment was cancelled", twice, is the same visible duplicate
+        // as the confirmation's — and just as billable.
+        const appt = await cancelled();
+        await service.onAppointmentCancelled(cancelledEvent(appt));
+        await service.onAppointmentCancelled(cancelledEvent(appt));
+        expect(await outboxRows()).toHaveLength(1);
+        expect(await sql("SELECT id FROM messages WHERE direction='outbound'")).toHaveLength(1);
+    });
+
+    it('commits one row when two cancellation listeners run at once', async () => {
+        const appt = await cancelled();
+        await Promise.all([
+            service.onAppointmentCancelled(cancelledEvent(appt)),
+            service.onAppointmentCancelled(cancelledEvent(appt)),
+        ]);
+        expect(await outboxRows()).toHaveLength(1);
+    });
+
+    it('keeps the confirmation and the cancellation apart', async () => {
+        // One appointment, two notices, two origins. If they collided, the
+        // cancellation would be swallowed by the confirmation that came first
+        // and the customer would still think they have an appointment.
         const appt = await book();
+        await service.onAppointmentCreated(created(appt));
         await sql("UPDATE appointments SET status = 'cancelled' WHERE id = $1::uuid", [appt.id]);
-        await service.onAppointmentCancelled({
-            schemaName: schema,
-            appointment: { id: appt.id, contactId: appt.contactId, serviceName: 'Consulta',
-                startAt: new Date().toISOString().slice(0, 19) },
-            reason: 'el cliente no puede',
-        });
-        expect(legacyEnqueued).toHaveLength(1);
-        expect(String(legacyEnqueued[0].content.text)).toContain('Consulta');
+        await service.onAppointmentCancelled(cancelledEvent(appt));
+        const rows = await outboxRows();
+        expect(rows).toHaveLength(2);
+        expect(rows.map(row => row.operational_scope.producer).sort())
+            .toEqual(['appointment_cancellation', 'appointment_notification']);
+    });
+
+    it('will not prepare a cancellation notice for a booking that is still on', async () => {
+        // The policy's direction, stated where this producer depends on it. A
+        // notice saying the appointment was cancelled must not be authorised by
+        // a row that says it is confirmed.
+        const appt = await book();
+        await service.onAppointmentCancelled(cancelledEvent(appt));
+        expect(await outboxRows()).toEqual([]);
+        expect(await prisma.transactionInTenantSchema(schema, (query: any) =>
+            proactivePolicyAuthority(query, schema, {
+                tenantId, producer: 'appointment_cancellation', channelType: 'whatsapp',
+                channelAccountId: BOOKED_ON, entityId: appt.id,
+            }))).toBeUndefined();
+    });
+
+    it('suppresses a cancellation notice whose appointment was re-confirmed', async () => {
+        // The window the policy keeps `status` in its hash for: somebody
+        // cancels, the notice is prepared, somebody puts the booking back on,
+        // and the notice is now false. Suppressed rather than delivered.
+        const appt = await cancelled();
+        await service.onAppointmentCancelled(cancelledEvent(appt));
+        const [row] = await outboxRows();
+        await sql("UPDATE appointments SET status = 'confirmed' WHERE id = $1::uuid", [appt.id]);
+
+        await expect(store.admit(tenantId, row.id))
+            .rejects.toMatchObject({ code: 'dispatch_effect_superseded' });
+        const [after] = await outboxRows();
+        expect(after.state).toBe('suppressed');
+        expect(String(after.error_code)).toContain('proactive_gone');
+    });
+
+    it('still admits a cancellation notice whose appointment is still cancelled', async () => {
+        // The control. Without it, "suppress when re-confirmed" could be
+        // "never admit a cancellation at all".
+        await service.onAppointmentCancelled(cancelledEvent(await cancelled()));
+        const [row] = await outboxRows();
+        expect((await store.admit(tenantId, row.id)).row.state).toBe('admitted');
+    });
+
+    it('bills the cancellation to the number the customer wrote to', async () => {
+        const appt = await cancelled({ threadAccount: OTHER_NUMBER });
+        await service.onAppointmentCancelled(cancelledEvent(appt));
+        expect(resolveAsked).toEqual([OTHER_NUMBER]);
+        expect((await outboxRows())[0].channel_account_id).toBe(OTHER_NUMBER);
+    });
+
+    it('no notice in this service can reach the plain outbound queue', async () => {
+        // The regression guard that replaced "it still goes out on the legacy
+        // lane". Asserting against a doubled queue would now be self-consistent
+        // — the service no longer injects one, so the double could never fire
+        // and the assertion could never fail. This can.
+        const source = fs.readFileSync(
+            path.join(__dirname, 'appointment-notifications.service.ts'), 'utf8');
+        // Matched as CODE, not as text: the same import shape the egress census
+        // sweeps for, and a call on the injection. A bare `toContain` would go
+        // red for the word appearing in a comment, which is the kind of guard
+        // that gets deleted the first time it cries wolf.
+        expect(source).not.toMatch(/from '[^']*outbound-queue\.service'/);
+        expect(source).not.toMatch(/this\.outboundQueue/);
     });
 });

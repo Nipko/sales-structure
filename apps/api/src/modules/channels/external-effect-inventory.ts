@@ -620,18 +620,34 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
     producer({
         id: 'appointments.cancellation_notice',
         effect: 'The message to a customer when their appointment is cancelled',
-        lane: 'outbound_queue',
+        // Moved off `outbound_queue` once the registry gained a policy that
+        // could authorise it. Nothing in this file reaches the plain queue any
+        // more, so neither entry is `census`.
+        lane: 'dispatch_outbox',
         status: 'live',
-        derivation: 'census',
+        derivation: 'declared',
         source: 'modules/appointments/appointment-notifications.service.ts',
-        symbol: 'AppointmentNotificationsService',
-        egress: 'OutboundQueueService.enqueue',
-        properties: queued(none('no `dedupeId`, so a replayed `appointment.cancelled` event sends the '
-            + 'notice again. It could NOT move with the confirmation: the closed registry maps '
-            + '`appointment_notification` onto a revision that answers null for a cancelled '
-            + 'appointment, and `AppointmentsService.cancel` commits the status before it emits, so '
-            + 'the lane would suppress the message rather than de-duplicate it. It needs an '
-            + '`appointment_cancellation` policy whose revision accepts `cancelled`')),
+        symbol: 'dispatchCancellation',
+        egress: 'ProactiveDispatchService.send commits an `agent_dispatch_outbox` row with a `text` '
+            + 'item; the outbound processor performs the channel call. The email copy still goes '
+            + 'through EmailTemplatesService.renderAndSend inline',
+        properties: {
+            authority: durable('the processor admits the row through the spend gate before the POST, '
+                + 'under an `appointment_cancellation` authority — a policy of its own, because the '
+                + 'confirmation\'s answers null for a cancelled appointment and would have suppressed '
+                + 'every notice on the platform'),
+            idempotency: durable('the origin is derived from the appointment id, so a replayed '
+                + '`appointment.cancelled` collides on the row that already exists. It cannot '
+                + 'collide with the confirmation\'s, which carries its own suffix'),
+            receipt: durable('the outbox row carries the provider id and the history row it wrote in '
+                + 'the same transaction'),
+            uncertainOutcome: durable('a timeout leaves the row admitted with its lease; the lease '
+                + 'sweep moves it to reconciliation rather than sending again'),
+            erasure: durable('the outbox payload is cleared by the GDPR fan-out like every other '
+                + 'dispatch row'),
+            recovery: durable('the recovery pass republishes any row nothing ever published — the '
+                + 'case a fire-and-forget event could not survive at all'),
+        },
     }),
 
     producer({

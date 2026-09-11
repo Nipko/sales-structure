@@ -25,6 +25,29 @@ name: Candidate images (manual)
 # It does not deploy. It cannot: it has no host credentials and no SSH step.
 # ─────────────────────────────────────────────────────────────────────────────
 
+# ── WHY THERE ARE TWO TRIGGERS ───────────────────────────────────────────────
+#
+# `workflow_dispatch` cannot run this file before it is merged. GitHub only
+# offers "Run workflow" for workflows that exist on the DEFAULT branch, so a
+# candidate workflow written on a branch is unreachable from exactly the branch
+# it was written to validate. That is not a configuration mistake; it is how the
+# trigger works, and it made "build and validate the candidate before merge"
+# impossible in practice.
+#
+# The `pull_request` trigger runs from the PULL REQUEST'S OWN branch, which is
+# the only pre-merge mechanism that does. It is gated on a label rather than
+# firing on every push, for three reasons:
+#
+#   · this publishes images to a registry, and that should be a deliberate act;
+#   · applying a label is REVIEWABLE — it is a human action recorded on the pull
+#     request, with a name attached, exactly like typing the confirmation word;
+#   · a pull request from a fork has no package-write token, so the build would
+#     fail confusingly on every external contribution.
+#
+# What it deliberately still cannot do is deploy. There is no SSH step, no host
+# credential and no `latest` tag anywhere in this file — a contract test asserts
+# all three, because the safety of this workflow is a property somebody could
+# remove in one line while adding a feature.
 on:
   workflow_dispatch:
     inputs:
@@ -36,9 +59,11 @@ on:
         description: Type "candidate" to confirm this publishes images
         required: true
         type: string
+  pull_request:
+    types: [labeled, synchronize, reopened]
 
 concurrency:
-  group: parallext-candidate-${{ inputs.sha }}
+  group: parallext-candidate-${{ inputs.sha || github.event.pull_request.head.sha }}
   cancel-in-progress: false
 
 permissions:
@@ -57,8 +82,31 @@ jobs:
   build:
     name: Build and identify the candidate
     runs-on: ubuntu-latest
+    # Dispatched by hand, or asked for on a pull request by applying the label.
+    # Anything else — an ordinary push to a branch with no label — does nothing.
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      || contains(github.event.pull_request.labels.*.name, 'build-candidate')
     steps:
+      - name: Which commit this is, and how it was asked for
+        id: subject
+        env:
+          DISPATCH_SHA: ${{ steps.subject.outputs.sha }}
+          PR_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          # One place decides, so every later step reads the same value whichever
+          # trigger fired. A workflow that resolved the SHA twice would
+          # eventually build one commit and label it with another.
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            echo "sha=${DISPATCH_SHA}" >> "$GITHUB_OUTPUT"
+            echo "how=dispatch" >> "$GITHUB_OUTPUT"
+          else
+            echo "sha=${PR_SHA}" >> "$GITHUB_OUTPUT"
+            echo "how=pull_request_label" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Confirmation typed
+        if: github.event_name == 'workflow_dispatch'
         env:
           CONFIRM: ${{ inputs.confirm }}
         run: |
@@ -69,7 +117,7 @@ jobs:
 
       - name: The SHA is a full commit, not a prefix or a tag
         env:
-          SHA: ${{ inputs.sha }}
+          SHA: ${{ steps.subject.outputs.sha }}
         run: |
           # A 7-character prefix is ambiguous and a branch name is a moving
           # target. Evidence has to name one commit and keep naming it.
@@ -83,12 +131,17 @@ jobs:
           # The candidate's own tree, not the default branch. Without this the
           # workflow would build whatever main happens to be, and label it with
           # the candidate's SHA — which is worse than not building at all.
-          ref: ${{ inputs.sha }}
+          #
+          # On a pull request this is the HEAD commit of the branch, not the
+          # merge commit GitHub synthesises: the merge commit does not exist
+          # anywhere after the run, so a digest pinned to it could never be
+          # reproduced or audited.
+          ref: ${{ steps.subject.outputs.sha }}
           fetch-depth: 0
 
       - name: The checkout really is that commit
         env:
-          SHA: ${{ inputs.sha }}
+          SHA: ${{ steps.subject.outputs.sha }}
         run: |
           ACTUAL="$(git rev-parse HEAD)"
           if [ "$ACTUAL" != "$SHA" ]; then
@@ -136,6 +189,112 @@ jobs:
           node docs/audits/2026-09-09/verify-artifacts.cjs
           node apps/api/scripts/outbound-producer-inventory.cjs --check
 
+      # ── The dashboard's build-time inputs, all of them, checked first ─────
+      #
+      # `NEXT_PUBLIC_*` is baked into the bundle at BUILD time. A missing one
+      # does not fail the build: it bakes an empty string, and the page ships
+      # with Embedded Signup that cannot open, a Google button that cannot sign
+      # in, push that cannot subscribe and a version field that says nothing.
+      # The candidate would then be validated as a product nobody is shipping.
+      #
+      # Production bakes eleven of these. This used to bake two.
+      - name: Every public build input is present
+        id: publicenv
+        env:
+          NEXT_PUBLIC_API_URL: ${{ vars.CANDIDATE_PUBLIC_API_URL }}
+          NEXT_PUBLIC_WA_SERVICE_URL: ${{ vars.CANDIDATE_PUBLIC_WA_URL }}
+          NEXT_PUBLIC_META_APP_ID: ${{ secrets.META_APP_ID }}
+          NEXT_PUBLIC_META_CONFIG_ID: ${{ secrets.META_CONFIG_ID }}
+          NEXT_PUBLIC_META_SOLUTION_ID: ${{ secrets.META_SOLUTION_ID }}
+          NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+          NEXT_PUBLIC_MESSENGER_FB_LOGIN_CONFIG_ID: ${{ secrets.MESSENGER_FB_LOGIN_CONFIG_ID }}
+          NEXT_PUBLIC_VAPID_PUBLIC_KEY: ${{ secrets.VAPID_PUBLIC_KEY }}
+          SHA: ${{ steps.subject.outputs.sha }}
+        run: |
+          set -eu
+          missing=""
+          for name in NEXT_PUBLIC_API_URL NEXT_PUBLIC_WA_SERVICE_URL \
+                      NEXT_PUBLIC_META_APP_ID NEXT_PUBLIC_META_CONFIG_ID \
+                      NEXT_PUBLIC_META_SOLUTION_ID NEXT_PUBLIC_GOOGLE_CLIENT_ID \
+                      NEXT_PUBLIC_MESSENGER_FB_LOGIN_CONFIG_ID NEXT_PUBLIC_VAPID_PUBLIC_KEY; do
+            eval "value=\${${name}:-}"
+            [ -n "$value" ] || missing="${missing} ${name}"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::the candidate dashboard would be built without:${missing}."
+            echo "::error::Set them as repository variables or secrets before building a candidate."
+            exit 1
+          fi
+          # The version string the page shows, derived from the commit it IS.
+          echo "version=candidate-$(printf '%s' "$SHA" | cut -c1-12)" >> "$GITHUB_OUTPUT"
+
+          # ── Provenance without leaking ───────────────────────────────────
+          #
+          # The two URLs are not secret and go into the manifest verbatim: the
+          # single most useful question about a candidate dashboard is which API
+          # it reads from, and a digest cannot answer it. Everything else is an
+          # app id or a key, so the manifest carries a SHA-256 of each — enough
+          # to prove that what was verified and what is approved were built from
+          # the same values, and not enough to be one of them.
+          {
+            echo "publicUrls<<JSON"
+            printf '{"NEXT_PUBLIC_API_URL":"%s","NEXT_PUBLIC_WA_SERVICE_URL":"%s"}\n' \
+              "$NEXT_PUBLIC_API_URL" "$NEXT_PUBLIC_WA_SERVICE_URL"
+            echo "JSON"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo "publicDigests<<JSON"
+            printf '{'
+            first=1
+            for name in NEXT_PUBLIC_META_APP_ID NEXT_PUBLIC_META_CONFIG_ID \
+                        NEXT_PUBLIC_META_SOLUTION_ID NEXT_PUBLIC_GOOGLE_CLIENT_ID \
+                        NEXT_PUBLIC_MESSENGER_FB_LOGIN_CONFIG_ID NEXT_PUBLIC_VAPID_PUBLIC_KEY; do
+              eval "value=\${${name}}"
+              digest="$(printf '%s' "$value" | sha256sum | cut -c1-16)"
+              [ $first -eq 1 ] || printf ','
+              printf '"%s":"%s"' "$name" "$digest"
+              first=0
+            done
+            printf '}\n'
+            echo "JSON"
+          } >> "$GITHUB_OUTPUT"
+
+      # ── The tests, on this SHA, before its images exist ────────────────────
+      #
+      # Typecheck, lint and the generators were already here; the suite was not.
+      # A candidate that compiles and whose artefacts are current can still be a
+      # candidate whose money engine settles twice, and the whole reason to
+      # build images from an unmerged commit is to validate THAT commit.
+      #
+      # The PostgreSQL-backed suites skip themselves with no database
+      # configured; the `--ci` flag makes a skipped suite visible in the summary
+      # rather than silently absent. What runs here is every suite that needs
+      # nothing but the code, which is where the contracts live.
+      - name: Test contracts
+        env:
+          JWT_SECRET: candidate-ci-only
+          JWT_REFRESH_SECRET: candidate-ci-only-refresh
+          INTERNAL_JWT_SECRET: candidate-ci-only-internal
+          NODE_OPTIONS: --max-old-space-size=6144
+        run: npx jest --config apps/api/jest.config.js --ci --maxWorkers=2
+
+      # ── The shared package and the landing site really build ───────────────
+      #
+      # `tsc --noEmit` is not a build. These two produce artefacts the images
+      # then copy, and a failure here is cheap; the same failure inside the
+      # Docker build is discovered after other images have already been pushed.
+      #
+      # The dashboard is NOT built here on purpose: its production build happens
+      # inside its own image a few steps below, with the same inputs, and doing
+      # it twice would double the slowest part of this workflow to learn the
+      # same thing.
+      - name: Shared package and landing build
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'
+        run: |
+          npm run build --workspace=@parallext/shared
+          npm run build --workspace=landing
+
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with:
@@ -156,7 +315,7 @@ jobs:
           context: .
           file: infra/docker/Dockerfile.api
           push: true
-          tags: ${{ env.API_IMAGE }}:candidate-${{ inputs.sha }}
+          tags: ${{ env.API_IMAGE }}:candidate-${{ steps.subject.outputs.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - name: Worker
@@ -166,7 +325,7 @@ jobs:
           context: .
           file: infra/docker/Dockerfile.worker
           push: true
-          tags: ${{ env.WORKER_IMAGE }}:candidate-${{ inputs.sha }}
+          tags: ${{ env.WORKER_IMAGE }}:candidate-${{ steps.subject.outputs.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - name: Dashboard
@@ -176,7 +335,7 @@ jobs:
           context: .
           file: infra/docker/Dockerfile.dashboard
           push: true
-          tags: ${{ env.DASHBOARD_IMAGE }}:candidate-${{ inputs.sha }}
+          tags: ${{ env.DASHBOARD_IMAGE }}:candidate-${{ steps.subject.outputs.sha }}
           # The dashboard bakes `NEXT_PUBLIC_*` into its bundle at build time, so
           # the API it talks to is decided HERE and cannot be changed by a `.env`
           # on the host afterwards. This candidate is built for the operational
@@ -186,6 +345,15 @@ jobs:
           build-args: |
             NEXT_PUBLIC_API_URL=${{ vars.CANDIDATE_PUBLIC_API_URL }}
             NEXT_PUBLIC_WA_SERVICE_URL=${{ vars.CANDIDATE_PUBLIC_WA_URL }}
+            NEXT_PUBLIC_META_APP_ID=${{ secrets.META_APP_ID }}
+            NEXT_PUBLIC_META_CONFIG_ID=${{ secrets.META_CONFIG_ID }}
+            NEXT_PUBLIC_META_SOLUTION_ID=${{ secrets.META_SOLUTION_ID }}
+            NEXT_PUBLIC_GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+            NEXT_PUBLIC_MESSENGER_FB_LOGIN_CONFIG_ID=${{ secrets.MESSENGER_FB_LOGIN_CONFIG_ID }}
+            NEXT_PUBLIC_INSTAGRAM_APP_ID=1472258884595741
+            NEXT_PUBLIC_INSTAGRAM_REDIRECT_URI=https://admin.parallly-chat.cloud/admin/channels/instagram/callback
+            NEXT_PUBLIC_APP_VERSION=${{ steps.publicenv.outputs.version }}
+            NEXT_PUBLIC_VAPID_PUBLIC_KEY=${{ secrets.VAPID_PUBLIC_KEY }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - name: WhatsApp
@@ -195,7 +363,7 @@ jobs:
           context: .
           file: infra/docker/Dockerfile.whatsapp
           push: true
-          tags: ${{ env.WHATSAPP_IMAGE }}:candidate-${{ inputs.sha }}
+          tags: ${{ env.WHATSAPP_IMAGE }}:candidate-${{ steps.subject.outputs.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - name: Landing
@@ -205,14 +373,17 @@ jobs:
           context: .
           file: infra/docker/Dockerfile.landing
           push: true
-          tags: ${{ env.LANDING_IMAGE }}:candidate-${{ inputs.sha }}
+          tags: ${{ env.LANDING_IMAGE }}:candidate-${{ steps.subject.outputs.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       # ── What the candidate IS. Digests, not tags. ──────────────────────────
       - name: Publish the digest manifest
         env:
-          SHA: ${{ inputs.sha }}
+          SHA: ${{ steps.subject.outputs.sha }}
+          HOW: ${{ steps.subject.outputs.how }}
+          PUBLIC_URLS: ${{ steps.publicenv.outputs.publicUrls }}
+          PUBLIC_DIGESTS: ${{ steps.publicenv.outputs.publicDigests }}
           API_DIGEST: ${{ steps.api.outputs.digest }}
           WORKER_DIGEST: ${{ steps.worker.outputs.digest }}
           DASHBOARD_DIGEST: ${{ steps.dashboard.outputs.digest }}
@@ -231,10 +402,15 @@ jobs:
           done
           cat > artifacts/candidate-manifest.json <<EOF
           {
-            "version": 1,
+            "version": 2,
             "sha": "${SHA}",
             "builtAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
             "runId": "${GITHUB_RUN_ID}",
+            "triggeredBy": "${HOW}",
+            "dashboardBuildInputs": {
+              "urls": ${PUBLIC_URLS},
+              "digests": ${PUBLIC_DIGESTS}
+            },
             "images": {
               "api":       { "tag": "${API_IMAGE}:candidate-${SHA}",       "digest": "${API_DIGEST}" },
               "worker":    { "tag": "${WORKER_IMAGE}:candidate-${SHA}",    "digest": "${WORKER_DIGEST}" },
@@ -246,10 +422,24 @@ jobs:
           EOF
           cat artifacts/candidate-manifest.json
 
+      # ── The manifest has to be CONSUMABLE, not merely produced ────────────
+      #
+      # "Pinned by digest" was a claim until something read the file and turned
+      # it into the thing a host actually runs. This is that something, run here
+      # so a manifest that cannot produce a valid override never leaves the job.
+      - name: The manifest produces a compose override that pins every digest
+        run: |
+          node infra/scripts/apply-candidate-manifest.cjs \
+            --manifest artifacts/candidate-manifest.json \
+            --out artifacts/docker-compose.candidate.yml
+          cat artifacts/docker-compose.candidate.yml
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: candidate-${{ inputs.sha }}-${{ github.run_id }}
-          path: artifacts/candidate-manifest.json
+          name: candidate-${{ steps.subject.outputs.sha }}-${{ github.run_id }}
+          path: |
+            artifacts/candidate-manifest.json
+            artifacts/docker-compose.candidate.yml
           if-no-files-found: error
           retention-days: 90

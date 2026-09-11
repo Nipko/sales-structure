@@ -32,7 +32,7 @@ import type { StrictDispatchRequest } from './strict-dispatch-transport';
 const graphOk = { messages: [{ id: 'wamid.SYNTHETIC' }] };
 
 function intercept() {
-    let sent: { url: string; body: any }[] = [];
+    const sent: { url: string; body: any }[] = [];
     (global as any).fetch = jest.fn(async (url: string, init: any) => {
         sent.push({ url, body: JSON.parse(init.body) });
         return { status: 200, json: async () => graphOk } as any;

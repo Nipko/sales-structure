@@ -1,12 +1,12 @@
 {
   "version": 1,
-  "revision": "95c3b37fe0bd1423e82191b9b8532c10215892a5",
-  "generatedAt": "2026-09-11T23:00:29.444Z",
+  "revision": "18716f684562595c2ff8a4b5a0ae6704cb42f3eb",
+  "generatedAt": "2026-09-11T23:52:56.344Z",
   "finished": false,
   "counts": {
-    "aceptada": 10,
+    "aceptada": 11,
     "bloqueada": 20,
-    "abierta": 9
+    "abierta": 8
   },
   "provenance": {
     "derived": 22,
@@ -45,7 +45,7 @@
       "inline": 1,
       "outbound_queue": 6
     },
-    "censusArtefactStale": true,
+    "censusArtefactStale": false,
     "proactivePolicies": [
       "appointment_reminder",
       "attendance_check",
@@ -411,10 +411,10 @@
     },
     {
       "id": "M0",
-      "open": 1,
-      "openLabel": "el censo versionado no corresponde a este HEAD",
+      "open": 0,
+      "openLabel": "",
       "gates": [],
-      "status": "abierta",
+      "status": "aceptada",
       "provenance": "derived",
       "artefact": null,
       "evidence": "Censo derivado del árbol: 21 call sites, 17 cobrables, 0 fuera de la autoridad económica. El inventario de efectos declara 61 productores y 45 con al menos una propiedad en `none`. La condición es que el artefacto versionado se regenere desde el mismo HEAD, no que alguien lo haya leído.",

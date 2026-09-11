@@ -60,16 +60,46 @@ export interface SpendCounterRow {
     readonly softPermille: number;
 }
 
+/**
+ * ═══ SIX ANSWERS TO TWO DIFFERENT QUESTIONS ═══
+ *
+ * "Did it arrive?" and "what did it cost?" are not the same question, and for
+ * a while this type pretended they were. A `wamid` from the POST was recorded
+ * as `pending_reconciliation` with `remote_state='delivered'`, and 72 hours
+ * later the reconciler settled it at the reserved amount. A message Meta
+ * accepted and never delivered appeared in the books as a confirmed charge,
+ * under evidence named `reconciled_at_reserved_amount` — a phrase that sounds
+ * like an invoice and means "nobody looked".
+ *
+ *   `held`        Reserved. The POST has not resolved.
+ *   `accepted`    Meta has the message. Whether it arrived is UNKNOWN, and the
+ *                 charge lands on delivery — so the exposure is retained and
+ *                 no amount of waiting turns it into a charge.
+ *   `pending_reconciliation`
+ *                 It arrived, and nobody could compute what it cost.
+ *   `estimated`   It arrived, nobody could compute the cost, and the grace
+ *                 period elapsed. The upper bound is kept AS AN ESTIMATE — the
+ *                 most honest thing that can be said without an invoice, said
+ *                 by its own name.
+ *   `indeterminate`
+ *                 We cannot say whether it arrived at all.
+ *   `settled` / `released`
+ *                 Finished. Money moved, or provably did not.
+ *
+ * `settled` now means exactly one thing: an AUTHORITY stated the amount — Meta
+ * with `billable:false`, the published rate over a confirmed delivery, or an
+ * imported invoice. Time is not an authority.
+ */
 export type ReservationState =
-    'held' | 'settled' | 'released' | 'pending_reconciliation' | 'indeterminate';
+    'held' | 'accepted' | 'settled' | 'released'
+    | 'pending_reconciliation' | 'estimated' | 'indeterminate';
 
 /**
  * The states a LATER authority may still resolve.
  *
- * `held` is the sending attempt's own outcome. The other two are what an
- * attempt leaves behind when it could not say what happened: `delivered and we
- * do not know the price`, and `we do not know whether it arrived`. Both keep
- * the full amount counted, and both are waiting for exactly this — a status
+ * `held` is the sending attempt's own outcome. The rest are what an attempt
+ * leaves behind when it could not say what happened. All of them keep the full
+ * amount counted, and all of them are waiting for exactly this — a status
  * webhook minutes later, or a reconciliation against what Meta billed.
  *
  * Settling and releasing used to accept `held` and nothing else, so every
@@ -79,7 +109,20 @@ export type ReservationState =
  * a duplicate or out-of-order event must not move it again.
  */
 export const RESOLVABLE_STATES: readonly ReservationState[] =
-    Object.freeze(['held', 'pending_reconciliation', 'indeterminate']);
+    Object.freeze(['held', 'accepted', 'pending_reconciliation',
+        'estimated', 'indeterminate']);
+
+/**
+ * Every state whose money is still counted against a cap.
+ *
+ * Used by the reads that answer "how much of this account's ceiling is
+ * committed". Listed once, here, because the last time this set existed in
+ * several SQL literals one of them was missed and a whole state's worth of
+ * exposure disappeared from the report.
+ */
+export const EXPOSED_STATES: readonly ReservationState[] =
+    Object.freeze(['held', 'accepted', 'pending_reconciliation',
+        'estimated', 'indeterminate']);
 
 /** The identity a retry adopts instead of resolving the connection again. */
 export interface ReservationIdentity {
@@ -693,7 +736,8 @@ export async function recentIdenticalDeliveries(query: SpendQuery, schema: strin
            FROM "${schema}".whatsapp_spend_reservations
           WHERE channel_account_id = $1 AND recipient_ref = $2 AND content_digest = $3
             AND created_at >= $4
-            AND state IN ('held','settled','pending_reconciliation','indeterminate')
+            AND state IN ('held','accepted','settled',
+                          'pending_reconciliation','estimated','indeterminate')
           ORDER BY created_at DESC
           LIMIT ${Math.max(1, Math.min(50, input.limit ?? 10))}`,
         [input.channelAccountId, input.recipientRef, input.contentDigest, input.since.toISOString()]);
@@ -778,7 +822,8 @@ export async function readSpendSignals(query: SpendQuery, schema: string, input:
                 count(*) FILTER (WHERE disposition = 'reactive')::int AS reactive,
                 COALESCE(sum(charged_minor) FILTER (WHERE state = 'settled'), 0)::bigint AS settled_minor,
                 COALESCE(sum(reserved_minor) FILTER (
-                    WHERE state IN ('pending_reconciliation','indeterminate')), 0)::bigint AS uncertain_minor
+                    WHERE state IN ('accepted','pending_reconciliation',
+                                    'estimated','indeterminate')), 0)::bigint AS uncertain_minor
            FROM "${schema}".whatsapp_spend_reservations
           WHERE created_at >= $1 AND state <> 'released'
             AND ($2::text IS NULL OR channel_account_id = $2)
@@ -1259,15 +1304,23 @@ export async function releaseReservation(query: SpendQuery, schema: string, inpu
 }
 
 /**
- * Keep the exposure and record that nobody can say what happened.
+ * Keep the exposure and record what is still unknown about it.
  *
- * `pending_reconciliation` is "we know it arrived and not what it cost";
- * `indeterminate` is "we do not know whether it arrived". Both keep the full
- * amount counted, and neither is a state a sweeper may turn into a release.
+ * Four destinations, each answering a different question:
+ *
+ *   `accepted`               Meta took it. Whether it ARRIVED is unknown, and
+ *                            the charge lands on delivery.
+ *   `pending_reconciliation` It arrived and nobody could say what it cost.
+ *   `estimated`              Same, and the grace elapsed: the bound is kept as
+ *                            an estimate rather than turned into a charge.
+ *   `indeterminate`          We cannot say whether it arrived at all.
+ *
+ * All four keep the full amount counted, and none of them is a state a sweeper
+ * may turn into a release — or, since this batch, into a charge.
  */
 export async function retainReservation(query: SpendQuery, schema: string, input: {
     readonly effectKey: string;
-    readonly state: 'pending_reconciliation' | 'indeterminate';
+    readonly state: 'accepted' | 'pending_reconciliation' | 'estimated' | 'indeterminate';
     readonly reason: string;
     readonly providerMessageId?: string | null;
     readonly remoteState?: string | null;
@@ -1280,6 +1333,15 @@ export async function retainReservation(query: SpendQuery, schema: string, input
      * or the reconciler.
      */
     readonly transmitToken?: string | null;
+    /**
+     * Which states this transition may start from. Defaults to `held`.
+     *
+     * An `accepted` row moving to `pending_reconciliation` when its delivery
+     * receipt finally lands is a real transition and the default would refuse
+     * it — silently, by matching no rows, which is how an effect can sit in
+     * `accepted` for ever while every later pass reports success.
+     */
+    readonly fromStates?: readonly ReservationState[];
 }): Promise<ReservationRow | null> {
     assertSchema(schema);
     const rows = await query<any[]>(
@@ -1292,7 +1354,7 @@ export async function retainReservation(query: SpendQuery, schema: string, input
                 transmit_state = 'resolved', transmit_token = NULL,
                 transmit_expires_at = NULL,
                 updated_at = clock_timestamp()
-          WHERE effect_key = $1 AND state = 'held'
+          WHERE effect_key = $1 AND state = ANY($7::text[])
             -- The transmission right, when the caller held one. A writer that
             -- did not transmit — a status webhook, the reconciler — passes
             -- nothing and is not gated on it.
@@ -1300,7 +1362,7 @@ export async function retainReservation(query: SpendQuery, schema: string, input
           RETURNING *`,
         [input.effectKey, input.state, input.reason,
             input.providerMessageId ?? null, input.remoteState ?? null,
-            input.transmitToken ?? null]);
+            input.transmitToken ?? null, [...(input.fromStates ?? ['held'])]]);
     return rows[0] ? mapReservation(rows[0]) : null;
 }
 
@@ -1385,25 +1447,30 @@ export async function sweepExpiredLeases(query: SpendQuery, schema: string, limi
 }
 
 /**
- * Effects that are known to have ARRIVED and are still waiting for a price.
+ * ═══ WAITING IS NOT EVIDENCE ═══
  *
- * `pending_reconciliation` is the state a send leaves behind when Meta accepted
- * the message and nobody could say what it cost: a timeout carrying a wamid, a
- * delivery whose rate card had no row, a currency that was never established.
- * The money stays counted, which is correct — it WAS spent — but the row sits
- * there for ever unless something resolves it.
+ * `pending_reconciliation` is the state a send leaves behind when the message
+ * is known to have ARRIVED and nobody could say what it cost: a delivery whose
+ * rate card had no row, a currency that was never established.
  *
- * After a grace period the honest resolution is the reservation's own amount.
- * For a priced effect that is the published rate; for an unpriceable one it is
- * the derived ceiling, which the card itself says nothing exceeds. Both are
- * upper bounds, and settling at an upper bound overstates a bill rather than
- * hiding one — the direction a business can check and correct.
+ * This used to settle those at the reserved amount after 72 hours, under the
+ * evidence string `reconciled_at_reserved_amount` — a phrase that reads like an
+ * invoice and means "the clock ran out". Combined with an ACK being recorded as
+ * a delivery, that turned a message Meta accepted and never delivered into a
+ * confirmed charge in the books, with nothing to distinguish it from one that
+ * was actually billed.
  *
- * Deliberately does NOT touch `indeterminate`. That state means nobody knows
- * whether the message arrived, and no amount of waiting turns not-knowing into
- * evidence. Those go to a person.
+ * So it no longer settles. It moves the row to `estimated`, which keeps the
+ * same upper bound and calls it what it is. A business reading its ceiling sees
+ * the same committed money; a business reading its BILL sees only amounts an
+ * authority stated. Turning an estimate into a charge needs
+ * `settleFromProviderEvidence` and a real invoice line.
+ *
+ * Deliberately does NOT touch `indeterminate` or `accepted`. Those mean nobody
+ * knows whether the message arrived, and no amount of waiting turns
+ * not-knowing into evidence. Those go to a person.
  */
-export async function reconcileDeliveredEffects(query: SpendQuery, schema: string, input: {
+export async function estimateDeliveredEffects(query: SpendQuery, schema: string, input: {
     readonly olderThan: Date;
     readonly limit?: number;
 }): Promise<readonly ReservationRow[]> {
@@ -1413,24 +1480,128 @@ export async function reconcileDeliveredEffects(query: SpendQuery, schema: strin
         `SELECT effect_key FROM "${schema}".whatsapp_spend_reservations
           WHERE state = 'pending_reconciliation' AND updated_at < $1
           ORDER BY updated_at ASC LIMIT ${limit}`, [input.olderThan]);
-    const settled: ReservationRow[] = [];
+    const estimated: ReservationRow[] = [];
     for (const row of due) {
-        // One at a time and through the normal writer, so the counters move by
-        // the same code path every other settlement uses. A bulk UPDATE here
-        // would be a second implementation of `applyToCounters`, and the last
-        // time this rule existed twice the two copies disagreed.
-        const effectKey = String(row.effect_key);
-        const current = await findReservation(query, schema, effectKey);
-        if (!current) continue;
-        const resolved = await settleReservation(query, schema, {
-            effectKey,
-            chargedMinor: current.money.reservedMinor,
-            evidence: 'reconciled_at_reserved_amount',
+        // One at a time and through the normal writer, for the same reason the
+        // settlement path does it: a bulk UPDATE here would be a second
+        // implementation of a rule that already has one.
+        const resolved = await retainReservation(query, schema, {
+            effectKey: String(row.effect_key),
+            state: 'estimated',
+            reason: 'upper_bound_without_invoice',
             fromStates: ['pending_reconciliation'],
         });
-        if (resolved) settled.push(resolved);
+        if (resolved) estimated.push(resolved);
     }
-    return Object.freeze(settled);
+    return Object.freeze(estimated);
+}
+
+/**
+ * Effects Meta accepted and never reported on.
+ *
+ * A read, never a write, and separate from `staleIndeterminateEffects` because
+ * the two states got there by different roads: `accepted` means the POST
+ * succeeded and no status webhook ever followed; `indeterminate` means even the
+ * POST's outcome is unknown. Both need a person; conflating them would hide
+ * which question that person has to answer.
+ */
+export async function staleAcceptedEffects(query: SpendQuery, schema: string, input: {
+    readonly olderThan: Date;
+    readonly limit?: number;
+}): Promise<readonly ReservationRow[]> {
+    assertSchema(schema);
+    const limit = Math.max(1, Math.trunc(input.limit ?? 200));
+    const rows = await query<any[]>(
+        `SELECT * FROM "${schema}".whatsapp_spend_reservations
+          WHERE state = 'accepted' AND updated_at < $1
+          ORDER BY updated_at ASC LIMIT ${limit}`, [input.olderThan]);
+    return Object.freeze(rows.map(mapReservation));
+}
+
+/** One line of what a provider says it actually billed. */
+export interface ProviderInvoiceLine {
+    /** The wamid the invoice line is about. */
+    readonly providerMessageId: string;
+    /** What the provider says it charged, in minor units of `currency`. */
+    readonly chargedMinor: number;
+    readonly currency: string;
+    /**
+     * Which document this came from, and which version of it.
+     *
+     * Required, and stored: an amount with no provenance is indistinguishable
+     * from a number somebody typed, and re-importing a corrected invoice has to
+     * be able to say which one it is correcting.
+     */
+    readonly source: string;
+    readonly version: string;
+}
+
+export interface InvoiceSettlement {
+    readonly applied: number;
+    readonly currencyMismatch: readonly string[];
+    readonly unknown: readonly string[];
+    /**
+     * Lines the provider says cost MORE than was ever reserved.
+     *
+     * Refused rather than applied, because the counters can only settle what
+     * was allocated: `applyToCounters` clamps to the allocation, so a larger
+     * figure would be written on the reservation and silently truncated in the
+     * ceiling — two numbers disagreeing with nobody told.
+     *
+     * And the disagreement matters on its own. The reserved amount is an upper
+     * bound derived from the published rate; an invoice above it means the rate
+     * table is wrong, which is a thing to fix rather than to absorb.
+     */
+    readonly overReserved: readonly string[];
+}
+
+/**
+ * Settle against what the provider says it actually billed.
+ *
+ * THE authority, and the only road from an estimate to a charge. Every line
+ * carries its document and version, because an amount with no provenance is
+ * indistinguishable from a number somebody typed.
+ *
+ * A line whose currency disagrees with the reservation's is refused rather than
+ * converted: adding COP minor units to a USD counter is off by a factor of four
+ * thousand, and it is exactly the kind of wrong number nobody questions.
+ */
+export async function settleFromProviderEvidence(
+    query: SpendQuery, schema: string, lines: readonly ProviderInvoiceLine[],
+): Promise<InvoiceSettlement> {
+    assertSchema(schema);
+    let applied = 0;
+    const currencyMismatch: string[] = [];
+    const unknown: string[] = [];
+    const overReserved: string[] = [];
+    for (const line of lines) {
+        const current = await findReservationByProviderMessage(
+            query, schema, line.providerMessageId);
+        if (!current) { unknown.push(line.providerMessageId); continue; }
+        if (current.identity.currency !== line.currency) {
+            currencyMismatch.push(line.providerMessageId);
+            continue;
+        }
+        if (Math.trunc(line.chargedMinor) > current.money.reservedMinor) {
+            overReserved.push(line.providerMessageId);
+            continue;
+        }
+        const resolved = await settleReservation(query, schema, {
+            effectKey: current.effectKey,
+            chargedMinor: Math.max(0, Math.trunc(line.chargedMinor)),
+            evidence: `provider_invoice:${line.source}@${line.version}`.slice(0, 120),
+            providerMessageId: line.providerMessageId,
+            remoteState: 'delivered',
+            fromStates: RESOLVABLE_STATES,
+        });
+        if (resolved) applied += 1;
+    }
+    return Object.freeze({
+        applied,
+        currencyMismatch: Object.freeze(currencyMismatch),
+        unknown: Object.freeze(unknown),
+        overReserved: Object.freeze(overReserved),
+    });
 }
 
 /**
@@ -1457,10 +1628,30 @@ export async function staleIndeterminateEffects(query: SpendQuery, schema: strin
     return Object.freeze(rows.map(mapReservation));
 }
 
-/** What is reserved, settled, retained, released and free — never one number. */
+/**
+ * ═══ SIX NUMBERS, BECAUSE THEY MEAN SIX DIFFERENT THINGS ═══
+ *
+ * A single "spend" figure is a lie in both directions: it either hides money
+ * that may still be charged, or presents a bound as a bill. Each of these
+ * answers one question, and the screen that shows them has to keep them apart:
+ *
+ *   `reservedMinor`   committed, POST unresolved — RESERVADO
+ *   `acceptedMinor`   Meta took it, delivery unknown — ACEPTADO
+ *   `estimatedMinor`  arrived, price unknown, bound kept — ESTIMADO
+ *   `uncertainMinor`  we cannot say whether it arrived — INCIERTO
+ *   `settledMinor`    an authority stated the amount — CONFIRMADO
+ *   `releasedMinor`   provably not charged — LIBERADO
+ *
+ * `retainedMinor` is the sum of the four unresolved ones, kept because "how
+ * much of my ceiling is committed" is a real question with one answer — but it
+ * is a derived total, never a substitute for the parts.
+ */
 export interface SpendExposure {
     readonly currency: string;
     readonly reservedMinor: number;
+    readonly acceptedMinor: number;
+    readonly estimatedMinor: number;
+    readonly uncertainMinor: number;
     readonly settledMinor: number;
     readonly retainedMinor: number;
     readonly releasedMinor: number;
@@ -1484,9 +1675,15 @@ export async function readExposure(query: SpendQuery, schema: string, input: {
     const rows = await query<any[]>(
         `SELECT currency,
                 COALESCE(SUM(reserved_minor) FILTER (WHERE state = 'held'),0)::bigint AS reserved,
+                COALESCE(SUM(reserved_minor) FILTER (WHERE state = 'accepted'),0)::bigint AS accepted,
+                COALESCE(SUM(reserved_minor) FILTER (
+                    WHERE state IN ('pending_reconciliation','estimated')),0)::bigint AS estimated,
+                COALESCE(SUM(reserved_minor)
+                    FILTER (WHERE state = 'indeterminate'),0)::bigint AS uncertain,
                 COALESCE(SUM(charged_minor) FILTER (WHERE state = 'settled'),0)::bigint AS settled,
                 COALESCE(SUM(reserved_minor) FILTER (
-                    WHERE state IN ('pending_reconciliation','indeterminate')),0)::bigint AS retained,
+                    WHERE state IN ('accepted','pending_reconciliation',
+                                    'estimated','indeterminate')),0)::bigint AS retained,
                 COALESCE(SUM(reserved_minor) FILTER (WHERE state = 'released'),0)::bigint AS released,
                 COALESCE(SUM(free_deliveries),0)::int AS free_deliveries,
                 COALESCE(SUM(charged_deliveries) FILTER (WHERE state <> 'released'),0)::int AS charged_deliveries
@@ -1499,6 +1696,9 @@ export async function readExposure(query: SpendQuery, schema: string, input: {
     return Object.freeze(rows.map(row => Object.freeze({
         currency: String(row.currency),
         reservedMinor: Number(row.reserved),
+        acceptedMinor: Number(row.accepted),
+        estimatedMinor: Number(row.estimated),
+        uncertainMinor: Number(row.uncertain),
         settledMinor: Number(row.settled),
         retainedMinor: Number(row.retained),
         releasedMinor: Number(row.released),

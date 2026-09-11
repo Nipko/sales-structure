@@ -292,7 +292,7 @@ export class WhatsappMessagingService {
       // Accepted, not priced: Meta answers with an id long before it says what
       // the delivery cost, so the reservation stands until a status webhook or
       // a reconciliation settles it.
-      await this.recordSpend(schemaName, admission, { kind: 'delivered_unpriced', providerMessageId: messageId });
+      await this.recordSpend(schemaName, admission, { kind: 'accepted', providerMessageId: messageId });
 
       // Meta took a message from this account. That is the only proof billing
       // works again, and it is produced by the platform rather than claimed by
@@ -510,7 +510,7 @@ export class WhatsappMessagingService {
   }
 
   private async recordSpend(schemaName: string, admission: unknown, outcome: {
-    kind: 'delivered_priced' | 'delivered_unpriced' | 'rejected' | 'timeout';
+    kind: 'delivered_priced' | 'accepted' | 'rejected' | 'timeout';
     providerMessageId?: string | null; errorCode?: string | null;
   }) {
     if (!admission || admission === 'refused') return;

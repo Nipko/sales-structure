@@ -10,14 +10,15 @@ import {
     declareTaskBudget, ensureCounters,
     markReceiptApplied, noteReceiptFailure, pendingReceipts, rememberReceipt,
     findReservation, findReservationByProviderMessage, grantFreeDeliveries,
-    markTransmissionInFlight, ownEffect, reconcileDeliveredEffects, RESOLVABLE_STATES,
-    staleIndeterminateEffects,
+    estimateDeliveredEffects,
+    markTransmissionInFlight, ownEffect, RESOLVABLE_STATES,
+    settleFromProviderEvidence, staleAcceptedEffects, staleIndeterminateEffects,
     recentIdenticalDeliveries, releaseTransmission, sweepTransmissionLeases,
     readExposure, readPressure, readSpendSignals, recordAllocation, releaseReservation,
     reserveAgainstCounter, retainReservation,
     settleReservation, sweepExpiredLeases,
     worstPressure,
-    type DurableReceipt, type ReceiptInboxStatus,
+    type DurableReceipt, type ProviderInvoiceLine, type ReceiptInboxStatus,
     type ReservationBinding, type ReservationIdentity, type ReservationRow, type SpendExposure,
     type SpendDisposition, type SpendPressure, type SpendQuery, type TaskBudget,
     type TransmissionClaim, type TransmissionGrant,
@@ -590,7 +591,7 @@ export class WhatsappSpendService {
      * it exists to enforce is that a timeout NEVER releases.
      */
     async recordOutcome(schema: string, effectKey: string, outcome: {
-        readonly kind: 'delivered_priced' | 'delivered_unpriced' | 'rejected' | 'timeout';
+        readonly kind: 'delivered_priced' | 'accepted' | 'rejected' | 'timeout';
         readonly providerMessageId?: string | null;
         readonly chargedMinor?: number | null;
         readonly errorCode?: string | null;
@@ -614,13 +615,24 @@ export class WhatsappSpendService {
                         providerMessageId: outcome.providerMessageId, remoteState: 'delivered',
                         transmitToken,
                     });
-                case 'delivered_unpriced':
-                    // It arrived and we do not know what it cost. The whole
-                    // amount stays counted until a reconciliation says otherwise.
+                case 'accepted':
+                    // ═══ A WAMID IS AN ACCEPTANCE, NOT A DELIVERY ═══
+                    //
+                    // This case used to be called `delivered_unpriced` and it
+                    // wrote `remote_state='delivered'`. It was not a delivery:
+                    // the POST's answer says Meta HAS the message and will try.
+                    // The charge lands on delivery, so a row that claimed to be
+                    // delivered was then settled by the reconciler at the
+                    // reserved amount 72 hours later — and a message Meta
+                    // accepted and never delivered appeared in the books as a
+                    // confirmed charge.
+                    //
+                    // The exposure is retained, because the money may still be
+                    // spent. Nothing else is asserted.
                     return retainReservation(query as SpendQuery, schema, {
-                        effectKey, state: 'pending_reconciliation',
-                        reason: 'delivered_without_price',
-                        providerMessageId: outcome.providerMessageId, remoteState: 'delivered',
+                        effectKey, state: 'accepted',
+                        reason: 'provider_accepted_awaiting_delivery',
+                        providerMessageId: outcome.providerMessageId, remoteState: 'accepted',
                         transmitToken,
                     });
                 case 'rejected':
@@ -854,6 +866,12 @@ export class WhatsappSpendService {
                     effectKey: row.effectKey, state: 'pending_reconciliation',
                     reason: 'delivered_without_price', remoteState: receipt.status,
                     providerMessageId: receipt.providerMessageId,
+                    // From wherever it was. An `accepted` row learning it was
+                    // delivered is the normal case now, and the `held`-only
+                    // default would refuse it by matching no rows — silently,
+                    // which is how an effect sits unresolved for ever while
+                    // every pass reports success.
+                    fromStates: RESOLVABLE_STATES,
                 });
                 return 'ignored' as const;
             }
@@ -870,54 +888,110 @@ export class WhatsappSpendService {
     }
 
     /**
-     * Close the effects that arrived and were never priced.
+     * ═══ THE RECONCILER, WHICH NO LONGER CHARGES ANYBODY ═══
      *
-     * The reconciler, in one sentence: after the grace period, a delivery whose
-     * cost nobody could compute settles at the amount that was reserved for it.
-     * That amount is an upper bound by construction — the published rate, or the
-     * highest the card prints for that currency — so this overstates a bill
-     * rather than hiding one, which is the direction a business can check.
+     * It used to settle a delivery whose price nobody could compute at the
+     * reserved amount once 72 hours had passed, under the evidence string
+     * `reconciled_at_reserved_amount`. That reads like an invoice and means
+     * "the clock ran out" — and while an ACK was being recorded as a delivery,
+     * it turned messages Meta accepted and never delivered into confirmed
+     * charges that looked exactly like real ones.
      *
-     * Runs on a schedule and is safe to run twice: `settleReservation` moves out
-     * of `pending_reconciliation` and nothing else, so the second pass finds
-     * nothing to do rather than charging again.
+     * Now it states the honest thing instead: the bound becomes an ESTIMATE and
+     * says so. The committed money is unchanged, so a ceiling still fills the
+     * same way; what changes is that nothing appears in the BILL that no
+     * authority stated. `settleFromInvoice` is the only road from an estimate
+     * to a charge.
+     *
+     * Safe to run twice: `retainReservation` moves out of
+     * `pending_reconciliation` and nothing else.
      */
     async reconcile(schema: string, input: {
         readonly graceHours?: number; readonly limit?: number; readonly at?: Date;
-    } = {}): Promise<{ settled: number; settledMinor: number; needsPerson: number }> {
+    } = {}): Promise<{
+        estimated: number; estimatedMinor: number; needsPerson: number;
+        /** Kept as a name so callers do not have to change; always 0 now. */
+        settled: number; settledMinor: number;
+    }> {
         const at = input.at ?? new Date();
         const olderThan = new Date(at.getTime() - (input.graceHours ?? 72) * 3_600_000);
-        const settled = await this.prisma.transactionInTenantSchema(schema, query =>
-            reconcileDeliveredEffects(query as SpendQuery, schema,
+        const estimated = await this.prisma.transactionInTenantSchema(schema, query =>
+            estimateDeliveredEffects(query as SpendQuery, schema,
                 { olderThan, limit: input.limit }));
-        const stuck = await this.prisma.transactionInTenantSchema(schema, query =>
-            staleIndeterminateEffects(query as SpendQuery, schema,
-                { olderThan, limit: input.limit }));
-        const settledMinor = settled.reduce((total, row) => total + (row.chargedMinor ?? 0), 0);
-        if (settled.length) {
-            this.logger.log(`[Spend] reconciled ${settled.length} delivered effect(s) in ${schema} `
-                + `at their reserved amount (${settledMinor} minor units)`);
+        const stuck = await this.awaitingResolution(schema, { ...input, at });
+        const estimatedMinor = estimated.reduce(
+            (total, row) => total + row.money.reservedMinor, 0);
+        if (estimated.length) {
+            this.logger.log(`[Spend] ${estimated.length} delivered effect(s) in ${schema} have `
+                + `no authoritative price and are now recorded as ESTIMATES at their upper `
+                + `bound (${estimatedMinor} minor units). Nothing was charged.`);
         }
         if (stuck.length) {
             // Said at warning level and with a count, because the number is the
             // signal: one is a lost webhook, fifty is something systematic and
             // the money in them is real exposure nobody is watching.
-            this.logger.warn(`[Spend] ${stuck.length} effect(s) in ${schema} have been `
-                + 'indeterminate past the grace period and need a person: nobody can say '
-                + 'whether they were delivered, and waiting longer will not decide it.');
+            this.logger.warn(`[Spend] ${stuck.length} effect(s) in ${schema} are past the grace `
+                + 'period with nobody able to say whether they were delivered. Waiting longer '
+                + 'will not decide it.');
         }
-        return { settled: settled.length, settledMinor, needsPerson: stuck.length };
+        return {
+            estimated: estimated.length, estimatedMinor, needsPerson: stuck.length,
+            settled: 0, settledMinor: 0,
+        };
     }
 
-    /** The effects waiting on a person, for the panel that shows them. */
+    /**
+     * The effects waiting on a person, for the panel that shows them.
+     *
+     * Two states, both of them "nobody knows", reached by different roads:
+     * `accepted` is a POST that succeeded and whose status webhook never came;
+     * `indeterminate` is a POST whose own outcome is unknown. Returned together
+     * because the panel shows one list, kept distinct in the rows because the
+     * question a person has to answer is not the same.
+     */
     async awaitingResolution(schema: string, input: {
         readonly graceHours?: number; readonly limit?: number; readonly at?: Date;
     } = {}): Promise<readonly ReservationRow[]> {
         const at = input.at ?? new Date();
         const olderThan = new Date(at.getTime() - (input.graceHours ?? 72) * 3_600_000);
-        return this.prisma.transactionInTenantSchema(schema, query =>
-            staleIndeterminateEffects(query as SpendQuery, schema,
-                { olderThan, limit: input.limit }));
+        return this.prisma.transactionInTenantSchema(schema, async query => {
+            const unknown = await staleIndeterminateEffects(query as SpendQuery, schema,
+                { olderThan, limit: input.limit });
+            const accepted = await staleAcceptedEffects(query as SpendQuery, schema,
+                { olderThan, limit: input.limit });
+            return Object.freeze([...unknown, ...accepted]);
+        });
+    }
+
+    /**
+     * Turn estimates into charges, using what the provider says it billed.
+     *
+     * THE authority, and the only road from an estimate to a charge. Each line
+     * carries the document and version it came from: an amount with no
+     * provenance is indistinguishable from a number somebody typed, and a
+     * corrected invoice has to be able to say which one it corrects.
+     */
+    async settleFromInvoice(schema: string, lines: readonly ProviderInvoiceLine[]): Promise<{
+        applied: number; currencyMismatch: readonly string[]; unknown: readonly string[];
+        overReserved: readonly string[];
+    }> {
+        const outcome = await this.prisma.transactionInTenantSchema(schema, query =>
+            settleFromProviderEvidence(query as SpendQuery, schema, lines));
+        if (outcome.overReserved.length) {
+            // The reserved amount is an upper bound from the published rate. An
+            // invoice above it means the rate table is wrong — a thing to fix,
+            // not to absorb, and certainly not to record truncated.
+            this.logger.error(`[Spend] ${outcome.overReserved.length} invoice line(s) in `
+                + `${schema} charge more than was ever reserved. None were applied: the rate `
+                + 'table disagrees with what Meta billed and a person has to reconcile them.');
+        }
+        if (outcome.currencyMismatch.length) {
+            // Refused, never converted. Adding COP minor units to a USD counter
+            // is off by a factor of four thousand and looks entirely plausible.
+            this.logger.error(`[Spend] ${outcome.currencyMismatch.length} invoice line(s) in `
+                + `${schema} name a currency the reservation does not use. None were applied.`);
+        }
+        return outcome;
     }
 
     /**

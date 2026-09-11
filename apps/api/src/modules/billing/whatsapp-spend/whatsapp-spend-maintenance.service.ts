@@ -82,10 +82,10 @@ export class WhatsappSpendMaintenanceService {
      */
     async sweepEveryTenant(at: Date = new Date()): Promise<{
         tenants: number; skipped: number; recovered: number; uncertain: number;
-        expired: number; reconciled: number; needsPerson: number; failed: number;
+        expired: number; estimated: number; needsPerson: number; failed: number;
     }> {
         const totals = { tenants: 0, skipped: 0, recovered: 0, uncertain: 0, expired: 0,
-            reconciled: 0, needsPerson: 0, receipts: 0, abandoned: 0, failed: 0 };
+            estimated: 0, needsPerson: 0, receipts: 0, abandoned: 0, failed: 0 };
         for (const tenant of await this.spendingTenants()) {
             const until = this.backoff.get(tenant.id);
             if (until && until > at.getTime()) { totals.skipped += 1; continue; }
@@ -95,7 +95,7 @@ export class WhatsappSpendMaintenanceService {
                 totals.recovered += outcome.recovered;
                 totals.uncertain += outcome.uncertain;
                 totals.expired += outcome.expired;
-                totals.reconciled += outcome.reconciled;
+                totals.estimated += outcome.estimated;
                 totals.needsPerson += outcome.needsPerson;
                 totals.receipts += outcome.receipts;
                 totals.abandoned += outcome.abandoned;
@@ -117,7 +117,7 @@ export class WhatsappSpendMaintenanceService {
     /** The four passes, in the order that makes each one see less work. */
     async sweepTenant(schema: string, at: Date = new Date()): Promise<{
         recovered: number; uncertain: number; expired: number;
-        reconciled: number; needsPerson: number; receipts: number; abandoned: number;
+        estimated: number; needsPerson: number; receipts: number; abandoned: number;
     }> {
         // 0. The receipts Meta already gave us and whose consequences never
         //    landed. FIRST, because every later pass is about effects nobody
@@ -133,6 +133,8 @@ export class WhatsappSpendMaintenanceService {
         //    `indeterminate` — visible exposure, never a quiet release.
         const expired = await this.spend.sweep(schema, this.BATCH);
         // 3. And the deliveries that have waited long enough for a price.
+        //    They become ESTIMATES, not charges: waiting is not evidence, and
+        //    the state that used to come out of here read like an invoice.
         const reconciled = await this.spend.reconcile(schema,
             { graceHours: this.GRACE_HOURS, limit: this.BATCH, at });
         return {
@@ -142,7 +144,7 @@ export class WhatsappSpendMaintenanceService {
             // report a crash mid-POST as a message put back on its way.
             uncertain: transmissions.uncertain.length,
             expired: expired.length,
-            reconciled: reconciled.settled,
+            estimated: reconciled.estimated,
             needsPerson: reconciled.needsPerson,
             receipts: receipts.applied,
             abandoned: receipts.abandoned,
@@ -178,13 +180,14 @@ export class WhatsappSpendMaintenanceService {
      * no amount of retrying will decide.
      */
     private async report(totals: { tenants: number; skipped: number; recovered: number;
-        uncertain: number; expired: number; reconciled: number; needsPerson: number;
+        uncertain: number; expired: number; estimated: number; needsPerson: number;
         receipts: number; abandoned: number; failed: number }): Promise<void> {
         this.logger.log(`[Spend] maintenance: ${totals.tenants} tenant(s), `
             + `${totals.receipts} late receipt(s) applied, `
             + `${totals.recovered} transmission lease(s) recovered, ${totals.uncertain} left `
             + `uncertain mid-POST, ${totals.expired} reservation(s) expired, `
-            + `${totals.reconciled} reconciled, ${totals.needsPerson} awaiting a person, `
+            + `${totals.estimated} recorded as estimates, `
+            + `${totals.needsPerson} awaiting a person, `
             + `${totals.abandoned} receipt(s) abandoned, `
             + `${totals.failed} failed, ${totals.skipped} in backoff`);
         if (!this.incidents) return;
@@ -200,8 +203,8 @@ export class WhatsappSpendMaintenanceService {
                 await this.incidents.record('whatsapp_spend_awaiting_resolution', 'warning',
                     'Hay envíos de WhatsApp que nadie puede confirmar',
                     `${totals.needsPerson} efecto(s) llevan más de ${this.GRACE_HOURS} h sin `
-                    + 'respuesta del proveedor. El dinero sigue contado contra la cuenta y sólo '
-                    + 'una persona puede decidir si se entregaron.',
+                    + 'una respuesta que permita decidir. El dinero sigue contado contra la '
+                    + 'cuenta y sólo una persona puede resolverlos: esperar más no lo decide.',
                     totals.needsPerson);
             }
             if (totals.abandoned) {

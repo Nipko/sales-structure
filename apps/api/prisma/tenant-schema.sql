@@ -5719,7 +5719,13 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."whatsapp_spend_reservations" (
         created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
         CONSTRAINT whatsapp_spend_reservations_state CHECK (state IN
-            ('held','settled','released','pending_reconciliation','indeterminate')),
+            ('held','accepted','settled','released',
+             'pending_reconciliation','estimated','indeterminate')),
+        -- Una fila `estimated` conserva una COTA, no un cargo. El CHECK de
+        -- `charged` ya lo implica; queda dicho acá porque es la diferencia
+        -- entera entre "gastamos esto" y "no sabemos, como mucho esto".
+        CONSTRAINT whatsapp_spend_reservations_estimate
+            CHECK (state <> 'estimated' OR charged_minor IS NULL),
         CONSTRAINT whatsapp_spend_reservations_decision
             CHECK (decision IN ('accepted','unknown')),
         CONSTRAINT whatsapp_spend_reservations_payer
@@ -5777,7 +5783,13 @@ CREATE UNIQUE INDEX IF NOT EXISTS uidx_whatsapp_spend_effect
         ON "{{SCHEMA_NAME}}"."whatsapp_spend_reservations" (effect_key);
 CREATE INDEX IF NOT EXISTS idx_whatsapp_spend_open
         ON "{{SCHEMA_NAME}}"."whatsapp_spend_reservations" (lease_expires_at)
-        WHERE state IN ('held','pending_reconciliation','indeterminate');
+        WHERE state IN ('held','accepted','pending_reconciliation','estimated','indeterminate');
+-- El reconciliador pregunta por estado y antigüedad, no por lease: `accepted`
+-- viejo ("¿llegó?") y `pending_reconciliation` viejo ("¿cuánto costó?") son dos
+-- preguntas distintas y ambas se hacen por `updated_at`.
+CREATE INDEX IF NOT EXISTS idx_whatsapp_spend_unresolved
+        ON "{{SCHEMA_NAME}}"."whatsapp_spend_reservations" (state, updated_at)
+        WHERE state IN ('accepted','pending_reconciliation','estimated','indeterminate');
 CREATE INDEX IF NOT EXISTS idx_whatsapp_spend_receipt
         ON "{{SCHEMA_NAME}}"."whatsapp_spend_reservations" (provider_message_id)
         WHERE provider_message_id IS NOT NULL;
@@ -5792,7 +5804,8 @@ CREATE INDEX IF NOT EXISTS idx_whatsapp_spend_recent_identical
         ON "{{SCHEMA_NAME}}"."whatsapp_spend_reservations"
         (channel_account_id, recipient_ref, content_digest, created_at DESC)
         WHERE content_digest IS NOT NULL
-          AND state IN ('held','settled','pending_reconciliation','indeterminate');
+          AND state IN ('held','accepted','settled',
+                        'pending_reconciliation','estimated','indeterminate');
 -- El indice de "a quien le escribimos sin que nos escriba": por cuenta y
 -- destinatario, solo sobre lo que nosotros iniciamos.
 CREATE INDEX IF NOT EXISTS idx_whatsapp_spend_transmit_lease

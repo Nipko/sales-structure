@@ -27,9 +27,13 @@ describe('the pass that keeps the ledger honest', () => {
     function harness(over: Record<string, any> = {}) {
         const prisma = { tenant: { findMany: jest.fn(async () => tenants) } };
         const spend = {
+            retryPendingReceipts: jest.fn(async () =>
+                ({ retried: 2, applied: 2, abandoned: 0 })),
             sweepTransmissions: jest.fn(async () => ({ recovered: ['a'], uncertain: ['b', 'c'] })),
             sweep: jest.fn(async () => ['d', 'e']),
-            reconcile: jest.fn(async () => ({ settled: 3, settledMinor: 900, needsPerson: 1 })),
+            reconcile: jest.fn(async () =>
+                ({ estimated: 3, estimatedMinor: 900, needsPerson: 1,
+                    settled: 0, settledMinor: 0 })),
             ...over,
         };
         const cronLock = { runExclusive: jest.fn(async (_n: string, _t: number, fn: any) => fn()) };
@@ -46,13 +50,40 @@ describe('the pass that keeps the ledger honest', () => {
         const h = harness();
         const totals = await h.service.sweepEveryTenant();
 
+        expect(h.spend.retryPendingReceipts).toHaveBeenCalledTimes(2);
         expect(h.spend.sweepTransmissions).toHaveBeenCalledTimes(2);
         expect(h.spend.sweep).toHaveBeenCalledTimes(2);
         expect(h.spend.reconcile).toHaveBeenCalledTimes(2);
         expect(totals).toMatchObject({
-            tenants: 2, recovered: 2, uncertain: 4, expired: 4,
-            reconciled: 6, needsPerson: 2, failed: 0, skipped: 0,
+            tenants: 2, receipts: 4, recovered: 2, uncertain: 4, expired: 4,
+            estimated: 6, needsPerson: 2, abandoned: 0, failed: 0, skipped: 0,
         });
+    });
+
+    it('applies the receipts Meta already gave us BEFORE deciding what is unresolved', async () => {
+        // Order matters and is not cosmetic. Every later pass is about effects
+        // nobody resolved; a receipt sitting in the inbox is an effect somebody
+        // DID resolve. Sweeping first would turn a delivered message into
+        // exposure that needs a person, and then apply the receipt that said so.
+        const order: string[] = [];
+        const h = harness({
+            retryPendingReceipts: jest.fn(async () => {
+                order.push('receipts');
+                return { retried: 0, applied: 0, abandoned: 0 };
+            }),
+            sweepTransmissions: jest.fn(async () => {
+                order.push('transmissions');
+                return { recovered: [], uncertain: [] };
+            }),
+            sweep: jest.fn(async () => { order.push('leases'); return []; }),
+            reconcile: jest.fn(async () => {
+                order.push('reconcile');
+                return { estimated: 0, estimatedMinor: 0, needsPerson: 0,
+                    settled: 0, settledMinor: 0 };
+            }),
+        });
+        await h.service.sweepTenant('tenant_one');
+        expect(order).toEqual(['receipts', 'transmissions', 'leases', 'reconcile']);
     });
 
     it('looks for tenants by their connection, not by rows they already have', async () => {
@@ -126,12 +157,31 @@ describe('the pass that keeps the ledger honest', () => {
 
     it('says nothing when there is nothing to say', async () => {
         const h = harness({
+            retryPendingReceipts: jest.fn(async () =>
+                ({ retried: 0, applied: 0, abandoned: 0 })),
             sweepTransmissions: jest.fn(async () => ({ recovered: [], uncertain: [] })),
             sweep: jest.fn(async () => []),
-            reconcile: jest.fn(async () => ({ settled: 0, settledMinor: 0, needsPerson: 0 })),
+            reconcile: jest.fn(async () =>
+                ({ estimated: 0, estimatedMinor: 0, needsPerson: 0,
+                    settled: 0, settledMinor: 0 })),
         });
         await h.service.sweepEveryTenant();
         expect(h.incidents.record).not.toHaveBeenCalled();
+    });
+
+    it('raises an incident for the receipts nobody could ever apply', async () => {
+        // A receipt that exhausted its retries is not a transient failure any
+        // more: its reservation is still counted, no further pass will touch
+        // it, and the difference between a known gap and a number that is
+        // quietly wrong is whether anybody was told.
+        const h = harness({
+            retryPendingReceipts: jest.fn(async () =>
+                ({ retried: 3, applied: 1, abandoned: 2 })),
+        });
+        await h.service.sweepEveryTenant();
+        expect(h.incidents.record).toHaveBeenCalledWith(
+            'whatsapp_receipt_inbox_abandoned', 'warning',
+            expect.any(String), expect.any(String), 4);
     });
 
     it('still sweeps when no incident writer is wired', async () => {
@@ -140,9 +190,13 @@ describe('the pass that keeps the ledger honest', () => {
         // in exactly the deployment that is already degraded.
         const prisma = { tenant: { findMany: jest.fn(async () => tenants) } };
         const spend = {
+            retryPendingReceipts: jest.fn(async () =>
+                ({ retried: 0, applied: 0, abandoned: 0 })),
             sweepTransmissions: jest.fn(async () => ({ recovered: [], uncertain: [] })),
             sweep: jest.fn(async () => []),
-            reconcile: jest.fn(async () => ({ settled: 0, settledMinor: 0, needsPerson: 5 })),
+            reconcile: jest.fn(async () =>
+                ({ estimated: 0, estimatedMinor: 0, needsPerson: 5,
+                    settled: 0, settledMinor: 0 })),
         };
         const service = new WhatsappSpendMaintenanceService(
             prisma as any, spend as any,

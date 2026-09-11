@@ -763,7 +763,7 @@ export class AgentConsoleService {
         if (!admission || admission === 'refused') return;
         try {
             await this.spendGate.record(schemaName, admission as Admission, result
-                ? { kind: 'delivered_unpriced', providerMessageId: result }
+                ? { kind: 'accepted', providerMessageId: result }
                 : { kind: 'timeout' });
         } catch (error: any) {
             this.logger.error(`[Spend] outcome not recorded for agent reply: ${error?.message}`);

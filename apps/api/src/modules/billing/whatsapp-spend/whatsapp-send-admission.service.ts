@@ -625,7 +625,7 @@ export class WhatsappSendAdmissionService {
 
     /** What the provider said, recorded against the reservation this admitted. */
     async record(schema: string, admission: Admission, outcome: {
-        readonly kind: 'delivered_priced' | 'delivered_unpriced' | 'rejected' | 'timeout';
+        readonly kind: 'delivered_priced' | 'accepted' | 'rejected' | 'timeout';
         readonly providerMessageId?: string | null;
         readonly chargedMinor?: number | null;
         readonly errorCode?: string | null;

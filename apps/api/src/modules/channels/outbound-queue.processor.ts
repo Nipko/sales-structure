@@ -372,7 +372,7 @@ export class OutboundQueueProcessor extends WorkerHost {
                 // Accepted is not priced. The exposure stays until a status
                 // webhook or a reconciliation says what it cost.
                 if (admission) await this.spendGate!.record(await this.prisma.getTenantSchemaName(tenantId),
-                    admission, { kind: 'delivered_unpriced', providerMessageId: outcome.receipt })
+                    admission, { kind: 'accepted', providerMessageId: outcome.receipt })
                     .catch(() => undefined);
                 await this.dispatchOutbox.settle(tenantId, dispatchId, admitted.leaseToken,
                     { kind: 'sent', receipt: outcome.receipt });
@@ -504,10 +504,13 @@ export class OutboundQueueProcessor extends WorkerHost {
     /**
      * What became of it, recorded against the reservation that authorised it.
      *
-     * An accepted send is `delivered_unpriced`: acceptance is not a price, and
-     * the exposure stands until a status webhook or a reconciliation says what
-     * it cost. No result at all is a timeout, which never releases, because a
-     * request whose answer was lost may well have put a message on a phone.
+     * An accepted send is exactly that: `accepted`. The POST's answer says Meta
+     * HAS the message, not that a phone does — and from October 2026 the charge
+     * lands on delivery. The exposure stands, and the status webhook that
+     * arrives seconds later is what decides whether it became a charge.
+     *
+     * No result at all is a timeout, which never releases, because a request
+     * whose answer was lost may well have put a message on a phone.
      */
     /**
      * Authorise the text a conclusively-refused Flow becomes.
@@ -617,17 +620,17 @@ export class OutboundQueueProcessor extends WorkerHost {
             this.fallbackAdmissions.delete(outbound);
             await this.settle(outbound, admission, { kind: 'rejected', errorCode: 'flow_rejected' });
             await this.settle(outbound, fallback, result
-                ? { kind: 'delivered_unpriced', providerMessageId: result }
+                ? { kind: 'accepted', providerMessageId: result }
                 : { kind: 'timeout' });
             return;
         }
         await this.settle(outbound, admission, result
-            ? { kind: 'delivered_unpriced', providerMessageId: result }
+            ? { kind: 'accepted', providerMessageId: result }
             : { kind: 'timeout' });
     }
 
     private async settle(outbound: OutboundMessage, admission: unknown, outcome: {
-        kind: 'delivered_priced' | 'delivered_unpriced' | 'rejected' | 'timeout';
+        kind: 'delivered_priced' | 'accepted' | 'rejected' | 'timeout';
         providerMessageId?: string | null; errorCode?: string | null;
     }) {
         if (!admission || admission === 'refused' || !this.spendGate) return;

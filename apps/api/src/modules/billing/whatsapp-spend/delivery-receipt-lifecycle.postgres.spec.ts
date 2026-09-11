@@ -239,16 +239,27 @@ integration('what a delivery receipt does to the money', () => {
             .resolves.toBe('unknown_receipt');
     });
 
-    it('resolves an effect the send path had to leave pending', async () => {
-        // The normal shape for a timeout: the POST answered too late or not at
-        // all, the attempt retained the exposure, and the receipt arrives
-        // afterwards. `settleReservation` used to accept `held` and nothing
-        // else, so this row could never be resolved by anything.
+    it('leaves an accepted send accepted, and lets the receipt resolve it', async () => {
+        // The normal shape of every send: the POST answers with a wamid, which
+        // is Meta saying it HAS the message — not that a phone does. The row
+        // used to be recorded as `pending_reconciliation` with
+        // `remote_state='delivered'`, and the reconciler settled it 72 hours
+        // later at the reserved amount. A message Meta accepted and never
+        // delivered ended up in the books as a confirmed charge.
         const effect = await sent();
         await service().recordOutcome(schema, effect.effectKey,
-            { kind: 'delivered_unpriced', providerMessageId: effect.providerMessageId });
-        expect((await row(effect.effectKey)).state).toBe('pending_reconciliation');
+            { kind: 'accepted', providerMessageId: effect.providerMessageId });
+        const acked = await row(effect.effectKey);
+        expect(acked.state).toBe('accepted');
+        expect(acked.remote_state).toBe('accepted');
+        expect(acked.charged_minor).toBeNull();
 
+        // The exposure stands: the money may still be spent.
+        const held = await accountCounter();
+        expect(Number(held.reserved_minor)).toBe(effect.reservedMinor);
+        expect(Number(held.settled_minor)).toBe(0);
+
+        // And the receipt — the one thing that knows — is what charges it.
         await expect(service().applyDeliveryReceipt(schema,
             { providerMessageId: effect.providerMessageId, status: 'delivered' }))
             .resolves.toBe('settled');
@@ -256,6 +267,38 @@ integration('what a delivery receipt does to the money', () => {
         const after = await accountCounter();
         expect(Number(after.reserved_minor)).toBe(0);
         expect(Number(after.settled_minor)).toBe(effect.reservedMinor);
+    });
+
+    it('releases an accepted send that Meta later says failed', async () => {
+        // The case the old shape got backwards: an ACK recorded as a delivery,
+        // then a `failed` receipt. Meta does not bill an undelivered message.
+        const effect = await sent();
+        await service().recordOutcome(schema, effect.effectKey,
+            { kind: 'accepted', providerMessageId: effect.providerMessageId });
+        await expect(service().applyDeliveryReceipt(schema, {
+            providerMessageId: effect.providerMessageId, status: 'failed',
+            errorCode: 'wa_131026',
+        })).resolves.toBe('released');
+
+        const after = await accountCounter();
+        expect(Number(after.reserved_minor)).toBe(0);
+        expect(Number(after.settled_minor)).toBe(0);
+        expect(Number(after.released_minor)).toBe(effect.reservedMinor);
+    });
+
+    it('lets an accepted send become pending when the price is unknowable', async () => {
+        // Delivered, and no rate card row for it. The row moves on from
+        // `accepted` rather than staying stuck there — the `held`-only default
+        // used to refuse this transition by matching no rows, silently.
+        const effect = await sent({ allowUnknownCost: true, market: null } as any);
+        await service().recordOutcome(schema, effect.effectKey,
+            { kind: 'accepted', providerMessageId: effect.providerMessageId });
+        await q(`UPDATE "${schema}".whatsapp_spend_reservations
+                    SET basis = 'unknown' WHERE effect_key = $1`, [effect.effectKey]);
+
+        await service().applyDeliveryReceipt(schema,
+            { providerMessageId: effect.providerMessageId, status: 'delivered' });
+        expect((await row(effect.effectKey)).state).toBe('pending_reconciliation');
     });
 
     it('resolves an effect nobody could say anything about', async () => {

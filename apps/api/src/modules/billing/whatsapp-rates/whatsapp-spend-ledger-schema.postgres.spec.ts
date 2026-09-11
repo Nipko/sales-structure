@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import { readdirSync, readFileSync } from 'fs';
+import { existsSync, readdirSync, readFileSync } from 'fs';
 import { resolve } from 'path';
 import { Client } from 'pg';
 import { ensureSyntheticGlobalTables } from '../../../common/__fixtures__/synthetic-global-tables';
@@ -44,8 +44,25 @@ const MIGRATIONS_DIR = resolve(__dirname, '../../../../prisma/migrations');
  *
  * A third spend migration written next month is picked up with no edit here.
  */
+/**
+ * Chosen by CONTENT, not by name.
+ *
+ * The filter used to be `/whatsapp_spend/` on the directory name, and the first
+ * migration that touched these tables under a different name — one adding a
+ * receipt inbox, one widening the state CHECK — was silently excluded. The
+ * fresh side got the change from `tenant-schema.sql` and the migrated side did
+ * not, so the two definitions drifted apart under a test whose entire purpose
+ * is to notice that.
+ *
+ * A migration that mentions one of these tables is a migration that shapes
+ * them, whatever it is called.
+ */
+const LEDGER_TABLES = /whatsapp_spend_(reservations|counters|allocations)|whatsapp_receipt_inbox/;
 const SPEND_MIGRATIONS = readdirSync(MIGRATIONS_DIR)
-    .filter(name => /whatsapp_spend/.test(name))
+    .filter(name => {
+        const file = resolve(MIGRATIONS_DIR, name, 'migration.sql');
+        return existsSync(file) && LEDGER_TABLES.test(readFileSync(file, 'utf8'));
+    })
     .sort();
 
 const migrationSql = () => SPEND_MIGRATIONS

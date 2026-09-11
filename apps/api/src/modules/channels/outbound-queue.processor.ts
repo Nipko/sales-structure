@@ -4,7 +4,9 @@ import { Processor, WorkerHost, OnWorkerEvent } from '@nestjs/bullmq';
 import { Inject, Logger, Optional } from '@nestjs/common';
 import { Job, DelayedError } from 'bullmq';
 import * as Sentry from '@sentry/nestjs';
+import { createHash } from 'crypto';
 import { ChannelGatewayService } from './channel-gateway.service';
+import { WhatsappSendAdmissionService, type Admission } from '../billing/whatsapp-spend/whatsapp-send-admission.service';
 import { ChannelTokenService } from './channel-token.service';
 import { RedisService } from '../redis/redis.service';
 import { OutboundMessage } from '@parallext/shared';
@@ -74,8 +76,56 @@ export class OutboundQueueProcessor extends WorkerHost {
         @Optional() @Inject(APPROVED_EFFECT_DELIVERY) private approvalEffects?: ApprovedEffectDeliveryPort,
         @Optional() @Inject(OPERATIONAL_NOTICE_DELIVERY) private operationalNotices?: OperationalNoticeDeliveryPort,
         @Optional() private dispatchOutbox?: AgentDispatchOutboxStore,
+        // The economic boundary. Optional so a deployment that has not
+        // wired it still SENDS — a money gate that silences a platform when
+        // its own dependency is missing is worse than the bill it prevents.
+        // When it is present, nothing chargeable leaves without passing it.
+        @Optional() private spendGate?: WhatsappSendAdmissionService,
     ) {
         super();
+    }
+
+    /**
+     * Ask the money gate, in the one shape both lanes use.
+     *
+     * Returns `null` when there is no gate wired at all, which the callers
+     * read as "proceed, and record nothing".
+     */
+    private async admitSpend(input: {
+        tenantId: string; schema?: string | null; channelType: string; channelAccountId: string;
+        recipient: string; producer: string; contentDigest: string;
+        contactId?: string | null; conversationId?: string | null;
+        binding?: Record<string, unknown>;
+    }) {
+        if (!this.spendGate) return null;
+        let schema = input.schema ?? null;
+        if (!schema) {
+            try { schema = await this.prisma.getTenantSchemaName(input.tenantId); }
+            catch { return null; }
+        }
+        try {
+            return await this.spendGate.admit({
+                schema,
+                connection: {
+                    tenantId: input.tenantId, channelType: input.channelType,
+                    channelAccountId: input.channelAccountId,
+                },
+                // The recipient is hashed before it travels: this value ends
+                // up in an effect key, a log line and a queue id.
+                recipientRef: createHash('sha256').update(String(input.recipient)).digest('hex').slice(0, 32),
+                contactId: input.contactId ?? null,
+                producer: input.producer,
+                contentDigest: input.contentDigest,
+                admissionReason: input.producer,
+                binding: input.binding as any,
+            });
+        } catch (error: any) {
+            // An infrastructure failure in the gate must not stop a customer
+            // being answered. It is logged loudly because an ungated send is
+            // exactly what this whole boundary exists to make impossible.
+            this.logger.error(`[Spend] gate unavailable for ${input.producer}: ${error?.message}`);
+            return null;
+        }
     }
 
     /**
@@ -194,6 +244,28 @@ export class OutboundQueueProcessor extends WorkerHost {
 
         // COMMITTED. From here the request may go out exactly once, with no
         // tenant or agent lock held and no business transaction open.
+        //
+        // The money is reserved BEFORE the request, never after: reserving
+        // afterwards means it is spent before anything counts it.
+        const admission = await this.admitSpend({
+            tenantId, channelType: admitted.row.binding!.channelType,
+            channelAccountId: admitted.row.binding!.channelAccountId,
+            recipient: String(admitted.row.binding!.recipient ?? ''),
+            producer: `dispatch_${admitted.row.itemKind}`,
+            contentDigest: String(dispatchId),
+            contactId: admitted.row.binding!.contactId ?? null,
+            binding: { dispatchItemId: dispatchId, batchId: admitted.row.batchId,
+                inboundMessageId: admitted.row.binding!.inboundMessageId,
+                itemIndex: admitted.row.itemIndex },
+        });
+        if (admission && !admission.permitted) {
+            // Refused on money, not on transport. The item is suppressed
+            // rather than retried: a ceiling does not become permissive by
+            // asking again, and the diagnosis says what to change.
+            await this.dispatchOutbox.settle(tenantId, dispatchId, admitted.leaseToken,
+                { kind: 'suppressed', errorCode: `spend_${admission.block?.code ?? 'refused'}` });
+            return `dispatch:suppressed:spend_${admission.block?.code ?? 'refused'}`;
+        }
         const outcome = await transport.sendStrict({
             itemKind: admitted.row.itemKind, to: admitted.row.binding!.recipient,
             channelAccountId: admitted.row.binding!.channelAccountId, payload: admitted.row.payload!,
@@ -201,6 +273,11 @@ export class OutboundQueueProcessor extends WorkerHost {
 
         try {
             if (outcome.kind === 'accepted') {
+                // Accepted is not priced. The exposure stays until a status
+                // webhook or a reconciliation says what it cost.
+                if (admission) await this.spendGate!.record(await this.prisma.getTenantSchemaName(tenantId),
+                    admission, { kind: 'delivered_unpriced', providerMessageId: outcome.receipt })
+                    .catch(() => undefined);
                 await this.dispatchOutbox.settle(tenantId, dispatchId, admitted.leaseToken,
                     { kind: 'sent', receipt: outcome.receipt });
                 await this.throttle.recordUsage(tenantId, 'outbound').catch(() => {});
@@ -211,11 +288,23 @@ export class OutboundQueueProcessor extends WorkerHost {
             }
             if (outcome.kind === 'unknown') {
                 // The provider may have acted. Never another POST for this item.
+                // The reservation is RETAINED for the same reason.
+                if (admission) await this.spendGate!.record(await this.prisma.getTenantSchemaName(tenantId),
+                    admission, { kind: 'timeout', errorCode: outcome.errorCode })
+                    .catch(() => undefined);
                 await this.dispatchOutbox.settle(tenantId, dispatchId, admitted.leaseToken,
                     { kind: 'reconciliation_required', errorCode: outcome.errorCode });
                 this.logger.error(`[Dispatch] ${dispatchId} outcome unknown (${outcome.errorCode}) — reconciliation required`);
                 return `dispatch:reconciliation_required:${outcome.errorCode}`;
             }
+            // A refusal with no message id is the one positive negative that
+            // releases the money. A retryable failure is not: the attempt may
+            // still land, so the reservation is retained for the retry to adopt.
+            if (admission) await this.spendGate!.record(await this.prisma.getTenantSchemaName(tenantId),
+                admission, outcome.retryable
+                    ? { kind: 'timeout', errorCode: outcome.errorCode }
+                    : { kind: 'rejected', errorCode: outcome.errorCode })
+                .catch(() => undefined);
             const settled = await this.dispatchOutbox.settle(tenantId, dispatchId, admitted.leaseToken,
                 { kind: outcome.retryable ? 'failed' : 'suppressed', errorCode: outcome.errorCode });
             // Same rule as preflight: the database chose when, so honour it here
@@ -251,6 +340,52 @@ export class OutboundQueueProcessor extends WorkerHost {
         }
     }
 
+    /**
+     * Ask the gate for one loose outbound message.
+     *
+     * `'refused'` means a ceiling said no and the caller must not send.
+     * `null` means there is no gate wired; anything else is the admission whose
+     * outcome has to be recorded once the provider has answered.
+     */
+    private async gateOrSuppress(outbound: OutboundMessage, producer: string) {
+        const admission = await this.admitSpend({
+            tenantId: outbound.tenantId,
+            channelType: outbound.channelType,
+            channelAccountId: String(outbound.channelAccountId ?? ''),
+            recipient: String(outbound.to ?? ''),
+            producer,
+            // The body is digested, never carried: this value reaches an effect
+            // key, a log line and a queue id, and none of those may hold a
+            // customer's words.
+            contentDigest: createHash('sha256')
+                .update(JSON.stringify(outbound.content ?? null)).digest('hex').slice(0, 32),
+            conversationId: (outbound.metadata as any)?.conversationId ?? null,
+            contactId: (outbound.metadata as any)?.contactId ?? null,
+        });
+        if (admission && !admission.permitted) return 'refused' as const;
+        return admission;
+    }
+
+    /**
+     * What became of it, recorded against the reservation that authorised it.
+     *
+     * An accepted send is `delivered_unpriced`: acceptance is not a price, and
+     * the exposure stands until a status webhook or a reconciliation says what
+     * it cost. No result at all is a timeout, which never releases, because a
+     * request whose answer was lost may well have put a message on a phone.
+     */
+    private async recordSpend(outbound: OutboundMessage, admission: unknown, result: string | null) {
+        if (!admission || admission === 'refused' || !this.spendGate) return;
+        try {
+            const schema = await this.prisma.getTenantSchemaName(outbound.tenantId);
+            await this.spendGate.record(schema, admission as Admission, result
+                ? { kind: 'delivered_unpriced', providerMessageId: result }
+                : { kind: 'timeout' });
+        } catch (error: any) {
+            this.logger.error(`[Spend] outcome not recorded: ${error?.message}`);
+        }
+    }
+
     async process(job: Job<OutboundJobData>, token?: string): Promise<string | null> {
         if (job.data.dispatch) return this.processDispatch(job.data.dispatch, job, token);
         if (job.data.operationalNotice) {
@@ -262,7 +397,10 @@ export class OutboundQueueProcessor extends WorkerHost {
             return this.operationalNotices.deliver(reference,{prepare:async outbound=>{
                 const creds=await this.channelToken.getChannelToken(outbound.tenantId,outbound.channelType,outbound.channelAccountId);
                 return async()=>{
+                    const admission = await this.gateOrSuppress(outbound, 'operational_notice');
+                    if (admission === 'refused') return null;
                     const result=await this.channelGateway.sendMessage(outbound,creds.accessToken);
+                    await this.recordSpend(outbound, admission, result);
                     if(result)await this.throttle.recordUsage(reference.tenantId,'outbound').catch(()=>{});
                     return result;
                 };
@@ -284,7 +422,10 @@ export class OutboundQueueProcessor extends WorkerHost {
                 if (outbound.metadata?.approvalEffectKind === 'handoff') return async () => null;
                 const creds = await this.channelToken.getChannelToken(outbound.tenantId, outbound.channelType, outbound.channelAccountId);
                 return async () => {
+                    const admission = await this.gateOrSuppress(outbound, 'approved_effect');
+                    if (admission === 'refused') throw new ApprovalEffectSuppressed('spend_refused');
                     const result = await this.channelGateway.sendMessage(outbound, creds.accessToken);
+                    await this.recordSpend(outbound, admission, result);
                     if (result) await this.throttle.recordUsage(reference.tenantId, 'outbound').catch(() => {});
                     return result;
                 };
@@ -395,7 +536,17 @@ export class OutboundQueueProcessor extends WorkerHost {
             `[Outbound] Sending to ${outbound.to} via ${outbound.channelType} tenant=${outbound.tenantId}`,
         );
 
+        // The last lane, and the busiest: every reply, link, picture and
+        // proactive message that is not on the durable outbox. Gated here so
+        // that "every chargeable send is authorised" is a property of the
+        // code and not of a list somebody keeps up to date.
+        const admission = await this.gateOrSuppress(outbound, 'outbound_queue');
+        if (admission === 'refused') {
+            this.logger.warn(`[Outbound] refused on spend for tenant=${outbound.tenantId}`);
+            return 'skipped:spend_refused';
+        }
         const result = await this.channelGateway.sendMessage(outbound, creds.accessToken);
+        await this.recordSpend(outbound, admission, result);
 
         if (!result) {
             throw new Error(`Failed to send message to ${outbound.to} via ${outbound.channelType}`);

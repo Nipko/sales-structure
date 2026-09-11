@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { WhatsappSpendService } from './whatsapp-spend.service';
+import { WhatsappSendAdmissionService } from './whatsapp-send-admission.service';
 
 /**
  * The money authority, exported on its own.
@@ -13,7 +14,7 @@ import { WhatsappSpendService } from './whatsapp-spend.service';
  */
 @Module({
     imports: [PrismaModule],
-    providers: [WhatsappSpendService],
-    exports: [WhatsappSpendService],
+    providers: [WhatsappSpendService, WhatsappSendAdmissionService],
+    exports: [WhatsappSpendService, WhatsappSendAdmissionService],
 })
 export class WhatsappSpendModule {}

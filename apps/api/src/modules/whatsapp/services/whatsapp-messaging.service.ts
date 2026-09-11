@@ -1,9 +1,11 @@
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, Optional } from '@nestjs/common';
+import { createHash } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { WhatsappConnectionService } from './whatsapp-connection.service';
 import { toWhatsAppFormatting } from '../../../common/utils/channel-text-format.util';
+import { WhatsappSendAdmissionService, type Admission } from '../../billing/whatsapp-spend/whatsapp-send-admission.service';
 
 const META_GRAPH_VERSION = 'v21.0';
 
@@ -15,6 +17,11 @@ export class WhatsappMessagingService {
     private readonly prisma: PrismaService,
     private readonly httpService: HttpService,
     private readonly connectionService: WhatsappConnectionService,
+    // The third and last sink. This service builds its own payload and posts
+    // it to Meta itself, so a gate on the queue would never see it — and every
+    // template, every interactive card and every media message sent from a
+    // controller comes through here.
+    @Optional() private readonly spendGate?: WhatsappSendAdmissionService,
   ) {}
 
   // ============================================================
@@ -194,6 +201,15 @@ export class WhatsappMessagingService {
   ): Promise<{ success: boolean; messageId: string }> {
     const url = `https://graph.facebook.com/${META_GRAPH_VERSION}/${phoneNumberId}/messages`;
 
+    // Reserved BEFORE the request. A reservation taken afterwards is a record
+    // of money already spent, not a limit on spending it.
+    const admission = await this.admitSpend(schemaName, phoneNumberId, payload, templateName);
+    if (admission === 'refused') {
+      throw new BadRequestException(
+        'El envío fue rechazado por el límite de gasto de WhatsApp configurado para esta cuenta.',
+      );
+    }
+
     try {
       this.logger.log(`Sending ${payload.type} message to ${payload.to}`);
 
@@ -208,6 +224,11 @@ export class WhatsappMessagingService {
 
       const messageId = response.data?.messages?.[0]?.id || `unknown-${Date.now()}`;
       this.logger.log(`Message sent successfully: ${messageId}`);
+
+      // Accepted, not priced: Meta answers with an id long before it says what
+      // the delivery cost, so the reservation stands until a status webhook or
+      // a reconciliation settles it.
+      await this.recordSpend(schemaName, admission, { kind: 'delivered_unpriced', providerMessageId: messageId });
 
       // Loguear en BD
       await this.logMessage(schemaName, channelId, {
@@ -228,6 +249,13 @@ export class WhatsappMessagingService {
 
       this.logger.error(`Failed to send message: [${errorCode}] ${errorMessage}`);
 
+      // A refusal Meta names is proof nothing was delivered, so the money goes
+      // back. Anything else — a timeout, a socket reset, a 5xx — may still have
+      // put a message on a phone, and that reservation is retained.
+      await this.recordSpend(schemaName, admission, metaError
+        ? { kind: 'rejected', errorCode: String(errorCode) }
+        : { kind: 'timeout', errorCode: String(errorCode) });
+
       // Loguear fallo en BD
       await this.logMessage(schemaName, channelId, {
         providerMessageId: null,
@@ -242,6 +270,56 @@ export class WhatsappMessagingService {
       throw new BadRequestException(
         `Error al enviar mensaje de WhatsApp: ${errorMessage}`
       );
+    }
+  }
+
+  /**
+   * Ask the money gate for this one message.
+   *
+   * `'refused'` means a ceiling said no. `null` means there is no gate, or the
+   * schema maps to no tenant, and the send proceeds unmetered rather than being
+   * stopped by its own meter.
+   */
+  private async admitSpend(schemaName: string, phoneNumberId: string, payload: any, templateName?: string) {
+    if (!this.spendGate) return null;
+    try {
+      const admission = await this.spendGate.admitBySchema(schemaName, {
+        channelType: 'whatsapp',
+        channelAccountId: phoneNumberId,
+        // The recipient is hashed before it travels: this value ends up in an
+        // effect key and in log lines.
+        recipientRef: createHash('sha256').update(String(payload?.to ?? '')).digest('hex').slice(0, 32),
+        // A template outside the 24h window is `utility` or `marketing` and is
+        // priced differently from a service reply. Guessing `service` for all
+        // of them would underprice every campaign, so the distinction is kept:
+        // what a template's category actually IS comes from Meta, and until
+        // that is bound the reservation carries `template` and prices as
+        // unknown rather than as cheap.
+        category: templateName ? 'template' : 'service',
+        producer: templateName ? 'whatsapp_rest_template' : `whatsapp_rest_${String(payload?.type ?? 'text')}`,
+        contentDigest: createHash('sha256').update(JSON.stringify(payload ?? null)).digest('hex').slice(0, 32),
+        admissionReason: 'whatsapp_messaging_service',
+      });
+      if (admission && !admission.permitted) return 'refused' as const;
+      return admission;
+    } catch (error: any) {
+      // An unreachable gate must not stop a customer being answered. It is
+      // logged loudly because an ungated send is exactly what this boundary
+      // exists to make impossible.
+      this.logger.error(`[Spend] gate unavailable for whatsapp REST: ${error?.message}`);
+      return null;
+    }
+  }
+
+  private async recordSpend(schemaName: string, admission: unknown, outcome: {
+    kind: 'delivered_priced' | 'delivered_unpriced' | 'rejected' | 'timeout';
+    providerMessageId?: string | null; errorCode?: string | null;
+  }) {
+    if (!admission || admission === 'refused' || !this.spendGate) return;
+    try {
+      await this.spendGate.record(schemaName, admission as Admission, outcome);
+    } catch (error: any) {
+      this.logger.error(`[Spend] outcome not recorded: ${error?.message}`);
     }
   }
 

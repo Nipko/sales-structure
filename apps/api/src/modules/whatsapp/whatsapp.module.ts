@@ -13,6 +13,7 @@ import { AnalyticsModule } from '../analytics/analytics.module';
 import { ChannelsModule } from '../channels/channels.module';
 import { TenantsModule } from '../tenants/tenants.module';
 import { WhatsappCryptoService } from './services/whatsapp-crypto.service';
+import { WhatsappSpendModule } from '../billing/whatsapp-spend/whatsapp-spend.module';
 
 @Module({
   imports: [
@@ -23,6 +24,9 @@ import { WhatsappCryptoService } from './services/whatsapp-crypto.service';
     InboundQueueModule,
     AnalyticsModule,
     forwardRef(() => ChannelsModule),
+    // `WhatsappMessagingService` posts to Meta itself, so the gate has to
+    // reach it here too — the queue never sees those sends.
+    WhatsappSpendModule,
   ],
   controllers: [WhatsappController],
   providers: [

@@ -30,6 +30,7 @@ import { InboundQueueModule } from '../inbound/inbound-queue.module';
 import { ConversationsModule } from '../conversations/conversations.module';
 import { WhatsappModule } from '../whatsapp/whatsapp.module';
 import { SmsCreditsModule } from '../sms-credits/sms-credits.module';
+import { WhatsappSpendModule } from '../billing/whatsapp-spend/whatsapp-spend.module';
 // AnalyticsModule removed — compliance check moved to ConversationsService to avoid DI issues in processor
 
 @Module({
@@ -45,6 +46,10 @@ import { SmsCreditsModule } from '../sms-credits/sms-credits.module';
         forwardRef(() => ConversationsModule),
         forwardRef(() => WhatsappModule),
         SmsCreditsModule,
+        // The money authority. A leaf (Prisma only), so it closes no cycle,
+        // and it is imported here rather than injected globally so that the
+        // dependency is visible in the module that actually sends.
+        WhatsappSpendModule,
     ],
     controllers: [ChannelsController, ChannelManagementController, WebhookTapController, EmailWebhookController,
         DispatchRolloutController],

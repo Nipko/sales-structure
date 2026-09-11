@@ -78,6 +78,72 @@ describe('WhatsApp worker delivery status', () => {
             status: 'delivered',
             errorCode: null,
             recipient: '57300',
+            pricing: null,
+            errorDetail: null,
+        });
+    });
+
+    // ── THE MONEY HALF OF A RECEIPT ─────────────────────────────────────────
+    //
+    // From October 2026 Meta bills the business per DELIVERED service message,
+    // and this worker is the road those receipts travel in production. It used
+    // to forward five fields and drop the two that decide the amount, so the
+    // ledger on the other side could never settle anything correctly:
+    // `billable:false` never arrived, and neither did the words Meta uses when
+    // the numeric code is generic.
+    describe('carries what Meta said about the money', () => {
+        it('forwards the pricing block verbatim, because `billable:false` is the only free', async () => {
+            const h = harness();
+            await run(h, {
+                id: 'wamid.P', status: 'delivered', recipient_id: '57300',
+                pricing: { billable: false, pricing_model: 'PMP', category: 'service' },
+            });
+            expect(h.posts[0].body.pricing)
+                .toEqual({ billable: false, pricing_model: 'PMP', category: 'service' });
+        });
+
+        it('keeps no opinion about it: a shape it does not recognise still travels', async () => {
+            // Deciding what `pricing` means here would be a second copy of a
+            // rule that already has an owner, and the two copies would disagree
+            // the first time Meta renamed a field.
+            const h = harness();
+            await run(h, { id: 'wamid.Q', status: 'delivered', pricing: { something_new: 7 } });
+            expect(h.posts[0].body.pricing).toEqual({ something_new: 7 });
+        });
+
+        it('sends null rather than undefined when Meta priced nothing', async () => {
+            // `undefined` disappears through JSON.stringify; the API reads the
+            // absence the same way either way, but a field that vanishes from
+            // the wire cannot be asserted on, and this one has to be.
+            const h = harness();
+            await run(h, { id: 'wamid.R', status: 'sent' });
+            expect(h.posts[0].body).toHaveProperty('pricing', null);
+        });
+
+        it('forwards the words Meta uses when the code alone is generic', async () => {
+            // `131042` is the one refusal whose correct answer is to stop, and
+            // Meta sometimes explains it in prose behind a generic code. The
+            // API pauses the number on either; it can only do that if the prose
+            // survives the hop.
+            const h = harness();
+            await run(h, {
+                id: 'wamid.S', status: 'failed',
+                errors: [{ code: 131042, title: 'Business eligibility payment issue',
+                    error_data: { details: 'add a valid payment method' } }],
+            });
+            expect(h.posts[0].body.errorCode).toBe(131042);
+            expect(h.posts[0].body.errorDetail)
+                .toBe('title="Business eligibility payment issue" details="add a valid payment method"');
+        });
+
+        it('falls back to Meta’s `message` when there is no `error_data.details`', async () => {
+            const h = harness();
+            await run(h, {
+                id: 'wamid.T', status: 'failed',
+                errors: [{ code: 131026, title: 'Undeliverable', message: 'Receiver incapable' }],
+            });
+            expect(h.posts[0].body.errorDetail)
+                .toBe('title="Undeliverable" details="Receiver incapable"');
         });
     });
 

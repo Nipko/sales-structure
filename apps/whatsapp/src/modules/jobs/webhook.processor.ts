@@ -188,14 +188,34 @@ export class WebhookProcessor extends WorkerHost {
       ['status_update', JSON.stringify(status), dedupeKey],
     );
 
+    const error = status.errors?.[0] ?? null;
     await this.forwardDeliveryStatus({
       tenantId,
       channelType: 'whatsapp',
       channelAccountId: phoneNumberId,
       providerMessageId: status.id,
       status: status.status,
-      errorCode: status.errors?.[0]?.code ?? null,
+      errorCode: error?.code ?? null,
       recipient: status.recipient_id ?? null,
+      // ── THE TWO FIELDS THAT DECIDE MONEY ──────────────────────────────────
+      //
+      // This worker is the road Meta's receipts actually travel, and for months
+      // it forwarded a receipt with the money stripped out of it:
+      //
+      //   · `pricing` is Meta's own block, and `billable:false` in it is the
+      //     ONE authority that can settle a delivered message at zero. Dropped
+      //     here, every free delivery was billed at the reserved amount;
+      //   · `errorDetail` is where Meta explains in words what the numeric code
+      //     leaves generic — including the payment problem that must pause the
+      //     number instead of retrying it forever.
+      //
+      // Forwarded verbatim and unjudged: this service keeps no opinion about a
+      // receipt, and deciding what `pricing` means here would be a second copy
+      // of a rule that already has an owner.
+      pricing: status.pricing ?? null,
+      errorDetail: error
+        ? `title="${error.title ?? ''}" details="${error.error_data?.details ?? error.message ?? ''}"`
+        : null,
     });
 
     await this.prisma.executeInTenantSchema(

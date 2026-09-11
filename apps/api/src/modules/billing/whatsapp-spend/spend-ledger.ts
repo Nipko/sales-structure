@@ -237,15 +237,30 @@ export async function findReservation(query: SpendQuery, schema: string, effectK
  * a zero-money cap would silence a tenant who never asked for a limit.
  */
 export async function ensureCounters(query: SpendQuery, schema: string, scopes: readonly SpendScope[],
-    currency: string): Promise<void> {
+    currency: string, freeAllowance?: number): Promise<void> {
     assertSchema(schema);
     for (const scope of inLockOrder(scopes)) {
+        // ── THE ALLOWANCE IS SEEDED WITH THE COUNTER, OR IT NEVER EXISTS ────
+        //
+        // `number_month` is the row Meta's thousand free service messages live
+        // in, and it was being created like every other scope: `cap_kind =
+        // 'observe'` with a null `cap_deliveries`. `grantFreeDeliveries`
+        // matches on `cap_kind = 'deliveries'`, so it found no row, granted
+        // nothing, and every tenant was charged from their first message while
+        // the panel showed a thousand free ones waiting.
+        //
+        // Seeded on INSERT only. A month already under way keeps the figure it
+        // started with: changing a ceiling mid-period retroactively rewrites
+        // what a business was told it had.
+        const isAllowance = scope.kind === 'number_month' && freeAllowance !== undefined;
         await query(
             `INSERT INTO "${schema}".whatsapp_spend_counters
-                (scope_kind, scope_key, period_key, cap_kind, currency)
-             VALUES ($1,$2,$3,'observe',$4)
+                (scope_kind, scope_key, period_key, cap_kind, currency, cap_deliveries)
+             VALUES ($1,$2,$3,$5,$4,$6)
              ON CONFLICT (scope_kind, scope_key, period_key) DO NOTHING`,
-            [scope.kind, scope.key, scope.period, currency]);
+            [scope.kind, scope.key, scope.period, currency,
+                isAllowance ? 'deliveries' : 'observe',
+                isAllowance ? Math.max(0, Math.trunc(freeAllowance!)) : null]);
     }
 }
 

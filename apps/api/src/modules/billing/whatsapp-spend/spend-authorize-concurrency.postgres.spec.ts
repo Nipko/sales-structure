@@ -47,10 +47,20 @@ integration('authorising one effect from two places at once', () => {
         category: 'service', market: 'CO', currency: 'USD', ...over,
     });
 
-    const authorize = (service: WhatsappSpendService, effectKey: string, over: Record<string, unknown> = {}) =>
-        service.authorize(schema, {
+    /**
+     * One authorisation, with the defaults this suite is about.
+     *
+     * `identity` is applied AFTER the spread deliberately. It used to be built
+     * first and then overwritten by `...over`, so a caller passing
+     * `{ identity: { category: 'marketing' } }` silently sent an identity with
+     * no tenant and no payer — and got `payer_unknown` instead of the effect it
+     * asked for. The override is merged into the default identity, not
+     * substituted for it.
+     */
+    const authorize = (service: WhatsappSpendService, effectKey: string, over: Record<string, unknown> = {}) => {
+        const { identity: identityOver, ...rest } = over as Record<string, any>;
+        return service.authorize(schema, {
             effectKey,
-            identity: identity(over.identity as any ?? {}) as any,
             contactId: 'contact-1',
             deliveries: 1,
             wabaTimeZone: 'America/Bogota',
@@ -58,8 +68,10 @@ integration('authorising one effect from two places at once', () => {
             disposition: 'reactive',
             allowUnknownCost: true,
             at: new Date('2026-10-05T12:00:00.000Z'),
-            ...over,
+            ...rest,
+            identity: identity(identityOver ?? {}) as any,
         });
+    };
 
     const counters = async () => q(
         `SELECT scope_kind, scope_key, reserved_minor, settled_minor, used_deliveries, free_deliveries
@@ -178,7 +190,11 @@ integration('authorising one effect from two places at once', () => {
         const effectKey = `unpriceable-${randomUUID().replace(/-/g, '')}`;
         await service().authorize(schema, {
             effectKey,
-            identity: identity() as any,
+            // MARKETING, because a service message is genuinely free for the
+            // first thousand of the month and a free effect correctly reserves
+            // nothing. This test is about what an UNPRICEABLE chargeable effect
+            // records, so it has to be chargeable.
+            identity: identity({ category: 'marketing' }) as any,
             contactId: 'contact-1', deliveries: 1,
             wabaTimeZone: 'America/Bogota', admissionReason: 'inbound_reply',
             disposition: 'reactive', allowUnknownCost: true,
@@ -242,15 +258,35 @@ integration('authorising one effect from two places at once', () => {
     it('does not let the adopting side report the ceiling as empty', async () => {
         // The adopting transaction reserves nothing. Reporting `clear` on that
         // basis would say a full account is empty on every retry.
+        // Marketing, because a service message is free for the first thousand
+        // of the month and a free effect fills no ceiling — there would be no
+        // pressure to misreport.
+        const marketing = { identity: { category: 'marketing' } };
+
+        // What one of these actually costs, learned from the ledger's own row
+        // rather than computed here: a test that priced the message itself
+        // would agree with a wrong rate card, and the ceiling has to be filled
+        // EXACTLY for `hard_stop` to be the honest answer.
+        const probeKey = `race-probe-${randomUUID().replace(/-/g, '')}`;
+        await authorize(service(), probeKey, marketing);
+        const [probe] = await q(
+            `SELECT reserved_minor FROM "${schema}".whatsapp_spend_reservations
+              WHERE effect_key = $1`, [probeKey]);
+        const oneMessage = Number(probe.reserved_minor);
+        expect(oneMessage).toBeGreaterThan(0);
+        await q(`TRUNCATE "${schema}".whatsapp_spend_allocations,
+                          "${schema}".whatsapp_spend_reservations,
+                          "${schema}".whatsapp_spend_counters`);
+
         const effectKey = `race-pressure-${randomUUID().replace(/-/g, '')}`;
         await q(`INSERT INTO "${schema}".whatsapp_spend_counters
             (scope_kind, scope_key, period_key, cap_kind, cap_minor, currency,
              warn_permille, soft_permille)
-            VALUES ('account','15550001111','2026-10','money',1,'USD',1000,1000)`);
+            VALUES ('account','15550001111','2026-10','money',$1,'USD',1000,1000)`, [oneMessage]);
 
         const [left, right] = await Promise.all([
-            authorize(service(), effectKey),
-            authorize(service(), effectKey),
+            authorize(service(), effectKey, marketing),
+            authorize(service(), effectKey, marketing),
         ]);
         const adopted = [left, right].find(result => result.outcome === 'adopted');
         expect(adopted).toBeDefined();

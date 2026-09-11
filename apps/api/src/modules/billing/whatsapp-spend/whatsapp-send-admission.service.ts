@@ -11,6 +11,7 @@ import type { TransmissionGrant } from './spend-ledger';
 import type { SpendDisposition, SpendPressure } from './spend-ledger';
 import { resolveRepetitionPolicy, type RepetitionPolicy } from './spend-repetition';
 import { describeBlock, spendBlock, type SpendBlock } from './spend-diagnosis';
+import { consumesFreeAllowance, freeAllowanceFromMetadata } from './free-allowance';
 import { SpendMeterUnavailable } from './spend-unavailable';
 import { AccountPauseStore } from '../../channels/account-pause-store';
 import { describePause } from '../../channels/account-send-pause';
@@ -405,6 +406,19 @@ export class WhatsappSendAdmissionService {
 
         const result: SpendAuthorizeResult = await this.spend.authorize(request.schema, {
             effectKey,
+            // ── THE FREE THOUSAND, AND WHO MAY SPEND IT ────────────────────
+            //
+            // Only a message we could actually CLASSIFY as service. The
+            // identity below writes `service` for an unclassifiable one too —
+            // the column is constrained and that is what fits — so reading the
+            // allowance off it would hand a free message to a utility template
+            // that Meta charges for and that explicitly does not consume the
+            // quota. The business would then pay twice: once for the template,
+            // and once for the service reply whose free slot it ate.
+            freeAllowanceEligible: category.kind === 'resolved'
+                && consumesFreeAllowance(category.category),
+            // Meta's published figure unless this number was told another one.
+            freeAllowance: freeAllowanceFromMetadata(account.metadata),
             identity: {
                 tenantId: request.connection.tenantId,
                 channelType: channel,

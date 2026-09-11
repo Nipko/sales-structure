@@ -20,6 +20,7 @@ import {
     type TransmissionClaim, type TransmissionGrant,
 } from './spend-ledger';
 import { scopeId, scopesFor, type SpendScope } from './spend-scopes';
+import { consumesFreeAllowance, freeAllowanceFor } from './free-allowance';
 import { spendBlock, type SpendBlock } from './spend-diagnosis';
 import {
     DEFAULT_REPETITION_POLICY, describeRepetition, judgeRepetition,
@@ -217,6 +218,23 @@ export class WhatsappSpendService {
          * `basis: 'unknown'` with the ceiling as its exposure.
          */
         readonly costUnknowable?: { readonly reason: string } | null;
+        /**
+         * This number's own free monthly allowance, when Meta gave the business
+         * a figure other than the published one. Absent means the published
+         * one, never zero — a default of zero would charge from the first
+         * message and look exactly like working correctly.
+         */
+        readonly freeAllowance?: number | null;
+        /**
+         * May this effect draw on the free allowance at all?
+         *
+         * Asked of the caller rather than read off `identity.category`, because
+         * that field carries `service` for a message NOBODY could classify —
+         * the ledger column is constrained and `service` is what fits. Reading
+         * the allowance off it would hand out a free message on a guess, and
+         * the guess is wrong precisely when a utility template went out.
+         */
+        readonly freeAllowanceEligible?: boolean;
     }): Promise<SpendAuthorizeResult> {
         const at = input.at ?? new Date();
 
@@ -324,11 +342,23 @@ export class WhatsappSpendService {
                 }
             }
 
-            await ensureCounters(query as SpendQuery, schema, scopes, currency);
+            // ── 4. The free allowance, seeded and then spent. ───────────────
+            //
+            // Only a SERVICE message draws on it. Utility templates inside the
+            // 24-hour window became chargeable in the same Meta update and
+            // explicitly do not consume this quota; marketing and
+            // authentication never did. Letting a utility template eat a free
+            // service message makes the business pay twice — once for the
+            // template, and once for the service reply that no longer had a
+            // free slot. A category nobody could classify is NOT eligible:
+            // handing out an allowance on a guess is the same mistake.
+            const eligible = input.freeAllowanceEligible
+                ?? consumesFreeAllowance(input.identity.category);
+            await ensureCounters(query as SpendQuery, schema, scopes, currency,
+                freeAllowanceFor(input.freeAllowance));
 
-            // ── 4. The free split, decided inside the statement. ────────────
             const allowanceScope = scopes.find(scope => scope.kind === 'number_month');
-            const freeGranted = allowanceScope
+            const freeGranted = allowanceScope && eligible
                 ? await grantFreeDeliveries(query as SpendQuery, schema, allowanceScope, input.deliveries)
                 : 0;
             const chargeable = Math.max(0, input.deliveries - freeGranted);

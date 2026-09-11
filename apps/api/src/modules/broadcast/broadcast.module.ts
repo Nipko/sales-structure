@@ -8,6 +8,7 @@ import { RedisModule } from '../redis/redis.module';
 import { WhatsappModule } from '../whatsapp/whatsapp.module';
 import { EmailModule } from '../email/email.module';
 import { SmsCreditsModule } from '../sms-credits/sms-credits.module';
+import { WhatsappSpendModule } from '../billing/whatsapp-spend/whatsapp-spend.module';
 
 @Module({
     imports: [
@@ -15,6 +16,8 @@ import { SmsCreditsModule } from '../sms-credits/sms-credits.module';
         forwardRef(() => WhatsappModule),
         EmailModule,
         SmsCreditsModule,
+        // A campaign declares its own ceiling before it fans out.
+        WhatsappSpendModule,
         BullModule.registerQueue({
             name: BROADCAST_QUEUE,
         }),

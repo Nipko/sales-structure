@@ -3,7 +3,8 @@ import { Client } from 'pg';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import {
-    adoptReservation, claimReservation, ensureCounters, findReservation, grantFreeDeliveries,
+    adoptReservation, claimReservation, declareTaskBudget, ensureCounters, findReservation,
+    grantFreeDeliveries,
     readExposure, readPressure, recordAllocation, releaseReservation, reserveAgainstCounter,
     retainReservation, settleReservation, sweepExpiredLeases,
     type ReservationIdentity, type SpendQuery,
@@ -562,15 +563,23 @@ integration('the WhatsApp spend engine', () => {
             expect(Number((await counterRow(scopeKey)).reserved_minor)).toBe(990);
         });
 
-        it('honours a ceiling configured as a cliff', async () => {
+        it('honours a ceiling configured as a cliff, all the way to the cliff', async () => {
             // warn = soft = 1000 turns all three heights into one. Somebody who
             // wants the old behaviour must be able to have it, or "configurable"
             // is a word rather than a feature.
+            //
+            // The last assertion is the one that matters and the one that caught
+            // a real off-by-one: the soft comparison is STRICTLY below, to agree
+            // with the pressure function, so at 1000 it would have made the
+            // effective ceiling `cap - 1` — a limit one lower than the number
+            // written on it, for proactive sends only, silently.
             const scopeKey = `tier-cliff-${randomUUID()}`;
             await tieredCounter(scopeKey, 1000, 1000, 1000);
-            const campaign = await reserve(scopeKey, 999, 'proactive');
-            expect(campaign).toEqual({ ok: true, pressure: 'clear' });
-            expect((await reserve(scopeKey, 1, 'proactive')).pressure).toBe('hard_stop');
+            expect(await reserve(scopeKey, 999, 'proactive')).toEqual({ ok: true, pressure: 'clear' });
+            // The thousandth minor unit is inside the ceiling and must go.
+            expect(await reserve(scopeKey, 1, 'proactive')).toEqual({ ok: true, pressure: 'hard_stop' });
+            // The thousand-and-first is not.
+            expect(await reserve(scopeKey, 1, 'proactive')).toEqual({ ok: false, pressure: 'hard_stop' });
         });
 
         it('counts a delivery ceiling by the same three heights', async () => {
@@ -668,6 +677,127 @@ integration('the WhatsApp spend engine', () => {
                  warn_permille, soft_permille)
                 VALUES ('account',$1,'2026-10','money',1000,'USD',950,800)`,
                 [`tier-bad-${randomUUID()}`])).rejects.toThrow(/whatsapp_spend_counters_thresholds/);
+        });
+    });
+
+    describe('a batch that cannot outspend its own launch', () => {
+        /**
+         * The property: a campaign launched for N people cannot produce more
+         * than N charges, no matter how many workers run it at once.
+         *
+         * Nothing in the per-message ceilings gives this. An account cap is
+         * shared with every other producer, and the batch's own size is known
+         * only at launch — so the size becomes a ceiling of its own, declared
+         * BEFORE the fanout, and contended on by every worker inside its own
+         * statement.
+         */
+        const budget = (taskId: string, deliveries: number) =>
+            declareTaskBudget(query, schema, { taskId, period: '2026-10', deliveries, currency: 'USD' });
+
+        const task = (taskId: string) => ({ kind: 'task' as const, key: taskId, period: '2026-10' });
+
+        const send = (run: SpendQuery, taskId: string) => reserveAgainstCounter(run, schema, {
+            scope: task(taskId), amountMinor: 0, deliveries: 1, disposition: 'proactive',
+        });
+
+        it('declares a ceiling in deliveries, which needs no rate card', async () => {
+            // The reason it is deliveries and not money: this must work for an
+            // account whose price cannot be resolved at all. A ceiling that
+            // depends on a rate card is absent exactly when pricing is broken,
+            // which is when an unbounded batch is most expensive.
+            const taskId = `budget-${randomUUID()}`;
+            expect(await budget(taskId, 3)).toEqual({
+                capKind: 'deliveries', capDeliveries: 3, capMinor: null, usedDeliveries: 0,
+            });
+        });
+
+        it('lets exactly the launched number through and refuses the rest', async () => {
+            const taskId = `budget-exact-${randomUUID()}`;
+            await budget(taskId, 3);
+            for (let i = 0; i < 3; i++) expect((await send(query, taskId)).ok).toBe(true);
+            expect(await send(query, taskId)).toEqual({ ok: false, pressure: 'hard_stop' });
+        });
+
+        it('holds when two workers reach the last slot together', async () => {
+            // A sequential test passes against a budget checked in application
+            // code. This one does not: the second worker is provably blocked on
+            // the row lock when the first commits, so what refuses it is the
+            // re-evaluated predicate.
+            const taskId = `budget-race-${randomUUID()}`;
+            await budget(taskId, 1);
+
+            const [left, right] = [new Client({ connectionString: connection }),
+                new Client({ connectionString: connection })];
+            await Promise.all([left.connect(), right.connect()]);
+            try {
+                await left.query('BEGIN');
+                await right.query('BEGIN');
+                const runner = (c: Client): SpendQuery =>
+                    async <R = any[]>(sql: string, params: any[] = []): Promise<R> =>
+                        (await c.query(sql, params)).rows as any;
+                const first = await send(runner(left), taskId);
+                const contending = send(runner(right), taskId);
+                await until('the second worker to be waiting on the batch ceiling',
+                    async () => (await blockedBackends()) > 0);
+                await left.query('COMMIT');
+                const second = await contending;
+                await right.query('COMMIT');
+                expect(first.ok).toBe(true);
+                expect(second).toEqual({ ok: false, pressure: 'hard_stop' });
+                const [row] = await query<any[]>(
+                    `SELECT used_deliveries, cap_deliveries FROM "${schema}".whatsapp_spend_counters
+                      WHERE scope_kind='task' AND scope_key=$1 AND period_key='2026-10'`, [taskId]);
+                expect(Number(row.used_deliveries)).toBe(Number(row.cap_deliveries));
+            } finally { await Promise.all([left.end(), right.end()]); }
+        });
+
+        it('tops the ceiling up from where the campaign already is, on a relaunch', async () => {
+            // A relaunch queues only the recipients still pending. A ceiling set
+            // to "the pending count" would hard-stop a campaign that had already
+            // sent half of itself — the limit firing on the very thing it was
+            // raised to allow.
+            const taskId = `budget-relaunch-${randomUUID()}`;
+            await budget(taskId, 5);
+            for (let i = 0; i < 5; i++) await send(query, taskId);
+            expect(await send(query, taskId)).toEqual({ ok: false, pressure: 'hard_stop' });
+
+            expect(await budget(taskId, 2)).toEqual({
+                capKind: 'deliveries', capDeliveries: 7, capMinor: null, usedDeliveries: 5,
+            });
+            expect((await send(query, taskId)).ok).toBe(true);
+            expect((await send(query, taskId)).ok).toBe(true);
+            expect(await send(query, taskId)).toEqual({ ok: false, pressure: 'hard_stop' });
+        });
+
+        it('has no soft stop of its own, because nothing else shares it', async () => {
+            // A shared ceiling pauses campaigns to protect replies. A batch's own
+            // ceiling has no replies to protect — it is the campaign — so a soft
+            // stop there would simply drop the last five per cent of recipients
+            // and call the campaign finished.
+            const taskId = `budget-soft-${randomUUID()}`;
+            await budget(taskId, 20);
+            const [row] = await query<any[]>(
+                `SELECT warn_permille, soft_permille FROM "${schema}".whatsapp_spend_counters
+                  WHERE scope_kind='task' AND scope_key=$1 AND period_key='2026-10'`, [taskId]);
+            expect({ warn: row.warn_permille, soft: row.soft_permille })
+                .toEqual({ warn: 800, soft: 1000 });
+            // And the warning still fires, so a big batch is visibly filling.
+            for (let i = 0; i < 15; i++) await send(query, taskId);
+            expect((await send(query, taskId)).pressure).toBe('warning');
+        });
+
+        it('honours a money ceiling when an operator sets one', async () => {
+            const taskId = `budget-money-${randomUUID()}`;
+            expect(await declareTaskBudget(query, schema, {
+                taskId, period: '2026-10', capMinor: 250, currency: 'USD',
+            })).toEqual({ capKind: 'money', capMinor: 250, capDeliveries: null, usedDeliveries: 0 });
+            const spend = (amount: number) => reserveAgainstCounter(query, schema, {
+                scope: task(taskId), amountMinor: amount, deliveries: 1, disposition: 'proactive',
+            });
+            expect((await spend(200)).ok).toBe(true);
+            // 200 of 250 is 80 %: the warning line, and still permitted.
+            expect((await spend(0)).pressure).toBe('warning');
+            expect(await spend(60)).toEqual({ ok: false, pressure: 'hard_stop' });
         });
     });
 

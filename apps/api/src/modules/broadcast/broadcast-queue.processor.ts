@@ -122,6 +122,10 @@ export class BroadcastQueueProcessor extends WorkerHost {
             data.templateLanguage,
             data.templateComponents,
             data.channelAccountId, // send FROM this number when the campaign picked one
+            // The campaign is the task whose ceiling was declared at launch,
+            // before any of these jobs existed. Naming it here is what makes
+            // this worker contend on that ceiling with its nine siblings.
+            { taskId: data.campaignId, contactId: data.contactId ?? null },
         );
         return result.messageId;
     }

@@ -9,6 +9,23 @@ import { WhatsappSendAdmissionService, type Admission } from '../../billing/what
 
 const META_GRAPH_VERSION = 'v21.0';
 
+/**
+ * What the money gate needs that a phone number and a payload cannot supply.
+ *
+ * Optional everywhere: a caller that does not pass it still sends, and the
+ * effect is still reserved against the account. What it adds is the narrower
+ * ceilings — the campaign's own budget, the per-contact limit — which cannot be
+ * enforced against an effect that does not know which campaign or which contact
+ * it belongs to.
+ */
+export interface WhatsappSendSpendContext {
+    /** The campaign, broadcast or automation this message belongs to. */
+    readonly taskId?: string | null;
+    readonly contactId?: string | null;
+    /** Distinguishes the second message of one effect from a repeat of the first. */
+    readonly ordinal?: number;
+}
+
 @Injectable()
 export class WhatsappMessagingService {
   private readonly logger = new Logger(WhatsappMessagingService.name);
@@ -35,6 +52,7 @@ export class WhatsappMessagingService {
     language: string,
     components: any[],
     fromPhoneNumberId?: string,
+    spend?: WhatsappSendSpendContext,
   ) {
     const { accessToken, phoneNumberId, channelId } = await this.connectionService.getValidAccessToken(schemaName, fromPhoneNumberId);
     const cleanPhone = toPhone.replace(/[+\s-]/g, '');
@@ -51,7 +69,8 @@ export class WhatsappMessagingService {
       },
     };
 
-    return this.sendToMeta(schemaName, channelId, phoneNumberId, accessToken, payload, templateName);
+    return this.sendToMeta(schemaName, channelId, phoneNumberId, accessToken, payload, templateName,
+      undefined, spend);
   }
 
   // ============================================================
@@ -197,13 +216,14 @@ export class WhatsappMessagingService {
     accessToken: string,
     payload: any,
     templateName?: string,
-    conversationId?: string
+    conversationId?: string,
+    spend?: WhatsappSendSpendContext,
   ): Promise<{ success: boolean; messageId: string }> {
     const url = `https://graph.facebook.com/${META_GRAPH_VERSION}/${phoneNumberId}/messages`;
 
     // Reserved BEFORE the request. A reservation taken afterwards is a record
     // of money already spent, not a limit on spending it.
-    const admission = await this.admitSpend(schemaName, phoneNumberId, payload, templateName);
+    const admission = await this.admitSpend(schemaName, phoneNumberId, payload, templateName, spend);
     if (admission === 'refused') {
       throw new BadRequestException(
         'El envío fue rechazado por el límite de gasto de WhatsApp configurado para esta cuenta.',
@@ -280,7 +300,8 @@ export class WhatsappMessagingService {
    * schema maps to no tenant, and the send proceeds unmetered rather than being
    * stopped by its own meter.
    */
-  private async admitSpend(schemaName: string, phoneNumberId: string, payload: any, templateName?: string) {
+  private async admitSpend(schemaName: string, phoneNumberId: string, payload: any,
+    templateName?: string, spend?: WhatsappSendSpendContext) {
     if (!this.spendGate) return null;
     try {
       const admission = await this.spendGate.admitBySchema(schemaName, {
@@ -305,6 +326,13 @@ export class WhatsappMessagingService {
         producer: templateName ? 'whatsapp_rest_template' : `whatsapp_rest_${String(payload?.type ?? 'text')}`,
         contentDigest: createHash('sha256').update(JSON.stringify(payload ?? null)).digest('hex').slice(0, 32),
         admissionReason: 'whatsapp_messaging_service',
+        // Without these two the effect can only be counted against the account.
+        // With them it also lands on the campaign's own budget and the contact's
+        // limit — which is what stops one batch, or one contact, from consuming
+        // a whole month.
+        taskId: spend?.taskId ?? null,
+        contactId: spend?.contactId ?? null,
+        ordinal: spend?.ordinal ?? 0,
       });
       if (admission && !admission.permitted) return 'refused' as const;
       return admission;

@@ -6,13 +6,14 @@ import {
     wabaCalendarMonth, wabaLocalDate,
 } from '../whatsapp-rates';
 import {
-    adoptReservation, claimReservation, ensureCounters, findReservation, grantFreeDeliveries,
+    adoptReservation, claimReservation, declareTaskBudget, ensureCounters, findReservation,
+    grantFreeDeliveries,
     readExposure, readPressure, recordAllocation, releaseReservation, reserveAgainstCounter,
     retainReservation,
     settleReservation, sweepExpiredLeases,
     worstPressure,
     type ReservationBinding, type ReservationIdentity, type ReservationRow, type SpendExposure,
-    type SpendDisposition, type SpendPressure, type SpendQuery,
+    type SpendDisposition, type SpendPressure, type SpendQuery, type TaskBudget,
 } from './spend-ledger';
 import { scopeId, scopesFor, type SpendScope } from './spend-scopes';
 import { spendBlock, type SpendBlock } from './spend-diagnosis';
@@ -270,6 +271,35 @@ export class WhatsappSpendService {
             if (error instanceof SpendRefused) return blocked(error.block);
             throw error;
         });
+    }
+
+    /**
+     * Declare a proactive batch's ceiling before a single job is enqueued.
+     *
+     * Order matters and is the whole point: the budget is COMMITTED before the
+     * fanout, so by the time ten workers are running there is already a row for
+     * them to contend on. Declaring it afterwards — or checking it in
+     * application code — leaves a window in which the batch is unbounded, and a
+     * window in a spending limit is the same as no limit.
+     *
+     * Returns the ceiling that now stands, so the caller can say what it is.
+     */
+    async budgetTask(schema: string, input: {
+        readonly taskId: string;
+        readonly period: string;
+        readonly deliveries?: number;
+        readonly capMinor?: number | null;
+        readonly currency?: string | null;
+        readonly warnPermille?: number;
+        readonly softPermille?: number;
+    }): Promise<TaskBudget> {
+        return this.prisma.transactionInTenantSchema(schema, async query =>
+            declareTaskBudget(query as SpendQuery, schema, {
+                ...input,
+                // The currency is only meaningful on a money ceiling; a delivery
+                // ceiling counts messages, which no currency changes.
+                currency: String(input.currency ?? 'USD').toUpperCase(),
+            }));
     }
 
     /**

@@ -276,7 +276,7 @@ buscar una llamada a la autoridad economica en el codigo del archivo.
 | `apps/api/src/modules/channels/whatsapp/whatsapp.adapter.ts:402` | Graph `/{phone_number_id}/messages` POST | camino | the adapter; reachable only through `ChannelGatewayService.sendMessage` or the strict transport, and every call site of both is classified above |
 | `apps/api/src/modules/channels/whatsapp/whatsapp.adapter.ts:452` | Graph `/{phone_number_id}/messages` POST | camino | the adapter; reachable only through `ChannelGatewayService.sendMessage` or the strict transport, and every call site of both is classified above |
 | `apps/api/src/modules/channels/whatsapp/whatsapp.adapter.ts:500` | Graph `/{phone_number_id}/messages` POST | camino | the adapter; reachable only through `ChannelGatewayService.sendMessage` or the strict transport, and every call site of both is classified above |
-| `apps/api/src/modules/whatsapp/services/whatsapp-messaging.service.ts:193` | Graph `/{phone_number_id}/messages` POST | si | pide permiso antes de emitir |
+| `apps/api/src/modules/whatsapp/services/whatsapp-messaging.service.ts:205` | Graph `/{phone_number_id}/messages` POST | si | pide permiso antes de emitir |
 
 ### Productores cobrables y su sumidero
 

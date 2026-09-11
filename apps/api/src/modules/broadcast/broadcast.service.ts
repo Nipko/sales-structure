@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException, Inject, forwardRef } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException, Inject, Optional, forwardRef } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Cron } from '@nestjs/schedule';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -7,6 +7,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { AbTestService } from './ab-test.service';
 import { CronLockService } from '../redis/cron-lock.service';
+import { WhatsappSpendService } from '../billing/whatsapp-spend/whatsapp-spend.service';
 
 export const BROADCAST_QUEUE = 'broadcast-messages';
 
@@ -40,6 +41,10 @@ export interface BroadcastJobData {
     schemaName: string;
     campaignId: string;
     recipientId: string;
+    // The contact behind this recipient row. Carried so the per-contact spending
+    // limit can see the message: a ceiling that cannot identify who a message is
+    // for cannot stop one contact consuming a whole month.
+    contactId?: string | null;
     channel: string;
     phone: string;
     email?: string;
@@ -85,6 +90,9 @@ export class BroadcastService {
         @Inject(forwardRef(() => AbTestService))
         private readonly abTestService: AbTestService,
         private readonly cronLock: CronLockService,
+        // Optional, like everywhere else the gate appears: a deployment that has
+        // not wired it must still be able to run a campaign.
+        @Optional() private readonly spendGate?: WhatsappSpendService,
     ) {}
 
     // ================================================================
@@ -325,6 +333,7 @@ export class BroadcastService {
                     schemaName: schema,
                     campaignId,
                     recipientId: r.id,
+                    contactId: r.contact_id || null,
                     channel: ch,
                     phone: r.phone || '',
                     email: r.email || '',
@@ -348,6 +357,23 @@ export class BroadcastService {
             };
         });
 
+        // ── The batch's own ceiling, COMMITTED BEFORE THE FANOUT ────────────
+        //
+        // Order is the whole point. Once `addBulk` returns, ten workers are
+        // running against this campaign at once; a budget declared after that —
+        // or checked in application code rather than in the reserving statement
+        // — leaves a window in which the batch is unbounded, and a window in a
+        // spending limit is the same as no limit.
+        //
+        // The ceiling is the batch's own size in DELIVERED MESSAGES. It needs no
+        // rate card, no currency and no market, so it exists even for an account
+        // whose price cannot be resolved — and "at most this many messages" is
+        // exactly what launching a campaign for this many people authorises. It
+        // is what stops a re-enqueue, a retry storm or a bug from turning five
+        // hundred recipients into five thousand charges.
+        await this.declareCampaignBudget(schema, campaignId, jobs
+            .filter(job => (job.data as BroadcastJobData).channel === 'whatsapp').length);
+
         await this.broadcastQueue.addBulk(jobs);
 
         await this.prisma.executeInTenantSchema(
@@ -359,6 +385,30 @@ export class BroadcastService {
 
         this.logger.log(`Campaign ${campaignId} launched: ${recipients.length} messages queued`);
         return { queued: recipients.length };
+    }
+
+    /**
+     * Tell the money authority what this launch is allowed to cost.
+     *
+     * Failing here does NOT stop the launch. The gate is optional by design —
+     * a deployment that has not wired it must still be able to run campaigns —
+     * and a budget that could not be written is a missing ceiling, not a reason
+     * to refuse a campaign somebody scheduled. It is logged at error level
+     * because an unbudgeted batch is precisely what this call exists to prevent.
+     */
+    private async declareCampaignBudget(schema: string, campaignId: string, deliveries: number) {
+        if (!this.spendGate || deliveries <= 0) return;
+        try {
+            const period = new Date().toISOString().slice(0, 7);
+            const budget = await this.spendGate.budgetTask(schema, {
+                taskId: campaignId, period, deliveries,
+            });
+            this.logger.log(`Campaign ${campaignId} budget: at most ${budget.capDeliveries} `
+                + `delivered WhatsApp messages this period (${budget.usedDeliveries} already sent)`);
+        } catch (error: any) {
+            this.logger.error(`Campaign ${campaignId} launched WITHOUT a declared spend ceiling: `
+                + `${error?.message}. The account and contact ceilings still apply.`);
+        }
     }
 
     // ================================================================

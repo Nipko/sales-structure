@@ -387,6 +387,93 @@ export async function readPressure(query: SpendQuery, schema: string,
     return worstPressure(values);
 }
 
+export interface TaskBudget {
+    readonly capKind: SpendCapKind;
+    readonly capDeliveries: number | null;
+    readonly capMinor: number | null;
+    /** What the task had already spent when the budget was declared. */
+    readonly usedDeliveries: number;
+}
+
+/**
+ * Declare what one batch is allowed to cost, BEFORE it fans out.
+ *
+ * A campaign launched for five hundred recipients should be incapable of
+ * producing five thousand charges. Nothing in the per-message ceilings stops
+ * that: an account cap is shared with every other producer, and the batch's own
+ * size is known only at launch. So the size becomes a ceiling of its own, and
+ * because every worker reserves against it inside its own statement, ten
+ * parallel workers cannot collectively exceed it — which is the property a
+ * budget checked in application code would not have.
+ *
+ * The ceiling is expressed in DELIVERIES rather than money when the operator has
+ * not set an amount. Deliveries need no rate card, no currency and no market, so
+ * the bound exists even for an account the pricing cannot resolve — and "at most
+ * N messages" is what a launch actually authorises.
+ *
+ * `used_deliveries + n` on an existing counter, not `n`: relaunching a campaign
+ * queues only the recipients still pending, and a ceiling of "the pending count"
+ * would hard-stop a campaign that had already sent half of itself.
+ */
+export async function declareTaskBudget(query: SpendQuery, schema: string, input: {
+    readonly taskId: string;
+    readonly period: string;
+    readonly deliveries?: number;
+    readonly capMinor?: number | null;
+    readonly currency: string;
+    readonly warnPermille?: number;
+    readonly softPermille?: number;
+}): Promise<TaskBudget> {
+    assertSchema(schema);
+    const warn = input.warnPermille ?? 800;
+    // ── WHY A TASK CEILING HAS NO SOFT STOP BY DEFAULT ──────────────────────
+    //
+    // The soft stop exists to protect replies from campaigns on a SHARED
+    // ceiling — the account, the contact, the number's month. A task ceiling is
+    // not shared: it is one batch's own size, and the only thing spending it is
+    // that batch.
+    //
+    // Left at 950, a campaign launched for a hundred people would stop at
+    // ninety-five. Five people never hear from the business, the campaign
+    // reports itself incomplete, and the limit fired on exactly the thing it was
+    // set to allow. The suite caught this: five sends against a ceiling of five
+    // left `used_deliveries` at four.
+    //
+    // The warning line stays where it is, so an operator watching a big batch
+    // still sees it fill.
+    const soft = input.softPermille ?? 1000;
+    const money = input.capMinor !== undefined && input.capMinor !== null;
+    const [row] = await query<any[]>(
+        `INSERT INTO "${schema}".whatsapp_spend_counters
+            (scope_kind, scope_key, period_key, cap_kind, cap_minor, cap_deliveries, currency,
+             warn_permille, soft_permille)
+         VALUES ('task', $1, $2, $3, $4, $5, $6, $7, $8)
+         ON CONFLICT (scope_kind, scope_key, period_key) DO UPDATE
+            SET cap_kind = EXCLUDED.cap_kind,
+                cap_minor = EXCLUDED.cap_minor,
+                -- The new allowance is measured from where the task already is,
+                -- so a relaunch tops the budget up instead of capping below it.
+                cap_deliveries = CASE WHEN EXCLUDED.cap_kind = 'deliveries'
+                    THEN whatsapp_spend_counters.used_deliveries + EXCLUDED.cap_deliveries
+                    ELSE NULL END,
+                currency = EXCLUDED.currency,
+                warn_permille = EXCLUDED.warn_permille,
+                soft_permille = EXCLUDED.soft_permille,
+                updated_at = clock_timestamp()
+         RETURNING cap_kind, cap_minor, cap_deliveries, used_deliveries`,
+        [input.taskId, input.period,
+            money ? 'money' : 'deliveries',
+            money ? input.capMinor : null,
+            money ? null : Math.max(0, input.deliveries ?? 0),
+            input.currency, warn, soft]);
+    return Object.freeze({
+        capKind: String(row.cap_kind) as SpendCapKind,
+        capMinor: row.cap_minor === null ? null : Number(row.cap_minor),
+        capDeliveries: row.cap_deliveries === null ? null : Number(row.cap_deliveries),
+        usedDeliveries: Number(row.used_deliveries),
+    });
+}
+
 export interface ReserveAgainstCounter {
     readonly scope: SpendScope;
     readonly amountMinor: number;
@@ -423,8 +510,17 @@ export async function reserveAgainstCounter(query: SpendQuery, schema: string,
     // The soft stop is a PREDICATE, not a check the caller runs afterwards. Read
     // first and decide second is the same race the cap itself exists to close:
     // two campaign workers would both read 94 % and both go.
+    //
+    // `soft_permille >= 1000` disables it, and that branch is not a shortcut —
+    // it is required for correctness. The comparison is STRICTLY below, to stay
+    // consistent with the pressure function, which reports `soft_stop` from the
+    // threshold inclusive. At 1000 that strictness would make the effective
+    // ceiling for a proactive send `cap - 1`: a batch of three could send two,
+    // and a ceiling "configured as a cliff" would quietly be one lower than the
+    // number written on it.
     const softClause = proactive
-        ? `AND (cap_kind = 'observe'
+        ? `AND (soft_permille >= 1000
+                OR cap_kind = 'observe'
                 OR (cap_kind = 'money'
                     AND (settled_minor + reserved_minor - released_minor + $4) * 1000
                         < cap_minor * soft_permille)

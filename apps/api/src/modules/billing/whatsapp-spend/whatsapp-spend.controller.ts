@@ -8,6 +8,7 @@ import { Roles } from '../../../common/decorators/roles.decorator';
 import { PrismaService } from '../../prisma/prisma.service';
 import { WhatsappSpendService } from './whatsapp-spend.service';
 import { SPEND_BLOCK_CODES } from './spend-diagnosis';
+import { FREE_SERVICE_MESSAGES_PER_NUMBER_MONTH } from './free-allowance';
 import { AccountPauseStore, PauseStateUnavailable } from '../../channels/account-pause-store';
 import { describePause, isPaused } from '../../channels/account-send-pause';
 
@@ -88,6 +89,54 @@ export class WhatsappSpendController {
                 // code added here cannot silently become an untranslated string
                 // on a screen somebody is reading during an outage.
                 refusalCodes: SPEND_BLOCK_CODES,
+            },
+        };
+    }
+
+    /**
+     * What each number consumed, by the calendar the invoice uses.
+     *
+     * `summary` answers about a rolling window, which is the right shape for
+     * "what is happening right now" and the wrong one for the two questions an
+     * operator has before an invoice arrives. The thousand free service
+     * deliveries reset at midnight on the first of the month IN THE WHATSAPP
+     * ACCOUNT'S OWN TIME ZONE, and Meta invoices by calendar month. A rolling
+     * thirty days straddles that boundary by construction, so somebody
+     * comparing our figure to their allowance was comparing two different
+     * periods and being told they disagreed.
+     *
+     * Read by the same three roles as the summary, for the same reason: the
+     * person watching the inbox is usually the first to notice.
+     */
+    @Get('consumption')
+    @UseGuards(AuthGuard('jwt'), RolesGuard)
+    @Roles('super_admin', 'tenant_admin', 'tenant_supervisor')
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'WhatsApp consumption per number per WABA-local calendar month' })
+    async consumption(@Request() req: any, @Query('channelAccountId') channelAccountId?: string,
+        @Query('months') months?: string) {
+        const tenantId = req.user?.tenantId;
+        if (!tenantId) throw new BadRequestException('User does not belong to a tenant');
+        const schema = await this.prisma.getTenantSchemaName(tenantId);
+        if (!schema) throw new BadRequestException('Tenant has no schema');
+
+        // Bounded here rather than trusted, the same as the summary window.
+        const window = Math.min(24, Math.max(1, Number(months) || 3));
+        const rows = await this.spend.calendarMonthConsumption(schema, {
+            channelAccountId: channelAccountId?.trim() || null, months: window,
+        });
+        return {
+            success: true,
+            data: {
+                months: window,
+                /**
+                 * The allowance every number gets, sent alongside so the client
+                 * does not carry its own copy of a number Meta sets. A figure
+                 * hardcoded in a dashboard is a figure that will be wrong the
+                 * month Meta changes it and right nowhere.
+                 */
+                freeServiceDeliveriesPerNumberMonth: FREE_SERVICE_MESSAGES_PER_NUMBER_MONTH,
+                consumption: rows,
             },
         };
     }

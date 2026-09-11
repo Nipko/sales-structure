@@ -1948,6 +1948,149 @@ export interface SpendExposure {
  * money. A caller that wants one figure has to convert deliberately, with a rate
  * it can name.
  */
+/**
+ * ═══ THE MONTH META ACTUALLY BILLS, NOT THE LAST THIRTY DAYS ═══
+ *
+ * `readExposure` answers about a rolling window, which is the right shape for
+ * "what is happening right now". It is the wrong shape for every question an
+ * operator actually has before an invoice arrives, because the two things they
+ * are trying to reconcile are both CALENDAR-MONTH facts:
+ *
+ *   · the thousand free service deliveries are per number per calendar month,
+ *     and they reset at midnight on the first — in the WhatsApp account's own
+ *     time zone, not ours and not the tenant's;
+ *   · Meta invoices by calendar month.
+ *
+ * A rolling thirty days straddles that boundary by construction, so an operator
+ * comparing our figure to their allowance or their bill was comparing two
+ * different periods and being told they disagreed.
+ *
+ * ── WHY `applied_local_date` AND NOT `created_at` ───────────────────────────
+ *
+ * `applied_local_date` is the WABA-local calendar date the rate was applied on,
+ * written when the reservation was priced. Grouping on it needs no time-zone
+ * arithmetic here and — more importantly — cannot drift from the date the
+ * PRICE was chosen against. Grouping `created_at` in UTC would put a message
+ * sent at 8pm in Bogotá on the 31st into the following month, which is exactly
+ * the boundary this exists to get right.
+ *
+ * A row with no `applied_local_date` is one nobody could price. It is reported
+ * as `undated` rather than folded into the current month: attributing unpriced
+ * spend to a month it may not belong to is how a reconciliation that looks
+ * complete hides the rows that need attention.
+ */
+export interface CalendarMonthConsumption {
+    /** `YYYY-MM` in the WhatsApp account's own time zone, or `null` for undated. */
+    readonly month: string | null;
+    readonly channelAccountId: string;
+    /** Service deliveries drawn from the free allowance this number/month. */
+    readonly freeDeliveries: number;
+    /** Deliveries that were charged, free allowance already excluded. */
+    readonly chargedDeliveries: number;
+    /** Per currency, never summed across them. */
+    readonly money: ReadonlyArray<{
+        readonly currency: string;
+        readonly settledMinor: number;
+        readonly retainedMinor: number;
+    }>;
+    /** Where it went: the recipient's market and the category Meta charged by. */
+    readonly byMarketCategory: ReadonlyArray<{
+        readonly market: string | null;
+        readonly category: string;
+        readonly deliveries: number;
+        readonly currency: string;
+        readonly settledMinor: number;
+        readonly retainedMinor: number;
+    }>;
+}
+
+/**
+ * Consumption per number per WABA-local calendar month.
+ *
+ * `months` bounds the scan: an unbounded one is a full read of the busiest
+ * table this tenant has, asked for by a query string.
+ */
+export async function readCalendarMonthConsumption(query: SpendQuery, schema: string, input: {
+    readonly channelAccountId?: string | null;
+    readonly months?: number;
+}): Promise<readonly CalendarMonthConsumption[]> {
+    assertSchema(schema);
+    const months = Math.min(24, Math.max(1, Number(input.months) || 3));
+    const rows = await query<any[]>(
+        `SELECT to_char(applied_local_date, 'YYYY-MM') AS month,
+                channel_account_id,
+                market,
+                category,
+                currency,
+                COALESCE(SUM(free_deliveries), 0)::int AS free_deliveries,
+                COALESCE(SUM(charged_deliveries) FILTER (WHERE state <> 'released'), 0)::int
+                    AS charged_deliveries,
+                COALESCE(SUM(charged_minor) FILTER (WHERE state = 'settled'), 0)::bigint AS settled,
+                COALESCE(SUM(reserved_minor) FILTER (
+                    WHERE state IN ('accepted','pending_reconciliation',
+                                    'estimated','indeterminate')), 0)::bigint AS retained
+           FROM "${schema}".whatsapp_spend_reservations
+          WHERE ($1::text IS NULL OR channel_account_id = $1)
+            -- The window is expressed in MONTHS of the account's own calendar,
+            -- so it lines up with the allowance and the invoice rather than
+            -- with an arbitrary number of days back from now.
+            AND (applied_local_date IS NULL
+                 OR applied_local_date >= date_trunc('month', CURRENT_DATE)
+                     - make_interval(months => $2::int))
+          GROUP BY 1, 2, 3, 4, 5
+          ORDER BY 1 DESC NULLS LAST, 2, 3, 4`,
+        [input.channelAccountId ?? null, months - 1]);
+
+    const buckets = new Map<string, {
+        month: string | null; channelAccountId: string;
+        freeDeliveries: number; chargedDeliveries: number;
+        money: Map<string, { settledMinor: number; retainedMinor: number }>;
+        byMarketCategory: Array<CalendarMonthConsumption['byMarketCategory'][number]>;
+    }>();
+    for (const row of rows) {
+        const month = row.month === null || row.month === undefined ? null : String(row.month);
+        const channelAccountId = String(row.channel_account_id);
+        // Length-prefixed, not separated. A delimiter that can appear inside a
+        // part makes two different keys collide, and this codebase has already
+        // shipped a hash whose separator was silently a NUL byte.
+        const parts = [month ?? 'undated', channelAccountId];
+        const key = parts.map(part => `${part.length}#${part}`).join('');
+        const bucket = buckets.get(key) ?? {
+            month, channelAccountId, freeDeliveries: 0, chargedDeliveries: 0,
+            money: new Map<string, { settledMinor: number; retainedMinor: number }>(),
+            byMarketCategory: [] as Array<CalendarMonthConsumption['byMarketCategory'][number]>,
+        };
+        bucket.freeDeliveries += Number(row.free_deliveries);
+        bucket.chargedDeliveries += Number(row.charged_deliveries);
+        const currency = String(row.currency);
+        const money = bucket.money.get(currency) ?? { settledMinor: 0, retainedMinor: 0 };
+        money.settledMinor += Number(row.settled);
+        money.retainedMinor += Number(row.retained);
+        bucket.money.set(currency, money);
+        bucket.byMarketCategory.push(Object.freeze({
+            market: row.market === null || row.market === undefined ? null : String(row.market),
+            category: String(row.category),
+            deliveries: Number(row.charged_deliveries) + Number(row.free_deliveries),
+            currency,
+            settledMinor: Number(row.settled),
+            retainedMinor: Number(row.retained),
+        }));
+        buckets.set(key, bucket);
+    }
+
+    return Object.freeze([...buckets.values()].map(bucket => Object.freeze({
+        month: bucket.month,
+        channelAccountId: bucket.channelAccountId,
+        freeDeliveries: bucket.freeDeliveries,
+        chargedDeliveries: bucket.chargedDeliveries,
+        money: Object.freeze([...bucket.money.entries()]
+            .map(([currency, totals]) => Object.freeze({ currency, ...totals }))
+            .sort((left, right) => left.currency.localeCompare(right.currency))),
+        byMarketCategory: Object.freeze([...bucket.byMarketCategory]
+            .sort((left, right) => right.deliveries - left.deliveries)),
+    })));
+}
+
 export async function readExposure(query: SpendQuery, schema: string, input: {
     readonly channelAccountId?: string | null;
     readonly payerWabaId?: string | null;

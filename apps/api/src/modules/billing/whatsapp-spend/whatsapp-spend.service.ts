@@ -15,13 +15,15 @@ import {
     markTransmissionInFlight, ownEffect, RESOLVABLE_STATES,
     settleFromProviderEvidence, staleAcceptedEffects, staleIndeterminateEffects,
     recentIdenticalDeliveries, releaseTransmission, sweepTransmissionLeases,
-    readExposure, readPressure, readSpendSignals, recordAllocation, releaseReservation,
+    readCalendarMonthConsumption, readExposure, readPressure, readSpendSignals,
+    recordAllocation, releaseReservation,
     reserveAgainstCounter, retainReservation, returnFreeDeliveries,
     returnTransmissionAfterRefusal,
     settleReservation, sweepExpiredLeases,
     worstPressure,
     type DurableReceipt, type ProviderInvoiceLine, type ReceiptInboxStatus,
-    type ReservationBinding, type ReservationIdentity, type ReservationRow, type SpendExposure,
+    type CalendarMonthConsumption, type ReservationBinding, type ReservationIdentity,
+    type ReservationRow, type SpendExposure,
     type SpendDisposition, type SpendPressure, type SpendQuery, type TaskBudget,
     type TransmissionClaim, type TransmissionGrant,
 } from './spend-ledger';
@@ -1201,6 +1203,22 @@ export class WhatsappSpendService {
     }): Promise<readonly SpendExposure[]> {
         return this.prisma.transactionInTenantSchema(schema,
             query => readExposure(query as SpendQuery, schema, input));
+    }
+
+    /**
+     * Consumption per number per WABA-local calendar month.
+     *
+     * The period Meta invoices and the period the free allowance resets on are
+     * both calendar months in the ACCOUNT's own time zone. `exposure` answers
+     * about a rolling window, which straddles that boundary by construction —
+     * so an operator comparing our figure to their allowance or their bill was
+     * comparing two different periods and being told they disagreed.
+     */
+    async calendarMonthConsumption(schema: string, input: {
+        channelAccountId?: string | null; months?: number;
+    }): Promise<readonly CalendarMonthConsumption[]> {
+        return this.prisma.transactionInTenantSchema(schema,
+            query => readCalendarMonthConsumption(query as SpendQuery, schema, input));
     }
 }
 

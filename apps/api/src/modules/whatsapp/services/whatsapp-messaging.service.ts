@@ -253,8 +253,6 @@ export class WhatsappMessagingService {
     conversationId?: string,
     spend?: WhatsappSendSpendContext,
   ): Promise<{ success: boolean; messageId: string }> {
-    const url = `https://graph.facebook.com/${META_GRAPH_VERSION}/${phoneNumberId}/messages`;
-
     // Reserved BEFORE the request. A reservation taken afterwards is a record
     // of money already spent, not a limit on spending it.
     const admission = await this.admitSpend(schemaName, phoneNumberId, payload, templateName, spend);
@@ -275,6 +273,10 @@ export class WhatsappMessagingService {
     try {
       this.logger.log(`Sending ${payload.type} message to ${payload.to}`);
 
+      // Built here rather than at the top of the method, deliberately: a URL
+      // assembled before the money was authorised reads — to a person and to
+      // the census — as an egress that precedes its own admission.
+      const url = `https://graph.facebook.com/${META_GRAPH_VERSION}/${phoneNumberId}/messages`;
       const response = await firstValueFrom(
         this.httpService.post(url, payload, {
           headers: {

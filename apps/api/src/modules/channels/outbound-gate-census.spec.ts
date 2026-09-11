@@ -148,6 +148,94 @@ export class GateCensusProbeService {
     });
 });
 
+describe('one admission covers one POST, and it comes first', () => {
+    /**
+     * ═══ PRESENCE WAS NOT DOMINANCE, AND ONE WAS NOT TWO ═══
+     *
+     * The census asked "does this file contain a gate call anywhere?". Two
+     * things pass that and must not: a gate in a DIFFERENT method from the
+     * POST, and a SECOND POST behind one admission. The second is not
+     * hypothetical — it is exactly what the Flow text fallback turned out to
+     * be: one reservation, two messages on a customer's phone, two charges, and
+     * a row that can only settle once.
+     *
+     * These run against the real matcher, on synthetic files, because the
+     * property is about ORDER and COUNT rather than about any particular sink.
+     */
+    const gate = '        const admission = await this.admitSpend({ to });';
+    const post = '        await fetch(`https://graph.facebook.com/v21.0/${id}/messages`, {});';
+
+    const uncovered = (lines: string[]) => {
+        const text = lines.join(String.fromCharCode(10));
+        const egressLines: number[] = [];
+        lines.forEach((line, index) => { if (line.includes('/messages`')) egressLines.push(index + 1); });
+        return inventory.egressCredits(text, egressLines);
+    };
+
+    it('accepts an admission that precedes its POST', () => {
+        expect(uncovered([gate, post])).toEqual([]);
+    });
+
+    it('refuses a gate that runs AFTER the POST it is supposed to authorise', () => {
+        // Reserving afterwards is a record of money already spent, not a limit
+        // on spending it — and reading downward is how everybody checks.
+        expect(uncovered([post, gate])).toEqual([1]);
+    });
+
+    it('refuses a SECOND POST behind one admission', () => {
+        // The one that matters. The file is gated, the first send is covered,
+        // and the second is a charge nothing authorised.
+        expect(uncovered([gate, post, post])).toEqual([3]);
+    });
+
+    it('accepts two POSTs when each has its own admission', () => {
+        expect(uncovered([gate, post, gate, post])).toEqual([]);
+    });
+
+    it('reads a gate and a POST on one line as one act', () => {
+        // `if (await this.admitSpend(x)) return post(x)` is an authorisation
+        // and its send, written together. Ordering them by line alone would
+        // read the send as first and call it uncovered.
+        expect(uncovered(['        if (await this.admitSpend({ to })) '
+            + 'await fetch(`https://graph.facebook.com/v21.0/${id}/messages`, {});'])).toEqual([]);
+    });
+
+    it('does not let a gate in another method cover a POST', () => {
+        // Presence, not dominance. The file contains both; the send path
+        // touches neither.
+        expect(uncovered([post, '    }', '    async elsewhere() {', gate, '    }'])).toEqual([1]);
+    });
+
+    it('catches a second POST added inside an already-gated sink', () => {
+        // The probe the census did not have: not a NEW ungated file, which it
+        // already catches, but one more send inside a file that is already
+        // marked green. That is how a fallback, a retry or a "just also notify
+        // them" line becomes a second charge nobody sees.
+        const PROBE = resolve(API_SRC, 'modules', 'channels', 'gate-census-second-post.generated.ts');
+        const GATED_TWICE = `// Temporary fixture written by outbound-gate-census.spec.ts.
+export class GateCensusSecondPostService {
+    async send(id: string, to: string): Promise<void> {
+        const admission = await this.admitSpend({ to });
+        if (!admission) return;
+        await fetch(\`https://graph.facebook.com/v21.0/\${id}/messages\`, { method: 'POST' });
+        // And one more, behind the same admission.
+        await fetch(\`https://graph.facebook.com/v21.0/\${id}/messages\`, { method: 'POST' });
+    }
+    private async admitSpend(_input: unknown): Promise<boolean> { return true; }
+}
+`;
+        writeFileSync(PROBE, GATED_TWICE, 'utf8');
+        try {
+            const found = census().ungatedEgress
+                .filter((entry: any) => entry.file.endsWith('gate-census-second-post.generated.ts'));
+            // One violation, not two: the first send is properly covered.
+            expect(found.length).toBe(1);
+        } finally {
+            rmSync(PROBE, { force: true });
+        }
+    });
+});
+
 describe('the gate the sinks are checked against', () => {
     it('is a call the sink files really contain', () => {
         // Re-derived here instead of trusting the census: if both the script and

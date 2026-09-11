@@ -46,7 +46,7 @@ llevar a la admisión económica.
 
 | Archivo:línea | Método | Carril | Canales | Efectos por respuesta |
 |---|---|---|---|---|
-| `modules/agent-console/agent-console.service.ts:531` | `sendAgentMessage` | `inline` | dynamic | 1 (read) |
+| `modules/agent-console/agent-console.service.ts:552` | `sendAgentMessage` | `inline` | dynamic | 1 (read) |
 | `modules/appointments/appointment-notifications.service.ts:462` | `sendMessage` | `outbound_queue` | dynamic | 1 (read) |
 | `modules/appointments/appointment-reminders.service.ts:388` | `sendReminderTemplate` | `inline` | dynamic | n (derived) |
 | `modules/appointments/appointment-reminders.service.ts:469` | `sendAttendanceTemplate` | `inline` | dynamic | n (derived) |
@@ -110,7 +110,7 @@ mensajes entregados, y un indicador de "escribiendo" no lo es.
 
 | Línea | Método | Primitiva | Carril | Disparador | Canales | Efectos por respuesta | Base |
 |---:|---|---|---|---|---|---|---|
-| 531 | `sendAgentMessage` | `channelGateway.sendMessage` | `inline` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
+| 552 | `sendAgentMessage` | `channelGateway.sendMessage` | `inline` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
 
 ### `apps/api/src/modules/appointments/appointment-notifications.service.ts`
 
@@ -255,7 +255,7 @@ buscar una llamada a la autoridad economica en el codigo del archivo.
 
 | Archivo:linea | Que sale | Admision | Nota |
 |---|---|---|---|
-| `apps/api/src/modules/agent-console/agent-console.service.ts:502` | `ChannelGatewayService.sendMessage` | si | pide permiso antes de emitir |
+| `apps/api/src/modules/agent-console/agent-console.service.ts:523` | `ChannelGatewayService.sendMessage` | si | pide permiso antes de emitir |
 | `apps/api/src/modules/channels/instagram/instagram.adapter.ts:34` | Graph `/{phone_number_id}/messages` POST | camino | Instagram is not billed per message by its provider |
 | `apps/api/src/modules/channels/instagram/instagram.adapter.ts:136` | Graph `/{phone_number_id}/messages` POST | camino | Instagram is not billed per message by its provider |
 | `apps/api/src/modules/channels/instagram/instagram.adapter.ts:152` | Graph `/{phone_number_id}/messages` POST | camino | Instagram is not billed per message by its provider |
@@ -264,10 +264,10 @@ buscar una llamada a la autoridad economica en el codigo del archivo.
 | `apps/api/src/modules/channels/messenger/messenger.adapter.ts:132` | Graph `/{phone_number_id}/messages` POST | camino | Messenger is not billed per message by its provider |
 | `apps/api/src/modules/channels/messenger/messenger.adapter.ts:148` | Graph `/{phone_number_id}/messages` POST | camino | Messenger is not billed per message by its provider |
 | `apps/api/src/modules/channels/messenger/messenger.adapter.ts:176` | Graph `/{phone_number_id}/messages` POST | camino | Messenger is not billed per message by its provider |
-| `apps/api/src/modules/channels/outbound-queue.processor.ts:269` | strict dispatch transport | si | pide permiso antes de emitir |
-| `apps/api/src/modules/channels/outbound-queue.processor.ts:449` | `ChannelGatewayService.sendMessage` | si | pide permiso antes de emitir |
-| `apps/api/src/modules/channels/outbound-queue.processor.ts:479` | `ChannelGatewayService.sendMessage` | si | pide permiso antes de emitir |
-| `apps/api/src/modules/channels/outbound-queue.processor.ts:611` | `ChannelGatewayService.sendMessage` | si | pide permiso antes de emitir |
+| `apps/api/src/modules/channels/outbound-queue.processor.ts:302` | strict dispatch transport | si | pide permiso antes de emitir |
+| `apps/api/src/modules/channels/outbound-queue.processor.ts:564` | `ChannelGatewayService.sendMessage` | si | pide permiso antes de emitir |
+| `apps/api/src/modules/channels/outbound-queue.processor.ts:600` | `ChannelGatewayService.sendMessage` | si | pide permiso antes de emitir |
+| `apps/api/src/modules/channels/outbound-queue.processor.ts:736` | `ChannelGatewayService.sendMessage` | si | pide permiso antes de emitir |
 | `apps/api/src/modules/channels/whatsapp/whatsapp.adapter.ts:34` | Graph `/{phone_number_id}/messages` POST | camino | the adapter; reachable only through `ChannelGatewayService.sendMessage` or the strict transport, and every call site of both is classified above |
 | `apps/api/src/modules/channels/whatsapp/whatsapp.adapter.ts:106` | Graph `/{phone_number_id}/messages` POST | camino | the adapter; reachable only through `ChannelGatewayService.sendMessage` or the strict transport, and every call site of both is classified above |
 | `apps/api/src/modules/channels/whatsapp/whatsapp.adapter.ts:135` | Graph `/{phone_number_id}/messages` POST | camino | the adapter; reachable only through `ChannelGatewayService.sendMessage` or the strict transport, and every call site of both is classified above |
@@ -276,13 +276,13 @@ buscar una llamada a la autoridad economica en el codigo del archivo.
 | `apps/api/src/modules/channels/whatsapp/whatsapp.adapter.ts:403` | Graph `/{phone_number_id}/messages` POST | camino | the adapter; reachable only through `ChannelGatewayService.sendMessage` or the strict transport, and every call site of both is classified above |
 | `apps/api/src/modules/channels/whatsapp/whatsapp.adapter.ts:453` | Graph `/{phone_number_id}/messages` POST | camino | the adapter; reachable only through `ChannelGatewayService.sendMessage` or the strict transport, and every call site of both is classified above |
 | `apps/api/src/modules/channels/whatsapp/whatsapp.adapter.ts:501` | Graph `/{phone_number_id}/messages` POST | camino | the adapter; reachable only through `ChannelGatewayService.sendMessage` or the strict transport, and every call site of both is classified above |
-| `apps/api/src/modules/whatsapp/services/whatsapp-messaging.service.ts:211` | Graph `/{phone_number_id}/messages` POST | si | pide permiso antes de emitir |
+| `apps/api/src/modules/whatsapp/services/whatsapp-messaging.service.ts:248` | Graph `/{phone_number_id}/messages` POST | si | pide permiso antes de emitir |
 
 ### Productores cobrables y su sumidero
 
 | Archivo:linea | Metodo | Carril | Termina en | Admision |
 |---|---|---|---|---|
-| `modules/agent-console/agent-console.service.ts:531` | `sendAgentMessage` | `inline` | `modules/agent-console/agent-console.service.ts` | si |
+| `modules/agent-console/agent-console.service.ts:552` | `sendAgentMessage` | `inline` | `modules/agent-console/agent-console.service.ts` | si |
 | `modules/appointments/appointment-notifications.service.ts:462` | `sendMessage` | `outbound_queue` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/appointments/appointment-payment.listener.ts:89` | `onPaid` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/appointments/appointment-payment.listener.ts:107` | `onPaid` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |

@@ -170,8 +170,61 @@ const CHANNEL_LITERALS = ['whatsapp', 'instagram', 'messenger', 'telegram', 'web
  */
 const GATE_CALLS = [
     'this.admitSpend(', 'this.gateOrSuppress(', 'this.admitAgentSend(',
-    'spendGate.admit(', 'spendGate.admitBySchema(',
+    'this.admitFlowFallback(', 'spendGate.admit(',
 ];
+
+/**
+ * ═══ PRESENCE IS NOT DOMINANCE, AND ONE ADMISSION IS NOT TWO ═══
+ *
+ * `isGatedFile` answers "does this file contain a gate call anywhere?", and
+ * that was the whole test. Two things pass it that must not:
+ *
+ *   · a gate in a DIFFERENT method from the POST. The file contains both, the
+ *     send path touches neither, and the census is green.
+ *   · a SECOND POST behind one admission. One reservation, two messages on a
+ *     customer's phone, two charges, and a row that can only settle once — the
+ *     exact defect the Flow fallback turned out to be.
+ *
+ * So each egress is matched against the admissions that PRECEDE it and are not
+ * already spoken for. Walk the file once, in line order: a gate call adds one
+ * credit, a provider egress spends one, and an egress that finds no credit is a
+ * violation with a name.
+ *
+ * ── WHY LINE ORDER IS ENOUGH, AND WHERE IT IS NOT ───────────────────────────
+ *
+ * It is a dominance approximation, not a control-flow graph. It is right for
+ * the shape every sink in this tree actually has — authorise, check, then POST,
+ * in one method, reading downward — and it is deliberately UNKIND in the two
+ * directions that matter: a gate below its POST does not count, and a loop that
+ * sends twice behind one admission is reported. Both of those are real defects
+ * wearing the shape of a false positive; a caller that genuinely sends N
+ * messages under one authorisation is asking for one reservation to settle N
+ * charges, which the ledger cannot do.
+ *
+ * A file that legitimately defines a road rather than using one is declared in
+ * `PROVIDER_ROADS` and its entrances are classified one level up, as before.
+ */
+function egressCredits(code, egressLines) {
+    const lines = code.split(/\r?\n/);
+    const events = [];
+    for (let i = 0; i < lines.length; i++) {
+        if (GATE_CALLS.some(call => lines[i].includes(call))) events.push({ line: i + 1, kind: 'gate' });
+    }
+    for (const line of egressLines) events.push({ line, kind: 'egress' });
+    events.sort((left, right) => left.line - right.line
+        // A gate and an egress on the SAME line is the gate authorising it:
+        // `if (await this.admitSpend(x)) return this.post(x)` reads as one act.
+        || (left.kind === 'gate' ? -1 : 1));
+
+    let credits = 0;
+    const uncovered = [];
+    for (const event of events) {
+        if (event.kind === 'gate') { credits += 1; continue; }
+        if (credits > 0) credits -= 1;
+        else uncovered.push(event.line);
+    }
+    return uncovered;
+}
 
 /**
  * The network calls that carry a message to a provider.
@@ -356,17 +409,34 @@ function gateCensus(rows) {
     const egress = [];
     for (const file of sources()) {
         // Comments out, template literals KEPT: the URL is a template literal.
-        const lines = withoutComments(fs.readFileSync(file.full, 'utf8')).split(/\r?\n/);
+        const text = fs.readFileSync(file.full, 'utf8');
+        const lines = withoutComments(text).split(/\r?\n/);
+        const found = [];
         for (let i = 0; i < lines.length; i++) {
             for (const door of PROVIDER_EGRESS) {
                 if (!door.pattern.test(lines[i])) continue;
-                egress.push({
-                    app: file.app, file: file.rel, line: i + 1, what: door.what,
-                    road: (file.app === 'api' && PROVIDER_ROADS[file.rel]) || null,
-                    gated: file.app === 'api' && isGatedFile(file.rel),
-                });
+                found.push({ line: i + 1, what: door.what });
                 break;
             }
+        }
+        if (!found.length) continue;
+        const road = (file.app === 'api' && PROVIDER_ROADS[file.rel]) || null;
+        // Dominance and cardinality, per call site. `codeOnly` for the gate
+        // question — a mention inside a comment or a string is not a call.
+        const uncovered = file.app === 'api' && !road
+            ? new Set(egressCredits(codeOnly(text), found.map(entry => entry.line)))
+            : new Set();
+        for (const entry of found) {
+            egress.push({
+                app: file.app, file: file.rel, line: entry.line, what: entry.what,
+                road,
+                gated: file.app === 'api' && !uncovered.has(entry.line)
+                    && isGatedFile(file.rel),
+                // Named separately from "no gate at all" so a report can tell
+                // an unguarded new file from a second POST behind one
+                // admission: they are different mistakes with different fixes.
+                dominated: file.app === 'api' && !uncovered.has(entry.line),
+            });
         }
     }
 
@@ -920,4 +990,5 @@ function main() {
 
 if (require.main === module) main();
 module.exports = { collect, declaredProducers, declaredInfrastructure, render, gateCensus,
-    EGRESS, ROADS, GATE_CALLS, PROVIDER_EGRESS, PROVIDER_ROADS, codeOnly, withoutComments };
+    EGRESS, ROADS, GATE_CALLS, PROVIDER_EGRESS, PROVIDER_ROADS, codeOnly, withoutComments,
+    egressCredits };

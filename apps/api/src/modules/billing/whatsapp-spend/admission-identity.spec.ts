@@ -53,7 +53,16 @@ const spendDouble = () => {
         // consulting the state at all.
         outcome: 'reserved', reservation: { id: 'r1', state: 'held' }, pressure: 'clear',
     }));
-    return { effectKey: () => 'key', authorize } as any;
+    return { effectKey: () => 'key', authorize,
+        // The exclusive right to POST. A spend double without it cannot say
+        // whether the sink asked for one, and 'reserved' alone never meant
+        // 'you may send'.
+        claimTransmission: jest.fn(async () => ({
+            kind: 'granted',
+            grant: { effectKey: 'key', token: '00000000-0000-4000-8000-000000000000',
+                expiresAt: new Date(Date.now() + 900000) },
+        })),
+    } as any;
 };
 
 const request = (over: Record<string, unknown> = {}) => ({

@@ -298,6 +298,13 @@ export class OutboundQueueProcessor extends WorkerHost {
                 inboundMessageId: admitted.row.binding!.inboundMessageId,
                 itemIndex: admitted.row.itemIndex },
         });
+        if (admission && admission.permitted
+            && !(await this.beginOrStandDown({ tenantId } as OutboundMessage, admission))) {
+            // The send right was taken while this worker prepared, or the intent
+            // could not be recorded. Either way this attempt sends nothing and
+            // the item stays claimable rather than being settled either way.
+            return 'dispatch:deferred:transmission_not_owned';
+        }
         if (admission && !admission.permitted) {
             // Refused on money, not on transport. The item is suppressed
             // rather than retried: a ceiling does not become permissive by
@@ -387,6 +394,26 @@ export class OutboundQueueProcessor extends WorkerHost {
      * `null` means there is no gate wired; anything else is the admission whose
      * outcome has to be recorded once the provider has answered.
      */
+    /**
+     * Say the request is beginning, and stand down if the right was taken.
+     *
+     * Committed BEFORE the fetch, always. Written after it, it would distinguish
+     * nothing: anything recorded then already presupposes the POST happened, and
+     * the whole point is to tell "crashed before sending" from "crashed after".
+     */
+    private async beginOrStandDown(outbound: OutboundMessage, admission: unknown): Promise<boolean> {
+        if (!this.spendGate || !admission || admission === 'refused') return true;
+        try {
+            const schema = await this.prisma.getTenantSchemaName(outbound.tenantId);
+            return await this.spendGate.beginTransmission(schema, admission as Admission);
+        } catch (error: any) {
+            // The intent could not be recorded. Sending anyway would produce a
+            // POST nobody can classify afterwards.
+            this.logger.error(`[Spend] could not begin transmission: ${error?.message}`);
+            return false;
+        }
+    }
+
     private async gateOrSuppress(outbound: OutboundMessage, producer: string,
         disposition: 'reactive' | 'proactive') {
         const admission = await this.admitSpend({
@@ -508,6 +535,7 @@ export class OutboundQueueProcessor extends WorkerHost {
                 return async()=>{
                     const admission = await this.gateOrSuppress(outbound, 'operational_notice', 'proactive');
                     if (admission === 'refused') return null;
+                    if (!(await this.beginOrStandDown(outbound, admission))) return null;
                     const result=await this.channelGateway.sendMessage(outbound,creds.accessToken,
                         { admitFallback: code => this.admitFlowFallback(
                             outbound, 'operational_notice', 'proactive', code) });
@@ -535,6 +563,9 @@ export class OutboundQueueProcessor extends WorkerHost {
                 return async () => {
                     const admission = await this.gateOrSuppress(outbound, 'approved_effect', 'reactive');
                     if (admission === 'refused') throw new ApprovalEffectSuppressed('spend_refused');
+                    if (!(await this.beginOrStandDown(outbound, admission))) {
+                        throw new ApprovalEffectSuppressed('transmission_not_owned');
+                    }
                     const result = await this.channelGateway.sendMessage(outbound, creds.accessToken,
                         { admitFallback: code => this.admitFlowFallback(
                             outbound, 'approved_effect', 'reactive', code) });
@@ -661,6 +692,11 @@ export class OutboundQueueProcessor extends WorkerHost {
         if (admission === 'refused') {
             this.logger.warn(`[Outbound] refused on spend for tenant=${outbound.tenantId}`);
             return 'skipped:spend_refused';
+        }
+        if (!(await this.beginOrStandDown(outbound, admission))) {
+            // Somebody else holds the right, or the intent could not be
+            // recorded. Either way this attempt sends nothing.
+            return 'skipped:transmission_not_owned';
         }
         const result = await this.channelGateway.sendMessage(outbound, creds.accessToken, {
             admitFallback: code => this.admitFlowFallback(outbound, 'outbound_queue',

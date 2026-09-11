@@ -6,6 +6,7 @@ import {
     declaredCategory, resolveMessageCategory, type CategoryEvidence,
 } from './message-category';
 import { mayTransmit, WhatsappSpendService, type SpendAuthorizeResult } from './whatsapp-spend.service';
+import type { TransmissionGrant } from './spend-ledger';
 import type { SpendDisposition, SpendPressure } from './spend-ledger';
 import { resolveRepetitionPolicy, type RepetitionPolicy } from './spend-repetition';
 import { describeBlock, spendBlock, type SpendBlock } from './spend-diagnosis';
@@ -153,8 +154,22 @@ export interface AdmissionRequest {
 }
 
 export interface Admission {
-    /** May the caller perform the remote request? */
+    /**
+     * May the caller perform the remote request?
+     *
+     * True only when this caller HOLDS the exclusive transmission right. Two
+     * concurrent authorisations of one effect produce one reservation, and
+     * exactly one of them is permitted — the other is told somebody else is
+     * sending it.
+     */
     readonly permitted: boolean;
+    /**
+     * The transmission right, present only for the caller that may send.
+     *
+     * It must be passed back with the outcome, so a worker whose lease expired
+     * cannot overwrite the result of the attempt that replaced it.
+     */
+    readonly transmit?: TransmissionGrant | null;
     /** Present whenever a reservation exists, including an adopted one. */
     readonly effectKey: string;
     readonly reservationId?: string | null;
@@ -354,9 +369,29 @@ export class WhatsappSendAdmissionService {
                 this.logger.warn(`[Spend] ${result.pressure} on ${request.producer} `
                     + `for account ${request.connection.channelAccountId}`);
             }
+
+            // ── THE RIGHT TO SEND, WHICH IS NOT THE RESERVATION ─────────────
+            //
+            // `held` says the money is set aside. It does not say WHICH of the
+            // callers holding this effect may make the request — and with the
+            // effect lock in place, the loser of a concurrent authorisation
+            // adopts a perfectly good `held` row. Both were being told to send.
+            const claim = await this.spend.claimTransmission(request.schema, effectKey);
+            if (claim.kind !== 'granted') {
+                const detail = claim.kind === 'held_by_other'
+                    ? `another attempt holds the send right until ${claim.expiresAt?.toISOString() ?? 'soon'}`
+                    : `the effect is ${claim.state ?? 'gone'} and no further attempt is authorised`;
+                this.logger.log(`[Spend] not transmitting ${request.producer}: ${detail}`);
+                return Object.freeze({
+                    permitted: false, effectKey, reservationId: result.reservation.id, enforcement,
+                    pressure: result.pressure,
+                    block: spendBlock('transmission_held_elsewhere', detail),
+                });
+            }
+
             return Object.freeze({
                 permitted: true, effectKey, reservationId: result.reservation.id, enforcement,
-                pressure: result.pressure,
+                pressure: result.pressure, transmit: claim.grant,
             });
         }
 
@@ -441,6 +476,34 @@ export class WhatsappSendAdmissionService {
         } as CategoryEvidence);
     }
 
+    /**
+     * Say, durably, that the request is about to begin.
+     *
+     * The line that separates "provably sent nothing" from "nobody knows", and
+     * it must be committed BEFORE the request. A false return means the right
+     * was taken away while this caller was preparing; send nothing.
+     */
+    async beginTransmission(schema: string, admission: Admission): Promise<boolean> {
+        if (!admission.transmit) return true;
+        try {
+            return await this.spend.markInFlight(schema, admission.transmit);
+        } catch (error: any) {
+            // Unable to record the intent. The request must not begin: a POST
+            // whose start was never written cannot be told apart afterwards from
+            // one that never happened.
+            this.logger.error(`[Spend] could not mark ${admission.effectKey.slice(0, 12)} `
+                + `in flight: ${error?.message}. Not sending.`);
+            return false;
+        }
+    }
+
+    /** Give the right back without sending. Only possible before the request begins. */
+    async abandon(schema: string, admission: Admission): Promise<void> {
+        if (!admission.transmit) return;
+        try { await this.spend.abandonTransmission(schema, admission.transmit); }
+        catch { /* the sweeper recovers a right nobody handed back */ }
+    }
+
     /** What the provider said, recorded against the reservation this admitted. */
     async record(schema: string, admission: Admission, outcome: {
         readonly kind: 'delivered_priced' | 'delivered_unpriced' | 'rejected' | 'timeout';
@@ -450,7 +513,12 @@ export class WhatsappSendAdmissionService {
     }): Promise<void> {
         if (!admission.reservationId) return;
         try {
-            await this.spend.recordOutcome(schema, admission.effectKey, outcome);
+            await this.spend.recordOutcome(schema, admission.effectKey, {
+                ...outcome,
+                // Proves this is the attempt that sent, not an older one whose
+                // lease expired while it was gone.
+                transmitToken: admission.transmit?.token ?? null,
+            });
         } catch (error: any) {
             // Never fatal to a send that already happened: the lease sweeper
             // turns an unrecorded outcome into visible exposure, which is the

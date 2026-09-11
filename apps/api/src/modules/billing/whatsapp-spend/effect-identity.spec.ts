@@ -121,6 +121,14 @@ describe('adopting a reservation that is already resolved', () => {
             authorize: jest.fn(async () => ({
                 outcome: 'adopted', reservation: { id: 'r1', state }, pressure: 'clear',
             })),
+            // The exclusive right to POST. A spend double without it cannot say
+            // whether the sink asked for one: 'reserved' alone never meant
+            // 'you may send'.
+            claimTransmission: jest.fn(async () => ({
+                kind: 'granted',
+                grant: { effectKey: 'key', token: '00000000-0000-4000-8000-000000000000',
+                    expiresAt: new Date(Date.now() + 900000) },
+            })),
         } as any;
         const admission = new WhatsappSendAdmissionService(prisma, spend);
         return admission.admit({

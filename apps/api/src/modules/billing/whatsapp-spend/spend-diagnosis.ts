@@ -22,6 +22,7 @@ export const SPEND_BLOCK_CODES = [
     'cap_soft_stop',
     'duplicate_recent_send',
     'effect_already_resolved',
+    'transmission_held_elsewhere',
     'task_budget_exhausted',
     'account_paused',
 ] as const;
@@ -86,6 +87,15 @@ Object.freeze({
     cap_exhausted: {
         scope: 'account',
         resolution: 'Raise the spending limit for this scope, or wait for the period to roll over.',
+    },
+    transmission_held_elsewhere: {
+        scope: 'contact',
+        // Not an error and not a limit: the message IS being sent, by the
+        // attempt that got there first. This caller standing down is the
+        // mechanism working.
+        resolution: 'Another attempt already holds the right to send this message, so this one '
+            + 'stood down. Nothing is lost: the message goes out once, from whichever attempt '
+            + 'claimed it.',
     },
     effect_already_resolved: {
         scope: 'contact',

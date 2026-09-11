@@ -234,6 +234,14 @@ export class WhatsappMessagingService {
     // Reserved BEFORE the request. A reservation taken afterwards is a record
     // of money already spent, not a limit on spending it.
     const admission = await this.admitSpend(schemaName, phoneNumberId, payload, templateName, spend);
+    // The intent to send, written BEFORE the request. After it, it would
+    // distinguish nothing: anything recorded then already presupposes the POST
+    // happened, and the point is to tell a crash before sending from one after.
+    if (admission && admission !== 'refused' && this.spendGate
+      && !(await this.spendGate.beginTransmission(schemaName, admission as Admission))) {
+      throw new BadRequestException(
+        'Otro intento ya tiene el derecho de enviar este mensaje; no se envio dos veces.');
+    }
     if (admission === 'refused') {
       throw new BadRequestException(
         'El envío fue rechazado por el límite de gasto de WhatsApp configurado para esta cuenta.',

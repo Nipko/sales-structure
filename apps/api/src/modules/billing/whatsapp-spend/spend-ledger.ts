@@ -817,6 +817,197 @@ export async function ownEffect(query: SpendQuery, schema: string,
 }
 
 /**
+ * ═══ THE RIGHT TO MAKE THE POST, WHICH IS NOT THE RESERVATION ═══
+ *
+ * A `held` reservation says the money is set aside. It does not say WHICH of
+ * the callers that found it may send the message.
+ *
+ * With the effect lock in place, two concurrent authorisations already produce
+ * one reservation — the loser adopts — and both were then authorised to
+ * transmit, because the only question asked was `state === 'held'`. One effect,
+ * one reservation, two POSTs.
+ *
+ * The transmission right is exclusive and leased. Only its holder may make the
+ * request, and only its holder may record what came back: a worker whose lease
+ * expired cannot overwrite the result of the attempt that replaced it.
+ *
+ * ── THE TWO CRASHES ─────────────────────────────────────────────────────────
+ *
+ * `claimed` and `in_flight` are two states because a crash before the POST and
+ * a crash after it need opposite answers, and with one state you must pick one
+ * and be wrong about the other:
+ *
+ *   · crashed while `claimed` — the worker took the right and died before
+ *     touching the network. It is PROVEN that nothing went out, so the right
+ *     returns to `idle` and another worker sends the message. Once.
+ *   · crashed while `in_flight` — the request had already begun. Nobody knows
+ *     whether Meta processed it. A blind retry is exactly the duplicate this
+ *     whole mechanism exists to prevent, so the effect becomes `indeterminate`
+ *     and goes to reconciliation.
+ *
+ * `claimed -> in_flight` is written BEFORE the fetch, never after. After the
+ * fetch it would distinguish nothing: anything written then already presupposes
+ * the POST happened.
+ */
+export type TransmitState = 'idle' | 'claimed' | 'in_flight' | 'resolved';
+
+export interface TransmissionGrant {
+    readonly effectKey: string;
+    /** Present ONLY for the caller that may transmit. */
+    readonly token: string;
+    readonly expiresAt: Date;
+}
+
+export type TransmissionClaim =
+    | { readonly kind: 'granted'; readonly grant: TransmissionGrant }
+    /** Somebody else holds a live right. This caller must not send. */
+    | { readonly kind: 'held_by_other'; readonly expiresAt: Date | null }
+    /** The effect is over, or was never reservable. Nothing to transmit. */
+    | { readonly kind: 'not_transmittable'; readonly state: ReservationState | null };
+
+/**
+ * Take the exclusive right to POST this effect, or discover somebody has it.
+ *
+ * One statement, so the check and the take cannot be separated by another
+ * worker. The predicate is the whole rule: the reservation must still be
+ * `held`, and the transmission right must be free — never taken, or taken by
+ * somebody whose lease has run out.
+ *
+ * `clock_timestamp()` rather than `now()`: `now()` freezes at BEGIN, so a
+ * transaction that has been open a while would read an expired lease as live
+ * and refuse work it should do.
+ */
+export async function claimTransmission(query: SpendQuery, schema: string, input: {
+    readonly effectKey: string;
+    readonly leaseSeconds: number;
+}): Promise<TransmissionClaim> {
+    assertSchema(schema);
+    const rows = await query<any[]>(
+        `UPDATE "${schema}".whatsapp_spend_reservations
+            SET transmit_token = gen_random_uuid(),
+                transmit_state = 'claimed',
+                transmit_expires_at = clock_timestamp()
+                    + make_interval(secs => $2::double precision),
+                attempts = attempts + 1,
+                updated_at = clock_timestamp()
+          WHERE effect_key = $1
+            AND state = 'held'
+            AND (transmit_state = 'idle'
+                 OR (transmit_state IN ('claimed','in_flight')
+                     AND transmit_expires_at < clock_timestamp()))
+         RETURNING transmit_token, transmit_expires_at`,
+        [input.effectKey, input.leaseSeconds]);
+
+    if (rows[0]) {
+        return Object.freeze({
+            kind: 'granted' as const,
+            grant: Object.freeze({
+                effectKey: input.effectKey,
+                token: String(rows[0].transmit_token),
+                expiresAt: new Date(rows[0].transmit_expires_at),
+            }),
+        });
+    }
+
+    // Nothing updated. Say WHY, because "somebody is sending it" and "it is
+    // already over" are different things to the caller and to an operator.
+    const [current] = await query<any[]>(
+        `SELECT state, transmit_state, transmit_expires_at
+           FROM "${schema}".whatsapp_spend_reservations WHERE effect_key = $1`,
+        [input.effectKey]);
+    if (!current) return Object.freeze({ kind: 'not_transmittable' as const, state: null });
+    if (String(current.state) !== 'held') {
+        return Object.freeze({
+            kind: 'not_transmittable' as const, state: String(current.state) as ReservationState,
+        });
+    }
+    return Object.freeze({
+        kind: 'held_by_other' as const,
+        expiresAt: current.transmit_expires_at ? new Date(current.transmit_expires_at) : null,
+    });
+}
+
+/**
+ * Record, durably, that the request is about to begin.
+ *
+ * The one line that separates "provably sent nothing" from "nobody knows". It
+ * must be committed before the fetch, and the caller must treat a false return
+ * as "somebody took this right from me" and send nothing.
+ */
+export async function markTransmissionInFlight(query: SpendQuery, schema: string,
+    grant: TransmissionGrant): Promise<boolean> {
+    assertSchema(schema);
+    const rows = await query<any[]>(
+        `UPDATE "${schema}".whatsapp_spend_reservations
+            SET transmit_state = 'in_flight', updated_at = clock_timestamp()
+          WHERE effect_key = $1 AND transmit_token = $2::uuid
+            AND transmit_state = 'claimed' AND state = 'held'
+         RETURNING effect_key`,
+        [grant.effectKey, grant.token]);
+    return rows.length > 0;
+}
+
+/**
+ * Give the right back without sending, when the caller decides not to.
+ *
+ * Only from `claimed`: an `in_flight` effect cannot be handed back, because
+ * nobody can prove it did not happen.
+ */
+export async function releaseTransmission(query: SpendQuery, schema: string,
+    grant: TransmissionGrant): Promise<boolean> {
+    assertSchema(schema);
+    const rows = await query<any[]>(
+        `UPDATE "${schema}".whatsapp_spend_reservations
+            SET transmit_token = NULL, transmit_state = 'idle', transmit_expires_at = NULL,
+                updated_at = clock_timestamp()
+          WHERE effect_key = $1 AND transmit_token = $2::uuid AND transmit_state = 'claimed'
+         RETURNING effect_key`,
+        [grant.effectKey, grant.token]);
+    return rows.length > 0;
+}
+
+/**
+ * Expired transmission rights, resolved by what they can prove.
+ *
+ * `claimed` goes back to `idle` — provably nothing was sent, so the effect is
+ * still owed to the customer. `in_flight` becomes `indeterminate` — the request
+ * had begun, and a blind retry is the duplicate.
+ *
+ * Returns both lists, because an operator watching this needs to see them apart:
+ * a growing `recovered` is workers dying early, and a growing `uncertain` is
+ * money and messages nobody can account for.
+ */
+export async function sweepTransmissionLeases(query: SpendQuery, schema: string, limit = 200):
+    Promise<{ readonly recovered: readonly string[]; readonly uncertain: readonly string[] }> {
+    assertSchema(schema);
+    const recovered = await query<any[]>(
+        `UPDATE "${schema}".whatsapp_spend_reservations
+            SET transmit_token = NULL, transmit_state = 'idle', transmit_expires_at = NULL,
+                updated_at = clock_timestamp()
+          WHERE effect_key IN (
+                SELECT effect_key FROM "${schema}".whatsapp_spend_reservations
+                 WHERE transmit_state = 'claimed' AND transmit_expires_at < clock_timestamp()
+                 ORDER BY transmit_expires_at LIMIT ${Math.max(1, Math.min(1000, limit))})
+         RETURNING effect_key`);
+    const uncertain = await query<any[]>(
+        `UPDATE "${schema}".whatsapp_spend_reservations
+            SET state = 'indeterminate',
+                transmit_state = 'resolved',
+                transmit_token = NULL, transmit_expires_at = NULL,
+                reason = COALESCE(reason, 'transmission_lease_expired_in_flight'),
+                updated_at = clock_timestamp()
+          WHERE effect_key IN (
+                SELECT effect_key FROM "${schema}".whatsapp_spend_reservations
+                 WHERE transmit_state = 'in_flight' AND transmit_expires_at < clock_timestamp()
+                 ORDER BY transmit_expires_at LIMIT ${Math.max(1, Math.min(1000, limit))})
+         RETURNING effect_key`);
+    return Object.freeze({
+        recovered: Object.freeze(recovered.map(row => String(row.effect_key))),
+        uncertain: Object.freeze(uncertain.map(row => String(row.effect_key))),
+    });
+}
+
+/**
  * Claim this effect, or discover that somebody already did.
  *
  * `ON CONFLICT DO NOTHING RETURNING id` is the whole mechanism: no row returned
@@ -921,6 +1112,15 @@ export async function settleReservation(query: SpendQuery, schema: string, input
     readonly evidence: string;
     readonly providerMessageId?: string | null;
     readonly remoteState?: string | null;
+    /**
+     * The transmission right this outcome belongs to.
+     *
+     * Required of a caller that transmitted, so a worker whose lease expired
+     * cannot overwrite the result of the attempt that replaced it. Omitted only
+     * by writers that did not transmit at all — a status webhook arriving later,
+     * or the reconciler.
+     */
+    readonly transmitToken?: string | null;
 }): Promise<ReservationRow | null> {
     assertSchema(schema);
     const rows = await query<any[]>(
@@ -928,11 +1128,21 @@ export async function settleReservation(query: SpendQuery, schema: string, input
             SET state = 'settled', charged_minor = $2, evidence = $3,
                 provider_message_id = COALESCE($4, provider_message_id),
                 remote_state = COALESCE($5, remote_state),
+                -- The right is spent with the outcome. A resolved effect has no
+                -- live holder, so nothing can claim it again.
+                transmit_state = 'resolved', transmit_token = NULL,
+                transmit_expires_at = NULL,
                 updated_at = clock_timestamp()
           WHERE effect_key = $1 AND state = 'held'
+            -- The transmission right, when the caller held one. A worker whose
+            -- lease expired cannot overwrite the result of the attempt that
+            -- replaced it; a writer that did not transmit (a status webhook, the
+            -- reconciler) passes nothing and is not gated on it.
+            AND ($6::uuid IS NULL OR transmit_token = $6::uuid)
           RETURNING *`,
         [input.effectKey, Math.max(0, Math.trunc(input.chargedMinor)), input.evidence,
-            input.providerMessageId ?? null, input.remoteState ?? null]);
+            input.providerMessageId ?? null, input.remoteState ?? null,
+            input.transmitToken ?? null]);
     if (!rows[0]) return null;
     const settled = mapReservation(rows[0]);
     await applyToCounters(query, schema, settled.id, 'settled', settled.money.reservedMinor,
@@ -951,15 +1161,34 @@ export async function releaseReservation(query: SpendQuery, schema: string, inpu
     readonly evidence: string;
     readonly reason?: string | null;
     readonly remoteState?: string | null;
+    /**
+     * The transmission right this outcome belongs to.
+     *
+     * Required of a caller that transmitted, so a worker whose lease expired
+     * cannot overwrite the result of the attempt that replaced it. Omitted only
+     * by writers that did not transmit at all — a status webhook arriving later,
+     * or the reconciler.
+     */
+    readonly transmitToken?: string | null;
 }): Promise<ReservationRow | null> {
     assertSchema(schema);
     const rows = await query<any[]>(
         `UPDATE "${schema}".whatsapp_spend_reservations
             SET state = 'released', evidence = $2, reason = COALESCE($3, reason),
-                remote_state = COALESCE($4, remote_state), updated_at = clock_timestamp()
+                remote_state = COALESCE($4, remote_state),
+                -- The right is spent with the outcome: a resolved effect has
+                -- no live holder, so nothing can claim it again.
+                transmit_state = 'resolved', transmit_token = NULL,
+                transmit_expires_at = NULL,
+                updated_at = clock_timestamp()
           WHERE effect_key = $1 AND state = 'held'
+            -- The transmission right, when the caller held one. A writer that
+            -- did not transmit — a status webhook, the reconciler — passes
+            -- nothing and is not gated on it.
+            AND ($5::uuid IS NULL OR transmit_token = $5::uuid)
           RETURNING *`,
-        [input.effectKey, input.evidence, input.reason ?? null, input.remoteState ?? null]);
+        [input.effectKey, input.evidence, input.reason ?? null, input.remoteState ?? null,
+            input.transmitToken ?? null]);
     if (!rows[0]) return null;
     const released = mapReservation(rows[0]);
     await applyToCounters(query, schema, released.id, 'released', released.money.reservedMinor, 0);
@@ -979,17 +1208,36 @@ export async function retainReservation(query: SpendQuery, schema: string, input
     readonly reason: string;
     readonly providerMessageId?: string | null;
     readonly remoteState?: string | null;
+    /**
+     * The transmission right this outcome belongs to.
+     *
+     * Required of a caller that transmitted, so a worker whose lease expired
+     * cannot overwrite the result of the attempt that replaced it. Omitted only
+     * by writers that did not transmit at all — a status webhook arriving later,
+     * or the reconciler.
+     */
+    readonly transmitToken?: string | null;
 }): Promise<ReservationRow | null> {
     assertSchema(schema);
     const rows = await query<any[]>(
         `UPDATE "${schema}".whatsapp_spend_reservations
             SET state = $2, reason = $3,
                 provider_message_id = COALESCE($4, provider_message_id),
-                remote_state = COALESCE($5, remote_state), updated_at = clock_timestamp()
+                remote_state = COALESCE($5, remote_state),
+                -- The right is spent with the outcome: a resolved effect has
+                -- no live holder, so nothing can claim it again.
+                transmit_state = 'resolved', transmit_token = NULL,
+                transmit_expires_at = NULL,
+                updated_at = clock_timestamp()
           WHERE effect_key = $1 AND state = 'held'
+            -- The transmission right, when the caller held one. A writer that
+            -- did not transmit — a status webhook, the reconciler — passes
+            -- nothing and is not gated on it.
+            AND ($6::uuid IS NULL OR transmit_token = $6::uuid)
           RETURNING *`,
         [input.effectKey, input.state, input.reason,
-            input.providerMessageId ?? null, input.remoteState ?? null]);
+            input.providerMessageId ?? null, input.remoteState ?? null,
+            input.transmitToken ?? null]);
     return rows[0] ? mapReservation(rows[0]) : null;
 }
 

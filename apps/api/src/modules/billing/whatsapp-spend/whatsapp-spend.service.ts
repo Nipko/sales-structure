@@ -6,14 +6,16 @@ import {
     wabaCalendarMonth, wabaLocalDate,
 } from '../whatsapp-rates';
 import {
-    adoptReservation, claimReservation, declareTaskBudget, ensureCounters, findReservation,
-    grantFreeDeliveries, ownEffect, recentIdenticalDeliveries,
+    adoptReservation, claimReservation, claimTransmission, declareTaskBudget, ensureCounters,
+    findReservation, grantFreeDeliveries, markTransmissionInFlight, ownEffect,
+    recentIdenticalDeliveries, releaseTransmission, sweepTransmissionLeases,
     readExposure, readPressure, readSpendSignals, recordAllocation, releaseReservation,
     reserveAgainstCounter, retainReservation,
     settleReservation, sweepExpiredLeases,
     worstPressure,
     type ReservationBinding, type ReservationIdentity, type ReservationRow, type SpendExposure,
     type SpendDisposition, type SpendPressure, type SpendQuery, type TaskBudget,
+    type TransmissionClaim, type TransmissionGrant,
 } from './spend-ledger';
 import { scopeId, scopesFor, type SpendScope } from './spend-scopes';
 import { spendBlock, type SpendBlock } from './spend-diagnosis';
@@ -421,6 +423,49 @@ export class WhatsappSpendService {
     }
 
     /**
+     * Take the exclusive right to POST an effect that is already reserved.
+     *
+     * Separate from `authorize()` on purpose. Authorising is about money and
+     * happens once per effect; transmitting is about who sends it and happens
+     * once per ATTEMPT. Folding them together is what let two concurrent
+     * authorisations of one effect both be told to send.
+     */
+    async claimTransmission(schema: string, effectKey: string,
+        leaseSeconds = this.LEASE_SECONDS): Promise<TransmissionClaim> {
+        return this.prisma.transactionInTenantSchema(schema, async query =>
+            claimTransmission(query as SpendQuery, schema, { effectKey, leaseSeconds }));
+    }
+
+    /**
+     * Say, durably, that the request is about to begin.
+     *
+     * The one line that separates "provably sent nothing" from "nobody knows".
+     * A false return means the right was taken away — send nothing.
+     */
+    async markInFlight(schema: string, grant: TransmissionGrant): Promise<boolean> {
+        return this.prisma.transactionInTenantSchema(schema, async query =>
+            markTransmissionInFlight(query as SpendQuery, schema, grant));
+    }
+
+    /** Hand the right back without sending. Only possible before the request begins. */
+    async abandonTransmission(schema: string, grant: TransmissionGrant): Promise<boolean> {
+        return this.prisma.transactionInTenantSchema(schema, async query =>
+            releaseTransmission(query as SpendQuery, schema, grant));
+    }
+
+    /**
+     * Expired transmission rights, resolved by what they can prove.
+     *
+     * `claimed` returns to `idle` — provably nothing went out, and the customer
+     * is still owed a message. `in_flight` becomes `indeterminate` — the request
+     * had begun, and a blind retry is the duplicate.
+     */
+    async sweepTransmissions(schema: string, limit = 200) {
+        return this.prisma.transactionInTenantSchema(schema, async query =>
+            sweepTransmissionLeases(query as SpendQuery, schema, limit));
+    }
+
+    /**
      * What the provider said, turned into the only state it justifies.
      *
      * The mapping is the table from `RESERVATION-DESIGN.md` §4, and the one rule
@@ -431,7 +476,17 @@ export class WhatsappSpendService {
         readonly providerMessageId?: string | null;
         readonly chargedMinor?: number | null;
         readonly errorCode?: string | null;
+        /**
+         * The transmission right the caller held.
+         *
+         * Required of anything that actually sent, so a worker whose lease
+         * expired cannot overwrite the result of the attempt that replaced it.
+         * Omitted by writers that did not transmit at all — a status webhook
+         * arriving later, or the reconciler.
+         */
+        readonly transmitToken?: string | null;
     }): Promise<ReservationRow | null> {
+        const transmitToken = outcome.transmitToken ?? null;
         return this.prisma.transactionInTenantSchema(schema, async query => {
             switch (outcome.kind) {
                 case 'delivered_priced':
@@ -439,6 +494,7 @@ export class WhatsappSpendService {
                         effectKey, chargedMinor: outcome.chargedMinor ?? 0,
                         evidence: 'provider_reported_price',
                         providerMessageId: outcome.providerMessageId, remoteState: 'delivered',
+                        transmitToken,
                     });
                 case 'delivered_unpriced':
                     // It arrived and we do not know what it cost. The whole
@@ -447,6 +503,7 @@ export class WhatsappSpendService {
                         effectKey, state: 'pending_reconciliation',
                         reason: 'delivered_without_price',
                         providerMessageId: outcome.providerMessageId, remoteState: 'delivered',
+                        transmitToken,
                     });
                 case 'rejected':
                     // The only positive negative: an explicit refusal with no
@@ -454,6 +511,7 @@ export class WhatsappSpendService {
                     return releaseReservation(query as SpendQuery, schema, {
                         effectKey, evidence: 'provider_rejected_without_message_id',
                         reason: outcome.errorCode ?? null, remoteState: 'rejected',
+                        transmitToken,
                     });
                 case 'timeout':
                 default:
@@ -466,6 +524,7 @@ export class WhatsappSpendService {
                         reason: outcome.providerMessageId
                             ? 'timeout_with_message_id' : 'timeout_without_message_id',
                         providerMessageId: outcome.providerMessageId, remoteState: 'unknown',
+                        transmitToken,
                     });
             }
         });

@@ -5706,6 +5706,14 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."whatsapp_spend_reservations" (
         evidence TEXT,
         reason TEXT,
         lease_expires_at TIMESTAMPTZ NOT NULL,
+        -- El derecho EXCLUSIVO a hacer el POST, aparte de tener presupuesto.
+        -- Dos autorizaciones del mismo efecto dejan una sola reserva y las dos
+        -- la encuentran `held`; sin esto las dos transmitian. Ver la migracion
+        -- 20260911120000_add_whatsapp_spend_transmission para por que
+        -- `claimed` e `in_flight` son dos estados y no uno.
+        transmit_token UUID,
+        transmit_state TEXT NOT NULL DEFAULT 'idle',
+        transmit_expires_at TIMESTAMPTZ,
         attempts INTEGER NOT NULL DEFAULT 1,
         adopted INTEGER NOT NULL DEFAULT 0,
         created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
@@ -5724,6 +5732,11 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."whatsapp_spend_reservations" (
             ('priced','free_allowance','free_entry_point','unknown')),
         CONSTRAINT whatsapp_spend_reservations_disposition
             CHECK (disposition IS NULL OR disposition IN ('reactive','proactive')),
+        CONSTRAINT whatsapp_spend_reservations_transmit
+            CHECK (transmit_state IN ('idle','claimed','in_flight','resolved')),
+        CONSTRAINT whatsapp_spend_reservations_transmit_lease
+            CHECK ((transmit_state IN ('claimed','in_flight'))
+                = (transmit_token IS NOT NULL AND transmit_expires_at IS NOT NULL)),
         CONSTRAINT whatsapp_spend_reservations_remote CHECK (remote_state IS NULL
             OR remote_state IN ('accepted','rejected','unknown','delivered','read','failed')),
         CONSTRAINT whatsapp_spend_reservations_charged
@@ -5782,6 +5795,9 @@ CREATE INDEX IF NOT EXISTS idx_whatsapp_spend_recent_identical
           AND state IN ('held','settled','pending_reconciliation','indeterminate');
 -- El indice de "a quien le escribimos sin que nos escriba": por cuenta y
 -- destinatario, solo sobre lo que nosotros iniciamos.
+CREATE INDEX IF NOT EXISTS idx_whatsapp_spend_transmit_lease
+        ON "{{SCHEMA_NAME}}"."whatsapp_spend_reservations" (transmit_expires_at)
+        WHERE transmit_state IN ('claimed','in_flight');
 CREATE INDEX IF NOT EXISTS idx_whatsapp_spend_proactive_recipient
         ON "{{SCHEMA_NAME}}"."whatsapp_spend_reservations"
         (channel_account_id, recipient_ref, created_at DESC)

@@ -517,6 +517,16 @@ export class AgentConsoleService {
                         sender: 'agent', timestamp: msg.created_at,
                     } as any;
                 }
+                // The intent to send, written before the request — so a crash
+                // here is provably "sent nothing" rather than "nobody knows".
+                if (admission && this.spendGate
+                    && !(await this.spendGate.beginTransmission(schemaName, admission as Admission))) {
+                    await settle('failed', 'transmission_not_owned');
+                    return {
+                        id: msg.id, status: 'failed', content: msg.content_text,
+                        type: msg.content_type, sender: 'agent', timestamp: msg.created_at,
+                    } as any;
+                }
                 sendAttempted = true;
                 const sent = await this.channelGateway.sendMessage(
                     {

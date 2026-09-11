@@ -1,3 +1,5 @@
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import { randomUUID } from 'crypto';
 import { PrismaClient } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -202,6 +204,33 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
     const inbound = async (text = '¿hay turno?') => String((await sql(
         `INSERT INTO messages(conversation_id, direction, content_type, content_text)
          VALUES($1::uuid,'inbound','text',$2) RETURNING id`, [conversationId, text]))[0].id);
+
+    // ── 0. NO CALL SITE MAY MINT A CONSTANT IDENTITY ────────────────────────
+
+    it('gives every deterministic reply an identity of its own', () => {
+        // Read from the source, because this is a property of the CALL SITES
+        // and no fixture can reach them: the seven live inside a turn whose
+        // orchestrator has forty-odd collaborators.
+        //
+        // An `originKey` that does not vary per effect is the worst thing this
+        // seam can do. The outbox would merge every customer's confirmation
+        // into one row and deliver exactly one of them — silence for everybody
+        // else, and a record saying the message was owed once.
+        // Normalised: the files on disk are CRLF and the blobs are LF, so a
+        // pattern written either way has to match both.
+        const source = readFileSync(join(__dirname, 'conversations.service.ts'), 'utf8')
+            .split('\r\n').join('\n');
+        const keys = [...source.matchAll(/originKey: `([^`]+)`/g)].map(match => match[1]);
+        expect(keys.length).toBeGreaterThanOrEqual(7);
+        for (const key of keys) {
+            // Either the customer message it answers, or the identity the
+            // BullMQ jobId carried. Both vary per effect; a bare string does not.
+            expect(key).toMatch(/\$\{(inboundMessageId|outbound\.dedupeId|input\.[A-Za-z.]+)\}/);
+        }
+        // And each one names WHICH reply it is, so two different answers to the
+        // same customer message cannot collide on one row.
+        expect(new Set(keys.map(key => key.split(':')[0])).size).toBe(keys.length);
+    });
 
     // ── 1. AN ANSWER TO SOMETHING THE CUSTOMER SENT ─────────────────────────
 

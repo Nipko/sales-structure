@@ -1,5 +1,6 @@
 import { InternalController } from './internal.controller';
 import { InternalAuthGuard } from '../../common/guards/internal-auth.guard';
+import { receiptLedgerDouble } from '../channels/__fixtures__/spend-gate-double';
 
 const tenantId = '11111111-1111-4111-8111-111111111111';
 const schemaName = 'tenant_delivery_status';
@@ -54,9 +55,11 @@ describe('internal channel delivery status', () => {
                 return [];
             }),
         };
-        const controller = new InternalController(prisma, {} as any, {} as any, {} as any);
+        const spendLedger = receiptLedgerDouble();
+        const controller = new InternalController(
+            prisma, {} as any, {} as any, {} as any, spendLedger);
         (controller as any).logger = { log: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() };
-        return { controller, prisma, updates, legacy };
+        return { controller, prisma, updates, legacy, spendLedger };
     }
 
     const internal = { user: { isInternalService: true } };

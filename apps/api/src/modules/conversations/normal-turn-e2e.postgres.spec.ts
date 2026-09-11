@@ -32,7 +32,7 @@ import { redactTurnLedger } from './agent-turn-ledger';
 import { operationalConfigurationHash } from '../persona/agent-configuration-revision';
 import { ensureSyntheticGlobalTables } from '../../common/__fixtures__/synthetic-global-tables';
 import type { StrictDispatchOutcome, StrictDispatchRequest } from '../channels/strict-dispatch-transport';
-import { permissiveSpendGate, resolvingChannelToken } from '../channels/__fixtures__/spend-gate-double';
+import { permissiveSpendGate, receiptLedgerDouble, resolvingChannelToken } from '../channels/__fixtures__/spend-gate-double';
 
 const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
 const redisUrl = process.env.DISPATCH_QUEUE_TEST_REDIS_URL;
@@ -496,10 +496,15 @@ const ready = !!databaseUrl && !!redisUrl;
             redis,
             // Template status is not what this suite proves; it is here so
             // the webhook has its one writer instead of a second copy.
-            { applyStatusUpdate: jest.fn(async () => undefined) } as any);
+            { applyStatusUpdate: jest.fn(async () => undefined) } as any,
+            // Receipts settle money as well as updating the record. This
+            // suite's wamids belong to no reservation, which is exactly what
+            // `unknown_receipt` says.
+            receiptLedgerDouble());
         controller = new ChannelsController(
             channelGateway, {} as any, {} as any, {} as any, {} as any,
-            prisma, webhookService, config, redis, channelToken, inboundProducer);
+            prisma, webhookService, config, redis, channelToken, inboundProducer,
+            receiptLedgerDouble());
 
         // ── crash boundaries ─────────────────────────────────────────────────
         // A single armed boundary throws once from the exact seam it names. The

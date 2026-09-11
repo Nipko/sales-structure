@@ -1,5 +1,6 @@
 import * as crypto from 'crypto';
 import { ChannelsController } from './channels.controller';
+import { receiptLedgerDouble } from './__fixtures__/spend-gate-double';
 
 /**
  * ═══ LAS DOS RUTAS QUE TIRABAN LOS EVENTOS ═══
@@ -71,7 +72,8 @@ describe('las rutas de webhook de Messenger e Instagram', () => {
         const config = { get: jest.fn(() => APP_SECRET) };
         const controller = new ChannelsController(
             gateway as any, {} as any, {} as any, {} as any, {} as any, prisma,
-            {} as any, config as any, redis as any, {} as any, inboundQueue as any);
+            {} as any, config as any, redis as any, {} as any, inboundQueue as any,
+            receiptLedgerDouble());
         (controller as any).logger = logs;
         return { controller, prisma, applied, enqueued, logs, gateway, inboundQueue };
     }

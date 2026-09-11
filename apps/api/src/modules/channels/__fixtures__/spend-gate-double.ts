@@ -91,3 +91,19 @@ export function resolvingChannelToken(overrides: Record<string, unknown> = {}) {
         ...overrides,
     } as any;
 }
+
+/**
+ * A ledger that receives delivery receipts and records what it was told.
+ *
+ * The three status ingresses now settle or release money as well as updating
+ * the conversation record, so a spec that constructs one has to supply this.
+ * It answers `unknown_receipt` by default — the honest answer for a receipt
+ * about a message no reservation covers, which is what a transport spec's
+ * synthetic wamids always are.
+ */
+export function receiptLedgerDouble(overrides: Record<string, unknown> = {}) {
+    return {
+        applyDeliveryReceipt: jest.fn(async () => 'unknown_receipt' as const),
+        ...overrides,
+    } as any;
+}

@@ -12,6 +12,7 @@ import * as crypto from 'crypto';
 import { parseMetaDeliveryStatuses, recordChannelDeliveryStatuses,
     type ChannelDeliveryStatusEvent } from '../../channels/channel-delivery-status';
 import { AccountPauseStore } from '../../channels/account-pause-store';
+import { WhatsappSpendService } from '../../billing/whatsapp-spend/whatsapp-spend.service';
 
 @Injectable()
 export class WhatsappWebhookService {
@@ -41,6 +42,15 @@ export class WhatsappWebhookService {
     // the answer to the send itself; this one arrives minutes later, on a
     // message that was accepted and then failed — which is the shape a funding
     // problem usually has, because eligibility is checked at delivery.
+    // Where a receipt settles or releases the money it belongs to. The POST
+    // could only ever say "Meta accepted it"; the charge lands on DELIVERY, so
+    // without this every reservation stays counted for ever and every ceiling
+    // fills with messages that arrived hours ago.
+    //
+    // Not optional, and before the optional store for that reason: an ingress
+    // that receives Meta's receipts and cannot reach the ledger is the
+    // configuration where the money never resolves.
+    private readonly spendLedger: WhatsappSpendService,
     @Optional() private readonly pauses?: AccountPauseStore,
   ) {}
 
@@ -245,6 +255,7 @@ export class WhatsappWebhookService {
           if (!tenantId) return null;
           return (await this.prisma.getTenantSchemaName(tenantId)) || null;
         },
+        spendLedger: this.spendLedger,
       },
     );
   }

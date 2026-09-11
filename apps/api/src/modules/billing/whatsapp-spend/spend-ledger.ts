@@ -63,6 +63,24 @@ export interface SpendCounterRow {
 export type ReservationState =
     'held' | 'settled' | 'released' | 'pending_reconciliation' | 'indeterminate';
 
+/**
+ * The states a LATER authority may still resolve.
+ *
+ * `held` is the sending attempt's own outcome. The other two are what an
+ * attempt leaves behind when it could not say what happened: `delivered and we
+ * do not know the price`, and `we do not know whether it arrived`. Both keep
+ * the full amount counted, and both are waiting for exactly this — a status
+ * webhook minutes later, or a reconciliation against what Meta billed.
+ *
+ * Settling and releasing used to accept `held` and nothing else, so every
+ * receipt that arrived after the POST found a row it could not touch and the
+ * exposure stayed on the books for ever. `settled` and `released` are
+ * deliberately absent: an effect whose money has already moved is finished, and
+ * a duplicate or out-of-order event must not move it again.
+ */
+export const RESOLVABLE_STATES: readonly ReservationState[] =
+    Object.freeze(['held', 'pending_reconciliation', 'indeterminate']);
+
 /** The identity a retry adopts instead of resolving the connection again. */
 export interface ReservationIdentity {
     readonly tenantId: string;
@@ -175,6 +193,29 @@ function mapReservation(row: any): ReservationRow {
 }
 
 /** Find the reservation for this effect, if one was ever committed. */
+/**
+ * The reservation a provider receipt is about.
+ *
+ * A status webhook knows the wamid and nothing else: it never saw an effect key
+ * and could not compute one — the body it was rendered from is long gone. The
+ * id is written onto the row by whichever attempt got an answer from Meta, so
+ * this is the only road from a receipt back to the money.
+ *
+ * Ordered so the newest row wins if a provider id somehow appears twice; that
+ * should not happen and the ordering is here so it degrades to "the current
+ * one" rather than to "whichever the planner returned first".
+ */
+export async function findReservationByProviderMessage(
+    query: SpendQuery, schema: string, providerMessageId: string,
+): Promise<ReservationRow | null> {
+    assertSchema(schema);
+    const rows = await query<any[]>(
+        `SELECT * FROM "${schema}".whatsapp_spend_reservations
+          WHERE provider_message_id = $1
+          ORDER BY created_at DESC LIMIT 1`, [providerMessageId]);
+    return rows[0] ? mapReservation(rows[0]) : null;
+}
+
 export async function findReservation(query: SpendQuery, schema: string, effectKey: string):
     Promise<ReservationRow | null> {
     assertSchema(schema);
@@ -1121,6 +1162,11 @@ export async function settleReservation(query: SpendQuery, schema: string, input
      * or the reconciler.
      */
     readonly transmitToken?: string | null;
+    /**
+     * Which states this writer may resolve. Defaults to the sending attempt's
+     * own `held`; a later authority passes `RESOLVABLE_STATES`.
+     */
+    readonly fromStates?: readonly ReservationState[];
 }): Promise<ReservationRow | null> {
     assertSchema(schema);
     const rows = await query<any[]>(
@@ -1133,7 +1179,7 @@ export async function settleReservation(query: SpendQuery, schema: string, input
                 transmit_state = 'resolved', transmit_token = NULL,
                 transmit_expires_at = NULL,
                 updated_at = clock_timestamp()
-          WHERE effect_key = $1 AND state = 'held'
+          WHERE effect_key = $1 AND state = ANY($7::text[])
             -- The transmission right, when the caller held one. A worker whose
             -- lease expired cannot overwrite the result of the attempt that
             -- replaced it; a writer that did not transmit (a status webhook, the
@@ -1142,7 +1188,7 @@ export async function settleReservation(query: SpendQuery, schema: string, input
           RETURNING *`,
         [input.effectKey, Math.max(0, Math.trunc(input.chargedMinor)), input.evidence,
             input.providerMessageId ?? null, input.remoteState ?? null,
-            input.transmitToken ?? null]);
+            input.transmitToken ?? null, [...(input.fromStates ?? ['held'])]]);
     if (!rows[0]) return null;
     const settled = mapReservation(rows[0]);
     await applyToCounters(query, schema, settled.id, 'settled', settled.money.reservedMinor,
@@ -1170,6 +1216,8 @@ export async function releaseReservation(query: SpendQuery, schema: string, inpu
      * or the reconciler.
      */
     readonly transmitToken?: string | null;
+    /** Which states this writer may resolve. See `settleReservation`. */
+    readonly fromStates?: readonly ReservationState[];
 }): Promise<ReservationRow | null> {
     assertSchema(schema);
     const rows = await query<any[]>(
@@ -1181,14 +1229,14 @@ export async function releaseReservation(query: SpendQuery, schema: string, inpu
                 transmit_state = 'resolved', transmit_token = NULL,
                 transmit_expires_at = NULL,
                 updated_at = clock_timestamp()
-          WHERE effect_key = $1 AND state = 'held'
+          WHERE effect_key = $1 AND state = ANY($6::text[])
             -- The transmission right, when the caller held one. A writer that
             -- did not transmit — a status webhook, the reconciler — passes
             -- nothing and is not gated on it.
             AND ($5::uuid IS NULL OR transmit_token = $5::uuid)
           RETURNING *`,
         [input.effectKey, input.evidence, input.reason ?? null, input.remoteState ?? null,
-            input.transmitToken ?? null]);
+            input.transmitToken ?? null, [...(input.fromStates ?? ['held'])]]);
     if (!rows[0]) return null;
     const released = mapReservation(rows[0]);
     await applyToCounters(query, schema, released.id, 'released', released.money.reservedMinor, 0);

@@ -1,6 +1,7 @@
 import {
     Controller,
     Get,
+    Optional,
     Post,
     Body,
     Query,
@@ -30,6 +31,7 @@ import { ChannelTokenService } from './channel-token.service';
 import { validateMetaSignature } from './meta-signature.util';
 import { InboundQueueService } from '../inbound/inbound-queue.service';
 import { recordChannelDeliveryStatuses } from './channel-delivery-status';
+import { WhatsappSpendService } from '../billing/whatsapp-spend/whatsapp-spend.service';
 import {
     classifyMetaMessagingEvent,
     isInboundMessagingEvent,
@@ -54,6 +56,9 @@ export class ChannelsController {
         private redis: RedisService,
         private channelToken: ChannelTokenService,
         private inboundQueue: InboundQueueService,
+        // Only WhatsApp is billed per message today, and the writer checks
+        // that, so the other four channels pass through untouched.
+        private spendLedger: WhatsappSpendService,
     ) { }
 
     // ==========================================
@@ -239,6 +244,7 @@ export class ChannelsController {
                 store: this.prisma,
                 logger: this.logger,
                 resolveSchema: async () => (await this.prisma.getTenantSchemaName(tenantId)) || null,
+                spendLedger: this.spendLedger,
             },
             status.watermark ? [status.watermark] : [],
         );

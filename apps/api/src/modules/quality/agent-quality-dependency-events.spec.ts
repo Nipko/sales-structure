@@ -4,6 +4,7 @@ import { ServicesService } from '../appointments/services.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { InternalController } from '../internal/internal.controller';
 import { AGENT_QUALITY_DEPENDENCIES_UPDATED } from './agent-quality-events';
+import { receiptLedgerDouble } from '../channels/__fixtures__/spend-gate-double';
 
 const TENANT_ID = '11111111-1111-4111-8111-111111111111';
 const SCHEMA = 'tenant_quality_dependencies';
@@ -124,7 +125,7 @@ describe('Agent Quality dependency mutation events', () => {
     it('bridges the trusted WhatsApp process into the same tenant dependency event', async () => {
         const events = { emit: jest.fn() };
         const controller = new InternalController(
-            {} as any, {} as any, {} as any, events as any,
+            {} as any, {} as any, {} as any, events as any, receiptLedgerDouble(),
         );
 
         await expect(controller.agentQualityChannelUpdated(
@@ -141,7 +142,7 @@ describe('Agent Quality dependency mutation events', () => {
     it('rejects dashboard JWT callers and malformed tenant ids on the internal bridge', async () => {
         const events = { emit: jest.fn() };
         const controller = new InternalController(
-            {} as any, {} as any, {} as any, events as any,
+            {} as any, {} as any, {} as any, events as any, receiptLedgerDouble(),
         );
 
         await expect(controller.agentQualityChannelUpdated(
@@ -161,6 +162,7 @@ describe('Agent Quality dependency mutation events', () => {
         const prisma = { channelAccount: { count: jest.fn() } };
         const controller = new InternalController(
             prisma as any, throttle as any, inboundQueue as any, { emit: jest.fn() } as any,
+            receiptLedgerDouble(),
         );
         const dashboardRequest = { user: { isInternalService: false } };
 
@@ -201,6 +203,7 @@ describe('Agent Quality dependency mutation events', () => {
         };
         const controller = new InternalController(
             prisma as any, throttle as any, inboundQueue as any, { emit: jest.fn() } as any,
+            receiptLedgerDouble(),
         );
         const internalRequest = { user: { isInternalService: true } };
         const payload = {
@@ -246,6 +249,7 @@ describe('Agent Quality dependency mutation events', () => {
         };
         const controller = new InternalController(
             prisma as any, throttle as any, inboundQueue as any, { emit: jest.fn() } as any,
+            receiptLedgerDouble(),
         );
         const internalRequest = { user: { isInternalService: true } };
 

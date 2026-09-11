@@ -17,6 +17,27 @@ import {
  * of the same rule is one too many; both ingresses now share this one, and the
  * ranking lives with the outbox that owns the receipt.
  */
+/**
+ * What Meta says this delivery cost, when it says anything.
+ *
+ * Carried through because from October 2026 the charge lands on DELIVERY, and
+ * this block is the only place the provider states whether a particular
+ * delivery was billable at all. `billable: false` is Meta saying the message
+ * was inside the free monthly allowance or a free entry point — the one
+ * authority that can settle a delivered message at zero. Everything else would
+ * be a guess, so nothing else is allowed to decide it.
+ *
+ * Deliberately not stored on the message: it is a fact about money, and it
+ * belongs to the reservation.
+ */
+export interface ProviderPricingSignal {
+    readonly billable?: boolean | null;
+    /** Meta's own category for the conversation this delivery belonged to. */
+    readonly category?: string | null;
+    /** `PMP`, `CBP` — which of Meta's pricing models applied. */
+    readonly model?: string | null;
+}
+
 export interface ChannelDeliveryStatusEvent {
     readonly providerMessageId: string;
     readonly status: DispatchProviderStatus;
@@ -25,6 +46,7 @@ export interface ChannelDeliveryStatusEvent {
     /** Already namespaced by provider, e.g. `wa_131047`. */
     readonly errorCode?: string | null;
     readonly errorDetail?: string | null;
+    readonly pricing?: ProviderPricingSignal | null;
 }
 
 /** Which connection the provider is talking about — the key, with the receipt. */
@@ -84,6 +106,24 @@ export interface ChannelDeliveryStatusStore {
     ): Promise<T>;
 }
 
+/**
+ * The money's half of a delivery receipt.
+ *
+ * Kept as a port rather than an import so this module stays the shared rule for
+ * three ingresses without dragging the billing graph into each of them. A
+ * caller that has no spend authority passes nothing and the receipts still
+ * reach the conversation record: an unmetered receipt is a gap in accounting,
+ * never a reason to stop telling a customer's history the truth.
+ */
+export interface DeliveryReceiptLedger {
+    applyDeliveryReceipt(schema: string, receipt: {
+        providerMessageId: string;
+        status: 'sent' | 'delivered' | 'read' | 'failed';
+        errorCode?: string | null;
+        pricing?: ProviderPricingSignal | null;
+    }): Promise<unknown>;
+}
+
 export interface ChannelDeliveryStatusLogger {
     error(message: string): void;
     warn(message: string): void;
@@ -120,6 +160,24 @@ export function isDeliveryStatus(value: unknown): value is DispatchProviderStatu
  * Anything without a provider id, or carrying a status this does not model
  * (`deleted`, a warning), is dropped here rather than handed to the writer.
  */
+/**
+ * Meta's `pricing` block, read literally or not at all.
+ *
+ * `billable` is taken ONLY when it is a real boolean. A missing field is not
+ * `false`: reading it that way would settle every delivery at zero the moment
+ * Meta changed the payload shape, and a month of free messages is exactly the
+ * kind of wrong number nobody questions.
+ */
+export function parseProviderPricing(pricing: unknown): ProviderPricingSignal | null {
+    if (!pricing || typeof pricing !== 'object') return null;
+    const raw = pricing as Record<string, unknown>;
+    const billable = typeof raw.billable === 'boolean' ? raw.billable : null;
+    const category = typeof raw.category === 'string' ? raw.category : null;
+    const model = typeof raw.pricing_model === 'string' ? raw.pricing_model : null;
+    if (billable === null && !category && !model) return null;
+    return Object.freeze({ billable, category, model });
+}
+
 export function parseMetaDeliveryStatuses(
     statuses: unknown, channelType = 'whatsapp',
 ): ChannelDeliveryStatusEvent[] {
@@ -138,6 +196,7 @@ export function parseMetaDeliveryStatuses(
             errorDetail: error
                 ? `title="${error.title ?? ''}" details="${error.error_data?.details ?? error.message ?? ''}"`
                 : null,
+            pricing: parseProviderPricing(entry?.pricing),
         });
     }
     return events;
@@ -190,6 +249,15 @@ export async function recordChannelDeliveryStatuses(
         logger: ChannelDeliveryStatusLogger;
         /** Null means the connection belongs to no tenant we know — terminal. */
         resolveSchema: () => Promise<string | null>;
+        /**
+         * Where a receipt goes to settle or release the money it belongs to.
+         *
+         * Optional because three ingresses share this writer and not all of
+         * them carry the billing graph — but the WhatsApp ones do, and without
+         * it every reservation stays counted for ever: the POST can only ever
+         * say "Meta accepted it", and the charge lands on delivery.
+         */
+        spendLedger?: DeliveryReceiptLedger | null;
     },
     /**
      * Cutoffs that have to become receipts first. Kept on this one entry point
@@ -254,6 +322,31 @@ export async function recordChannelDeliveryStatuses(
             deps.logger.debug(`[${context.channelType}] estado ${event.status} no aplicado: ${error?.message}`);
             results.push(outcome(event, 'unavailable'));
             unavailable = true;
+        }
+
+        // ── AND THE MONEY, WHICH IS A SEPARATE RECORD ───────────────────────
+        //
+        // Run for EVERY event, including the ones the conversation record
+        // rejected as not-newer or unknown: the two records answer different
+        // questions and a receipt the timeline already knew about may still be
+        // the first one the ledger has seen.
+        //
+        // Deliberately after the record and deliberately in its own try: a
+        // reservation that cannot be resolved must not cost a customer their
+        // delivery status, and Meta is owed a 200 either way.
+        if (deps.spendLedger && context.channelType === 'whatsapp') {
+            try {
+                await deps.spendLedger.applyDeliveryReceipt(schemaName as string, {
+                    providerMessageId: event.providerMessageId,
+                    status: event.status as 'sent' | 'delivered' | 'read' | 'failed',
+                    errorCode: event.errorCode ?? null,
+                    pricing: event.pricing ?? null,
+                });
+            } catch (error: any) {
+                deps.logger.warn(`[${context.channelType}] el recibo ${event.providerMessageId} `
+                    + `no llegó al libro de gasto: ${error?.message}`);
+                unavailable = true;
+            }
         }
     }
 

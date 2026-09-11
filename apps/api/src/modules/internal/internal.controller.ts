@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Body,
+  Optional,
   Controller,
   ForbiddenException,
   Logger,
@@ -20,8 +21,10 @@ import { resolveTenantSubscriptionAccess } from '../../common/utils/subscription
 import {
   isDeliveryStatus,
   namespaceProviderErrorCode,
+  parseProviderPricing,
   recordChannelDeliveryStatuses,
 } from '../channels/channel-delivery-status';
+import { WhatsappSpendService } from '../billing/whatsapp-spend/whatsapp-spend.service';
 import { DISPATCH_PROVIDER_STATUSES } from '../channels/agent-dispatch-outbox';
 
 /**
@@ -42,6 +45,10 @@ export class InternalController {
     private readonly throttle: TenantThrottleService,
     private readonly inboundQueue: InboundQueueService,
     private readonly events: EventEmitter2,
+    // The deployed `whatsapp` service posts its receipts here, so this ingress
+    // reaches the same ledger as the API's own webhook. One rule, one place —
+    // and a receipt that arrives by this road settles the same reservation.
+    private readonly spendLedger: WhatsappSpendService,
   ) {}
 
   /**
@@ -195,6 +202,10 @@ export class InternalController {
         status: body.status,
         recipient: typeof body.recipient === 'string' ? body.recipient : null,
         errorCode: namespaceProviderErrorCode(body.channelType, body.errorCode ?? null),
+        // Meta's own `pricing` block, forwarded verbatim by the worker when it
+        // has one. `billable: false` is the single authority that can settle a
+        // delivered message at zero, so it must survive the hop.
+        pricing: parseProviderPricing((body as any).pricing),
       }],
       { channelType: body.channelType, channelAccountId: body.channelAccountId },
       {

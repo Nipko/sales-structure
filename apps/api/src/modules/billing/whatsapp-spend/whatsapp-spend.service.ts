@@ -7,7 +7,8 @@ import {
 } from '../whatsapp-rates';
 import {
     adoptReservation, claimReservation, claimTransmission, declareTaskBudget, ensureCounters,
-    findReservation, grantFreeDeliveries, markTransmissionInFlight, ownEffect,
+    findReservation, findReservationByProviderMessage, grantFreeDeliveries,
+    markTransmissionInFlight, ownEffect, RESOLVABLE_STATES,
     recentIdenticalDeliveries, releaseTransmission, sweepTransmissionLeases,
     readExposure, readPressure, readSpendSignals, recordAllocation, releaseReservation,
     reserveAgainstCounter, retainReservation,
@@ -594,6 +595,113 @@ export class WhatsappSpendService {
                         transmitToken,
                     });
             }
+        });
+    }
+
+    /**
+     * What a provider receipt does to the money, minutes after the send.
+     *
+     * ═══ ACCEPTED IS NOT DELIVERED, AND DELIVERED IS WHAT META BILLS ═══
+     *
+     * The POST answers with a wamid and nothing else. That is an ACCEPTANCE:
+     * Meta has the message and will try to deliver it. From October 2026 the
+     * charge lands on DELIVERY, so the send path can only ever leave the effect
+     * counted-but-unresolved, and something later has to say what became of it.
+     * That something is this: the status webhook, arriving seconds or minutes
+     * afterwards, carrying the one fact nobody else has.
+     *
+     * Without it every reservation stayed on the books for ever, every ceiling
+     * filled up with messages that had long since arrived or failed, and the
+     * exposure report showed a month of held money for an account that had
+     * settled its bill.
+     *
+     * ── WHAT EACH RECEIPT MEANS ─────────────────────────────────────────────
+     *
+     *   `sent`       Meta has it. Nothing is decided; the row stays as it is.
+     *   `delivered`  It reached the phone. Meta bills it, so the effect settles.
+     *   `read`       Also delivered — and it can arrive FIRST, out of order, so
+     *                it settles the same way rather than being ignored.
+     *   `failed`     It never arrived. Meta does not bill an undelivered
+     *                message, so the whole reservation goes back.
+     *
+     * ── WHY A SECOND RECEIPT CHANGES NOTHING ────────────────────────────────
+     *
+     * Meta redelivers webhooks, and it may send `delivered` then `read` for the
+     * same message. Both are handled by the state, not by a dedupe table: once
+     * a row is `settled` or `released` its money has moved, and the writers
+     * refuse those states outright. A duplicate is a no-op rather than a second
+     * charge, and it is a no-op even if the events arrive in either order, on
+     * two workers, at the same moment.
+     */
+    async applyDeliveryReceipt(schema: string, receipt: {
+        readonly providerMessageId: string;
+        readonly status: 'sent' | 'delivered' | 'read' | 'failed';
+        readonly errorCode?: string | null;
+        /**
+         * Meta's own `pricing` block, when the webhook carried one.
+         *
+         * `billable: false` is authoritative and is the only thing that can
+         * settle a delivered message at zero: it is Meta saying THIS delivery
+         * was inside the free allowance or a free entry point. Nothing else may
+         * decide that, because everything else would be guessing.
+         */
+        readonly pricing?: { readonly billable?: boolean | null;
+            readonly category?: string | null; readonly model?: string | null } | null;
+    }): Promise<'settled' | 'released' | 'ignored' | 'unknown_receipt'> {
+        return this.prisma.transactionInTenantSchema(schema, async query => {
+            const row = await findReservationByProviderMessage(
+                query as SpendQuery, schema, receipt.providerMessageId);
+            // Not every WhatsApp message on the platform is one of ours: a
+            // receipt for something sent before metering existed, or from
+            // another tool on the same number, has no reservation and is not a
+            // problem. Saying so is better than inventing one.
+            if (!row) return 'unknown_receipt' as const;
+            // Finished. A redelivered webhook, or `read` after `delivered`,
+            // must not move money a second time.
+            if (row.state === 'settled' || row.state === 'released') return 'ignored' as const;
+            // Acceptance, which the send path already recorded. Nothing here.
+            if (receipt.status === 'sent') return 'ignored' as const;
+
+            if (receipt.status === 'failed') {
+                const released = await releaseReservation(query as SpendQuery, schema, {
+                    effectKey: row.effectKey,
+                    evidence: 'provider_reported_failure',
+                    reason: receipt.errorCode ?? 'delivery_failed',
+                    remoteState: 'failed',
+                    fromStates: RESOLVABLE_STATES,
+                });
+                return released ? 'released' as const : 'ignored' as const;
+            }
+
+            // Delivered — by that name or by `read`, which implies it.
+            //
+            // What it COST is a separate question from whether it arrived. Meta
+            // says `billable: false` when the delivery was free; otherwise the
+            // authority on the amount is the reservation's own price, and where
+            // that price was never computable the effect stays pending until a
+            // reconciliation against Meta's invoice resolves it.
+            const free = receipt.pricing?.billable === false;
+            if (!free && row.money.basis === 'unknown') {
+                // It arrived and nobody can say what it cost. The exposure
+                // stands, now marked as awaiting Meta's invoice rather than
+                // awaiting a receipt. A row already in that state is left
+                // alone — `retainReservation` only moves out of `held`.
+                await retainReservation(query as SpendQuery, schema, {
+                    effectKey: row.effectKey, state: 'pending_reconciliation',
+                    reason: 'delivered_without_price', remoteState: receipt.status,
+                    providerMessageId: receipt.providerMessageId,
+                });
+                return 'ignored' as const;
+            }
+            const settled = await settleReservation(query as SpendQuery, schema, {
+                effectKey: row.effectKey,
+                chargedMinor: free ? 0 : row.money.reservedMinor,
+                evidence: free ? 'provider_reported_free' : 'provider_reported_delivery',
+                providerMessageId: receipt.providerMessageId,
+                remoteState: receipt.status,
+                fromStates: RESOLVABLE_STATES,
+            });
+            return settled ? 'settled' as const : 'ignored' as const;
         });
     }
 

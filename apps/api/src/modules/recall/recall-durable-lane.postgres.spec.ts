@@ -276,6 +276,59 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
         expect(first + second).toBe(1);
     });
 
+    it('claims nothing on a second pass that read the same due list', async () => {
+        // Both sweeps read the contact as due — the window a cron and the
+        // dashboard's "send recall now" hit whenever they overlap. The outer
+        // query cannot see this: it already ran. Only the claim can.
+        const contactId = await lapsed();
+        const [contact] = await sql(
+            `SELECT id, name, phone, last_appointment_at, next_recall_at
+               FROM contacts WHERE id = $1::uuid`, [contactId]);
+        const options = { channelType: 'whatsapp', cooldownDays: 90, tenantLang: 'es', message: '' };
+
+        const first = await service.recallOne(tenantId, schema, contact, options);
+        const afterFirst = await cooldown(contactId);
+        const second = await service.recallOne(tenantId, schema, contact, options);
+
+        expect([first, second]).toEqual([true, false]);
+        expect(await outboxRows()).toHaveLength(1);
+        // And the boundary moved exactly once: a second claim would push the
+        // customer another ninety days out for a message already owed.
+        expect(await cooldown(contactId)).toBe(afterFirst);
+    });
+
+    it('waits for a competing claim rather than reading around it', async () => {
+        // The claim is only a mutex if it BLOCKS. Without `FOR UPDATE` the
+        // second sweep reads the snapshot from before the first one committed,
+        // decides the contact is due, and the customer is asked twice.
+        const contactId = await lapsed();
+        const [contact] = await sql(
+            `SELECT id, name, phone, last_appointment_at, next_recall_at
+               FROM contacts WHERE id = $1::uuid`, [contactId]);
+
+        let release: () => void = () => undefined;
+        const held = new Promise<void>(resolve => { release = resolve; });
+        // A competitor holding the row and moving the cooldown, exactly as the
+        // other sweep would, keeping its transaction open meanwhile.
+        const competitor = prisma.transactionInTenantSchema(schema, async (query: any) => {
+            await query('SELECT next_recall_at FROM contacts WHERE id = $1::uuid FOR UPDATE',
+                [contactId]);
+            await query(`UPDATE contacts
+                            SET next_recall_at = clock_timestamp() + interval '90 days'
+                          WHERE id = $1::uuid`, [contactId]);
+            await held;
+        });
+        await new Promise(resolve => setTimeout(resolve, 100));
+        const sweep = service.recallOne(tenantId, schema, contact,
+            { channelType: 'whatsapp', cooldownDays: 90, tenantLang: 'es', message: '' });
+        await new Promise(resolve => setTimeout(resolve, 150));
+        release();
+        await competitor;
+
+        expect(await sweep).toBe(false);
+        expect(await outboxRows()).toEqual([]);
+    });
+
     it('gives the NEXT cycle a row of its own', async () => {
         // The control for the replay test: "one row" must not mean "one row per
         // contact for ever". A cycle that has genuinely come round again is a

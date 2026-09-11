@@ -53,6 +53,7 @@ const { channelCertificationRuntime } = api('modules/channels/channel-certificat
 const { CERTIFICATION_LEDGER_DDL } = api('modules/simulation/certification-ledger.ts');
 const { BENCHMARK_LEDGER_DDL } = api('modules/simulation/benchmark-harness.ts');
 const { agentIssueResolutionDefects, routedAgentOperations } = shared;
+const { octoberAuthorities, octoberRows } = require('./meta-october-rows.cjs');
 
 const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8' }).trim();
 const revision = git('rev-parse', 'HEAD');
@@ -126,6 +127,14 @@ const retrievalGaps = [
     ...(fs.existsSync(path.join(root, 'docs/runbooks/rag-quality-and-slo.md')) ? [] : ['runbook sin publicar']),
 ];
 
+/**
+ * The October programme's counters, computed the same way as the rest: from the
+ * modules the product runs and from a census of the source tree, never from a
+ * sentence. They are asked once here so a row cannot quietly re-derive one and
+ * get a different answer than the row beside it.
+ */
+const october = octoberAuthorities({ root, api, shared });
+
 const coverage = commercialCoverage();
 const unexplainedUnfrozen = commercialReadersWithoutFrozenAuthority()
     .filter(reader => reader.unfrozen.some(token => !(token in ACCEPTED_UNFROZEN)));
@@ -136,6 +145,8 @@ const GATES = {
     3: 'personas nuevas reclutadas para sesiones moderadas',
     4: 'cuentas autorizadas de alternativas y revisores ciegos',
     5: 'autorización posterior para push, despliegue, migración y activación',
+    6: 'cuenta WABA, número, moneda, tarjeta, financiación, permisos y plantillas reales',
+    7: 'destinatario consentido, presupuesto y autorización de llamadas a Meta',
 };
 
 /**
@@ -281,6 +292,17 @@ const ROWS = [
     }),
 ];
 
+/**
+ * M0–M6 and R0–R6, appended rather than kept in a second table.
+ *
+ * A second report with its own rules is how two documents about one repository
+ * come to disagree — which is exactly what happened: this generator said zero
+ * rows open while an independent review put the October programme at about 45%,
+ * because this generator was not measuring that programme at all. One table,
+ * one row constructor, one contradiction check.
+ */
+ROWS.push(...octoberRows(row, october));
+
 // ─── Consistency, checked rather than promised ──────────────────────────────
 const contradictions = [];
 for (const entry of ROWS) {
@@ -291,7 +313,18 @@ for (const entry of ROWS) {
     if (entry.status === 'abierta' && entry.open <= 0) contradictions.push(`${entry.id}: abierta sin condición`);
     for (const gate of entry.gates) if (!GATES[gate]) contradictions.push(`${entry.id}: gate ${gate} no existe`);
 }
-if (ROWS.length !== 25) contradictions.push(`la tabla tiene ${ROWS.length} filas y debe tener 25`);
+const EXPECTED_ROWS = 39;
+if (ROWS.length !== EXPECTED_ROWS) {
+    contradictions.push(`la tabla tiene ${ROWS.length} filas y debe tener ${EXPECTED_ROWS} `
+        + '(25 de A1–H3 más 14 de M0–M6/R0–R6)');
+}
+// Every id exactly once. Two rows with one id is how a table reports a status
+// twice and a reader takes whichever they saw first.
+const seenIds = new Set();
+for (const entry of ROWS) {
+    if (seenIds.has(entry.id)) contradictions.push(`${entry.id}: la fila aparece dos veces`);
+    seenIds.add(entry.id);
+}
 for (const entry of ROWS) {
     if (entry.provenance === 'executed_evidence' && !fs.existsSync(path.join(root, entry.artefact ?? ''))) {
         contradictions.push(`${entry.id}: nombra un artefacto que no existe (${entry.artefact})`);
@@ -325,6 +358,16 @@ const state = {
         outputStores: AGENT_OUTPUT_STORES.length, openOutputStores: openStores.map(store => store.id),
         channelsSelfService: channels.selfService, channelsCertified: channels.certified,
         routedOperations: routed.length, resolutionDefects,
+        egressCallSites: october.rows.length,
+        chargeableCallSites: october.billable.length,
+        chargeableOutsideGate: october.bypasses.length,
+        chargeableOffDurableLane: october.offDurable.length,
+        chargeableOffDurableByLane: october.byLane,
+        censusArtefactStale: october.censusStale,
+        proactivePolicies: october.policies,
+        dispatchItemKinds: october.itemKinds,
+        spendScopes: october.spendScopes,
+        restShapesWithoutDurableItem: october.unrepresentable,
     },
     rows: ROWS,
 };
@@ -361,7 +404,7 @@ const label = entry => entry.status === 'aceptada' ? '**aceptada**'
         ? `**bloqueada** por gate ${entry.gates.join(' y ')}`
         : '**abierta**';
 const lines = [
-    '# Estado del programa A1–H3, decidido por el código',
+    '# Estado de los programas A1–H3 y M0–M6/R0–R6, decidido por el código',
     '',
     'Generado por `docs/audits/2026-09-09/generate-closure-report.cjs`. Cada fila declara una **condición**, y',
     'el estado sale de ella: con una condición local sin cumplir la fila está `abierta`; con la condición',
@@ -379,11 +422,11 @@ const lines = [
         : 'Sin contradicciones: ninguna fila se declara aceptada con una condición abierta o un gate pendiente, '
             + 'ninguna se declara bloqueada sin nombrar el gate y ninguna se declara abierta sin decir qué falta.',
     '',
-    '## Los cinco gates externos',
+    '## Los gates externos',
     '',
     ...Object.entries(GATES).map(([id, text]) => `${id}. ${text}.`),
     '',
-    '## Las 25 filas',
+    '## Las filas',
     '',
     '| ID | Estado | De dónde sale | Qué falta | Evidencia | Commits |',
     '|---|---|---|---|---|---|',
@@ -427,6 +470,16 @@ const lines = [
     `| Canales certificados | ${channels.certified} |`,
     `| Operaciones que Assist deriva a una pantalla | ${routed.length} |`,
     `| Defectos en la tabla de resolución de Assist | ${resolutionDefects.length} |`,
+    `| Call sites de egress censados | ${october.rows.length} |`,
+    `| De ellos, cobrables | ${october.billable.length} |`,
+    `| Cobrables fuera del gate económico | ${october.bypasses.length} |`,
+    `| Cobrables fuera del carril durable | ${october.offDurable.length} |`,
+    `| Productores declarados en el inventario de efectos | ${october.producers.length} |`,
+    `| De ellos, con alguna propiedad en \`none\` | ${october.effects.uncovered.length} |`,
+    `| Políticas proactivas registradas | ${october.policies.length} |`,
+    `| Tipos de item que el carril durable transporta | ${october.itemKinds.length} |`,
+    `| Alcances de gasto | ${october.spendScopes.length} |`,
+    `| Entregas de servicio gratuitas por número y mes | ${october.freeAllowance} |`,
     '',
     'Para actualizar: `node docs/audits/2026-09-09/generate-closure-report.cjs` desde la raíz.',
     '',

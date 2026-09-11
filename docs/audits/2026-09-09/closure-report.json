@@ -1,17 +1,17 @@
 {
   "version": 1,
-  "revision": "4c375f7bc4877b2d67a205118bfe6d6bde607cbf",
-  "generatedAt": "2026-09-11T09:44:26.962Z",
+  "revision": "a6ce2dea9b40d979d1cdc8f43b159acf6a77ff34",
+  "generatedAt": "2026-09-11T20:48:44.783Z",
   "finished": false,
   "counts": {
-    "aceptada": 7,
-    "bloqueada": 18,
-    "abierta": 0
+    "aceptada": 11,
+    "bloqueada": 20,
+    "abierta": 8
   },
   "provenance": {
-    "derived": 10,
+    "derived": 21,
     "executed_evidence": 3,
-    "declared": 12
+    "declared": 15
   },
   "contradictions": [],
   "gates": {
@@ -19,7 +19,9 @@
     "2": "credenciales de proveedor LLM, modelo, techo de gasto y autorización de ejecución",
     "3": "personas nuevas reclutadas para sesiones moderadas",
     "4": "cuentas autorizadas de alternativas y revisores ciegos",
-    "5": "autorización posterior para push, despliegue, migración y activación"
+    "5": "autorización posterior para push, despliegue, migración y activación",
+    "6": "cuenta WABA, número, moneda, tarjeta, financiación, permisos y plantillas reales",
+    "7": "destinatario consentido, presupuesto y autorización de llamadas a Meta"
   },
   "authorities": {
     "profiles": 76,
@@ -34,7 +36,43 @@
     "channelsSelfService": 5,
     "channelsCertified": 0,
     "routedOperations": 8,
-    "resolutionDefects": []
+    "resolutionDefects": [],
+    "egressCallSites": 35,
+    "chargeableCallSites": 31,
+    "chargeableOutsideGate": 0,
+    "chargeableOffDurableLane": 21,
+    "chargeableOffDurableByLane": {
+      "inline": 10,
+      "outbound_queue": 11
+    },
+    "censusArtefactStale": false,
+    "proactivePolicies": [
+      "appointment_reminder",
+      "attendance_check",
+      "appointment_notification",
+      "drip_step",
+      "nurturing_followup",
+      "broadcast_message",
+      "automation_rule_action",
+      "recall_reminder"
+    ],
+    "dispatchItemKinds": [
+      "text",
+      "media",
+      "payment_link",
+      "flow",
+      "template",
+      "interactive",
+      "location"
+    ],
+    "spendScopes": [
+      "number_month",
+      "account",
+      "business",
+      "contact",
+      "task"
+    ],
+    "restShapesWithoutDurableItem": []
   },
   "rows": [
     {
@@ -369,6 +407,178 @@
       "commits": [
         "aaf41d62"
       ]
+    },
+    {
+      "id": "M0",
+      "open": 0,
+      "openLabel": "",
+      "gates": [],
+      "status": "aceptada",
+      "provenance": "derived",
+      "artefact": null,
+      "evidence": "Censo derivado del árbol: 35 call sites, 31 cobrables, 0 fuera de la autoridad económica. El inventario de efectos declara 60 productores y 50 con al menos una propiedad en `none`. La condición es que el artefacto versionado se regenere desde el mismo HEAD, no que alguien lo haya leído.",
+      "commits": []
+    },
+    {
+      "id": "M1",
+      "open": 29,
+      "openLabel": "19 productores de mensajería sin autoridad y 10 sin idempotencia",
+      "gates": [
+        1,
+        4
+      ],
+      "status": "abierta",
+      "provenance": "derived",
+      "artefact": null,
+      "evidence": "Remitente, pagador y credencial salen del resolver único; la unión de autoridades cubre agente servido, 8 políticas proactivas (appointment_reminder, attendance_check, appointment_notification, drip_step, nurturing_followup, broadcast_message, automation_rule_action, recall_reminder) y operador humano con 4 roles. BSUID/BISU y la coexistencia con el agente Meta siguen siendo trabajo de un solo escritor y no están en el código: esta fila no puede cerrarse por declaración.",
+      "commits": []
+    },
+    {
+      "id": "M2",
+      "open": 0,
+      "openLabel": "la tarjeta de tarifas versionada no está cargada",
+      "gates": [
+        4
+      ],
+      "status": "bloqueada",
+      "provenance": "derived",
+      "artefact": null,
+      "evidence": "Tarifas versionadas `meta-ratecards-2026@cdc5b132567ab1e7` con 4 tarjetas, 5 categorías que Meta cobra por separado y undefined entregas de servicio gratuitas por número y mes calendario. La categoría aprobada y la ventana de servicio se leen de la base del tenant antes de admitir. Lo que falta es una cuenta real: tarifa aplicada por Meta al entregar y conciliación contra factura.",
+      "commits": []
+    },
+    {
+      "id": "M3",
+      "open": 0,
+      "openLabel": "0 productores cobrables fuera del gate económico",
+      "gates": [],
+      "status": "aceptada",
+      "provenance": "derived",
+      "artefact": null,
+      "evidence": "Autoridad económica transaccional con 5 alcances (number_month, account, business, contact, task), reserva antes del efecto y liquidación contra el recibo. Cero productores cobrables fuera del gate en este HEAD: lo verifica el censo, no esta frase.",
+      "commits": []
+    },
+    {
+      "id": "M4",
+      "open": 1,
+      "openLabel": "la propuesta de precios y la transición de planes son una decisión comercial que nadie ha tomado",
+      "gates": [
+        5
+      ],
+      "status": "abierta",
+      "provenance": "declared",
+      "artefact": null,
+      "evidence": "Escenarios por país, canal, tarea y ciclo se pueden generar de los cinco planes vigentes, pero el cambio de precio, la capacidad ofrecida y la comunicación a clientes afectados no son trabajo de código. Se dice como declaración porque lo es: cambiar el código de esta área no cambia esta fila.",
+      "commits": []
+    },
+    {
+      "id": "M5",
+      "open": 17,
+      "openLabel": "17 productores de mensajería sin borrado alcanzable",
+      "gates": [
+        1,
+        6
+      ],
+      "status": "abierta",
+      "provenance": "derived",
+      "artefact": null,
+      "evidence": "Aprendizaje conserva origen y finalidad; publicación y rollback llegan a los derivados. El agente de negocio de Meta sigue apagado. El piloto real necesita cuenta, destinatario consentido y presupuesto autorizado, que son gates, no código.",
+      "commits": []
+    },
+    {
+      "id": "M6",
+      "open": 1,
+      "openLabel": "marketing avanzado, Direct Send, llamadas/grupos y wallet de reventa no están construidos y están fuera del alcance de octubre por decisión explícita",
+      "gates": [
+        5
+      ],
+      "status": "abierta",
+      "provenance": "declared",
+      "artefact": null,
+      "evidence": "M5 los separa a M6 a propósito, con flags y elegibilidad propias, para que no bloqueen la continuidad básica. Se registra abierta en vez de omitirse: una fila que no aparece se lee como cerrada.",
+      "commits": []
+    },
+    {
+      "id": "R0",
+      "open": 21,
+      "openLabel": "21 productores cobrables fuera del carril durable (10 en `inline`, 11 en `outbound_queue`)",
+      "gates": [],
+      "status": "abierta",
+      "provenance": "derived",
+      "artefact": null,
+      "evidence": "De 31 call sites cobrables, 21 usan un carril que no escribe fila antes del POST — Redis es el registro, o no hay registro. Un productor ahí no puede contestar \"¿esto salió?\" después de un reinicio. El criterio principal de R6 es exactamente este número en cero.",
+      "commits": []
+    },
+    {
+      "id": "R1",
+      "open": 0,
+      "openLabel": "",
+      "gates": [],
+      "status": "aceptada",
+      "provenance": "derived",
+      "artefact": null,
+      "evidence": "El carril transporta 7 tipos de item (text, media, payment_link, flow, template, interactive, location), incluidos los menús y las ubicaciones que el carril REST manda todos los días. Los efectos se cuentan DESPUÉS de formarlos: un caption nativo viaja dentro del item donde el proveedor lo cobra como un mensaje, y como item propio donde no.",
+      "commits": []
+    },
+    {
+      "id": "R2",
+      "open": 0,
+      "openLabel": "la política de repetición no está cargada",
+      "gates": [],
+      "status": "aceptada",
+      "provenance": "derived",
+      "artefact": null,
+      "evidence": "Esperar y suprimir son resultados durables y distintos de error, resolución y handoff, así que ningún catch los convierte en un texto cobrable. La política por defecto admite 1 mensaje(s) idéntico(s) en 10 minutos, con un enfriamiento de 10 minutos, y es revisable por tarea e idioma.",
+      "commits": []
+    },
+    {
+      "id": "R3",
+      "open": 0,
+      "openLabel": "faltan alcances de gasto: ",
+      "gates": [
+        4
+      ],
+      "status": "bloqueada",
+      "provenance": "derived",
+      "artefact": null,
+      "evidence": "Los 5 alcances se reservan en orden fijo dentro de una transacción, así que dos workers peleando por el último importe no pueden asignarlo dos veces. El mercado sale de la dirección del destinatario, nunca del país de la empresa, y un destino desconocido no tiene tarifa cero.",
+      "commits": []
+    },
+    {
+      "id": "R4",
+      "open": 21,
+      "openLabel": "21 productores todavía pueden emitir sin fila durable (10 en `inline`, 11 en `outbound_queue`)",
+      "gates": [],
+      "status": "abierta",
+      "provenance": "derived",
+      "artefact": null,
+      "evidence": "La consola humana, la API REST y las campañas necesitan la misma admisión que el agente: un handoff detiene la IA, pero las respuestas humanas siguen generando cargos. La autoridad de operador humano existe desde este HEAD; lo que falta es que cada productor la use, y eso se cuenta arriba.",
+      "commits": []
+    },
+    {
+      "id": "R5",
+      "open": 1,
+      "openLabel": "la matriz de aceptación de 18 escenarios no está enlazada a pruebas nombradas, y el producto de control de gasto no está en canal, Assist ni activación",
+      "gates": [],
+      "status": "abierta",
+      "provenance": "declared",
+      "artefact": null,
+      "evidence": "Se dice como declaración a propósito: hasta que cada escenario nombre la prueba que lo cubre, esta fila no puede salir de un contador, y un contador inventado sería peor que decir que falta.",
+      "commits": []
+    },
+    {
+      "id": "R6",
+      "open": 21,
+      "openLabel": "21 productores pueden entregar fuera de la autorización aplicable",
+      "gates": [
+        1,
+        5,
+        7
+      ],
+      "status": "abierta",
+      "provenance": "derived",
+      "artefact": null,
+      "evidence": "El criterio principal de R6, textual: **ningún productor de WhatsApp puede generar una entrega fuera de la autorización aplicable**. Mientras el contador sea distinto de cero la fila está abierta, y después seguirá bloqueada por el modo observación, el canario con techo explícito y la autorización de activar `enforce`.",
+      "commits": []
     }
   ]
 }

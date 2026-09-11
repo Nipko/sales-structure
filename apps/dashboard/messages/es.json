@@ -14509,6 +14509,11 @@
       "task_budget_exhausted": "Esta campaña llegó a su propio presupuesto.",
       "account_paused": "Este número está pausado.",
       "duplicate_recent_send": "Este mismo mensaje ya se entregó a este contacto hace un momento."
-    }
+    },
+    "resume": "Reanudar envíos",
+    "resumeConfirm": "¿Ya agregaste o corregiste el medio de pago en Meta? Vamos a habilitar los envíos de este número otra vez. Si Meta vuelve a rechazar el cobro, el número se pausa solo en el próximo intento y vas a ver el motivo acá.",
+    "resumeDone": "Los envíos de este número quedan habilitados otra vez.",
+    "awaitingResolution": "Envíos que nadie puede confirmar",
+    "awaitingResolutionHint": "Meta nunca nos dijo qué pasó con {count} mensaje(s) enviados hace más de {hours} h. El dinero sigue contado contra tu cuenta porque puede haberse gastado; esperar más no lo va a decidir. Un administrador puede resolverlos indicando si llegaron o no."
   }
 }

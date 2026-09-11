@@ -32,9 +32,26 @@ export interface WhatsappReadinessNumber {
     paused?: boolean;
 }
 
-export function WhatsappSpendPanel({ summary, readiness }: {
+/** Effects that outlived the grace period with no answer from the provider. */
+export interface WhatsappAwaitingResolution {
+    graceHours: number;
+    effects: ReadonlyArray<{ effectKey: string }>;
+}
+
+export function WhatsappSpendPanel({ summary, readiness, awaiting, onResume }: {
     summary: WhatsappSpendSummary | null;
     readiness?: readonly WhatsappReadinessNumber[];
+    awaiting?: WhatsappAwaitingResolution | null;
+    /**
+     * Let an admin say they fixed the payment method.
+     *
+     * Absent for a supervisor, who may READ that a number is paused and may not
+     * resume it: resuming is a decision about the business's own billing. Absent
+     * also means the button does not render at all, rather than rendering and
+     * failing — a control that refuses after being pressed teaches people that
+     * the screen is broken.
+     */
+    onResume?: (channelAccountId: string) => Promise<void> | void;
 }) {
     const t = useTranslations("whatsappSpend");
     const locale = useLocale();
@@ -66,14 +83,51 @@ export function WhatsappSpendPanel({ summary, readiness }: {
                         {t("paused")}
                     </p>
                     <p className="text-sm text-[var(--text-secondary)]">{t("pausedHint")}</p>
-                    <ul className="space-y-1">
+                    <ul className="space-y-2">
                         {paused.map(number => (
-                            <li key={number.channelAccountId} className="text-sm text-[var(--text-secondary)]">
-                                <span className="text-[var(--text-primary)]">{number.channelAccountId}</span>
-                                {" — "}{number.guidance}
+                            <li key={number.channelAccountId}
+                                className="text-sm text-[var(--text-secondary)] flex flex-wrap items-center gap-2">
+                                <span>
+                                    <span className="text-[var(--text-primary)]">{number.channelAccountId}</span>
+                                    {" — "}{number.guidance}
+                                </span>
+                                {/* ── THE WAY OUT THAT NEEDS NO SEND ──────────────
+                                    A pause lifts by itself when Meta accepts a
+                                    message. A paused number sends nothing, so
+                                    that proof can never arrive on its own: without
+                                    this button the only exit would be the POST the
+                                    pause exists to prevent. */}
+                                {onResume && (
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            if (!window.confirm(t("resumeConfirm"))) return;
+                                            void onResume(number.channelAccountId);
+                                        }}
+                                        className="rounded-md border border-[var(--border)] px-2 py-1 text-xs
+                                                   text-[var(--text-primary)] hover:bg-[var(--bg-secondary)]"
+                                    >
+                                        {t("resume")}
+                                    </button>
+                                )}
                             </li>
                         ))}
                     </ul>
+                </div>
+            )}
+
+            {/* ── What nobody can decide without a person ──────────────────── */}
+            {awaiting && awaiting.effects.length > 0 && (
+                <div className="rounded-lg border border-[var(--warning)]/40 bg-[var(--warning)]/10 p-4 space-y-1">
+                    <p className="flex items-center gap-2 text-sm text-[var(--text-primary)]">
+                        <AlertTriangle className="h-4 w-4 text-[var(--warning)]" aria-hidden />
+                        {t("awaitingResolution")}
+                    </p>
+                    <p className="text-sm text-[var(--text-secondary)]">
+                        {t("awaitingResolutionHint", {
+                            count: awaiting.effects.length, hours: awaiting.graceHours,
+                        })}
+                    </p>
                 </div>
             )}
 

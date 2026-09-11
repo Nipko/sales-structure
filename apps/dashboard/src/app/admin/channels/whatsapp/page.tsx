@@ -2,7 +2,11 @@
 
 import { useTranslations } from "next-intl";
 import { useState, useEffect } from "react";
-import { WhatsappSpendPanel, type WhatsappReadinessNumber } from "@/components/channels/WhatsappSpendPanel";
+import {
+    WhatsappSpendPanel,
+    type WhatsappAwaitingResolution,
+    type WhatsappReadinessNumber,
+} from "@/components/channels/WhatsappSpendPanel";
 import type { WhatsappSpendSummary } from "@/lib/whatsapp-spend";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
@@ -49,8 +53,13 @@ export default function WhatsAppSetupPage() {
     const twn = useTranslations("channels.whatsapp.warnings");
     const tHelp = useTranslations("help");
     const twt = useTranslations("whatsappTemplates");
+    const tSpend = useTranslations("whatsappSpend");
     const router = useRouter();
     const { user } = useAuth();
+    // Reading that a number is paused is operational; lifting the pause is a
+    // decision about the business's own billing, so a supervisor sees the
+    // state and an admin acts on it.
+    const canResumeSending = user?.role === "tenant_admin" || user?.role === "super_admin";
     const { canAddChannelAccount } = usePlanLimits();
 
     const [selectedRoute, setSelectedRoute] = useState<WhatsAppConnectRouteId>("coexistence");
@@ -71,6 +80,7 @@ export default function WhatsAppSetupPage() {
     // send. Two reads rather than one because they answer different questions
     // and either can be unavailable without the other being useless.
     const [spend, setSpend] = useState<WhatsappSpendSummary | null>(null);
+    const [awaiting, setAwaiting] = useState<WhatsappAwaitingResolution | null>(null);
     const [readiness, setReadiness] = useState<WhatsappReadinessNumber[]>([]);
 
     const loadData = async () => {
@@ -113,12 +123,42 @@ export default function WhatsAppSetupPage() {
      * that is not connected yet has no spend to show, which is not an error.
      */
     const loadSpend = async () => {
-        const [summaryRes, readinessRes] = await Promise.all([
+        const [summaryRes, readinessRes, awaitingRes] = await Promise.all([
             api.fetch("/whatsapp/spend/summary?days=30").catch(() => null),
             api.fetch("/whatsapp/connection/billing-readiness").catch(() => null),
+            // Effects whose delivery nobody can confirm. Read separately and
+            // failing separately: money waiting on a person is worth showing
+            // even when the summary could not be read, and vice versa.
+            api.fetch("/whatsapp/spend/awaiting-resolution").catch(() => null),
         ]);
         setSpend((summaryRes as any)?.data ?? null);
         setReadiness(((readinessRes as any)?.data?.numbers ?? []) as WhatsappReadinessNumber[]);
+        setAwaiting(((awaitingRes as any)?.data ?? null) as WhatsappAwaitingResolution | null);
+    };
+
+    /**
+     * A person saying they fixed the payment method in Meta.
+     *
+     * The only way out of a pause that does not require the thing the pause
+     * prevents: a pause lifts by itself when Meta accepts a message, and a
+     * paused number sends nothing.
+     */
+    const handleResumeNumber = async (channelAccountId: string) => {
+        setMessage({ type: "", text: "" });
+        try {
+            const res = await api.fetch(
+                `/whatsapp/spend/pauses/${encodeURIComponent(channelAccountId)}/resume`,
+                { method: "POST", body: JSON.stringify({ note: "resumed from the channels panel" }) },
+            );
+            if ((res as any)?.success) {
+                setMessage({ type: "success", text: tSpend("resumeDone") });
+                await loadSpend();
+            } else {
+                setMessage({ type: "error", text: (res as any)?.error || tc("connectionError") });
+            }
+        } catch (err: any) {
+            setMessage({ type: "error", text: err.message || tc("connectionError") });
+        }
     };
 
     useEffect(() => { loadData(); }, []);
@@ -477,7 +517,16 @@ export default function WhatsAppSetupPage() {
             {/* ═══════════ WHATSAPP CHARGES — META, NOT US (connected only) ═══════════ */}
             {isConnected && (
                 <div className="mb-6">
-                    <WhatsappSpendPanel summary={spend} readiness={readiness} />
+                    <WhatsappSpendPanel
+                        summary={spend}
+                        readiness={readiness}
+                        awaiting={awaiting}
+                        // Resuming is a decision about the business's own
+                        // billing, so a supervisor reads the pause and an admin
+                        // lifts it. Absent means no button, rather than a button
+                        // that refuses after being pressed.
+                        onResume={canResumeSending ? handleResumeNumber : undefined}
+                    />
                 </div>
             )}
 

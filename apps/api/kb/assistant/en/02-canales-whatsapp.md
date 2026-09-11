@@ -3,7 +3,7 @@ id: canales-whatsapp
 title: "Connect WhatsApp"
 routes: ["/admin/channels", "/admin/channels/whatsapp", "/admin/channels/whatsapp/templates"]
 roles: ["tenant_admin"]
-keywords: ["whatsapp", "connect whatsapp", "whatsapp number", "whatsapp business", "coexistence", "whatsapp app", "migrate number", "templates", "whatsapp template", "sync chats", "chat history", "qr code", "verification", "meta", "facebook", "disconnect whatsapp", "24 hour window", "multiple accounts", "second number", "needs reauthorisation", "popup blocked", "connection with warnings", "business not verified"]
+keywords: ["whatsapp", "connect whatsapp", "whatsapp number", "whatsapp business", "coexistence", "whatsapp app", "migrate number", "templates", "whatsapp template", "sync chats", "chat history", "qr code", "verification", "meta", "facebook", "disconnect whatsapp", "24 hour window", "multiple accounts", "second number", "needs reauthorisation", "popup blocked", "connection with warnings", "business not verified", "meta charges", "whatsapp cost", "payment method", "card on meta", "service messages", "free service messages", "spend ceiling", "sending paused", "stopped replying", "1 october", "meta invoice", "who charges"]
 ---
 
 # Connect WhatsApp
@@ -111,6 +111,75 @@ In **Channels**, each card shows the connection status:
 
 When you open **WhatsApp** with a connected number, you'll see the **Active Channel** card with the **Number**, the **Verified name**, and the **Quality** (the rating Meta gives your number based on how customers receive your messages; keeping it "high" gets you better sending limits). You'll also find the **Business Profile** card with the **Manage profile** button to edit the information your customers see on WhatsApp.
 
+## What Meta charges your WhatsApp account
+
+From **1 October 2026**, Meta charges **your own WhatsApp Business account** for every **delivered service message**: replies from your agent and from your team inside the 24-hour window. What your customers send you stays free.
+
+That charge is **not Parallly's**. To Meta, Parallly is a technology provider: it does not invoice you for those messages, does not pay Meta on your behalf and does not include them in your subscription. They are two separate payments and neither replaces the other:
+
+- **Your Parallly subscription** — the software. Managed in **Administration → Plan & Billing**.
+- **The messages WhatsApp delivers** — paid by your business to Meta, with the payment method on **your** WhatsApp Business account.
+
+Changing your Parallly plan does not change what Meta charges.
+
+### The payment method goes on Meta, not on Parallly
+
+You add it from Meta's own tools (WhatsApp Manager → account settings → **Billing & payments**), with a user who administers that WhatsApp Business account. If your Meta portfolio already has a payment method on file — for ads, for instance — you can select it for this account without entering it again.
+
+**Parallly never asks for a card number in chat**: not the agent, not Parallly Assist, not support. If someone asks for it inside a conversation, it is not us.
+
+### With no payment method, the number stops delivering
+
+It does not degrade: from 1 October 2026 a WhatsApp Business account with no payment method **stops delivering service messages**, even if you have spent nothing that month. From the outside it looks like an agent that stopped answering.
+
+What keeps working: incoming messages are still received, stored and shown in the **Inbox**. The conversation is not lost; the reply is what does not go out.
+
+### How to check whether your number is ready
+
+1. Open **Channels → WhatsApp** and look at the **WhatsApp charges (Meta)** card: it shows whether any number has had sending paused.
+2. Confirm in Meta's tools that **that** WhatsApp Business account has a payment method, a currency and a time zone set. All three are required: with one missing, the charge cannot be made.
+3. **A card on file does not guarantee the charge will be approved.** Meta can say a payment method exists and the bank still decline it: expired card, international purchases not enabled, no available limit, incomplete tax details. "On file" only means that this is not the missing piece.
+
+### The 1,000 free service messages
+
+Every **number** gets **1,000 free service messages per calendar month**. Meta charges from the 1,001st onwards.
+
+What the allowance is **not**:
+
+- **Not per country.** A number answering nine countries has one thousand free in total, not one thousand per country.
+- **Not per contact or per conversation.** It counts delivered messages, not people.
+- **Not for templates.** Marketing, utility and authentication templates are charged separately and do not consume the allowance.
+- **Not cumulative.** What you do not use this month does not carry over.
+- **Not per account or per plan.** It is per number: with two numbers connected, each brings its own allowance.
+
+The month closes in the **time zone of your WhatsApp Business account**, which may not be yours. If Parallly shows a 30-day window and Meta shows a calendar month, they are measuring different periods.
+
+### What you see in Parallly, and what you do not
+
+In **Channels → WhatsApp**, the **WhatsApp charges (Meta)** card shows how much of the free allowance is gone, the period's spend kept separate per currency, where it went and which numbers are paused. The **admin** and the **supervisor** can read it; resuming a number is the admin's alone.
+
+It measures **what Parallly sent** over that connection. It is not a copy of Meta's invoice — Meta issues that, and you read it in Meta's tools.
+
+### What a spend ceiling can and cannot promise
+
+A spend ceiling bounds **what Parallly sends** over that connection during the period. Today the meter **records**: it counts, it warns, and by default it **stops no message**. There is no screen for setting a ceiling; containment is enabled account by account, after looking at what the meter recorded.
+
+And even when active, there are three things a ceiling **cannot** promise:
+
+- **It does not limit what another tool charges to the same account.** If another system — or your team from the WhatsApp Business app — sends through that same WhatsApp Business account, that usage lands on the same Meta invoice, and Parallly neither sees it nor can stop it.
+- **It is not a limit Meta enforces.** Meta does not know about your ceiling: it keeps delivering and charging whatever reaches it, from wherever.
+- **It does not lower the rate.** It cuts volume, not the price per message.
+
+### If a number has sending paused
+
+When Meta answers that the account **cannot be billed**, Parallly pauses chargeable sends **for that number** — only that one, not the rest — and does not retry: every attempt would be identical and fail the same way until somebody acts on Meta's side.
+
+1. In **Channels → WhatsApp** you will see **Sending paused**, with the reason and since when.
+2. Fix the payment method in Meta's tools.
+3. Come back to Parallly and press **Resume sending** (admin only). It is your statement that you fixed it, not a verification: if Meta refuses the charge again, the number pauses itself on the next attempt and the reason appears there again.
+
+While the pause lasts, incoming messages keep being received.
+
 ## WhatsApp templates
 
 WhatsApp lets you reply freely during the **24 hours** after the customer's last message. To write to them **outside** that window — for example, an appointment reminder or a campaign — you need a **template approved by Meta**.
@@ -156,5 +225,17 @@ Only the account **administrator**. Supervisors and agents can see the status bu
 
 **Can I have a different agent on each number?**
 Yes. The rule is one AI agent per connection: for example, a sales agent on one number and a support agent on another. You assign it in the agent editor.
+
+**Does Parallly charge me for WhatsApp messages?**
+No. From 1 October 2026 Meta charges your WhatsApp Business account for every delivered service message, with the payment method you added on Meta. Your Parallly subscription is a separate payment and does not change because of this.
+
+**Do I give my card to Parallly to pay for WhatsApp?**
+No, and nobody from Parallly will ask for it in chat. The WhatsApp payment method goes on Meta's tools, against your own WhatsApp Business account.
+
+**Are the 1,000 free messages per account or per number?**
+Per number and per calendar month, with no carry-over. Not per country, not per contact, and not for templates.
+
+**Are Instagram and Messenger charged per message too?**
+Not today. The per-service-message charge starting on 1 October 2026 is WhatsApp's; Instagram, Messenger and Telegram have no per-service-message charge from their provider.
 
 Still have questions? Write to us at [support](https://parallly-chat.cloud/support).

@@ -1,5 +1,5 @@
 import {
-    BadRequestException, Body, Controller, Get, Post, Query, Request, UseGuards,
+    BadRequestException, Body, Controller, Get, Param, Post, Query, Request, UseGuards,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -8,6 +8,8 @@ import { Roles } from '../../../common/decorators/roles.decorator';
 import { PrismaService } from '../../prisma/prisma.service';
 import { WhatsappSpendService } from './whatsapp-spend.service';
 import { SPEND_BLOCK_CODES } from './spend-diagnosis';
+import { AccountPauseStore } from '../../channels/account-pause-store';
+import { describePause, isPaused } from '../../channels/account-send-pause';
 
 /**
  * ═══ WHAT META IS CHARGING THIS BUSINESS, AND WHY ═══
@@ -38,6 +40,7 @@ export class WhatsappSpendController {
     constructor(
         private readonly prisma: PrismaService,
         private readonly spend: WhatsappSpendService,
+        private readonly pauses: AccountPauseStore,
     ) {}
 
     /**
@@ -187,6 +190,109 @@ export class WhatsappSpendController {
                 state: resolved.state,
                 chargedMinor: resolved.chargedMinor,
                 currency: resolved.identity.currency,
+            },
+        };
+    }
+
+    /**
+     * Which of this tenant's numbers Meta has stopped billing, and what to do.
+     *
+     * A paused number is not a fault in Parallly and cannot be fixed here: Meta
+     * refused to bill the business's own WhatsApp Business Account, and the
+     * repair is a card added in Meta's interface. What this surface owes the
+     * business is the FACT, in their own panel, next to the number it is about
+     * — because from the outside "the agent stopped replying" looks like our
+     * outage, and the one sentence that fixes it in ninety seconds is invisible
+     * unless we say it.
+     */
+    @Get('pauses')
+    @UseGuards(AuthGuard('jwt'), RolesGuard)
+    @Roles('super_admin', 'tenant_admin', 'tenant_supervisor')
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'WhatsApp numbers paused because Meta will not bill them' })
+    async pausedNumbers(@Request() req: any) {
+        const tenantId = req.user?.tenantId;
+        if (!tenantId) throw new BadRequestException('User does not belong to a tenant');
+        const accounts = await this.prisma.channelAccount.findMany({
+            where: { tenantId, channelType: 'whatsapp' },
+            select: { accountId: true, displayName: true },
+        });
+        const rows = await Promise.all(accounts.map(async account => {
+            const pause = await this.pauses.current(tenantId, account.accountId);
+            return { account, pause };
+        }));
+        return {
+            success: true,
+            data: {
+                numbers: rows.map(({ account, pause }) => ({
+                    channelAccountId: account.accountId,
+                    displayName: account.displayName ?? null,
+                    paused: isPaused(pause),
+                    // The operator's sentence, built where the rule lives rather
+                    // than assembled again in a component.
+                    explanation: pause ? describePause(pause) : null,
+                    since: pause?.since ?? null,
+                    observations: pause?.observations ?? 0,
+                    clearedAt: pause?.clearedAt ?? null,
+                })),
+            },
+        };
+    }
+
+    /**
+     * A person saying they fixed it, which is the only way out that does not
+     * require the thing the pause prevents.
+     *
+     * ── THE DEADLOCK THIS EXISTS TO BREAK ───────────────────────────────────
+     *
+     * A pause lifts by itself when Meta accepts a message from the number —
+     * proof produced by the platform rather than claimed by anybody, and the
+     * best evidence there is. But a paused number sends nothing, so that proof
+     * can never arrive: the only way to clear the pause would be to make a POST
+     * the pause itself prevents.
+     *
+     * So a person may say "I added the card, try again". It is a claim, not
+     * proof, and it is recorded as one — with who said it and when. If they are
+     * wrong the very next message refuses and pauses the number again, which
+     * costs one refusal rather than an afternoon of silence.
+     *
+     * `tenant_supervisor` may READ the list and may not do this: resuming is a
+     * decision about the business's own billing.
+     */
+    @Post('pauses/:channelAccountId/resume')
+    @UseGuards(AuthGuard('jwt'), RolesGuard)
+    @Roles('super_admin', 'tenant_admin')
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Resume a WhatsApp number after fixing its payment method' })
+    async resumeNumber(@Request() req: any, @Param('channelAccountId') channelAccountId: string,
+        @Body() body: { note?: string }) {
+        const tenantId = req.user?.tenantId;
+        if (!tenantId) throw new BadRequestException('User does not belong to a tenant');
+        const account = String(channelAccountId ?? '').trim();
+        if (!account) throw new BadRequestException('channelAccountId is required');
+        // Scoped to this tenant's own numbers, by lookup rather than by trust:
+        // the id comes out of a URL.
+        const owned = await this.prisma.channelAccount.findFirst({
+            where: { tenantId, channelType: 'whatsapp', accountId: account },
+            select: { id: true },
+        });
+        if (!owned) throw new BadRequestException('That WhatsApp number does not belong to this tenant');
+
+        const cleared = await this.pauses.clear(tenantId, account, {
+            by: 'operator',
+            note: String(body?.note ?? '').trim().slice(0, 300) || undefined,
+        });
+        return {
+            success: true,
+            data: {
+                channelAccountId: account,
+                paused: isPaused(cleared),
+                // Said plainly, because the honest promise is narrow: sending is
+                // allowed again, and whether it WORKS is Meta's answer to the
+                // next message.
+                message: 'Los envíos de este número quedan habilitados otra vez. Si Meta '
+                    + 'vuelve a rechazar el cobro, el número se pausará solo en el próximo '
+                    + 'intento y verás el motivo acá.',
             },
         };
     }

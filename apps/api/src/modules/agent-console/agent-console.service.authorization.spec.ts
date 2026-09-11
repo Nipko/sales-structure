@@ -1,6 +1,6 @@
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { AgentConsoleService } from './agent-console.service';
-import { permissiveSpendGate } from '../channels/__fixtures__/spend-gate-double';
+import { permissiveSpendGate, openPauseStore } from '../channels/__fixtures__/spend-gate-double';
 
 describe('AgentConsoleService conversation ownership', () => {
     const tenantId = '11111111-1111-4111-8111-111111111111';
@@ -24,6 +24,7 @@ describe('AgentConsoleService conversation ownership', () => {
             { emit: jest.fn() } as any,
             {} as any,
             permissiveSpendGate(),
+            openPauseStore(),
         );
         return { service, prisma };
     }

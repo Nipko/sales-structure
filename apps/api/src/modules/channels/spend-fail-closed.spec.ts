@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { OutboundQueueProcessor } from './outbound-queue.processor';
 import { SpendMeterUnavailable } from '../billing/whatsapp-spend/spend-unavailable';
-import { permissiveSpendGate, unavailableSpendGate } from './__fixtures__/spend-gate-double';
+import { permissiveSpendGate, unavailableSpendGate, openPauseStore } from './__fixtures__/spend-gate-double';
 
 /**
  * ═══ AN UNAVAILABLE METER DEFERS. IT NEVER PERMITS. ═══
@@ -55,6 +55,7 @@ describe('the spend meter fails closed on outbound and never gates inbound', () 
         const processor = new OutboundQueueProcessor(
             channelGateway as any, throttle as any, channelToken as any,
             redis as any, { send: jest.fn() } as any, prisma as any, spendGate,
+            openPauseStore(),
         );
         const job: any = { id: 'job-1', data: { outbound: {
             tenantId, channelType: 'whatsapp', channelAccountId: 'phone-1',

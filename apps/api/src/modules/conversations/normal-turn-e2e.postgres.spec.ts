@@ -32,7 +32,7 @@ import { redactTurnLedger } from './agent-turn-ledger';
 import { operationalConfigurationHash } from '../persona/agent-configuration-revision';
 import { ensureSyntheticGlobalTables } from '../../common/__fixtures__/synthetic-global-tables';
 import type { StrictDispatchOutcome, StrictDispatchRequest } from '../channels/strict-dispatch-transport';
-import { permissiveSpendGate, receiptLedgerDouble, resolvingChannelToken } from '../channels/__fixtures__/spend-gate-double';
+import { permissiveSpendGate, receiptLedgerDouble, resolvingChannelToken, openPauseStore } from '../channels/__fixtures__/spend-gate-double';
 
 const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
 const redisUrl = process.env.DISPATCH_QUEUE_TEST_REDIS_URL;
@@ -412,7 +412,7 @@ const ready = !!databaseUrl && !!redisUrl;
         outboundProcessor = new OutboundQueueProcessor(
             channelGateway, throttle, channelToken, redis,
             { send: jest.fn(async () => ({ sent: false, reason: 'monetization_disabled' })) } as any,
-            prisma, permissiveSpendGate(), undefined, undefined, outbox);
+            prisma, permissiveSpendGate(), openPauseStore(), undefined, undefined, outbox);
         outboundProcessor.attachQueue(outboundProducer);
         recovery = new DispatchRecoveryService(prisma, outbox, outboundProducer,
             { runExclusive: jest.fn() } as any);

@@ -4,7 +4,7 @@ import { of } from 'rxjs';
 import { WhatsappMessagingService } from '../../whatsapp/services/whatsapp-messaging.service';
 import { AgentConsoleService } from '../../agent-console/agent-console.service';
 import {
-    permissiveSpendGate, resolvingChannelToken,
+    openPauseStore, permissiveSpendGate, resolvingChannelToken,
 } from '../../channels/__fixtures__/spend-gate-double';
 
 /**
@@ -126,6 +126,7 @@ describe('who pays is resolved, never assembled', () => {
                 getChannelToken: jest.fn(async () => ({ accessToken: 'token', accountId: 'phone-1' })),
             }),
             {} as any, {} as any, { emit: jest.fn() } as any, {} as any, spendGate,
+            openPauseStore(),
         );
         jest.spyOn((service as any).logger, 'warn').mockImplementation(() => undefined);
         jest.spyOn((service as any).logger, 'error').mockImplementation(() => undefined);

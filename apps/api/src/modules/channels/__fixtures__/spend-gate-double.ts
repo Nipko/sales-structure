@@ -107,3 +107,20 @@ export function receiptLedgerDouble(overrides: Record<string, unknown> = {}) {
         ...overrides,
     } as any;
 }
+
+/**
+ * A pause store that is not paused and remembers what it was told.
+ *
+ * The processor now requires one: the only way a sender learns that Meta will
+ * not bill this business is by reading the refusal, and a lane that cannot do
+ * that retries into a wall until the queue is full.
+ */
+export function openPauseStore(overrides: Record<string, unknown> = {}) {
+    return {
+        current: jest.fn(async () => null),
+        isPaused: jest.fn(async () => false),
+        observeFunding: jest.fn(async () => null),
+        clear: jest.fn(async () => null),
+        ...overrides,
+    } as any;
+}

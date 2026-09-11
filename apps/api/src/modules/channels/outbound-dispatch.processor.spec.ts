@@ -2,7 +2,7 @@ import { DelayedError } from 'bullmq';
 import { OutboundQueueProcessor } from './outbound-queue.processor';
 import { DispatchOutboxError, type DispatchRow } from './agent-dispatch-outbox';
 import type { StrictDispatchOutcome } from './strict-dispatch-transport';
-import { permissiveSpendGate, resolvingChannelToken } from './__fixtures__/spend-gate-double';
+import { permissiveSpendGate, resolvingChannelToken, openPauseStore } from './__fixtures__/spend-gate-double';
 
 const tenantId = '11111111-1111-4111-8111-111111111111';
 const dispatchId = '22222222-2222-4222-8222-222222222222';
@@ -68,7 +68,7 @@ describe('OutboundQueueProcessor durable dispatch', () => {
             getTenantSchemaName: jest.fn(async () => 'tenant_spec') };
         const processor = new OutboundQueueProcessor(channelGateway as any, throttle as any, channelToken as any,
             { get: jest.fn(), set: jest.fn() } as any, { send: jest.fn() } as any, prisma as any,
-            permissiveSpendGate(), undefined, undefined, dispatchOutbox as any);
+            permissiveSpendGate(), openPauseStore(), undefined, undefined, dispatchOutbox as any);
         const job: any = { id: 'dispatch-1', data: { dispatch: { tenantId, dispatchId } },
             moveToDelayed: jest.fn(async () => undefined) };
         return { processor, job, dispatchOutbox, sendStrict, throttle, channelGateway };

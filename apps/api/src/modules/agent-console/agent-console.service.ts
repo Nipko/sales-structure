@@ -18,6 +18,8 @@ import { ChannelTokenService } from '../channels/channel-token.service';
 import {
     WhatsappSendAdmissionService, fromSendContext, type Admission,
 } from '../billing/whatsapp-spend/whatsapp-send-admission.service';
+import { AccountPauseStore } from '../channels/account-pause-store';
+import { readProviderRefusal } from '../channels/funding-failure';
 import { WhatsappConnectionService } from '../whatsapp/services/whatsapp-connection.service';
 import { LLMRouterService } from '../ai/router/llm-router.service';
 import { AiResolutionService } from '../analytics/ai-resolution.service';
@@ -139,6 +141,11 @@ export class AgentConsoleService {
         // is part of the statement. Nest refuses to build the module when no
         // authority is wired, at boot, where a person is watching.
         private spendGate: WhatsappSendAdmissionService,
+        // The fourth sink, and the one with a person waiting. Meta's 131042
+        // means this number cannot be billed at all, so the agent's next six
+        // replies will fail the same way — and they need to be told that once,
+        // not watch each reply disappear.
+        private pauses: AccountPauseStore,
         @Optional() private widgetMessages?: WidgetMessageStore,
     ) { }
 
@@ -551,8 +558,20 @@ export class AgentConsoleService {
                         content: outContent,
                     },
                     creds.accessToken,
+                    {
+                        observeFailure: error => this.observeFunding(
+                            tenantId, channelType, conv.channel_account_id || creds.accountId, error),
+                    },
                 );
                 await this.recordAgentSend(schemaName, admission, sent);
+                if (sent && channelType === 'whatsapp') {
+                    // Meta took a message from this account, which is the only
+                    // proof billing works again — produced by the platform
+                    // rather than claimed by anybody.
+                    await this.pauses.clear(tenantId,
+                        String(conv.channel_account_id || creds.accountId),
+                        { by: 'provider_accepted' }).catch(() => undefined);
+                }
                 await settle('sent');
             }
         } catch (e: any) {
@@ -688,6 +707,21 @@ export class AgentConsoleService {
             this.logger.error(`[Spend] agent reply not authorised: ${error?.message}`);
             return 'refused' as const;
         }
+    }
+
+    /**
+     * Notice the refusal that means the business has no usable payment method.
+     *
+     * Never throws: it runs where a reply has just failed, and a failure while
+     * recording why must not become a second failure that hides the first.
+     */
+    private async observeFunding(tenantId: string, channelType: string,
+        channelAccountId: string, error: unknown): Promise<void> {
+        if (channelType !== 'whatsapp') return;
+        const refusal = readProviderRefusal(error);
+        await this.pauses.observeFunding(tenantId, String(channelAccountId ?? ''),
+            { source: 'http_response', code: refusal.code, detail: refusal.detail })
+            .catch(() => undefined);
     }
 
     private async recordAgentSend(schemaName: string, admission: unknown, result: string | null) {

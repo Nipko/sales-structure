@@ -20,6 +20,21 @@ export interface GatewaySendHooks {
      * reached.
      */
     readonly admitFallback?: (errorCode: string) => Promise<boolean>;
+    /**
+     * What the provider said when it refused, handed to whoever can act on it.
+     *
+     * This gateway returns `string | null` and swallows the error — which is
+     * right for transport, and wrong for one specific refusal: Meta's 131042
+     * means the business has no usable payment method, so every subsequent
+     * message from that number will fail the same way until a person adds a
+     * card. Without this hook the loose lane learned that only from a status
+     * webhook minutes later, and spent the interval retrying into a wall.
+     *
+     * Deliberately a hook rather than a changed return type: the gateway has no
+     * business knowing about money, and the caller is the one that knows which
+     * tenant and which number this was.
+     */
+    readonly observeFailure?: (error: unknown) => Promise<void> | void;
 }
 
 /**
@@ -168,6 +183,11 @@ export class ChannelGatewayService {
                     // business two charges, under one reservation that can only
                     // settle once.
                     const verdict = classifyFlowFailure(e);
+                    // Before deciding about the fallback: a Flow refused for
+                    // want of a payment method is the same signal as a text
+                    // refused for it, and the account has to be paused either
+                    // way — otherwise the very next message tries again.
+                    await this.observeFailure(hooks, e);
                     if (!verdict.mayFallBack) {
                         this.logger.warn(`Flow send is ${verdict.kind} (${verdict.errorCode}); `
                             + `NOT falling back — a second message would be a guess`);
@@ -222,7 +242,22 @@ export class ChannelGatewayService {
             return null;
         } catch (error) {
             this.logger.error(`Error sending ${outbound.channelType} message: ${error}`);
+            // The caller gets `null` as before — nothing about transport
+            // changes — but it also gets a chance to read WHY, which is the
+            // difference between pausing a number once and retrying into a
+            // wall for as long as the queue has work.
+            await this.observeFailure(hooks, error);
             return null;
+        }
+    }
+
+    /** Never lets the observer's own failure become the send's failure. */
+    private async observeFailure(hooks: GatewaySendHooks | undefined, error: unknown): Promise<void> {
+        if (!hooks?.observeFailure) return;
+        try {
+            await hooks.observeFailure(error);
+        } catch (observerError: any) {
+            this.logger.warn(`[Gateway] failure observer raised: ${observerError?.message}`);
         }
     }
 

@@ -1,5 +1,5 @@
 import { AgentConsoleService } from './agent-console.service';
-import { permissiveSpendGate, resolvingChannelToken } from '../channels/__fixtures__/spend-gate-double';
+import { permissiveSpendGate, resolvingChannelToken, openPauseStore } from '../channels/__fixtures__/spend-gate-double';
 
 const TENANT = '11111111-1111-4111-8111-111111111111';
 const CONVERSATION = '22222222-2222-4222-8222-222222222222';
@@ -56,7 +56,8 @@ describe('what becomes of a human agent reply', () => {
         const spendGate = permissiveSpendGate();
         const service = new AgentConsoleService(prisma, { get: jest.fn(), set: jest.fn(), del: jest.fn() } as any,
             channelGateway, channelToken, {} as any, {} as any, { emit: jest.fn() } as any, {} as any,
-            spendGate);
+            spendGate,
+            openPauseStore(),);
         jest.spyOn((service as any).logger, 'warn').mockImplementation(() => undefined);
         jest.spyOn((service as any).logger, 'error').mockImplementation(() => undefined);
         return { service, statements, channelGateway };

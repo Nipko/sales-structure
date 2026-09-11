@@ -1,6 +1,6 @@
 import type { OutcomeEvaluationCertification } from '../../common/policies/ai-decision-readiness.policy';
 import { AgentConsoleService } from './agent-console.service';
-import { permissiveSpendGate } from '../channels/__fixtures__/spend-gate-double';
+import { permissiveSpendGate, openPauseStore } from '../channels/__fixtures__/spend-gate-double';
 
 describe('AgentConsoleService NBA readiness', () => {
     const evaluation: OutcomeEvaluationCertification = {
@@ -25,6 +25,7 @@ describe('AgentConsoleService NBA readiness', () => {
         const service = new AgentConsoleService(
             prisma as any, redis as any, {} as any, {} as any, {} as any,
             llm as any, {} as any, {} as any, permissiveSpendGate(),
+            openPauseStore(),
         );
         return { service, prisma, llm };
     }

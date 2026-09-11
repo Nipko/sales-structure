@@ -11,6 +11,8 @@ import {
 } from '../billing/whatsapp-spend/whatsapp-send-admission.service';
 import { SpendMeterUnavailable } from '../billing/whatsapp-spend/spend-unavailable';
 import { isConnectionRefusal } from './connection-refusal';
+import { readProviderRefusal } from './funding-failure';
+import { AccountPauseStore } from './account-pause-store';
 import { ChannelTokenService } from './channel-token.service';
 import { RedisService } from '../redis/redis.service';
 import { OutboundMessage } from '@parallext/shared';
@@ -87,6 +89,12 @@ export class OutboundQueueProcessor extends WorkerHost {
         // required parameter after an optional one is not expressible: the
         // position itself is part of the statement.
         private spendGate: WhatsappSendAdmissionService,
+        // The one provider refusal whose correct answer is to STOP: Meta's
+        // 131042 says the business has no usable payment method, so every
+        // message from that number fails identically until a person adds a
+        // card. Required for the same reason the gate is — a sender that
+        // cannot notice this retries into a wall until the queue is full.
+        private pauses: AccountPauseStore,
         @Optional() @Inject(APPROVED_EFFECT_DELIVERY) private approvalEffects?: ApprovedEffectDeliveryPort,
         @Optional() @Inject(OPERATIONAL_NOTICE_DELIVERY) private operationalNotices?: OperationalNoticeDeliveryPort,
         @Optional() private dispatchOutbox?: AgentDispatchOutboxStore,
@@ -345,6 +353,20 @@ export class OutboundQueueProcessor extends WorkerHost {
             channelAccountId: admitted.row.binding!.channelAccountId, payload: admitted.row.payload!,
         }, accessToken);
 
+        // ── THE ONE REFUSAL THAT MUST STOP THE LANE ────────────────────
+        //
+        // The strict transport already reduced Meta's answer to an error code
+        // and then threw it away. 131042 means the business cannot be billed:
+        // this item's retry, and every other item for this number, will fail
+        // identically until somebody adds a card.
+        const strictOutbound = { tenantId, channelType: admitted.row.binding!.channelType,
+            channelAccountId: admitted.row.binding!.channelAccountId } as OutboundMessage;
+        if (outcome.kind === 'accepted') await this.resumeIfPaused(strictOutbound);
+        else if ((outcome as any).errorCode) {
+            await this.observeFunding(strictOutbound,
+                { error: { code: String((outcome as any).errorCode).replace(/^\D*/, '') } });
+        }
+
         try {
             if (outcome.kind === 'accepted') {
                 // Accepted is not priced. The exposure stays until a status
@@ -550,6 +572,32 @@ export class OutboundQueueProcessor extends WorkerHost {
     }
 
     /**
+     * Notice, in whatever the provider threw, the refusal that means "no card".
+     *
+     * Never throws and never blocks: it runs on a path where a message has just
+     * failed, and a failure while recording why must not become a second
+     * failure that hides the first.
+     */
+    private async observeFunding(outbound: OutboundMessage, error: unknown): Promise<void> {
+        if (outbound.channelType !== 'whatsapp') return;
+        const refusal = readProviderRefusal(error);
+        await this.pauses.observeFunding(outbound.tenantId,
+            String(outbound.channelAccountId ?? ''),
+            { source: 'http_response', code: refusal.code, detail: refusal.detail })
+            .catch(() => undefined);
+    }
+
+    /**
+     * Meta took a message from this account, which is the only proof billing
+     * works again — produced by the platform rather than claimed by anybody.
+     */
+    private async resumeIfPaused(outbound: OutboundMessage): Promise<void> {
+        if (outbound.channelType !== 'whatsapp') return;
+        await this.pauses.clear(outbound.tenantId, String(outbound.channelAccountId ?? ''),
+            { by: 'provider_accepted' }).catch(() => undefined);
+    }
+
+    /**
      * The fallback's admission, parked between the hook and the outcome.
      *
      * A `WeakMap` keyed on the message being sent: the hook runs deep inside the
@@ -617,8 +665,10 @@ export class OutboundQueueProcessor extends WorkerHost {
                     const result=await this.channelGateway.sendMessage(outbound,creds.accessToken,
                         { admitFallback: code => this.admitFlowFallback(
                             outbound, 'operational_notice', 'proactive', code,
-                            { messageId: `notice:${reference.noticeId}` }) });
+                            { messageId: `notice:${reference.noticeId}` }),
+                          observeFailure: error => this.observeFunding(outbound, error) });
                     await this.recordSpend(outbound, admission, result);
+                    if (result) await this.resumeIfPaused(outbound);
                     if(result)await this.throttle.recordUsage(reference.tenantId,'outbound').catch(()=>{});
                     return result;
                 };
@@ -651,8 +701,10 @@ export class OutboundQueueProcessor extends WorkerHost {
                     const result = await this.channelGateway.sendMessage(outbound, creds.accessToken,
                         { admitFallback: code => this.admitFlowFallback(
                             outbound, 'approved_effect', 'reactive', code,
-                            { messageId: `effect:${reference.ticketId}:${reference.effectId}` }) });
+                            { messageId: `effect:${reference.ticketId}:${reference.effectId}` }),
+                          observeFailure: error => this.observeFunding(outbound, error) });
                     await this.recordSpend(outbound, admission, result);
+                    if (result) await this.resumeIfPaused(outbound);
                     if (result) await this.throttle.recordUsage(reference.tenantId, 'outbound').catch(() => {});
                     return result;
                 };
@@ -786,8 +838,10 @@ export class OutboundQueueProcessor extends WorkerHost {
             admitFallback: code => this.admitFlowFallback(outbound, 'outbound_queue',
                 (outbound.metadata as any)?.conversationId ? 'reactive' : 'proactive', code,
                 { jobId: job.id ?? null }),
+            observeFailure: error => this.observeFunding(outbound, error),
         });
         await this.recordSpend(outbound, admission, result);
+        if (result) await this.resumeIfPaused(outbound);
 
         if (!result) {
             throw new Error(`Failed to send message to ${outbound.to} via ${outbound.channelType}`);

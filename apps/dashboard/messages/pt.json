@@ -8043,7 +8043,8 @@
         "Ao assumir uma conversa transferida, você verá no topo um resumo da conversa gerado pela IA.",
         "Abra o painel direito para ver e editar os dados do contato sem sair do chat.",
         "Use macros e respostas rápidas para responder o que é frequente em um clique (configure em Configurações → Macros).",
-        "Se uma conversa transferida esperar mais de 5 minutos sem resposta, um supervisor é avisado no painel; e depois de 3 horas sem ninguém assumir, ela volta para a IA para o cliente não ficar sem resposta."
+        "Se uma conversa transferida esperar mais de 5 minutos sem resposta, um supervisor é avisado no painel; e depois de 3 horas sem ninguém assumir, ela volta para a IA para o cliente não ficar sem resposta.",
+        "Responder pelo WhatsApp pode ter custo: desde 1º de outubro de 2026 a Meta cobra da sua conta do WhatsApp Business cada mensagem entregue. Cada número tem entregas de serviço gratuitas por mês calendário; quanto você já usou e quanto foi cobrado está em Canais › WhatsApp. Instagram, Messenger e Telegram não são cobrados assim."
       ]
     },
     "contacts": {
@@ -8098,7 +8099,8 @@
         "Em 'Audiência', escolha 'Todos os contatos' para alcançar toda a sua base, ou selecione um 'Segmento' salvo para atingir um grupo específico (ex.: leads qualificados deste mês).",
         "Ative o botão 'A/B Test' (disponível nos planos Pro+) para testar duas versões da mensagem e deixar a plataforma identificar o vencedor pela taxa de leitura.",
         "Deixe o campo de data vazio para salvar como rascunho e enviar manualmente com 'Enviar agora', ou agende uma data e hora exatas para envio automático.",
-        "Após o envio, clique na campanha para ver as métricas: destinatários, entregues (verde) e lidos (azul) na barra de progresso."
+        "Após o envio, clique na campanha para ver as métricas: destinatários, entregues (verde) e lidos (azul) na barra de progresso.",
+        "Desde 1º de outubro de 2026 a Meta cobra da SUA conta do WhatsApp Business cada mensagem entregue, e uma campanha sai como modelo aprovado: não usa as entregas de serviço gratuitas do mês. Antes de confirmar o envio você verá quantas entregas ele pode gerar; o gasto por número e por mês está em Canais › WhatsApp."
       ]
     },
     "automation": {
@@ -14565,6 +14567,7 @@
       "market_ambiguous": "o prefixo do número é compartilhado por vários países que a Meta cobra de forma diferente",
       "market_unlisted": "o prefixo do número não está na tabela de mercados",
       "total_not_representable": "o total não pode ser expresso na moeda da conta"
-    }
+    },
+    "seeSpendPanel": "Ver a cobrança do WhatsApp"
   }
 }

@@ -8043,7 +8043,8 @@
         "When you take a handed-over conversation, you will see an AI-generated summary of the chat at the top.",
         "Open the right panel to view and edit contact details without leaving the chat.",
         "Use macros and quick replies to answer the usual questions in one click (set them up in Settings → Macros).",
-        "If a handed-over conversation waits more than 5 minutes with no reply, a supervisor is alerted in the panel; and after 3 hours with nobody taking it, it goes back to the AI so the customer is not left waiting."
+        "If a handed-over conversation waits more than 5 minutes with no reply, a supervisor is alerted in the panel; and after 3 hours with nobody taking it, it goes back to the AI so the customer is not left waiting.",
+        "Replying on WhatsApp may cost money: from 1 October 2026 Meta charges your own WhatsApp Business account for every delivered message. Each number gets free service deliveries per calendar month; how many you have used and what was charged is in Channels › WhatsApp. Instagram, Messenger and Telegram are not charged this way."
       ]
     },
     "contacts": {
@@ -8098,7 +8099,8 @@
         "Under 'Audience', pick 'All contacts' to reach your entire base, or select a saved 'Segment' to target a specific group (e.g., qualified leads from this month).",
         "Toggle 'A/B Test' (available on Pro+ plans) to test two message versions and let the platform identify the winner based on read rate.",
         "Leave the date field empty to save as a draft and send manually with 'Send now', or schedule an exact date and time for automatic delivery.",
-        "Once sent, click the campaign to see metrics: recipients, delivered (green), and read (blue) on the progress bar."
+        "Once sent, click the campaign to see metrics: recipients, delivered (green), and read (blue) on the progress bar.",
+        "From 1 October 2026 Meta charges YOUR own WhatsApp Business account for every delivered message, and a campaign goes out as an approved template: it does not use the month's free service deliveries. Before confirming the send you will see how many deliveries it may produce; the spend per number per month is in Channels › WhatsApp."
       ]
     },
     "automation": {
@@ -14565,6 +14567,7 @@
       "market_ambiguous": "the number's calling code is shared by several countries Meta prices differently",
       "market_unlisted": "the number's calling code is not in the market table",
       "total_not_representable": "the total cannot be expressed in the account's currency"
-    }
+    },
+    "seeSpendPanel": "See WhatsApp charges"
   }
 }

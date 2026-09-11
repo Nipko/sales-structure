@@ -263,6 +263,9 @@ export default function InboxPage() {
     const tEmpty = useTranslations("verticalEmptyStates");
     const tNotices = useTranslations('operationalNotices');
     const tHelp = useTranslations("help");
+    // The same vocabulary the channel's own spend panel uses, rather than a
+    // second wording of the same fact that can drift from it.
+    const tSpend = useTranslations("whatsappSpend");
     const vt = useVerticalTerms();
     const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
     const [filter, setFilter] = useState<InboxFilter>("all");
@@ -2293,7 +2296,13 @@ export default function InboxPage() {
                                 would be a different untruth. */}
                             {selectedConv.channel === 'whatsapp' && (
                                 <p className="px-4 md:px-5 pb-2 text-[11px] leading-relaxed text-muted-foreground">
-                                    {t("whatsappMayBeCharged")}
+                                    {t("whatsappMayBeCharged")}{" "}
+                                    <a
+                                        href="/admin/channels/whatsapp"
+                                        className="underline underline-offset-2 hover:text-foreground"
+                                    >
+                                        {tSpend("seeSpendPanel")}
+                                    </a>
                                 </p>
                             )}
                         </div>

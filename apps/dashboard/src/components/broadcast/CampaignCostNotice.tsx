@@ -158,6 +158,16 @@ export function CampaignCostNotice({ recipients, estimate }: {
                 leaving somebody to assume the first thousand are covered. */}
             <p className="text-xs text-[var(--text-secondary)]">{t("campaignNoFreeAllowance")}</p>
             <p className="text-xs text-[var(--text-secondary)]">{t("whoCharges")}</p>
+            {/* Where the figures actually live. A dialogue that explains a
+                charge and leaves somebody to go looking for the panel is a
+                dialogue that gets closed and forgotten. */}
+            <a
+                href="/admin/channels/whatsapp"
+                className="inline-block text-xs text-[var(--accent)] underline underline-offset-2
+                           focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+            >
+                {t("seeSpendPanel")}
+            </a>
         </div>
     );
 }

@@ -8043,7 +8043,8 @@
         "Cuando tomas una conversación derivada, arriba verás un resumen de la charla generado por la IA.",
         "Abre el panel derecho para ver y editar los datos del contacto sin salir del chat.",
         "Usa macros y respuestas rápidas para contestar lo frecuente en un clic (se configuran en Configuración → Macros).",
-        "Si una conversación derivada espera más de 5 minutos sin respuesta, se avisa a un supervisor en el panel; y si pasan 3 horas sin que nadie la tome, vuelve a la IA para que el cliente no se quede sin respuesta."
+        "Si una conversación derivada espera más de 5 minutos sin respuesta, se avisa a un supervisor en el panel; y si pasan 3 horas sin que nadie la tome, vuelve a la IA para que el cliente no se quede sin respuesta.",
+        "Responder por WhatsApp puede tener costo: desde el 1 de octubre de 2026 Meta le cobra a tu cuenta de WhatsApp Business cada mensaje entregado. Cada número tiene entregas de servicio gratuitas por mes calendario; cuánto llevás usado y cuánto se cobró está en Canales › WhatsApp. Instagram, Messenger y Telegram no se cobran así."
       ]
     },
     "contacts": {
@@ -8098,7 +8099,8 @@
         "En 'Audiencia', elige 'Todos los contactos' para llegar a toda tu base, o selecciona un 'Segmento' guardado para apuntar a un grupo específico (ej.: leads calificados de este mes).",
         "Activa el interruptor 'A/B Test' (disponible en planes Pro+) para probar dos versiones del mensaje y dejar que la plataforma identifique al ganador según tasa de lectura.",
         "Deja el campo de fecha vacío para guardar como borrador y enviar manualmente con el botón 'Enviar ahora', o programa la fecha y hora exacta para que salga automáticamente.",
-        "Una vez enviada, haz clic en la campaña para ver las métricas: destinatarios, entregados (verde) y leídos (azul) en la barra de progreso."
+        "Una vez enviada, haz clic en la campaña para ver las métricas: destinatarios, entregados (verde) y leídos (azul) en la barra de progreso.",
+        "Desde el 1 de octubre de 2026 Meta le cobra a TU cuenta de WhatsApp Business cada mensaje entregado, y una campaña sale como plantilla aprobada: no usa las entregas de servicio gratuitas del mes. Antes de confirmar el envío vas a ver cuántas entregas puede generar; el gasto por número y por mes está en Canales › WhatsApp."
       ]
     },
     "automation": {
@@ -14565,6 +14567,7 @@
       "market_ambiguous": "el prefijo del número lo comparten varios países que Meta cobra distinto",
       "market_unlisted": "el prefijo del número no está en la tabla de mercados",
       "total_not_representable": "el total no se puede expresar en la moneda de la cuenta"
-    }
+    },
+    "seeSpendPanel": "Ver el cobro de WhatsApp"
   }
 }

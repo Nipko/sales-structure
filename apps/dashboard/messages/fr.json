@@ -8043,7 +8043,8 @@
         "Quand vous reprenez une conversation transmise, un résumé généré par l'IA s'affiche en haut.",
         "Ouvrez le panneau de droite pour consulter et modifier la fiche du contact sans quitter la conversation.",
         "Utilisez les macros et réponses rapides pour traiter les demandes courantes en un clic (à configurer dans Paramètres → Macros).",
-        "Si une conversation transmise attend plus de 5 minutes sans réponse, un superviseur est alerté dans le panneau ; et au bout de 3 heures sans personne pour la prendre, elle revient à l'IA pour que le client ne reste pas sans réponse."
+        "Si une conversation transmise attend plus de 5 minutes sans réponse, un superviseur est alerté dans le panneau ; et au bout de 3 heures sans personne pour la prendre, elle revient à l'IA pour que le client ne reste pas sans réponse.",
+        "Répondre sur WhatsApp peut avoir un coût : depuis le 1er octobre 2026, Meta facture votre compte WhatsApp Business pour chaque message livré. Chaque numéro dispose de livraisons de service gratuites par mois calendaire ; ce que vous avez consommé et ce qui a été facturé se trouve dans Canaux › WhatsApp. Instagram, Messenger et Telegram ne sont pas facturés ainsi."
       ]
     },
     "contacts": {
@@ -8098,7 +8099,8 @@
         "Dans 'Audience', choisissez 'Tous les contacts' pour toucher toute votre base, ou sélectionnez un 'Segment' enregistré pour cibler un groupe précis (ex. : leads qualifiés ce mois-ci).",
         "Activez le bouton 'A/B Test' (disponible sur les plans Pro+) pour tester deux versions du message et laisser la plateforme identifier le gagnant selon le taux de lecture.",
         "Laissez le champ de date vide pour enregistrer comme brouillon et envoyer manuellement avec 'Envoyer maintenant', ou planifiez une date et heure précises pour un envoi automatique.",
-        "Une fois envoyée, cliquez sur la campagne pour voir les métriques : destinataires, livrés (vert) et lus (bleu) dans la barre de progression."
+        "Une fois envoyée, cliquez sur la campagne pour voir les métriques : destinataires, livrés (vert) et lus (bleu) dans la barre de progression.",
+        "Depuis le 1er octobre 2026, Meta facture VOTRE propre compte WhatsApp Business pour chaque message livré, et une campagne part comme modèle approuvé : elle n'utilise pas les livraisons de service gratuites du mois. Avant de confirmer l'envoi, vous verrez combien de livraisons il peut produire ; la dépense par numéro et par mois se trouve dans Canaux › WhatsApp."
       ]
     },
     "automation": {
@@ -14565,6 +14567,7 @@
       "market_ambiguous": "l'indicatif du numéro est partagé par plusieurs pays que Meta tarife différemment",
       "market_unlisted": "l'indicatif du numéro n'est pas dans la table des marchés",
       "total_not_representable": "le total ne peut pas être exprimé dans la devise du compte"
-    }
+    },
+    "seeSpendPanel": "Voir la facturation WhatsApp"
   }
 }

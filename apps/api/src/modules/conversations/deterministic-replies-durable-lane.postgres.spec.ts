@@ -467,6 +467,25 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
             await expect(store.admit(tenantId, String(row.id))).rejects.toBeDefined();
         });
 
+        it('keeps the queue when the lane defers instead of committing', async () => {
+            // Only `prepared` and `already_present` mean the effect exists.
+            // `deferred` is nothing written for a reason that may pass, and a
+            // producer that read it as success would leave the customer with
+            // silence and the record with a message that never was.
+            const deferring = new ProactiveDispatchService(prisma, {
+                prepare: async () => { throw new Error('database unavailable'); },
+                publishBatch: async () => 0,
+            } as any, { enqueueDispatch: async () => undefined } as any);
+            const sent = await service({ lane: deferring }).replyOnceThroughOutbox({
+                tenantId, conversation: conversation(), msg: msg(),
+                operationalScope: scope(), inboundMessageId: await inbound(),
+                item: { kind: 'text', payload: { text: 'Confirmado' } },
+                originKey: 'k:deferred',
+            });
+            expect(sent).toBe(false);
+            expect(await rows()).toHaveLength(0);
+        });
+
         it('keeps the queue for a thread that does not name its connection', async () => {
             const sent = await service().replyOnceThroughOutbox({
                 tenantId, conversation: conversation(),

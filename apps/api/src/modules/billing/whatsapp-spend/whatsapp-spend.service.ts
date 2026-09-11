@@ -15,15 +15,15 @@ import {
     markTransmissionInFlight, ownEffect, RESOLVABLE_STATES,
     settleFromProviderEvidence, staleAcceptedEffects, staleIndeterminateEffects,
     recentIdenticalDeliveries, releaseTransmission, sweepTransmissionLeases,
-    readCalendarMonthConsumption, readExposure, readPressure, readSpendSignals,
-    recordAllocation, releaseReservation,
+    declareSpendCeiling, readCalendarMonthConsumption, readExposure, readPressure,
+    readSpendCeilings, readSpendSignals, recordAllocation, releaseReservation,
     reserveAgainstCounter, retainReservation, returnFreeDeliveries,
     returnTransmissionAfterRefusal,
     settleReservation, sweepExpiredLeases,
     worstPressure,
     type DurableReceipt, type ProviderInvoiceLine, type ReceiptInboxStatus,
     type CalendarMonthConsumption, type ReservationBinding, type ReservationIdentity,
-    type ReservationRow, type SpendExposure,
+    type ReservationRow, type SpendCeiling, type SpendExposure,
     type SpendDisposition, type SpendPressure, type SpendQuery, type TaskBudget,
     type TransmissionClaim, type TransmissionGrant,
 } from './spend-ledger';
@@ -1219,6 +1219,24 @@ export class WhatsappSpendService {
     }): Promise<readonly CalendarMonthConsumption[]> {
         return this.prisma.transactionInTenantSchema(schema,
             query => readCalendarMonthConsumption(query as SpendQuery, schema, input));
+    }
+
+    /** The standing ceilings somebody set, with what is committed against them. */
+    async ceilings(schema: string, input: {
+        periodKey?: string | null; scopeKind?: any;
+    }): Promise<readonly SpendCeiling[]> {
+        return this.prisma.transactionInTenantSchema(schema,
+            query => readSpendCeilings(query as SpendQuery, schema, input));
+    }
+
+    /** Set, change or remove one. */
+    async setCeiling(schema: string, input: {
+        scope: { kind: any; key: string; period: string };
+        capMinor?: number | null; capDeliveries?: number | null;
+        currency?: string | null; warnPermille?: number; softPermille?: number;
+    }): Promise<SpendCeiling> {
+        return this.prisma.transactionInTenantSchema(schema,
+            query => declareSpendCeiling(query as SpendQuery, schema, input));
     }
 }
 

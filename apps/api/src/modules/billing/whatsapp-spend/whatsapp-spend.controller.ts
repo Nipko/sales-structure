@@ -8,9 +8,17 @@ import { Roles } from '../../../common/decorators/roles.decorator';
 import { PrismaService } from '../../prisma/prisma.service';
 import { WhatsappSpendService } from './whatsapp-spend.service';
 import { SPEND_BLOCK_CODES } from './spend-diagnosis';
+import { SPEND_SCOPE_KINDS } from './spend-scopes';
+import { estimateCampaign } from './campaign-estimate';
+import { approvedTemplateCategory } from '../../channels/dispatch-price-facts';
+import { WHATSAPP_MESSAGE_CATEGORIES } from '../whatsapp-rates';
 import { FREE_SERVICE_MESSAGES_PER_NUMBER_MONTH } from './free-allowance';
 import { AccountPauseStore, PauseStateUnavailable } from '../../channels/account-pause-store';
 import { describePause, isPaused } from '../../channels/account-send-pause';
+import {
+    deliveryReadiness, neverAsked, readFundingFromRefusal, FUNDING_READINESS_STATES,
+    type FundingReadiness,
+} from '../../channels/whatsapp-funding-readiness';
 
 /**
  * ═══ WHAT META IS CHARGING THIS BUSINESS, AND WHY ═══
@@ -138,6 +146,247 @@ export class WhatsappSpendController {
                 freeServiceDeliveriesPerNumberMonth: FREE_SERVICE_MESSAGES_PER_NUMBER_MONTH,
                 consumption: rows,
             },
+        };
+    }
+
+    /**
+     * Is each number ready to keep delivering after 1 October?
+     *
+     * The engine already reacts AFTER the fact — 131042 pauses the account and
+     * shows the administrator what to resolve — and that is too late: the
+     * tenant finds out when their customers stop getting answers. This is the
+     * question asked before.
+     *
+     * ── WHAT THIS CAN AND CANNOT ANSWER TODAY ───────────────────────────────
+     *
+     * It reports what we KNOW, from evidence we already hold: a payment
+     * eligibility refusal Meta actually made, which is `restricted`, and
+     * otherwise `not_checked`. It does NOT reach out to Meta, so it cannot
+     * return `attached` or `absent` — and it says so in `probe`, rather than
+     * rendering a number nobody has checked as though it were healthy.
+     *
+     * That distinction is the whole point of the state machine behind it.
+     * `not_checked` is not `absent`: telling a tenant their funding is missing
+     * when nobody looked would send them to fix a problem they may not have,
+     * and a tenant sent on one false errand does not act on the next warning.
+     */
+    @Get('funding-readiness')
+    @UseGuards(AuthGuard('jwt'), RolesGuard)
+    @Roles('super_admin', 'tenant_admin', 'tenant_supervisor')
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Whether each number can still be charged, from evidence already held' })
+    async fundingReadiness(@Request() req: any) {
+        const tenantId = req.user?.tenantId;
+        if (!tenantId) throw new BadRequestException('User does not belong to a tenant');
+        const accounts = await this.prisma.channelAccount.findMany({
+            where: { tenantId, channelType: 'whatsapp' },
+            select: { accountId: true, displayName: true },
+        });
+        const numbers = await Promise.all(accounts.map(async account => {
+            let reading: FundingReadiness = neverAsked();
+            try {
+                const pause = await this.pauses.current(tenantId, account.accountId);
+                // A pause Meta caused for payment eligibility IS evidence about
+                // funding, and it is the strongest we have: a refusal on a real
+                // send outranks any reading of a configuration field.
+                const observed = isPaused(pause)
+                    ? readFundingFromRefusal(
+                        { errorCode: pause!.code, detail: pause!.detail },
+                        new Date(pause!.lastSeen))
+                    : null;
+                if (observed) reading = observed;
+            } catch (error) {
+                // Unreadable is not healthy, and it is not "no card" either.
+                if (!(error instanceof PauseStateUnavailable)) throw error;
+                reading = neverAsked();
+            }
+            return {
+                channelAccountId: account.accountId,
+                displayName: account.displayName ?? null,
+                state: reading.state,
+                source: reading.source,
+                detail: reading.detail,
+                checkedAt: reading.checkedAt?.toISOString() ?? null,
+                actionable: reading.actionable,
+                delivery: deliveryReadiness(reading),
+            };
+        }));
+        return {
+            success: true,
+            data: {
+                states: FUNDING_READINESS_STATES,
+                numbers,
+                /**
+                 * Said out loud rather than implied by an absence. A screen that
+                 * renders "we have not checked" the same as "checked and fine"
+                 * is the defect this whole module exists to avoid, and a client
+                 * cannot avoid it without being told which one it is looking at.
+                 */
+                probe: {
+                    reachesMeta: false,
+                    note: 'Hoy esto informa lo que ya sabemos: un rechazo de elegibilidad de pago '
+                        + 'que Meta hizo de verdad. No consulta a Meta, así que no puede afirmar '
+                        + 'que haya tarjeta ni que falte. «No comprobado» no es «sin tarjeta».',
+                },
+            },
+        };
+    }
+
+    /**
+     * The standing ceilings somebody set on this tenant's sending.
+     *
+     * The ledger has honoured these since it was built and nothing ever wrote
+     * one, so a tenant could not say "never more than fifty dollars a month on
+     * this number" — the first thing anybody asks for when messages start
+     * costing money. The mechanism was there; the door was not.
+     */
+    @Get('ceilings')
+    @UseGuards(AuthGuard('jwt'), RolesGuard)
+    @Roles('super_admin', 'tenant_admin', 'tenant_supervisor')
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Standing WhatsApp spend ceilings and what is committed against them' })
+    async ceilings(@Request() req: any, @Query('period') period?: string,
+        @Query('scopeKind') scopeKind?: string) {
+        const schema = await this.schemaFor(req);
+        const kind = scopeKind?.trim() || null;
+        if (kind && !(SPEND_SCOPE_KINDS as readonly string[]).includes(kind)) {
+            throw new BadRequestException(`scopeKind must be one of ${SPEND_SCOPE_KINDS.join(', ')}`);
+        }
+        return {
+            success: true,
+            data: {
+                scopeKinds: SPEND_SCOPE_KINDS,
+                ceilings: await this.spend.ceilings(schema, {
+                    periodKey: period?.trim() || null, scopeKind: kind as any,
+                }),
+                /**
+                 * Said by the server, once, so no screen has to compose it and
+                 * none can quietly omit it. A ceiling bounds what PARALLLY
+                 * sends; the same WhatsApp account can be charged by another
+                 * app or by Meta's own inbox, and the invoice shows all of it.
+                 */
+                scopeNote: 'Estos topes acotan lo que envía Parallly desde esta cuenta. '
+                    + 'Los cargos que otra aplicación, o la bandeja de Meta, hagan sobre la misma '
+                    + 'cuenta de WhatsApp quedan fuera y aparecerán igual en la factura de Meta.',
+            },
+        };
+    }
+
+    /**
+     * Set, change or remove one.
+     *
+     * `tenant_admin` and above only: a supervisor reads the figures because
+     * they are the first to notice messages stopping, but changing what the
+     * business is allowed to spend is not their decision.
+     */
+    @Post('ceilings')
+    @UseGuards(AuthGuard('jwt'), RolesGuard)
+    @Roles('super_admin', 'tenant_admin')
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Set a standing WhatsApp spend ceiling' })
+    async setCeiling(@Request() req: any, @Body() body: {
+        scopeKind?: string; scopeKey?: string; period?: string;
+        capMinor?: number | null; capDeliveries?: number | null; currency?: string | null;
+        warnPermille?: number; softPermille?: number;
+    }) {
+        const schema = await this.schemaFor(req);
+        const kind = String(body?.scopeKind ?? '').trim();
+        const key = String(body?.scopeKey ?? '').trim();
+        const period = String(body?.period ?? '').trim();
+        if (!(SPEND_SCOPE_KINDS as readonly string[]).includes(kind)) {
+            throw new BadRequestException(`scopeKind must be one of ${SPEND_SCOPE_KINDS.join(', ')}`);
+        }
+        // A ceiling on nothing, or on every period at once, is not a ceiling.
+        if (!key || key.length > 200) throw new BadRequestException('scopeKey is required');
+        if (!/^\d{4}-\d{2}$/.test(period)) {
+            throw new BadRequestException('period must be a calendar month, as YYYY-MM');
+        }
+        try {
+            return {
+                success: true,
+                data: await this.spend.setCeiling(schema, {
+                    scope: { kind, key, period },
+                    capMinor: body?.capMinor ?? null,
+                    capDeliveries: body?.capDeliveries ?? null,
+                    currency: body?.currency ?? null,
+                    warnPermille: body?.warnPermille,
+                    softPermille: body?.softPermille,
+                }),
+            };
+        } catch (error: any) {
+            // The ledger's refusals are answers, not outages: a money ceiling
+            // with no currency, thresholds that cross over. They come back as
+            // a 400 with the code, never as a 500.
+            if (typeof error?.code === 'string' && error.code.startsWith('spend_ceiling_')) {
+                throw new BadRequestException(error.message);
+            }
+            throw error;
+        }
+    }
+
+    /**
+     * What a campaign would cost, before anybody presses send.
+     *
+     * A campaign to four thousand people is a purchase, and the product asked
+     * an operator to confirm it with no figure attached — the first time
+     * anybody saw the number was on Meta's invoice.
+     *
+     * The template's approved CATEGORY is read here rather than taken from the
+     * caller: Meta charges by it, it is synced into this tenant's own
+     * catalogue, and a category supplied by a client is a category a client can
+     * get wrong in the cheap direction.
+     */
+    @Post('campaign-estimate')
+    @UseGuards(AuthGuard('jwt'), RolesGuard)
+    @Roles('super_admin', 'tenant_admin', 'tenant_supervisor')
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Upper bound on what a campaign costs, per market' })
+    async campaignEstimate(@Request() req: any, @Body() body: {
+        channelAccountId?: string; templateName?: string; currency?: string;
+        wabaTimeZone?: string;
+        recipients?: { recipientRef?: string; address?: string | null }[];
+    }) {
+        const schema = await this.schemaFor(req);
+        const channelAccountId = String(body?.channelAccountId ?? '').trim();
+        const templateName = String(body?.templateName ?? '').trim();
+        const recipients = Array.isArray(body?.recipients) ? body!.recipients! : [];
+        if (!channelAccountId) throw new BadRequestException('channelAccountId is required');
+        if (!recipients.length) throw new BadRequestException('recipients is required');
+        // Bounded: an estimate is cheap per recipient and not free, and an
+        // unbounded list is a request that pins a worker.
+        if (recipients.length > 50_000) {
+            throw new BadRequestException('estimate at most 50000 recipients at a time');
+        }
+
+        // `null` when the catalogue does not have it. Deliberately not a
+        // default: every recipient then comes back unpriced with that reason,
+        // which tells the operator to sync their templates rather than showing
+        // them a number computed from an assumption.
+        const category = templateName
+            ? await approvedTemplateCategory(
+                (sql, params) => this.prisma.executeInTenantSchema(schema, sql, params ?? []),
+                { templateName, channelAccountId }).catch(() => null)
+            : null;
+        const known = category
+            && (WHATSAPP_MESSAGE_CATEGORIES as readonly string[])
+                .includes(String(category).toLowerCase())
+            ? String(category).toLowerCase() as any
+            : null;
+
+        return {
+            success: true,
+            data: estimateCampaign({
+                recipients: recipients.map((row, index) => ({
+                    recipientRef: String(row?.recipientRef ?? `r${index}`),
+                    address: row?.address ?? null,
+                })),
+                category: known,
+                categoryDetail: templateName,
+                channelAccountId,
+                currency: String(body?.currency ?? 'USD'),
+                wabaTimeZone: String(body?.wabaTimeZone ?? 'America/Bogota'),
+                at: new Date(),
+            }),
         };
     }
 

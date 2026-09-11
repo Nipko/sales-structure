@@ -664,10 +664,17 @@ export async function declareSpendCeiling(query: SpendQuery, schema: string, inp
     readonly softPermille?: number;
 }): Promise<SpendCeiling> {
     assertSchema(schema);
-    const money = Number.isFinite(Number(input.capMinor)) && Number(input.capMinor) >= 0
-        ? Math.trunc(Number(input.capMinor)) : null;
-    const deliveries = Number.isFinite(Number(input.capDeliveries)) && Number(input.capDeliveries) >= 0
-        ? Math.trunc(Number(input.capDeliveries)) : null;
+    // `Number(null)` is 0, and `Number(undefined)` is NaN. Reading the first as
+    // a ceiling of zero turned "no money ceiling" into "may spend nothing" —
+    // which then demanded a currency, and refused a perfectly valid
+    // messages-only ceiling. Absence is checked BEFORE the number.
+    const asCap = (value: unknown): number | null => {
+        if (value === null || value === undefined || value === '') return null;
+        const number = Number(value);
+        return Number.isFinite(number) && number >= 0 ? Math.trunc(number) : null;
+    };
+    const money = asCap(input.capMinor);
+    const deliveries = asCap(input.capDeliveries);
     const capKind = money !== null && deliveries !== null ? 'both'
         : money !== null ? 'money'
             : deliveries !== null ? 'deliveries' : 'observe';

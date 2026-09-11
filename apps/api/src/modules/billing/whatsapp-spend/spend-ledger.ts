@@ -53,8 +53,17 @@ export interface SpendCounterRow {
     readonly reservedMinor: number;
     readonly settledMinor: number;
     readonly releasedMinor: number;
+    /** HELD: committed, delivered or not. What a ceiling is decided against. */
     readonly usedDeliveries: number;
     readonly freeDeliveries: number;
+    /**
+     * Actually delivered.
+     *
+     * The difference from `usedDeliveries` is exactly the work nobody has
+     * resolved yet. Meta's free allowance is spent on DELIVERY, so a thousand
+     * failed attempts must not exhaust a thousand free deliveries.
+     */
+    readonly confirmedDeliveries: number;
     /** Where "warn" and "stop the proactive" sit, as a fraction of the cap. */
     readonly warnPermille: number;
     readonly softPermille: number;
@@ -335,6 +344,7 @@ export async function lockCounters(query: SpendQuery, schema: string, scopes: re
             releasedMinor: Number(rows[0].released_minor),
             usedDeliveries: Number(rows[0].used_deliveries),
             freeDeliveries: Number(rows[0].free_deliveries),
+            confirmedDeliveries: Number(rows[0].confirmed_deliveries ?? 0),
             warnPermille: Number(rows[0].warn_permille),
             softPermille: Number(rows[0].soft_permille),
         }));
@@ -390,6 +400,35 @@ export async function grantFreeDeliveries(query: SpendQuery, schema: string, sco
          RETURNING target.used_deliveries - pre.was AS free_granted`,
         [scope.kind, scope.key, scope.period, deliveries]);
     return rows[0] ? Number(rows[0].free_granted) : 0;
+}
+
+/**
+ * Hand back free deliveries that were held for a message that never arrived.
+ *
+ * Used only where the caller has no allocation row to travel on — a grant that
+ * was taken and then refused inside the same authorisation, before anything was
+ * recorded. Everything that got as far as a reservation goes back through
+ * `applyToCounters`, which is the one place that knows what each counter was
+ * holding.
+ *
+ * `GREATEST(0, …)` because this must be safe to run twice: a retry that reached
+ * here after the first attempt already returned the grant would otherwise take
+ * the counter negative, and a negative allowance reads on screen as a business
+ * that has used less than nothing.
+ */
+export async function returnFreeDeliveries(query: SpendQuery, schema: string,
+    scope: SpendScope, deliveries: number): Promise<void> {
+    assertSchema(schema);
+    if (deliveries <= 0) return;
+    await query(
+        `UPDATE "${schema}".whatsapp_spend_counters
+            SET used_deliveries = GREATEST(0, used_deliveries - $4),
+                free_deliveries = GREATEST(0, free_deliveries - $4),
+                confirmed_deliveries = LEAST(confirmed_deliveries,
+                    GREATEST(0, used_deliveries - $4)),
+                updated_at = clock_timestamp()
+          WHERE scope_kind=$1 AND scope_key=$2 AND period_key=$3 AND cap_kind='deliveries'`,
+        [scope.kind, scope.key, scope.period, Math.trunc(deliveries)]);
 }
 
 /**
@@ -1503,13 +1542,14 @@ export async function retainReservation(query: SpendQuery, schema: string, input
 async function applyToCounters(query: SpendQuery, schema: string, reservationId: string,
     state: 'settled' | 'released', reservedMinor: number, chargedMinor: number): Promise<void> {
     const allocations = await query<any[]>(
-        `SELECT scope_kind, scope_key, period_key, amount_minor
+        `SELECT scope_kind, scope_key, period_key, amount_minor, deliveries
            FROM "${schema}".whatsapp_spend_allocations
           WHERE reservation_id = $1::uuid AND state = 'reserved'
           ORDER BY scope_kind, scope_key, period_key`, [reservationId]);
 
     for (const allocation of allocations) {
         const allocated = Number(allocation.amount_minor);
+        const deliveries = Number(allocation.deliveries ?? 0);
         // The share of the charge this counter carries. Proportional so two
         // counters that reserved different amounts settle different amounts,
         // and integer so nothing is created by rounding.
@@ -1517,15 +1557,36 @@ async function applyToCounters(query: SpendQuery, schema: string, reservationId:
             ? Math.min(allocated, Math.round((chargedMinor * allocated) / reservedMinor))
             : 0;
         const returnedHere = allocated - settledHere;
+        // ── AND THE DELIVERIES, WHICH USED TO ONLY EVER GO UP ────────────────
+        //
+        // `reserveAgainstCounter` adds to `used_deliveries` before the POST and
+        // nothing ever subtracted. So a delivery-capped counter counted
+        // ATTEMPTS: a number with a rejected template burned its whole ceiling
+        // without one message arriving, and Meta's thousand free service
+        // messages — which Meta itself charges on delivery — were gone after a
+        // thousand failures.
+        //
+        // Released gives them back; settled confirms them. `confirmed` is a
+        // second number rather than a move, because "committed" is what a
+        // ceiling must be decided against and "delivered" is what a business
+        // is actually billed for.
+        const returnedDeliveries = state === 'released' ? deliveries : 0;
+        const confirmedDeliveries = state === 'settled' ? deliveries : 0;
         await query(
             `UPDATE "${schema}".whatsapp_spend_counters
                 SET reserved_minor = GREATEST(0, reserved_minor - $4),
                     settled_minor = settled_minor + $5,
                     released_minor = released_minor + $6,
+                    used_deliveries = GREATEST(0, used_deliveries - $7),
+                    free_deliveries = GREATEST(0, free_deliveries - $7),
+                    confirmed_deliveries = LEAST(
+                        confirmed_deliveries + $8,
+                        GREATEST(0, used_deliveries - $7)),
                     updated_at = clock_timestamp()
               WHERE scope_kind=$1 AND scope_key=$2 AND period_key=$3`,
             [allocation.scope_kind, allocation.scope_key, allocation.period_key,
-                allocated, settledHere, returnedHere]);
+                allocated, settledHere, returnedHere,
+                returnedDeliveries, confirmedDeliveries]);
         await query(
             `UPDATE "${schema}".whatsapp_spend_allocations
                 SET state = $5, amount_minor = $6, updated_at = clock_timestamp()

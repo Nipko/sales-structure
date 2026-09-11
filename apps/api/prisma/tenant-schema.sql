@@ -5616,8 +5616,15 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."whatsapp_spend_counters" (
         reserved_minor BIGINT NOT NULL DEFAULT 0,
         settled_minor BIGINT NOT NULL DEFAULT 0,
         released_minor BIGINT NOT NULL DEFAULT 0,
+        -- RETENIDO: lo comprometido, se haya entregado o no. Es lo correcto
+        -- para decidir un tope, porque un intento en vuelo es exposicion.
         used_deliveries INTEGER NOT NULL DEFAULT 0,
         free_deliveries INTEGER NOT NULL DEFAULT 0,
+        -- ENTREGADO de verdad. La diferencia con `used_deliveries` es
+        -- exactamente el trabajo sin resolver. La franquicia de Meta se gasta
+        -- al entregar, no al intentar: mil intentos fallidos no pueden agotar
+        -- las mil entregas gratuitas del mes.
+        confirmed_deliveries INTEGER NOT NULL DEFAULT 0,
         -- Las tres alturas del mismo techo, como fraccion de el: avisar,
         -- detener lo proactivo, detener todo. Ver la migracion
         -- 20260910160000_add_whatsapp_spend_thresholds para el porque.
@@ -5638,6 +5645,11 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."whatsapp_spend_counters" (
         CONSTRAINT whatsapp_spend_counters_thresholds
             CHECK (warn_permille > 0 AND warn_permille <= soft_permille
                    AND soft_permille <= 1000),
+        -- Lo entregado es un subconjunto de lo comprometido. Si esta
+        -- desigualdad se rompe, el numero que la pantalla llama "entregas
+        -- gratis usadas" dejo de significar algo.
+        CONSTRAINT whatsapp_spend_counters_confirmed
+            CHECK (confirmed_deliveries >= 0 AND confirmed_deliveries <= used_deliveries),
         CONSTRAINT whatsapp_spend_counters_non_negative CHECK (
             reserved_minor >= 0 AND settled_minor >= 0 AND released_minor >= 0
             AND used_deliveries >= 0 AND free_deliveries >= 0

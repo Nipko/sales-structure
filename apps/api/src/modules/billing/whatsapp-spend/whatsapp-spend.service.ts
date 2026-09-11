@@ -15,7 +15,7 @@ import {
     settleFromProviderEvidence, staleAcceptedEffects, staleIndeterminateEffects,
     recentIdenticalDeliveries, releaseTransmission, sweepTransmissionLeases,
     readExposure, readPressure, readSpendSignals, recordAllocation, releaseReservation,
-    reserveAgainstCounter, retainReservation,
+    reserveAgainstCounter, retainReservation, returnFreeDeliveries,
     settleReservation, sweepExpiredLeases,
     worstPressure,
     type DurableReceipt, type ProviderInvoiceLine, type ReceiptInboxStatus,
@@ -425,6 +425,23 @@ export class WhatsappSpendService {
                 scope: SpendScope; amountMinor: number; deliveries: number; currency: string;
             }[] = [];
             const pressures: SpendPressure[] = [];
+            // ── THE ALLOWANCE IS A PROVISIONAL ALLOCATION, NOT A SPEND ──────
+            //
+            // Its slots were taken above, before the POST. They have to be able
+            // to come back — Meta charges the allowance on DELIVERY, so a
+            // thousand failures must not exhaust a thousand free messages — and
+            // the only road back is an allocation row saying what this
+            // reservation is holding on that counter. Without one the grant was
+            // a one-way door: the `number_month` scope skipped this loop, so
+            // `applyToCounters` had nothing to give back.
+            //
+            // No money on it: the free half costs nothing by definition.
+            if (allowanceScope && freeGranted > 0) {
+                allocations.push({
+                    scope: allowanceScope, amountMinor: 0,
+                    deliveries: freeGranted, currency,
+                });
+            }
             for (const scope of scopes) {
                 if (scope.kind === 'number_month') continue; // already granted above
                 const entry = {
@@ -484,7 +501,15 @@ export class WhatsappSpendService {
                 leaseSeconds: this.LEASE_SECONDS,
             });
             if (!reservation) {
-                // Somebody claimed it between our read and our insert. Adopt.
+                // Somebody claimed it between our read and our insert. Adopt —
+                // and give back the free slots this attempt took, because the
+                // reservation being adopted already holds its own. Without this
+                // a retry storm on one effect eats the month's allowance a
+                // slot at a time while every attempt reports "adopted".
+                if (allowanceScope && freeGranted > 0) {
+                    await returnFreeDeliveries(query as SpendQuery, schema,
+                        allowanceScope, freeGranted);
+                }
                 const adopted = await adoptReservation(query as SpendQuery, schema,
                     input.effectKey, this.LEASE_SECONDS);
                 return { outcome: 'adopted' as const, reservation: adopted!, pressure };

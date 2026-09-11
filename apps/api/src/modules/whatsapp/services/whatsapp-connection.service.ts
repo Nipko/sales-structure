@@ -19,6 +19,10 @@ import { ChannelTokenService, type ResolvedConnection, type SendContextRequest }
 // format is a zone every later charge would refuse, so accepting one here would
 // only move the failure to the first message somebody tries to send.
 import { wabaLocalDate } from '../../billing/whatsapp-rates';
+import {
+    contradictoryWabas, describeResolution, resolveZone,
+    type NumberZone, type ZoneEvidence, type ZoneResolution,
+} from '../waba-timezone-authority';
 
 const META_GRAPH = 'https://graph.facebook.com/v21.0';
 
@@ -579,7 +583,7 @@ export class WhatsappConnectionService {
    * Until a zone is set the resolver refuses to price rather than defaulting.
    */
   async setBillingTimeZone(tenantId: string, phoneNumberId: string, timeZone: string): Promise<{
-    phoneNumberId: string; timeZone: string;
+    phoneNumberId: string; timeZone: string; alsoApplied: readonly string[];
   }> {
     const zone = String(timeZone ?? '').trim();
     // Validated against the runtime that will USE it, not against a list of
@@ -590,7 +594,7 @@ export class WhatsappConnectionService {
     }
     const account = await this.prisma.channelAccount.findFirst({
       where: { tenantId, channelType: 'whatsapp', accountId: phoneNumberId },
-      select: { id: true },
+      select: { id: true, metadata: true },
     });
     // The same refusal vocabulary as every other "that connection is not this
     // tenant's" answer, so a caller reads one set of codes.
@@ -599,10 +603,124 @@ export class WhatsappConnectionService {
         { tenantId, channelType: 'whatsapp', requestedAccountId: phoneNumberId });
     }
     await this.prisma.channelAccount.update({
-      where: { id: account.id }, data: { wabaTimezone: zone },
+      where: { id: account.id },
+      data: {
+        wabaTimezone: zone,
+        metadata: {
+          ...((account.metadata ?? {}) as object),
+          // The evidence, beside the answer. Without it the platform can say
+          // WHAT the zone is and not WHY, and "why" is the difference between a
+          // fact somebody confirmed and a value that appeared.
+          wabaTimezoneEvidence: {
+            source: 'human_confirmed', at: new Date().toISOString(),
+            timezoneId: Number((account.metadata as any)?.metaTimezoneId) || null,
+            wabaId: (account.metadata as any)?.wabaId ?? null,
+          },
+        } as any,
+      },
     });
     this.logger.log(`WhatsApp ${phoneNumberId} of tenant ${tenantId} is now billed in ${zone}`);
-    return { phoneNumberId, timeZone: zone };
+
+    // One confirmation answers for every number that reports the SAME numeric
+    // id on the SAME business account. Meta's zone belongs to the WABA, so this
+    // reads one fact twice rather than guessing a second one — and it is what
+    // turns "six numbers, six forms" into "six numbers, one form".
+    const alsoApplied = await this.propagateZone(tenantId, account, zone);
+    return { phoneNumberId, timeZone: zone, alsoApplied };
+  }
+
+  /**
+   * Carry a just-confirmed zone to its siblings, and to nobody else.
+   *
+   * Same business account, same numeric id, and no zone of their own. A number
+   * that already has one is left alone: overwriting somebody's explicit choice
+   * because a sibling was set later would be the platform deciding it knows
+   * better, silently, about money.
+   *
+   * Best-effort. A propagation that fails leaves the other numbers exactly as
+   * they were — unmapped, blocked with a named diagnosis, and fixable by the
+   * same one-field form.
+   */
+  private async propagateZone(tenantId: string, source: { id: string; metadata: unknown },
+    zone: string): Promise<readonly string[]> {
+    const wabaId = (source.metadata as any)?.wabaId ?? null;
+    const timezoneId = (source.metadata as any)?.metaTimezoneId ?? null;
+    if (!wabaId || !timezoneId) return [];
+    try {
+      const siblings = await this.prisma.channelAccount.findMany({
+        where: { tenantId, channelType: 'whatsapp', wabaTimezone: null },
+        select: { id: true, accountId: true, metadata: true },
+      });
+      const applied: string[] = [];
+      for (const sibling of siblings) {
+        if (sibling.id === source.id) continue;
+        const metadata = (sibling.metadata ?? {}) as Record<string, unknown>;
+        if (metadata.wabaId !== wabaId || String(metadata.metaTimezoneId ?? '') !== String(timezoneId)) {
+          continue;
+        }
+        await this.prisma.channelAccount.update({
+          where: { id: sibling.id },
+          data: {
+            wabaTimezone: zone,
+            metadata: {
+              ...metadata,
+              wabaTimezoneEvidence: {
+                source: 'same_waba_same_id', at: new Date().toISOString(),
+                timezoneId: Number(timezoneId) || null, wabaId,
+                from: String((source.metadata as any)?.phoneNumberId ?? ''),
+              },
+            } as any,
+          },
+        });
+        applied.push(sibling.accountId);
+      }
+      if (applied.length) {
+        this.logger.log(`The same zone ${zone} now applies to ${applied.length} more number(s) `
+          + `on WABA ${wabaId}, which report the same Meta time zone`);
+      }
+      return applied;
+    } catch (error: any) {
+      this.logger.warn(`Could not carry the zone to the rest of WABA ${wabaId}: ${error?.message}`);
+      return [];
+    }
+  }
+
+  /**
+   * What every WhatsApp number of this tenant knows about its own billing zone.
+   *
+   * The readiness answer, in one read: the zone, where it came from, and — the
+   * question no single number can answer — whether two numbers on one business
+   * account disagree about what month it is.
+   */
+  async billingZoneReadiness(tenantId: string): Promise<{
+    numbers: readonly {
+      channelAccountId: string; wabaId: string | null; timezoneId: number | null;
+      zone: string | null; evidence: ZoneEvidence | null; resolution: ZoneResolution;
+      guidance: string;
+    }[];
+    contradictions: ReturnType<typeof contradictoryWabas>;
+  }> {
+    const accounts = await this.prisma.channelAccount.findMany({
+      where: { tenantId, channelType: 'whatsapp' },
+      select: { accountId: true, wabaTimezone: true, metadata: true },
+    });
+    const numbers: NumberZone[] = accounts.map(account => {
+      const metadata = (account.metadata ?? {}) as Record<string, any>;
+      return {
+        channelAccountId: account.accountId,
+        wabaId: metadata.wabaId ?? null,
+        timezoneId: Number(metadata.metaTimezoneId) || null,
+        zone: account.wabaTimezone ?? null,
+        evidence: (metadata.wabaTimezoneEvidence ?? null) as ZoneEvidence | null,
+      };
+    });
+    return {
+      numbers: numbers.map(number => {
+        const resolution = resolveZone(number, numbers);
+        return { ...number, resolution, guidance: describeResolution(number, resolution) };
+      }),
+      contradictions: contradictoryWabas(numbers),
+    };
   }
 
   // ======================== BUSINESS PROFILE ========================

@@ -306,6 +306,39 @@ export class WhatsappController {
     return { success: true, data: result };
   }
 
+  /**
+   * What every number of this tenant knows about its own billing.
+   *
+   * One read rather than a field on a form, because the two questions a person
+   * actually has are not about one number: "which of my numbers cannot price
+   * anything yet", and "do two of my numbers disagree about what month it is".
+   * The second cannot be answered by looking at a number at all — Meta's time
+   * zone belongs to the business account — so it is answered here or nowhere.
+   *
+   * Returns guidance, not codes: each number carries the exact sentence
+   * somebody has to act on, and nothing in it is a credential or a card.
+   */
+  @Get('connection/billing-readiness')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('super_admin', 'tenant_admin', 'tenant_supervisor')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Billing time zone readiness for every WhatsApp number of the tenant' })
+  async billingReadiness(@Request() req: any) {
+    const tenantId = req.user?.tenantId;
+    if (!tenantId) throw new BadRequestException('User does not belong to a tenant');
+    const readiness = await this.connectionService.billingZoneReadiness(tenantId);
+    return {
+      success: true,
+      data: {
+        ...readiness,
+        // The summary a screen needs without re-deriving it, and the one number
+        // that decides whether the agent can price anything at all.
+        pending: readiness.numbers.filter(number => number.resolution.kind === 'unmapped').length,
+        contradictory: readiness.contradictions.length,
+      },
+    };
+  }
+
   // ======================== BUSINESS PROFILE ========================
 
   @Get('business-profile')

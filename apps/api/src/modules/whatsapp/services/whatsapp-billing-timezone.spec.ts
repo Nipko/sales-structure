@@ -19,10 +19,15 @@ describe('setting the WhatsApp billing time zone', () => {
     const TENANT = '11111111-1111-4111-8111-111111111111';
     const NUMBER = '15550001111';
 
-    const serviceWith = (account: { id: string } | null) => {
+    const serviceWith = (account: { id: string; metadata?: unknown } | null,
+        siblings: any[] = []) => {
         const update = jest.fn().mockResolvedValue({});
         const prisma = {
-            channelAccount: { findFirst: jest.fn().mockResolvedValue(account), update },
+            channelAccount: {
+                findFirst: jest.fn().mockResolvedValue(account),
+                findMany: jest.fn().mockResolvedValue(siblings),
+                update,
+            },
         };
         const service = new WhatsappConnectionService(
             prisma as any, {} as any, { get: () => undefined } as any, {} as any,
@@ -38,10 +43,69 @@ describe('setting the WhatsApp billing time zone', () => {
     it('accepts an IANA zone and stores exactly that', async () => {
         const { service, update } = serviceWith({ id: 'acct-1' });
         await expect(service.setBillingTimeZone(TENANT, NUMBER, 'America/Bogota'))
-            .resolves.toEqual({ phoneNumberId: NUMBER, timeZone: 'America/Bogota' });
+            .resolves.toEqual({ phoneNumberId: NUMBER, timeZone: 'America/Bogota', alsoApplied: [] });
         expect(update).toHaveBeenCalledWith({
-            where: { id: 'acct-1' }, data: { wabaTimezone: 'America/Bogota' },
+            where: { id: 'acct-1' },
+            data: {
+                wabaTimezone: 'America/Bogota',
+                // The evidence beside the answer: without it the platform can
+                // say WHAT the zone is and not WHY, and "why" is the difference
+                // between a fact somebody confirmed and a value that appeared.
+                metadata: {
+                    wabaTimezoneEvidence: {
+                        source: 'human_confirmed', at: expect.any(String),
+                        timezoneId: null, wabaId: null,
+                    },
+                },
+            },
         });
+    });
+
+    it('carries one confirmation to every number that reports the same Meta zone', async () => {
+        // Six numbers on one business account used to mean six forms. Meta's
+        // zone belongs to the WABA, so a sibling reporting the SAME numeric id
+        // is the same fact read twice rather than a second guess.
+        const { service, update } = serviceWith(
+            { id: 'acct-1', metadata: { wabaId: 'waba-1', metaTimezoneId: '42', phoneNumberId: NUMBER } },
+            [
+                { id: 'acct-2', accountId: '15550002222',
+                    metadata: { wabaId: 'waba-1', metaTimezoneId: '42' } },
+                // Same WABA, DIFFERENT id: Meta says these are different zones.
+                { id: 'acct-3', accountId: '15550003333',
+                    metadata: { wabaId: 'waba-1', metaTimezoneId: '7' } },
+                // Same id, DIFFERENT WABA: two accounts can share an id and sit
+                // in different countries.
+                { id: 'acct-4', accountId: '15550004444',
+                    metadata: { wabaId: 'waba-2', metaTimezoneId: '42' } },
+            ]);
+
+        const result = await service.setBillingTimeZone(TENANT, NUMBER, 'America/Bogota');
+        expect(result.alsoApplied).toEqual(['15550002222']);
+        expect(update).toHaveBeenCalledWith(expect.objectContaining({
+            where: { id: 'acct-2' },
+            data: expect.objectContaining({ wabaTimezone: 'America/Bogota' }),
+        }));
+        for (const id of ['acct-3', 'acct-4']) {
+            expect(update).not.toHaveBeenCalledWith(expect.objectContaining({ where: { id } }));
+        }
+    });
+
+    it('never overwrites a number that already has its own zone', async () => {
+        // The query asks only for numbers with no zone. Overwriting somebody's
+        // explicit choice because a sibling was set later would be the platform
+        // deciding it knows better, silently, about money.
+        const { service, prisma } = serviceWith(
+            { id: 'acct-1', metadata: { wabaId: 'waba-1', metaTimezoneId: '42' } }, []);
+        await service.setBillingTimeZone(TENANT, NUMBER, 'America/Bogota');
+        expect(prisma.channelAccount.findMany).toHaveBeenCalledWith(expect.objectContaining({
+            where: expect.objectContaining({ wabaTimezone: null }),
+        }));
+    });
+
+    it('does not carry anything when Meta gave no id to match on', async () => {
+        const { service, prisma } = serviceWith({ id: 'acct-1', metadata: { wabaId: 'waba-1' } }, []);
+        expect((await service.setBillingTimeZone(TENANT, NUMBER, 'UTC')).alsoApplied).toEqual([]);
+        expect(prisma.channelAccount.findMany).not.toHaveBeenCalled();
     });
 
     it('refuses Meta\'s numeric timezone_id, which is the value most likely to arrive', async () => {
@@ -78,7 +142,8 @@ describe('setting the WhatsApp billing time zone', () => {
         const { service, update } = serviceWith({ id: 'acct-1' });
         await service.setBillingTimeZone(TENANT, NUMBER, '  America/Bogota  ');
         expect(update).toHaveBeenCalledWith({
-            where: { id: 'acct-1' }, data: { wabaTimezone: 'America/Bogota' },
+            where: { id: 'acct-1' },
+            data: expect.objectContaining({ wabaTimezone: 'America/Bogota' }),
         });
     });
 

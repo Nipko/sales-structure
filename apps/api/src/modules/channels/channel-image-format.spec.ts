@@ -51,7 +51,7 @@ describe('el saliente entrega imágenes en un formato que los canales aceptan', 
         'pide el JPEG en lugar del WebP — %s', async (channelType) => {
             const { gateway, calls } = gatewayWith(channelType);
 
-            await gateway.sendMessage(outbound(channelType, { type: 'image', mediaUrl: MEDIA }), 'token');
+            await gateway.sendMessage(outbound(channelType, { type: 'image', mediaUrl: MEDIA }), 'token', { admitFallback: async () => { throw new Error('this spec sends no Flow; a fallback here would be a second POST nobody asked for'); } });
 
             expect(calls).toHaveLength(1);
             expect(calls[0].mediaType).toBe('image');
@@ -66,7 +66,7 @@ describe('el saliente entrega imágenes en un formato que los canales aceptan', 
         const { gateway, calls } = gatewayWith('whatsapp');
         const pdf = 'https://api.parallly-chat.cloud/api/v1/media/file/t-1/contrato.pdf';
 
-        await gateway.sendMessage(outbound('whatsapp', { type: 'document', mediaUrl: pdf }), 'token');
+        await gateway.sendMessage(outbound('whatsapp', { type: 'document', mediaUrl: pdf }), 'token', { admitFallback: async () => { throw new Error('this spec sends no Flow; a fallback here would be a second POST nobody asked for'); } });
 
         expect(calls[0]).toMatchObject({ mediaUrl: pdf, mediaType: 'document' });
     });
@@ -75,7 +75,7 @@ describe('el saliente entrega imágenes en un formato que los canales aceptan', 
         const { gateway, calls } = gatewayWith('whatsapp');
         const externa = 'https://cdn.proveedor.example/catalogo/zapato.webp';
 
-        await gateway.sendMessage(outbound('whatsapp', { type: 'image', mediaUrl: externa }), 'token');
+        await gateway.sendMessage(outbound('whatsapp', { type: 'image', mediaUrl: externa }), 'token', { admitFallback: async () => { throw new Error('this spec sends no Flow; a fallback here would be a second POST nobody asked for'); } });
 
         // No es nuestra: no sabemos servir otra versión, reescribirla daría 404.
         expect(calls[0].mediaUrl).toBe(externa);

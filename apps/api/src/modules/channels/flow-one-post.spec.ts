@@ -1,5 +1,7 @@
 import { ChannelGatewayService } from './channel-gateway.service';
 import { FlowSendFailed } from './flow-fallback';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 
 /**
  * ═══ ONE ADMISSION, ONE POST ═══
@@ -52,7 +54,7 @@ describe('a Flow that times out', () => {
         // Meta queued the Flow, and the fallback assumed it did not.
         const { posts, adapter } = adapterThatFailsFlow(new FlowSendFailed('aborted',
             { cause: Object.assign(new Error('t'), { name: 'TimeoutError' }) }));
-        const result = await gatewayWith(adapter).sendMessage(outbound(), 'token');
+        const result = await gatewayWith(adapter).sendMessage(outbound(), 'token', { admitFallback: async () => { throw new Error('this spec sends no Flow; a fallback here would be a second POST nobody asked for'); } });
 
         expect(posts).toEqual(['flow']);
         expect(adapter.sendTextMessage).not.toHaveBeenCalled();
@@ -64,7 +66,7 @@ describe('a Flow that times out', () => {
     it('does not become a second message on an unreadable answer either', async () => {
         const { posts, adapter } = adapterThatFailsFlow(
             new FlowSendFailed('bad gateway', { status: 502, body: '<html>edge</html>' }));
-        expect(await gatewayWith(adapter).sendMessage(outbound(), 'token')).toBeNull();
+        expect(await gatewayWith(adapter).sendMessage(outbound(), 'token', { admitFallback: async () => { throw new Error('this spec sends no Flow; a fallback here would be a second POST nobody asked for'); } })).toBeNull();
         expect(posts).toEqual(['flow']);
     });
 });
@@ -99,13 +101,22 @@ describe('a Flow Meta conclusively refused', () => {
         expect(result).toBeNull();
     });
 
-    it('still falls back for a caller that asks nothing', async () => {
-        // Callers outside the metered lanes — and non-WhatsApp channels — keep
-        // the old behaviour. Breaking them to protect a charge they cannot
-        // produce would be the wrong trade.
-        const { posts, adapter } = adapterThatFailsFlow(refusal());
-        expect(await gatewayWith(adapter).sendMessage(outbound(), 'token')).toBe('wamid.TEXT');
-        expect(posts).toEqual(['flow', 'text']);
+    it('has no caller that can ask nothing', () => {
+        // This used to say the opposite: a caller that passed no hooks kept the
+        // old behaviour and fell back anyway. That exemption WAS the hole — a
+        // Flow could become a second POST with a second charge under a
+        // reservation that settles once, from any sink that had not been
+        // updated, and "every caller remembers" is a list somebody maintains.
+        //
+        // The hook is now required by the signature, so the guarantee is a
+        // property of the code. Asserted structurally because the type system
+        // is exactly where it is enforced, and a runtime test cannot see a
+        // parameter that cannot be omitted.
+        const source = readFileSync(join(__dirname, 'channel-gateway.service.ts'), 'utf8');
+        expect(source).toMatch(/hooks: GatewaySendHooks\)/);
+        expect(source).toMatch(/readonly admitFallback: \(errorCode: string\)/);
+        // And the refusal path asks it directly, with no `?.` to fall through.
+        expect(source).toContain('if (!(await hooks.admitFallback(verdict.errorCode)))');
     });
 });
 
@@ -113,7 +124,7 @@ describe('the ordinary path is untouched', () => {
     it('sends one text and no Flow when there is no flowId', async () => {
         const { posts, adapter } = adapterThatFailsFlow(new Error('never called'));
         const result = await gatewayWith(adapter)
-            .sendMessage(outbound({ metadata: {} }), 'token');
+            .sendMessage(outbound({ metadata: {} }), 'token', { admitFallback: async () => { throw new Error('this spec sends no Flow; a fallback here would be a second POST nobody asked for'); } });
         expect(posts).toEqual(['text']);
         expect(result).toBe('wamid.TEXT');
     });

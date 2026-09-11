@@ -18,8 +18,16 @@ export interface GatewaySendHooks {
      * May a text fallback be sent as a NEW effect? Returning false sends
      * nothing, which is the safe answer when the money authority cannot be
      * reached.
+     *
+     * NOT optional, and the hooks argument is not optional either. A caller
+     * that omits it is a caller whose Flow can quietly become a second POST
+     * with a second charge under a reservation that can only settle once — and
+     * "every caller remembers" is a list somebody maintains, while a required
+     * parameter is a property of the code. A caller that genuinely never sends
+     * a Flow still has to say what it would do, which takes one line and is the
+     * line that documents the decision.
      */
-    readonly admitFallback?: (errorCode: string) => Promise<boolean>;
+    readonly admitFallback: (errorCode: string) => Promise<boolean>;
     /**
      * What the provider said when it refused, handed to whoever can act on it.
      *
@@ -143,7 +151,7 @@ export class ChannelGatewayService {
      * Send an outbound message to any channel
      */
     async sendMessage(outbound: OutboundMessage, accessToken: string,
-        hooks?: GatewaySendHooks): Promise<string | null> {
+        hooks: GatewaySendHooks): Promise<string | null> {
         const adapter = this.adapters.get(outbound.channelType);
         if (!adapter) {
             this.logger.warn(`No adapter for channel: ${outbound.channelType}`);
@@ -197,7 +205,7 @@ export class ChannelGatewayService {
                     // honest. It is a NEW remote effect, so it needs its own
                     // authorisation — and if the caller cannot give one, it does
                     // not happen.
-                    if (hooks?.admitFallback && !(await hooks.admitFallback(verdict.errorCode))) {
+                    if (!(await hooks.admitFallback(verdict.errorCode))) {
                         this.logger.warn(`Flow rejected (${verdict.errorCode}) and the text fallback `
                             + `was not authorised; sending nothing`);
                         return null;
@@ -252,8 +260,8 @@ export class ChannelGatewayService {
     }
 
     /** Never lets the observer's own failure become the send's failure. */
-    private async observeFailure(hooks: GatewaySendHooks | undefined, error: unknown): Promise<void> {
-        if (!hooks?.observeFailure) return;
+    private async observeFailure(hooks: GatewaySendHooks, error: unknown): Promise<void> {
+        if (!hooks.observeFailure) return;
         try {
             await hooks.observeFailure(error);
         } catch (observerError: any) {

@@ -167,7 +167,7 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
         const outbound: any = { tenantId, channelType: 'web_widget', channelAccountId: widget.widget_id,
             to: `widget_${binding.id}`, content: input().content, dedupeId: 'adapter', metadata: { conversationId: binding.conversation_id } };
         const gateway = new ChannelGatewayService(); gateway.registerAdapter(new WidgetChannelAdapter(store));
-        const first = await gateway.sendMessage(outbound, '');
+        const first = await gateway.sendMessage(outbound, '', { admitFallback: async () => { throw new Error('this spec sends no Flow; a fallback here would be a second POST nobody asked for'); } });
         expect(first).toMatch(/^widget:stored:/);
         await expect(store.sendOutbound({ ...outbound, to: 'different-recipient' })).rejects.toThrow('widget_delivery_binding_changed');
         await expect(store.sendOutbound({ ...outbound, channelAccountId: 'other-widget' })).rejects.toThrow('widget_delivery_binding_changed');

@@ -559,6 +559,16 @@ export class AgentConsoleService {
                     },
                     creds.accessToken,
                     {
+                        // A human's Flow that Meta conclusively refuses may
+                        // become a text — as its OWN effect, with its own
+                        // reservation. The gateway cannot know that, so it
+                        // asks, and a caller that could not answer would be a
+                        // second POST under a reservation that settles once.
+                        admitFallback: code => this.admitFlowFallback(
+                            tenantId, schemaName, channelType,
+                            conv.channel_account_id || creds.accountId,
+                            conv.phone, outContent, conv.contact_id ?? null,
+                            String(msg.id), code),
                         observeFailure: error => this.observeFunding(
                             tenantId, channelType, conv.channel_account_id || creds.accountId, error),
                     },
@@ -656,7 +666,7 @@ export class AgentConsoleService {
      */
     private async admitAgentSend(tenantId: string, schemaName: string, channelType: string,
         channelAccountId: string, recipient: string, content: any, contactId: string | null,
-        messageId: string) {
+        messageId: string, producer = 'agent_console_reply') {
         try {
             // ── THE IDENTITY COMES FROM THE RESOLVER, NEVER FROM THIS SCOPE ──
             //
@@ -675,7 +685,7 @@ export class AgentConsoleService {
                 contactId,
                 // Hashed before it travels: this reaches an effect key and log lines.
                 recipientRef: createHash('sha256').update(String(recipient ?? '')).digest('hex').slice(0, 32),
-                producer: 'agent_console_reply',
+                producer,
                 // The destination, read to derive the tariff country — Meta
                 // charges by the recipient's country, not the sender's — and
                 // then dropped in favour of the hash above.
@@ -690,7 +700,7 @@ export class AgentConsoleService {
                 // automation.
                 disposition: 'reactive',
                 contentDigest: createHash('sha256').update(JSON.stringify(content ?? null)).digest('hex').slice(0, 32),
-                admissionReason: 'human_agent_reply',
+                admissionReason: producer,
                 binding: { messageId },
             });
             if (admission && !admission.permitted) return 'refused' as const;
@@ -707,6 +717,31 @@ export class AgentConsoleService {
             this.logger.error(`[Spend] agent reply not authorised: ${error?.message}`);
             return 'refused' as const;
         }
+    }
+
+    /**
+     * Authorise the text a conclusively-refused Flow becomes.
+     *
+     * A SECOND remote effect: its own POST, its own charge, its own receipt. It
+     * reuses the message row's identity — the producer differs, and the
+     * producer is part of the key, so it is its own effect while still being
+     * recognisably that reply's fallback.
+     *
+     * Returns false when the authority refuses or cannot be reached. Sending
+     * nothing is the honest answer: the customer is no worse off than if the
+     * Flow had simply failed, and the agent sees the reply did not leave.
+     */
+    private async admitFlowFallback(tenantId: string, schemaName: string, channelType: string,
+        channelAccountId: string, recipient: string, content: any, contactId: string | null,
+        messageId: string, errorCode: string): Promise<boolean> {
+        const admission = await this.admitAgentSend(tenantId, schemaName, channelType,
+            channelAccountId, recipient, { fallbackOf: content, errorCode }, contactId,
+            messageId, 'agent_console_reply_flow_fallback');
+        if (admission === 'refused') {
+            this.logger.warn('[Spend] the text fallback for a refused Flow was not authorised');
+            return false;
+        }
+        return true;
     }
 
     /**

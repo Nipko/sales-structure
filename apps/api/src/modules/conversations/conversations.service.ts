@@ -31,6 +31,7 @@ import {
     compactTurnAnswer, toDispatchTurnOutput, type CompactedTurnAnswer,
 } from './turn-outcome-effects';
 import { burstBufferKeys } from './burst-debounce-key';
+import { foldedContent, fragmentFor, mergeBurst, type BurstFragment } from './burst-fragments';
 import {
     decideAndAssertTurnOutcome, failureNoticesInEpisode, resolveFailureNoticePolicy, waitResumesAt,
 } from './turn-outcome-wait';
@@ -587,7 +588,17 @@ export class ConversationsService {
         // for the LAST message of the burst; the earlier ones bail here.
         const combined = await this.debounceBurst(normalizedMsg).catch(() => undefined);
         if (combined === null) return; // a newer message arrived — it will flush the batch
-        if (combined !== undefined) normalizedMsg.content.text = combined;
+        if (combined !== undefined) {
+            normalizedMsg.content.text = combined.text;
+            // A burst that ends in a photo stays a media turn; one that ends in
+            // words becomes a text turn carrying its attachments. Either way the
+            // five inbound messages the customer sent are ONE answer and one
+            // charge, instead of three answers about pieces of one question.
+            (normalizedMsg.content as any).type = combined.type;
+            if (combined.mediaBurst.length) {
+                (normalizedMsg.content as any).mediaBurst = combined.mediaBurst;
+            }
+        }
 
         // 1. Resolve Contact & Conversation.
         // Serialize find-or-create per contact: two near-simultaneous first
@@ -2415,17 +2426,50 @@ export class ConversationsService {
                 : undefined;
 
         // ── Media processing: transcribe audio / describe images ──
-        if (msg.content.type === 'audio' || msg.content.type === 'image') {
+        //
+        // A burst carries several attachments. Each still needs its own
+        // transcription or description — there is no merging four photos into
+        // one vision call — but they are ONE turn, so the customer gets one
+        // answer about all four instead of four answers about one each, and the
+        // business pays for one delivered message instead of four.
+        const burst = ((msg.content as any)?.mediaBurst ?? []) as readonly any[];
+        const attachments = burst.length
+            ? burst.filter(item => item?.type === 'audio' || item?.type === 'image')
+            : (msg.content.type === 'audio' || msg.content.type === 'image' ? [msg.content] : []);
+        if (attachments.length) {
             const contactDbId = conversation.contact_id || contact?.id || '';
             const recentContext = userText || msg.content.caption || '';
 
-            const mediaResult = await this.mediaProcessing.processMedia(
-                msg, contactDbId, conversation.id, recentContext,
-            );
+            const described: string[] = [];
+            let governance: { allowDurablePersistence: boolean } | null = null;
+            for (const attachment of attachments) {
+                // One message per attachment so the throttle, the download and
+                // the provider choice all see the item they are actually acting
+                // on — passing the burst's last item N times would transcribe
+                // the same audio four times and never open the other three.
+                const item = attachments.length === 1 && !burst.length
+                    ? msg
+                    : { ...msg, content: { ...(msg.content as any), ...attachment } } as NormalizedMessage;
+                const result = await this.mediaProcessing.processMedia(
+                    item, contactDbId, conversation.id, recentContext,
+                );
+                if (!result) continue;
+                described.push(result.text);
+                governance = result.governance;
+            }
+
+            // Every attachment failed: the customer is told, exactly as before.
+            // One of four failing is not that — describing three and answering
+            // is better than telling somebody we could read none of them.
+            const mediaResult = described.length
+                ? { text: [userText, ...described].filter(Boolean).join('\n'),
+                    governance: governance! }
+                : null;
 
             if (mediaResult) {
                 userText = mediaResult.text;
-                this.logger.log(`[Pipeline] Media processed (${msg.content.type}): ${userText.substring(0, 100)}...`);
+                this.logger.log(`[Pipeline] Media processed (${attachments.length} item(s)): `
+                    + `${userText.substring(0, 100)}...`);
 
                 if (!session && mediaResult.governance.allowDurablePersistence) {
                     // Persist only when source+derived deletion has a verified
@@ -2442,7 +2486,7 @@ export class ConversationsService {
                 const configuredLang = config.language || 'es';
                 return this.mediaProcessing.getFallbackMessage(msg.content.type, configuredLang);
             }
-        } else if (msg.content.type !== 'text') {
+        } else if (msg.content.type !== 'text' && !burst.length) {
             const configuredLang = config.language || 'es';
             const lang = (configuredLang).slice(0, 2).toLowerCase();
             const fallbacks: Record<string, string> = {
@@ -4611,12 +4655,14 @@ export class ConversationsService {
      * sequence and appends its text; after the window only the message still
      * holding the latest sequence drains the buffer (atomic Lua check+drain+del).
      */
-    private async debounceBurst(msg: NormalizedMessage): Promise<string | null | undefined> {
-        // A WhatsApp Flow completion is a structured turn (sentinel + interactiveReply.data);
-        // never debounce/combine it or the strict sentinel match breaks and the booking is lost.
-        if ((msg.content as any)?.interactiveReply?.type === 'flow_response') return undefined;
-        const text = msg.content?.type === 'text' ? (msg.content?.text || '') : '';
-        if (!text) return undefined; // media/buttons are distinct turns — no debounce
+    private async debounceBurst(msg: NormalizedMessage): Promise<
+        { type: string; text: string; mediaBurst: readonly any[] } | null | undefined> {
+        // A WhatsApp Flow completion, a button press and a list selection are
+        // ANSWERS to a question the agent just asked, not fragments of a thought.
+        // `fragmentFor` refuses them for exactly that reason.
+        const mine = fragmentFor(msg.content as any);
+        if (!mine) return undefined;
+        const text = mine.kind === 'text' ? mine.text : '';
 
         // Keyed by the CONNECTION, not just the channel. A tenant with a sales
         // number and a support number has customers who write to both, and one
@@ -4628,7 +4674,11 @@ export class ConversationsService {
         try {
             mySeq = await this.redis.incr(seqKey);
             await this.redis.expire(seqKey, 60);
-            await this.redis.rpush(msgsKey, text);
+            // The fragment, not just its text. Photos and words share one buffer
+            // because the intent is split across them: "esto me llegó roto" is
+            // meaningless without the photo and the photo is ambiguous without
+            // the sentence.
+            await this.redis.rpush(msgsKey, JSON.stringify(mine));
             await this.redis.expire(msgsKey, 60);
         } catch {
             return undefined; // Redis hiccup → process this message as-is
@@ -4647,20 +4697,34 @@ export class ConversationsService {
                 2, seqKey, msgsKey, String(mySeq),
             ) as string[] | null;
         } catch {
-            return text; // Redis hiccup → process just this message's text
+            // Redis hiccup → this message alone, exactly as it arrived.
+            return foldedContent(mine, mergeBurst([mine]));
         }
 
         if (!parts) return null; // a newer fragment arrived — it will flush the batch
         if (parts.length > 1) {
             this.logger.log(`[Debounce] Flushed ${parts.length} messages as one turn for ${msg.contactId}`);
         }
-        // Consecutive identical lines collapse. A turn that had to give its lock
-        // back returns its merged burst to the buffer, and the retry appends its
-        // own text again — the last fragment would otherwise be read twice.
-        const joined = (parts.length ? parts : [text]).join('\n');
-        const lines = joined.split('\n');
-        const deduped = lines.filter((line, i) => i === 0 || line.trim() !== lines[i - 1].trim());
-        return deduped.join('\n').trim() || text;
+        // A fragment written by the previous release is a bare string. Read as
+        // text rather than dropped: a rolling restart must not eat a sentence.
+        const fragments: BurstFragment[] = [];
+        for (const part of parts.length ? parts : [JSON.stringify(mine)]) {
+            try {
+                const parsed = JSON.parse(String(part));
+                if (parsed && (parsed.kind === 'text' || parsed.kind === 'media')) {
+                    fragments.push(parsed as BurstFragment);
+                    continue;
+                }
+            } catch { /* not JSON: the old shape */ }
+            const legacy = String(part);
+            if (legacy) fragments.push({ kind: 'text', text: legacy });
+        }
+        const merged = mergeBurst(fragments.length ? fragments : [mine]);
+        const folded = foldedContent(fragments[fragments.length - 1] ?? mine, merged);
+        // A burst that merged to nothing at all would answer an empty turn.
+        return folded.text || folded.mediaBurst.length
+            ? folded
+            : foldedContent(mine, mergeBurst([mine]));
     }
 
     /**
@@ -4773,11 +4837,20 @@ export class ConversationsService {
      * fragments were drained from the buffer before the lock was attempted, so
      * without this the retry would answer only the last message of the burst.
      */
-    private async restoreBurst(msg: NormalizedMessage, combinedText: string): Promise<void> {
-        if (!combinedText.trim()) return;
+    private async restoreBurst(msg: NormalizedMessage,
+        merged: { type: string; text: string; mediaBurst: readonly any[] }): Promise<void> {
+        if (!merged.text.trim() && !merged.mediaBurst.length) return;
         const { base } = burstBufferKeys(msg);
+        // Put the words back as ONE fragment and each attachment back as its own,
+        // in that order. Pushing the merged text alone would drop the photos and
+        // leave the retry answering a sentence about images it can no longer see.
+        const fragments: BurstFragment[] = [];
+        if (merged.text.trim()) fragments.push({ kind: 'text', text: merged.text });
+        for (const item of merged.mediaBurst) fragments.push(item as BurstFragment);
         try {
-            await this.redis.rpush(`${base}:msgs`, combinedText);
+            for (const fragment of fragments) {
+                await this.redis.rpush(`${base}:msgs`, JSON.stringify(fragment));
+            }
             await this.redis.expire(`${base}:msgs`, 60);
         } catch { /* best-effort: the retry still carries its own text */ }
     }

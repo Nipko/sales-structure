@@ -472,6 +472,10 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
         const [after] = await outboxRows();
         expect(after.state).toBe('suppressed');
         expect(String(after.error_code)).toContain('proactive_stale');
+        // And the customer is not left both un-messaged AND cooled down: the
+        // thing that made the effect stale was the domain clearing the boundary
+        // itself, so they are due again the moment they lapse again.
+        expect(await cooldown(contactId)).toBeNull();
     });
 
     it('suppresses a recall whose number was removed after preparing', async () => {

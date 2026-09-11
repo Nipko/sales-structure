@@ -923,6 +923,62 @@ Para enviar fuera de la ventana de 24h, necesitas plantillas aprobadas por Meta:
 2. Crear plantilla → categoría (transactional/marketing) + idioma + variables
 3. Enviar a Meta para aprobación (24-72h típicamente)
 
+### Costo de entrega: Meta le cobra a la cuenta del tenant
+
+Desde el **1 de octubre de 2026**, Meta cobra **cada mensaje de servicio entregado**
+contra la **cuenta de WhatsApp Business del propio tenant**. Parallly es proveedor de
+tecnología ante Meta: **no paga ese consumo, no lo factura y no lo incluye en el plan**.
+El tenant carga su medio de pago en las herramientas de Meta (WhatsApp Manager →
+Facturación y pagos) y Meta le cobra ahí.
+
+Consecuencia operativa: **una cuenta sin medio de pago válido deja de entregar los
+mensajes de servicio**. No degrada, corta. Para el negocio eso se ve como un agente que
+dejó de responder, aunque su suscripción a Parallly esté al día; los mensajes entrantes
+se siguen recibiendo y guardando.
+
+**Cuota gratis**: **1.000 mensajes de servicio por número y por mes calendario**, sin
+acumulación, en la zona horaria de la cuenta de WhatsApp Business. No es por país, ni por
+contacto, ni cubre plantillas (marketing, utilidad y autenticación se cobran aparte y no
+consumen la cuota). La cifra y la fecha viven en
+`apps/api/src/modules/billing/whatsapp-rates/whatsapp-rate-table.generated.ts`
+(`WHATSAPP_FREE_SERVICE_ALLOWANCE`), derivadas de tarjetas de tarifas preservadas; no se
+copian a mano en ningún otro lado.
+
+**Tarifas**: este manual no las transcribe. Meta revisa sus tarjetas por trimestre y cobra
+según el país de **quien recibe**, así que cualquier número escrito acá queda viejo en la
+próxima revisión. La fuente vigente es la tabla generada citada arriba y
+`docs/whatsapp-meta-pricing-2026-10.md`.
+
+**Qué ve el tenant.** En **Canales → WhatsApp**, la tarjeta **Cobro de WhatsApp (Meta)**
+muestra el avance de la cuota gratis, el gasto del período separado por moneda, los
+contactos más costosos, los envíos sin confirmar y los números con envío pausado. La leen
+Tenant Admin y Tenant Supervisor; **Reanudar envíos** es sólo de Tenant Admin. Endpoints:
+`GET /whatsapp/spend/summary`, `/consumption`, `/awaiting-resolution`, `/pauses`,
+`POST /whatsapp/spend/resolve` y `/pauses/:channelAccountId/resume`.
+
+**Pausa por cobro y regreso.** Cuando Meta responde que la cuenta no puede facturarse
+(clase de error `131042`), Parallly pausa los envíos cobrables **de ese número**, no del
+tenant ni de los demás números, y no reintenta. La pausa se levanta sola cuando Meta
+acepta un envío; como un número pausado no envía, el Tenant Admin puede declarar que
+arregló el medio de pago con **Reanudar envíos**. Es una declaración registrada, no una
+comprobación: si Meta vuelve a rechazar, el número se pausa de nuevo en el siguiente
+intento.
+
+**Construido vs detrás de un interruptor.**
+
+| Pieza | Estado |
+|-------|--------|
+| Tarifas, cuota gratis y clasificación de categoría | Construido (tabla generada + resolutor puro) |
+| Medición del gasto, reserva por envío y conciliación | Construido (`whatsapp-spend`, ledger transaccional) |
+| Autorización en los tres puntos de salida | Construido (`WhatsappSendAdmissionService`) |
+| Lectura de gasto, cuota, pausas y reanudación en el panel | Construido (`/admin/channels/whatsapp`) |
+| **Frenar envíos al llegar a un tope** | **Apagado por defecto**: la autorización corre en modo `observe` — mide, diagnostica y deja pasar. `enforce` es por tenant (`tenants.settings.whatsappSpend.enforcement`) y **hoy no hay pantalla ni endpoint que lo active**; se decide caso por caso mirando lo que `observe` registró |
+| Fijar un tope de gasto desde el producto | **No existe** como autoservicio: el ledger admite topes, pero ningún controlador los expone |
+
+Un tope, cuando se habilite, acota **lo que Parallly envía** por esa conexión. No limita
+lo que otra herramienta conectada a la misma cuenta de WhatsApp Business le cobre a Meta,
+no es un límite que Meta aplique y no cambia la tarifa.
+
 ## 9.2 Instagram
 
 ### Conectar (OAuth + BroadcastChannel)
@@ -1747,6 +1803,12 @@ prueba, límites y funciones incluidos para esa cuenta.
 
 No uses precios o cuotas copiados de un documento antiguo: el catálogo activo y los
 overrides del tenant son la fuente contractual vigente.
+
+**La suscripción no cubre la entrega por WhatsApp.** Desde el 1 de octubre de 2026, Meta
+cobra los mensajes de servicio entregados contra la cuenta de WhatsApp Business del propio
+tenant, con el medio de pago que él carga en Meta; ese dinero no pasa por Parallly y esa
+factura no aparece en Facturación. Son dos pagos separados y cambiar de plan no cambia lo
+que Meta cobra. Detalle, cuota gratis y qué se ve en el panel: **§9.1, "Costo de entrega"**.
 
 ## 20.2 Precio, moneda y ciclo
 

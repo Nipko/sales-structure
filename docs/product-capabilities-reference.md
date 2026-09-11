@@ -44,6 +44,48 @@ indicados abajo.
 | Email | Adaptador e ingreso técnico interno para integraciones administradas; `/admin/channels/email` redirige al inventario certificado y **no es una configuración autoservicio** |
 | SMS | Producto retirado para altas, configuración, compras y campañas nuevas; solo conserva saldo/historial/callbacks/cierre y administración necesarios para obligaciones legacy |
 
+## Costo de entrega de WhatsApp: quién le paga a Meta
+
+Desde el **1 de octubre de 2026**, Meta cobra cada **mensaje de servicio entregado** a la
+**cuenta de WhatsApp Business del tenant**. Parallly es proveedor de tecnología ante Meta:
+no paga ese consumo, no lo refactura y no lo incluye en ningún plan. El medio de pago vive
+en las herramientas de Meta, sobre la cuenta del tenant, y **una cuenta sin medio de pago
+válido deja de entregar los mensajes de servicio** — corta, no degrada. Instagram,
+Messenger, Telegram y el widget no tienen hoy un cobro por mensaje de servicio de su
+proveedor.
+
+La cuota gratis es de **1.000 mensajes de servicio por número y por mes calendario**, sin
+acumulación, cerrada en la zona horaria de la cuenta de WhatsApp Business; no cubre
+plantillas. Esa cifra y su fecha de vigencia no se transcriben a mano en ninguna
+superficie: salen de `WHATSAPP_FREE_SERVICE_ALLOWANCE`. Las tarifas tampoco se copian —
+Meta revisa sus tarjetas por trimestre y cobra según el país del destinatario.
+
+| Tema | Autoridad vigente |
+|------|-------------------|
+| Tarifas, cuota gratis y fecha de vigencia | `apps/api/src/modules/billing/whatsapp-rates/whatsapp-rate-table.generated.ts` |
+| Medición, reserva y conciliación del gasto | `apps/api/src/modules/billing/whatsapp-spend/` |
+| Autorización de cada envío cobrable | `whatsapp-send-admission.service.ts` |
+| Estado de cobro de un número y su pausa | `whatsapp-funding-readiness.ts`, `account-send-pause.ts` |
+| Superficie del tenant | `/admin/channels/whatsapp` → `WhatsappSpendPanel`, rutas `/whatsapp/spend/*` |
+| Reglas de Meta y tarjetas de tarifas | `docs/whatsapp-meta-pricing-2026-10.md` |
+
+Qué está construido y qué no, sin redondear:
+
+| Capacidad | Estado verificable |
+|-----------|--------------------|
+| Precio por mercado y categoría, cuota gratis por número y mes | Construido; funciones puras sobre tarjetas preservadas |
+| Reserva, liquidación y conciliación del gasto por envío | Construido; ledger transaccional por tenant |
+| Autorización en los tres puntos de salida de WhatsApp | Construido |
+| Lectura de gasto, cuota, pausas y reanudación por el tenant | Construido; Admin y Supervisor leen, sólo Admin reanuda |
+| Pausa de un número cuando Meta no puede facturarlo | Construido; por conexión, sin reintentos, entrante intacto |
+| **Frenar envíos al alcanzar un tope** | **Apagado**: la autorización corre en `observe` por defecto — mide, diagnostica y deja pasar. `enforce` se lee de `tenants.settings.whatsappSpend.enforcement` y **ninguna pantalla ni endpoint lo escribe** |
+| Configurar un tope de gasto desde el producto | **No existe** en autoservicio: el ledger admite topes, ningún controlador los expone |
+
+Un tope acota lo que **Parallly** envía por esa conexión. No acota lo que otra herramienta
+conectada a la misma cuenta de WhatsApp Business le cobre a Meta, no es un límite que Meta
+aplique y no cambia la tarifa. Y un medio de pago "cargado" no garantiza que el cobro se
+apruebe: sólo dice que no es eso lo que falta.
+
 ## Cobros del tenant a sus clientes
 
 **Integraciones → Pagos** admite cuentas propias Wompi y Mercado Pago. El tenant

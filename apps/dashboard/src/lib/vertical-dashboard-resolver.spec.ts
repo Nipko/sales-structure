@@ -37,6 +37,7 @@ const OPERATIONAL_ROUTE_ITEMS: Readonly<Partial<Record<VerticalRoutePath, Vertic
   // Los casos de un estudio: el objeto PRIMARIO del rubro, que hasta ahora
   // no tenía pantalla y dejaba al equipo abriendo el embudo de ventas.
   "/admin/cases": "cases",
+  "/admin/service-catalog": "serviceCatalog",
   "/admin/inventory": "inventory",
   "/admin/orders": "orders",
 };
@@ -52,6 +53,19 @@ function resolveCanonical(industry: string, subtype: string | null) {
 }
 
 describe("resolveVerticalDashboard", () => {
+  it.each(listVerticalCapabilityConfigurations().map((manifest) => [
+    `${manifest.industry}/${manifest.subtype ?? "default"}`,
+    manifest,
+  ] as const))("keeps every published route reachable for %s", (_profile, manifest) => {
+    const result = resolveCanonical(manifest.industry, manifest.subtype);
+    for (const route of manifest.routes) {
+      expect({ route, visible: isVerticalDashboardPathVisible(result, route) }).toEqual({
+        route,
+        visible: true,
+      });
+    }
+  });
+
   it("projects all 76 canonical configurations across all 20 verticals", () => {
     const configurations = listVerticalCapabilityConfigurations();
     expect(configurations).toHaveLength(76);
@@ -101,7 +115,7 @@ describe("resolveVerticalDashboard", () => {
 
     for (const subtype of ["guarderia", "hotel"] as const) {
       const petBoarding = resolveCanonical("pet_services", subtype);
-      expect(petBoarding.visibleItems).toEqual(["resourceRentals", "pets"]);
+      expect(petBoarding.visibleItems).toEqual(["resourceRentals", "pets", "serviceCatalog"]);
       expect(petBoarding.primaryTourItem).toBe("resourceRentals");
     }
 
@@ -179,6 +193,21 @@ describe("resolveVerticalDashboard", () => {
       subType: "hotel",
       manifestVersion: VERTICAL_CAPABILITY_MANIFEST_VERSION,
     }).visibleItems).toEqual([]);
+  });
+
+  it.each(listVerticalCapabilityConfigurations().filter((manifest) => (
+    manifest.routes.includes("/admin/service-catalog")
+  )).map((manifest) => [
+    `${manifest.industry}/${manifest.subtype}`,
+    manifest,
+  ] as const))("does not expose the service catalog without an owning capability for %s", (_profile, manifest) => {
+    const result = resolveVerticalDashboard({
+      industry: manifest.industry,
+      subType: manifest.subtype,
+      manifestVersion: manifest.manifestVersion,
+      effectiveCapabilities: ["crm_pipeline", "faq_search"],
+    });
+    expect(isVerticalDashboardPathVisible(result, "/admin/service-catalog")).toBe(false);
   });
 
   it("applies the same vertical visibility to every navigation entry point", () => {

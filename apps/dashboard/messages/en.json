@@ -4490,6 +4490,12 @@
       "kbTool": "Let the agent search whenever it needs to",
       "kbToolDesc": "On top of the automatic lookup, the agent can search your documents again mid-conversation.",
       "specializedToolsTitle": "Specialized tools",
+      "toolAvailabilityState": {
+        "profile_unknown": "We could not verify your business type. Specialized tools cannot be enabled until its configuration loads.",
+        "not_in_subtype": "This tool does not apply to your current business type and the agent cannot use it. Turn it off to update the configuration.",
+        "plan_unknown": "We could not verify whether your plan includes this tool. You can turn it off; enabling it requires a verified plan.",
+        "plan_missing_feature": "Your current plan does not include this tool. You can turn it off or review the available plans."
+      },
       "recommended": "Recommended",
       "industryToolsTitle": "Industry tools",
       "universalToolsTitle": "Universal tools",

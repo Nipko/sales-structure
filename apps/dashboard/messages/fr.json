@@ -4490,6 +4490,12 @@
       "kbTool": "Laisser l'agent chercher quand il en a besoin",
       "kbToolDesc": "En plus de la recherche automatique, l'agent peut reconsulter vos documents en cours de conversation.",
       "specializedToolsTitle": "Outils spécialisés",
+      "toolAvailabilityState": {
+        "profile_unknown": "Nous n’avons pas pu vérifier votre type d’activité. Les outils spécialisés ne peuvent pas être activés avant le chargement de sa configuration.",
+        "not_in_subtype": "Cet outil ne correspond pas à votre type d’activité actuel et l’agent ne peut pas l’utiliser. Désactivez-le pour mettre à jour la configuration.",
+        "plan_unknown": "Nous n’avons pas pu vérifier si votre forfait inclut cet outil. Vous pouvez le désactiver ; son activation nécessite la vérification du forfait.",
+        "plan_missing_feature": "Votre forfait actuel n’inclut pas cet outil. Vous pouvez le désactiver ou consulter les forfaits disponibles."
+      },
       "recommended": "Recommandé",
       "industryToolsTitle": "Outils de votre industrie",
       "universalToolsTitle": "Outils universels",

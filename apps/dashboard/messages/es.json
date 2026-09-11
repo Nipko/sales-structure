@@ -4490,6 +4490,12 @@
       "kbTool": "Dejar que el agente busque cuando lo necesite",
       "kbToolDesc": "Además de la búsqueda automática, el agente puede volver a consultar tus documentos en medio de la conversación.",
       "specializedToolsTitle": "Herramientas especializadas",
+      "toolAvailabilityState": {
+        "profile_unknown": "No pudimos verificar el tipo de negocio. Las herramientas especializadas no se pueden activar hasta que se cargue su configuración.",
+        "not_in_subtype": "Esta herramienta no corresponde al tipo de negocio actual y el agente no la puede usar. Desactívala para actualizar su configuración.",
+        "plan_unknown": "No pudimos verificar si tu plan incluye esta herramienta. Puedes desactivarla; para activarla necesitamos verificar el plan.",
+        "plan_missing_feature": "Tu plan actual no incluye esta herramienta. Puedes desactivarla o revisar los planes disponibles."
+      },
       "recommended": "Recomendada",
       "industryToolsTitle": "Herramientas de tu industria",
       "universalToolsTitle": "Herramientas universales",

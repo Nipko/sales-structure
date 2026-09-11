@@ -12,9 +12,10 @@ import {
   Wrench, Scissors, Camera, Car, Star, Sparkles, Store, Headset, Handshake, Briefcase, CreditCard, ChevronDown,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { usePlanLimits } from "@/hooks/usePlanLimits";
+import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
 import { api, type TenantPaymentsConfig } from "@/lib/api";
+import { resolveAgentToolAvailability } from "@/lib/agent-tool-availability";
 import type { PersonaConfig } from "../_types";
 
 interface CapabilitiesSectionProps {
@@ -25,24 +26,24 @@ interface CapabilitiesSectionProps {
 
 type ToolKey = keyof NonNullable<PersonaConfig["tools"]>;
 
-const VERTICAL_TOOLS: { key: ToolKey; industries: string[]; icon: any }[] = [
-  { key: "properties",   industries: ["turismo"],                            icon: Home },
-  { key: "tours",        industries: ["turismo", "agencia_viajes"],          icon: Compass },
-  { key: "treatments",   industries: ["salud"],                              icon: HeartPulse },
-  { key: "realEstate",   industries: ["inmobiliaria"],                       icon: Building2 },
-  { key: "pets",         industries: ["veterinaria"],                        icon: Stethoscope },
-  { key: "restaurants",  industries: ["restaurantes"],                       icon: UtensilsCrossed },
-  { key: "gyms",         industries: ["gimnasios"],                          icon: Dumbbell },
-  { key: "education",    industries: ["education", "educacion"],             icon: GraduationCap },
-  { key: "insurance",    industries: ["seguros"],                            icon: ShieldCheck },
-  { key: "homeServices", industries: ["servicios_hogar"],                    icon: Wrench },
-  { key: "petServices",  industries: ["pet_services", "servicios_mascotas"], icon: Scissors },
-  { key: "photography",  industries: ["fotografia"],                         icon: Camera },
-  { key: "professionalServices", industries: ["servicios_profesionales"],    icon: Briefcase },
-  { key: "vehicles",     industries: ["automotriz"],                         icon: Car },
-  { key: "vehicleRentals", industries: ["automotriz"],                       icon: Car },
-  { key: "repairOrders", industries: ["automotriz"],                        icon: Wrench },
-  { key: "petBoarding",  industries: ["pet_services", "servicios_mascotas"], icon: Home },
+const VERTICAL_TOOLS: { key: ToolKey; icon: any }[] = [
+  { key: "properties", icon: Home },
+  { key: "tours", icon: Compass },
+  { key: "treatments", icon: HeartPulse },
+  { key: "realEstate", icon: Building2 },
+  { key: "pets", icon: Stethoscope },
+  { key: "restaurants", icon: UtensilsCrossed },
+  { key: "gyms", icon: Dumbbell },
+  { key: "education", icon: GraduationCap },
+  { key: "insurance", icon: ShieldCheck },
+  { key: "homeServices", icon: Wrench },
+  { key: "petServices", icon: Scissors },
+  { key: "photography", icon: Camera },
+  { key: "professionalServices", icon: Briefcase },
+  { key: "vehicles", icon: Car },
+  { key: "vehicleRentals", icon: Car },
+  { key: "repairOrders", icon: Wrench },
+  { key: "petBoarding", icon: Home },
 ];
 
 /**
@@ -74,14 +75,39 @@ function paymentRailStatus(cfg: TenantPaymentsConfig | null): PaymentRailStatus 
 export function CapabilitiesSection({ config, onChange, apptReadiness }: CapabilitiesSectionProps) {
   const tSetup = useTranslations("qualityHealth.setup");
   const t = useTranslations("agent.capabilities");
-  const { features, loading: planLoading } = usePlanLimits();
+  const { verticalConfig, isVerticalConfigLoading } = useAuth();
+  const { activeTenantId } = useTenant();
+  const [planSnapshot, setPlanSnapshot] = useState<{
+    tenantId: string;
+    features: Record<string, unknown>;
+  } | null>(null);
+  const planFeatures = planSnapshot?.tenantId === activeTenantId ? planSnapshot.features : null;
   const tools = config.tools || { appointments: { enabled: false, canBook: true, canCancel: true } };
   const apt = tools.appointments || { enabled: false, canBook: true, canCancel: true };
   const payments = tools.payments || { enabled: false, canCreateLinks: true };
-  const customerPaymentsAllowed = features.customerPayments === true;
-  const industry = config.industry || "general";
-  const { activeTenantId } = useTenant();
+  const availability = resolveAgentToolAvailability(
+    isVerticalConfigLoading ? null : verticalConfig, tools, planFeatures,
+  );
+  const customerPaymentsAllowed = availability.payments.canEnable;
+  const planLoading = availability.payments.reason === "plan_unknown";
   const [railStatus, setRailStatus] = useState<PaymentRailStatus>("unknown");
+
+  useEffect(() => {
+    // Editing requires a fresh entitlement lookup. The navigation snapshot can
+    // predate a plan change, and no answer may grant another tenant's tools.
+    setPlanSnapshot(null);
+    if (!activeTenantId) return;
+    let cancelled = false;
+    void api.getPlanFeatures(activeTenantId)
+      .then((res) => {
+        if (cancelled) return;
+        if (res?.success && res.data && typeof res.data === "object") {
+          setPlanSnapshot({ tenantId: activeTenantId, features: res.data });
+        }
+      })
+      .catch(() => { /* Unknown remains visible; it never grants activation. */ });
+    return () => { cancelled = true; };
+  }, [activeTenantId]);
 
   useEffect(() => {
     if (!activeTenantId || !customerPaymentsAllowed) return;
@@ -104,29 +130,27 @@ export function CapabilitiesSection({ config, onChange, apptReadiness }: Capabil
   const missingItems: string[] = [];
   if (apptReadiness.loaded && apptReadiness.services === 0) missingItems.push(t("servicesLabel"));
   if (apptReadiness.loaded && apptReadiness.slots === 0) missingItems.push(t("availabilityScheduleLabel"));
-  const toggleBlocked = !canEnableAppointments && !apt.enabled;
+  const toggleBlocked = (!canEnableAppointments || !availability.appointments.canEnable) && !apt.enabled;
 
   function updateTools(updates: Partial<typeof apt>) {
     onChange({ tools: { ...tools, appointments: { ...apt, ...updates } } });
   }
 
   function toggleTool(key: ToolKey, value: boolean) {
+    if (value && !availability[key]?.canEnable) return;
     onChange({ tools: { ...tools, [key]: { ...(tools[key] as any ?? { enabled: false }), enabled: value } } });
   }
 
-  // Sort: industry-matching first, then the rest — all visible
-  const recommended = VERTICAL_TOOLS.filter(vt => vt.industries.includes(industry));
-  const others = VERTICAL_TOOLS.filter(vt => !vt.industries.includes(industry));
-  const sortedVerticalTools = [...recommended, ...others];
+  const sortedVerticalTools = VERTICAL_TOOLS.filter(({ key }) => availability[key]?.visible);
 
   let statusBadge: React.ReactNode;
-  if (apt.enabled && canEnableAppointments) {
+  if (apt.enabled && canEnableAppointments && availability.appointments.canEnable) {
     statusBadge = (
       <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400 text-[11px]">
         {t("ready")}
       </Badge>
     );
-  } else if (apt.enabled && !canEnableAppointments) {
+  } else if (apt.enabled) {
     statusBadge = (
       <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400 text-[11px]">
         {t("setupNeeded")}
@@ -143,6 +167,9 @@ export function CapabilitiesSection({ config, onChange, apptReadiness }: Capabil
 
   return (
     <div className="space-y-4">
+      {(!verticalConfig || isVerticalConfigLoading || availability.faqs.reason === "profile_unknown") && (
+        <p role="status" className="text-sm text-amber-700 dark:text-amber-300">{t("toolAvailabilityState.profile_unknown")}</p>
+      )}
       {/* ── Skillset (T2.17) ── */}
       <div className="rounded-lg border border-neutral-200 dark:border-neutral-700 p-4">
         <div className="flex items-center gap-3 mb-3">
@@ -240,6 +267,7 @@ export function CapabilitiesSection({ config, onChange, apptReadiness }: Capabil
       </div>
 
       {/* ── Appointments ── */}
+      {availability.appointments.visible && (
       <div className="rounded-lg border border-neutral-200 dark:border-neutral-700 p-4">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-3">
@@ -260,6 +288,10 @@ export function CapabilitiesSection({ config, onChange, apptReadiness }: Capabil
           </div>
           <button
             type="button"
+            role="switch"
+            aria-checked={apt.enabled}
+            aria-label={t("appointmentScheduling")}
+            data-tool-family="appointments"
             onClick={() => { if (!toggleBlocked) updateTools({ enabled: !apt.enabled }); }}
             disabled={toggleBlocked}
             title={toggleBlocked ? t("configureBeforeActivating", { items: missingItems.join(t("andSeparator")) }) : undefined}
@@ -276,8 +308,9 @@ export function CapabilitiesSection({ config, onChange, apptReadiness }: Capabil
           </button>
         </div>
 
-        {!apptReadiness.loaded && <p className="mt-3 text-xs text-neutral-500" role="status">{tSetup("verificationUnavailable")}</p>}
-        {apptReadiness.loaded && (
+        {availability.appointments.reason && <p className="mt-3 text-xs text-amber-700 dark:text-amber-300">{t(`toolAvailabilityState.${availability.appointments.reason}`)}</p>}
+        {availability.appointments.canEnable && !apptReadiness.loaded && <p className="mt-3 text-xs text-neutral-500" role="status">{tSetup("verificationUnavailable")}</p>}
+        {availability.appointments.canEnable && apptReadiness.loaded && (
           <div className="flex gap-3 mt-3 text-xs">
             <span className={cn("flex items-center gap-1", apptReadiness.services > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-neutral-400")}>
               {apptReadiness.services > 0 ? <CheckCircle size={12} /> : <AlertTriangle size={12} />}
@@ -290,7 +323,7 @@ export function CapabilitiesSection({ config, onChange, apptReadiness }: Capabil
           </div>
         )}
 
-        {apptReadiness.loaded && !canEnableAppointments && (
+        {availability.appointments.canEnable && apptReadiness.loaded && !canEnableAppointments && (
           <div className={cn(
             "flex items-start gap-2 p-3 rounded-lg border mt-3",
             apt.enabled
@@ -311,17 +344,17 @@ export function CapabilitiesSection({ config, onChange, apptReadiness }: Capabil
           </div>
         )}
 
-        {apt.enabled && (
+        {apt.enabled && availability.appointments.canEnable && (
           <div className="space-y-2.5 border-t border-neutral-100 dark:border-neutral-800 pt-3 mt-3">
             <label className="flex items-center gap-3 cursor-pointer">
-              <input type="checkbox" checked={apt.canBook} onChange={e => updateTools({ canBook: e.target.checked })} className="w-4 h-4 rounded border-neutral-300 dark:border-neutral-600 text-indigo-500 accent-indigo-500" />
+              <input type="checkbox" checked={apt.canBook !== false} onChange={e => updateTools({ canBook: e.target.checked })} className="w-4 h-4 rounded border-neutral-300 dark:border-neutral-600 text-indigo-500 accent-indigo-500" />
               <div>
                 <span className="text-sm font-medium text-neutral-800 dark:text-neutral-200">{t("createAppointments")}</span>
                 <p className="text-xs text-neutral-500 dark:text-neutral-400">{t("createAppointmentsDesc")}</p>
               </div>
             </label>
             <label className="flex items-center gap-3 cursor-pointer">
-              <input type="checkbox" checked={apt.canCancel} onChange={e => updateTools({ canCancel: e.target.checked })} className="w-4 h-4 rounded border-neutral-300 dark:border-neutral-600 text-indigo-500 accent-indigo-500" />
+              <input type="checkbox" checked={apt.canCancel !== false} onChange={e => updateTools({ canCancel: e.target.checked })} className="w-4 h-4 rounded border-neutral-300 dark:border-neutral-600 text-indigo-500 accent-indigo-500" />
               <div>
                 <span className="text-sm font-medium text-neutral-800 dark:text-neutral-200">{t("cancelAppointments")}</span>
                 <p className="text-xs text-neutral-500 dark:text-neutral-400">{t("cancelAppointmentsDesc")}</p>
@@ -354,8 +387,10 @@ export function CapabilitiesSection({ config, onChange, apptReadiness }: Capabil
           </div>
         )}
       </div>
+      )}
 
-      {/* ── Specialized tools — ALL visible, industry-matching first with badge ── */}
+      {/* ── Specialized tools from the tenant subtype contract ── */}
+      {sortedVerticalTools.length > 0 && <>
       <div className="pt-1">
         <p className="text-[11px] font-semibold text-neutral-400 dark:text-neutral-500 uppercase tracking-wide mb-3">
           {t("specializedToolsTitle")}
@@ -363,8 +398,8 @@ export function CapabilitiesSection({ config, onChange, apptReadiness }: Capabil
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {sortedVerticalTools.map(({ key, icon, industries }) => {
-          const isRecommended = industries.includes(industry);
+        {sortedVerticalTools.map(({ key, icon }) => {
+          const toolAvailability = availability[key];
           // Let's get the email template slug mapping for each key
           const slugMap: Record<ToolKey, string> = {
             properties: "property_booking_confirmation",
@@ -411,12 +446,15 @@ export function CapabilitiesSection({ config, onChange, apptReadiness }: Capabil
               icon={icon}
               title={t(`vt_${key}_title`)}
               description={t(`vt_${key}_desc`)}
+              family={key}
+              canEnable={toolAvailability.canEnable}
+              blockedReason={toolAvailability.reason ? t(`toolAvailabilityState.${toolAvailability.reason}`) : undefined}
               enabled={(tools[key] as any)?.enabled === true}
               onToggle={(v) => toggleTool(key, v)}
-              recommended={isRecommended}
+              recommended={toolAvailability.canEnable}
               recommendedLabel={t("recommended")}
               emailConfirmations={hasEmailConfirmation ? (tools[key] as any)?.emailConfirmations : undefined}
-              onEmailConfirmationsChange={hasEmailConfirmation ? (v) => {
+              onEmailConfirmationsChange={hasEmailConfirmation && toolAvailability.canEnable ? (v) => {
                 onChange({
                   tools: {
                     ...tools,
@@ -433,6 +471,7 @@ export function CapabilitiesSection({ config, onChange, apptReadiness }: Capabil
           );
         })}
       </div>
+      </>}
 
       {/* ── Universal tools ── */}
       <div className="pt-3">
@@ -442,8 +481,8 @@ export function CapabilitiesSection({ config, onChange, apptReadiness }: Capabil
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <ToolToggleCard icon={ShoppingBag} title={t("catalogTitle")} description={t("catalogDesc")} enabled={tools.catalog?.enabled === true} onToggle={(v) => onChange({ tools: { ...tools, catalog: { ...(tools.catalog ?? { enabled: false }), enabled: v } } })} t={t} />
-        <ToolToggleCard icon={HelpCircle} title={t("faqsTitle")} description={t("faqsDesc")} enabled={tools.faqs?.enabled === true} onToggle={(v) => onChange({ tools: { ...tools, faqs: { enabled: v } } })} t={t} />
+        {availability.catalog.visible && <ToolToggleCard icon={ShoppingBag} family="catalog" title={t("catalogTitle")} description={t("catalogDesc")} enabled={tools.catalog?.enabled === true} canEnable={availability.catalog.canEnable} blockedReason={availability.catalog.reason ? t(`toolAvailabilityState.${availability.catalog.reason}`) : undefined} onToggle={(v) => toggleTool("catalog", v)} t={t} />}
+        {availability.faqs.visible && <ToolToggleCard icon={HelpCircle} family="faqs" title={t("faqsTitle")} description={t("faqsDesc")} enabled={tools.faqs?.enabled === true} canEnable={availability.faqs.canEnable} blockedReason={availability.faqs.reason ? t(`toolAvailabilityState.${availability.faqs.reason}`) : undefined} onToggle={(v) => toggleTool("faqs", v)} t={t} />}
         <ToolToggleCard icon={Scale} title={t("policiesTitle")} description={t("policiesDesc")} enabled={tools.policies?.enabled === true} onToggle={(v) => onChange({ tools: { ...tools, policies: { enabled: v } } })} t={t} />
         <ToolToggleCard icon={Tag} title={t("offersTitle")} description={t("offersDesc")} enabled={tools.offers?.enabled === true} onToggle={(v) => onChange({ tools: { ...tools, offers: { enabled: v } } })} t={t} />
         
@@ -531,7 +570,10 @@ export function CapabilitiesSection({ config, onChange, apptReadiness }: Capabil
           <button
             type="button"
             aria-label={t("paymentsTitle")}
-            disabled={planLoading || (!customerPaymentsAllowed && !payments.enabled)}
+            role="switch"
+            aria-checked={payments.enabled}
+            data-tool-family="payments"
+            disabled={!customerPaymentsAllowed && !payments.enabled}
             onClick={() => onChange({
               tools: {
                 ...tools,
@@ -554,6 +596,7 @@ export function CapabilitiesSection({ config, onChange, apptReadiness }: Capabil
           </button>
         </div>
 
+        {planLoading && <p role="status" className="mt-3 text-xs text-amber-700 dark:text-amber-300">{t("toolAvailabilityState.plan_unknown")}</p>}
         {!planLoading && !customerPaymentsAllowed && (
           <div className="mt-3 pt-3 border-t border-neutral-100 dark:border-neutral-800 text-xs text-amber-700 dark:text-amber-300">
             <span>{t("paymentsPlanRequired")}</span>{" "}
@@ -585,7 +628,7 @@ export function CapabilitiesSection({ config, onChange, apptReadiness }: Capabil
             <label className="flex items-center gap-3 cursor-pointer">
               <input
                 type="checkbox"
-                checked={payments.canCreateLinks !== false}
+                checked={payments.canCreateLinks === true}
                 onChange={(e) => onChange({
                   tools: {
                     ...tools,
@@ -627,6 +670,9 @@ function ToolToggleCard({
   description,
   enabled,
   onToggle,
+  family,
+  canEnable = true,
+  blockedReason,
   recommended,
   recommendedLabel,
   emailConfirmations,
@@ -639,6 +685,9 @@ function ToolToggleCard({
   description: string;
   enabled: boolean;
   onToggle: (v: boolean) => void;
+  family?: string;
+  canEnable?: boolean;
+  blockedReason?: string;
   recommended?: boolean;
   recommendedLabel?: string;
   emailConfirmations?: boolean;
@@ -649,7 +698,7 @@ function ToolToggleCard({
   return (
     <div className={cn(
       "rounded-lg border p-4 transition-colors flex flex-col justify-between",
-      enabled
+      enabled && canEnable
         ? "border-indigo-300 dark:border-indigo-500/40 bg-indigo-500/[0.03] dark:bg-indigo-500/5"
         : "border-neutral-200 dark:border-neutral-700",
       recommended && !enabled && "border-indigo-200 dark:border-indigo-500/20"
@@ -677,7 +726,12 @@ function ToolToggleCard({
           </div>
           <button
             type="button"
-            onClick={() => onToggle(!enabled)}
+            role="switch"
+            aria-label={title}
+            aria-checked={enabled}
+            data-tool-family={family}
+            disabled={!enabled && !canEnable}
+            onClick={() => { if (enabled || canEnable) onToggle(!enabled); }}
             className={cn(
               "relative w-11 h-6 rounded-full transition-colors shrink-0 ml-3",
               enabled ? "bg-indigo-500" : "bg-neutral-300 dark:bg-neutral-600",
@@ -689,6 +743,7 @@ function ToolToggleCard({
             )} />
           </button>
         </div>
+        {blockedReason && <p className="mt-3 text-xs text-amber-700 dark:text-amber-300">{blockedReason}</p>}
       </div>
 
       {enabled && onEmailConfirmationsChange && (

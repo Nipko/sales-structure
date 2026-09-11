@@ -82,7 +82,14 @@ const EGRESS = [
         note: '`tool_approval_effects` row a person approved' },
     { primitive: 'enqueueOperationalNotice(', lane: 'operational_notice',
         note: '`operational_notice_outbox`, written in the business transaction' },
-    { primitive: 'admitHandoffEffect(', lane: 'handoff_effects',
+    // Flagged so the gate census does not demand a money gate on it: its nine
+    // destinations are the assignment, the cache, the inbox socket, a CRM note,
+    // tenant webhooks, push, Slack, agent SMS and agent email. Not one of them
+    // is a message to the customer, and the two that ARE messages (SMS, email)
+    // are counted at their own sinks. Demanding a WhatsApp gate here would put
+    // a permanent false violation into a check whose whole value is that it is
+    // empty.
+    { primitive: 'admitHandoffEffect(', lane: 'handoff_effects', customerMessage: false,
         note: 'one row per destination of one transfer' },
     { primitive: 'outboundQueue.enqueue(', lane: 'outbound_queue',
         note: 'legacy BullMQ `send` job; Redis is the only record' },
@@ -136,6 +143,237 @@ const ROADS = [
 ];
 
 const CHANNEL_LITERALS = ['whatsapp', 'instagram', 'messenger', 'telegram', 'web_widget', 'email', 'sms'];
+
+// ---------------------------------------------------------------------------
+// THE ECONOMIC BOUNDARY
+//
+// From 1 October 2026 every delivered WhatsApp service message is a charge on
+// the tenant's own WABA. The derived objective is therefore not "fewer
+// bypasses" but ZERO chargeable WhatsApp producers outside the economic lane —
+// and a number that has to stay at zero needs a check that fails, not a
+// document that ages.
+//
+// The check below is structural rather than nominal. It holds no list of
+// approved method names: it finds, in the source, every place a message can
+// actually leave this process, resolves which sink each producer terminates at,
+// and asks whether THAT FILE contains a gate call. Write a new producer and it
+// is classified on its first run. Delete the gate from a sink and every
+// producer behind it becomes a violation in the same run.
+// ---------------------------------------------------------------------------
+
+/**
+ * A call that asks the money authority for permission.
+ *
+ * Matched against code with comments and template literals stripped, so a
+ * mention in prose proves nothing — which is the point. A hand-maintained table
+ * of "these are gated" is a claim; this reads the call.
+ */
+const GATE_CALLS = [
+    'this.admitSpend(', 'this.gateOrSuppress(', 'this.admitAgentSend(',
+    'spendGate.admit(', 'spendGate.admitBySchema(',
+];
+
+/**
+ * The network calls that carry a message to a provider.
+ *
+ * `sendStrict` and `sendMessage` are here because the adapter behind them is
+ * unreachable except through one of the two: an adapter is a road, and a road
+ * cannot be gated — only its entrances can.
+ */
+const PROVIDER_EGRESS = [
+    { pattern: /\/messages`/, what: 'Graph `/{phone_number_id}/messages` POST' },
+    { pattern: /channelGateway\.sendMessage\(/, what: '`ChannelGatewayService.sendMessage`' },
+    { pattern: /transport\.sendStrict\(/, what: 'strict dispatch transport' },
+];
+
+/**
+ * Files that DEFINE a road to a provider rather than choosing to use one.
+ *
+ * Each entry carries the reason, and for the roads that carry WhatsApp the
+ * reason is that their entrances are checked one level up — by the producer
+ * classification, which resolves every call site of those entrances to the file
+ * it lives in and asks the same question there. Listing a road here is not an
+ * exemption; it moves the question, it does not drop it.
+ */
+const PROVIDER_ROADS = {
+    'modules/channels/whatsapp/whatsapp.adapter.ts':
+        'the adapter; reachable only through `ChannelGatewayService.sendMessage` or the strict transport, and every call site of both is classified above',
+    'modules/channels/instagram/instagram.adapter.ts':
+        'Instagram is not billed per message by its provider',
+    'modules/channels/messenger/messenger.adapter.ts':
+        'Messenger is not billed per message by its provider',
+    'modules/channels/channel-gateway.service.ts':
+        'the road itself; its callers are classified above',
+    'modules/channels/strict-dispatch.ts':
+        'the transport; its caller is the gated dispatch lane',
+    'modules/channels/strict-dispatch-transport.ts':
+        'the transport; its caller is the gated dispatch lane',
+};
+
+/**
+ * Two strippings, because the two questions need different things kept.
+ *
+ * `withoutComments` removes prose and nothing else. A provider URL LIVES in a
+ * template literal — `${base}/${id}/messages` — so a sweep for egress that also
+ * stripped template literals would find nothing and report a clean tree. That
+ * exact mistake was in the first draft of this file, and it went green against a
+ * probe file that posts straight to Meta.
+ *
+ * `codeOnly` removes prose AND template literals, which is what the gate
+ * question needs: a mention of `admitSpend` inside a comment or inside a string
+ * is not a call, and must never be read as one.
+ */
+function withoutComments(text) {
+    return text
+        .replace(/\/\*[\s\S]*?\*\//g, ' ')
+        .replace(/^[ \t]*\/\/.*$/gm, ' ');
+}
+
+function codeOnly(text) {
+    return withoutComments(text).replace(/`(?:[^`\\]|\\.)*`/g, '``');
+}
+
+const GATED_FILES = new Map();
+
+/** Does this file actually ASK the money authority? */
+function isGatedFile(rel) {
+    if (GATED_FILES.has(rel)) return GATED_FILES.get(rel);
+    const full = path.join(API_SRC, rel);
+    let gated = false;
+    if (fs.existsSync(full)) {
+        const code = codeOnly(fs.readFileSync(full, 'utf8'));
+        gated = GATE_CALLS.some(call => code.includes(call));
+    }
+    GATED_FILES.set(rel, gated);
+    return gated;
+}
+
+/** `export class Foo` to the file that declares it. Built once, from the source. */
+function classIndex() {
+    const index = new Map();
+    for (const file of sources()) {
+        if (file.app !== 'api') continue;
+        const text = fs.readFileSync(file.full, 'utf8');
+        for (const match of text.matchAll(/export\s+(?:abstract\s+)?class\s+([A-Za-z_$][\w$]*)/g)) {
+            index.set(match[1], file.rel);
+        }
+    }
+    return index;
+}
+
+/**
+ * Where does this call site's message actually leave the process?
+ *
+ * For a queued lane the answer is the processor, because that is where the job
+ * runs. For an inline call it is wherever the receiver is declared, which the
+ * script resolves by reading the field's declared type in the calling file and
+ * looking that class up in the index. No list of receiver names, so a service
+ * written tomorrow is classified the first time the check runs.
+ */
+const LANE_TERMINUS = {
+    dispatch_outbox: 'modules/channels/outbound-queue.processor.ts',
+    approved_effect: 'modules/channels/outbound-queue.processor.ts',
+    operational_notice: 'modules/channels/outbound-queue.processor.ts',
+    outbound_queue: 'modules/channels/outbound-queue.processor.ts',
+};
+
+function terminusFor(row, lines, index, classes) {
+    if (LANE_TERMINUS[row.lane]) return { file: LANE_TERMINUS[row.lane], how: 'lane `' + row.lane + '`' };
+    const line = lines[index] || '';
+    const receiver = (line.match(/this\.([A-Za-z_$][\w$]*)\s*\.\s*send/) || [, null])[1];
+    if (!receiver) {
+        // `this.send…(` — the sink is a method of this very file.
+        if (/this\.\s*send/.test(line)) return { file: row.file, how: 'same file' };
+        return { file: null, how: 'unresolved' };
+    }
+    const text = fs.readFileSync(path.join(API_SRC, row.file), 'utf8');
+    const declared = text.match(new RegExp(
+        '(?:private|public|protected)\\s+(?:readonly\\s+)?' + receiver + '[?]?\\s*:\\s*([A-Za-z_$][\\w$]*)'));
+    if (!declared) return { file: null, how: 'receiver `' + receiver + '` has no declared type' };
+    const file = classes.get(declared[1]);
+    return file
+        ? { file, how: '`this.' + receiver + ': ' + declared[1] + '`' }
+        : { file: null, how: 'class `' + declared[1] + '` is not declared in the swept tree' };
+}
+
+/**
+ * The whole point of the file, in one function.
+ *
+ * Returns every chargeable WhatsApp producer that does NOT terminate at a gated
+ * sink, plus every provider egress the gate does not cover. `--check` fails on
+ * a non-empty result, so the next ungated producer fails CI on the commit that
+ * introduces it rather than on the invoice that reveals it.
+ */
+function gateCensus(rows) {
+    // Per-run, not per-process. The CLI calls this once, but a test calls it
+    // several times against a source tree it is mutating between calls — and a
+    // cache that survived those calls answered the second question with the
+    // first answer, reporting a gated file as ungated. A memo that outlives
+    // the facts it memoised is worse than no memo.
+    GATED_FILES.clear();
+    const classes = classIndex();
+    const fileLines = new Map();
+    const linesOf = rel => {
+        if (!fileLines.has(rel)) {
+            const full = path.join(API_SRC, rel);
+            fileLines.set(rel, fs.existsSync(full) ? fs.readFileSync(full, 'utf8').split(/\r?\n/) : []);
+        }
+        return fileLines.get(rel);
+    };
+
+    const classified = [];
+    for (const row of rows) {
+        // Presence is not a message; a handoff announcement is not a customer
+        // message; and a producer that cannot reach a provider-billed channel
+        // cannot produce a provider charge.
+        const door = EGRESS.find(entry => entry.primitive.startsWith(row.primitive));
+        const reaches = row.channels.some(channel => BILLED.has(channel) || channel === 'dynamic');
+        const needsGate = row.billable && (door ? door.customerMessage !== false : true) && reaches;
+        if (!needsGate) { classified.push({ ...row, needsGate: false }); continue; }
+        const terminus = row.app === 'api'
+            ? terminusFor(row, linesOf(row.file), row.line - 1, classes)
+            : { file: null, how: 'outside `apps/api`' };
+        // A road cannot be gated — only its entrances can, and this call site IS
+        // an entrance. So when the terminus is a declared road the question moves
+        // back one level, to the file that chose to use it. That is the whole
+        // contract of `PROVIDER_ROADS`: it redirects the question, it never
+        // drops it, and a producer that neither is gated itself nor terminates
+        // at a gated sink is still a violation.
+        let where = terminus.file, how = terminus.how;
+        if (where && PROVIDER_ROADS[where] && isGatedFile(row.file)) {
+            how = `${how}, a road — gated at this call site instead`;
+            where = row.file;
+        }
+        classified.push({
+            ...row, needsGate: true, terminus: where, terminusHow: how,
+            gated: Boolean(where) && isGatedFile(where),
+        });
+    }
+
+    // The second half: every provider egress in the tree, gated or not. This is
+    // what catches a brand-new file that POSTs to Meta directly and never
+    // touches a primitive this script knows by name.
+    const egress = [];
+    for (const file of sources()) {
+        // Comments out, template literals KEPT: the URL is a template literal.
+        const lines = withoutComments(fs.readFileSync(file.full, 'utf8')).split(/\r?\n/);
+        for (let i = 0; i < lines.length; i++) {
+            for (const door of PROVIDER_EGRESS) {
+                if (!door.pattern.test(lines[i])) continue;
+                egress.push({
+                    app: file.app, file: file.rel, line: i + 1, what: door.what,
+                    road: (file.app === 'api' && PROVIDER_ROADS[file.rel]) || null,
+                    gated: file.app === 'api' && isGatedFile(file.rel),
+                });
+                break;
+            }
+        }
+    }
+
+    const bypasses = classified.filter(row => row.needsGate && !row.gated);
+    const ungatedEgress = egress.filter(entry => !entry.gated && !entry.road);
+    return { classified, egress, bypasses, ungatedEgress };
+}
 
 /** Meta bills a delivered service message on this one, from 1 October 2026. */
 const BILLED = new Set(['whatsapp']);
@@ -367,7 +605,7 @@ function declaredInfrastructure() {
 const LANE_ORDER = ['dispatch_outbox', 'approved_effect', 'operational_notice', 'handoff_effects',
     'outbound_queue', 'inline'];
 
-function render(rows, declared, infrastructure) {
+function render(rows, declared, infrastructure, census) {
     const byFile = new Map();
     for (const row of rows) {
         if (!byFile.has(row.file)) byFile.set(row.file, []);
@@ -423,6 +661,8 @@ function render(rows, declared, infrastructure) {
     push(`| Sitios que **no** pasan por un carril durable | **${bypassing.length}** |`);
     push(`| Sitios que pueden alcanzar WhatsApp (literal o dinámico) | **${reachesBilled.length}** |`);
     push(`| Sitios donde **una respuesta puede volverse varios cargos** | **${fanOut.length}** |`);
+    push(`| Productores WhatsApp cobrables **fuera de la frontera economica** | **${census.bypasses.length}** |`);
+    push(`| Salidas al proveedor **sin admision ni camino declarado** | **${census.ungatedEgress.length}** |`);
     push('');
     push('Por carril:');
     push('');
@@ -485,6 +725,74 @@ function render(rows, declared, infrastructure) {
         }
         push('');
     }
+    push('## La frontera economica: cero productores cobrables fuera de ella');
+    push('');
+    push('Desde el 1 de octubre de 2026 cada mensaje de servicio entregado en WhatsApp es');
+    push('un cargo contra la WABA del propio negocio. El objetivo no es "menos bypasses":');
+    push('es **cero productores WhatsApp cobrables fuera del carril economico**. Un numero');
+    push('que tiene que quedarse en cero necesita una comprobacion que falle, no un');
+    push('documento que envejezca — por eso esta seccion la genera el mismo barrido y');
+    push('`--check` termina en 1 si deja de estar vacia.');
+    push('');
+    push('La clasificacion es **estructural, no nominal**. No hay una lista de metodos');
+    push('aprobados: para cada sitio de llamada se resuelve **donde sale realmente el');
+    push('mensaje del proceso** — el carril lleva al procesador, y una llamada inline se');
+    push('resuelve leyendo el tipo declarado del receptor y buscando esa clase en el');
+    push('arbol — y se pregunta si **ese archivo** contiene una llamada a la autoridad');
+    push('economica, con los comentarios y las plantillas quitados. Un productor nuevo');
+    push('queda clasificado la primera vez que corre esto; borrar la admision de un');
+    push('sumidero convierte en violacion a todos los productores que salen por ahi.');
+    push('');
+    push('### Violaciones');
+    push('');
+    if (!census.bypasses.length) {
+        push('**Ninguna.** Todo productor cobrable que puede alcanzar WhatsApp termina en un');
+        push('archivo que pide permiso antes de emitir el efecto.');
+    } else {
+        push('| Archivo:linea | Metodo | Carril | Termina en | Como se resolvio |');
+        push('|---|---|---|---|---|');
+        for (const row of census.bypasses) {
+            push(`| \`${row.file}:${row.line}\` | \`${row.method}\` | \`${row.lane}\` | `
+                + `${row.terminus ? `\`${row.terminus}\`` : '**sin resolver**'} | ${row.terminusHow} |`);
+        }
+    }
+    push('');
+    push('### Los sumideros, y la prueba de que piden permiso');
+    push('');
+    push('Un sumidero es un archivo donde una peticion sale de verdad hacia el proveedor.');
+    push('La columna "admision" no repite lo que dice un comentario: es el resultado de');
+    push('buscar una llamada a la autoridad economica en el codigo del archivo.');
+    push('');
+    push('| Archivo:linea | Que sale | Admision | Nota |');
+    push('|---|---|---|---|');
+    for (const entry of census.egress) {
+        const app = entry.app === 'whatsapp' ? 'apps/whatsapp/src/' : 'apps/api/src/';
+        push(`| \`${app}${entry.file}:${entry.line}\` | ${entry.what} | `
+            + `${entry.gated ? 'si' : (entry.road ? 'camino' : '**no**')} | `
+            + `${entry.road || (entry.gated ? 'pide permiso antes de emitir' : 'sin admision y sin camino declarado')} |`);
+    }
+    push('');
+    push('### Productores cobrables y su sumidero');
+    push('');
+    push('| Archivo:linea | Metodo | Carril | Termina en | Admision |');
+    push('|---|---|---|---|---|');
+    for (const row of census.classified.filter(entry => entry.needsGate)) {
+        push(`| \`${row.file}:${row.line}\` | \`${row.method}\` | \`${row.lane}\` | `
+            + `${row.terminus ? `\`${row.terminus}\`` : '**sin resolver**'} | ${row.gated ? 'si' : '**no**'} |`);
+    }
+    push('');
+    push('### Lo que esta comprobacion no puede ver');
+    push('');
+    push('1. Un receptor cuyo tipo no se declara en el archivo que lo usa: se reporta');
+    push('   **sin resolver**, que cuenta como violacion. Eso es deliberado — no resolver');
+    push('   nunca puede leerse como aprobar.');
+    push('2. Un envio construido en tiempo de ejecucion (un `eval`, una URL armada por');
+    push('   partes en otra variable). No existe hoy en el arbol, y si aparece hay que');
+    push('   agregarlo a `PROVIDER_EGRESS`.');
+    push('3. Si el gasto queda efectivamente **negado**: eso depende de la configuracion');
+    push('   por tenant (`observe` frente a `enforce`), no del codigo. Esta seccion prueba');
+    push('   que se **pide permiso**, no cual es la respuesta.');
+    push('');
     push('## Contraste con el inventario declarado');
     push('');
     push('`modules/channels/external-effect-inventory.ts` mantiene una lista curada de');
@@ -546,6 +854,14 @@ function render(rows, declared, infrastructure) {
     push('4. Un conteo de efectos marcado `unknown` o `n`: depende de datos de ejecución.');
     push('   El generador no los adivina; decir "1" ahí sería subestimar el gasto.');
     push('');
+    // Exactly one newline at the end, and no blank line before it.
+    //
+    // Every section here ends with a push() of an empty separator, so the last
+    // one left a trailing empty element and the naive join produced a file
+    // ending in a blank line — which git diff --check reports as an error on
+    // every regeneration. Fixed in the generator and not in the file, because a
+    // file fixed by hand is un-fixed by the next run.
+    while (out.length && out[out.length - 1] === '') out.pop();
     return out.join('\n') + '\n';
 }
 
@@ -557,23 +873,51 @@ function main() {
 
     const rows = collect();
     const declared = declaredProducers();
-    const markdown = render(rows, declared, declaredInfrastructure());
+    const census = gateCensus(rows);
+    const markdown = render(rows, declared, declaredInfrastructure(), census);
 
     if (check) {
+        // Two separate failures, reported together rather than one at a time, so
+        // a run says everything that is wrong instead of hiding the second
+        // problem behind the first.
+        let failed = false;
+        for (const row of census.bypasses) {
+            process.stderr.write(`outbound-producer-inventory: CHARGEABLE WHATSAPP PRODUCER OUTSIDE THE `
+                + `ECONOMIC BOUNDARY at apps/api/src/${row.file}:${row.line} (${row.method}, lane `
+                + `${row.lane}) — terminates at ${row.terminus || 'an unresolved sink'} `
+                + `(${row.terminusHow}), which does not ask the money authority.\n`);
+            failed = true;
+        }
+        for (const entry of census.ungatedEgress) {
+            const app = entry.app === 'whatsapp' ? 'apps/whatsapp/src/' : 'apps/api/src/';
+            process.stderr.write(`outbound-producer-inventory: UNGATED PROVIDER EGRESS at `
+                + `${app}${entry.file}:${entry.line} — ${entry.what} with no admission call and no `
+                + `entry in PROVIDER_ROADS.\n`);
+            failed = true;
+        }
+        if (failed) {
+            process.stderr.write('\nEvery chargeable WhatsApp send must pass WhatsappSendAdmissionService.\n'
+                + 'Route the producer through a gated sink, or gate the new sink and say so in\n'
+                + 'PROVIDER_ROADS with the reason. Do not add an exception by method name.\n');
+            process.exit(1);
+        }
         const current = fs.existsSync(out) ? fs.readFileSync(out, 'utf8') : '';
         if (current !== markdown) {
             process.stderr.write(`outbound-producer-inventory: ${out} is stale — regenerate it\n`);
             process.exit(1);
         }
-        process.stdout.write(`outbound-producer-inventory: up to date (${rows.length} call sites)\n`);
+        process.stdout.write(`outbound-producer-inventory: up to date (${rows.length} call sites, `
+            + `${census.classified.filter(row => row.needsGate).length} chargeable, 0 outside the boundary)\n`);
         return;
     }
 
     fs.mkdirSync(path.dirname(out), { recursive: true });
     fs.writeFileSync(out, markdown, 'utf8');
     process.stdout.write(`outbound-producer-inventory: ${rows.length} call sites in `
-        + `${new Set(rows.map(row => row.file)).size} files → ${out}\n`);
+        + `${new Set(rows.map(row => row.file)).size} files, ${census.bypasses.length} outside `
+        + `the economic boundary → ${out}\n`);
 }
 
 if (require.main === module) main();
-module.exports = { collect, declaredProducers, declaredInfrastructure, render, EGRESS, ROADS };
+module.exports = { collect, declaredProducers, declaredInfrastructure, render, gateCensus,
+    EGRESS, ROADS, GATE_CALLS, PROVIDER_EGRESS, PROVIDER_ROADS, codeOnly, withoutComments };

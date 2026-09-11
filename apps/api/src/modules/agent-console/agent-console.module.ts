@@ -18,6 +18,7 @@ import { AIModule } from '../ai/ai.module';
 import { CopilotModule } from '../copilot/copilot.module';
 import { OffboardingModule } from '../offboarding/offboarding.module';
 import { AnalyticsModule } from '../analytics/analytics.module';
+import { WhatsappSpendModule } from '../billing/whatsapp-spend/whatsapp-spend.module';
 
 @Module({
     imports: [
@@ -28,6 +29,8 @@ import { AnalyticsModule } from '../analytics/analytics.module';
         CopilotModule,
         OffboardingModule,
         AnalyticsModule,
+        // A human agent's reply is a chargeable WhatsApp send like any other.
+        WhatsappSpendModule,
         BullModule.registerQueue({ name: SNOOZE_QUEUE }),
         JwtModule.registerAsync({
             imports: [ConfigModule],

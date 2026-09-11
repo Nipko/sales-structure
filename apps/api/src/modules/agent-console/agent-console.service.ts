@@ -1,4 +1,4 @@
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import { WidgetMessageStore } from '../widget/widget-message-store.service';
 import {
     BadRequestException,
@@ -15,6 +15,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { ChannelGatewayService } from '../channels/channel-gateway.service';
 import { ChannelTokenService } from '../channels/channel-token.service';
+import { WhatsappSendAdmissionService, type Admission } from '../billing/whatsapp-spend/whatsapp-send-admission.service';
 import { WhatsappConnectionService } from '../whatsapp/services/whatsapp-connection.service';
 import { LLMRouterService } from '../ai/router/llm-router.service';
 import { AiResolutionService } from '../analytics/ai-resolution.service';
@@ -128,6 +129,10 @@ export class AgentConsoleService {
         private eventEmitter: EventEmitter2,
         private aiResolutionService: AiResolutionService,
         @Optional() private widgetMessages?: WidgetMessageStore,
+        // A human agent's reply is billed by Meta exactly like the agent's.
+        // Leaving this lane ungated would mean a tenant at its ceiling keeps
+        // spending as long as a person is the one typing.
+        @Optional() private spendGate?: WhatsappSendAdmissionService,
     ) { }
 
     /**
@@ -499,8 +504,21 @@ export class AgentConsoleService {
                 const outContent: any = isMedia
                     ? { type: contentType, mediaUrl: this.absoluteMediaUrl(mediaUrl), caption: caption || content || undefined, ...(filename ? { filename } : {}) }
                     : { type: 'text', text: content };
+                // Reserved before the request, like every other lane.
+                const admission = await this.admitAgentSend(schemaName, channelType,
+                    conv.channel_account_id || creds.accountId, conv.phone, outContent);
+                if (admission === 'refused') {
+                    // The agent has to SEE this. A reply that silently did not
+                    // leave is worse than one that visibly did not: they would
+                    // go on believing the customer was answered.
+                    await settle('failed', 'spend_refused');
+                    return {
+                        id: msg.id, status: 'failed', content: msg.content_text, type: msg.content_type,
+                        sender: 'agent', timestamp: msg.created_at,
+                    } as any;
+                }
                 sendAttempted = true;
-                await this.channelGateway.sendMessage(
+                const sent = await this.channelGateway.sendMessage(
                     {
                         tenantId,
                         channelType,
@@ -510,6 +528,7 @@ export class AgentConsoleService {
                     },
                     creds.accessToken,
                 );
+                await this.recordAgentSend(schemaName, admission, sent);
                 await settle('sent');
             }
         } catch (e: any) {
@@ -584,6 +603,46 @@ export class AgentConsoleService {
      * render them, but Meta/WhatsApp requires an ABSOLUTE https URL for image/audio/
      * document links. Prepend the public API origin for the outbound send.
      */
+    /**
+     * Ask the money gate for one human-agent reply.
+     *
+     * `'refused'` means a ceiling said no and the reply must not be sent.
+     * `null` means unmetered: no gate wired, or a channel whose provider does
+     * not bill per message.
+     */
+    private async admitAgentSend(schemaName: string, channelType: string,
+        channelAccountId: string, recipient: string, content: any) {
+        if (!this.spendGate) return null;
+        try {
+            const admission = await this.spendGate.admitBySchema(schemaName, {
+                channelType,
+                channelAccountId: String(channelAccountId ?? ''),
+                // Hashed before it travels: this reaches an effect key and log lines.
+                recipientRef: createHash('sha256').update(String(recipient ?? '')).digest('hex').slice(0, 32),
+                producer: 'agent_console_reply',
+                contentDigest: createHash('sha256').update(JSON.stringify(content ?? null)).digest('hex').slice(0, 32),
+                admissionReason: 'human_agent_reply',
+            });
+            if (admission && !admission.permitted) return 'refused' as const;
+            return admission;
+        } catch (error: any) {
+            // An unreachable gate must never stop an agent answering a customer.
+            this.logger.error(`[Spend] gate unavailable for agent reply: ${error?.message}`);
+            return null;
+        }
+    }
+
+    private async recordAgentSend(schemaName: string, admission: unknown, result: string | null) {
+        if (!admission || admission === 'refused' || !this.spendGate) return;
+        try {
+            await this.spendGate.record(schemaName, admission as Admission, result
+                ? { kind: 'delivered_unpriced', providerMessageId: result }
+                : { kind: 'timeout' });
+        } catch (error: any) {
+            this.logger.error(`[Spend] outcome not recorded for agent reply: ${error?.message}`);
+        }
+    }
+
     private absoluteMediaUrl(url?: string): string | undefined {
         return absoluteMediaUrl(url);
     }

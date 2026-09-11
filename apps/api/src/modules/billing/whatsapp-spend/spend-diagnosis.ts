@@ -26,6 +26,7 @@ export const SPEND_BLOCK_CODES = [
     'transmission_held_elsewhere',
     'task_budget_exhausted',
     'account_paused',
+    'effect_identity_missing',
 ] as const;
 
 export type SpendBlockCode = (typeof SPEND_BLOCK_CODES)[number];
@@ -147,6 +148,18 @@ Object.freeze({
     account_paused: {
         scope: 'account',
         resolution: 'This number is paused. Resolve the reason shown beside it and resume sending.',
+    },
+    effect_identity_missing: {
+        scope: 'account',
+        // A producer defect, not a tenant one, so the sentence is written for
+        // whoever is looking at the log rather than for a business owner. The
+        // condition it prevents: an effect keyed only by its own content, where
+        // a retry that re-renders the body — a timestamp, a name, a price —
+        // mints a SECOND effect and pays for the same message twice.
+        resolution: 'This send carries no durable identity, so a retry could not be told from a '
+            + 'second message. The producer must bind it to something that survives a restart: '
+            + 'a dispatch item, a batch position, a persisted message row, a campaign and '
+            + 'recipient, the inbound message being answered, or its own queue job.',
     },
 });
 

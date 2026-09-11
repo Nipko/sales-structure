@@ -515,7 +515,12 @@ export class AgentConsoleService {
                 // Reserved before the request, like every other lane.
                 const admission = await this.admitAgentSend(tenantId, schemaName, channelType,
                     conv.channel_account_id || creds.accountId, conv.phone, outContent,
-                    conv.contact_id ?? null);
+                    conv.contact_id ?? null,
+                    // The row was inserted `pending` before any of this. It is
+                    // the durable identity of this reply: a retry reads the same
+                    // id even if the agent's text were re-rendered, and two
+                    // agents typing the same sentence are two effects.
+                    String(msg.id));
                 if (admission === 'refused') {
                     // The agent has to SEE this. A reply that silently did not
                     // leave is worse than one that visibly did not: they would
@@ -631,7 +636,8 @@ export class AgentConsoleService {
      * provider does not bill per message. It never means "no gate wired".
      */
     private async admitAgentSend(tenantId: string, schemaName: string, channelType: string,
-        channelAccountId: string, recipient: string, content: any, contactId: string | null) {
+        channelAccountId: string, recipient: string, content: any, contactId: string | null,
+        messageId: string) {
         try {
             // ── THE IDENTITY COMES FROM THE RESOLVER, NEVER FROM THIS SCOPE ──
             //
@@ -666,6 +672,7 @@ export class AgentConsoleService {
                 disposition: 'reactive',
                 contentDigest: createHash('sha256').update(JSON.stringify(content ?? null)).digest('hex').slice(0, 32),
                 admissionReason: 'human_agent_reply',
+                binding: { messageId },
             });
             if (admission && !admission.permitted) return 'refused' as const;
             return admission;

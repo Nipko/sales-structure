@@ -1,7 +1,7 @@
 import {
   Injectable, Logger, BadRequestException, Optional, ServiceUnavailableException,
 } from '@nestjs/common';
-import { createHash } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
@@ -38,6 +38,18 @@ export interface WhatsappSendSpendContext {
      * template row; otherwise this service reads it itself.
      */
     readonly templateCategory?: string | null;
+    /**
+     * The caller's own durable handle for this send, when it has one.
+     *
+     * A campaign passes `taskId` and gets its identity from that. A caller
+     * that is retrying something it already recorded passes the id it
+     * recorded, so the retry finds the first attempt's reservation instead of
+     * paying for the message twice.
+     *
+     * Absent means "this is a fresh press": the service mints an id, and two
+     * deliberate presses are two messages rather than one deduplicated away.
+     */
+    readonly effectRequestId?: string | null;
 }
 
 @Injectable()
@@ -407,6 +419,16 @@ export class WhatsappMessagingService {
         taskId: spend?.taskId ?? null,
         contactId: spend?.contactId ?? null,
         ordinal: spend?.ordinal ?? 0,
+        // ── THE DURABLE IDENTITY OF A SYNCHRONOUS SEND ────────────────
+        //
+        // There is no queue job and no row written yet, so this call mints
+        // one. Deliberately not derived from the content: an operator who
+        // presses send twice on purpose means two messages, and a
+        // content-keyed effect would silently discard the second.
+        //
+        // A caller with a real handle — a campaign, a retry of something it
+        // already recorded — passes it and gets that behaviour instead.
+        binding: { requestId: spend?.effectRequestId ?? randomUUID() },
       });
       if (admission && !admission.permitted) return 'refused' as const;
       return admission;

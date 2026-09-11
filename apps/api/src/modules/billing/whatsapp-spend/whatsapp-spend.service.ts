@@ -123,19 +123,33 @@ export class WhatsappSpendService {
     static logicalEffectId(binding: {
         dispatchItemId?: string | null; batchId?: string | null; itemIndex?: number | null;
         inboundMessageId?: string | null; taskId?: string | null; recipientRef?: string | null;
-        ordinal?: number | null;
+        ordinal?: number | null; messageId?: string | null; jobId?: string | null;
+        requestId?: string | null;
     } | null | undefined): string | null {
         if (!binding) return null;
         if (binding.dispatchItemId) return `dispatch:${binding.dispatchItemId}`;
         if (binding.batchId && binding.itemIndex !== null && binding.itemIndex !== undefined) {
             return `batch:${binding.batchId}:${binding.itemIndex}`;
         }
+        // A persisted outbound message row. Written BEFORE the send, so a
+        // retry reads the same id even when the body was re-rendered in
+        // between — which a content digest could not survive.
+        if (binding.messageId) return `message:${binding.messageId}`;
         if (binding.taskId && binding.recipientRef) {
             return `task:${binding.taskId}:${binding.recipientRef}:${binding.ordinal ?? 0}`;
         }
         if (binding.inboundMessageId) {
             return `inbound:${binding.inboundMessageId}:${binding.ordinal ?? 0}`;
         }
+        // A durable queue job. Its id is assigned once and every attempt of
+        // that job sees the same one, which is exactly the property a retry
+        // needs; it is weaker than a row only because a queue can be flushed.
+        if (binding.jobId) return `job:${binding.jobId}`;
+        // A synchronous one-off: an operator pressing send. It has no earlier
+        // row to point at, so the call mints its own id and the reservation is
+        // where it becomes durable. Deliberately NOT content-derived — two
+        // deliberate presses are two messages, not one repeated.
+        if (binding.requestId) return `request:${binding.requestId}`;
         return null;
     }
 
@@ -452,6 +466,20 @@ export class WhatsappSpendService {
      * count of OUR sends, and the platform is deliberately incapable of turning
      * it into a statement about that customer.
      */
+    /**
+     * Is there already a reservation under this key? A plain read, no lock.
+     *
+     * Used for exactly one thing: recognising an effect that was authorised
+     * before durable identities became mandatory, so a deploy does not orphan
+     * the reservations in flight when it lands. It is not an ownership test —
+     * `authorize` still takes the advisory lock — and nothing may send on the
+     * strength of what it returns.
+     */
+    async reservationFor(schema: string, effectKey: string) {
+        return this.prisma.transactionInTenantSchema(schema, async query =>
+            findReservation(query as SpendQuery, schema, effectKey));
+    }
+
     async signals(schema: string, input: {
         readonly since: Date;
         readonly channelAccountId?: string | null;

@@ -75,6 +75,10 @@ const spendDouble = () => {
             grant: { effectKey: 'key', token: '00000000-0000-4000-8000-000000000000',
                 expiresAt: new Date(Date.now() + 900000) },
         })),
+        // Asked only when a producer named nothing durable AND the tenant is
+        // enforcing. Answering `null` is "no legacy row", which is the state
+        // every one of these tests is in.
+        reservationFor: jest.fn(async () => null),
     } as any;
 };
 
@@ -86,6 +90,11 @@ const request = (over: Record<string, unknown> = {}) => ({
     producer: 'outbound_queue',
     contentDigest: 'digest',
     admissionReason: 'inbound_reply',
+    // These tests are about WHO PAYS and WHAT IT COSTS, so the effect carries a
+    // durable identity like every real send does. Without one an enforcing
+    // tenant refuses on identity first and the currency is never reached —
+    // which would make each of these pass for the wrong reason.
+    binding: { dispatchItemId: 'dispatch-1' },
     ...over,
 });
 

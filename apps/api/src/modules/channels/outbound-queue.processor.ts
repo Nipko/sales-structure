@@ -445,7 +445,8 @@ export class OutboundQueueProcessor extends WorkerHost {
     }
 
     private async gateOrSuppress(outbound: OutboundMessage, producer: string,
-        disposition: 'reactive' | 'proactive') {
+        disposition: 'reactive' | 'proactive',
+        durable?: { messageId?: string | null; jobId?: string | null }) {
         const admission = await this.admitSpend({
             tenantId: outbound.tenantId,
             channelType: outbound.channelType,
@@ -460,6 +461,19 @@ export class OutboundQueueProcessor extends WorkerHost {
                 .update(JSON.stringify(outbound.content ?? null)).digest('hex').slice(0, 32),
             conversationId: (outbound.metadata as any)?.conversationId ?? null,
             contactId: (outbound.metadata as any)?.contactId ?? null,
+            // ── WHAT MAKES A RETRY FIND ITS OWN EFFECT ──────────────────
+            //
+            // The persisted message row first: it is written before the send,
+            // so its id survives a body that is re-rendered between attempts.
+            // The queue job second: one id for every attempt of that job.
+            // Without either, the key is the content — and a greeting that
+            // interpolates the time is a different effect every minute.
+            binding: {
+                messageId: durable?.messageId
+                    ?? (outbound.metadata as any)?.messageId ?? null,
+                inboundMessageId: (outbound.metadata as any)?.inboundMessageId ?? null,
+                jobId: durable?.jobId ?? null,
+            },
         });
         if (admission && !admission.permitted) return 'refused' as const;
         return admission;
@@ -487,7 +501,8 @@ export class OutboundQueueProcessor extends WorkerHost {
      * that nothing authorised.
      */
     private async admitFlowFallback(outbound: OutboundMessage, producer: string,
-        disposition: 'reactive' | 'proactive', errorCode: string): Promise<boolean> {
+        disposition: 'reactive' | 'proactive', errorCode: string,
+        durable?: { messageId?: string | null; jobId?: string | null }): Promise<boolean> {
         let admission: Admission | null;
         try {
             admission = await this.admitSpend({
@@ -502,6 +517,17 @@ export class OutboundQueueProcessor extends WorkerHost {
                     .digest('hex').slice(0, 32),
                 conversationId: (outbound.metadata as any)?.conversationId ?? null,
                 contactId: (outbound.metadata as any)?.contactId ?? null,
+                // The SAME durable identity as the Flow it replaces. The
+                // producer differs (`..._flow_fallback`), and the producer is
+                // part of the key, so this is its own effect with its own
+                // reservation — while still being recognisably the fallback of
+                // that message rather than a free-floating send.
+                binding: {
+                    messageId: durable?.messageId
+                        ?? (outbound.metadata as any)?.messageId ?? null,
+                    inboundMessageId: (outbound.metadata as any)?.inboundMessageId ?? null,
+                    jobId: durable?.jobId ?? null,
+                },
             });
         } catch (error: any) {
             // ── WHY THIS ONE CATCHES INSTEAD OF DEFERRING ───────────────────
@@ -582,12 +608,16 @@ export class OutboundQueueProcessor extends WorkerHost {
             return this.operationalNotices.deliver(reference,{prepare:async outbound=>{
                 const creds=await this.channelToken.getChannelToken(outbound.tenantId,outbound.channelType,outbound.channelAccountId);
                 return async()=>{
-                    const admission = await this.gateOrSuppress(outbound, 'operational_notice', 'proactive');
+                    // The notice row is the durable identity: one row, one
+                    // notice, and a retry of this job reads the same id.
+                    const admission = await this.gateOrSuppress(outbound, 'operational_notice',
+                        'proactive', { messageId: `notice:${reference.noticeId}` });
                     if (admission === 'refused') return null;
                     if (!(await this.beginOrStandDown(outbound, admission))) return null;
                     const result=await this.channelGateway.sendMessage(outbound,creds.accessToken,
                         { admitFallback: code => this.admitFlowFallback(
-                            outbound, 'operational_notice', 'proactive', code) });
+                            outbound, 'operational_notice', 'proactive', code,
+                            { messageId: `notice:${reference.noticeId}` }) });
                     await this.recordSpend(outbound, admission, result);
                     if(result)await this.throttle.recordUsage(reference.tenantId,'outbound').catch(()=>{});
                     return result;
@@ -610,14 +640,18 @@ export class OutboundQueueProcessor extends WorkerHost {
                 if (outbound.metadata?.approvalEffectKind === 'handoff') return async () => null;
                 const creds = await this.channelToken.getChannelToken(outbound.tenantId, outbound.channelType, outbound.channelAccountId);
                 return async () => {
-                    const admission = await this.gateOrSuppress(outbound, 'approved_effect', 'reactive');
+                    // The approved effect row: one ticket, one effect, and the
+                    // pair survives a restart and a re-render of the body.
+                    const admission = await this.gateOrSuppress(outbound, 'approved_effect',
+                        'reactive', { messageId: `effect:${reference.ticketId}:${reference.effectId}` });
                     if (admission === 'refused') throw new ApprovalEffectSuppressed('spend_refused');
                     if (!(await this.beginOrStandDown(outbound, admission))) {
                         throw new ApprovalEffectSuppressed('transmission_not_owned');
                     }
                     const result = await this.channelGateway.sendMessage(outbound, creds.accessToken,
                         { admitFallback: code => this.admitFlowFallback(
-                            outbound, 'approved_effect', 'reactive', code) });
+                            outbound, 'approved_effect', 'reactive', code,
+                            { messageId: `effect:${reference.ticketId}:${reference.effectId}` }) });
                     await this.recordSpend(outbound, admission, result);
                     if (result) await this.throttle.recordUsage(reference.tenantId, 'outbound').catch(() => {});
                     return result;
@@ -737,7 +771,8 @@ export class OutboundQueueProcessor extends WorkerHost {
             // A job carrying a conversation is a reply inside one; a job
             // without one is a campaign, a reminder or a drip step. Read from
             // the job, not from the words.
-            (outbound.metadata as any)?.conversationId ? 'reactive' : 'proactive');
+            (outbound.metadata as any)?.conversationId ? 'reactive' : 'proactive',
+            { jobId: job.id ?? null });
         if (admission === 'refused') {
             this.logger.warn(`[Outbound] refused on spend for tenant=${outbound.tenantId}`);
             return 'skipped:spend_refused';
@@ -749,7 +784,8 @@ export class OutboundQueueProcessor extends WorkerHost {
         }
         const result = await this.channelGateway.sendMessage(outbound, creds.accessToken, {
             admitFallback: code => this.admitFlowFallback(outbound, 'outbound_queue',
-                (outbound.metadata as any)?.conversationId ? 'reactive' : 'proactive', code),
+                (outbound.metadata as any)?.conversationId ? 'reactive' : 'proactive', code,
+                { jobId: job.id ?? null }),
         });
         await this.recordSpend(outbound, admission, result);
 

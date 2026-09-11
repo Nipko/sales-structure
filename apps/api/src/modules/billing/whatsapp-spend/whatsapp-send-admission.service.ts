@@ -152,6 +152,12 @@ export interface AdmissionRequest {
     readonly binding?: {
         inboundMessageId?: string | null; batchId?: string | null;
         dispatchItemId?: string | null; itemIndex?: number | null;
+        /** A persisted outbound message row, written before the send. */
+        messageId?: string | null;
+        /** A durable queue job: one id for every attempt of the same job. */
+        jobId?: string | null;
+        /** A synchronous one-off that minted its own id for this press. */
+        requestId?: string | null;
     };
 }
 
@@ -232,7 +238,21 @@ export class WhatsappSendAdmissionService {
         const category = this.categoryFor(request);
         const keyCategory = category.kind === 'resolved' ? category.category : 'category_unknown';
 
-        const effectKey = this.spend.effectKey({
+        // ── THE DURABLE HALF OF THE KEY ─────────────────────────────────
+        //
+        // Without it two different campaigns sending the same approved template
+        // to the same customer from the same number produce the same key, and
+        // the second adopts the first one's reservation — so the second message
+        // is never sent and never charged. And in the other direction: a retry
+        // that re-renders the body (a time, a name, a price) produces a
+        // DIFFERENT key and pays for the same message twice.
+        const logicalEffectId = WhatsappSpendService.logicalEffectId({
+            ...(request.binding ?? {}),
+            taskId: request.taskId ?? null,
+            recipientRef: request.recipientRef,
+            ordinal: request.ordinal ?? 0,
+        });
+        const keyParts = {
             tenantId: request.connection.tenantId,
             channelAccountId: request.connection.channelAccountId,
             recipientRef: request.recipientRef,
@@ -243,26 +263,57 @@ export class WhatsappSendAdmissionService {
             producer: request.producer,
             ordinal: request.ordinal ?? 0,
             contentDigest: request.contentDigest,
-            // The durable half. Without it two different campaigns sending the
-            // same approved template to the same customer from the same number
-            // produce the same key, and the second adopts the first one's
-            // reservation.
-            logicalEffectId: WhatsappSpendService.logicalEffectId({
-                ...(request.binding ?? {}),
-                taskId: request.taskId ?? null,
-                recipientRef: request.recipientRef,
-                ordinal: request.ordinal ?? 0,
-            }),
-        });
+        };
+        const durableKey = this.spend.effectKey({ ...keyParts, logicalEffectId });
+        // The shape every effect had before identity became mandatory. Computed
+        // so an effect ALREADY in flight under it can still be found: a deploy
+        // must not orphan the reservations that were live when it landed.
+        const legacyKey = this.spend.effectKey({ ...keyParts, logicalEffectId: null });
+        const effectKey = logicalEffectId ? durableKey : legacyKey;
 
         // Instagram, Messenger, Telegram and the widget are not billed by their
         // provider per message. Counting them would invent a cost, and a number
         // that is not real is worse than no number.
+        //
+        // Checked before the identity requirement below: an unbilled channel is
+        // not a chargeable effect, so demanding a durable identity from it would
+        // stop Telegram replies to protect a WhatsApp invoice.
         if (!PROVIDER_BILLED_CHANNELS.includes(channel as any)) {
             return Object.freeze({ permitted: true, effectKey, enforcement: 'observe' as const, notBilled: true });
         }
 
         const enforcement = await this.enforcementFor(request.connection.tenantId);
+
+        // ── EVERY NEW CHARGEABLE EFFECT NAMES SOMETHING DURABLE ─────────────
+        //
+        // A key made only of content cannot tell a retry from a second message.
+        // Both directions cost real money: a re-rendered body on retry pays
+        // twice for one message, and two genuinely different sends with the
+        // same words collapse into one, so the second is never sent.
+        //
+        // Under `enforce` this is a refusal. Under `observe` the effect still
+        // reserves under the legacy key — dropping it would stop METERING to
+        // punish a producer defect, which is the wrong trade — and the log says
+        // what enforcement would have stopped.
+        //
+        // An effect ALREADY in flight under a legacy key is never refused: a
+        // deploy must not orphan the reservations that were live when it
+        // landed, so the existing row is looked for before refusing.
+        if (!logicalEffectId) {
+            const inFlight = enforcement === 'enforce'
+                ? await this.spend.reservationFor(request.schema, legacyKey)
+                : null;
+            if (enforcement === 'enforce' && !inFlight) {
+                this.logger.warn(`[Spend] refused ${request.producer}: no durable effect identity`);
+                return Object.freeze({
+                    permitted: false, effectKey, enforcement,
+                    block: spendBlock('effect_identity_missing',
+                        `producer=${request.producer} account=${request.connection.channelAccountId}`),
+                });
+            }
+            this.logger.warn(`[Spend] ${request.producer} has no durable effect identity; `
+                + `keyed by content, which cannot tell a retry from a second message`);
+        }
 
         // ── Is Meta refusing to bill this number at all? ────────────────────
         //

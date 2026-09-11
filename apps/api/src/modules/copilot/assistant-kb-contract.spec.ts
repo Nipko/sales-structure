@@ -34,6 +34,7 @@ const EXPECTED_IDS = [
   'operacion-comercial',
   'app-movil',
   'centro-calidad-agente',
+  'herramientas-tipo-negocio',
 ].sort();
 const VERTICAL_LABELS: Record<(typeof LOCALES)[number], Record<string, string>> = {
   es: {
@@ -140,10 +141,10 @@ describe('Parallly Assist knowledge-base contract', () => {
     ...canonicalVerticalBlock.matchAll(/'([^']+)'/g),
   ].map((match) => match[1]);
 
-  it.each(LOCALES)('%s has the complete, unique 26-article set', (locale) => {
+  it.each(LOCALES)('%s has the complete, unique article set', (locale) => {
     const articles = byLocale[locale];
     const ids = articles.map((article) => article.id);
-    expect(articles).toHaveLength(26);
+    expect(articles).toHaveLength(EXPECTED_IDS.length);
     expect(new Set(ids).size).toBe(ids.length);
     expect([...ids].sort()).toEqual(EXPECTED_IDS);
     expect(articles.map((article) => path.basename(article.file))).toEqual(

@@ -42,16 +42,105 @@ import {
  *      read. A `wait` means "not by this path, not right now" — not "ignored".
  */
 
-/** How long one run of failures is treated as the same episode. */
+/**
+ * ═══ THE FAILURE-NOTICE POLICY ═══
+ *
+ * Two numbers: how many times one episode may tell a customer we could not
+ * answer, and how long a run of failures counts as one episode.
+ *
+ * They were constants. They are a policy now because the right values are not a
+ * property of the code: a clinic answering forty people a day and a shop
+ * answering four thousand have different tolerances for "say it once", and a
+ * number chosen here for either of them is wrong for the other.
+ *
+ * The defaults stay where the constants were, so a tenant who configures
+ * nothing gets exactly the behaviour that shipped.
+ *
+ * ── WHAT IS DELIBERATELY NOT CONFIGURABLE ───────────────────────────────────
+ *
+ * The floor. `maxPerEpisode` cannot go below one and the episode cannot go
+ * below a minute, because the failure mode on that side is a customer who
+ * writes in, gets nothing, and is never told why — and no configuration should
+ * be able to produce silence as its normal behaviour. The ceilings exist for
+ * the same reason from the other direction: a hundred notices in an episode is
+ * not a policy, it is the loop this whole mechanism exists to break.
+ */
+export interface FailureNoticePolicy {
+    /** How many failure notices one episode may send. At least one. */
+    readonly maxPerEpisode: number;
+    /** How long a run of failures is treated as the same episode. */
+    readonly episodeMs: number;
+}
+
+/** How long one run of failures is treated as the same episode, by default. */
 export const FAILURE_EPISODE_MS = 30 * 60 * 1000;
 
 /**
- * How many failure notices one episode may send.
- *
- * One. The directive's starting value, and the honest one: the customer learns
- * we could not answer, and does not learn it five times.
+ * The starting policy, and the honest one: the customer learns we could not
+ * answer, and does not learn it five times.
  */
-export const MAX_FAILURE_NOTICES_PER_EPISODE = 1;
+export const DEFAULT_FAILURE_NOTICE_POLICY: FailureNoticePolicy = Object.freeze({
+    maxPerEpisode: 1,
+    episodeMs: FAILURE_EPISODE_MS,
+});
+
+const MAX_NOTICES_CEILING = 5;
+const EPISODE_MIN_MS = 60 * 1000;
+const EPISODE_MAX_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Read the policy a tenant configured, refusing what cannot be honoured.
+ *
+ * Silently clamps rather than throwing: this runs on the answering path, and a
+ * mistyped setting must not turn into a customer left unanswered. Anything that
+ * is not a finite number at all is ignored entirely, which is different from
+ * being clamped — `"lots"` means "nothing was configured", not "the maximum".
+ */
+export function resolveFailureNoticePolicy(configured: unknown): FailureNoticePolicy {
+    const source = (configured ?? {}) as Record<string, unknown>;
+    return Object.freeze({
+        maxPerEpisode: clampSetting(source.maxPerEpisode, 1, MAX_NOTICES_CEILING,
+            DEFAULT_FAILURE_NOTICE_POLICY.maxPerEpisode),
+        episodeMs: clampSetting(minutesToMs(source.episodeMinutes), EPISODE_MIN_MS, EPISODE_MAX_MS,
+            DEFAULT_FAILURE_NOTICE_POLICY.episodeMs),
+    });
+}
+
+/**
+ * A configured number, or nothing — with `null` firmly in the "nothing" camp.
+ *
+ * `Number(null)` is zero, and zero is finite, so the obvious version read an
+ * unset field as "zero minutes" and clamped it to the one-minute floor: a
+ * tenant who had configured NOTHING got a one-minute episode, which is very
+ * nearly the loop this whole mechanism exists to break. A JSON settings blob
+ * can honestly hold `"90"`, so a numeric string is accepted; `null`, `''`,
+ * booleans and words are not.
+ */
+function asFiniteNumber(value: unknown): number | null {
+    if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+    if (typeof value === 'string' && value.trim() !== '') {
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? parsed : null;
+    }
+    return null;
+}
+
+const minutesToMs = (value: unknown): number | null => {
+    const minutes = asFiniteNumber(value);
+    return minutes === null ? null : minutes * 60_000;
+};
+
+/**
+ * Clamp into what can be honoured, and treat "not configured" as the default.
+ *
+ * Clamps rather than throwing because this runs on the answering path: a
+ * mistyped setting must not become a customer left unanswered.
+ */
+function clampSetting(value: unknown, low: number, high: number, fallback: number): number {
+    const parsed = typeof value === 'number' ? value : asFiniteNumber(value);
+    if (parsed === null || !Number.isFinite(parsed)) return fallback;
+    return Math.min(high, Math.max(low, Math.round(parsed)));
+}
 
 /**
  * When a wait is worth reconsidering.
@@ -63,14 +152,15 @@ export const MAX_FAILURE_NOTICES_PER_EPISODE = 1;
  */
 export function waitResumesAt(
     recent: readonly DeliveredTurnOutcome[], now: Date = new Date(),
+    policy: FailureNoticePolicy = DEFAULT_FAILURE_NOTICE_POLICY,
 ): Date {
     // The same evidence rule: the window is anchored on a notice the customer
     // received, never on one that failed to leave.
     const counted = recent
-        .filter(entry => deliveredFailureNotice(entry, now))
+        .filter(entry => deliveredFailureNotice(entry, now, policy))
         .map(entry => entry.createdAt.getTime());
     const oldest = counted.length ? Math.min(...counted) : now.getTime();
-    return new Date(oldest + FAILURE_EPISODE_MS);
+    return new Date(oldest + policy.episodeMs);
 }
 
 /** Stable reason codes. Written once so a dashboard and a log agree. */
@@ -110,8 +200,9 @@ const outcome = (kind: TurnOutcome['kind'], reason: string | null,
 export function failureNoticesInEpisode(
     recent: readonly DeliveredTurnOutcome[],
     now: Date = new Date(),
+    policy: FailureNoticePolicy = DEFAULT_FAILURE_NOTICE_POLICY,
 ): number {
-    return recent.filter(entry => deliveredFailureNotice(entry, now)).length;
+    return recent.filter(entry => deliveredFailureNotice(entry, now, policy)).length;
 }
 
 /**
@@ -137,8 +228,9 @@ export interface DeliveredTurnOutcome {
  * silence on the grounds of a message that was never sent, which is the worst
  * failure this whole feature can produce: a person told nothing, twice.
  */
-function deliveredFailureNotice(entry: DeliveredTurnOutcome, now: Date): boolean {
-    return entry.createdAt.getTime() >= now.getTime() - FAILURE_EPISODE_MS
+function deliveredFailureNotice(entry: DeliveredTurnOutcome, now: Date,
+    policy: FailureNoticePolicy = DEFAULT_FAILURE_NOTICE_POLICY): boolean {
+    return entry.createdAt.getTime() >= now.getTime() - policy.episodeMs
         && entry.outcome?.kind === 'send'
         && entry.outcome?.reason === TURN_OUTCOME_REASONS.failureNotice
         && (entry.deliveredEffects ?? 0) > 0;
@@ -164,9 +256,12 @@ export function decideTurnOutcome(input: {
     readonly draft?: boolean;
     /** When the decision could change. Defaults to a whole episode from now. */
     readonly episodeEndsAt?: Date;
+    /** The tenant's policy. Omitted means the shipped default. */
+    readonly policy?: FailureNoticePolicy;
     readonly now?: Date;
 }): TurnOutcomeDecision {
     const now = input.now ?? new Date();
+    const policy = input.policy ?? DEFAULT_FAILURE_NOTICE_POLICY;
 
     if (input.draft) {
         return Object.freeze({ deliver: false,
@@ -178,8 +273,8 @@ export function decideTurnOutcome(input: {
         return Object.freeze({ deliver: false,
             outcome: outcome('suppress', TURN_OUTCOME_REASONS.nothingToSay) });
     }
-    if (input.isFailureNotice && input.priorFailureNotices >= MAX_FAILURE_NOTICES_PER_EPISODE) {
-        const resumeAt = input.episodeEndsAt ?? new Date(now.getTime() + FAILURE_EPISODE_MS);
+    if (input.isFailureNotice && input.priorFailureNotices >= policy.maxPerEpisode) {
+        const resumeAt = input.episodeEndsAt ?? new Date(now.getTime() + policy.episodeMs);
         return Object.freeze({ deliver: false, outcome: outcome(
             'wait', TURN_OUTCOME_REASONS.failureNoticeAlreadySent,
             { resumeAfter: resumeAt.toISOString() }) });

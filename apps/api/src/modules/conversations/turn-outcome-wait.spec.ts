@@ -2,7 +2,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { assertTurnOutcome, type TurnOutcome } from '@parallext/shared';
 import {
-    FAILURE_EPISODE_MS, MAX_FAILURE_NOTICES_PER_EPISODE, TURN_OUTCOME_REASONS,
+    DEFAULT_FAILURE_NOTICE_POLICY, FAILURE_EPISODE_MS, TURN_OUTCOME_REASONS,
+    resolveFailureNoticePolicy,
     decideAndAssertTurnOutcome, decideTurnOutcome, failureNoticesInEpisode, waitResumesAt,
 } from './turn-outcome-wait';
 
@@ -37,7 +38,7 @@ describe('deciding not to answer, and what that costs', () => {
     it('turns the second one in the same episode into a wait that sends nothing', () => {
         const decision = decideTurnOutcome({
             hasEffects: true, isFailureNotice: true,
-            priorFailureNotices: MAX_FAILURE_NOTICES_PER_EPISODE, now: NOW,
+            priorFailureNotices: DEFAULT_FAILURE_NOTICE_POLICY.maxPerEpisode, now: NOW,
         });
         expect(decision.deliver).toBe(false);
         expect(decision.outcome.kind).toBe('wait');
@@ -256,5 +257,78 @@ describe('the turn actually uses it', () => {
         for (const method of called) {
             expect(store).toMatch(new RegExp(`\\basync ${method}\\s*\\(`));
         }
+    });
+});
+
+describe('the failure-notice policy', () => {
+    const NOW = new Date('2026-10-05T12:00:00.000Z');
+
+    it('ships with the behaviour that was hard-coded before it', () => {
+        expect(resolveFailureNoticePolicy(undefined))
+            .toEqual({ maxPerEpisode: 1, episodeMs: 30 * 60 * 1000 });
+    });
+
+    it('honours a tenant that wants to say it twice, over a longer episode', () => {
+        expect(resolveFailureNoticePolicy({ maxPerEpisode: 2, episodeMinutes: 90 }))
+            .toEqual({ maxPerEpisode: 2, episodeMs: 90 * 60 * 1000 });
+    });
+
+    it('refuses to be configured into silence', () => {
+        // The failure mode on this side is a customer who writes in, gets
+        // nothing and is never told why. No setting may make that the normal
+        // behaviour, so zero and negatives clamp to one rather than being
+        // honoured or throwing on the answering path.
+        expect(resolveFailureNoticePolicy({ maxPerEpisode: 0 }).maxPerEpisode).toBe(1);
+        expect(resolveFailureNoticePolicy({ maxPerEpisode: -3 }).maxPerEpisode).toBe(1);
+    });
+
+    it('refuses to be configured into the loop it exists to break', () => {
+        expect(resolveFailureNoticePolicy({ maxPerEpisode: 100 }).maxPerEpisode).toBe(5);
+        expect(resolveFailureNoticePolicy({ episodeMinutes: 60 * 24 * 30 }).episodeMs)
+            .toBe(24 * 60 * 60 * 1000);
+        expect(resolveFailureNoticePolicy({ episodeMinutes: 0 }).episodeMs).toBe(60 * 1000);
+    });
+
+    it('treats a value that is not a number as nothing configured', () => {
+        // Different from clamping, and the difference matters: `"lots"` is a
+        // mistake, and reading a mistake as "the maximum" would quintuple the
+        // notices a customer receives because somebody typed a word.
+        expect(resolveFailureNoticePolicy({ maxPerEpisode: 'lots', episodeMinutes: null }))
+            .toEqual(DEFAULT_FAILURE_NOTICE_POLICY);
+        expect(resolveFailureNoticePolicy('nonsense')).toEqual(DEFAULT_FAILURE_NOTICE_POLICY);
+    });
+
+    it('lets the second notice through when the tenant allows two', () => {
+        const sent = [{
+            outcome: { version: 1 as const, kind: 'send' as const, reason: TURN_OUTCOME_REASONS.failureNotice,
+                effects: [] as readonly string[] },
+            createdAt: new Date(NOW.getTime() - 60_000),
+            deliveredEffects: 1,
+        }];
+        const policy = resolveFailureNoticePolicy({ maxPerEpisode: 2 });
+        const decision = decideTurnOutcome({
+            hasEffects: true, isFailureNotice: true,
+            priorFailureNotices: failureNoticesInEpisode(sent, NOW, policy),
+            policy, now: NOW,
+        });
+        expect(decision.deliver).toBe(true);
+        // And the third does not.
+        expect(decideTurnOutcome({
+            hasEffects: true, isFailureNotice: true, priorFailureNotices: 2, policy, now: NOW,
+        }).deliver).toBe(false);
+    });
+
+    it(`counts an episode by the tenant's own window`, () => {
+        const forty = [{
+            outcome: { version: 1 as const, kind: 'send' as const, reason: TURN_OUTCOME_REASONS.failureNotice,
+                effects: [] as readonly string[] },
+            createdAt: new Date(NOW.getTime() - 40 * 60 * 1000),
+            deliveredEffects: 1,
+        }];
+        // Forty minutes ago is outside the default half-hour episode and inside
+        // a ninety-minute one. Same evidence, different tenant, different answer.
+        expect(failureNoticesInEpisode(forty, NOW)).toBe(0);
+        expect(failureNoticesInEpisode(forty, NOW, resolveFailureNoticePolicy({ episodeMinutes: 90 })))
+            .toBe(1);
     });
 });

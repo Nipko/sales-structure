@@ -32,7 +32,7 @@ import {
 } from './turn-outcome-effects';
 import { burstBufferKeys } from './burst-debounce-key';
 import {
-    FAILURE_EPISODE_MS, decideAndAssertTurnOutcome, failureNoticesInEpisode, waitResumesAt,
+    decideAndAssertTurnOutcome, failureNoticesInEpisode, resolveFailureNoticePolicy, waitResumesAt,
 } from './turn-outcome-wait';
 import { ChannelTokenService } from '../channels/channel-token.service';
 import { ConversationsGateway } from './conversations.gateway';
@@ -495,6 +495,26 @@ export class ConversationsService {
         @Optional() private readonly dispatchRollout?: DispatchRolloutService,
         @Optional() private readonly turnLedger?: AgentTurnLedgerStore,
     ) {}
+
+    /**
+     * The tenant settings the failure-notice policy is read from, or nothing.
+     *
+     * An unreadable row yields `undefined`, which resolves to the shipped
+     * default. Failing any other way here would turn a settings problem into a
+     * customer who wrote in and was told nothing.
+     */
+    private async failureNoticeSettings(tenantId: string): Promise<unknown> {
+        try {
+            const tenant = await this.prisma.tenant.findUnique({
+                where: { id: tenantId }, select: { settings: true },
+            });
+            return (tenant?.settings as any)?.conversations?.failureNotices;
+        } catch (error: any) {
+            this.logger.warn(`[Pipeline] failure-notice policy unreadable for ${tenantId}: `
+                + `${error?.message}. Using the default.`);
+            return undefined;
+        }
+    }
 
     /**
      * Main entry point for incoming messages from any channel
@@ -1218,17 +1238,26 @@ export class ConversationsService {
         // language or a request for a human cannot become a reason to stop
         // answering somebody.
         const failureNotice = isErrorFallback(response);
-        const episode = failureNotice && this.turnLedger && priorTurn
+        // How many notices, and over how long, is the tenant's decision — a
+        // clinic answering forty people a day and a shop answering four thousand
+        // have different tolerances for "say it once", and a number chosen in the
+        // code is wrong for one of them. Read only when a failure notice is
+        // actually in play, so the ordinary turn pays nothing for it.
+        const noticePolicy = failureNotice
+            ? resolveFailureNoticePolicy(await this.failureNoticeSettings(tenantId))
+            : undefined;
+        const episode = failureNotice && this.turnLedger && priorTurn && noticePolicy
             ? await this.turnLedger.recentOutcomes(
-                schemaName, String(conversation.id), new Date(Date.now() - FAILURE_EPISODE_MS))
+                schemaName, String(conversation.id), new Date(Date.now() - noticePolicy.episodeMs))
             : [];
         const decision = decideAndAssertTurnOutcome({
             hasEffects: turnHasEffects,
             isFailureNotice: failureNotice,
-            priorFailureNotices: failureNoticesInEpisode(episode),
+            priorFailureNotices: failureNoticesInEpisode(episode, new Date(), noticePolicy),
             // When the answer could genuinely change, not a round number: the
             // moment the notice that caused the wait leaves the window.
-            episodeEndsAt: waitResumesAt(episode),
+            episodeEndsAt: waitResumesAt(episode, new Date(), noticePolicy),
+            policy: noticePolicy,
             draft: draftMode && !!response,
         });
         if (this.turnLedger && priorTurn) {

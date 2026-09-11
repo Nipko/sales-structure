@@ -5,6 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { WhatsappCryptoService } from '../whatsapp/services/whatsapp-crypto.service';
 import { AGENT_QUALITY_DEPENDENCIES_UPDATED } from '../quality/agent-quality-events';
+import { ChannelTokenService } from './channel-token.service';
 
 /**
  * Reconciles the STORED state of WhatsApp credentials against Meta's own view.
@@ -38,6 +39,17 @@ export class WhatsappTokenHealthService {
         private prisma: PrismaService,
         private crypto: WhatsappCryptoService,
         private config: ConfigService,
+        /**
+         * Where the cached copies of this credential live.
+         *
+         * This service is the one authority that can revoke a token with no
+         * person involved: Meta says `is_valid: false`, the row becomes
+         * `error`, and every resolver would refuse it from then on — except the
+         * ones answering from a five-minute cache entry written minutes
+         * earlier. Those kept signing requests with a token Meta had already
+         * invalidated, and nothing in the logs said so.
+         */
+        @Optional() private readonly channelToken?: ChannelTokenService,
         @Optional() private readonly events?: EventEmitter2,
     ) {}
 
@@ -97,6 +109,15 @@ export class WhatsappTokenHealthService {
                         where: { id: cred.id },
                         data: { rotationState: nextState, expiresAt: realExpiry },
                     });
+                    // AFTER the write, never before: an invalidation that runs
+                    // first races the entry it is removing. Tenant-wide because
+                    // the System User token is: every number of this tenant was
+                    // caching the credential that just changed.
+                    await this.channelToken
+                        ?.revokeCachedCredentials('whatsapp', cred.tenantId)
+                        .catch((e: any) => this.logger.error(
+                            `[TokenHealth] tenant ${cred.tenantId}: state written but the token `
+                            + `cache was not invalidated: ${e?.message}`));
                     this.events?.emit(AGENT_QUALITY_DEPENDENCIES_UPDATED, {
                         tenantId: cred.tenantId,
                         source: 'channel_credential',

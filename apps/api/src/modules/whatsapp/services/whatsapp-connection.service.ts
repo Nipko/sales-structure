@@ -299,12 +299,19 @@ export class WhatsappConnectionService {
       });
     }
 
-    // Connect, reconnect and rotation all land here, and all three replace
-    // the secret cached under this number. Clearing exactly this number key
-    // — not the tenant — keeps a sibling connection answering, which is the
-    // difference between a reconnect and a five-minute outage for every
-    // other number the tenant has. After the writes, never before: an
-    // invalidation that runs first races the entry it is removing.
+    // Connect, reconnect and rotation all land here, and all three replace a
+    // secret that is TENANT-WIDE: under the Tech Provider model one System User
+    // token signs for every number the tenant has. Clearing only this number's
+    // key left the siblings holding the outgoing half of a rotation for five
+    // more minutes — sending with a credential that had just been replaced.
+    //
+    // `invalidateCache` now bumps the tenant's revocation epoch as well as
+    // deleting this key, so the siblings re-resolve once from the database
+    // instead. That is three queries each, not an outage: the connection they
+    // read is perfectly good, it simply has to be read again.
+    //
+    // After the writes, never before: an invalidation that runs first races the
+    // entry it is removing.
     await this.channelToken?.invalidateCache('whatsapp', tenantId, String(phoneNumberId))
       .catch((e: any) => this.logger.error(
         `Connection saved but the token cache for ${phoneNumberId} was not cleared: ${e?.message}`));

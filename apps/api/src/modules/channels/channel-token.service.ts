@@ -45,6 +45,20 @@ interface CachedWhatsAppConnection extends ChannelCredentials {
     displayPhoneNumber: string | null;
     credentialId: string;
     credentialSource: OutboundCredentialRef['source'];
+    /**
+     * The revocation epoch this value was resolved under.
+     *
+     * Absent on a value written by the version of this service that had none,
+     * which is why the reader refuses an entry without it rather than assuming
+     * it is current.
+     */
+    epoch?: number;
+    /**
+     * The credential's own expiry, copied so the cache can refuse an entry that
+     * went stale on the clock rather than on a revocation. Nobody bumps an
+     * epoch when a timestamp passes.
+     */
+    credentialExpiresAt?: string | null;
 }
 
 /** The cached shape for every other channel. */
@@ -92,11 +106,49 @@ interface CachedGenericConnection extends GenericChannelCredentials {
  * resolved first — including after that account had been disconnected. An
  * unnamed request now consults the database, which is also the only way to
  * learn whether the tenant still has exactly one.
+ *
+ * ── AND WHY A KEY THAT MATCHES ITS OWN NAME IS STILL NOT ENOUGH ──────────────
+ *
+ * Checking that a cached value belongs to the account that was asked for says
+ * nothing about whether that account may still send. A database with the
+ * channel `disconnected`, the global account row inactive and the credential
+ * revoked was reproduced, and a warm entry answered with the previous token
+ * without a single read: the three authorities were behind the cache, so for
+ * five minutes after a revocation the cache WAS the authority.
+ *
+ * The answer is a REVOCATION EPOCH — one small integer per (tenant, channel),
+ * stamped into every value and compared on every read. Every authority that can
+ * revoke bumps it: disconnect, offboarding, rotation, expiry, token health. A
+ * value stamped with an older epoch is not served, whatever else it says.
+ *
+ * Three properties make it worth its one Redis GET:
+ *
+ *   · it is tenant-and-channel wide, so rotating a tenant's System User token
+ *     invalidates the SIBLING numbers too — which is the shape a Tech Provider
+ *     rotation actually has, and what per-account invalidation got wrong;
+ *   · it is fail-closed. An epoch that cannot be read is not "assume current":
+ *     it means the cache cannot be trusted, and resolution falls through to the
+ *     database, which has its own refusals;
+ *   · it costs one integer, so bumping it is something a disconnect path can do
+ *     without caring how many accounts or keys exist.
+ *
+ * The cached value also carries the credential's own `expiresAt`, so an expiry
+ * that falls DURING the five minutes is refused with no read at all — nobody
+ * bumps an epoch when a clock passes a timestamp.
  */
 @Injectable()
 export class ChannelTokenService {
     private readonly logger = new Logger(ChannelTokenService.name);
     private readonly CACHE_TTL = 300; // 5 min
+    /**
+     * How long a revocation epoch lives.
+     *
+     * Longer than any cached credential, so an entry can never outlive the
+     * counter that would have invalidated it. If the epoch did expire first,
+     * every stamped value would fail the comparison and be re-resolved — the
+     * safe direction, and the reason this number is not load-bearing.
+     */
+    private readonly EPOCH_TTL = 86_400; // 24 h
 
     constructor(
         private prisma: PrismaService,
@@ -132,8 +184,12 @@ export class ChannelTokenService {
         tenantId: string, phoneNumberId?: string | null,
     ): Promise<CachedWhatsAppConnection> {
         const requested = normalizeAccountId(phoneNumberId);
+        // Read ONCE per resolution and passed down, so the read and the write
+        // below cannot straddle a bump: a value stamped with an epoch read
+        // after the revocation would be a cache entry born already stale.
+        const epoch = await this.revocationEpoch('whatsapp', tenantId);
         if (requested) {
-            const cached = await this.readWhatsAppCache(tenantId, requested);
+            const cached = await this.readWhatsAppCache(tenantId, requested, epoch);
             if (cached) return cached;
         }
 
@@ -142,14 +198,69 @@ export class ChannelTokenService {
         // number; its cache entry still belongs to that number, not to "the
         // tenant", so it is read under the resolved account's own key.
         if (!requested) {
-            const cached = await this.readWhatsAppCache(tenantId, channel.phone_number_id);
+            const cached = await this.readWhatsAppCache(tenantId, channel.phone_number_id, epoch);
             if (cached) return cached;
         }
 
         const resolved = await this.credentialForWhatsApp(tenantId, channel);
-        await this.writeCache(`wa_token:${tenantId}:${resolved.phoneNumberId}`,
-            'whatsapp', tenantId, resolved.phoneNumberId, resolved);
+        // An unreadable epoch means the cache cannot be trusted, so nothing is
+        // written: serving from an entry nobody can invalidate is the failure
+        // this whole mechanism exists to stop.
+        if (epoch !== null) {
+            await this.writeCache(`wa_token:${tenantId}:${resolved.phoneNumberId}`,
+                'whatsapp', tenantId, resolved.phoneNumberId, { ...resolved, epoch });
+        }
         return resolved;
+    }
+
+    /**
+     * The current revocation epoch for a tenant's channel, or null.
+     *
+     * `null` means "cannot be read", and every caller treats that as "do not
+     * use the cache". A missing key is NOT null: a tenant that has never had a
+     * revocation is at epoch 0, which is a perfectly good answer.
+     */
+    private async revocationEpoch(channelType: string, tenantId: string): Promise<number | null> {
+        try {
+            const raw = await this.redis.getClient().get(epochKey(channelType, tenantId));
+            if (raw === null || raw === undefined) return 0;
+            const parsed = Number(raw);
+            return Number.isFinite(parsed) ? parsed : null;
+        } catch (error: any) {
+            this.logger.warn(`revocation epoch unreadable for ${channelType}/${tenantId}: `
+                + `${error?.message} — resolving from the database instead of the cache`);
+            return null;
+        }
+    }
+
+    /**
+     * Invalidate every cached credential of a tenant's channel, at once.
+     *
+     * One INCR. It does not need to know how many accounts exist, which keys
+     * were written, or whether Redis still holds the index — every stamped
+     * value simply stops matching. Called by each authority that can revoke:
+     * disconnect, offboarding, rotation, token health.
+     *
+     * Tenant-and-channel wide on purpose. Under the Tech Provider model the
+     * System User token is shared by every number of the tenant, so rotating it
+     * invalidates the SIBLINGS too — which per-account invalidation got wrong,
+     * leaving the numbers that did not complete the reconnection answering with
+     * the outgoing half of a rotation for five more minutes.
+     */
+    async revokeCachedCredentials(channelType: string, tenantId: string): Promise<void> {
+        try {
+            const client = this.redis.getClient();
+            const key = epochKey(channelType, tenantId);
+            await client.incr(key);
+            await client.expire(key, this.EPOCH_TTL);
+        } catch (error: any) {
+            // Said loudly. A bump that did not land means warm entries keep
+            // answering until their own TTL runs out, which is the window this
+            // exists to close.
+            this.logger.error(`could not bump the revocation epoch for ${channelType}/`
+                + `${tenantId}: ${error?.message}. Cached credentials may answer for up to `
+                + `${this.CACHE_TTL}s.`);
+        }
     }
 
     /** The channel row, or a refusal. Never another number of the same tenant. */
@@ -283,7 +394,12 @@ export class ChannelTokenService {
                     requestedAccountId: base.phoneNumberId, detail: e?.message,
                 });
             }
-            return { ...base, accessToken, credentialId: cred.id, credentialSource: 'system_user' };
+            return {
+                ...base, accessToken, credentialId: cred.id, credentialSource: 'system_user',
+                // Carried so a cache read can refuse an entry whose credential expires
+                // inside the five minutes, which no revocation would ever announce.
+                credentialExpiresAt: cred.expiresAt ? cred.expiresAt.toISOString() : null,
+            };
         }
 
         if (channel.access_token_ref && channel.access_token_ref !== 'credential_ref') {
@@ -300,8 +416,11 @@ export class ChannelTokenService {
     }
 
     private async readWhatsAppCache(
-        tenantId: string, phoneNumberId: string,
+        tenantId: string, phoneNumberId: string, epoch: number | null,
     ): Promise<CachedWhatsAppConnection | null> {
+        // Fail-closed: with no readable epoch there is no way to know whether
+        // this entry survived a revocation, so it is not used.
+        if (epoch === null) return null;
         const key = `wa_token:${tenantId}:${phoneNumberId}`;
         const cached = await this.redis.getJson<CachedWhatsAppConnection>(key);
         if (!cached) return null;
@@ -311,6 +430,24 @@ export class ChannelTokenService {
         if (cached.phoneNumberId !== phoneNumberId) {
             this.logger.error(`Cached WhatsApp credentials under ${key} belong to `
                 + `${cached.phoneNumberId}; discarding rather than answering with another number`);
+            await this.redis.del(key);
+            return null;
+        }
+        // ── THE REVOCATION AUTHORITY, WHICH THE CACHE MAY NOT OUTRANK ───────
+        //
+        // An entry stamped with an older epoch was written before something was
+        // revoked. An entry with no stamp at all was written by the version of
+        // this service that had none, and cannot be checked either way.
+        if (typeof cached.epoch !== 'number' || cached.epoch !== epoch) {
+            await this.redis.del(key);
+            return null;
+        }
+        // And an expiry that falls DURING the five minutes, which no epoch bump
+        // would ever announce: nobody writes anything when a clock passes a
+        // timestamp. Checked against the value the resolution already read, so
+        // this costs nothing.
+        if (cached.credentialExpiresAt
+            && new Date(cached.credentialExpiresAt).getTime() <= Date.now()) {
             await this.redis.del(key);
             return null;
         }
@@ -592,6 +729,11 @@ export class ChannelTokenService {
      * of its five minutes.
      */
     async invalidateCache(channelType: string, tenantId: string, accountId?: string): Promise<void> {
+        // The epoch first and unconditionally, because it is the part that
+        // cannot half-work: one INCR invalidates every stamped value of this
+        // tenant's channel, including entries whose keys this method never
+        // finds because the index expired or was never written.
+        await this.revokeCachedCredentials(channelType, tenantId);
         const prefixes = channelType === 'whatsapp' ? ['wa_token', `${channelType}_token`] : [`${channelType}_token`];
         const named = normalizeAccountId(accountId);
         const client = this.redis.getClient();
@@ -614,6 +756,17 @@ export class ChannelTokenService {
 /** The index of which accounts of a tenant currently have a cached credential. */
 function cacheIndexKey(channelType: string, tenantId: string): string {
     return `${channelType}_token_accounts:${tenantId}`;
+}
+
+/**
+ * The counter every cached credential of this tenant's channel is stamped with.
+ *
+ * One key per (tenant, channel) rather than per account: the System User token
+ * is shared across a tenant's numbers, so a rotation has to invalidate all of
+ * them and not only the one that completed the reconnection.
+ */
+function epochKey(channelType: string, tenantId: string): string {
+    return `${channelType}_token_epoch:${tenantId}`;
 }
 
 /**

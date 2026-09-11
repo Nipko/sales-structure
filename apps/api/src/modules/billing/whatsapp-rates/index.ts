@@ -20,3 +20,4 @@ export * from './whatsapp-rate-table.generated';
 export * from './whatsapp-rate-money';
 export * from './whatsapp-rate-resolver';
 export * from './whatsapp-free-allowance';
+export * from './recipient-market';

@@ -22,10 +22,12 @@ import { LLMRouterService } from '../ai/router/llm-router.service';
 import { ChannelGatewayService } from '../channels/channel-gateway.service';
 import { OutboundQueueService } from '../channels/outbound-queue.service';
 import { AgentDispatchOutboxStore } from '../channels/agent-dispatch-outbox.store';
+import { ProactiveDispatchService, effectIsDurable } from '../channels/proactive-dispatch.service';
 import { AgentTurnLedgerStore } from './agent-turn-ledger.store';
 import type { TurnEnvelope, TurnLedgerRow, TurnWriterRecord } from './agent-turn-ledger';
 import { DispatchRolloutService } from '../channels/dispatch-rollout.service';
 import { buildDispatchItems } from '../channels/dispatch-items';
+import type { DispatchItem } from '../channels/agent-dispatch-outbox';
 import { mediaKindFor } from '../channels/media-kind';
 import {
     compactTurnAnswer, toDispatchTurnOutput, type CompactedTurnAnswer,
@@ -495,7 +497,82 @@ export class ConversationsService {
         @Optional() private readonly dispatchOutbox?: AgentDispatchOutboxStore,
         @Optional() private readonly dispatchRollout?: DispatchRolloutService,
         @Optional() private readonly turnLedger?: AgentTurnLedgerStore,
+        /**
+         * The durable lane, for the replies this service sends OUTSIDE the
+         * turn's own batch. `dispatchReplyThroughOutbox` handles the model's
+         * answer; this is for the deterministic ones beside it — the
+         * after-hours notice, the appointment confirmations, the handoff line,
+         * the quota fallback — each of which used to leave through BullMQ with
+         * Redis as the only record of it.
+         */
+        @Optional() private readonly proactiveDispatch?: ProactiveDispatchService,
     ) {}
+
+    /**
+     * One reply, committed before it leaves. `false` means "not this one".
+     *
+     * The turn's own answer travels as a BATCH through
+     * `dispatchReplyThroughOutbox`. This is for the single, deterministic
+     * replies that stand on their own and then return — the after-hours
+     * notice, the two appointment-button answers, the two attendance answers,
+     * the handoff line and the quota fallback. Each is the ONLY effect its
+     * inbound produces, which is what lets it name that inbound as its origin:
+     * the outbox identifies a row by `(inbound_message_id, item_index)`, so a
+     * second effect on the same customer message would collide with the first.
+     * That is also why the turn's fan-out is not here.
+     *
+     * `false` for every reason the lane could not honestly carry this: no lane
+     * wired in, no authority, an incomplete binding, or a channel whose adapter
+     * cannot perform one effect and say what happened. The caller then keeps
+     * the queue it has, which is the behaviour it had before this existed.
+     */
+    private async replyOnceThroughOutbox(input: {
+        readonly tenantId: string;
+        readonly conversation: any;
+        readonly msg: NormalizedMessage;
+        readonly operationalScope?: ServedAgentAuthority;
+        readonly item: DispatchItem;
+        /**
+         * The customer message this answers, when one is persisted. Absent for
+         * the after-hours notice, whose branch returns BEFORE the inbound is
+         * saved — so there is no row to name and `originKey` identifies it.
+         */
+        readonly inboundMessageId?: string;
+        /** What makes this effect THIS effect, when no inbound names it. */
+        readonly originKey: string;
+    }): Promise<boolean> {
+        const contactId = String(input.conversation?.contact_id || '');
+        const channelAccountId = String(input.msg.channelAccountId ?? '').trim();
+        const recipient = String(input.msg.contactId ?? '').trim();
+        if (!this.proactiveDispatch || !input.operationalScope
+            || !PERSISTED_ID.test(contactId) || !channelAccountId || !recipient) return false;
+        if (!this.channelGateway.getStrictTransport?.(input.msg.channelType as any)) return false;
+        const answersInbound = !!input.inboundMessageId && PERSISTED_ID.test(input.inboundMessageId);
+        const result = await this.proactiveDispatch.send(input.tenantId, {
+            originKey: input.originKey,
+            conversationId: String(input.conversation.id),
+            contactId,
+            channelType: input.msg.channelType,
+            channelAccountId,
+            recipient,
+            items: [input.item],
+            operationalScope: input.operationalScope,
+            // A reply to a message the customer actually sent is a service
+            // reply inside the window, and saying so is what keeps it out of a
+            // soft stop meant for campaigns. The after-hours notice cannot say
+            // it — its branch answers before the inbound is stored — so it goes
+            // as what it can prove it is.
+            ...(answersInbound
+                ? { originKind: 'inbound_reply' as const, inboundMessageId: input.inboundMessageId }
+                : {}),
+        });
+        if (effectIsDurable(result)) return true;
+        // Nothing was committed. The caller falls back to the queue rather than
+        // leaving the customer with silence, and the reason is on the record.
+        this.logger.warn(`[Dispatch] ${input.originKey} not committed (${result.kind}: `
+            + `${(result as any).reason}) — falling back to the outbound queue`);
+        return false;
+    }
 
     /**
      * The tenant settings the failure-notice policy is read from, or nothing.
@@ -771,6 +848,11 @@ export class ConversationsService {
         }
 
         const draftMode = config.behavior?.draftMode === true;
+        // Which agent, at which version, under which configuration — built here
+        // rather than at step 7 because everything this turn can send is sent
+        // on behalf of it, and the deterministic replies below step 7 leave
+        // first. The outbox refuses a row whose authority it cannot name.
+        const turnScope = servedAgentAuthority(tenantId, schemaName, personaResolution);
 
         const bizHours = await this.loadTenantBusinessHours(tenantId);
         const isOpen = this.isWithinBusinessHours(config, bizHours);
@@ -783,7 +865,8 @@ export class ConversationsService {
                 if (afterHoursMsg) await this.persistDraft(tenantId, schemaName, conversation.id, afterHoursMsg, contact?.name);
                 return;
             }
-            await this.sendAfterHoursMessage(tenantId, normalizedMsg, config, afterHoursMsg);
+            await this.sendAfterHoursMessage(tenantId, normalizedMsg, config, afterHoursMsg,
+                conversation, turnScope);
             return;
         }
 
@@ -904,8 +987,15 @@ export class ConversationsService {
                             );
                             this.logger.log(`[Reminder] Client confirmed appointment ${upcomingAppt[0].id}`);
                             const confirmMsg = apptReplies(apptReplyLang).confirmed(upcomingAppt[0].service_name);
-                            await this.sendResponse(tenantId, confirmMsg, normalizedMsg, undefined, 'appt:confirm');
-                            await this.saveAiMessage(tenantId, conversation.id, confirmMsg, normalizedMsg.channelType);
+                            if (!await this.replyOnceThroughOutbox({
+                                tenantId, conversation, msg: normalizedMsg,
+                                operationalScope: turnScope, inboundMessageId,
+                                item: { kind: 'text', payload: { text: confirmMsg } },
+                                originKey: `appt-confirm:${inboundMessageId}`,
+                            })) {
+                                await this.sendResponse(tenantId, confirmMsg, normalizedMsg, undefined, 'appt:confirm');
+                                await this.saveAiMessage(tenantId, conversation.id, confirmMsg, normalizedMsg.channelType);
+                            }
                         } else {
                             this.logger.log(`[Reminder] Client wants to reschedule appointment ${upcomingAppt[0].id}`);
                             const tenantRows = await this.prisma.$queryRawUnsafe(
@@ -916,8 +1006,15 @@ export class ConversationsService {
                             const bookingLink = slug ? `${dashboardUrl}/book/${slug}` : '';
                             const R = apptReplies(apptReplyLang);
                             const rescheduleMsg = bookingLink ? R.rescheduleLink(bookingLink) : R.rescheduleNoLink;
-                            await this.sendResponse(tenantId, rescheduleMsg, normalizedMsg, undefined, 'appt:reschedule');
-                            await this.saveAiMessage(tenantId, conversation.id, rescheduleMsg, normalizedMsg.channelType);
+                            if (!await this.replyOnceThroughOutbox({
+                                tenantId, conversation, msg: normalizedMsg,
+                                operationalScope: turnScope, inboundMessageId,
+                                item: { kind: 'text', payload: { text: rescheduleMsg } },
+                                originKey: `appt-reschedule:${inboundMessageId}`,
+                            })) {
+                                await this.sendResponse(tenantId, rescheduleMsg, normalizedMsg, undefined, 'appt:reschedule');
+                                await this.saveAiMessage(tenantId, conversation.id, rescheduleMsg, normalizedMsg.channelType);
+                            }
                         }
                         return;
                     }
@@ -979,8 +1076,15 @@ export class ConversationsService {
                             );
                             this.logger.log(`[Attendance] Client confirmed attendance for appointment ${apptId}`);
                             const thankYou = apptReplies(apptReplyLang).attendanceThanks(pendingAppt[0].service_name);
-                            await this.sendResponse(tenantId, thankYou, normalizedMsg, undefined, 'appt:thankyou');
-                            await this.saveAiMessage(tenantId, conversation.id, thankYou, normalizedMsg.channelType);
+                            if (!await this.replyOnceThroughOutbox({
+                                tenantId, conversation, msg: normalizedMsg,
+                                operationalScope: turnScope, inboundMessageId,
+                                item: { kind: 'text', payload: { text: thankYou } },
+                                originKey: `appt-thankyou:${inboundMessageId}`,
+                            })) {
+                                await this.sendResponse(tenantId, thankYou, normalizedMsg, undefined, 'appt:thankyou');
+                                await this.saveAiMessage(tenantId, conversation.id, thankYou, normalizedMsg.channelType);
+                            }
                         } else {
                             await this.prisma.executeInTenantSchema(schemaName,
                                 `UPDATE appointments SET status = 'no_show', updated_at = NOW() WHERE id = $1::uuid`,
@@ -988,8 +1092,15 @@ export class ConversationsService {
                             );
                             this.logger.log(`[Attendance] Client confirmed no-show for appointment ${apptId}`);
                             const noShowMsg = apptReplies(apptReplyLang).noShow(pendingAppt[0].service_name);
-                            await this.sendResponse(tenantId, noShowMsg, normalizedMsg, undefined, 'appt:noshow');
-                            await this.saveAiMessage(tenantId, conversation.id, noShowMsg, normalizedMsg.channelType);
+                            if (!await this.replyOnceThroughOutbox({
+                                tenantId, conversation, msg: normalizedMsg,
+                                operationalScope: turnScope, inboundMessageId,
+                                item: { kind: 'text', payload: { text: noShowMsg } },
+                                originKey: `appt-noshow:${inboundMessageId}`,
+                            })) {
+                                await this.sendResponse(tenantId, noShowMsg, normalizedMsg, undefined, 'appt:noshow');
+                                await this.saveAiMessage(tenantId, conversation.id, noShowMsg, normalizedMsg.channelType);
+                            }
                         }
                         return; // Don't process through AI — attendance handled
                     }
@@ -1045,8 +1156,15 @@ export class ConversationsService {
                 const position = Number(queueCount?.[0]?.cnt || 1);
                 handoffMsg = position <= 1 ? hl.queueHead : hl.queueN(position);
             }
-            await this.sendResponse(tenantId, handoffMsg, normalizedMsg, undefined, 'handoff');
-            await this.saveAiMessage(tenantId, conversation.id, handoffMsg, normalizedMsg.channelType);
+            if (!await this.replyOnceThroughOutbox({
+                tenantId, conversation, msg: normalizedMsg,
+                operationalScope: turnScope, inboundMessageId,
+                item: { kind: 'text', payload: { text: handoffMsg } },
+                originKey: `handoff-notice:${inboundMessageId}`,
+            })) {
+                await this.sendResponse(tenantId, handoffMsg, normalizedMsg, undefined, 'handoff');
+                await this.saveAiMessage(tenantId, conversation.id, handoffMsg, normalizedMsg.channelType);
+            }
             return;
         }
 
@@ -1075,8 +1193,15 @@ export class ConversationsService {
                     await this.persistDraft(tenantId, schemaName, conversation.id, fallback, contact?.name, inboundMessageId);
                     return;
                 }
-                await this.sendResponse(tenantId, fallback, normalizedMsg, undefined, 'fallback');
-                await this.saveAiMessage(tenantId, conversation.id, fallback, channelType);
+                if (!await this.replyOnceThroughOutbox({
+                    tenantId, conversation, msg: normalizedMsg,
+                    operationalScope: turnScope, inboundMessageId,
+                    item: { kind: 'text', payload: { text: fallback } },
+                    originKey: `quota-fallback:${inboundMessageId}`,
+                })) {
+                    await this.sendResponse(tenantId, fallback, normalizedMsg, undefined, 'fallback');
+                    await this.saveAiMessage(tenantId, conversation.id, fallback, channelType);
+                }
             }
             this.eventEmitter.emit('billing.quota.ai_messages_exhausted', { tenantId });
             return;
@@ -1089,7 +1214,6 @@ export class ConversationsService {
             personaResolution,
         );
         this.logger.log(`[Pipeline] Generating AI response...`);
-        const turnScope = servedAgentAuthority(tenantId, schemaName, personaResolution);
         // Collected here, dispatched below with the bubbles: the link and the
         // pictures are effects of this same turn and cannot be split across two
         // delivery paths. A resumed reply produced no new effects.
@@ -1845,7 +1969,12 @@ export class ConversationsService {
         return currentMinutes >= (startH * 60 + startM) && currentMinutes <= (endH * 60 + endM);
     }
 
-    private async sendAfterHoursMessage(tenantId: string, msg: NormalizedMessage, config: TenantConfig, afterHoursText?: string) {
+    private async sendAfterHoursMessage(tenantId: string, msg: NormalizedMessage, config: TenantConfig,
+        afterHoursText?: string,
+        /** The thread this notice belongs to, so the durable lane can bind it. */
+        conversation?: any,
+        /** The agent whose configured notice this is. */
+        operationalScope?: ServedAgentAuthority) {
         const rawText = afterHoursText || config.hours?.afterHoursMessage;
         if (!rawText) return;
 
@@ -1878,6 +2007,23 @@ export class ConversationsService {
             // thing stopping a redelivery from sending the notice twice.
             dedupeId: outboundDedupeId(msg, 'after-hours'),
         };
+
+        // The SAME identity the jobId carried, now as a row that survives a
+        // restart. This branch answers and returns before the inbound is
+        // stored, so there is no message to name as the origin and no
+        // `external_id` dedupe behind it either — the BullMQ jobId was the only
+        // thing standing between a redelivery and a second notice.
+        //
+        // No jobId means no stable identity, and then the lane is NOT taken: a
+        // key that is constant because its ingredients are missing would merge
+        // every customer's after-hours notice into one row and send exactly one
+        // of them. Un-deduped through the queue is what this does today, and
+        // worse is not an improvement.
+        if (conversation && outbound.dedupeId && await this.replyOnceThroughOutbox({
+            tenantId, conversation, msg, operationalScope,
+            item: { kind: 'text', payload: { text } },
+            originKey: `after-hours:${outbound.dedupeId}`,
+        })) return;
 
         const accessToken = await this.resolveAccessToken(tenantId, msg.channelType, msg.channelAccountId);
         await this.outboundQueue.enqueue(outbound, accessToken);

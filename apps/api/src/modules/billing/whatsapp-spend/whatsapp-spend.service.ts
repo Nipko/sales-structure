@@ -581,7 +581,11 @@ export class WhatsappSpendService {
      */
     async sweepTransmissions(schema: string, limit = 200) {
         return this.prisma.transactionInTenantSchema(schema, async query =>
-            sweepTransmissionLeases(query as SpendQuery, schema, limit));
+            // The reservation lease is renewed with the transmission right. A
+            // worker that died holding one almost certainly died holding both,
+            // and recovering only the first meant the NEXT step of the same
+            // maintenance pass expired the reservation and undid the recovery.
+            sweepTransmissionLeases(query as SpendQuery, schema, limit, this.LEASE_SECONDS));
     }
 
     /**

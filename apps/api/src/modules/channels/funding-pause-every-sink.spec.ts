@@ -130,29 +130,79 @@ describe('a number that Meta will not bill stops sending, from every road', () =
             { by: 'provider_accepted' });
     });
 
-    it('has all four sinks reading the refusal, and a way out that needs no send', () => {
-        // Structural, and deliberately so: the alternative is discovering in
-        // production that the road a particular tenant's messages take is the
-        // one nobody connected. Each of these four can put a WhatsApp message
-        // on a phone, so each of them can meet a 131042.
+    /**
+     * ═══ THE TWO KINDS OF ROAD, AND WHERE EACH IS PROVEN ═══
+     *
+     * `131042` reaches us two ways, and only one of them is a send:
+     *
+     *   · as the ANSWER to a POST. Three sinks make that POST, and each reads
+     *     the refusal itself because each holds the error object;
+     *   · as a STATUS WEBHOOK minutes later, on a message that was accepted and
+     *     then failed — which is the usual shape, because eligibility is
+     *     checked at delivery. That road used to have a private copy of the
+     *     rule inside the API's webhook service, which is exactly why the
+     *     DEPLOYED worker's ingress had no copy at all. It now lives once, in
+     *     the ledger, where every ingress reaches it.
+     *
+     * This list is the map; the tests it names are the evidence. A `toContain`
+     * on a source file would pass for a file that merely mentions the word —
+     * which is the failure that kept the deployed receipt road disconnected for
+     * weeks while a test said it was fine.
+     */
+    it('names, for every road a 131042 can arrive by, the test that exercises it', () => {
         const root = path.join(__dirname, '..');
-        for (const [relative, needle] of [
-            ['channels/outbound-queue.processor.ts', 'observeFunding'],
-            ['whatsapp/services/whatsapp-messaging.service.ts', 'observeFunding'],
-            ['agent-console/agent-console.service.ts', 'observeFunding'],
-            ['whatsapp/services/whatsapp-webhook.service.ts', 'observeFunding'],
-        ] as const) {
-            expect(fs.readFileSync(path.join(root, relative), 'utf8')).toContain(needle);
+        const roads: Array<[string, string]> = [
+            // The three that POST and read the answer.
+            ['channels/outbound-queue.processor.ts',
+                'channels/funding-pause-every-sink.spec.ts'],
+            ['whatsapp/services/whatsapp-messaging.service.ts',
+                'channels/funding-pause-every-sink.spec.ts'],
+            ['agent-console/agent-console.service.ts',
+                'channels/funding-pause-every-sink.spec.ts'],
+            // And the late status, whose pause is now the ledger's and is
+            // proven against real PostgreSQL together with the receipt it
+            // arrives on.
+            ['billing/whatsapp-spend/whatsapp-spend.service.ts',
+                'billing/whatsapp-spend/receipt-inbox.postgres.spec.ts'],
+        ];
+        for (const [road, proof] of roads) {
+            expect({ road, exists: fs.existsSync(path.join(root, road)) })
+                .toEqual({ road, exists: true });
+            expect({ proof, exists: fs.existsSync(path.join(root, proof)) })
+                .toEqual({ proof, exists: true });
         }
+    });
 
-        // ── AND THE DEADLOCK ────────────────────────────────────────────────
+    it('has exactly one implementation of the funding rule', () => {
+        // It had two. The API's webhook service carried a private copy that
+        // worked, so nobody noticed the deployed worker's ingress had none —
+        // and a rule in two places is a rule in the wrong number of places.
+        const root = path.join(__dirname, '..');
+        const owners = [
+            'channels/account-pause-store.ts',
+            'billing/whatsapp-spend/whatsapp-spend.service.ts',
+        ];
+        const mustNotDecide = ['whatsapp/services/whatsapp-webhook.service.ts',
+            'internal/internal.controller.ts'];
+        for (const owner of owners) {
+            expect({ owner, decides: fs.readFileSync(path.join(root, owner), 'utf8')
+                .includes('observeFunding') }).toEqual({ owner, decides: true });
+        }
+        for (const ingress of mustNotDecide) {
+            expect({ ingress, decides: fs.readFileSync(path.join(root, ingress), 'utf8')
+                .includes('observeFunding') }).toEqual({ ingress, decides: false });
+        }
+    });
+
+    it('offers a way out that does not need the send the pause forbids', () => {
+        // ── THE DEADLOCK ────────────────────────────────────────────────────
         //
         // A pause lifts by itself when Meta accepts a message. A paused number
         // sends nothing, so that proof can never arrive on its own: without an
         // operator's word the only way out would be the POST the pause exists
         // to prevent.
-        const controller = fs.readFileSync(
-            path.join(root, 'billing/whatsapp-spend/whatsapp-spend.controller.ts'), 'utf8');
+        const controller = fs.readFileSync(path.join(__dirname, '..',
+            'billing/whatsapp-spend/whatsapp-spend.controller.ts'), 'utf8');
         expect(controller).toMatch(/pauses\/:channelAccountId\/resume/);
         expect(controller).toContain("by: 'operator'");
     });

@@ -510,14 +510,25 @@ export class WhatsappSendAdmissionService {
             // adopts a perfectly good `held` row. Both were being told to send.
             const claim = await this.spend.claimTransmission(request.schema, effectKey);
             if (claim.kind !== 'granted') {
+                // Three refusals, said apart, because an operator reading the
+                // log has to be able to tell "wait" from "never send this
+                // again". `uncertain` is the one that matters most: a previous
+                // attempt died with the request already started, so nobody can
+                // say whether Meta processed it and a second POST is exactly
+                // the duplicate delivery this mechanism exists to prevent.
                 const detail = claim.kind === 'held_by_other'
                     ? `another attempt holds the send right until ${claim.expiresAt?.toISOString() ?? 'soon'}`
-                    : `the effect is ${claim.state ?? 'gone'} and no further attempt is authorised`;
+                    : claim.kind === 'uncertain'
+                        ? 'a previous attempt was already in flight when it died: whether Meta '
+                            + 'processed it cannot be known, so this effect goes to '
+                            + 'reconciliation and is never sent again'
+                        : `the effect is ${claim.state ?? 'gone'} and no further attempt is authorised`;
                 this.logger.log(`[Spend] not transmitting ${request.producer}: ${detail}`);
                 return Object.freeze({
                     permitted: false, effectKey, reservationId: result.reservation.id, enforcement,
                     pressure: result.pressure,
-                    block: spendBlock('transmission_held_elsewhere', detail),
+                    block: spendBlock(claim.kind === 'uncertain'
+                        ? 'transmission_outcome_unknown' : 'transmission_held_elsewhere', detail),
                 });
             }
 

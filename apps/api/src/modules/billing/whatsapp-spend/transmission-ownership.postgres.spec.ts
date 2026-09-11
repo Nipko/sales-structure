@@ -6,7 +6,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { WhatsappSpendService } from './whatsapp-spend.service';
 import {
     claimTransmission, markTransmissionInFlight, releaseTransmission,
-    settleReservation, sweepTransmissionLeases, type SpendQuery,
+    settleReservation, sweepExpiredLeases, sweepTransmissionLeases, type SpendQuery,
 } from './spend-ledger';
 
 /**
@@ -211,6 +211,163 @@ integration('the right to transmit', () => {
             if (claim.kind !== 'granted') throw new Error('expected a grant');
             await markTransmissionInFlight(query, schema, claim.grant);
             expect(await releaseTransmission(query, schema, claim.grant)).toBe(false);
+        });
+
+        // ═══ THE WINDOW BETWEEN TWO SWEEPS ═══
+        //
+        // The test above proves the SWEEPER handles an expired `in_flight`
+        // correctly — and it proves it by sweeping first. The sweeper runs every
+        // ten minutes. In the minutes before it arrives, a worker picking the
+        // job up asks `claimTransmission` directly, and the predicate used to
+        // recapture `claimed` OR `in_flight` once the lease had run out.
+        //
+        // Those are opposite situations. `claimed` is provably before the
+        // network; `in_flight` is a request that had already begun and whose
+        // answer may simply have been lost. Granting a second token there is the
+        // duplicate delivery the whole mechanism exists to prevent: the customer
+        // reads the same message twice and the business pays for both.
+        it('refuses a DIRECT claim on an expired in-flight, with no sweep first', async () => {
+            const effectKey = await reserved();
+            const first = await claimTransmission(query, schema, { effectKey, leaseSeconds: -1 });
+            if (first.kind !== 'granted') throw new Error('expected a grant');
+            expect(await markTransmissionInFlight(query, schema, first.grant)).toBe(true);
+
+            // No sweep. Exactly what a second worker does between two passes.
+            const second = await claimTransmission(query, schema, { effectKey, leaseSeconds: 900 });
+            expect(second.kind).toBe('uncertain');
+
+            // And the claim RESOLVED it rather than leaving it for the sweeper:
+            // otherwise the next caller asks the same question, gets the same
+            // answer, and an unknowable effect looks retryable for ever.
+            const after = await row(effectKey);
+            expect({ state: after.state, transmit: after.transmit_state })
+                .toEqual({ state: 'indeterminate', transmit: 'resolved' });
+        });
+
+        it('still refuses on the attempt after that, having said so once', async () => {
+            const effectKey = await reserved();
+            const first = await claimTransmission(query, schema, { effectKey, leaseSeconds: -1 });
+            if (first.kind !== 'granted') throw new Error('expected a grant');
+            await markTransmissionInFlight(query, schema, first.grant);
+            await claimTransmission(query, schema, { effectKey, leaseSeconds: 900 });
+
+            const third = await claimTransmission(query, schema, { effectKey, leaseSeconds: 900 });
+            expect(third.kind).toBe('not_transmittable');
+        });
+
+        it('two workers racing a dead in-flight both come away with nothing', async () => {
+            // On two real connections, so the statement — not a JavaScript
+            // guard — is what decides it.
+            const effectKey = await reserved();
+            const first = await claimTransmission(query, schema, { effectKey, leaseSeconds: -1 });
+            if (first.kind !== 'granted') throw new Error('expected a grant');
+            await markTransmissionInFlight(query, schema, first.grant);
+
+            const other = new Client({ connectionString: connection });
+            await other.connect();
+            try {
+                const otherQuery: SpendQuery = async <R = any[]>(
+                    sql: string, params: any[] = []): Promise<R> =>
+                    (await other.query(sql, params)).rows as any;
+                const [a, b] = await Promise.all([
+                    claimTransmission(query, schema, { effectKey, leaseSeconds: 900 }),
+                    claimTransmission(otherQuery, schema, { effectKey, leaseSeconds: 900 }),
+                ]);
+                expect([a.kind, b.kind].filter(kind => kind === 'granted')).toEqual([]);
+            } finally { await other.end(); }
+        });
+
+        it('a sweeper racing a claimer still produces no second POST', async () => {
+            const effectKey = await reserved();
+            const first = await claimTransmission(query, schema, { effectKey, leaseSeconds: -1 });
+            if (first.kind !== 'granted') throw new Error('expected a grant');
+            await markTransmissionInFlight(query, schema, first.grant);
+
+            const other = new Client({ connectionString: connection });
+            await other.connect();
+            try {
+                const otherQuery: SpendQuery = async <R = any[]>(
+                    sql: string, params: any[] = []): Promise<R> =>
+                    (await other.query(sql, params)).rows as any;
+                const [claim] = await Promise.all([
+                    claimTransmission(query, schema, { effectKey, leaseSeconds: 900 }),
+                    sweepTransmissionLeases(otherQuery, schema),
+                ]);
+                expect(claim.kind).not.toBe('granted');
+                expect((await row(effectKey)).state).toBe('indeterminate');
+            } finally { await other.end(); }
+        });
+    });
+
+    // ═══ THE RECOVERY THE SAME PASS USED TO UNDO ═══
+    //
+    // A worker that died holding the send right almost certainly died holding
+    // an expiring RESERVATION lease too — they are taken seconds apart. The
+    // maintenance pass recovered the first (`claimed → idle`, correct: nothing
+    // provably went out) and then, in its very next step, expired the second,
+    // turning the row into `indeterminate`.
+    //
+    // So the recovery never survived to be used: the message was not re-sent,
+    // and the effect was reported as money nobody could account for — the exact
+    // opposite of what had just been PROVEN about it. The old test called the
+    // first helper alone, which is why it looked right.
+    describe('the whole maintenance pass, not one helper of it', () => {
+        it('leaves a recovered effect sendable, not uncertain', async () => {
+            const effectKey = await reserved();
+            const claim = await claimTransmission(query, schema, { effectKey, leaseSeconds: -1 });
+            if (claim.kind !== 'granted') throw new Error('expected a grant');
+            // The reservation lease expired too, which is the normal case: the
+            // worker held both and died with both.
+            await q(`UPDATE "${schema}".whatsapp_spend_reservations
+                        SET lease_expires_at = clock_timestamp() - interval '1 hour'
+                      WHERE effect_key = $1`, [effectKey]);
+
+            // The pass, in the order the service runs it.
+            const swept = await sweepTransmissionLeases(query, schema, 200, 900);
+            expect(swept.recovered).toEqual([effectKey]);
+            const expired = await sweepExpiredLeases(query, schema);
+            expect(expired).not.toContain(effectKey);
+
+            const after = await row(effectKey);
+            expect({ state: after.state, transmit: after.transmit_state })
+                .toEqual({ state: 'held', transmit: 'idle' });
+            // And a worker can actually take it, which is the whole point of
+            // having recovered it.
+            expect((await claimTransmission(query, schema, { effectKey, leaseSeconds: 900 })).kind)
+                .toBe('granted');
+        });
+
+        it('does not lengthen a lease that was still comfortably alive', async () => {
+            // `GREATEST`, not an assignment. Recovering a transmission right
+            // must not silently extend an effect's whole authorisation window.
+            const effectKey = await reserved();
+            const claim = await claimTransmission(query, schema, { effectKey, leaseSeconds: -1 });
+            if (claim.kind !== 'granted') throw new Error('expected a grant');
+            await q(`UPDATE "${schema}".whatsapp_spend_reservations
+                        SET lease_expires_at = clock_timestamp() + interval '6 hours'
+                      WHERE effect_key = $1`, [effectKey]);
+            const before = (await q(`SELECT lease_expires_at FROM
+                "${schema}".whatsapp_spend_reservations WHERE effect_key = $1`, [effectKey]))[0];
+
+            await sweepTransmissionLeases(query, schema, 200, 900);
+
+            const after = (await q(`SELECT lease_expires_at FROM
+                "${schema}".whatsapp_spend_reservations WHERE effect_key = $1`, [effectKey]))[0];
+            expect(new Date(after.lease_expires_at).getTime())
+                .toBe(new Date(before.lease_expires_at).getTime());
+        });
+
+        it('still expires a reservation nobody ever claimed', async () => {
+            // The recovery must not become a way of keeping dead rows alive: an
+            // effect whose lease ran out with no transmission right ever taken
+            // is exposure, and saying so is the sweeper's job.
+            const effectKey = await reserved();
+            await q(`UPDATE "${schema}".whatsapp_spend_reservations
+                        SET lease_expires_at = clock_timestamp() - interval '1 hour'
+                      WHERE effect_key = $1`, [effectKey]);
+            await sweepTransmissionLeases(query, schema, 200, 900);
+            expect(await sweepExpiredLeases(query, schema)).toContain(effectKey);
+            expect((await row(effectKey)).state).toBe('indeterminate');
         });
     });
 

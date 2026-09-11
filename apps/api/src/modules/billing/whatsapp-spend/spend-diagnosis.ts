@@ -24,6 +24,7 @@ export const SPEND_BLOCK_CODES = [
     'duplicate_recent_send',
     'effect_already_resolved',
     'transmission_held_elsewhere',
+    'transmission_outcome_unknown',
     'task_budget_exhausted',
     'account_paused',
     'effect_identity_missing',
@@ -108,6 +109,16 @@ Object.freeze({
         resolution: 'Another attempt already holds the right to send this message, so this one '
             + 'stood down. Nothing is lost: the message goes out once, from whichever attempt '
             + 'claimed it.',
+    },
+    transmission_outcome_unknown: {
+        scope: 'contact',
+        // The one refusal that is a DECISION not to retry. A previous attempt
+        // died with the request already started; whether Meta processed it
+        // cannot be established from here, and sending again would be the
+        // duplicate delivery the whole transmission right exists to prevent.
+        resolution: 'Un intento anterior ya había empezado la petición cuando se cayó. Nadie '
+            + 'puede saber si Meta la procesó, así que este mensaje NO se vuelve a enviar: el '
+            + 'efecto queda en conciliación y una persona decide si llegó.',
     },
     effect_already_resolved: {
         scope: 'contact',

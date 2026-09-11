@@ -963,19 +963,43 @@ export type TransmissionClaim =
     | { readonly kind: 'granted'; readonly grant: TransmissionGrant }
     /** Somebody else holds a live right. This caller must not send. */
     | { readonly kind: 'held_by_other'; readonly expiresAt: Date | null }
+    /**
+     * A previous attempt died with the request already started.
+     *
+     * Nobody can say whether Meta processed it, so nobody may send it again.
+     * The effect is moved to `indeterminate` by this very call and goes to
+     * reconciliation — never to a second POST.
+     */
+    | { readonly kind: 'uncertain'; readonly since: Date | null }
     /** The effect is over, or was never reservable. Nothing to transmit. */
     | { readonly kind: 'not_transmittable'; readonly state: ReservationState | null };
 
 /**
- * Take the exclusive right to POST this effect, or discover somebody has it.
+ * Take the exclusive right to POST this effect, or discover why you may not.
+ *
+ * ═══ THE ONE THING THIS MUST NEVER DO ═══
+ *
+ * Hand a second POST to an effect whose first request had already started.
+ *
+ * The predicate used to recapture `claimed` OR `in_flight` once the lease ran
+ * out, and those are opposite situations:
+ *
+ *   · `claimed` expired — the worker took the right and died BEFORE touching
+ *     the network. `markTransmissionInFlight` commits before the fetch
+ *     precisely so this is PROVABLE. Recovering it is correct, and it is the
+ *     only recovery that puts a message back on its way to a person.
+ *   · `in_flight` expired — the request had begun. Meta may have processed it,
+ *     answered, and had the answer lost. Granting a new token here is the
+ *     duplicate delivery this entire mechanism exists to prevent, and the
+ *     customer sees the same message twice while the business pays for both.
+ *
+ * The old test passed because it ran the sweeper first, which moved the row out
+ * of `in_flight` before anyone tried to claim it. Between two sweeps — which is
+ * a window minutes wide — a direct claim took the right and sent again.
  *
  * One statement, so the check and the take cannot be separated by another
- * worker. The predicate is the whole rule: the reservation must still be
- * `held`, and the transmission right must be free — never taken, or taken by
- * somebody whose lease has run out.
- *
- * `clock_timestamp()` rather than `now()`: `now()` freezes at BEGIN, so a
- * transaction that has been open a while would read an expired lease as live
+ * worker. `clock_timestamp()` rather than `now()`: `now()` freezes at BEGIN, so
+ * a transaction that has been open a while would read an expired lease as live
  * and refuse work it should do.
  */
 export async function claimTransmission(query: SpendQuery, schema: string, input: {
@@ -993,8 +1017,10 @@ export async function claimTransmission(query: SpendQuery, schema: string, input
                 updated_at = clock_timestamp()
           WHERE effect_key = $1
             AND state = 'held'
+            -- Free, or abandoned BEFORE the network was touched. in_flight is
+            -- deliberately absent: see the header of this function.
             AND (transmit_state = 'idle'
-                 OR (transmit_state IN ('claimed','in_flight')
+                 OR (transmit_state = 'claimed'
                      AND transmit_expires_at < clock_timestamp()))
          RETURNING transmit_token, transmit_expires_at`,
         [input.effectKey, input.leaseSeconds]);
@@ -1010,8 +1036,9 @@ export async function claimTransmission(query: SpendQuery, schema: string, input
         });
     }
 
-    // Nothing updated. Say WHY, because "somebody is sending it" and "it is
-    // already over" are different things to the caller and to an operator.
+    // Nothing updated. Say WHY, because "somebody is sending it", "somebody
+    // already sent it and we do not know what happened" and "it is over" are
+    // three different things to the caller and to an operator.
     const [current] = await query<any[]>(
         `SELECT state, transmit_state, transmit_expires_at
            FROM "${schema}".whatsapp_spend_reservations WHERE effect_key = $1`,
@@ -1022,10 +1049,28 @@ export async function claimTransmission(query: SpendQuery, schema: string, input
             kind: 'not_transmittable' as const, state: String(current.state) as ReservationState,
         });
     }
-    return Object.freeze({
-        kind: 'held_by_other' as const,
-        expiresAt: current.transmit_expires_at ? new Date(current.transmit_expires_at) : null,
-    });
+    const expiresAt = current.transmit_expires_at
+        ? new Date(current.transmit_expires_at) : null;
+    if (String(current.transmit_state) === 'in_flight'
+        && expiresAt && expiresAt.getTime() < Date.now()) {
+        // Resolved here and now rather than left for the sweeper. The caller is
+        // about to decide what to do with this effect, and leaving it `held`
+        // means the NEXT caller asks the same question and gets the same answer
+        // — a spin that keeps an unknowable effect looking retryable.
+        await query(
+            `UPDATE "${schema}".whatsapp_spend_reservations
+                SET state = 'indeterminate',
+                    reason = COALESCE(reason, 'in_flight_lease_expired'),
+                    remote_state = COALESCE(remote_state, 'unknown'),
+                    transmit_state = 'resolved', transmit_token = NULL,
+                    transmit_expires_at = NULL,
+                    updated_at = clock_timestamp()
+              WHERE effect_key = $1 AND state = 'held' AND transmit_state = 'in_flight'
+                AND transmit_expires_at < clock_timestamp()`,
+            [input.effectKey]);
+        return Object.freeze({ kind: 'uncertain' as const, since: expiresAt });
+    }
+    return Object.freeze({ kind: 'held_by_other' as const, expiresAt });
 }
 
 /**
@@ -1074,22 +1119,42 @@ export async function releaseTransmission(query: SpendQuery, schema: string,
  * still owed to the customer. `in_flight` becomes `indeterminate` — the request
  * had begun, and a blind retry is the duplicate.
  *
+ * ── AND THE RESERVATION LEASE GOES WITH IT ──────────────────────────────────
+ *
+ * A worker that died holding the send right almost certainly died holding an
+ * expiring RESERVATION lease too — they were taken seconds apart. Recovering
+ * only the first left the row `held` with a lease already in the past, and the
+ * very next step of the same maintenance pass (`sweepExpiredLeases`) turned it
+ * into `indeterminate`. The recovery was undone before anything could use it:
+ * the message was never re-sent, and the effect was reported as exposure nobody
+ * could account for — the exact opposite of what had just been proven about it.
+ *
+ * So the two leases are harmonised in one statement. `GREATEST` rather than an
+ * assignment, so a row whose reservation lease is still comfortably in the
+ * future is not shortened by being recovered.
+ *
  * Returns both lists, because an operator watching this needs to see them apart:
  * a growing `recovered` is workers dying early, and a growing `uncertain` is
  * money and messages nobody can account for.
  */
-export async function sweepTransmissionLeases(query: SpendQuery, schema: string, limit = 200):
-    Promise<{ readonly recovered: readonly string[]; readonly uncertain: readonly string[] }> {
+export async function sweepTransmissionLeases(
+    query: SpendQuery, schema: string, limit = 200, recoveredLeaseSeconds = 900,
+): Promise<{ readonly recovered: readonly string[]; readonly uncertain: readonly string[] }> {
     assertSchema(schema);
     const recovered = await query<any[]>(
         `UPDATE "${schema}".whatsapp_spend_reservations
             SET transmit_token = NULL, transmit_state = 'idle', transmit_expires_at = NULL,
+                -- The half that was missing. Without it the next step of this
+                -- same pass expires the reservation and the recovery is lost.
+                lease_expires_at = GREATEST(lease_expires_at,
+                    clock_timestamp() + make_interval(secs => $1::double precision)),
                 updated_at = clock_timestamp()
           WHERE effect_key IN (
                 SELECT effect_key FROM "${schema}".whatsapp_spend_reservations
                  WHERE transmit_state = 'claimed' AND transmit_expires_at < clock_timestamp()
                  ORDER BY transmit_expires_at LIMIT ${Math.max(1, Math.min(1000, limit))})
-         RETURNING effect_key`);
+         RETURNING effect_key`,
+        [Math.max(1, Math.trunc(recoveredLeaseSeconds))]);
     const uncertain = await query<any[]>(
         `UPDATE "${schema}".whatsapp_spend_reservations
             SET state = 'indeterminate',

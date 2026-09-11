@@ -15,6 +15,9 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { ChannelGatewayService } from '../channels/channel-gateway.service';
 import { ChannelTokenService } from '../channels/channel-token.service';
+import { ProactiveDispatchService, effectIsDurable } from '../channels/proactive-dispatch.service';
+import type { DispatchItem } from '../channels/agent-dispatch-outbox';
+import type { ChannelType } from '@parallext/shared';
 import {
     WhatsappSendAdmissionService, fromSendContext, type Admission,
 } from '../billing/whatsapp-spend/whatsapp-send-admission.service';
@@ -147,6 +150,18 @@ export class AgentConsoleService {
         // not watch each reply disappear.
         private pauses: AccountPauseStore,
         @Optional() private widgetMessages?: WidgetMessageStore,
+        /**
+         * The durable lane, for the one send in this file that reaches a
+         * customer's channel.
+         *
+         * Declared after the optional store because a required parameter cannot
+         * follow an optional one, and moving `widgetMessages` would change the
+         * position of every existing construction site. It is provided by the
+         * module; when it is absent the reply keeps the inline path it has
+         * always had, which is what the suites that build this service by hand
+         * exercise.
+         */
+        @Optional() private dispatch?: ProactiveDispatchService,
     ) { }
 
     /**
@@ -311,7 +326,20 @@ export class AgentConsoleService {
             // refused is written `failed`, and without this column the console
             // could only warn at the moment of sending — one reload and the
             // reply that never left looked ordinary again.
-            `SELECT id, content_text as content, content_type as type, direction as sender, status, created_at, metadata
+            // ── AND THE ATTACHMENT, WHICHEVER PLACE IT WAS RECORDED IN ──────
+            //
+            // The console renders an attachment from `metadata.mediaUrl`, which
+            // is where THIS service writes it. The durable lane writes the
+            // canonical `media_url` column instead — so every picture the agent
+            // or the AI sent through the outbox arrived in the timeline as an
+            // empty bubble. Filled in from the column only when the metadata
+            // does not already say: a producer that recorded it stays the
+            // authority on its own presentation.
+            `SELECT id, content_text as content, content_type as type, direction as sender, status, created_at,
+              CASE WHEN media_url IS NOT NULL AND media_url <> ''
+                        AND NOT (COALESCE(metadata, '{}'::jsonb) ? 'mediaUrl')
+                   THEN COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('mediaUrl', media_url)
+                   ELSE metadata END AS metadata
        FROM messages
        WHERE conversation_id = $1::uuid ${beforeClause}
        ORDER BY created_at DESC
@@ -399,6 +427,18 @@ export class AgentConsoleService {
         mediaUrl?: string,
         caption?: string,
         filename?: string,
+        /**
+         * What makes this press of Send *this* press.
+         *
+         * Absent today — nothing upstream supplies one — and then the reply
+         * gets a fresh identity per invocation. That is the honest default for
+         * a console: two presses are two messages, and deriving the key from
+         * the words would silently swallow an agent's second "ok". The cost is
+         * stated rather than hidden: an HTTP retry of the same press is a
+         * second effect, exactly as it is today, until the console client
+         * starts sending a key here.
+         */
+        idempotencyKey?: string,
     ): Promise<ConversationMessage> {
         const schemaName = await this.getTenantSchema(tenantId);
         if (!schemaName) throw new Error('Tenant not found');
@@ -436,6 +476,36 @@ export class AgentConsoleService {
               WHERE id = $1::uuid`,
             [conversationId],
         );
+
+        // ── THE DURABLE LANE, WHEN THE CHANNEL CAN ACTUALLY CARRY IT ────────
+        //
+        // Everything below this block is the inline path: the row is written
+        // here, the POST happens on this stack, and a restart between the two
+        // loses the reply or repeats it. That path stays only for a channel
+        // with no strict transport — one the lane could commit a row for and
+        // then never deliver, which would be worse than sending it inline.
+        //
+        // Asked BEFORE the history row is written, because on the durable path
+        // the row is written by `prepare`, inside the same transaction as the
+        // outbox row. Two independent writes is precisely the pair that could
+        // half-happen.
+        const durable = await this.replyThroughOutbox({
+            tenantId, schemaName, conversationId, agentId, idempotencyKey,
+            item: isMedia
+                ? { kind: 'media', payload: {
+                    mediaType: ['image', 'document', 'audio', 'video'].includes(contentType)
+                        ? contentType : 'image',
+                    mediaUrl: this.absoluteMediaUrl(mediaUrl),
+                    ...(contentText ? { caption: contentText } : {}),
+                    ...(filename ? { filename } : {}),
+                } }
+                : { kind: 'text', payload: { text: contentText } },
+            // Kept so the console timeline, which renders an attachment from
+            // `metadata.mediaUrl`, sees what it expects on a row the outbox
+            // wrote with only the `media_url` column.
+            presentation: isMedia ? JSON.parse(metadataJson!) : null,
+        });
+        if (durable) return durable;
 
         // 'pending', not 'delivered'. This row was written as delivered BEFORE
         // anything was sent, and the send below is inline in a catch that only
@@ -601,6 +671,142 @@ export class AgentConsoleService {
             sender: 'agent',
             timestamp: msg.created_at,
         };
+    }
+
+    /**
+     * A person's reply, committed before anything leaves the building.
+     *
+     * `null` means "not this one, keep the inline path": no lane wired in, a
+     * channel whose adapter cannot carry a durable item, or a conversation row
+     * that does not name the four things a binding is made of. Every one of
+     * those is a case where committing a row would produce an effect nothing
+     * could ever deliver, which is worse than the inline POST it replaces.
+     *
+     * ── WHY THIS IS RECORDED AS `proactive`, WHICH IT IS NOT ────────────────
+     *
+     * A console agent answering somebody who just wrote IS a service reply
+     * inside the 24-hour window, and `inbound_reply` is what it should say. It
+     * cannot, and the reason is in the outbox rather than here: the origin
+     * column IS the identity — `UNIQUE (inbound_message_id, item_index)` — so
+     * naming the customer's message makes every reply to it ONE effect. The
+     * agent's second sentence would come back `already_present` and never be
+     * sent, and a reply on a thread the AI already answered would collide with
+     * the AI's own batch and be refused outright. Both are pinned in
+     * `agent-console-durable-lane.postgres.spec.ts`.
+     *
+     * So the origin is this reply's own identity and the kind is `proactive`,
+     * which buys the durability and costs the billing classification: the price
+     * is still read from the conversation's service window, but the row is
+     * subject to a soft stop meant for campaigns. Separating "what caused this"
+     * from "what identifies this" is a change in the outbox, not here.
+     */
+    private async replyThroughOutbox(input: {
+        tenantId: string; schemaName: string; conversationId: string; agentId: string;
+        item: DispatchItem; presentation: Record<string, any> | null;
+        idempotencyKey?: string;
+    }): Promise<ConversationMessage | null> {
+        if (!this.dispatch) return null;
+        const [conv] = await this.prisma.executeInTenantSchema<any[]>(input.schemaName,
+            `SELECT c.channel_type, c.channel_account_id, c.contact_id,
+                    COALESCE(ct.phone, ct.external_id) AS recipient
+               FROM conversations c
+               LEFT JOIN contacts ct ON ct.id = c.contact_id
+              WHERE c.id = $1::uuid LIMIT 1`, [input.conversationId]);
+        const channelType = String(conv?.channel_type ?? '');
+        const channelAccountId = String(conv?.channel_account_id ?? '').trim();
+        const contactId = String(conv?.contact_id ?? '').trim();
+        const recipient = String(conv?.recipient ?? '').trim();
+        if (!channelType || !channelAccountId || !contactId || !recipient) return null;
+        // The adapter has to be able to send exactly one effect and say what
+        // happened. Without that there is nothing to hand a committed row to.
+        if (!this.channelGateway.getStrictTransport?.(channelType as ChannelType)) return null;
+
+        const operationalScope = await this.dispatch.operatorAuthority(input.schemaName, {
+            tenantId: input.tenantId, userId: input.agentId, surface: 'agent_console',
+            channelType, channelAccountId,
+        });
+        if (!operationalScope) {
+            // Deactivated, demoted, moved or gone. There is nobody to attribute
+            // the message to, and the agent has to be told rather than watch it
+            // vanish. Refused here, before a row exists.
+            throw new ForbiddenException('Esta cuenta ya no puede enviar desde esta conexión.');
+        }
+
+        const result = await this.dispatch.send(input.tenantId, {
+            originKey: input.idempotencyKey
+                ? `agent_console:${input.conversationId}:${input.idempotencyKey}`
+                : `agent_console:${input.conversationId}:${randomUUID()}`,
+            conversationId: input.conversationId,
+            contactId, channelType, channelAccountId, recipient,
+            items: [input.item],
+            operationalScope,
+        });
+        if (!effectIsDurable(result)) {
+            // Nothing was committed. Saying so is the whole point: a reply that
+            // silently did not leave is worse than one that visibly did not,
+            // because the agent goes on believing the customer was answered.
+            this.logger.error(`[Console] reply for ${input.conversationId} was ${result.kind}: `
+                + `${(result as any).reason}`);
+            throw new BadRequestException(
+                `La respuesta no se registró (${result.kind}): ${(result as any).reason}`);
+        }
+
+        // The history row `prepare` wrote, read back through the outbox row
+        // rather than by reconstructing its external id: the id belongs to the
+        // outbox and a copy of its format here is a second place to get wrong.
+        const [written] = await this.prisma.executeInTenantSchema<any[]>(input.schemaName,
+            `SELECT m.id, m.content_text, m.content_type, m.status, m.created_at, m.metadata
+               FROM agent_dispatch_outbox o
+               JOIN messages m ON m.id = o.message_id
+              WHERE o.inbound_message_id = $1::uuid AND o.item_index = 0`,
+            [(result as any).originId]);
+        if (!written) {
+            // The effect exists and will be delivered; only the row this method
+            // wanted to hand back could not be read. Never a second send.
+            throw new BadRequestException(
+                'La respuesta quedó registrada pero no se pudo leer; recargá la conversación.');
+        }
+        if (input.presentation) {
+            // The console timeline renders an attachment from `metadata.mediaUrl`
+            // and the outbox records the canonical `media_url` column. Merged
+            // after the commit, so a failure here costs the thumbnail and never
+            // the message.
+            await this.prisma.executeInTenantSchema(input.schemaName,
+                `UPDATE messages SET metadata = COALESCE(metadata,'{}'::jsonb) || $2::jsonb
+                  WHERE id = $1::uuid AND status <> 'redacted'`,
+                [written.id, JSON.stringify(input.presentation)],
+            ).catch((error: any) => this.logger.warn(
+                `[Console] media presentation not recorded for ${written.id}: ${error?.message}`));
+        }
+
+        // Parity with the inline path: the agent just replied, so a pending AI
+        // draft for this conversation is resolved, and their first response is
+        // timed from here.
+        this.prisma.executeInTenantSchema(input.schemaName,
+            `UPDATE conversations SET metadata = metadata - 'pendingDraft'
+              WHERE id = $1::uuid AND metadata ? 'pendingDraft'`,
+            [input.conversationId],
+        ).catch(() => { /* non-blocking */ });
+        await this.prisma.executeInTenantSchema(input.schemaName,
+            `UPDATE conversation_assignments SET first_response_at = NOW()
+              WHERE conversation_id = $1::uuid AND agent_id = $2::uuid
+                AND first_response_at IS NULL AND resolved_at IS NULL`,
+            [input.conversationId, input.agentId],
+        ).catch((error: any) => this.logger.warn(
+            `Could not update first_response_at: ${error?.message}`));
+
+        return {
+            id: written.id,
+            // `pending` until a provider accepts the effect this row describes.
+            // The console shows it as not-yet-delivered, which is true, instead
+            // of the `sent` the inline path could only claim after the fact.
+            status: written.status,
+            content: written.content_text || '',
+            type: written.content_type as any,
+            sender: 'agent',
+            timestamp: written.created_at,
+            metadata: { ...(written.metadata || {}), ...(input.presentation || {}) },
+        } as ConversationMessage;
     }
 
     /** Suggest the single next best SALES action for a conversation (AI coach). */

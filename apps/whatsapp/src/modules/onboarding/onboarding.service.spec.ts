@@ -65,7 +65,11 @@ describe('OnboardingService Business Portfolio resolution', () => {
     jest.spyOn(service as any, 'storeEncryptedCredential').mockResolvedValue(undefined);
     jest.spyOn(service as any, 'resolveCredentialForCoverage').mockImplementation(
       async (_tenantId: string, _wabaId: string, accessToken: string, expiresInSeconds: number) => ({
-        accessToken, expiresInSeconds,
+        // `minted` says this flow OBTAINED the token rather than reading one
+        // out of the table. The real resolver can do either, and provenance is
+        // only written for the first — so a stub that omitted it silently
+        // turned every case here into the retain path.
+        accessToken, expiresInSeconds, minted: true,
       }),
     );
     jest.spyOn(service as any, 'syncTemplatesInBackground').mockImplementation(() => undefined);
@@ -199,26 +203,68 @@ describe('OnboardingService Business Portfolio resolution', () => {
       wabaId,
       'system-user-token',
     );
-    // ── AND WHOSE TOKEN IT IS, BESIDE THE TOKEN ─────────────────────────────
+    // ── AND WHOSE TOKEN IT IS — ONLY WHEN THAT IS ESTABLISHED ──────────────
     //
     // `credential_type` says `system_user_token`, and two different things live
     // under that name: a Business Integration System User minted for ONE client
     // through this very flow, and the provider's own System User token. Signing
-    // a tenant's message with the second attributes it to the provider and bills
-    // another portfolio.
+    // a tenant's message with the second attributes it to the provider and
+    // bills another portfolio. `channel-token.service.ts` refuses that, and
+    // could never fire because nothing wrote the evidence it reads.
     //
-    // `channel-token.service.ts` refuses that — and could never fire, because
-    // nothing had ever written the evidence it reads. This call is the one place
-    // the evidence exists, so the provenance travels with the token.
-    expect((harness.service as any).storeEncryptedCredential).toHaveBeenCalledWith(
-      tenantId,
-      'system-user-token',
-      0,
-      expect.objectContaining({ ownerBusinessId: expect.any(String) }),
-    );
+    // Here the client POSTED a business id and the correlation against the
+    // WABA agreed with it, so it is evidence rather than a claim — which is
+    // exactly what `session_info_validated` names, and the reason this case
+    // may record provenance while an uncorroborated `session_info` may not.
+    const stamped = (harness.service as any).storeEncryptedCredential.mock.calls[0][3];
+    expect(stamped).toMatchObject({
+      ownerBusinessId: 'business-owner',
+      source: 'session_info_validated',
+    });
+  });
+
+  it('records provenance once the portfolio is CORRELATED against the WABA', async () => {
+    // The other side of the rule above. `/me/businesses` names the portfolio
+    // that actually owns this WABA, so the id is evidence rather than a claim,
+    // and the token below was minted by this flow — both conditions the write
+    // requires.
+    const harness = createHarness({
+      discoveredWabas: [
+        { id: 'waba-other', name: 'Other WABA', businessId: 'business-other' },
+        { id: wabaId, name: 'Selected WABA', businessId: 'business-owner' },
+      ],
+    });
+
+    await harness.continueOnboarding();
+
     const recorded = (harness.service as any).storeEncryptedCredential.mock.calls[0][3];
-    // The CLIENT's portfolio, correlated against the WABA above — never ours.
-    expect(recorded.ownerBusinessId).toBe('business-owner');
+    // Nothing was posted, so the portfolio is whatever `/me/businesses` says
+    // owns this WABA. That is the strongest of the three sources and the one
+    // this column exists for.
+    expect(recorded).toMatchObject({
+      ownerBusinessId: 'business-owner',
+      source: 'api_discovery',
+    });
+    // The CLIENT's portfolio, never ours — the whole distinction the
+    // send-time guard is built on.
+    expect(recorded.source).not.toBe('session_info');
+  });
+
+  it('records NOTHING when the portfolio is only what the browser said', async () => {
+    // The hole the review found. `businessId` falls back to `dto.businessId`,
+    // and the correlation block is guarded by `if (correlatedBusinessId)` while
+    // a failed `/me/businesses` lookup is explicitly non-blocking. So with no
+    // WABA-side portfolio and no discovery, the value the CLIENT POSTED reached
+    // the column a send-time guard trusts, stamped as verified.
+    //
+    // The qualifier was logged and never persisted, which is the shape of the
+    // defect: the doubt existed, in a place nothing reads.
+    const harness = createHarness({ discoveredWabas: [{ id: wabaId, name: 'Selected WABA' }] });
+
+    await harness.continueOnboarding('business-the-browser-said');
+
+    const recorded = (harness.service as any).storeEncryptedCredential.mock.calls[0][3];
+    expect(recorded).toBeNull();
   });
 
   it('updates an existing phone row before inserting during asset resync', async () => {

@@ -14528,7 +14528,8 @@
       "counter_currency_mismatch": "This period's counter keeps its figures in one currency and this message is priced in another. The currency for the period has to be decided.",
       "account_pause_unknown": "We could not read whether this number is paused over a billing problem at Meta. It is not a pause: we could not check it.",
       "effect_already_resolved": "This message already has an outcome, so no further attempt is authorised. Sending it again would be a new message.",
-      "effect_identity_missing": "This send carries no durable identity, so a retry could not be told apart from a second message. It is a defect in the producer."
+      "effect_identity_missing": "This send carries no durable identity, so a retry could not be told apart from a second message. It is a defect in the producer.",
+      "recipient_not_addressable": "This person wrote without sharing a phone number, so there is nowhere to send the reply. Ask them for their number in the chat so you can answer."
     },
     "resume": "Resume sending",
     "resumeConfirm": "Have you added or fixed the payment method in Meta? We will allow this number to send again. If Meta refuses the charge again, the number pauses itself on the next attempt and you will see the reason here.",

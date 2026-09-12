@@ -144,6 +144,41 @@ describe('a refusal that can clear is held for as long as the ladder says', () =
         expect(waited).toBeGreaterThan(spendRetryDelaySeconds(3) * 1000 * 0.8);
     });
 
+    it('hands the row back when the send right cannot be taken, instead of abandoning it', async () => {
+        // `beginOrStandDown` returns false when the right was taken OR on ANY
+        // exception -- after a schema lookup and a write, so a transient
+        // database blip is enough. The lane used to return without settling,
+        // under a comment saying the item stayed claimable.
+        //
+        // It did not. The row was left `admitted` holding a live lease, every
+        // later admission refuses an `admitted` row, and the lease sweep then
+        // moves it to `reconciliation_required` -- TERMINAL. A message that
+        // provably never reached a provider became permanently undeliverable,
+        // and was filed for a human to reconcile as one that MIGHT have been
+        // delivered.
+        const h = harness({ code: 'none' }, 1);
+        // Permitted by the gate, refused by the transmission lock.
+        (h.processor as any).spendGate.admit = jest.fn(async () => ({
+            permitted: true, effectKey: 'k', enforcement: 'observe', transmit: true,
+        }));
+        (h.processor as any).beginOrStandDown = jest.fn(async () => false);
+
+        const outcome = await drive(h);
+
+        expect(h.settles).toHaveLength(1);
+        expect(h.settles[0]).toMatchObject({ kind: 'failed', errorCode: 'transmission_not_owned' });
+        // `failed`, never `suppressed`: nothing was decided about this message,
+        // only that this worker could not carry it.
+        expect(h.settles[0].kind).not.toBe('suppressed');
+        // And it is RETRIED rather than completed: the lane moves the job to the
+        // date the database chose and signals that by throwing `DelayedError`,
+        // which is how a deliberate wait is expressed here. The old branch
+        // returned a string, which COMPLETES the job -- so nothing ever came
+        // back for the row it had just abandoned.
+        expect(String(outcome)).toBe('threw:DelayedError');
+        expect(h.job.moveToDelayed).toHaveBeenCalled();
+    });
+
     it('still SUPPRESSES a refusal that cannot clear, with no wait at all', async () => {
         // The other half, and the one that must not be softened: a ceiling is a
         // decision. It does not become permissive by asking again, so asking

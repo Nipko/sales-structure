@@ -14528,7 +14528,8 @@
       "counter_currency_mismatch": "O contador deste período mantém seus valores em uma moeda e esta mensagem está tarifada em outra. É preciso decidir a moeda do período.",
       "account_pause_unknown": "Não foi possível ler se este número está pausado por um problema de cobrança na Meta. Não é uma pausa: é que não conseguimos verificar.",
       "effect_already_resolved": "Esta mensagem já tem um resultado, então nenhuma outra tentativa é autorizada. Enviá-la de novo seria uma mensagem nova.",
-      "effect_identity_missing": "Este envio não traz uma identidade durável, então uma nova tentativa não poderia ser distinguida de uma segunda mensagem. É um defeito de quem o produz."
+      "effect_identity_missing": "Este envio não traz uma identidade durável, então uma nova tentativa não poderia ser distinguida de uma segunda mensagem. É um defeito de quem o produz.",
+      "recipient_not_addressable": "A pessoa escreveu sem compartilhar o número, então não há para onde enviar a resposta. Peça o número pelo chat para conseguir responder."
     },
     "resume": "Retomar envios",
     "resumeConfirm": "Você já adicionou ou corrigiu a forma de pagamento na Meta? Vamos liberar os envios deste número de novo. Se a Meta recusar a cobrança outra vez, o número se pausa sozinho na próxima tentativa e você verá o motivo aqui.",

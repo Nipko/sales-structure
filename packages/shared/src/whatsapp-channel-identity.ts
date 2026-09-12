@@ -15,12 +15,19 @@
  * wired for the INBOUND side, and `whatsAppStatusIdentity` below has no
  * production caller.
  *
- * Today that message is DISCARDED. `whatsapp-webhook.service.ts` requires
- * `msg.from` to be a non-empty string and logs "Mensaje SIN REMITENTE
- * descartado" otherwise — deliberately, because a message with no sender was
- * unanswerable and would have broken the `contacts` INSERT. Against a portfolio
- * where usernames have rolled out, that reasoning turns into silence: the
- * customer writes, nothing answers, and the only trace is an error log.
+ * That message USED TO BE discarded. Both ingresses required `msg.from` to be
+ * a non-empty string and logged "Mensaje SIN REMITENTE descartado" otherwise —
+ * deliberately, because a sender with no address was unanswerable and would
+ * have broken the `contacts` INSERT. Against a portfolio where usernames have
+ * rolled out, that reasoning turned into silence: the customer wrote, nothing
+ * answered, and the only trace was an error log.
+ *
+ * They now ask this module instead, and discard only when NO identity resolves
+ * at all. Written in the past tense on purpose: this paragraph was left in the
+ * present by the same batch that fixed it, three paragraphs below a sentence
+ * saying both ingress roads read the field — so the file contradicted itself,
+ * and the sentence a reader uses to decide whether phone-less inbound is still
+ * broken said yes when the answer was no.
  *
  * ── WHY THIS IS A TYPE AND NOT A STRING ─────────────────────────────────────
  *

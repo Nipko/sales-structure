@@ -381,8 +381,27 @@ export class OnboardingService {
       // unresolved business id leaves the row NULL, which is the third state
       // the column exists for and NOT a claim that the credential is the
       // provider's.
+      // Stamped ONLY on a token this flow obtained, and only when the business
+      // id was CORRELATED against the WABA rather than taken from the browser.
+      //
+      // Two holes the review found here, both of which made the write assert
+      // more than was known. `resolveCredentialForCoverage` can RETAIN the
+      // token already in the table — this flow did not obtain it and knows
+      // nothing about whose portfolio it is — and `businessId` falls back to
+      // `dto.businessId`, the value the client posted, whenever discovery is
+      // unavailable. The qualifier was logged and never persisted, so a
+      // session-supplied id became verified provenance.
+      const provenanceEstablished = usableCredential.minted
+        && !!businessId && businessIdSource !== 'session_info';
+      if (!provenanceEstablished) {
+        this.logger.log(`[Onboarding][${onboardingId}] provenance NOT recorded `
+          + `(minted=${usableCredential.minted}, businessSource=${businessIdSource}) — the `
+          + 'credential stays unverified, which still sends');
+      }
       await this.storeEncryptedCredential(tenantId, finalToken, finalExpiresIn,
-        businessId ? { ownerBusinessId: businessId, source: businessIdSource } : null);
+        provenanceEstablished
+          ? { ownerBusinessId: businessId as string, source: businessIdSource }
+          : null);
 
       // ---- 10-11. Persist channel + routing only after entitlement and token
       // coverage have both passed (CRITICAL — any failure aborts onboarding). ----
@@ -1206,7 +1225,7 @@ export class OnboardingService {
     targetWabaId: string,
     candidateToken: string,
     candidateExpiresIn: number,
-  ): Promise<{ accessToken: string; expiresInSeconds: number }> {
+  ): Promise<{ accessToken: string; expiresInSeconds: number; minted: boolean }> {
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
       select: { schemaName: true },
@@ -1229,7 +1248,7 @@ export class OnboardingService {
     // still has to prove coverage of every older WABA before replacing one.
     if (candidateExpiresIn === 0) {
       await this.assertTokenCoverage(candidateToken, requiredWabas);
-      return { accessToken: candidateToken, expiresInSeconds: 0 };
+      return { accessToken: candidateToken, expiresInSeconds: 0, minted: true };
     }
 
     if (existing?.expiresAt === null) {
@@ -1237,7 +1256,13 @@ export class OnboardingService {
       try {
         await this.assertTokenCoverage(permanentToken, requiredWabas);
         this.logger.log(`[Credential] Retaining permanent token for tenant=${tenantId}; it covers ${requiredWabas.length} WABA(s)`);
-        return { accessToken: permanentToken, expiresInSeconds: 0 };
+        // RETAINED, not minted. This is the token that was already in the
+        // table; this flow did not obtain it and knows nothing about whose
+        // portfolio it belongs to. Stamping provenance on it would assert a
+        // verification nobody performed — and the writer's own comment says
+        // "it is not an inference about a token found lying in the table",
+        // which is exactly what this one is.
+        return { accessToken: permanentToken, expiresInSeconds: 0, minted: false };
       } catch {
         throw new ConflictException({
           code: 'WHATSAPP_TOKEN_COVERAGE_REQUIRED',
@@ -1248,7 +1273,7 @@ export class OnboardingService {
     }
 
     await this.assertTokenCoverage(candidateToken, requiredWabas);
-    return { accessToken: candidateToken, expiresInSeconds: candidateExpiresIn };
+    return { accessToken: candidateToken, expiresInSeconds: candidateExpiresIn, minted: true };
   }
 
   private async assertTokenCoverage(accessToken: string, wabaIds: string[]): Promise<void> {

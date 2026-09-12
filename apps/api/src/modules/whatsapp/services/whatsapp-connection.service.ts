@@ -284,7 +284,28 @@ export class WhatsappConnectionService {
       if (replaceCredential) {
         await this.prisma.whatsappCredential.update({
           where: { id: existingCredential.id },
-          data: { encryptedValue: encryptedToken, expiresAt: credentialExpiresAt, rotationState: 'active' },
+          data: {
+            encryptedValue: encryptedToken, expiresAt: credentialExpiresAt, rotationState: 'active',
+            // ── PROVENANCE DESCRIBES A SECRET, NOT A ROW ──────────────────
+            //
+            // These four columns say what the STORED TOKEN is: a Business
+            // Integration System User minted for one client, or the provider's
+            // own System User. Replacing the secret and leaving them behind
+            // makes them describe a token that is no longer there — and the
+            // reader treats them as established, so a pasted credential
+            // inherits the last one's verification and `maySignForClient`
+            // answers `usable, established` about something nobody checked.
+            //
+            // Cleared rather than guessed. An operator pasting a token here
+            // supplies no portfolio, so `not_established` is the truth: the
+            // credential still sends, and it is honestly marked unverified
+            // until Embedded Signup establishes whose it is.
+            credentialKind: null,
+            ownerBusinessId: null,
+            metaAppId: null,
+            grantedScopes: null,
+            provenanceVerifiedAt: null,
+          },
         });
       }
     } else {

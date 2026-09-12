@@ -399,10 +399,40 @@ export class OutboundQueueProcessor extends WorkerHost {
         }
         if (admission && admission.permitted
             && !(await this.beginOrStandDown({ tenantId } as OutboundMessage, admission))) {
-            // The send right was taken while this worker prepared, or the intent
-            // could not be recorded. Either way this attempt sends nothing and
-            // the item stays claimable rather than being settled either way.
-            return 'dispatch:deferred:transmission_not_owned';
+            // -- AND THE ROW HAS TO BE HANDED BACK --------------------------
+            //
+            // The send right was taken while this worker prepared, or the
+            // intent could not be recorded. Either way this attempt sends
+            // nothing -- but "sends nothing" is not the same as "leaves
+            // nothing behind", which is what the comment here used to claim.
+            //
+            // Returning without settling left the row `admitted` holding a
+            // live lease. `admitDispatch` refuses an `admitted` row on every
+            // later pass -- `dispatch_lease_active` while the lease is live,
+            // and a deliberate no-write refusal once it expires --
+            // `readPendingDispatch` does not select it, and the lease sweep
+            // then moves it to `reconciliation_required`, which is TERMINAL.
+            // So a message that provably never reached a provider became
+            // permanently undeliverable AND was filed for a human to
+            // reconcile as one that might have been delivered.
+            //
+            // `beginOrStandDown` also returns false on ANY exception, after a
+            // schema lookup and a write, so a transient database blip is
+            // enough -- likelier than a genuinely contended send right, since
+            // the dispatch lease already serialises attempts on this row.
+            //
+            // This file names the identical outcome as a defect forty lines
+            // above, for the meter-unavailable path, and settles it `failed`.
+            // The same answer belongs here: retryable, the payload kept, and
+            // the durable backoff is what stops it spinning.
+            const handedBack = await this.dispatchOutbox.settle(tenantId, dispatchId,
+                admitted.leaseToken,
+                { kind: 'failed', errorCode: 'transmission_not_owned' })
+                .catch(() => null);
+            if (handedBack?.state === 'failed') {
+                await waitUntil(handedBack.availableAt, 'transmission_not_owned');
+            }
+            return 'dispatch:failed:transmission_not_owned';
         }
         if (admission && !admission.permitted) {
             // ── A CONDITION THAT CLEARS IS NOT A DECISION THAT STANDS ───────

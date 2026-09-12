@@ -14528,7 +14528,8 @@
       "counter_currency_mismatch": "Le compteur de cette période tient ses chiffres dans une devise et ce message est tarifé dans une autre. Il faut décider de la devise de la période.",
       "account_pause_unknown": "Impossible de lire si ce numéro est en pause à cause d'un problème de facturation chez Meta. Ce n'est pas une pause : nous n'avons pas pu le vérifier.",
       "effect_already_resolved": "Ce message a déjà un résultat, aucune nouvelle tentative n'est donc autorisée. Le renvoyer serait un nouveau message.",
-      "effect_identity_missing": "Cet envoi ne porte pas d'identité durable : une nouvelle tentative serait indiscernable d'un second message. C'est un défaut du producteur."
+      "effect_identity_missing": "Cet envoi ne porte pas d'identité durable : une nouvelle tentative serait indiscernable d'un second message. C'est un défaut du producteur.",
+      "recipient_not_addressable": "Cette personne a écrit sans partager son numéro : il n’y a donc nulle part où envoyer la réponse. Demandez-lui son numéro dans la conversation pour pouvoir lui répondre."
     },
     "resume": "Reprendre les envois",
     "resumeConfirm": "Avez-vous ajouté ou corrigé le moyen de paiement dans Meta ? Nous allons réautoriser les envois depuis ce numéro. Si Meta refuse à nouveau le paiement, le numéro se met en pause de lui-même au prochain essai et vous en verrez la raison ici.",

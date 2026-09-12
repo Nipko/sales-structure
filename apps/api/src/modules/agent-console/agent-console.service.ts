@@ -122,6 +122,21 @@ export interface InternalNote {
     createdAt: string;
 }
 
+/**
+ * A reply the platform refused to send, and WHY.
+ *
+ * The reason used to be thrown away: every non-permitted verdict AND every
+ * refused connection collapsed to the bare word `refused`, and the row an
+ * agent reads was stamped `spend_refused` for all of them. A disconnected
+ * number, an ambiguous account and an undecryptable credential are not
+ * spending limits, and sending somebody to look at a ceiling that is not the
+ * problem is how a diagnosis becomes noise.
+ */
+interface AgentSendRefusal { readonly refused: true; readonly reason: string }
+
+const isRefusal = (admission: unknown): admission is AgentSendRefusal =>
+    !!admission && typeof admission === 'object' && (admission as any).refused === true;
+
 @Injectable()
 export class AgentConsoleService {
     private readonly logger = new Logger(AgentConsoleService.name);
@@ -617,11 +632,20 @@ export class AgentConsoleService {
                     // id even if the agent's text were re-rendered, and two
                     // agents typing the same sentence are two effects.
                     String(msg.id));
-                if (admission === 'refused') {
+                if (isRefusal(admission)) {
                     // The agent has to SEE this. A reply that silently did not
                     // leave is worse than one that visibly did not: they would
                     // go on believing the customer was answered.
-                    await settle('failed', 'spend_refused');
+                    //
+                    // And it has to say WHICH. `admitAgentSend` collapses to
+                    // `'refused'` for every non-permitted spend verdict AND for
+                    // a refused connection — a disconnected number, an
+                    // ambiguous account, an undecryptable credential. Stamping
+                    // all of them `spend_refused` sends the one human being who
+                    // reads this row to look at a spending limit that is not
+                    // the problem. This is the fifth sink to carry that wrong
+                    // signpost, and the only one a person reads directly.
+                    await settle('failed', admission.reason ?? 'send_refused');
                     return {
                         id: msg.id, status: 'failed', content: msg.content_text, type: msg.content_type,
                         sender: 'agent', timestamp: msg.created_at,
@@ -671,7 +695,32 @@ export class AgentConsoleService {
                         String(conv.channel_account_id || creds.accountId),
                         { by: 'provider_accepted' }).catch(() => undefined);
                 }
-                await settle('sent');
+                // ── THE ANSWER HAS TO BE READ ───────────────────────────
+                //
+                // `settle('sent')` used to run unconditionally, on a value
+                // nobody tested. `ChannelGatewayService.sendMessage` reports
+                // EVERY transport failure as `null` rather than by throwing —
+                // no registered adapter, an unsupported content type, a Flow
+                // refusal with no authorised fallback, and any exception from
+                // the adapter, including a non-ok Graph response. So the catch
+                // below never ran and the row was stamped `sent` for a reply
+                // the provider had positively refused.
+                //
+                // That is the exact defect the row's own comment above and
+                // `settle`'s docblock say they prevent: the status was moved
+                // off `delivered` and then written from a value that was not
+                // looked at. An agent reads `sent`, closes the conversation,
+                // and the customer has nothing.
+                //
+                // On WhatsApp the two records disagreed from the same `null`:
+                // `recordAgentSend` files the spend outcome as a TIMEOUT —
+                // money retained as indeterminate — while the message row said
+                // the reply left. One `null`, two contradictory stories.
+                if (sent) {
+                    await settle('sent');
+                } else {
+                    await settle('failed', 'provider_no_receipt');
+                }
             }
         } catch (e: any) {
             this.logger.warn(`Could not send agent message via channel: ${e.message}`);
@@ -928,7 +977,9 @@ export class AgentConsoleService {
                 admissionReason: producer,
                 binding: { messageId },
             });
-            if (admission && !admission.permitted) return 'refused' as const;
+            if (admission && !admission.permitted) {
+                return { refused: true as const, reason: admission.block?.code ?? 'spend_refused' };
+            }
             return admission;
         } catch (error: any) {
             // An unavailable meter defers, and the agent is TOLD. A reply that
@@ -940,7 +991,13 @@ export class AgentConsoleService {
             // cannot carry this reply either, and the agent needs to see that
             // rather than watch it disappear.
             this.logger.error(`[Spend] agent reply not authorised: ${error?.message}`);
-            return 'refused' as const;
+            // A ConnectionRefusedError carries its own code; a meter outage does
+            // not, and `spend_meter_unavailable` is the honest name for that.
+            return {
+                refused: true as const,
+                reason: typeof error?.code === 'string' && error.code
+                    ? error.code : 'spend_meter_unavailable',
+            };
         }
     }
 
@@ -962,8 +1019,9 @@ export class AgentConsoleService {
         const admission = await this.admitAgentSend(tenantId, schemaName, channelType,
             channelAccountId, recipient, { fallbackOf: content, errorCode }, contactId,
             messageId, 'agent_console_reply_flow_fallback');
-        if (admission === 'refused') {
-            this.logger.warn('[Spend] the text fallback for a refused Flow was not authorised');
+        if (isRefusal(admission)) {
+            this.logger.warn('[Spend] the text fallback for a refused Flow was not authorised: '
+                + admission.reason);
             return false;
         }
         return true;
@@ -985,7 +1043,7 @@ export class AgentConsoleService {
     }
 
     private async recordAgentSend(schemaName: string, admission: unknown, result: string | null) {
-        if (!admission || admission === 'refused') return;
+        if (!admission || isRefusal(admission)) return;
         try {
             await this.spendGate.record(schemaName, admission as Admission, result
                 ? { kind: 'accepted', providerMessageId: result }

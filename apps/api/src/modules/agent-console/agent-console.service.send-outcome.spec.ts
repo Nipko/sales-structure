@@ -16,7 +16,8 @@ const MESSAGE = '44444444-4444-4444-8444-444444444444';
  * still waiting for an answer nobody knew had not left.
  */
 describe('what becomes of a human agent reply', () => {
-    function harness(options: { sendFails?: boolean; noChannel?: boolean; settleFails?: boolean } = {}) {
+    function harness(options: { sendFails?: boolean; noChannel?: boolean; settleFails?: boolean;
+        sendReturnsNull?: boolean } = {}) {
         const statements: Array<{ sql: string; params: any[] }> = [];
         const executeInTenantSchema = jest.fn(async (_schema: string, sql: string, params: any[] = []) => {
             statements.push({ sql, params });
@@ -45,6 +46,13 @@ describe('what becomes of a human agent reply', () => {
         };
         const channelGateway: any = { sendMessage: jest.fn(async () => {
             if (options.sendFails) throw new Error('token expired');
+            // The gateway reports EVERY transport failure as `null` rather than
+            // by throwing — no adapter, unsupported content, a Flow refusal
+            // with no authorised fallback, and any adapter exception, including
+            // a non-ok Graph response, which its own catch turns into `null`.
+            // Until this option existed every case here made it throw, so the
+            // path that actually runs in production had no test at all.
+            if (options.sendReturnsNull) return null;
             return { messageId: 'wamid.OUT' };
         }) };
         const channelToken: any = resolvingChannelToken({
@@ -92,6 +100,26 @@ describe('what becomes of a human agent reply', () => {
         // The agent has to see it. A failure that only reaches the log leaves
         // them believing the customer was answered.
         expect(message.status).toBe('failed');
+    });
+
+    it('does not call a reply SENT when the gateway answered nothing', async () => {
+        // The defect this file's own title is about, on the road it actually
+        // travels. `settle('sent')` ran unconditionally on a value nobody read,
+        // so a reply the provider positively refused was stamped `sent`: the
+        // agent closes the conversation and the customer has nothing.
+        //
+        // The gateway signals that by RETURNING `null`, not by throwing, so the
+        // catch below never ran and every existing case here missed it.
+        const { service, statements, channelGateway } = harness({ sendReturnsNull: true });
+        const message = await service.sendAgentMessage(TENANT, CONVERSATION, AGENT, 'Ya lo reviso');
+
+        expect(channelGateway.sendMessage).toHaveBeenCalled();
+        const settle = settleOf(statements);
+        expect(settle.map(entry => entry.params[1])).toEqual(['failed']);
+        expect(JSON.parse(settle[0].params[2])).toMatchObject({ sendError: 'provider_no_receipt' });
+        expect(message.status).toBe('failed');
+        // And never the other word, on any statement.
+        expect(settle.some(entry => entry.params[1] === 'sent')).toBe(false);
     });
 
     it('never overwrites what a provider webhook already said', async () => {

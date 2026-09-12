@@ -52,8 +52,29 @@ export type EffectProperty = (typeof EFFECT_PROPERTIES)[number];
  * of two transports, a recovery that republishes but cannot tell a lost attempt
  * from a completed one. The note has to say which case.
  */
-export const COVERAGE_LEVELS = ['durable', 'partial', 'none'] as const;
+export const COVERAGE_LEVELS = ['durable', 'partial', 'none', 'not_applicable'] as const;
 export type CoverageLevel = (typeof COVERAGE_LEVELS)[number];
+
+/**
+ * `not_applicable` exists because `none` was answering two opposite questions.
+ *
+ * For `erasure` it meant both "this producer holds personal data and nothing
+ * erases it" — a gap — and "this operation carries no contact data at all", for
+ * a token rotation or a template creation. Those rows were then SUMMED, so the
+ * October erasure counter rose when somebody added a producer that could not
+ * possibly need erasing, and an operator reading it could not tell which half
+ * of the number was work.
+ *
+ * A producer may only claim `not_applicable` when its `reach.personalData` is
+ * false, and the spec enforces that pairing. It is a statement about the
+ * effect's content, not about the effort anybody has spent on it.
+ */
+export const isGap = (coverage: EffectCoverage): boolean =>
+    coverage.level === 'none' || coverage.level === 'partial';
+
+/** A property that genuinely has nothing to answer, as opposed to answering badly. */
+export const isNotApplicable = (coverage: EffectCoverage): boolean =>
+    coverage.level === 'not_applicable';
 
 /**
  * The exit doors. A producer's lane is what decides most of its six answers, so
@@ -103,6 +124,102 @@ export type ProducerStatus = (typeof PRODUCER_STATUSES)[number];
 export const PRODUCER_DERIVATIONS = ['census', 'declared'] as const;
 export type ProducerDerivation = (typeof PRODUCER_DERIVATIONS)[number];
 
+/**
+ * ═══ WHAT KIND OF EFFECT THIS IS ═══
+ *
+ * The October rows M1 and M5 are about WhatsApp: what Meta can bill the
+ * tenant's WABA for, and what a right-to-erasure request has to reach. They
+ * used to select their producers with a regular expression over the `source`
+ * and `egress` STRINGS:
+ *
+ *     /whatsapp|instagram|messenger|telegram|dispatch|outbound|channel|notice/i
+ *
+ * which is a question about spelling. It swept in twenty-seven producers, and
+ * nine of them are not messages to a customer at all: internal platform alerts,
+ * coupon alerts, the email channel's inbound reply, the retired conversational
+ * SMS adapter, connecting and testing a channel, creating a WhatsApp template,
+ * writing the business profile, and rotating a token. It simultaneously MISSED
+ * producers that do reach a customer because their file happened not to contain
+ * one of those words.
+ *
+ * So a counter about customer messages was moved by a calendar integration's
+ * file name, and closing the row would have required work on things the row was
+ * never about. This replaces the spelling question with a declared, exhaustive
+ * classification that the type system requires of every producer.
+ */
+export const EFFECT_CLASSES = [
+    /** Reaches a person who is the TENANT'S CUSTOMER, in a conversation or a notice. */
+    'customer_message',
+    /** Reaches a person who works for the tenant: an agent, an owner, staff. */
+    'operator_notification',
+    /** Reaches US — the platform's own operators. Never a tenant, never a customer. */
+    'platform_notification',
+    /** Publishes where anybody can read it, under the tenant's name. */
+    'public_content',
+    /** Configures an account or an asset at a provider. Sends nobody a message. */
+    'provider_configuration',
+    /** Mints, rotates or revokes a credential. Carries no message and no contact. */
+    'credential_lifecycle',
+    /** Moves money or writes a fiscal record. */
+    'commercial_write',
+    /** Reads or writes a system the tenant connected: calendar, CRM, commerce, webhook. */
+    'domain_integration',
+] as const;
+export type EffectClass = (typeof EFFECT_CLASSES)[number];
+
+/** Who is on the other end. Separate from the class: a class can have one audience. */
+export const EFFECT_AUDIENCES = [
+    'contact', 'tenant_operator', 'platform_operator', 'provider', 'public',
+] as const;
+export type EffectAudience = (typeof EFFECT_AUDIENCES)[number];
+
+/**
+ * The transports an effect can actually leave on.
+ *
+ * Declared rather than inferred, because the same producer reaches different
+ * channels depending on the connection — and it is the presence of `whatsapp`
+ * that decides whether Meta can charge for the delivery.
+ */
+export const EFFECT_CHANNELS = [
+    'whatsapp', 'instagram', 'messenger', 'telegram', 'web_widget',
+    'email', 'sms', 'push', 'slack', 'webhook', 'provider_api', 'none',
+] as const;
+export type EffectChannel = (typeof EFFECT_CHANNELS)[number];
+
+export interface EffectReach {
+    readonly class: EffectClass;
+    readonly audience: EffectAudience;
+    /** Every channel this producer can leave on. `none` for a pure API call. */
+    readonly channels: readonly EffectChannel[];
+    /**
+     * Does what leaves carry data about an identified person?
+     *
+     * Decides whether `erasure: not_applicable` is honest. A token rotation
+     * carries none; a booking confirmation carries a name, a phone and a time.
+     */
+    readonly personalData: boolean;
+}
+
+/**
+ * Can Meta bill the tenant's WABA for this delivery?
+ *
+ * DERIVED, not declared, so it cannot drift from the channel list. From 1 Oct
+ * 2026 Meta charges per delivered WhatsApp service message; Instagram and
+ * Messenger remain free, which is why reaching them is not enough.
+ */
+export const metaBillsDelivery = (reach: EffectReach): boolean =>
+    reach.channels.includes('whatsapp');
+
+/**
+ * The producers the October WhatsApp rows are actually about.
+ *
+ * A message to the tenant's customer that can leave over WhatsApp. Everything
+ * else keeps its own contract and its own counter — excluded from M1/M5, never
+ * dropped from the inventory.
+ */
+export const isMetaBillableCustomerMessage = (producer: ExternalEffectProducer): boolean =>
+    producer.reach.class === 'customer_message' && metaBillsDelivery(producer.reach);
+
 export interface EffectCoverage {
     readonly level: CoverageLevel;
     /** What is actually true. For `none`, why — never what is planned instead. */
@@ -122,6 +239,15 @@ export interface ExternalEffectProducer {
     readonly symbol: string;
     /** Where the effect actually leaves the process, for a reader to go and look. */
     readonly egress: string;
+    /**
+     * What kind of effect this is, who receives it and on what.
+     *
+     * REQUIRED, so a producer cannot be added without being classified and
+     * cannot quietly fall into or out of a counter. The spec pins each field:
+     * changing a lane, a channel, a class or the personal-data answer turns the
+     * closure red rather than moving a number silently.
+     */
+    readonly reach: EffectReach;
     readonly properties: Readonly<Record<EffectProperty, EffectCoverage>>;
 }
 
@@ -129,6 +255,8 @@ const cover = (level: CoverageLevel, note: string): EffectCoverage => Object.fre
 const durable = (note: string) => cover('durable', note);
 const partial = (note: string) => cover('partial', note);
 const none = (note: string) => cover('none', note);
+/** Only legitimate where `reach.personalData` is false. The spec enforces it. */
+const notApplicable = (note: string) => cover('not_applicable', note);
 
 function producer(entry: Omit<ExternalEffectProducer, 'properties'> & {
     properties: Record<EffectProperty, EffectCoverage>;
@@ -240,6 +368,21 @@ const uncovered = (reason: string): Record<EffectProperty, EffectCoverage> => ({
     recovery: none(reason),
 });
 
+/**
+ * The same five gaps, for an effect that carries no data about a person.
+ *
+ * `uncovered` answered `erasure: none` for every producer, which reads as
+ * "personal data with nothing to erase it" -- and the October counter summed
+ * those rows together with the real ones. A token rotation and a template
+ * creation have nothing to erase; saying so is not a lower standard, it is a
+ * different question. Only legitimate where `reach.personalData` is false, and
+ * the spec fails if the two disagree.
+ */
+const uncoveredWithoutPersonalData = (reason: string): Record<EffectProperty, EffectCoverage> => ({
+    ...uncovered(reason),
+    erasure: notApplicable('nothing personal leaves here: ' + reason),
+});
+
 const INLINE_EMAIL = '`EmailService.send` returns a boolean, swallows the SMTP error and discards '
     + '`info.messageId` (email.service.ts)';
 
@@ -264,6 +407,10 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         source: 'modules/conversations/conversations.service.ts',
         symbol: 'dispatchReplyThroughOutbox',
         egress: 'OutboundQueueProcessor.processDispatch → StrictDispatchTransport.sendStrict',
+        reach: {
+            class: 'customer_message', audience: 'contact', personalData: true,
+            channels: ['whatsapp', 'instagram', 'messenger', 'telegram', 'web_widget'],
+        },
         properties: DISPATCH_OUTBOX_PROPERTIES,
     }),
 
@@ -278,6 +425,10 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         source: 'modules/conversations/conversations.service.ts',
         symbol: 'sendResponse',
         egress: 'OutboundQueueService.enqueue → ChannelGatewayService.sendMessage',
+        reach: {
+            class: 'customer_message', audience: 'contact', personalData: true,
+            channels: ['whatsapp', 'instagram', 'messenger', 'telegram', 'web_widget'],
+        },
         properties: queued(partial('`sendResponse` passes a `dedupeId` derived from the inbound and the '
             + 'position in the turn, so a replayed turn collapses. `sendPaymentLink`, `sendMedia`, '
             + '`sendFlow`, `sendCollectedFlow` and `sendAfterHoursMessage` pass none, and '
@@ -300,6 +451,10 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
             + 'outbound processor leases and sends through the strict transport — REST '
             + 'POST /agent-console/conversation/:tenantId/:conversationId/message and the WebSocket '
             + 'event `conversation:send`',
+        reach: {
+            class: 'customer_message', audience: 'contact', personalData: true,
+            channels: ['whatsapp', 'instagram', 'messenger', 'telegram', 'web_widget'],
+        },
         properties: {
             authority: durable('`human_operator`, minted by `operatorAuthority` and revalidated inside '
                 + 'the lease transaction: the person must still be active, still hold a sending role, '
@@ -346,6 +501,10 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         source: 'modules/agent-console/agent-console.service.ts',
         symbol: 'sendAgentMessage',
         egress: 'ChannelGatewayService.sendMessage, called directly',
+        reach: {
+            class: 'customer_message', audience: 'contact', personalData: true,
+            channels: ['whatsapp', 'email', 'sms'],
+        },
         properties: {
             authority: none('no queue, no row, no lease. The send happens inline inside the request '
                 + 'that typed it'),
@@ -374,6 +533,10 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         source: 'modules/agent-console/agent-console.service.ts',
         symbol: 'widgetMessages',
         egress: 'WidgetMessageStore.persist — a local admission, with no provider to accept it',
+        reach: {
+            class: 'customer_message', audience: 'contact', personalData: true,
+            channels: ['web_widget'],
+        },
         properties: {
             authority: durable('the widget has no third party: persisting the row IS the delivery, '
                 + 'committed in one transaction'),
@@ -399,6 +562,10 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         symbol: 'ToolApprovalEffectsService',
         egress: 'OutboundQueueService.enqueueApprovedEffect → OutboundQueueProcessor → '
             + 'ChannelGatewayService.sendMessage, or WidgetMessageStore for the widget',
+        reach: {
+            class: 'customer_message', audience: 'contact', personalData: true,
+            channels: ['whatsapp', 'instagram', 'messenger', 'telegram', 'web_widget'],
+        },
         properties: APPROVED_EFFECT_PROPERTIES,
     }),
 
@@ -413,6 +580,10 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         symbol: 'sendText',
         egress: 'WhatsappMessagingService.sendToMeta — a direct POST to graph.facebook.com, the second '
             + 'WhatsApp route, sharing nothing with the outbound queue',
+        reach: {
+            class: 'customer_message', audience: 'contact', personalData: true,
+            channels: ['whatsapp'],
+        },
         properties: {
             authority: none('no queue, no row, no lease — the POST happens inside the HTTP request'),
             idempotency: none('no dedupe of any kind on any of the five endpoints'),
@@ -436,7 +607,11 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         source: 'modules/channels/channel-management.controller.ts',
         symbol: 'sendTextMessage',
         egress: 'TelegramAdapter.sendTextMessage / SmsAdapter.sendTextMessage, called directly',
-        properties: uncovered('a connection test is one deliberate message to the operator who asked '
+        reach: {
+            class: 'operator_notification', audience: 'tenant_operator', personalData: false,
+            channels: ['telegram', 'sms'],
+        },
+        properties: uncoveredWithoutPersonalData('a connection test is one deliberate message to the operator who asked '
             + 'for it. It is inline on purpose and carries no record — repeating it is what the button '
             + 'is for, and there is no customer on the other end'),
     }),
@@ -451,6 +626,10 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         source: 'modules/email-templates/email-templates.service.ts',
         symbol: 'renderAndPrepare',
         egress: 'EmailService.send, or the bounded transport `renderAndPrepare` returns',
+        reach: {
+            class: 'operator_notification', audience: 'tenant_operator', personalData: false,
+            channels: ['email'],
+        },
         properties: {
             authority: partial('`renderAndPrepare` returns an attempt the CALLER may fence — the handoff '
                 + 'does exactly that. `renderAndSend` and `sendTest` do not, and send inline'),
@@ -460,7 +639,7 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
             uncertainOutcome: partial('`sendBoundedSmtp` has a 25s deadline and throws a classified '
                 + 'error, which is what lets the handoff record `unknown`. The boolean path cannot '
                 + 'distinguish an unconfigured transport from a server that accepted and died'),
-            erasure: none('nothing records what was sent to whom'),
+            erasure: notApplicable('nothing records what was sent to whom'),
             recovery: none('no record of the attempt, so a rendered template lost to an SMTP outage is '
                 + 'never sent and nobody is told'),
         },
@@ -479,6 +658,10 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         symbol: 'executeHandoff',
         egress: 'one `agent_handoff_effects` row per destination; the five announcement destinations '
             + 'fan out through `eventEmitter.emitAsync(handoff.escalated.{destination})`',
+        reach: {
+            class: 'operator_notification', audience: 'tenant_operator', personalData: true,
+            channels: ['email', 'sms', 'push', 'slack'],
+        },
         properties: HANDOFF_EFFECT_PROPERTIES,
     }),
 
@@ -491,6 +674,10 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         source: 'modules/agent-console/agent-availability.service.ts',
         symbol: 'AgentAvailabilityService',
         egress: 'EmailService.send, from the `*/2 * * * *` escalation cron, not awaited',
+        reach: {
+            class: 'operator_notification', audience: 'tenant_operator', personalData: true,
+            channels: ['email'],
+        },
         properties: {
             authority: none('fire and forget from a cron; nothing records that an attempt was made'),
             idempotency: partial('an `escalated` flag on `conversations.metadata.handoff` is set before '
@@ -515,6 +702,10 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         source: 'modules/sms-notifications/sms-notification-listener.service.ts',
         symbol: 'onHandoff',
         egress: 'SmsSenderService.sendToNumber → SmsAdapter.sendTextMessage (the tenant\'s own Twilio)',
+        reach: {
+            class: 'operator_notification', audience: 'tenant_operator', personalData: true,
+            channels: ['sms'],
+        },
         properties: {
             authority: partial('the handoff effect row for destination `sms` admits the ANNOUNCEMENT '
                 + 'once. It says the listener ran, not that a carrier accepted anything'),
@@ -538,6 +729,10 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         source: 'modules/slack/slack-listener.service.ts',
         symbol: 'SlackListenerService',
         egress: 'SlackService.notify → axios POST to the pinned hooks.slack.com target',
+        reach: {
+            class: 'operator_notification', audience: 'tenant_operator', personalData: true,
+            channels: ['slack'],
+        },
         properties: {
             authority: partial('the handoff effect row for destination `slack` admits the announcement '
                 + 'once. The `appointment.created` listener has no row at all'),
@@ -562,6 +757,10 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         symbol: 'PushListenerService',
         egress: 'PushService.sendToUser / sendToTenantRole → the Expo push API and the isolated '
             + 'web-push worker',
+        reach: {
+            class: 'operator_notification', audience: 'tenant_operator', personalData: true,
+            channels: ['push'],
+        },
         properties: {
             authority: partial('the handoff effect row admits the `push` announcement once. The other '
                 + 'six events have no row'),
@@ -587,6 +786,10 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         source: 'modules/webhooks/webhooks.service.ts',
         symbol: 'deliverWithRetry',
         egress: 'HMAC-signed POST to the tenant endpoint, after SSRF validation pins the target',
+        reach: {
+            class: 'domain_integration', audience: 'provider', personalData: true,
+            channels: ['webhook'],
+        },
         properties: {
             authority: partial('the handoff effect row admits the `webhooks` announcement once; the '
                 + 'fan-out itself is fire and forget'),
@@ -612,6 +815,10 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         source: 'modules/public-api/webhook-subscription.service.ts',
         symbol: 'WebhookSubscriptionService',
         egress: 'a single HMAC-signed POST to the subscriber URL, from an unawaited promise',
+        reach: {
+            class: 'domain_integration', audience: 'provider', personalData: true,
+            channels: ['webhook'],
+        },
         properties: {
             authority: none('the dispatch is an unawaited promise from the event path; no row records '
                 + 'that an attempt was permitted or made'),
@@ -646,6 +853,10 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         egress: 'ProactiveDispatchService.send commits an `agent_dispatch_outbox` row with a `text` '
             + 'item; the outbound processor performs the channel call. The email copy still goes '
             + 'through EmailTemplatesService.renderAndSend inline',
+        reach: {
+            class: 'customer_message', audience: 'contact', personalData: true,
+            channels: ['whatsapp', 'instagram', 'messenger', 'telegram', 'web_widget'],
+        },
         properties: {
             authority: durable('the processor admits the row through the spend gate before the POST, '
                 + 'under a `proactive_policy` authority read from the appointment row'),
@@ -677,6 +888,10 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         egress: 'ProactiveDispatchService.send commits an `agent_dispatch_outbox` row with a `text` '
             + 'item; the outbound processor performs the channel call. The email copy still goes '
             + 'through EmailTemplatesService.renderAndSend inline',
+        reach: {
+            class: 'customer_message', audience: 'contact', personalData: true,
+            channels: ['whatsapp', 'instagram', 'messenger', 'telegram', 'web_widget'],
+        },
         properties: {
             authority: durable('the processor admits the row through the spend gate before the POST, '
                 + 'under an `appointment_cancellation` authority — a policy of its own, because the '
@@ -712,6 +927,10 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         egress: 'ProactiveDispatchService.send commits an `agent_dispatch_outbox` row with a '
             + '`template` item; the outbound processor performs the Graph call. The email copy '
             + 'still goes through EmailTemplatesService.renderAndSend inline',
+        reach: {
+            class: 'customer_message', audience: 'contact', personalData: true,
+            channels: ['whatsapp', 'instagram', 'messenger', 'telegram', 'web_widget'],
+        },
         properties: {
             authority: durable('the processor admits the row through the spend gate before the POST, so '
                 + 'the ceiling, the payer and the transmission right are all settled before Meta is '
@@ -740,6 +959,10 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         source: 'modules/appointments/appointment-payment.listener.ts',
         symbol: 'enqueueOperationalNotice',
         egress: 'operational_notice_outbox row written in the payment transaction',
+        reach: {
+            class: 'customer_message', audience: 'contact', personalData: true,
+            channels: ['whatsapp', 'instagram', 'messenger', 'telegram', 'web_widget'],
+        },
         properties: OPERATIONAL_NOTICE_PROPERTIES,
     }),
 
@@ -752,6 +975,10 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         source: 'modules/gyms/gyms.service.ts',
         symbol: 'enqueueOperationalNotice',
         egress: 'operational_notice_outbox row written in the promotion transaction',
+        reach: {
+            class: 'customer_message', audience: 'contact', personalData: true,
+            channels: ['whatsapp', 'instagram', 'messenger', 'telegram', 'web_widget'],
+        },
         properties: OPERATIONAL_NOTICE_PROPERTIES,
     }),
 
@@ -765,6 +992,10 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         source: 'modules/education/education-enrollment-commands.ts',
         symbol: 'enqueueOperationalNotice',
         egress: 'operational_notice_outbox row written in the enrolment transaction',
+        reach: {
+            class: 'customer_message', audience: 'contact', personalData: true,
+            channels: ['whatsapp', 'instagram', 'messenger', 'telegram', 'web_widget'],
+        },
         properties: OPERATIONAL_NOTICE_PROPERTIES,
     }),
 
@@ -778,6 +1009,10 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         source: 'modules/conversations/payment-outcome-notifier.service.ts',
         symbol: 'notifyCustomer',
         egress: 'OutboundQueueService.enqueue, or EmailService.send outside the window',
+        reach: {
+            class: 'customer_message', audience: 'contact', personalData: true,
+            channels: ['whatsapp', 'instagram', 'messenger', 'telegram', 'web_widget'],
+        },
         properties: queued(partial('a `dedupeId` is REQUIRED and derives from the payment operation, not '
             + 'from the retry, so a provider redelivering the same event three times collapses to one '
             + 'message. The email fallback has no such guard')),
@@ -797,6 +1032,10 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         symbol: 'NurturingService',
         egress: 'ProactiveDispatchService.send commits an `agent_dispatch_outbox` row; the outbound '
             + 'processor performs the Graph call',
+        reach: {
+            class: 'customer_message', audience: 'contact', personalData: true,
+            channels: ['whatsapp', 'instagram', 'messenger', 'telegram', 'web_widget'],
+        },
         properties: {
             authority: durable('the `nurturing_followup` policy is revalidated inside the transaction '
                 + 'that grants the lease, and its revision carries the time of the last INBOUND '
@@ -829,6 +1068,10 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         symbol: 'DripSequenceService',
         egress: 'ProactiveDispatchService.send commits an `agent_dispatch_outbox` row with a `text` '
             + 'or `template` item; the outbound processor performs the Graph call',
+        reach: {
+            class: 'customer_message', audience: 'contact', personalData: true,
+            channels: ['whatsapp', 'instagram', 'messenger', 'telegram', 'web_widget'],
+        },
         properties: {
             authority: durable('the `drip_step` policy is revalidated inside the lease transaction. '
                 + 'An enrolment that stopped, completed or was paused is GONE, so the next step of '
@@ -858,6 +1101,10 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         symbol: 'handleSendTemplate',
         egress: 'ProactiveDispatchService.send commits an `agent_dispatch_outbox` row with a '
             + '`template` item; the outbound processor performs the Graph call',
+        reach: {
+            class: 'customer_message', audience: 'contact', personalData: true,
+            channels: ['whatsapp', 'instagram', 'messenger', 'telegram', 'web_widget'],
+        },
         properties: {
             authority: durable('the `automation_rule_action` policy is revalidated inside the lease '
                 + 'transaction. A rule somebody switched off between the trigger firing and the '
@@ -890,6 +1137,10 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         symbol: 'RecallService',
         egress: 'ProactiveDispatchService.send commits an `agent_dispatch_outbox` row with a `text` '
             + 'item; the outbound processor performs the channel call',
+        reach: {
+            class: 'customer_message', audience: 'contact', personalData: true,
+            channels: ['whatsapp', 'instagram', 'messenger', 'telegram', 'web_widget'],
+        },
         properties: {
             authority: durable('the processor admits the row through the spend gate before the POST, '
                 + 'under a `recall_reminder` authority read from the contact row'),
@@ -920,6 +1171,10 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         symbol: 'BroadcastQueueProcessor',
         egress: 'WhatsappMessagingService.sendTemplate, EmailService.send and '
             + 'TenantNotificationSmsService.send from the `broadcast-messages` queue',
+        reach: {
+            class: 'customer_message', audience: 'contact', personalData: true,
+            channels: ['whatsapp', 'email', 'sms'],
+        },
         properties: {
             authority: none('no admission record. Entitlement is revalidated in the processor, but '
                 + 'nothing durable says an attempt was permitted'),
@@ -948,6 +1203,10 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         source: 'modules/verticals/service-request.listener.ts',
         symbol: 'ServiceRequestListener',
         egress: 'EmailService.send, fire and forget per recipient',
+        reach: {
+            class: 'operator_notification', audience: 'tenant_operator', personalData: true,
+            channels: ['email'],
+        },
         properties: uncovered('an un-awaited `EmailService.send` per recipient, from an event listener. '
             + 'Nothing records the attempt, the result or the recipient'),
     }),
@@ -964,6 +1223,10 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         source: 'modules/auth/auth.service.ts',
         symbol: 'sendVerificationEmail',
         egress: 'EmailService.send inline, some of it not awaited',
+        reach: {
+            class: 'operator_notification', audience: 'tenant_operator', personalData: true,
+            channels: ['email'],
+        },
         properties: {
             authority: none('inline in the request; nothing records an attempt'),
             idempotency: partial('the CODE is idempotent — it lives in `users.email_verify_code` or in '
@@ -985,6 +1248,10 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         source: 'modules/auth/platform-sms.service.ts',
         symbol: 'PlatformSmsService',
         egress: 'a direct Twilio REST call',
+        reach: {
+            class: 'operator_notification', audience: 'tenant_operator', personalData: true,
+            channels: ['sms'],
+        },
         properties: {
             authority: none('the Twilio call happens inline inside the login request; nothing records '
                 + 'that an attempt was permitted'),
@@ -1006,6 +1273,10 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         source: 'modules/customer-portal/customer-portal.service.ts',
         symbol: 'dispatchCode',
         egress: 'EmailService.send, or the SMS adapter for the phone branch',
+        reach: {
+            class: 'customer_message', audience: 'contact', personalData: true,
+            channels: ['email', 'sms'],
+        },
         properties: {
             authority: none('inline in the public request'),
             idempotency: partial('the code lives in Redis for ten minutes with a five-attempt lock, so '
@@ -1027,6 +1298,10 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         source: 'modules/conversations/chat-identity.service.ts',
         symbol: 'startVerification',
         egress: 'EmailService.send, or TenantNotificationSmsService.send for the SMS fallback',
+        reach: {
+            class: 'customer_message', audience: 'contact', personalData: true,
+            channels: ['email', 'sms'],
+        },
         properties: {
             authority: partial('a Redis send lock is acquired before the attempt and FAILS CLOSED, which '
                 + 'is the closest thing to an admission on any inline path here'),
@@ -1048,6 +1323,10 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         source: 'modules/invitations/invitations.service.ts',
         symbol: 'sendInvitationEmail',
         egress: 'EmailService.send',
+        reach: {
+            class: 'operator_notification', audience: 'tenant_operator', personalData: true,
+            channels: ['email'],
+        },
         properties: uncovered('inline `EmailService.send`; the invitation token in the database is what '
             + 'the recipient needs, and re-sending is a deliberate button'),
     }),
@@ -1064,6 +1343,10 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         source: 'modules/billing/billing-email.service.ts',
         symbol: 'BillingEmailService',
         egress: 'EmailService.send from billing event listeners',
+        reach: {
+            class: 'operator_notification', audience: 'tenant_operator', personalData: true,
+            channels: ['email'],
+        },
         properties: {
             authority: none('inline from an event listener'),
             idempotency: partial('the EVENT is deduped upstream — `billing_events` is unique on '
@@ -1087,6 +1370,10 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         source: 'modules/fiscal/fiscal-email.service.ts',
         symbol: 'FiscalEmailService',
         egress: 'EmailService.send from the `fiscal-invoice` queue',
+        reach: {
+            class: 'operator_notification', audience: 'tenant_operator', personalData: true,
+            channels: ['email'],
+        },
         properties: {
             authority: none('no admission; the queue job is the only trace'),
             idempotency: partial('an `ok` flag on the invoice row records that the email was attempted, '
@@ -1108,6 +1395,10 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         source: 'modules/meta-compliance/meta-compliance.service.ts',
         symbol: 'MetaComplianceService',
         egress: 'EmailService.send, not awaited',
+        reach: {
+            class: 'provider_configuration', audience: 'provider', personalData: true,
+            channels: ['provider_api'],
+        },
         properties: {
             authority: none('inline from the callback handler'),
             idempotency: partial('the confirmation code Meta is given is persisted, so the STATUS page '
@@ -1133,6 +1424,10 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         symbol: 'generateAndSendReport',
         egress: 'EmailService.send from two crons, after `canDeliverCustomerOutput` revalidates '
             + 'entitlement',
+        reach: {
+            class: 'operator_notification', audience: 'tenant_operator', personalData: true,
+            channels: ['email'],
+        },
         properties: {
             authority: partial('entitlement is revalidated immediately before the send, which is a gate '
                 + 'rather than an admission: nothing records that an attempt happened'),
@@ -1154,6 +1449,10 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         source: 'modules/analytics/alerts.service.ts',
         symbol: 'fireAlert',
         egress: 'EmailService.send from the `*/15 * * * *` cron',
+        reach: {
+            class: 'operator_notification', audience: 'tenant_operator', personalData: true,
+            channels: ['email'],
+        },
         properties: {
             authority: none('the send happens inline inside the cron tick; nothing records that an '
                 + 'attempt was permitted'),
@@ -1177,6 +1476,10 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         source: 'modules/health/platform-monitor.service.ts',
         symbol: 'PlatformMonitorService',
         egress: 'EmailService.send, TelegramAlertService.send and SmsAlertService.send, from ten crons',
+        reach: {
+            class: 'platform_notification', audience: 'platform_operator', personalData: false,
+            channels: ['email', 'sms', 'slack'],
+        },
         properties: {
             authority: none('the send happens inline inside the cron tick; nothing records that an '
                 + 'attempt was permitted'),
@@ -1185,7 +1488,7 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
             receipt: partial('an incident row is written through `IncidentService.record`. That is our '
                 + 'own record of the condition, not a provider id for the alert'),
             uncertainOutcome: none('all three transports report a boolean or nothing'),
-            erasure: none('no customer data reaches an operator alert'),
+            erasure: notApplicable('no customer data reaches an operator alert'),
             recovery: none('the next cron pass re-evaluates the condition, which is the recovery an '
                 + 'alert actually wants'),
         },
@@ -1200,7 +1503,11 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         source: 'modules/health/coupon-alert.listener.ts',
         symbol: 'CouponAlertListener',
         egress: 'TelegramAlertService.send',
-        properties: uncovered('no cooldown and no dedupe, and it deliberately bypasses the alert-config '
+        reach: {
+            class: 'platform_notification', audience: 'platform_operator', personalData: false,
+            channels: ['email'],
+        },
+        properties: uncoveredWithoutPersonalData('no cooldown and no dedupe, and it deliberately bypasses the alert-config '
             + 'channel switch: the owner wants every coupon event, and a repeat is cheaper than a miss'),
     }),
 
@@ -1213,6 +1520,10 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         source: 'modules/feature-requests/feature-requests.service.ts',
         symbol: 'notifySubscribersStatus',
         egress: 'EmailService.send in a sequential loop',
+        reach: {
+            class: 'operator_notification', audience: 'tenant_operator', personalData: true,
+            channels: ['email'],
+        },
         properties: uncovered('a sequential inline loop of `EmailService.send`. A failure part-way '
             + 'through leaves some subscribers told and some not, with no record of which'),
     }),
@@ -1230,6 +1541,10 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         source: 'modules/channels/email/email.adapter.ts',
         symbol: 'EmailAdapter',
         egress: 'EmailChannelService, through the same outbound queue as every other channel',
+        reach: {
+            class: 'customer_message', audience: 'contact', personalData: true,
+            channels: ['email'],
+        },
         properties: queued(none('whatever the caller passes; no producer configures this channel today')),
     }),
 
@@ -1245,6 +1560,10 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         symbol: 'SmsAdapter',
         egress: 'Twilio REST; the outbound worker diverts text SMS to the metered reseller sender '
             + 'before this can be reached, and drops MMS outright',
+        reach: {
+            class: 'customer_message', audience: 'contact', personalData: true,
+            channels: ['sms'],
+        },
         properties: queued(none('the worker\'s SMS branch never reaches this adapter for text, so the '
             + 'legacy path has no live producer to dedupe')),
     }),
@@ -1271,6 +1590,10 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
             + 'Microsoft Graph `/me/events` POST',
         // The completion review assumed calendar writes were uncovered. They are not:
         // this is the second best-covered producer in the system after the dispatch outbox.
+        reach: {
+            class: 'domain_integration', audience: 'provider', personalData: true,
+            channels: ['provider_api'],
+        },
         properties: {
             authority: durable('a 90s lease per row, claimed before the request; the row is enqueued in '
                 + 'the SAME transaction as the appointment it describes'),
@@ -1296,6 +1619,10 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         source: 'modules/appointments/calendar-integration.service.ts',
         symbol: 'updateEvent',
         egress: 'a direct `cal.events.patch` / Graph PATCH, with no outbox row',
+        reach: {
+            class: 'domain_integration', audience: 'provider', personalData: true,
+            channels: ['provider_api'],
+        },
         properties: uncovered('the file\'s own comment marks it a legacy wrapper. It writes to the '
             + 'provider with no lease, no idempotency key and no row, which is exactly what the outbox '
             + 'beside it exists to replace'),
@@ -1311,6 +1638,10 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         source: 'modules/tenant-payments/tenant-payments.service.ts',
         symbol: 'createPaymentLink',
         egress: 'TenantWompiClient.createAndVerifyPaymentLink, or a MercadoPago checkout preference',
+        reach: {
+            class: 'commercial_write', audience: 'provider', personalData: true,
+            channels: ['provider_api'],
+        },
         properties: {
             authority: partial('`assertCustomerPaymentsEntitled` gates it and the intent row is written '
                 + 'first, but the POST happens inline inside the AI turn — there is no lease that '
@@ -1339,6 +1670,10 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         source: 'modules/billing/recurring/processors/renewal-charge.processor.ts',
         symbol: 'RenewalChargeProcessor',
         egress: 'WompiAdapter.charge → POST /transactions',
+        reach: {
+            class: 'commercial_write', audience: 'provider', personalData: true,
+            channels: ['provider_api'],
+        },
         properties: {
             authority: durable('`markProviderPostStarted` takes a database lease and commits before the '
                 + 'POST, so a crash cannot look like an attempt that never happened'),
@@ -1366,6 +1701,10 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         symbol: 'createPaymentSource',
         egress: 'POST /payment_sources, PUT /payment_sources/:id/void, POST /transactions/:id/void, '
             + 'POST /payment_links',
+        reach: {
+            class: 'commercial_write', audience: 'provider', personalData: true,
+            channels: ['provider_api'],
+        },
         properties: {
             authority: none('called inline from the billing service; no lease commits before the request'),
             idempotency: partial('the voids are naturally idempotent and the checkout link carries a '
@@ -1391,6 +1730,10 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         source: 'modules/billing/adapters/stripe.adapter.ts',
         symbol: 'StripeAdapter',
         egress: 'the Stripe SDK: customers.create, subscriptions.create/update/cancel, refunds.create',
+        reach: {
+            class: 'commercial_write', audience: 'provider', personalData: true,
+            channels: ['provider_api'],
+        },
         properties: uncovered('no `idempotencyKey` is passed on any Stripe call, which is the one thing '
             + 'that API gives away for free. It is dormant, so nothing has been charged twice — but the '
             + 'gap is in the code, not in the configuration'),
@@ -1406,6 +1749,10 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         source: 'modules/fiscal/adapters/factus.adapter.ts',
         symbol: 'FactusAdapter',
         egress: 'POST /v2/bills/validate and /v2/credit-notes/validate',
+        reach: {
+            class: 'commercial_write', audience: 'provider', personalData: true,
+            channels: ['provider_api'],
+        },
         properties: {
             authority: durable('the queue processor short-circuits when the invoice is already issued, '
                 + 'and issuance is refused for a sandbox rail, a zero amount or our own tenant'),
@@ -1430,6 +1777,10 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         source: 'modules/automation/handlers/http-request.handler.ts',
         symbol: 'HttpRequestHandler',
         egress: 'HttpRequestService.execute, SSRF-guarded and capped at 10 seconds',
+        reach: {
+            class: 'domain_integration', audience: 'provider', personalData: true,
+            channels: ['webhook'],
+        },
         properties: {
             authority: none('no record that an attempt was permitted; the queue job is the only trace'),
             // The sharpest edge in this table: the tenant chose the verb, so a repeat can create a
@@ -1456,6 +1807,10 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         source: 'modules/mcp/mcp-client.service.ts',
         symbol: 'callRemoteTool',
         egress: 'a JSON-RPC `tools/call` POST to the tenant\'s server',
+        reach: {
+            class: 'domain_integration', audience: 'provider', personalData: true,
+            channels: ['provider_api'],
+        },
         properties: {
             authority: partial('a stored, definition-hash-pinned human approval is required for any '
                 + 'tool declared `write`, `payment` or `irreversible`. That authorises the KIND of '
@@ -1479,6 +1834,10 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         source: 'modules/external-crm/external-crm.service.ts',
         symbol: 'enqueueForAllConnections',
         egress: 'HubSpotAdapter / PipedriveAdapter POSTs, from the external CRM queue with three attempts',
+        reach: {
+            class: 'domain_integration', audience: 'provider', personalData: true,
+            channels: ['provider_api'],
+        },
         properties: {
             authority: none('no admission row; the queue job is the only trace'),
             idempotency: partial('a BullMQ job id when the caller supplies a dedupe key, and HubSpot\'s '
@@ -1510,6 +1869,10 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         source: 'modules/reviews/reviews.service.ts',
         symbol: 'postReply',
         egress: 'PUT https://mybusiness.googleapis.com/v4/{review}/reply',
+        reach: {
+            class: 'public_content', audience: 'public', personalData: true,
+            channels: ['provider_api'],
+        },
         properties: {
             authority: partial('a tenant opt-in flag. With `autoReply` on, a `30 */6 * * *` cron posts '
                 + 'model-written text publicly with no human between the model and the customer'),
@@ -1534,6 +1897,10 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         symbol: 'messengerOAuthConnect',
         egress: 'POST/DELETE {id}/subscribed_apps, the Instagram and Messenger token exchanges, and '
             + 'Telegram setWebhook/deleteWebhook',
+        reach: {
+            class: 'provider_configuration', audience: 'provider', personalData: false,
+            channels: ['provider_api'],
+        },
         properties: {
             authority: none('inline in the connect or disconnect request'),
             idempotency: partial('subscribing and unsubscribing are naturally idempotent at Meta. A '
@@ -1542,7 +1909,7 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
                 + 'that matters here'),
             uncertainOutcome: none('a lost answer to a token exchange leaves a connection the operator '
                 + 'must restart from the beginning, with no record of what happened'),
-            erasure: none('connection metadata, not contact data'),
+            erasure: notApplicable('connection metadata, not contact data'),
             recovery: none('the operator presses connect again'),
         },
     }),
@@ -1556,6 +1923,10 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         source: 'modules/whatsapp/services/whatsapp-template.service.ts',
         symbol: 'createTemplate',
         egress: 'POST {wabaId}/message_templates',
+        reach: {
+            class: 'provider_configuration', audience: 'provider', personalData: false,
+            channels: ['provider_api'],
+        },
         properties: {
             authority: none('the Graph POST happens inline inside the HTTP request; nothing records '
                 + 'that an attempt was permitted'),
@@ -1564,7 +1935,7 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
             receipt: durable('the template id is persisted and polled until Meta approves or rejects it'),
             uncertainOutcome: none('a lost answer surfaces as a failure; the next attempt collides on '
                 + 'the name and looks like a different error'),
-            erasure: none('template content is tenant copy, not contact data'),
+            erasure: notApplicable('template content is tenant copy, not contact data'),
             recovery: partial('`pollPendingTemplates` reconciles approval state, not creation'),
         },
     }),
@@ -1579,6 +1950,10 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         source: 'modules/whatsapp/services/whatsapp-connection.service.ts',
         symbol: 'uploadProfilePhoto',
         egress: 'POST {phoneNumberId}/whatsapp_business_profile, and a three-call resumable upload chain',
+        reach: {
+            class: 'provider_configuration', audience: 'provider', personalData: false,
+            channels: ['provider_api'],
+        },
         properties: {
             authority: none('the Graph calls happen inline inside the HTTP request; nothing records '
                 + 'that an attempt was permitted'),
@@ -1586,7 +1961,7 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
                 + 'calls with no key, so a failure part-way leaves an orphan upload session at Meta'),
             receipt: none('the upload handle is used and discarded'),
             uncertainOutcome: none('a lost answer mid-chain is indistinguishable from a refusal'),
-            erasure: none('tenant branding, not contact data'),
+            erasure: notApplicable('tenant branding, not contact data'),
             recovery: none('nothing records the attempt; the operator noticing the wrong photo and '
                 + 'uploading again is the whole recovery mechanism'),
         },
@@ -1602,6 +1977,10 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         symbol: 'InstagramTokenRefreshService',
         egress: 'GET graph.instagram.com/refresh_access_token — a read-shaped call that mints new '
             + 'remote state',
+        reach: {
+            class: 'credential_lifecycle', audience: 'provider', personalData: false,
+            channels: ['provider_api'],
+        },
         properties: {
             authority: none('inline from the daily `0 6 * * *` cron'),
             idempotency: partial('refreshing twice is harmless: each call returns a valid token and the '
@@ -1609,7 +1988,7 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
             receipt: durable('the new token is encrypted and persisted, which is the whole point'),
             uncertainOutcome: partial('a lost answer leaves the old token in place and the next daily '
                 + 'pass tries again, while the window is still 30 days wide'),
-            erasure: none('a credential, not contact data'),
+            erasure: notApplicable('a credential, not contact data'),
             recovery: durable('the daily cron is the recovery'),
         },
     }),
@@ -1625,6 +2004,10 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         symbol: 'disconnectAllChannels',
         egress: 'the same subscribed_apps and webhook deletions as the connect flow, bounded by '
             + '`fetchWithDeadline`',
+        reach: {
+            class: 'credential_lifecycle', audience: 'provider', personalData: false,
+            channels: ['provider_api'],
+        },
         properties: {
             authority: none('inline in the offboarding pipeline'),
             idempotency: durable('every revocation is a delete: repeating it is a no-op, and a shared '
@@ -1632,7 +2015,7 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
             receipt: partial('per-account failures are collected and reported rather than swallowed'),
             uncertainOutcome: partial('a bounded deadline turns a hang into a recorded failure the '
                 + 'operator can see, which is more than most inline paths do'),
-            erasure: none('this producer serves erasure; the calls themselves are not recorded'),
+            erasure: notApplicable('this producer serves erasure; the calls themselves are not recorded'),
             recovery: none('the operator re-runs the step'),
         },
     }),
@@ -1649,6 +2032,10 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         source: 'modules/integrations/integration-outbox.worker.ts',
         symbol: 'IntegrationOutboxWorker',
         egress: 'nothing today: `adapter.write` has no registered adapter to call',
+        reach: {
+            class: 'domain_integration', audience: 'provider', personalData: true,
+            channels: ['provider_api'],
+        },
         properties: uncovered('the mechanism is real and correct, and no producer reaches it. It is in '
             + 'this inventory so that a future adapter registration is a deliberate act rather than a '
             + 'quiet arrival of a whole new external effect'),
@@ -1667,7 +2054,11 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
             + 'and persist nothing',
         // Recorded as an entry rather than omitted: "we never write there" is a fact worth
         // pinning, because the day a booking push is added it must not arrive unnoticed.
-        properties: uncovered('there is no external effect to cover. No booking is created at Mindbody '
+        reach: {
+            class: 'domain_integration', audience: 'provider', personalData: false,
+            channels: ['provider_api'],
+        },
+        properties: uncoveredWithoutPersonalData('there is no external effect to cover. No booking is created at Mindbody '
             + 'or Cliniko, no order is pushed to Shopify, and no reservation or availability is sent '
             + 'back to an OTA — the iCal path is import-only. The authentication POSTs mint a '
             + 'short-lived token and are safe to repeat'),

@@ -319,6 +319,14 @@ jobs:
           apps/api/src/modules/whatsapp/services/whatsapp-business-profile-multinumber.spec.ts
           apps/api/src/modules/whatsapp/services/whatsapp-token-coverage.spec.ts
 
+      # The artefact gate, from the SAME shared list `candidate` and
+      # `vertical-quality` use. Deploy ran none of it: a closure report or a
+      # tool-profile audit could describe a tree two commits behind the one
+      # being shipped, and the artefacts are what the programme is read from.
+      # `--check` regenerates in memory and compares; it writes nothing.
+      - name: Generated artefacts match their sources
+        run: node docs/audits/2026-09-09/verify-artifacts.cjs
+
       - name: TypeScript check (all apps)
         run: |
           (cd apps/api && npx tsc --noEmit)

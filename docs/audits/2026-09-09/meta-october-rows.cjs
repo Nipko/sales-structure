@@ -92,24 +92,67 @@ function octoberAuthorities({ root, api, shared }) {
             !== String(rendered).split('\r\n').join('\n');
 
     const {
-        EXTERNAL_EFFECT_PRODUCERS, summariseExternalEffects,
+        EXTERNAL_EFFECT_PRODUCERS, summariseExternalEffects, isMetaBillableCustomerMessage,
+        metaBillsDelivery, EFFECT_CLASSES,
     } = api('modules/channels/external-effect-inventory.ts');
     const effects = summariseExternalEffects();
     /**
-     * M1 and M5 are about WhatsApp, so they count the producers that can reach a
-     * provider-billed messaging channel — not the Google Calendar write and the
-     * Wompi charge, which are external effects with their own programmes. A
-     * counter that sweeps everything makes a WhatsApp row open because a
-     * calendar integration has no erasure path, and then nobody can tell what
-     * closing the row would require.
+     * ═══ WHICH PRODUCERS M1 AND M5 ARE ACTUALLY ABOUT ═══
+     *
+     * These two rows are about WhatsApp: what Meta can bill the tenant's WABA
+     * for, and what a right-to-erasure request has to reach in those messages.
+     *
+     * They used to choose their producers with a regular expression over the
+     * `source` and `egress` STRINGS — which is a question about spelling. It
+     * swept in twenty-seven producers and nine of them were not messages to a
+     * customer at all: internal platform alerts, coupon alerts, the email
+     * channel's inbound reply, the retired conversational SMS adapter,
+     * connecting and testing a channel, creating a WhatsApp template, writing
+     * the business profile, and rotating a token. A WhatsApp row could open
+     * because a token rotation has no erasure path, and closing it would have
+     * meant work on something the row was never about.
+     *
+     * The inventory now declares a `reach` for every producer, and the
+     * selection is that contract: a message to the tenant's CUSTOMER that can
+     * leave over WhatsApp. `metaBillsDelivery` is derived from the channel
+     * list, so it cannot drift from it.
      */
-    const MESSAGING_EGRESS = /whatsapp|instagram|messenger|telegram|dispatch|outbound|channel|notice/i;
-    const messaging = EXTERNAL_EFFECT_PRODUCERS.filter(producer =>
-        MESSAGING_EGRESS.test(String(producer.egress ?? ''))
-        || MESSAGING_EGRESS.test(String(producer.source ?? '')));
+    const messaging = EXTERNAL_EFFECT_PRODUCERS.filter(isMetaBillableCustomerMessage);
+    /**
+     * A gap is `none` or `partial`, and `not_applicable` is NEITHER.
+     *
+     * `none` used to answer two opposite questions — "personal data with nothing
+     * erasing it" and "this operation holds no contact data" — and they were
+     * being summed. The inventory separates them now; this is the reading half.
+     */
     const messagingGaps = property => messaging
-        .filter(producer => producer.properties[property].level === 'none')
+        .filter(producer => {
+            const level = producer.properties[property].level;
+            return level === 'none' || level === 'partial';
+        })
         .map(producer => producer.id);
+
+    /**
+     * Everything the regex used to sweep in, kept in view rather than dropped.
+     *
+     * Narrowing a counter is only honest if what leaves it lands somewhere. Each
+     * class keeps its own gap list here, so a reader can see that an operator
+     * notification with no erasure path did not stop being a fact — it stopped
+     * being a WhatsApp fact.
+     */
+    const byClass = {};
+    for (const cls of EFFECT_CLASSES) {
+        const members = EXTERNAL_EFFECT_PRODUCERS.filter(producer => producer.reach.class === cls);
+        byClass[cls] = {
+            total: members.length,
+            metaBillable: members.filter(producer => metaBillsDelivery(producer.reach)).length,
+            gaps: Object.fromEntries(['authority', 'idempotency', 'receipt', 'uncertainOutcome',
+                'erasure', 'recovery'].map(property => [property, members.filter(producer => {
+                const level = producer.properties[property].level;
+                return level === 'none' || level === 'partial';
+            }).map(producer => producer.id)])),
+        };
+    }
 
     const { PROACTIVE_POLICIES } = api('modules/persona/proactive-policy-authority.ts');
     const { SENDING_ROLES } = api('modules/persona/human-operator-authority.ts');
@@ -163,7 +206,7 @@ function octoberAuthorities({ root, api, shared }) {
     return {
         rows, census, billable, offDurable, byLane, censusStale,
         bypasses: census.bypasses,
-        producers: EXTERNAL_EFFECT_PRODUCERS, effects, messaging, messagingGaps,
+        producers: EXTERNAL_EFFECT_PRODUCERS, effects, messaging, messagingGaps, byClass,
         policies: Object.keys(PROACTIVE_POLICIES),
         sendingRoles: SENDING_ROLES,
         itemKinds: DISPATCH_ITEM_KINDS,
@@ -214,8 +257,9 @@ function octoberRows(row, A) {
 
         row('M1', { provenance: 'derived',
             open: A.messagingGaps('authority').length + A.messagingGaps('idempotency').length,
-            openLabel: `${A.messagingGaps('authority').length} productores de mensajería sin `
-                + `autoridad y ${A.messagingGaps('idempotency').length} sin idempotencia`,
+            openLabel: `${A.messagingGaps('authority').length} productores de mensaje al cliente `
+                + `cobrables por Meta sin autoridad y ${A.messagingGaps('idempotency').length} sin `
+                + `idempotencia, sobre ${A.messaging.length} productores de esa clase`,
             gates: [1, 4],
             evidence: 'Remitente, pagador y credencial salen del resolver único; la unión de '
                 + `autoridades cubre agente servido, ${A.policies.length} políticas proactivas `
@@ -260,8 +304,8 @@ function octoberRows(row, A) {
 
         row('M5', { provenance: 'derived',
             open: A.messagingGaps('erasure').length,
-            openLabel: `${A.messagingGaps('erasure').length} productores de mensajería sin borrado `
-                + 'alcanzable',
+            openLabel: `${A.messagingGaps('erasure').length} productores de mensaje al cliente `
+                + `cobrables por Meta sin borrado alcanzable, sobre ${A.messaging.length} de esa clase`,
             gates: [1, 6],
             evidence: 'Aprendizaje conserva origen y finalidad; publicación y rollback llegan a los '
                 + 'derivados. El agente de negocio de Meta sigue apagado. El piloto real necesita '

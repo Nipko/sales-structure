@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "revision": "5d8d0cfa264b242691ebeec2ef2a5a4acea8b16e",
-  "generatedAt": "2026-09-12T03:26:01.325Z",
+  "revision": "9442ede3c28b5f816abff6bf811ecd0b382a8f8e",
+  "generatedAt": "2026-09-12T08:30:04.309Z",
   "finished": false,
   "counts": {
     "aceptada": 11,
@@ -422,8 +422,8 @@
     },
     {
       "id": "M1",
-      "open": 20,
-      "openLabel": "14 productores de mensajería sin autoridad y 6 sin idempotencia",
+      "open": 11,
+      "openLabel": "5 productores de mensaje al cliente cobrables por Meta sin autoridad y 6 sin idempotencia, sobre 18 productores de esa clase",
       "gates": [
         1,
         4
@@ -473,8 +473,8 @@
     },
     {
       "id": "M5",
-      "open": 12,
-      "openLabel": "12 productores de mensajería sin borrado alcanzable",
+      "open": 6,
+      "openLabel": "6 productores de mensaje al cliente cobrables por Meta sin borrado alcanzable, sobre 18 de esa clase",
       "gates": [
         1,
         6

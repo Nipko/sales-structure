@@ -405,8 +405,19 @@ export function CapabilitiesSection({ config, onChange, apptReadiness }: Capabil
             properties: "property_booking_confirmation",
             tours: "tour_booking_confirmation",
             treatments: "treatment_booking_confirmation",
-            realEstate: "realestate_visit_confirmation",
-            pets: "veterinary_appointment_confirmation",
+            // ── THE EMAIL THAT ACTUALLY GOES, NOT THE ONE THAT WAS SEEDED ──
+            //
+            // A property visit and a veterinary visit ARE appointments: the
+            // consumer resolves the switch through `[family, "appointments"]`
+            // and gates the appointment confirmation — which is real, i18n'd
+            // and carries the calendar attachment. `realestate_visit_
+            // confirmation` and `veterinary_appointment_confirmation` are
+            // seeded into every tenant and rendered zero times.
+            //
+            // Naming them here told the owner their switch governed an email
+            // nothing sends. The switch is real; the template named was not.
+            realEstate: "appointment_confirmation_email",
+            pets: "appointment_confirmation_email",
             restaurants: "restaurant_reservation_confirmation",
             gyms: "gym_class_confirmation",
             education: "education_enrollment_confirmation",
@@ -427,7 +438,18 @@ export function CapabilitiesSection({ config, onChange, apptReadiness }: Capabil
             crm: "",
             ecommerce: "",
             payments: "",
-            vehicles: "",
+            // ── A CONTROL WITH A CONSUMER AND NO WAY TO REACH IT ──────────
+            //
+            // `""` hid this toggle, and `vehicles.emailConfirmations` is one
+            // of the few that genuinely changes behaviour: a test drive is an
+            // appointment the `vehicles` family asked for, so the
+            // notification resolves through `["vehicles", "appointments"]`,
+            // most specific first. The owner could not switch it.
+            //
+            // That is the mirror of the defect the audit counted — a control
+            // with no consumer — and it is the worse one to leave: the code
+            // honours a setting the screen never offers.
+            vehicles: "appointment_confirmation_email",
             // Los alquileres y las estadías confirman por chat, con ruta humana
             // a /admin/resource-rentals; todavía no hay plantilla de correo
             // propia, y ofrecer el toggle sin consumidor es el control muerto

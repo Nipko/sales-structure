@@ -199,11 +199,26 @@ describe('OnboardingService Business Portfolio resolution', () => {
       wabaId,
       'system-user-token',
     );
+    // ── AND WHOSE TOKEN IT IS, BESIDE THE TOKEN ─────────────────────────────
+    //
+    // `credential_type` says `system_user_token`, and two different things live
+    // under that name: a Business Integration System User minted for ONE client
+    // through this very flow, and the provider's own System User token. Signing
+    // a tenant's message with the second attributes it to the provider and bills
+    // another portfolio.
+    //
+    // `channel-token.service.ts` refuses that — and could never fire, because
+    // nothing had ever written the evidence it reads. This call is the one place
+    // the evidence exists, so the provenance travels with the token.
     expect((harness.service as any).storeEncryptedCredential).toHaveBeenCalledWith(
       tenantId,
       'system-user-token',
       0,
+      expect.objectContaining({ ownerBusinessId: expect.any(String) }),
     );
+    const recorded = (harness.service as any).storeEncryptedCredential.mock.calls[0][3];
+    // The CLIENT's portfolio, correlated against the WABA above — never ours.
+    expect(recorded.ownerBusinessId).toBe('business-owner');
   });
 
   it('updates an existing phone row before inserting during asset resync', async () => {

@@ -364,7 +364,25 @@ export class OnboardingService {
       finalToken = usableCredential.accessToken;
       finalExpiresIn = usableCredential.expiresInSeconds;
       this.logger.log(`[Onboarding][${onboardingId}] Step 9b: Storing coverage-verified credential (expiresIn=${finalExpiresIn}s)`);
-      await this.storeEncryptedCredential(tenantId, finalToken, finalExpiresIn);
+      // The WHOSE, written beside the token while it is still known.
+      //
+      // `credential_type` says `system_user_token`, and two different things
+      // live under that name: a Business Integration System User minted for
+      // ONE client through Embedded Signup, and the provider's own System
+      // User token. Signing a tenant's message with the second attributes it
+      // to the provider and bills another portfolio. The guard that refuses
+      // that exists in `channel-token.service.ts` and could never fire,
+      // because nothing had ever written the evidence it reads.
+      //
+      // This is the one place the evidence exists: the token came through
+      // this flow, for this client's own WABA, and `businessId` above was
+      // correlated against that WABA rather than taken on the session's word.
+      // Written only when that correlation produced something — an
+      // unresolved business id leaves the row NULL, which is the third state
+      // the column exists for and NOT a claim that the credential is the
+      // provider's.
+      await this.storeEncryptedCredential(tenantId, finalToken, finalExpiresIn,
+        businessId ? { ownerBusinessId: businessId, source: businessIdSource } : null);
 
       // ---- 10-11. Persist channel + routing only after entitlement and token
       // coverage have both passed (CRITICAL — any failure aborts onboarding). ----
@@ -1252,7 +1270,20 @@ export class OnboardingService {
   /**
    * Almacenar token cifrado en la tabla de credenciales con expiración
    */
-  private async storeEncryptedCredential(tenantId: string, accessToken: string, expiresInSeconds?: number) {
+  private async storeEncryptedCredential(
+    tenantId: string,
+    accessToken: string,
+    expiresInSeconds?: number,
+    /**
+     * Whose portfolio this token was minted for, when the caller established it.
+     *
+     * `null` means nobody established it, which is not the same as saying it
+     * is the provider's — the reader treats an absent kind as unverified and
+     * still sends, because every tenant connected before this column existed
+     * has one and refusing them would be an outage caused by bookkeeping.
+     */
+    provenance?: { ownerBusinessId: string; source: string } | null,
+  ) {
     const encryptedValue = this.encryptToken(accessToken);
 
     // expiresInSeconds === 0 means PERMANENT (a System User token). It must clear
@@ -1277,6 +1308,19 @@ export class OnboardingService {
       // token actually held.
       expiresAt,
     };
+
+    if (provenance?.ownerBusinessId) {
+      // A token that reached this method through Embedded Signup, for a WABA
+      // that belongs to `ownerBusinessId`, IS the client-scoped kind. That is
+      // what this flow does; it is not an inference about a token found lying
+      // in the table.
+      data.credentialKind = 'business_integration_system_user';
+      data.ownerBusinessId = provenance.ownerBusinessId;
+      data.metaAppId = process.env.META_APP_ID ?? null;
+      data.provenanceVerifiedAt = new Date();
+      this.logger.log(`[Onboarding] credential provenance recorded: business_integration_system_user `
+        + `owner=${provenance.ownerBusinessId} (${provenance.source})`);
+    }
 
     if (existing) {
       await this.prisma.whatsappCredential.update({

@@ -3251,6 +3251,7 @@ export class AIToolExecutorService {
         // concreto — el bloqueo entre visitas a propiedades distintas que este
         // cambio viene justamente a levantar.
         const subject = await this.resolveAppointmentSubject(schema, args);
+        if (subject.error) return subject;
         const staffCandidate = args.staffId || subject.suggestedStaffId || null;
         const assignedTo = staffCandidate
             ? await assertActiveTenantUser(this.prisma, schema, staffCandidate, namespace)
@@ -3725,7 +3726,8 @@ export class AIToolExecutorService {
     private async resolveAppointmentSubject(
         schema: string,
         args: any,
-    ): Promise<{ metadata: Record<string, string>; labels: string[]; suggestedStaffId?: string }> {
+    ): Promise<{ metadata: Record<string, string>; labels: string[]; suggestedStaffId?: string;
+        error?: string; message?: string; shouldHandoff?: boolean }> {
         const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
         // La etiqueta se resuelve en el mismo viaje que la validación: es lo que
         // después ve el asesor en su calendario, y un id crudo no le sirve.
@@ -3745,10 +3747,21 @@ export class AIToolExecutorService {
         const labels: string[] = [];
         for (const c of candidates) {
             if (typeof c.value !== 'string' || !UUID_RE.test(c.value)) continue;
-            const found: any[] = await this.prisma.$queryRawUnsafe(
-                `SELECT ${c.select} AS label FROM "${schema}".${c.table} WHERE id = $1::uuid LIMIT 1`,
-                c.value,
-            ).catch(() => [] as any[]);
+            let found: any[];
+            try {
+                found = await this.prisma.$queryRawUnsafe(
+                    `SELECT ${c.select} AS label FROM "${schema}".${c.table} WHERE id = $1::uuid LIMIT 1`,
+                    c.value,
+                ) as any[];
+            } catch (error: any) {
+                this.logger.warn(`[Tool] create_appointment could not verify ${c.key}: ${error?.message}`);
+                return {
+                    metadata, labels,
+                    error: 'appointment_subject_unavailable',
+                    message: 'The appointment subject could not be verified. Do not create a generic booking; offer a human handoff instead.',
+                    shouldHandoff: true,
+                };
+            }
             if (found.length) {
                 metadata[c.key] = c.value;
                 if (found[0].label) labels.push(`${c.label}: ${found[0].label}`);
@@ -3770,13 +3783,27 @@ export class AIToolExecutorService {
         // zonas existía y no ruteaba nada.
         let suggestedStaffId: string | undefined;
         if (metadata.listingId) {
-            const listing = await this.listingsService.getById(schema, metadata.listingId).catch(() => null);
+            let listing: any;
+            try {
+                listing = await this.listingsService.getById(schema, metadata.listingId);
+            } catch (error: any) {
+                this.logger.warn(`[Tool] create_appointment could not resolve listing ownership: ${error?.message}`);
+                return { metadata, labels, error: 'appointment_assignment_unavailable',
+                    message: 'The responsible agent could not be verified. Do not create an unassigned visit; offer a human handoff instead.',
+                    shouldHandoff: true };
+            }
             if (listing?.assigned_agent_id) {
                 suggestedStaffId = listing.assigned_agent_id;
             } else if (listing?.neighborhood) {
-                suggestedStaffId = (await this.listingsService
-                    .resolveAgentForZone(schema, listing.neighborhood, listing.city)
-                    .catch(() => null)) || undefined;
+                try {
+                    suggestedStaffId = (await this.listingsService
+                        .resolveAgentForZone(schema, listing.neighborhood, listing.city)) || undefined;
+                } catch (error: any) {
+                    this.logger.warn(`[Tool] create_appointment could not resolve listing zone: ${error?.message}`);
+                    return { metadata, labels, error: 'appointment_assignment_unavailable',
+                        message: 'The responsible agent could not be verified. Do not create an unassigned visit; offer a human handoff instead.',
+                        shouldHandoff: true };
+                }
             }
         }
 
@@ -3813,7 +3840,11 @@ export class AIToolExecutorService {
             };
         } catch (e: any) {
             this.logger.warn(`[Tool] get_check_in_instructions failed: ${e.message}`);
-            return { error: e.message };
+            return {
+                error: 'check_in_instructions_unavailable',
+                message: 'Access instructions could not be verified. Do not reveal an address or access details; offer a human handoff instead.',
+                shouldHandoff: true,
+            };
         }
     }
 

@@ -265,6 +265,22 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
         expect(result).not.toHaveProperty('checkInInstructions');
     });
 
+    it('does not leak storage errors while access instructions are unreadable', async () => {
+        const harness = createHarness([]);
+        harness.propertiesService.getById.mockRejectedValueOnce(
+            new Error('relation tenant_secret.property_bookings does not exist'),
+        );
+
+        const result = await harness.executor.execute(
+            schemaName, tenantId, contactId, 'get_check_in_instructions',
+            { propertyId: appointmentId }, undefined,
+            { operationalScope, authority: authorityFor('get_check_in_instructions') },
+        );
+
+        expect(result).toMatchObject({ error: 'check_in_instructions_unavailable', shouldHandoff: true });
+        expect(JSON.stringify(result)).not.toContain('tenant_secret');
+    });
+
     it('applies one guarded reschedule and emits only after the winning update', async () => {
         const harness = createHarness([
             [{ ...appointment, assigned_to: null }],
@@ -716,5 +732,17 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
 
         expect(result).toMatchObject({ available: false, slots: [],
             error: 'appointment_timezone_unavailable', shouldHandoff: true });
+    });
+
+    it('does not create a generic appointment when its requested subject cannot be verified', async () => {
+        const harness = createHarness([]);
+        harness.prisma.$queryRawUnsafe.mockRejectedValueOnce(new Error('database unavailable'));
+
+        const result = await (harness.executor as any).resolveAppointmentSubject(
+            schemaName, { listingId: appointmentId },
+        );
+
+        expect(result).toMatchObject({ error: 'appointment_subject_unavailable', shouldHandoff: true });
+        expect(result.metadata).toEqual({});
     });
 });

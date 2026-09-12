@@ -31,11 +31,18 @@ import type { RevisionQuery } from './agent-configuration-revision';
  *     the message would leave a business they no longer belong to;
  *   · the connection can stop being this tenant's.
  *
- * So the revision hashes exactly those, and it is revalidated inside the
- * transaction that grants the lease — the same rule the other two authorities
- * follow, for the same reason: a check that commits separately answers about a
- * moment that has already passed, and the window between it and the POST is
- * where the revocation lands.
+ * The first three are facts about the USER, and the revision hashes them. The
+ * fourth is a fact about the CONNECTION, and it is read separately by
+ * `connectionStillTheirs` — because the question is whether the connection is
+ * still usable, not whether its row is byte-identical to the one seen at
+ * prepare. For a while the docblock claimed all four and the code checked
+ * three: nothing read `channel_accounts`, so a reply queued before a number
+ * was disconnected or moved to another business was still admitted and sent.
+ *
+ * Both are revalidated inside the transaction that grants the lease — the same
+ * rule the other two authorities follow, for the same reason: a check that
+ * commits separately answers about a moment that has already passed, and the
+ * window between it and the POST is where the revocation lands.
  *
  * ── WHY IT IS NOT "THE REQUEST WAS AUTHENTICATED" ───────────────────────────
  *
@@ -146,6 +153,41 @@ export async function humanOperatorRevision(
     });
 }
 
+/**
+ * Is this connection still one this tenant may send from, right now?
+ *
+ * ── WHY THIS IS A SEPARATE READ AND NOT PART OF THE ACTOR HASH ──────────────
+ *
+ * The docblock at the top of this file lists four things that can change
+ * underneath a queued human send, the fourth being "the connection can stop
+ * being this tenant's", and then says the revision hashes exactly those. It
+ * hashed three: nothing here read `channel_accounts` at all, so a reply queued
+ * before a number was disconnected, deactivated or moved to another business
+ * was still admitted and still sent. `AgentDispatchOutboxStore.admit` compares
+ * the scope's channel against the ROW's binding, which proves the scope and the
+ * row agree with each other — not that the connection is still this tenant's.
+ *
+ * It is a separate read rather than a fourth field in `revisionHash` for the
+ * same reason the actor check is eligibility and not byte-equality: what
+ * matters is whether the connection is STILL usable, not whether its row is
+ * byte-identical to the one seen at prepare. A display name edited while the
+ * reply sat in the queue must not drop a customer's message.
+ *
+ * `FOR SHARE` in the caller's transaction, like the other two, so the answer
+ * cannot go stale between here and the lease that authorises the POST.
+ */
+async function connectionStillTheirs(
+    query: RevisionQuery, tenantId: string, channelType: string, channelAccountId: string,
+): Promise<boolean> {
+    const [row] = await query<any[]>(
+        `SELECT id FROM public.channel_accounts
+          WHERE tenant_id = $1::uuid AND channel_type = $2 AND account_id = $3
+            AND is_active = true
+          FOR SHARE`,
+        [tenantId, channelType, channelAccountId]);
+    return !!row;
+}
+
 /** Build one, or `undefined` when this person may not send from this connection. */
 export async function humanOperatorAuthority(
     query: RevisionQuery, schema: string, input: {
@@ -158,6 +200,14 @@ export async function humanOperatorAuthority(
 ): Promise<HumanOperatorAuthority | undefined> {
     const actorRevision = await humanOperatorRevision(query, input.tenantId, input.userId);
     if (!actorRevision) return undefined;
+    // Caught here as well as at admit. A scope that could never be revalidated
+    // should not be minted: preparing a durable row against a connection this
+    // tenant does not hold commits an effect whose only possible outcome is a
+    // suppression, and the producer has already been told it was accepted.
+    if (!await connectionStillTheirs(query, input.tenantId, input.channelType,
+        input.channelAccountId)) {
+        return undefined;
+    }
     const scope: HumanOperatorAuthority = Object.freeze({
         kind: 'human_operator' as const,
         tenantId: input.tenantId,
@@ -218,5 +268,15 @@ export async function revalidateHumanOperator(
     // somebody disputes needs to read. Evidence and gate are different jobs.
     const current = await humanOperatorRevision(query, scope.tenantId, scope.userId);
     if (!current) return { kind: 'revoked', detail: `user_may_not_send:${scope.userId}` };
+    // The fourth thing the docblock promised. Disconnected, deleted, or moved
+    // to another business: in the last case the message would leave from a
+    // number that now belongs to somebody else's WABA, and be billed to them.
+    if (!await connectionStillTheirs(query, scope.tenantId, scope.channelType,
+        scope.channelAccountId)) {
+        return {
+            kind: 'revoked',
+            detail: `connection_not_available:${scope.channelType}:${scope.channelAccountId}`,
+        };
+    }
     return { kind: 'current' };
 }

@@ -63,6 +63,18 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
             tenantId, schema);
         await global('INSERT INTO public.tenants(id,schema_name,is_active) VALUES($1::uuid,$2,true)',
             otherTenantId, `${schema}_other`);
+        // ── THE CONNECTION THE MESSAGE LEAVES FROM ──────────────────────────
+        //
+        // Production never has a durable row bound to a connection that does
+        // not exist: the producer reads the account before it prepares. The
+        // human-operator authority now revalidates that the connection is still
+        // this tenant's and still live — the fourth thing its docblock always
+        // promised and did not check — so the fixture has to hold one too, or
+        // it would be asserting against a state the product cannot be in.
+        await global(
+            `INSERT INTO public.channel_accounts(id, tenant_id, channel_type, account_id, is_active)
+             VALUES(gen_random_uuid(), $1::uuid, 'whatsapp', $2, true)`,
+            tenantId, NUMBER);
         await client.$executeRawUnsafe(`CREATE SCHEMA "${schema}"`);
         prisma = Object.create(PrismaService.prototype);
         prisma.$transaction = client.$transaction.bind(client);

@@ -60,7 +60,11 @@ export class ConversationsController {
         // problema que no existe.
         if (!contactId) return { success: true, data: { items: [] } };
 
-        const config = await this.personaService.getActivePersona(tenantId).catch(() => null);
+        // Which loaders and exposure policy are safe depends on the served
+        // persona. An unavailable read is not an agent with no capabilities:
+        // that would return an authoritative empty list in the inbox and hide
+        // the operation the human is trying to act on.
+        const config = await this.personaService.getActivePersona(tenantId);
         const result = await this.activeOperations.load({
             tenantId,
             schemaName,

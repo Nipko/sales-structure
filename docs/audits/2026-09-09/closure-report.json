@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "revision": "9442ede3c28b5f816abff6bf811ecd0b382a8f8e",
-  "generatedAt": "2026-09-12T08:30:04.309Z",
+  "revision": "7d8b81d19870d657106115fcb1e2841203b9596d",
+  "generatedAt": "2026-09-12T08:38:16.255Z",
   "finished": false,
   "counts": {
     "aceptada": 11,
@@ -417,13 +417,13 @@
       "status": "aceptada",
       "provenance": "derived",
       "artefact": null,
-      "evidence": "Censo derivado del árbol: 31 call sites, 27 cobrables, 0 fuera de la autoridad económica. El inventario de efectos declara 62 productores y 45 con al menos una propiedad en `none`. La condición es que el artefacto versionado se regenere desde el mismo HEAD, no que alguien lo haya leído.",
+      "evidence": "Censo derivado del árbol: 31 call sites, 27 cobrables, 0 fuera de la autoridad económica. El inventario de efectos declara 62 productores y 43 con al menos una propiedad en `none`. La condición es que el artefacto versionado se regenere desde el mismo HEAD, no que alguien lo haya leído.",
       "commits": []
     },
     {
       "id": "M1",
-      "open": 11,
-      "openLabel": "5 productores de mensaje al cliente cobrables por Meta sin autoridad y 6 sin idempotencia, sobre 18 productores de esa clase",
+      "open": 7,
+      "openLabel": "3 productores de mensaje al cliente cobrables por Meta sin autoridad y 4 sin idempotencia, sobre 18 productores de esa clase",
       "gates": [
         1,
         4
@@ -473,8 +473,8 @@
     },
     {
       "id": "M5",
-      "open": 6,
-      "openLabel": "6 productores de mensaje al cliente cobrables por Meta sin borrado alcanzable, sobre 18 de esa clase",
+      "open": 4,
+      "openLabel": "4 productores de mensaje al cliente cobrables por Meta sin borrado alcanzable, sobre 18 de esa clase",
       "gates": [
         1,
         6

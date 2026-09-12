@@ -573,28 +573,18 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         id: 'human.whatsapp.manual_send',
         effect: 'A tenant admin or agent sending a WhatsApp template, text, interactive message, media '
             + 'or location straight from the dashboard',
-        lane: 'inline',
+        lane: 'dispatch_outbox',
         status: 'live',
         derivation: 'census',
         source: 'modules/whatsapp/whatsapp.controller.ts',
-        symbol: 'sendText',
-        egress: 'WhatsappMessagingService.sendToMeta — a direct POST to graph.facebook.com, the second '
+        symbol: 'dispatchRest',
+        egress: 'OutboundQueueProcessor.processDispatch -> StrictDispatchTransport.sendStrict, through the durable row `dispatchRest` commits'
             + 'WhatsApp route, sharing nothing with the outbound queue',
         reach: {
             class: 'customer_message', audience: 'contact', personalData: true,
             channels: ['whatsapp'],
         },
-        properties: {
-            authority: none('no queue, no row, no lease — the POST happens inside the HTTP request'),
-            idempotency: none('no dedupe of any kind on any of the five endpoints'),
-            receipt: durable('`logMessage` writes the Meta message id into `whatsapp_messages`'),
-            uncertainOutcome: none('a timeout is logged as a failure and raised as a 400, so a message '
-                + 'Meta may have accepted is reported to the sender as not sent — inviting the retry '
-                + 'that duplicates it'),
-            erasure: none('`whatsapp_messages` holds the recipient and the payload and is not in the '
-                + 'GDPR erasure fan-out'),
-            recovery: none('nothing records the intent; a failed send exists only as a log line'),
-        },
+        properties: DISPATCH_OUTBOX_PROPERTIES,
     }),
 
     producer({
@@ -1164,34 +1154,18 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         id: 'broadcast.campaign',
         effect: 'Every message of a campaign a tenant launched — WhatsApp template, email or SMS, one '
             + 'job per recipient',
-        lane: 'domain_queue',
+        lane: 'dispatch_outbox',
         status: 'live',
         derivation: 'census',
         source: 'modules/broadcast/broadcast-queue.processor.ts',
-        symbol: 'BroadcastQueueProcessor',
-        egress: 'WhatsappMessagingService.sendTemplate, EmailService.send and '
+        symbol: 'dispatchWhatsApp',
+        egress: 'ProactiveDispatchService.send -> `agent_dispatch_outbox`; the email and SMS branches keep their own domain queue'
             + 'TenantNotificationSmsService.send from the `broadcast-messages` queue',
         reach: {
             class: 'customer_message', audience: 'contact', personalData: true,
             channels: ['whatsapp', 'email', 'sms'],
         },
-        properties: {
-            authority: none('no admission record. Entitlement is revalidated in the processor, but '
-                + 'nothing durable says an attempt was permitted'),
-            idempotency: partial('the queue add carries no `jobId`, so a BullMQ retry after an ambiguous '
-                + 'send delivers again. The SMS branch alone has a stable `ref` = '
-                + '`bcast:{campaignId}:{recipientId}` behind a partial unique index on the credit ledger, '
-                + 'so it cannot double-charge'),
-            receipt: partial('the recipient row stores a provider id for WhatsApp and a real Twilio sid '
-                + 'for SMS. The email id is synthesised locally (`email-{timestamp}-{random}`) and is '
-                + 'not a provider reference at all'),
-            uncertainOutcome: none('a failure is recorded as `failed` and retried; nothing distinguishes '
-                + 'a refusal from a lost answer'),
-            erasure: partial('GDPR erasure anonymises `campaign_recipients.phone`. A job already queued '
-                + 'still holds the number and the body'),
-            recovery: partial('BullMQ retries three times; a lost job leaves a recipient in `pending` '
-                + 'with nothing to republish it'),
-        },
+        properties: DISPATCH_OUTBOX_PROPERTIES,
     }),
 
     producer({

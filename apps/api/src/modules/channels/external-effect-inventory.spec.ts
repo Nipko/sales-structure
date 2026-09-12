@@ -358,10 +358,22 @@ describe('the inventory is honest about what is not covered', () => {
         // the inline path is what is left for the channels without one. The
         // entry was split rather than re-labelled, so this list names the half
         // that is genuinely still uncovered instead of the file it lives in.
-        for (const id of ['human.agent.reply.inline', 'human.whatsapp.manual_send',
-            'automation.http_request']) {
+        for (const id of ['human.agent.reply.inline', 'automation.http_request',
+            'agent.reply.legacy']) {
             expect(summary.uncovered).toContain(id);
         }
+        // `human.whatsapp.manual_send` USED to be on that list and is not any
+        // more, because the code moved rather than the table: `dispatchRest`
+        // refuses when the durable lane is unavailable — "No silent fall back
+        // to the inline POST" — resolves operator authority and commits a row
+        // before the request. The inventory had gone on describing the inline
+        // POST it replaced, which is the direction of error this file exists to
+        // catch, pointing the other way: a gap declared for work already done.
+        expect(summary.uncovered).not.toContain('human.whatsapp.manual_send');
+        const manual = EXTERNAL_EFFECT_PRODUCERS.find(row => row.id === 'human.whatsapp.manual_send')!;
+        expect(manual.lane).toBe('dispatch_outbox');
+        expect(fs.readFileSync(path.join(SRC, 'modules', 'whatsapp', 'whatsapp.controller.ts'), 'utf8'))
+            .toContain('No silent fall back to the inline POST');
     });
 
     it('keeps the human reply honest about the half of it that is still uncovered', () => {

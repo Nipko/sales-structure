@@ -53,10 +53,22 @@ describe('the tools programme rows read something real', () => {
         const t1 = find('T1');
         expect(t1.open).toBeGreaterThan(10);
         expect(String(t1.openLabel)).toContain('.emailConfirmations');
-        // The same number an independent audit of this repository reached by
-        // hand: eleven families with no consumer plus four with a typed flag and
-        // no visible control.
-        expect(t1.open).toBe(15);
+        // The number an independent audit of this repository reached by hand
+        // was FIFTEEN: eleven families with no consumer plus four with a typed
+        // flag and no visible control.
+        //
+        // It is fourteen now, and the one that left is named rather than
+        // absorbed: `vehicles.emailConfirmations`. A test drive is an
+        // appointment the `vehicles` family asked for, so
+        // `appointment-notifications.service.ts` resolves the switch through
+        // `['vehicles', 'appointments']`, most specific first — a real
+        // consumer, not a mention. The remaining fourteen are all
+        // `emailConfirmations`, which is the shape of the finding: one flag
+        // eighteen families declare and four act on.
+        //
+        // This pin moves only WITH a consumer, never to follow the count.
+        expect(t1.open).toBe(14);
+        expect(String(t1.openLabel)).not.toContain('vehicles.emailConfirmations');
     });
 
     it('reads the evidence scope from the call, not from a comment', () => {

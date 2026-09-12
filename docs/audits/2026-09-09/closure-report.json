@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "revision": "06f105cf8530085869b356dcf072b5aa0df62baa",
-  "generatedAt": "2026-09-12T14:08:41.046Z",
+  "revision": "3085b98c2e7db4630102dd09bff8fffe5bdca8af",
+  "generatedAt": "2026-09-12T15:23:36.944Z",
   "finished": false,
   "counts": {
     "aceptada": 12,
@@ -597,8 +597,8 @@
     },
     {
       "id": "R5",
-      "open": 4,
-      "openLabel": "4 de 18 escenarios de la matriz de aceptación sin prueba que los conteste: Pregunta resuelta y cinco \"gracias\"; Misma pregunta requerida sin progreso; Bot contra bot y ráfaga de contactos; Humano, REST, campaña y recordatorio",
+      "open": 2,
+      "openLabel": "2 de 18 escenarios de la matriz de aceptación sin prueba que los conteste: Bot contra bot y ráfaga de contactos; Humano, REST, campaña y recordatorio",
       "gates": [],
       "status": "abierta",
       "provenance": "derived",

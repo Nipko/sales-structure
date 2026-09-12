@@ -222,13 +222,67 @@ describe('las filas del artefacto se juzgan contra sus propias condiciones', () 
 
     it('el estado guardado es el que sale de sus condiciones', () => {
         const disagreeing = CLOSURE_JSON.rows
-            .map((row: { id: string; open: number; gates: number[]; status: string }) => {
-                const expected = Number(row.open) > 0 ? 'abierta'
-                    : row.gates.length ? 'bloqueada' : 'aceptada';
+            .map((row: { id: string; open: number; gates: number[]; status: string;
+                deferral: unknown }) => {
+                // A deferral comes FIRST, and it is read from the row rather
+                // than inferred: a deferred row has no open work and no gate,
+                // so every other branch here would call it `aceptada` — which
+                // is the one reading nobody wants about scope that was never
+                // built. This second implementation did exactly that and the
+                // red it produced is what found the renderer printing `M6` as
+                // open local work.
+                const expected = row.deferral ? 'diferida'
+                    : Number(row.open) > 0 ? 'abierta'
+                        : row.gates.length ? 'bloqueada' : 'aceptada';
                 return row.status === expected ? null : `${row.id}: ${row.status} ≠ ${expected}`;
             })
             .filter(Boolean);
         expect(disagreeing).toEqual([]);
+    });
+
+    it('un diferimiento nombra decisión, dueño y condición de reapertura', () => {
+        // A deferral with nobody's name on it is a wish, and one with no
+        // condition is an abandonment. Checked against the COMMITTED
+        // artefact, not against the constructor that also enforces it.
+        const problems: string[] = [];
+        for (const row of CLOSURE_JSON.rows as Array<{
+            id: string; status: string; open: number; gates: number[];
+            deferral: { decision?: string; owner?: string; reopenWhen?: string } | null;
+        }>) {
+            if (row.status !== 'diferida') {
+                if (row.deferral) problems.push(`${row.id}: lleva diferimiento y no está diferida`);
+                continue;
+            }
+            if (!row.deferral) { problems.push(`${row.id}: diferida sin diferimiento`); continue; }
+            for (const field of ['decision', 'owner', 'reopenWhen'] as const) {
+                if (!String(row.deferral[field] ?? '').trim()) {
+                    problems.push(`${row.id}: diferimiento sin ${field}`);
+                }
+            }
+            if (Number(row.open) > 0) problems.push(`${row.id}: diferida y con trabajo local abierto`);
+            if (row.gates.length) problems.push(`${row.id}: diferida y bloqueada a la vez`);
+        }
+        expect(problems).toEqual([]);
+    });
+
+    it('el markdown imprime el estado diferido, no otro', () => {
+        // THE DEFECT THIS PAIR CAUGHT. The renderer's chain fell through to
+        // `**abierta**`, so the JSON counted one deferral and the table a
+        // reader opens said open local work — a state added to stop a release
+        // staying open for ever, rendering as the state it replaced.
+        const deferred = (CLOSURE_JSON.rows as Array<{ id: string; status: string }>)
+            .filter(row => row.status === 'diferida');
+        expect(deferred.length).toBeGreaterThan(0);
+        for (const row of deferred) {
+            const line = CLOSURE_MARKDOWN.split('\n').find(text => text.startsWith(`| ${row.id} |`));
+            expect(line).toBeDefined();
+            expect(line).toContain('**diferida**');
+            expect(line).not.toContain('**abierta**');
+            // And the reopening condition reaches the page: `—` in that
+            // column reads as "nothing missing", which for a deferral is the
+            // opposite of true.
+            expect(line).toContain('se reabre cuando');
+        }
     });
 
     it('ninguna fila abierta deja de decir qué falta, y ningún gate nombrado es inventado', () => {

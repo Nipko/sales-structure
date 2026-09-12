@@ -537,10 +537,24 @@ const jsonPath = path.join(__dirname, 'closure-report.json');
 const mdPath = path.join(__dirname, 'closure-report.md');
 const nextJson = JSON.stringify(state, null, 2) + '\n';
 
-const label = entry => entry.status === 'aceptada' ? '**aceptada**'
-    : entry.status === 'bloqueada'
-        ? `**bloqueada** por gate ${entry.gates.join(' y ')}`
-        : '**abierta**';
+/**
+ * The rendered state, which has to be the STORED state.
+ *
+ * This chain fell through to `**abierta**` for anything it did not name, so
+ * the moment `diferida` existed the JSON counted one deferral and the table a
+ * reader actually opens printed it as open local work. A fourth state added to
+ * stop a release staying open for ever, rendering as the state it replaced.
+ *
+ * So the default is an ERROR now. A fifth state will fail loudly here instead
+ * of quietly borrowing the meaning of the fourth.
+ */
+const label = entry => {
+    if (entry.status === 'aceptada') return '**aceptada**';
+    if (entry.status === 'bloqueada') return `**bloqueada** por gate ${entry.gates.join(' y ')}`;
+    if (entry.status === 'abierta') return '**abierta**';
+    if (entry.status === 'diferida') return '**diferida** por decisión de alcance';
+    throw new Error(`row ${entry.id}: el estado \`${entry.status}\` no se sabe imprimir`);
+};
 const lines = [
     '# Estado de los programas A1–H3 y M0–M6/R0–R6, decidido por el código',
     '',
@@ -583,9 +597,17 @@ const lines = [
     ...ROWS.map(entry => {
         // An open row that ALSO names a gate says both: the local work is what
         // makes it open, and the gate is what will still be waiting afterwards.
-        const missing = entry.status !== 'abierta' ? '—'
-            : entry.gates.length ? `${entry.openLabel} (y después, gate ${entry.gates.join(' y ')})`
-                : entry.openLabel;
+        // A deferred row prints its reopening condition here. `—` in this
+        // column reads as "nothing missing", which for a deferral is the
+        // opposite of true: what is missing is an authorisation, and the
+        // whole point of the state is that somebody can see the condition
+        // that brings the scope back.
+        const missing = entry.status === 'diferida'
+            ? `diferida por ${entry.deferral.owner}; se reabre cuando ${entry.deferral.reopenWhen}`
+            : entry.status !== 'abierta' ? '—'
+                : entry.gates.length
+                    ? `${entry.openLabel} (y después, gate ${entry.gates.join(' y ')})`
+                    : entry.openLabel;
         const source = entry.provenance === 'derived' ? 'contador'
             : entry.provenance === 'executed_evidence' ? `corrida (\`${entry.artefact}\`)`
                 : '**declaración**';

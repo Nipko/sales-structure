@@ -105,7 +105,8 @@
       "whatsapp": "online",
       "instagram": "Ativo agora",
       "messenger": "Ativo",
-      "telegram": "online"
+      "telegram": "online",
+      "web_widget": "online"
     },
     "scenarios": {
       "dental": {
@@ -142,6 +143,13 @@
         "m2": "Sim, confirmo",
         "m3": "Consulta confirmada ✅",
         "m4": "Obrigado"
+      },
+      "retail": {
+        "business": "Loja Aurora",
+        "m1": "Têm esta jaqueta no tamanho M?",
+        "m2": "Posso consultar o inventário carregado pela loja. Quer para retirada ou entrega?",
+        "m3": "Entrega",
+        "m4": "Vou confirmar o estoque antes de montar o pedido e envio o link de pagamento da loja."
       }
     }
   },
@@ -157,7 +165,7 @@
     "tool1Title": "Pipeline kanban inteligente",
     "tool1Desc": "Configure etapas, scoring e regras de avanço; ações sensíveis podem exigir confirmação ou aprovação.",
     "tool2Title": "Caixa de Entrada Unificada e Omnicanal",
-    "tool2Desc": "WhatsApp, Instagram, Messenger, Telegram e Web Chat — tudo unificado em uma única tela com notificações de handoff e alertas de SLA.",
+    "tool2Desc": "WhatsApp, Instagram, Messenger, Telegram e Web Chat numa só consola, com avisos de handoff e o estado de entrega de cada mensagem por canal.",
     "tool3Title": "Agendamento Multi-Calendário",
     "tool3Desc": "Com uma integração saudável, consulta a disponibilidade do Google ou Microsoft, cria eventos e pode gerar links do Meet ou Teams.",
     "tool4Title": "Analítica em tempo real",
@@ -215,7 +223,7 @@
     "metaTitle": "Canais da Meta",
     "metaDesc": "Conexão pelas APIs do WhatsApp Business, Instagram e Messenger",
     "mpTitle": "Integração de pagamentos",
-    "mpDesc": "A Wompi (Grupo Bancolombia) processa as assinaturas e tokeniza os dados do cartão: eles nunca tocam nossos servidores.",
+    "mpDesc": "A Wompi (Grupo Bancolombia) processa as assinaturas: os dados do cartão vão do seu navegador para a Wompi e na nossa base fica uma referência com a bandeira, os últimos quatro dígitos e a validade.",
     "latamTitle": "Feito na América Latina",
     "latamDesc": "Interface em espanhol, inglês, português e francês, com preços locais onde disponíveis.",
     "encTitle": "Isolamento por empresa",
@@ -642,11 +650,11 @@
     "noCard": "Sem cartão",
     "requiresCard": "Requer cartão",
     "upsellEmpToStarter1": "Adicione Instagram e Messenger",
-    "upsellEmpToStarter2": "5× mais mensagens IA",
-    "upsellStarterToPro1": "3 agentes + automação ilimitada",
+    "upsellEmpToStarter2": "Mais mensagens de IA incluídas",
+    "upsellStarterToPro1": "Mais agentes e mais automações",
     "upsellStarterToPro2": "IA avançada + prompt personalizado",
     "upsellProToEnt1": "SSO + audit log + suporte dedicado",
-    "upsellProToEnt2": "10 agentes + 100K mensagens",
+    "upsellProToEnt2": "Mais agentes e mais mensagens de IA",
     "needMore": "Precisa de mais? →",
     "comparisonTitle": "Compare todos os planos em detalhe",
     "comparisonSubtitle": "Funcionalidades comparadas lado a lado para que você escolha com toda a informação.",
@@ -1015,7 +1023,7 @@
     "agentTitle": "Agente IA",
     "agentDesc": "Personalização total: tom, regras, multi-agente e templates por indústria.",
     "agentBadge": "Inteligência Artificial",
-    "agentHeroPrefix": "Seu melhor vendedor:",
+    "agentHeroPrefix": "Vendas conversacionais com",
     "agentHeroHighlight": "Agente IA",
     "agentSubtitle": "Um assistente configurável para responder, agendar, qualificar e registrar informações, com handoff para sua equipe.",
     "agentCta": "Testar Agente IA grátis",
@@ -1320,7 +1328,8 @@
       "sliderChannelLabel": "Canal",
       "agentName": "Sofia · Assistente médica",
       "templateLabel": "Modelo: Saúde · Odontologia",
-      "statusActive": "Ativa · 24/7"
+      "statusActive": "Atribuída a uma conexão",
+      "sliderModelValue": "Conforme o seu plano"
     },
     "kb": {
       "title": "Base de conhecimento",
@@ -1350,6 +1359,17 @@
         "name": "Telegram · Anita",
         "msg": "Preciso de um encanador com urgência"
       }
+    },
+    "orderPayment": {
+      "header": "Pedido em preparação",
+      "channel": "WhatsApp",
+      "item1": "2 × prato do dia",
+      "item2": "1 × sobremesa",
+      "added": "adicionado",
+      "linkTitle": "Link de pagamento enviado",
+      "linkDetail": "Gerado com o gateway do próprio negócio. O dinheiro vai para a conta dele, não para a nossa.",
+      "pendingTitle": "Pedido à espera de confirmação",
+      "pendingDetail": "O pagamento é confirmado pelo gateway do negócio. Até que ele informe, o pedido não é dado como pago."
     }
   },
   "payments": {
@@ -1369,7 +1389,8 @@
     "customerPaymentsNote": "A Parallly não retém, não concilia e não devolve esse dinheiro: quem faz isso é o seu provedor de pagamentos.",
     "noticeShort": "Três cobranças distintas: sua assinatura da Parallly, as mensagens que a Meta cobra da sua própria conta do WhatsApp Business a partir de 1º de outubro de 2026 e o que seus clientes pagam à sua empresa pelo seu provedor.",
     "noticeLink": "Ver como funciona cada cobrança",
-    "noticeAriaLabel": "Aviso sobre as três cobranças"
+    "noticeAriaLabel": "Aviso sobre as três cobranças",
+    "noticeCustody": "O cartão da Meta é adicionado na página da própria Meta: a Parallly não o recebe, não o guarda e não pode verificá-lo."
   },
   "whatsappCosts": {
     "breadcrumb": "Custos do WhatsApp",
@@ -1390,11 +1411,7 @@
     "categoryAuthentication": "Autenticação — códigos de verificação.",
     "countryTitle": "A tarifa é definida pelo país de quem recebe",
     "countryBody": "Não pelo país da sua empresa. Um mesmo número pode pagar tarifas muito diferentes conforme o destino, e por isso não existe um preço único por mensagem.",
-    "ratesTitle": "Por que você não vê uma tarifa nesta página",
-    "ratesBody": "A Meta revisa suas tabelas de tarifas periodicamente e cobra conforme o país do destinatário e a categoria da mensagem. Qualquer número que copiássemos aqui estaria vencido na próxima revisão e seria incorreto para quase todo mundo. Preferimos apontar a fonte a repeti-la.",
     "ratesLink": "Ver as tarifas oficiais da Meta",
-    "noEstimateTitle": "Também não verá um máximo estimado",
-    "noEstimateBody": "Um total estimado se lê como uma fatura e não é uma: depende de a quantas pessoas você responde, de quais números, para quais países e em qual categoria. O consumo real é medido e faturado pela Meta na conta dela.",
     "deadlineTitle": "A data que convém não deixar passar",
     "deadlineBody": "A Meta pede uma forma de pagamento cadastrada na conta antes de 30 de setembro de 2026. Sem ela, a partir de 1º de outubro de 2026 essa conta deixa de entregar mensagens de serviço. A conexão continua existindo; o que para é a entrega.",
     "setupTitle": "Como se configura o pagamento à Meta",
@@ -1437,7 +1454,56 @@
     "ctaTitle": "Agora você sabe quem cobra o quê",
     "ctaBody": "O preço da Parallly e as condições vigentes estão na página de planos. A cobrança da Meta é separada e se configura na Meta.",
     "ctaPricing": "Ver planos e preços",
-    "ctaRates": "Ver as tarifas oficiais da Meta"
+    "ctaRates": "Ver as tarifas oficiais da Meta",
+    "ratesSourceTitle": "De onde vêm estas tarifas",
+    "ratesSourceBody": "As tarifas do estimador derivam dos cartões oficiais que a Meta publicou, arquivados com a sua impressão de verificação. Abaixo do resultado aparece o cartão exato, a data a partir da qual vigora e o arquivo de onde os números foram lidos. A Meta revisa esses cartões periodicamente: quando um muda, esta página muda com ele, porque aqui os números não são escritos à mão.",
+    "estimateNotInvoiceTitle": "Uma estimativa não é uma fatura",
+    "estimateNotInvoiceBody": "O total sai dos volumes que você escrever e do cartão em vigor para o mercado que escolher. O seu consumo real é medido e cobrado pela Meta na sua própria conta, sobre as mensagens realmente entregues e os países para os quais você realmente escrever. Serve para orçar uma ordem de grandeza, não para esperar esse valor exato.",
+    "estimatorTitle": "Calcule o que a Meta lhe cobraria",
+    "estimatorIntro": "Escolha o país de quem recebe as suas mensagens, quantas você entrega por mês e quantos números tem. O estimador desconta a cota gratuita e aplica o cartão de tarifas que rege. Nada sai do seu navegador: não pedimos dados pessoais e não fazemos nenhuma consulta real.",
+    "estimatorStateBeforeTitle": "Hoje a Meta ainda não cobra as mensagens de serviço",
+    "estimatorStateBeforeBody": "O cartão que vigora hoje não publica nenhuma tarifa de serviço. O que você vê abaixo é a regra que começa em 1 de outubro de 2026, calculada com o cartão que entra em vigor nesse dia.",
+    "estimatorStateActiveTitle": "A Meta já cobra as mensagens de serviço",
+    "estimatorStateActiveBody": "O cálculo usa o cartão em vigor para a moeda da conta que você escolher. A vigência muda à meia-noite no fuso horário da sua conta do WhatsApp Business, não no seu.",
+    "estimatorMarketLabel": "País ou região de quem recebe",
+    "estimatorMarketHint": "A Meta cobra conforme o país do destinatário, não o da sua empresa. Os nomes são os do próprio cartão dela. As regiões agrupam países que a Meta não lista um por um, e ela atribui cada país a uma região pelo código telefônico numa página que não faz parte destes cartões: por isso você escolhe o mercado em vez de deduzirmos a partir de um número.",
+    "estimatorCurrencyLabel": "Moeda da sua conta do WhatsApp",
+    "estimatorCurrencyHint": "É a moeda em que a Meta fatura a conta do negócio. Não muda o país do destinatário nem a tarifa que lhe corresponde.",
+    "estimatorNumbersLabel": "Números do WhatsApp Business",
+    "estimatorNumbersHint": "A cota gratuita é por número e por mês civil. Com mais números há mais cota gratuita, e também uma cobrança própria para cada um.",
+    "estimatorVolumeLegend": "Mensagens entregues por mês, por categoria",
+    "estimatorCategoryService": "Serviço",
+    "estimatorCategoryMarketing": "Marketing",
+    "estimatorCategoryUtility": "Utilidade",
+    "estimatorCategoryAuthentication": "Autenticação",
+    "estimatorResultTitle": "Estimativa mensal da cobrança da Meta",
+    "estimatorNotInvoice": "É uma estimativa, não uma fatura.",
+    "estimatorColCategory": "Categoria",
+    "estimatorColDeliveries": "Entregas",
+    "estimatorColFree": "Gratuitas",
+    "estimatorColRate": "Por mensagem",
+    "estimatorColSubtotal": "Subtotal",
+    "estimatorTotalLabel": "Total estimado",
+    "estimatorUnpriced": "Sem tarifa publicada",
+    "estimatorUnpricedNote": "Uma categoria sem tarifa publicada não é uma categoria gratuita: é um preço que o cartão não estabelece. Enquanto restar uma, o total aparece incompleto em vez de ser mostrado como se fosse menor.",
+    "estimatorIncompleteTotal": "Incompleto",
+    "estimatorSourceLine": "Cartão {card}, em vigor desde {date}, lido de {file}.",
+    "estimatorAllowanceNote": "Foram descontadas as entregas de serviço gratuitas: {deliveries} por número e por mês civil, que não se acumulam para o mês seguinte e não cobrem modelos.",
+    "estimatorMixNote": "Se você escrever para mais de um país, esta estimativa corresponde apenas ao mercado escolhido, e a cota gratuita é descontada uma vez no total: não se repete por país.",
+    "estimatorRoundingNote": "A Meta fatura em unidades inteiras da moeda e arredonda para cima. Aqui arredonda-se igual, uma única vez sobre o total.",
+    "estimatorExclusionsTitle": "O que esta estimativa não inclui",
+    "estimatorExclusion1": "A sua assinatura da Parallly, cobrada em separado e que não depende de quantas mensagens você entregue.",
+    "estimatorExclusion2": "O que outras aplicações ligadas à mesma conta do WhatsApp Business cobrarem da Meta.",
+    "estimatorExclusion3": "As faixas de volume de utilidade e autenticação, que a Meta aplica por faixa e não retroativamente sobre todas as mensagens.",
+    "estimatorExclusion4": "Impostos, encargos do seu banco e qualquer condição particular da sua conta com a Meta.",
+    "marketNorthAmerica": "América do Norte",
+    "marketRestOfAfrica": "Resto da África",
+    "marketRestOfAsiaPacific": "Resto da Ásia-Pacífico",
+    "marketRestOfCentralEasternEurope": "Resto da Europa Central e do Leste",
+    "marketRestOfLatinAmerica": "Resto da América Latina",
+    "marketRestOfMiddleEast": "Resto do Oriente Médio",
+    "marketRestOfWesternEurope": "Resto da Europa Ocidental",
+    "marketOther": "Outros países"
   },
   "compareMeta": {
     "breadcrumb": "Comparar com a Meta",
@@ -1534,5 +1600,40 @@
     "ctaBody": "O jeito útil de decidir é olhar qual tarefa sua precisa ficar resolvida quando a conversa termina. Os planos e seus limites estão publicados.",
     "ctaPricing": "Ver planos e preços",
     "ctaCosts": "Entender as três cobranças"
+  },
+  "labelledDemos": {
+    "title": "Quatro tarefas, quatro demonstrações rotuladas",
+    "subtitle": "Cada painel deste site diz o que é antes de mostrar um resultado. Nenhum destes quatro é uma gravação de um cliente nem de um teste: são exemplos desenhados, e o que está por trás de cada um pode ser lido no código.",
+    "kind": {
+      "illustrative": "Exemplo ilustrativo",
+      "localTest": "Teste local",
+      "realCase": "Caso real"
+    },
+    "kindMeaning": {
+      "illustrative": "Um painel roteirizado com temporizadores. Mostra como um fluxo aparenta ser, não que tenha acontecido.",
+      "localTest": "O resultado de uma execução que de facto ocorreu, contra um ambiente local com provedores sintéticos.",
+      "realCase": "Tráfego de um cliente, publicado com o seu consentimento. Hoje não há nenhum neste site."
+    },
+    "capability": {
+      "implementedNotCertified": "Capacidade implementada e alcançável no produto, sem uma certificação de ponta a ponta que a sustente."
+    },
+    "appointment": {
+      "title": "Agendar uma consulta",
+      "body": "O cliente pede um horário, o agente consulta a agenda carregada pelo negócio e a marcação fica registada com o seu recurso e a sua vaga."
+    },
+    "orderPayment": {
+      "title": "Receber um pedido e cobrá-lo",
+      "body": "O pedido é montado na conversa e a cobrança sai pelo gateway do próprio negócio. Um link enviado não é um pagamento liquidado: o pedido aguarda a confirmação desse gateway."
+    },
+    "handoff": {
+      "title": "Passar a conversa a uma pessoa",
+      "body": "Quando alguém deve intervir, a conversa entra na caixa da equipa com o seu histórico. A rapidez depende de haver alguém disponível."
+    },
+    "configuration": {
+      "title": "Configurar o agente",
+      "body": "O negócio define o tom, a informação e a que conexão o agente fica atribuído. Cada conexão usa o agente que você lhe atribuir."
+    },
+    "closingNote": "Nada disto certifica um canal nem um setor: o relatório de encerramento auditado ainda não certifica nenhum. O que vale a pena revisar antes de contratar é quem lhe cobra o quê.",
+    "closingLink": "Ver as três cobranças"
   }
 }

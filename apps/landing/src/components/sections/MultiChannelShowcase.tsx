@@ -76,6 +76,25 @@ export const CHANNEL_SCENARIOS: ChannelScenario[] = [
     ],
   },
   {
+    channel: "web_widget",
+    key: "retail",
+    emoji: "\u{1F6CD}",
+    agentName: "Lucia",
+    business: "Tienda Aurora",
+    messages: [
+      { from: "customer", text: "Tienen esta chaqueta en talla M?" },
+      {
+        from: "ai",
+        text: "Puedo consultar el inventario cargado por la tienda. La quieres para retiro o envio?",
+      },
+      { from: "customer", text: "Envio" },
+      {
+        from: "ai",
+        text: "Confirmare existencias antes de armar el pedido y te comparto el link de pago de la tienda.",
+      },
+    ],
+  },
+  {
     channel: "telegram",
     key: "service",
     emoji: "🔧",

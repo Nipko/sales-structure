@@ -10,6 +10,8 @@ import { JsonLd } from "../../../../components/ui/JsonLd";
 import { breadcrumbJsonLd } from "../../../../lib/seo";
 import { SIGNUP_URL } from "../../../../lib/constants";
 import { CalendarDemo } from "../../../../components/demos/CalendarDemo";
+import { DemoFrame } from "../../../../components/demos/DemoFrame";
+import { demoContract } from "../../../../data/demo-catalog";
 
 const FEATURES = [
   { key: "bookingFeature1", icon: () => Icon.zap("w-6 h-6") },
@@ -123,7 +125,9 @@ export default function BookingProductPage() {
         </div>
         <div className="max-w-3xl mx-auto">
           <div className="bg-surface border border-border rounded-2xl p-4 sm:p-6">
-            <CalendarDemo />
+            <DemoFrame contract={demoContract("appointment")}>
+              <CalendarDemo />
+            </DemoFrame>
           </div>
         </div>
       </Section>

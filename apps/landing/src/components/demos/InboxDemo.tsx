@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { motion, useInView } from "motion/react";
+import { motion, useInView, useReducedMotion } from "motion/react";
 import { useTranslations } from "next-intl";
 import { Icon } from "../ui/Icon";
 
@@ -10,9 +10,16 @@ export function InboxDemo() {
   const L = (k: string, fb: string) => (t.has(k) ? t(k) : fb);
   const ref = useRef<HTMLDivElement>(null);
   const isInView = useInView(ref, { margin: "-50px" });
-  const [count, setCount] = useState(0);
+  const reduceMotion = useReducedMotion();
+  // Four is every row. Reduced motion means the whole queue is present at once
+  // rather than arriving on a loop the reader did not ask for.
+  const [count, setCount] = useState(reduceMotion ? 4 : 0);
 
   useEffect(() => {
+    if (reduceMotion) {
+      setCount(4);
+      return;
+    }
     if (!isInView) return;
     const timeouts: ReturnType<typeof setTimeout>[] = [];
     const cycle = () => {
@@ -24,7 +31,7 @@ export function InboxDemo() {
     };
     cycle();
     return () => timeouts.forEach(clearTimeout);
-  }, [isInView]);
+  }, [isInView, reduceMotion]);
 
   const items = [
     {

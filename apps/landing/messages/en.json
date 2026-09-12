@@ -105,7 +105,8 @@
       "whatsapp": "online",
       "instagram": "Active now",
       "messenger": "Active",
-      "telegram": "online"
+      "telegram": "online",
+      "web_widget": "online"
     },
     "scenarios": {
       "dental": {
@@ -142,6 +143,13 @@
         "m2": "Yes, confirmed",
         "m3": "Appointment confirmed ✅",
         "m4": "Thank you"
+      },
+      "retail": {
+        "business": "Aurora Store",
+        "m1": "Do you have this jacket in a medium?",
+        "m2": "I can check the inventory the store loaded. Would you like it for pickup or delivery?",
+        "m3": "Delivery",
+        "m4": "I will confirm stock before building the order and send you the store's payment link."
       }
     }
   },
@@ -157,7 +165,7 @@
     "tool1Title": "Smart kanban pipeline",
     "tool1Desc": "Configure stages, scoring and progression rules; sensitive actions may require confirmation or approval.",
     "tool2Title": "Unified & Omnichannel Inbox",
-    "tool2Desc": "WhatsApp, Instagram, Messenger, Telegram and Web Chat — unified in one console with handoff notifications and SLA alerts.",
+    "tool2Desc": "WhatsApp, Instagram, Messenger, Telegram and Web Chat in one console, with handoff notices and each message's delivery state per channel.",
     "tool3Title": "Multi-Calendar Scheduling",
     "tool3Desc": "With a healthy integration, it checks Google or Microsoft availability, creates events and can generate Meet or Teams links.",
     "tool4Title": "Real-time analytics",
@@ -215,7 +223,7 @@
     "metaTitle": "Meta channels",
     "metaDesc": "Connection through the WhatsApp Business, Instagram and Messenger APIs",
     "mpTitle": "Payment integration",
-    "mpDesc": "Wompi (Grupo Bancolombia) processes subscriptions and tokenizes card data: it never touches our servers.",
+    "mpDesc": "Wompi (Grupo Bancolombia) processes the subscriptions: the card details go from your browser to Wompi, and what our database keeps is a reference with the brand, the last four digits and the expiry.",
     "latamTitle": "Made in Latin America",
     "latamDesc": "Interface in Spanish, English, Portuguese and French, with local pricing where available.",
     "encTitle": "Business data isolation",
@@ -642,11 +650,11 @@
     "noCard": "No card required",
     "requiresCard": "Requires card",
     "upsellEmpToStarter1": "Add Instagram and Messenger",
-    "upsellEmpToStarter2": "5× more AI messages",
-    "upsellStarterToPro1": "3 agents + unlimited automation",
+    "upsellEmpToStarter2": "More AI messages included",
+    "upsellStarterToPro1": "More agents and more automations",
     "upsellStarterToPro2": "Advanced AI + custom prompt",
     "upsellProToEnt1": "SSO + audit log + dedicated support",
-    "upsellProToEnt2": "10 agents + 100K messages",
+    "upsellProToEnt2": "More agents and more AI messages",
     "needMore": "Need more? →",
     "comparisonTitle": "Compare all plans in detail",
     "comparisonSubtitle": "Features compared side by side so you can choose with full information.",
@@ -1015,7 +1023,7 @@
     "agentTitle": "AI Agent",
     "agentDesc": "Full customisation: tone, rules, multi-agent and industry templates.",
     "agentBadge": "Artificial Intelligence",
-    "agentHeroPrefix": "Your best salesperson:",
+    "agentHeroPrefix": "Conversational selling with an",
     "agentHeroHighlight": "AI Agent",
     "agentSubtitle": "A configurable assistant for replies, scheduling, qualification and record-keeping, with handoff to your team.",
     "agentCta": "Try AI Agent free",
@@ -1320,7 +1328,8 @@
       "sliderChannelLabel": "Channel",
       "agentName": "Sophia · Medical assistant",
       "templateLabel": "Template: Health · Dental",
-      "statusActive": "Active · 24/7"
+      "statusActive": "Assigned to one connection",
+      "sliderModelValue": "Per your plan"
     },
     "kb": {
       "title": "Knowledge base",
@@ -1350,6 +1359,17 @@
         "name": "Telegram · Anita",
         "msg": "I need a plumber urgently"
       }
+    },
+    "orderPayment": {
+      "header": "Order being prepared",
+      "channel": "WhatsApp",
+      "item1": "2 × dish of the day",
+      "item2": "1 × dessert",
+      "added": "added",
+      "linkTitle": "Payment link sent",
+      "linkDetail": "Generated with the business's own gateway. The money goes to their account, not ours.",
+      "pendingTitle": "Order awaiting confirmation",
+      "pendingDetail": "The payment is confirmed by the business's gateway. Until it reports, the order is not treated as paid."
     }
   },
   "payments": {
@@ -1369,7 +1389,8 @@
     "customerPaymentsNote": "Parallly does not hold, reconcile or refund that money: your payment provider does.",
     "noticeShort": "Three separate charges: your Parallly subscription, the messages Meta bills to your own WhatsApp Business account from 1 October 2026, and what your customers pay your business through your own provider.",
     "noticeLink": "See how each charge works",
-    "noticeAriaLabel": "Notice about the three charges"
+    "noticeAriaLabel": "Notice about the three charges",
+    "noticeCustody": "The Meta payment method is added on Meta's own page: Parallly does not receive it, does not store it and cannot verify it."
   },
   "whatsappCosts": {
     "breadcrumb": "WhatsApp costs",
@@ -1390,11 +1411,7 @@
     "categoryAuthentication": "Authentication — verification codes.",
     "countryTitle": "The recipient's country sets the rate",
     "countryBody": "Not your company's country. The same number can pay very different rates depending on where it writes to, which is why there is no single per-message price.",
-    "ratesTitle": "Why you will not find a rate on this page",
-    "ratesBody": "Meta revises its rate cards periodically and prices by the recipient's country and the message category. Any figure we copied here would be out of date at the next revision and wrong for almost everyone. We would rather link the source than repeat it.",
     "ratesLink": "See Meta's official rates",
-    "noEstimateTitle": "You will not find an estimated maximum either",
-    "noEstimateBody": "An estimated total reads like an invoice and is not one: it depends on how many people you reply to, from which numbers, to which countries and in which category. Meta measures and bills the real usage on its own account.",
     "deadlineTitle": "The date worth not missing",
     "deadlineBody": "Meta asks for a payment method on the account before 30 September 2026. Without one, from 1 October 2026 that account stops delivering service messages. The connection still exists; what stops is delivery.",
     "setupTitle": "How Meta billing is set up",
@@ -1437,7 +1454,56 @@
     "ctaTitle": "Now you know who charges what",
     "ctaBody": "Parallly's price and current terms are on the plans page. Meta's charge is separate and is set up at Meta.",
     "ctaPricing": "See plans and pricing",
-    "ctaRates": "See Meta's official rates"
+    "ctaRates": "See Meta's official rates",
+    "ratesSourceTitle": "Where these rates come from",
+    "ratesSourceBody": "The estimator's rates are derived from the official cards Meta published, preserved with a verification fingerprint. Under the result you will find the exact card, the date it takes effect and the file the numbers were read from. Meta revises those cards periodically: when one changes, this page changes with it, because the figures here are not typed in by hand.",
+    "estimateNotInvoiceTitle": "An estimate is not an invoice",
+    "estimateNotInvoiceBody": "The total comes from the volumes you enter and from the card in force for the market you pick. Your real consumption is measured and billed by Meta on your own account, against the messages actually delivered and the countries you actually write to. Use it to budget an order of magnitude, not to expect that exact amount.",
+    "estimatorTitle": "Work out what Meta would charge you",
+    "estimatorIntro": "Pick the country of the people receiving your messages, how many you deliver per month and how many numbers you have. The estimator subtracts the free allowance and applies the rate card that governs. Nothing leaves your browser: we ask for no personal data and make no real lookup.",
+    "estimatorStateBeforeTitle": "Meta does not charge for service messages yet",
+    "estimatorStateBeforeBody": "The card in force today publishes no service rate at all. What you see below is the rule that begins on 1 October 2026, worked out with the card that takes effect that day.",
+    "estimatorStateActiveTitle": "Meta now charges for service messages",
+    "estimatorStateActiveBody": "The calculation uses the card in force for the account currency you pick. A card changes over at midnight in your WhatsApp Business account's time zone, not in yours.",
+    "estimatorMarketLabel": "Recipient's country or region",
+    "estimatorMarketHint": "Meta charges by the recipient's country, not by your company's. The names are the ones on its own card. The regions group countries Meta does not list one by one, and it assigns each country to a region by calling code on a page that is not part of these cards: that is why you pick the market instead of us deducing it from a number.",
+    "estimatorCurrencyLabel": "Your WhatsApp account's currency",
+    "estimatorCurrencyHint": "This is the currency Meta bills the business's account in. It changes neither the recipient's country nor the rate that applies to it.",
+    "estimatorNumbersLabel": "WhatsApp Business numbers",
+    "estimatorNumbersHint": "The free allowance is per number and per calendar month. More numbers means more free allowance, and a charge of its own for each one.",
+    "estimatorVolumeLegend": "Messages delivered per month, by category",
+    "estimatorCategoryService": "Service",
+    "estimatorCategoryMarketing": "Marketing",
+    "estimatorCategoryUtility": "Utility",
+    "estimatorCategoryAuthentication": "Authentication",
+    "estimatorResultTitle": "Monthly estimate of Meta's charge",
+    "estimatorNotInvoice": "This is an estimate, not an invoice.",
+    "estimatorColCategory": "Category",
+    "estimatorColDeliveries": "Deliveries",
+    "estimatorColFree": "Free",
+    "estimatorColRate": "Per message",
+    "estimatorColSubtotal": "Subtotal",
+    "estimatorTotalLabel": "Estimated total",
+    "estimatorUnpriced": "No published rate",
+    "estimatorUnpricedNote": "A category with no published rate is not a free category: it is a price the card does not establish. While one remains, the total shows as incomplete rather than as if it were smaller.",
+    "estimatorIncompleteTotal": "Incomplete",
+    "estimatorSourceLine": "Card {card}, effective from {date}, read from {file}.",
+    "estimatorAllowanceNote": "Free service deliveries have been subtracted: {deliveries} per number and per calendar month, which do not roll over into the next month and do not cover templates.",
+    "estimatorMixNote": "If you write to more than one country, this estimate covers only the market you picked, and the free allowance is subtracted once in total: it is not repeated per country.",
+    "estimatorRoundingNote": "Meta bills in whole units of the currency and rounds up. The same rounding is applied here, once, over the total.",
+    "estimatorExclusionsTitle": "What this estimate does not include",
+    "estimatorExclusion1": "Your Parallly subscription, which is billed separately and does not depend on how many messages you deliver.",
+    "estimatorExclusion2": "Whatever other applications connected to the same WhatsApp Business account bill Meta for.",
+    "estimatorExclusion3": "Utility and authentication volume tiers, which Meta applies per tier and not retroactively across every message.",
+    "estimatorExclusion4": "Taxes, your bank's charges and any particular condition of your own account with Meta.",
+    "marketNorthAmerica": "North America",
+    "marketRestOfAfrica": "Rest of Africa",
+    "marketRestOfAsiaPacific": "Rest of Asia-Pacific",
+    "marketRestOfCentralEasternEurope": "Rest of Central and Eastern Europe",
+    "marketRestOfLatinAmerica": "Rest of Latin America",
+    "marketRestOfMiddleEast": "Rest of the Middle East",
+    "marketRestOfWesternEurope": "Rest of Western Europe",
+    "marketOther": "Other countries"
   },
   "compareMeta": {
     "breadcrumb": "Compare with Meta",
@@ -1534,5 +1600,40 @@
     "ctaBody": "The useful way to decide is to look at which task of yours has to be finished when the conversation ends. The plans and their limits are published.",
     "ctaPricing": "See plans and pricing",
     "ctaCosts": "Understand the three charges"
+  },
+  "labelledDemos": {
+    "title": "Four tasks, four labelled demos",
+    "subtitle": "Every panel on this site says what it is before it shows a result. None of these four is a recording of a customer or of a test: they are drawn examples, and what sits behind each one can be read in the code.",
+    "kind": {
+      "illustrative": "Illustrative example",
+      "localTest": "Local test",
+      "realCase": "Real case"
+    },
+    "kindMeaning": {
+      "illustrative": "A scripted panel driven by timers. It shows what a flow looks like, not that it happened.",
+      "localTest": "The output of a run that actually happened, against a local stack with synthetic providers.",
+      "realCase": "A customer's own traffic, published with their consent. There is none on this site today."
+    },
+    "capability": {
+      "implementedNotCertified": "Capability implemented and reachable in the product, with no end-to-end certification behind it."
+    },
+    "appointment": {
+      "title": "Book an appointment",
+      "body": "The customer asks for a time, the agent reads the calendar the business loaded, and the appointment is recorded against its resource and its capacity."
+    },
+    "orderPayment": {
+      "title": "Take an order and charge for it",
+      "body": "The order is assembled in the conversation and the charge goes through the business's own gateway. A link that has been sent is not a payment that has settled: the order waits for that gateway's confirmation."
+    },
+    "handoff": {
+      "title": "Hand the conversation to a person",
+      "body": "When someone should step in, the conversation lands in the team's inbox with its history. How fast that is depends on somebody being available."
+    },
+    "configuration": {
+      "title": "Configure the agent",
+      "body": "The business sets the tone, the information and which connection the agent is assigned to. Each connection uses the agent you assign to it."
+    },
+    "closingNote": "None of this certifies a channel or an industry: the audited closure report certifies none of them yet. What is worth checking before you subscribe is who charges you for what.",
+    "closingLink": "See the three payments"
   }
 }

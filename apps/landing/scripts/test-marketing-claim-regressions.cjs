@@ -15,6 +15,9 @@ const probes = [
   // four languages, and both must now be rejected on sight.
   "18 vertical configurations and all certified channels included.",
   "Canales certificados según el plan y 18 configuraciones verticales disponibles.",
+  // The numeral form of "never sleeps", which lived in a demo panel in four
+  // locales until this pass. No uptime is published and no channel is certified.
+  "Agente activo 24/7 en todos tus canales.",
   // Opening Meta's billing page proves neither funding nor delivery. A screen
   // that says it does is selling a guarantee made of somebody else's bank.
   "Come back and you will see Payment verified — guaranteed delivery from day one.",

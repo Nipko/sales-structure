@@ -1,4 +1,17 @@
-export type ChannelKey = "whatsapp" | "instagram" | "messenger" | "telegram";
+/**
+ * The five self-service conversational surfaces, and no others.
+ *
+ * `web_widget` was missing here while the product pages claimed five channels,
+ * so the home rendered four chat skins under a headline that said five — the
+ * reader was left to decide which claim was wrong. Email is an internal inbound
+ * adapter and SMS is a one-way credit product; neither is a conversational
+ * channel a tenant can sell through, and neither belongs in this union.
+ *
+ * The canonical list is `CERTIFIED_SELF_SERVICE_CHANNELS` in
+ * `packages/shared/src/channel-policy.ts`, and every surface here has a
+ * registered adapter in `apps/api/src/modules/channels/channels.module.ts`.
+ */
+export type ChannelKey = "whatsapp" | "instagram" | "messenger" | "telegram" | "web_widget";
 
 export interface ChannelSkin {
   name: string;
@@ -49,6 +62,20 @@ export const CHANNELS: Record<ChannelKey, ChannelSkin> = {
     incomingText: "#e4e6eb",
     statusText: "Active",
     logoSrc: "/logos/messenger.svg",
+  },
+  web_widget: {
+    // Parallly's own widget on the tenant's site, so it wears the product's
+    // accent rather than a third party's brand.
+    name: "Web Chat",
+    headerBg: "linear-gradient(135deg, #1d4ed8, #3897f0)",
+    bodyBg: "#0b1118",
+    accent: "#3897f0",
+    outgoingBg: "#1d4ed8",
+    outgoingText: "#f5f7fa",
+    incomingBg: "#1a2330",
+    incomingText: "#e7ecf3",
+    statusText: "en linea",
+    logoSrc: "",
   },
   telegram: {
     name: "Telegram",

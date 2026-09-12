@@ -7,6 +7,7 @@ import { Icon } from "../../../components/ui/Icon";
 import { FAQItem } from "../../../components/ui/FAQItem";
 import { JsonLd } from "../../../components/ui/JsonLd";
 import { ThreePaymentsPanel } from "../../../components/sections/ThreePaymentsPanel";
+import { WhatsappCostEstimator } from "../../../components/sections/WhatsappCostEstimator";
 import { breadcrumbJsonLd, faqJsonLd } from "../../../lib/seo";
 import { routes } from "../../../lib/routes";
 import {
@@ -17,18 +18,23 @@ import {
 /**
  * ═══ THE PAGE THAT EXISTS SO NOBODY LEARNS THIS FROM AN INVOICE ═════════════
  *
- * Three things this page is careful NOT to do, each of which would be easy and
- * would make it read better:
+ * The earlier version of this page published no rate and no estimate, on the
+ * reasoning that Meta reprices by country and a total beside a subscription
+ * price reads as a bill. Both halves of that were true about the RISK and wrong
+ * about the remedy: a business that cannot see the order of magnitude before
+ * 1 October budgets nothing, and finds out from Meta.
  *
- *   - print a per-message rate. Meta prices by the RECIPIENT's country and
- *     revises the cards quarterly, so any number here is wrong at the next
- *     revision and right for almost nobody in between;
- *   - show an estimated monthly maximum. An estimate rendered next to a real
- *     subscription price is read as an invoice, and this one would be built
- *     from assumptions the reader never made;
- *   - suggest that coming back from Meta means the account is funded. The most
- *     we can honestly say is that we re-read what Meta reports, and that an
- *     attached method is not balance and not delivery.
+ * So the page now carries an estimator, and the risk is answered structurally —
+ * every rate is DERIVED from the rate table the engine prices against, the card
+ * and its effective date are printed under the result, the market is chosen by
+ * the reader because a phone number cannot be mapped to one honestly, and an
+ * unpublished rate withholds the total rather than summing as zero. See
+ * `components/sections/WhatsappCostEstimator.tsx` for the full reasoning.
+ *
+ * The one thing this page still refuses to do is suggest that coming back from
+ * Meta means the account is funded. The most we can honestly say is that we
+ * re-read what Meta reports, and that an attached method is not balance and not
+ * delivery.
  */
 
 const CATEGORY_KEYS = ["Service", "Marketing", "Utility", "Authentication"] as const;
@@ -105,17 +111,19 @@ export default function WhatsappCostsPage() {
               <h3 className="text-base font-semibold text-text-primary">{t("countryTitle")}</h3>
               <p className="mt-2 text-sm leading-relaxed text-text-secondary">{t("countryBody")}</p>
             </div>
-            <div className="rounded-2xl border border-border bg-surface/60 p-5">
-              <h3 className="text-base font-semibold text-text-primary">{t("noEstimateTitle")}</h3>
+            <div className="rounded-2xl border border-amber-400/30 bg-amber-400/5 p-5">
+              <h3 className="text-base font-semibold text-text-primary">
+                {t("estimateNotInvoiceTitle")}
+              </h3>
               <p className="mt-2 text-sm leading-relaxed text-text-secondary">
-                {t("noEstimateBody")}
+                {t("estimateNotInvoiceBody")}
               </p>
             </div>
           </div>
 
           <div className="mt-6 rounded-2xl border border-border bg-surface/60 p-5">
-            <h3 className="text-base font-semibold text-text-primary">{t("ratesTitle")}</h3>
-            <p className="mt-2 text-sm leading-relaxed text-text-secondary">{t("ratesBody")}</p>
+            <h3 className="text-base font-semibold text-text-primary">{t("ratesSourceTitle")}</h3>
+            <p className="mt-2 text-sm leading-relaxed text-text-secondary">{t("ratesSourceBody")}</p>
             <a
               href={META_WHATSAPP_CHARGE.officialRatesUrl}
               target="_blank"
@@ -132,6 +140,13 @@ export default function WhatsappCostsPage() {
             <p className="mt-2 text-sm leading-relaxed text-text-secondary">{t("deadlineBody")}</p>
           </div>
         </div>
+      </Section>
+
+      {/* The estimator. Placed AFTER the rule and the allowance and BEFORE the
+          setup steps: a reader who meets a total before learning that the price
+          depends on the recipient's country reads the total as the price. */}
+      <Section id="estimador" className="border-t border-border/50">
+        <WhatsappCostEstimator />
       </Section>
 
       {/* Setting up Meta billing — five steps, two of which are not ours */}

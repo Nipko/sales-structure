@@ -1,5 +1,6 @@
 import { HeroSection } from "../../components/sections/HeroSection";
 import { ResultsBand } from "../../components/sections/ResultsBand";
+import { StatsCounter } from "../../components/sections/StatsCounter";
 import { TrustRow } from "../../components/sections/TrustRow";
 import { VerticalsShowcase } from "../../components/sections/VerticalsShowcase";
 import { ToolsShowcase } from "../../components/sections/ToolsShowcase";
@@ -19,6 +20,14 @@ export default function HomePage() {
       <HeroSection />
       <TrustRow />
       <ResultsBand />
+      {/* The three states, one of which is a zero.
+
+          This band existed, was code-backed, and was pinned by the validator —
+          and was mounted on NO page, so the certification state it publishes
+          reached no reader. A contract enforced over a component nobody renders
+          is a contract about nothing: the five connectable channels were on the
+          site and the zero certified ones were not. */}
+      <StatsCounter />
       <ToolsShowcase />
       <VerticalsShowcase />
       <MobileAppSection />

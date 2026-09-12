@@ -55,6 +55,20 @@ function loadTsFile(file) {
   return loaded.exports;
 }
 
+/**
+ * Source with comments removed, for rules about what the CODE does.
+ *
+ * Several rules below forbid a shape — a decimal rate, a `title=` tooltip — and
+ * the docblock explaining why tends to contain an example of exactly that
+ * shape. Testing the raw file makes a rule fail on its own reasoning, which
+ * teaches the next person to delete the comment rather than keep the rule.
+ */
+function withoutComments(source) {
+  return String(source)
+    .replace(/\/\*[\s\S]*?\*\//g, " ")
+    .replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+}
+
 function loadTsModule(relativeFile) {
   return loadTsFile(path.join(landingRoot, relativeFile));
 }
@@ -274,6 +288,16 @@ const frozenClaimPatterns = [
     pattern: /\b(?:sells? on its own|vende solo|vende sozinho|vend toute seule|zero human intervention|cero intervenci[oó]n humana|zero interven[cç][aã]o humana|z[eé]ro intervention humaine|never sleeps|nunca duerme|nunca dorme|ne dort jamais)\b/i,
   },
   {
+    // "Activa · 24/7" sat in the agent-configuration demo, in four locales.
+    // It is the numeral form of "never sleeps" — already frozen in words — and
+    // it is an availability claim on a platform that publishes no uptime and
+    // holds zero channel certifications. The existing rule only caught it next
+    // to the word "support"; this one catches it anywhere, including inside a
+    // demo panel, where nobody thinks to look for a promise.
+    label: "unverified round-the-clock availability claim",
+    pattern: /\b24\s*[\/x\u00d7]\s*7\b|\b24\s*(?:horas|hours|heures)\b[^.\n]{0,25}\b(?:7|siete|seven|sept)\s*(?:d[ií]as|days|dias|jours)\b/i,
+  },
+  {
     label: "unsupported instant production-readiness promise",
     pattern: /(?:\b(?:from (?:the )?first minute|desde (?:el )?primer minuto|desde o primeiro minuto|d[eè]s la premi[eè]re minute)\b|\b(?:ready to operate|listo para operar|pronto para operar|pr[eê]t [aà] op[eé]rer)\b.{0,35}\b(?:day one|primer d[ií]a|primeiro dia|premier jour)\b)/i,
   },
@@ -340,6 +364,7 @@ const frozenClaimRegressionSamples = [
   ["unsupported financial quotes or portfolio tracking", "Portfolio tracking"],
   ["services preconfigured across all 18 verticals", "18 verticals with pre-configured services"],
   ["unsupported autonomous-sales or zero-human promise", "Your business sells on its own with zero human intervention"],
+  ["unverified round-the-clock availability claim", "Tu agente activo 24/7"],
   ["unsupported instant production-readiness promise", "Ready to operate from day one"],
   ["unsupported universal vertical adaptation promise", "Parallly adapts to any business"],
   ["unsupported configure-once autonomy promise", "Configure once and let the AI handle the rest"],
@@ -588,8 +613,15 @@ for (const claim of frozenClaimPatterns) {
   );
 }
 
+// Comments are stripped from the TREE and not from the probe.
+//
+// A frozen claim only harms a reader if it renders, and a comment never does —
+// while the comment explaining why a claim was removed almost always has to
+// quote it. Scanning both made the rule fail on its own rationale, which
+// teaches the next person to delete the explanation rather than keep the guard.
+// The probe is scanned raw so a fixture containing `//` is still exercised.
 const marketingSource = [
-  readMarketingSourceTree(path.join(landingRoot, "src")),
+  withoutComments(readMarketingSourceTree(path.join(landingRoot, "src"))),
   process.env.MARKETING_CLAIM_PROBE || "",
 ].join("\n");
 for (const claim of frozenClaimPatterns) {
@@ -639,10 +671,30 @@ assert(
 );
 assert(
   capabilityCounts.selfServiceChannels === certifiedChannelPolicy.length
-    && JSON.stringify(certifiedChannelPolicy) === JSON.stringify(expectedCertifiedChannelKeys)
-    && Object.keys(channelRegistry || {}).every((channel) => certifiedChannelPolicy.includes(channel)),
-  "Capability stat and demo skins must match the five self-service channels",
+    && JSON.stringify(certifiedChannelPolicy) === JSON.stringify(expectedCertifiedChannelKeys),
+  "The self-service channel stat must equal the canonical channel policy",
 );
+// EQUALITY, not containment. The subset check let the home render four chat
+// skins under a headline that said five: `web_widget` was missing from the
+// landing's registry while every product page claimed it, and the reader was
+// left to decide which of the two was wrong. The landing also uses the policy's
+// own key names so `web_chat`/`webchat`/`web_widget` cannot fork into three
+// vocabularies across four files.
+assert(
+  JSON.stringify([...Object.keys(channelRegistry || {})].sort())
+    === JSON.stringify([...certifiedChannelPolicy].sort()),
+  "Demo channel skins must cover exactly the self-service channels, under the policy's own keys: "
+  + `${Object.keys(channelRegistry || {}).join(", ")} vs ${certifiedChannelPolicy.join(", ")}`,
+);
+// Email and SMS are an internal inbound adapter and a one-way credit product.
+// Neither is sellable as a conversational channel, and a skin is exactly how
+// one would reappear in a list next to WhatsApp and be certified by adjacency.
+for (const excluded of ["email", "sms"]) {
+  assert(
+    !Object.keys(channelRegistry || {}).includes(excluded),
+    `${excluded} is not a self-service conversational channel and must not have a chat skin`,
+  );
+}
 assert(capabilityCounts.interfaceLanguages === locales.length, "Capability stat must match es/en/pt/fr locales");
 
 // ─── The certified count is not ours to choose ──────────────────────────────
@@ -808,6 +860,15 @@ assert(
     && /data-claim-id=\{\w+\.claimId\}/.test(statsSource),
   "Every StatsCounter quantitative claim must render its positive registry id",
 );
+// …and the band has to be MOUNTED. It was code-backed, pinned by the three
+// rules above, and imported by no page at all: the five connectable channels
+// were published and the zero certified ones were not, so the honest half of
+// the pair reached nobody. A rule about a component nobody renders protects
+// nothing, which is why this one checks the home's own JSX.
+assert(
+  /<StatsCounter\s*\/>/.test(homeSource) && /import \{ StatsCounter \}/.test(homeSource),
+  "The certification-state band must be rendered on the home, not merely defined",
+);
 
 const trustSource = fs.readFileSync(
   path.join(landingRoot, "src", "components", "sections", "TrustRow.tsx"),
@@ -971,6 +1032,285 @@ for (const party of paymentParties) {
   }
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+//   THE ESTIMATOR'S RATES ARE DERIVED, AND THIS IS WHERE THAT IS ENFORCED
+// ════════════════════════════════════════════════════════════════════════════
+//
+// `/costos-whatsapp` publishes per-message rates. That is only defensible while
+// every one of them is DERIVED from the table the engine prices against — the
+// moment a figure is typed into the landing it becomes a number that rots
+// silently, which is exactly what the frozen "hard-coded Meta per-message rate"
+// rule was written to prevent in copy.
+//
+// So three things are checked here. The projection must equal the rate table
+// cell for cell; the component must own no rate of its own; and the frozen rule
+// stays in force over copy and source, so a literal cannot come back by
+// copy-edit even though the rendered page now shows figures.
+
+const rateProjection = loadTsModule(path.join(
+  "src", "data", "whatsapp-rate-projection.generated.ts",
+)).WHATSAPP_RATE_PROJECTION;
+
+assert(
+  rateProjection?.rateTableVersion === whatsappRates.WHATSAPP_RATE_TABLE_VERSION,
+  `The published rate projection is version ${rateProjection?.rateTableVersion}, `
+  + `the engine prices against ${whatsappRates.WHATSAPP_RATE_TABLE_VERSION}`,
+);
+assert(
+  rateProjection?.microsPerUnit === whatsappRates.MICROS_PER_UNIT
+    && rateProjection?.allowance?.deliveries === freeServiceAllowance.deliveries
+    && rateProjection?.allowance?.scope === freeServiceAllowance.scope
+    && rateProjection?.allowance?.rollsOver === freeServiceAllowance.rollsOver
+    && rateProjection?.allowance?.category === freeServiceAllowance.category
+    && rateProjection?.allowance?.effectiveFrom === freeServiceAllowance.effectiveFrom,
+  "The projected allowance drifted from the rate table's own allowance",
+);
+assert(
+  JSON.stringify([...(rateProjection?.categories || [])])
+    === JSON.stringify([...(whatsappRates.WHATSAPP_MESSAGE_CATEGORIES || [])]),
+  "The projection must carry every category the rate table prices, in the same order",
+);
+
+const engineCards = whatsappRates.WHATSAPP_RATE_CARDS || [];
+assert(
+  (rateProjection?.cards || []).length === engineCards.length,
+  `The projection carries ${(rateProjection?.cards || []).length} cards, the table has ${engineCards.length}`,
+);
+let projectedCells = 0;
+for (const engineCard of engineCards) {
+  const projected = (rateProjection?.cards || []).find(
+    (card) => card.rateVersion === engineCard.rateVersion,
+  );
+  assert(projected, `The projection is missing rate card ${engineCard.rateVersion}`);
+  if (!projected) continue;
+  // The card's identity is what a disputed price is argued with. A projection
+  // that kept the numbers and lost the hash would publish untraceable figures.
+  for (const field of ["currency", "effectiveFrom", "sourceFile", "sourceSha256", "headerLocator"]) {
+    assert(
+      projected[field] === engineCard[field],
+      `${engineCard.rateVersion}: projected ${field} drifted from the rate table`,
+    );
+  }
+  assert(
+    projected.entries.length === engineCard.entries.length,
+    `${engineCard.rateVersion}: projected ${projected.entries.length} markets, table has ${engineCard.entries.length}`,
+  );
+  for (const engineEntry of engineCard.entries) {
+    const projectedEntry = projected.entries.find((entry) => entry.market === engineEntry.market);
+    assert(
+      projectedEntry && projectedEntry.locator === engineEntry.locator,
+      `${engineCard.rateVersion}: market ${engineEntry.market} is missing or mislocated in the projection`,
+    );
+    if (!projectedEntry) continue;
+    for (const category of whatsappRates.WHATSAPP_MESSAGE_CATEGORIES || []) {
+      // `'unavailable'` has to survive as itself. Projected as 0 it would be
+      // summed as free, and the July cards price no service message at all.
+      assert(
+        projectedEntry.micros[category] === engineEntry.micros[category],
+        `${engineCard.rateVersion} / ${engineEntry.market} / ${category}: `
+        + `projected ${JSON.stringify(projectedEntry.micros[category])}, `
+        + `table says ${JSON.stringify(engineEntry.micros[category])}`,
+      );
+      projectedCells += 1;
+    }
+  }
+}
+assert(projectedCells > 0, "The rate projection compared no cells at all");
+
+// Before 1 October the card in force prices no service message. The page has to
+// be able to SHOW that from data rather than assert it in prose, so at least one
+// card must still carry the unavailable service rate.
+const julyServiceRates = new Set(
+  (rateProjection?.cards || [])
+    .filter((card) => card.effectiveFrom < freeServiceAllowance.effectiveFrom)
+    .flatMap((card) => card.entries.map((entry) => entry.micros.service)),
+);
+assert(
+  julyServiceRates.size > 0 && [...julyServiceRates].every((rate) => rate === "unavailable"),
+  "A card predating the charge must still price no service message, or the versioned rule has no evidence",
+);
+
+const estimatorSource = fs.readFileSync(
+  path.join(landingRoot, "src", "components", "sections", "WhatsappCostEstimator.tsx"),
+  "utf8",
+);
+assert(
+  /from "\.\.\/\.\.\/data\/whatsapp-cost-estimate"/.test(estimatorSource),
+  "The estimator must read its rates from the derived projection, not from anywhere else",
+);
+const estimatorCode = withoutComments(estimatorSource);
+assert(
+  !/\bmicros\s*:/.test(estimatorCode) && !/\b\d+\.\d{3,}\b/.test(estimatorCode),
+  "The estimator must not carry a rate of its own; every figure comes from the projection",
+);
+assert(
+  estimatorSource.includes('data-rate-card={card.rateVersion}')
+    && estimatorSource.includes('data-charge-state={estimate.state}'),
+  "The estimator must publish which card answered and which side of the effective date it is on",
+);
+assert(
+  estimatorSource.includes('t("estimatorNotInvoice")')
+    && estimatorSource.includes('t("estimatorExclusionsTitle")'),
+  "The estimator must render the not-an-invoice label and the exclusions it does not cover",
+);
+// No network, no personal data. An estimator that phoned home would turn a
+// budgeting tool into a lead form nobody agreed to fill in.
+assert(
+  !/\bfetch\(|XMLHttpRequest|navigator\.sendBeacon|new WebSocket/.test(estimatorSource),
+  "The public estimator must make no remote call of any kind",
+);
+
+// ════════════════════════════════════════════════════════════════════════════
+//   FOUR DEMOS, EACH SAYING WHAT IT IS
+// ════════════════════════════════════════════════════════════════════════════
+//
+// Every animated panel showed an outcome with nothing on screen saying whether
+// it was a drawing, a test or a customer, and a reader is entitled to assume
+// the strongest of the three. The registry below separates what the ANIMATION
+// is from what the CAPABILITY is, and these rules keep the pair honest: none of
+// the four may claim to be a recording, and none may claim certification while
+// the audited closure report certifies nothing.
+
+const demoCatalog = loadTsModule(path.join("src", "data", "demo-catalog.ts"));
+const labelledDemos = demoCatalog.LABELLED_DEMOS || [];
+assert(
+  JSON.stringify(labelledDemos.map((demo) => demo.id))
+    === JSON.stringify(["appointment", "orderPayment", "handoff", "configuration"]),
+  "The four labelled demos must be exactly appointment, order/payment, handoff and configuration",
+);
+for (const demo of labelledDemos) {
+  assert(
+    demoCatalog.DEMO_KINDS.includes(demo.kind),
+    `${demo.id}: unknown demo kind ${demo.kind}`,
+  );
+  // These four are scripted panels driven by timers. Calling one a local test
+  // or a real case would require an artifact and a consent that do not exist.
+  assert(
+    demo.kind === "illustrative",
+    `${demo.id}: a scripted animation may only be published as illustrative`,
+  );
+  assert(
+    demo.capabilityState === "implementedNotCertified",
+    `${demo.id}: the closure report certifies nothing, so no demo may claim more`,
+  );
+  assert(
+    (demo.evidence || []).length > 0,
+    `${demo.id}: a labelled demo needs repository evidence a reader can open`,
+  );
+  for (const evidencePath of demo.evidence || []) {
+    assert(
+      fs.existsSync(path.join(repoRoot, evidencePath)),
+      `${demo.id}: missing repository evidence ${evidencePath}`,
+    );
+  }
+}
+const demoFrameSource = fs.readFileSync(
+  path.join(landingRoot, "src", "components", "demos", "DemoFrame.tsx"),
+  "utf8",
+);
+assert(
+  demoFrameSource.includes('t(`kind.${contract.kind}`)')
+    && demoFrameSource.includes('t(`capability.${contract.capabilityState}`)'),
+  "The demo frame must print both the animation's kind and the capability's state",
+);
+// In the document flow, not behind a hover or a title attribute: a label a
+// visitor has to discover is a label that did not disclose anything.
+assert(
+  demoFrameSource.includes("<figcaption")
+    && !/\stitle=/.test(withoutComments(demoFrameSource))
+    && !/aria-hidden="true">\s*\{t\(/.test(demoFrameSource),
+  "The demo label must be in the document flow, not a tooltip",
+);
+const orderPaymentSource = fs.readFileSync(
+  path.join(landingRoot, "src", "components", "demos", "OrderPaymentDemo.tsx"),
+  "utf8",
+);
+const orderPaymentCode = withoutComments(orderPaymentSource);
+assert(
+  orderPaymentSource.includes('"orderPayment.pendingTitle"')
+    && orderPaymentSource.includes('"orderPayment.pendingDetail"'),
+  "The payment demo's last frame must be the order awaiting the gateway's confirmation",
+);
+// No tick and no green success chrome on the final frame: a checkmark is read
+// as settlement, and settlement is an event at somebody else's provider that
+// this panel has no way to know about.
+assert(
+  !/Icon\.check|<polyline|emerald-/.test(orderPaymentCode),
+  "The payment demo must not render a success tick for a payment it cannot confirm",
+);
+for (const locale of locales) {
+  const copy = loadJson(locale)?.demos?.orderPayment || {};
+  assert(
+    String(copy.pendingDetail || "").length >= 40 && String(copy.linkDetail || "").length >= 40,
+    `${locale}: the payment demo must say a link is not a settled payment, and whose gateway it is`,
+  );
+}
+for (const locale of locales) {
+  const demos = loadJson(locale)?.labelledDemos || {};
+  for (const kind of demoCatalog.DEMO_KINDS) {
+    assert(
+      String(demos?.kind?.[kind] || "").trim().length > 0
+        && String(demos?.kindMeaning?.[kind] || "").trim().length >= 30,
+      `${locale}: the demo label "${kind}" needs a name and a definition`,
+    );
+  }
+  for (const demo of labelledDemos) {
+    assert(
+      String(demos?.[demo.i18nKey]?.title || "").trim().length > 0
+        && String(demos?.[demo.i18nKey]?.body || "").trim().length >= 40,
+      `${locale}: demo ${demo.id} needs a title and a description`,
+    );
+  }
+  assert(
+    String(demos?.capability?.implementedNotCertified || "").trim().length >= 30,
+    `${locale}: the capability state behind every demo needs its own sentence`,
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//   WHAT SURVIVES THE HOP TO THE DASHBOARD
+// ════════════════════════════════════════════════════════════════════════════
+//
+// The bridge used to forward plan, country, cycle and five UTMs after a single
+// check: truncate to 160 characters. Truncation is not validation — `?plan=`
+// could carry a hundred and sixty characters of prompt, email address or URL
+// into a query string that gets logged and attributed. Every parameter now has
+// a shape, and a value that does not match it is dropped rather than trimmed.
+
+const signupBridgeSource = fs.readFileSync(
+  path.join(landingRoot, "src", "app", "signup", "page.tsx"),
+  "utf8",
+);
+for (const parameter of ["plan", "country", "cycle", "lang", "vertical"]) {
+  assert(
+    new RegExp(`^\\s*${parameter}:`, "m").test(signupBridgeSource),
+    `The signup bridge must carry an explicit rule for ${parameter}`,
+  );
+}
+assert(
+  !/slice\(0,\s*160\)/.test(signupBridgeSource),
+  "Truncating a parameter is not validating it; the bridge must match a shape instead",
+);
+const bridgeCode = withoutComments(signupBridgeSource);
+assert(
+  bridgeCode.includes("const ALLOWLIST")
+    && /:\s*null\)/.test(bridgeCode)
+    && /value !== null/.test(bridgeCode),
+  "The bridge must drop a parameter that fails its rule, not forward a sanitised guess",
+);
+assert(
+  signupBridgeSource.includes("VERTICAL_SLUGS.has(raw)")
+    && signupBridgeSource.includes("locales as readonly string[]).includes(raw)"),
+  "Language and vertical must be validated against the catalogues they index",
+);
+// The destination is a constant, so no input can redirect the visitor, and no
+// free-text field ever crosses the hop.
+assert(
+  /new URL\(DASHBOARD_SIGNUP_URL\)/.test(signupBridgeSource)
+    && !/searchParams\.set\([^)]*window\.location\.href/.test(signupBridgeSource),
+  "The bridge's destination must be a constant and must never forward a URL",
+);
+
 // The notice has to reach the two places where somebody is about to act.
 const noticeSource = fs.readFileSync(
   path.join(landingRoot, "src", "components", "sections", "ThreePaymentsNotice.tsx"),
@@ -1027,6 +1367,29 @@ const custodyPatterns = {
   },
 };
 const customerWord = /client|customer/i;
+/**
+ * The same two custody concepts as `custodyPatterns`, for the SHORT notice.
+ *
+ * Kept separate because the notice speaks about the card with an object
+ * pronoun — "no LA recibe", "ne LE reçoit pas" — while the costs page's own
+ * sentences name the thing directly. One shared pattern would either miss the
+ * notice or be loose enough to pass a sentence that says the opposite.
+ */
+const noticeCustodyPatterns = {
+  es: { receive: /no (?:la |lo )?recibe/i, store: /no (?:la |lo )?guarda/i },
+  en: { receive: /(?:does not receive|never receives)/i, store: /(?:does not store|never stores)/i },
+  pt: { receive: /n[aã]o (?:o |a )?recebe/i, store: /n[aã]o (?:o |a )?guarda/i },
+  fr: { receive: /ne (?:la |le )?re[cç]oit pas/i, store: /ne (?:la |le )?conserve pas/i },
+};
+
+// "This is an estimate, not an invoice" in each language's own words. The
+// estimator's headline label is the one string a redesign would shorten first.
+const notInvoicePatterns = {
+  es: /estimaci[oó]n.{0,20}no.{0,10}(?:una )?factura/i,
+  en: /estimate.{0,20}not.{0,10}(?:an )?invoice/i,
+  pt: /estimativa.{0,20}n[aã]o.{0,10}(?:uma )?fatura/i,
+  fr: /estimation.{0,20}pas.{0,10}(?:une )?facture/i,
+};
 
 /**
  * Everything the three-payment copy must contain, in one locale.
@@ -1106,10 +1469,79 @@ function assertThreePaymentCopy(locale, messages, label) {
     String(costs.setupStep5Body || "").length >= 40,
     `${label}: the costs page must explain what an attached payment method does not prove`,
   );
-  // No rate, and no estimated total dressed as one.
+  // ── The estimator's two guard rails ──────────────────────────────────────
+  //
+  // The page used to publish no rate and no estimate, and the rule here simply
+  // required both refusals to be explained. It now publishes both, DERIVED from
+  // the rate table, so the rule changed shape rather than being deleted: the
+  // copy has to say where the rates come from, and it has to say in so many
+  // words that the total is not an invoice. The two keys were RENAMED so a
+  // refill with contradicting text could not pass a check written for the old
+  // meaning.
   assert(
-    String(costs.ratesBody || "").length >= 40 && String(costs.noEstimateBody || "").length >= 40,
-    `${label}: the costs page must explain why it publishes neither a rate nor an estimated maximum`,
+    costs.ratesTitle === undefined && costs.ratesBody === undefined
+      && costs.noEstimateTitle === undefined && costs.noEstimateBody === undefined,
+    `${label}: the costs page no longer refuses a rate; use ratesSource*/estimateNotInvoice*`,
+  );
+  assert(
+    String(costs.ratesSourceBody || "").length >= 40
+      && String(costs.estimateNotInvoiceBody || "").length >= 40,
+    `${label}: the costs page must say where its rates come from and that an estimate is not an invoice`,
+  );
+  assert(
+    notInvoicePatterns[locale].test(String(costs.estimatorNotInvoice || "")),
+    `${label}: the estimator result must be labelled an estimate and not an invoice`,
+  );
+  // An unpublished rate is not a free rate. Every locale has to keep saying so,
+  // because the alternative reading — a blank row as a zero — understates the
+  // total in exactly the direction that flatters us.
+  assert(
+    String(costs.estimatorUnpricedNote || "").length >= 40
+      && String(costs.estimatorUnpriced || "").trim().length > 0,
+    `${label}: the estimator must explain that a category with no published rate is not free`,
+  );
+  // The free thousand is per NUMBER. Subtracting it once per country is the
+  // single arithmetic error the preserved evidence calls out by name.
+  assert(
+    String(costs.estimatorMixNote || "").length >= 40
+      && String(costs.estimatorAllowanceNote || "").includes("{deliveries}"),
+    `${label}: the estimator must state the allowance is not repeated per country`,
+  );
+  // Every figure on the page is traceable to a named card or it is not published.
+  for (const argument of ["{card}", "{date}", "{file}"]) {
+    assert(
+      String(costs.estimatorSourceLine || "").includes(argument),
+      `${label}: the estimator must print the rate card's ${argument}`,
+    );
+  }
+  // Before and after the effective date are different sentences, resolved from
+  // a date at render time. One sentence covering both is how a page keeps
+  // saying "from October" in December.
+  assert(
+    metaChargeDatePatterns[locale].test(String(costs.estimatorStateBeforeBody || ""))
+      && String(costs.estimatorStateActiveBody || "").length >= 40,
+    `${label}: the estimator must carry both sides of the versioned charge rule`,
+  );
+  // Meta's regional buckets are the rows most tenants land on. Leaving them in
+  // English on three of the four locales makes the important row the least legible.
+  for (const bucket of [
+    "marketNorthAmerica", "marketRestOfAfrica", "marketRestOfAsiaPacific",
+    "marketRestOfCentralEasternEurope", "marketRestOfLatinAmerica", "marketRestOfMiddleEast",
+    "marketRestOfWesternEurope", "marketOther",
+  ]) {
+    assert(
+      String(costs[bucket] || "").trim().length > 0,
+      `${label}: Meta's aggregate market ${bucket} needs a label in this locale`,
+    );
+  }
+  // The custody fact travels with the notice, so it reaches every page carrying
+  // a CTA rather than only the reader who opens the canonical page.
+  assert(
+    /Parallly/.test(String(payments.noticeCustody || ""))
+      && /\bMeta\b/.test(String(payments.noticeCustody || ""))
+      && noticeCustodyPatterns[locale].receive.test(String(payments.noticeCustody || ""))
+      && noticeCustodyPatterns[locale].store.test(String(payments.noticeCustody || "")),
+    `${label}: the short notice must say Parallly neither receives nor stores the Meta card`,
   );
   assert(
     !/(?:US\$|USD|COP|€)\s*\d/.test(JSON.stringify(costs)),
@@ -1285,6 +1717,33 @@ for (const newRoute of ["/costos-whatsapp", "/comparar/meta-business-agent"]) {
     `${newRoute}: metadata must declare its own canonical path`,
   );
 }
+// ════════════════════════════════════════════════════════════════════════════
+//   NO HREFLANG WHILE THE LANGUAGE LIVES IN A COOKIE
+// ════════════════════════════════════════════════════════════════════════════
+//
+// This site serves four languages from ONE HTML file per route, and picks the
+// language client-side from a cookie and the browser's own preferences. That is
+// a real SEO gap and it is NOT closed by emitting `hreflang`: four alternates
+// pointing at the same cookie-dependent document tell a crawler that four
+// indexable URLs exist when one does. The honest states are "no hreflang" and
+// "per-locale URLs", and this rule keeps the site in the first until somebody
+// builds the second — a locale route segment, four rendered trees, a derived
+// sitemap and a LangProvider driven by the path instead of the cookie.
+const localeRouteExists = fs.existsSync(path.join(landingRoot, "src", "app", "[locale]"))
+  || ["en", "pt", "fr"].every((locale) =>
+    fs.existsSync(path.join(landingRoot, "src", "app", locale)));
+const seoAndLayout = `${seoSource}\n${layoutSource}`;
+assert(
+  localeRouteExists || !/hreflang|alternates\s*:\s*\{[^}]*languages/s.test(seoAndLayout),
+  "hreflang may not be published while one HTML serves four cookie-selected languages; "
+  + "build per-locale routes first, or leave the alternates out",
+);
+assert(
+  localeRouteExists || !fs.readFileSync(path.join(landingRoot, "public", "sitemap.xml"), "utf8")
+    .includes("xhtml:link"),
+  "The sitemap may not declare language alternates for URLs that do not exist per language",
+);
+
 const navigationSource = fs.readFileSync(path.join(landingRoot, "src", "data", "navigation.ts"), "utf8");
 assert(
   navigationSource.includes('href: "/costos-whatsapp"')

@@ -1,17 +1,25 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { motion, AnimatePresence, useInView } from "motion/react";
+import { motion, AnimatePresence, useInView, useReducedMotion } from "motion/react";
 import { useTranslations } from "next-intl";
 
 export function CalendarDemo() {
   const t = useTranslations("demos");
   const L = (k: string, fb: string) => (t.has(k) ? t(k) : fb);
-  const [step, setStep] = useState(0);
+  const reduceMotion = useReducedMotion();
+  // The information in this panel is its LAST frame — a confirmed slot. A
+  // reader who asked the system for less movement gets that frame immediately
+  // instead of waiting through three timers for it.
+  const [step, setStep] = useState(reduceMotion ? 2 : 0);
   const ref = useRef<HTMLDivElement>(null);
   const isInView = useInView(ref, { margin: "-50px" });
 
   useEffect(() => {
+    if (reduceMotion) {
+      setStep(2);
+      return;
+    }
     if (!isInView) return;
     const timeouts: ReturnType<typeof setTimeout>[] = [];
     const cycle = () => {
@@ -22,7 +30,7 @@ export function CalendarDemo() {
     };
     cycle();
     return () => timeouts.forEach(clearTimeout);
-  }, [isInView]);
+  }, [isInView, reduceMotion]);
 
   const slots = ["09:00", "10:00", "11:00", "14:00", "15:00", "16:00"];
   const selectedIdx = 2;
@@ -59,7 +67,7 @@ export function CalendarDemo() {
                 : "bg-surface border-border text-text-secondary"
             }`}
             animate={
-              i === selectedIdx && step === 1 ? { scale: [1, 1.05, 1] } : {}
+              !reduceMotion && i === selectedIdx && step === 1 ? { scale: [1, 1.05, 1] } : {}
             }
             transition={{
               duration: 0.4,
@@ -73,7 +81,7 @@ export function CalendarDemo() {
       <AnimatePresence>
         {step === 2 && (
           <motion.div
-            initial={{ opacity: 0, y: 10 }}
+            initial={reduceMotion ? false : { opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }}
             className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-2.5 flex items-center gap-2"

@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Section } from "../../../components/ui/Section";
 import { Icon } from "../../../components/ui/Icon";
 import { CTABanner } from "../../../components/layout/CTABanner";
+import { LabelledDemos } from "../../../components/sections/LabelledDemos";
 import { JsonLd } from "../../../components/ui/JsonLd";
 import { breadcrumbJsonLd } from "../../../lib/seo";
 import { SIGNUP_URL } from "../../../lib/constants";
@@ -173,6 +174,8 @@ export default function ProductHubPage() {
           ))}
         </div>
       </Section>
+
+      <LabelledDemos />
 
       <CTABanner />
     </>

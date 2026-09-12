@@ -8,7 +8,8 @@ import { Roles } from '../../../common/decorators/roles.decorator';
 import { PrismaService } from '../../prisma/prisma.service';
 import { WhatsappSpendService } from './whatsapp-spend.service';
 import { SPEND_BLOCK_CODES } from './spend-diagnosis';
-import { SPEND_SCOPE_KINDS } from './spend-scopes';
+import { SPEND_SCOPE_KINDS, TENANT_DECLARABLE_SCOPE_KINDS, isTenantDeclarableScope }
+    from './spend-scopes';
 import { estimateCampaign } from './campaign-estimate';
 import { approvedTemplateCategory } from '../../channels/dispatch-price-facts';
 import { WHATSAPP_MESSAGE_CATEGORIES } from '../whatsapp-rates';
@@ -293,8 +294,14 @@ export class WhatsappSpendController {
         const kind = String(body?.scopeKind ?? '').trim();
         const key = String(body?.scopeKey ?? '').trim();
         const period = String(body?.period ?? '').trim();
-        if (!(SPEND_SCOPE_KINDS as readonly string[]).includes(kind)) {
-            throw new BadRequestException(`scopeKind must be one of ${SPEND_SCOPE_KINDS.join(', ')}`);
+        // Not `SPEND_SCOPE_KINDS`: that list includes `number_month`, which is
+        // Meta's free allowance rather than a ceiling anybody set. Accepting it
+        // here let a tenant_admin mint free deliveries Meta bills in full, or
+        // destroy the allowance so every message was charged from the first.
+        if (!isTenantDeclarableScope(kind)) {
+            throw new BadRequestException('scopeKind must be one of '
+                + `${TENANT_DECLARABLE_SCOPE_KINDS.join(', ')}. `
+                + 'La franquicia gratuita del número no es un techo editable.');
         }
         // A ceiling on nothing, or on every period at once, is not a ceiling.
         if (!key || key.length > 200) throw new BadRequestException('scopeKey is required');

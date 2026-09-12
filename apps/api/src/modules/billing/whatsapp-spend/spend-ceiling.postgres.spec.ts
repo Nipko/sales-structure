@@ -4,7 +4,7 @@ import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import {
     declareSpendCeiling, readSpendCeilings, readPressure, reserveAgainstCounter,
-    type SpendQuery,
+    ensureCounters, type SpendQuery,
 } from './spend-ledger';
 
 /**
@@ -299,7 +299,11 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
             const number = { kind: 'number_month' as const, key: `n-${randomUUID()}`, period };
             await declareSpendCeiling(query, schema,
                 { scope: account, capMinor: 5_000, currency: 'USD' });
-            await declareSpendCeiling(query, schema, { scope: number, capDeliveries: 1_000 });
+            // Seeded the way production seeds it, not declared. The allowance
+            // row is Meta's free thousand rather than a ceiling anybody set, and
+            // `declareSpendCeiling` now refuses it for that reason — but a
+            // tenant must still SEE it here, which is what this case checks.
+            await ensureCounters(query, schema, [number], 'USD', 1_000);
             await spend(account, { amountMinor: 250 });
 
             const rows = await readSpendCeilings(query, schema, { periodKey: period });

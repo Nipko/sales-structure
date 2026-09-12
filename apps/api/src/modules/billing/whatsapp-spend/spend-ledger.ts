@@ -1,4 +1,5 @@
-import { inLockOrder, scopeId, type SpendScope, type SpendScopeKind } from './spend-scopes';
+import { inLockOrder, isTenantDeclarableScope, scopeId, type SpendScope, type SpendScopeKind }
+    from './spend-scopes';
 
 /**
  * The money engine's SQL, as pure functions over a caller's transaction.
@@ -664,6 +665,23 @@ export async function declareSpendCeiling(query: SpendQuery, schema: string, inp
     readonly softPermille?: number;
 }): Promise<SpendCeiling> {
     assertSchema(schema);
+    // ── ONE OF THESE SCOPES IS NOT A CEILING ────────────────────────────────
+    //
+    // This is the invariant, not the validation. The route checks the same
+    // thing and answers 400, but the route is one caller: a script, a job or
+    // the next endpoint reaches this function directly, and the statement below
+    // is an `ON CONFLICT DO UPDATE` that overwrites `cap_kind` and
+    // `cap_deliveries` on whatever row it lands on. For `number_month` that row
+    // IS Meta's free thousand — raise it and the ledger hands out free
+    // deliveries Meta bills in full; turn it into a money row and
+    // `grantFreeDeliveries` stops matching and every message is charged from
+    // the first, which is verbatim the regression `ensureCounters` records as
+    // fixed.
+    if (!isTenantDeclarableScope(input.scope.kind)) {
+        throw new SpendLedgerError('spend_ceiling_scope_not_declarable',
+            `${input.scope.kind} no es un techo que fije el tenant: es la franquicia gratuita `
+            + 'de Meta para ese número. Para acotar ese mismo número, use el alcance `account`.');
+    }
     // `Number(null)` is 0, and `Number(undefined)` is NaN. Reading the first as
     // a ceiling of zero turned "no money ceiling" into "may spend nothing" —
     // which then demanded a currency, and refused a perfectly valid

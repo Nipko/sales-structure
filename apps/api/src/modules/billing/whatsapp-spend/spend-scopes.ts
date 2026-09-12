@@ -29,6 +29,37 @@ export const SPEND_SCOPE_KINDS = ['number_month', 'account', 'business', 'contac
 export type SpendScopeKind = (typeof SPEND_SCOPE_KINDS)[number];
 
 /**
+ * ═══ ONE OF THESE SCOPES IS NOT A CEILING ═══
+ *
+ * `number_month` is not a limit anybody chose. It IS Meta's free thousand:
+ * `ensureCounters` seeds the row `cap_kind = 'deliveries'`,
+ * `cap_deliveries = 1000`, and `grantFreeDeliveries` hands out free slots with
+ * `LEAST(used_deliveries + n, cap_deliveries)` against that exact row. The
+ * counter and the allowance are the same object.
+ *
+ * So a tenant writing to it is not setting a limit, it is editing what Meta
+ * gives them — in either direction, and both are bad:
+ *
+ *   · raise `cap_deliveries` and the ledger hands out free deliveries Meta
+ *     bills in full, recorded `basis: 'free_allowance'` at zero, so the
+ *     exposure report shows a month that cost nothing;
+ *   · set a money cap with no delivery cap and `cap_kind` becomes `'money'`,
+ *     `cap_deliveries` becomes NULL, `grantFreeDeliveries` matches nothing, and
+ *     every message is charged from the first for the rest of the month. That
+ *     is verbatim the regression `ensureCounters` documents as fixed.
+ *
+ * A subtraction rather than a second list, so adding a scope kind above cannot
+ * silently leave it undeclarable — or, worse, declarable when it should not be.
+ */
+export const TENANT_DECLARABLE_SCOPE_KINDS: readonly SpendScopeKind[] =
+    SPEND_SCOPE_KINDS.filter(kind => kind !== 'number_month');
+
+/** Is this a scope a person is allowed to set a ceiling on? */
+export function isTenantDeclarableScope(kind: string): kind is SpendScopeKind {
+    return (TENANT_DECLARABLE_SCOPE_KINDS as readonly string[]).includes(kind);
+}
+
+/**
  * The one total order every writer takes counter rows in.
  *
  * Index in this array IS the lock order. Adding a scope means deciding where it

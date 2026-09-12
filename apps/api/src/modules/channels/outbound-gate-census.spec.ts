@@ -31,6 +31,19 @@ const API_SRC = resolve(ROOT, 'apps', 'api', 'src');
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const inventory = require(SCRIPT);
 
+/**
+ * The October rows, so a mutation of the census can be followed all the way
+ * to the closure row it is supposed to move. The generator asks these the
+ * same way; the loaders it passes are reproduced here rather than imported,
+ * because importing the generator would run it and write the artefact.
+ */
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const october = require(resolve(ROOT, 'docs', 'audits', '2026-09-09', 'meta-october-rows.cjs'));
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const apiModule = (name: string) => require(resolve(API_SRC, name));
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const sharedModule = require(resolve(ROOT, 'packages', 'shared', 'src', 'index.ts'));
+
 /** The census, recomputed from the source tree — never from the committed report. */
 function census() {
     return inventory.gateCensus(inventory.collect());
@@ -508,6 +521,53 @@ describe('a gate deleted from a REAL sink', () => {
         // person to add a gate that is already there.
         const rows = withoutTheLegacyGate(() => census().bypasses);
         expect(rows[0].terminusUncovered.length).toBeGreaterThan(0);
+    });
+
+    it('makes the closure row that is NAMED after authorisation go red', () => {
+        // ═══ THE ROW HAS TO REACT TO ITS OWN QUESTION ═══
+        //
+        // R6's criterion is textual: no WhatsApp producer may generate a
+        // delivery outside the applicable authorisation. Its counter used to
+        // be `offDurable + bypasses` — a lane membership added to an
+        // authorisation failure — so it read seven while the authorisation
+        // itself was fully covered, and it would have read seven whether or
+        // not a gate existed anywhere.
+        //
+        // Now it is `bypasses`, which is the property it names. That change
+        // LOWERED a counter from seven to zero and moved the row from open to
+        // blocked, so the number needs a guard that a sentence cannot give
+        // it: delete the gate from the real sink and the row must go red. A
+        // counter that cannot be made non-zero is not a measurement.
+        const rowsFor = () => {
+            const authorities = october.octoberAuthorities({ root: ROOT, api: apiModule, shared: sharedModule });
+            return october.octoberRows((id: string, entry: any) => ({ id, ...entry }), authorities);
+        };
+        const r6 = (rows: any[]) => rows.find(entry => entry.id === 'R6')!;
+
+        // At HEAD: the legacy lane passes the money authority, so nothing is
+        // outside it and the row waits on its external gates.
+        const atHead = r6(rowsFor());
+        expect(atHead.open).toBe(0);
+        expect(atHead.gates.length).toBeGreaterThan(0);
+
+        // With that one gate gone, every producer behind it is unauthorised
+        // and the row says so.
+        const mutated = r6(withoutTheLegacyGate(rowsFor));
+        expect(mutated.open).toBeGreaterThan(0);
+        expect(String(mutated.openLabel)).toContain('autorización aplicable');
+
+        // And the property it stopped counting did not vanish: R0 and R4
+        // carry the producers outside the durable lane, and they are open on
+        // exactly that number at this HEAD.
+        const rows = rowsFor();
+        for (const id of ['R0', 'R4']) {
+            const entry = rows.find((candidate: any) => candidate.id === id)!;
+            //  IS what makes a row open — the generator derives
+            // the word from it, and this double does not, so the condition
+            // is what gets asserted rather than the label.
+            expect(entry.open).toBeGreaterThan(0);
+            expect(entry.gates ?? []).toEqual([]);
+        }
     });
 
     it('goes back to zero when the gate comes back', () => {

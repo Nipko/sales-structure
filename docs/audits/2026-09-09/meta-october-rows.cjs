@@ -411,16 +411,51 @@ function octoberRows(row, A) {
                 + 'vez de quedar fuera de la tabla para que la columna parezca llena — que es '
                 + 'exactamente cómo un contador llega a cero sin que nadie cierre nada.' }),
 
+        /**
+         * ═══ THE COUNTER THIS ROW IS NAMED AFTER ═══
+         *
+         * It was `offDurable + bypasses`, under the headline "can deliver
+         * outside the applicable authorisation". Those are two different
+         * properties and only the second one is this row's question.
+         *
+         * The applicable authorisation is the transactional money authority:
+         * settled spend plus committed reservations plus pending exposure may
+         * not exceed it, reserved BEFORE the effect. `bypasses` counts the
+         * chargeable producers that reach a POST without passing it, and the
+         * legacy BullMQ lane DOES pass it — `gateOrSuppress` at the last lane
+         * in `outbound-queue.processor.ts`, which is why the census reads zero
+         * there. That reading is not a claim: the census suite deletes the
+         * gate from the real sink through a source overlay and every producer
+         * behind it turns into a violation in the same run.
+         *
+         * Being off the DURABLE lane is the other property: no row before the
+         * POST, so "did this go out?" has no answer after a restart, and no
+         * receipt, uncertain outcome, recovery or reachable erasure. Real, and
+         * counted — by R0 and R4, which stay open on exactly that number.
+         * Adding it here made this row report a lane membership as an
+         * authorisation failure, and M3 already measures the authorisation.
+         *
+         * Correcting it does NOT accept the row: with the local condition met
+         * it is blocked by observe mode, by the canary with an explicit
+         * ceiling, and by the authorisation to switch `enforce` on.
+         */
         row('R6', { provenance: 'derived',
-            open: A.offDurable.length + A.bypasses.length,
-            openLabel: `${A.offDurable.length + A.bypasses.length} productores pueden entregar fuera `
+            open: A.bypasses.length,
+            openLabel: `${A.bypasses.length} productores de WhatsApp pueden entregar fuera `
                 + 'de la autorización aplicable',
             gates: [1, 5, 7],
             evidence: 'El criterio principal de R6, textual: **ningún productor de WhatsApp puede '
-                + 'generar una entrega fuera de la autorización aplicable**. Mientras el contador '
-                + 'sea distinto de cero la fila está abierta, y después seguirá bloqueada por el '
-                + 'modo observación, el canario con techo explícito y la autorización de activar '
-                + '`enforce`.' }),
+                + 'generar una entrega fuera de la autorización aplicable**. Esa autorización es la '
+                + 'autoridad económica transaccional, y el censo derivado del árbol cuenta '
+                + `${A.bypasses.length} productores cobrables que llegan a un POST sin pasarla — `
+                + 'incluido el carril legado de BullMQ, que sí la pasa. Lo verifica una mutación '
+                + 'que borra el gate del sink real, no esta frase. **Este contador sumó hasta '
+                + `este HEAD los ${A.offDurable.length} productores fuera del carril durable `
+                + `(${laneBreakdown}), que es otra propiedad**: no hay fila antes del POST, así `
+                + 'que nadie puede contestar "¿esto salió?" tras un reinicio. No desaparece: es '
+                + 'exactamente lo que mantienen abiertas R0 y R4. Con la condición local cumplida '
+                + 'esta fila queda bloqueada por el modo observación, el canario con techo '
+                + 'explícito y la autorización de activar `enforce`.' }),
     ];
 }
 

@@ -114,7 +114,7 @@ export const READINESS: Readonly<Partial<Record<VerticalReadinessKey, ReadinessD
     },
     properties: {
         table: 'properties',
-        where: 'is_active = true',
+        where: 'is_active = true AND night_price IS NOT NULL AND night_price > 0',
         repair: 'Cargá al menos un alojamiento activo con su tarifa.',
         repairRoute: '/admin/properties',
     },
@@ -138,7 +138,8 @@ export const READINESS: Readonly<Partial<Record<VerticalReadinessKey, ReadinessD
     },
     insurance_plans: {
         table: 'insurance_plans',
-        where: 'is_active = true',
+        where: `is_active = true AND monthly_premium_min IS NOT NULL
+            AND monthly_premium_min > 0 AND currency IS NOT NULL AND currency <> ''`,
         repair: 'Cargá al menos un plan de seguro cotizable.',
         repairRoute: '/admin/insurance',
     },

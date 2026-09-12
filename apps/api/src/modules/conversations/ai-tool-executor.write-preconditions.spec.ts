@@ -114,7 +114,7 @@ describe('una reserva sobre un alojamiento inexistente no llega a la confirmaciÃ
     });
 
     it('con la propiedad existente sigue de largo hasta el control', async () => {
-        const getById = jest.fn().mockResolvedValue({ id: PROPERTY_ID, is_active: true });
+        const getById = jest.fn().mockResolvedValue({ id: PROPERTY_ID, is_active: true, night_price: 180000 });
         const { executor, control } = createExecutor(getById);
 
         await executor.execute(
@@ -124,6 +124,19 @@ describe('una reserva sobre un alojamiento inexistente no llega a la confirmaciÃ
 
         expect(getById).toHaveBeenCalledWith(schemaName, PROPERTY_ID);
         expect(control.preflight).toHaveBeenCalled();
+    });
+
+    it('no pide confirmaciÃ³n para una propiedad activa sin tarifa', async () => {
+        const getById = jest.fn().mockResolvedValue({ id: PROPERTY_ID, is_active: true, night_price: 0 });
+        const { executor, control } = createExecutor(getById);
+
+        const result = await executor.execute(
+            schemaName, tenantId, contactId, 'create_property_booking', BOOKING_ARGS, conversationId,
+            { authority: authorityFor('create_property_booking') },
+        );
+
+        expect(result).toMatchObject({ error: 'property_rate_not_configured' });
+        expect(control.preflight).not.toHaveBeenCalled();
     });
 
     it('no se mete con herramientas que no son esta', async () => {

@@ -39,11 +39,21 @@ export class InsuranceService {
 
     // ── Plans ─────────────────────────────────────────────────────
 
-    async listPlans(schemaName: string, opts: { type?: string; coverageLevel?: string; includeInactive?: boolean } = {}): Promise<any[]> {
+    async listPlans(schemaName: string, opts: {
+        type?: string;
+        coverageLevel?: string;
+        includeInactive?: boolean;
+        /** Customer-facing catalogue: every returned plan can produce a non-zero quote. */
+        quotableOnly?: boolean;
+    } = {}): Promise<any[]> {
         const where: string[] = [];
         const params: any[] = [];
         let i = 1;
         if (!opts.includeInactive) where.push('is_active = true');
+        if (opts.quotableOnly) {
+            where.push('monthly_premium_min IS NOT NULL AND monthly_premium_min > 0');
+            where.push("currency IS NOT NULL AND currency <> ''");
+        }
         if (opts.type) { where.push(`insurance_type = $${i++}`); params.push(opts.type); }
         if (opts.coverageLevel) { where.push(`coverage_level = $${i++}`); params.push(opts.coverageLevel); }
         const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
@@ -172,6 +182,16 @@ export class InsuranceService {
         const contactId = assertOptionalContactId(data.contactId);
         const plan = await this.getPlanById(schemaName, data.planId);
         if (!plan) throw new BadRequestException('Plan not found');
+        if (plan.is_active !== true
+            || !Number.isFinite(Number(plan.monthly_premium_min))
+            || Number(plan.monthly_premium_min) <= 0
+            || typeof plan.currency !== 'string'
+            || !plan.currency.trim()) {
+            throw new BadRequestException({
+                error: 'insurance_plan_not_quotable',
+                message: 'The insurance plan needs an active positive premium and currency before quoting.',
+            });
+        }
 
         const premium = this.calculatePremium(plan, data.applicantAge);
         const validUntil = new Date();

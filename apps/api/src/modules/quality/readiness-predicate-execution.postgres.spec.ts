@@ -49,7 +49,7 @@ function canonicalAlters(table: string, schema: string): string[] {
 }
 
 const TABLES = ['faqs', 'products', 'companies', 'menu_items', 'real_estate_listings',
-    'treatment_plans', 'services'] as const;
+    'treatment_plans', 'services', 'properties', 'insurance_plans'] as const;
 
 (connection ? describe : describe.skip)('readiness predicates executed against the real tenant schema', () => {
     const schema = `tenant_readiness_${randomUUID().replace(/-/g, '')}`;
@@ -196,6 +196,24 @@ const TABLES = ['faqs', 'products', 'companies', 'menu_items', 'real_estate_list
             expect(await countWith('companies', READINESS.business_identity!.where)).toEqual({ total: 0 });
             expect(await countWith('companies',
                 READINESS_PREDICATE_AUTHORITY.business_identity!.toolPredicate)).toEqual({ total: 0 });
+        });
+
+        it('does not publish an accommodation the agent would quote at zero', async () => {
+            await sql('TRUNCATE properties');
+            await sql(`INSERT INTO properties (name, night_price, is_active) VALUES
+                       ('Sin tarifa', 0, true), ('Vendible', 180000, true)`);
+            expect(await countWith('properties', READINESS.properties!.where)).toEqual({ total: 1 });
+            expect(await countWith('properties',
+                READINESS_PREDICATE_AUTHORITY.properties!.toolPredicate)).toEqual({ total: 1 });
+        });
+
+        it('does not publish an insurance plan that cannot produce a priced quote', async () => {
+            await sql('TRUNCATE insurance_plans');
+            await sql(`INSERT INTO insurance_plans (name, insurance_type, monthly_premium_min, currency) VALUES
+                       ('Borrador', 'vida', NULL, 'COP'), ('Cotizable', 'vida', 85000, 'COP')`);
+            expect(await countWith('insurance_plans', READINESS.insurance_plans!.where)).toEqual({ total: 1 });
+            expect(await countWith('insurance_plans',
+                READINESS_PREDICATE_AUTHORITY.insurance_plans!.toolPredicate)).toEqual({ total: 1 });
         });
 
         it('fails an accented boarding category the runtime comparison accepts', async () => {

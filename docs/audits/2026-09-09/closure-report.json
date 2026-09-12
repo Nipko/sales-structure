@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "revision": "39138a238046b513f97fe833b74dac8bfe88b792",
-  "generatedAt": "2026-09-12T19:33:34.384Z",
+  "revision": "b82bb66883389bf7d04ecb73c0b41d1f0b24a0a0",
+  "generatedAt": "2026-09-12T19:38:02.485Z",
   "finished": false,
   "counts": {
     "aceptada": 15,
@@ -637,8 +637,8 @@
     },
     {
       "id": "T2",
-      "open": 5,
-      "openLabel": "5 predicados de preparación aún divergen de su herramienta: appointment_services, properties, courses, insurance_plans, boarding_capacity",
+      "open": 3,
+      "openLabel": "3 predicados de preparación aún divergen de su herramienta: appointment_services, courses, boarding_capacity",
       "gates": [],
       "status": "abierta",
       "provenance": "derived",

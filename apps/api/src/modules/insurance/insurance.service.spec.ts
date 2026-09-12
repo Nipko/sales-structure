@@ -12,6 +12,7 @@ describe('InsuranceService contact integrity', () => {
         monthly_premium_min: 100,
         monthly_premium_max: 100,
         currency: 'COP',
+        is_active: true,
     };
 
     function buildService(query: jest.Mock, execute = jest.fn().mockResolvedValue([plan])) {
@@ -21,6 +22,32 @@ describe('InsuranceService contact integrity', () => {
         };
         return { service: new InsuranceService(prisma as any), prisma };
     }
+
+    it('uses the quotable catalogue predicate without hiding drafts from administrators', async () => {
+        const execute = jest.fn().mockResolvedValue([]);
+        const { service } = buildService(jest.fn(), execute);
+
+        await service.listPlans(schemaName, { quotableOnly: true });
+        expect(execute.mock.calls[0][1]).toContain('monthly_premium_min > 0');
+        expect(execute.mock.calls[0][1]).toContain("currency <> ''");
+
+        await service.listPlans(schemaName);
+        expect(execute.mock.calls[1][1]).not.toContain('monthly_premium_min > 0');
+    });
+
+    it.each([
+        { ...plan, is_active: false },
+        { ...plan, monthly_premium_min: null },
+        { ...plan, monthly_premium_min: 0 },
+        { ...plan, currency: '' },
+    ])('refuses to persist a zero or unpriceable quote', async (invalidPlan) => {
+        const query = jest.fn();
+        const { service, prisma } = buildService(query, jest.fn().mockResolvedValue([invalidPlan]));
+
+        await expect(service.createQuote(schemaName, { planId }))
+            .rejects.toMatchObject({ response: expect.objectContaining({ error: 'insurance_plan_not_quotable' }) });
+        expect(prisma.transactionInTenantSchema).not.toHaveBeenCalled();
+    });
 
     it('rejects malformed contacts before quote or policy database work', async () => {
         const { service, prisma } = buildService(jest.fn());

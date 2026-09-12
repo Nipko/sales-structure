@@ -3486,7 +3486,11 @@ export class AIToolExecutorService {
      */
     private async listProperties(schema: string, guests?: number, checkIn?: string, checkOut?: string, tenantId?: string, executionContext?: ServiceExecutionContext): Promise<any> {
         try {
-            const conds: string[] = ['is_active = true'];
+            const conds: string[] = [
+                'is_active = true',
+                'night_price IS NOT NULL',
+                'night_price > 0',
+            ];
             const params: any[] = [];
             if (guests) {
                 params.push(guests);
@@ -3800,7 +3804,13 @@ export class AIToolExecutorService {
         const propertyId = String(args?.propertyId || '').trim();
         try {
             const property = await this.propertiesService.getById(schemaName, propertyId);
-            if (property) return null;
+            if (property) {
+                if (Number.isFinite(Number(property.night_price)) && Number(property.night_price) > 0) return null;
+                return {
+                    error: 'property_rate_not_configured',
+                    message: 'Este alojamiento todavía no tiene una tarifa válida. Ofrecé otra opción o derivá la consulta al equipo.',
+                };
+            }
         } catch {
             // getById valida el formato y tira si no existe: ambos casos son
             // lo mismo aca — no hay alojamiento al que reservarle.
@@ -4771,6 +4781,7 @@ export class AIToolExecutorService {
             const plans = await this.insuranceService.listPlans(schemaName, {
                 type: args.type,
                 coverageLevel: args.coverageLevel,
+                quotableOnly: true,
             });
             if (!plans.length) return { plans: [], message: 'No insurance plans match the criteria.' };
             return {

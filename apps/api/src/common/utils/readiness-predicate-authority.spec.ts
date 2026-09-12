@@ -42,15 +42,13 @@ describe('readiness predicates, audited against the predicate each tool runs', (
             'appointment_services',
             'boarding_capacity',
             'courses',
-            'insurance_plans',
-            'properties',
         ]);
     });
 
     it('agrees with the shipped predicates that match their tool', () => {
         for (const key of ['business_identity', 'faq_content', 'catalog_items', 'listings',
-            'menu_items', 'tour_packages', 'pets', 'membership_plans', 'service_catalog', 'photo_sessions',
-            'vehicle_inventory'] as const) {
+            'menu_items', 'tour_packages', 'properties', 'pets', 'membership_plans',
+            'insurance_plans', 'service_catalog', 'photo_sessions', 'vehicle_inventory'] as const) {
             expect(READINESS_PREDICATE_AUTHORITY[key]?.divergence).toBeNull();
             // A matching entry still has to be about the same table the tool
             // reads, or "matches" would only mean "nobody declared otherwise".

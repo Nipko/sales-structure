@@ -200,20 +200,11 @@ export const READINESS_PREDICATE_AUTHORITY:
     },
     properties: {
         toolTable: 'properties',
-        toolPredicate: 'is_active = true',
+        toolPredicate: 'is_active = true AND night_price IS NOT NULL AND night_price > 0',
         toolSource: 'conversations/ai-tool-executor.service.ts::list_properties',
-        dimensions: ['active'],
+        dimensions: ['active', 'price'],
         writePath: '/admin/properties',
-        divergence: {
-            kind: 'undecided_dimension',
-            missingDimensions: ['price'],
-            consequence: 'The repair text promises "con su tarifa" and nothing enforces it: an active property with '
-                + 'no `night_price` satisfies readiness and is quoted at zero, so the customer is told a stay costs '
-                + 'only the cleaning fee.',
-            correction: 'Add `night_price IS NOT NULL AND night_price > 0`, or drop the rate promise from the '
-                + 'repair text so the check and the sentence agree.',
-            owner: READINESS_OWNER,
-        },
+        divergence: null,
     },
     courses: {
         toolTable: 'courses',
@@ -250,19 +241,12 @@ export const READINESS_PREDICATE_AUTHORITY:
     },
     insurance_plans: {
         toolTable: 'insurance_plans',
-        toolPredicate: 'is_active = true',
+        toolPredicate: "is_active = true AND monthly_premium_min IS NOT NULL AND monthly_premium_min > 0 "
+            + "AND currency IS NOT NULL AND currency <> ''",
         toolSource: 'insurance/insurance.service.ts::listPlans',
-        dimensions: ['active'],
+        dimensions: ['active', 'price', 'currency'],
         writePath: '/admin/insurance',
-        divergence: {
-            kind: 'undecided_dimension',
-            missingDimensions: ['price', 'currency'],
-            consequence: 'The repair text says "cotizable" and nothing checks a premium. A plan with null premiums '
-                + 'satisfies readiness, and `calculate_quote` writes a quote of zero into `insurance_quotes`.',
-            correction: 'Add `monthly_premium_min IS NOT NULL AND currency IS NOT NULL`, or stop calling the row '
-                + 'quotable in the repair text.',
-            owner: READINESS_OWNER,
-        },
+        divergence: null,
     },
     service_catalog: {
         toolTable: 'services',

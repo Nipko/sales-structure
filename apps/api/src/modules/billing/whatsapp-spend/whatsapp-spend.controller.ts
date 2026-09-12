@@ -8,6 +8,7 @@ import { Roles } from '../../../common/decorators/roles.decorator';
 import { PrismaService } from '../../prisma/prisma.service';
 import { WhatsappSpendService } from './whatsapp-spend.service';
 import { SPEND_BLOCK_CODES } from './spend-diagnosis';
+import { wabaCalendarMonth } from '../whatsapp-rates/whatsapp-rate-resolver';
 import { SPEND_SCOPE_KINDS, TENANT_DECLARABLE_SCOPE_KINDS, isTenantDeclarableScope }
     from './spend-scopes';
 import { estimateCampaign } from './campaign-estimate';
@@ -117,6 +118,29 @@ export class WhatsappSpendController {
      * Read by the same three roles as the summary, for the same reason: the
      * person watching the inbox is usually the first to notice.
      */
+    /**
+     * `YYYY-MM` in the WABA's own zone, or `null` when we cannot say.
+     *
+     * `waba_timezone` is nullable — Meta does not always tell us, and the
+     * backfill is best effort — and an unknown zone must NOT fall back to the
+     * server's: that is the defect this exists to remove, and guessing would
+     * put it back while looking as though it had been handled.
+     */
+    private async localMonthFor(tenantId: string, channelAccountId: string): Promise<string | null> {
+        try {
+            const [account] = await this.prisma.channelAccount.findMany({
+                where: { tenantId, channelType: 'whatsapp', accountId: channelAccountId },
+                select: { wabaTimezone: true },
+                take: 1,
+            });
+            const zone = String(account?.wabaTimezone ?? '').trim();
+            return zone ? wabaCalendarMonth(new Date(), zone) : null;
+        } catch {
+            // A reporting window is not worth failing a read for.
+            return null;
+        }
+    }
+
     @Get('consumption')
     @UseGuards(AuthGuard('jwt'), RolesGuard)
     @Roles('super_admin', 'tenant_admin', 'tenant_supervisor')
@@ -131,8 +155,22 @@ export class WhatsappSpendController {
 
         // Bounded here rather than trusted, the same as the summary window.
         const window = Math.min(24, Math.max(1, Number(months) || 3));
+        const account = channelAccountId?.trim() || null;
+        // ── THE WINDOW COUNTS BACK FROM THE ACCOUNT'S MONTH, NOT OURS ───────
+        //
+        // The rows are stamped `applied_local_date` in the WABA's own zone, and
+        // the query used to bound them against the SERVER's month. At 23:30 on
+        // 30 September in Bogota the server is already in October, so the
+        // window gained or lost a whole month at exactly the boundary the
+        // allowance resets on.
+        //
+        // Only resolvable for ONE account: asked about all of them, they can be
+        // in different zones and there is no single month to count back from.
+        // Then the server month stands, as a documented fallback rather than a
+        // claim about anybody's calendar.
+        const anchorMonth = account ? await this.localMonthFor(tenantId, account) : null;
         const rows = await this.spend.calendarMonthConsumption(schema, {
-            channelAccountId: channelAccountId?.trim() || null, months: window,
+            channelAccountId: account, months: window, anchorMonth,
         });
         return {
             success: true,

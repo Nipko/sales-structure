@@ -2232,9 +2232,28 @@ export interface CalendarMonthConsumption {
 export async function readCalendarMonthConsumption(query: SpendQuery, schema: string, input: {
     readonly channelAccountId?: string | null;
     readonly months?: number;
+    /**
+     * The month the window counts back from, `YYYY-MM`, in the WABA's own zone.
+     *
+     * ── WHY THIS IS AN ARGUMENT AND NOT `CURRENT_DATE` ──────────────────────
+     *
+     * It used to be `date_trunc('month', CURRENT_DATE)` — the SERVER's month —
+     * inside a function whose entire subject is the account's calendar. The
+     * rows are already stamped `applied_local_date` in the WABA's zone, and on
+     * 30 September at 23:30 in Bogota the server is already in October, so the
+     * window silently gained or lost a whole month exactly at the boundary the
+     * allowance resets on.
+     *
+     * Absent, the server month is still used — there is nothing better when the
+     * caller asks about every account at once, since they can be in different
+     * zones — but it is a documented fallback rather than a claim.
+     */
+    readonly anchorMonth?: string | null;
 }): Promise<readonly CalendarMonthConsumption[]> {
     assertSchema(schema);
     const months = Math.min(24, Math.max(1, Number(input.months) || 3));
+    const anchor = /^\d{4}-(0[1-9]|1[0-2])$/.test(String(input.anchorMonth ?? ''))
+        ? `${input.anchorMonth}-01` : null;
     const rows = await query<any[]>(
         `SELECT to_char(applied_local_date, 'YYYY-MM') AS month,
                 channel_account_id,
@@ -2254,11 +2273,12 @@ export async function readCalendarMonthConsumption(query: SpendQuery, schema: st
             -- so it lines up with the allowance and the invoice rather than
             -- with an arbitrary number of days back from now.
             AND (applied_local_date IS NULL
-                 OR applied_local_date >= date_trunc('month', CURRENT_DATE)
+                 OR applied_local_date >= COALESCE($3::date,
+                        date_trunc('month', CURRENT_DATE)::date)
                      - make_interval(months => $2::int))
           GROUP BY 1, 2, 3, 4, 5
           ORDER BY 1 DESC NULLS LAST, 2, 3, 4`,
-        [input.channelAccountId ?? null, months - 1]);
+        [input.channelAccountId ?? null, months - 1, anchor]);
 
     const buckets = new Map<string, {
         month: string | null; channelAccountId: string;

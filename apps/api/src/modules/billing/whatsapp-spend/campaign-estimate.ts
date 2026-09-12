@@ -1,5 +1,6 @@
 import {
     resolveWhatsAppRate, recipientIso, recipientMarket, wabaCalendarMonth, priceDeliveries,
+    formatMinorUnits,
     type WhatsAppRateResolution, type WhatsAppMessageCategory,
 } from '../whatsapp-rates';
 
@@ -238,7 +239,11 @@ export function estimateCampaign(input: {
 export function describeCampaignEstimate(estimate: CampaignEstimate): string {
     const money = estimate.totalMinorUnits === null
         ? `un total que no se puede expresar en ${estimate.currency}`
-        : `${(estimate.totalMinorUnits / 100).toFixed(2)} ${estimate.currency}`;
+        // Never `/ 100`: the number of decimals is a fact about the currency,
+        // and a currency we hold no card for is said in minor units rather than
+        // divided by a guess.
+        : `${formatMinorUnits(estimate.totalMinorUnits, estimate.currency)
+            ?? `${estimate.totalMinorUnits} (unidades menores)`} ${estimate.currency}`;
     const head = `${estimate.priced} de ${estimate.recipients} destinatarios por hasta ${money}`;
     if (!estimate.unpriced.length) return head;
     return `${head}; ${estimate.unpriced.length} sin precio `

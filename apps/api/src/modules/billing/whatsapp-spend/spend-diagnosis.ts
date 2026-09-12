@@ -1,3 +1,5 @@
+import { formatMinorUnits } from '../whatsapp-rates';
+
 /**
  * Why an effect may not be authorised, in terms somebody can act on.
  *
@@ -306,7 +308,8 @@ export function spendBlock(code: SpendBlockCode, detail: string, money?: {
  */
 export function describeBlock(block: SpendBlock): string {
     const cost = block.avoidedMinor && block.currency
-        ? ` Avoided ${(block.avoidedMinor / 100).toFixed(2)} ${block.currency}.`
+        ? ` Avoided ${formatMinorUnits(block.avoidedMinor, block.currency)
+            ?? `${block.avoidedMinor} minor units of`} ${block.currency}.`
         : '';
     return `${block.code} (${block.scope}): ${block.detail}.${cost} ${block.resolution}`;
 }

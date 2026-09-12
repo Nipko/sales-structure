@@ -1239,7 +1239,7 @@ export class WhatsappSpendService {
      * comparing two different periods and being told they disagreed.
      */
     async calendarMonthConsumption(schema: string, input: {
-        channelAccountId?: string | null; months?: number;
+        channelAccountId?: string | null; months?: number; anchorMonth?: string | null;
     }): Promise<readonly CalendarMonthConsumption[]> {
         return this.prisma.transactionInTenantSchema(schema,
             query => readCalendarMonthConsumption(query as SpendQuery, schema, input));

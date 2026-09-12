@@ -96,6 +96,28 @@ export function microsPerMinorUnit(currency: string): number | null {
 }
 
 /**
+ * Minor units as a person reads them, for ONE currency, or `null`.
+ *
+ * ── WHY `(minor / 100).toFixed(2)` IS NOT THIS ──────────────────────────────
+ *
+ * Two operator-facing sentences did exactly that, directly beneath a docblock
+ * explaining that assuming two decimals is how JPY (zero) and KWD (three) come
+ * out wrong by a factor of a hundred. It happened to be right because the rate
+ * table currently ships USD and COP; it was one published card away from
+ * telling an operator they had avoided 100x what they had.
+ *
+ * `null` for a currency nobody published a card in — the caller then says the
+ * amount in minor units and names the currency, which is ugly and true, rather
+ * than pretty and possibly off by a hundred.
+ */
+export function formatMinorUnits(minor: number, currency: string): string | null {
+    if (!Number.isFinite(minor)) return null;
+    const exponent = CURRENCY_MINOR_EXPONENT[String(currency).toUpperCase()];
+    if (exponent === undefined) return null;
+    return (minor / 10 ** exponent).toFixed(exponent);
+}
+
+/**
  * What a batch of deliveries at a given rate may be reserved for.
  *
  * Integer arithmetic throughout, over BigInt for the division, because

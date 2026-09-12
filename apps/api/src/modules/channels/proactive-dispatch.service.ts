@@ -286,7 +286,23 @@ export class ProactiveDispatchService {
         /** The customer message being answered. Required for `inbound_reply`. */
         readonly inboundMessageId?: string;
     }): Promise<ProactiveSendResult> {
-        if (!input.operationalScope) {
+        // ── AN EMPTY OBJECT IS TRUTHY, AND IT IS NOT AN AUTHORITY ───────────
+        //
+        // The guard was `!input.operationalScope`, so `{}` — or any object a
+        // producer built when its authority lookup came back empty — walked
+        // straight through it. The row was then committed, published and
+        // leased, and `admit` refused it with `dispatch_authority_required`
+        // every single time, for ever: an effect that can only fail, discovered
+        // hours later for a scheduled message, with a diagnosis that reads like
+        // a permission problem rather than a producer bug.
+        //
+        // The three kinds are the closed set the outbox accepts. Checking the
+        // KIND here rather than validating the whole scope keeps the two ends
+        // honest about their jobs: this is "did the producer bring one at all",
+        // the full validation belongs to the transaction that grants the lease
+        // and can read the rows it refers to.
+        const scopeKind = String((input.operationalScope as any)?.kind ?? '');
+        if (!['served_agent', 'proactive_policy', 'human_operator'].includes(scopeKind)) {
             return { kind: 'suppressed', reason: 'policy_authority_unavailable' };
         }
         const originKind: DispatchOriginKind = input.originKind === 'inbound_reply'

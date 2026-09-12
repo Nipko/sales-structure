@@ -153,6 +153,50 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
             expect(rolling[0].freeDeliveries).toBe(7);
         });
 
+        it('counts the window back from the ACCOUNT’s month, not the server’s', async () => {
+            // ── THE MONTH THIS FUNCTION IS ABOUT ────────────────────────────
+            //
+            // Every row here is stamped `applied_local_date` in the WABA's own
+            // zone, and the window used to be bounded by
+            // `date_trunc('month', CURRENT_DATE)` — the SERVER's month — inside
+            // a function whose entire subject is the account's calendar. At
+            // 23:30 on 30 September in Bogotá the server is already in October,
+            // so the window silently gained or lost a whole month at exactly
+            // the boundary the allowance resets on.
+            //
+            // The window is a LOWER bound: N months of the account's calendar,
+            // counted back from the anchor. So a one-month window anchored two
+            // months back reaches that far and sees both rows, where the same
+            // window counted from the server's month sees only today's.
+            await reservation({ localDate: dayIn(0, 3), free: 4, charged: 0 });
+            await reservation({ localDate: dayIn(2, 10), free: 9, charged: 0 });
+
+            const anchored = await readCalendarMonthConsumption(query, schema, {
+                months: 1, anchorMonth: dayIn(2).slice(0, 7),
+            });
+            expect(anchored.map(row => row.month))
+                .toEqual([dayIn(0).slice(0, 7), dayIn(2).slice(0, 7)]);
+            expect(anchored.find(row => row.month === dayIn(2).slice(0, 7))!.freeDeliveries).toBe(9);
+
+            // And without an anchor the server month still answers — the
+            // documented fallback, because several accounts can be in several
+            // zones and there is then no single month to count back from.
+            const unanchored = await readCalendarMonthConsumption(query, schema, { months: 1 });
+            expect(unanchored.map(row => row.month)).toEqual([dayIn(0).slice(0, 7)]);
+        });
+
+        it('ignores an anchor that is not a calendar month', async () => {
+            // A query string reaches this. A malformed anchor must fall back to
+            // the documented behaviour rather than producing an empty report
+            // that reads like "this number sent nothing".
+            await reservation({ localDate: dayIn(0, 3), free: 4, charged: 0 });
+            for (const anchorMonth of ['2026', '2026-13', 'octubre', '', null] as any[]) {
+                const rows = await readCalendarMonthConsumption(query, schema,
+                    { months: 1, anchorMonth });
+                expect(rows.map(row => row.month)).toEqual([dayIn(0).slice(0, 7)]);
+            }
+        });
+
         it('returns the newest month first, so the answer is the one on top', async () => {
             await reservation({ localDate: dayIn(2) });
             await reservation({ localDate: dayIn(0) });

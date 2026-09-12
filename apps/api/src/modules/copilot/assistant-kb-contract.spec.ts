@@ -1,4 +1,5 @@
 import * as fs from 'fs';
+import { DASHBOARD_PAGE_RULES, dashboardRoleCanOpen } from '@parallext/shared';
 import * as path from 'path';
 
 const LOCALES = ['es', 'en', 'pt', 'fr'] as const;
@@ -67,6 +68,11 @@ const navigationContractPath = path.resolve(
   __dirname,
   '../../../../dashboard/src/lib/navigation-contract.ts',
 );
+const dashboardRolesPath = path.resolve(
+  __dirname,
+  '../../../../dashboard/src/lib/roles.ts',
+);
+const dashboardMessagesRoot = path.resolve(__dirname, '../../../../dashboard/messages');
 const verticalManifestPath = path.resolve(
   __dirname,
   '../../../../../packages/shared/src/vertical-capability-manifest.ts',
@@ -122,6 +128,87 @@ function loadLocale(locale: (typeof LOCALES)[number]): Article[] {
     .filter((file) => file.endsWith('.md'))
     .sort()
     .map((file) => parseArticle(path.join(kbRoot, locale, file)));
+}
+
+/**
+ * ═══ WHO CAN OPEN A SCREEN IS DATA, AND IT LIVES IN ONE PLACE ═══════════════
+ *
+ * `dashboard/src/lib/roles.ts` decides which roles a path renders for. The help
+ * describes those same screens in prose, and the two drifted apart in the way
+ * documentation always drifts: silently, in four languages at once.
+ *
+ * `canales-whatsapp` said "channel administration is not available to
+ * supervisors or agents" on line 15 and, 145 lines later, that "the admin and
+ * the supervisor" read the WhatsApp charges card — while `roles.ts` restricts
+ * `/admin/channels` to tenant_admin, so a supervisor typing that address is
+ * redirected before the card renders. `solucion-problemas`, whose audience
+ * includes supervisors and agents and which is what retrieval returns for "the
+ * agent stopped answering on WhatsApp", sent all three roles to that same
+ * screen.
+ *
+ * So the audience is READ from `roles.ts` here, resolved exactly the way
+ * `canAccessPath` resolves it — exact rules first, then longest prefix, then
+ * fail closed. Re-listing the matrix in this file would only prove that two
+ * copies of it agree with each other.
+ */
+const dashboardRolesSource = fs.readFileSync(dashboardRolesPath, 'utf8');
+
+const ROLE_KEY_VALUES: Record<string, string> = Object.fromEntries(
+  [...(dashboardRolesSource.match(/export const ROLE_KEYS = \{([\s\S]*?)\} as const;/)?.[1] ?? '')
+    .matchAll(/(\w+):\s*"([a-z_]+)"/g)].map((match) => [match[1], match[2]]),
+);
+
+/**
+ * ═══ READ THE TABLE, DO NOT RE-PARSE IT ═══
+ *
+ * This used to pull the rules out of `roles.ts` with a regex, which was the
+ * only option while the table lived inside a dashboard file the API cannot
+ * import. It has moved to `@parallext/shared` — because the API needed to
+ * answer "may this person open that screen" before telling them to go there —
+ * so the rules are read rather than re-derived, and a regex that quietly
+ * matched nothing after a refactor cannot pass again.
+ *
+ * What is still read from the source is the ABSENCE of a second copy: a future
+ * edit that reintroduces the literal table in `roles.ts` would give the two
+ * sides something to disagree about, and the case below refuses it.
+ */
+interface ParsedPageRule {
+  prefix: string;
+  roles: string[];
+  exact: boolean;
+}
+
+const dashboardPageRules: ParsedPageRule[] = DASHBOARD_PAGE_RULES.map((rule) => ({
+  prefix: rule.prefix,
+  roles: [...rule.roles],
+  exact: Boolean(rule.exact),
+}));
+
+/** The roles `canAccessPath` would let through for a path, tenant roles only. */
+function tenantAudience(pathname: string): string[] {
+  const exact = dashboardPageRules.find((rule) => rule.exact && rule.prefix === pathname);
+  const rule = exact ?? [...dashboardPageRules]
+    .filter((candidate) => !candidate.exact)
+    .sort((a, b) => b.prefix.length - a.prefix.length)
+    .find((candidate) => (
+      pathname === candidate.prefix || pathname.startsWith(`${candidate.prefix}/`)
+    ));
+  // No rule means no access: `canAccessPath` fails closed, and so does this.
+  return (rule?.roles ?? []).filter((role) => ALLOWED_ROLES.has(role));
+}
+
+/**
+ * Every `### ` block that mentions a marker, joined.
+ *
+ * All of them rather than the first: the WhatsApp charges card is named in the
+ * readiness checklist and again where the article says who reads it, and a
+ * grant made in either place is the one a reader acts on.
+ */
+function subsectionsContaining(body: string, marker: string): string {
+  return body
+    .split(/^### /m)
+    .filter((block) => block.includes(marker))
+    .join('\n');
 }
 
 describe('Parallly Assist knowledge-base contract', () => {
@@ -191,6 +278,210 @@ describe('Parallly Assist knowledge-base contract', () => {
           expect(canonicalRoutes.has(route)).toBe(true);
         }
       }
+    }
+  });
+
+  it('reads the dashboard page rules it is about to judge the help against', () => {
+    // Without this the three checks below would pass by being vacuous: a
+    // renamed constant or a reformatted array turns every audience into the
+    // empty set, and "no role can open anything" satisfies nothing honestly.
+    expect(Object.values(ROLE_KEY_VALUES)).toEqual(
+      expect.arrayContaining([...ALLOWED_ROLES]),
+    );
+    expect(dashboardPageRules.length).toBeGreaterThan(50);
+    // `roles.ts` must CONSUME the shared table, not declare its own. A literal
+    // list back in that file is two sources for one fact, which is how the help
+    // and the guard came to disagree in the first place.
+    expect(dashboardRolesSource).toContain('DASHBOARD_PAGE_RULES');
+    expect(dashboardRolesSource).not.toMatch(/export const PAGE_RULES: PageRule\[\] = \[\s*\{/);
+    for (const rule of dashboardPageRules) expect(rule.roles).not.toContain(undefined);
+    // Every route the help points at must be a route somebody can open. A KB
+    // route that resolves to nobody is either a retired page or a rule that was
+    // never written, and both send the reader to a redirect.
+    for (const article of byLocale.es) {
+      for (const route of article.routes) {
+        expect({ route, audience: tenantAudience(route) })
+          .not.toEqual({ route, audience: [] });
+      }
+    }
+  });
+
+  it('never hands a reader a route their own role is denied', () => {
+    /**
+     * ═══ "AT LEAST ONE" WAS THE WRONG BAR ═══
+     *
+     * The rule below asks whether a declared role can open ANY route in the
+     * frontmatter, which is vacuous for the defect it was written for:
+     * `19-solucion-problemas` is offered to supervisors and agents, they can
+     * open `/admin/inbox`, so it passed — while the same article's routes
+     * include `/admin/broadcast` and `/admin/settings/billing`, which
+     * `roles.ts` denies them. Nineteen such pairs existed.
+     *
+     * Frontmatter is NOT where that is wrong. An article can legitimately
+     * serve three audiences and talk about a screen only one of them opens;
+     * what must never happen is the RUNTIME handing a particular reader a
+     * route they cannot follow. So this checks the filter, against the
+     * dashboard's own table — the same one the guard uses, now read from
+     * `@parallext/shared` instead of copied.
+     */
+    const offences: string[] = [];
+    for (const article of byLocale.es) {
+      for (const role of article.roles) {
+        if (role === 'super_admin') continue;
+        const offered = article.routes.filter(route => dashboardRoleCanOpen(route, role));
+        for (const route of offered) {
+          if (tenantAudience(route).includes(role)) continue;
+          offences.push(`${article.id}: would hand ${role} ${route}`);
+        }
+      }
+    }
+    expect(offences).toEqual([]);
+
+    // And the filter has to actually remove something, or it is a no-op that
+    // would pass over any table at all. These are real pairs from the tree.
+    expect(dashboardRoleCanOpen('/admin/broadcast', 'tenant_agent')).toBe(false);
+    expect(dashboardRoleCanOpen('/admin/settings/billing', 'tenant_supervisor')).toBe(false);
+    expect(dashboardRoleCanOpen('/admin/channels/whatsapp', 'tenant_supervisor')).toBe(false);
+    expect(dashboardRoleCanOpen('/admin/inbox', 'tenant_agent')).toBe(true);
+    // A path no rule matches belongs to nobody, which is how the guard fails.
+    expect(dashboardRoleCanOpen('/admin/nothing-here', 'tenant_admin')).toBe(false);
+  });
+
+  it('offers each article only to roles that can open at least one of its screens', () => {
+    // Frontmatter `roles` is what retrieval filters on. A role listed there
+    // that `roles.ts` denies on every route in the same frontmatter is an
+    // article written for somebody who is redirected out of all of it.
+    const offences: string[] = [];
+    for (const locale of LOCALES) {
+      for (const article of byLocale[locale]) {
+        for (const role of article.roles) {
+          const reachable = article.routes.filter((route) => tenantAudience(route).includes(role));
+          if (reachable.length === 0) {
+            offences.push(
+              `${locale}/${path.basename(article.file)}: offered to ${role}, `
+              + `which roles.ts denies on every route (${article.routes.join(', ')})`,
+            );
+          }
+        }
+      }
+    }
+    expect(offences).toEqual([]);
+  });
+
+  it('never tells a role it can read the WhatsApp charges card when roles.ts says otherwise', () => {
+    // The card lives on `/admin/channels/whatsapp`. Which roles may read it is
+    // therefore whatever `roles.ts` allows there — not what reads well in a
+    // sentence. The forbidden phrasings below are grant shapes ("X reads it",
+    // "X can see it") bounded to the same clause, and they are only applied to
+    // the roles the rules deny, so widening `roles.ts` later widens what the
+    // help is allowed to say instead of failing here.
+    const readers = tenantAudience('/admin/channels/whatsapp');
+    expect(readers).toContain('tenant_admin');
+    const denied = [...ALLOWED_ROLES].filter((role) => !readers.includes(role));
+    expect(denied.length).toBeGreaterThan(0);
+
+    const adminNamed: Record<(typeof LOCALES)[number], RegExp> = {
+      es: /\*\*administrador\*\*/i,
+      en: /\*\*admin\*\*/i,
+      pt: /\*\*administrador\*\*/i,
+      fr: /\*\*administrateur\*\*/i,
+    };
+    const grants: Record<(typeof LOCALES)[number], Record<string, RegExp>> = {
+      es: {
+        tenant_supervisor: /\blee[n]?\b[^.\n]{0,40}supervisor|supervisor(?:es)?[^.\n]{0,40}(?:\blee[n]?\b|puede[n]?\s+(?:ver|leer|abrir|consultar))/i,
+        tenant_agent: /\blee[n]?\b[^.\n]{0,40}\bagentes?\b|\bagentes?\b[^.\n]{0,40}(?:\blee[n]?\b|puede[n]?\s+(?:ver|leer|abrir|consultar))/i,
+      },
+      en: {
+        tenant_supervisor: /\breads?\b[^.\n]{0,40}supervisors?|supervisors?[^.\n]{0,40}(?:\breads?\b|can\s+(?:read|see|open|view))/i,
+        tenant_agent: /\breads?\b[^.\n]{0,40}\bagents?\b|\bagents?\b[^.\n]{0,40}(?:\breads?\b|can\s+(?:read|see|open|view))/i,
+      },
+      pt: {
+        tenant_supervisor: /\b(?:lê|leem)\b[^.\n]{0,40}supervisor(?:es)?|supervisor(?:es)?[^.\n]{0,40}(?:\b(?:lê|leem)\b|pode[m]?\s+(?:ver|ler|abrir|consultar))/i,
+        tenant_agent: /\b(?:lê|leem)\b[^.\n]{0,40}\bagentes?\b|\bagentes?\b[^.\n]{0,40}(?:\b(?:lê|leem)\b|pode[m]?\s+(?:ver|ler|abrir|consultar))/i,
+      },
+      fr: {
+        tenant_supervisor: /\b(?:lit|lisent)\b[^.\n]{0,40}superviseurs?|superviseurs?[^.\n]{0,40}(?:\b(?:lit|lisent)\b|peuvent\s+(?:voir|lire|ouvrir|consulter))/i,
+        tenant_agent: /\b(?:lit|lisent)\b[^.\n]{0,40}\bagents?\b|\bagents?\b[^.\n]{0,40}(?:\b(?:lit|lisent)\b|peuvent\s+(?:voir|lire|ouvrir|consulter))/i,
+      },
+    };
+
+    const offences: string[] = [];
+    for (const locale of LOCALES) {
+      const messages = JSON.parse(
+        fs.readFileSync(path.join(dashboardMessagesRoot, `${locale}.json`), 'utf8'),
+      );
+      // Located by the label the dashboard actually renders, so a rename there
+      // moves this check with it rather than leaving it pointed at nothing.
+      const cardTitle: string = messages?.whatsappSpend?.title;
+      expect(typeof cardTitle).toBe('string');
+      const article = byLocale[locale].find((candidate) => candidate.id === 'canales-whatsapp');
+      const subsection = subsectionsContaining(article!.body, `**${cardTitle}**`);
+      expect(subsection.length).toBeGreaterThan(80);
+      expect(subsection).toMatch(adminNamed[locale]);
+      for (const role of denied) {
+        if (grants[locale][role].test(subsection)) {
+          offences.push(`${locale}/canales-whatsapp: grants the card to ${role}`);
+        }
+      }
+    }
+    expect(offences).toEqual([]);
+  });
+
+  it('splits the paused-sending fix by what each role can actually do', () => {
+    // `solucion-problemas` is what somebody with a silent agent reads, and its
+    // audience is every tenant role. Most of its steps live on screens only the
+    // admin can open, so the article has to say so once, and the WhatsApp step
+    // — the one about money, where the wrong instruction costs a day of silence
+    // — has to branch: what the admin does, and what a supervisor or an agent
+    // does instead. Required only while `roles.ts` actually denies them the
+    // screen; opening `/admin/channels` to supervisors retires this obligation
+    // deliberately rather than leaving a stale demand here.
+    const troubleshooting = byLocale.es.find(
+      (article) => article.id === 'solucion-problemas',
+    )!;
+    const deniedHere = troubleshooting.roles.filter(
+      (role) => !tenantAudience('/admin/channels/whatsapp').includes(role),
+    );
+    expect(deniedHere).toEqual(['tenant_supervisor', 'tenant_agent']);
+
+    const markers: Record<(typeof LOCALES)[number], {
+      administrationScreens: RegExp;
+      adminBranch: RegExp;
+      otherRolesBranch: RegExp;
+    }> = {
+      es: {
+        administrationScreens: /pantallas de administración[^.\n]{0,140}(?:supervisor|agente)/i,
+        adminBranch: /\*\*Si eres administrador\*\*/,
+        otherRolesBranch: /\*\*Si eres supervisor o agente\*\*/,
+      },
+      en: {
+        administrationScreens: /administration screens[^.\n]{0,140}(?:supervisor|agent)/i,
+        adminBranch: /\*\*If you are the admin\*\*/,
+        otherRolesBranch: /\*\*If you are a supervisor or an agent\*\*/,
+      },
+      pt: {
+        administrationScreens: /telas de administração[^.\n]{0,140}(?:supervisor|agente)/i,
+        adminBranch: /\*\*Se você é administrador\*\*/,
+        otherRolesBranch: /\*\*Se você é supervisor ou agente\*\*/,
+      },
+      fr: {
+        administrationScreens: /écrans d'administration[^.\n]{0,140}(?:superviseur|agent)/i,
+        adminBranch: /\*\*Si vous êtes administrateur\*\*/,
+        otherRolesBranch: /\*\*Si vous êtes superviseur ou agent\*\*/,
+      },
+    };
+
+    for (const locale of LOCALES) {
+      const article = byLocale[locale].find(
+        (candidate) => candidate.id === 'solucion-problemas',
+      )!;
+      const expected = markers[locale];
+      expect({ locale, clause: 'administrationScreens', found: expected.administrationScreens.test(article.body) })
+        .toEqual({ locale, clause: 'administrationScreens', found: true });
+      expect({ locale, clause: 'adminBranch', found: expected.adminBranch.test(article.body) })
+        .toEqual({ locale, clause: 'adminBranch', found: true });
+      expect({ locale, clause: 'otherRolesBranch', found: expected.otherRolesBranch.test(article.body) })
+        .toEqual({ locale, clause: 'otherRolesBranch', found: true });
     }
   });
 

@@ -1,6 +1,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const ts = require("typescript");
+const { metaChargeDisclosureFailures } = require("./meta-charge-disclosure.cjs");
 
 const landingRoot = path.resolve(__dirname, "..");
 const locales = ["es", "en", "pt", "fr"];
@@ -451,20 +452,22 @@ for (const [locale, text] of Object.entries(allowanceTextByLocale)) {
   );
 }
 
+// The rules themselves live in `meta-charge-disclosure.cjs` as a pure function,
+// so `test-marketing-claim-regressions.cjs` can feed them copy this file does
+// not contain — the narrow, service-messages-only answer that shipped first —
+// and prove they reject it. A disclosure check nobody can test is a disclosure
+// check that quietly weakens with every rewrite of the copy it guards.
 function assertMetaChargeDisclosure(locale, messages, label) {
-  const disclosure = `${messages?.pricingPage?.faqA3 || ""} ${messages?.pricingPage?.faqA9 || ""}`;
-  assert(
-    /\bMeta\b/.test(disclosure) && /WhatsApp Business/i.test(disclosure),
-    `${label}: the pricing FAQ must say Meta charges the business's own WhatsApp Business account`,
-  );
-  assert(
-    metaChargeDatePatterns[locale].test(disclosure),
-    `${label}: the pricing FAQ must date the WhatsApp service-message charge`,
-  );
-  assert(
-    (messages?.pricingPage?.faqA9 || "").includes(allowanceTextByLocale[locale]),
-    `${label}: the pricing FAQ must state the free service-message allowance per number`,
-  );
+  for (const problem of metaChargeDisclosureFailures({
+    locale,
+    label,
+    faqA3: messages?.pricingPage?.faqA3,
+    faqA9: messages?.pricingPage?.faqA9,
+    allowanceText: allowanceTextByLocale[locale],
+    datePattern: metaChargeDatePatterns[locale],
+  })) {
+    assert(false, problem);
+  }
 }
 
 for (const locale of locales) {

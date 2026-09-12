@@ -159,7 +159,7 @@ Le mois se clôt dans le **fuseau horaire de votre compte WhatsApp Business**, q
 
 ### Ce que vous voyez dans Parallly, et ce que vous ne voyez pas
 
-Dans **Canaux → WhatsApp**, la carte **Facturation WhatsApp (Meta)** montre où en est le quota gratuit, la dépense de la période séparée par devise, où elle est partie et quels numéros sont en pause. L'**administrateur** et le **superviseur** la lisent ; reprendre un numéro n'appartient qu'à l'administrateur.
+Dans **Canaux → WhatsApp**, la carte **Facturation WhatsApp (Meta)** montre où en est le quota gratuit, la dépense de la période séparée par devise, où elle est partie et quels numéros sont en pause. Seul l'**administrateur** la lit : **Canaux** est un écran d'administration, il n'apparaît pas dans le menu des superviseurs ni des agents et, s'ils saisissent l'adresse, le panneau les redirige. Qui n'est pas administrateur et a besoin du chiffre doit le demander. Reprendre un numéro lui appartient aussi.
 
 C'est la mesure de **ce que Parallly a envoyé** sur cette connexion, pas une copie de la facture de Meta. Cette facture est émise par Meta et se consulte dans les outils de Meta.
 
@@ -224,7 +224,7 @@ Non. L'agent répond librement dans la fenêtre de 24 heures qui suit le dernier
 Meta examine le contenu. Sur la page des modèles, vous verrez le **motif du rejet** ; corrigez le texte (évitez un langage promotionnel agressif dans les modèles utilitaires) et renvoyez-le.
 
 **Qui peut connecter ou déconnecter WhatsApp ?**
-Uniquement l'**administrateur** du compte. Les superviseurs et les agents peuvent voir l'état, mais pas le modifier.
+Uniquement l'**administrateur** du compte. Les superviseurs et les agents n'entrent pas dans **Canaux** : ils n'y voient pas l'état de la connexion et ne peuvent pas le modifier. Ce qu'un superviseur voit, c'est si un canal assigné à l'agent est resté sans connexion, dans **Santé des agents**.
 
 **Puis-je avoir un agent différent sur chaque numéro ?**
 Oui. La règle est d'un agent IA par connexion : par exemple, un agent commercial sur un numéro et un agent support sur un autre. L'attribution se fait dans l'éditeur d'agent.

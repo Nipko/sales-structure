@@ -156,7 +156,7 @@ O mês fecha no **fuso horário da sua conta do WhatsApp Business**, que pode n�
 
 ### O que você vê na Parallly, e o que não
 
-Em **Canais → WhatsApp**, o cartão **Cobrança do WhatsApp (Meta)** mostra quanto já foi da cota grátis, o gasto do período separado por moeda, para onde ele foi e quais números estão pausados. O **administrador** e o **supervisor** leem; retomar um número é só do administrador.
+Em **Canais → WhatsApp**, o cartão **Cobrança do WhatsApp (Meta)** mostra quanto já foi da cota grátis, o gasto do período separado por moeda, para onde ele foi e quais números estão pausados. Só o **administrador** o lê: **Canais** é uma tela de administração, não aparece no menu de supervisores nem de agentes e, se digitarem o endereço, o painel os redireciona. Quem não for administrador e precisar do dado tem de pedi-lo. Retomar um número também é do administrador.
 
 É a medição do **que a Parallly enviou** por aquela conexão, não uma cópia da fatura da Meta. A fatura é emitida pela Meta e consultada nas ferramentas da Meta.
 
@@ -221,7 +221,7 @@ Não. O agente responde livremente dentro da janela de 24 horas após a última 
 A Meta revisa o conteúdo. Na página de modelos você verá o **motivo da rejeição**; corrija o texto (evite linguagem promocional agressiva em modelos de utilidade) e envie de novo.
 
 **Quem pode conectar ou desconectar o WhatsApp?**
-Somente o **administrador** da conta. Supervisores e agentes podem ver o status, mas não alterá-lo.
+Somente o **administrador** da conta. Supervisores e agentes não entram em **Canais**: ali não veem o status da conexão nem podem alterá-lo. O que um supervisor vê é se um canal atribuído ao agente ficou sem conexão, em **Saúde dos agentes**.
 
 **Posso ter um agente diferente em cada número?**
 Sim. A regra é um agente de IA por conexão: por exemplo, um agente de vendas em um número e um de suporte em outro. A atribuição é feita no editor do agente.

@@ -1,3 +1,4 @@
+import { dashboardRoleCanOpen } from '@parallext/shared';
 import { ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
@@ -1138,8 +1139,31 @@ Reglas estrictas:
         const kbContext = articles.length > 0
             ? articles.map(a => {
                 const roles = a.roles.length ? ` | Requiere rol: ${a.roles.join(' o ')}` : '';
-                const routes = a.routes.length ? ` | Ruta en el panel: ${a.routes.join(' , ')}` : '';
-                return `### Artículo: ${a.title}${routes}${roles}\n${a.body}`;
+                // ── A ROUTE THE READER CANNOT OPEN IS NOT A DIRECTION ─────────
+                //
+                // Articles are already filtered by role, but their routes
+                // were injected whole — so an article that legitimately
+                // serves three audiences handed the model every screen it
+                // mentions, and the model sent a supervisor to
+                // `/admin/channels/whatsapp` and an agent to
+                // `/admin/broadcast`. Nineteen such pairs existed across the
+                // knowledge base; each one is a person following our own
+                // instructions into a redirect.
+                //
+                // The table is the dashboard's own, read from
+                // `@parallext/shared` rather than copied: two lists that
+                // agree until one of them is edited is the failure this
+                // replaces.
+                const readerRole = String(request.context.userRole ?? '');
+                const open = a.routes.filter(route => dashboardRoleCanOpen(route, readerRole));
+                const closed = a.routes.filter(route => !open.includes(route));
+                const routes = open.length ? ` | Ruta en el panel: ${open.join(' , ')}` : '';
+                // Named rather than dropped in silence, so the assistant can
+                // say “ask an administrator” instead of inventing a path.
+                const askAdmin = closed.length
+                    ? ` | Pantallas que este rol NO puede abrir, hay que pedirlas a un administrador: ${closed.join(' , ')}`
+                    : '';
+                return `### Artículo: ${a.title}${routes}${askAdmin}${roles}\n${a.body}`;
             }).join('\n\n---\n\n')
             : '(No se encontró información relevante en la base de conocimiento para esta consulta.)';
 

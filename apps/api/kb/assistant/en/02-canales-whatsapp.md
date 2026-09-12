@@ -156,7 +156,7 @@ The month closes in the **time zone of your WhatsApp Business account**, which m
 
 ### What you see in Parallly, and what you do not
 
-In **Channels → WhatsApp**, the **WhatsApp charges (Meta)** card shows how much of the free allowance is gone, the period's spend kept separate per currency, where it went and which numbers are paused. The **admin** and the **supervisor** can read it; resuming a number is the admin's alone.
+In **Channels → WhatsApp**, the **WhatsApp charges (Meta)** card shows how much of the free allowance is gone, the period's spend kept separate per currency, where it went and which numbers are paused. Only the **admin** reads it: **Channels** is an administration screen, it is not in a supervisor's or an agent's menu, and typing the address redirects them. Anyone who is not the admin and needs the figure has to ask for it. Resuming a number is the admin's too.
 
 It measures **what Parallly sent** over that connection. It is not a copy of Meta's invoice — Meta issues that, and you read it in Meta's tools.
 
@@ -221,7 +221,7 @@ No. The agent replies freely within the 24-hour window after the customer's last
 Meta reviews the content. On the templates page you'll see the **rejection reason**; fix the text (avoid aggressive promotional language in utility templates) and submit it again.
 
 **Who can connect or disconnect WhatsApp?**
-Only the account **administrator**. Supervisors and agents can see the status but not change it.
+Only the account **administrator**. Supervisors and agents do not enter **Channels**: they neither see the connection status there nor change it. What a supervisor does see is whether a channel assigned to the agent was left unconnected, in **Agent health**.
 
 **Can I have a different agent on each number?**
 Yes. The rule is one AI agent per connection: for example, a sales agent on one number and a support agent on another. You assign it in the agent editor.

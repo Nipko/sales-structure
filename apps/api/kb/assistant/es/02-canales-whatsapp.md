@@ -157,7 +157,7 @@ El mes se cierra en la **zona horaria de tu cuenta de WhatsApp Business**, que p
 
 ### Qué ves en Parallly, y qué no
 
-En **Canales → WhatsApp**, la tarjeta **Cobro de WhatsApp (Meta)** muestra cuánto llevas de la cuota gratis, el gasto del período separado por moneda, a dónde se fue y qué números están pausados. La leen el **administrador** y el **supervisor**; reanudar un número es sólo del administrador.
+En **Canales → WhatsApp**, la tarjeta **Cobro de WhatsApp (Meta)** muestra cuánto llevas de la cuota gratis, el gasto del período separado por moneda, a dónde se fue y qué números están pausados. La lee sólo el **administrador**: **Canales** es una pantalla de administración, no aparece en el menú de supervisores ni de agentes y, si escriben la dirección, el panel los redirige. Quien no sea administrador y necesite el dato tiene que pedírselo. Reanudar un número también es del administrador.
 
 Es la medición de **lo que Parallly envió** por esa conexión, no una copia de la factura de Meta. La factura la emite Meta y se consulta en las herramientas de Meta.
 
@@ -222,7 +222,7 @@ No. El agente responde libremente dentro de la ventana de 24 horas tras el últi
 Meta revisa el contenido. En la página de plantillas verás el **motivo del rechazo**; corrige el texto (evita lenguaje promocional agresivo en plantillas de utilidad) y vuelve a enviarla.
 
 **¿Quién puede conectar o desconectar WhatsApp?**
-Solo el **administrador** de la cuenta. Supervisores y agentes pueden ver el estado, pero no modificarlo.
+Solo el **administrador** de la cuenta. Supervisores y agentes no entran a **Canales**: ahí no ven el estado de la conexión ni pueden cambiarlo. Lo que sí ve un supervisor es si un canal asignado al agente quedó sin conectar, en **Salud de agentes**.
 
 **¿Puedo tener un agente distinto en cada número?**
 Sí. La regla es un agente de IA por conexión: por ejemplo, un agente de ventas en un número y uno de soporte en otro. Se asigna en el editor del agente.

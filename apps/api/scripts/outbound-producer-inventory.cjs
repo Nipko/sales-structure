@@ -63,6 +63,72 @@ const REPO = path.resolve(__dirname, '..', '..', '..');
 const DEFAULT_OUT = path.join(REPO, 'docs', 'audits', '2026-09-10', 'outbound-producer-inventory.md');
 
 // ---------------------------------------------------------------------------
+// READING THE TREE WITHOUT EDITING IT
+// ---------------------------------------------------------------------------
+//
+// The one test that can tell this census from a grep has to answer "what would
+// this sweep say if the gate on the live send path were gone?" - and the only
+// honest way to ask is to run the real sweep over a tree where it IS gone.
+//
+// It used to do that by writing the mutated processor over the real file and
+// restoring it in a `finally`. A `finally` does not run for SIGKILL, for a
+// killed worker, or for a machine that loses power, and what survives is
+// `apps/api/src/modules/channels/outbound-queue.processor.ts` calling a method
+// that does not exist - in the file that dispatches every AI reply, in a repo
+// where a parallel session's `git add -A` is a known incident.
+//
+// So the mutation happens HERE, in memory, and the tree is never written. Every
+// read in this script goes through `readSource`/`hasSource`; an overlay entry
+// replaces a file's contents for the duration of one call, and an entry for a
+// path that does not exist adds a file the sweep will walk. Nothing to restore,
+// so nothing to fail to restore.
+const SOURCE_OVERLAY = new Map();
+
+const overlayKey = full => path.resolve(full);
+
+function readSource(full) {
+    const hit = SOURCE_OVERLAY.get(overlayKey(full));
+    return hit ? hit.text : fs.readFileSync(full, 'utf8');
+}
+
+function hasSource(full) {
+    return SOURCE_OVERLAY.has(overlayKey(full)) || fs.existsSync(full);
+}
+
+/**
+ * Run `work` with these sources overridden in memory.
+ *
+ * `entries` is `{ app, rel, text }[]`: `app` is `api` or `whatsapp`, `rel` the
+ * path under that app's `src`. A `rel` that exists is replaced; one that does
+ * not is added to the walk. Nested calls are refused, and the overlay is
+ * cleared on the way out even if `work` throws - an in-memory Map, so an
+ * abrupt death takes the overlay with it instead of leaving it on disk.
+ */
+function withSourceOverlay(entries, work) {
+    if (SOURCE_OVERLAY.size) throw new Error('source overlay is already active');
+    for (const entry of entries) {
+        const root = entry.app === 'whatsapp' ? WA_SRC : API_SRC;
+        const full = path.join(root, entry.rel.split('/').join(path.sep));
+        SOURCE_OVERLAY.set(overlayKey(full), {
+            text: entry.text, app: entry.app || 'api', rel: entry.rel, full,
+            added: !fs.existsSync(full),
+        });
+    }
+    // The sink memo is keyed by path and says nothing about which TEXT it read.
+    // Left standing across an overlay it answers a question about the real tree
+    // with a verdict computed from the mutated one, and vice versa on the way
+    // out - the same "a memo that outlives the facts it memoised" failure the
+    // census already fixed once, arriving through a different door.
+    GATED_FILES.clear();
+    try {
+        return work();
+    } finally {
+        SOURCE_OVERLAY.clear();
+        GATED_FILES.clear();
+    }
+}
+
+// ---------------------------------------------------------------------------
 // The doors. Each entry is one way a message can start travelling to a phone.
 // ---------------------------------------------------------------------------
 
@@ -409,8 +475,8 @@ function sinkVerdict(rel) {
     if (GATED_FILES.has(rel)) return GATED_FILES.get(rel);
     const full = path.join(API_SRC, rel);
     let verdict = { hasGate: false, uncovered: [], fullyGated: false };
-    if (fs.existsSync(full)) {
-        const text = fs.readFileSync(full, 'utf8');
+    if (hasSource(full)) {
+        const text = readSource(full);
         const code = codeOnly(text);
         const hasGate = GATE_CALLS.some(call => code.includes(call));
         // Same coordinates for both questions: `withoutComments` keeps the URL
@@ -438,7 +504,7 @@ function classIndex() {
     const index = new Map();
     for (const file of sources()) {
         if (file.app !== 'api') continue;
-        const text = fs.readFileSync(file.full, 'utf8');
+        const text = readSource(file.full);
         for (const match of text.matchAll(/export\s+(?:abstract\s+)?class\s+([A-Za-z_$][\w$]*)/g)) {
             index.set(match[1], file.rel);
         }
@@ -471,7 +537,7 @@ function terminusFor(row, lines, index, classes) {
         if (/this\.\s*send/.test(line)) return { file: row.file, how: 'same file' };
         return { file: null, how: 'unresolved' };
     }
-    const text = fs.readFileSync(path.join(API_SRC, row.file), 'utf8');
+    const text = readSource(path.join(API_SRC, row.file));
     const declared = text.match(new RegExp(
         '(?:private|public|protected)\\s+(?:readonly\\s+)?' + receiver + '[?]?\\s*:\\s*([A-Za-z_$][\\w$]*)'));
     if (!declared) return { file: null, how: 'receiver `' + receiver + '` has no declared type' };
@@ -501,7 +567,7 @@ function gateCensus(rows) {
     const linesOf = rel => {
         if (!fileLines.has(rel)) {
             const full = path.join(API_SRC, rel);
-            fileLines.set(rel, fs.existsSync(full) ? fs.readFileSync(full, 'utf8').split(/\r?\n/) : []);
+            fileLines.set(rel, hasSource(full) ? readSource(full).split(/\r?\n/) : []);
         }
         return fileLines.get(rel);
     };
@@ -544,7 +610,7 @@ function gateCensus(rows) {
     const egress = [];
     for (const file of sources()) {
         // Comments out, template literals KEPT: the URL is a template literal.
-        const text = fs.readFileSync(file.full, 'utf8');
+        const text = readSource(file.full);
         const lines = withoutComments(text).split(/\r?\n/);
         const found = [];
         for (let i = 0; i < lines.length; i++) {
@@ -594,7 +660,7 @@ function gateCensus(rows) {
     const classifiedAt = new Set(classified.map(row => `${row.file}:${row.line}`));
     for (const file of sources()) {
         if (file.app !== 'api' || PROVIDER_ROADS[file.rel]) continue;
-        const text = fs.readFileSync(file.full, 'utf8');
+        const text = readSource(file.full);
         if (!text.includes('ProactiveDispatchService')) continue;
         const receivers = [...text.matchAll(
             /(?:private|public|protected|readonly)\s+(?:readonly\s+)?([A-Za-z_$][\w$]*)[?]?\s*:\s*ProactiveDispatchService/g,
@@ -643,6 +709,12 @@ function sources() {
     }
     for (const file of walk(WA_SRC)) {
         files.push({ app: 'whatsapp', rel: path.relative(WA_SRC, file).split(path.sep).join('/'), full: file });
+    }
+    // A file the overlay ADDS is not on disk for `walk` to find, and the sweep
+    // that matters most - "a brand-new file POSTs to Meta and nobody gated it"
+    // - is exactly the case where the new file does not exist yet.
+    for (const entry of SOURCE_OVERLAY.values()) {
+        if (entry.added) files.push({ app: entry.app, rel: entry.rel, full: entry.full });
     }
     return files;
 }
@@ -780,7 +852,7 @@ function collect() {
     const rows = [];
     for (const file of sources()) {
         if (ROADS.includes(file.rel)) continue;
-        const text = fs.readFileSync(file.full, 'utf8');
+        const text = readSource(file.full);
         const lines = text.split(/\r?\n/);
         const mask = templateLiteralMask(lines);
         for (let i = 0; i < lines.length; i++) {
@@ -818,7 +890,7 @@ function collect() {
  */
 function inventoryText() {
     const file = path.join(API_SRC, 'modules', 'channels', 'external-effect-inventory.ts');
-    return fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
+    return hasSource(file) ? readSource(file) : '';
 }
 
 function declaredProducers() {
@@ -1226,4 +1298,4 @@ function main() {
 if (require.main === module) main();
 module.exports = { collect, declaredProducers, declaredInfrastructure, render, gateCensus,
     EGRESS, ROADS, GATE_CALLS, PROVIDER_EGRESS, PROVIDER_ROADS, codeOnly, withoutComments,
-    egressCredits, sinkVerdict, isGatedFile };
+    egressCredits, sinkVerdict, isGatedFile, withSourceOverlay };

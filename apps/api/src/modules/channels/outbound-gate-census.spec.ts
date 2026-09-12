@@ -74,7 +74,15 @@ describe('the check can actually go red', () => {
      * the first place. Running it through the real sweep — not a fixture, not a
      * hand-made row — is the only way to know the sweep would have caught them.
      */
+    const PROBE_REL = 'modules/channels/gate-census-probe.generated.ts';
     const PROBE = resolve(API_SRC, 'modules', 'channels', 'gate-census-probe.generated.ts');
+
+    /** Runs the real sweep over a tree that contains `text` at `PROBE_REL`. */
+    const withProbe = (text: string) => inventory.withSourceOverlay(
+        [{ app: 'api', rel: PROBE_REL, text }], () => census());
+
+    const probeViolations = (text: string) => withProbe(text).ungatedEgress
+        .filter((entry: any) => entry.file.endsWith('gate-census-probe.generated.ts'));
 
     const UNGATED = `// Temporary fixture written by outbound-gate-census.spec.ts.
 export class GateCensusProbeService {
@@ -91,9 +99,7 @@ export class GateCensusProbeService {
     afterEach(() => rmSync(PROBE, { force: true }));
 
     it('reports a new file that posts to Meta with no admission', () => {
-        writeFileSync(PROBE, UNGATED, 'utf8');
-        const found = census().ungatedEgress
-            .filter((entry: any) => entry.file.endsWith('gate-census-probe.generated.ts'));
+        const found = probeViolations(UNGATED);
         expect(found.length).toBe(1);
         expect(found[0].what).toContain('messages');
     });
@@ -103,33 +109,33 @@ export class GateCensusProbeService {
         // green on `// TODO: call this.admitSpend(...)`. The gate is read from
         // code with comments and template literals stripped, so prose proves
         // nothing — and the only way to be sure of that is to write the prose.
-        writeFileSync(PROBE, UNGATED.replace('export class', [
+        expect(probeViolations(UNGATED.replace('export class', [
             '// Later: this.admitSpend({ tenantId, channelType: \'whatsapp\' });',
             '/* and spend gate wiring: spendGate.admit(request) */',
             'const NOTE = `this.gateOrSuppress(outbound, \'probe\')`;',
             'void NOTE;',
             'export class',
-        ].join('\n')), 'utf8');
-        expect(census().ungatedEgress
-            .filter((entry: any) => entry.file.endsWith('gate-census-probe.generated.ts')).length)
-            .toBe(1);
+        ].join('\n'))).length).toBe(1);
     });
 
     it('accepts it once the admission is a real call', () => {
-        writeFileSync(PROBE, UNGATED.replace(
+        expect(probeViolations(UNGATED.replace(
             '        await fetch(',
             '        const admission = await this.admitSpend({ to });\n'
             + '        if (admission === null) return;\n'
-            + '        await fetch('), 'utf8');
-        expect(census().ungatedEgress
-            .filter((entry: any) => entry.file.endsWith('gate-census-probe.generated.ts')).length)
-            .toBe(0);
+            + '        await fetch(')).length).toBe(0);
     });
 
     it('exits non-zero, and names the file, when a violation exists', () => {
         // The unit above proves the classification. This proves the CONSEQUENCE:
         // the command CI runs actually fails. A census that finds a violation
         // and exits 0 stops nothing.
+        //
+        // The ONE case here that still writes to the tree, because it has to:
+        // `--check` is a separate process and cannot see an in-memory overlay.
+        // What it writes is an ADDED file, never a mutation of a shipped one,
+        // its name is in `.gitignore`, and a survivor is by construction what
+        // this very census reports — so it announces itself three ways.
         writeFileSync(PROBE, UNGATED, 'utf8');
         const out = mkdtempSync(join(tmpdir(), 'gate-census-'));
         let status = 0;
@@ -211,7 +217,7 @@ describe('one admission covers one POST, and it comes first', () => {
         // already catches, but one more send inside a file that is already
         // marked green. That is how a fallback, a retry or a "just also notify
         // them" line becomes a second charge nobody sees.
-        const PROBE = resolve(API_SRC, 'modules', 'channels', 'gate-census-second-post.generated.ts');
+        const SECOND_POST_REL = 'modules/channels/gate-census-second-post.generated.ts';
         const GATED_TWICE = `// Temporary fixture written by outbound-gate-census.spec.ts.
 export class GateCensusSecondPostService {
     async send(id: string, to: string): Promise<void> {
@@ -224,15 +230,12 @@ export class GateCensusSecondPostService {
     private async admitSpend(_input: unknown): Promise<boolean> { return true; }
 }
 `;
-        writeFileSync(PROBE, GATED_TWICE, 'utf8');
-        try {
-            const found = census().ungatedEgress
-                .filter((entry: any) => entry.file.endsWith('gate-census-second-post.generated.ts'));
-            // One violation, not two: the first send is properly covered.
-            expect(found.length).toBe(1);
-        } finally {
-            rmSync(PROBE, { force: true });
-        }
+        const found = inventory.withSourceOverlay(
+            [{ app: 'api', rel: SECOND_POST_REL, text: GATED_TWICE }],
+            () => census(),
+        ).ungatedEgress.filter((entry: any) => entry.file.endsWith('gate-census-second-post.generated.ts'));
+        // One violation, not two: the first send is properly covered.
+        expect(found.length).toBe(1);
     });
 });
 
@@ -274,9 +277,23 @@ describe('a gate deleted from a REAL sink', () => {
      * yes, the census reported zero producers outside the boundary, and every
      * AI reply on every tenant would have gone to Meta unauthorised.
      *
-     * So this mutates the real sink on disk, runs the real sweep, and restores
-     * it. It is the only test here that can tell a dominance check from a grep.
+     * So this runs the real sweep over a tree where that gate is gone. It is
+     * the only test here that can tell a dominance check from a grep.
+     *
+     * ── WHY THE TREE IS NEVER WRITTEN ───────────────────────────────────────
+     *
+     * The first version did this by writing the mutated processor over the real
+     * file and restoring it in a `finally`. A `finally` does not run for a
+     * SIGKILL, a killed jest worker, or a machine that loses power — and what
+     * survives is the file that dispatches every AI reply calling a method that
+     * does not exist, in a repository where a parallel session's `git add -A`
+     * is a recorded incident. The value of the test was never worth that.
+     *
+     * `withSourceOverlay` gives the census the mutated text in memory. The
+     * sweep is the same sweep; the disk is not involved, so there is nothing to
+     * restore and nothing that can fail to be restored.
      */
+    const SINK_REL = 'modules/channels/outbound-queue.processor.ts';
     const SINK = resolve(API_SRC, 'modules', 'channels', 'outbound-queue.processor.ts');
     const GATE = "this.gateOrSuppress(outbound, 'outbound_queue'";
 
@@ -284,14 +301,23 @@ describe('a gate deleted from a REAL sink', () => {
     function withoutTheLegacyGate<T>(work: () => T): T {
         const original = readFileSync(SINK, 'utf8');
         if (!original.includes(GATE)) throw new Error('the gate call site moved; update this test');
-        try {
-            writeFileSync(SINK, original.replace(GATE, "this.noGateAtAll(outbound, 'outbound_queue'"),
-                'utf8');
-            return work();
-        } finally {
-            writeFileSync(SINK, original, 'utf8');
-        }
+        return inventory.withSourceOverlay([{
+            app: 'api',
+            rel: SINK_REL,
+            text: original.replace(GATE, "this.noGateAtAll(outbound, 'outbound_queue'"),
+        }], work);
     }
+
+    it('leaves the real file byte-for-byte alone while it does that', () => {
+        // The property that matters more than any assertion below it: this
+        // suite cannot damage the send path, whatever happens to the process.
+        const before = readFileSync(SINK, 'utf8');
+        withoutTheLegacyGate(() => census());
+        expect(readFileSync(SINK, 'utf8')).toBe(before);
+        // And during, too — the mutation must be invisible to anything reading
+        // the disk, which is what a concurrent `git add` is doing.
+        withoutTheLegacyGate(() => expect(readFileSync(SINK, 'utf8')).toBe(before));
+    });
 
     it('turns the sink itself from gated to not gated', () => {
         expect(inventory.sinkVerdict('modules/channels/outbound-queue.processor.ts').fullyGated)
@@ -368,7 +394,7 @@ describe('the line numbers the audit publishes', () => {
         // A backtick built rather than written, so this fixture can describe a
         // template literal without ending the one it lives in.
         const BT = String.fromCharCode(96);
-        const PROBE = resolve(API_SRC, 'modules', 'channels', 'gate-census-literal.generated.ts');
+        const LITERAL_REL = 'modules/channels/gate-census-literal.generated.ts';
         const SOURCE = [
             '// Temporary fixture written by outbound-gate-census.spec.ts.',
             'export class GateCensusLiteralService {',
@@ -387,16 +413,12 @@ describe('the line numbers the audit publishes', () => {
             '}',
             '',
         ].join('\n');
-        writeFileSync(PROBE, SOURCE, 'utf8');
-        try {
-            const found = census().ungatedEgress
-                .filter((entry: any) => entry.file.endsWith('gate-census-literal.generated.ts'));
-            // The gate is BELOW the POST, so the POST is uncovered — and the
-            // line it is reported at is the line it is written on.
-            expect(found.map((entry: any) => entry.line)).toEqual([10]);
-        } finally {
-            rmSync(PROBE, { force: true });
-        }
+        const found = inventory.withSourceOverlay(
+            [{ app: 'api', rel: LITERAL_REL, text: SOURCE }], () => census(),
+        ).ungatedEgress.filter((entry: any) => entry.file.endsWith('gate-census-literal.generated.ts'));
+        // The gate is BELOW the POST, so the POST is uncovered — and the
+        // line it is reported at is the line it is written on.
+        expect(found.map((entry: any) => entry.line)).toEqual([10]);
     });
 });
 
@@ -419,7 +441,7 @@ describe('the durable lane has an entrance, and the sweep can see it', () => {
      * TYPE, and a member this list has never heard of is a failure that says
      * what to add rather than a silence.
      */
-    const PROBE = resolve(API_SRC, 'modules', 'recall', 'lane-entrance.generated.ts');
+    const LANE_REL = 'modules/recall/lane-entrance.generated.ts';
 
     const probeSource = (receiver: string) => [
         '// Temporary fixture written by outbound-gate-census.spec.ts.',
@@ -437,35 +459,42 @@ describe('the durable lane has an entrance, and the sweep can see it', () => {
         '',
     ].join(String.fromCharCode(10));
 
-    afterEach(() => rmSync(PROBE, { force: true }));
+    /** Runs `work` over a tree containing the probe, without touching disk. */
+    const withLaneProbe = <T>(receiver: string, work: () => T): T => inventory.withSourceOverlay(
+        [{ app: 'api', rel: LANE_REL, text: probeSource(receiver) }], work);
 
     it('classifies a producer that reaches Meta through the proactive entrance', () => {
-        writeFileSync(PROBE, probeSource('proactive'), 'utf8');
-        const rows = inventory.collect()
-            .filter((row: any) => row.file.endsWith('lane-entrance.generated.ts'));
+        const { rows, bypasses } = withLaneProbe('proactive', () => ({
+            rows: inventory.collect().filter((row: any) => row.file.endsWith('lane-entrance.generated.ts')),
+            bypasses: census().bypasses
+                .filter((row: any) => row.file.endsWith('lane-entrance.generated.ts')),
+        }));
         expect(rows.length).toBe(1);
         expect(rows[0].lane).toBe('dispatch_outbox');
         // Classified AND covered: the durable lane's gate is at the sink it
         // terminates on, which is the whole reason a road redirects the question.
-        expect(census().bypasses
-            .filter((row: any) => row.file.endsWith('lane-entrance.generated.ts'))).toEqual([]);
+        expect(bypasses).toEqual([]);
     });
 
     it('reports a receiver name the primitive list has never heard of', () => {
         // The next producer may call its field `lane`. A sweep keyed on names
         // would go silent again; this one names the file, the line and the fix.
-        writeFileSync(PROBE, probeSource('lane'), 'utf8');
-        const found = census().laneEntrances
-            .filter((entry: any) => entry.file.endsWith('lane-entrance.generated.ts'));
+        const { found, classified } = withLaneProbe('lane', () => ({
+            found: census().laneEntrances
+                .filter((entry: any) => entry.file.endsWith('lane-entrance.generated.ts')),
+            classified: inventory.collect()
+                .filter((row: any) => row.file.endsWith('lane-entrance.generated.ts')),
+        }));
         expect(found.length).toBe(1);
         expect(found[0].receiver).toBe('lane');
         // And it is NOT quietly classified as a producer, which is the state
         // that made ten of them invisible.
-        expect(inventory.collect()
-            .filter((row: any) => row.file.endsWith('lane-entrance.generated.ts')).length).toBe(0);
+        expect(classified.length).toBe(0);
     });
 
     it('exits non-zero on that unknown receiver, naming what to add', () => {
+        // The second and last case that writes: `--check` is another process.
+        const PROBE = resolve(API_SRC, 'modules', 'recall', 'lane-entrance.generated.ts');
         writeFileSync(PROBE, probeSource('lane'), 'utf8');
         const out = mkdtempSync(join(tmpdir(), 'lane-entrance-'));
         let status = 0;
@@ -478,6 +507,7 @@ describe('the durable lane has an entrance, and the sweep can see it', () => {
             stderr = String(error.stderr || '');
         } finally {
             rmSync(out, { recursive: true, force: true });
+            rmSync(PROBE, { force: true });
         }
         expect({ status, named: stderr.includes('lane-entrance.generated.ts'),
             says: stderr.includes("'lane.send('") }).toEqual({ status: 1, named: true, says: true });

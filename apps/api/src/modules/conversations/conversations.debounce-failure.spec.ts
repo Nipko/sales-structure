@@ -1,4 +1,5 @@
 import { ConversationsService } from './conversations.service';
+import { readFileSync } from 'fs';
 
 const message = {
     id: 'provider-message',
@@ -75,5 +76,13 @@ describe('burst coordination failure', () => {
         } finally {
             jest.useRealTimers();
         }
+    });
+});
+
+describe('turn workflow coordination failure', () => {
+    it('does not interpret an unreadable procedure owner as no pending procedure', () => {
+        const source = readFileSync(require.resolve('./conversations.service'), 'utf8');
+        expect(source).toContain('const procedureStateForRouting = await procedureEngine.getState');
+        expect(source).not.toMatch(/procedureEngine\.getState\(conversation\.id, schemaName\)[\s\S]{0,120}catch\(\(\) => false\)/);
     });
 });

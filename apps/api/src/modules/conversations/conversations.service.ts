@@ -3359,8 +3359,13 @@ export class ConversationsService {
             turnTrace.add('turn_context', 'mission_owner_selected', { route: missionDecision.route, action: missionDecision.action,
                 missionId: missionFocus.selected?.id, revision: missionFocus.revision });
         }
-        const procedureAwaiting = await procedureEngine.getState(conversation.id, schemaName)
-            .then(s => !!s?.awaitingField && !s?.pausedAt).catch(() => false);
+        // Procedure state owns the current task. Treating an unavailable read as
+        // "nothing is pending" lets the booking engine start a second workflow
+        // and potentially commit a different operation in the same turn. Keep
+        // the inbound job retryable until the durable owner can be read.
+        const procedureStateForRouting = await procedureEngine.getState(conversation.id, schemaName);
+        const procedureAwaiting = !!procedureStateForRouting?.awaitingField
+            && !procedureStateForRouting.pausedAt;
 
         // El motor determinista CREA la cita: escribe por fuera del loop de
         // tools, así que filtrar la lista de tools no lo alcanzaba. Un perfil

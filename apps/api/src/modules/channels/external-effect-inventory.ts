@@ -516,7 +516,7 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         egress: 'ChannelGatewayService.sendMessage, called directly',
         reach: {
             class: 'customer_message', audience: 'contact', personalData: true,
-            channels: ['whatsapp', 'email', 'sms'],
+            channels: ['email', 'sms'],
         },
         properties: {
             authority: none('no queue, no row, no lease. The send happens inline inside the request '

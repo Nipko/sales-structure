@@ -437,15 +437,14 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
             // intent, nothing addressed, and the agent is told why. The case
             // below shows this branch cannot be reached in production.
             const spend = permissiveSpendGate();
-            const message = await service({ strict: false, spend })
-                .sendAgentMessage(tenantId, conversationId, await agent(), 'hola');
+            await expect(service({ strict: false, spend })
+                .sendAgentMessage(tenantId, conversationId, await agent(), 'hola'))
+                .rejects.toThrow(/transporte durable/);
             expect(await rows()).toHaveLength(0);
             expect(gateway.sendMessage).not.toHaveBeenCalled();
             expect(spend.admitBySchema).not.toHaveBeenCalled();
             expect(spend.beginTransmission).not.toHaveBeenCalled();
-            expect(message.status).toBe('failed');
-            expect((await sql('SELECT status, metadata FROM messages'))[0].metadata)
-                .toMatchObject({ sendError: 'strict_transport_unavailable' });
+            expect(await sql('SELECT status, metadata FROM messages')).toEqual([]);
         });
 
         it('cannot happen on WhatsApp, because its adapter implements the strict transport', async () => {
@@ -457,18 +456,16 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
             expect(typeof (WhatsAppAdapter.prototype as any).sendStrict).toBe('function');
         });
 
-        it('sends through the strict transport when no lane is wired in', async () => {
-            const message = await service({ lane: undefined })
-                .sendAgentMessage(tenantId, conversationId, await agent(), 'hola');
+        it('refuses a certified channel when no durable lane is wired in', async () => {
+            await expect(service({ lane: undefined })
+                .sendAgentMessage(tenantId, conversationId, await agent(), 'hola'))
+                .rejects.toThrow(/transporte durable/);
             expect(await rows()).toHaveLength(0);
-            // The transport that says what happened, not the one that
-            // reports every failure as the same `null`.
-            expect(sendStrict).toHaveBeenCalled();
+            expect(sendStrict).not.toHaveBeenCalled();
             expect(gateway.sendMessage).not.toHaveBeenCalled();
-            expect(message.status).toBe('sent');
         });
 
-        it('admits the inline human fallback before its provider POST', async () => {
+        it('keeps the internal email adapter outside certified channel delivery', async () => {
             const order: string[] = [];
             const spend = permissiveSpendGate();
             const originalAdmission = spend.admit.getMockImplementation()!;
@@ -476,41 +473,35 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
                 order.push('shared_spend_admission');
                 return originalAdmission(...args);
             });
-            const consoleService = service({ lane: undefined, spend });
-            sendStrict.mockImplementation(async () => {
-                order.push('provider_post');
-                return { kind: 'accepted', receipt: 'wamid.STRICT' };
+            const consoleService = service({ lane: undefined, spend, strict: false });
+            gateway.sendMessage.mockImplementation(async () => {
+                order.push('internal_adapter');
+                return 'mail.receipt';
             });
+            await sql(`UPDATE conversations SET channel_type = 'email' WHERE id = $1::uuid`,
+                [conversationId]);
 
             await consoleService.sendAgentMessage(
                 tenantId, conversationId, await agent(), 'respuesta humana',
             );
 
-            expect(order).toEqual(['shared_spend_admission', 'provider_post']);
+            expect(order).toEqual(['shared_spend_admission', 'internal_adapter']);
             expect(spend.admit).toHaveBeenCalledTimes(1);
         });
 
-        it('files an unknown inline outcome for reconciliation instead of as failed', async () => {
-            // The inline path is a fallback, not a lesser standard: an answer
-            // that never arrived must not read as one that did not leave.
-            const message = await service({ lane: undefined,
-                outcome: { kind: 'unknown', errorCode: 'timeout' } })
-                .sendAgentMessage(tenantId, conversationId, await agent(), 'hola');
-            expect(message.status).toBe('reconciliation_required');
-            expect((await sql('SELECT status FROM messages'))[0].status)
-                .toBe('reconciliation_required');
-        });
-
-        it('sends through the strict transport for a thread that does not name its connection', async () => {
+        it('refuses a certified thread that does not name its connection', async () => {
             // A binding is four identifiers or it is nothing: a legacy row with
             // no `channel_account_id` cannot say which account pays, so the
             // durable lane declines — and the fallback still uses a transport
             // that can report an outcome.
             await sql('UPDATE conversations SET channel_account_id = NULL WHERE id = $1::uuid',
                 [conversationId]);
-            await service().sendAgentMessage(tenantId, conversationId, await agent(), 'hola');
+            await expect(service().sendAgentMessage(
+                tenantId, conversationId, await agent(), 'hola'))
+                .rejects.toThrow(/transporte durable/);
             expect(await rows()).toHaveLength(0);
-            expect(sendStrict).toHaveBeenCalled();
+            expect(sendStrict).not.toHaveBeenCalled();
+            expect(gateway.sendMessage).not.toHaveBeenCalled();
         });
     });
 

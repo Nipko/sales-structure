@@ -543,6 +543,19 @@ export class AgentConsoleService {
         });
         if (durable) return durable;
 
+        // Every certified conversational channel has a strict durable
+        // transport in production. Falling through here for one of them means
+        // its binding or lane is unavailable; an inline POST would discard the
+        // recovery record and could duplicate a billed reply. Email is still
+        // an internal inbound adapter and SMS is a one-way legacy product, so
+        // their historical console path remains isolated below without being
+        // advertised as a certified channel.
+        const inlineChannel = String(deliveryBinding[0]?.channel_type ?? '');
+        if (inlineChannel !== 'email' && inlineChannel !== 'sms') {
+            throw new BadRequestException(
+                'La respuesta no puede enviarse sin un transporte durable para este canal.');
+        }
+
         // 'pending', not 'delivered'. This row was written as delivered BEFORE
         // anything was sent, and the send below is inline in a catch that only
         // warns — so a reply that never left the building read as delivered in
@@ -745,7 +758,7 @@ export class AgentConsoleService {
                         type: msg.content_type, sender: 'agent', timestamp: msg.created_at,
                     } as any;
                 }
-                const sent = await this.channelGateway.sendMessage(
+                const sent = await this.sendUnmeteredLegacyMessage(
                     {
                         tenantId,
                         channelType,
@@ -760,12 +773,12 @@ export class AgentConsoleService {
                         // reservation. The gateway cannot know that, so it
                         // asks, and a caller that could not answer would be a
                         // second POST under a reservation that settles once.
-                        admitFallback: code => this.admitFlowFallback(
+                        admitFallback: (code: string) => this.admitFlowFallback(
                             tenantId, schemaName, channelType,
                             conv.channel_account_id || creds.accountId,
                             conv.phone, outContent, conv.contact_id ?? null,
                             String(msg.id), code),
-                        observeFailure: error => this.observeFunding(
+                        observeFailure: (error: unknown) => this.observeFunding(
                             tenantId, channelType, conv.channel_account_id || creds.accountId, error),
                     },
                 );
@@ -1171,6 +1184,20 @@ export class AgentConsoleService {
 
     private absoluteMediaUrl(url?: string): string | undefined {
         return absoluteMediaUrl(url);
+    }
+
+    /**
+     * The only inline console path left. Keep the runtime guard beside the
+     * actual gateway call so a future caller cannot turn this helper into a
+     * bypass for a provider-billed or certified conversational channel.
+     */
+    private async sendUnmeteredLegacyMessage(message: any, accessToken: string,
+        options: any): Promise<string | null> {
+        const channelType = String(message?.channelType ?? '');
+        if (channelType !== 'email' && channelType !== 'sms') {
+            throw new Error('durable_dispatch_required');
+        }
+        return this.channelGateway.sendMessage(message, accessToken, options);
     }
 
     /**

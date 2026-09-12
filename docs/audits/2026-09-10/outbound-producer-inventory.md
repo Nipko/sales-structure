@@ -16,12 +16,12 @@ efectos puede llegar a producir **una sola respuesta lógica** en cada uno.
 
 | | |
 |---|---|
-| Sitios de llamada encontrados | **31** |
-| De ellos, que producen un mensaje cobrable | **30** |
+| Sitios de llamada encontrados | **32** |
+| De ellos, que producen un mensaje cobrable | **31** |
 | De ellos, presencia (no cobra Meta) | **1** |
-| Archivos productores distintos | **16** |
+| Archivos productores distintos | **17** |
 | Sitios que **no** pasan por un carril durable | **9** |
-| Sitios que pueden alcanzar WhatsApp (literal o dinámico) | **28** |
+| Sitios que pueden alcanzar WhatsApp (literal o dinámico) | **29** |
 | Sitios donde **una respuesta puede volverse varios cargos** | **11** |
 
 ### Los cinco números que importan
@@ -33,11 +33,11 @@ objetivo: **cero productores cobrables fuera del carril durable**.
 
 | | |
 |---|---|
-| Sitios de llamada, en total | **31** |
-| De ellos, capaces de alcanzar WhatsApp | **29** |
-| De ellos, **cobrables por Meta** | **28** |
-| De ellos, dentro de la frontera económica | **28** |
-| De ellos, dentro del **carril durable** | **21** |
+| Sitios de llamada, en total | **32** |
+| De ellos, capaces de alcanzar WhatsApp | **30** |
+| De ellos, **cobrables por Meta** | **29** |
+| De ellos, dentro de la frontera económica | **29** |
+| De ellos, dentro del **carril durable** | **22** |
 
 | | |
 |---|---|
@@ -61,7 +61,7 @@ Por carril:
 
 | Carril | Sitios | Qué garantiza |
 |---|---:|---|
-| `dispatch_outbox` | 13 | publishes an already-committed `agent_dispatch_outbox` row |
+| `dispatch_outbox` | 14 | publishes an already-committed `agent_dispatch_outbox` row |
 | `approved_effect` | 1 | `tool_approval_effects` row a person approved |
 | `operational_notice` | 6 | `operational_notice_outbox`, written in the business transaction |
 | `handoff_effects` | 1 | one row per destination of one transfer |
@@ -124,7 +124,7 @@ mensajes entregados, y un indicador de "escribiendo" no lo es.
 | Línea | Método | Primitiva | Carril | Disparador | Canales | Efectos por respuesta | Base |
 |---:|---|---|---|---|---|---|---|
 | 748 | `(top level)` | `channelGateway.sendMessage` | `inline` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
-| 886 | `replyThroughOutbox` | `dispatch.send` | `dispatch_outbox` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
+| 880 | `replyThroughOutbox` | `dispatch.send` | `dispatch_outbox` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
 
 ### `apps/api/src/modules/appointments/appointment-notifications.service.ts`
 
@@ -192,6 +192,12 @@ mensajes entregados, y un indicador de "escribiendo" no lo es.
 | 6072 | `sendCollectedFlow` | `outboundQueue.enqueue` | `outbound_queue` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
 | 6116 | `dispatchReplyThroughOutbox` | `outboundQueue.enqueueDispatch` | `dispatch_outbox` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
 | 6161 | `dispatchReplyThroughOutbox` | `dispatchOutbox.prepare` | `dispatch_outbox` | called by another service | dynamic | n(items) | one committed row per item; the whole batch is one answer |
+
+### `apps/api/src/modules/conversations/payment-outcome-notifier.service.ts`
+
+| Línea | Método | Primitiva | Carril | Disparador | Canales | Efectos por respuesta | Base |
+|---:|---|---|---|---|---|---|---|
+| 147 | `notifyCustomer` | `dispatch.send` | `dispatch_outbox` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
 
 ### `apps/api/src/modules/conversations/tool-approval-effects.service.ts`
 
@@ -270,10 +276,10 @@ buscar una llamada a la autoridad economica en el codigo del archivo.
 | `apps/api/src/modules/channels/messenger/messenger.adapter.ts:161` | Graph `/{phone_number_id}/messages` POST | camino | Messenger is not billed per message by its provider |
 | `apps/api/src/modules/channels/messenger/messenger.adapter.ts:177` | Graph `/{phone_number_id}/messages` POST | camino | Messenger is not billed per message by its provider |
 | `apps/api/src/modules/channels/messenger/messenger.adapter.ts:207` | Graph `/{phone_number_id}/messages` POST | camino | Messenger is not billed per message by its provider |
-| `apps/api/src/modules/channels/outbound-queue.processor.ts:547` | strict dispatch transport | si | pide permiso antes de emitir |
-| `apps/api/src/modules/channels/outbound-queue.processor.ts:970` | `ChannelGatewayService.sendMessage` | si | pide permiso antes de emitir |
-| `apps/api/src/modules/channels/outbound-queue.processor.ts:1004` | `ChannelGatewayService.sendMessage` | si | pide permiso antes de emitir |
-| `apps/api/src/modules/channels/outbound-queue.processor.ts:1160` | `ChannelGatewayService.sendMessage` | si | pide permiso antes de emitir |
+| `apps/api/src/modules/channels/outbound-queue.processor.ts:545` | strict dispatch transport | si | pide permiso antes de emitir |
+| `apps/api/src/modules/channels/outbound-queue.processor.ts:968` | `ChannelGatewayService.sendMessage` | si | pide permiso antes de emitir |
+| `apps/api/src/modules/channels/outbound-queue.processor.ts:1002` | `ChannelGatewayService.sendMessage` | si | pide permiso antes de emitir |
+| `apps/api/src/modules/channels/outbound-queue.processor.ts:1158` | `ChannelGatewayService.sendMessage` | si | pide permiso antes de emitir |
 | `apps/api/src/modules/channels/whatsapp/whatsapp.adapter.ts:77` | Graph `/{phone_number_id}/messages` POST | camino | the adapter; reachable only through `ChannelGatewayService.sendMessage` or the strict transport, and every call site of both is classified above |
 | `apps/api/src/modules/channels/whatsapp/whatsapp.adapter.ts:221` | Graph `/{phone_number_id}/messages` POST | camino | the adapter; reachable only through `ChannelGatewayService.sendMessage` or the strict transport, and every call site of both is classified above |
 | `apps/api/src/modules/channels/whatsapp/whatsapp.adapter.ts:253` | Graph `/{phone_number_id}/messages` POST | camino | the adapter; reachable only through `ChannelGatewayService.sendMessage` or the strict transport, and every call site of both is classified above |
@@ -289,7 +295,7 @@ buscar una llamada a la autoridad economica en el codigo del archivo.
 | Archivo:linea | Metodo | Carril | Termina en | Admision |
 |---|---|---|---|---|
 | `modules/agent-console/agent-console.service.ts:748` | `(top level)` | `inline` | `modules/agent-console/agent-console.service.ts` | si |
-| `modules/agent-console/agent-console.service.ts:886` | `replyThroughOutbox` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
+| `modules/agent-console/agent-console.service.ts:880` | `replyThroughOutbox` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/appointments/appointment-notifications.service.ts:667` | `dispatchNotice` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/appointments/appointment-payment.listener.ts:89` | `onPaid` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/appointments/appointment-payment.listener.ts:107` | `onPaid` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
@@ -309,6 +315,7 @@ buscar una llamada a la autoridad economica en el codigo del archivo.
 | `modules/conversations/conversations.service.ts:6072` | `sendCollectedFlow` | `outbound_queue` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/conversations/conversations.service.ts:6116` | `dispatchReplyThroughOutbox` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/conversations/conversations.service.ts:6161` | `dispatchReplyThroughOutbox` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
+| `modules/conversations/payment-outcome-notifier.service.ts:147` | `notifyCustomer` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/conversations/tool-approval-effects.service.ts:37` | `schedule` | `approved_effect` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/education/education-enrollment-commands.ts:166` | `promote` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/education/education-enrollment-commands.ts:171` | `promote` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
@@ -383,7 +390,6 @@ esperada y su clasificación queda **fuera del alcance de este generador**.
 | `offboarding.external_revocation` | `inline` | `live` | `modules/offboarding/offboarding.service.ts` |
 | `ops.coupon_alerts` | `inline` | `internal_only` | `modules/health/coupon-alert.listener.ts` |
 | `ops.platform_alerts` | `inline` | `internal_only` | `modules/health/platform-monitor.service.ts` |
-| `payments.outcome_notice` | `outbound_queue` | `live` | `modules/conversations/payment-outcome-notifier.service.ts` |
 | `payments.tenant_payment_link` | `inline` | `live` | `modules/tenant-payments/tenant-payments.service.ts` |
 | `public_api.webhook_subscriptions` | `inline` | `live` | `modules/public-api/webhook-subscription.service.ts` |
 | `reviews.gbp_reply` | `inline` | `live` | `modules/reviews/reviews.service.ts` |

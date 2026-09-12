@@ -4,15 +4,23 @@
     "approvedMcpRead": {
       "allowed": false,
       "result": {
-        "error": "tool_controls_incomplete",
-        "message": "La acción no tiene todos los controles de seguridad requeridos.",
+        "error": "opaque_tool_not_approved",
+        "message": "La herramienta externa no tiene controles revisados y no puede ejecutarse.",
         "shouldHandoff": true,
         "controlBlocked": true
       }
     },
     "fullClassWaitlist": {
-      "error": "Class is full",
-      "queryCount": 1
+      "id": "33333333-3333-4333-8333-333333333333",
+      "class_id": "11111111-1111-4111-8111-111111111111",
+      "member_id": "22222222-2222-4222-8222-222222222222",
+      "contact_id": "22222222-2222-4222-8222-222222222222",
+      "credits_used": 1,
+      "status": "waitlist",
+      "waitlisted": true,
+      "waitlistPosition": 1,
+      "creditBalance": 3,
+      "persistedBookings": 1
     },
     "appointmentDeposit": {
       "configuredPolicy": {
@@ -25,39 +33,58 @@
       },
       "result": {
         "success": true,
+        "operationStatus": "awaiting_payment",
         "appointment": {
           "id": "33333333-3333-4333-8333-333333333333",
           "service": "Consulta con anticipo",
           "date": "2026-09-08",
           "time": "10:00",
-          "status": "confirmed",
-          "customerName": "Audit fixture"
+          "status": "pending_payment",
+          "customerName": "Audit fixture",
+          "awaitingPayment": true,
+          "amountDueToConfirm": 30000,
+          "currency": "COP",
+          "holdExpiresAt": "2026-09-08T15:20:00.000Z",
+          "payableReference": "appointment:33333333-3333-4333-8333-333333333333"
         }
       },
-      "insertHasConfirmedLiteral": true,
-      "insertHasAmountDue": false,
-      "insertHasHoldExpiresAt": false,
-      "returnedPayableReference": null
+      "commandReceivedReviewedTerms": true,
+      "commandSuppressedExternalEffects": true,
+      "returnedPayableReference": "appointment:33333333-3333-4333-8333-333333333333"
     },
     "enrollmentCancellationFailure": {
       "firstCancellation": {
         "error": "isolated_fixture_capacity_write_failure"
       },
+      "afterFailedCancellation": {
+        "enrollment": {
+          "id": "33333333-3333-4333-8333-333333333333",
+          "contact_id": "22222222-2222-4222-8222-222222222222",
+          "status": "enrolled",
+          "cohort_id": "11111111-1111-4111-8111-111111111111"
+        },
+        "seats": 0,
+        "cohortStatus": "full"
+      },
       "retryCancellation": {
-        "error": "Cannot cancel an enrollment in \"dropped\" status."
+        "success": true,
+        "enrollmentId": "33333333-3333-4333-8333-333333333333",
+        "status": "dropped",
+        "seatReleased": true
       },
       "finalStatus": "dropped",
-      "seatReturnAttempts": 1,
-      "capacityRestored": false
+      "seatReturnAttempts": 2,
+      "capacityRestored": true
     },
     "retrievalDependencyLoss": {
       "query": "quiero cancelar mi clase de yoga gimnasios idle",
-      "candidateCount": 31,
+      "candidateCount": 35,
       "selected": [
         "create_appointment",
         "cancel_appointment",
         "reschedule_appointment",
         "place_catalog_order",
+        "cancel_catalog_order",
         "record_contact_consent",
         "book_class",
         "freeze_membership",
@@ -66,10 +93,18 @@
         "list_services",
         "search_faqs",
         "get_policy",
-        "search_knowledge_base"
+        "search_knowledge_base",
+        "check_availability",
+        "list_customer_appointments",
+        "get_appointment_details",
+        "search_products",
+        "get_product",
+        "check_stock",
+        "get_my_membership",
+        "get_my_class_bookings"
       ],
       "bookClassPresent": true,
-      "requiredMembershipReaderPresent": false
+      "requiredMembershipReaderPresent": true
     }
   }
 }

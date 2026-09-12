@@ -5,12 +5,15 @@
 require('ts-node').register({ project: 'apps/api/tsconfig.json', transpileOnly: true });
 const fs = require('node:fs');
 const path = require('node:path');
+const assert = require('node:assert/strict');
 const root = path.resolve(__dirname, '../../..');
 const api = (name) => require(path.join(root, 'apps/api/src', name));
 const { AIToolExecutorService } = api('modules/conversations/ai-tool-executor.service');
 const { ToolExecutionControlService } = api('modules/conversations/tool-execution-control.service');
 const { GymsService } = api('modules/gyms/gyms.service');
+const { EducationService } = api('modules/education/education.service');
 const { resolvePaymentPolicy } = api('common/utils/payment-policy.util');
+const { appointmentServiceTerms } = api('modules/appointments/appointment-service-terms');
 const { ToolRetrievalService } = api('modules/conversations/tool-retrieval.service');
 const { staticToolsForAgentConfig } = api('modules/conversations/agent-tool-registry');
 const { isConfirmableWriteTool } = api('modules/conversations/tool-policy-registry');
@@ -37,22 +40,39 @@ async function main() {
     },
   });
 
-  // Public schema says full classes enter the waitlist, but bookClass rejects
-  // before reaching its waitlist branch when the initial read is already full.
+  // A full class enters a durable waitlist without spending a member credit.
+  // This used to reject before reaching the waitlist branch.
   const gym = Object.create(GymsService.prototype);
   let gymQueries = 0;
-  gym.prisma = { executeInTenantSchema: async () => {
+  const gymMember = { id: contactId, contact_id: contactId, status: 'active', class_credits_remaining: 3 };
+  const gymBookings = [];
+  const gymQuery = async (sql, params = []) => {
     gymQueries += 1;
-    return [{ id: serviceId, available_spots: 0, is_cancelled: false }];
-  } };
+    if (sql.includes('pg_advisory_xact_lock') || sql.includes('to_regclass') || sql.startsWith('CREATE ')) return [];
+    if (sql.startsWith('SELECT * FROM fitness_classes')) return [{ id: serviceId, available_spots: 0, is_cancelled: false, scheduled_at: '2099-01-01', credits_required: 1 }];
+    if (sql.startsWith('SELECT * FROM members')) return [{ ...gymMember }];
+    if (sql.startsWith('SELECT * FROM class_bookings WHERE class_id')) return [];
+    if (sql.startsWith('INSERT INTO class_bookings')) {
+      const booking = { id: appointmentId, class_id: params[0], member_id: params[1], contact_id: params[2], credits_used: params[3], status: params[4] };
+      gymBookings.push(booking);
+      return [{ ...booking }];
+    }
+    if (sql.startsWith('SELECT COUNT')) return [{ n: 1 }];
+    return [];
+  };
+  gym.prisma = { transactionInTenantSchema: async (_, callback) => callback(gymQuery) };
   try {
     evidence.checks.fullClassWaitlist = await gym.bookClass('fixture', serviceId, contactId);
+    evidence.checks.fullClassWaitlist.creditBalance = gymMember.class_credits_remaining;
+    evidence.checks.fullClassWaitlist.persistedBookings = gymBookings.length;
   } catch (error) {
     evidence.checks.fullClassWaitlist = { error: error.message, queryCount: gymQueries };
   }
 
-  // Appointment handler receives a genuine configured payment mode. Its
-  // capacity helper reads the same policy but the handler ignores the result.
+  // The executor must pass the exact reviewed terms to the appointment command
+  // and report the command's pending-payment state without upgrading it to a
+  // confirmed booking. The command is the dependency fixture; the orchestration
+  // below is the production AIToolExecutorService method.
   const executor = Object.create(AIToolExecutorService.prototype);
   const service = {
     id: serviceId, name: 'Consulta con anticipo', is_active: true,
@@ -60,16 +80,12 @@ async function main() {
     location_type: 'in_person', payment_policy: 'deposit', deposit_percent: 30,
     max_concurrent: 1,
   };
-  let appointmentInsert = '';
+  let appointmentCommand;
   const query = async (sql, params = []) => {
     if (sql.includes('SELECT id FROM contacts')) return [{ id: contactId }];
     if (sql.includes('FROM opportunities')) return [];
     if (sql.includes('FROM services')) return [service];
     if (sql.includes('COUNT(*)')) return [{ occupied: 0 }];
-    if (sql.includes('INSERT INTO appointments')) {
-      appointmentInsert = sql;
-      return [{ id: appointmentId, status: 'confirmed' }];
-    }
     return [];
   };
   executor.logger = silentLogger;
@@ -82,39 +98,77 @@ async function main() {
   executor.resolveAppointmentSubject = async () => ({ suggestedStaffId: null, labels: [], metadata: {} });
   executor.acquireSlotLock = async () => ({ key: 'fixture', token: 'fixture' });
   executor.redis = { releaseLockToken: async () => {} };
+  executor.appointmentsService = { create: async (...call) => {
+    appointmentCommand = call;
+    return {
+      id: appointmentId,
+      serviceName: service.name,
+      status: 'pending_payment',
+      metadata: { serviceTerms: appointmentServiceTerms(service) },
+      awaitingPayment: true,
+      amountDueToConfirm: 30000,
+      paymentChoice: undefined,
+      currency: 'COP',
+      paymentStatus: 'pending',
+      holdExpiresAt: '2026-09-08T15:20:00.000Z',
+    };
+  } };
   // Direct handler with evalMode=true suppresses notification/outbox effects;
   // SQL status/amount/hold behavior is the same as its live branch.
   const appointment = await executor.createAppointment('fixture', serviceId, contactId, {
     serviceId, date: '2026-09-08', time: '10:00', customerName: 'Audit fixture',
+    appointmentTerms: appointmentServiceTerms(service),
   }, undefined, true);
   evidence.checks.appointmentDeposit = {
     configuredPolicy: resolvePaymentPolicy(service, service.price),
     result: appointment,
-    insertHasConfirmedLiteral: appointmentInsert.includes("'confirmed'"),
-    insertHasAmountDue: appointmentInsert.includes('amount_due'),
-    insertHasHoldExpiresAt: appointmentInsert.includes('hold_expires_at'),
+    commandReceivedReviewedTerms: JSON.stringify(appointmentCommand?.[2]?.expectedServiceTerms)
+      === JSON.stringify(appointmentServiceTerms(service)),
+    commandSuppressedExternalEffects: appointmentCommand?.[2]?.suppressEffects === true,
     returnedPayableReference: appointment?.appointment?.payableReference ?? null,
   };
 
-  // Failure after enrollment status is committed but before capacity return:
-  // next retry sees dropped and cannot repair the lost seat.
-  const educationExecutor = Object.create(AIToolExecutorService.prototype);
-  const enrollment = { id: appointmentId, contact_id: contactId, status: 'enrolled', cohort_id: serviceId, notes: null };
+  // Enrollment cancellation and seat restoration are one transaction. A
+  // capacity failure must roll the status back so the retry can finish once.
+  let educationState = {
+    enrollment: { id: appointmentId, contact_id: contactId, status: 'enrolled', cohort_id: serviceId },
+    seats: 0,
+    cohortStatus: 'full',
+  };
+  let failCapacity = true;
   let seatReturnAttempts = 0;
-  educationExecutor.prisma = { $queryRawUnsafe: async (sql) => {
-    if (sql.includes('SELECT')) return [{ ...enrollment }];
-    seatReturnAttempts += 1;
-    throw new Error('isolated_fixture_capacity_write_failure');
-  } };
-  educationExecutor.educationService = { updateEnrollment: async (_, __, update) => {
-    Object.assign(enrollment, update);
-    return { ...enrollment };
-  } };
-  const firstCancellation = await educationExecutor.cancelEnrollment('fixture', contactId, appointmentId, 'Retiro');
-  const retryCancellation = await educationExecutor.cancelEnrollment('fixture', contactId, appointmentId, 'Retiro');
+  const educationQuery = async (sql) => {
+    if (sql.includes('pg_advisory_xact_lock') || sql.includes('to_regclass') || sql.startsWith('CREATE ') || sql.includes('FROM courses')) return [];
+    if (sql.includes('SELECT * FROM course_cohorts')) return [{ id: serviceId, available_seats: educationState.seats, status: educationState.cohortStatus, starts_at: '2099-01-01' }];
+    if (sql.includes('SELECT')) return [{ ...educationState.enrollment }];
+    if (sql.includes('UPDATE enrollments')) { educationState.enrollment.status = 'dropped'; return []; }
+    if (sql.includes('UPDATE course_cohorts')) {
+      seatReturnAttempts += 1;
+      if (failCapacity) throw new Error('isolated_fixture_capacity_write_failure');
+      educationState.seats += 1;
+      educationState.cohortStatus = 'open';
+      return [{ id: serviceId }];
+    }
+    throw new Error(`unexpected education SQL: ${sql}`);
+  };
+  const education = new EducationService({ transactionInTenantSchema: async (_, callback) => {
+    const snapshot = structuredClone(educationState);
+    try { return await callback(educationQuery); }
+    catch (error) { educationState = snapshot; throw error; }
+  } });
+  let firstCancellation;
+  try { firstCancellation = await education.cancelEnrollment('tenant_fixture', appointmentId, { contactId, reason: 'Retiro' }); }
+  catch (error) { firstCancellation = { error: error.message }; }
+  const afterFailedCancellation = structuredClone(educationState);
+  failCapacity = false;
+  const retryCancellation = await education.cancelEnrollment('tenant_fixture', appointmentId, { contactId, reason: 'Retiro' });
   evidence.checks.enrollmentCancellationFailure = {
-    firstCancellation, retryCancellation, finalStatus: enrollment.status,
-    seatReturnAttempts, capacityRestored: false,
+    firstCancellation,
+    afterFailedCancellation,
+    retryCancellation,
+    finalStatus: educationState.enrollment.status,
+    seatReturnAttempts,
+    capacityRestored: educationState.seats === 1,
   };
 
   // Actual retrieval with a plausible multi-capability gym candidate set.
@@ -131,6 +185,19 @@ async function main() {
     bookClassPresent: selected.includes('book_class'),
     requiredMembershipReaderPresent: selected.includes('get_my_membership'),
   };
+
+  assert.equal(evidence.checks.approvedMcpRead.allowed, false, 'opaque MCP reads must remain blocked');
+  assert.equal(evidence.checks.fullClassWaitlist.status, 'waitlist');
+  assert.equal(evidence.checks.fullClassWaitlist.creditBalance, 3, 'waitlisting must not consume credit');
+  assert.equal(evidence.checks.fullClassWaitlist.persistedBookings, 1);
+  assert.equal(evidence.checks.appointmentDeposit.result.operationStatus, 'awaiting_payment');
+  assert.equal(evidence.checks.appointmentDeposit.commandReceivedReviewedTerms, true);
+  assert.ok(evidence.checks.appointmentDeposit.returnedPayableReference, 'pending payment needs a payable reference');
+  assert.equal(evidence.checks.enrollmentCancellationFailure.afterFailedCancellation.enrollment.status, 'enrolled');
+  assert.equal(evidence.checks.enrollmentCancellationFailure.afterFailedCancellation.seats, 0);
+  assert.equal(evidence.checks.enrollmentCancellationFailure.retryCancellation.success, true);
+  assert.equal(evidence.checks.enrollmentCancellationFailure.capacityRestored, true);
+  assert.equal(evidence.checks.retrievalDependencyLoss.requiredMembershipReaderPresent, true);
 
   const output = path.join(__dirname, 'agent-tool-competence-evidence.json');
   fs.writeFileSync(output, JSON.stringify(evidence, null, 2) + '\n');

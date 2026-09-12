@@ -132,19 +132,23 @@ export class ChannelManagementController {
         // lo contaba como conectado y esta respuesta no: la tarjeta de puesta en
         // marcha pedía "conectá un canal" a un negocio que ya recibía mensajes
         // por el widget, con el aviso de calidad diciendo lo contrario al lado.
+        let widgetLookupAvailable = true;
         const widgets = await this.prisma.$queryRawUnsafe(
             `SELECT widget_id AS account_id, name
                FROM public.widget_configs
               WHERE tenant_id = $1::uuid AND is_active = true`,
             tenantId,
-        ).catch(() => [] as any[]) as Array<{ account_id: string; name: string | null }>;
+        ).catch(() => {
+            widgetLookupAvailable = false;
+            return [] as any[];
+        }) as Array<{ account_id: string; name: string | null }>;
 
         // Fetch agent assignments from tenant schema. Resolution is per-connection:
         // an exact channel_binding ("type:accountId") wins over the type-level channel.
         const byType: Record<string, { id: string; name: string }> = {};
         const byBinding: Record<string, { id: string; name: string }> = {};
-        const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } })
-            .catch(() => null);
+        let assignmentLookupAvailable = true;
+        const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
         try {
             if (tenant?.schemaName) {
                 // Self-heal: existing tenants whose agent_personas predates multi-account
@@ -173,6 +177,7 @@ export class ChannelManagementController {
             }
         } catch (e: any) {
             if (!e.message?.includes('does not exist') && !e.message?.includes('relation')) {
+                assignmentLookupAvailable = false;
                 this.logger.warn(`Failed to load agent assignments: ${e.message}`);
             }
         }
@@ -251,7 +256,8 @@ export class ChannelManagementController {
                     isActive: a.isActive,
                     metadata: a.metadata,
                     assignedAgent: assigned,
-                    needsAssignment: !assigned,
+                    assignmentStatus: assigned ? 'assigned' : assignmentLookupAvailable ? 'unassigned' : 'unknown',
+                    needsAssignment: assignmentLookupAvailable && !assigned,
                     credentialStatus: status,
                     credentialExpiresAt: expiresAt,
                     credentialDaysToExpiry: expiresAt
@@ -271,7 +277,8 @@ export class ChannelManagementController {
                     isActive: true,
                     metadata: null,
                     assignedAgent: assigned,
-                    needsAssignment: !assigned,
+                    assignmentStatus: assigned ? 'assigned' : assignmentLookupAvailable ? 'unassigned' : 'unknown',
+                    needsAssignment: assignmentLookupAvailable && !assigned,
                     // El widget se sirve desde la propia plataforma: no depende
                     // de un token de Meta que pueda vencer o ser revocado.
                     credentialStatus: 'ok' as const,
@@ -280,6 +287,10 @@ export class ChannelManagementController {
                     needsReauth: false,
                 };
             })),
+            degraded: [
+                ...(!widgetLookupAvailable ? ['web_widget'] : []),
+                ...(!assignmentLookupAvailable ? ['agent_assignments'] : []),
+            ],
         };
     }
 

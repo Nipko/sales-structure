@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "revision": "8e16a64adbcedb9ab5a2328481e2059f581d8dc7",
-  "generatedAt": "2026-09-12T20:24:57.196Z",
+  "revision": "b30c44170aadb4ecc9e7e93a95a69040924392b3",
+  "generatedAt": "2026-09-12T22:35:21.001Z",
   "finished": false,
   "counts": {
     "aceptada": 18,
@@ -39,11 +39,10 @@
     "routedOperations": 8,
     "resolutionDefects": [],
     "egressCallSites": 32,
-    "chargeableCallSites": 28,
+    "chargeableCallSites": 27,
     "chargeableOutsideGate": 0,
-    "chargeableOffDurableLane": 7,
+    "chargeableOffDurableLane": 6,
     "chargeableOffDurableByLane": {
-      "inline": 1,
       "outbound_queue": 6
     },
     "censusArtefactStale": false,
@@ -443,14 +442,14 @@
       "status": "aceptada",
       "provenance": "derived",
       "artefact": null,
-      "evidence": "Censo derivado del árbol: 32 call sites, 28 cobrables, 0 fuera de la autoridad económica. El inventario de efectos declara 65 productores y 45 con al menos una propiedad en `none`. La condición es que el artefacto versionado se regenere desde el mismo HEAD, no que alguien lo haya leído.",
+      "evidence": "Censo derivado del árbol: 32 call sites, 27 cobrables, 0 fuera de la autoridad económica. El inventario de efectos declara 65 productores y 45 con al menos una propiedad en `none`. La condición es que el artefacto versionado se regenere desde el mismo HEAD, no que alguien lo haya leído.",
       "commits": [],
       "deferral": null
     },
     {
       "id": "M1",
-      "open": 4,
-      "openLabel": "2 productores de mensaje al cliente cobrables por Meta sin autoridad y 2 sin idempotencia, sobre 18 productores de esa clase",
+      "open": 2,
+      "openLabel": "1 productores de mensaje al cliente cobrables por Meta sin autoridad y 1 sin idempotencia, sobre 17 productores de esa clase",
       "gates": [
         1,
         4
@@ -504,8 +503,8 @@
     },
     {
       "id": "M5",
-      "open": 2,
-      "openLabel": "2 productores de mensaje al cliente cobrables por Meta sin borrado alcanzable, sobre 18 de esa clase",
+      "open": 1,
+      "openLabel": "1 productores de mensaje al cliente cobrables por Meta sin borrado alcanzable, sobre 17 de esa clase",
       "gates": [
         1,
         6
@@ -535,13 +534,13 @@
     },
     {
       "id": "R0",
-      "open": 7,
-      "openLabel": "7 productores cobrables fuera del carril durable (1 en `inline`, 6 en `outbound_queue`)",
+      "open": 6,
+      "openLabel": "6 productores cobrables fuera del carril durable (6 en `outbound_queue`)",
       "gates": [],
       "status": "abierta",
       "provenance": "derived",
       "artefact": null,
-      "evidence": "De 28 call sites cobrables, 7 usan un carril que no escribe fila antes del POST — Redis es el registro, o no hay registro. Un productor ahí no puede contestar \"¿esto salió?\" después de un reinicio. **Este número NO es el criterio de R6**, que pregunta por la autorización aplicable y la mide con los productores fuera del gate económico: el carril legado sí pasa por la admisión, así que R6 está en cero y esta fila no. Lo que falta acá es la FILA antes del POST, no el permiso. Ninguno de los siete carece del camino durable: seis son el repliegue de `conversations.service.ts` cuando el interruptor de despliegue está apagado — y con el interruptor encendido son inalcanzables, porque la propiedad del lote se decide ANTES de consultarlo y el bloque legado entero cuelga de que el carril durable haya dicho no. El séptimo es la consola humana: desde este HEAD entrega exactamente un efecto por el transporte estricto y distingue aceptado, rechazado y desconocido, así que lo que le falta es la fila, no el resultado. Por eso el número no baja escribiendo código: baja encendiendo un interruptor —decisión de piloto del dueño.",
+      "evidence": "De 27 call sites cobrables, 6 usan un carril que no escribe fila antes del POST — Redis es el registro, o no hay registro. Un productor ahí no puede contestar \"¿esto salió?\" después de un reinicio. **Este número NO es el criterio de R6**, que pregunta por la autorización aplicable y la mide con los productores fuera del gate económico: el carril legado sí pasa por la admisión, así que R6 está en cero y esta fila no. Lo que falta acá es la FILA antes del POST, no el permiso. Ninguno de los siete carece del camino durable: seis son el repliegue de `conversations.service.ts` cuando el interruptor de despliegue está apagado — y con el interruptor encendido son inalcanzables, porque la propiedad del lote se decide ANTES de consultarlo y el bloque legado entero cuelga de que el carril durable haya dicho no. El séptimo es la consola humana: desde este HEAD entrega exactamente un efecto por el transporte estricto y distingue aceptado, rechazado y desconocido, así que lo que le falta es la fila, no el resultado. Por eso el número no baja escribiendo código: baja encendiendo un interruptor —decisión de piloto del dueño.",
       "commits": [],
       "deferral": null
     },
@@ -585,8 +584,8 @@
     },
     {
       "id": "R4",
-      "open": 7,
-      "openLabel": "7 productores todavía pueden emitir sin fila durable (1 en `inline`, 6 en `outbound_queue`)",
+      "open": 6,
+      "openLabel": "6 productores todavía pueden emitir sin fila durable (6 en `outbound_queue`)",
       "gates": [],
       "status": "abierta",
       "provenance": "derived",
@@ -619,7 +618,7 @@
       "status": "bloqueada",
       "provenance": "derived",
       "artefact": null,
-      "evidence": "El criterio principal de R6, textual: **ningún productor de WhatsApp puede generar una entrega fuera de la autorización aplicable**. Esa autorización es la autoridad económica transaccional, y el censo derivado del árbol cuenta 0 productores cobrables que llegan a un POST sin pasarla — incluido el carril legado de BullMQ, que sí la pasa. Lo verifica una mutación que borra el gate del sink real, no esta frase. **Este contador sumó hasta este HEAD los 7 productores fuera del carril durable (1 en `inline`, 6 en `outbound_queue`), que es otra propiedad**: no hay fila antes del POST, así que nadie puede contestar \"¿esto salió?\" tras un reinicio. No desaparece: es exactamente lo que mantienen abiertas R0 y R4. Con la condición local cumplida esta fila queda bloqueada por el modo observación, el canario con techo explícito y la autorización de activar `enforce`.",
+      "evidence": "El criterio principal de R6, textual: **ningún productor de WhatsApp puede generar una entrega fuera de la autorización aplicable**. Esa autorización es la autoridad económica transaccional, y el censo derivado del árbol cuenta 0 productores cobrables que llegan a un POST sin pasarla — incluido el carril legado de BullMQ, que sí la pasa. Lo verifica una mutación que borra el gate del sink real, no esta frase. **Este contador sumó hasta este HEAD los 6 productores fuera del carril durable (6 en `outbound_queue`), que es otra propiedad**: no hay fila antes del POST, así que nadie puede contestar \"¿esto salió?\" tras un reinicio. No desaparece: es exactamente lo que mantienen abiertas R0 y R4. Con la condición local cumplida esta fila queda bloqueada por el modo observación, el canario con techo explícito y la autorización de activar `enforce`.",
       "commits": [],
       "deferral": null
     },

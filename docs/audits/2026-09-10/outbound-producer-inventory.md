@@ -21,7 +21,7 @@ efectos puede llegar a producir **una sola respuesta lógica** en cada uno.
 | De ellos, presencia (no cobra Meta) | **1** |
 | Archivos productores distintos | **17** |
 | Sitios que **no** pasan por un carril durable | **9** |
-| Sitios que pueden alcanzar WhatsApp (literal o dinámico) | **29** |
+| Sitios que pueden alcanzar WhatsApp (literal o dinámico) | **28** |
 | Sitios donde **una respuesta puede volverse varios cargos** | **11** |
 
 ### Los cinco números que importan
@@ -34,22 +34,21 @@ objetivo: **cero productores cobrables fuera del carril durable**.
 | | |
 |---|---|
 | Sitios de llamada, en total | **32** |
-| De ellos, capaces de alcanzar WhatsApp | **30** |
-| De ellos, **cobrables por Meta** | **29** |
-| De ellos, dentro de la frontera económica | **29** |
+| De ellos, capaces de alcanzar WhatsApp | **29** |
+| De ellos, **cobrables por Meta** | **28** |
+| De ellos, dentro de la frontera económica | **28** |
 | De ellos, dentro del **carril durable** | **22** |
 
 | | |
 |---|---|
 | Cobrables **fuera de la frontera económica** | **0** |
-| Cobrables **fuera del carril durable** | **7** |
-| Salidas al proveedor **sin admisión ni camino declarado** | **0** |
+| Cobrables **fuera del carril durable** | **6** |
+| Salidas al proveedor **sin admisión ni camino declarado** | **1** |
 
 Los que todavía están fuera del carril durable:
 
 | Archivo:línea | Método | Carril |
 |---|---|---|
-| `modules/agent-console/agent-console.service.ts:748` | `(top level)` | `inline` |
 | `modules/conversations/conversations.service.ts:2106` | `sendAfterHoursMessage` | `outbound_queue` |
 | `modules/conversations/conversations.service.ts:2379` | `sendResponse` | `outbound_queue` |
 | `modules/conversations/conversations.service.ts:2408` | `sendPaymentLink` | `outbound_queue` |
@@ -77,7 +76,7 @@ llevar a la admisión económica.
 
 | Archivo:línea | Método | Carril | Canales | Efectos por respuesta |
 |---|---|---|---|---|
-| `modules/agent-console/agent-console.service.ts:748` | `(top level)` | `inline` | dynamic | 1 (read) |
+| `modules/agent-console/agent-console.service.ts:1200` | `sendUnmeteredLegacyMessage` | `inline` | email, sms | 1 (read) |
 | `modules/channels/channel-management.controller.ts:519` | `testTelegram` | `inline` | telegram | 1 (read) |
 | `modules/channels/channel-management.controller.ts:1483` | `testSms` | `inline` | sms | 1 (read) |
 | `modules/conversations/conversations.service.ts:2106` | `sendAfterHoursMessage` | `outbound_queue` | dynamic | 1 (read) |
@@ -102,7 +101,7 @@ reparto**, que es donde una sola respuesta lógica se multiplica.
 | `modules/conversations/conversations.service.ts:2379` | `sendResponse` | `outbound_queue` | **n(bubbles)** | one effect per text bubble (fan-out at line 1541) |
 | `modules/conversations/conversations.service.ts:2408` | `sendPaymentLink` | `outbound_queue` | **n(links)** | one effect per canonical link (fan-out at line 1558) |
 | `modules/conversations/conversations.service.ts:2431` | `sendMedia` | `outbound_queue` | **n(media)** | one effect per attachment (fan-out at line 1565) |
-| `modules/conversations/conversations.service.ts:6161` | `dispatchReplyThroughOutbox` | `dispatch_outbox` | **n(items)** | one committed row per item; the whole batch is one answer |
+| `modules/conversations/conversations.service.ts:6166` | `dispatchReplyThroughOutbox` | `dispatch_outbox` | **n(items)** | one committed row per item; the whole batch is one answer |
 | `modules/conversations/tool-approval-effects.service.ts:37` | `schedule` | `approved_effect` | **n** | one effect per entry of `rows` (loop at the send) |
 | `modules/education/education-enrollment-commands.ts:166` | `promote` | `operational_notice` | **n** | one effect per entry of `candidates` (loop at the send) |
 | `modules/education/education-enrollment-commands.ts:171` | `promote` | `operational_notice` | **n** | one effect per entry of `candidates` (loop at the send) |
@@ -123,8 +122,8 @@ mensajes entregados, y un indicador de "escribiendo" no lo es.
 
 | Línea | Método | Primitiva | Carril | Disparador | Canales | Efectos por respuesta | Base |
 |---:|---|---|---|---|---|---|---|
-| 748 | `(top level)` | `channelGateway.sendMessage` | `inline` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
-| 880 | `replyThroughOutbox` | `dispatch.send` | `dispatch_outbox` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
+| 893 | `replyThroughOutbox` | `dispatch.send` | `dispatch_outbox` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
+| 1200 | `sendUnmeteredLegacyMessage` | `channelGateway.sendMessage` | `inline` | called by another service | email, sms | 1 | one effect per invocation; no loop reaches this send |
 
 ### `apps/api/src/modules/appointments/appointment-notifications.service.ts`
 
@@ -191,7 +190,7 @@ mensajes entregados, y un indicador de "escribiendo" no lo es.
 | 6046 | `resumeOwnedDispatchBatch` | `outboundQueue.enqueueDispatch` | `dispatch_outbox` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
 | 6072 | `sendCollectedFlow` | `outboundQueue.enqueue` | `outbound_queue` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
 | 6116 | `dispatchReplyThroughOutbox` | `outboundQueue.enqueueDispatch` | `dispatch_outbox` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
-| 6161 | `dispatchReplyThroughOutbox` | `dispatchOutbox.prepare` | `dispatch_outbox` | called by another service | dynamic | n(items) | one committed row per item; the whole batch is one answer |
+| 6166 | `dispatchReplyThroughOutbox` | `dispatchOutbox.prepare` | `dispatch_outbox` | called by another service | dynamic | n(items) | one committed row per item; the whole batch is one answer |
 
 ### `apps/api/src/modules/conversations/payment-outcome-notifier.service.ts`
 
@@ -267,7 +266,7 @@ buscar una llamada a la autoridad economica en el codigo del archivo.
 
 | Archivo:linea | Que sale | Admision | Nota |
 |---|---|---|---|
-| `apps/api/src/modules/agent-console/agent-console.service.ts:748` | `ChannelGatewayService.sendMessage` | si | pide permiso antes de emitir |
+| `apps/api/src/modules/agent-console/agent-console.service.ts:1200` | `ChannelGatewayService.sendMessage` | **no** | sin admision y sin camino declarado |
 | `apps/api/src/modules/channels/instagram/instagram.adapter.ts:55` | Graph `/{phone_number_id}/messages` POST | camino | Instagram is not billed per message by its provider |
 | `apps/api/src/modules/channels/instagram/instagram.adapter.ts:169` | Graph `/{phone_number_id}/messages` POST | camino | Instagram is not billed per message by its provider |
 | `apps/api/src/modules/channels/instagram/instagram.adapter.ts:185` | Graph `/{phone_number_id}/messages` POST | camino | Instagram is not billed per message by its provider |
@@ -294,8 +293,7 @@ buscar una llamada a la autoridad economica en el codigo del archivo.
 
 | Archivo:linea | Metodo | Carril | Termina en | Admision |
 |---|---|---|---|---|
-| `modules/agent-console/agent-console.service.ts:748` | `(top level)` | `inline` | `modules/agent-console/agent-console.service.ts` | si |
-| `modules/agent-console/agent-console.service.ts:880` | `replyThroughOutbox` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
+| `modules/agent-console/agent-console.service.ts:893` | `replyThroughOutbox` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/appointments/appointment-notifications.service.ts:667` | `dispatchNotice` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/appointments/appointment-payment.listener.ts:89` | `onPaid` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/appointments/appointment-payment.listener.ts:107` | `onPaid` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
@@ -314,7 +312,7 @@ buscar una llamada a la autoridad economica en el codigo del archivo.
 | `modules/conversations/conversations.service.ts:6046` | `resumeOwnedDispatchBatch` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/conversations/conversations.service.ts:6072` | `sendCollectedFlow` | `outbound_queue` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/conversations/conversations.service.ts:6116` | `dispatchReplyThroughOutbox` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
-| `modules/conversations/conversations.service.ts:6161` | `dispatchReplyThroughOutbox` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
+| `modules/conversations/conversations.service.ts:6166` | `dispatchReplyThroughOutbox` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/conversations/payment-outcome-notifier.service.ts:147` | `notifyCustomer` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/conversations/tool-approval-effects.service.ts:37` | `schedule` | `approved_effect` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/education/education-enrollment-commands.ts:166` | `promote` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |

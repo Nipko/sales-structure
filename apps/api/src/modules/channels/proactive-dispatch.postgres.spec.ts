@@ -243,6 +243,39 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
 
     // ── 7. AND THE CHECK A REPLY STILL GETS ─────────────────────────────────
 
+    it('allows two reactive effects to answer one inbound under distinct durable identities', async () => {
+        const replyToMessageId = randomUUID();
+        await sql(`INSERT INTO messages(id,conversation_id,direction,content_type,content_text,status)
+            VALUES($1::uuid,$2::uuid,'inbound','text','quiero reservar','delivered')`,
+        [replyToMessageId, conversationId]);
+        const make = (key: string, text: string) => tx(query => prepareDispatchBatch(query, schema, {
+            binding: proactive(key), items: [{ kind: 'text', payload: { text } }],
+            operationalScope: scope(), originKind: 'proactive',
+            disposition: 'reactive', replyToMessageId,
+        }));
+
+        const agentAnswer = await make(`answer:${randomUUID()}`, 'Te comparto el enlace');
+        const paymentOutcome = await make(`payment:${randomUUID()}`, 'Tu pago quedó confirmado');
+
+        expect(paymentOutcome.rows[0].id).not.toBe(agentAnswer.rows[0].id);
+        expect(paymentOutcome.rows[0]).toMatchObject({
+            originKind: 'proactive', disposition: 'reactive', replyToMessageId,
+        });
+        const stored = await sql(
+            `SELECT count(*)::int AS count FROM agent_dispatch_outbox
+              WHERE reply_to_message_id=$1::uuid AND disposition='reactive'`, [replyToMessageId]);
+        expect(stored[0].count).toBe(2);
+    });
+
+    it('refuses reactive treatment without a real inbound message on the thread', async () => {
+        await expect(tx(query => prepareDispatchBatch(query, schema, {
+            binding: proactive(`payment:${randomUUID()}`),
+            items: [{ kind: 'text', payload: { text: 'Tu pago quedó confirmado' } }],
+            operationalScope: scope(), originKind: 'proactive', disposition: 'reactive',
+            replyToMessageId: randomUUID(),
+        }))).rejects.toMatchObject({ code: 'dispatch_inbound_unavailable' });
+    });
+
     it('still demands a real inbound message for a reply', async () => {
         // The relaxation is scoped to proactive effects. A reply whose inbound
         // message does not exist is still a batch that could never be tied back

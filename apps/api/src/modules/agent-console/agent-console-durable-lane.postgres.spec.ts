@@ -64,7 +64,8 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
     };
 
     const rows = () => sql(
-        `SELECT id, origin_kind, item_kind, payload, state, channel_account_id, recipient,
+        `SELECT id, origin_kind, disposition, reply_to_message_id,
+                item_kind, payload, state, channel_account_id, recipient,
                 conversation_id, contact_id, inbound_message_id, message_id, operational_scope
            FROM agent_dispatch_outbox ORDER BY item_index`);
 
@@ -513,58 +514,38 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
         });
     });
 
-    // ── 5. WHAT THE LANE WILL NOT LET THIS REPLY SAY ABOUT ITSELF ───────────
+    // ── 5. IDENTITY AND ECONOMIC CAUSE ARE DISTINCT FACTS ──────────────────
 
-    describe('the billing classification this reply cannot carry', () => {
-        it('is recorded as proactive, which is not what it is', async () => {
-            // A console agent answering somebody who just wrote is a SERVICE
-            // reply inside the 24-hour window. It is filed as `proactive`
-            // because the lane has no way to say otherwise — see the two tests
-            // below, which are the reason.
-            await sql(`INSERT INTO messages(conversation_id, direction, content_type, content_text)
-                       VALUES($1::uuid,'inbound','text','¿hay turno?')`, [conversationId]);
+    describe('the reply identity and its billing classification', () => {
+        it('records a human answer as reactive without borrowing the inbound identity', async () => {
+            const [inbound] = await sql(
+                `INSERT INTO messages(conversation_id, direction, content_type, content_text)
+                 VALUES($1::uuid,'inbound','text','¿hay turno?') RETURNING id`, [conversationId]);
             await service().sendAgentMessage(tenantId, conversationId, await agent(), 'sí, mañana');
-            expect((await rows())[0].origin_kind).toBe('proactive');
+            expect((await rows())[0]).toMatchObject({
+                origin_kind: 'proactive',
+                disposition: 'reactive',
+                reply_to_message_id: inbound.id,
+            });
         });
 
-        it('BLOCKED: naming the customer message makes every reply to it one effect',
-            async () => {
-                // The outbox identifies a row by `(inbound_message_id,
-                // item_index)`, so the origin IS the identity. Billing a console
-                // reply correctly means naming the inbound — and then the
-                // agent's SECOND sentence is `already_present` and never sent.
-                //
-                // This is the defect that keeps the console on `proactive`. The
-                // fix belongs in the outbox: separate what CAUSED an effect from
-                // what IDENTIFIES it.
-                const [inbound] = await sql(
-                    `INSERT INTO messages(conversation_id, direction, content_type, content_text)
-                     VALUES($1::uuid,'inbound','text','¿hay turno?') RETURNING id`,
-                    [conversationId]);
-                const scope = await lane.operatorAuthority(schema, {
-                    tenantId, userId: await agent(), surface: 'agent_console',
-                    channelType: 'whatsapp', channelAccountId: NUMBER,
-                });
-                const reply = (text: string) => lane.send(tenantId, {
-                    originKey: `console:${randomUUID()}`,
-                    conversationId, contactId, channelType: 'whatsapp', channelAccountId: NUMBER,
-                    recipient: CUSTOMER, items: [{ kind: 'text', payload: { text } }],
-                    operationalScope: scope,
-                    originKind: 'inbound_reply', inboundMessageId: String(inbound.id),
-                });
-                expect((await reply('un momento')).kind).toBe('prepared');
-                // The second sentence. It is a different message to a person
-                // waiting, and the lane hands back the first one.
-                expect((await reply('listo, te agendé')).kind).toBe('already_present');
-                expect(await sql('SELECT content_text FROM messages WHERE direction = $1',
-                    ['outbound'])).toEqual([{ content_text: 'un momento' }]);
-            });
+        it('keeps two human sentences to the same inbound as two effects', async () => {
+            const [inbound] = await sql(
+                `INSERT INTO messages(conversation_id, direction, content_type, content_text)
+                 VALUES($1::uuid,'inbound','text','¿hay turno?') RETURNING id`, [conversationId]);
+            const agentId = await agent();
+            await service().sendAgentMessage(tenantId, conversationId, agentId, 'un momento');
+            await service().sendAgentMessage(tenantId, conversationId, agentId, 'listo, te agendé');
+            const committed = await rows();
+            expect(committed).toHaveLength(2);
+            expect(committed.map(row => row.reply_to_message_id))
+                .toEqual([inbound.id, inbound.id]);
+            expect(await sql(
+                `SELECT content_text FROM messages WHERE direction = 'outbound' ORDER BY created_at, id`))
+                .toEqual([{ content_text: 'un momento' }, { content_text: 'listo, te agendé' }]);
+        });
 
-        it('BLOCKED: a reply to an inbound the AI already answered is refused outright',
-            async () => {
-                // Worse than the first: the AI's own batch owns that inbound's
-                // origin, so a person replying afterwards on the same customer
-                // message gets `dispatch_batch_conflict` and sends nothing.
+        it('keeps a human answer after the AI as a separate reactive effect', async () => {
                 const [inbound] = await sql(
                     `INSERT INTO messages(conversation_id, direction, content_type, content_text)
                      VALUES($1::uuid,'inbound','text','¿hay turno?') RETURNING id`,
@@ -583,15 +564,14 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
                         { kind: 'text', payload: { text: '¿para cuándo?' } }],
                     operationalScope: scope as any,
                 });
-                const result = await lane.send(tenantId, {
-                    originKey: `console:${randomUUID()}`,
-                    conversationId, contactId, channelType: 'whatsapp', channelAccountId: NUMBER,
-                    recipient: CUSTOMER,
-                    items: [{ kind: 'text', payload: { text: 'te atiendo yo' } }],
-                    operationalScope: scope,
-                    originKind: 'inbound_reply', inboundMessageId: String(inbound.id),
+                await service().sendAgentMessage(
+                    tenantId, conversationId, await agent(), 'te atiendo yo');
+                const committed = await rows();
+                expect(committed).toHaveLength(3);
+                expect(committed.filter(row => row.origin_kind === 'proactive')).toHaveLength(1);
+                expect(committed.find(row => row.origin_kind === 'proactive')).toMatchObject({
+                    disposition: 'reactive', reply_to_message_id: inbound.id,
                 });
-                expect(result).toEqual({ kind: 'refused', reason: 'dispatch_batch_conflict' });
-            });
+        });
     });
 });

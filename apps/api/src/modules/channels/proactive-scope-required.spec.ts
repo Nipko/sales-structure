@@ -93,4 +93,34 @@ describe('the authority a proactive effect is sent under', () => {
                 kind: 'deferred', reason: expect.stringContaining('must not'),
             });
         });
+
+    it('keeps idempotent origin and reactive treatment as separate facts', async () => {
+        const prepare = jest.fn(async (_tenantId: string, _input: any) => ({
+            rows: [{ state: 'prepared', id: 'dispatch-1' }], batchId: 'batch-1',
+        }));
+        const publishBatch = jest.fn(async () => 1);
+        const dispatcher = new ProactiveDispatchService(
+            {} as any, { prepare, publishBatch } as any, {} as any,
+        );
+        const replyToMessageId = '00000000-0000-4000-8000-000000000009';
+
+        await expect(dispatcher.send(TENANT, {
+            originKey: 'payment_outcome:paid-42',
+            conversationId: '00000000-0000-4000-8000-000000000001',
+            contactId: '00000000-0000-4000-8000-000000000002',
+            channelType: 'whatsapp', channelAccountId: '15550001111',
+            recipient: '+573001112233',
+            items: [{ kind: 'text', payload: { text: 'Pago confirmado' } }],
+            operationalScope: { kind: 'agent' },
+            originKind: 'proactive', disposition: 'reactive', replyToMessageId,
+        })).resolves.toMatchObject({ kind: 'prepared' });
+
+        const handed = prepare.mock.calls[0][1];
+        expect(handed.originKind).toBe('proactive');
+        expect(handed.disposition).toBe('reactive');
+        expect(handed.replyToMessageId).toBe(replyToMessageId);
+        // Its stored identity comes from the payment operation, not from the
+        // inbound message that an earlier agent answer may already own.
+        expect(handed.binding.inboundMessageId).not.toBe(replyToMessageId);
+    });
 });

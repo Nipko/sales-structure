@@ -5269,6 +5269,10 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_dispatch_outbox" (
     -- expand-contract de dos deploys.
     inbound_message_id UUID NOT NULL,
     origin_kind TEXT NOT NULL DEFAULT 'inbound_reply',
+    -- Separados de la identidad: una confirmacion de pago tiene su propia
+    -- clave durable y a la vez responde al ultimo mensaje del cliente.
+    reply_to_message_id UUID,
+    disposition TEXT,
     channel_type TEXT NOT NULL,
     channel_account_id TEXT NOT NULL,
     recipient TEXT,
@@ -5292,6 +5296,8 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_dispatch_outbox" (
     CONSTRAINT agent_dispatch_outbox_identity UNIQUE (inbound_message_id, item_index),
     CONSTRAINT agent_dispatch_outbox_origin
         CHECK (origin_kind IN ('inbound_reply','proactive')),
+    CONSTRAINT agent_dispatch_outbox_disposition
+        CHECK (disposition IS NULL OR disposition IN ('reactive','proactive')),
     CONSTRAINT agent_dispatch_outbox_state
         CHECK (state IN ('prepared','queued','admitted','sent','stored','suppressed','failed','reconciliation_required')),
     CONSTRAINT agent_dispatch_outbox_kind

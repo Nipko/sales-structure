@@ -10,13 +10,14 @@ import { ChannelsModule } from '../channels/channels.module';
 import { PaymentOutcomeNotifierService } from '../conversations/payment-outcome-notifier.service';
 import { PushModule } from '../push/push.module';
 import { ChannelManagerModule } from '../channel-manager/channel-manager.module';
+import { PersonaModule } from '../persona/persona.module';
 
 @Module({
     // forwardRef: ChannelsModule cierra un ciclo con esta vertical. Se necesita
     // para que el avisador del pago pueda encolar el mensaje al huésped.
     // ChannelManagerModule aporta el resolutor de fuente de verdad: sin el, el
     // writer local no sabria que un alojamiento lo administra el PMS del negocio.
-    imports: [EmailTemplatesModule, forwardRef(() => ChannelsModule), PushModule, ChannelManagerModule],
+    imports: [EmailTemplatesModule, forwardRef(() => ChannelsModule), PersonaModule, PushModule, ChannelManagerModule],
     controllers: [VacationRentalController, IcalFeedController, IcalExportPublicController],
     // El listener del cobro vive acá y no en tenant-payments: cada vertical
     // sabe qué significa "confirmar" lo suyo, y así el módulo de cobros no

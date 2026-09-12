@@ -1172,19 +1172,19 @@ producer({
         id: 'payments.outcome_notice',
         effect: 'The message telling a customer their payment went through, sent on the provider '
             + 'webhook — or an email instead when the WhatsApp 24h window has closed',
-        lane: 'outbound_queue',
+        lane: 'dispatch_outbox',
         status: 'live',
         derivation: 'census',
         source: 'modules/conversations/payment-outcome-notifier.service.ts',
         symbol: 'notifyCustomer',
-        egress: 'OutboundQueueService.enqueue, or EmailService.send outside the window',
+        egress: 'ProactiveDispatchService.send commits an `agent_dispatch_outbox` row with the '
+            + 'payment operation as its identity and the latest inbound as its reactive cause; '
+            + 'EmailService.send remains the non-Meta fallback outside the WhatsApp window',
         reach: {
             class: 'customer_message', audience: 'contact', personalData: true,
             channels: ['whatsapp', 'instagram', 'messenger', 'telegram', 'web_widget'],
         },
-        properties: queued(partial('a `dedupeId` is REQUIRED and derives from the payment operation, not '
-            + 'from the retry, so a provider redelivering the same event three times collapses to one '
-            + 'message. The email fallback has no such guard')),
+        properties: DISPATCH_OUTBOX_PROPERTIES,
     }),
 
     producer({

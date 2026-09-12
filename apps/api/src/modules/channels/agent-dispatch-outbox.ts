@@ -89,6 +89,8 @@ export const DISPATCH_OUTBOX_DDL: readonly string[] = Object.freeze([
         contact_id UUID,
         inbound_message_id UUID NOT NULL,
         origin_kind TEXT NOT NULL DEFAULT 'inbound_reply',
+        reply_to_message_id UUID,
+        disposition TEXT,
         channel_type TEXT NOT NULL,
         channel_account_id TEXT NOT NULL,
         recipient TEXT,
@@ -112,6 +114,8 @@ export const DISPATCH_OUTBOX_DDL: readonly string[] = Object.freeze([
         CONSTRAINT agent_dispatch_outbox_identity UNIQUE (inbound_message_id, item_index),
         CONSTRAINT agent_dispatch_outbox_origin
             CHECK (origin_kind IN ('inbound_reply','proactive')),
+        CONSTRAINT agent_dispatch_outbox_disposition
+            CHECK (disposition IS NULL OR disposition IN ('reactive','proactive')),
         CONSTRAINT agent_dispatch_outbox_state
             CHECK (state IN ('prepared','queued','admitted','sent','stored','suppressed','failed','reconciliation_required')),
         CONSTRAINT agent_dispatch_outbox_kind
@@ -199,6 +203,8 @@ export const DISPATCH_OUTBOX_DDL: readonly string[] = Object.freeze([
  * no new logic.
  */
 export type DispatchOriginKind = 'inbound_reply' | 'proactive';
+/** Economic treatment, independent from the idempotency origin. */
+export type DispatchDisposition = 'reactive' | 'proactive';
 
 export interface DispatchBinding {
     readonly conversationId: string;
@@ -234,17 +240,12 @@ export interface DispatchRow {
     /** When this row may next be admitted. PostgreSQL is the only scheduler. */
     readonly availableAt: Date;
     readonly redacted: boolean;
-    /**
-     * What caused this batch.
-     *
-     * Read from the column, never inferred from the binding. The processor used
-     * to decide `reactive` vs `proactive` from "does this row name an inbound
-     * message" — and a proactive origin also derives a UUID for that column, so
-     * every reminder and every campaign was billed as an ANSWER. Reactive
-     * traffic escapes the soft stop by design, so a ceiling meant to pause
-     * campaigns paused nothing.
-     */
+    /** How the stable id in `inbound_message_id` was obtained. */
     readonly originKind: DispatchOriginKind;
+    /** Whether a soft stop may pause it. Never inferred from effect identity. */
+    readonly disposition: DispatchDisposition;
+    /** Customer message this answers, even when a separate key identifies it. */
+    readonly replyToMessageId: string | null;
     readonly binding: DispatchBinding | null;
     readonly payload: Record<string, any> | null;
     readonly operationalScope: Record<string, any>;
@@ -273,6 +274,15 @@ function mapRow(row: any): DispatchRow {
         // Defaulted for rows written by the binary that predates the column,
         // which are all replies by construction.
         originKind: (row.origin_kind === 'proactive' ? 'proactive' : 'inbound_reply'),
+        // Rows written by the pre-separation binary have neither column. Their
+        // origin kind was also their disposition, so preserving that mapping is
+        // the only backward-compatible reading.
+        disposition: row.disposition === 'proactive' ? 'proactive'
+            : row.disposition === 'reactive' ? 'reactive'
+                : row.origin_kind === 'proactive' ? 'proactive' : 'reactive',
+        replyToMessageId: row.reply_to_message_id
+            ? String(row.reply_to_message_id)
+            : row.origin_kind === 'proactive' ? null : String(row.inbound_message_id),
         binding: redacted ? null : Object.freeze({
             conversationId: String(row.conversation_id),
             contactId: String(row.contact_id),
@@ -399,14 +409,27 @@ export async function prepareDispatchBatch(query: DispatchOutboxQuery, schema: s
     sources?: readonly { id: string; sourceContactId?: string | null }[];
     /** Defaults to `inbound_reply`, which is what every existing caller is. */
     originKind?: DispatchOriginKind;
+    /** Defaults from originKind for callers predating the separated contract. */
+    disposition?: DispatchDisposition;
+    /** Required for an explicitly reactive effect with its own origin key. */
+    replyToMessageId?: string;
 }): Promise<{ batchId: string; rows: DispatchRow[] }> {
     const originKind: DispatchOriginKind = input?.originKind === 'proactive'
         ? 'proactive' : 'inbound_reply';
+    const disposition: DispatchDisposition = input?.disposition === 'reactive'
+        ? 'reactive' : input?.disposition === 'proactive'
+            ? 'proactive' : originKind === 'proactive' ? 'proactive' : 'reactive';
+    const replyToMessageId = input?.replyToMessageId
+        ?? (originKind === 'inbound_reply' ? input?.binding?.inboundMessageId : undefined);
     if (!SCHEMA.test(schema) || !input || !validBinding(input.binding)
         || !Array.isArray(input.items) || !input.items.length || input.items.length > 32
         || input.items.some(item => !item || !DISPATCH_ITEM_KINDS.includes(item.kind)
             || !item.payload || typeof item.payload !== 'object' || Array.isArray(item.payload))
-        || !input.operationalScope || typeof input.operationalScope !== 'object') fail('dispatch_invalid_batch');
+        || !input.operationalScope || typeof input.operationalScope !== 'object'
+        || (replyToMessageId !== undefined && !UUID.test(String(replyToMessageId)))
+        || (disposition === 'reactive' && !UUID.test(String(replyToMessageId ?? '')))) {
+        fail('dispatch_invalid_batch');
+    }
     // Rows that do not exist yet cannot be locked, so two turns preparing the
     // same inbound would both insert and one would surface a raw unique
     // violation. Serialize them on the inbound itself: the loser then sees the
@@ -421,7 +444,9 @@ export async function prepareDispatchBatch(query: DispatchOutboxQuery, schema: s
         // A different shape for the same inbound means two different results are
         // claiming one turn. Neither may silently replace the other.
         if (rows.length !== input.items.length
-            || rows.some((row, index) => row.itemKind !== input.items[index].kind)) fail('dispatch_batch_conflict');
+            || rows.some((row, index) => row.itemKind !== input.items[index].kind
+                || row.disposition !== disposition
+                || row.replyToMessageId !== (replyToMessageId ?? null))) fail('dispatch_batch_conflict');
         return { batchId: rows[0].batchId, rows };
     }
     // The inbound must already be persisted, so a recovered batch can always be
@@ -431,11 +456,11 @@ export async function prepareDispatchBatch(query: DispatchOutboxQuery, schema: s
     // and its origin is derived from the producer's own durable identity
     // instead. Checking for a `messages` row would refuse every reminder on the
     // platform, which is precisely the requirement that kept them off this lane.
-    if (originKind === 'inbound_reply') {
+    if (disposition === 'reactive') {
         const [inbound] = await query<any[]>(
             `SELECT id FROM messages WHERE id = $1::uuid AND conversation_id = $2::uuid
              AND direction = 'inbound' FOR SHARE`,
-            [input.binding.inboundMessageId, input.binding.conversationId]);
+            [replyToMessageId, input.binding.conversationId]);
         if (!inbound) fail('dispatch_inbound_unavailable');
     }
     // The conversation is checked either way. A proactive effect still writes
@@ -487,15 +512,16 @@ export async function prepareDispatchBatch(query: DispatchOutboxQuery, schema: s
         if (!messageId) fail('dispatch_history_unavailable');
         const [inserted] = await query<any[]>(
             `INSERT INTO agent_dispatch_outbox(batch_id, conversation_id, contact_id, inbound_message_id,
-                origin_kind, channel_type, channel_account_id, recipient, item_index, item_kind, payload,
+                origin_kind, reply_to_message_id, disposition,
+                channel_type, channel_account_id, recipient, item_index, item_kind, payload,
                 operational_scope, learning_footprint, message_id, state)
-             VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$14,$5,$6,$7,$8,$9,$10::jsonb,$11::jsonb,$12::jsonb,$13::uuid,'prepared')
+             VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$14,$15::uuid,$16,$5,$6,$7,$8,$9,$10::jsonb,$11::jsonb,$12::jsonb,$13::uuid,'prepared')
              RETURNING *`,
             [batchId, input.binding.conversationId, input.binding.contactId, input.binding.inboundMessageId,
                 input.binding.channelType, input.binding.channelAccountId, input.binding.recipient,
                 index, item.kind, JSON.stringify(item.payload),
                 JSON.stringify(input.operationalScope), JSON.stringify(footprint), messageId,
-                originKind]);
+                originKind, replyToMessageId ?? null, disposition]);
         for (const source of sources) {
             await query(`INSERT INTO agent_dispatch_outbox_sources(dispatch_id, source_id, source_contact_id)
                 VALUES($1::uuid,$2::uuid,$3::uuid)`,

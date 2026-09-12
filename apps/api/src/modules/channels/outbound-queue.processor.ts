@@ -321,13 +321,11 @@ export class OutboundQueueProcessor extends WorkerHost {
         // afterwards means it is spent before anything counts it.
         // ── WHO STARTED THIS, AND WHAT IT IS ────────────────────────────────
         //
-        // `origin_kind` is a column, and it is read rather than inferred. The
-        // old rule was "does this row name an inbound message" — but a
-        // PROACTIVE origin also derives a UUID for that column, so every
-        // reminder and every campaign was billed as an ANSWER. Reactive traffic
-        // escapes the soft stop by design, so a ceiling meant to pause
-        // campaigns paused nothing at all.
-        const proactive = admitted.row.originKind === 'proactive';
+        // `disposition` is read rather than inferred from the idempotency key.
+        // A payment confirmation has a producer-derived identity and still
+        // answers a customer; collapsing those facts either swallows it behind
+        // the prior agent answer or lets campaign soft-stop hold it.
+        const proactive = admitted.row.disposition === 'proactive';
         // And the producer is the POLICY's own name when there is one, not
         // `dispatch_text`. A census that cannot tell a reminder from a campaign
         // cannot tell an operator which of them filled their ceiling, and a

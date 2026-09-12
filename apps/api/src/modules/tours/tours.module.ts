@@ -6,11 +6,12 @@ import { EmailTemplatesModule } from '../email-templates/email-templates.module'
 import { ChannelsModule } from '../channels/channels.module';
 import { PushModule } from '../push/push.module';
 import { PaymentOutcomeNotifierService } from '../conversations/payment-outcome-notifier.service';
+import { PersonaModule } from '../persona/persona.module';
 
 @Module({
     // forwardRef: ChannelsModule cierra un ciclo con esta vertical. Se necesita
     // para que el avisador del pago pueda encolar el mensaje al cliente.
-    imports: [EmailTemplatesModule, forwardRef(() => ChannelsModule), PushModule],
+    imports: [EmailTemplatesModule, forwardRef(() => ChannelsModule), PersonaModule, PushModule],
     controllers: [ToursController],
     // El listener del cobro vive acá y no en tenant-payments: cada vertical sabe
     // qué significa "confirmar" lo suyo. Y el avisador se registra explícito

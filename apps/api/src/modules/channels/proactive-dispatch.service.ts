@@ -3,7 +3,7 @@ import { createHash } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { AgentDispatchOutboxStore } from './agent-dispatch-outbox.store';
 import { OutboundQueueService } from './outbound-queue.service';
-import type { DispatchItem, DispatchOriginKind } from './agent-dispatch-outbox';
+import type { DispatchDisposition, DispatchItem, DispatchOriginKind } from './agent-dispatch-outbox';
 import { DispatchOutboxError } from './agent-dispatch-outbox';
 import { proactivePolicyAuthority } from '../persona/proactive-policy-authority';
 import {
@@ -289,21 +289,17 @@ export class ProactiveDispatchService {
         /** Who the effect is served on behalf of. The outbox refuses without it. */
         readonly operationalScope: any;
         /**
-         * What caused this effect, and therefore how Meta bills it.
-         *
-         * `proactive` by default, which is what a scheduled behaviour is. A
-         * message a person sends IN ANSWER to a customer who just wrote is
-         * `inbound_reply` — it is a service reply inside the window, and
-         * calling it proactive would both misprice it and subject it to a soft
-         * stop meant for campaigns. When it is `inbound_reply`, `originKey` is
-         * ignored and the caller must pass the real inbound message id as
-         * `inboundMessageId`: the outbox checks that row exists on this
-         * conversation, which is what stops a producer claiming a reply to
-         * something nobody wrote.
+         * How this effect gets its idempotent identity. `proactive` derives it
+         * from `originKey`; `inbound_reply` uses the real inbound message id.
+         * Economic treatment is declared separately in `disposition`.
          */
         readonly originKind?: DispatchOriginKind;
         /** The customer message being answered. Required for `inbound_reply`. */
         readonly inboundMessageId?: string;
+        /** Economic treatment, independent from the key that deduplicates it. */
+        readonly disposition?: DispatchDisposition;
+        /** Customer message answered by a separately identified effect. */
+        readonly replyToMessageId?: string;
     }): Promise<ProactiveSendResult> {
         // ── AN EMPTY OBJECT IS TRUTHY, AND IT IS NOT AN AUTHORITY ───────────
         //
@@ -350,6 +346,8 @@ export class ProactiveDispatchService {
                 binding, items: input.items,
                 operationalScope: input.operationalScope,
                 originKind,
+                disposition: input.disposition,
+                replyToMessageId: input.replyToMessageId,
             });
         } catch (error: any) {
             if (error instanceof DispatchOutboxError) {

@@ -833,23 +833,11 @@ export class AgentConsoleService {
      * those is a case where committing a row would produce an effect nothing
      * could ever deliver, which is worse than the inline POST it replaces.
      *
-     * ── WHY THIS IS RECORDED AS `proactive`, WHICH IT IS NOT ────────────────
-     *
-     * A console agent answering somebody who just wrote IS a service reply
-     * inside the 24-hour window, and `inbound_reply` is what it should say. It
-     * cannot, and the reason is in the outbox rather than here: the origin
-     * column IS the identity — `UNIQUE (inbound_message_id, item_index)` — so
-     * naming the customer's message makes every reply to it ONE effect. The
-     * agent's second sentence would come back `already_present` and never be
-     * sent, and a reply on a thread the AI already answered would collide with
-     * the AI's own batch and be refused outright. Both are pinned in
-     * `agent-console-durable-lane.postgres.spec.ts`.
-     *
-     * So the origin is this reply's own identity and the kind is `proactive`,
-     * which buys the durability and costs the billing classification: the price
-     * is still read from the conversation's service window, but the row is
-     * subject to a soft stop meant for campaigns. Separating "what caused this"
-     * from "what identifies this" is a change in the outbox, not here.
+     * The press owns its durable identity, independently from the customer
+     * message it answers. That lets a person send two distinct sentences, or
+     * answer after the AI, without adopting somebody else's batch. When a real
+     * inbound exists, `disposition: reactive` names it as the economic cause;
+     * an old thread with no inbound stays proactive rather than fabricating one.
      */
     private async replyThroughOutbox(input: {
         tenantId: string; schemaName: string; conversationId: string; agentId: string;
@@ -859,7 +847,12 @@ export class AgentConsoleService {
         if (!this.dispatch) return null;
         const [conv] = await this.prisma.executeInTenantSchema<any[]>(input.schemaName,
             `SELECT c.channel_type, c.channel_account_id, c.contact_id,
-                    COALESCE(ct.phone, ct.external_id) AS recipient
+                    COALESCE(ct.phone, ct.external_id) AS recipient,
+                    (SELECT m.id
+                       FROM messages m
+                      WHERE m.conversation_id = c.id AND m.direction = 'inbound'
+                      ORDER BY m.created_at DESC, m.id DESC
+                      LIMIT 1) AS reply_to_message_id
                FROM conversations c
                LEFT JOIN contacts ct ON ct.id = c.contact_id
               WHERE c.id = $1::uuid LIMIT 1`, [input.conversationId]);
@@ -867,6 +860,7 @@ export class AgentConsoleService {
         const channelAccountId = String(conv?.channel_account_id ?? '').trim();
         const contactId = String(conv?.contact_id ?? '').trim();
         const recipient = String(conv?.recipient ?? '').trim();
+        const replyToMessageId = String(conv?.reply_to_message_id ?? '').trim();
         if (!channelType || !channelAccountId || !contactId || !recipient) return null;
         // The adapter has to be able to send exactly one effect and say what
         // happened. Without that there is nothing to hand a committed row to.
@@ -891,6 +885,11 @@ export class AgentConsoleService {
             contactId, channelType, channelAccountId, recipient,
             items: [input.item],
             operationalScope,
+            // This press remains its own effect even when it answers the same
+            // customer message as an earlier AI or human reply.
+            originKind: 'proactive',
+            disposition: isUUID(replyToMessageId) ? 'reactive' : 'proactive',
+            ...(isUUID(replyToMessageId) ? { replyToMessageId } : {}),
         });
         if (!effectIsDurable(result)) {
             // Nothing was committed. Saying so is the whole point: a reply that

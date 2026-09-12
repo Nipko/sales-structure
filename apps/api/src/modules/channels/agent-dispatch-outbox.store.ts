@@ -15,7 +15,7 @@ import {
     redactSettledDispatchOutbox,
     type DispatchReconciliationBacklog, type DispatchReconciliationEntry, type DispatchResolution,
     type DispatchResolutionRecord,
-    type DispatchBinding, type DispatchItem, type DispatchOriginKind,
+    type DispatchBinding, type DispatchItem, type DispatchOriginKind, type DispatchDisposition,
     type DispatchOutcome, type DispatchRow,
 } from './agent-dispatch-outbox';
 import {
@@ -93,6 +93,8 @@ export class AgentDispatchOutboxStore {
         sources?: readonly { id: string; sourceContactId?: string | null }[];
         /** `proactive` for an effect nobody asked for. Defaults to a reply. */
         originKind?: DispatchOriginKind;
+        disposition?: DispatchDisposition;
+        replyToMessageId?: string;
     }): Promise<{ schemaName: string; batchId: string; rows: DispatchRow[] }> {
         const schema = await this.schemaFor(tenantId);
         // ── TWO KINDS OF AUTHORITY, BECAUSE THERE ARE TWO KINDS OF EFFECT ────
@@ -144,6 +146,8 @@ export class AgentDispatchOutboxStore {
                 learningFootprint: input.learningFootprints as readonly any[] | undefined,
                 sources: input.sources,
                 originKind: input.originKind,
+                disposition: input.disposition,
+                replyToMessageId: input.replyToMessageId,
             });
         });
         return { schemaName: schema, ...result };

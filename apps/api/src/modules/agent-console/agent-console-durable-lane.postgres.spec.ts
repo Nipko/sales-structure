@@ -467,6 +467,28 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
             expect(message.status).toBe('sent');
         });
 
+        it('admits the inline human fallback before its provider POST', async () => {
+            const order: string[] = [];
+            const spend = permissiveSpendGate();
+            const originalAdmission = spend.admit.getMockImplementation()!;
+            spend.admit.mockImplementation(async (...args: any[]) => {
+                order.push('shared_spend_admission');
+                return originalAdmission(...args);
+            });
+            const consoleService = service({ lane: undefined, spend });
+            sendStrict.mockImplementation(async () => {
+                order.push('provider_post');
+                return { kind: 'accepted', receipt: 'wamid.STRICT' };
+            });
+
+            await consoleService.sendAgentMessage(
+                tenantId, conversationId, await agent(), 'respuesta humana',
+            );
+
+            expect(order).toEqual(['shared_spend_admission', 'provider_post']);
+            expect(spend.admit).toHaveBeenCalledTimes(1);
+        });
+
         it('files an unknown inline outcome for reconciliation instead of as failed', async () => {
             // The inline path is a fallback, not a lesser standard: an answer
             // that never arrived must not read as one that did not leave.

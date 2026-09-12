@@ -299,12 +299,10 @@ describe('the R5 acceptance matrix, checked rather than asserted', () => {
             // about the repository rather than about who wrote the list — which
             // is why the uncovered rows are IN the table rather than left out
             // of it to make the column look full.
-            // Some are covered and some are not, and BOTH halves are asserted:
-            // an all-covered matrix would mean somebody deleted the gaps
-            // instead of closing them, and an all-uncovered one would mean the
-            // mapping stopped being about this repository.
-            expect(missing.length).toBeGreaterThan(0);
-            expect(missing.length).toBeLessThan(ACCEPTANCE_MATRIX.length);
+            // An empty set is now the expected, earned result. Coverage still
+            // has to survive the title/file checks above, so deleting a test or
+            // replacing a covered row with prose cannot preserve this green.
+            expect(missing).toEqual([]);
         });
 
         it('names only tests CI actually runs, gate included', () => {
@@ -347,7 +345,7 @@ describe('the R5 acceptance matrix, checked rather than asserted', () => {
             expect(workflow).toContain('assert-no-skipped-tests.cjs');
         });
 
-        it('reports this one gap, by name', () => {
+        it('reports no local acceptance scenario gap', () => {
             // What replaces the assertion that used to stand here. That one
             // added the two halves and compared the sum to the whole, and
             // because `covered` is an object or `null` the sum WAS the whole
@@ -357,7 +355,6 @@ describe('the R5 acceptance matrix, checked rather than asserted', () => {
             // it is not computed from the thing it is checking: closing a gap
             // or opening one has to come here and say so.
             expect(uncoveredScenarios().map(row => row.scenario)).toEqual([
-                'Humano, REST, campaña y recordatorio',
                 // The nurturing row was opened by the adversarial pass and is
                 // closed again — not by relabelling it, but because the missing
                 // half got built: nurturing now honours `leads.opted_out`, the
@@ -383,9 +380,6 @@ describe('the R5 acceptance matrix, checked rather than asserted', () => {
                 // local work because a decision is pending — it is covered,
                 // with the decision named.
                 //
-                // The one that remains is blocked on something no test can
-                // close: chargeable producers that still send outside the
-                // durable lane, which comes down by switching the rollout on.
             ]);
         });
 

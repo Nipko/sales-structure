@@ -297,23 +297,37 @@ export const ACCEPTANCE_MATRIX: readonly AcceptanceScenario[] = Object.freeze([
     {
         scenario: 'Humano, REST, campaña y recordatorio',
         evidence: 'Todos atraviesan admisión; nadie evita el control por origen',
-        covered: null,
-        // This row said it was answered by `claims durable dispatch only for the
-        // item kinds the outbox can carry`, which asserts the seven item kinds
-        // the outbox accepts and that the agent's own durable reply is
-        // `pilot_gated`. Nothing in it is about the human console, the REST API
-        // or campaigns reaching admission — and the closure report says as much
-        // on the facing page: R4 is open because "7 productores todavía pueden
-        // emitir sin fila durable". A row cannot be covered by the same fact
-        // that keeps two other rows open.
-        missing: 'la prueba que se le atribuía sólo dice qué tipos de ítem puede llevar el outbox '
-            + 'durable y que la respuesta del agente sigue en `pilot_gated`: no toca la consola '
-            + 'humana, ni la API REST, ni las campañas, ni los recordatorios. Falta la prueba de '
-            + 'que un envío de cada uno de esos cuatro orígenes atraviesa la MISMA admisión que '
-            + 'el agente —reserva, techo y franquicia antes del POST— en vez de llegar al '
-            + 'proveedor por un carril propio. Hoy el contador de R0/R4 dice que siete '
-            + 'productores cobrables siguen fuera del carril durable, así que la prueba '
-            + 'fallaría: primero hay que mover los productores, y recién entonces fijarlo',
+        // Five production boundaries answer the one scenario. The four origin
+        // specs prove that their request stack leaves a dispatch row and does
+        // not POST; the processor spec proves every such row asks the shared
+        // spend authority before transport. The human-only inline fallback is
+        // named too, because it remains intentionally available during rollout
+        // and has to preserve the same order even without an outbox row.
+        covered: [
+            {
+                file: 'modules/agent-console/agent-console-durable-lane.postgres.spec.ts',
+                titles: [
+                    'commits a row instead of POSTing on the request stack',
+                    'admits the inline human fallback before its provider POST',
+                ],
+            },
+            {
+                file: 'modules/whatsapp/whatsapp-rest-durable-lane.postgres.spec.ts',
+                titles: ['commits a durable row instead of posting to Meta on the request stack'],
+            },
+            {
+                file: 'modules/broadcast/broadcast-durable-lane.postgres.spec.ts',
+                titles: ['leaves the recipient queued so the effect can still be admitted'],
+            },
+            {
+                file: 'modules/appointments/reminder-durable-lane.postgres.spec.ts',
+                titles: ['prepares a row the real store accepts'],
+            },
+            {
+                file: 'modules/channels/proactive-lane-semantics.postgres.spec.ts',
+                titles: ['asks shared spend admission before any durable provider POST'],
+            },
+        ],
     },
     {
         scenario: 'Nurturing fuera de ventana/baja/cap',

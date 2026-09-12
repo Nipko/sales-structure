@@ -377,6 +377,18 @@ const LEGACY_CONFIG = Object.freeze({ tone: 'cordial', goals: ['agendar'] });
     // ── 3. WHEN THE METER CANNOT ANSWER ─────────────────────────────────────
 
     describe('a lease that outlived its decision', () => {
+        it('asks shared spend admission before any durable provider POST', async () => {
+            const { row } = await rowFor({ originKind: 'proactive' });
+            const { asked, outcome } = await driveDispatch(row.id);
+
+            expect(asked).toHaveLength(1);
+            // `driveDispatch` makes the admission throw `meter_down`; its
+            // strict transport throws a different error if reached. Reaching
+            // this assertion therefore proves the provider POST is downstream
+            // of the same admission for every dispatch-outbox producer.
+            expect(outcome).toBe('dispatch:delayed');
+        });
+
         it('is handed back, so the sweep cannot call a meter outage a maybe-send', async () => {
             // `admitSpend` raises BEFORE the POST, so the attempt provably sent
             // nothing. Letting it escape left the row `admitted` with a live

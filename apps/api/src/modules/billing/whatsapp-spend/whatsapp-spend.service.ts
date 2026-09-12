@@ -465,8 +465,32 @@ export class WhatsappSpendService {
             }
             for (const scope of scopes) {
                 if (scope.kind === 'number_month') continue; // already granted above
+                // ── A MESSAGE CEILING COUNTS MESSAGES, NOT INVOICES ─────────
+                //
+                // Money and count are two different questions and this row
+                // answers both. `reservedMinor` is the CHARGEABLE half, because
+                // a free delivery costs nothing and a money ceiling must not
+                // pretend otherwise. The delivery count is EVERY delivery,
+                // because a tenant who caps messages is capping what their
+                // agent says, and Meta's first thousand are still a thousand
+                // messages on a customer's phone.
+                //
+                // It used to pass `chargeable` for both, which is zero for
+                // every free message — so with a ceiling configured, not one of
+                // the free thousand moved `used_deliveries` on the account, the
+                // business, the contact or the campaign. `cap_kind = 'both'`
+                // exists for precisely that scenario and the migration says so:
+                // "un tenant puede quemar la franquicia entera sin gastar un
+                // centavo". It still could.
+                //
+                // Counting them is only safe because the count comes BACK: the
+                // allocation row carries this number, and `applyToCounters`
+                // subtracts the same one when the effect is released. Meta
+                // charges on delivery, so an attempt that never landed must not
+                // hold a slot on a tenant's ceiling any more than it holds one
+                // on the allowance.
                 const entry = {
-                    scope, amountMinor: reservedMinor, deliveries: chargeable, currency,
+                    scope, amountMinor: reservedMinor, deliveries: input.deliveries, currency,
                 };
                 const observing = (input.caps ?? 'enforce') === 'observe';
                 const outcome = await reserveAgainstCounter(query as SpendQuery, schema,

@@ -693,7 +693,7 @@ export class ConversationsService {
         // messages. Buffer them and process the batch as ONE turn (less LLM cost,
         // no interleaved/double replies, better intent). Returns the combined text
         // for the LAST message of the burst; the earlier ones bail here.
-        const combined = await this.debounceBurst(normalizedMsg).catch(() => undefined);
+        const combined = await this.debounceBurst(normalizedMsg);
         if (combined === null) return; // a newer message arrived — it will flush the batch
         if (combined !== undefined) {
             normalizedMsg.content.text = combined.text;
@@ -4907,7 +4907,7 @@ export class ConversationsService {
      * Debounce a burst of messages from the same contact into one turn.
      * Returns: a combined string for the LAST message of the burst (flusher),
      * `null` for earlier messages (a newer one will flush — caller should bail),
-     * or `undefined` when not debounced (media/non-text or Redis unavailable).
+     * or `undefined` when this message kind must not be debounced.
      *
      * Coordination is Redis-based (works across processes): each message bumps a
      * sequence and appends its text; after the window only the message still
@@ -4938,8 +4938,14 @@ export class ConversationsService {
             // the sentence.
             await this.redis.rpush(msgsKey, JSON.stringify(mine));
             await this.redis.expire(msgsKey, 60);
-        } catch {
-            return undefined; // Redis hiccup → process this message as-is
+        } catch (error: any) {
+            this.logger.error(`[Debounce] could not persist burst fragment: ${error?.message}`);
+            // Processing every fragment independently multiplies both the LLM
+            // work and Meta reply charges exactly when coordination is down.
+            // The inbound BullMQ job is retryable and the turn is idempotent;
+            // keep the fragment pending instead of turning an outage into N
+            // customer replies.
+            throw new Error('burst_coordination_unavailable');
         }
 
         await new Promise(r => setTimeout(r, DEBOUNCE_MS));
@@ -4954,9 +4960,9 @@ export class ConversationsService {
                  else return false end`,
                 2, seqKey, msgsKey, String(mySeq),
             ) as string[] | null;
-        } catch {
-            // Redis hiccup → this message alone, exactly as it arrived.
-            return foldedContent(mine, mergeBurst([mine]));
+        } catch (error: any) {
+            this.logger.error(`[Debounce] could not atomically claim burst: ${error?.message}`);
+            throw new Error('burst_coordination_unavailable');
         }
 
         if (!parts) return null; // a newer fragment arrived — it will flush the batch

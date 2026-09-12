@@ -1,4 +1,4 @@
-import type { AgentSetupTaskKey, GuidedTourId, GuidedTourStartDetail } from "@parallext/shared";
+import type { AgentSetupTask, AgentSetupTaskKey, GuidedTourId, GuidedTourStartDetail } from "@parallext/shared";
 
 /**
  * The card's view of one setup task — and nothing else.
@@ -24,4 +24,25 @@ export interface EssentialSetupItem {
   channelType?: GuidedTourStartDetail["channelType"];
   /** An unavailable check is not a verified missing setting. */
   verification?: "unavailable";
+}
+
+/**
+ * Project the server-owned assessment into the setup card.
+ *
+ * This deliberately does not infer readiness from channels, records or local
+ * toggles. It only applies navigation access to the tasks the API already
+ * evaluated, then translates the shared status vocabulary for the card.
+ */
+export function essentialSetupItemsFromAssessment(
+  tasks: AgentSetupTask[],
+  canAccess: (href: string) => boolean,
+): EssentialSetupItem[] {
+  return tasks.filter(task => canAccess(task.href)).map(task => ({
+    key: task.key,
+    href: task.href,
+    done: task.status === "pass" || task.status === "not_applicable",
+    tourId: task.tourId,
+    channelType: task.channelType,
+    ...(task.status === "unknown" ? { verification: "unavailable" as const } : {}),
+  }));
 }

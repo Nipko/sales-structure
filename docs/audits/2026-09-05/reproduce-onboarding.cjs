@@ -112,19 +112,18 @@ const tourResults = tourCases.map((scenario) => {
 });
 
 const checklistInput = {
-  status: { hasKnowledge: true },
-  planChannels: ['whatsapp'],
-  activeChannels: ['whatsapp'],
-  checks: {
-    channel_connection: 'fail',
-    channel_assignment: 'fail',
-    knowledge_coverage: 'fail',
-  },
+  tasks: [
+    { key: 'channel', status: 'fail', state: 'blocked', checks: [], href: '/admin/channels', tourId: 'channel_connection', dependsOn: [] },
+    { key: 'knowledge', status: 'unknown', state: 'unknown', checks: [], href: '/admin/knowledge', tourId: 'knowledge_first_source', dependsOn: [] },
+    { key: 'catalog', status: 'not_applicable', state: null, checks: [], href: '/admin/catalog', tourId: null, dependsOn: [] },
+    { key: 'team', status: 'warning', state: 'degraded', checks: [], href: '/admin/users', tourId: 'human_handoff_route', dependsOn: [] },
+  ],
+  deniedRoute: '/admin/users',
 };
-const checklistItems = setup.buildEssentialSetupItems({
-  ...checklistInput,
-  canAccess: () => true,
-}).filter((item) => ['channel', 'knowledge'].includes(item.key));
+const checklistItems = setup.essentialSetupItemsFromAssessment(
+  checklistInput.tasks,
+  (href) => href !== checklistInput.deniedRoute,
+);
 
 const evidence = {
   auditDate: '2026-09-05',
@@ -132,11 +131,11 @@ const evidence = {
   tourResults,
   checklist: {
     input: checklistInput,
-    roleAccessAssumption: 'All tested dashboard routes allowed.',
+    roleAccessAssumption: 'The team route is denied; all other modeled routes are allowed.',
     output: checklistItems,
     sourceEvidence: [
-      'apps/dashboard/src/lib/initial-setup.ts:205',
-      'apps/dashboard/src/lib/initial-setup.ts:244',
+      'apps/dashboard/src/lib/initial-setup.ts',
+      'apps/dashboard/src/components/InitialSetupCard.tsx',
     ],
   },
 };

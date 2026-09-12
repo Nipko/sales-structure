@@ -18,17 +18,18 @@
       "plan": {
         "tourId": "appointments_setup",
         "stepIndexes": [
-          0
+          0,
+          1,
+          2
         ],
         "inPlace": false
       },
       "retainedSteps": [
-        "tabs"
-      ],
-      "omittedSteps": [
+        "tabs",
         "service",
         "schedule"
-      ]
+      ],
+      "omittedSteps": []
     },
     {
       "name": "Agent review launched without the default agent id",
@@ -42,18 +43,25 @@
       ],
       "plan": {
         "tourId": "agent_handoff_rules",
-        "stepIndexes": [],
+        "stepIndexes": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
         "inPlace": false
       },
-      "retainedSteps": [],
-      "omittedSteps": [
+      "retainedSteps": [
         "name",
         "greeting",
         "fallback",
         "rules",
         "handoff",
         "save"
-      ]
+      ],
+      "omittedSteps": []
     },
     {
       "name": "Agent review with selected agent, initial persona tab",
@@ -78,6 +86,8 @@
           0,
           1,
           2,
+          3,
+          4,
           5
         ],
         "inPlace": false
@@ -86,12 +96,11 @@
         "name",
         "greeting",
         "fallback",
+        "rules",
+        "handoff",
         "save"
       ],
-      "omittedSteps": [
-        "rules",
-        "handoff"
-      ]
+      "omittedSteps": []
     },
     {
       "name": "Human handoff tour with invitation dialog closed",
@@ -112,55 +121,87 @@
         "stepIndexes": [
           0,
           1,
+          2,
           3
         ],
         "inPlace": false
       },
       "retainedSteps": [
         "menu",
+        "pending",
         "invite",
-        "pending"
-      ],
-      "omittedSteps": [
         "role"
-      ]
+      ],
+      "omittedSteps": []
     }
   ],
   "checklist": {
     "input": {
-      "status": {
-        "hasKnowledge": true
-      },
-      "planChannels": [
-        "whatsapp"
+      "tasks": [
+        {
+          "key": "channel",
+          "status": "fail",
+          "state": "blocked",
+          "checks": [],
+          "href": "/admin/channels",
+          "tourId": "channel_connection",
+          "dependsOn": []
+        },
+        {
+          "key": "knowledge",
+          "status": "unknown",
+          "state": "unknown",
+          "checks": [],
+          "href": "/admin/knowledge",
+          "tourId": "knowledge_first_source",
+          "dependsOn": []
+        },
+        {
+          "key": "catalog",
+          "status": "not_applicable",
+          "state": null,
+          "checks": [],
+          "href": "/admin/catalog",
+          "tourId": null,
+          "dependsOn": []
+        },
+        {
+          "key": "team",
+          "status": "warning",
+          "state": "degraded",
+          "checks": [],
+          "href": "/admin/users",
+          "tourId": "human_handoff_route",
+          "dependsOn": []
+        }
       ],
-      "activeChannels": [
-        "whatsapp"
-      ],
-      "checks": {
-        "channel_connection": "fail",
-        "channel_assignment": "fail",
-        "knowledge_coverage": "fail"
-      }
+      "deniedRoute": "/admin/users"
     },
-    "roleAccessAssumption": "All tested dashboard routes allowed.",
+    "roleAccessAssumption": "The team route is denied; all other modeled routes are allowed.",
     "output": [
       {
         "key": "channel",
-        "href": "/admin/channels/whatsapp",
-        "done": true,
-        "tourId": "first_channel_whatsapp"
+        "href": "/admin/channels",
+        "done": false,
+        "tourId": "channel_connection"
       },
       {
         "key": "knowledge",
         "href": "/admin/knowledge",
+        "done": false,
+        "tourId": "knowledge_first_source",
+        "verification": "unavailable"
+      },
+      {
+        "key": "catalog",
+        "href": "/admin/catalog",
         "done": true,
-        "tourId": "knowledge_base"
+        "tourId": null
       }
     ],
     "sourceEvidence": [
-      "apps/dashboard/src/lib/initial-setup.ts:205",
-      "apps/dashboard/src/lib/initial-setup.ts:244"
+      "apps/dashboard/src/lib/initial-setup.ts",
+      "apps/dashboard/src/components/InitialSetupCard.tsx"
     ]
   }
 }

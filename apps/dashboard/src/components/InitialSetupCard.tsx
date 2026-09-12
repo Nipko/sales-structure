@@ -15,7 +15,7 @@ import { useTenant } from "@/contexts/TenantContext";
 import { useRole } from "@/hooks/useRole";
 import { api } from "@/lib/api";
 import { guidedTourAnchorId } from "@/lib/guided-tours";
-import { type EssentialSetupItem } from "@/lib/initial-setup";
+import { essentialSetupItemsFromAssessment, type EssentialSetupItem } from "@/lib/initial-setup";
 import { canAccessDashboardNavigationPath } from "@/lib/navigation-access";
 import { QUALITY_HEALTH_REFRESH_EVENT } from "@/lib/quality-health-events";
 
@@ -64,10 +64,7 @@ export default function InitialSetupCard({
       if (!response.success || !response.data) throw new Error("assessment_unavailable");
       const assessment = response.data;
       if (revision !== loadRevision.current) return;
-      setItems(assessment.tasks.filter(task => canAccess(task.href)).map(task => ({
-        key: task.key, href: task.href, done: task.status === "pass" || task.status === "not_applicable",
-        tourId: task.tourId, channelType: task.channelType, ...(task.status === "unknown" ? { verification: "unavailable" as const } : {}),
-      })));
+      setItems(essentialSetupItemsFromAssessment(assessment.tasks, canAccess));
       setTourContext({ agentId: assessment.agent?.id, verticalCatalogRoute: assessment.tasks.find(task => task.key === "catalog")?.href });
     } catch {
       if (revision !== loadRevision.current) return;

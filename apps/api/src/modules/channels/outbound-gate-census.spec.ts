@@ -206,6 +206,46 @@ describe('one admission covers one POST, and it comes first', () => {
             + 'await fetch(`https://graph.facebook.com/v21.0/${id}/messages`, {});'])).toEqual([]);
     });
 
+    it('reports a POST inside a LOOP whose admission is outside it', () => {
+        // The claim the docblock above `egressCredits` had made all along and
+        // the walk did not keep: "a loop that sends twice behind one admission
+        // is reported". It was not. The walk knew about function frames and
+        // nothing else, so one credit paid for a POST that runs N times —
+        // one reservation settling N charges, which the ledger cannot do.
+        expect(uncovered([gate, 'for (const id of ids) {', post, '}'])).toEqual([3]);
+        expect(uncovered([gate, 'while (await this.hasMore()) {', post, '}'])).toEqual([3]);
+        // `do` has no parenthesised head; its `while` is at the other end.
+        expect(uncovered([gate, 'do {', post, '} while (more);'])).toEqual([3]);
+    });
+
+    it('still accepts a gate INSIDE the loop, which runs once per iteration', () => {
+        // The half that keeps this from being a check that blocks honest code.
+        // A gate in the loop body is a gate per send; what is reported is
+        // crossing OUT of a loop to find the credit, not the loop itself.
+        expect(uncovered(['for (const id of ids) {', gate, post, '}'])).toEqual([]);
+        expect(uncovered(['for (const a of as) {', 'for (const b of bs) {',
+            gate, post, '}', '}'])).toEqual([]);
+        // And the mixed case: gated in the outer loop, sending in the inner.
+        expect(uncovered(['for (const a of as) {', gate,
+            'for (const b of bs) {', post, '}', '}'])).toEqual([4]);
+    });
+
+    it('reads a condition that CALLS something as a condition', () => {
+        // `opensFunction` forbade a nested `(` inside the keyword's
+        // parentheses, so `if (this.isReady(id)) {` — a condition that calls
+        // something, which is most of them — fell through to the signature
+        // fallback and became a FUNCTION frame. That put the method's own
+        // credits out of reach of its own POST and reported a properly gated
+        // send. A check whose failures are wrong is one people re-baseline.
+        expect(uncovered([gate, 'if (this.isReady(id)) {', post, '}'])).toEqual([]);
+        expect(uncovered([gate, 'if (ok) {', post, '}'])).toEqual([]);
+        expect(uncovered([gate, 'switch (this.kindOf(x)) {', 'case 1:', post, '}'])).toEqual([]);
+        expect(uncovered(['try {', gate, '} catch (error: any) { return; }', post])).toEqual([]);
+        // And a real function signature is still a function frame, so a gate
+        // before a callback does not pay for a POST inside it.
+        expect(uncovered(['async send(to: string): Promise<void> {', gate, post, '}'])).toEqual([]);
+    });
+
     it('does not let a gate in another method cover a POST', () => {
         // Presence, not dominance. The file contains both; the send path
         // touches neither.

@@ -304,8 +304,40 @@ function opensFunction(before) {
     const text = before.trim();
     if (/=>\s*$/.test(text)) return true;
     if (/^(?:\}\s*)?(?:else|try|finally|do)\b/.test(text)) return false;
-    if (/\b(?:if|for|while|switch|catch)\s*\([^(]*\)\s*$/.test(text)) return false;
+    // A control-flow keyword at the START of a statement never opens a function
+    // body, whatever its condition contains.
+    //
+    // The previous test forbade a nested `(` inside the parentheses, so
+    // `if (this.isReady(id)) {` — a condition that calls something, which is
+    // most of them — fell through to the signature fallback below and became a
+    // FUNCTION frame. That put the method's own credits out of reach of its own
+    // POST and reported a properly gated send as a violation: a check whose
+    // failures are wrong is a check people learn to re-baseline.
+    if (/^(?:\}\s*)?(?:else\s+)?(?:if|for|while|switch|catch)\b/.test(text)
+        && /\)\s*$/.test(text)) return false;
     return /\)\s*(?::\s*[^;{]+)?\s*$/.test(text);
+}
+
+/**
+ * Does the `{` at the end of this text open a LOOP body?
+ *
+ * Asked separately from `opensFunction` because the two answers are
+ * independent: a loop is not a function frame — a gate inside one still pays
+ * for a POST nested under it — but crossing OUT of one to find the credit means
+ * the admission was taken once and the POST runs many times.
+ *
+ * `do` is here and not in the keyword list below it because a `do` block has no
+ * parenthesised head; its `while` is at the other end.
+ */
+function opensLoop(before) {
+    const text = before.trim();
+    // An arrow body is a function frame, and the walk stops there anyway. A
+    // callback passed to `.forEach(` is not a loop for this purpose: its own
+    // frame already blocks an outer credit, which is the same verdict by a
+    // different road.
+    if (/=>\s*$/.test(text)) return false;
+    if (/^(?:\}\s*)?do\b/.test(text)) return true;
+    return /^(?:\}\s*)?(?:else\s+)?(?:for|while)\b/.test(text) && /\)\s*$/.test(text);
 }
 
 function egressCredits(code, egressLines) {
@@ -326,17 +358,44 @@ function egressCredits(code, egressLines) {
     // it, a gate in a different method never pays at all, and a gate before a
     // callback does not pay for a POST inside that callback — which is the
     // "one admission, N messages" defect, reported rather than excused.
-    const frames = [{ isFunction: true, credits: 0 }];
+    // ── AND ONE ADMISSION DOES NOT COVER A LOOP ─────────────────────────────
+    //
+    // The paragraph above this function has always claimed that "a loop that
+    // sends twice behind one admission is reported". It was not: the walk knew
+    // about function frames and nothing else, so a POST inside a `for` whose
+    // gate sat outside it spent that one credit and passed. That is precisely
+    // one reservation settling N charges, which the ledger cannot do — the
+    // defect the claim names, invisible to the check that names it.
+    //
+    // A loop frame is not a function frame. A gate INSIDE the loop still pays
+    // for a POST nested under it, because that gate runs once per iteration.
+    // What is reported is crossing OUT of a loop to find the credit.
+    const frames = [{ isFunction: true, isLoop: false, credits: 0 }];
     const mint = () => {
         for (let depth = frames.length - 1; depth >= 0; depth--) {
-            if (!frames[depth].isFunction) continue;
+            // A function frame OR a loop frame. The loop half matters as much:
+            // a gate in a loop body runs once per iteration, so its credit
+            // belongs to that iteration and dies when the frame pops. Minting
+            // it into the enclosing method instead would make an honest
+            // gate-then-send inside a loop read as one admission crossed out of
+            // a loop, which is the opposite verdict.
+            if (!frames[depth].isFunction && !frames[depth].isLoop) continue;
             frames[depth].credits += 1; return;
         }
     };
+    /** `true` covered, `'repeats'` covered by a credit minted outside a loop, `false` uncovered. */
     const spend = () => {
+        let leftALoop = false;
         for (let depth = frames.length - 1; depth >= 0; depth--) {
-            if (frames[depth].credits > 0) { frames[depth].credits -= 1; return true; }
+            if (frames[depth].credits > 0) {
+                frames[depth].credits -= 1;
+                return leftALoop ? 'repeats' : true;
+            }
             if (frames[depth].isFunction) return false;
+            // Recorded on the way OUT, after this frame's own credits were
+            // offered: a gate in the loop body pays, a gate above the loop
+            // does not.
+            if (frames[depth].isLoop) leftALoop = true;
         }
         return false;
     };
@@ -346,13 +405,22 @@ function egressCredits(code, egressLines) {
         const text = lines[i];
         if (GATE_CALLS.some(call => text.includes(call))) mint();
         for (let n = egressAt.get(i + 1) || 0; n > 0; n--) {
-            if (!spend()) uncovered.push(i + 1);
+            // `'repeats'` is reported exactly like uncovered, and deliberately:
+            // the ledger cannot settle one reservation against N charges, so a
+            // POST that runs many times behind one admission is not a weaker
+            // version of the same problem, it IS the problem.
+            if (spend() !== true) uncovered.push(i + 1);
         }
         // Applied after the line's own events, so `if (ok) { return post(x); }`
         // on one line still reads as gate-then-egress.
         for (let column = 0; column < text.length; column++) {
             if (text[column] === '{') {
-                frames.push({ isFunction: opensFunction(text.slice(0, column)), credits: 0 });
+                const before = text.slice(0, column);
+                frames.push({
+                    isFunction: opensFunction(before),
+                    isLoop: opensLoop(before),
+                    credits: 0,
+                });
             } else if (text[column] === '}' && frames.length > 1) frames.pop();
         }
     }

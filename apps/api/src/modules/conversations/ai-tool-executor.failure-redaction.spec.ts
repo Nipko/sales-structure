@@ -72,6 +72,26 @@ describe('AI tool failures are safe model input', () => {
         });
     });
 
+    it('does not turn a failed case lookup into an empty customer record', async () => {
+        const executor = harness({});
+        executor.prisma = {
+            executeInTenantSchema: jest.fn().mockRejectedValue(storageFailure),
+        };
+
+        const result = await executor.getCaseStatusTool(
+            'tenant_secret',
+            '22222222-2222-4222-8222-222222222222',
+        );
+
+        expect(result).toMatchObject({
+            error: 'get_case_status_unavailable',
+            status: 'error',
+            retryable: true,
+        });
+        expect(result).not.toHaveProperty('cases');
+        expect(JSON.stringify(result)).not.toContain('tenant_secret');
+    });
+
     it('keeps raw exception messages out of every catch result in the executor', () => {
         const source = readFileSync(require.resolve('./ai-tool-executor.service'), 'utf8');
         expect(source).not.toMatch(/return\s*\{\s*error:\s*(?:e|error)\.message/);

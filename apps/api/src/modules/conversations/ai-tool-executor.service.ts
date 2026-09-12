@@ -5287,7 +5287,9 @@ export class AIToolExecutorService {
             };
         } catch (e: any) {
             this.logger.warn(`[Tool] get_case_status failed: ${e.message}`);
-            return { cases: [], error: 'No se pudo consultar el estado del caso.' };
+            return readFailed('get_case_status_unavailable', {
+                message: 'No se pudo consultar el estado del caso en este momento.',
+            });
         }
     }
 

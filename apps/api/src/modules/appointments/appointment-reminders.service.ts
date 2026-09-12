@@ -199,10 +199,14 @@ export class AppointmentRemindersService {
             if (!tenants?.length) return;
 
             for (const tenant of tenants) {
-                if (!await this.canSendTenantWork(tenant.id)) continue;
-                const settings = await this.appointmentsService.getReminderSettings(tenant.id);
-                if (!settings.reminder24h) continue;
-                await this.processReminders(tenant.id, tenant.schema_name, '24h');
+                try {
+                    if (!await this.canSendTenantWork(tenant.id)) continue;
+                    const settings = await this.appointmentsService.getReminderSettings(tenant.id);
+                    if (!settings.reminder24h) continue;
+                    await this.processReminders(tenant.id, tenant.schema_name, '24h');
+                } catch (error: any) {
+                    this.logger.error(`[AppointmentReminders] 24h pass failed for tenant=${tenant.id}: ${error?.message}`);
+                }
             }
         } catch (err) {
             this.logger.error('Error in 24h reminder cron', err);
@@ -230,10 +234,14 @@ export class AppointmentRemindersService {
             if (!tenants?.length) return;
 
             for (const tenant of tenants) {
-                if (!await this.canSendTenantWork(tenant.id)) continue;
-                const settings = await this.appointmentsService.getReminderSettings(tenant.id);
-                if (!settings.reminder2h) continue;
-                await this.processReminders(tenant.id, tenant.schema_name, '2h');
+                try {
+                    if (!await this.canSendTenantWork(tenant.id)) continue;
+                    const settings = await this.appointmentsService.getReminderSettings(tenant.id);
+                    if (!settings.reminder2h) continue;
+                    await this.processReminders(tenant.id, tenant.schema_name, '2h');
+                } catch (error: any) {
+                    this.logger.error(`[AppointmentReminders] 2h pass failed for tenant=${tenant.id}: ${error?.message}`);
+                }
             }
         } catch (err) {
             this.logger.error('Error in 2h reminder cron', err);
@@ -260,10 +268,14 @@ export class AppointmentRemindersService {
             if (!tenants?.length) return;
 
             for (const tenant of tenants) {
-                if (!await this.canSendTenantWork(tenant.id)) continue;
-                const settings = await this.appointmentsService.getReminderSettings(tenant.id);
-                if (!settings.attendanceCheck) continue;
-                await this.processAttendanceChecks(tenant.id, tenant.schema_name);
+                try {
+                    if (!await this.canSendTenantWork(tenant.id)) continue;
+                    const settings = await this.appointmentsService.getReminderSettings(tenant.id);
+                    if (!settings.attendanceCheck) continue;
+                    await this.processAttendanceChecks(tenant.id, tenant.schema_name);
+                } catch (error: any) {
+                    this.logger.error(`[AppointmentReminders] attendance pass failed for tenant=${tenant.id}: ${error?.message}`);
+                }
             }
         } catch (err) {
             this.logger.error('Error in attendance check cron', err);
@@ -283,9 +295,13 @@ export class AppointmentRemindersService {
             if (!tenants?.length) return;
 
             for (const tenant of tenants) {
-                const settings = await this.appointmentsService.getReminderSettings(tenant.id);
-                if (!settings.autoComplete) continue;
-                await this.processAutoComplete(tenant.id, tenant.schema_name);
+                try {
+                    const settings = await this.appointmentsService.getReminderSettings(tenant.id);
+                    if (!settings.autoComplete) continue;
+                    await this.processAutoComplete(tenant.id, tenant.schema_name);
+                } catch (error: any) {
+                    this.logger.error(`[AppointmentReminders] auto-complete pass failed for tenant=${tenant.id}: ${error?.message}`);
+                }
             }
         } catch (err) {
             this.logger.error('Error in auto-complete cron', err);
@@ -802,15 +818,12 @@ export class AppointmentRemindersService {
     }
 
     private async getTenantLanguage(tenantId: string): Promise<string> {
-        try {
-            const tenant = await this.prisma.tenant.findUnique({
-                where: { id: tenantId },
-                select: { language: true },
-            });
-            return tenant?.language || 'es';
-        } catch {
-            return 'es';
-        }
+        const tenant = await this.prisma.tenant.findUnique({
+            where: { id: tenantId },
+            select: { language: true },
+        });
+        if (!tenant) throw new Error('tenant_language_authority_unavailable');
+        return tenant.language || 'es';
     }
 
     private async getStaffName(schemaName: string, userId: string): Promise<string> {

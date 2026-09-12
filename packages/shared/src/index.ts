@@ -418,7 +418,6 @@ export interface ToolsConfig {
     };
     petServices?: {
         enabled: boolean;
-        emailConfirmations?: boolean;
     };
     /**
      * Vehicle inventory tools. Dashboard and runtime have always read this key;

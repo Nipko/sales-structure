@@ -423,7 +423,9 @@ export function CapabilitiesSection({ config, onChange, apptReadiness }: Capabil
             education: "education_enrollment_confirmation",
             insurance: "insurance_quote_confirmation",
             homeServices: "homeservice_booking_confirmation",
-            petServices: "petservice_booking_confirmation",
+            // This family only reads the pet-service catalogue and availability.
+            // It owns no committing operation, so it has no confirmation policy.
+            petServices: "",
             photography: "photography_session_confirmation",
             appointments: "appointment_confirmation_email",
             // Fallbacks if any key doesn't have one

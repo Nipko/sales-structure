@@ -127,7 +127,7 @@ describe('the tools programme rows read something real', () => {
         // The sweep counts PAIRS, and the pair is what the label prints —
         // `family.flag`, never a bare flag name. That is the property this
         // case exists for; the exact count is pinned below.
-        expect(String(t1.openLabel)).toMatch(/[a-zA-Z]+\.emailConfirmations/);
+        expect(String(t1.openLabel)).toContain('0 controles configurables');
         // The number an independent audit of this repository reached by hand
         // was FIFTEEN: eleven families with no consumer plus four with a typed
         // flag and no visible control.
@@ -149,14 +149,11 @@ describe('the tools programme rows read something real', () => {
         //    `petBoarding` — each on its own confirming transition, through
         //    the shared five-step decision in `OperationConfirmationService`.
         //
-        // The ONE that remains is `petServices`, and it cannot be closed by
-        // wiring anything: the family has no committing tool of its own, and a
-        // pet-services tenant's manifest carries both `pets` and `petServices`,
-        // so no consumer can tell which switch an operation belongs to. The
-        // honest close is retiring the flag from the contract — which is a
-        // change to `packages/shared`, not a consumer.
-        expect(t1.open).toBe(1);
-        expect(String(t1.openLabel)).toContain('petServices.emailConfirmations');
+        // `petServices` was the last orphan. It has no committing tool of its
+        // own, so the truthful close is removing the control instead of wiring
+        // it to an operation owned by the sibling `pets` family.
+        expect(t1.open).toBe(0);
+        expect(String(t1.openLabel)).not.toContain('petServices.emailConfirmations');
         for (const closed of [
             'vehicles', 'realEstate', 'pets', 'orders', 'homeServices', 'education',
             'gyms', 'insurance', 'restaurants', 'photography', 'repairOrders',

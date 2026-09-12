@@ -1,12 +1,12 @@
 {
   "version": 1,
-  "revision": "55354e8995d7dc0eb8a088492a0575ca15f4e68c",
-  "generatedAt": "2026-09-12T19:10:55.241Z",
+  "revision": "abcbbea8ebfe76e55ce3e563ae53902e99441cfe",
+  "generatedAt": "2026-09-12T19:17:11.369Z",
   "finished": false,
   "counts": {
-    "aceptada": 13,
+    "aceptada": 14,
     "bloqueada": 22,
-    "abierta": 10,
+    "abierta": 9,
     "diferida": 1
   },
   "provenance": {
@@ -625,10 +625,10 @@
     },
     {
       "id": "T1",
-      "open": 1,
-      "openLabel": "1 controles configurables (familia.bandera) sin consumidor productivo: petServices.emailConfirmations",
+      "open": 0,
+      "openLabel": "0 controles configurables (familia.bandera) sin consumidor productivo",
       "gates": [],
-      "status": "abierta",
+      "status": "aceptada",
       "provenance": "derived",
       "artefact": null,
       "evidence": "Derivado del contrato de perfil de negocio contra los módulos que pueden actuar sobre cada bandera, excluyendo el propio contrato, el editor y las pruebas. Una bandera que sólo su esquema y su formulario mencionan es un control que el dueño puede mover sin consecuencia, y la pantalla dice que hizo algo.",

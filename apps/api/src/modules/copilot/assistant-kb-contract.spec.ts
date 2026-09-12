@@ -308,37 +308,48 @@ describe('Parallly Assist knowledge-base contract', () => {
 
   it('never hands a reader a route their own role is denied', () => {
     /**
-     * ═══ "AT LEAST ONE" WAS THE WRONG BAR ═══
+     * ═══ A CHECK THAT COMPARED A FUNCTION WITH ITSELF ═══
      *
      * The rule below asks whether a declared role can open ANY route in the
-     * frontmatter, which is vacuous for the defect it was written for:
+     * frontmatter — vacuous for the defect it was written for:
      * `19-solucion-problemas` is offered to supervisors and agents, they can
-     * open `/admin/inbox`, so it passed — while the same article's routes
-     * include `/admin/broadcast` and `/admin/settings/billing`, which
-     * `roles.ts` denies them. Nineteen such pairs existed.
+     * open `/admin/inbox`, so it passed while the same article's routes
+     * include `/admin/broadcast` and `/admin/settings/billing`, which the
+     * dashboard denies them. Nineteen such pairs existed.
      *
-     * Frontmatter is NOT where that is wrong. An article can legitimately
-     * serve three audiences and talk about a screen only one of them opens;
-     * what must never happen is the RUNTIME handing a particular reader a
-     * route they cannot follow. So this checks the filter, against the
-     * dashboard's own table — the same one the guard uses, now read from
-     * `@parallext/shared` instead of copied.
+     * The first replacement was WORSE: it filtered the routes with
+     * `dashboardRoleCanOpen` and then asked `tenantAudience` whether each
+     * survivor was allowed. Both read the same table, so the answer was yes by
+     * construction and the loop could not produce an offence for any input.
+     * That is the shape this repository keeps finding — a test that agrees
+     * with itself — and it is why the loop is gone.
+     *
+     * What is left says something that can be false: the filter REMOVES real
+     * routes from real articles, and those routes are the ones the finding
+     * named. Replace the filter with `() => true` and these go red.
      */
-    const offences: string[] = [];
-    for (const article of byLocale.es) {
-      for (const role of article.roles) {
-        if (role === 'super_admin') continue;
-        const offered = article.routes.filter(route => dashboardRoleCanOpen(route, role));
-        for (const route of offered) {
-          if (tenantAudience(route).includes(role)) continue;
-          offences.push(`${article.id}: would hand ${role} ${route}`);
-        }
-      }
-    }
-    expect(offences).toEqual([]);
+    const removedFor = (articleId: string, role: string): string[] => {
+      const article = byLocale.es.find(entry => entry.id === articleId)!;
+      return article.routes.filter(route => !dashboardRoleCanOpen(route, role));
+    };
 
-    // And the filter has to actually remove something, or it is a no-op that
-    // would pass over any table at all. These are real pairs from the tree.
+    // The article the finding named, and the screens it would have sent them to.
+    expect(removedFor('solucion-problemas', 'tenant_agent'))
+      .toEqual(expect.arrayContaining(['/admin/broadcast', '/admin/settings/billing']));
+    expect(removedFor('solucion-problemas', 'tenant_supervisor'))
+      .toEqual(expect.arrayContaining(['/admin/channels', '/admin/settings/billing']));
+    // And an admin loses nothing, or the filter would be an outage of its own.
+    expect(removedFor('solucion-problemas', 'tenant_admin')).toEqual([]);
+
+    // The runtime has to USE it. A filter nothing calls is a filter that
+    // changes nothing, and the defect was entirely in what reached the model.
+    const service = fs.readFileSync(
+      path.resolve(__dirname, 'copilot.service.ts'), 'utf8');
+    expect(service).toContain('dashboardRoleCanOpen');
+    // The unfiltered list must not be what gets injected any more.
+    expect(service).not.toContain('Ruta en el panel: ${a.routes.join');
+
+    // The predicate itself, on real pairs from this tree.
     expect(dashboardRoleCanOpen('/admin/broadcast', 'tenant_agent')).toBe(false);
     expect(dashboardRoleCanOpen('/admin/settings/billing', 'tenant_supervisor')).toBe(false);
     expect(dashboardRoleCanOpen('/admin/channels/whatsapp', 'tenant_supervisor')).toBe(false);
@@ -346,7 +357,6 @@ describe('Parallly Assist knowledge-base contract', () => {
     // A path no rule matches belongs to nobody, which is how the guard fails.
     expect(dashboardRoleCanOpen('/admin/nothing-here', 'tenant_admin')).toBe(false);
   });
-
   it('offers each article only to roles that can open at least one of its screens', () => {
     // Frontmatter `roles` is what retrieval filters on. A role listed there
     // that `roles.ts` denies on every route in the same frontmatter is an

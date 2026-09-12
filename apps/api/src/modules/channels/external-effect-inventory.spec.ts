@@ -81,6 +81,21 @@ const MESSAGE_EGRESS = [
     /\.sendFlowMessage\(/, /\.sendTemplate\(/, /\.sendInteractiveMessage\(/, /\.sendLocationMessage\(/,
     /enqueueOperationalNotice\(/,
     /from '[^']*email\/email\.service'/,
+    // ── THE OTHER EMAIL DOOR, AND THE ONE THAT WAS OPEN ──────────────────
+    //
+    // A customer-facing email sent through a tenant template leaves via
+    // `EmailTemplatesService.renderAndSend`, which imports nothing from
+    // `email/email.service` — so it matched no pattern here, and a guest
+    // booking confirmation carrying a name, dates, party size and a price
+    // could ship with no inventory row at all. Two of them did.
+    //
+    // The CALL, not the import, unlike the line above it. Matching the import
+    // swept in a service that merely HOLDS the dependency and hands it to the
+    // writer; keeping this sweep quiet then meant declaring that service a
+    // road, and the road list has its own check against padding, which
+    // refused it. A file that forwards a sender originates nothing — the file
+    // that calls it does.
+    /\.renderAndSend\(/,
     /from '[^']*tenant-notification-sms\.service'/,
     /from '[^']*sms-sender\.service'/,
     /from '[^']*sms-alert\.service'/,

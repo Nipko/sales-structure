@@ -838,6 +838,163 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
 
     // -- Scheduled and event-driven messages to customers -----------------------
 
+    // ── A CUSTOMER EMAIL THE SWEEP COULD NOT SEE ──────────────────────
+    //
+    // The inventory's own sweep required a row from any file importing
+    // `email/email.service`. A tenant-template email goes out through
+    // `EmailTemplatesService.renderAndSend`, which imports none of that —
+    // so this producer matched no pattern and was under no obligation to
+    // appear here at all. It was sending a guest a name, dates and a price
+    // with no inventory row, which is the one thing this file exists to
+    // make impossible.
+    
+
+    // ── A CUSTOMER EMAIL THE SWEEP COULD NOT SEE ──────────────────────
+    //
+    // The inventory's own sweep required a row from any file importing
+    // `email/email.service`. A tenant-template email goes out through
+    // `EmailTemplatesService.renderAndSend`, which imports none of that —
+    // so this producer matched no pattern and was under no obligation to
+    // appear here at all. It was sending a guest a name, dates and a price
+    // with no inventory row, which is the one thing this file exists to
+    // make impossible.
+producer({
+        id: 'tours.booking_confirmation',
+        effect: 'The email to a guest confirming a tour booking: package, departure date and time, party size and total price',
+        lane: 'inline',
+        status: 'live',
+        derivation: 'census',
+        source: 'modules/tours/tours.service.ts',
+        symbol: 'createBooking',
+        egress: 'EmailTemplatesService.renderAndSend renders `tour_booking_confirmation` and hands it to '
+            + 'SMTP on the caller\'s stack, after the booking transaction has committed',
+        reach: {
+            class: 'customer_message', audience: 'contact', personalData: true,
+            // Email only. Nothing here reaches a messaging channel, so Meta
+            // bills none of it — which is why it is outside M1/M5 and still
+            // a customer message carrying personal data.
+            channels: ['email'],
+        },
+        properties: {
+            authority: partial('the owner\'s `tours.emailConfirmations` switch, resolved from '
+                + 'the THREAD the booking arrived on rather than from whichever active agent an '
+                + 'unordered `LIMIT 1` returned, and suppressed entirely inside an isolated '
+                + 'evaluation (`sandboxNamespace`) so a synthetic run cannot email a real guest. '
+                + 'It is `partial` and not `durable` because no economic admission exists on this '
+                + 'road: nothing bills us per delivered email, so there is no reservation to take '
+                + 'and no ceiling to refuse against'),
+            idempotency: partial('the booking INSERT is the only guard: one committed booking sends one email. A caller that retries after a lost acknowledgement commits a second booking and sends a second email, because nothing keys the send to anything a retry would recompute'),
+            receipt: none('`renderAndSend` answers with a boolean. No provider id is kept, so '
+                + 'nothing can later say which message this was or whether it arrived'),
+            uncertainOutcome: none('one boolean cannot separate "the provider refused" from "no '
+                + 'answer arrived". A timeout is recorded the same way as a rejection, which is '
+                + 'as failed'),
+            erasure: notApplicable('the body is rendered and handed to SMTP; this producer '
+                + 'persists no copy of it. There is nothing here for an erasure to reach — the '
+                + 'booking row it derives from is erased by its own vertical\'s fan-out'),
+            recovery: none('fire-and-forget inside a `try` that warns. A crash between the '
+                + 'commit and the send loses the confirmation with no row anywhere saying it was '
+                + 'owed'),
+        },
+    }),
+
+    producer({
+        id: 'vacation_rental.booking_confirmation',
+        effect: 'The email to a guest confirming a stay: property, check-in and check-out, nights, total price and the check-in instructions',
+        lane: 'inline',
+        status: 'live',
+        derivation: 'census',
+        source: 'modules/vacation-rental/properties.service.ts',
+        symbol: 'createBooking',
+        egress: 'EmailTemplatesService.renderAndSend renders `property_booking_confirmation` and hands it to '
+            + 'SMTP on the caller\'s stack, after the booking transaction has committed',
+        reach: {
+            class: 'customer_message', audience: 'contact', personalData: true,
+            // Email only. Nothing here reaches a messaging channel, so Meta
+            // bills none of it — which is why it is outside M1/M5 and still
+            // a customer message carrying personal data.
+            channels: ['email'],
+        },
+        properties: {
+            authority: partial('the owner\'s `properties.emailConfirmations` switch, resolved from '
+                + 'the THREAD the booking arrived on rather than from whichever active agent an '
+                + 'unordered `LIMIT 1` returned, and suppressed entirely inside an isolated '
+                + 'evaluation (`sandboxNamespace`) so a synthetic run cannot email a real guest. '
+                + 'It is `partial` and not `durable` because no economic admission exists on this '
+                + 'road: nothing bills us per delivered email, so there is no reservation to take '
+                + 'and no ceiling to refuse against'),
+            idempotency: partial('the booking INSERT is the only guard: one committed booking sends one email. A caller that retries after a lost acknowledgement commits a second booking and sends a second email, because nothing keys the send to anything a retry would recompute'),
+            receipt: none('`renderAndSend` answers with a boolean. No provider id is kept, so '
+                + 'nothing can later say which message this was or whether it arrived'),
+            uncertainOutcome: none('one boolean cannot separate "the provider refused" from "no '
+                + 'answer arrived". A timeout is recorded the same way as a rejection, which is '
+                + 'as failed'),
+            erasure: notApplicable('the body is rendered and handed to SMTP; this producer '
+                + 'persists no copy of it. There is nothing here for an erasure to reach — the '
+                + 'booking row it derives from is erased by its own vertical\'s fan-out'),
+            recovery: none('fire-and-forget inside a `try` that warns. A crash between the '
+                + 'commit and the send loses the confirmation with no row anywhere saying it was '
+                + 'owed'),
+        },
+    }),
+
+    // ── A CUSTOMER EMAIL THE SWEEP COULD NOT SEE ──────────────────────
+    //
+    // The inventory's own sweep required a row from any file importing
+    // `email/email.service`. A tenant-template email goes out through
+    // `EmailTemplatesService.renderAndSend`, which imports none of that —
+    // so this producer matched no pattern and was under no obligation to
+    // appear here at all. It was sending a guest a name, dates and a price
+    // with no inventory row, which is the one thing this file exists to
+    // make impossible.
+    producer({
+        id: 'orders.catalog_confirmation',
+        effect: 'The email to a customer when a catalog order they placed is confirmed by the business',
+        lane: 'inline',
+        status: 'live',
+        // Declared, and the distinction is mechanical rather than editorial:
+        // a `census` entry is one the spec's own sweep pins, and this file no
+        // longer contains an egress primitive to pin — it hands the five-step
+        // decision and the send to `OperationConfirmationService`, the shared
+        // road. The two booking confirmations above still call the transport
+        // themselves, so they remain `census`. Claiming `census` here was
+        // refused by the check that asks whether the sweep earned it, which
+        // is the check doing its job: the row is real, its provenance was not.
+        derivation: 'declared',
+        source: 'modules/orders/catalog-order-confirmation.ts',
+        symbol: 'CatalogOrderConfirmations',
+        egress: 'EmailTemplatesService.renderAndSend renders `order_confirmation` and hands it to '
+            + 'SMTP on the caller\'s stack, after the booking transaction has committed',
+        reach: {
+            class: 'customer_message', audience: 'contact', personalData: true,
+            // Email only. Nothing here reaches a messaging channel, so Meta
+            // bills none of it — which is why it is outside M1/M5 and still
+            // a customer message carrying personal data.
+            channels: ['email'],
+        },
+        properties: {
+            authority: partial('the owner\'s `orders.emailConfirmations` switch, resolved from '
+                + 'the THREAD the booking arrived on rather than from whichever active agent an '
+                + 'unordered `LIMIT 1` returned, and suppressed entirely inside an isolated '
+                + 'evaluation (`sandboxNamespace`) so a synthetic run cannot email a real guest. '
+                + 'It is `partial` and not `durable` because no economic admission exists on this '
+                + 'road: nothing bills us per delivered email, so there is no reservation to take '
+                + 'and no ceiling to refuse against'),
+            idempotency: partial('keyed to the `pending → confirmed` TRANSITION and not to the order: an order already confirmed produces nothing on a replay, and a later move to `paid` produces nothing either, so one order yields at most one receipt'),
+            receipt: none('`renderAndSend` answers with a boolean. No provider id is kept, so '
+                + 'nothing can later say which message this was or whether it arrived'),
+            uncertainOutcome: none('one boolean cannot separate "the provider refused" from "no '
+                + 'answer arrived". A timeout is recorded the same way as a rejection, which is '
+                + 'as failed'),
+            erasure: notApplicable('the body is rendered and handed to SMTP; this producer '
+                + 'persists no copy of it. There is nothing here for an erasure to reach — the '
+                + 'booking row it derives from is erased by its own vertical\'s fan-out'),
+            recovery: none('fire-and-forget inside a `try` that warns. A crash between the '
+                + 'commit and the send loses the confirmation with no row anywhere saying it was '
+                + 'owed'),
+        },
+    }),
+
     // One file, two lanes, and splitting the entry is the honest way to say so:
     // the confirmation was migrated and the cancellation could not be. The
     // second entry says why.
@@ -2093,6 +2250,21 @@ export const EGRESS_INFRASTRUCTURE: readonly EgressInfrastructure[] = Object.fre
             + 'publishes it. Every decision about whether the message may be sent belongs to the '
             + 'processor that picks the row up, so this originates nothing of its own' },
     { source: 'modules/channels/channels.module.ts', kind: 'road', reason: 'dependency injection wiring' },
+    // ── THE SHARED CUSTOMER-RECEIPT SENDER ──────────────────────────
+    //
+    // Nine `emailConfirmations` controls needed the same five-step decision —
+    // does an active tenant own this schema, is there an address, is the
+    // switch on for the agent that SERVED the operation, what language, and
+    // did the transport take it — and writing it nine times had already
+    // drifted twice. It lives here once and reports WHICH of the five
+    // refusals happened instead of returning a boolean.
+    //
+    // A road and not a producer: it decides nothing about WHICH operation
+    // deserves a receipt. Each caller does, and each caller is inventoried
+    // as the producer of its own.
+    { source: 'modules/email-templates/operation-confirmation.service.ts', kind: 'road',
+        reason: 'performs the customer receipt on behalf of a vertical writer and originates '
+            + 'none of its own: the caller names the families whose switch governs it' },
     { source: 'modules/health/health.module.ts', kind: 'road', reason: 'dependency injection wiring' },
     { source: 'modules/sms-credits/sms-credits.module.ts', kind: 'road', reason: 'dependency injection wiring' },
     { source: 'modules/sms-notifications/sms-notifications.module.ts', kind: 'road',

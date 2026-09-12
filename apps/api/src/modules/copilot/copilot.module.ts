@@ -16,6 +16,7 @@ import { PersonaModule } from '../persona/persona.module';
 import { TenantsModule } from '../tenants/tenants.module';
 import { ComplianceModule } from '../compliance/compliance.module';
 import { CatalogModule } from '../catalog/catalog.module';
+import { EvaluationRevisionModule } from '../evaluation-revision/evaluation-revision.module';
 import { AppointmentsModule } from '../appointments/appointments.module';
 
 @Module({
@@ -24,7 +25,8 @@ import { AppointmentsModule } from '../appointments/appointments.module';
     // different rules. Appointments is a forwardRef for the same reason
     // ConversationsModule holds one: it reaches back through channels.
     imports: [ConfigModule, AIModule, KnowledgeModule, VerticalsModule, QualityModule, PersonaModule,
-        ComplianceModule, CatalogModule, forwardRef(() => AppointmentsModule),
+        ComplianceModule, CatalogModule, EvaluationRevisionModule,
+        forwardRef(() => AppointmentsModule),
         forwardRef(() => TenantsModule), forwardRef(() => ConversationsModule)],
     controllers: [CopilotController],
     providers: [CopilotService, CopilotChatRateLimitGuard, CopilotRateLimitService, AgentAssessmentService,

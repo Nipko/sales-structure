@@ -1,8 +1,11 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { createHash } from 'crypto';
-import { operationalStateFromCheck, operationalStateFromQuality, rollUpOperationalState,
-    type AgentOperationalState } from '@parallext/shared';
-import { intentEvidence, readSealedRunEvidence } from '../simulation/agent-release-evidence';
+import { CONVERSATIONAL_CHANNELS, EVAL_LANGUAGES, operationalStateFromCheck, operationalStateFromQuality,
+    rollUpOperationalState, type AgentOperationalState } from '@parallext/shared';
+import { admitSealedRunEvidence, aliasedChannelSpelling, canonicalEvidenceChannel, intentEvidence,
+    readSealedRunEvidence, type IntentEvidenceScope, type SealedRunCandidate } from '../simulation/agent-release-evidence';
+import { evaluationSnapshot } from '../conversations/agent-evaluation-snapshot';
+import { EvaluationRevisionService } from '../evaluation-revision/evaluation-revision.service';
 import { buildAgentToolExplanations } from './agent-tool-explanations';
 import { AGENT_TEST_SAFE_TOOL_NAMES } from '../conversations/agent-test-tool-policy';
 import {
@@ -37,7 +40,73 @@ export class AgentAssessmentService {
         private readonly prisma: PrismaService,
         private readonly quality: AgentQualityService,
         private readonly capabilities: TurnCapabilityComposerService,
+        @Optional() private readonly revisions?: EvaluationRevisionService,
     ) {}
+
+    /**
+     * The service that captures the tenant's live evaluation dependencies.
+     *
+     * A DECLARED dependency. It was resolved through `ModuleRef` with
+     * `{ strict: false }` while `CopilotModule` did not import
+     * `EvaluationRevisionModule` — which works, and hides the edge: a container
+     * lookup cannot fail at boot, so a missing provider would have surfaced as
+     * "the evidence source is unreadable" on a live assessment rather than as a
+     * red `test:bootstrap`. The module imports it now, so the wiring is checked
+     * where wiring is supposed to be checked.
+     *
+     * Still `@Optional()`, because the harnesses that build this service
+     * directly do not construct the whole graph, and because the honest failure
+     * here is "unreadable" — never "no evidence exists".
+     */
+    private revisionAuthority(): EvaluationRevisionService | null {
+        return this.revisions ?? null;
+    }
+
+    /**
+     * The live authority a stored run has to match, captured once per assessment
+     * and only when candidate evidence exists to weigh.
+     *
+     * Opening a panel must not capture a new evaluation snapshot: that path
+     * creates or leases a knowledge replica, freezes turn context and queries
+     * MCP definitions. This reads the tenant's dependencies once, and re-reads
+     * the agent version and the tenant settings afterwards so a configuration
+     * that changed mid-read is reported as unreadable rather than published as a
+     * mixture of two states. No hash is copied from a stored run.
+     */
+    private async evidenceAuthority(input: {
+        tenantId: string; schema: string; agentId: string; agentVersion: number | null; config: unknown;
+        profileId: string; channels: readonly string[]; settingsUpdatedAt: Date | null;
+        runs: readonly SealedRunCandidate[];
+    }): Promise<{ runs: readonly SealedRunCandidate[]; scope?: IntentEvidenceScope; readable: boolean }> {
+        const revisions = this.revisionAuthority();
+        if (!revisions) return { runs: [], readable: false };
+        try {
+            const manifest = await revisions.capture(input.tenantId);
+            const [after, settings] = await Promise.all([
+                this.prisma.executeInTenantSchema<any[]>(input.schema,
+                    'SELECT version FROM agent_personas WHERE id = $1::uuid', [input.agentId]),
+                this.prisma.tenant.findUnique({ where: { id: input.tenantId }, select: { updatedAt: true } }),
+            ]);
+            if (Number(after[0]?.version) !== input.agentVersion
+                || (settings?.updatedAt?.getTime() ?? null) !== (input.settingsUpdatedAt?.getTime() ?? null)) {
+                return { runs: [], readable: false };
+            }
+            const configHash = evaluationSnapshot(input.tenantId, input.agentId,
+                { version: input.agentVersion ?? undefined, config_json: input.config }).configHash;
+            const admitted = admitSealedRunEvidence({ tenantId: input.tenantId, agentId: input.agentId,
+                agentVersion: input.agentVersion, configHash, current: manifest, runs: input.runs });
+            const channels = [...new Set(input.channels.map(canonicalEvidenceChannel))]
+                .filter(channel => (CONVERSATIONAL_CHANNELS as readonly string[]).includes(channel));
+            return {
+                runs: admitted.runs, readable: true,
+                scope: channels.length ? {
+                    agentId: input.agentId, dependencyRevision: manifest.revision, configHash,
+                    profileId: input.profileId, channels, languages: [...EVAL_LANGUAGES],
+                    currentDependencyRevisions: admitted.currentDependencyRevisions,
+                } : undefined,
+            };
+        } catch { return { runs: [], readable: false }; }
+    }
 
     async getAssessment(tenantId: string, agentId?: string, attempt = 0): Promise<AgentAssessment> {
         const schema = await this.prisma.getTenantSchemaName(tenantId);
@@ -58,7 +127,10 @@ export class AgentAssessmentService {
         const config = agent.config_json ?? {};
         const domain = buildDomainContractDraft(industry, subType);
         const assigned = [...new Set<string>([...strings(agent.channels), ...strings(agent.channel_bindings).map(binding => binding.split(':')[0])])];
-        const preferredChannel = [...strings(settings.setupWizardChannels), ...assigned].map(channel => channel === 'web_widget' ? 'web_chat' : channel)
+        // The tour contract names the embedded surface `web_chat`; the runtime
+        // channel list names it `web_widget`. Both spellings come from the one
+        // alias contract rather than from a ternary written here.
+        const preferredChannel = [...strings(settings.setupWizardChannels), ...assigned].map(aliasedChannelSpelling)
             .find(channel => ['whatsapp', 'instagram', 'messenger', 'telegram', 'web_chat'].includes(channel)) as AgentSetupTask['channelType'];
         const [overview, channels] = await Promise.all([
             this.quality.getOverview(tenantId, agent.id),
@@ -134,32 +206,62 @@ export class AgentAssessmentService {
             const relevant = checks.filter(check => check.href === catalog.route && check.code.startsWith('tool_'));
             tasks.push(withState({ key: 'catalog', status: setupTaskStatus(relevant), checks: relevant, href: catalog.route, tourId: null, dependsOn: ['mission'] }));
         }
-        tasks.push(withState({ key: 'tests', status: overview.tested.status === 'ready' && !overview.tested.stale ? 'pass' : 'warning', checks: [],
-            href: `/admin/agent/${agent.id}/test`, tourId: 'run_agent_tests', dependsOn: ['mission', 'agent', 'knowledge'] }));
         // What was actually proven for each task, instead of a literal that could
         // only ever say "not verified". Evidence from an older revision of the
         // agent is reported as stale: the configuration that passed is not the
         // one being assessed.
-        const sealedRuns = await this.prisma.transactionInTenantSchema(schema, query =>
-            readSealedRunEvidence(query, schema, agent.id)).catch(() => []);
+        const sealed = await this.prisma.transactionInTenantSchema(schema, query =>
+            readSealedRunEvidence(query, schema, agent.id))
+            .then(runs => ({ runs: runs as readonly SealedRunCandidate[], readable: true }))
+            .catch(() => ({ runs: [] as readonly SealedRunCandidate[], readable: false }));
+        // The live authority is captured only when there is something to weigh,
+        // so a tenant that never ran an evaluation costs no dependency capture.
+        const authority = sealed.readable && sealed.runs.length
+            ? await this.evidenceAuthority({ tenantId, schema, agentId: agent.id, agentVersion: Number(agent.version) || null,
+                config, profileId: domain.profileId, channels: assigned,
+                settingsUpdatedAt: tenant?.updatedAt ?? null, runs: sealed.runs })
+            : { runs: sealed.runs, scope: undefined as IntentEvidenceScope | undefined, readable: sealed.readable };
         const requiredTests = domain.intents.filter(intent => definition.intentKeys.includes(intent.key)).map(intent => {
-            // Assessment does not capture the current evaluation dependency
-            // manifest. Version alone cannot prove this configuration: until a
-            // snapshot authority is available the evidence reader stays unverified.
-            const evidence = intentEvidence(intent.key, Number(agent.version) || null, sealedRuns);
+            const evidence = intentEvidence(intent.key, Number(agent.version) || null, authority.runs, authority.scope);
             return {
             intentKey: intent.key, toolPlan: [...intent.toolPlan], terminalStates: [...intent.states], confirmation: intent.confirmation,
             fallback: intent.fallback, evidence,
-            state: (evidence === 'verified' ? 'tested' : evidence === 'failed' ? 'degraded'
-                : evidence === 'stale' ? 'degraded' : 'pending') as AgentOperationalState,
+            // An evidence source nobody could read is not an absence of evidence.
+            // `not_verified` is the word a brand-new agent gets, and answering a
+            // failed read with it is how an unreadable source becomes "prepared".
+            state: (!authority.readable ? 'unknown'
+                : evidence === 'verified' ? 'tested' : evidence === 'failed' ? 'degraded'
+                    : evidence === 'stale' ? 'degraded' : 'pending') as AgentOperationalState,
             unavailableTools: intent.toolPlan.filter(tool => channels.some(channel => !channel.contract?.publishedTools.includes(tool))),
             }; });
-        // A channel whose projection could not be read is unknown, not ready.
+        // The task that turns preparation into evidence now reads the evidence.
+        // The quality overview says a run happened; it does not say the mission's
+        // own tasks were proven by it, so "ready" alone could not close this task.
+        const proven = requiredTests.length > 0 && requiredTests.every(test => test.evidence === 'verified')
+            && overview.tested.status === 'ready' && !overview.tested.stale;
+        tasks.push(withState({ key: 'tests',
+            status: requiredTests.some(test => test.state === 'unknown') ? 'unknown'
+                : requiredTests.some(test => test.evidence === 'failed') ? 'fail'
+                    : proven || (!requiredTests.length && overview.tested.status === 'ready' && !overview.tested.stale) ? 'pass' : 'warning',
+            checks: [], href: `/admin/agent/${agent.id}/test`, tourId: 'run_agent_tests', dependsOn: ['mission', 'agent', 'knowledge'] },
+            // Like the mission task, `warning` here means "not proven yet", not
+            // "something broke". Deriving the shared word from the status would
+            // spell an agent that has simply never been tested `degraded`, which
+            // dominates the roll-up and reads as a working thing that stopped.
+            !requiredTests.length ? undefined
+                : requiredTests.some(test => test.state === 'unknown') ? 'unknown'
+                    : requiredTests.some(test => test.evidence === 'failed' || test.evidence === 'stale') ? 'degraded'
+                        : proven ? 'tested' : 'pending'));
+        // A channel whose projection could not be read is unknown, not ready. A
+        // channel whose contract blocks writers is not prepared either: the
+        // profile, the role or the surface itself cannot commit the business
+        // there, so no committing task of the mission can complete on it.
         const statedChannels = channels.map(channel => ({
             ...channel,
             state: channel.status === 'unavailable' ? ('unknown' as const)
                 : channel.contract?.degraded ? ('degraded' as const)
-                    : channel.contract ? ('prepared' as const) : ('pending' as const),
+                    : channel.contract?.writersBlocked ? ('pending' as const)
+                        : channel.contract ? ('prepared' as const) : ('pending' as const),
         }));
         const toolNames = [...new Set(channels.flatMap(channel => channel.contract?.publishedTools ?? []))];
         const channelTools = statedChannels.map(channel => buildAgentToolExplanations({
@@ -170,27 +272,46 @@ export class AgentAssessmentService {
         }));
         const tools = (channelTools[0] ?? []).map(first => {
             const entries = channelTools.map(items => items.find(item => item.tool === first.tool)!);
-            const state = rollUpOperationalState(entries.map(entry => entry.state));
+            const rolled = rollUpOperationalState(entries.map(entry => entry.state));
+            // A published tool reads `prepared` when nothing disproved it, and
+            // that answer is only available once the stored evidence has been
+            // read. An unreadable source is not an empty one: it may not be
+            // rendered as a tool that is ready.
+            const state = !authority.readable && rolled === 'prepared' ? 'unknown' as const : rolled;
             // Preserve the actual channel's explanation for the limiting state;
             // never combine published names into a fabricated runtime contract.
-            const limiting = entries.find(entry => entry.state === state)!;
+            const limiting = entries.find(entry => entry.state === rolled)!;
             return { ...limiting, state,
                 requires: { prerequisites: [...new Set(entries.flatMap(entry => entry.requires.prerequisites))],
                     readiness: [...new Set(entries.flatMap(entry => entry.requires.readiness))] },
                 missing: { ...limiting.missing, readiness: [...new Set(entries.flatMap(entry => entry.missing.readiness))] },
             };
         });
+        const blockedTool = tools.find(tool => tool.missionIntents.length > 0 && tool.state !== 'operating');
         const assessment: AgentAssessment = {
             version: 1, revision: '', generatedAt: new Date().toISOString(), agent: overview.agent, overview,
             mission: { source: configured ? 'configured' : 'template_derived', templateId: agent.template_id ?? null, profileId: domain.profileId, definition, availableIntentKeys: domain.intents.map(intent => intent.key), unsupportedIntents },
-            channels: statedChannels, tasks, nextTask: tasks.find(task => !['pass', 'not_applicable'].includes(task.status))?.key ?? null, requiredTests,
+            channels: statedChannels, tasks,
+            // A tool the mission needs that is not operating is unfinished work
+            // even when every setup task passes, so the next action is the route
+            // named by the gate that refused it when a task owns that route, and
+            // otherwise the surface that exercises tools.
+            nextTask: tasks.find(task => !['pass', 'not_applicable'].includes(task.status))?.key
+                ?? (blockedTool ? tasks.find(task => task.href === blockedTool.missing.repairRoute)?.key
+                    ?? tasks.find(task => task.key === 'tests')?.key ?? null : null),
+            requiredTests,
             // The two rules that make the shared word worth having: nothing
             // unreadable becomes "operating", and one broken part is never
-            // averaged away by the green ones around it.
+            // averaged away by the green ones around it. Tools and the mission's
+            // own tasks are parts of the agent: leaving them out let the whole
+            // read "operating" while a needed tool was blocked and not one task
+            // of the mission had been proven.
             state: rollUpOperationalState([
                 operationalStateFromQuality(overview.status),
                 ...tasks.map(task => task.state),
                 ...statedChannels.map(channel => channel.state),
+                ...tools.map(tool => tool.state),
+                ...requiredTests.map(test => test.state),
             ]),
             tools: tools as any,
             configuration: { persona: { name: text(config.persona?.name), role: text(config.persona?.role), greeting: text(config.persona?.greeting), fallbackMessage: text(config.persona?.fallbackMessage),

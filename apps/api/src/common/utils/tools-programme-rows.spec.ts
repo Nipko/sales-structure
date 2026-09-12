@@ -21,10 +21,10 @@ import { resolve } from 'path';
  * non-empty universe, that it fails loudly when its source moves, and that the
  * counts agree with what an independent audit of the same repository found.
  */
-// eslint-disable-next-line @typescript-eslint/no-var-requires
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const rowsModule = require(resolve(__dirname, '..', '..', '..', '..', '..',
     'docs', 'audits', '2026-09-11', 'tools-programme-rows.cjs'));
-// eslint-disable-next-line @typescript-eslint/no-var-requires
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const audit = require(resolve(__dirname, '..', '..', '..', '..', '..',
     'docs', 'audits', '2026-09-11', 'tool-profile-audit.json'));
 

@@ -31,7 +31,7 @@ const run = (args: string[] = []): { status: number; out: string } => {
 };
 
 describe('the artefact gate covers the tools programme', () => {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { GENERATORS } = require(VERIFIER);
 
     it('carries the tool-profile audit in its list', () => {

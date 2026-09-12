@@ -1,3 +1,4 @@
+import { MetaAgentThreadControlStore } from './meta-agent-thread-control.store';
 import { OperationalNoticeModule } from '../operational-notices/operational-notice.module';
 import { WidgetDeliveryModule } from '../widget/widget-delivery.module';
 import { WidgetChannelAdapter } from './widget.adapter';
@@ -59,6 +60,7 @@ import { WhatsappSpendModule } from '../billing/whatsapp-spend/whatsapp-spend.mo
         ChannelGatewayService,
         ProactiveSendConnection,
         ProactiveDispatchService,
+        MetaAgentThreadControlStore,
         WidgetChannelAdapter,
         WhatsAppAdapter,
         InstagramAdapter,

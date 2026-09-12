@@ -5609,6 +5609,34 @@ ALTER TABLE "{{SCHEMA_NAME}}"."benchmark_attempts"
         ADD COLUMN IF NOT EXISTS lease_expires_at TIMESTAMPTZ;
 -- END BENCHMARK ATTEMPT CLAIM
 
+-- ── DE QUIÉN ES EL HILO, CUANDO META TIENE SU PROPIO AGENTE ADENTRO ─────────
+--
+-- El agente de negocio de Meta puede contestar en la MISMA conversación en la
+-- que contesta esta plataforma, y si contestan los dos el cliente recibe DOS
+-- respuestas distintas al mismo mensaje —posiblemente contradictorias— y las
+-- dos se cobran. No es el duplicado que evita el outbox: son dos agentes.
+--
+-- Durable porque el control se mueve en un webhook y se lee en un envío:
+-- procesos distintos, reinicios distintos. En memoria, un deploy entre medio
+-- deja todos los hilos en `unknown`, que bajo coexistencia es una plataforma
+-- muda.
+--
+-- `unknown` es un estado, no un default: asumir que el hilo es nuestro
+-- mientras nadie diga lo contrario es exactamente lo que produce la doble
+-- respuesta el día que un portafolio enciende el agente de Meta.
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."meta_agent_thread_control" (
+    "conversation_id" UUID PRIMARY KEY,
+    "state"           TEXT NOT NULL DEFAULT 'unknown',
+    "since"           TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+    "reason"          TEXT,
+    "updated_at"      TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+    CONSTRAINT "meta_agent_thread_control_state"
+        CHECK ("state" IN ('ours', 'meta_agent', 'standby', 'unknown'))
+);
+CREATE INDEX IF NOT EXISTS "idx_meta_agent_thread_control_standby"
+    ON "{{SCHEMA_NAME}}"."meta_agent_thread_control" ("since")
+    WHERE "state" = 'standby';
+
 -- BEGIN WHATSAPP SPEND LEDGER
 -- Reserva monetaria, contadores por alcance y la asignacion entre los dos.
 -- Desde el 1-oct-2026 Meta cobra el mensaje de servicio entregado, asi que la

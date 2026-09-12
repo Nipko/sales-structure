@@ -12,6 +12,13 @@ export class RedisService implements OnModuleDestroy {
             host: this.configService.get<string>('redis.host', 'localhost'),
             port: this.configService.get<number>('redis.port', 6379),
             password: this.configService.get<string>('redis.password') || undefined,
+            // Which logical database. Nothing in production sets it, so it is
+            // 0 — exactly where every key has always lived. It exists so the
+            // test suites can have one keyspace per Jest worker: there is a
+            // single Valkey behind all of them, and a PLATFORM-wide cache key
+            // (`dispatch:rollout`) has no tenant in its name, so two suites
+            // that write it turn each other's rollout off.
+            db: this.configService.get<number>('redis.db', 0),
             maxRetriesPerRequest: null, // Required for BullMQ
         });
     }

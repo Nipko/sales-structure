@@ -31,6 +31,7 @@ import { redactDispatchOutbox } from '../channels/agent-dispatch-outbox';
 import { redactTurnLedger } from './agent-turn-ledger';
 import { operationalConfigurationHash } from '../persona/agent-configuration-revision';
 import { ensureSyntheticGlobalTables } from '../../common/__fixtures__/synthetic-global-tables';
+import { valkeyConnection, workerValkeyDb } from '../../common/__fixtures__/worker-valkey';
 import type { StrictDispatchOutcome, StrictDispatchRequest } from '../channels/strict-dispatch-transport';
 import { permissiveSpendGate, receiptLedgerDouble, resolvingChannelToken, openPauseStore } from '../channels/__fixtures__/spend-gate-double';
 
@@ -341,6 +342,11 @@ const ready = !!databaseUrl && !!redisUrl;
         const config: any = { get: (key: string) => {
             if (key === 'redis.host') return '127.0.0.1';
             if (key === 'redis.port') return Number(valkeyUrl.port);
+            // One logical Valkey database per Jest worker. `dispatch:rollout`
+            // is a PLATFORM key with no tenant in its name, so this suite and
+            // any other that writes it were turning each other's durable lane
+            // off — whichever read second saw zero outbox rows.
+            if (key === 'redis.db') return workerValkeyDb();
             if (key === 'auth.jwtSecret') return jwtSecret;
             if (key === 'META_APP_SECRET') return appSecret;
             return undefined;
@@ -349,7 +355,7 @@ const ready = !!databaseUrl && !!redisUrl;
         redis = new RedisService(config);
         wsRelay = new WsRelayService(redis);
 
-        const connection = { host: '127.0.0.1', port: Number(valkeyUrl.port), maxRetriesPerRequest: null };
+        const connection = valkeyConnection(valkeyUrl);
         inboundQueue = new Queue(inboundQueueName, { connection });
         outboundQueue = new Queue(outboundQueueName, { connection });
         inboundQueue.on('error', () => undefined);
@@ -566,7 +572,7 @@ const ready = !!databaseUrl && !!redisUrl;
     async function startInboundWorker(): Promise<void> {
         const valkeyUrl = new URL(redisUrl!);
         inboundWorker = new Worker(inboundQueueName, async job => inboundProcessor.process(job as any), {
-            connection: { host: '127.0.0.1', port: Number(valkeyUrl.port), maxRetriesPerRequest: null },
+            connection: valkeyConnection(valkeyUrl),
             concurrency: 1, lockDuration: 120_000,
         });
         inboundWorker.on('error', () => undefined);
@@ -578,7 +584,7 @@ const ready = !!databaseUrl && !!redisUrl;
         const valkeyUrl = new URL(redisUrl!);
         outboundWorker = new Worker(outboundQueueName,
             async (job, token) => outboundProcessor.process(job as any, token), {
-                connection: { host: '127.0.0.1', port: Number(valkeyUrl.port), maxRetriesPerRequest: null },
+                connection: valkeyConnection(valkeyUrl),
                 concurrency: 1,
             });
         outboundWorker.on('error', () => undefined);

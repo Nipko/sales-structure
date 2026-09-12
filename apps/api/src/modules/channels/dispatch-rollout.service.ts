@@ -61,9 +61,23 @@ export class DispatchRolloutService {
     ) {}
 
     async config(): Promise<DispatchRolloutConfig> {
+        // ── THE CACHE IS A CACHE ────────────────────────────────────────────
+        //
+        // This read used to sit inside the same `try` as the database read, so
+        // a Redis blip did not fall through to the authority — it threw, and
+        // the catch below answered OFF. One unavailable cache turned the
+        // durable lane off for EVERY tenant at once: an unannounced rollback,
+        // logged at debug, during the one window the pilot exists to measure.
+        //
+        // Losing a cache may cost a query. It may not decide a rollout.
+        const cached = await this.redis.getJson<DispatchRolloutConfig>(CACHE_KEY)
+            .catch(error => {
+                this.logger.warn('[Dispatch] rollout cache unreadable, asking the database: '
+                    + String((error as any)?.message ?? error));
+                return null;
+            });
+        if (cached) return this.normalize(cached);
         try {
-            const cached = await this.redis.getJson<DispatchRolloutConfig>(CACHE_KEY);
-            if (cached) return this.normalize(cached);
             const rows = await this.prisma.$queryRaw<{ value: string }[]>`
                 SELECT value FROM platform_settings WHERE key = ${SETTINGS_KEY} LIMIT 1
             `;
@@ -75,7 +89,13 @@ export class DispatchRolloutService {
             await this.redis.setJson(CACHE_KEY, config, CACHE_TTL).catch(() => {});
             return config;
         } catch (error: any) {
-            this.logger.debug(`Dispatch rollout unreadable, staying off: ${error?.message}`);
+            // The AUTHORITY is unreadable, which is a different fact from the
+            // cache being unreadable, and the only one that may answer OFF.
+            // Warn rather than debug: this silently moves every reply onto the
+            // legacy queue, and a debug line is not where somebody looks when a
+            // pilot stops producing rows.
+            this.logger.warn('[Dispatch] rollout switch unreadable in platform_settings, '
+                + `staying OFF for every tenant: ${error?.message}`);
             return DispatchRolloutService.OFF;
         }
     }

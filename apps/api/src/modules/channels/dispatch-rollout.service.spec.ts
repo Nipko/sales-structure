@@ -66,12 +66,29 @@ describe('DispatchRolloutService', () => {
         }
     });
 
-    it('stays off when the setting cannot be read at all', async () => {
-        // Failing open here would put untested delivery in front of customers.
+    it('stays off when the SETTING cannot be read at all', async () => {
+        // The authority is unreadable, so nothing is known and the lane stays
+        // where it is. Failing open here would put untested delivery in front
+        // of customers.
         await expect(harness(undefined, { dbFails: true }).service.enabledFor(tenantId, 'whatsapp'))
             .resolves.toBe(false);
+    });
+
+    it('does NOT let a cache outage decide the rollout', async () => {
+        // This used to assert the opposite, and the assertion was pinning a
+        // defect as if it were the design: the Redis read sat inside the same
+        // `try` as the database read, so a cache blip never reached the
+        // authority at all and answered OFF for EVERY tenant at once.
+        //
+        // The reason that is the wrong direction, and not merely a cautious
+        // one: OFF does not mean "do not send". It means send on the legacy
+        // queue, where Redis is the only record and no durable row is written.
+        // So failing off on a cache blip does not withhold delivery — it
+        // withholds the EVIDENCE of delivery, during the exact window a pilot
+        // exists to measure. Losing a cache may cost a query; it may not
+        // perform an unannounced rollback.
         await expect(harness({ enabled: true, channels: ['whatsapp'] }, { redisFails: true })
-            .service.enabledFor(tenantId, 'whatsapp')).resolves.toBe(false);
+            .service.enabledFor(tenantId, 'whatsapp')).resolves.toBe(true);
     });
 
     describe('a channel must be both requested and actually migrated', () => {

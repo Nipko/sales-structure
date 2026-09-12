@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "revision": "0d88d8a7a2751b6fa77381c256c60858f6f07f27",
-  "generatedAt": "2026-09-12T03:18:17.638Z",
+  "revision": "5d8d0cfa264b242691ebeec2ef2a5a4acea8b16e",
+  "generatedAt": "2026-09-12T03:26:01.325Z",
   "finished": false,
   "counts": {
     "aceptada": 11,
@@ -506,7 +506,7 @@
       "status": "abierta",
       "provenance": "derived",
       "artefact": null,
-      "evidence": "De 27 call sites cobrables, 7 usan un carril que no escribe fila antes del POST — Redis es el registro, o no hay registro. Un productor ahí no puede contestar \"¿esto salió?\" después de un reinicio. El criterio principal de R6 es exactamente este número en cero.",
+      "evidence": "De 27 call sites cobrables, 7 usan un carril que no escribe fila antes del POST — Redis es el registro, o no hay registro. Un productor ahí no puede contestar \"¿esto salió?\" después de un reinicio. El criterio principal de R6 es exactamente este número en cero. Ninguno de los siete carece del camino durable: seis son el repliegue de `conversations.service.ts` cuando el interruptor de despliegue está apagado, y el séptimo es la consola en un canal SIN transporte estricto, que no puede entregar exactamente un efecto y decir qué pasó. Por eso el número no baja escribiendo código: baja encendiendo un interruptor —decisión de piloto del dueño— o dándole transporte estricto a ese canal.",
       "commits": []
     },
     {

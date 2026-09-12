@@ -285,7 +285,13 @@ function octoberRows(row, A) {
             evidence: `De ${A.billable.length} call sites cobrables, ${A.offDurable.length} usan un `
                 + 'carril que no escribe fila antes del POST — Redis es el registro, o no hay '
                 + 'registro. Un productor ahí no puede contestar "¿esto salió?" después de un '
-                + 'reinicio. El criterio principal de R6 es exactamente este número en cero.' }),
+                + 'reinicio. El criterio principal de R6 es exactamente este número en cero. '
+                + 'Ninguno de los siete carece del camino durable: seis son el repliegue de '
+                + '`conversations.service.ts` cuando el interruptor de despliegue está apagado, y '
+                + 'el séptimo es la consola en un canal SIN transporte estricto, que no puede '
+                + 'entregar exactamente un efecto y decir qué pasó. Por eso el número no baja '
+                + 'escribiendo código: baja encendiendo un interruptor —decisión de piloto del '
+                + 'dueño— o dándole transporte estricto a ese canal.' }),
 
         row('R1', { provenance: 'derived',
             open: A.unrepresentable.length,

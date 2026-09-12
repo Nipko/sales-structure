@@ -1,5 +1,29 @@
 # Rentabilidad por plan — Julio 2026
 
+> ## ⚠️ La línea “WhatsApp/Meta” de este análisis no es un costo nuestro
+>
+> **Parallly es Tech Provider: Meta le cobra a la WABA del propio negocio cada
+> mensaje de servicio entregado, desde el 1-oct-2026.** No pasa por nuestra
+> factura. Así que la fila `WhatsApp/Meta (~40 % del crédito)` del COGS
+> (§“Peor caso”), el `Crédito WhatsApp incluido` por plan y el supuesto de “uso
+> de WhatsApp / multimedia” **no describen un gasto de Parallly**, y los
+> márgenes que salen de restarlos están subestimados por construcción.
+>
+> `whatsappCreditUsdCents` existe en el registro de features y en el seed de
+> planes, y **ningún consumidor lo lee para decidir nada**: no es un saldo, no
+> es una protección y no frena ningún envío.
+>
+> Lo que sí cambia con octubre es el **gasto total del cliente**, que sube sin
+> que suba nuestro ingreso, y eso es una decisión comercial — no un renglon de
+> COGS. Está planteada, con escenario recomendado y alternativas costeadas, en
+> `docs/audits/2026-09-12/m4-pricing-proposal.md` §4.1.
+>
+> Las reglas y tarifas oficiales: `docs/whatsapp-meta-pricing-2026-10.md`.
+>
+> El resto del documento — precios, límites, costo de LLM, comisión del PSP,
+> infraestructura — sigue valiendo. También sigue diciendo MercadoPago, que fue
+> retirado como PSP de plataforma en ago 2026 (`docs/mercadopago-retirement-2026-08.md`).
+
 Análisis de márgenes por plan de suscripción, actualizado antes de congelar los precios en MercadoPago producción. Datos de precios y límites **code-grounded** desde `apps/api/prisma/seed-billing-plans.js` y `apps/api/src/modules/ai/router/llm-router.service.ts`; los costos de terceros (comisión MP, WhatsApp/Meta, Factus, TRM) son **supuestos de mercado etiquetados** — ajustalos con tus cifras reales.
 
 ## TL;DR

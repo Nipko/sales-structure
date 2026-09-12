@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "revision": "b31f2a875298717dff409523f8d5beecef9bb58b",
-  "generatedAt": "2026-09-12T19:59:16.241Z",
+  "revision": "d5bda5e24d090c7f8f3ccc3afaa1e5fb2f846482",
+  "generatedAt": "2026-09-12T20:05:17.745Z",
   "finished": false,
   "counts": {
     "aceptada": 18,
@@ -449,8 +449,8 @@
     },
     {
       "id": "M1",
-      "open": 7,
-      "openLabel": "3 productores de mensaje al cliente cobrables por Meta sin autoridad y 4 sin idempotencia, sobre 18 productores de esa clase",
+      "open": 6,
+      "openLabel": "3 productores de mensaje al cliente cobrables por Meta sin autoridad y 3 sin idempotencia, sobre 18 productores de esa clase",
       "gates": [
         1,
         4
@@ -504,8 +504,8 @@
     },
     {
       "id": "M5",
-      "open": 4,
-      "openLabel": "4 productores de mensaje al cliente cobrables por Meta sin borrado alcanzable, sobre 18 de esa clase",
+      "open": 3,
+      "openLabel": "3 productores de mensaje al cliente cobrables por Meta sin borrado alcanzable, sobre 18 de esa clase",
       "gates": [
         1,
         6

@@ -410,10 +410,14 @@ export function ConversationScreen() {
             : text.trim();
         setReplyTo(null);
         setText(''); setSending(true);
-        const tmpId = `tmp-${Date.now()}`;
+        // One opaque key per press, reused by the offline outbox. A timeout can
+        // mean the server committed the message and only the response was
+        // lost; retrying under a new key would put a second billed message on
+        // the customer's phone.
+        const tmpId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
         setMessages((prev) => [...prev, { id: tmpId, sender: 'outbound', content: body, timestamp: new Date().toISOString() }]);
         try {
-            const result = await api.sendMessage(tenantId, conversationId, body);
+            const result = await api.sendMessage(tenantId, conversationId, body, tmpId);
             if (!result?.success) throw new Error(result?.error || 'send_failed');
             haptic.success();
             load();

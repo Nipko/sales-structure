@@ -45,7 +45,7 @@ describe('outbox account isolation', () => {
 
         // Actor identity is derived by the API from the authenticated session; the
         // outbox keeps userId only for local queue isolation and never sends it.
-        expect(sendMessage).toHaveBeenCalledWith('tenant-1', 'conv-ok', 'hola');
+        expect(sendMessage).toHaveBeenCalledWith('tenant-1', 'conv-ok', 'hola', 'm1');
         expect(pendingFor('conv-ok')).toHaveLength(0);
     });
 
@@ -70,6 +70,9 @@ describe('outbox account isolation', () => {
         sendMessage.mockResolvedValue({ success: true });
         retry('m3');
         await tick();
+        expect(sendMessage).toHaveBeenLastCalledWith(
+            'tenant-1', 'conv-retry', 'reintento', 'm3',
+        );
         expect(pendingFor('conv-retry')).toHaveLength(0);
     });
 

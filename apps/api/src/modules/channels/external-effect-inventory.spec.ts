@@ -435,16 +435,32 @@ describe('the inventory is honest about what is not covered', () => {
         expect(service).toContain('replyThroughOutbox');
         expect(service).toContain('getStrictTransport');
 
-        // Idempotency is `partial`, not `durable`: the key names the press and
-        // the client has to send one. The console does; the mobile inbox does
-        // not, and the note has to keep saying so.
-        expect(durable.properties.idempotency.level).toBe('partial');
+        // The key names the press and every shipped client has to preserve it.
+        // The mobile path is the easy one to regress because its first HTTP
+        // attempt and its offline retry live in different files. Pin both ends:
+        // the API accepts the key and the persisted outbox row id is the same
+        // value passed on every replay.
+        const mobileApi = fs.readFileSync(
+            path.join(SRC, '..', '..', 'mobile', 'src', 'lib', 'api.ts'), 'utf8');
+        const mobileOutbox = fs.readFileSync(
+            path.join(SRC, '..', '..', 'mobile', 'src', 'lib', 'outbox.ts'), 'utf8');
+        expect(durable.properties.idempotency.level).toBe('durable');
         expect(durable.properties.idempotency.note).toMatch(/press/i);
+        expect(mobileApi).toContain('content: string, idempotencyKey?: string');
+        expect(mobileApi).toContain('{ content, ...(idempotencyKey ? { idempotencyKey } : {}) }');
+        expect(mobileOutbox).toContain('item.conversationId, item.body, item.id');
         // And the origin key must not be a random id, which is the one thing
         // `ProactiveDispatchService.originId` forbids by name: a random id
         // minted inside a failed attempt is not recomputable, so the retry
         // mints a second one and sends a second message.
         expect(service).toContain('agent_console:${input.conversationId}:${input.idempotencyKey}');
+
+        // Contact erasure reaches the same outbox row immediately; it is not a
+        // retention promise that waits for the settlement sweeper.
+        const compliance = fs.readFileSync(
+            path.join(SRC, 'modules', 'compliance', 'compliance.service.ts'), 'utf8');
+        expect(durable.properties.erasure.level).toBe('durable');
+        expect(compliance).toContain('redactDispatchOutbox(query, schema, {contactIds})');
     });
 
     it('reports a switched-off or retained producer instead of omitting it', () => {

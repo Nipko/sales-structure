@@ -472,18 +472,19 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
                 + 'the lease transaction: the person must still be active, still hold a sending role, '
                 + 'still belong to this tenant, and the connection must still be this tenant\'s and '
                 + 'live'),
-            idempotency: partial('`originKey` is `agent_console:<conversation>:<press>`, and the press '
-                + 'is the key the client sends. The console supplies one per press and reuses it when '
-                + 'it retries that same press, so a request whose answer never arrived collides onto '
-                + 'the row that already exists. A caller that sends no key gets a random one and no '
-                + 'protection — which is honest rather than safe, and is why this is `partial`: the '
-                + 'mobile inbox does not send one yet'),
+            idempotency: durable('`originKey` is `agent_console:<conversation>:<press>`, and every '
+                + 'shipped console supplies one opaque key per press. The dashboard reuses it for its '
+                + 'failed-send retry; the mobile offline outbox persists the same key and passes it '
+                + 'on both the first request and every replay, so a request whose answer never arrived '
+                + 'adopts the row that already exists instead of sending another billed message'),
             receipt: durable('the committed row carries the provider message id the transport '
                 + 'returned, and the `messages` row is settled from the same outcome'),
             uncertainOutcome: durable('a strict transport distinguishes refused from unconfirmed, and '
                 + 'an unconfirmed attempt leaves the row in a state no second POST is authorised from'),
-            erasure: partial('GDPR erasure redacts the `messages` row like any other; the outbox row '
-                + 'holds the rendered payload until it is settled and swept'),
+            erasure: durable('contact erasure invokes `redactDispatchOutbox` in the same tenant '
+                + 'transaction that writes the tombstone; it clears recipient, payload, connection '
+                + 'binding and learning footprint immediately, whether the row is pending, leased or '
+                + 'settled, while the paired `messages` row is redacted too'),
             recovery: durable('the row survives a restart and is retried from its own payload rather '
                 + 'than from a person typing it again'),
         },

@@ -55,6 +55,25 @@ export type SpendBlockCode = (typeof SPEND_BLOCK_CODES)[number];
  * `cap_soft_stop` is deliberately NOT here. It is a real decision — campaigns
  * stand down so replies keep working — and a proactive effect that waits for
  * the ceiling to reset is a campaign message arriving a month late.
+ *
+ * ── THE MISSING FIELDS BELONGED HERE ALL ALONG ──────────────────────────────
+ *
+ * The first version of this list held only the five funding and transport
+ * conditions, and everything else was suppressed by omission — including the
+ * codes that mean "a field this tenant has not filled in yet". The source says
+ * what it intended in as many words: the admission service refuses an
+ * unpriceable effect with *"the effect is DEFERRED rather than sent unpriced"*
+ * and *"Deferred, not sent unpriced"*. The lane then deleted it. A comment
+ * saying "deferred" over a mechanism that discards is the worst kind of wrong,
+ * because it reads as though somebody thought about it.
+ *
+ * These are not decisions anybody made. `waba_timezone` is a nullable column
+ * with a best-effort backfill, so `timezone_missing` can be the standing state
+ * of a real, working account — and under enforcement every durable message
+ * from that number was being destroyed rather than held. A rate card that does
+ * not yet cover a currency, a template whose Meta approval has not synced, a
+ * connection whose payer Meta has not told us: each clears without the customer
+ * ever knowing, provided the message is still there when it does.
  */
 export const TRANSIENT_SPEND_BLOCKS: readonly SpendBlockCode[] = Object.freeze([
     /** Meta refused to bill this business. Clears when funding is fixed. */
@@ -67,6 +86,22 @@ export const TRANSIENT_SPEND_BLOCKS: readonly SpendBlockCode[] = Object.freeze([
     'connection_unusable',
     /** The transmission right is held elsewhere right now. */
     'transmission_held_elsewhere',
+    /** A nullable column an administrator can set at any moment. */
+    'timezone_missing',
+    /** Clears on a reconnect through Embedded Signup. */
+    'payer_unknown',
+    /** Clears when a published rate card covers that billing currency. */
+    'currency_unknown',
+    /** Clears when the template's Meta approval syncs into the catalogue. */
+    'category_unknown',
+    /** Clears when the rate card covers the market and category. */
+    'rate_unknown',
+    /**
+     * Clears when somebody settles which currency the period is kept in. It
+     * needs a person, which is not the same as needing a new decision about
+     * THIS message — and until they act, the effect is owed, not cancelled.
+     */
+    'counter_currency_mismatch',
 ]);
 
 /** Does this refusal describe a condition that can clear on its own? */

@@ -430,6 +430,45 @@ describe('el chequeo de las cifras del canario', () => {
             expect(out).toContain('retired');
         });
 
+        /**
+         * ═══ `--fix` MUST NOT CLAIM A DOCUMENT IT DID NOT TOUCH ═══
+         *
+         * The mode the file header advertises as the remedy reported success
+         * for a document it had not written. `--fix` decided what was left by
+         * an ALLOWLIST of problem phrasings that "need a human"; the retired-
+         * figure branch writes nothing and phrases itself in none of those
+         * ways, so every problem it raised was assumed fixed. Reproduced:
+         * exit 0, "rewritten from the planner", document byte-identical.
+         *
+         * CI runs `--check`, so a stale document could never go green there —
+         * which is exactly why this one was survivable for so long. The lie
+         * was developer-facing, and a developer who trusts it stops looking.
+         */
+        const fix = (): { status: number; out: string } => {
+            try {
+                const out = execFileSync(process.execPath, [CHECKER, '--fix'],
+                    { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+                return { status: 0, out };
+            } catch (error: any) {
+                return { status: error.status ?? 1, out: String(error.stdout || '') + String(error.stderr || '') };
+            }
+        };
+
+        it('does not report a fix for a document it left untouched', () => {
+            fs.mkdirSync(PROBE_DIR, { recursive: true });
+            const source = 'Corrida canaria\n\nEl techo es US$0,76 por pasada.\n';
+            fs.writeFileSync(PROBE, source);
+
+            const { status, out } = fix();
+
+            // The document is the evidence: unchanged, so nothing was fixed.
+            expect(fs.readFileSync(PROBE, 'utf8')).toBe(source);
+            expect(status).toBe(1);
+            expect(out).toContain('still diverge and were NOT rewritten');
+            // And it must not say the opposite sentence anywhere.
+            expect(out).not.toMatch(/^rewritten from the planner/m);
+        });
+
         it('is refused even with today’s figures beside it', () => {
             // A document that states BOTH is not safer; it contradicts itself on
             // the same page, which is how certification-canary.md came to say

@@ -268,11 +268,39 @@ schemas_in_database() {
     < /dev/null | tr -d '\r' | sed '/^$/d' | sort -u
 }
 
-# The archive says what should be there; the database says what is. Anything the
-# archive names and the database does not have means the restore did not restore
-# it — whatever `pg_restore` exited with.
+# ── WHAT THIS RUN RESTORED, AS OPPOSED TO WHAT HAPPENS TO BE THERE ──────────
+#
+# The check below used to ask one question: is every schema the archive names
+# present in the database now? Over an EMPTY database that is the right
+# question. Over a populated one — the rollback, the drill, every moment this
+# script is actually reached for — it is answered `yes` by the schemas that
+# were already there, and a run that restored nothing certifies itself.
+#
+# Reproduced, with the suite's own stubs: a tarball holding `public.dump` and
+# `full_backup.dump`, restored against live schemas `public` + `tenant_acme`,
+# issued ONE pg_restore (`--schema=public`) and printed "Verified — every
+# schema in full_backup.dump exists: tenant_acme", "OK — all schemas restored",
+# "Restore complete!", exit 0. The tenant's data was never touched. A tarball
+# holding only `full_backup.dump` issued ZERO pg_restore commands and printed
+# exactly the same three lines.
+#
+# So this file now keeps a ledger. A schema is added ONLY by a `pg_restore`
+# that exited 0 in this process, and the verification asks the archive against
+# the ledger FIRST — a positive statement about what this run did — before
+# asking the database whether it is really there.
+RESTORED_SCHEMAS=""
+
+note_restored() {
+  RESTORED_SCHEMAS="${RESTORED_SCHEMAS}
+$1"
+}
+
+# The archive says what should be there; the ledger says what this run put
+# there; the database says what is. A schema the archive names and this run did
+# not restore is a gap whatever `pg_restore` exited with, and one the database
+# does not have afterwards is a second, different gap.
 verify_schemas_restored() {
-  local archive="$1" archive_schemas live_schemas missing="" schema
+  local archive="$1" archive_schemas live_schemas missing="" unrestored="" schema
   if ! archive_schemas="$(schemas_in_archive "${archive}")"; then
     echo "  FAILED — could not read the table of contents of ${archive}; what was restored cannot be verified"
     return 1
@@ -290,6 +318,24 @@ verify_schemas_restored() {
     fi
     archive_schemas="public"
   fi
+  # FIRST: did this run restore them? Asked before the database, because the
+  # database cannot tell "restored" from "was already here", and over a
+  # populated database that difference is the entire failure.
+  for schema in ${archive_schemas}; do
+    printf '%s\n' "${RESTORED_SCHEMAS}" | grep -qxF "${schema}" || unrestored="${unrestored} ${schema}"
+  done
+  if [ -n "${unrestored}" ]; then
+    if [ -z "$(printf '%s' "${RESTORED_SCHEMAS}" | tr -d '[:space:]')" ]; then
+      echo "  FAILED — this run restored NOTHING, and ${archive} names schema(s):${unrestored}"
+      echo "  Nothing in the database came from this archive. Do not read the schemas that"
+      echo "  are present as a successful restore: they are what was already there."
+    else
+      echo "  FAILED — ${archive} names schema(s) this run did not restore:${unrestored}"
+      echo "  They may still be present from BEFORE this restore. That is not a restore."
+    fi
+    return 1
+  fi
+
   if ! live_schemas="$(schemas_in_database)"; then
     echo "  FAILED — could not list the schemas in ${DB_NAME}; what was restored cannot be verified"
     return 1
@@ -301,7 +347,7 @@ verify_schemas_restored() {
     echo "  FAILED — ${archive} contains schema(s) that are NOT in the database after the restore:${missing}"
     return 1
   fi
-  echo "  Verified — every schema in ${archive} exists: $(printf '%s' "${archive_schemas}" | tr '\n' ' ')"
+  echo "  Verified — this run restored every schema in ${archive}, and each is present: $(printf '%s' "${archive_schemas}" | tr '\n' ' ')"
   return 0
 }
 
@@ -318,6 +364,16 @@ if [ "${FLAG}" != "--media-only" ]; then
       --clean --if-exists --no-owner --no-privileges \
       < "${DB_ARCHIVE}" 2>&1; then
       echo "  OK — whole-database archive applied"
+      # No `--schema` filter and exit 0: everything the archive names was
+      # applied. `public` is added explicitly because a dump never carries a
+      # `CREATE SCHEMA public` entry — it already exists — and the check
+      # substitutes `public` for an archive with no SCHEMA entries at all.
+      note_restored "public"
+      while IFS= read -r restored_schema; do
+        [ -n "${restored_schema}" ] && note_restored "${restored_schema}"
+      done <<EOF
+$(schemas_in_archive "${DB_ARCHIVE}")
+EOF
     else
       echo "  FAILED — the whole-database restore did not complete"
       RESTORE_FAILURES=$((RESTORE_FAILURES + 1))
@@ -336,6 +392,7 @@ if [ "${FLAG}" != "--media-only" ]; then
         --schema=public --clean --if-exists --no-owner --no-privileges \
         < "public.dump" 2>&1; then
         echo "  OK — public schema"
+        note_restored "public"
       else
         echo "  FAILED — public schema did not restore"
         RESTORE_FAILURES=$((RESTORE_FAILURES + 1))
@@ -352,6 +409,7 @@ if [ "${FLAG}" != "--media-only" ]; then
           --schema="${SCHEMA}" --clean --if-exists --no-owner --no-privileges \
           < "${DUMP}" 2>&1; then
           echo "  OK — ${SCHEMA}"
+          note_restored "${SCHEMA}"
         else
           echo "  FAILED — ${SCHEMA} did not restore"
           RESTORE_FAILURES=$((RESTORE_FAILURES + 1))
@@ -381,6 +439,17 @@ if [ "${FLAG}" != "--media-only" ]; then
       fi
     elif [ -f "public.dump" ]; then
       verify_schemas_restored "public.dump" || RESTORE_FAILURES=$((RESTORE_FAILURES + 1))
+    else
+      # Neither statement of what the backup captured is in the tarball, so
+      # there is nothing to check the ledger against — and the tenant loop above
+      # is `for DUMP in tenant_*.dump` with nullglob OFF, so with no tenant dump
+      # the body is skipped by `[ -f ]` and RESTORE_FAILURES stays 0. Without
+      # this branch, an archive holding nothing restorable prints
+      # "OK — all schemas restored" and exits 0.
+      echo "  FAILED — this archive holds neither public.dump nor full_backup.dump;"
+      echo "  there is no statement of what the backup captured, so a restore from it"
+      echo "  cannot be verified. Extract it and check what is actually inside."
+      RESTORE_FAILURES=$((RESTORE_FAILURES + 1))
     fi
   fi
 

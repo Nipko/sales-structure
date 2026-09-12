@@ -240,7 +240,7 @@ describe('the return point is restored WHOLE, or not called restored', () => {
         // there was nothing to fail. `full_backup.dump` is that night's own
         // statement of what was captured, and it is the authority.
         const run = runRestore(NIGHTLY('public.dump full_backup.dump'), 'public');
-        expect(run.stdout).toContain('NOT in the database after the restore: tenant_acme');
+        expect(run.stdout).toContain('this run did not restore: tenant_acme');
         expect(run.exit).toBe(1);
         // And it names the remedy, because the most likely cause is one
         // `docs/backup-restore-runbook.md` already documents: a tenant that was
@@ -248,5 +248,66 @@ describe('the return point is restored WHOLE, or not called restored', () => {
         // so its data exists only inside `full_backup.dump`.
         expect(run.stdout).toContain('its data lives ONLY inside full_backup.dump');
         expect(run.stdout).toMatch(/restore\.sh <extracted-dir>\/full_backup\.dump --db-only/);
+    });
+});
+
+/**
+ * ═══ "IT IS THERE" IS NOT "THIS RUN PUT IT THERE" ═══
+ *
+ * The check above compared the archive's table of contents against the schemas
+ * that exist NOW. Over an empty database that is the right question. Over a
+ * POPULATED one — the rollback, the drill, every moment somebody actually
+ * reaches for this script — it is answered `yes` by the schemas that were
+ * already there, and a run that restored nothing certifies itself.
+ *
+ * The case above only went red because its stub reported `live = public`. The
+ * two below use the same tarballs against a database that still HAS the tenant,
+ * which is the realistic shape, and they are the cases the previous version
+ * passed while restoring nothing.
+ */
+describe('a restore that did not restore cannot report success', () => {
+    it('refuses the missing tenant dump even when the tenant is still in the database', () => {
+        // Byte-for-byte the tarball of the last case; only the database differs.
+        // One pg_restore goes out, `--schema=public`, and `tenant_acme` is never
+        // touched — while being present the whole time, because a rollback runs
+        // against a database that already has everything in it.
+        const run = runRestore(NIGHTLY('public.dump full_backup.dump'), 'public\ntenant_acme');
+        expect(restoreCalls(run.calls).length).toBe(1);
+        expect(run.stdout).toContain('this run did not restore: tenant_acme');
+        expect(run.stdout).toContain('present from BEFORE this restore');
+        expect(run.stdout).not.toContain('OK — all schemas restored');
+        expect(run.stdout).not.toContain('Restore complete!');
+        expect(run.exit).toBe(1);
+    });
+
+    it('refuses an archive it could not restore anything at all from', () => {
+        // Zero pg_restore commands issued. The tenant loop is
+        // `for DUMP in tenant_*.dump` with nullglob OFF, so with no tenant dump
+        // the body is skipped by `[ -f ]` and the failure counter stays 0 —
+        // which is how "restored nothing" used to print "Restore complete!".
+        const run = runRestore(NIGHTLY('full_backup.dump'), 'public\ntenant_acme');
+        expect(restoreCalls(run.calls).length).toBe(0);
+        expect(run.stdout).toContain('this run restored NOTHING');
+        expect(run.stdout).not.toContain('OK — all schemas restored');
+        expect(run.exit).toBe(1);
+    });
+
+    it('refuses a tarball that states nothing about what was captured', () => {
+        // No `full_backup.dump` and no `public.dump`: nothing to check a ledger
+        // against. Previously the loop matched nothing, no check ran, and the
+        // script exited 0.
+        const run = runRestore(NIGHTLY('tenant_other.dump'), 'public\ntenant_acme');
+        expect(run.stdout).toContain('neither public.dump nor full_backup.dump');
+        expect(run.exit).toBe(1);
+    });
+
+    it('still says yes to a real whole-database restore', () => {
+        // The property that keeps this from being a check that blocks rollbacks:
+        // an unfiltered restore applies everything the archive names, so the
+        // ledger covers the table of contents and the run is verified.
+        const run = runRestore(BARE_DUMP, 'public\ntenant_acme');
+        expect(run.stdout).toContain('this run restored every schema');
+        expect(run.stdout).toContain('OK — all schemas restored');
+        expect(run.exit).toBe(0);
     });
 });

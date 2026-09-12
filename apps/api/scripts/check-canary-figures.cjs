@@ -285,6 +285,8 @@ function main() {
     const FIX = process.argv.includes('--fix');
     const figures = plannedFigures();
     const problems = [];
+    /** Documents this run rewrote AND re-verified. The only basis for saying so. */
+    const rewritten = new Set();
 
     console.log(`canary planner: cases=${figures.cases} calls=${figures.calls} `
         + `subject=${figures.subject} judge=${figures.judge} ceiling=${usdEn(figures.cents)}`);
@@ -363,7 +365,23 @@ function main() {
             for (const problem of stale) problems.push(`${relative}: ${problem}`);
             if (FIX && ASSERTING.includes(relative)) {
                 fs.writeFileSync(file, crlf ? fixed.split('\n').join('\r\n') : fixed);
-                console.log(`${relative}: rewritten from the planner`);
+                // ── SAY "REWRITTEN" ONLY ABOUT A DOCUMENT THAT WAS ──────────
+                //
+                // Re-read through the same inspection rather than trusting the
+                // write. `--fix` exists to be believed by whoever runs it, and
+                // a rewrite that left a divergence behind - a figure in a shape
+                // the replacer does not reach, say - would otherwise be
+                // announced as a fix and exit 0.
+                const after = inspect(fixed, figures, quoted);
+                if (after.stale.length) {
+                    for (const problem of after.stale) {
+                        problems.push(`${relative}: SURVIVED --fix — ${problem}. The rewrite did not `
+                            + 'reach it; this needs a human.');
+                    }
+                } else {
+                    rewritten.add(relative);
+                    console.log(`${relative}: rewritten from the planner`);
+                }
             } else if (!ASSERTING.includes(relative)) {
                 problems.push(`${relative}: states a canary figure the planner no longer produces and is `
                     + 'in no list. Say which it is: ASSERTING (and `--fix` rewrites it), HISTORICAL with '
@@ -436,13 +454,26 @@ function main() {
     }
     for (const problem of problems) console.error(`  ${problem}`);
     if (FIX) {
-        const left = problems.filter(problem =>
-            problem.includes('in no list') || problem.includes('shape this checker recognises')
-            || problem.includes('the exemption is dead') || problem.includes('remove it from the ledger')
-            || problem.includes('missing from the repository'));
+        // ── WHAT IS LEFT IS WHAT WAS NOT WRITTEN ────────────────────────────
+        //
+        // This used to be an ALLOWLIST of problem phrasings that "need a
+        // human", and every problem outside the list was assumed to have been
+        // fixed. A retired figure with no current one beside it is reported
+        // from a branch that writes nothing and phrases itself in none of those
+        // ways, so `--fix` printed "rewritten from the planner" and exited 0
+        // over a document it had not touched. Reproduced with a probe
+        // asserting `US$0,76`: stale empty, retired matched, zero writes, exit 0.
+        //
+        // So the question is asked the other way round, from the ledger of
+        // documents this run actually rewrote AND re-verified. A problem about
+        // a file nobody wrote is a problem that is still there, whatever it
+        // says about itself — which is the same correction the restore script
+        // needed: a positive statement about what this run did, not an
+        // inference from what it did not complain about.
+        const left = problems.filter(problem => !rewritten.has(problem.split(':')[0]));
         console.error(left.length
-            ? `${left.length} need a human decision; the rest were rewritten from the planner`
-            : 'rewritten from the planner');
+            ? `${left.length} still diverge and were NOT rewritten; ${rewritten.size} document(s) were`
+            : `rewritten from the planner (${rewritten.size} document(s))`);
         process.exit(left.length ? 1 : 0);
     }
     console.error(`${problems.length} divergence(s). Run with --fix to rewrite what can be rewritten.`);

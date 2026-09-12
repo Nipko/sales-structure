@@ -2166,6 +2166,9 @@ export class ConversationsService {
                 contactLockToken = await this.redis.acquireLockToken(contactLockKey, 10).catch(() => null);
                 if (!contactLockToken) await new Promise(r => setTimeout(r, 300));
             }
+            if (!contactLockToken) {
+                throw new Error('contact_coordination_unavailable');
+            }
             let conversation: any;
             try {
                 ({ conversation } = await this.resolveConversation(tenantId, contactId, channelType, msg));

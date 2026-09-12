@@ -55,4 +55,25 @@ describe('burst coordination failure', () => {
             jest.useRealTimers();
         }
     });
+
+    it('also keeps coexistence and historical imports behind the same fence', async () => {
+        jest.useFakeTimers();
+        try {
+            const service = Object.create(ConversationsService.prototype) as ConversationsService;
+            const resolveConversation = jest.fn();
+            Object.assign(service as any, {
+                redis: { acquireLockToken: jest.fn().mockResolvedValue(null) },
+                resolveConversation,
+                logger: { error: jest.fn(), warn: jest.fn(), log: jest.fn() },
+            });
+
+            const pending = (service as any).storeOnlyMessage(structuredClone(message), 'historical');
+            const rejection = expect(pending).rejects.toThrow('contact_coordination_unavailable');
+            await jest.runAllTimersAsync();
+            await rejection;
+            expect(resolveConversation).not.toHaveBeenCalled();
+        } finally {
+            jest.useRealTimers();
+        }
+    });
 });

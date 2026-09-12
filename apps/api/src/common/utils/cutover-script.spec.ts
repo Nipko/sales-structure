@@ -457,7 +457,21 @@ const MANIFEST = JSON.stringify({
  * with `$EV` set and a `record <step> <inventorySha> <gitSha>` helper available;
  * `args` is appended to `--evidence $EV`.
  */
-const runCutover = (setup: string, args: string, tenantRows = '1') => {
+const PILOT_ID = '4f0c1111-2222-4333-8444-555566667777';
+
+/**
+ * The `dispatch.normalOutbox` row the canary now cross-checks itself against.
+ *
+ * The step used to announce "the pilot window is OPEN for <ids>" while
+ * writing nothing and reading nothing — the ids were validated, echoed into a
+ * file and read by no other code, and the row that really opens the lane was
+ * never consulted. So a fixture with no row at all is now a REFUSAL, which is
+ * why this default exists.
+ */
+const ROLLOUT_ROW = `{"enabled":true,"tenantIds":["${PILOT_ID}"],"channels":["whatsapp"]}`;
+
+const runCutover = (setup: string, args: string, tenantRows = '1',
+    rolloutRow: string = ROLLOUT_ROW) => {
     const harness = [
         'set -u',
         'EV="$(mktemp -d)"',
@@ -469,12 +483,14 @@ const runCutover = (setup: string, args: string, tenantRows = '1') => {
         'case " $* " in',
         '  *"SHOW default_transaction_read_only"*) printf \'off\\n\' ;;',
         '  *"FROM public.tenants"*)                printf \'%s\\n\' "$STUB_TENANT_ROWS" ;;',
+        '  *"dispatch.normalOutbox"*)              printf \'%s\\n\' "$STUB_ROLLOUT" ;;',
         'esac',
         'exit 0',
         'STUB',
         'chmod +x "$EV/bin/docker"',
         'export STUB_LOG="$EV/calls.log"; : > "$STUB_LOG"',
         `export STUB_TENANT_ROWS='${tenantRows}'`,
+        `export STUB_ROLLOUT='${rolloutRow}'`,
         'printf \'{"unknown_probes":[]}\' > "$EV/inventory.json"',
         'INV="$(sha256sum "$EV/inventory.json" | cut -d\' \' -f1)"',
         'cat > "$EV/m.json" <<\'MANIFEST\'',
@@ -579,6 +595,62 @@ describe('the canary is a gate the program stops at', () => {
             + '--canary-verified "N.L. revisó 6 entregas, 0 duplicados, 0 errores de fondeo"');
         expect(run.canaryDone).toContain('step=canary');
         expect(run.out).toContain('canary: recorded — N.L. revisó 6 entregas');
+    });
+
+    /**
+     * ═══ THE SCOPE HAS TO BE THE ONE THE PLATFORM IS USING ═══
+     *
+     * The step announced "the pilot window is OPEN for <ids>" and opened
+     * nothing: `--pilot-tenants` was checked for shape, checked for
+     * existence, written to a file and read by no other code. What actually
+     * opens the durable lane is the `dispatch.normalOutbox` row, and this
+     * script never looked at it.
+     *
+     * So the operator attested to a scope that lived only in their own
+     * argument — on a programme whose whole subject is per-message money.
+     * These three cases are the cross-check that makes the sentence true.
+     */
+    it('refuses when no pilot is configured at all', () => {
+        const run = runCutover(recordThrough('health'),
+            `--manifest "$EV/m.json" --pilot-tenants ${PILOT} --canary-verified "miré"`,
+            '1', '');
+        expect(run.out).toContain('dispatch.normalOutbox is not set');
+        expect(run.canaryDone).not.toContain('step=canary');
+        expect(run.exit).toBe(1);
+    });
+
+    it('refuses a row that names NOBODY, because that row reads as everybody', () => {
+        // `DispatchPilotScope` says it in as many words: an empty tenant list
+        // is the full rollout. A pilot that forgets to name its tenant is not
+        // a pilot that does nothing.
+        const run = runCutover(recordThrough('health'),
+            `--manifest "$EV/m.json" --pilot-tenants ${PILOT} --canary-verified "miré"`,
+            '1', '{"enabled":true,"tenantIds":[],"channels":["whatsapp"]}');
+        expect(run.out).toContain('names NO tenants');
+        expect(run.out).toContain('full rollout');
+        expect(run.exit).toBe(1);
+    });
+
+    it('refuses a pilot id the lane is not actually open for', () => {
+        const run = runCutover(recordThrough('health'),
+            `--manifest "$EV/m.json" --pilot-tenants ${PILOT} --canary-verified "miré"`,
+            '1', '{"enabled":true,"tenantIds":["99999999-9999-4999-8999-999999999999"],'
+            + '"channels":["whatsapp"]}');
+        expect(run.out).toContain('not in dispatch.normalOutbox');
+        expect(run.exit).toBe(1);
+    });
+
+    it('says plainly that outbound is live for everyone during the canary', () => {
+        // The sentence an operator reads while attesting. Step 8 restarts the
+        // five services with no queue pause anywhere in this script, so from
+        // there until step 11 outbound processing is platform-wide; the pilot
+        // list scopes the durable LANE, not the platform. Saying otherwise is
+        // what makes "6 entregas, 0 duplicados" an attestation about a
+        // surface the attester was not told they were looking at.
+        const run = runCutover(recordThrough('health'),
+            `--manifest "$EV/m.json" --pilot-tenants ${PILOT}`);
+        expect(run.out).toContain('outbound processing itself is live for every tenant');
+        expect(run.out).not.toContain('the pilot window is OPEN');
     });
 
     it('refuses an attestation with nothing in it', () => {

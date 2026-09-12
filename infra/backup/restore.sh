@@ -136,13 +136,26 @@ RESTORE_MODE=""
 DB_ARCHIVE=""
 case "${ARCHIVE}" in
   *.dump)
-    # A single dump has no directory and no manifest. It keeps the name
-    # `full_backup.dump` — the same name `backup.sh` gives the unfiltered dump
-    # it writes nightly — because that is what it IS.
-    cp "${ARCHIVE}" "${WORK_DIR}/full_backup.dump"
+    # A single dump has no directory and no manifest, so this arm has only the
+    # file extension to go on — and the comment that used to sit here said the
+    # copy was named `full_backup.dump` "because that is what it IS". It is not.
+    # The arm matches ANY `*.dump`, including `backup.sh`'s own `public.dump`,
+    # which is taken with `--schema=public` and holds one schema.
+    #
+    # Restoring those bytes unfiltered is still correct — it is what they
+    # contain. What was wrong is what the run then SAID: the verification's own
+    # branch recognises "an archive that creates no schema" and substitutes
+    # `public`, finds it, and prints that every schema in `full_backup.dump` was
+    # restored. Over a public-only dump that sentence is a whole-database claim
+    # about a single schema, on the one path an operator reaches for by hand.
+    #
+    # So the copy is named for what it is — a caller-supplied archive — and the
+    # run says which kind it turned out to be, read from the table of contents
+    # rather than from the extension.
+    cp "${ARCHIVE}" "${WORK_DIR}/supplied-archive.dump"
     cd "${WORK_DIR}"
     RESTORE_MODE="whole-database"
-    DB_ARCHIVE="full_backup.dump"
+    DB_ARCHIVE="supplied-archive.dump"
     ;;
   *)
     tar -xzf "${ARCHIVE}"
@@ -301,6 +314,7 @@ $1"
 # does not have afterwards is a second, different gap.
 verify_schemas_restored() {
   local archive="$1" archive_schemas live_schemas missing="" unrestored="" schema
+  local archive_had_no_schema_entries="no"
   if ! archive_schemas="$(schemas_in_archive "${archive}")"; then
     echo "  FAILED — could not read the table of contents of ${archive}; what was restored cannot be verified"
     return 1
@@ -317,6 +331,7 @@ verify_schemas_restored() {
       return 1
     fi
     archive_schemas="public"
+    archive_had_no_schema_entries="yes"
   fi
   # FIRST: did this run restore them? Asked before the database, because the
   # database cannot tell "restored" from "was already here", and over a
@@ -346,6 +361,14 @@ verify_schemas_restored() {
   if [ -n "${missing}" ]; then
     echo "  FAILED — ${archive} contains schema(s) that are NOT in the database after the restore:${missing}"
     return 1
+  fi
+  # Named by what the archive turned out to hold, not by what the caller
+  # called it. "Every schema in X" over an archive whose table of contents
+  # creates none is a whole-database sentence about a single schema.
+  if [ "${archive_schemas}" = "public" ] && [ "${archive_had_no_schema_entries}" = "yes" ]; then
+    echo "  Verified — this run restored ${archive}, which creates no schema: PUBLIC ONLY."
+    echo "  If you expected tenant data, this is not the archive that holds it."
+    return 0
   fi
   echo "  Verified — this run restored every schema in ${archive}, and each is present: $(printf '%s' "${archive_schemas}" | tr '\n' ' ')"
   return 0

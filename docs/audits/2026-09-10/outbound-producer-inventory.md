@@ -49,7 +49,7 @@ Los que todavía están fuera del carril durable:
 
 | Archivo:línea | Método | Carril |
 |---|---|---|
-| `modules/agent-console/agent-console.service.ts:641` | `sendAgentMessage` | `inline` |
+| `modules/agent-console/agent-console.service.ts:665` | `sendAgentMessage` | `inline` |
 | `modules/conversations/conversations.service.ts:2072` | `sendAfterHoursMessage` | `outbound_queue` |
 | `modules/conversations/conversations.service.ts:2345` | `sendResponse` | `outbound_queue` |
 | `modules/conversations/conversations.service.ts:2374` | `sendPaymentLink` | `outbound_queue` |
@@ -77,7 +77,7 @@ llevar a la admisión económica.
 
 | Archivo:línea | Método | Carril | Canales | Efectos por respuesta |
 |---|---|---|---|---|
-| `modules/agent-console/agent-console.service.ts:641` | `sendAgentMessage` | `inline` | dynamic | 1 (read) |
+| `modules/agent-console/agent-console.service.ts:665` | `sendAgentMessage` | `inline` | dynamic | 1 (read) |
 | `modules/channels/channel-management.controller.ts:519` | `testTelegram` | `inline` | telegram | 1 (read) |
 | `modules/channels/channel-management.controller.ts:1483` | `testSms` | `inline` | sms | 1 (read) |
 | `modules/conversations/conversations.service.ts:2072` | `sendAfterHoursMessage` | `outbound_queue` | dynamic | 1 (read) |
@@ -103,7 +103,7 @@ reparto**, que es donde una sola respuesta lógica se multiplica.
 | `modules/conversations/conversations.service.ts:2374` | `sendPaymentLink` | `outbound_queue` | **n(links)** | one effect per canonical link (fan-out at line 1524) |
 | `modules/conversations/conversations.service.ts:2397` | `sendMedia` | `outbound_queue` | **n(media)** | one effect per attachment (fan-out at line 1531) |
 | `modules/conversations/conversations.service.ts:6126` | `dispatchReplyThroughOutbox` | `dispatch_outbox` | **n(items)** | one committed row per item; the whole batch is one answer |
-| `modules/conversations/tool-approval-effects.service.ts:36` | `schedule` | `approved_effect` | **n** | one effect per entry of `rows` (loop at the send) |
+| `modules/conversations/tool-approval-effects.service.ts:37` | `schedule` | `approved_effect` | **n** | one effect per entry of `rows` (loop at the send) |
 | `modules/education/education-enrollment-commands.ts:106` | `promote` | `operational_notice` | **n** | one effect per entry of `candidates` (loop at the send) |
 | `modules/education/education-enrollment-commands.ts:111` | `promote` | `operational_notice` | **n** | one effect per entry of `candidates` (loop at the send) |
 | `modules/recall/recall.service.ts:250` | `recallOne` | `dispatch_outbox` | **n(recipients)** | one effect per recipient — a campaign, not one answer (fan-out at line 153) |
@@ -123,8 +123,8 @@ mensajes entregados, y un indicador de "escribiendo" no lo es.
 
 | Línea | Método | Primitiva | Carril | Disparador | Canales | Efectos por respuesta | Base |
 |---:|---|---|---|---|---|---|---|
-| 641 | `sendAgentMessage` | `channelGateway.sendMessage` | `inline` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
-| 754 | `replyThroughOutbox` | `dispatch.send` | `dispatch_outbox` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
+| 665 | `sendAgentMessage` | `channelGateway.sendMessage` | `inline` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
+| 803 | `replyThroughOutbox` | `dispatch.send` | `dispatch_outbox` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
 
 ### `apps/api/src/modules/appointments/appointment-notifications.service.ts`
 
@@ -197,7 +197,7 @@ mensajes entregados, y un indicador de "escribiendo" no lo es.
 
 | Línea | Método | Primitiva | Carril | Disparador | Canales | Efectos por respuesta | Base |
 |---:|---|---|---|---|---|---|---|
-| 36 | `schedule` | `enqueueApprovedEffect` | `approved_effect` | called by another service | dynamic | n | one effect per entry of `rows` (loop at the send) |
+| 37 | `schedule` | `enqueueApprovedEffect` | `approved_effect` | called by another service | dynamic | n | one effect per entry of `rows` (loop at the send) |
 
 ### `apps/api/src/modules/education/education-enrollment-commands.ts`
 
@@ -261,7 +261,7 @@ buscar una llamada a la autoridad economica en el codigo del archivo.
 
 | Archivo:linea | Que sale | Admision | Nota |
 |---|---|---|---|
-| `apps/api/src/modules/agent-console/agent-console.service.ts:641` | `ChannelGatewayService.sendMessage` | si | pide permiso antes de emitir |
+| `apps/api/src/modules/agent-console/agent-console.service.ts:665` | `ChannelGatewayService.sendMessage` | si | pide permiso antes de emitir |
 | `apps/api/src/modules/channels/instagram/instagram.adapter.ts:55` | Graph `/{phone_number_id}/messages` POST | camino | Instagram is not billed per message by its provider |
 | `apps/api/src/modules/channels/instagram/instagram.adapter.ts:169` | Graph `/{phone_number_id}/messages` POST | camino | Instagram is not billed per message by its provider |
 | `apps/api/src/modules/channels/instagram/instagram.adapter.ts:185` | Graph `/{phone_number_id}/messages` POST | camino | Instagram is not billed per message by its provider |
@@ -270,10 +270,10 @@ buscar una llamada a la autoridad economica en el codigo del archivo.
 | `apps/api/src/modules/channels/messenger/messenger.adapter.ts:161` | Graph `/{phone_number_id}/messages` POST | camino | Messenger is not billed per message by its provider |
 | `apps/api/src/modules/channels/messenger/messenger.adapter.ts:177` | Graph `/{phone_number_id}/messages` POST | camino | Messenger is not billed per message by its provider |
 | `apps/api/src/modules/channels/messenger/messenger.adapter.ts:207` | Graph `/{phone_number_id}/messages` POST | camino | Messenger is not billed per message by its provider |
-| `apps/api/src/modules/channels/outbound-queue.processor.ts:446` | strict dispatch transport | si | pide permiso antes de emitir |
-| `apps/api/src/modules/channels/outbound-queue.processor.ts:845` | `ChannelGatewayService.sendMessage` | si | pide permiso antes de emitir |
-| `apps/api/src/modules/channels/outbound-queue.processor.ts:879` | `ChannelGatewayService.sendMessage` | si | pide permiso antes de emitir |
-| `apps/api/src/modules/channels/outbound-queue.processor.ts:1035` | `ChannelGatewayService.sendMessage` | si | pide permiso antes de emitir |
+| `apps/api/src/modules/channels/outbound-queue.processor.ts:476` | strict dispatch transport | si | pide permiso antes de emitir |
+| `apps/api/src/modules/channels/outbound-queue.processor.ts:899` | `ChannelGatewayService.sendMessage` | si | pide permiso antes de emitir |
+| `apps/api/src/modules/channels/outbound-queue.processor.ts:933` | `ChannelGatewayService.sendMessage` | si | pide permiso antes de emitir |
+| `apps/api/src/modules/channels/outbound-queue.processor.ts:1089` | `ChannelGatewayService.sendMessage` | si | pide permiso antes de emitir |
 | `apps/api/src/modules/channels/whatsapp/whatsapp.adapter.ts:77` | Graph `/{phone_number_id}/messages` POST | camino | the adapter; reachable only through `ChannelGatewayService.sendMessage` or the strict transport, and every call site of both is classified above |
 | `apps/api/src/modules/channels/whatsapp/whatsapp.adapter.ts:221` | Graph `/{phone_number_id}/messages` POST | camino | the adapter; reachable only through `ChannelGatewayService.sendMessage` or the strict transport, and every call site of both is classified above |
 | `apps/api/src/modules/channels/whatsapp/whatsapp.adapter.ts:253` | Graph `/{phone_number_id}/messages` POST | camino | the adapter; reachable only through `ChannelGatewayService.sendMessage` or the strict transport, and every call site of both is classified above |
@@ -282,14 +282,14 @@ buscar una llamada a la autoridad economica en el codigo del archivo.
 | `apps/api/src/modules/channels/whatsapp/whatsapp.adapter.ts:533` | Graph `/{phone_number_id}/messages` POST | camino | the adapter; reachable only through `ChannelGatewayService.sendMessage` or the strict transport, and every call site of both is classified above |
 | `apps/api/src/modules/channels/whatsapp/whatsapp.adapter.ts:585` | Graph `/{phone_number_id}/messages` POST | camino | the adapter; reachable only through `ChannelGatewayService.sendMessage` or the strict transport, and every call site of both is classified above |
 | `apps/api/src/modules/channels/whatsapp/whatsapp.adapter.ts:642` | Graph `/{phone_number_id}/messages` POST | camino | the adapter; reachable only through `ChannelGatewayService.sendMessage` or the strict transport, and every call site of both is classified above |
-| `apps/api/src/modules/whatsapp/services/whatsapp-messaging.service.ts:293` | Graph `/{phone_number_id}/messages` POST | si | pide permiso antes de emitir |
+| `apps/api/src/modules/whatsapp/services/whatsapp-messaging.service.ts:311` | Graph `/{phone_number_id}/messages` POST | si | pide permiso antes de emitir |
 
 ### Productores cobrables y su sumidero
 
 | Archivo:linea | Metodo | Carril | Termina en | Admision |
 |---|---|---|---|---|
-| `modules/agent-console/agent-console.service.ts:641` | `sendAgentMessage` | `inline` | `modules/agent-console/agent-console.service.ts` | si |
-| `modules/agent-console/agent-console.service.ts:754` | `replyThroughOutbox` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
+| `modules/agent-console/agent-console.service.ts:665` | `sendAgentMessage` | `inline` | `modules/agent-console/agent-console.service.ts` | si |
+| `modules/agent-console/agent-console.service.ts:803` | `replyThroughOutbox` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/appointments/appointment-notifications.service.ts:628` | `dispatchNotice` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/appointments/appointment-payment.listener.ts:89` | `onPaid` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/appointments/appointment-payment.listener.ts:107` | `onPaid` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
@@ -309,7 +309,7 @@ buscar una llamada a la autoridad economica en el codigo del archivo.
 | `modules/conversations/conversations.service.ts:6037` | `sendCollectedFlow` | `outbound_queue` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/conversations/conversations.service.ts:6081` | `dispatchReplyThroughOutbox` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/conversations/conversations.service.ts:6126` | `dispatchReplyThroughOutbox` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
-| `modules/conversations/tool-approval-effects.service.ts:36` | `schedule` | `approved_effect` | `modules/channels/outbound-queue.processor.ts` | si |
+| `modules/conversations/tool-approval-effects.service.ts:37` | `schedule` | `approved_effect` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/education/education-enrollment-commands.ts:106` | `promote` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/education/education-enrollment-commands.ts:111` | `promote` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/gyms/gyms.service.ts:598` | `promoteFromWaitlist` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |

@@ -89,10 +89,17 @@ describe('a restore that did not restore may not report success', () => {
         // reaches for it.
         expect(code).toMatch(/case "\$\{ARCHIVE\}" in/);
         expect(code).toMatch(/\*\.dump\)/);
-        // And it is named for what it IS. Calling it `public.dump` is what made
-        // the restore below apply `--schema=public` to a whole-database archive.
-        expect(code).toMatch(/cp "\$\{ARCHIVE\}" "\$\{WORK_DIR\}\/full_backup\.dump"/);
+        // And it is NOT renamed to something that asserts what it contains.
+        // Calling it `public.dump` is what made the restore apply
+        // `--schema=public` to a whole-database archive; calling it
+        // `full_backup.dump` was the same mistake pointing the other way, since
+        // this arm matches ANY `*.dump` including a public-only one, and the
+        // verification then printed a whole-database sentence over it.
+        expect(code).toMatch(/cp "\$\{ARCHIVE\}" "\$\{WORK_DIR\}\/supplied-archive\.dump"/);
         expect(code).not.toMatch(/cp "\$\{ARCHIVE\}" "\$\{WORK_DIR\}\/public\.dump"/);
+        expect(code).not.toMatch(/cp "\$\{ARCHIVE\}" "\$\{WORK_DIR\}\/full_backup\.dump"/);
+        // What it holds is read from the table of contents instead, and said.
+        expect(code).toContain('PUBLIC ONLY');
     });
 
     it('still handles a nightly tarball', () => {

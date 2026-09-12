@@ -575,12 +575,6 @@ export class OutboundQueueProcessor extends WorkerHost {
     }
 
     /**
-     * Ask the gate for one loose outbound message.
-     *
-     * `'refused'` means a ceiling said no and the caller must not send.
-     * `null` means there is no gate wired; anything else is the admission whose
-     * outcome has to be recorded once the provider has answered.
-     */
     /**
      * Say the request is beginning, and stand down if the right was taken.
      *
@@ -604,6 +598,21 @@ export class OutboundQueueProcessor extends WorkerHost {
         }
     }
 
+    /**
+     * Ask the money authority about one loose outbound message.
+     *
+     * `'refused'` means DO NOT SEND, and it covers every non-permitted
+     * verdict -- a ceiling, a funding pause, a missing timezone, a recipient
+     * nothing can address. An earlier version of this docblock said "a
+     * ceiling said no", which named three of the twenty codes that reach it
+     * and sent the reader looking for a limit that is usually not there. The
+     * code itself is logged, because the caller cannot be told it.
+     *
+     * Anything else is the admission, whose outcome has to be recorded once
+     * the provider has answered. It is never `null`: `admitSpend` throws
+     * `SpendMeterUnavailable` rather than returning nothing, and says so in
+     * its own contract -- "There is no third answer any more".
+     */
     private async gateOrSuppress(outbound: OutboundMessage, producer: string,
         disposition: 'reactive' | 'proactive',
         durable?: { messageId?: string | null; jobId?: string | null }) {
@@ -654,16 +663,6 @@ export class OutboundQueueProcessor extends WorkerHost {
     }
 
     /**
-     * What became of it, recorded against the reservation that authorised it.
-     *
-     * An accepted send is exactly that: `accepted`. The POST's answer says Meta
-     * HAS the message, not that a phone does — and from October 2026 the charge
-     * lands on delivery. The exposure stands, and the status webhook that
-     * arrives seconds later is what decides whether it became a charge.
-     *
-     * No result at all is a timeout, which never releases, because a request
-     * whose answer was lost may well have put a message on a phone.
-     */
     /**
      * Authorise the text a conclusively-refused Flow becomes.
      *
@@ -803,6 +802,17 @@ export class OutboundQueueProcessor extends WorkerHost {
         };
     }
 
+    /**
+     * What became of it, recorded against the reservation that authorised it.
+     *
+     * An accepted send is exactly that: `accepted`. The POST's answer says
+     * Meta HAS the message, not that a phone does -- and from October 2026
+     * the charge lands on delivery. The exposure stands, and the status
+     * webhook that arrives seconds later decides whether it became a charge.
+     *
+     * No result at all is a timeout, which never releases, because a request
+     * whose answer was lost may well have put a message on a phone.
+     */
     private async recordSpend(outbound: OutboundMessage, admission: unknown, result: string | null) {
         if (!this.spendGate) return;
         const refused = this.conclusivelyRefusedFlows.has(outbound);

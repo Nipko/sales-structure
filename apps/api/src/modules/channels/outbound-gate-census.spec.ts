@@ -126,6 +126,46 @@ export class GateCensusProbeService {
             + '        await fetch(')).length).toBe(0);
     });
 
+    it('names a loop fan-out as ONE ADMISSION, MANY SENDS rather than as ungated', () => {
+        // The consequence, through the command CI runs. A probe that gates
+        // properly and then sends inside a loop is not an ungated file, and
+        // being told it is would send somebody to add a second gate.
+        const BT = String.fromCharCode(96);
+        writeFileSync(PROBE, [
+            '// Temporary fixture written by outbound-gate-census.spec.ts.',
+            'export class GateCensusLoopProbeService {',
+            '    async send(ids: string[], to: string): Promise<void> {',
+            '        const admission = await this.admitSpend({ to });',
+            '        if (!admission) return;',
+            '        for (const id of ids) {',
+            '            await fetch(' + BT + 'https://graph.facebook.com/v21.0/${id}/messages' + BT + ', {});',
+            '        }',
+            '    }',
+            '    private async admitSpend(_input: unknown): Promise<boolean> { return true; }',
+            '}',
+            '',
+        ].join(String.fromCharCode(10)), 'utf8');
+
+        const out = mkdtempSync(join(tmpdir(), 'gate-census-loop-'));
+        let status = 0;
+        let stderr = '';
+        try {
+            execFileSync(process.execPath, [SCRIPT, '--check', '--out', join(out, 'inventory.md')],
+                { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+        } catch (error: any) {
+            status = error.status;
+            stderr = String(error.stderr || '');
+        } finally {
+            rmSync(out, { recursive: true, force: true });
+        }
+        expect(status).toBe(1);
+        expect(stderr).toContain('ONE ADMISSION, MANY SENDS');
+        expect(stderr).toContain('gate-census-probe.generated.ts');
+        // The instruction has to be the RIGHT one.
+        expect(stderr).toContain('move the admission inside the loop');
+        expect(stderr).not.toContain('with no admission call');
+    });
+
     it('exits non-zero, and names the file, when a violation exists', () => {
         // The unit above proves the classification. This proves the CONSEQUENCE:
         // the command CI runs actually fails. A census that finds a violation
@@ -244,6 +284,77 @@ describe('one admission covers one POST, and it comes first', () => {
         // And a real function signature is still a function frame, so a gate
         // before a callback does not pay for a POST inside it.
         expect(uncovered(['async send(to: string): Promise<void> {', gate, post, '}'])).toEqual([]);
+    });
+
+    it('finds the keyword that owns the brace, not only the first on the line', () => {
+        // Both classifiers were anchored to the start of the text, which is
+        // right for almost every line in this tree and wrong for the ones that
+        // are not. The three shapes below were all misread, and they fail in
+        // OPPOSITE directions — which is why one test is not enough.
+
+        // Over-report: a statement before the condition made the `if` a
+        // FUNCTION frame, putting the method's own credit out of reach of its
+        // own POST and failing a properly gated send.
+        expect(uncovered([gate, 'const n = xs.length; if (this.isReady(id)) {', post, '}']))
+            .toEqual([]);
+
+        // Under-report, and the direction that costs money: a guarded loop was
+        // not a loop, so a fan-out behind one admission passed. This shape is
+        // in `compliance.service.ts` today.
+        expect(uncovered([gate, 'if (ready) for (const x of xs) {', post, '}']))
+            .toEqual([3]);
+        expect(uncovered([gate, '} else if (a) for (const x of xs) {', post, '}']))
+            .toEqual([3]);
+        expect(uncovered([gate, 'let i = 0; do {', post, '} while (more);']))
+            .toEqual([3]);
+    });
+
+    it('says WHICH mistake it is, because the two have different fixes', () => {
+        // The walk already knew: `spend()` distinguishes "no credit at all"
+        // from "a credit found outside a loop". It was thrown away at the
+        // call site, so a loop that admits once and sends N times was
+        // reported as having "no admission call" — which is false, and tells
+        // somebody to add a gate they already have. This suite treats a
+        // violation message that misdescribes the defect as a defect one sink
+        // over; it is one here too.
+        const loop = inventory.egressCoverage(
+            [gate, 'for (const id of ids) {', post, '}'].join(String.fromCharCode(10)), [3]);
+        expect(loop.uncovered).toEqual([3]);
+        expect(loop.reasons.get(3)).toBe('repeats');
+
+        // A genuinely ungated send keeps the original diagnosis.
+        const bare = inventory.egressCoverage(post, [1]);
+        expect(bare.reasons.get(1)).toBe('ungated');
+
+        // And a SECOND post behind one admission is 'ungated' rather than
+        // 'repeats': the credit is simply spent, there is no loop, and the
+        // fix really is another admission.
+        const twice = inventory.egressCoverage(
+            [gate, post, post].join(String.fromCharCode(10)), [2, 3]);
+        expect(twice.reasons.get(3)).toBe('ungated');
+    });
+
+    it('does not read the SECOND HALF of a condition as a signature', () => {
+        // A multi-line `if (a` / `    && b) {` puts the closing half on its own
+        // line, where no keyword is in sight, and the signature fallback read
+        // `&& b) {` as a function frame — putting the method's own credits out
+        // of reach of its own POST and failing a properly gated send.
+        expect(uncovered(['async send(id: string) {', gate,
+            'if (this.isReady(id)', '    && ok) {', post, '}', '}'])).toEqual([]);
+        expect(uncovered(['async send(id: string) {', gate,
+            'if (a', '    || b) {', post, '}', '}'])).toEqual([]);
+
+        // And a real multi-line SIGNATURE is still a function: its closing line
+        // begins with `)`, not with an operator, which is the whole difference.
+        expect(uncovered(['async send(', '    to: string,', '): Promise<void> {',
+            gate, post, '}'])).toEqual([]);
+    });
+
+    it('still lets a gate inside a GUARDED loop pay for its own send', () => {
+        // The half that keeps the widening from being a new false-positive
+        // generator: what is reported is crossing OUT of a loop, and a guard
+        // in front of the loop changes nothing about that.
+        expect(uncovered(['if (ready) for (const x of xs) {', gate, post, '}'])).toEqual([]);
     });
 
     it('does not let a gate in another method cover a POST', () => {

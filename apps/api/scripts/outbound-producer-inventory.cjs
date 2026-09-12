@@ -300,21 +300,63 @@ const GATE_CALLS = [
  * `if (ok) {` also carry a parenthesised list, and reading either as a function
  * would put the method's own credits out of reach of its own POST.
  */
+/**
+ * Where a control keyword may sit, for both classifiers below.
+ *
+ * Anchored to the start of the text OR to a `;`, so one statement may
+ * precede it, and tolerating a single `if (...)` guard, so
+ * `if (ready) for (const x of xs) {` is the loop it plainly is. Both
+ * tolerances are bounded -- `[^{;]*` cannot cross into a block or past the
+ * next statement -- which is what keeps this a lexical test and not a parser.
+ *
+ * Verified across 90,062 brace-opening sites in `apps/api/src` and
+ * `apps/whatsapp/src`: 16 verdicts change against the start-anchored version
+ * and every one is a correction -- 9 control-flow lines that were being read
+ * as function frames, 7 loops that were invisible. No row of the published
+ * census moves.
+ */
+const CONTROL_HEAD_PREFIX = '(?:^|;)\\s*(?:\\}\\s*)?(?:else\\s+)?(?:if\\s*\\([^{;]*\\)\\s*)?';
+const CONTROL_HEAD = new RegExp(CONTROL_HEAD_PREFIX + '(?:if|for|while|switch|catch)\\b');
+const CONTROL_HEAD_LOOP = new RegExp(CONTROL_HEAD_PREFIX + '(?:for|while)\\b');
+
 function opensFunction(before) {
     const text = before.trim();
     if (/=>\s*$/.test(text)) return true;
     if (/^(?:\}\s*)?(?:else|try|finally|do)\b/.test(text)) return false;
-    // A control-flow keyword at the START of a statement never opens a function
-    // body, whatever its condition contains.
+    // A control-flow keyword whose parentheses this brace closes never opens
+    // a function body, whatever its condition contains.
     //
-    // The previous test forbade a nested `(` inside the parentheses, so
-    // `if (this.isReady(id)) {` — a condition that calls something, which is
-    // most of them — fell through to the signature fallback below and became a
-    // FUNCTION frame. That put the method's own credits out of reach of its own
-    // POST and reported a properly gated send as a violation: a check whose
-    // failures are wrong is a check people learn to re-baseline.
-    if (/^(?:\}\s*)?(?:else\s+)?(?:if|for|while|switch|catch)\b/.test(text)
-        && /\)\s*$/.test(text)) return false;
+    // Two versions were wrong here before this one. The first forbade a
+    // nested `(` inside the keyword's parentheses, so `if (this.isReady(id)) {`
+    // -- a condition that calls something, which is most of them -- became a
+    // FUNCTION frame, putting a method's own credits out of reach of its own
+    // POST and reporting a properly gated send. The second required the
+    // keyword to be the FIRST token on the line, so
+    // `const n = xs.length; if (this.isReady(id)) {` was a function frame
+    // again. A check whose failures are wrong is one people re-baseline.
+    //
+    // Deliberately NOT solved by counting parentheses backwards from the
+    // `)`. `codeOnly` strips comments, template literals and quoted strings
+    // and nothing else -- there is no regex-literal stripper, because the
+    // division-vs-regex ambiguity makes one its own project -- so a regex
+    // holding an unbalanced paren sends that walk to the wrong `(`. Measured:
+    // paren-counting disagrees with this on 24 sites across both trees, and
+    // five of those are REGRESSIONS, two in production files.
+    // A line that CONTINUES a condition is not a signature.
+    //
+    // A multi-line `if (a` / `    && b) {` puts the second half on its own
+    // line, where no keyword is in sight, and the signature fallback below
+    // then reads `&& b) {` as a function frame -- putting a method's credits
+    // out of reach of its own POST and failing a properly gated send. No
+    // parameter list begins with `&&` or `||`, so this costs nothing.
+    //
+    // The mirror case is NOT solved and is not claimed to be: a multi-line
+    // `for (const x of` header leaves `opensLoop` blind on the continuation
+    // line, so a fan-out written that way is under-reported. Detecting it
+    // needs state this walk does not keep, and inventing a claim about it is
+    // the defect this file has already had twice.
+    if (/^(?:&&|[|][|])/.test(text)) return false;
+    if (CONTROL_HEAD.test(text) && /\)\s*$/.test(text)) return false;
     return /\)\s*(?::\s*[^;{]+)?\s*$/.test(text);
 }
 
@@ -336,11 +378,17 @@ function opensLoop(before) {
     // frame already blocks an outer credit, which is the same verdict by a
     // different road.
     if (/=>\s*$/.test(text)) return false;
-    if (/^(?:\}\s*)?do\b/.test(text)) return true;
-    return /^(?:\}\s*)?(?:else\s+)?(?:for|while)\b/.test(text) && /\)\s*$/.test(text);
+    if (/(?:^|;)\s*(?:\}\s*)?do\b/.test(text)) return true;
+    // The same head the function test reads, so the two answers cannot drift
+    // apart -- and it sees a loop that is not the first token on its line.
+    // `if (this.redis) for (const c of conversations) {` is a loop, and a
+    // strictly start-anchored test calls it a block: an UNDER-report, which
+    // is the direction that costs money rather than an afternoon. That exact
+    // shape is in `compliance.service.ts` today.
+    return CONTROL_HEAD_LOOP.test(text) && /\)\s*$/.test(text);
 }
 
-function egressCredits(code, egressLines) {
+function egressCoverage(code, egressLines) {
     const lines = code.split(/\r?\n/);
     const egressAt = new Map();
     for (const line of egressLines) egressAt.set(line, (egressAt.get(line) || 0) + 1);
@@ -401,15 +449,27 @@ function egressCredits(code, egressLines) {
     };
 
     const uncovered = [];
+    /** line -> why it is uncovered. Same verdict, different instruction. */
+    const reasons = new Map();
     for (let i = 0; i < lines.length; i++) {
         const text = lines[i];
         if (GATE_CALLS.some(call => text.includes(call))) mint();
         for (let n = egressAt.get(i + 1) || 0; n > 0; n--) {
-            // `'repeats'` is reported exactly like uncovered, and deliberately:
+            // `'repeats'` is a violation exactly like `false`, and deliberately:
             // the ledger cannot settle one reservation against N charges, so a
             // POST that runs many times behind one admission is not a weaker
             // version of the same problem, it IS the problem.
-            if (spend() !== true) uncovered.push(i + 1);
+            //
+            // But it is a DIFFERENT problem to fix, and the reason is kept for
+            // that. "Add a gate" is the wrong instruction for a loop that
+            // already has one, and a violation message that misnames the defect
+            // sends the next person to the wrong place — which this file's own
+            // suite treats as a defect in its own right, one sink over.
+            const verdict = spend();
+            if (verdict !== true) {
+                uncovered.push(i + 1);
+                reasons.set(i + 1, verdict === 'repeats' ? 'repeats' : 'ungated');
+            }
         }
         // Applied after the line's own events, so `if (ok) { return post(x); }`
         // on one line still reads as gate-then-egress.
@@ -424,7 +484,18 @@ function egressCredits(code, egressLines) {
             } else if (text[column] === '}' && frames.length > 1) frames.pop();
         }
     }
-    return uncovered;
+    return { uncovered, reasons };
+}
+
+/**
+ * The uncovered lines alone.
+ *
+ * `egressCredits` is the older, narrower question and stays the exported one,
+ * because the suite asks it eleven times and an array is what those cases are
+ * about. `egressCoverage` is for the caller that has to TELL somebody.
+ */
+function egressCredits(code, egressLines) {
+    return egressCoverage(code, egressLines).uncovered;
 }
 
 /**
@@ -692,9 +763,10 @@ function gateCensus(rows) {
         const road = (file.app === 'api' && PROVIDER_ROADS[file.rel]) || null;
         // Dominance and cardinality, per call site. `codeOnly` for the gate
         // question — a mention inside a comment or a string is not a call.
-        const uncovered = file.app === 'api' && !road
-            ? new Set(egressCredits(codeOnly(text), found.map(entry => entry.line)))
-            : new Set();
+        const coverage = file.app === 'api' && !road
+            ? egressCoverage(codeOnly(text), found.map(entry => entry.line))
+            : { uncovered: [], reasons: new Map() };
+        const uncovered = new Set(coverage.uncovered);
         for (const entry of found) {
             egress.push({
                 app: file.app, file: file.rel, line: entry.line, what: entry.what,
@@ -705,6 +777,8 @@ function gateCensus(rows) {
                 // an unguarded new file from a second POST behind one
                 // admission: they are different mistakes with different fixes.
                 dominated: file.app === 'api' && !uncovered.has(entry.line),
+                /** `ungated`, `repeats`, or null when this line is covered. */
+                why: coverage.reasons.get(entry.line) ?? null,
             });
         }
     }
@@ -1335,9 +1409,17 @@ function main() {
         }
         for (const entry of census.ungatedEgress) {
             const app = entry.app === 'whatsapp' ? 'apps/whatsapp/src/' : 'apps/api/src/';
-            process.stderr.write(`outbound-producer-inventory: UNGATED PROVIDER EGRESS at `
-                + `${app}${entry.file}:${entry.line} — ${entry.what} with no admission call and no `
-                + `entry in PROVIDER_ROADS.\n`);
+            // "No admission call" is false of a loop that admits once and
+            // sends N times, and telling somebody to add a gate they already
+            // have is how a check stops being believed.
+            process.stderr.write(entry.why === 'repeats'
+                ? `outbound-producer-inventory: ONE ADMISSION, MANY SENDS at `
+                    + `${app}${entry.file}:${entry.line} — ${entry.what} runs inside a loop whose `
+                    + `admission is OUTSIDE it. One reservation cannot settle N charges: move the `
+                    + `admission inside the loop, or send one message.\n`
+                : `outbound-producer-inventory: UNGATED PROVIDER EGRESS at `
+                    + `${app}${entry.file}:${entry.line} — ${entry.what} with no admission call and no `
+                    + `entry in PROVIDER_ROADS.\n`);
             failed = true;
         }
         if (failed) {
@@ -1346,8 +1428,23 @@ function main() {
                 + 'PROVIDER_ROADS with the reason. Do not add an exception by method name.\n');
             process.exit(1);
         }
-        const current = fs.existsSync(out) ? fs.readFileSync(out, 'utf8') : '';
-        if (current !== markdown) {
+        // ── COMPARE THE CONTENT, NOT THE LINE ENDINGS ───────────────────────
+        //
+        // A raw byte comparison against a checked-out .md is a comparison
+        // against `core.autocrlf`. `.gitattributes` pins *.sh, *.sql, *.yml,
+        // *.cjs and the binaries, and has no *.md rule, so on Windows this
+        // file is LF in the index and CRLF in the working tree -- and the
+        // gate reported a freshly generated artefact as stale. Git says so
+        // itself, every time: "LF will be replaced by CRLF the next time Git
+        // touches it".
+        //
+        // Linux CI compares LF to LF and never saw it, which is what made it
+        // survive: a gate that is red only on the machine where somebody is
+        // working is a gate they learn to re-run rather than believe. Both
+        // sibling generators already normalise; this is the third.
+        const normalise = text => text.split(String.fromCharCode(13, 10)).join(String.fromCharCode(10));
+        const current = fs.existsSync(out) ? normalise(fs.readFileSync(out, 'utf8')) : '';
+        if (current !== normalise(markdown)) {
             process.stderr.write(`outbound-producer-inventory: ${out} is stale — regenerate it\n`);
             process.exit(1);
         }
@@ -1366,4 +1463,4 @@ function main() {
 if (require.main === module) main();
 module.exports = { collect, declaredProducers, declaredInfrastructure, render, gateCensus,
     EGRESS, ROADS, GATE_CALLS, PROVIDER_EGRESS, PROVIDER_ROADS, codeOnly, withoutComments,
-    egressCredits, sinkVerdict, isGatedFile, withSourceOverlay };
+    egressCredits, egressCoverage, sinkVerdict, isGatedFile, withSourceOverlay };

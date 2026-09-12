@@ -11,6 +11,7 @@ import {
   WhatsappSendAdmissionService, fromSendContext, type Admission,
 } from '../../billing/whatsapp-spend/whatsapp-send-admission.service';
 import { SpendMeterUnavailable } from '../../billing/whatsapp-spend/spend-unavailable';
+import { describeBlock, type SpendBlock } from '../../billing/whatsapp-spend/spend-diagnosis';
 import { ChannelTokenService } from '../../channels/channel-token.service';
 import { isConnectionRefusal } from '../../channels/connection-refusal';
 import { AccountPauseStore } from '../../channels/account-pause-store';
@@ -56,6 +57,12 @@ export interface WhatsappSendSpendContext {
      */
     readonly effectRequestId?: string | null;
 }
+
+/** A refusal from the money gate, with the code the caller has to be told. */
+interface SpendRefusal { readonly refused: true; readonly block: SpendBlock | null }
+
+const isSpendRefusal = (value: unknown): value is SpendRefusal =>
+    !!value && typeof value === 'object' && (value as any).refused === true;
 
 @Injectable()
 export class WhatsappMessagingService {
@@ -273,15 +280,26 @@ export class WhatsappMessagingService {
     // The intent to send, written BEFORE the request. After it, it would
     // distinguish nothing: anything recorded then already presupposes the POST
     // happened, and the point is to tell a crash before sending from one after.
-    if (admission && admission !== 'refused'
+    if (admission && !isSpendRefusal(admission)
       && !(await this.spendGate.beginTransmission(schemaName, admission as Admission))) {
       throw new BadRequestException(
         'Otro intento ya tiene el derecho de enviar este mensaje; no se envió dos veces.');
     }
-    if (admission === 'refused') {
-      throw new BadRequestException(
-        'El envío fue rechazado por el límite de gasto de WhatsApp configurado para esta cuenta.',
-      );
+    if (isSpendRefusal(admission)) {
+      // ── SAY WHICH REFUSAL, NOT THE MOST FLATTERING ONE ────────────────────
+      //
+      // This used to answer "the WhatsApp spending limit configured for this
+      // account rejected it" for EVERY refusal. Twenty codes reach here and
+      // exactly three are ceilings; the rest are a paused account, a number
+      // whose payer Meta has not disclosed, a missing timezone, a recipient
+      // that cannot be addressed. Each already carries its own operator-facing
+      // resolution, and this sink threw all of it away to name a limit that is
+      // usually not the problem — sending whoever reads the 400 to a screen
+      // where nothing is wrong.
+      const block = (admission as { block: SpendBlock | null }).block;
+      throw new BadRequestException(block
+        ? `${describeBlock(block)}`
+        : 'El envío fue rechazado por la autoridad de gasto de WhatsApp.');
     }
 
     try {
@@ -464,8 +482,10 @@ export class WhatsappMessagingService {
   /**
    * Ask the money gate for this one message.
    *
-   * `'refused'` means the send must not happen — a ceiling said no, or the
-   * connection could not be named and so nobody could be charged for it.
+   * A refusal means the send must not happen, and it CARRIES ITS CODE: twenty
+   * conditions reach here and only three are ceilings. Collapsing them to one
+   * word made every 400 blame a spending limit, which is usually not the
+   * problem and is a screen where nothing is wrong.
    * A meter that cannot answer raises, and the REST caller gets a 503.
    */
   private async admitSpend(schemaName: string, phoneNumberId: string, payload: any,
@@ -544,7 +564,9 @@ export class WhatsappMessagingService {
         // already recorded — passes it and gets that behaviour instead.
         binding: { requestId: spend?.effectRequestId ?? randomUUID() },
       });
-      if (admission && !admission.permitted) return 'refused' as const;
+      if (admission && !admission.permitted) {
+        return { refused: true as const, block: admission.block ?? null };
+      }
       return admission;
     } catch (error: any) {
       // ── A REFUSED CONNECTION IS NOT AN OUTAGE ───────────────────────
@@ -632,7 +654,7 @@ export class WhatsappMessagingService {
     kind: 'delivered_priced' | 'accepted' | 'rejected' | 'rejected_retryable' | 'timeout';
     providerMessageId?: string | null; errorCode?: string | null;
   }) {
-    if (!admission || admission === 'refused') return;
+    if (!admission || isSpendRefusal(admission)) return;
     try {
       await this.spendGate.record(schemaName, admission as Admission, outcome);
     } catch (error: any) {

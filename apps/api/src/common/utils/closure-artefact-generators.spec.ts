@@ -481,10 +481,33 @@ describe('el chequeo de las cifras del canario', () => {
             expect(check().status).toBe(1);
         });
 
-        it('passes once the figure is today’s', () => {
+        it('passes a document whose figures AGREE with the planner', () => {
+            // This case used to write `El techo es US$1,08 por pasada.` and
+            // read its green as proof the checker recognises today's ceiling.
+            // It does not: no claim matches a bare US$ figure -- the loose
+            // ones are anchored on `casos`/`llamadas` and say so -- so that
+            // text is classified as saying nothing about the canary and
+            // SKIPPED before any comparison. Status 0 was guaranteed for any
+            // ceiling in that shape, `US$9,99` included, so the assertion
+            // discriminated nothing.
+            //
+            // A real positive control is one line away, in a shape the
+            // checker actually reads.
             fs.mkdirSync(PROBE_DIR, { recursive: true });
-            fs.writeFileSync(PROBE, 'Corrida canaria\n\nEl techo es US$1,08 por pasada.\n');
+            fs.writeFileSync(PROBE,
+                'Corrida canaria\n\n204 casos, 612 llamadas.\n');
             expect(check().status).toBe(0);
+        });
+
+        it('and fails the same sentence with figures the planner does not produce', () => {
+            // The other half, and what makes the case above mean anything: the
+            // SAME shape, different numbers. Without the pair, a document the
+            // checker skips entirely is indistinguishable from one it read and
+            // approved.
+            fs.mkdirSync(PROBE_DIR, { recursive: true });
+            fs.writeFileSync(PROBE,
+                'Corrida canaria\n\n999 casos, 1 llamadas.\n');
+            expect(check().status).toBe(1);
         });
     });
 });

@@ -18,6 +18,7 @@ import { HelpPanel } from "@/components/ui/help-panel";
 import { SetupBanner } from "@/components/SetupBanner";
 import { guidedTourAnchorId } from "@/lib/guided-tours";
 import { Badge } from "@/components/ui/badge";
+import { channelOverviewIsAuthoritative } from "@/lib/agent-channel-assignment";
 
 // ── Channel metadata ────────────────────────────────────────
 
@@ -87,6 +88,7 @@ export default function AgentListPage() {
   const [templatesLoading, setTemplatesLoading] = useState(false);
   const [connectedChannels, setConnectedChannels] = useState<any[]>([]);
   const [unassignedChannels, setUnassignedChannels] = useState<any[]>([]);
+  const [channelLoadFailed, setChannelLoadFailed] = useState(false);
 
   // ── Load agents + plan + channels ──────────────────────────
 
@@ -97,14 +99,21 @@ export default function AgentListPage() {
       const [agentsRes, planRes, channelsRes] = await Promise.all([
         api.listAgents(activeTenantId),
         api.getPlanFeatures(activeTenantId).catch(() => null),
-        api.fetch('/channels/overview').catch(() => ({ data: [] })),
+        api.fetch('/channels/overview').catch(() => null),
       ]);
       if (!agentsRes?.success || !Array.isArray(agentsRes.data)) throw new Error("agents_unavailable");
       setAgents(agentsRes.data);
       setLoadFailed(false);
-      const chList = channelsRes?.data || [];
-      setConnectedChannels(chList.map((c: any) => c.channelType));
-      setUnassignedChannels(chList.filter((c: any) => c.needsAssignment));
+      if (channelOverviewIsAuthoritative(channelsRes)) {
+        const chList = channelsRes.data;
+        setConnectedChannels(chList.map((c: any) => c.channelType));
+        setUnassignedChannels(chList.filter((c: any) => c.needsAssignment));
+        setChannelLoadFailed(false);
+      } else {
+        setConnectedChannels([]);
+        setUnassignedChannels([]);
+        setChannelLoadFailed(true);
+      }
       if (planRes?.success && planRes.data) {
         setPlanFeatures(planRes.data);
       }
@@ -423,6 +432,15 @@ export default function AgentListPage() {
         if (first) router.push(`/admin/agent/${first.id}`);
         else handleNewAgent();
       }} />
+
+      {channelLoadFailed && (
+        <LoadFailureNotice
+          className="mb-4"
+          title={t('channelOverviewUnavailable')}
+          hint={t('channelOverviewUnavailableHint')}
+          onRetry={() => { void loadData(); }}
+        />
+      )}
 
       {/* Unassigned channels banner */}
       {unassignedChannels.length > 0 && agents.length > 0 && (

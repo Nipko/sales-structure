@@ -17,6 +17,7 @@ import { AgentAssessmentPanel } from "@/components/quality/AgentAssessmentPanel"
 import { TabNav } from "@/components/ui/tab-nav";
 import { Badge } from "@/components/ui/badge";
 import { HelpPanel } from "@/components/ui/help-panel";
+import { LoadFailureNotice } from "@/components/ui/load-failure";
 import { AgentReadinessBanner } from "@/components/AgentReadinessBanner";
 import { AGENT_CONFIGURATION_APPLIED_EVENT, requestQualityHealthRefresh } from "@/lib/quality-health-events";
 import { guidedTourAnchorId } from "@/lib/guided-tours";
@@ -149,6 +150,7 @@ export default function AgentEditorPage() {
   const [config, setConfig] = useState<PersonaConfig>(structuredClone(defaultConfig));
   const [customPrompt, setCustomPrompt] = useState("");
   const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [saving, setSaving] = useState(false);
   const [externalChange, setExternalChange] = useState(false);
   const [loadedVersion, setLoadedVersion] = useState<number | null>(null);
@@ -185,6 +187,7 @@ export default function AgentEditorPage() {
   useEffect(() => {
     if (!activeTenantId || !agentId) return;
     setLoading(true);
+    setLoadFailed(false);
     setChannelOverviewAvailable(false);
     setLoadedVersion(null); setExternalChange(false);
     setWorkspace(null); saveAttempt.current = null;
@@ -197,6 +200,10 @@ export default function AgentEditorPage() {
     ])
       .then(([agentRes, agentsRes, overviewRes]: any[]) => {
         if (cancelled) return;
+        if (!agentRes?.success || !agentRes.data
+          || !agentsRes?.success || !Array.isArray(agentsRes.data)) {
+          throw new Error('agent_editor_authority_unavailable');
+        }
         const overviewAvailable = channelOverviewIsAuthoritative(overviewRes);
         const accts: ChannelAccountLite[] = overviewAvailable
           ? overviewRes.data.map((a: any) => ({ channelType: a.channelType, accountId: a.accountId, displayName: a.displayName }))
@@ -245,8 +252,9 @@ export default function AgentEditorPage() {
         if (agentsRes?.success && Array.isArray(agentsRes.data)) {
           setAllAgents(agentsRes.data);
         }
+        setLoadFailed(false);
       })
-      .catch(() => {})
+      .catch(() => { if (!cancelled) setLoadFailed(true); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [activeTenantId, agentId]);
@@ -580,6 +588,25 @@ export default function AgentEditorPage() {
           <Bot size={40} className="text-indigo-500 mx-auto mb-3" />
           <div className="text-neutral-500 dark:text-neutral-400 text-sm">{t("loading")}</div>
         </div>
+      </div>
+    );
+  }
+
+  if (loadFailed) {
+    return (
+      <div className="pb-20">
+        <PageHeader
+          icon={Bot}
+          title={t("title")}
+          subtitle={t("subtitle")}
+          breadcrumbs={
+            <button type="button" onClick={() => router.push('/admin/agent')}
+              className="inline-flex items-center gap-1 text-sm text-neutral-500 dark:text-neutral-400">
+              <ArrowLeft size={14} /> {t('backToAgents')}
+            </button>
+          }
+        />
+        <LoadFailureNotice onRetry={() => window.location.reload()} />
       </div>
     );
   }

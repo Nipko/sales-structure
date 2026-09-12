@@ -353,13 +353,19 @@ describe('the inventory is honest about what is not covered', () => {
         // below says which producers are meant to be here, so the second case
         // fails rather than passes.
         expect(summary.uncovered.length).toBeGreaterThan(0);
-        for (const id of ['human.agent.reply', 'human.whatsapp.manual_send', 'automation.http_request']) {
+        // `human.agent.reply.inline`, not `human.agent.reply`: the console now
+        // takes the durable lane for every channel with a strict transport, and
+        // the inline path is what is left for the channels without one. The
+        // entry was split rather than re-labelled, so this list names the half
+        // that is genuinely still uncovered instead of the file it lives in.
+        for (const id of ['human.agent.reply.inline', 'human.whatsapp.manual_send',
+            'automation.http_request']) {
             expect(summary.uncovered).toContain(id);
         }
     });
 
     it('keeps the human reply honest about the half of it that is still uncovered', () => {
-        const human = EXTERNAL_EFFECT_PRODUCERS.find(row => row.id === 'human.agent.reply')!;
+        const human = EXTERNAL_EFFECT_PRODUCERS.find(row => row.id === 'human.agent.reply.inline')!;
         const service = fs.readFileSync(
             path.join(SRC, 'modules', 'agent-console', 'agent-console.service.ts'), 'utf8');
         // The worst cell of this table was the receipt: the row was written
@@ -379,6 +385,39 @@ describe('the inventory is honest about what is not covered', () => {
             expect(human.properties[property].level).toBe('none');
         }
         expect(service).toContain('Could not send agent message via channel');
+    });
+
+    it('says which half of the console is durable, and does not claim the other', () => {
+        // ── ONE FILE, TWO LANES ─────────────────────────────────────────────
+        //
+        // For a while one entry described both, said `inline`, and understated
+        // the console's coverage so a reader could not tell which path a given
+        // channel takes. The split has to stay honest in BOTH directions: the
+        // durable half may only claim what the code does, and the inline half
+        // may not be quietly deleted once it looks embarrassing.
+        const durable = EXTERNAL_EFFECT_PRODUCERS.find(row => row.id === 'human.agent.reply')!;
+        const inline = EXTERNAL_EFFECT_PRODUCERS.find(row => row.id === 'human.agent.reply.inline')!;
+        expect({ durable: durable.lane, inline: inline.lane })
+            .toEqual({ durable: 'dispatch_outbox', inline: 'inline' });
+
+        const service = fs.readFileSync(
+            path.join(SRC, 'modules', 'agent-console', 'agent-console.service.ts'), 'utf8');
+        // The durable half is taken FIRST and only for a channel the gateway
+        // has a strict transport for. Both halves of that sentence are read
+        // back from the code, because the claim is about which path runs.
+        expect(service).toContain('replyThroughOutbox');
+        expect(service).toContain('getStrictTransport');
+
+        // Idempotency is `partial`, not `durable`: the key names the press and
+        // the client has to send one. The console does; the mobile inbox does
+        // not, and the note has to keep saying so.
+        expect(durable.properties.idempotency.level).toBe('partial');
+        expect(durable.properties.idempotency.note).toMatch(/press/i);
+        // And the origin key must not be a random id, which is the one thing
+        // `ProactiveDispatchService.originId` forbids by name: a random id
+        // minted inside a failed attempt is not recomputable, so the retry
+        // mints a second one and sends a second message.
+        expect(service).toContain('agent_console:${input.conversationId}:${input.idempotencyKey}');
     });
 
     it('reports a switched-off or retained producer instead of omitting it', () => {

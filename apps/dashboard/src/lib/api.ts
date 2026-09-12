@@ -755,8 +755,20 @@ export const api = {
     resumeToolApproval: (tenantId: string, ticketId: string) =>
         apiPost(`/tool-approvals/${tenantId}/${ticketId}/resume`, {}),
 
-    sendMessage: (tenantId: string, id: string, content: string) =>
-        apiPost(`/agent-console/conversation/${tenantId}/${id}/message`, { content }),
+    /**
+     * `idempotencyKey` names the PRESS, not the words.
+     *
+     * Without it the outbox mints a fresh identity per call, so a request the
+     * server received but whose answer never arrived becomes a second message
+     * on the customer's phone when the agent presses Send again. With it, the
+     * retry collides onto the row that already exists.
+     *
+     * Deliberately not derived from the content: two deliberate "ok"s are two
+     * messages, and a key computed from the words would swallow the second.
+     */
+    sendMessage: (tenantId: string, id: string, content: string, idempotencyKey?: string) =>
+        apiPost(`/agent-console/conversation/${tenantId}/${id}/message`,
+            idempotencyKey ? { content, idempotencyKey } : { content }),
 
     assignConversation: (tenantId: string, id: string, agentId: string) =>
         apiPut(`/agent-console/conversation/${tenantId}/${id}/assign`, { agentId }),

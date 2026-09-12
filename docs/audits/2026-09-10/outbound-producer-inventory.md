@@ -336,7 +336,7 @@ direcciones**: lo que el barrido encuentra y ella no nombra, y lo que ella
 nombra y el barrido no encuentra. Un desacuerdo no es un error de ninguno de
 los dos — es exactamente el sitio donde hay que ir a mirar.
 
-Entradas declaradas allí: **59**.
+Entradas declaradas allí: **60**.
 
 ### Encontrados por el barrido y no declarados como productores
 

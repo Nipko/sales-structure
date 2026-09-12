@@ -289,23 +289,69 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
 
     producer({
         id: 'human.agent.reply',
-        effect: 'A human agent\'s reply typed in the console or the mobile inbox, sent to the customer '
-            + 'on their own channel',
+        effect: 'A human agent\'s reply typed in the console or the mobile inbox, on a channel that '
+            + 'HAS a strict transport — WhatsApp, Instagram, Messenger, Telegram',
+        lane: 'dispatch_outbox',
+        status: 'live',
+        derivation: 'census',
+        source: 'modules/agent-console/agent-console.service.ts',
+        symbol: 'replyThroughOutbox',
+        egress: 'ProactiveDispatchService.send commits an `agent_dispatch_outbox` row, which the '
+            + 'outbound processor leases and sends through the strict transport — REST '
+            + 'POST /agent-console/conversation/:tenantId/:conversationId/message and the WebSocket '
+            + 'event `conversation:send`',
+        properties: {
+            authority: durable('`human_operator`, minted by `operatorAuthority` and revalidated inside '
+                + 'the lease transaction: the person must still be active, still hold a sending role, '
+                + 'still belong to this tenant, and the connection must still be this tenant\'s and '
+                + 'live'),
+            idempotency: partial('`originKey` is `agent_console:<conversation>:<press>`, and the press '
+                + 'is the key the client sends. The console supplies one per press and reuses it when '
+                + 'it retries that same press, so a request whose answer never arrived collides onto '
+                + 'the row that already exists. A caller that sends no key gets a random one and no '
+                + 'protection — which is honest rather than safe, and is why this is `partial`: the '
+                + 'mobile inbox does not send one yet'),
+            receipt: durable('the committed row carries the provider message id the transport '
+                + 'returned, and the `messages` row is settled from the same outcome'),
+            uncertainOutcome: durable('a strict transport distinguishes refused from unconfirmed, and '
+                + 'an unconfirmed attempt leaves the row in a state no second POST is authorised from'),
+            erasure: partial('GDPR erasure redacts the `messages` row like any other; the outbox row '
+                + 'holds the rendered payload until it is settled and swept'),
+            recovery: durable('the row survives a restart and is retried from its own payload rather '
+                + 'than from a person typing it again'),
+        },
+    }),
+
+    producer({
+        // ── ONE FILE, TWO LANES ─────────────────────────────────────────────
+        //
+        // `sendAgentMessage` tries `replyThroughOutbox` FIRST and takes it for
+        // every channel the gateway has a strict transport for. The inline path
+        // is what is left: a channel with no transport that can send exactly
+        // one effect and say what happened.
+        //
+        // Splitting the entry is the honest way to say so — the same choice
+        // `appointments.booking_confirmation` makes — because a single row
+        // would have to describe both a durable lane and an inline one, and
+        // whichever it named would be wrong for half the channels. For a while
+        // this entry said `inline` for all of them, which understated the
+        // console's coverage and left the reader unable to tell which path a
+        // given channel takes.
+        id: 'human.agent.reply.inline',
+        effect: 'The same human reply on a channel with NO strict transport, sent inline inside the '
+            + 'request that typed it',
         lane: 'inline',
         status: 'live',
         derivation: 'census',
         source: 'modules/agent-console/agent-console.service.ts',
         symbol: 'sendAgentMessage',
-        egress: 'ChannelGatewayService.sendMessage, called directly — REST '
-            + 'POST /agent-console/conversation/:tenantId/:conversationId/message and the WebSocket '
-            + 'event `conversation:send`',
+        egress: 'ChannelGatewayService.sendMessage, called directly',
         properties: {
-            // The one the completion review named, and the worst cell in this table.
             authority: none('no queue, no row, no lease. The send happens inline inside the request '
                 + 'that typed it'),
             idempotency: none('no dedupeId, no job id, no unique constraint. A double click, a retried '
                 + 'request or a reconnecting socket sends the message again'),
-            receipt: partial('the `messages` row is now written `pending` and settled to `sent` or '
+            receipt: partial('the `messages` row is written `pending` and settled to `sent` or '
                 + '`failed` by the outcome of the send, and the failure reaches the agent instead of only '
                 + 'the log. Still partial: the provider id returned by `sendMessage` is discarded, so '
                 + 'there is no identifier to reconcile the send against later'),
@@ -314,7 +360,7 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
                 + 'honest about "did not confirm"; it cannot distinguish "may have arrived"'),
             erasure: partial('GDPR erasure redacts the `messages` row like any other. There is no other '
                 + 'record of the attempt to erase, which is the same reason there is nothing to recover'),
-            recovery: none('nothing durable exists to retry from. A failed human reply is now visible to '
+            recovery: none('nothing durable exists to retry from. A failed human reply is visible to '
                 + 'the agent, but re-sending it is a person typing it again'),
         },
     }),

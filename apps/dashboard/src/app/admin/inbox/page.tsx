@@ -298,6 +298,13 @@ export default function InboxPage() {
     const selectedConvIdRef = useRef<string | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const messagesContainerRef = useRef<HTMLDivElement>(null);
+    /**
+     * The press of Send whose answer never arrived, kept so its retry carries
+     * the same identity. A failed request may well have reached the server;
+     * re-sending under a new key is how one press becomes two messages on the
+     * customer's phone. Cleared on success and whenever the words change.
+     */
+    const failedSendRef = useRef<{ content: string; key: string } | null>(null);
 
     // Keep ref in sync with selected conversation ID (for WebSocket handler)
     useEffect(() => {
@@ -1176,6 +1183,21 @@ export default function InboxPage() {
         if (!messageInput.trim() || sending) return;
         const content = messageInput.trim();
         const optimisticId = `msg_${Date.now()}`;
+        // ── WHAT MAKES THIS PRESS OF SEND *THIS* PRESS ──────────────────────
+        //
+        // A send whose answer never arrives leaves the agent with the text back
+        // in the box and no way to know whether the customer got it. They press
+        // Send again — and without a key naming the press, the server has no
+        // way to tell that retry from a deliberate second message, so it sends
+        // one. Reusing the key of the failed press lets the outbox collide the
+        // two onto one row.
+        //
+        // It is kept only while the words are unchanged: editing the text makes
+        // it a different message, which deserves its own identity.
+        const retrying = failedSendRef.current?.content === content
+            ? failedSendRef.current.key : null;
+        const pressKey = retrying ?? (globalThis.crypto?.randomUUID?.() ?? `p${Date.now()}`)
+            .replace(/-/g, '');
         const previousLastMessage = selectedConv?.lastMessage;
         setSending(true);
         setMessageInput("");
@@ -1200,7 +1222,9 @@ export default function InboxPage() {
         // API call
         try {
             if (activeTenantId && selectedConv?.id) {
-                const result = await api.sendMessage(activeTenantId, selectedConv.id, content);
+                const result = await api.sendMessage(
+                    activeTenantId, selectedConv.id, content, pressKey);
+                failedSendRef.current = null;
                 // A 200 means the reply was SAVED, not that it left. The send
                 // runs inline after the row is written and its failure used to
                 // reach only the server log, so an expired token or a provider
@@ -1217,6 +1241,10 @@ export default function InboxPage() {
             }
         } catch (err) {
             console.error("Send message failed:", err);
+            // Remembered so the retry of THIS press carries the same key. The
+            // request may well have reached the server, and re-sending under a
+            // new identity is how one press becomes two messages.
+            failedSendRef.current = { content, key: pressKey };
             // Rollback optimistic message
             setMessages(prev => prev.filter(m => m.id !== optimisticId));
             setSelectedConv((prev: any) => prev ? { ...prev, lastMessage: previousLastMessage } : prev);

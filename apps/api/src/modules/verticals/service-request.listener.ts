@@ -129,9 +129,9 @@ export class ServiceRequestListener {
      * condición es `status = 'scheduled'` CON `scheduled_at`, que es exactamente
      * lo que el writer escribe cuando la herramienta trae servicio y horario.
      *
-     * Hueco conocido y deliberado: una solicitud que nace `pending` y que un
-     * humano agenda después NO produce confirmación, porque `updateRequest` no
-     * emite ningún evento. Cerrarlo es un cambio en `home-services/`.
+     * A request scheduled later by a human emits `service_request.scheduled`;
+     * it enters this same renderer and confirmation policy after the update
+     * commits, so the dashboard and conversational writer behave alike.
      */
     private async notifyCustomer(payload: { requestId: string; tenantSchemaName: string }): Promise<void> {
         const schema = String(payload?.tenantSchemaName ?? '').trim();
@@ -170,5 +170,12 @@ export class ServiceRequestListener {
                 agent_name: String(req.assigned_technician_name ?? ''),
             },
         });
+    }
+
+    @OnEvent('service_request.scheduled')
+    async onServiceRequestScheduled(payload: { requestId: string; tenantSchemaName: string }): Promise<void> {
+        await this.notifyCustomer(payload).catch((error: any) =>
+            this.logger.error(`No se pudo confirmar al cliente la solicitud agendada `
+                + `${payload?.requestId}: ${error?.message}`));
     }
 }

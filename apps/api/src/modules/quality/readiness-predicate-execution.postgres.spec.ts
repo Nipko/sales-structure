@@ -177,7 +177,7 @@ const TABLES = ['faqs', 'products', 'companies', 'menu_items', 'real_estate_list
                 READINESS_PREDICATE_AUTHORITY.menu_items!.toolPredicate)).toEqual({ total: 0 });
         });
 
-        it('counts an open-duration service the home-services reads filter out', async () => {
+        it('keeps an open-duration service visible for manual quote intake', async () => {
             // `duration_minutes` is NOT NULL DEFAULT 30, so this is not a null
             // edge case: zero is what the services writer stores for
             // `duration_type = 'open'`, which is the natural shape of a
@@ -187,7 +187,7 @@ const TABLES = ['faqs', 'products', 'companies', 'menu_items', 'real_estate_list
                        VALUES ('Destape a convenir', 0, true, 'open')`);
             expect(await countWith('services', READINESS.service_catalog!.where)).toEqual({ total: 1 });
             expect(await countWith('services',
-                READINESS_PREDICATE_AUTHORITY.service_catalog!.toolPredicate)).toEqual({ total: 0 });
+                READINESS_PREDICATE_AUTHORITY.service_catalog!.toolPredicate)).toEqual({ total: 1 });
         });
 
         it('does not count a B2B customer organisation as the tenant identity', async () => {

@@ -8,6 +8,22 @@ describe('HomeServicesService scheduled request invariant', () => {
     const serviceId = '33333333-3333-4333-8333-333333333333';
     const scheduledAt = '2030-08-10T09:00:00';
 
+    it('keeps open-duration work visible without claiming it can be auto-scheduled', async () => {
+        const prisma = { executeInTenantSchema: jest.fn().mockResolvedValue([
+            { id: 'open', name: 'Diagnóstico', category: 'plomeria', duration_minutes: 0,
+                duration_type: 'open', max_concurrent: 1 },
+            { id: 'fixed', name: 'Mantenimiento', category: 'plomeria', duration_minutes: 60,
+                duration_type: 'fixed', max_concurrent: 2 },
+        ]) };
+        const service = new HomeServicesService(prisma as any, { emit: jest.fn() } as any);
+
+        await expect(service.listCapacityServices(schemaName)).resolves.toEqual([
+            expect.objectContaining({ id: 'open', durationType: 'open', automaticScheduling: false }),
+            expect.objectContaining({ id: 'fixed', durationType: 'fixed', automaticScheduling: true }),
+        ]);
+        expect(prisma.executeInTenantSchema.mock.calls[0][1]).not.toContain('duration_minutes > 0');
+    });
+
     describe('createRequest', () => {
         it('creates a scheduled request only when a valid scheduledAt is persisted with it', async () => {
             const query = jest.fn(async (sql: string, _params: any[] = []) => {
@@ -178,10 +194,12 @@ describe('HomeServicesService scheduled request invariant', () => {
                 transactionInTenantSchema: jest.fn(async (_schema: string, callback: any) => callback(query)),
                 executeInTenantSchema: jest.fn(),
             };
+            const eventEmitter = { emit: jest.fn() };
             return {
-                service: new HomeServicesService(prisma as any, { emit: jest.fn() } as any),
+                service: new HomeServicesService(prisma as any, eventEmitter as any),
                 prisma,
                 query,
+                eventEmitter,
             };
         }
 
@@ -212,6 +230,10 @@ describe('HomeServicesService scheduled request invariant', () => {
                 'scheduled',
                 requestId,
             ]);
+            expect(harness.eventEmitter.emit).toHaveBeenCalledWith(
+                'service_request.scheduled',
+                expect.objectContaining({ requestId, tenantSchemaName: schemaName }),
+            );
         });
 
         it('rejects scheduled status when neither the row nor the update has a date', async () => {
@@ -247,6 +269,10 @@ describe('HomeServicesService scheduled request invariant', () => {
                 'scheduled',
                 requestId,
             ]);
+            expect(harness.eventEmitter.emit).toHaveBeenCalledWith(
+                'service_request.scheduled',
+                expect.objectContaining({ requestId, tenantSchemaName: schemaName }),
+            );
         });
 
         it('does not allow clearing the date while the final status remains scheduled', async () => {

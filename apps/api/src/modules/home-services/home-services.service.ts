@@ -55,15 +55,16 @@ export class HomeServicesService {
         category: string;
         durationMinutes: number;
         maxConcurrent: number;
+        durationType: string;
+        automaticScheduling: boolean;
     }>> {
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
             `SELECT id, name, COALESCE(category, 'otro') AS category,
-                    duration_minutes::int,
+                    duration_minutes::int, COALESCE(duration_type, 'fixed') AS duration_type,
                     COALESCE(max_concurrent, 1)::int AS max_concurrent
                FROM services
               WHERE is_active = true
-                AND duration_minutes > 0
               ORDER BY sort_order, name`,
             [],
         );
@@ -73,6 +74,10 @@ export class HomeServicesService {
             category: row.category,
             durationMinutes: Number(row.duration_minutes),
             maxConcurrent: Math.max(1, Number(row.max_concurrent) || 1),
+            durationType: row.duration_type,
+            // Open-duration work can be captured and quoted, but no automatic
+            // slot may be promised until a human supplies a time contract.
+            automaticScheduling: row.duration_type !== 'open' && Number(row.duration_minutes) > 0,
         }));
     }
 
@@ -270,6 +275,7 @@ export class HomeServicesService {
         if (!Object.keys(map).some(key => key in data)) return this.getRequestById(schemaName, id);
 
         let request: any;
+        let becameScheduled = false;
         try {
             request = await this.prisma.transactionInTenantSchema(schemaName, async (query) => {
             const existing = await query<Array<{
@@ -291,6 +297,7 @@ export class HomeServicesService {
             if (!existing.length) throw new NotFoundException('Request not found');
 
             const finalStatus = data.status !== undefined ? data.status : existing[0].status;
+            becameScheduled = existing[0].status !== 'scheduled' && finalStatus === 'scheduled';
             const finalScheduledAt = data.scheduledAt !== undefined
                 ? data.scheduledAt
                 : existing[0].scheduled_at_text || existing[0].scheduled_at;
@@ -346,6 +353,17 @@ export class HomeServicesService {
         });
         } catch (error) {
             this.rethrowCapacityError(error);
+        }
+        if (becameScheduled && request) {
+            try {
+                this.eventEmitter.emit('service_request.scheduled', {
+                    requestId: request.id,
+                    tenantSchemaName: schemaName,
+                    schemaName,
+                });
+            } catch (error: any) {
+                this.logger.error(`service_request.scheduled listener failed after commit: ${error.message}`);
+            }
         }
         return serializeLocalTimestampFields(request, HOME_SERVICE_LOCAL_TIMESTAMPS);
     }

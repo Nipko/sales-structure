@@ -266,23 +266,11 @@ export const READINESS_PREDICATE_AUTHORITY:
     },
     service_catalog: {
         toolTable: 'services',
-        toolPredicate: 'is_active = true AND duration_minutes > 0',
+        toolPredicate: 'is_active = true',
         toolSource: 'home-services/home-services.service.ts::listCapacityServices',
-        dimensions: ['active', 'availability'],
+        dimensions: ['active'],
         writePath: '/admin/service-catalog',
-        divergence: {
-            kind: 'weaker_predicate',
-            missingDimensions: ['availability'],
-            consequence: "`duration_minutes` is NOT NULL DEFAULT 30, so this is not a null edge case: zero is "
-                + "written deliberately whenever `duration_type` is 'open', which is the natural shape for a "
-                + 'plumbing or fumigation quote. A tenant whose whole catalogue is open-duration satisfies '
-                + 'readiness and publishes the family, while `list_home_services` returns nothing and '
-                + 'the availability read raises HomeServiceCatalogUnavailableError.',
-            correction: 'Decide which side is wrong and change that one: either add `duration_minutes > 0` to the '
-                + 'readiness predicate, so an all-open catalogue is honestly reported as not publishable, or teach '
-                + "the home-services reads to handle `duration_type = 'open'` instead of filtering it out.",
-            owner: READINESS_OWNER,
-        },
+        divergence: null,
     },
     photo_sessions: {
         toolTable: 'services',

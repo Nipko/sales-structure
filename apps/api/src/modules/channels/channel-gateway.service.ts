@@ -1,9 +1,36 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { NormalizedMessage, ChannelType, OutboundMessage } from '@parallext/shared';
+import { NormalizedMessage, ChannelType, OutboundMessage, isScopedAddressKey } from '@parallext/shared';
 import { WebhookTapService } from './webhook-tap.service';
 import { channelSafeImageUrl } from '../../common/utils/media-url.util';
 import type { StrictDispatchTransport } from './strict-dispatch-transport';
 import { classifyFlowFailure } from './flow-fallback';
+
+/**
+ * A recipient no channel endpoint can address.
+ *
+ * Thrown rather than returned as `null`, and the asymmetry is the point.
+ * This gateway turns every transport failure into `null`, and a `null`
+ * means "no answer came back": the legacy processor records the
+ * reservation as a TIMEOUT, which RETAINS the money for a message provably
+ * never posted, and then throws — burning the job's attempts. Neither is
+ * true here. Nothing was sent, nothing can be, and waiting does not turn a
+ * business-scoped id into a phone number.
+ *
+ * Every caller of `sendMessage` asks the spend authority first, and that
+ * authority refuses this by name (`recipient_not_addressable`), so this
+ * should never fire. It exists because the five legacy senders on the
+ * WhatsApp adapter POST whatever string they are handed — only `sendStrict`
+ * checked, and `sendStrict` is the lane the rollout switch leaves OFF by
+ * default, so the guard was on the road nobody is driving. "Every caller
+ * remembers to ask" is a list somebody maintains; this is a property of the
+ * code.
+ */
+export class UnaddressableRecipient extends Error {
+    constructor(readonly channelType: string) {
+        super('recipient_not_addressable');
+        this.name = 'UnaddressableRecipient';
+    }
+}
 
 /**
  * What the gateway must ask its caller before doing something the caller did
@@ -156,6 +183,25 @@ export class ChannelGatewayService {
         if (!adapter) {
             this.logger.warn(`No adapter for channel: ${outbound.channelType}`);
             return null;
+        }
+
+        // ── A DESTINATION NO ENDPOINT UNDERSTANDS ───────────────────────
+        //
+        // One question — is this stored address a business-scoped id rather
+        // than something a provider takes in a destination field — and the
+        // answer is the same for every channel that arrives here. WhatsApp
+        // is where such a key is minted; Telegram, Instagram, Messenger and
+        // the widget would not know what to do with one either. So it is
+        // not gated on the channel.
+        //
+        // Deliberately BEFORE `sendOutbound` and the five legacy senders,
+        // and deliberately OUTSIDE the try below: that catch turns every
+        // exception into `null`, which is the one answer this refusal must
+        // never be confused with.
+        if (isScopedAddressKey(outbound.to)) {
+            this.logger.error(`[Gateway] refusing ${outbound.channelType}: the recipient is a `
+                + 'business-scoped id, which no channel endpoint accepts as a destination');
+            throw new UnaddressableRecipient(outbound.channelType);
         }
 
         try {

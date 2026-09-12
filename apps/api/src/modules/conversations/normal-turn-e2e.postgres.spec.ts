@@ -717,6 +717,60 @@ const ready = !!databaseUrl && !!redisUrl;
             });
         });
 
+        it('hears a customer with no phone number, and does not pretend to answer them', async () => {
+            // Meta's business-scoped user ids: the person writes and the
+            // business never sees a number, so the webhook carries
+            // `from_user_id` where it used to carry `from`. The ingress now
+            // accepts that — the contact key becomes `bsuid:<portfolio>:<id>`
+            // — and the outbound half does not exist, because no provider
+            // endpoint takes that string as a destination.
+            //
+            // The turn used to run anyway: model, tools, and an outbound row
+            // written with a hardcoded `status='delivered'`. The queue then
+            // refused it, so the inbox showed a DELIVERED answer the customer
+            // never received, and the only trace of the contradiction was a
+            // worker log line.
+            const wamid = `wamid.IN.${randomUUID()}`;
+            const turns = () => (conversations.generateResponse as jest.Mock).mock.calls.length;
+            const before = turns();
+
+            const ack = await postWebhook({
+                object: 'whatsapp_business_account',
+                entry: [{ id: 'waba-1', changes: [{ field: 'messages', value: {
+                    metadata: { phone_number_id: phoneNumberId },
+                    contacts: [{ user_id: 'BSU_abc123XYZ', profile: { name: 'Sin número' } }],
+                    messages: [{ id: wamid, from_user_id: 'BSU_abc123XYZ', type: 'text',
+                        text: { body: '¿me confirmás la cita?' } }],
+                } }] }],
+            });
+            expect(ack.status).toBe(200);
+            await settleQueues();
+
+            // HEARD. The business can see it in the inbox and act on it, which
+            // is the whole value of accepting the message at all.
+            //
+            // Scoped to THIS conversation, not to the whole schema: every
+            // other case in this file leaves its own outbound rows behind,
+            // and a sweep over `messages` would read those as this turn's.
+            const inboundId = await inboundMessageIdFor(wamid);
+            const thread = await sql(
+                `SELECT direction, status FROM messages
+                   WHERE conversation_id = (SELECT conversation_id FROM messages WHERE id=$1::uuid)
+                   ORDER BY created_at`, [inboundId]);
+            expect(thread.filter((row: any) => row.direction === 'inbound').length).toBe(1);
+
+            // NOT ANSWERED, and not claimed to be. No outbound row at all is
+            // the only honest state: one saying `delivered` would be a lie,
+            // and one saying `failed` would invite a retry that cannot work.
+            expect(thread.filter((row: any) => row.direction === 'outbound')).toEqual([]);
+
+            // Nothing was queued for it either, so no lane can post later.
+            expect(await outboxRows(inboundId)).toEqual([]);
+
+            // And no model was paid to write an answer that cannot leave.
+            expect(turns()).toBe(before);
+        });
+
         it('refuses to acknowledge a webhook it could not enqueue', async () => {
             const wamid = `wamid.IN.${randomUUID()}`;
             const addSpy = jest.spyOn(inboundQueue, 'add')

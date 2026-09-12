@@ -280,6 +280,39 @@ export class WhatsappSendAdmissionService {
         // Checked before the identity requirement below: an unbilled channel is
         // not a chargeable effect, so demanding a durable identity from it would
         // stop Telegram replies to protect a WhatsApp invoice.
+        // ── A DESTINATION NOTHING CAN ADDRESS ───────────────────────────────
+        //
+        // Above the unbilled early return, deliberately. "No provider bills
+        // this channel" and "this string is a destination" are different
+        // questions, and answering the first used to skip the second: a
+        // business-scoped key on Telegram, Instagram or Messenger came back
+        // `permitted: true, notBilled: true` and went on to be POSTed.
+        // Nothing mints such a key for those channels today, which is
+        // exactly why the guard belongs here rather than in whoever might.
+        //
+        // A business-scoped customer key reaches here as the recipient
+        // address. Meta's `/messages` takes a phone in `to`, so the POST
+        // cannot land — and by the time the transport says so, this service
+        // has already reserved money and the lane has committed a durable
+        // row, both for an effect that will never arrive.
+        //
+        // Refused here: nothing reserved, nothing committed, and the reason
+        // names the real situation instead of surfacing as a provider error
+        // about a malformed number.
+        if (isScopedAddressKey(request.recipientAddress ?? null)) {
+            return Object.freeze({
+                permitted: false, effectKey,
+                // Read even though this is not a money decision: the verdict
+                // carries the mode on every path, and hardcoding 'observe'
+                // here would tell an operator enforcement was off when it is
+                // on. It is memoised, and only reached for an address that is
+                // refused anyway.
+                enforcement: await this.enforcementFor(request.connection.tenantId),
+                block: spendBlock('recipient_not_addressable',
+                    `recipient=${String(request.recipientAddress).slice(0, 60)}`),
+            });
+        }
+
         if (!PROVIDER_BILLED_CHANNELS.includes(channel as any)) {
             return Object.freeze({ permitted: true, effectKey, enforcement: 'observe' as const, notBilled: true });
         }
@@ -378,25 +411,6 @@ export class WhatsappSendAdmissionService {
             this.logger.warn(`[Spend] pricing ${request.connection.channelAccountId} in `
                 + `${currency.currency}, last confirmed ${Math.floor(currency.ageMs / 86_400_000)} `
                 + `day(s) ago`);
-        }
-
-        // ── A DESTINATION NOTHING CAN ADDRESS ───────────────────────────────
-        //
-        // A business-scoped customer key reaches here as the recipient address.
-        // Meta's `/messages` endpoint takes a phone in `to`, so the POST cannot
-        // land — and by the time the transport says so, this service has already
-        // reserved money and the lane has committed a durable row, both for an
-        // effect that will never arrive.
-        //
-        // Refused here instead: nothing is reserved, nothing is committed, and
-        // the reason names the real situation rather than surfacing as a
-        // provider error about a malformed number.
-        if (isScopedAddressKey(request.recipientAddress ?? null)) {
-            return Object.freeze({
-                permitted: false, effectKey, enforcement,
-                block: spendBlock('recipient_not_addressable',
-                    `recipient=${String(request.recipientAddress).slice(0, 60)}`),
-            });
         }
 
         // ── The country being messaged, read before the address is hashed ───

@@ -16,7 +16,7 @@ import { readProviderRefusal } from './funding-failure';
 import { AccountPauseStore } from './account-pause-store';
 import { ChannelTokenService } from './channel-token.service';
 import { RedisService } from '../redis/redis.service';
-import { OutboundMessage } from '@parallext/shared';
+import { OutboundMessage, isScopedAddressKey } from '@parallext/shared';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { TenantNotificationSmsService } from '../sms-credits/tenant-notification-sms.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -958,6 +958,28 @@ export class OutboundQueueProcessor extends WorkerHost {
         if (outbound.channelType === 'sms') {
             this.logger.warn(`[Outbound][SMS] non-text (MMS) not supported on reseller SMS — dropped tenant=${outbound.tenantId} to=${outbound.to}`);
             return 'skipped:sms_mms_unsupported';
+        }
+
+        // ── A RECIPIENT THIS LANE CANNOT ADDRESS ────────────────────────────
+        //
+        // Before the credential, before the money gate, before any POST. The
+        // spend authority refuses this by name too — `recipient_not_addressable`
+        // — and that refusal is what covers the other three sinks. It is asked
+        // again here for one reason: the job's return value is the only thing an
+        // operator reads afterwards, and `skipped:spend_refused` says a budget
+        // stopped it, which sends somebody to look at a ceiling that is not the
+        // problem.
+        //
+        // Returns, never throws. An exception burns one of the attempts, and at
+        // the end of them the reply is dropped with nothing saying why — while
+        // waiting changes nothing about a destination that does not exist.
+        // Nothing is released because nothing was reserved: this is before
+        // `gateOrSuppress`, which is the only thing here that reserves.
+        if (isScopedAddressKey(outbound.to)) {
+            this.logger.warn(`[Outbound] tenant=${outbound.tenantId}: recipient is a `
+                + 'business-scoped id, which no endpoint accepts as a destination. Not sent, '
+                + 'not retried, nothing reserved.');
+            return 'skipped:recipient_not_addressable';
         }
 
         // Resolve the access token at send time (not stored in the job) — fresh

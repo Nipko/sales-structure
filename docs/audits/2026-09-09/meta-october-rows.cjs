@@ -297,10 +297,14 @@ function octoberRows(row, A) {
             openLabel: 'la propuesta de precios y la transición de planes son una decisión comercial '
                 + 'que nadie ha tomado',
             gates: [5],
-            evidence: 'Escenarios por país, canal, tarea y ciclo se pueden generar de los cinco '
-                + 'planes vigentes, pero el cambio de precio, la capacidad ofrecida y la '
-                + 'comunicación a clientes afectados no son trabajo de código. Se dice como '
-                + 'declaración porque lo es: cambiar el código de esta área no cambia esta fila.' }),
+            evidence: 'La propuesta concreta está escrita y sin aplicar en '
+                + '`docs/audits/2026-09-12/m4-pricing-proposal.md`: tarifas de servicio y '
+                + 'marketing de seis mercados derivadas de la tarjeta de octubre, los cinco '
+                + 'planes vigentes, el gasto real del cliente en dos extremos geográficos, un '
+                + 'escenario recomendado y cuatro alternativas con lo que cuesta cada una. La '
+                + 'fila sigue abierta a propósito: cambiar el código de esta área no la mueve, y '
+                + 'sólo la cierra una decisión registrada sobre precio, techo por número y los '
+                + 'dos textos de comunicación.' }),
 
         row('M5', { provenance: 'derived',
             open: A.messagingGaps('erasure').length,
@@ -312,13 +316,27 @@ function octoberRows(row, A) {
                 + 'cuenta, destinatario consentido y presupuesto autorizado, que son gates, no '
                 + 'código.' }),
 
-        row('M6', { provenance: 'declared', open: 1,
+        row('M6', { provenance: 'declared', open: 0,
             openLabel: 'marketing avanzado, Direct Send, llamadas/grupos y wallet de reventa no '
-                + 'están construidos y están fuera del alcance de octubre por decisión explícita',
-            gates: [5],
-            evidence: 'M5 los separa a M6 a propósito, con flags y elegibilidad propias, para que '
-                + 'no bloqueen la continuidad básica. Se registra abierta en vez de omitirse: una '
-                + 'fila que no aparece se lee como cerrada.' }),
+                + 'están construidos y quedan fuera del alcance de octubre por decisión '
+                + 'explícita; no bloquean este release',
+            gates: [],
+            deferral: {
+                decision: 'Fuera del alcance de octubre. No se construye marketing avanzado, '
+                    + 'Direct Send, llamadas/grupos ni wallet de reventa para este release; M5 '
+                    + 'los separó a propósito, con flags y elegibilidad propias, para que la '
+                    + 'continuidad básica no dependa de ellos.',
+                owner: 'dueño del producto (la decisión de alcance es comercial, no técnica)',
+                reopenWhen: 'se autorice el alcance para un release posterior, o Meta cambie la '
+                    + 'elegibilidad de alguna de esas superficies de modo que la continuidad '
+                    + 'básica dependa de una de ellas. Reabrir significa volver a `abierta` con '
+                    + 'trabajo local, no declararla aceptada.',
+            },
+            evidence: 'Se registra DIFERIDA y no abierta: mantener abierto un release por '
+                + 'alcance que alguien quitó a propósito es tenerlo abierto para siempre. Y no '
+                + 'aceptada: nada de esto está construido, y una fila aceptada sobre '
+                + 'funcionalidad inexistente es la única lectura peor. Tampoco se omite: esta '
+                + 'tabla ya aprendió que una fila que no se imprime se lee como cerrada.' }),
 
         // ── R0–R6: que ningún productor pueda entregar fuera de la autorización ──
 

@@ -178,20 +178,52 @@ const GATES = {
  *  · `declared` — a human judgement. Legitimate, and pending review: it is
  *    counted separately and listed, so nobody reads it as computed.
  */
-const row = (id, { open = 0, openLabel = '', gates = [], evidence, commits = [], provenance, artefact = null }) => {
+/**
+ * ═══ A FOURTH STATE, BECAUSE THREE WERE FORCING A LIE ═══
+ *
+ * `abierta` means somebody still has local work. `bloqueada` means the work
+ * is done and an external gate holds it. `aceptada` means it is finished.
+ *
+ * M6 is none of those. Advanced marketing, Direct Send, calls, groups and the
+ * resale wallet are NOT BUILT and are outside October's scope by an explicit
+ * decision. Reporting that as `abierta` keeps a release open for ever on
+ * scope somebody deliberately removed from it; reporting it as `aceptada`
+ * would call unbuilt functionality done, which is the worse of the two;
+ * omitting the row reads as closed, and this table already learned that a
+ * row nobody prints is a row everybody assumes is fine.
+ *
+ * So `deferred` is its own status, and it is the only one that REQUIRES a
+ * decision, an owner and a reopening condition. A deferral with nobody's
+ * name on it is a wish, and one with no condition is an abandonment.
+ */
+const row = (id, { open = 0, openLabel = '', gates = [], evidence, commits = [], provenance,
+    artefact = null, deferral = null }) => {
     if (!['derived', 'executed_evidence', 'declared'].includes(provenance)) {
         throw new Error(`row ${id}: provenance must be declared explicitly`);
+    }
+    if (deferral) {
+        for (const field of ['decision', 'owner', 'reopenWhen']) {
+            if (!String(deferral[field] ?? '').trim()) {
+                throw new Error(`row ${id}: a deferral needs ${field}; `
+                    + 'without it this is an abandonment wearing a status');
+            }
+        }
+        if (Number(open) > 0) {
+            throw new Error(`row ${id}: a deferred row may not also report open local work`);
+        }
     }
     return {
         id,
         open: Number(open),
         openLabel,
         gates,
-        status: Number(open) > 0 ? 'abierta' : gates.length ? 'bloqueada' : 'aceptada',
+        status: deferral ? 'diferida'
+            : Number(open) > 0 ? 'abierta' : gates.length ? 'bloqueada' : 'aceptada',
         provenance,
         artefact,
         evidence,
         commits,
+        deferral,
     };
 };
 
@@ -364,6 +396,27 @@ function contradictionsIn(rows) {
         // Over freshly built rows this restates the constructor; over the rows
         // read back from the artefact it is the only thing standing between a
         // reader and a status somebody typed.
+        // A deferral is the one status that cannot be derived from open and
+        // gates, because it is a DECISION rather than a measurement. So it is
+        // checked against what a deferral must carry instead: without a
+        // decision, an owner and a reopening condition it is an abandonment
+        // wearing a status, and it may never also report open local work.
+        const deferral = entry.deferral;
+        if (deferral) {
+            for (const field of ['decision', 'owner', 'reopenWhen']) {
+                if (!String(deferral[field] ?? '').trim()) {
+                    found.push(`${entry.id}: está diferida y no dice ${field}`);
+                }
+            }
+            if (Number(entry.open) > 0) {
+                found.push(`${entry.id}: está diferida y además reporta trabajo local abierto`);
+            }
+            if (entry.status !== 'diferida') {
+                found.push(`${entry.id}: lleva una decisión de diferimiento y su estado dice `
+                    + `\`${entry.status}\``);
+            }
+            continue;
+        }
         const expected = Number(entry.open) > 0 ? 'abierta' : gates.length ? 'bloqueada' : 'aceptada';
         if (entry.status !== expected) {
             found.push(`${entry.id}: el artefacto dice \`${entry.status}\` y sus condiciones `
@@ -433,7 +486,21 @@ const counts = {
     aceptada: ROWS.filter(entry => entry.status === 'aceptada').length,
     bloqueada: ROWS.filter(entry => entry.status === 'bloqueada').length,
     abierta: ROWS.filter(entry => entry.status === 'abierta').length,
+    diferida: ROWS.filter(entry => entry.status === 'diferida').length,
 };
+/**
+ * Every row lands in exactly one bucket.
+ *
+ * Adding `diferida` without adding it here left one row counted nowhere, so the
+ * four numbers summed to forty-four over a forty-five row table -- and the
+ * missing one was the row about scope somebody had deliberately removed, which
+ * is precisely the row a reader would want to find.
+ */
+const counted = counts.aceptada + counts.bloqueada + counts.abierta + counts.diferida;
+if (counted !== ROWS.length) {
+    throw new Error(`los estados suman ${counted} sobre ${ROWS.length} filas; `
+        + 'hay un estado que nadie cuenta');
+}
 const provenance = {
     derived: ROWS.filter(entry => entry.provenance === 'derived').length,
     executed_evidence: ROWS.filter(entry => entry.provenance === 'executed_evidence').length,
@@ -485,7 +552,8 @@ const lines = [
     `Revisión: \`${revision}\`.`,
     '',
     `**El programa no está terminado.** ${counts.aceptada} filas aceptadas, ${counts.bloqueada} bloqueadas por un`,
-    `gate externo concreto y ${counts.abierta} abiertas; ${matrix.summary.certifiedProfiles} perfiles certificados`,
+    `gate externo concreto, ${counts.abierta} abiertas y ${counts.diferida} diferidas por decisión`,
+    `explícita de alcance; ${matrix.summary.certifiedProfiles} perfiles certificados`,
     `de ${matrix.summary.profiles}.`,
     '',
     contradictions.length

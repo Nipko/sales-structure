@@ -1,12 +1,13 @@
 {
   "version": 1,
-  "revision": "fa061bf42ca124e7267f99ae25a24c6e2819a43b",
-  "generatedAt": "2026-09-12T09:31:56.008Z",
+  "revision": "5deee1bd5f6e107c3fe48f387c93f64c32602fc1",
+  "generatedAt": "2026-09-12T13:46:38.808Z",
   "finished": false,
   "counts": {
     "aceptada": 13,
     "bloqueada": 21,
-    "abierta": 11
+    "abierta": 10,
+    "diferida": 1
   },
   "provenance": {
     "derived": 26,
@@ -88,7 +89,8 @@
       "commits": [
         "a806ef62",
         "f121dc5f"
-      ]
+      ],
+      "deferral": null
     },
     {
       "id": "A2",
@@ -101,7 +103,8 @@
       "provenance": "declared",
       "artefact": null,
       "evidence": "Comando, retención, settlement, avisos durables y revisión sin reenvío implementados y probados con PostgreSQL. La conciliación contra un proveedor real no puede correrse sin su cuenta.",
-      "commits": []
+      "commits": [],
+      "deferral": null
     },
     {
       "id": "A3",
@@ -114,7 +117,8 @@
       "provenance": "declared",
       "artefact": null,
       "evidence": "Propuesta, consentimiento, aprobación humana y entrega durable probados con PostgreSQL y Socket.IO. La entrega real necesita un canal conectado.",
-      "commits": []
+      "commits": [],
+      "deferral": null
     },
     {
       "id": "A4",
@@ -127,7 +131,8 @@
       "provenance": "declared",
       "artefact": null,
       "evidence": "Transacciones, lectores, promoción y restauración única comprobadas contra PostgreSQL.",
-      "commits": []
+      "commits": [],
+      "deferral": null
     },
     {
       "id": "B1",
@@ -140,7 +145,8 @@
       "provenance": "executed_evidence",
       "artefact": "docs/audits/2026-09-09/order-sensitivity-runs.md",
       "evidence": "El turno completo corre de punta a punta sobre PostgreSQL, Valkey, BullMQ y Socket.IO reales, con crash en cada frontera, una erasure en vuelo y los primitivos a través de un PgBouncer real en modo transacción.",
-      "commits": []
+      "commits": [],
+      "deferral": null
     },
     {
       "id": "B2",
@@ -151,7 +157,8 @@
       "provenance": "derived",
       "artefact": null,
       "evidence": "Las 15 familias del registro tienen writer canónico auditado, con id de inbound compartido con el runtime y el ledger. Cero bloqueadas.",
-      "commits": []
+      "commits": [],
+      "deferral": null
     },
     {
       "id": "C1",
@@ -164,7 +171,8 @@
       "provenance": "declared",
       "artefact": null,
       "evidence": "Árbitro, dueño por puerto, consentimiento por misión, corrección y reanudación probados en los cuatro idiomas del contrato (es/en/pt/fr).",
-      "commits": []
+      "commits": [],
+      "deferral": null
     },
     {
       "id": "C2",
@@ -175,7 +183,8 @@
       "provenance": "derived",
       "artefact": null,
       "evidence": "Ciclos de agenda y de mascotas con recibos atómicos comprobados. El cierre de esta fila es el mismo que el de A1.",
-      "commits": []
+      "commits": [],
+      "deferral": null
     },
     {
       "id": "C3",
@@ -188,7 +197,8 @@
       "provenance": "derived",
       "artefact": null,
       "evidence": "Contratos MCP y dependencias base implementados. El ejecutor está cableado a servicio, cola y endpoint, y se ensaya sin proveedor; la cobertura por tarea la decide una corrida real: 0 perfiles certificados de 76.",
-      "commits": []
+      "commits": [],
+      "deferral": null
     },
     {
       "id": "D1",
@@ -201,7 +211,8 @@
       "provenance": "declared",
       "artefact": null,
       "evidence": "Muestreo, revisión humana con CAS y anotaciones RAG implementados. No se certifica veracidad global y el propio informe lo dice; una revisión de muestra necesita personas.",
-      "commits": []
+      "commits": [],
+      "deferral": null
     },
     {
       "id": "D2",
@@ -218,7 +229,8 @@
         "f2a6a2e8",
         "7a9e7c18",
         "71387107"
-      ]
+      ],
+      "deferral": null
     },
     {
       "id": "D3",
@@ -231,7 +243,8 @@
       "provenance": "declared",
       "artefact": null,
       "evidence": "Atribución observable y diagnóstico técnico probados. No equivalen a veracidad ni a entailment, y el informe lo dice.",
-      "commits": []
+      "commits": [],
+      "deferral": null
     },
     {
       "id": "E1",
@@ -242,7 +255,8 @@
       "provenance": "derived",
       "artefact": null,
       "evidence": "76 perfiles, 268 tareas, 146 que comprometen al negocio, y cero tareas sin caso positivo propio o sin verificador fuera de las 5 declaradas: `file_claim` en las cinco subtipos de seguros existe para probar que el escalón de identidad la rechaza, así que no hay efecto que verificar y un \"positivo\" sería el agente haciendo lo que no debe. Certificar estas tareas es H1.",
-      "commits": []
+      "commits": [],
+      "deferral": null
     },
     {
       "id": "E2",
@@ -255,7 +269,8 @@
       "evidence": "30 de 34 grupos son comerciales y 19 tienen su autoridad congelada entera. Las 11 restantes descansan únicamente en los 3 relojes aceptados con motivo escrito (wall_clock, CURRENT_DATE, readonly_channel_manager_ownership_projection), ninguno de los cuales se puede capturar: lo que los cierra es que el resultado viaje con el instante en que se tomó. La mitad concurrente la prueba `commercial-authority.postgres.spec.ts` contra PostgreSQL real, con dos tenants y dos workers.",
       "commits": [
         "33dd2487"
-      ]
+      ],
+      "deferral": null
     },
     {
       "id": "E3",
@@ -269,7 +284,8 @@
       "provenance": "declared",
       "artefact": null,
       "evidence": "Outbox durable, transporte estricto, recuperación, reconciliación con actor y evidencia, pantalla de operador y alerta real. El interruptor sigue apagado por defecto: encenderlo es una activación.",
-      "commits": []
+      "commits": [],
+      "deferral": null
     },
     {
       "id": "F1",
@@ -282,7 +298,8 @@
       "provenance": "derived",
       "artefact": null,
       "evidence": "Assessment común implementado y probado; su cierre es una corrida real de certificación, cuyo ejecutor ya existe y se ensaya sin proveedor.",
-      "commits": []
+      "commits": [],
+      "deferral": null
     },
     {
       "id": "F2",
@@ -296,7 +313,8 @@
       "commits": [
         "37411849",
         "f2a976d6"
-      ]
+      ],
+      "deferral": null
     },
     {
       "id": "F3",
@@ -309,7 +327,8 @@
       "provenance": "declared",
       "artefact": null,
       "evidence": "Recorridos por tareas verificadas implementados y con pruebas de accesibilidad automáticas. Las sesiones moderadas necesitan personas.",
-      "commits": []
+      "commits": [],
+      "deferral": null
     },
     {
       "id": "F4",
@@ -322,7 +341,8 @@
       "provenance": "declared",
       "artefact": null,
       "evidence": "Un solo vocabulario de seis estados proyectado y mostrado en el tablero. La validación visual necesita personas.",
-      "commits": []
+      "commits": [],
+      "deferral": null
     },
     {
       "id": "G1",
@@ -335,7 +355,8 @@
       "evidence": "20 lugares inventariados con barrido del árbol de fuentes, cada uno diciendo qué lo alcanza y por qué. Abiertos: ninguno.",
       "commits": [
         "d366baf3"
-      ]
+      ],
+      "deferral": null
     },
     {
       "id": "G2",
@@ -348,7 +369,8 @@
       "provenance": "declared",
       "artefact": null,
       "evidence": "Curación y revisión en cuatro idiomas implementadas. La revisión humana de muestra necesita personas.",
-      "commits": []
+      "commits": [],
+      "deferral": null
     },
     {
       "id": "G3",
@@ -361,7 +383,8 @@
       "provenance": "declared",
       "artefact": null,
       "evidence": "Comparación por runtime y evidencia en seis familias; publicación gradual y retiro implementados.",
-      "commits": []
+      "commits": [],
+      "deferral": null
     },
     {
       "id": "H1",
@@ -377,7 +400,8 @@
       "commits": [
         "e1ac3943",
         "4ec45699"
-      ]
+      ],
+      "deferral": null
     },
     {
       "id": "H2",
@@ -390,7 +414,8 @@
       "provenance": "declared",
       "artefact": null,
       "evidence": "Regresiones desde QA y ledger, linaje, identidad de misión y denominadores implementados; un resultado desconocido conserva ese estado y no se inventa tasa. Sus denominadores se llenan con la corrida de H1.",
-      "commits": []
+      "commits": [],
+      "deferral": null
     },
     {
       "id": "H3",
@@ -407,7 +432,8 @@
       "evidence": "Harness local construido: corpus generado y estratificado desde el catálogo con verificadores de resultado, sujetos sintéticos ejecutados, 3 tablas de intentos y revisión ciega, y una negativa a enunciar comparación cuando falta el otro sujeto. Correr una alternativa necesita su cuenta.",
       "commits": [
         "aaf41d62"
-      ]
+      ],
+      "deferral": null
     },
     {
       "id": "M0",
@@ -418,7 +444,8 @@
       "provenance": "derived",
       "artefact": null,
       "evidence": "Censo derivado del árbol: 31 call sites, 27 cobrables, 0 fuera de la autoridad económica. El inventario de efectos declara 62 productores y 43 con al menos una propiedad en `none`. La condición es que el artefacto versionado se regenere desde el mismo HEAD, no que alguien lo haya leído.",
-      "commits": []
+      "commits": [],
+      "deferral": null
     },
     {
       "id": "M1",
@@ -432,7 +459,8 @@
       "provenance": "derived",
       "artefact": null,
       "evidence": "Remitente, pagador y credencial salen del resolver único; la unión de autoridades cubre agente servido, 9 políticas proactivas (appointment_reminder, attendance_check, appointment_notification, appointment_cancellation, drip_step, nurturing_followup, broadcast_message, automation_rule_action, recall_reminder) y operador humano con 4 roles. BSUID, la procedencia del token BISU y el control del hilo frente al agente de Meta ya están en el código y probados: un remitente sin teléfono se contesta en vez de descartarse, un token del portafolio del proveedor se rechaza en vez de firmar el envío de un tenant, y el control del hilo es durable y se recupera solo. Lo que falta es una cuenta real: ninguna de esas transiciones vio todavía un traspaso de verdad, y por eso la coexistencia va detrás de un interruptor apagado. El contador de esta fila mide otra cosa —productores de mensajería sin autoridad o sin idempotencia— y sigue siendo lo que la mantiene abierta.",
-      "commits": []
+      "commits": [],
+      "deferral": null
     },
     {
       "id": "M2",
@@ -445,7 +473,8 @@
       "provenance": "derived",
       "artefact": null,
       "evidence": "Tarifas versionadas `meta-ratecards-2026@cdc5b132567ab1e7` con 4 tarjetas, 5 categorías que Meta cobra por separado y 1000 entregas de servicio gratuitas por número y mes calendario. La categoría aprobada y la ventana de servicio se leen de la base del tenant antes de admitir. Lo que falta es una cuenta real: tarifa aplicada por Meta al entregar y conciliación contra factura.",
-      "commits": []
+      "commits": [],
+      "deferral": null
     },
     {
       "id": "M3",
@@ -456,7 +485,8 @@
       "provenance": "derived",
       "artefact": null,
       "evidence": "Autoridad económica transaccional con 5 alcances (number_month, account, business, contact, task), reserva antes del efecto y liquidación contra el recibo. Cero productores cobrables fuera del gate en este HEAD: lo verifica el censo, no esta frase.",
-      "commits": []
+      "commits": [],
+      "deferral": null
     },
     {
       "id": "M4",
@@ -468,8 +498,9 @@
       "status": "abierta",
       "provenance": "declared",
       "artefact": null,
-      "evidence": "Escenarios por país, canal, tarea y ciclo se pueden generar de los cinco planes vigentes, pero el cambio de precio, la capacidad ofrecida y la comunicación a clientes afectados no son trabajo de código. Se dice como declaración porque lo es: cambiar el código de esta área no cambia esta fila.",
-      "commits": []
+      "evidence": "La propuesta concreta está escrita y sin aplicar en `docs/audits/2026-09-12/m4-pricing-proposal.md`: tarifas de servicio y marketing de seis mercados derivadas de la tarjeta de octubre, los cinco planes vigentes, el gasto real del cliente en dos extremos geográficos, un escenario recomendado y cuatro alternativas con lo que cuesta cada una. La fila sigue abierta a propósito: cambiar el código de esta área no la mueve, y sólo la cierra una decisión registrada sobre precio, techo por número y los dos textos de comunicación.",
+      "commits": [],
+      "deferral": null
     },
     {
       "id": "M5",
@@ -483,20 +514,24 @@
       "provenance": "derived",
       "artefact": null,
       "evidence": "Aprendizaje conserva origen y finalidad; publicación y rollback llegan a los derivados. El agente de negocio de Meta sigue apagado. El piloto real necesita cuenta, destinatario consentido y presupuesto autorizado, que son gates, no código.",
-      "commits": []
+      "commits": [],
+      "deferral": null
     },
     {
       "id": "M6",
-      "open": 1,
-      "openLabel": "marketing avanzado, Direct Send, llamadas/grupos y wallet de reventa no están construidos y están fuera del alcance de octubre por decisión explícita",
-      "gates": [
-        5
-      ],
-      "status": "abierta",
+      "open": 0,
+      "openLabel": "marketing avanzado, Direct Send, llamadas/grupos y wallet de reventa no están construidos y quedan fuera del alcance de octubre por decisión explícita; no bloquean este release",
+      "gates": [],
+      "status": "diferida",
       "provenance": "declared",
       "artefact": null,
-      "evidence": "M5 los separa a M6 a propósito, con flags y elegibilidad propias, para que no bloqueen la continuidad básica. Se registra abierta en vez de omitirse: una fila que no aparece se lee como cerrada.",
-      "commits": []
+      "evidence": "Se registra DIFERIDA y no abierta: mantener abierto un release por alcance que alguien quitó a propósito es tenerlo abierto para siempre. Y no aceptada: nada de esto está construido, y una fila aceptada sobre funcionalidad inexistente es la única lectura peor. Tampoco se omite: esta tabla ya aprendió que una fila que no se imprime se lee como cerrada.",
+      "commits": [],
+      "deferral": {
+        "decision": "Fuera del alcance de octubre. No se construye marketing avanzado, Direct Send, llamadas/grupos ni wallet de reventa para este release; M5 los separó a propósito, con flags y elegibilidad propias, para que la continuidad básica no dependa de ellos.",
+        "owner": "dueño del producto (la decisión de alcance es comercial, no técnica)",
+        "reopenWhen": "se autorice el alcance para un release posterior, o Meta cambie la elegibilidad de alguna de esas superficies de modo que la continuidad básica dependa de una de ellas. Reabrir significa volver a `abierta` con trabajo local, no declararla aceptada."
+      }
     },
     {
       "id": "R0",
@@ -507,7 +542,8 @@
       "provenance": "derived",
       "artefact": null,
       "evidence": "De 27 call sites cobrables, 7 usan un carril que no escribe fila antes del POST — Redis es el registro, o no hay registro. Un productor ahí no puede contestar \"¿esto salió?\" después de un reinicio. El criterio principal de R6 es exactamente este número en cero. Ninguno de los siete carece del camino durable: seis son el repliegue de `conversations.service.ts` cuando el interruptor de despliegue está apagado, y el séptimo es la consola en un canal SIN transporte estricto, que no puede entregar exactamente un efecto y decir qué pasó. Por eso el número no baja escribiendo código: baja encendiendo un interruptor —decisión de piloto del dueño— o dándole transporte estricto a ese canal.",
-      "commits": []
+      "commits": [],
+      "deferral": null
     },
     {
       "id": "R1",
@@ -518,7 +554,8 @@
       "provenance": "derived",
       "artefact": null,
       "evidence": "El carril transporta 7 tipos de item (text, media, payment_link, flow, template, interactive, location), incluidos los menús y las ubicaciones que el carril REST manda todos los días. Los efectos se cuentan DESPUÉS de formarlos: un caption nativo viaja dentro del item donde el proveedor lo cobra como un mensaje, y como item propio donde no.",
-      "commits": []
+      "commits": [],
+      "deferral": null
     },
     {
       "id": "R2",
@@ -529,7 +566,8 @@
       "provenance": "derived",
       "artefact": null,
       "evidence": "Esperar y suprimir son resultados durables y distintos de error, resolución y handoff, así que ningún catch los convierte en un texto cobrable. La política por defecto admite 1 mensaje(s) idéntico(s) en 10 minutos, con un enfriamiento de 10 minutos, y es revisable por tarea e idioma.",
-      "commits": []
+      "commits": [],
+      "deferral": null
     },
     {
       "id": "R3",
@@ -542,7 +580,8 @@
       "provenance": "derived",
       "artefact": null,
       "evidence": "Los 5 alcances se reservan en orden fijo dentro de una transacción, así que dos workers peleando por el último importe no pueden asignarlo dos veces. El mercado sale de la dirección del destinatario, nunca del país de la empresa, y un destino desconocido no tiene tarifa cero.",
-      "commits": []
+      "commits": [],
+      "deferral": null
     },
     {
       "id": "R4",
@@ -553,7 +592,8 @@
       "provenance": "derived",
       "artefact": null,
       "evidence": "La consola humana, la API REST y las campañas necesitan la misma admisión que el agente: un handoff detiene la IA, pero las respuestas humanas siguen generando cargos. La autoridad de operador humano existe desde este HEAD; lo que falta es que cada productor la use, y eso se cuenta arriba.",
-      "commits": []
+      "commits": [],
+      "deferral": null
     },
     {
       "id": "R5",
@@ -564,7 +604,8 @@
       "provenance": "derived",
       "artefact": null,
       "evidence": "La matriz dejó de ser una tabla en un documento: sus 18 filas son datos, cada una nombra el archivo y UN TÍTULO POR MITAD del escenario, y una comprobación verifica que cada título sea el de un `it()` que de verdad corre — ni prosa, ni un `describe`, ni un `skip`. Una fila vale lo que su mitad más delgada: si una de ellas no está probada, la fila entera figura con `null` y dice qué haría falta, en vez de quedar fuera de la tabla para que la columna parezca llena — que es exactamente cómo un contador llega a cero sin que nadie cierre nada.",
-      "commits": []
+      "commits": [],
+      "deferral": null
     },
     {
       "id": "R6",
@@ -579,7 +620,8 @@
       "provenance": "derived",
       "artefact": null,
       "evidence": "El criterio principal de R6, textual: **ningún productor de WhatsApp puede generar una entrega fuera de la autorización aplicable**. Mientras el contador sea distinto de cero la fila está abierta, y después seguirá bloqueada por el modo observación, el canario con techo explícito y la autorización de activar `enforce`.",
-      "commits": []
+      "commits": [],
+      "deferral": null
     },
     {
       "id": "T1",
@@ -590,7 +632,8 @@
       "provenance": "derived",
       "artefact": null,
       "evidence": "Derivado del contrato de perfil de negocio contra los módulos que pueden actuar sobre cada bandera, excluyendo el propio contrato, el editor y las pruebas. Una bandera que sólo su esquema y su formulario mencionan es un control que el dueño puede mover sin consecuencia, y la pantalla dice que hizo algo.",
-      "commits": []
+      "commits": [],
+      "deferral": null
     },
     {
       "id": "T2",
@@ -601,7 +644,8 @@
       "provenance": "declared",
       "artefact": null,
       "evidence": "Condición de cierre: cada readiness cita el predicado que su herramienta evalúa de verdad y distingue falta de datos de error de lectura. Contar una fila cualquiera no basta: una cuenta sin capacidad no está lista por tener un servicio. Esta fila es `declared` porque la comparación predicado-a-predicado todavía no es mecánica; la condición dice qué la cerraría.",
-      "commits": []
+      "commits": [],
+      "deferral": null
     },
     {
       "id": "T3",
@@ -612,7 +656,8 @@
       "provenance": "derived",
       "artefact": null,
       "evidence": "Leído de la llamada, no de un comentario: the assessment passes a scope to intentEvidence. Sin scope el lector no puede reconocer evidencia producida bajo la configuración actual, y un agente probado se ve igual que uno que nadie probó.",
-      "commits": []
+      "commits": [],
+      "deferral": null
     },
     {
       "id": "T4",
@@ -623,7 +668,8 @@
       "provenance": "derived",
       "artefact": null,
       "evidence": "Derivado de `DISCOVERY_ORDER` contra la tabla por elemento del tour. Un elemento que aparece en el panel y no en el recorrido es una pantalla a la que se manda al dueño sin decirle para qué sirve, qué datos necesita, qué puede confirmar ni qué cuesta.",
-      "commits": []
+      "commits": [],
+      "deferral": null
     },
     {
       "id": "T5",
@@ -637,7 +683,8 @@
       "provenance": "derived",
       "artefact": null,
       "evidence": "Universo canónico conservado: 76 perfiles, 268 tareas, 146 que comprometen al negocio. La verificación determinista local es lo que esta fila mide; la certificación por canal y modelo real sigue en cero (0/76) y es gate externo, no trabajo local.",
-      "commits": []
+      "commits": [],
+      "deferral": null
     },
     {
       "id": "T6",
@@ -648,7 +695,8 @@
       "provenance": "declared",
       "artefact": null,
       "evidence": "Condición de cierre: Assist propone sólo operaciones que puede ejecutar, explica las demás con destino permitido por rol, y no mantiene un segundo listado de capacidades en los prompts. Activado, preparado, probado, degradado y bloqueado se mantienen como estados distintos.",
-      "commits": []
+      "commits": [],
+      "deferral": null
     }
   ]
 }

@@ -11,6 +11,7 @@ import { resolveTenantSubscriptionAccess } from '../../common/utils/subscription
 import { EmailTemplatesService } from '../email-templates/email-templates.service';
 import { APPOINTMENT_EMAIL_SLUGS } from '../email-templates/appointment-email-layout';
 import { formatDuration, normaliseLang, LANG_LOCALE } from './appointment-notifications-i18n';
+import { servedEmailConfirmationsEnabled } from '../../common/utils/served-confirmation-policy.util';
 import {
     ProactiveDispatchService, producerMayAdvance, type ProactiveSendResult,
 } from '../channels/proactive-dispatch.service';
@@ -370,7 +371,7 @@ export class AppointmentRemindersService {
             await this.assertTenantCanSend(tenantId);
             // Same switch the confirmation honours: a tenant who turned appointment
             // emails off must not keep getting reminders through the back door.
-            if (!await this.appointmentEmailsEnabled(schemaName)) return;
+            if (!await this.appointmentEmailsEnabled(schemaName, appt)) return;
             // getTenantLanguage returns the full locale ('es-CO'); template lookup
             // and the i18n maps are keyed by the 2-char code.
             const lang = normaliseLang(await this.getTenantLanguage(tenantId));
@@ -437,17 +438,37 @@ export class AppointmentRemindersService {
         }
     }
 
-    /** `agent_personas.config_json.tools.appointments.emailConfirmations` — opt-out only. */
-    private async appointmentEmailsEnabled(schemaName: string): Promise<boolean> {
-        try {
-            const rows = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-                `SELECT config_json FROM agent_personas WHERE is_active = true LIMIT 1`,
-                [],
-            );
-            return rows?.[0]?.config_json?.tools?.appointments?.emailConfirmations !== false;
-        } catch {
-            return true;
-        }
+    /**
+     * `agent_personas.config_json.tools.appointments.emailConfirmations` —
+     * opt-out only, read from the agent that served the connection the
+     * appointment was BOOKED on.
+     *
+     * The sweep already joins that connection in — `conversation_channel` and
+     * `conversation_account_id` are how the WhatsApp reminder names its sender
+     * — so the same origin decides the email, and no second read is needed.
+     * It used to be `is_active = true LIMIT 1`: an unordered pick among the
+     * tenant's agents, which is not the agent that took the booking.
+     */
+    private appointmentEmailsEnabled(schemaName: string, appt: any): Promise<boolean> {
+        const channelType = String(appt?.conversation_channel ?? '').trim();
+        return servedEmailConfirmationsEnabled(
+            <T>(sql: string, params: any[] = []) =>
+                this.prisma.executeInTenantSchema<T>(schemaName, sql, params),
+            // A test-drive reminder is a `vehicles` operation: the dealership's
+            // own switch decides it when they set one. `a.metadata` is already
+            // in the sweep's SELECT list.
+            appt?.metadata?.testDrive === true
+                ? ['vehicles', 'appointments'] : ['appointments'],
+            // No conversation means no serving agent to ask — booked by hand or
+            // through the public page. The helper reads that as "not switched
+            // off" rather than guessing at an agent.
+            channelType
+                ? {
+                    channelType,
+                    channelAccountId: String(appt?.conversation_account_id ?? '').trim() || null,
+                }
+                : null,
+        );
     }
 
     /** start_at/end_at are naive wall clocks — see appointment-ics.util.ts. */

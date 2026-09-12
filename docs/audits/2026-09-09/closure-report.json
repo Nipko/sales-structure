@@ -1,12 +1,12 @@
 {
   "version": 1,
-  "revision": "5deee1bd5f6e107c3fe48f387c93f64c32602fc1",
-  "generatedAt": "2026-09-12T13:46:38.808Z",
+  "revision": "06f105cf8530085869b356dcf072b5aa0df62baa",
+  "generatedAt": "2026-09-12T14:08:41.046Z",
   "finished": false,
   "counts": {
-    "aceptada": 13,
+    "aceptada": 12,
     "bloqueada": 21,
-    "abierta": 10,
+    "abierta": 11,
     "diferida": 1
   },
   "provenance": {
@@ -46,7 +46,7 @@
       "inline": 1,
       "outbound_queue": 6
     },
-    "censusArtefactStale": false,
+    "censusArtefactStale": true,
     "proactivePolicies": [
       "appointment_reminder",
       "attendance_check",
@@ -437,10 +437,10 @@
     },
     {
       "id": "M0",
-      "open": 0,
-      "openLabel": "",
+      "open": 1,
+      "openLabel": "el censo versionado no corresponde a este HEAD",
       "gates": [],
-      "status": "aceptada",
+      "status": "abierta",
       "provenance": "derived",
       "artefact": null,
       "evidence": "Censo derivado del árbol: 31 call sites, 27 cobrables, 0 fuera de la autoridad económica. El inventario de efectos declara 62 productores y 43 con al menos una propiedad en `none`. La condición es que el artefacto versionado se regenere desde el mismo HEAD, no que alguien lo haya leído.",
@@ -625,8 +625,8 @@
     },
     {
       "id": "T1",
-      "open": 15,
-      "openLabel": "15 controles configurables (familia.bandera) sin consumidor productivo: orders.emailConfirmations, treatments.emailConfirmations, realEstate.emailConfirmations, pets.emailConfirmations, restaurants.emailConfirmations, gyms.emailConfirmations y 9 más",
+      "open": 14,
+      "openLabel": "14 controles configurables (familia.bandera) sin consumidor productivo: orders.emailConfirmations, treatments.emailConfirmations, realEstate.emailConfirmations, pets.emailConfirmations, restaurants.emailConfirmations, gyms.emailConfirmations y 8 más",
       "gates": [],
       "status": "abierta",
       "provenance": "derived",

@@ -10,6 +10,7 @@ import { RegionalProfileService } from '../tenants/regional-profile.service';
 import {
     ProactiveDispatchService, effectIsDurable, type ProactiveSendResult,
 } from '../channels/proactive-dispatch.service';
+import { emailConfirmationsForOperation } from '../../common/utils/served-confirmation-policy.util';
 import {
     buildAppointmentIcs,
     durationMinutes,
@@ -45,6 +46,15 @@ interface AppointmentFacts {
      * and therefore the account Meta bills for the notice.
      */
     conversationId: string | null;
+    /**
+     * `metadata.testDrive`, written by `AppointmentsService.create` when the
+     * booking carries a vehicle command.
+     *
+     * It is what makes this appointment a `vehicles` operation and not a plain
+     * one, and therefore which of the owner's two switches decides whether the
+     * confirmation email goes out.
+     */
+    testDrive: boolean;
 }
 
 /**
@@ -246,7 +256,7 @@ export class AppointmentNotificationsService {
             // the one on the contact record — and is often the only one there is.
             const to = (contact?.email || facts.customerEmail || '').trim();
             if (!to) return;
-            if (!await this.emailNotificationsEnabled(schemaName)) return;
+            if (!await this.emailNotificationsEnabled(schemaName, facts)) return;
 
             const endAt = facts.endAt;
             const duration = endAt ? formatDuration(lang, durationMinutes(facts.startAt, endAt)) : '';
@@ -341,6 +351,7 @@ export class AppointmentNotificationsService {
             customerName: appointment.customerName ?? null,
             customerEmail: appointment.customerEmail ?? null,
             conversationId: appointment.conversationId ?? null,
+            testDrive: appointment.metadata?.testDrive === true,
         });
 
         if (!appointment?.id) return fromPayload();
@@ -382,6 +393,10 @@ export class AppointmentNotificationsService {
                 conversationId: row.conversation_id
                     ? String(row.conversation_id)
                     : (appointment.conversationId ?? null),
+                // From the ROW, like every other fact here: the AI executor's
+                // payload is a pointer and the marker is written by the INSERT.
+                testDrive: row.metadata?.testDrive === true
+                    || appointment.metadata?.testDrive === true,
             };
         } catch (err: any) {
             this.logger.warn(`Could not read appointment ${appointment.id}: ${err?.message}`);
@@ -401,22 +416,33 @@ export class AppointmentNotificationsService {
     }
 
     /**
-     * Appointment emails follow the same switch as the channel confirmation:
      * `agent_personas.config_json.tools.appointments.emailConfirmations`.
+     *
+     * It gates the EMAIL and only the email. The channel notice above is not
+     * switched by it — it goes out on the durable lane for every confirmed
+     * appointment — and the header here claimed the two shared this switch,
+     * which would have told a reader that switching it off silences both.
+     *
+     * Asked of the agent that served the connection the appointment was booked
+     * on — the same connection the channel confirmation above leaves from. It
+     * used to be asked of `is_active = true LIMIT 1`, which on a tenant with
+     * two agents is whichever row the planner returned first: the owner who
+     * switched confirmations off on their Instagram agent still got them for
+     * bookings taken there, and the agent whose switch was read changed between
+     * two identical bookings. See `served-confirmation-policy.util.ts`.
      */
-    private async emailNotificationsEnabled(schemaName: string): Promise<boolean> {
-        try {
-            const personaRows = await this.prisma.executeInTenantSchema<any[]>(
-                schemaName,
-                `SELECT config_json FROM agent_personas WHERE is_active = true LIMIT 1`,
-                [],
-            );
-            const config = personaRows?.[0]?.config_json || {};
-            return config.tools?.appointments?.emailConfirmations !== false;
-        } catch (err: any) {
-            this.logger.error(`Error checking persona settings for appointments: ${err.message}`);
-            return true;
-        }
+    private async emailNotificationsEnabled(
+        schemaName: string, facts: AppointmentFacts,
+    ): Promise<boolean> {
+        return emailConfirmationsForOperation(
+            <T>(sql: string, params: any[] = []) =>
+                this.prisma.executeInTenantSchema<T>(schemaName, sql, params),
+            // A test drive is an appointment the `vehicles` family asked for, so
+            // the dealership's own switch decides it when they set one. See
+            // `ConfirmationFamilies`.
+            facts.testDrive ? ['vehicles', 'appointments'] : ['appointments'],
+            facts.conversationId,
+        );
     }
 
     private async getContactInfo(schemaName: string, contactId: string | null) {

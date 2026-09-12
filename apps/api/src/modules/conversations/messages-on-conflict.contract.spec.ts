@@ -48,11 +48,17 @@ describe('messages ON CONFLICT matches the real index', () => {
         expect(offenders).toEqual([]);
     });
 
-    it('the outbound reply insert degrades instead of failing the turn', () => {
-        // A tenant schema whose index lagged the deploy must lose dedupe, never
-        // the customer's answer. The inbound path has had this guard for months;
-        // the outbound one shipped without it.
+    it('fails closed when a tenant schema cannot prove inbound uniqueness', () => {
+        // A plain fallback insert accepts duplicate provider deliveries and can
+        // execute tools and bill an answer twice. The queue must retry only after
+        // the missing schema authority is repaired.
         expect(serviceSrc).toContain('42P10');
-        expect(serviceSrc).toContain('saving the reply without dedupe');
+        expect(serviceSrc).toContain('inbound_dedupe_authority_unavailable');
+        expect(serviceSrc).not.toContain('inserting without dedupe');
+    });
+
+    it('requires a readable receipt before resuming a duplicate turn', () => {
+        expect(serviceSrc).toContain('inbound_dedupe_receipt_unavailable');
+        expect(serviceSrc).toContain('inbound_dedupe_conversation_mismatch');
     });
 });

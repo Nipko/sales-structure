@@ -2222,20 +2222,16 @@ export class ConversationsService {
             // 42P10 = no unique/exclusion constraint matches the ON CONFLICT spec,
             // i.e. uidx_messages_external_id is missing from THIS tenant schema
             // (the deploy applies tenant-schema.sql tolerantly, so one schema can
-            // lag). Degrade to a plain insert — losing dedupe for this tenant is
-            // vastly better than failing every inbound message it receives — and
-            // log loudly so the missing index gets fixed.
+            // lag). There is no safe insert without that authority: accepting the
+            // same provider message twice can run tools twice and buy two replies.
+            // Fail the job so BullMQ retries and the operator can repair the schema.
             const code = err?.code || err?.meta?.code;
             if (code !== '42P10' && !/no unique or exclusion constraint/i.test(err?.message || '')) throw err;
             this.logger.error(
-                `[Pipeline] uidx_messages_external_id missing on ${schemaName} — inserting without dedupe. ` +
-                `Re-apply prisma/tenant-schema.sql to this schema.`,
+                `[Pipeline] uidx_messages_external_id missing on ${schemaName} — inbound refused. ` +
+                `Re-apply prisma/tenant-schema.sql before retrying.`,
             );
-            result = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-                `INSERT INTO messages (conversation_id, direction, content_type, content_text, status, external_id, metadata)
-                 VALUES ($1::uuid, 'inbound', $2, $3, 'delivered', $4, $5::jsonb) RETURNING *`,
-                params,
-            );
+            throw new Error('inbound_dedupe_authority_unavailable');
         }
 
         if (result.length === 0) {
@@ -2253,14 +2249,21 @@ export class ConversationsService {
             // finished). The ledger was unreachable on precisely the attempt it
             // exists for. One SELECT restores all of it.
             this.logger.warn(`[Pipeline] Duplicate inbound ${externalId} for tenant ${tenantId} — already stored`);
-            const [stored] = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-                `SELECT id, conversation_id FROM messages
-                  WHERE external_id = $1 AND external_id IS NOT NULL LIMIT 1`,
-                [externalId],
-            ).catch((error: any) => {
+            let stored: any;
+            try {
+                [stored] = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+                    `SELECT id, conversation_id FROM messages
+                      WHERE external_id = $1 AND external_id IS NOT NULL LIMIT 1`,
+                    [externalId],
+                );
+            } catch (error: any) {
                 this.logger.error(`[Pipeline] Could not read back the stored ${externalId}: ${error?.message}`);
-                return [] as any[];
-            });
+                throw new Error('inbound_dedupe_receipt_unavailable');
+            }
+            if (!stored?.id) {
+                this.logger.error(`[Pipeline] Duplicate inbound ${externalId} has no readable durable receipt`);
+                throw new Error('inbound_dedupe_receipt_unavailable');
+            }
             // Same provider message, different conversation, is not a resume: it
             // would carry another thread's ledger and batch into this turn. The
             // redelivery of a message we really do hold is still a duplicate — it
@@ -2269,9 +2272,9 @@ export class ConversationsService {
                 this.logger.error(
                     `[Pipeline] Stored ${externalId} belongs to conversation ${stored.conversation_id}, `
                     + `not ${conversationId} — not resuming`);
-                return { duplicate: true };
+                throw new Error('inbound_dedupe_conversation_mismatch');
             }
-            return { id: stored?.id as string | undefined, duplicate: true };
+            return { id: stored.id as string, duplicate: true };
         }
 
         // Funnel stage 3: stamp first inbound message arrival on the tenant

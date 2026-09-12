@@ -9,15 +9,8 @@ import { DispatchRolloutService } from './dispatch-rollout.service';
  * on the pilot list, and a rollback.
  *
  * Four of those are ordinary. The fifth is the one worth a test of its own: a
- * READ FAILURE and a DELIBERATE "no" are different facts, and the call site
- * spells them the same —
- *
- *     if (!(await this.dispatchRollout.enabledFor(...).catch(() => false))) return false;
- *
- * — so a settings read that threw during a pilot silently moves that tenant's
- * replies onto the lane the pilot exists to stop using, and nothing says so.
- * These cases pin which of the five are genuinely equivalent and which are only
- * being reported as equivalent.
+ * READ FAILURE and a DELIBERATE "no" are different facts. The former must stop
+ * the turn for retry; the latter may keep the configured legacy behaviour.
  */
 describe('every way the rollout switch can answer', () => {
     const TENANT = '11111111-1111-1111-1111-111111111111';
@@ -77,40 +70,21 @@ describe('every way the rollout switch can answer', () => {
     it('says NO for a channel with no strict transport, even when named', async () => {
         // Naming a channel the transport cannot serve used to read as success:
         // the rehearsal went green while switching nothing on.
-        expect(await service({ enabled: true, tenantIds: [], channels: ['web_widget'] })
-            .enabledFor(TENANT, 'web_widget')).toBe(false);
+        expect(await service({ enabled: true, tenantIds: [], channels: ['telegram'] })
+            .enabledFor(TENANT, 'telegram')).toBe(false);
     });
 
-    it('says NO when the switch cannot be read at all', async () => {
-        // Failing OFF is the right direction: an unreadable switch must not turn
-        // a lane on. What this does not do is say so — see the case below.
-        expect(await service(ON_FOR_PILOT, { dbThrows: true }).enabledFor(TENANT, 'whatsapp'))
-            .toBe(false);
+    it('refuses to choose a delivery lane when the switch cannot be read', async () => {
+        await expect(service(ON_FOR_PILOT, { dbThrows: true }).enabledFor(TENANT, 'whatsapp'))
+            .rejects.toMatchObject({ code: 'dispatch_rollout_authority_unavailable' });
     });
 
-    it('CANNOT distinguish "the switch said no" from "the switch could not be read"', async () => {
-        // The gap this file exists to name, pinned as it stands today.
-        //
-        // Both answers are the bare `false`, and `conversations.service.ts`
-        // spells them identically — `.catch(() => false)`. So a settings read
-        // that threw during a pilot moves that tenant's replies onto the legacy
-        // queue, where Redis is the only record, and the only trace is a debug
-        // line inside the rollout service.
-        //
-        // Failing off is correct. Failing off SILENTLY, for a tenant that was
-        // deliberately admitted to the pilot, is the part that is not: the row
-        // it would have written is the thing the pilot is measuring.
+    it('distinguishes "the switch said no" from "the switch could not be read"', async () => {
         const deliberateNo = await service({ enabled: false, tenantIds: [], channels: ['whatsapp'] })
             .enabledFor(TENANT, 'whatsapp');
-        const couldNotRead = await service(ON_FOR_ALL, { dbThrows: true })
-            .enabledFor(TENANT, 'whatsapp');
-
-        expect(deliberateNo).toBe(couldNotRead);
-        // When this stops being true — when the service reports WHY — this
-        // assertion is the one to change, and the call site has to change with
-        // it. Until then the equivalence is a fact about the code, written down
-        // where somebody planning the canary will read it.
-        expect(typeof couldNotRead).toBe('boolean');
+        expect(deliberateNo).toBe(false);
+        await expect(service(ON_FOR_ALL, { dbThrows: true }).enabledFor(TENANT, 'whatsapp'))
+            .rejects.toMatchObject({ code: 'dispatch_rollout_authority_unavailable' });
     });
 
     it('rides a Redis outage without turning the lane off', async () => {

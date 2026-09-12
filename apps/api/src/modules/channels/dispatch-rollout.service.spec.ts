@@ -58,20 +58,18 @@ describe('DispatchRolloutService', () => {
         await expect(h.service.enabledFor(other, 'messenger')).resolves.toBe(true);
     });
 
-    it('stays off for anything malformed rather than failing open', async () => {
+    it('refuses to choose a delivery lane for malformed authority', async () => {
         for (const stored of ['not json', { enabled: 'yes' }, { enabled: true, channels: 'whatsapp' },
             { enabled: true, channels: [7, ' ', null] }]) {
             const h = harness(stored);
-            await expect(h.service.enabledFor(tenantId, 'whatsapp')).resolves.toBe(false);
+            await expect(h.service.enabledFor(tenantId, 'whatsapp'))
+                .rejects.toMatchObject({ code: 'dispatch_rollout_authority_unavailable' });
         }
     });
 
-    it('stays off when the SETTING cannot be read at all', async () => {
-        // The authority is unreadable, so nothing is known and the lane stays
-        // where it is. Failing open here would put untested delivery in front
-        // of customers.
+    it('fails the delivery decision when the SETTING cannot be read at all', async () => {
         await expect(harness(undefined, { dbFails: true }).service.enabledFor(tenantId, 'whatsapp'))
-            .resolves.toBe(false);
+            .rejects.toMatchObject({ code: 'dispatch_rollout_authority_unavailable' });
     });
 
     it('does NOT let a cache outage decide the rollout', async () => {

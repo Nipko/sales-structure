@@ -28,6 +28,16 @@ export interface DispatchRolloutState extends DispatchRolloutConfig {
     readonly ignoredChannels: readonly string[];
 }
 
+export class DispatchRolloutAuthorityUnavailableError extends Error {
+    readonly code = 'dispatch_rollout_authority_unavailable';
+
+    constructor(cause?: unknown) {
+        super('dispatch_rollout_authority_unavailable');
+        this.name = 'DispatchRolloutAuthorityUnavailableError';
+        if (cause !== undefined) (this as any).cause = cause;
+    }
+}
+
 /**
  * Off by default, and deliberately so.
  *
@@ -61,6 +71,17 @@ export class DispatchRolloutService {
     ) {}
 
     async config(): Promise<DispatchRolloutConfig> {
+        return this.readConfig(false);
+    }
+
+    /**
+     * Read the rollout authority. An administrative read may conservatively
+     * render OFF, but a message deciding between the durable and legacy lanes
+     * must distinguish "disabled" from "could not be read". Otherwise a
+     * database fault during the pilot silently sends on the very path whose
+     * missing evidence the pilot is measuring.
+     */
+    private async readConfig(requiredForDelivery: boolean): Promise<DispatchRolloutConfig> {
         // ── THE CACHE IS A CACHE ────────────────────────────────────────────
         //
         // This read used to sit inside the same `try` as the database read, so
@@ -83,9 +104,12 @@ export class DispatchRolloutService {
             `;
             let stored: any = {};
             if (rows?.[0]?.value) {
-                try { stored = JSON.parse(rows[0].value); } catch { stored = {}; }
+                try { stored = JSON.parse(rows[0].value); } catch (error) {
+                    if (requiredForDelivery) throw error;
+                    stored = {};
+                }
             }
-            const config = this.normalize(stored);
+            const config = requiredForDelivery ? this.validate(stored) : this.normalize(stored);
             await this.redis.setJson(CACHE_KEY, config, CACHE_TTL).catch(() => {});
             return config;
         } catch (error: any) {
@@ -96,6 +120,7 @@ export class DispatchRolloutService {
             // pilot stops producing rows.
             this.logger.warn('[Dispatch] rollout switch unreadable in platform_settings, '
                 + `staying OFF for every tenant: ${error?.message}`);
+            if (requiredForDelivery) throw new DispatchRolloutAuthorityUnavailableError(error);
             return DispatchRolloutService.OFF;
         }
     }
@@ -133,7 +158,7 @@ export class DispatchRolloutService {
      * it. It fails closed instead.
      */
     async enabledFor(tenantId: string, channelType: string): Promise<boolean> {
-        const config = await this.config();
+        const config = await this.readConfig(true);
         if (!config.enabled || !config.channels.includes(channelType)) return false;
         if (!this.migratedChannels().includes(channelType)) {
             this.logger.warn(`Dispatch rollout names ${channelType}, which has no strict transport — ignored`);

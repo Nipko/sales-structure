@@ -189,10 +189,11 @@ describe('ConversationsService durable reply producer', () => {
         await expect(run(h.service)).resolves.toBe(false);
     });
 
-    it('declines rather than throwing when the switch itself cannot be read', async () => {
+    it('fails closed instead of falling back when the switch cannot be read', async () => {
         const h = harness({ enabled: true });
         h.dispatchRollout.enabledFor.mockRejectedValue(new Error('settings unavailable'));
-        await expect(run(h.service)).resolves.toBe(false);
+        await expect(run(h.service)).rejects.toThrow('settings unavailable');
+        expect(h.dispatchOutbox.prepare).not.toHaveBeenCalled();
     });
 
     /**

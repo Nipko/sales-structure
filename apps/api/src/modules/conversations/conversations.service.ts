@@ -6129,7 +6129,12 @@ export class ConversationsService {
             this.logger.log(`[Dispatch] reply for ${conversation.id} already owned by its batch (${existing.length} item(s))`);
             return true;
         }
-        if (!(await this.dispatchRollout.enabledFor(tenantId, inboundMsg.channelType).catch(() => false))) return false;
+        // A deliberate OFF may use the legacy lane during the pilot. An
+        // unreadable authority may not: treating an outage as OFF sends without
+        // the durable evidence the pilot exists to measure and can duplicate a
+        // turn whose ownership cannot be reconstructed. Let the turn fail and
+        // retry after the authority is readable again.
+        if (!(await this.dispatchRollout.enabledFor(tenantId, inboundMsg.channelType))) return false;
 
         let prepared;
         try {

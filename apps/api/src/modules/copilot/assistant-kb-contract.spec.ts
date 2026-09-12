@@ -356,6 +356,15 @@ describe('Parallly Assist knowledge-base contract', () => {
     expect(dashboardRoleCanOpen('/admin/inbox', 'tenant_agent')).toBe(true);
     // A path no rule matches belongs to nobody, which is how the guard fails.
     expect(dashboardRoleCanOpen('/admin/nothing-here', 'tenant_admin')).toBe(false);
+    // A QUERY STRING IS NOT A DIFFERENT SCREEN. `roles.ts` matches
+    // `prefix + "?"` and this reader did not, so `/admin/inbox?x=1`
+    // resolved to no rule at all — and `dashboardRoleCanOpen` answers
+    // `false` for EVERY role on a path that matches nothing. The copilot
+    // would then have filed the account owner's own inbox under "ask an
+    // administrator". No KB route carries a query today, which is why this
+    // was latent rather than live.
+    expect(dashboardRoleCanOpen('/admin/inbox?conversation=abc', 'tenant_agent')).toBe(true);
+    expect(dashboardRoleCanOpen('/admin/broadcast?tab=sent', 'tenant_agent')).toBe(false);
   });
   it('offers each article only to roles that can open at least one of its screens', () => {
     // Frontmatter `roles` is what retrieval filters on. A role listed there

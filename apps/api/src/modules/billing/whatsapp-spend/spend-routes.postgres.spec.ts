@@ -5,6 +5,7 @@ import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import { WhatsappSpendController } from './whatsapp-spend.controller';
 import { declareSpendCeiling, readSpendCeilings, type SpendQuery } from './spend-ledger';
+import { isTenantDeclarableScope } from './spend-scopes';
 import { WHATSAPP_RATE_CARDS } from '../whatsapp-rates/whatsapp-rate-table.generated';
 
 /**
@@ -147,7 +148,20 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
             await controller.setCeiling(req(), { ...on, capDeliveries: 40 });
             const answer = await controller.ceilings(req(), '2026-10');
             expect(answer.data.ceilings.some(row => row.scopeKey === on.scopeKey)).toBe(true);
-            expect(answer.data.scopeKinds).toContain('number_month');
+            // WHAT MAY BE SET IS NOT WHAT MAY BE READ. This field sits beside
+            // the ceilings a form is about to edit, so it is the menu that
+            // form offers — and it used to offer `number_month`, which the
+            // POST on the same controller refuses by name. A menu whose
+            // entries the server rejects is a 400 the screen walked into.
+            expect(answer.data.scopeKinds).not.toContain('number_month');
+            // And reading one is still legitimate: that row is Meta's free
+            // thousand, so reading it is how somebody checks what is left.
+            expect(answer.data.readableScopeKinds).toContain('number_month');
+            // The pairing itself, rather than two hardcoded lists: every kind
+            // the GET offers to set must survive the POST's own guard.
+            for (const kind of answer.data.scopeKinds) {
+                expect(isTenantDeclarableScope(kind)).toBe(true);
+            }
         });
 
         it('says what a ceiling cannot promise, from the server', async () => {

@@ -15,9 +15,11 @@ const wabaId = 'waba-77';
  * worse than on the other.
  *
  * `fromPhone = message.from` was `undefined` for a business-scoped sender. The
- * contact INSERT then wrote `external_id = NULL`, and because PostgreSQL treats
- * two NULLs as distinct in a unique index, EVERY message from that person
- * created a brand-new contact: no thread, no history, and no bound on the rows.
+ * contact INSERT then sent NULL to `contacts.external_id`, which is
+ * `VARCHAR(255) NOT NULL` (`apps/api/prisma/tenant-schema.sql`), so the
+ * statement raised 23502, `processMessage` rethrew, BullMQ retried the same
+ * body eight times and the job ended in the failed set. Not a contact per
+ * message — no contact at all, no AI turn, and no answer.
  */
 describe('the deployed worker, and a sender with no phone number', () => {
     function harness() {
@@ -74,8 +76,9 @@ describe('the deployed worker, and a sender with no phone number', () => {
         expect(insert.params[2]).toBe('573001112233');
     });
 
-    it('gives a business-scoped sender ONE contact, not one per message', async () => {
-        // THE CASE THIS EXISTS FOR. `external_id` used to be undefined here.
+    it('gives a business-scoped sender a key at all, where there used to be a 23502', async () => {
+        // THE CASE THIS EXISTS FOR. `external_id` used to be `undefined` here,
+        // and a NOT NULL column answers that by aborting the statement.
         const h = harness();
         await run(h, { ...base, from_user_id: 'BSU_abc123XYZ' });
 

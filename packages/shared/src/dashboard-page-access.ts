@@ -192,8 +192,15 @@ export const DASHBOARD_PAGE_RULES: readonly DashboardPageRule[] = [
  * The rule that governs a path, longest prefix first, or `null`.
  *
  * Exact rules win, so a hub page stays open without opening what is nested
- * under it — the same ordering `canAccessPath` applies, kept here so a second
- * reader cannot resolve a path differently from the guard.
+ * under it. Both halves have to be the guard's, and only one of them was:
+ * the ORDER (exact rule, then longest prefix) matched `canAccessPath` from
+ * the start, while the MATCHING did not. `roles.ts` also accepts
+ * `prefix + "?"`, and this reader did not — so a path carrying a query
+ * resolved to nobody here and to its real audience there, and the copilot
+ * would have told the account owner to ask an administrator for a screen
+ * they own. Three arms, the same three: `/admin/x`, `/admin/x/…`,
+ * `/admin/x?…`. Kept in step so a second reader cannot resolve a path
+ * differently from the guard.
  */
 export function dashboardPageRuleFor(pathname: string): DashboardPageRule | null {
     const exact = DASHBOARD_PAGE_RULES.find(rule => rule.exact && rule.prefix === pathname);
@@ -201,7 +208,9 @@ export function dashboardPageRuleFor(pathname: string): DashboardPageRule | null
     return [...DASHBOARD_PAGE_RULES]
         .filter(rule => !rule.exact)
         .sort((left, right) => right.prefix.length - left.prefix.length)
-        .find(rule => pathname === rule.prefix || pathname.startsWith(`${rule.prefix}/`))
+        .find(rule => pathname === rule.prefix
+            || pathname.startsWith(`${rule.prefix}/`)
+            || pathname.startsWith(`${rule.prefix}?`))
         ?? null;
 }
 

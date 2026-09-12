@@ -123,7 +123,10 @@ describe('the status of a message we sent', () => {
         expect(whatsAppStatusIdentity({ recipient_id: '573001112233' }, SCOPE)!.kind).toBe('phone');
     });
 
-    it('reads a scoped recipient', () => {
+    it('would read a scoped recipient, if Meta ever sent one here', () => {
+        // Shape only. No status reader in this repository has received
+        // `recipient_user_id`; this pins what the helper WOULD do, not what
+        // production does. See the module docblock.
         const identity = whatsAppStatusIdentity({ recipient_user_id: 'BSU_abc123XYZ' }, SCOPE)!;
         expect(identity.addressKey).toBe('bsuid:waba-1:BSU_abc123XYZ');
     });

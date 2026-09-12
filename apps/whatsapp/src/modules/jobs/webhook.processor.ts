@@ -77,10 +77,14 @@ export class WebhookProcessor extends WorkerHost {
       // portafolio de Meta puede no venir: el webhook trae `from_user_id` y la
       // persona escribió sin que el negocio vea ningún número.
       //
-      // Acá eso era peor que en el otro ingreso. `fromPhone` quedaba
-      // `undefined`, el INSERT escribía `external_id = NULL`, y como Postgres
-      // considera distintos a dos NULL en un índice único, CADA mensaje de esa
-      // persona creaba un contacto nuevo: sin hilo, sin historia y sin tope.
+      // Acá eso fallaba distinto del otro ingreso, y no como decía este
+      // comentario. `fromPhone` quedaba `undefined` y el INSERT mandaba NULL
+      // a `contacts.external_id`, que es `VARCHAR(255) NOT NULL` con índice
+      // único común sobre `(channel_type, external_id)` — ver
+      // `apps/api/prisma/tenant-schema.sql`. Así que no nacía un contacto por
+      // mensaje: nacía un 23502, la excepción subía, BullMQ reintentaba ocho
+      // veces el mismo cuerpo roto y el job terminaba en el failed set. El
+      // turno de IA nunca corría y el cliente nunca recibía respuesta.
       //
       // La identidad sale del mismo módulo que usa el ingreso de la API — los
       // dos caminos tienen que llegar al mismo registro — y un identificador

@@ -294,7 +294,25 @@ export class WhatsappSpendController {
         return {
             success: true,
             data: {
-                scopeKinds: SPEND_SCOPE_KINDS,
+                /**
+                 * What a caller may SET, which is not what it may READ.
+                 *
+                 * This field sits beside the ceilings a form is about to
+                 * edit, so it is the list that form offers. Advertising
+                 * `SPEND_SCOPE_KINDS` here offered `number_month` — which
+                 * the POST refuses, and refuses for a reason: that row IS
+                 * Meta's free thousand, so a tenant writing to it either
+                 * mints free deliveries Meta bills in full or destroys the
+                 * allowance outright. A menu whose entries the server
+                 * rejects is a 400 the screen walked into.
+                 *
+                 * The wider list stays, named for what it is: the
+                 * `scopeKind` FILTER above accepts every kind, because
+                 * reading a `number_month` ceiling is exactly how somebody
+                 * checks how much of the free allowance is left.
+                 */
+                scopeKinds: TENANT_DECLARABLE_SCOPE_KINDS,
+                readableScopeKinds: SPEND_SCOPE_KINDS,
                 ceilings: await this.spend.ceilings(schema, {
                     periodKey: period?.trim() || null, scopeKind: kind as any,
                 }),

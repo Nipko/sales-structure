@@ -4,8 +4,16 @@
  * Every part of this platform identifies a WhatsApp customer by their phone.
  * Meta's business-scoped user ids end that assumption: a person can write
  * without the business ever seeing a number, and the webhook then carries
- * `from_user_id` where it used to carry `from`. Delivery statuses do the same
- * with `recipient_user_id`, and some failed statuses carry neither.
+ * `from_user_id` where it used to carry `from`. That half this repository
+ * genuinely RECEIVES: both ingress roads read it.
+ *
+ * The status half is a claim, not an observation. Meta's business-scoped id
+ * page — summarised in `docs/research/2026-09-10/` — says statuses carry
+ * `recipient_user_id` and that some failed statuses carry no contact
+ * identifier at all. Nothing in this codebase has ever received that field:
+ * both surviving status readers take `recipient_id` only. So this module is
+ * wired for the INBOUND side, and `whatsAppStatusIdentity` below has no
+ * production caller.
  *
  * Today that message is DISCARDED. `whatsapp-webhook.service.ts` requires
  * `msg.from` to be a non-empty string and logs "Mensaje SIN REMITENTE
@@ -165,13 +173,25 @@ export function whatsAppSenderIdentity(
 }
 
 /**
- * Who a delivery status is about.
+ * Who a delivery status is about. NOT WIRED — no production caller.
  *
- * Statuses carry `recipient_id` (a phone) or `recipient_user_id` (scoped), and
- * some FAILED statuses carry neither — Meta says so explicitly. `null` there is
- * the honest answer: the status is still about a message we sent, identified by
- * its `wamid`, and inventing a recipient to attach it to would be worse than
- * recording it against the message alone.
+ * Kept because the shape is right and the wiring would be one line, not
+ * because anything uses it: both status readers take `recipient_id`, and
+ * neither imports this. `recipient_user_id` appears nowhere in this codebase
+ * outside this function and its unit spec — it is Meta's DOCUMENTED field,
+ * not one we have observed arriving, and the difference is the whole reason
+ * this sentence is here. The raw status bodies are already stored verbatim
+ * in `whatsapp_webhook_events`, which is where that evidence will come from.
+ *
+ * When a real status with a scoped recipient turns up there, wire this and
+ * delete the "not wired" sentence in the SAME commit: the claim and the
+ * caller move together, or this docblock becomes the next defect.
+ *
+ * Until then the only branch that runs is the fallback: a `recipient_id` is
+ * a phone byte for byte, and a status naming nobody answers `null` — it is
+ * still about a message we sent, identified by its `wamid`, and inventing a
+ * recipient to attach it to would be worse than recording it against the
+ * message alone.
  */
 export function whatsAppStatusIdentity(
     status: unknown,

@@ -430,13 +430,32 @@ export class AgentConsoleService {
         /**
          * What makes this press of Send *this* press.
          *
-         * Absent today — nothing upstream supplies one — and then the reply
-         * gets a fresh identity per invocation. That is the honest default for
-         * a console: two presses are two messages, and deriving the key from
-         * the words would silently swallow an agent's second "ok". The cost is
-         * stated rather than hidden: an HTTP retry of the same press is a
-         * second effect, exactly as it is today, until the console client
-         * starts sending a key here.
+         * Supplied by every console client that exists, and still optional
+         * so one that does not send it keeps working:
+         *
+         *   · HTTP — `agent-console.controller.ts` takes `body.idempotencyKey`
+         *     or the `Idempotency-Key` header, through `pressKey`;
+         *   · socket — `agent-console.gateway.ts` takes the same field off
+         *     the `conversation:send` payload, where a reconnecting client
+         *     re-emitting one press is the duplicate this exists to stop;
+         *   · the dashboard mints one per press in `admin/inbox/page.tsx`
+         *     and REUSES it when the agent retries the same words after a
+         *     failure, through `api.sendMessage`'s fourth argument.
+         *
+         * This docblock used to say "nothing upstream supplies one". It was
+         * true when written and was made false by the batch that wired the
+         * three callers above — which is worse than never having said it,
+         * because the next reader plans around a fallback that is not the
+         * normal path any more.
+         *
+         * With a key, `replyThroughOutbox` builds the effect id from it and the
+         * outbox collides a retry of the same press onto the row that already
+         * exists. Without one the reply gets a fresh identity per invocation,
+         * which is the honest default for a console — two presses are two
+         * messages, and deriving the key from the words would silently swallow
+         * an agent's second "ok" — but it does mean a retry from a client that
+         * sends no key is a second message on the customer's phone. That is why
+         * it is the fallback and not the design.
          */
         idempotencyKey?: string,
     ): Promise<ConversationMessage> {

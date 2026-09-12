@@ -889,9 +889,12 @@ producer({
             uncertainOutcome: none('one boolean cannot separate "the provider refused" from "no '
                 + 'answer arrived". A timeout is recorded the same way as a rejection, which is '
                 + 'as failed'),
-            erasure: notApplicable('the body is rendered and handed to SMTP; this producer '
-                + 'persists no copy of it. There is nothing here for an erasure to reach — the '
-                + 'booking row it derives from is erased by its own vertical\'s fan-out'),
+            erasure: none('the body carries the guest\'s name, dates and price, and no erasure '
+                + 'reaches it: once SMTP has it, it is in a mailbox this platform cannot touch, '
+                + 'and this producer keeps no copy to clear either. NOT `not_applicable` — that '
+                + 'level is a statement about the CONTENT, and personal data left the building. '
+                + 'The booking row it derives from is erased by its own vertical\'s fan-out, '
+                + 'which is a different row from the message'),
             recovery: none('fire-and-forget inside a `try` that warns. A crash between the '
                 + 'commit and the send loses the confirmation with no row anywhere saying it was '
                 + 'owed'),
@@ -929,9 +932,12 @@ producer({
             uncertainOutcome: none('one boolean cannot separate "the provider refused" from "no '
                 + 'answer arrived". A timeout is recorded the same way as a rejection, which is '
                 + 'as failed'),
-            erasure: notApplicable('the body is rendered and handed to SMTP; this producer '
-                + 'persists no copy of it. There is nothing here for an erasure to reach — the '
-                + 'booking row it derives from is erased by its own vertical\'s fan-out'),
+            erasure: none('the body carries the guest\'s name, dates and price, and no erasure '
+                + 'reaches it: once SMTP has it, it is in a mailbox this platform cannot touch, '
+                + 'and this producer keeps no copy to clear either. NOT `not_applicable` — that '
+                + 'level is a statement about the CONTENT, and personal data left the building. '
+                + 'The booking row it derives from is erased by its own vertical\'s fan-out, '
+                + 'which is a different row from the message'),
             recovery: none('fire-and-forget inside a `try` that warns. A crash between the '
                 + 'commit and the send loses the confirmation with no row anywhere saying it was '
                 + 'owed'),
@@ -986,9 +992,12 @@ producer({
             uncertainOutcome: none('one boolean cannot separate "the provider refused" from "no '
                 + 'answer arrived". A timeout is recorded the same way as a rejection, which is '
                 + 'as failed'),
-            erasure: notApplicable('the body is rendered and handed to SMTP; this producer '
-                + 'persists no copy of it. There is nothing here for an erasure to reach — the '
-                + 'booking row it derives from is erased by its own vertical\'s fan-out'),
+            erasure: none('the body carries the guest\'s name, dates and price, and no erasure '
+                + 'reaches it: once SMTP has it, it is in a mailbox this platform cannot touch, '
+                + 'and this producer keeps no copy to clear either. NOT `not_applicable` — that '
+                + 'level is a statement about the CONTENT, and personal data left the building. '
+                + 'The booking row it derives from is erased by its own vertical\'s fan-out, '
+                + 'which is a different row from the message'),
             recovery: none('fire-and-forget inside a `try` that warns. A crash between the '
                 + 'commit and the send loses the confirmation with no row anywhere saying it was '
                 + 'owed'),

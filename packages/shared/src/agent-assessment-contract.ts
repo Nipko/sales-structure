@@ -24,14 +24,71 @@ export function isAgentMissionV1(value: unknown): value is AgentMissionV1 {
         && list(mission.successCriteria) && list(mission.handoffConditions);
 }
 
+/**
+ * Why a readiness requirement says what it says.
+ *
+ * A bare key told an owner nothing: `faq_content` names no table, no
+ * condition and no screen. This carries the predicate the TOOL evaluates —
+ * not the one the readiness check happens to run, which in thirteen of
+ * eighteen cases is a different question — plus the verdict, the screen whose
+ * write really moves it, and the divergence when the two disagree.
+ *
+ * It lives in the contract because the surfaces render it. It was reaching
+ * them already, through a cast: the assessment handed its tools over as
+ * `any`, so a field every screen depends on was outside the one shape they
+ * are all supposed to read. The enums are `string` here on purpose — the
+ * authority for their values is the API register, and a second copy of a
+ * union in the contract is a second thing to keep in step.
+ */
+export interface ReadinessCitationV1 {
+    key: string;
+    /** The predicate the tool evaluates, e.g. `is_published = true`. */
+    predicate: string;
+    table: string;
+    /** Which of active/availability/capacity/price/currency/ownership/account it decides. */
+    dimensions: readonly string[];
+    /** `satisfied`, `missing_data`, `read_error` — never a bare boolean. */
+    verdict: string;
+    /** The screen whose write moves this check, which is not always the CTA's. */
+    writePath: string;
+    /** Present when the shipped check decides less than its tool does. */
+    auditedDivergence: {
+        kind: string;
+        missingDimensions: readonly string[];
+        /** What a tenant experiences because of it. */
+        consequence: string;
+        /** The exact change that closes it. */
+        correction: string;
+        /** The file that has to change. */
+        owner: string;
+        absentColumn?: string;
+    } | null;
+}
+
 /** Mirrors `buildAgentToolExplanations`; kept here so every surface reads one shape. */
 export interface AgentToolExplanationV1 {
     tool: string;
     state: AgentOperationalState;
     achieves: { effect: string; commitsBusiness: boolean; confirmation: string; externalEffect: string };
-    missionIntents: string[];
-    requires: { prerequisites: string[]; readiness: string[] };
-    missing: { reason: string | null; detail: string | null; repairRoute: string | null; readiness: string[] };
+    // ── READ-ONLY, BECAUSE THE PRODUCER FREEZES THEM ────────────────────
+    //
+    // The assessment builds these with `Object.freeze` and handed them over
+    // through a cast, which is the only reason a frozen array satisfied a
+    // mutable declaration. Removing the cast surfaced it. Read-only is also
+    // what these are FOR: a surface renders an assessment, and one that
+    // sorted a list in place would be editing a diagnosis.
+    missionIntents: readonly string[];
+    requires: { prerequisites: readonly string[]; readiness: readonly string[] };
+    missing: {
+        reason: string | null; detail: string | null; repairRoute: string | null;
+        readiness: readonly string[];
+    };
+    /**
+     * One citation per readiness requirement, in the order `requires.readiness`
+     * lists them. REQUIRED: a surface that could omit it would go back to
+     * printing key names, which is the state this replaced.
+     */
+    readinessAudit: readonly ReadinessCitationV1[];
     example: string | null;
     safeTest: { available: boolean; href: string | null };
     result: 'not_verified' | 'verified' | 'failed' | 'stale';

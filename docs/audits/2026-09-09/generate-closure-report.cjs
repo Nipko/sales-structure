@@ -454,7 +454,7 @@ function contradictionsIn(rows) {
     const GROUPS = [
         { name: 'A1–H3', test: id => /^[A-H]\d/.test(id), expected: 25 },
         { name: 'M0–M6/R0–R6', test: id => /^[MR]\d/.test(id), expected: 14 },
-        { name: 'T1–T6', test: id => /^T\d/.test(id), expected: 6 },
+        { name: 'T1–T7', test: id => /^T\d/.test(id), expected: 7 },
     ];
     let accounted = 0;
     for (const group of GROUPS) {

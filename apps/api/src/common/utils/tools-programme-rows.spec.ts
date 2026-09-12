@@ -1,4 +1,7 @@
+import * as fs from 'fs';
 import { resolve } from 'path';
+
+const ROOT = resolve(__dirname, '..', '..', '..', '..', '..');
 
 /**
  * ═══ A DERIVED ROW THAT CANNOT READ ITS SOURCE MUST BE RED ═══
@@ -33,9 +36,79 @@ const rows = () => rowsModule.toolsRows(row, audit) as Array<Record<string, any>
 const find = (id: string) => rows().find(entry => entry.id === id)!;
 
 describe('the tools programme rows read something real', () => {
-    it('produces exactly T1 through T6, once each', () => {
+    it('produces exactly T1 through T7, once each', () => {
         const ids = rows().map(entry => entry.id);
-        expect(ids).toEqual(['T1', 'T2', 'T3', 'T4', 'T5', 'T6']);
+        expect(ids).toEqual(['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7']);
+    });
+
+    describe('T7 — the row about this table being enforced at all', () => {
+        /**
+         * The condition a document can satisfy instead of a gate, which is
+         * how the tool-profile artefact went stale without stopping a
+         * closure. So each of the three pieces is dropped in turn and the
+         * row has to name what went missing.
+         *
+         * The reader is injected rather than the tree mutated: writing a
+         * broken workflow to disk in this repository is how a concurrent
+         * stage commits one.
+         */
+        const ALL_T = ['T1', 'T2', 'T3', 'T4', 'T5', 'T6'];
+        const realIo = {
+            read: (rel: string) => fs.readFileSync(resolve(ROOT, rel), 'utf8'),
+            exists: (rel: string) => fs.existsSync(resolve(ROOT, rel)),
+        };
+        /** The real tree with one file's text rewritten, or made absent. */
+        const treeWithout = (target: string, transform?: (text: string) => string) => ({
+            read: (rel: string) => rel === target && transform
+                ? transform(realIo.read(rel))
+                : realIo.read(rel),
+            exists: (rel: string) => (rel === target && !transform ? false : realIo.exists(rel)),
+        });
+
+        it('is satisfied by the real tree', () => {
+            expect(rowsModule.closureWiring(ALL_T, realIo)).toEqual([]);
+            expect(find('T7').open).toBe(0);
+        });
+
+        it('goes red when the shared verifier stops running the tools generator', () => {
+            // THE DEFECT IT EXISTS FOR. The artefact was stale and nothing
+            // failed, because the one verifier every workflow calls did not
+            // know about this generator.
+            const missing = rowsModule.closureWiring(ALL_T,
+                treeWithout('docs/audits/2026-09-09/verify-artifacts.cjs',
+                    text => text.replace(/2026-09-11\/generate-tool-profile-audit\.cjs/g, 'x')));
+            expect(missing).toHaveLength(1);
+            expect(String(missing[0])).toContain('generate-tool-profile-audit');
+        });
+
+        it.each(['candidate', 'deploy', 'vertical-quality'])(
+            'goes red when %s stops calling that verifier', workflow => {
+                // One workflow keeping its own copy of the list is the same
+                // defect with more places to forget.
+                const missing = rowsModule.closureWiring(ALL_T,
+                    treeWithout(`.github/workflows/${workflow}.yml`,
+                        text => text.replace(/verify-artifacts\.cjs/g, 'x')));
+                expect(missing).toEqual([`${workflow} no llama al verificador compartido`]);
+            });
+
+        it('goes red when a T row disappears from the table', () => {
+            // A row nobody prints reads as closed — the lesson this table
+            // already learned once, applied to the table itself.
+            const missing = rowsModule.closureWiring(['T1', 'T2'], realIo);
+            expect(missing).toEqual([
+                'la tabla de cierre no reporta T3',
+                'la tabla de cierre no reporta T4',
+                'la tabla de cierre no reporta T5',
+                'la tabla de cierre no reporta T6',
+            ]);
+        });
+
+        it('names what is missing instead of counting it', () => {
+            // "1 pendiente" on a wiring row sends the reader through three
+            // files to find out which one.
+            const missing = rowsModule.closureWiring([], realIo);
+            for (const entry of missing) expect(String(entry).length).toBeGreaterThan(15);
+        });
     });
 
     it('finds a non-empty discovery universe before reporting on it', () => {
@@ -51,24 +124,46 @@ describe('the tools programme rows read something real', () => {
         // is fifteen controls an owner can switch with no consequence — and the
         // screen tells them it did something.
         const t1 = find('T1');
-        expect(t1.open).toBeGreaterThan(10);
-        expect(String(t1.openLabel)).toContain('.emailConfirmations');
+        // The sweep counts PAIRS, and the pair is what the label prints —
+        // `family.flag`, never a bare flag name. That is the property this
+        // case exists for; the exact count is pinned below.
+        expect(String(t1.openLabel)).toMatch(/[a-zA-Z]+\.emailConfirmations/);
         // The number an independent audit of this repository reached by hand
         // was FIFTEEN: eleven families with no consumer plus four with a typed
         // flag and no visible control.
         //
-        // It is fourteen now, and the one that left is named rather than
-        // absorbed: `vehicles.emailConfirmations`. A test drive is an
-        // appointment the `vehicles` family asked for, so
-        // `appointment-notifications.service.ts` resolves the switch through
-        // `['vehicles', 'appointments']`, most specific first — a real
-        // consumer, not a mention. The remaining fourteen are all
-        // `emailConfirmations`, which is the shape of the finding: one flag
-        // eighteen families declare and four act on.
+        // It is ONE, and every family that left is named rather than
+        // absorbed, because this pin moves only WITH a consumer and never to
+        // follow the count. Each of these has a productive reader that
+        // resolves the switch from the agent that SERVED the operation:
         //
-        // This pin moves only WITH a consumer, never to follow the count.
-        expect(t1.open).toBe(14);
-        expect(String(t1.openLabel)).not.toContain('vehicles.emailConfirmations');
+        //  · `vehicles`, `realEstate`, `pets` — appointment-shaped. A test
+        //    drive, a property visit and a veterinary visit are appointments
+        //    carrying a validated marker, so the notification resolves
+        //    `[family, 'appointments']`, most specific first.
+        //  · `orders` — post-commit on the `pending → confirmed` transition
+        //    only, through the one factory both the agent path and the
+        //    dashboard path use.
+        //  · `homeServices`, `education`, `gyms`, `insurance`, `restaurants`,
+        //    `photography`, `repairOrders`, `treatments`, `vehicleRentals`,
+        //    `petBoarding` — each on its own confirming transition, through
+        //    the shared five-step decision in `OperationConfirmationService`.
+        //
+        // The ONE that remains is `petServices`, and it cannot be closed by
+        // wiring anything: the family has no committing tool of its own, and a
+        // pet-services tenant's manifest carries both `pets` and `petServices`,
+        // so no consumer can tell which switch an operation belongs to. The
+        // honest close is retiring the flag from the contract — which is a
+        // change to `packages/shared`, not a consumer.
+        expect(t1.open).toBe(1);
+        expect(String(t1.openLabel)).toContain('petServices.emailConfirmations');
+        for (const closed of [
+            'vehicles', 'realEstate', 'pets', 'orders', 'homeServices', 'education',
+            'gyms', 'insurance', 'restaurants', 'photography', 'repairOrders',
+            'treatments', 'vehicleRentals', 'petBoarding',
+        ]) {
+            expect(String(t1.openLabel)).not.toContain(`${closed}.emailConfirmations`);
+        }
     });
 
     it('reads the evidence scope from the call, not from a comment', () => {

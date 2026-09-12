@@ -350,30 +350,58 @@ const TABLES = ['faqs', 'products', 'companies', 'menu_items', 'real_estate_list
 
         beforeAll(async () => { await sql('TRUNCATE faqs'); });
 
-        it('cannot even perform the write the repair route offers', async () => {
-            // Found while trying to prove the chain, and it is the far end of
-            // "una ruta existente no demuestra que el dueño corrigió el
-            // bloqueo": the screen exists, the controller exists, the service
-            // method exists, and PostgreSQL refuses to prepare its statement.
-            // `$3` is the category, used once as a VARCHAR(100) column and once
-            // inside `COALESCE($3, '')` in a text context — 42P08, on every
-            // call, for every tenant. The catch only translates 23505, so the
-            // error reaches the owner as a failed save. The vertical seed writes
-            // FAQs with a different statement, which is why a bootstrapped
-            // tenant has rows nobody could have added by hand.
+        it('performs the write the repair route offers', async () => {
+            // ═══ WHAT THIS CASE USED TO PIN ═══
+            //
+            // It asserted a REJECTION. The screen existed, the controller
+            // existed, the service method existed, and PostgreSQL refused to
+            // prepare the statement: `$3` was the category, used once as a
+            // VARCHAR(100) column and once inside `COALESCE($3, '')` in a text
+            // context — 42P08, on every call, for every tenant of every
+            // vertical. The catch only translated 23505, so it reached the
+            // owner as a failed save. No FAQ could be created by hand at all;
+            // the vertical seed uses a different statement, which is why a
+            // bootstrapped tenant had rows nobody could have added.
+            //
+            // The fix is one cast — `COALESCE($3, ''::varchar)` — which lets
+            // the planner resolve the parameter to one type. Asserted here
+            // through the real Prisma path, because the driver is part of what
+            // broke: `pg` infers the parameter type and would have hidden it.
             const faqs = await service();
             await expect(faqs.create(tenantId, {
-                question: '¿Hacen envíos a Medellín?', answer: 'Sí, con dos días de tránsito.', isPublished: true,
-            })).rejects.toMatchObject({ code: '42P08' });
-            expect(await sql('SELECT id FROM faqs')).toEqual([]);
+                question: '¿Hacen envíos a Medellín?',
+                answer: 'Sí, con dos días de tránsito.',
+                isPublished: true,
+            })).resolves.toMatchObject({ question: '¿Hacen envíos a Medellín?' });
+            // The row is really there, and searchable — the tsvector is built
+            // in the same statement that was failing to prepare.
+            expect((await sql('SELECT question FROM faqs')).map((row: any) => row.question))
+                .toEqual(['¿Hacen envíos a Medellín?']);
+            expect((await faqs.search(tenantId, 'envíos', 5)).map(item => item.question))
+                .toEqual(['¿Hacen envíos a Medellín?']);
         });
 
-        it('leaves the blockage standing even when the row does exist', async () => {
-            // Written with the statement shape the vertical seed uses, which
-            // PostgreSQL accepts, so the second defect can be reached at all.
+        it('leaves the readiness blockage standing even though the row exists', async () => {
+            // THE HALF THAT IS STILL OPEN. The write works now; the check does
+            // not. `READINESS.faq_content` filters `is_active = true` and the
+            // `faqs` table has `is_published` — there is no `is_active` column,
+            // so the predicate cannot execute for any tenant, and the branch
+            // written for an absent TABLE swallows the absent COLUMN and
+            // reports a confident zero.
+            //
+            // Because `faq_content` is in `BASE_READINESS` and `faqs` is in
+            // `BASE_TOOLS`, that keeps `search_faqs` excluded as
+            // `readiness_unmet` for every tenant of every vertical, while the
+            // tool answers the customer from the row perfectly well.
+            //
+            // The correction is stated in the register and is NOT applied:
+            // predicate `is_published = true`, repairRoute
+            // `/admin/knowledge/faqs`. This case pins the defect as it stands
+            // so that landing that correction turns it red and whoever lands
+            // it has to come here and say what changed.
             await sql(`INSERT INTO faqs (question, answer, category, is_published, search_tsv)
                        SELECT $1, $2, $3, true, to_tsvector('simple', $1 || ' ' || $2)`,
-            ['¿Hacen envíos a Medellín?', 'Sí, con dos días de tránsito.', 'envios']);
+            ['¿Cuál es el horario?', 'Lunes a sábado, 9 a 18.', 'horarios']);
 
             const readiness = new VerticalReadinessService(prismaLike as any, redisLike as any);
             // Re-read, for real — the refresh path, not a second cached answer.
@@ -386,8 +414,8 @@ const TABLES = ['faqs', 'products', 'companies', 'menu_items', 'real_estate_list
             // row. The check and the tool disagree about the same tenant at the
             // same moment, and only one of them is right.
             const faqs = await service();
-            const found = await faqs.search(tenantId, 'envíos', 5);
-            expect(found.map(item => item.question)).toEqual(['¿Hacen envíos a Medellín?']);
+            const found = await faqs.search(tenantId, 'horario', 5);
+            expect(found.map(item => item.question)).toEqual(['¿Cuál es el horario?']);
 
             // So it is a read error, and has to be reported as one: "load a FAQ"
             // is not something this owner can do about it.

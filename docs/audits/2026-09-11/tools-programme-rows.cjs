@@ -183,6 +183,53 @@ function tourCoverageGaps() {
  * The rows, built with the closure report's own constructor so one table and
  * one contradiction check cover the whole programme.
  */
+/**
+ * Is the tools programme WIRED INTO the closure machinery?
+ *
+ * T7's own condition, and the one that can be satisfied by writing a
+ * document instead of a gate — which is how the tool-profile artefact went
+ * stale without stopping a release. So it is read from three places that
+ * would each have to be edited to break it:
+ *
+ *   · the generator is one of the entries `verify-artifacts.cjs` iterates,
+ *     which is the single shared authority the workflows call;
+ *   · each of `candidate`, `deploy` and `vertical-quality` invokes that
+ *     verifier rather than its own copy of the list;
+ *   · the T rows exist in this module, so the closure table reports the
+ *     programme at all.
+ *
+ * A missing piece is named, never counted as a bare number: "1 pendiente"
+ * on a wiring row sends the reader looking through three files.
+ */
+function closureWiring(rowIds, io = { read, exists }) {
+    // The reader is a parameter so a test can DROP one of the three
+    // pieces and see the row go red, without writing a mutated workflow
+    // to disk in a repository where a concurrent stage is a recorded
+    // incident. Defaults to the real tree.
+    const { read, exists } = io;
+    const missing = [];
+    const verifier = 'docs/audits/2026-09-09/verify-artifacts.cjs';
+    const verifierSource = exists(verifier) ? read(verifier) : '';
+    if (!verifierSource) {
+        mustFind(null, 'el verificador compartido de artefactos');
+    }
+    if (!verifierSource.includes('2026-09-11/generate-tool-profile-audit.cjs')) {
+        missing.push('el verificador compartido no ejecuta generate-tool-profile-audit');
+    }
+    for (const workflow of ['candidate', 'deploy', 'vertical-quality']) {
+        const rel = `.github/workflows/${workflow}.yml`;
+        if (!exists(rel)) { missing.push(`falta el workflow ${workflow}`); continue; }
+        if (!read(rel).includes('verify-artifacts.cjs')) {
+            missing.push(`${workflow} no llama al verificador compartido`);
+        }
+    }
+    const expected = ['T1', 'T2', 'T3', 'T4', 'T5', 'T6'];
+    for (const id of expected) {
+        if (!rowIds.includes(id)) missing.push(`la tabla de cierre no reporta ${id}`);
+    }
+    return missing;
+}
+
 function toolsRows(row, audit) {
     const summary = audit?.summary ?? {};
     const coverage = summary.taskCoverage ?? {};
@@ -205,7 +252,7 @@ function toolsRows(row, audit) {
     const missingVerifiers = Number(coverage.tasksMissingVerifiers ?? 0);
     const stepUpNegatives = Number(coverage.tasksMissingPositiveCases ?? 0);
 
-    return [
+    const rows = [
         row('T1', { provenance: 'derived',
             open: orphanedControls.length,
             openLabel: `${orphanedControls.length} controles configurables (familia.bandera) sin `
@@ -272,6 +319,30 @@ function toolsRows(row, audit) {
                 + 'listado de capacidades en los prompts. Activado, preparado, probado, degradado '
                 + 'y bloqueado se mantienen como estados distintos.' }),
     ];
+
+    /**
+     * T7 is about this table existing and being ENFORCED, so it is derived
+     * from the wiring and appended after the rows it counts — it cannot
+     * report whether T1–T6 are present before they are built.
+     */
+    const wiring = closureWiring(rows.map(entry => entry.id));
+    rows.push(row('T7', { provenance: 'derived',
+        open: wiring.length,
+        openLabel: wiring.join('; '),
+        gates: [],
+        evidence: 'El programa de herramientas entra al gate oficial por UNA autoridad '
+            + 'compartida: `verify-artifacts.cjs` ejecuta `generate-tool-profile-audit '
+            + '--check` junto con los otros generadores, y `candidate`, `deploy` y '
+            + '`vertical-quality` llaman a ese verificador en vez de llevar cada uno su '
+            + 'propia lista. El artefacto de herramientas quedó stale sin impedir un cierre '
+            + 'precisamente porque no estaba ahí. Que el gate se pone rojo ante una fuente '
+            + 'modificada lo demuestra una prueba que cambia una fuente auditada y captura '
+            + 'la transición, no la afirmación de que el árbol está al día. Las seis filas '
+            + 'T1–T6 se derivan de lecturas del código, nunca de prosa ni de la existencia '
+            + 'de un test.' }));
+    return rows;
 }
 
-module.exports = { toolsRows, controlsWithoutConsumer, evidenceScopeWired, tourCoverageGaps };
+module.exports = {
+    toolsRows, controlsWithoutConsumer, evidenceScopeWired, tourCoverageGaps, closureWiring,
+};

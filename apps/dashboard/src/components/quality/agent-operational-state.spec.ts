@@ -41,6 +41,10 @@ const tool = (state: AgentOperationalState): AgentToolExplanationV1 => ({
     achieves: { effect: 'effect', commitsBusiness: false, confirmation: 'confirmation', externalEffect: 'none' },
     missionIntents: ['ask_question'], requires: { prerequisites: [], readiness: [] },
     missing: { reason: null, detail: null, repairRoute: null, readiness: [] },
+    // Empty because this factory declares no readiness requirement. One
+    // citation per requirement is the contract, so a tool with none has an
+    // empty list rather than an absent field.
+    readinessAudit: [],
     example: null, safeTest: { available: false, href: null }, result: 'not_verified',
 });
 

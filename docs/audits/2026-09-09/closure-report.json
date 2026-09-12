@@ -1,16 +1,16 @@
 {
   "version": 1,
-  "revision": "3085b98c2e7db4630102dd09bff8fffe5bdca8af",
-  "generatedAt": "2026-09-12T15:23:36.944Z",
+  "revision": "55354e8995d7dc0eb8a088492a0575ca15f4e68c",
+  "generatedAt": "2026-09-12T19:10:55.241Z",
   "finished": false,
   "counts": {
-    "aceptada": 12,
-    "bloqueada": 21,
-    "abierta": 11,
+    "aceptada": 13,
+    "bloqueada": 22,
+    "abierta": 10,
     "diferida": 1
   },
   "provenance": {
-    "derived": 26,
+    "derived": 27,
     "executed_evidence": 3,
     "declared": 16
   },
@@ -443,7 +443,7 @@
       "status": "abierta",
       "provenance": "derived",
       "artefact": null,
-      "evidence": "Censo derivado del árbol: 31 call sites, 27 cobrables, 0 fuera de la autoridad económica. El inventario de efectos declara 62 productores y 43 con al menos una propiedad en `none`. La condición es que el artefacto versionado se regenere desde el mismo HEAD, no que alguien lo haya leído.",
+      "evidence": "Censo derivado del árbol: 31 call sites, 27 cobrables, 0 fuera de la autoridad económica. El inventario de efectos declara 65 productores y 46 con al menos una propiedad en `none`. La condición es que el artefacto versionado se regenere desde el mismo HEAD, no que alguien lo haya leído.",
       "commits": [],
       "deferral": null
     },
@@ -541,7 +541,7 @@
       "status": "abierta",
       "provenance": "derived",
       "artefact": null,
-      "evidence": "De 27 call sites cobrables, 7 usan un carril que no escribe fila antes del POST — Redis es el registro, o no hay registro. Un productor ahí no puede contestar \"¿esto salió?\" después de un reinicio. El criterio principal de R6 es exactamente este número en cero. Ninguno de los siete carece del camino durable: seis son el repliegue de `conversations.service.ts` cuando el interruptor de despliegue está apagado, y el séptimo es la consola en un canal SIN transporte estricto, que no puede entregar exactamente un efecto y decir qué pasó. Por eso el número no baja escribiendo código: baja encendiendo un interruptor —decisión de piloto del dueño— o dándole transporte estricto a ese canal.",
+      "evidence": "De 27 call sites cobrables, 7 usan un carril que no escribe fila antes del POST — Redis es el registro, o no hay registro. Un productor ahí no puede contestar \"¿esto salió?\" después de un reinicio. **Este número NO es el criterio de R6**, que pregunta por la autorización aplicable y la mide con los productores fuera del gate económico: el carril legado sí pasa por la admisión, así que R6 está en cero y esta fila no. Lo que falta acá es la FILA antes del POST, no el permiso. Ninguno de los siete carece del camino durable: seis son el repliegue de `conversations.service.ts` cuando el interruptor de despliegue está apagado — y con el interruptor encendido son inalcanzables, porque la propiedad del lote se decide ANTES de consultarlo y el bloque legado entero cuelga de que el carril durable haya dicho no. El séptimo es la consola humana: desde este HEAD entrega exactamente un efecto por el transporte estricto y distingue aceptado, rechazado y desconocido, así que lo que le falta es la fila, no el resultado. Por eso el número no baja escribiendo código: baja encendiendo un interruptor —decisión de piloto del dueño.",
       "commits": [],
       "deferral": null
     },
@@ -597,8 +597,8 @@
     },
     {
       "id": "R5",
-      "open": 2,
-      "openLabel": "2 de 18 escenarios de la matriz de aceptación sin prueba que los conteste: Bot contra bot y ráfaga de contactos; Humano, REST, campaña y recordatorio",
+      "open": 1,
+      "openLabel": "1 de 18 escenarios de la matriz de aceptación sin prueba que los conteste: Humano, REST, campaña y recordatorio",
       "gates": [],
       "status": "abierta",
       "provenance": "derived",
@@ -609,24 +609,24 @@
     },
     {
       "id": "R6",
-      "open": 7,
-      "openLabel": "7 productores pueden entregar fuera de la autorización aplicable",
+      "open": 0,
+      "openLabel": "0 productores de WhatsApp pueden entregar fuera de la autorización aplicable",
       "gates": [
         1,
         5,
         7
       ],
-      "status": "abierta",
+      "status": "bloqueada",
       "provenance": "derived",
       "artefact": null,
-      "evidence": "El criterio principal de R6, textual: **ningún productor de WhatsApp puede generar una entrega fuera de la autorización aplicable**. Mientras el contador sea distinto de cero la fila está abierta, y después seguirá bloqueada por el modo observación, el canario con techo explícito y la autorización de activar `enforce`.",
+      "evidence": "El criterio principal de R6, textual: **ningún productor de WhatsApp puede generar una entrega fuera de la autorización aplicable**. Esa autorización es la autoridad económica transaccional, y el censo derivado del árbol cuenta 0 productores cobrables que llegan a un POST sin pasarla — incluido el carril legado de BullMQ, que sí la pasa. Lo verifica una mutación que borra el gate del sink real, no esta frase. **Este contador sumó hasta este HEAD los 7 productores fuera del carril durable (1 en `inline`, 6 en `outbound_queue`), que es otra propiedad**: no hay fila antes del POST, así que nadie puede contestar \"¿esto salió?\" tras un reinicio. No desaparece: es exactamente lo que mantienen abiertas R0 y R4. Con la condición local cumplida esta fila queda bloqueada por el modo observación, el canario con techo explícito y la autorización de activar `enforce`.",
       "commits": [],
       "deferral": null
     },
     {
       "id": "T1",
-      "open": 14,
-      "openLabel": "14 controles configurables (familia.bandera) sin consumidor productivo: orders.emailConfirmations, treatments.emailConfirmations, realEstate.emailConfirmations, pets.emailConfirmations, restaurants.emailConfirmations, gyms.emailConfirmations y 8 más",
+      "open": 1,
+      "openLabel": "1 controles configurables (familia.bandera) sin consumidor productivo: petServices.emailConfirmations",
       "gates": [],
       "status": "abierta",
       "provenance": "derived",
@@ -695,6 +695,18 @@
       "provenance": "declared",
       "artefact": null,
       "evidence": "Condición de cierre: Assist propone sólo operaciones que puede ejecutar, explica las demás con destino permitido por rol, y no mantiene un segundo listado de capacidades en los prompts. Activado, preparado, probado, degradado y bloqueado se mantienen como estados distintos.",
+      "commits": [],
+      "deferral": null
+    },
+    {
+      "id": "T7",
+      "open": 0,
+      "openLabel": "",
+      "gates": [],
+      "status": "aceptada",
+      "provenance": "derived",
+      "artefact": null,
+      "evidence": "El programa de herramientas entra al gate oficial por UNA autoridad compartida: `verify-artifacts.cjs` ejecuta `generate-tool-profile-audit --check` junto con los otros generadores, y `candidate`, `deploy` y `vertical-quality` llaman a ese verificador en vez de llevar cada uno su propia lista. El artefacto de herramientas quedó stale sin impedir un cierre precisamente porque no estaba ahí. Que el gate se pone rojo ante una fuente modificada lo demuestra una prueba que cambia una fuente auditada y captura la transición, no la afirmación de que el árbol está al día. Las seis filas T1–T6 se derivan de lecturas del código, nunca de prosa ni de la existencia de un test.",
       "commits": [],
       "deferral": null
     }

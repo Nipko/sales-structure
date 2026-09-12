@@ -364,7 +364,13 @@ export class AgentAssessmentService {
                 ...tools.map(tool => tool.state),
                 ...requiredTests.map(test => test.state),
             ]),
-            tools: tools as any,
+            // No cast. The contract carries `readinessAudit` now, so the
+            // shape the surfaces read is the shape this hands over — the cast
+            // was what let a field every screen depends on live outside the
+            // one declaration they all share, and it was hiding a second
+            // thing too: this builds frozen arrays and the contract asked for
+            // mutable ones.
+            tools,
             configuration: { persona: { name: text(config.persona?.name), role: text(config.persona?.role), greeting: text(config.persona?.greeting), fallbackMessage: text(config.persona?.fallbackMessage),
                 personality: { tone: text(config.persona?.personality?.tone), formality: text(config.persona?.personality?.formality) } },
                 behavior: { rules: strings(config.behavior?.rules), forbiddenTopics: strings(config.behavior?.forbiddenTopics), handoffTriggers: strings(config.behavior?.handoffTriggers) },

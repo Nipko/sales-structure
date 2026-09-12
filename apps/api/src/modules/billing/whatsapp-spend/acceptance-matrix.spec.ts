@@ -297,6 +297,46 @@ describe('the R5 acceptance matrix, checked rather than asserted', () => {
             expect(missing.length).toBeLessThan(ACCEPTANCE_MATRIX.length);
         });
 
+        it('names only tests CI actually runs, gate included', () => {
+            /**
+             * ═══ "RUNS" IS CONDITIONAL FOR MOST OF THESE ═══
+             *
+             * Half the covered rows point at `.postgres.spec.ts` files that
+             * open with `connection ? describe : describe.skip`. On a laptop
+             * with no disposable database those suites skip themselves, and a
+             * parser that reads titles out of the SOURCE cannot tell the
+             * difference — it would go on reporting the row covered by a test
+             * nothing executed.
+             *
+             * That is a real limit and it is closed by the workflow rather
+             * than by the parser: `candidate.yml` supplies
+             * `PARALLLY_ISOLATION_TEST_URL` and then gates on
+             * `assert-no-skipped-tests.cjs`, which reads Jest's own report and
+             * refuses a run with skipped tests in it. So the guarantee is
+             * "these run in CI", not "these ran wherever you are" — and this
+             * case pins the two halves of that sentence, because a silent
+             * removal of either would turn the matrix back into a document.
+             */
+            const workflow = readFileSync(
+                resolve(SRC, '..', '..', '..', '.github', 'workflows', 'candidate.yml'), 'utf8');
+            const gated = ACCEPTANCE_MATRIX
+                .map(row => row.covered?.file)
+                .filter((file): file is string => !!file && file.includes('.postgres.spec.ts'));
+            expect(gated.length).toBeGreaterThan(0);
+
+            // Every one of them really is conditional — read from the file, so
+            // this cannot drift into asserting a shape nothing has.
+            for (const file of new Set(gated)) {
+                const source = readFileSync(resolve(SRC, file), 'utf8');
+                expect({ file, conditional: /\?\s*describe\s*:\s*describe\.skip/.test(source) })
+                    .toEqual({ file, conditional: true });
+            }
+
+            // And the workflow both un-skips them and refuses a skipped run.
+            expect(workflow).toContain('PARALLLY_ISOLATION_TEST_URL');
+            expect(workflow).toContain('assert-no-skipped-tests.cjs');
+        });
+
         it('reports these five gaps, by name', () => {
             // What replaces the assertion that used to stand here. That one
             // added the two halves and compared the sum to the whole, and

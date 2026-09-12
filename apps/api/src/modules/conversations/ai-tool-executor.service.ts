@@ -3873,9 +3873,21 @@ export class AIToolExecutorService {
                     message: 'Este alojamiento todavía no tiene una tarifa válida. Ofrecé otra opción o derivá la consulta al equipo.',
                 };
             }
-        } catch {
-            // getById valida el formato y tira si no existe: ambos casos son
-            // lo mismo aca — no hay alojamiento al que reservarle.
+        } catch (error) {
+            if (!(error instanceof BadRequestException)) {
+                this.logger.error(
+                    `[Tool] ${toolName} no pudo verificar el alojamiento antes de confirmar`,
+                    error instanceof Error ? error.stack : undefined,
+                );
+                return {
+                    error: 'property_lookup_unavailable',
+                    message: 'No pude verificar ese alojamiento en este momento. No confirmes la reserva; ofrecé reintentar o derivar la consulta al equipo.',
+                    retryable: true,
+                    shouldHandoff: true,
+                };
+            }
+            // getById rechaza un identificador con formato inválido. Eso sí es
+            // una referencia desconocida, no una caída del sistema de registro.
         }
         this.logger.warn(`[Tool] ${toolName} bloqueada antes de confirmar: propertyId "${propertyId.slice(0, 40)}" no existe`);
         return {

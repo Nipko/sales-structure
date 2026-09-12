@@ -1,5 +1,6 @@
 import { AIToolExecutorService } from './ai-tool-executor.service';
 import { authorityFor } from './__fixtures__/tool-authority.fixture';
+import { BadRequestException } from '@nestjs/common';
 
 /**
  * El "sí" del huésped autorizó una escritura imposible.
@@ -87,7 +88,7 @@ describe('una reserva sobre un alojamiento inexistente no llega a la confirmaci�
 
     it('tampoco cuando el modelo manda el nombre en lugar del id', async () => {
         // getById valida el formato y tira; para este guard es el mismo caso.
-        const getById = jest.fn().mockRejectedValue(new Error('propertyId must be a valid UUID'));
+        const getById = jest.fn().mockRejectedValue(new BadRequestException('propertyId must be a valid UUID'));
         const { executor, control } = createExecutor(getById);
 
         const result = await executor.execute(
@@ -136,6 +137,24 @@ describe('una reserva sobre un alojamiento inexistente no llega a la confirmaci�
         );
 
         expect(result).toMatchObject({ error: 'property_rate_not_configured' });
+        expect(control.preflight).not.toHaveBeenCalled();
+    });
+
+    it('no presenta una caída del registro como si el alojamiento no existiera', async () => {
+        const getById = jest.fn().mockRejectedValue(new Error('SELECT night_price FROM tenant_secret.properties'));
+        const { executor, control } = createExecutor(getById);
+
+        const result: any = await executor.execute(
+            schemaName, tenantId, contactId, 'create_property_booking', BOOKING_ARGS, conversationId,
+            { authority: authorityFor('create_property_booking') },
+        );
+
+        expect(result).toMatchObject({
+            error: 'property_lookup_unavailable',
+            retryable: true,
+            shouldHandoff: true,
+        });
+        expect(JSON.stringify(result)).not.toContain('tenant_secret');
         expect(control.preflight).not.toHaveBeenCalled();
     });
 

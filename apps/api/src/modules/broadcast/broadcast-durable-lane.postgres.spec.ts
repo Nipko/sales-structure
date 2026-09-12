@@ -73,8 +73,8 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
         processor.process({ id: 'j', name: 'send-whatsapp', attemptsMade, opts: { attempts: 3 },
             data: jobData(c, over) });
 
-    const settle = (c: any) =>
-        processor.process({ id: 's', name: BROADCAST_SETTLE_JOB, attemptsMade: 0,
+    const settle = (c: any, attemptsMade = 0) =>
+        processor.process({ id: 's', name: BROADCAST_SETTLE_JOB, attemptsMade,
             opts: { attempts: 20 }, data: jobData(c) });
 
     const outboxRows = async () => sql(
@@ -425,6 +425,38 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
         expect(await recipient(c.recipientId)).toMatchObject({
             status: 'sent', message_id: 'wamid.CAMPAIGN',
         });
+    });
+
+    it('closes the recipient on the last ask rather than leaving the campaign short', async () => {
+        // ── A CAMPAIGN CANNOT HANG ON A ROW THAT KEEPS BACKING OFF ──────────
+        //
+        // The settling pass has a fixed budget of twenty asks, about ten
+        // minutes. A dispatch row held in `failed` by a condition that clears —
+        // a funding pause, a time zone nobody set — now backs off durably and
+        // outlives that easily. The budget ran out, the last throw went to the
+        // failed handler, and the recipient was never closed either way:
+        // `checkCampaignCompletion` never ran for it and the campaign sat one
+        // short of done for ever.
+        const c = await campaign();
+        await send(c);
+        const [row] = await outboxRows();
+        await sql(`UPDATE agent_dispatch_outbox
+                      SET state = 'failed', error_code = 'spend_funding_not_ready',
+                          available_at = NOW() + INTERVAL '6 hours'
+                    WHERE id = $1::uuid`, [row.id]);
+
+        // Not the last ask: it keeps asking, which is the right answer while
+        // there is still a window left.
+        await expect(settle(c, 5)).rejects.toThrow(/broadcast_effect_in_flight/);
+        expect(await recipient(c.recipientId)).toMatchObject({ status: 'queued' });
+
+        // The last one closes it, with what the outbox said, and NOT as sent:
+        // nothing was delivered.
+        expect(await settle(c, 19)).toContain('settled:unsettled');
+        const closed = await recipient(c.recipientId);
+        expect(closed.status).toBe('failed');
+        expect(String(closed.error_message)).toContain('unsettled_after_window');
+        expect(String(closed.error_message)).toContain('spend_funding_not_ready');
     });
 
     it('marks it failed, with the reason, when the effect was suppressed', async () => {

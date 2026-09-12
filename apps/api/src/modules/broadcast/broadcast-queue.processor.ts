@@ -70,7 +70,7 @@ export class BroadcastQueueProcessor extends WorkerHost {
         // already delivered and charged. Running it through a gate meant to
         // stop new spending would mark a delivered message failed because the
         // tenant's subscription lapsed in between.
-        if (job.name === BROADCAST_SETTLE_JOB) return this.settleWhatsApp(job.data);
+        if (job.name === BROADCAST_SETTLE_JOB) return this.settleWhatsApp(job.data, job);
 
         const { channel, schemaName, campaignId, recipientId } = job.data;
 
@@ -287,12 +287,13 @@ export class BroadcastQueueProcessor extends WorkerHost {
      *   · anything else — it has not finished. The job retries; the outbox is
      *     the only record that matters and it is still working.
      */
-    private async settleWhatsApp(data: BroadcastJobData): Promise<string> {
+    private async settleWhatsApp(data: BroadcastJobData, job?: Job<BroadcastJobData>): Promise<string> {
         const { schemaName, campaignId, recipientId } = data;
         const originId = ProactiveDispatchService.originId(originKeyFor(campaignId, recipientId));
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
-            `SELECT state, receipt, error_code FROM agent_dispatch_outbox
+            `SELECT state, receipt, error_code, attempts, available_at
+               FROM agent_dispatch_outbox
               WHERE inbound_message_id = $1::uuid ORDER BY item_index LIMIT 1`,
             [originId],
         );
@@ -319,6 +320,31 @@ export class BroadcastQueueProcessor extends WorkerHost {
             // left as it is and the job stops asking.
             this.logger.warn(`Broadcast recipient ${recipientId} awaits reconciliation`);
             return `settled:reconciliation_required:${recipientId}`;
+        }
+        // ── A CAMPAIGN CANNOT HANG ON A ROW THAT KEEPS BACKING OFF ──────────
+        //
+        // Anything else has not finished, and asking again is right — for a
+        // while. The settle job has a fixed budget (twenty asks, roughly ten
+        // minutes), and a row held in `failed` by a condition that clears now
+        // backs off durably: a funding pause is fixed in hours, not minutes. On
+        // the old code the budget simply ran out, the last throw went to the
+        // failed handler, and the recipient was never closed either way —
+        // `checkCampaignCompletion` never ran for it and the campaign sat one
+        // short of done for ever.
+        //
+        // So the LAST ask closes it. `failed` with a reason is the honest
+        // state: the campaign is finished, this person did not get the message,
+        // and the outbox row is still there with its own diagnosis for whoever
+        // asks why. It is deliberately not `sent`: nothing was delivered.
+        const lastAsk = !!job && (job.attemptsMade + 1) >= (job.opts?.attempts ?? 1);
+        if (lastAsk) {
+            const detail = String(row.error_code ?? row.state ?? 'unknown').slice(0, 120);
+            this.logger.warn(`Broadcast recipient ${recipientId} still ${row.state} after the `
+                + `settling window (attempts=${row.attempts}, next=${row.available_at}); `
+                + 'closing it so the campaign can finish');
+            await this.markFailed(schemaName, campaignId, recipientId, data.variantId,
+                `unsettled_after_window:${row.state}:${detail}`);
+            return `settled:unsettled:${recipientId}`;
         }
         throw new Error(`broadcast_effect_in_flight:${row.state}:${recipientId}`);
     }

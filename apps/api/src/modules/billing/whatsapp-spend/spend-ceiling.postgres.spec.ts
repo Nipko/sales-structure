@@ -314,6 +314,33 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
             expect(stored.reservedMinor + stored.settledMinor).toBe(250);
         });
 
+        it('does not report the free allowance as a ceiling under pressure', async () => {
+            // The `number_month` counter carries cap_kind 'deliveries' and
+            // cap_deliveries 1000 because that row IS Meta's free thousand. Read
+            // as a ceiling, an account that had merely used its free messages
+            // came back `hard_stop` — with no ceiling configured at all, and at
+            // exactly the moment sending has to continue because it has started
+            // costing money.
+            const period = `2028-0${Math.floor(Math.random() * 8) + 1}`;
+            const allowance = { kind: 'number_month' as const, key: `n-${randomUUID()}`, period };
+            await ensureCounters(query, schema, [allowance], 'USD', 1_000);
+            await query(`UPDATE "${schema}".whatsapp_spend_counters
+                            SET used_deliveries = 1000, free_deliveries = 1000
+                          WHERE scope_kind = 'number_month' AND scope_key = $1`, [allowance.key]);
+
+            expect(await readPressure(query, schema, [allowance])).toBe('clear');
+
+            // And a real ceiling on the same number still answers, so the skip
+            // is about the allowance rather than about the number.
+            const account = { kind: 'account' as const, key: allowance.key, period };
+            await declareSpendCeiling(query, schema, { scope: account, capDeliveries: 2 });
+            await query(`UPDATE "${schema}".whatsapp_spend_counters
+                            SET used_deliveries = 2
+                          WHERE scope_kind = 'account' AND scope_key = $1
+                            AND period_key = $2`, [account.key, period]);
+            expect(await readPressure(query, schema, [allowance, account])).toBe('hard_stop');
+        });
+
         it('narrows to one kind of scope when asked', async () => {
             const period = `2027-${String(Math.floor(Math.random() * 9) + 1).padStart(2, '0')}`;
             await declareSpendCeiling(query, schema,

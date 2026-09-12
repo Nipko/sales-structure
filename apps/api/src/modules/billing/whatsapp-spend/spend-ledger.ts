@@ -556,6 +556,21 @@ export async function readPressure(query: SpendQuery, schema: string,
     assertSchema(schema);
     const values: SpendPressure[] = [];
     for (const scope of scopes) {
+        // ── THE ALLOWANCE IS NOT A CEILING UNDER PRESSURE EITHER ────────────
+        //
+        // The `number_month` counter carries `cap_kind = 'deliveries'` and
+        // `cap_deliveries = 1000` because that row IS Meta's free thousand, not
+        // a limit anybody chose. Fed to the predicate below, an account that
+        // had simply used its free messages read `hard_stop` — an account with
+        // no ceiling configured at all, reported as if somebody had set one and
+        // hit it. Running out of free messages is not a ceiling; it is the
+        // moment messages start costing money, which is exactly when sending
+        // must continue.
+        //
+        // Log-only today, because nothing turns pressure into a refusal. That
+        // is a reason to fix it now rather than later: it is a wrong number
+        // waiting for a consumer.
+        if (!isTenantDeclarableScope(scope.kind)) continue;
         const [row] = await query<any[]>(
             `SELECT ${pressureSql('c', '0', '0')} AS pressure
                FROM "${schema}".whatsapp_spend_counters AS c

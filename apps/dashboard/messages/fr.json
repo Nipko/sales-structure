@@ -4693,6 +4693,8 @@
       "deactivated": "Agent désactivé : il a cessé de répondre."
     },
     "noConnectedChannelsHint": "Votre agent ne peut recevoir aucun message tant que vous n'en avez pas connecté au moins un (WhatsApp, Instagram, Messenger, Telegram ou le chat de votre site).",
+    "channelOverviewUnavailable": "Impossible de vérifier les canaux connectés",
+    "channelOverviewUnavailableHint": "Rechargez avant de modifier ou d’enregistrer les attributions. La configuration actuelle a été conservée.",
     "connectChannel": "Connecter",
     "advanced": {
       "title": "Avancé",

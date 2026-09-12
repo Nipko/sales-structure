@@ -20,6 +20,7 @@ import { HelpPanel } from "@/components/ui/help-panel";
 import { AgentReadinessBanner } from "@/components/AgentReadinessBanner";
 import { AGENT_CONFIGURATION_APPLIED_EVENT, requestQualityHealthRefresh } from "@/lib/quality-health-events";
 import { guidedTourAnchorId } from "@/lib/guided-tours";
+import { normalizeAgentChannelAssignments } from "@/lib/agent-channel-assignment";
 import type { AgentConfigurationWorkspace } from '@parallext/shared';
 import { AgentDraftStatus } from '@/components/quality/AgentDraftStatus';
 import { agentDraftTestHref, prepareDraftSave, type DraftSaveAttempt } from '@/lib/agent-draft-save';
@@ -161,6 +162,7 @@ export default function AgentEditorPage() {
   const [assignedChannels, setAssignedChannels] = useState<string[]>([]);
   const [assignedBindings, setAssignedBindings] = useState<string[]>([]);
   const [accounts, setAccounts] = useState<ChannelAccountLite[]>([]);
+  const [channelOverviewAvailable, setChannelOverviewAvailable] = useState(false);
   const [allAgents, setAllAgents] = useState<AgentData[]>([]);
   const [menuOpen, setMenuOpen] = useState(false);
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
@@ -183,6 +185,7 @@ export default function AgentEditorPage() {
   useEffect(() => {
     if (!activeTenantId || !agentId) return;
     setLoading(true);
+    setChannelOverviewAvailable(false);
     setLoadedVersion(null); setExternalChange(false);
     setWorkspace(null); saveAttempt.current = null;
     let cancelled = false;
@@ -190,14 +193,16 @@ export default function AgentEditorPage() {
     Promise.all([
       api.getAgentConfiguration(activeTenantId, agentId),
       api.listAgents(activeTenantId),
-      api.fetch('/channels/overview').catch(() => ({ data: [] })),
+      api.fetch('/channels/overview').catch(() => null),
     ])
       .then(([agentRes, agentsRes, overviewRes]: any[]) => {
         if (cancelled) return;
-        const accts: ChannelAccountLite[] = Array.isArray(overviewRes?.data)
+        const overviewAvailable = Array.isArray(overviewRes?.data);
+        const accts: ChannelAccountLite[] = overviewAvailable
           ? overviewRes.data.map((a: any) => ({ channelType: a.channelType, accountId: a.accountId, displayName: a.displayName }))
           : [];
         setAccounts(accts);
+        setChannelOverviewAvailable(overviewAvailable);
 
         if (agentRes?.success && agentRes.data) {
           const state: AgentConfigurationWorkspace = agentRes.data;
@@ -227,31 +232,15 @@ export default function AgentEditorPage() {
           //    account gets disconnected).
           const srcChannels: string[] = data.channels || [];
           const srcBindings: string[] = data.channelBindings || [];
-          const countByType: Record<string, number> = {};
-          for (const a of accts) countByType[a.channelType] = (countByType[a.channelType] || 0) + 1;
-          const bindingTypes = srcBindings.map(b => b.split(":")[0]);
-          // Drop anything that is not a certified conversational channel (`sms`
-          // above all). The API rejects those on save, so keeping a legacy `sms`
-          // assignment in state would make every save fail with a code the owner
-          // has no control to clear.
-          const allTypes = Array.from(new Set([...srcChannels, ...bindingTypes, ...Object.keys(countByType)]))
-            .filter((type) => Boolean(CHANNEL_META[type]));
-          const nextChannels: string[] = [];
-          const nextBindings: string[] = [];
-          for (const type of allTypes) {
-            const cnt = countByType[type] || 0;
-            const hadChannel = srcChannels.includes(type);
-            const typeBindings = srcBindings.filter(b => b.split(":")[0] === type);
-            if (cnt >= 2) {
-              const keys = new Set(typeBindings);
-              if (hadChannel) for (const a of accts.filter(x => x.channelType === type)) keys.add(bindingKey(type, a.accountId));
-              nextBindings.push(...keys);
-            } else if (hadChannel || typeBindings.length > 0) {
-              nextChannels.push(type); // fold binding(s) → type-level
-            }
-          }
-          setAssignedChannels(nextChannels);
-          setAssignedBindings(nextBindings);
+          const normalized = normalizeAgentChannelAssignments({
+            accounts: accts,
+            channels: srcChannels,
+            bindings: srcBindings,
+            overviewAvailable,
+            supportedTypes: CHANNEL_ORDER,
+          });
+          setAssignedChannels(normalized.channels);
+          setAssignedBindings(normalized.bindings);
         }
         if (agentsRes?.success && Array.isArray(agentsRes.data)) {
           setAllAgents(agentsRes.data);
@@ -447,6 +436,7 @@ export default function AgentEditorPage() {
 
   async function handleSave() {
     if (!activeTenantId || !agentId) return;
+    if (!channelOverviewAvailable) { setToast(t('channelOverviewUnavailableHint')); return; }
     if (externalChange || loadedVersion === null || !workspace || (workspace.draft && !workspace.draft.currentBase)) { setToast(tConfiguration('editorChanged')); return; }
     if (mode === "prompt" && !customPrompt.trim()) { setToast(tDraft('promptRequired')); return; }
     const errors = validateAgent();
@@ -767,7 +757,12 @@ export default function AgentEditorPage() {
             </span>
           </div>
 
-          {connectedChannelTypes.length === 0 ? (
+          {!channelOverviewAvailable ? (
+            <div className="rounded-lg border border-amber-300 dark:border-amber-500/40 bg-amber-50 dark:bg-amber-500/10 p-4" role="status">
+              <p className="text-sm font-medium text-amber-800 dark:text-amber-200">{t("channelOverviewUnavailable")}</p>
+              <p className="text-xs text-amber-700 dark:text-amber-300/80 mt-1">{t("channelOverviewUnavailableHint")}</p>
+            </div>
+          ) : connectedChannelTypes.length === 0 ? (
             <div className="rounded-lg border border-dashed border-amber-300 dark:border-amber-500/40 bg-amber-50 dark:bg-amber-500/10 p-4">
               <p className="text-sm font-medium text-amber-800 dark:text-amber-200">{t("noConnectedChannels")}</p>
               <p className="text-xs text-amber-700 dark:text-amber-300/80 mt-1">{t("noConnectedChannelsHint")}</p>

@@ -4693,6 +4693,8 @@
       "deactivated": "Agent turned off: it stopped answering."
     },
     "noConnectedChannelsHint": "Your agent cannot receive messages until you connect at least one (WhatsApp, Instagram, Messenger, Telegram or your website chat).",
+    "channelOverviewUnavailable": "We could not verify connected channels",
+    "channelOverviewUnavailableHint": "Reload before changing or saving assignments. We preserved the current configuration.",
     "connectChannel": "Connect",
     "advanced": {
       "title": "Advanced",

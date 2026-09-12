@@ -260,3 +260,138 @@ describe('the gate the sinks are checked against', () => {
         }
     });
 });
+
+describe('a gate deleted from a REAL sink', () => {
+    /**
+     * ═══ THE MUTATION THE SUITE CLAIMED AND NEVER RAN ═══
+     *
+     * The header of this file says "a gate deleted from a sink must turn every
+     * producer behind it red". Every mutation above ADDS a file; none removed a
+     * gate from a sink that already exists, and that is the one the census got
+     * wrong: it asked "does this file contain a gate call anywhere?", and
+     * `outbound-queue.processor.ts` contains eight of them across several
+     * methods. Deleting the one that guards the live send path left the answer
+     * yes, the census reported zero producers outside the boundary, and every
+     * AI reply on every tenant would have gone to Meta unauthorised.
+     *
+     * So this mutates the real sink on disk, runs the real sweep, and restores
+     * it. It is the only test here that can tell a dominance check from a grep.
+     */
+    const SINK = resolve(API_SRC, 'modules', 'channels', 'outbound-queue.processor.ts');
+    const GATE = "this.gateOrSuppress(outbound, 'outbound_queue'";
+
+    /** Runs `work` against a tree where that one gate call is gone. */
+    function withoutTheLegacyGate<T>(work: () => T): T {
+        const original = readFileSync(SINK, 'utf8');
+        if (!original.includes(GATE)) throw new Error('the gate call site moved; update this test');
+        try {
+            writeFileSync(SINK, original.replace(GATE, "this.noGateAtAll(outbound, 'outbound_queue'"),
+                'utf8');
+            return work();
+        } finally {
+            writeFileSync(SINK, original, 'utf8');
+        }
+    }
+
+    it('turns the sink itself from gated to not gated', () => {
+        expect(inventory.sinkVerdict('modules/channels/outbound-queue.processor.ts').fullyGated)
+            .toBe(true);
+        const after = withoutTheLegacyGate(() => {
+            // The memo is per-run and `gateCensus` clears it; ask through a run.
+            census();
+            return inventory.sinkVerdict('modules/channels/outbound-queue.processor.ts');
+        });
+        // It still ASKS — seven other gates remain — and that is precisely why
+        // presence was never the question. What changed is that its provider
+        // egress is no longer covered by any of them.
+        expect({ hasGate: after.hasGate, fullyGated: after.fullyGated, uncovered: after.uncovered })
+            .toEqual({ hasGate: true, fullyGated: false, uncovered: [expect.any(Number)] });
+    });
+
+    it('turns every producer behind it into a violation, in the same run', () => {
+        expect(census().bypasses).toEqual([]);
+        const bypasses = withoutTheLegacyGate(() => census().bypasses);
+        // Named rather than counted: the point is WHICH producers lose cover,
+        // and the answer has to include the lane that serves every tenant today.
+        const at = bypasses.map((row: any) => row.file + ':' + row.line);
+        expect(at.length).toBeGreaterThan(5);
+        expect(at).toContain('modules/conversations/conversations.service.ts:2302');
+        for (const row of bypasses) {
+            expect(row.terminus).toBe('modules/channels/outbound-queue.processor.ts');
+        }
+    });
+
+    it('says which way the sink failed, not just that it failed', () => {
+        // "does not ask the money authority" would be a lie here: it asks seven
+        // times. A violation message that misdescribes the defect sends the next
+        // person to add a gate that is already there.
+        const rows = withoutTheLegacyGate(() => census().bypasses);
+        expect(rows[0].terminusUncovered.length).toBeGreaterThan(0);
+    });
+
+    it('goes back to zero when the gate comes back', () => {
+        withoutTheLegacyGate(() => census());
+        expect(census().bypasses).toEqual([]);
+        expect(census().ungatedEgress).toEqual([]);
+    });
+});
+
+describe('the line numbers the audit publishes', () => {
+    it('are the lines the sends are really on', () => {
+        // Every stripper used to collapse what it removed onto one line, so a
+        // forty-line block comment moved every coordinate after it forty lines
+        // up. The whole output of this script is `file:line`, so the report, the
+        // violation message and the dominance walk were all quoting positions
+        // that do not exist in the file anybody opens.
+        const raw = readFileSync(resolve(API_SRC, 'modules', 'channels',
+            'outbound-queue.processor.ts'), 'utf8').split(/\r?\n/);
+        const sends = census().egress
+            .filter((entry: any) => entry.file.endsWith('outbound-queue.processor.ts'));
+        expect(sends.length).toBeGreaterThan(0);
+        for (const entry of sends) {
+            const line = raw[entry.line - 1] || '';
+            expect({ at: entry.line, sends: /sendStrict\(|sendMessage\(|\/messages/.test(line) })
+                .toEqual({ at: entry.line, sends: true });
+        }
+    });
+
+    it('survive a multi-line template literal between the gate and the POST', () => {
+        // The two strippers disagreed by different amounts — one collapsed
+        // template literals, the other kept them — so in a file full of
+        // multi-line SQL the gate lines and the egress lines were being compared
+        // in two different coordinate systems. A gate that runs AFTER its POST
+        // could land before it in the merged order and be read as authorising it.
+        // A backtick built rather than written, so this fixture can describe a
+        // template literal without ending the one it lives in.
+        const BT = String.fromCharCode(96);
+        const PROBE = resolve(API_SRC, 'modules', 'channels', 'gate-census-literal.generated.ts');
+        const SOURCE = [
+            '// Temporary fixture written by outbound-gate-census.spec.ts.',
+            'export class GateCensusLiteralService {',
+            '    async send(id: string, to: string): Promise<void> {',
+            '        const sql = ' + BT + '',
+            '            SELECT one, two, three',
+            '            FROM somewhere',
+            '            WHERE id = $1',
+            '        ' + BT + ';',
+            '        void sql; void to;',
+            '        await fetch(' + BT + 'https://graph.facebook.com/v21.0/${id}/messages' + BT + ', {});',
+            '        const admission = await this.admitSpend({ to });',
+            '        void admission;',
+            '    }',
+            '    private async admitSpend(_input: unknown): Promise<boolean> { return true; }',
+            '}',
+            '',
+        ].join('\n');
+        writeFileSync(PROBE, SOURCE, 'utf8');
+        try {
+            const found = census().ungatedEgress
+                .filter((entry: any) => entry.file.endsWith('gate-census-literal.generated.ts'));
+            // The gate is BELOW the POST, so the POST is uncovered — and the
+            // line it is reported at is the line it is written on.
+            expect(found.map((entry: any) => entry.line)).toEqual([10]);
+        } finally {
+            rmSync(PROBE, { force: true });
+        }
+    });
+});

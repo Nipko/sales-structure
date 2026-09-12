@@ -159,7 +159,9 @@ const CHANNEL_LITERALS = ['whatsapp', 'instagram', 'messenger', 'telegram', 'web
 // actually leave this process, resolves which sink each producer terminates at,
 // and asks whether THAT FILE contains a gate call. Write a new producer and it
 // is classified on its first run. Delete the gate from a sink and every
-// producer behind it becomes a violation in the same run.
+// producer behind it becomes a violation in the same run — which is a property
+// of `sinkVerdict`, exercised by removing a real gate from a real sink in
+// `outbound-gate-census.spec.ts`, not a promise made in a comment.
 // ---------------------------------------------------------------------------
 
 /**
@@ -205,24 +207,69 @@ const GATE_CALLS = [
  * A file that legitimately defines a road rather than using one is declared in
  * `PROVIDER_ROADS` and its entrances are classified one level up, as before.
  */
+/**
+ * Does the `{` at the end of this text open a FUNCTION body, or a block?
+ *
+ * The distinction is the whole point of the walk below, so it is made from the
+ * signature rather than from indentation: `} catch (error: any) {` and
+ * `if (ok) {` also carry a parenthesised list, and reading either as a function
+ * would put the method's own credits out of reach of its own POST.
+ */
+function opensFunction(before) {
+    const text = before.trim();
+    if (/=>\s*$/.test(text)) return true;
+    if (/^(?:\}\s*)?(?:else|try|finally|do)\b/.test(text)) return false;
+    if (/\b(?:if|for|while|switch|catch)\s*\([^(]*\)\s*$/.test(text)) return false;
+    return /\)\s*(?::\s*[^;{]+)?\s*$/.test(text);
+}
+
 function egressCredits(code, egressLines) {
     const lines = code.split(/\r?\n/);
-    const events = [];
-    for (let i = 0; i < lines.length; i++) {
-        if (GATE_CALLS.some(call => lines[i].includes(call))) events.push({ line: i + 1, kind: 'gate' });
-    }
-    for (const line of egressLines) events.push({ line, kind: 'egress' });
-    events.sort((left, right) => left.line - right.line
-        // A gate and an egress on the SAME line is the gate authorising it:
-        // `if (await this.admitSpend(x)) return this.post(x)` reads as one act.
-        || (left.kind === 'gate' ? -1 : 1));
+    const egressAt = new Map();
+    for (const line of egressLines) egressAt.set(line, (egressAt.get(line) || 0) + 1);
 
-    let credits = 0;
+    // ── THE BOUNDARY IS THE FUNCTION, NOT THE BRACE ─────────────────────────
+    //
+    // A gate mints its credit into the nearest enclosing FUNCTION frame, not
+    // into whatever `if` or `try` it happens to sit in. `admitSpend` is called
+    // inside a `try` and its answer is used after the `catch` — the ordinary
+    // shape of "authorise, handle the outage, then send" — and a credit that
+    // died with the `try` would report that send as unauthorised.
+    //
+    // An egress spends from the innermost frame outward and STOPS at the first
+    // function frame. So a gate in the method body pays for a POST nested under
+    // it, a gate in a different method never pays at all, and a gate before a
+    // callback does not pay for a POST inside that callback — which is the
+    // "one admission, N messages" defect, reported rather than excused.
+    const frames = [{ isFunction: true, credits: 0 }];
+    const mint = () => {
+        for (let depth = frames.length - 1; depth >= 0; depth--) {
+            if (!frames[depth].isFunction) continue;
+            frames[depth].credits += 1; return;
+        }
+    };
+    const spend = () => {
+        for (let depth = frames.length - 1; depth >= 0; depth--) {
+            if (frames[depth].credits > 0) { frames[depth].credits -= 1; return true; }
+            if (frames[depth].isFunction) return false;
+        }
+        return false;
+    };
+
     const uncovered = [];
-    for (const event of events) {
-        if (event.kind === 'gate') { credits += 1; continue; }
-        if (credits > 0) credits -= 1;
-        else uncovered.push(event.line);
+    for (let i = 0; i < lines.length; i++) {
+        const text = lines[i];
+        if (GATE_CALLS.some(call => text.includes(call))) mint();
+        for (let n = egressAt.get(i + 1) || 0; n > 0; n--) {
+            if (!spend()) uncovered.push(i + 1);
+        }
+        // Applied after the line's own events, so `if (ok) { return post(x); }`
+        // on one line still reads as gate-then-egress.
+        for (let column = 0; column < text.length; column++) {
+            if (text[column] === '{') {
+                frames.push({ isFunction: opensFunction(text.slice(0, column)), credits: 0 });
+            } else if (text[column] === '}' && frames.length > 1) frames.pop();
+        }
     }
     return uncovered;
 }
@@ -277,30 +324,95 @@ const PROVIDER_ROADS = {
  * question needs: a mention of `admitSpend` inside a comment or inside a string
  * is not a call, and must never be read as one.
  */
+/**
+ * ── WHY EVERY STRIPPER KEEPS ITS NEWLINES ───────────────────────────────────
+ *
+ * Both of these used to collapse what they removed onto one line. A block
+ * comment of forty lines became a space, and every line number after it in the
+ * file was reported forty lines too low. This file's whole output is
+ * `file:line` — the audit document, the `--check` violation message, the
+ * dominance test — so the collapsing made every published coordinate in the
+ * inventory wrong, silently and consistently.
+ *
+ * Worse than wrong numbers: the two strippers disagreed by DIFFERENT amounts.
+ * Gate lines came from `codeOnly` (template literals collapsed too), egress
+ * lines from `withoutComments` (template literals kept). One multi-line SQL
+ * literal between them — and this tree is full of them — and the dominance walk
+ * was comparing two different coordinate systems. A gate that runs AFTER its
+ * POST could land before it in the merged ordering and be read as authorising
+ * it. Every replacement below therefore puts back exactly the newlines it took
+ * out, so `withoutComments`, `codeOnly` and the raw file all agree on what
+ * line 990 is.
+ */
+const blankKeepingLines = (replacement) => (match) =>
+    replacement + '\n'.repeat((match.match(/\n/g) || []).length);
+
 function withoutComments(text) {
     return text
-        .replace(/\/\*[\s\S]*?\*\//g, ' ')
+        .replace(/\/\*[\s\S]*?\*\//g, blankKeepingLines(' '))
         .replace(/^[ \t]*\/\/.*$/gm, ' ');
 }
 
 function codeOnly(text) {
-    return withoutComments(text).replace(/`(?:[^`\\]|\\.)*`/g, '``');
+    return withoutComments(text)
+        .replace(/`(?:[^`\\]|\\.)*`/g, blankKeepingLines('``'))
+        // Quoted strings too, and for the same reason the docblock already
+        // gives for comments: `'this.admitSpend('` inside a log line is not a
+        // call. It also keeps the brace walk below honest, since a brace inside
+        // a string would open a scope that never closes.
+        .replace(/'(?:[^'\\\n]|\\.)*'/g, "''")
+        .replace(/"(?:[^"\\\n]|\\.)*"/g, '""');
 }
 
 const GATED_FILES = new Map();
 
-/** Does this file actually ASK the money authority? */
-function isGatedFile(rel) {
+/**
+ * ═══ A SINK IS GATED ONLY WHILE ITS GATE STILL COVERS ITS EGRESS ═══
+ *
+ * The old question was "does this file contain a gate call anywhere?", and a
+ * producer terminating at that file was declared inside the economic boundary
+ * on that answer alone. `outbound-queue.processor.ts` holds eight gate calls
+ * and four provider egresses across several methods, so it answered yes with
+ * room to spare — and went on answering yes with the gate on the live send path
+ * deleted. Every AI reply on every tenant would have gone to Meta unauthorised,
+ * unreserved and uncounted, and this census would have reported zero producers
+ * outside the boundary in the same run. It was reproduced exactly that way
+ * before this was written.
+ *
+ * So presence is not the question any more. A sink is gated when it asks the
+ * money authority AND no provider egress inside it is left uncovered by the
+ * scope-bounded walk above. Delete a gate from a sink and its egress goes
+ * uncovered, the sink stops being gated, and every producer behind it is
+ * reported in the same run — which is what the header of this file has claimed
+ * all along.
+ */
+function sinkVerdict(rel) {
     if (GATED_FILES.has(rel)) return GATED_FILES.get(rel);
     const full = path.join(API_SRC, rel);
-    let gated = false;
+    let verdict = { hasGate: false, uncovered: [], fullyGated: false };
     if (fs.existsSync(full)) {
-        const code = codeOnly(fs.readFileSync(full, 'utf8'));
-        gated = GATE_CALLS.some(call => code.includes(call));
+        const text = fs.readFileSync(full, 'utf8');
+        const code = codeOnly(text);
+        const hasGate = GATE_CALLS.some(call => code.includes(call));
+        // Same coordinates for both questions: `withoutComments` keeps the URL
+        // inside its template literal, and both strippers keep the line count.
+        const scan = withoutComments(text).split(/\r?\n/);
+        const egressLines = [];
+        for (let i = 0; i < scan.length; i++) {
+            if (PROVIDER_EGRESS.some(door => door.pattern.test(scan[i]))) egressLines.push(i + 1);
+        }
+        // A declared road defines a way out rather than choosing one; its
+        // entrances are gated one level up, so an uncovered egress inside it is
+        // not this file's answer to give.
+        const uncovered = PROVIDER_ROADS[rel] ? [] : egressCredits(code, egressLines);
+        verdict = { hasGate, uncovered, fullyGated: hasGate && uncovered.length === 0 };
     }
-    GATED_FILES.set(rel, gated);
-    return gated;
+    GATED_FILES.set(rel, verdict);
+    return verdict;
 }
+
+/** Kept as the narrow question, for the places that only need presence. */
+function isGatedFile(rel) { return sinkVerdict(rel).hasGate; }
 
 /** `export class Foo` to the file that declares it. Built once, from the source. */
 function classIndex() {
@@ -394,13 +506,16 @@ function gateCensus(rows) {
         // drops it, and a producer that neither is gated itself nor terminates
         // at a gated sink is still a violation.
         let where = terminus.file, how = terminus.how;
-        if (where && PROVIDER_ROADS[where] && isGatedFile(row.file)) {
+        if (where && PROVIDER_ROADS[where] && sinkVerdict(row.file).fullyGated) {
             how = `${how}, a road — gated at this call site instead`;
             where = row.file;
         }
         classified.push({
             ...row, needsGate: true, terminus: where, terminusHow: how,
-            gated: Boolean(where) && isGatedFile(where),
+            gated: Boolean(where) && sinkVerdict(where).fullyGated,
+            // Named so a violation can say WHICH way the sink failed: it never
+            // asked, or it asked and the answer no longer reaches the POST.
+            terminusUncovered: where ? sinkVerdict(where).uncovered : [],
         });
     }
 
@@ -432,7 +547,7 @@ function gateCensus(rows) {
                 app: file.app, file: file.rel, line: entry.line, what: entry.what,
                 road,
                 gated: file.app === 'api' && !uncovered.has(entry.line)
-                    && isGatedFile(file.rel),
+                    && sinkVerdict(file.rel).hasGate,
                 // Named separately from "no gate at all" so a report can tell
                 // an unguarded new file from a second POST behind one
                 // admission: they are different mistakes with different fixes.
@@ -1010,7 +1125,10 @@ function main() {
             process.stderr.write(`outbound-producer-inventory: CHARGEABLE WHATSAPP PRODUCER OUTSIDE THE `
                 + `ECONOMIC BOUNDARY at apps/api/src/${row.file}:${row.line} (${row.method}, lane `
                 + `${row.lane}) — terminates at ${row.terminus || 'an unresolved sink'} `
-                + `(${row.terminusHow}), which does not ask the money authority.\n`);
+                + `(${row.terminusHow}), which ${row.terminusUncovered && row.terminusUncovered.length
+                    ? `asks the money authority but leaves its provider egress uncovered at line `
+                        + `${row.terminusUncovered.join(', ')}`
+                    : 'does not ask the money authority'}.\n`);
             failed = true;
         }
         for (const entry of census.ungatedEgress) {
@@ -1046,4 +1164,4 @@ function main() {
 if (require.main === module) main();
 module.exports = { collect, declaredProducers, declaredInfrastructure, render, gateCensus,
     EGRESS, ROADS, GATE_CALLS, PROVIDER_EGRESS, PROVIDER_ROADS, codeOnly, withoutComments,
-    egressCredits };
+    egressCredits, sinkVerdict, isGatedFile };

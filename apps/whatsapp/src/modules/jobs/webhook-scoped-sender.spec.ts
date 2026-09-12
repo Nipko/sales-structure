@@ -4,6 +4,7 @@ import { WebhookProcessor } from './webhook.processor';
 const tenantId = '11111111-1111-4111-8111-111111111111';
 const schemaName = 'tenant_wa_worker';
 const phoneNumberId = '15550001111';
+const wabaId = 'waba-77';
 
 /**
  * ═══ THE SAME CUSTOMER, ON THE ROAD THAT IS ACTUALLY DEPLOYED ═══
@@ -51,6 +52,10 @@ describe('the deployed worker, and a sender with no phone number', () => {
         h.processor.processMessage({
             tenantId, schemaName, phoneNumberId, message, contacts,
             channelAccountId: phoneNumberId,
+            // `webhooks.service.ts` puts the WABA id in the job. A scoped id
+            // belongs to the PORTFOLIO, so leaving it out would key the same
+            // person differently on each of a business's numbers.
+            wabaId,
         });
 
     const contactInsert = (h: ReturnType<typeof harness>) =>
@@ -75,7 +80,7 @@ describe('the deployed worker, and a sender with no phone number', () => {
         await run(h, { ...base, from_user_id: 'BSU_abc123XYZ' });
 
         const insert = contactInsert(h)!;
-        expect(insert.params[0]).toBe(`bsuid:${phoneNumberId}:BSU_abc123XYZ`);
+        expect(insert.params[0]).toBe(`bsuid:${wabaId}:BSU_abc123XYZ`);
         // And `phone` is NULL rather than the opaque key: an identifier in the
         // phone column is a wrong dial waiting to happen.
         expect(insert.params[2]).toBeNull();
@@ -97,7 +102,7 @@ describe('the deployed worker, and a sender with no phone number', () => {
             [{ user_id: 'BSU_abc123XYZ', wa_id: '573001112233' }]);
 
         const forwarded = h.posts.find(post => post.body?.contactId);
-        expect(forwarded.body.contactId).toBe(`bsuid:${phoneNumberId}:BSU_abc123XYZ`);
+        expect(forwarded.body.contactId).toBe(`bsuid:${wabaId}:BSU_abc123XYZ`);
         expect(forwarded.body.metadata.senderKind).toBe('business_scoped');
         expect(forwarded.body.metadata.senderPhone).toBe('573001112233');
     });

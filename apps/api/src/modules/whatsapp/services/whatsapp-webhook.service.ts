@@ -131,7 +131,14 @@ export class WhatsappWebhookService {
               const phoneNumberId = value?.metadata?.phone_number_id;
 
               if (phoneNumberId) {
-                 await this.processMessageEvent(phoneNumberId, value);
+                 // `entry.id` IS the WABA id. It is not inside `value.metadata`
+                 // — Meta puts `display_phone_number` and `phone_number_id`
+                 // there and nothing else — so a business-scoped identifier read
+                 // downstream had been falling back to scoping on the NUMBER.
+                 // A scoped id belongs to the PORTFOLIO, so that split one
+                 // person into a different contact per number of the same
+                 // business.
+                 await this.processMessageEvent(phoneNumberId, value, wabaId ?? null);
                  handled = true;
               }
             } else if (change?.field === 'message_template_status_update' && wabaId) {
@@ -259,7 +266,8 @@ export class WhatsappWebhookService {
     );
   }
 
-  private async processMessageEvent(phoneNumberId: string, value: any) {
+  private async processMessageEvent(phoneNumberId: string, value: any,
+     wabaId: string | null = null) {
      this.logger.log(`Processing message event for phone_number_id: ${phoneNumberId}`);
 
      // Statuses first, and unconditionally. This used to run only on the branch
@@ -333,7 +341,10 @@ export class WhatsappWebhookService {
          // normalisation, which would turn an all-digit opaque id into a
          // diallable number belonging to a stranger.
          const identity = whatsAppSenderIdentity(msg, contacts, {
-             wabaId: value?.metadata?.waba_id ?? null, phoneNumberId,
+             // The portfolio first, the number only as a fallback: Meta scopes a
+             // business-scoped user id to the BUSINESS, so two numbers of one
+             // business must give the same person the same key.
+             wabaId, phoneNumberId,
          });
          const fromPhone = identity?.addressKey;
          if (!identity || typeof fromPhone !== 'string' || !fromPhone.trim()) {

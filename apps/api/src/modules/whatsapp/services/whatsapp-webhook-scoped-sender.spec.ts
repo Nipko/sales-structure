@@ -47,7 +47,11 @@ describe('a sender with no phone number', () => {
     }
 
     const value = (message: Record<string, unknown>, contacts: unknown[] = []) => ({
-        metadata: { phone_number_id: phoneNumberId, waba_id: wabaId },
+        // NOT `metadata.waba_id`: Meta does not send that. `entry.id` is the
+        // WABA id, and the service takes it from there — a fixture that
+        // invented the field would have passed against a shape production
+        // never produces.
+        metadata: { phone_number_id: phoneNumberId },
         contacts,
         messages: [{ id: 'wamid.PROBE', type: 'text', text: { body: 'hola' }, ...message }],
     });
@@ -57,8 +61,9 @@ describe('a sender with no phone number', () => {
         // key has to come out byte for byte, or contacts move and histories
         // split for people nobody touched.
         const h = harness();
-        await h.service.processMessageEvent(phoneNumberId, 
-            value({ from: '573001112233' }, [{ wa_id: '573001112233', profile: { name: 'Ana' } }]));
+        await h.service.processMessageEvent(phoneNumberId,
+            value({ from: '573001112233' }, [{ wa_id: '573001112233', profile: { name: 'Ana' } }]),
+            wabaId);
 
         expect(h.enqueued).toHaveLength(1);
         expect(h.enqueued[0].contactId).toBe('573001112233');
@@ -69,7 +74,8 @@ describe('a sender with no phone number', () => {
     it('answers a customer who has only a business-scoped id', async () => {
         // THE CASE THIS EXISTS FOR. This message used to be dropped.
         const h = harness();
-        await h.service.processMessageEvent(phoneNumberId, value({ from_user_id: 'BSU_abc123XYZ' }));
+        await h.service.processMessageEvent(phoneNumberId,
+            value({ from_user_id: 'BSU_abc123XYZ' }), wabaId);
 
         expect(h.enqueued).toHaveLength(1);
         // Keyed with the portfolio the id means something inside — two
@@ -85,7 +91,8 @@ describe('a sender with no phone number', () => {
         const h = harness();
         await h.service.processMessageEvent(phoneNumberId, value(
             { from_user_id: 'BSU_abc123XYZ' },
-            [{ user_id: 'BSU_abc123XYZ', wa_id: '573001112233', profile: { name: 'Ana' } }]));
+            [{ user_id: 'BSU_abc123XYZ', wa_id: '573001112233', profile: { name: 'Ana' } }]),
+            wabaId);
 
         expect(h.enqueued[0].contactId).toBe(`bsuid:${wabaId}:BSU_abc123XYZ`);
         expect(h.enqueued[0].metadata.senderPhone).toBe('573001112233');
@@ -97,22 +104,42 @@ describe('a sender with no phone number', () => {
         // identifier is genuinely unanswerable, and it must NOT release its
         // idempotency claim: Meta would redeliver the same broken body in a loop.
         const h = harness();
-        await h.service.processMessageEvent(phoneNumberId, value({}));
+        await h.service.processMessageEvent(phoneNumberId, value({}), wabaId);
 
         expect(h.enqueued).toEqual([]);
         expect(h.service.redis.del).not.toHaveBeenCalled();
     });
 
+    it('gives one person the same key from two numbers of the same business', async () => {
+        // Meta scopes a business-scoped user id to the PORTFOLIO, not to the
+        // number. Scoping on `phone_number_id` — which is what happened while
+        // the WABA id was read from a field Meta does not send — split one
+        // person into a different contact per number the business owns.
+        const first = harness();
+        await first.service.processMessageEvent(phoneNumberId,
+            value({ from_user_id: 'BSU_abc123XYZ' }), wabaId);
+        const second = harness();
+        await second.service.processMessageEvent('15559998888', {
+            metadata: { phone_number_id: '15559998888' },
+            contacts: [],
+            messages: [{ id: 'wamid.OTHER', type: 'text', text: { body: 'hola' },
+                from_user_id: 'BSU_abc123XYZ' }],
+        }, wabaId);
+
+        expect(second.enqueued[0].contactId).toBe(first.enqueued[0].contactId);
+    });
+
     it('keeps two portfolios apart even when the id looks the same', async () => {
         const first = harness();
-        await first.service.processMessageEvent(phoneNumberId, value({ from_user_id: 'SAME_ID_1234' }));
+        await first.service.processMessageEvent(phoneNumberId,
+            value({ from_user_id: 'SAME_ID_1234' }), wabaId);
         const second = harness();
-        await second.service.processMessageEvent(phoneNumberId, {
-            metadata: { phone_number_id: '15559998888', waba_id: 'waba-99' },
+        await second.service.processMessageEvent('15559998888', {
+            metadata: { phone_number_id: '15559998888' },
             contacts: [],
             messages: [{ id: 'wamid.OTHER', type: 'text', text: { body: 'hola' },
                 from_user_id: 'SAME_ID_1234' }],
-        });
+        }, 'waba-99');
 
         expect(first.enqueued[0].contactId).not.toBe(second.enqueued[0].contactId);
     });

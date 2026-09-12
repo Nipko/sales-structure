@@ -54,7 +54,8 @@ export class WebhookProcessor extends WorkerHost {
    * 3. Reenvía al ConversationsService de la API para procesamiento por IA
    */
   private async processMessage(data: any) {
-    const { tenantId, schemaName, phoneNumberId, message, contacts, channelAccountId } = data;
+    const { tenantId, schemaName, phoneNumberId, message, contacts, channelAccountId,
+      wabaId } = data;
     this.logger.log(`Processing message ${message.id} for tenant ${tenantId}`);
 
     try {
@@ -85,10 +86,13 @@ export class WebhookProcessor extends WorkerHost {
       // dos caminos tienen que llegar al mismo registro — y un identificador
       // opaco se clava con su portafolio, nunca pelado y nunca por la
       // normalización de teléfonos.
+      // El portafolio primero y el número sólo como respaldo: Meta acota el
+      // identificador de usuario al NEGOCIO, así que dos números del mismo
+      // negocio tienen que darle a la misma persona la misma clave. `wabaId`
+      // viene en el job desde `webhooks.service.ts`; un comentario anterior
+      // decía que no venía, y por eso esto acotaba por número.
       const identity = whatsAppSenderIdentity(message, contacts ?? [], {
-        // Sin `waba_id` en este job: el alcance es el número, que también
-        // acota correctamente y es lo que este proceso tiene.
-        phoneNumberId,
+        wabaId: wabaId ?? null, phoneNumberId,
       });
       if (!identity) {
         // Ni teléfono ni identificador: no hay a quién contestarle ni a quién

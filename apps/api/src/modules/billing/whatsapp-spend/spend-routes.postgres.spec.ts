@@ -4,7 +4,7 @@ import { Client } from 'pg';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import { WhatsappSpendController } from './whatsapp-spend.controller';
-import { declareSpendCeiling, type SpendQuery } from './spend-ledger';
+import { declareSpendCeiling, readSpendCeilings, type SpendQuery } from './spend-ledger';
 import { WHATSAPP_RATE_CARDS } from '../whatsapp-rates/whatsapp-rate-table.generated';
 
 /**
@@ -98,7 +98,7 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
         const spend: any = {
             ceilings: (_s: string, input: any) =>
                 prisma.transactionInTenantSchema(schema, (q: SpendQuery) =>
-                    require('./spend-ledger').readSpendCeilings(q, schema, input)),
+                    readSpendCeilings(q, schema, input)),
             setCeiling: (_s: string, input: any) =>
                 prisma.transactionInTenantSchema(schema, (q: SpendQuery) =>
                     declareSpendCeiling(q, schema, input)),

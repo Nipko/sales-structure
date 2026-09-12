@@ -166,11 +166,21 @@ const WHATSAPP_MARKERS: Record<Locale, Record<string, RegExp>> = {
  * the rate table instead of with another constant written down here — which
  * would only prove that two copies of the same mistake agree.
  */
+/**
+ * El separador de miles puede ser un espacio DURO (U+00A0): el francés lo usa y
+ * la Base de conocimiento se escribe con él, así que la clase de caracteres
+ * tiene que admitirlo.
+ *
+ * Va como ESCAPE y no como carácter literal por dos razones: `no-irregular-
+ * whitespace` rechaza el literal —esto estaba en rojo— y, sobre todo, un U+00A0
+ * literal dentro de una clase de caracteres es invisible para quien lee el
+ * archivo, que es cómo se pierde media hora preguntándose qué falta.
+ */
 const ALLOWANCE_SENTENCE: Record<Locale, RegExp> = {
-    es: /Cada \*\*número\*\* recibe \*\*([\d.,  ]+) mensajes de servicio gratis por mes calendario\*\*/,
-    en: /Every \*\*number\*\* gets \*\*([\d.,  ]+) free service messages per calendar month\*\*/,
-    pt: /Cada \*\*número\*\* recebe \*\*([\d.,  ]+) mensagens de serviço grátis por mês civil\*\*/,
-    fr: /Chaque \*\*numéro\*\* reçoit \*\*([\d.,  ]+) messages de service gratuits par mois civil\*\*/,
+    es: /Cada \*\*número\*\* recibe \*\*([\d.,\s\u00a0]+) mensajes de servicio gratis por mes calendario\*\*/,
+    en: /Every \*\*number\*\* gets \*\*([\d.,\s\u00a0]+) free service messages per calendar month\*\*/,
+    pt: /Cada \*\*número\*\* recebe \*\*([\d.,\s\u00a0]+) mensagens de serviço grátis por mês civil\*\*/,
+    fr: /Chaque \*\*numéro\*\* reçoit \*\*([\d.,\s\u00a0]+) messages de service gratuits par mois civil\*\*/,
 };
 
 /** The article in each locale that answers "does my plan cover this?". */

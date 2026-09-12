@@ -156,6 +156,47 @@ export class AIToolExecutorService {
     ) { }
 
     /**
+     * Convert service failures into the closed tool-result contract.
+     *
+     * Tool results are model input and can become customer-facing prose. A
+     * database/driver exception must therefore stay in logs. Only explicit
+     * Nest validation/conflict errors are controlled business messages that
+     * may be returned to the model.
+     */
+    private safeToolFailure(
+        toolName: string,
+        error: unknown,
+        mode: 'read' | 'write',
+    ): any {
+        const controlled = error instanceof BadRequestException || error instanceof ConflictException;
+        if (controlled) {
+            const response = error.getResponse();
+            const responseMessage = typeof response === 'string'
+                ? response
+                : (response as { message?: string | string[] })?.message;
+            const message = Array.isArray(responseMessage)
+                ? responseMessage.join('. ')
+                : responseMessage || 'La solicitud no cumple las condiciones necesarias.';
+            if (mode === 'read') {
+                return readFailed(`${toolName}_rejected`, { retryable: false, message });
+            }
+            return { error: `${toolName}_rejected`, message, retryable: false };
+        }
+
+        this.logger.error(
+            `[Tool] ${toolName} internal failure`,
+            error instanceof Error ? error.stack : undefined,
+        );
+        if (mode === 'read') return readFailed(`${toolName}_unavailable`);
+        return {
+            error: `${toolName}_unavailable`,
+            message: 'No pude completar esa operación en este momento. No afirmes que se realizó; ofrecé reintentar o derivarla al equipo.',
+            retryable: true,
+            shouldHandoff: true,
+        };
+    }
+
+    /**
      * La respuesta a una denegación, con el motivo tipado que la produjo.
      *
      * Cada motivo dice algo distinto al cliente, y confundirlos hace que el
@@ -3685,7 +3726,7 @@ export class AIToolExecutorService {
             };
         } catch (e: any) {
             this.logger.warn(`[Tool] get_property_details failed: ${e.message}`);
-            return { error: e.message };
+            return this.safeToolFailure('get_property_details', e, 'read');
         }
     }
 
@@ -4006,7 +4047,7 @@ export class AIToolExecutorService {
                 })),
             };
         } catch (e: any) {
-            return { error: e.message };
+            return this.safeToolFailure('search_packages', e, 'read');
         }
     }
 
@@ -4043,7 +4084,7 @@ export class AIToolExecutorService {
                 })),
             };
         } catch (e: any) {
-            return { error: e.message };
+            return this.safeToolFailure('get_package_details', e, 'read');
         }
     }
 
@@ -4056,7 +4097,7 @@ export class AIToolExecutorService {
         try {
             return await this.toursService.checkAvailability(schemaName, packageId, date, partySize);
         } catch (e: any) {
-            return { error: e.message };
+            return this.safeToolFailure('check_package_availability', e, 'read');
         }
     }
 
@@ -4104,7 +4145,7 @@ export class AIToolExecutorService {
             };
         } catch (e: any) {
             this.logger.warn(`[Tool] create_tour_booking failed: ${e.message}`);
-            return { error: e.message };
+            return this.safeToolFailure('create_tour_booking', e, 'write');
         }
     }
 
@@ -4133,7 +4174,7 @@ export class AIToolExecutorService {
                 },
             };
         } catch (e: any) {
-            return { error: e.message };
+            return this.safeToolFailure('get_treatment_plan', e, 'read');
         }
     }
 
@@ -4152,7 +4193,7 @@ export class AIToolExecutorService {
                 sessionsLeft: summary.sessionsLeft,
             };
         } catch (e: any) {
-            return { error: e.message };
+            return this.safeToolFailure('list_upcoming_sessions', e, 'read');
         }
     }
 
@@ -4190,7 +4231,7 @@ export class AIToolExecutorService {
                 })),
             };
         } catch (e: any) {
-            return { error: e.message };
+            return this.safeToolFailure('search_listings', e, 'read');
         }
     }
 
@@ -4226,7 +4267,7 @@ export class AIToolExecutorService {
                 status: l.status,
             };
         } catch (e: any) {
-            return { error: e.message };
+            return this.safeToolFailure('get_listing_details', e, 'read');
         }
     }
 
@@ -4243,7 +4284,7 @@ export class AIToolExecutorService {
             }
             return summary;
         } catch (e: any) {
-            return { error: e.message };
+            return this.safeToolFailure('list_pets', e, 'read');
         }
     }
 
@@ -4272,7 +4313,7 @@ export class AIToolExecutorService {
                 message: `Pet ${pet.name} registered successfully.`,
             };
         } catch (e: any) {
-            return { error: e.message };
+            return this.safeToolFailure('register_pet', e, 'write');
         }
     }
 
@@ -4343,7 +4384,7 @@ export class AIToolExecutorService {
                     : undefined,
             };
         } catch (e: any) {
-            return { error: e.message };
+            return this.safeToolFailure('get_vaccination_status', e, 'read');
         }
     }
 
@@ -4422,7 +4463,7 @@ export class AIToolExecutorService {
                 })),
             };
         } catch (e: any) {
-            return { error: e.message };
+            return this.safeToolFailure('get_menu', e, 'read');
         }
     }
 
@@ -4462,7 +4503,7 @@ export class AIToolExecutorService {
                 })),
             };
         } catch (e: any) {
-            return { error: e.message };
+            return this.safeToolFailure('get_promotions', e, 'read');
         }
     }
 
@@ -4574,7 +4615,7 @@ export class AIToolExecutorService {
                 message: `Order created successfully. Total: ${Number(order.total || 0).toLocaleString()} ${order.currency}`,
             };
         } catch (e: any) {
-            return { error: e.message };
+            return this.safeToolFailure('place_order', e, 'write');
         }
     }
 
@@ -4600,7 +4641,7 @@ export class AIToolExecutorService {
                 })),
             };
         } catch (e: any) {
-            return { error: e.message };
+            return this.safeToolFailure('get_membership_plans', e, 'read');
         }
     }
 
@@ -4627,7 +4668,7 @@ export class AIToolExecutorService {
                 })),
             };
         } catch (e: any) {
-            return { error: e.message };
+            return this.safeToolFailure('get_class_schedule', e, 'read');
         }
     }
 
@@ -4651,7 +4692,7 @@ export class AIToolExecutorService {
                 frozenUntil: member.frozen_until,
             };
         } catch (e: any) {
-            return { error: e.message };
+            return this.safeToolFailure('get_my_membership', e, 'read');
         }
     }
 
@@ -4687,7 +4728,7 @@ export class AIToolExecutorService {
                 message: 'Class booking confirmed.',
             };
         } catch (e: any) {
-            return { error: e.message };
+            return this.safeToolFailure('book_class', e, 'write');
         }
     }
 
@@ -4710,7 +4751,7 @@ export class AIToolExecutorService {
                 message: `Membership frozen for ${args.days} days.`,
             };
         } catch (e: any) {
-            return { error: e.message };
+            return this.safeToolFailure('freeze_membership', e, 'write');
         }
     }
 
@@ -4741,7 +4782,7 @@ export class AIToolExecutorService {
                 })),
             };
         } catch (e: any) {
-            return { error: e.message };
+            return this.safeToolFailure('get_courses', e, 'read');
         }
     }
 
@@ -4779,7 +4820,7 @@ export class AIToolExecutorService {
                 })),
             };
         } catch (e: any) {
-            return { error: e.message };
+            return this.safeToolFailure('get_course_schedule', e, 'read');
         }
     }
 
@@ -4844,7 +4885,7 @@ export class AIToolExecutorService {
                     : 'Test URL pending — ask the academic team to upload it.',
             };
         } catch (e: any) {
-            return { error: e.message };
+            return this.safeToolFailure('get_placement_test_link', e, 'read');
         }
     }
 
@@ -4878,7 +4919,7 @@ export class AIToolExecutorService {
                 })),
             };
         } catch (e: any) {
-            return { error: e.message };
+            return this.safeToolFailure('get_insurance_plans', e, 'read');
         }
     }
 
@@ -4904,7 +4945,7 @@ export class AIToolExecutorService {
                 disclaimer: 'This quote is a preliminary estimate. The final premium is subject to underwriting review.',
             };
         } catch (e: any) {
-            return { error: e.message };
+            return this.safeToolFailure('calculate_insurance_quote', e, 'read');
         }
     }
 
@@ -5040,7 +5081,7 @@ export class AIToolExecutorService {
                 nextPaymentAt: policy.next_payment_at,
             };
         } catch (e: any) {
-            return { error: e.message };
+            return this.safeToolFailure('check_policy_status', e, 'read');
         }
     }
 
@@ -5073,7 +5114,7 @@ export class AIToolExecutorService {
                 shouldHandoff: true,
             };
         } catch (e: any) {
-            return { error: e.message };
+            return this.safeToolFailure('file_insurance_claim', e, 'write');
         }
     }
 
@@ -5083,7 +5124,7 @@ export class AIToolExecutorService {
         try {
             return { services: await this.homeServicesService.listCapacityServices(schemaName) };
         } catch (e: any) {
-            return { error: 'read_failed', status: 'error' as const, retryable: true, message: e.message };
+            return this.safeToolFailure('list_home_services', e, 'read');
         }
     }
 
@@ -5095,9 +5136,8 @@ export class AIToolExecutorService {
             });
         } catch (e: any) {
             return {
-                error: e?.response?.error || e?.code || 'home_service_availability_failed',
+                ...this.safeToolFailure('check_home_service_availability', e, 'read'),
                 available: false,
-                message: e.message,
             };
         }
     }
@@ -5139,7 +5179,7 @@ export class AIToolExecutorService {
                 shouldHandoff: request.urgency === 'emergencia',
             };
         } catch (e: any) {
-            return { error: e.message };
+            return this.safeToolFailure('create_service_request', e, 'write');
         }
     }
 
@@ -5178,7 +5218,7 @@ export class AIToolExecutorService {
         } catch (e: any) {
             // Sin la colección vacía: devolver `[]` junto al error hacía que el
             // modelo leyera "no hay nada" de una consulta que falló.
-            return { error: 'read_failed', status: 'error' as const, retryable: true, message: e.message };
+            return this.safeToolFailure('list_my_service_requests', e, 'read');
         }
     }
 
@@ -5269,7 +5309,7 @@ export class AIToolExecutorService {
                 completedAt: request.completed_at,
             };
         } catch (e: any) {
-            return { error: e.message };
+            return this.safeToolFailure('check_service_request_status', e, 'read');
         }
     }
 
@@ -6002,7 +6042,7 @@ export class AIToolExecutorService {
 
             return { success: true, message: 'Property booking cancelled successfully' };
         } catch (e: any) {
-            return { error: e.message };
+            return this.safeToolFailure('cancel_property_booking', e, 'write');
         }
     }
 
@@ -6041,7 +6081,7 @@ export class AIToolExecutorService {
         } catch (e: any) {
             // Sin la colección vacía: devolver `[]` junto al error hacía que el
             // modelo leyera "no hay nada" de una consulta que falló.
-            return { error: 'read_failed', status: 'error' as const, retryable: true, message: e.message };
+            return this.safeToolFailure('list_my_property_bookings', e, 'read');
         }
     }
 
@@ -6068,7 +6108,7 @@ export class AIToolExecutorService {
 
             return { success: true, message: 'Tour booking cancelled successfully. Seats have been released.' };
         } catch (e: any) {
-            return { error: e.message };
+            return this.safeToolFailure('cancel_tour_booking', e, 'write');
         }
     }
 
@@ -6102,7 +6142,7 @@ export class AIToolExecutorService {
         } catch (e: any) {
             // Sin la colección vacía: devolver `[]` junto al error hacía que el
             // modelo leyera "no hay nada" de una consulta que falló.
-            return { error: 'read_failed', status: 'error' as const, retryable: true, message: e.message };
+            return this.safeToolFailure('list_my_tour_bookings', e, 'read');
         }
     }
 
@@ -6133,7 +6173,7 @@ export class AIToolExecutorService {
 
             return { success: true, message: 'Order cancelled successfully' };
         } catch (e: any) {
-            return { error: e.message };
+            return this.safeToolFailure('cancel_order', e, 'write');
         }
     }
 
@@ -6171,7 +6211,7 @@ export class AIToolExecutorService {
                 updatedAt: o.updated_at,
             };
         } catch (e: any) {
-            return { error: e.message };
+            return this.safeToolFailure('check_order_status', e, 'read');
         }
     }
 
@@ -6201,7 +6241,7 @@ export class AIToolExecutorService {
         } catch (e: any) {
             // Sin la colección vacía: devolver `[]` junto al error hacía que el
             // modelo leyera "no hay nada" de una consulta que falló.
-            return { error: 'read_failed', status: 'error' as const, retryable: true, message: e.message };
+            return this.safeToolFailure('list_my_orders', e, 'read');
         }
     }
 
@@ -6225,7 +6265,7 @@ export class AIToolExecutorService {
         try {
             return await this.gymsService.cancelBooking(schemaName, bookingId, contactId, operationalScope);
         } catch (e: any) {
-            return { error: e.message };
+            return this.safeToolFailure('cancel_class_booking', e, 'write');
         }
     }
 
@@ -6272,7 +6312,7 @@ export class AIToolExecutorService {
         } catch (e: any) {
             // Sin la colección vacía: devolver `[]` junto al error hacía que el
             // modelo leyera "no hay nada" de una consulta que falló.
-            return { error: 'read_failed', status: 'error' as const, retryable: true, message: e.message };
+            return this.safeToolFailure('list_my_enrollments', e, 'read');
         }
     }
 
@@ -6310,7 +6350,7 @@ export class AIToolExecutorService {
         } catch (e: any) {
             // Sin la colección vacía: devolver `[]` junto al error hacía que el
             // modelo leyera "no hay nada" de una consulta que falló.
-            return { error: 'read_failed', status: 'error' as const, retryable: true, message: e.message };
+            return this.safeToolFailure('list_my_claims', e, 'read');
         }
     }
 
@@ -6344,7 +6384,7 @@ export class AIToolExecutorService {
             await this.insuranceService.updateQuoteStatus(schema, quoteId, 'rejected');
             return { success: true, message: 'Quote withdrawn successfully' };
         } catch (e: any) {
-            return { error: e.message };
+            return this.safeToolFailure('cancel_quote', e, 'write');
         }
     }
 
@@ -6368,7 +6408,7 @@ export class AIToolExecutorService {
 
             return { success: true, message: 'Service request cancelled successfully' };
         } catch (e: any) {
-            return { error: e.message };
+            return this.safeToolFailure('cancel_service_request', e, 'write');
         }
     }
 
@@ -6409,7 +6449,7 @@ export class AIToolExecutorService {
                 },
             };
         } catch (e: any) {
-            return { error: e.message };
+            return this.safeToolFailure('update_pet', e, 'write');
         }
     }
 
@@ -6455,7 +6495,7 @@ export class AIToolExecutorService {
                 return { success: true, message: 'Photo session cancelled successfully' };
             });
         } catch (e: any) {
-            return { error: e.message };
+            return this.safeToolFailure('cancel_photo_session', e, 'write');
         }
     }
 

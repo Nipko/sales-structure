@@ -54,6 +54,7 @@ const { CERTIFICATION_LEDGER_DDL } = api('modules/simulation/certification-ledge
 const { BENCHMARK_LEDGER_DDL } = api('modules/simulation/benchmark-harness.ts');
 const { agentIssueResolutionDefects, routedAgentOperations } = shared;
 const { octoberAuthorities, octoberRows } = require('./meta-october-rows.cjs');
+const { toolsRows } = require('../2026-09-11/tools-programme-rows.cjs');
 
 /**
  * A list that is empty says so, in a word.
@@ -315,6 +316,18 @@ const ROWS = [
  */
 ROWS.push(...octoberRows(row, october));
 
+/**
+ * T1-T6, the tools programme, in the SAME table for the same reason.
+ *
+ * It had a generated audit and no row, so its state lived in prose -- the
+ * arrangement that produced the October disagreement, where this generator
+ * reported zero rows open while an independent review put the programme at
+ * about forty-five per cent, because this generator was not measuring it.
+ */
+const toolAudit = JSON.parse(fs.readFileSync(
+    path.join(root, 'docs/audits/2026-09-11/tool-profile-audit.json'), 'utf8'));
+ROWS.push(...toolsRows(row, toolAudit));
+
 // ─── Consistency, checked rather than promised ──────────────────────────────
 /**
  * ═══ THE SWEEP THAT COULD NOT FAIL, AND WHAT REPLACED IT ═══
@@ -376,10 +389,31 @@ function contradictionsIn(rows) {
             found.push(`${entry.id}: nombra un artefacto que no existe (${entry.artefact})`);
         }
     }
-    const EXPECTED_ROWS = 39;
-    if (rows.length !== EXPECTED_ROWS) {
-        found.push(`la tabla tiene ${rows.length} filas y debe tener ${EXPECTED_ROWS} `
-            + '(25 de A1–H3 más 14 de M0–M6/R0–R6)');
+    /**
+     * Una fila por programa, contada por su prefijo.
+     *
+     * Era un 39 escrito a mano, y una tanda que agregaba un programa entero
+     * tenía que editar el número para que el generador volviera a correr — lo
+     * que convierte el guardarraíl en un trámite. Ahora cada grupo declara
+     * cuántas filas tiene y el total se deriva: agregar una fila sin declararla
+     * sigue siendo rojo, que es lo que el guardarraíl existía para hacer.
+     */
+    const GROUPS = [
+        { name: 'A1–H3', test: id => /^[A-H]\d/.test(id), expected: 25 },
+        { name: 'M0–M6/R0–R6', test: id => /^[MR]\d/.test(id), expected: 14 },
+        { name: 'T1–T6', test: id => /^T\d/.test(id), expected: 6 },
+    ];
+    let accounted = 0;
+    for (const group of GROUPS) {
+        const actual = rows.filter(entry => group.test(entry.id)).length;
+        accounted += actual;
+        if (actual !== group.expected) {
+            found.push(`el grupo ${group.name} tiene ${actual} filas y debe tener ${group.expected}`);
+        }
+    }
+    if (accounted !== rows.length) {
+        found.push(`la tabla tiene ${rows.length} filas y sólo ${accounted} pertenecen a un `
+            + 'grupo declarado; una fila sin grupo no la cuenta nadie');
     }
     // Every id exactly once. Two rows with one id is how a table reports a status
     // twice and a reader takes whichever they saw first.

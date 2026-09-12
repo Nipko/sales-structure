@@ -42,17 +42,20 @@ describe('the artefact gate covers the tools programme', () => {
         expect(GENERATORS).toContain('2026-09-09/generate-certification-manifest.cjs');
     });
 
-    it('is green right now, so a red below means the mutation and not the tree', () => {
-        const { status } = run();
-        expect(status).toBe(0);
-    });
-
     it('goes RED when an audited source changes and the artefact does not', () => {
         // The only assertion that proves a gate. A tool definition is added to
         // a real audited file, the artefact is left alone, and the verifier has
         // to notice — which is exactly what it failed to do for days.
+        //
+        // The BASELINE is captured rather than assumed green. An earlier version
+        // asserted the whole repository was up to date before mutating, which is
+        // a property of the tree and not of the gate: another agent editing an
+        // audited source in the same working tree turned this red for a reason
+        // that had nothing to do with what it was testing. What must hold is the
+        // TRANSITION — green-or-red, then red, then back to where it started.
         const TOOL_FILE = resolve(ROOT, 'apps', 'api', 'src', 'modules', 'conversations',
             'tools', 'catalog-tools.ts');
+        const baseline = run().status;
         const original = readFileSync(TOOL_FILE, 'utf8');
         try {
             writeFileSync(TOOL_FILE, `${original}
@@ -68,12 +71,10 @@ export const ARTEFACT_GATE_PROBE_TOOL = {
         } finally {
             writeFileSync(TOOL_FILE, original, 'utf8');
         }
-    });
-
-    it('is green again once the source is back', () => {
-        // Proves the previous case failed for the mutation rather than leaving
-        // the tree broken behind it.
-        expect(run().status).toBe(0);
+        // And back to where it started, which is what proves the red above was
+        // the mutation and not something this test left behind.
+        expect(run().status).toBe(baseline);
+        expect(readFileSync(TOOL_FILE, 'utf8')).toBe(original);
     });
 });
 

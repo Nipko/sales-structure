@@ -1,17 +1,17 @@
 {
   "version": 1,
-  "revision": "7d8b81d19870d657106115fcb1e2841203b9596d",
-  "generatedAt": "2026-09-12T08:38:16.255Z",
+  "revision": "9659f5979436cf69931d6350ea5df152c4d6933f",
+  "generatedAt": "2026-09-12T08:45:58.659Z",
   "finished": false,
   "counts": {
     "aceptada": 11,
-    "bloqueada": 20,
-    "abierta": 8
+    "bloqueada": 21,
+    "abierta": 13
   },
   "provenance": {
-    "derived": 22,
+    "derived": 26,
     "executed_evidence": 3,
-    "declared": 14
+    "declared": 16
   },
   "contradictions": [],
   "gates": {
@@ -579,6 +579,75 @@
       "provenance": "derived",
       "artefact": null,
       "evidence": "El criterio principal de R6, textual: **ningún productor de WhatsApp puede generar una entrega fuera de la autorización aplicable**. Mientras el contador sea distinto de cero la fila está abierta, y después seguirá bloqueada por el modo observación, el canario con techo explícito y la autorización de activar `enforce`.",
+      "commits": []
+    },
+    {
+      "id": "T1",
+      "open": 15,
+      "openLabel": "15 controles configurables (familia.bandera) sin consumidor productivo: orders.emailConfirmations, treatments.emailConfirmations, realEstate.emailConfirmations, pets.emailConfirmations, restaurants.emailConfirmations, gyms.emailConfirmations y 9 más",
+      "gates": [],
+      "status": "abierta",
+      "provenance": "derived",
+      "artefact": null,
+      "evidence": "Derivado del contrato de perfil de negocio contra los módulos que pueden actuar sobre cada bandera, excluyendo el propio contrato, el editor y las pruebas. Una bandera que sólo su esquema y su formulario mencionan es un control que el dueño puede mover sin consecuencia, y la pantalla dice que hizo algo.",
+      "commits": []
+    },
+    {
+      "id": "T2",
+      "open": 1,
+      "openLabel": "la preparación por herramienta todavía no se audita contra el predicado real de cada una (activo, disponibilidad, capacidad, precio/moneda, propiedad del dato y relación con la cuenta)",
+      "gates": [],
+      "status": "abierta",
+      "provenance": "declared",
+      "artefact": null,
+      "evidence": "Condición de cierre: cada readiness cita el predicado que su herramienta evalúa de verdad y distingue falta de datos de error de lectura. Contar una fila cualquiera no basta: una cuenta sin capacidad no está lista por tener un servicio. Esta fila es `declared` porque la comparación predicado-a-predicado todavía no es mecánica; la condición dice qué la cerraría.",
+      "commits": []
+    },
+    {
+      "id": "T3",
+      "open": 1,
+      "openLabel": "assessment no entrega un scope autoritativo, así que toda evidencia queda `not_verified` de forma permanente",
+      "gates": [],
+      "status": "abierta",
+      "provenance": "derived",
+      "artefact": null,
+      "evidence": "Leído de la llamada, no de un comentario: intentEvidence is called with no scope: intent.key, Number(agent.version) || null, sealedRuns. Sin scope el lector no puede reconocer evidencia producida bajo la configuración actual, y un agente probado se ve igual que uno que nadie probó.",
+      "commits": []
+    },
+    {
+      "id": "T4",
+      "open": 1,
+      "openLabel": "1 de 20 elementos de descubrimiento sin recorrido: serviceCatalog",
+      "gates": [],
+      "status": "abierta",
+      "provenance": "derived",
+      "artefact": null,
+      "evidence": "Derivado de `DISCOVERY_ORDER` contra la tabla por elemento del tour. Un elemento que aparece en el panel y no en el recorrido es una pantalla a la que se manda al dueño sin decirle para qué sirve, qué datos necesita, qué puede confirmar ni qué cuesta.",
+      "commits": []
+    },
+    {
+      "id": "T5",
+      "open": 0,
+      "openLabel": "0 tareas sin verificador sobre 268 (5 son negativos de step-up `file_claim`, que no llevan positivo por diseño)",
+      "gates": [
+        1,
+        4
+      ],
+      "status": "bloqueada",
+      "provenance": "derived",
+      "artefact": null,
+      "evidence": "Universo canónico conservado: 76 perfiles, 268 tareas, 146 que comprometen al negocio. La verificación determinista local es lo que esta fila mide; la certificación por canal y modelo real sigue en cero (0/76) y es gate externo, no trabajo local.",
+      "commits": []
+    },
+    {
+      "id": "T6",
+      "open": 1,
+      "openLabel": "Assist todavía no consume el diagnóstico común como única lista de capacidades y operaciones ejecutables",
+      "gates": [],
+      "status": "abierta",
+      "provenance": "declared",
+      "artefact": null,
+      "evidence": "Condición de cierre: Assist propone sólo operaciones que puede ejecutar, explica las demás con destino permitido por rol, y no mantiene un segundo listado de capacidades en los prompts. Activado, preparado, probado, degradado y bloqueado se mantienen como estados distintos.",
       "commits": []
     }
   ]

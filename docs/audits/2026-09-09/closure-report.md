@@ -5,13 +5,13 @@ el estado sale de ella: con una condición local sin cumplir la fila está `abie
 cumplida y un gate externo nombrado está `bloqueada`; sólo sin condición y sin gate está `aceptada`.
 Cerrar un hueco cambia esta tabla cambiando el código, y reabrirlo la cambia de vuelta.
 
-Revisión: `7d8b81d19870d657106115fcb1e2841203b9596d`.
+Revisión: `9659f5979436cf69931d6350ea5df152c4d6933f`.
 
-**El programa no está terminado.** 11 filas aceptadas, 20 bloqueadas por un
-gate externo concreto y 8 abiertas; 0 perfiles certificados
+**El programa no está terminado.** 11 filas aceptadas, 21 bloqueadas por un
+gate externo concreto y 13 abiertas; 0 perfiles certificados
 de 76.
 
-Sin contradicciones en las 39 filas: a cada una se le recalculó el estado a partir de sus propias condiciones, ninguna fila abierta deja de decir qué falta, ningún gate nombrado falta de la lista, ninguna cifra quedó sin resolver y todo artefacto citado existe.
+Sin contradicciones en las 45 filas: a cada una se le recalculó el estado a partir de sus propias condiciones, ninguna fila abierta deja de decir qué falta, ningún gate nombrado falta de la lista, ninguna cifra quedó sin resolver y todo artefacto citado existe.
 
 Ese barrido corre dos veces: sobre las filas recién construidas y otra vez sobre las filas releídas del artefacto versionado, donde el estado es una cadena guardada que nadie recalculó. La primera pasada, sola, no podría fallar — el constructor deriva el estado de las mismas condiciones con las que se lo compara — y por eso no se presenta sola.
 
@@ -68,12 +68,18 @@ Ese barrido corre dos veces: sobre las filas recién construidas y otra vez sobr
 | R4 | **abierta** | contador | 7 productores todavía pueden emitir sin fila durable (1 en `inline`, 6 en `outbound_queue`) | La consola humana, la API REST y las campañas necesitan la misma admisión que el agente: un handoff detiene la IA, pero las respuestas humanas siguen generando cargos. La autoridad de operador humano existe desde este HEAD; lo que falta es que cada productor la use, y eso se cuenta arriba. | — |
 | R5 | **abierta** | contador | 4 de 18 escenarios de la matriz de aceptación sin prueba que los conteste: Pregunta resuelta y cinco "gracias"; Misma pregunta requerida sin progreso; Bot contra bot y ráfaga de contactos; Humano, REST, campaña y recordatorio | La matriz dejó de ser una tabla en un documento: sus 18 filas son datos, cada una nombra el archivo y UN TÍTULO POR MITAD del escenario, y una comprobación verifica que cada título sea el de un `it()` que de verdad corre — ni prosa, ni un `describe`, ni un `skip`. Una fila vale lo que su mitad más delgada: si una de ellas no está probada, la fila entera figura con `null` y dice qué haría falta, en vez de quedar fuera de la tabla para que la columna parezca llena — que es exactamente cómo un contador llega a cero sin que nadie cierre nada. | — |
 | R6 | **abierta** | contador | 7 productores pueden entregar fuera de la autorización aplicable (y después, gate 1 y 5 y 7) | El criterio principal de R6, textual: **ningún productor de WhatsApp puede generar una entrega fuera de la autorización aplicable**. Mientras el contador sea distinto de cero la fila está abierta, y después seguirá bloqueada por el modo observación, el canario con techo explícito y la autorización de activar `enforce`. | — |
+| T1 | **abierta** | contador | 15 controles configurables (familia.bandera) sin consumidor productivo: orders.emailConfirmations, treatments.emailConfirmations, realEstate.emailConfirmations, pets.emailConfirmations, restaurants.emailConfirmations, gyms.emailConfirmations y 9 más | Derivado del contrato de perfil de negocio contra los módulos que pueden actuar sobre cada bandera, excluyendo el propio contrato, el editor y las pruebas. Una bandera que sólo su esquema y su formulario mencionan es un control que el dueño puede mover sin consecuencia, y la pantalla dice que hizo algo. | — |
+| T2 | **abierta** | **declaración** | la preparación por herramienta todavía no se audita contra el predicado real de cada una (activo, disponibilidad, capacidad, precio/moneda, propiedad del dato y relación con la cuenta) | Condición de cierre: cada readiness cita el predicado que su herramienta evalúa de verdad y distingue falta de datos de error de lectura. Contar una fila cualquiera no basta: una cuenta sin capacidad no está lista por tener un servicio. Esta fila es `declared` porque la comparación predicado-a-predicado todavía no es mecánica; la condición dice qué la cerraría. | — |
+| T3 | **abierta** | contador | assessment no entrega un scope autoritativo, así que toda evidencia queda `not_verified` de forma permanente | Leído de la llamada, no de un comentario: intentEvidence is called with no scope: intent.key, Number(agent.version) || null, sealedRuns. Sin scope el lector no puede reconocer evidencia producida bajo la configuración actual, y un agente probado se ve igual que uno que nadie probó. | — |
+| T4 | **abierta** | contador | 1 de 20 elementos de descubrimiento sin recorrido: serviceCatalog | Derivado de `DISCOVERY_ORDER` contra la tabla por elemento del tour. Un elemento que aparece en el panel y no en el recorrido es una pantalla a la que se manda al dueño sin decirle para qué sirve, qué datos necesita, qué puede confirmar ni qué cuesta. | — |
+| T5 | **bloqueada** por gate 1 y 4 | contador | — | Universo canónico conservado: 76 perfiles, 268 tareas, 146 que comprometen al negocio. La verificación determinista local es lo que esta fila mide; la certificación por canal y modelo real sigue en cero (0/76) y es gate externo, no trabajo local. | — |
+| T6 | **abierta** | **declaración** | Assist todavía no consume el diagnóstico común como única lista de capacidades y operaciones ejecutables | Condición de cierre: Assist propone sólo operaciones que puede ejecutar, explica las demás con destino permitido por rol, y no mantiene un segundo listado de capacidades en los prompts. Activado, preparado, probado, degradado y bloqueado se mantienen como estados distintos. | — |
 
 ## De dónde sale cada fila
 
-22 filas salen de un contador leído del código: cerrar el hueco las cambia solo.
+26 filas salen de un contador leído del código: cerrar el hueco las cambia solo.
 3 descansan sobre un artefacto de una corrida real, nombrado en la tabla.
-**14 son declaraciones humanas pendientes de revisión**: A2, A3, A4, C1, D1, D3, E3, F3, F4, G2, G3, H2, M4, M6. Cambiar el código de esas áreas no cambia su estado, y por eso se dicen aparte en vez de presentarse como calculadas.
+**16 son declaraciones humanas pendientes de revisión**: A2, A3, A4, C1, D1, D3, E3, F3, F4, G2, G3, H2, M4, M6, T2, T6. Cambiar el código de esas áreas no cambia su estado, y por eso se dicen aparte en vez de presentarse como calculadas.
 
 ## Los contadores de los que sale la tabla
 

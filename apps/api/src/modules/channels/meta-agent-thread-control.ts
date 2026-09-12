@@ -31,6 +31,47 @@
  * processes and different restarts. Held in memory, a deploy in between makes
  * every thread `unknown` — and under coexistence that means a silent platform.
  * The state belongs in the tenant's schema next to the conversation it is about.
+ *
+ * ── WHAT IS WIRED, AND WHAT CANNOT BE ───────────────────────────────────────
+ *
+ * Nothing writes this state, and the reason is not "not yet". There is no
+ * field to write it from.
+ *
+ * `meta-messaging-status.ts` recognises `pass_thread_control`,
+ * `take_thread_control` and `request_thread_control`, but it reads only
+ * whether the key is PRESENT — no inner field of any of them is parsed
+ * anywhere in this repository. Deciding between `meta_took_control` and
+ * `meta_gave_control` means knowing WHO now owns the thread, which needs both
+ * an owner field off that payload and our own app id to compare it against,
+ * and neither is read here. Inventing the field name is how this programme
+ * already shipped a spec pinning a key production could never mint, so it is
+ * not done again.
+ *
+ * The subscriptions say the same thing from the other side: Messenger asks
+ * Meta for `messages,messaging_postbacks,message_deliveries,message_reads,
+ * messaging_referrals` and Instagram for `messages,messaging_postbacks`.
+ * Neither list contains `messaging_handovers`, so the branch that would carry
+ * a handover is unreachable before the parsing question is even asked.
+ *
+ * Consequences worth stating plainly rather than discovering:
+ *
+ *   · `standby` has no producer, so `recoverStandby` has nothing to recover
+ *     and a cron for it would sweep a table that cannot have such a row;
+ *   · `human_operator` is NOT wired on purpose. This platform already
+ *     silences the AI while a person holds a conversation, in
+ *     `conversations.service.ts`, from `conversations.status`. A second copy
+ *     of that fact can disagree with the first, and because this state is
+ *     checked before the flag and is not retryable, a stale row would drop
+ *     replies for ever on a thread the console had already released;
+ *   · turning the flag ON while nothing writes control makes every thread
+ *     read `unknown`, which under coexistence stands down. Do not flip it
+ *     until a writer exists. That precondition is enforced by a test, not
+ *     only by this paragraph.
+ *
+ * So what lives here is a state machine with a verified shape and no traffic:
+ * kept because the day Meta's agent appears in a tenant's thread, the cost of
+ * not having it is two agents answering one customer — and deleted-and-
+ * rewritten-in-a-hurry is the worse of the two ways to meet that day.
  */
 
 export const THREAD_CONTROL_STATES = [

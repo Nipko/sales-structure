@@ -26,6 +26,7 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
     let client: PrismaClient;
     let prisma: any;
     let store: MetaAgentThreadControlStore;
+    let redis: any;
     let setting: any = null;
     jest.setTimeout(180_000);
 
@@ -60,8 +61,12 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
                         `"${schema}".meta_agent_thread_control`), ...params)));
         // The flag, answered from the test rather than from a settings table.
         prisma.$queryRawUnsafe = async () => (setting ? [{ value: setting }] : []);
+        // No cache in these cases: each one sets `setting` and expects the very
+        // next read to see it. A sixty-second memo between them would make the
+        // suite depend on the order its own cases run in.
+        redis = { getJson: async () => null, setJson: async () => undefined };
 
-        store = new MetaAgentThreadControlStore(prisma);
+        store = new MetaAgentThreadControlStore(prisma, redis);
     });
 
     afterAll(async () => {
@@ -89,7 +94,7 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
         const conversationId = randomUUID();
         await store.apply(schema, conversationId, { kind: 'meta_took_control' }, NOW);
 
-        const afterRestart = new MetaAgentThreadControlStore(prisma);
+        const afterRestart = new MetaAgentThreadControlStore(prisma, redis);
         const control = await afterRestart.control(schema, conversationId);
         expect(control.state).toBe('meta_agent');
         expect(control.since).toEqual(NOW);

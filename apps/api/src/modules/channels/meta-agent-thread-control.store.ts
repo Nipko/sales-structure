@@ -1,11 +1,15 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { RedisService } from '../redis/redis.service';
 import {
     initialThreadControl, nextThreadControl, mayPlatformSpeak, standbyExpired,
     type SpeakVerdict, type ThreadControl, type ThreadControlEvent, type ThreadControlState,
 } from './meta-agent-thread-control';
 
 const SETTINGS_KEY = 'channels.metaAgentCoexistence';
+const CACHE_KEY = 'channels:metaAgentCoexistence';
+/** Seconds. The same window `dispatch.normalOutbox` already accepts for its switch. */
+const CACHE_TTL = 60;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
@@ -30,7 +34,10 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export class MetaAgentThreadControlStore {
     private readonly logger = new Logger(MetaAgentThreadControlStore.name);
 
-    constructor(private readonly prisma: PrismaService) {}
+    constructor(
+        private readonly prisma: PrismaService,
+        private readonly redis: RedisService,
+    ) {}
 
     /**
      * Is coexistence switched on for this tenant?
@@ -41,14 +48,9 @@ export class MetaAgentThreadControlStore {
      */
     async coexistenceEnabled(tenantId: string): Promise<boolean> {
         try {
-            const [row] = await this.prisma.$queryRawUnsafe<any[]>(
-                `SELECT value FROM public.platform_settings WHERE key = $1 LIMIT 1`,
-                SETTINGS_KEY,
-            );
-            const value = row?.value;
-            const config = typeof value === 'string' ? JSON.parse(value) : value;
+            const config = await this.settings();
             if (!config || config.enabled !== true) return false;
-            const tenants: unknown = config.tenantIds;
+            const tenants: unknown = (config as any).tenantIds;
             // An empty list with the switch on means every tenant, which is how
             // `dispatch.normalOutbox` reads it too — one grammar, not two.
             if (!Array.isArray(tenants) || tenants.length === 0) return true;
@@ -58,6 +60,40 @@ export class MetaAgentThreadControlStore {
                 + 'treating it as off, which is what every account is today');
             return false;
         }
+    }
+
+    /**
+     * The switch, read at most once a minute per process.
+     *
+     * `maySpeak` says below that it does not read the table while the flag is
+     * off, because "a query per send to learn that is a query per send". That
+     * was true of the thread table and false of this one: reading the setting
+     * WAS a query per send, so the saving was one query rather than two, and
+     * the sentence claimed more than the code did. The sibling switch
+     * `DispatchRolloutService` had already cached the same shape in Redis for
+     * sixty seconds; this is that, so the claim is now true of both reads.
+     *
+     * A cache miss, a Redis outage and a malformed row all fall through to the
+     * same place: the caller's catch, which reads OFF. Failing open here would
+     * silence a platform over a cache blip, which is the opposite direction
+     * from every other guard in this module.
+     */
+    private async settings(): Promise<Record<string, unknown> | null> {
+        const cached = await this.redis.getJson<Record<string, unknown>>(CACHE_KEY).catch(() => null);
+        if (cached) return cached;
+        const [row] = await this.prisma.$queryRawUnsafe<any[]>(
+            `SELECT value FROM public.platform_settings WHERE key = $1 LIMIT 1`,
+            SETTINGS_KEY,
+        );
+        const value = row?.value;
+        // Parsed BEFORE caching: a malformed row must throw on every read, not
+        // be memoised as a well-formed `null` that then reads as a deliberate
+        // off for the next minute.
+        const config = typeof value === 'string' ? JSON.parse(value) : value;
+        if (config && typeof config === 'object') {
+            await this.redis.setJson(CACHE_KEY, config, CACHE_TTL).catch(() => {});
+        }
+        return (config ?? null) as Record<string, unknown> | null;
     }
 
     /** What the record says about this thread, or `unknown` if there is none. */
@@ -125,7 +161,9 @@ export class MetaAgentThreadControlStore {
         const now = input.now ?? new Date();
         const coexistenceEnabled = await this.coexistenceEnabled(input.tenantId);
         // Read only when it can change the answer. With the flag off every state
-        // may speak, and a query per send to learn that is a query per send.
+        // may speak, and a query per send to learn that is a query per send —
+        // which is why the switch itself is cached for a minute rather than
+        // read from `platform_settings` on every call, as it used to be.
         if (!coexistenceEnabled) {
             return mayPlatformSpeak({ control: initialThreadControl(), coexistenceEnabled, now });
         }

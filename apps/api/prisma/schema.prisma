@@ -385,6 +385,22 @@ model WhatsappCredential {
   encryptedValue String    @map("encrypted_value") // AES-256-GCM encrypted
   rotationState  String    @default("active") @map("rotation_state") // active, rotating, revoked
   expiresAt      DateTime? @map("expires_at")
+
+  /// Lo que el token ES, no como se llama la fila.
+  ///
+  /// `credential_type` dice `system_user_token` y ahi conviven dos cosas que no
+  /// son intercambiables: un BISU acunado para UN cliente, y el System User
+  /// propio del proveedor. Firmar el envio de un tenant con el segundo atribuye
+  /// el mensaje al proveedor y lo cobra a otro portafolio.
+  ///
+  /// NULL = nadie lo establecio. Es un tercer estado, no un sinonimo de
+  /// ninguna de las dos respuestas: la credencial se sigue usando y se dice que
+  /// no fue comprobada.
+  credentialKind       String?   @map("credential_kind")
+  metaAppId            String?   @map("meta_app_id")
+  ownerBusinessId      String?   @map("owner_business_id")
+  grantedScopes        String?   @map("granted_scopes")
+  provenanceVerifiedAt DateTime? @map("provenance_verified_at")
   createdAt      DateTime  @default(now()) @map("created_at")
   updatedAt      DateTime  @updatedAt @map("updated_at")
 

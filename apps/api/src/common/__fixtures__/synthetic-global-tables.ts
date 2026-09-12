@@ -64,6 +64,32 @@ const CHANNEL_ACCOUNT_COLUMNS: ReadonlyArray<[string, string]> = [
     ['updated_at', 'TIMESTAMPTZ DEFAULT NOW()'],
 ];
 
+/**
+ * Columnas de `public.whatsapp_credentials`. La cuarta tabla global con una
+ * copia por suite — cuatro specs la creaban a mano, cada una con su propia
+ * lista — y el desenlace fue el de siempre: una migración que agregó columnas
+ * dejó a las cuatro con `P2022` («column does not exist») porque el cliente de
+ * Prisma las selecciona y ninguna de las copias las tenía.
+ *
+ * Las de procedencia van nullables a propósito, igual que en la migración: una
+ * credencial que nadie verificó se lee como `not_established`, que es un tercer
+ * estado y no un sinónimo de ninguna de las dos respuestas.
+ */
+const WHATSAPP_CREDENTIAL_COLUMNS: ReadonlyArray<[string, string]> = [
+    ['tenant_id', 'UUID'],
+    ['credential_type', 'TEXT'],
+    ['encrypted_value', 'TEXT'],
+    ['rotation_state', "TEXT DEFAULT 'active'"],
+    ['expires_at', 'TIMESTAMPTZ'],
+    ['credential_kind', 'TEXT'],
+    ['meta_app_id', 'TEXT'],
+    ['owner_business_id', 'TEXT'],
+    ['granted_scopes', 'TEXT'],
+    ['provenance_verified_at', 'TIMESTAMPTZ'],
+    ['created_at', 'TIMESTAMPTZ DEFAULT NOW()'],
+    ['updated_at', 'TIMESTAMPTZ DEFAULT NOW()'],
+];
+
 async function ensure(exec: Exec, table: string, columns: ReadonlyArray<[string, string]>): Promise<void> {
     await exec(`CREATE TABLE IF NOT EXISTS public.${table}(id UUID PRIMARY KEY)`);
     for (const [name, type] of columns) {
@@ -82,4 +108,5 @@ export async function ensureSyntheticGlobalTables(exec: Exec): Promise<void> {
     await ensure(exec, 'tenants', TENANT_COLUMNS);
     await ensure(exec, 'users', USER_COLUMNS);
     await ensure(exec, 'channel_accounts', CHANNEL_ACCOUNT_COLUMNS);
+    await ensure(exec, 'whatsapp_credentials', WHATSAPP_CREDENTIAL_COLUMNS);
 }

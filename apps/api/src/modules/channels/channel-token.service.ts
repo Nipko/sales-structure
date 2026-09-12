@@ -11,6 +11,7 @@ import { RedisService } from '../redis/redis.service';
 import { WhatsappCryptoService } from '../whatsapp/services/whatsapp-crypto.service';
 import { ConnectionRefusedError } from './connection-refusal';
 import { assertUsable, assessConnection, assessCredential, sendableChannelSql } from './connection-usability';
+import { credentialProvenance, maySignForClient } from './whatsapp-credential-kind';
 
 export interface ChannelCredentials {
     accessToken: string;
@@ -417,6 +418,45 @@ export class ChannelTokenService {
             assertUsable(assessCredential(cred), {
                 tenantId, channelType: 'whatsapp', requestedAccountId: base.phoneNumberId,
             });
+            // ── AND WHAT THE TOKEN ACTUALLY IS ──────────────────────────────
+            //
+            // `credential_type` says `system_user_token`, which is a NAME. Two
+            // things live under it: a BISU minted for ONE client through
+            // Embedded Signup, and the PROVIDER'S OWN System User token, which
+            // Meta reserves for the provider. Signing a tenant's message with
+            // the second attributes it to the provider, bills another portfolio
+            // and puts one customer's traffic into another business's audit
+            // trail — and nothing here could tell them apart.
+            //
+            // Only what is POSITIVELY established as wrong is refused. A
+            // credential nobody has verified still sends: every tenant
+            // connected before this record existed has one, and refusing them
+            // would be an outage caused by bookkeeping rather than by a fault.
+            const provenance = credentialProvenance({
+                credentialKind: (cred as any).credentialKind,
+                metaAppId: (cred as any).metaAppId,
+                ownerBusinessId: (cred as any).ownerBusinessId,
+                grantedScopes: (cred as any).grantedScopes,
+                verifiedAt: (cred as any).provenanceVerifiedAt,
+                // Read from the environment rather than through ConfigService:
+                // this service's constructor arity is depended on by every
+                // harness that builds it, and OUR OWN portfolio id is a single
+                // static fact, not tenant configuration.
+                providerBusinessId: process.env.META_BUSINESS_ID ?? null,
+            });
+            const verdict = maySignForClient(provenance, { businessId: base.businessId });
+            if (!verdict.usable) {
+                throw new ConnectionRefusedError('credential_not_client_scoped', {
+                    tenantId, channelType: 'whatsapp', requestedAccountId: base.phoneNumberId,
+                    detail: `${verdict.code}: ${verdict.detail}`,
+                });
+            }
+            if (!verdict.established) {
+                // Said once per resolution rather than never: the backlog of
+                // unverified credentials is a thing an operator can work
+                // through, and it is invisible until somebody names it.
+                this.logger.debug(`[Credential] ${base.phoneNumberId}: ${verdict.detail}`);
+            }
             let accessToken: string;
             try {
                 accessToken = this.cryptoService.decryptToken(cred.encryptedValue);

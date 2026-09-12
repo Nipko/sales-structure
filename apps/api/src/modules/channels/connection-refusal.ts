@@ -42,6 +42,20 @@ export type ConnectionRefusalCode =
     /** A credential exists and its own expiry has passed. */
     | 'credential_expired'
     /**
+     * A credential exists, is live, and is not this client's to send with.
+     *
+     * `credential_type` says `system_user_token`, and two things live under that
+     * name: a BISU minted for ONE client through Embedded Signup, and the
+     * PROVIDER'S OWN System User token. Signing a tenant's message with the
+     * second attributes it to the provider, bills another portfolio, and puts
+     * one customer's traffic into another business's audit trail.
+     *
+     * Distinct from `credential_revoked` because nothing is wrong with the
+     * token — it is simply the wrong one, and the remedy is reconnecting the
+     * number rather than rotating a secret.
+     */
+    | 'credential_not_client_scoped'
+    /**
      * Whether this connection may send could not be READ.
      *
      * Distinct from every code above, all of which are answers. This one is the
@@ -96,6 +110,9 @@ const REFUSAL_STATUS: Readonly<Record<ConnectionRefusalCode, HttpStatus>> = {
     // it — the same reasoning as the two above it.
     credential_revoked: HttpStatus.FAILED_DEPENDENCY,
     credential_expired: HttpStatus.FAILED_DEPENDENCY,
+    // 424 as well: the stored credential is what fails the request, and no
+    // change to the request fixes it. Reconnecting the number does.
+    credential_not_client_scoped: HttpStatus.FAILED_DEPENDENCY,
     // 503, and it is the only one here that is OURS. The others describe a
     // connection; this one says our own storage did not answer, so the caller
     // should try again rather than change anything.

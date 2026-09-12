@@ -87,10 +87,10 @@ integration('a connection that may not send is refused by both resolvers', () =>
 
         await client.$executeRawUnsafe(`CREATE SCHEMA "${schema}"`);
         await ensureSyntheticGlobalTables(sqlText => client.$executeRawUnsafe(sqlText));
-        await client.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS public.whatsapp_credentials(
-            id UUID PRIMARY KEY, tenant_id UUID, credential_type TEXT, encrypted_value TEXT,
-            rotation_state TEXT DEFAULT 'active', expires_at TIMESTAMPTZ,
-            created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW())`);
+        // `whatsapp_credentials` vive en `ensureSyntheticGlobalTables`, no acá:
+        // cuatro suites tenían su propia copia y una migración que agregó
+        // columnas las dejó a las cuatro con `P2022`.
+        await ensureSyntheticGlobalTables(sql => client.$executeRawUnsafe(sql));
         await client.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "${schema}".whatsapp_channels(
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(), provider_type TEXT,
             meta_business_id TEXT, meta_waba_id TEXT, phone_number_id TEXT,

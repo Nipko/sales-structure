@@ -1,3 +1,4 @@
+import { ensureSyntheticGlobalTables } from '../../../common/__fixtures__/synthetic-global-tables';
 import { randomUUID } from 'crypto';
 import { PrismaClient } from '@prisma/client';
 import { isOutboundSendContext, sameSendContext } from '@parallext/shared';
@@ -118,10 +119,10 @@ const enabled = !!databaseUrl;
         // The one global table this resolver reads besides `tenants`. Additive,
         // in the same discipline as the neighbouring suites: create if absent so
         // another worker's shape is never overwritten.
-        await client.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS public.whatsapp_credentials(
-            id UUID PRIMARY KEY, tenant_id UUID, credential_type TEXT, encrypted_value TEXT,
-            rotation_state TEXT DEFAULT 'active', expires_at TIMESTAMPTZ,
-            created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW())`);
+        // `whatsapp_credentials` vive en `ensureSyntheticGlobalTables`, no acá:
+        // cuatro suites tenían su propia copia y una migración que agregó
+        // columnas las dejó a las cuatro con `P2022`.
+        await ensureSyntheticGlobalTables(sql => client.$executeRawUnsafe(sql));
 
         for (const tenant of [tenantA, tenantB]) {
             await client.$executeRawUnsafe(

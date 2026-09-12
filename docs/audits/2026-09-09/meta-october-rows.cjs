@@ -329,9 +329,11 @@ function octoberRows(row, A) {
                 + 'matriz de aceptación sin prueba que los conteste: '
                 + A.uncoveredScenarios.join('; '),
             evidence: `La matriz dejó de ser una tabla en un documento: sus `
-                + `${A.acceptanceScenarios} filas son datos, cada una nombra el archivo y el título `
-                + 'de la prueba que la contesta, y una comprobación verifica que ese título exista '
-                + 'de verdad. Un escenario sin prueba figura con `null` y dice qué haría falta, en '
+                + `${A.acceptanceScenarios} filas son datos, cada una nombra el archivo y UN TÍTULO `
+                + 'POR MITAD del escenario, y una comprobación verifica que cada título sea el de '
+                + 'un `it()` que de verdad corre — ni prosa, ni un `describe`, ni un `skip`. Una '
+                + 'fila vale lo que su mitad más delgada: si una de ellas no está probada, la fila '
+                + 'entera figura con `null` y dice qué haría falta, en '
                 + 'vez de quedar fuera de la tabla para que la columna parezca llena — que es '
                 + 'exactamente cómo un contador llega a cero sin que nadie cierre nada.' }),
 

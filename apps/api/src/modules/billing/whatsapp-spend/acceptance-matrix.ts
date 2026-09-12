@@ -7,25 +7,43 @@
  * to read the suite and decide — and "somebody read it and decided" is exactly
  * the kind of claim this programme keeps finding to be wrong.
  *
- * So the mapping is data. Each scenario names the spec file and a distinctive
- * fragment of the test title that answers it, and a check asserts that the file
- * exists and contains that title. A scenario with no test says so, by name, and
- * the closure report counts it.
+ * So the mapping is data. Each scenario names the spec file and the TEST TITLES
+ * that answer it, and a check asserts that the file exists and that each title
+ * is a real `it()` in it. A scenario with no test says so, by name, and the
+ * closure report counts it.
  *
  * ── WHY `covered: null` IS THE HONEST VALUE AND NOT AN OMISSION ─────────────
  *
- * Half of these are covered and half are not. The temptation is to leave the
+ * Most of these are covered and some are not. The temptation is to leave the
  * uncovered ones out of the table, which makes the table look complete and the
  * counter read zero — the exact failure the derived closure report exists to
  * prevent. They are listed with `null`, so the number of uncovered scenarios is
  * a fact about the repository rather than about who wrote the list.
  *
- * ── AND WHY A TITLE FRAGMENT RATHER THAN A FILE ─────────────────────────────
+ * ── AND WHY A TEST TITLE RATHER THAN A FILE ─────────────────────────────────
  *
  * Naming only the file would let a scenario be "covered" by a suite that
- * happens to live in the right place. The fragment has to appear, so deleting
- * or renaming the test that actually answers the scenario breaks the mapping
- * instead of silently keeping it green.
+ * happens to live in the right place. The title has to be a test that RUNS, so
+ * deleting or renaming the test that actually answers the scenario breaks the
+ * mapping instead of silently keeping it green.
+ *
+ * That promise was written here before it was true. The check behind it looked
+ * for the fragment anywhere in the file's text, and three rows were being held
+ * up by text that runs nothing:
+ *
+ *   · `999` for the allowance boundary appeared only in a header comment and in
+ *     an aside — `October's unused 999 do not follow it.` Deleting all twelve
+ *     `it()` blocks of that file left the row green, which is strictly weaker
+ *     than naming the file.
+ *   · `nurturing` matched the `import { NurturingService }` line.
+ *   · `flow` matched a mock payload, and reached a title only through `flowId`.
+ *
+ * So a fragment now has to (1) appear inside an actual `it()` / `test()` title,
+ * (2) match exactly ONE title in that file — a fragment matching two titles
+ * survives the deletion of either, which is the promise above with the teeth
+ * pulled out — and (3) be long enough that a word as common as `flow` cannot be
+ * it. A row whose scenario has several halves names a title for each, because
+ * a row is only as covered as its thinnest half.
  */
 
 export interface AcceptanceScenario {
@@ -36,9 +54,10 @@ export interface AcceptanceScenario {
     /**
      * Where that evidence is produced, or `null` when nothing produces it yet.
      *
-     * `file` is relative to `apps/api/src`. `title` must appear inside it.
+     * `file` is relative to `apps/api/src`. Each entry of `titles` must name
+     * exactly one `it()` / `test()` title inside it.
      */
-    readonly covered: { readonly file: string; readonly title: string } | null;
+    readonly covered: { readonly file: string; readonly titles: readonly string[] } | null;
     /** For an uncovered row: what a test would have to do. */
     readonly missing?: string;
 }
@@ -49,7 +68,7 @@ export const ACCEPTANCE_MATRIX: readonly AcceptanceScenario[] = Object.freeze([
         evidence: 'Reserva según mercado y moneda; cifras consistentes con tarjeta versionada',
         covered: {
             file: 'modules/billing/whatsapp-spend/campaign-estimate.spec.ts',
-            title: 'prices every recipient at their OWN market rate',
+            titles: ['prices every recipient at their OWN market rate'],
         },
     },
     {
@@ -57,7 +76,7 @@ export const ACCEPTANCE_MATRIX: readonly AcceptanceScenario[] = Object.freeze([
         evidence: 'Efectos reales contados, semántica/recibos preservados',
         covered: {
             file: 'modules/channels/dispatch-items.spec.ts',
-            title: 'folds the caption onto the attachment where the provider bills them as one',
+            titles: ['folds the caption onto the attachment where the provider bills them as one'],
         },
     },
     {
@@ -65,7 +84,7 @@ export const ACCEPTANCE_MATRIX: readonly AcceptanceScenario[] = Object.freeze([
         evidence: 'Sólo gasto autorizado; ninguna doble asignación',
         covered: {
             file: 'modules/billing/whatsapp-spend/spend-ledger.postgres.spec.ts',
-            title: 'lets exactly one through, and the sum never exceeds the cap',
+            titles: ['lets exactly one through, and the sum never exceeds the cap'],
         },
     },
     {
@@ -73,7 +92,14 @@ export const ACCEPTANCE_MATRIX: readonly AcceptanceScenario[] = Object.freeze([
         evidence: 'Cuota por número, no multiplicada por mercado',
         covered: {
             file: 'modules/billing/whatsapp-spend/free-allowance.postgres.spec.ts',
-            title: '999',
+            // Two halves, two tests: the boundary itself, and the fact that a
+            // second number gets its own thousand rather than the tenant's one
+            // being shared. The row used to name `999`, which is in that file
+            // only as prose.
+            titles: [
+                'is still free at the 1000th and charges from the 1001st',
+                'gives each number of a tenant its own thousand',
+            ],
         },
     },
     {
@@ -81,7 +107,7 @@ export const ACCEPTANCE_MATRIX: readonly AcceptanceScenario[] = Object.freeze([
         evidence: 'Cuotas, pagador y pausa correctos, sin contaminación de debounce',
         covered: {
             file: 'modules/billing/whatsapp-spend/calendar-month-consumption.postgres.spec.ts',
-            title: 'never pools two numbers into one figure',
+            titles: ['never pools two numbers into one figure'],
         },
     },
     {
@@ -89,7 +115,7 @@ export const ACCEPTANCE_MATRIX: readonly AcceptanceScenario[] = Object.freeze([
         evidence: 'Sin costo cero supuesto ni éxito falso',
         covered: {
             file: 'modules/billing/whatsapp-spend/campaign-estimate.spec.ts',
-            title: 'counts a market the card does not know instead of dropping it',
+            titles: ['counts a market the card does not know instead of dropping it'],
         },
     },
     {
@@ -97,7 +123,7 @@ export const ACCEPTANCE_MATRIX: readonly AcceptanceScenario[] = Object.freeze([
         evidence: 'Revalidación y política correspondiente a la entrega/contrato',
         covered: {
             file: 'modules/billing/whatsapp-rates/whatsapp-rate-resolver.spec.ts',
-            title: 'is inclusive of the boundary: 00:00:00 belongs to the new card',
+            titles: ['is inclusive of the boundary: 00:00:00 belongs to the new card'],
         },
     },
     {
@@ -105,7 +131,7 @@ export const ACCEPTANCE_MATRIX: readonly AcceptanceScenario[] = Object.freeze([
         evidence: 'Reserva incierta retenida y cero reenvíos por reintento ciego',
         covered: {
             file: 'modules/billing/whatsapp-spend/spend-ledger.postgres.spec.ts',
-            title: 'adopts a retained reservation with its uncertainty, not a fresh one',
+            titles: ['adopts a retained reservation with its uncertainty, not a fresh one'],
         },
     },
     {
@@ -113,7 +139,7 @@ export const ACCEPTANCE_MATRIX: readonly AcceptanceScenario[] = Object.freeze([
         evidence: 'Alcance y beneficio incierto explícitos',
         covered: {
             file: 'modules/billing/whatsapp-spend/spend-scopes.spec.ts',
-            title: 'says what a ceiling CANNOT promise, wherever a ceiling is the reason',
+            titles: ['says what a ceiling CANNOT promise, wherever a ceiling is the reason'],
         },
     },
     {
@@ -129,7 +155,7 @@ export const ACCEPTANCE_MATRIX: readonly AcceptanceScenario[] = Object.freeze([
         evidence: 'Reparación/atención legítima; no etiqueta automática de abuso',
         covered: {
             file: 'modules/conversations/turn-outcome-wait.spec.ts',
-            title: 'answers a complaint, a rephrasing, another language and a request for a person',
+            titles: ['answers a complaint, a rephrasing, another language and a request for a person'],
         },
     },
     {
@@ -144,7 +170,7 @@ export const ACCEPTANCE_MATRIX: readonly AcceptanceScenario[] = Object.freeze([
         evidence: 'Revisión de intención sin reiniciar límites financieros',
         covered: {
             file: 'modules/billing/whatsapp-spend/spend-ceiling.postgres.spec.ts',
-            title: 'raises one without losing what has been counted',
+            titles: ['raises one without losing what has been counted'],
         },
     },
     {
@@ -161,25 +187,59 @@ export const ACCEPTANCE_MATRIX: readonly AcceptanceScenario[] = Object.freeze([
     {
         scenario: 'Humano, REST, campaña y recordatorio',
         evidence: 'Todos atraviesan admisión; nadie evita el control por origen',
-        covered: {
-            file: 'modules/channels/external-effect-inventory.spec.ts',
-            title: 'claims durable dispatch only for the item kinds the outbox can carry',
-        },
+        covered: null,
+        // This row said it was answered by `claims durable dispatch only for the
+        // item kinds the outbox can carry`, which asserts the seven item kinds
+        // the outbox accepts and that the agent's own durable reply is
+        // `pilot_gated`. Nothing in it is about the human console, the REST API
+        // or campaigns reaching admission — and the closure report says as much
+        // on the facing page: R4 is open because "7 productores todavía pueden
+        // emitir sin fila durable". A row cannot be covered by the same fact
+        // that keeps two other rows open.
+        missing: 'la prueba que se le atribuía sólo dice qué tipos de ítem puede llevar el outbox '
+            + 'durable y que la respuesta del agente sigue en `pilot_gated`: no toca la consola '
+            + 'humana, ni la API REST, ni las campañas, ni los recordatorios. Falta la prueba de '
+            + 'que un envío de cada uno de esos cuatro orígenes atraviesa la MISMA admisión que '
+            + 'el agente —reserva, techo y franquicia antes del POST— en vez de llegar al '
+            + 'proveedor por un carril propio. Hoy el contador de R0/R4 dice que siete '
+            + 'productores cobrables siguen fuera del carril durable, así que la prueba '
+            + 'fallaría: primero hay que mover los productores, y recién entonces fijarlo',
     },
     {
         scenario: 'Nurturing fuera de ventana/baja/cap',
         evidence: 'Cero efecto no permitido; no fallback más permisivo',
-        covered: {
-            file: 'modules/automation/nurturing-durable-lane.postgres.spec.ts',
-            title: 'nurturing',
-        },
+        // ── A ROW IS ONLY AS COVERED AS ITS THINNEST HALF ───────────────────
+        //
+        // Two of the three are answered and named below in `missing` for
+        // whoever closes this: the out-of-window nudge goes as the tenant's
+        // approved template rather than as free text, and the daily cap refuses
+        // the second one. The third is `baja` — the opt-out — and it is not
+        // covered because it is not IMPLEMENTED: `drip-sequence.service.ts`
+        // checks `leads.opted_out` and `compliance.isBlocked` before enrolling,
+        // and `nurturing.service.ts` checks neither.
+        //
+        // Marking it covered on the strength of the handoff test was the error
+        // the review caught: a thread handed to a person is not a customer who
+        // asked to stop hearing from us, and reading one as the other is how a
+        // scenario about consent gets closed by a test about routing.
+        covered: null,
+        missing: 'nurturing no consulta ninguna baja. `drip-sequence.service.ts:327-330` salta '
+            + 'los contactos con `leads.opted_out` o bloqueados por compliance antes de '
+            + 'inscribirlos; `nurturing.service.ts` no mira ninguno de los dos, así que un '
+            + 'contacto que pidió no recibir más mensajes sigue recibiendo nudges. Las otras '
+            + 'dos mitades SÍ están probadas en `nurturing-durable-lane.postgres.spec.ts` '
+            + '(«commits an out-of-window nudge», «still refuses a second nudge the same day»); '
+            + 'falta la compuerta de baja y su prueba, en ese orden',
     },
     {
         scenario: 'Operación ejecutada antes de pausa',
         evidence: 'Conserva resultado y obligación de confirmación recuperable',
         covered: {
             file: 'modules/channels/proactive-lane-semantics.postgres.spec.ts',
-            title: 'because that clears',
+            titles: [
+                'KEEPS the effect when the refusal was',
+                'leaves a held-back effect claimable once the condition clears',
+            ],
         },
     },
     {
@@ -187,7 +247,12 @@ export const ACCEPTANCE_MATRIX: readonly AcceptanceScenario[] = Object.freeze([
         evidence: 'El inicio y confirmaciones WA cuentan; continuidad segura y opcional',
         covered: {
             file: 'modules/channels/flow-one-post.spec.ts',
-            title: 'flow',
+            // `flow` used to be the fragment, and it matched a mock payload.
+            titles: [
+                'does not become a second message on an unreadable answer either',
+                'becomes text only when the fallback is authorised',
+                'sends nothing when the fallback is refused',
+            ],
         },
     },
 ]);

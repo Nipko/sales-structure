@@ -201,6 +201,39 @@ integration('the free allowance, granted against a real counter', () => {
         }
     });
 
+    it('is ONE thousand for the number, however many countries it writes to', async () => {
+        // The half of the R5 row that says "no multiplicada por mercado". Meta
+        // grants the allowance per NUMBER per month; a tenant answering
+        // Colombia, Germany and the United States from one number has a
+        // thousand free service messages in total, not a thousand each.
+        //
+        // Structurally true — the counter is keyed `number_month` — and
+        // untested, which is a different thing. A rate resolver that started
+        // keying the counter by market would break this and nothing else.
+        const markets = ['CO', 'DE', 'US'];
+        for (const market of markets) {
+            const result = await send({
+                identity: {
+                    tenantId: TENANT, channelType: 'whatsapp', channelAccountId: '15550001111',
+                    channelAddress: '+1 555 000 1111',
+                    payerKind: 'business_direct', payerWabaId: 'waba-1', payerBusinessId: 'biz-1',
+                    credentialId: 'cred-1', credentialSource: 'system_user',
+                    recipientScope: 'customer', recipientRef: `contact-${market}`,
+                    category: 'service', market, currency: 'USD',
+                },
+            });
+            expect(result.outcome).toBe('reserved');
+        }
+
+        const counters = await q(
+            `SELECT scope_key, used_deliveries, free_deliveries
+               FROM "${schema}".whatsapp_spend_counters
+              WHERE scope_kind = 'number_month' AND period_key = '2026-10'`);
+        // ONE row for the number, not one per market.
+        expect(counters).toHaveLength(1);
+        expect(Number(counters[0].free_deliveries)).toBe(markets.length);
+    });
+
     it('resets with the month in the WABA’s own zone, and never rolls over', async () => {
         // 03:00 UTC on 1 November is still 22:00 on 31 October in Bogotá. The
         // allowance belongs to October until the number's OWN month turns.

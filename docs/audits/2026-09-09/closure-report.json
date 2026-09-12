@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "revision": "0e14cd044f4ca902d5feece9d099ac0402d698e0",
-  "generatedAt": "2026-09-12T01:36:41.046Z",
+  "revision": "2dc082445b89cb2fdcbe12b58354bfcc3b26de9f",
+  "generatedAt": "2026-09-12T02:30:21.232Z",
   "finished": false,
   "counts": {
     "aceptada": 11,
@@ -557,13 +557,13 @@
     },
     {
       "id": "R5",
-      "open": 4,
-      "openLabel": "4 de 18 escenarios de la matriz de aceptación sin prueba que los conteste: Pregunta resuelta y cinco \"gracias\"; Misma pregunta requerida sin progreso; Bot contra bot y ráfaga de contactos; Humano, REST, campaña y recordatorio",
+      "open": 5,
+      "openLabel": "5 de 18 escenarios de la matriz de aceptación sin prueba que los conteste: Pregunta resuelta y cinco \"gracias\"; Misma pregunta requerida sin progreso; Bot contra bot y ráfaga de contactos; Humano, REST, campaña y recordatorio; Nurturing fuera de ventana/baja/cap",
       "gates": [],
       "status": "abierta",
       "provenance": "derived",
       "artefact": null,
-      "evidence": "La matriz dejó de ser una tabla en un documento: sus 18 filas son datos, cada una nombra el archivo y el título de la prueba que la contesta, y una comprobación verifica que ese título exista de verdad. Un escenario sin prueba figura con `null` y dice qué haría falta, en vez de quedar fuera de la tabla para que la columna parezca llena — que es exactamente cómo un contador llega a cero sin que nadie cierre nada.",
+      "evidence": "La matriz dejó de ser una tabla en un documento: sus 18 filas son datos, cada una nombra el archivo y UN TÍTULO POR MITAD del escenario, y una comprobación verifica que cada título sea el de un `it()` que de verdad corre — ni prosa, ni un `describe`, ni un `skip`. Una fila vale lo que su mitad más delgada: si una de ellas no está probada, la fila entera figura con `null` y dice qué haría falta, en vez de quedar fuera de la tabla para que la columna parezca llena — que es exactamente cómo un contador llega a cero sin que nadie cierre nada.",
       "commits": []
     },
     {

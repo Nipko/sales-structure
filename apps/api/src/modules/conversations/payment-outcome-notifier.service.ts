@@ -68,7 +68,7 @@ export class PaymentOutcomeNotifierService {
                 schemaName,
                 input.conversationId
                     ? `SELECT c.id AS conversation_id, c.channel_type, c.channel_account_id,
-                              ct.external_id, ct.email, ct.name,
+                              ct.id AS contact_id, ct.external_id, ct.email, ct.name,
                               (SELECT MAX(m.created_at) FROM messages m
                                 WHERE m.conversation_id = c.id AND m.direction = 'inbound') AS last_inbound_at
                          FROM conversations c
@@ -76,7 +76,7 @@ export class PaymentOutcomeNotifierService {
                         WHERE c.id = $1::uuid
                         LIMIT 1`
                     : `SELECT c.id AS conversation_id, c.channel_type, c.channel_account_id,
-                              ct.external_id, ct.email, ct.name,
+                              ct.id AS contact_id, ct.external_id, ct.email, ct.name,
                               (SELECT MAX(m.created_at) FROM messages m
                                 WHERE m.conversation_id = c.id AND m.direction = 'inbound') AS last_inbound_at
                          FROM conversations c
@@ -106,6 +106,26 @@ export class PaymentOutcomeNotifierService {
                 return this.notifyByEmail(target, input.text);
             }
 
+            // ── THIS IS A REPLY, AND THE JOB HAS TO SAY SO ────────────────
+            //
+            // The money authority reads `disposition` from the job: a job
+            // carrying a conversation is a reply inside one, and a job
+            // without one is a campaign, a reminder or a drip step. This
+            // producer HAD the conversation in hand — the query selects it,
+            // and the 24-hour check above is the whole reason we got here —
+            // and did not pass it. Two consequences, both wrong in the same
+            // direction:
+            //
+            //  · a service reply inside the window was billed as PROACTIVE;
+            //  · proactive traffic is what the soft stop pauses, so a tenant
+            //    near its ceiling would have had the confirmation of a
+            //    payment the customer already made held back. R4 is explicit:
+            //    a budget pause cancels no orders and erases no replies. The
+            //    customer would be left having paid, with nothing said.
+            //
+            // The contact travels for a related reason: the per-contact
+            // ceiling is keyed on it, so without it this producer is outside
+            // the one scope that bounds a runaway conversation.
             await this.outbound.enqueue({
                 tenantId: input.tenantId,
                 to: String(target.external_id),
@@ -113,6 +133,10 @@ export class PaymentOutcomeNotifierService {
                 channelAccountId: String(target.channel_account_id || ''),
                 content: { type: 'text', text: input.text },
                 dedupeId: input.dedupeId,
+                metadata: {
+                    conversationId: String(target.conversation_id),
+                    ...(target.contact_id ? { contactId: String(target.contact_id) } : {}),
+                },
             } as any);
             return true;
         } catch (e: any) {

@@ -718,6 +718,13 @@ export class ConversationsService {
             contactLockToken = await this.redis.acquireLockToken(contactLockKey, 10).catch(() => null);
             if (!contactLockToken) await new Promise(r => setTimeout(r, 300));
         }
+        if (!contactLockToken) {
+            this.logger.error(`[Pipeline] contact coordination unavailable for ${tenantId}/${channelType}/${contactId}`);
+            // Continuing without the first-contact fence can create two leads
+            // and two conversations, after which each turn can answer and be
+            // billed independently. BullMQ retries this idempotent inbound job.
+            throw new Error('contact_coordination_unavailable');
+        }
         let resolved: { contact: any; lead: any; conversation: any };
         try {
             resolved = await this.resolveConversation(tenantId, contactId, channelType, normalizedMsg);

@@ -33,4 +33,26 @@ describe('burst coordination failure', () => {
             .rejects.toThrow('burst_coordination_unavailable');
         expect(resolveConversation).not.toHaveBeenCalled();
     });
+
+    it('does not create contacts or conversations without the first-contact fence', async () => {
+        jest.useFakeTimers();
+        try {
+            const service = Object.create(ConversationsService.prototype) as ConversationsService;
+            const resolveConversation = jest.fn();
+            Object.assign(service as any, {
+                debounceBurst: jest.fn().mockResolvedValue(undefined),
+                redis: { acquireLockToken: jest.fn().mockResolvedValue(null) },
+                resolveConversation,
+                logger: { error: jest.fn(), warn: jest.fn(), log: jest.fn() },
+            });
+
+            const pending = (service as any).runTurn(structuredClone(message));
+            const rejection = expect(pending).rejects.toThrow('contact_coordination_unavailable');
+            await jest.runAllTimersAsync();
+            await rejection;
+            expect(resolveConversation).not.toHaveBeenCalled();
+        } finally {
+            jest.useRealTimers();
+        }
+    });
 });

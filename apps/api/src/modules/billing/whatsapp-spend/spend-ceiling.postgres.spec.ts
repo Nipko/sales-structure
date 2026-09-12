@@ -275,6 +275,75 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
             expect(allowed).toBe(50);
         });
 
+        it('bounds a BURST of different contacts at the aggregate ceiling', async () => {
+            // «ráfaga de contactos». The per-contact ceiling above cannot see
+            // this at all: forty people writing once each are forty first
+            // messages, every one of them legitimate on its own scope. What
+            // bounds the total is the ceiling on the ACCOUNT, and that is a
+            // different scope charged by the same admission.
+            const account = scope('account');
+            await declareSpendCeiling(query, schema,
+                { scope: account, capDeliveries: 12, warnPermille: 999, softPermille: 1000 });
+            let allowed = 0;
+            for (let contact = 0; contact < 40; contact++) {
+                // A fresh contact each time, so nothing here is a repeat and
+                // no per-contact ceiling could be what stops it.
+                if ((await spend(account, { disposition: 'reactive' })).ok) allowed += 1;
+            }
+            expect(allowed).toBe(12);
+        });
+
+        it('lets ONE looping contact exhaust that aggregate and silence everybody else', async () => {
+            // ═══ WHY THE PER-CONTACT DEFAULT IS A DECISION WORTH TAKING ═══
+            //
+            // The stakes of the open question above, measured instead of
+            // argued. With an aggregate ceiling and NO per-contact ceiling,
+            // one bot answering our bot spends the whole account allowance,
+            // and the next real customer is refused — the failure is not a
+            // bill, it is every other conversation going quiet.
+            //
+            // Asserted as it behaves today, so the decision is made against
+            // a number somebody ran rather than a worry somebody had.
+            const account = scope('account');
+            await declareSpendCeiling(query, schema,
+                { scope: account, capDeliveries: 5, warnPermille: 999, softPermille: 1000 });
+            for (let turn = 0; turn < 5; turn++) {
+                expect((await spend(account, { disposition: 'reactive' })).ok).toBe(true);
+            }
+            // The sixth delivery is somebody else's first message.
+            expect((await spend(account, { disposition: 'reactive' })).ok).toBe(false);
+        });
+
+        it('and a per-contact ceiling is what keeps the aggregate for everybody else', async () => {
+            // The two scopes composing, which is the answer the scenario
+            // asks for: the loop stops on ITS ceiling, the aggregate still
+            // has room, and the next person is answered.
+            const period = `2029-0${Math.floor(Math.random() * 9) + 1}`;
+            const account = { kind: 'account' as const, key: `acct-${randomUUID()}`, period };
+            const looping = { kind: 'contact' as const, key: `loop-${randomUUID()}`, period };
+            await declareSpendCeiling(query, schema,
+                { scope: account, capDeliveries: 20, warnPermille: 999, softPermille: 1000 });
+            await declareSpendCeiling(query, schema,
+                { scope: looping, capDeliveries: 3, warnPermille: 999, softPermille: 1000 });
+
+            // The loop: every turn charges both scopes, as one admission does.
+            let loopAllowed = 0;
+            for (let turn = 0; turn < 30; turn++) {
+                const contact = await spend(looping, { disposition: 'reactive' });
+                if (!contact.ok) continue;
+                loopAllowed += 1;
+                await spend(account, { disposition: 'reactive' });
+            }
+            expect(loopAllowed).toBe(3);
+
+            // And the account kept the rest of its allowance for other people.
+            let others = 0;
+            for (let person = 0; person < 20; person++) {
+                if ((await spend(account, { disposition: 'reactive' })).ok) others += 1;
+            }
+            expect(others).toBe(17);
+        });
+
         it('stops the narrowest thing it can: one contact, not the account', async () => {
             // A loop with one person must not silence the business's replies to
             // everybody else.

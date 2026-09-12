@@ -1,6 +1,8 @@
 import { readFileSync, existsSync } from 'fs';
 import { resolve } from 'path';
-import { ACCEPTANCE_MATRIX, AcceptanceScenario, uncoveredScenarios } from './acceptance-matrix';
+import {
+    ACCEPTANCE_MATRIX, AcceptanceScenario, coveragePlaces, uncoveredScenarios,
+} from './acceptance-matrix';
 
 /**
  * ═══ THE MAPPING HAS TO BE TRUE, OR IT IS WORSE THAN NOT HAVING ONE ═══
@@ -257,19 +259,27 @@ describe('the R5 acceptance matrix, checked rather than asserted', () => {
 
         it.each(covered.map(row => [row.scenario, row.covered!] as const))(
             '%s is answered by tests that exist', (_scenario, covers) => {
-                const file = resolve(SRC, covers.file);
-                expect(existsSync(file)).toBe(true);
-                const text = readFileSync(file, 'utf8');
-                expect(covers.titles.length).toBeGreaterThan(0);
-                for (const fragment of covers.titles) {
-                    // A fragment this short cannot be about one test, whatever
-                    // it happens to match.
-                    expect(fragment.length).toBeGreaterThanOrEqual(MIN_FRAGMENT_LENGTH);
-                    // Exactly one: two matches means either test can be deleted
-                    // with the row still green, which is the failure this check
-                    // exists to prevent.
-                    expect({ fragment, matched: titlesAnswering(text, fragment) })
-                        .toEqual({ fragment, matched: [expect.stringContaining(fragment)] });
+                // EVERY place, not the first. A scenario whose evidence is
+                // produced in two subsystems would otherwise be checked in
+                // one of them and assumed in the other.
+                const places = coveragePlaces(covers);
+                expect(places.length).toBeGreaterThan(0);
+                for (const place of places) {
+                    const file = resolve(SRC, place.file);
+                    expect({ file: place.file, exists: existsSync(file) })
+                        .toEqual({ file: place.file, exists: true });
+                    const text = readFileSync(file, 'utf8');
+                    expect(place.titles.length).toBeGreaterThan(0);
+                    for (const fragment of place.titles) {
+                        // A fragment this short cannot be about one test,
+                        // whatever it happens to match.
+                        expect(fragment.length).toBeGreaterThanOrEqual(MIN_FRAGMENT_LENGTH);
+                        // Exactly one: two matches means either test can be
+                        // deleted with the row still green, which is the
+                        // failure this check exists to prevent.
+                        expect({ fragment, matched: titlesAnswering(text, fragment) })
+                            .toEqual({ fragment, matched: [expect.stringContaining(fragment)] });
+                    }
                 }
             });
     });
@@ -320,8 +330,8 @@ describe('the R5 acceptance matrix, checked rather than asserted', () => {
             const workflow = readFileSync(
                 resolve(SRC, '..', '..', '..', '.github', 'workflows', 'candidate.yml'), 'utf8');
             const gated = ACCEPTANCE_MATRIX
-                .map(row => row.covered?.file)
-                .filter((file): file is string => !!file && file.includes('.postgres.spec.ts'));
+                .flatMap(row => coveragePlaces(row.covered).map(place => place.file))
+                .filter(file => file.includes('.postgres.spec.ts'));
             expect(gated.length).toBeGreaterThan(0);
 
             // Every one of them really is conditional — read from the file, so
@@ -337,7 +347,7 @@ describe('the R5 acceptance matrix, checked rather than asserted', () => {
             expect(workflow).toContain('assert-no-skipped-tests.cjs');
         });
 
-        it('reports these two gaps, by name', () => {
+        it('reports this one gap, by name', () => {
             // What replaces the assertion that used to stand here. That one
             // added the two halves and compared the sum to the whole, and
             // because `covered` is an object or `null` the sum WAS the whole
@@ -347,7 +357,6 @@ describe('the R5 acceptance matrix, checked rather than asserted', () => {
             // it is not computed from the thing it is checking: closing a gap
             // or opening one has to come here and say so.
             expect(uncoveredScenarios().map(row => row.scenario)).toEqual([
-                'Bot contra bot y ráfaga de contactos',
                 'Humano, REST, campaña y recordatorio',
                 // The nurturing row was opened by the adversarial pass and is
                 // closed again — not by relabelling it, but because the missing
@@ -361,11 +370,22 @@ describe('the R5 acceptance matrix, checked rather than asserted', () => {
                 // per-datum ask counter and no alternative route at all. The
                 // decision now records what WE said, counts it per episode and
                 // per datum, and the stalled ask ends in a transfer to a person
-                // rather than in a third question or in silence. The two
-                // remaining rows are both blocked on something outside a test:
-                // a per-contact ceiling nobody has chosen a number for, and
-                // seven chargeable producers that still send outside the
-                // durable lane.
+                // rather than in a third question or in silence.
+                //
+                // «Bot contra bot y ráfaga de contactos» left the list too,
+                // and the distinction matters: its third demand — an
+                // AGGREGATE ceiling — had no test, because a per-contact
+                // ceiling cannot see forty people writing once each. It has
+                // one now, next to the measurement of what happens WITHOUT a
+                // per-contact default: one looping bot spends the account's
+                // whole allowance and the next real customer is refused.
+                // Choosing that default is the owner's, and a row is not open
+                // local work because a decision is pending — it is covered,
+                // with the decision named.
+                //
+                // The one that remains is blocked on something no test can
+                // close: chargeable producers that still send outside the
+                // durable lane, which comes down by switching the rollout on.
             ]);
         });
 
@@ -377,9 +397,13 @@ describe('the R5 acceptance matrix, checked rather than asserted', () => {
             for (const row of ACCEPTANCE_MATRIX) {
                 expect(Object.prototype.hasOwnProperty.call(row, 'covered')).toBe(true);
                 if (row.covered === null) continue;
-                expect(typeof row.covered.file).toBe('string');
-                expect(row.covered.file.endsWith('.spec.ts')).toBe(true);
-                expect(Array.isArray(row.covered.titles)).toBe(true);
+                const places = coveragePlaces(row.covered);
+                expect(places.length).toBeGreaterThan(0);
+                for (const place of places) {
+                    expect(typeof place.file).toBe('string');
+                    expect(place.file.endsWith('.spec.ts')).toBe(true);
+                    expect(Array.isArray(place.titles)).toBe(true);
+                }
             }
             // And the filter has to be the one doing the separating: fed a
             // covered row and an uncovered one, it returns the uncovered one.
@@ -388,6 +412,14 @@ describe('the R5 acceptance matrix, checked rather than asserted', () => {
                     covered: { file: 'x.spec.ts', titles: ['t'] } },
                 { scenario: 'una fila sin prueba', evidence: 'e', covered: null, missing: 'm' },
             ];
+            // The normaliser, which is what lets one scenario name two
+            // subsystems. A single entry and a list of one must be the same
+            // thing, and `null` must be no places rather than one empty one.
+            expect(coveragePlaces(null)).toEqual([]);
+            expect(coveragePlaces({ file: 'a.spec.ts', titles: ['t'] }))
+                .toEqual([{ file: 'a.spec.ts', titles: ['t'] }]);
+            expect(coveragePlaces([{ file: 'a.spec.ts', titles: ['t'] },
+                { file: 'b.spec.ts', titles: ['u'] }])).toHaveLength(2);
             expect(uncoveredScenarios(synthetic).map(row => row.scenario))
                 .toEqual(['una fila sin prueba']);
         });

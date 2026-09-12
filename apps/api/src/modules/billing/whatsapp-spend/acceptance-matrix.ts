@@ -46,6 +46,21 @@
  * a row is only as covered as its thinnest half.
  */
 
+export interface AcceptanceCoverage {
+    /** Relative to `apps/api/src`. */
+    readonly file: string;
+    /** Each one must match exactly one `it()` title in that file. */
+    readonly titles: readonly string[];
+}
+
+/** Every place a scenario's evidence is produced, as a list either way. */
+export function coveragePlaces(
+    covered: AcceptanceScenario['covered'],
+): readonly AcceptanceCoverage[] {
+    if (!covered) return [];
+    return Array.isArray(covered) ? covered : [covered as AcceptanceCoverage];
+}
+
 export interface AcceptanceScenario {
     /** The row as the handoff states it. */
     readonly scenario: string;
@@ -56,8 +71,15 @@ export interface AcceptanceScenario {
      *
      * `file` is relative to `apps/api/src`. Each entry of `titles` must name
      * exactly one `it()` / `test()` title inside it.
+     *
+     * A LIST when the evidence the handoff asks for is produced in more than
+     * one place. That is not a convenience: «bot contra bot y ráfaga de
+     * contactos» asks for a per-contact pause, an aggregate ceiling AND
+     * bounded notices, and the ceilings live in the ledger while the notice
+     * budget lives in the turn. Forcing one file would mean either moving a
+     * test to where it does not belong or naming half the evidence.
      */
-    readonly covered: { readonly file: string; readonly titles: readonly string[] } | null;
+    readonly covered: AcceptanceCoverage | readonly AcceptanceCoverage[] | null;
     /** For an uncovered row: what a test would have to do. */
     readonly missing?: string;
 }
@@ -225,13 +247,52 @@ export const ACCEPTANCE_MATRIX: readonly AcceptanceScenario[] = Object.freeze([
     {
         scenario: 'Bot contra bot y ráfaga de contactos',
         evidence: 'Pausa/contacto y techo agregado; avisos acotados',
-        covered: null,
-        missing: 'el MECANISMO está probado —cien turnos contra un techo de diez se detienen en '
-            + 'diez, y el bucle de un contacto no silencia a los demás— pero NO hay techo por '
-            + 'contacto por defecto: todo alcance salvo la franquicia se crea en `observe`, así '
-            + 'que en un tenant que no configuró nada el bucle corre hasta que alguien ve la '
-            + 'factura. Elegir ese número es una decisión de producto, y este programa ya publicó '
-            + 'un techo cuyo umbral adivinado frenó exactamente lo que debía permitir',
+        // ── TRES EXIGENCIAS, Y LA QUE NO ES CÓDIGO ──────────────────────
+        //
+        // *Pausa/contacto*: cien turnos de un contacto contra un techo de
+        // diez se detienen en diez, y el bucle de uno no silencia a los
+        // demás. Ya estaba.
+        //
+        // *Techo agregado*: lo que faltaba. Cuarenta personas escribiendo
+        // una vez cada una son cuarenta primeros mensajes, todos legítimos en
+        // su propio alcance — ningún techo por contacto puede ver una
+        // ráfaga. La acota el techo de la CUENTA, que es otro alcance que
+        // cobra la misma admisión.
+        //
+        // *Avisos acotados*: el primero sale y el segundo del mismo episodio
+        // se convierte en una espera que no envía nada, así que un techo que
+        // rechaza cien veces no produce cien avisos.
+        //
+        // Lo que sigue afuera no es una prueba: **no hay techo por contacto
+        // POR DEFECTO**. Todo alcance salvo la franquicia se crea en
+        // `observe`, y eso se afirma en vez de dejarse descubrir — `does NOT
+        // bound it while the contact is only being observed`. Las
+        // consecuencias también se miden en vez de discutirse: con techo
+        // agregado y sin techo por contacto, UN bot que contesta a nuestro
+        // bot gasta la cuota de la cuenta y el siguiente cliente real queda
+        // sin respuesta. Elegir ese número es del dueño, y este programa ya
+        // publicó un techo cuyo umbral adivinado frenó exactamente lo que
+        // debía permitir.
+        covered: [
+            {
+                file: 'modules/billing/whatsapp-spend/spend-ceiling.postgres.spec.ts',
+                titles: [
+                    'bounds a runaway loop on one contact once a ceiling is set',
+                    'stops the narrowest thing it can: one contact, not the account',
+                    'bounds a BURST of different contacts at the aggregate ceiling',
+                    'lets ONE looping contact exhaust that aggregate and silence everybody else',
+                    'and a per-contact ceiling is what keeps the aggregate for everybody else',
+                    'does NOT bound it while the contact is only being observed',
+                ],
+            },
+            {
+                file: 'modules/conversations/turn-outcome-wait.spec.ts',
+                titles: [
+                    'lets the first failure notice through — a customer is told once',
+                    'turns the second one in the same episode into a wait that sends nothing',
+                ],
+            },
+        ],
     },
     {
         scenario: 'Humano, REST, campaña y recordatorio',

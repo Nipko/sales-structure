@@ -10,6 +10,14 @@ import {
     appointmentEmailVariables,
     buildAppointmentEmail,
 } from './appointment-email-layout';
+import {
+    OPERATION_RECEIPT_KINDS,
+    OPERATION_RECEIPT_SLUGS,
+    buildOperationReceipt,
+    operationReceiptName,
+    operationReceiptSubject,
+    operationReceiptVariables,
+} from './operation-receipt-layout';
 import { LEGACY_STOCK_BODIES } from './email-template-legacy-bodies';
 import { randomUUID } from 'crypto';
 
@@ -971,6 +979,26 @@ const DEFAULT_TEMPLATES: Omit<EmailTemplate, 'id' | 'language' | 'createdAt' | '
         variables: ['customer_name', 'company_name', 'company_logo', 'service_name', 'appointment_date', 'appointment_time', 'location', 'agent_name'],
         isActive: true,
     },
+
+    // -----------------------------------------------------------------------
+    // Operation receipts for the four families whose `emailConfirmations`
+    // control named an operation no template in this catalogue described: a
+    // FOOD ORDER (not a table reservation), a workshop INTAKE (not an
+    // appointment), a vehicle RENTAL and a pet BOARDING (both date ranges, and
+    // neither had a template at all). Markup and copy are generated from the
+    // shared layout so the four receipts and the four languages can never
+    // drift — see operation-receipt-layout.ts.
+    // -----------------------------------------------------------------------
+
+    ...OPERATION_RECEIPT_KINDS.map((kind) => ({
+        name: operationReceiptName(kind, 'es'),
+        slug: OPERATION_RECEIPT_SLUGS[kind],
+        subject: operationReceiptSubject(kind, 'es'),
+        bodyHtml: buildOperationReceipt(kind, 'es'),
+        bodyJson: {},
+        variables: operationReceiptVariables(kind),
+        isActive: true,
+    })),
 ];
 
 @Injectable()

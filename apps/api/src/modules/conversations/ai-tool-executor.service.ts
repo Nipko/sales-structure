@@ -3698,6 +3698,12 @@ export class AIToolExecutorService {
             { key: 'listingId', table: 'real_estate_listings', label: 'Inmueble', select: 'name', value: args.listingId },
             { key: 'petId', table: 'pets', label: 'Mascota', select: `name || ' (' || COALESCE(species, '') || ')'`, value: args.petId },
             { key: 'vehicleId', table: 'vehicles', label: 'Vehículo', select: `make || ' ' || model || ' ' || year::text`, value: args.vehicleId },
+            // Which multi-session plan this session belongs to. Same contract
+            // as the two above — validated against its own table before it is
+            // stored — and it is what makes an appointment a `treatments`
+            // operation, so the clinic's own `treatments.emailConfirmations`
+            // decides its confirmation instead of the generic appointment one.
+            { key: 'treatmentPlanId', table: 'treatment_plans', label: 'Plan', select: 'name', value: args.treatmentPlanId },
         ];
 
         const metadata: Record<string, string> = {};

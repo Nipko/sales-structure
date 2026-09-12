@@ -110,9 +110,30 @@ export class FaqsService {
         let rows: any[];
         try {
             rows = await this.prisma.$queryRawUnsafe(
+                // `COALESCE($3, ''::varchar)`, and the cast is the whole point.
+                //
+                // `$3` is the category, and it appears twice: once in the column
+                // list, where PostgreSQL deduces `character varying` from
+                // `faqs.category`, and once inside `COALESCE($3, '')`, where the
+                // bare literal made it `text`. One parameter cannot be both, so
+                // the statement could not be PREPARED at all — `42P08
+                // inconsistent types deduced for parameter $3` — whenever the
+                // driver sent the value untyped, which is what Prisma does for
+                // `null`. And the category field of the FAQ editor is optional:
+                // `category: form.category.trim() || undefined`. So saving a FAQ
+                // without a category failed on every tenant of every vertical,
+                // while saving one WITH a category worked, which is why this hid
+                // for so long. The vertical seed always supplies a category,
+                // which is why bootstrapped tenants have FAQs nobody could have
+                // added by hand.
+                //
+                // Typing the literal instead of the parameter makes both uses
+                // `character varying`; `varchar || text` still yields text, so
+                // the search vector is byte-identical to before for every input
+                // that used to work.
                 `INSERT INTO "${schemaName}"."faqs" (question, answer, category, tags, order_index, is_published, search_tsv)
                  VALUES ($1, $2, $3, $4::text[], $5, $6,
-                         to_tsvector('simple', $1 || ' ' || $2 || ' ' || COALESCE($3, '')))
+                         to_tsvector('simple', $1 || ' ' || $2 || ' ' || COALESCE($3, ''::varchar)))
                  RETURNING id, question, answer, category, tags, order_index, is_published, views, created_at, updated_at`,
                 input.question, input.answer,
                 input.category ?? null,

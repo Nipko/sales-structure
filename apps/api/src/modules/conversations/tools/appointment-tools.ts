@@ -52,6 +52,7 @@ export const APPOINTMENT_TOOLS: ToolDefinition[] = [
                 // las verticales que lo tienen; en el resto se omite.
                 listingId: { type: 'string', description: 'Real-estate listing UUID this visit is about — from search_listings / get_listing_details. Only for real-estate tenants.' },
                 petId: { type: 'string', description: 'Pet UUID this appointment is for — from list_pets_for_contact. Only for veterinary tenants.' },
+                treatmentPlanId: { type: 'string', description: 'Treatment plan UUID this session belongs to — from get_treatment_plan. Only for clinics and spas running multi-session plans.' },
             },
             required: ['serviceId', 'date', 'time', 'customerName', 'customerEmail'],
         },

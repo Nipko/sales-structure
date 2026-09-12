@@ -2,6 +2,7 @@ import { EducationEnrollmentCommands, type EnrollmentCommand } from './education
 import type { ServedAgentAuthority } from '../persona/served-agent-authority';
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { OperationConfirmationService } from '../email-templates/operation-confirmation.service';
 import {
     normalizeCurrencyCode,
     optionalPositiveIntegerUnit,
@@ -30,7 +31,16 @@ import {
 export class EducationService {
     private readonly logger = new Logger(EducationService.name);
 
-    constructor(private readonly prisma: PrismaService) {}
+    constructor(
+        private readonly prisma: PrismaService,
+        /** The enrolment receipt `education.emailConfirmations` governs. */
+        private readonly confirmations?: OperationConfirmationService,
+    ) {}
+
+    /** One factory, so the dashboard and the agent cannot disagree about receipts. */
+    private commands(): EducationEnrollmentCommands {
+        return new EducationEnrollmentCommands(this.prisma, this.confirmations);
+    }
 
     // ── Courses ───────────────────────────────────────────────────
 
@@ -225,13 +235,13 @@ export class EducationService {
     }
 
     getEnrollmentTerms(schemaName: string, cohortId: string) {
-        return new EducationEnrollmentCommands(this.prisma).getTerms(schemaName,cohortId);
+        return this.commands().getTerms(schemaName,cohortId);
     }
     enrollStudent(schemaName: string, data: EnrollmentCommand, operationalScope?:ServedAgentAuthority): Promise<any> {
-        return new EducationEnrollmentCommands(this.prisma).enroll(schemaName,data,operationalScope);
+        return this.commands().enroll(schemaName,data,operationalScope);
     }
     cancelEnrollment(schemaName: string, id: string, input: {contactId?: string; reason?: string} = {},operationalScope?:ServedAgentAuthority): Promise<any> {
-        return new EducationEnrollmentCommands(this.prisma).cancel(schemaName,id,input,operationalScope);
+        return this.commands().cancel(schemaName,id,input,operationalScope);
     }
     async updateEnrollment(schemaName: string, id: string, data: any): Promise<any> {
         // Dashboard status changes use the same transition as conversational tools.

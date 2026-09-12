@@ -12,6 +12,11 @@ import {
 } from '../channels/proactive-dispatch.service';
 import { emailConfirmationsForOperation } from '../../common/utils/served-confirmation-policy.util';
 import {
+    appointmentSubjectFamily,
+    confirmationFamiliesForSubject,
+    type AppointmentSubjectFamily,
+} from './appointment-confirmation-subject';
+import {
     buildAppointmentIcs,
     durationMinutes,
     formatWallClockDate,
@@ -47,14 +52,15 @@ interface AppointmentFacts {
      */
     conversationId: string | null;
     /**
-     * `metadata.testDrive`, written by `AppointmentsService.create` when the
-     * booking carries a vehicle command.
+     * The family whose operation this appointment IS, when it is not a plain
+     * one: `vehicles` for a test drive, `realEstate` for a property visit,
+     * `pets` for a veterinary visit. Read from the row's own markers — see
+     * `appointment-confirmation-subject.ts`.
      *
-     * It is what makes this appointment a `vehicles` operation and not a plain
-     * one, and therefore which of the owner's two switches decides whether the
-     * confirmation email goes out.
+     * It decides which of the owner's switches governs the confirmation email,
+     * which is why it is a fact about the operation and not about the tenant.
      */
-    testDrive: boolean;
+    subject: AppointmentSubjectFamily | null;
 }
 
 /**
@@ -351,7 +357,7 @@ export class AppointmentNotificationsService {
             customerName: appointment.customerName ?? null,
             customerEmail: appointment.customerEmail ?? null,
             conversationId: appointment.conversationId ?? null,
-            testDrive: appointment.metadata?.testDrive === true,
+            subject: appointmentSubjectFamily(appointment.metadata),
         });
 
         if (!appointment?.id) return fromPayload();
@@ -394,9 +400,12 @@ export class AppointmentNotificationsService {
                     ? String(row.conversation_id)
                     : (appointment.conversationId ?? null),
                 // From the ROW, like every other fact here: the AI executor's
-                // payload is a pointer and the marker is written by the INSERT.
-                testDrive: row.metadata?.testDrive === true
-                    || appointment.metadata?.testDrive === true,
+                // payload is a pointer and the markers are written by the
+                // INSERT. The payload is still consulted as a fallback, for the
+                // same reason the other fields do it — the manual CRUD emitter
+                // and the tool executor hand over different shapes.
+                subject: appointmentSubjectFamily(row.metadata)
+                    ?? appointmentSubjectFamily(appointment.metadata),
             };
         } catch (err: any) {
             this.logger.warn(`Could not read appointment ${appointment.id}: ${err?.message}`);
@@ -416,7 +425,10 @@ export class AppointmentNotificationsService {
     }
 
     /**
-     * `agent_personas.config_json.tools.appointments.emailConfirmations`.
+     * `agent_personas.config_json.tools.<family>.emailConfirmations`, where the
+     * family is the one whose operation this appointment IS — `vehicles` for a
+     * test drive, `realEstate` for a property visit, `pets` for a veterinary
+     * visit, `appointments` for a plain one.
      *
      * It gates the EMAIL and only the email. The channel notice above is not
      * switched by it — it goes out on the durable lane for every confirmed
@@ -437,10 +449,11 @@ export class AppointmentNotificationsService {
         return emailConfirmationsForOperation(
             <T>(sql: string, params: any[] = []) =>
                 this.prisma.executeInTenantSchema<T>(schemaName, sql, params),
-            // A test drive is an appointment the `vehicles` family asked for, so
-            // the dealership's own switch decides it when they set one. See
-            // `ConfirmationFamilies`.
-            facts.testDrive ? ['vehicles', 'appointments'] : ['appointments'],
+            // A test drive, a property visit and a veterinary visit are all
+            // appointments that another family asked for, so that family's own
+            // switch decides them when the owner set one. See
+            // `appointment-confirmation-subject.ts` and `ConfirmationFamilies`.
+            confirmationFamiliesForSubject(facts.subject),
             facts.conversationId,
         );
     }

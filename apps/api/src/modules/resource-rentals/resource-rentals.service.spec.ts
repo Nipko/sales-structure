@@ -17,13 +17,20 @@ describe('ResourceRentalsService', () => {
     const foreignContactId = '77777777-7777-4777-8777-777777777777';
     const mediaId = '99999999-9999-4999-8999-999999999999';
 
-    function buildService(transactionInTenantSchema?: jest.Mock) {
+    function buildService(transactionInTenantSchema?: jest.Mock, confirmations?: any) {
         const prisma = {
-            executeInTenantSchema: jest.fn(),
+            // Answers with a promise, because the real one always does. It
+            // was a bare `jest.fn()` returning `undefined`, and the receipt
+            // helpers read labels through it and then `.catch()` the result —
+            // so the double, not the code, was throwing
+            // `Cannot read properties of undefined (reading 'catch')` and two
+            // cases about reservations were failing for a reason that has
+            // nothing to do with reservations.
+            executeInTenantSchema: jest.fn(async () => [] as any[]),
             transactionInTenantSchema: transactionInTenantSchema || jest.fn(),
         };
         return {
-            service: new ResourceRentalsService(prisma as any),
+            service: new ResourceRentalsService(prisma as any, confirmations),
             prisma,
         };
     }
@@ -246,6 +253,121 @@ describe('ResourceRentalsService', () => {
         expect(insertParams).toEqual(expect.arrayContaining([
             'pet_boarding', petId, serviceId, ownerContactId, '2026-08-10', '2026-08-11',
         ]));
+    });
+
+    describe('a receipt cannot undo what is already committed', () => {
+        /**
+         * ═══ THE INVARIANT THE COMMENT CLAIMED AND NOTHING TESTED ═══
+         *
+         * Both receipts are sent AFTER their transaction commits, and the
+         * line above each one says a dead mail server must not undo a booked
+         * stay. Nothing checked it. It was true only because the shared
+         * sender swallows its own failures and answers with an outcome — so
+         * the guarantee lived in the callee, and one unguarded read added to
+         * a receipt helper later would have ended it silently.
+         *
+         * What it costs to get wrong: the stay is in the database, the caller
+         * sees an exception, and the retry books it a second time. The
+         * customer is charged for two.
+         */
+        const throwingReceipt = () => ({
+            send: jest.fn(async () => { throw new Error('smtp is down'); }),
+        });
+
+        it('keeps a booked stay when its receipt throws', async () => {
+            const created = { id: rentalId, rental_type: 'pet_boarding', status: 'reserved' };
+            const query = jest.fn(async (sql: string) => {
+                if (sql.includes('pg_advisory_xact_lock')) return [];
+                if (sql.includes('FROM pets')) {
+                    return [{ id: petId, name: 'Toby', is_active: true, contact_id: ownerContactId }];
+                }
+                if (sql.includes('FROM contacts')) return [{ id: ownerContactId }];
+                if (sql.includes('FROM opportunities o')) return [];
+                if (sql.includes('FROM services')) {
+                    return [{ id: serviceId, category: 'hotel', max_concurrent: 3, is_active: true }];
+                }
+                if (sql.includes('resource_id = $1::uuid')) return [];
+                if (sql.includes('WITH requested_nights')) return [];
+                if (sql.includes('INSERT INTO resource_rentals')) return [created];
+                if (sql.includes('INSERT INTO resource_rental_events')) return [];
+                throw new Error(`Unexpected SQL: ${sql}`);
+            });
+            const receipt = throwingReceipt();
+            const { service } = buildService(txWith(query), receipt);
+
+            // Resolves with the stay, not rejects. The caller must never be
+            // told that a committed booking failed.
+            await expect(service.create(schemaName, {
+                type: 'pet_boarding',
+                resourceId: petId,
+                serviceId,
+                startDate: '2026-08-10',
+                endDate: '2026-08-11',
+            })).resolves.toBe(created);
+            // And it really did try: a guarantee that holds because nothing
+            // was attempted would be the wrong green.
+            expect(receipt.send).toHaveBeenCalledTimes(1);
+        });
+
+        it('keeps a reserved vehicle when its receipt throws', async () => {
+            // The real eligibility shape, copied from the approval case
+            // below rather than invented: four named reviews, each with a
+            // status and its evidence reference.
+            const cleared = {
+                identity: { status: 'verified', evidenceRef: 'identity:1' },
+                driverLicense: { status: 'verified', evidenceRef: 'licence:1' },
+                insurance: { status: 'not_required', reason: 'tenant policy' },
+                payment: { status: 'verified', evidenceRef: 'payment:1' },
+            };
+            const current = {
+                id: rentalId, rental_type: 'vehicle_rental', resource_id: vehicleId,
+                start_date: '2026-08-10', end_date: '2026-08-12',
+                status: 'pending_review', version: 4,
+                metadata: { details: { driver: { name: 'Ana' }, eligibility: cleared } },
+            };
+            const query = jest.fn(async (sql: string) => {
+                if (sql.includes('SELECT * FROM resource_rentals')) return [current];
+                if (sql.includes('pg_advisory_xact_lock')) return [];
+                if (sql.includes('FROM vehicles')) return [{ id: vehicleId, status: 'available' }];
+                if (sql.includes('id <> $2::uuid')) return [];
+                if (sql.includes('UPDATE resource_rentals')) {
+                    return [{ ...current, status: 'reserved', version: 5 }];
+                }
+                if (sql.includes('INSERT INTO resource_rental_events')) return [];
+                throw new Error(`Unexpected SQL: ${sql}`);
+            });
+            const receipt = throwingReceipt();
+            const { service } = buildService(txWith(query), receipt);
+
+            await expect(service.approveVehicleRental(
+                schemaName, rentalId, 4, actorId, 'tenant_supervisor',
+            )).resolves.toMatchObject({ status: 'reserved', version: 5 });
+            expect(receipt.send).toHaveBeenCalledTimes(1);
+        });
+
+        it('sends no receipt at all for a transition that reserved nothing', async () => {
+            // The other direction: the vehicle receipt is guarded by the
+            // transition that actually reserved, so a refused approval must
+            // not tell a customer their car is ready.
+            const current = {
+                id: rentalId, rental_type: 'vehicle_rental', resource_id: vehicleId,
+                start_date: '2026-08-10', end_date: '2026-08-12',
+                status: 'pending_review', version: 4,
+                metadata: { details: { eligibility: { identity: 'pending' } } },
+            };
+            const query = jest.fn(async (sql: string) => {
+                if (sql.includes('SELECT * FROM resource_rentals')) return [current];
+                if (sql.includes('pg_advisory_xact_lock')) return [];
+                return [];
+            });
+            const receipt = throwingReceipt();
+            const { service } = buildService(txWith(query), receipt);
+
+            await expect(service.approveVehicleRental(
+                schemaName, rentalId, 4, actorId, 'tenant_supervisor',
+            )).rejects.toBeDefined();
+            expect(receipt.send).not.toHaveBeenCalled();
+        });
     });
 
     it('derives boarding contact from the pet and rejects a mismatched body contactId', async () => {

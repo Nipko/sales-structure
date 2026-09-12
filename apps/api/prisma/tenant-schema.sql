@@ -5910,3 +5910,29 @@ CREATE INDEX IF NOT EXISTS idx_whatsapp_receipt_inbox_pending
         ON "{{SCHEMA_NAME}}"."whatsapp_receipt_inbox" (next_attempt_at)
         WHERE state = 'pending';
 -- END WHATSAPP SPEND LEDGER
+
+-- BEGIN OPERATION ORIGIN THREAD
+-- `tools.<familia>.emailConfirmations` es un interruptor POR AGENTE, y el
+-- agente correcto es el que atendió la conexión donde nació la operación. Esa
+-- conexión se lee del hilo, así que una operación que no guarda su
+-- `conversation_id` no puede decir de quién es el interruptor.
+--
+-- Estas cuatro tablas de operación no lo guardaban. Aditivo y nulable: `NULL`
+-- es la respuesta real de toda fila sin hilo (alta desde el panel), y el
+-- resolutor la trata como "el dueño no apagó nada" en vez de adivinar un
+-- agente. Sin FK, igual que los demás `conversation_id` agregados tarde acá.
+-- La migración 20260912100000_operation_origin_thread hace lo mismo con los
+-- tenants que ya existen.
+ALTER TABLE "{{SCHEMA_NAME}}"."class_bookings" ADD COLUMN IF NOT EXISTS "conversation_id" UUID;
+ALTER TABLE "{{SCHEMA_NAME}}"."enrollments" ADD COLUMN IF NOT EXISTS "conversation_id" UUID;
+ALTER TABLE "{{SCHEMA_NAME}}"."insurance_quotes" ADD COLUMN IF NOT EXISTS "conversation_id" UUID;
+ALTER TABLE "{{SCHEMA_NAME}}"."resource_rentals" ADD COLUMN IF NOT EXISTS "conversation_id" UUID;
+CREATE INDEX IF NOT EXISTS "idx_class_bookings_conversation"
+    ON "{{SCHEMA_NAME}}"."class_bookings" ("conversation_id") WHERE "conversation_id" IS NOT NULL;
+CREATE INDEX IF NOT EXISTS "idx_enrollments_conversation"
+    ON "{{SCHEMA_NAME}}"."enrollments" ("conversation_id") WHERE "conversation_id" IS NOT NULL;
+CREATE INDEX IF NOT EXISTS "idx_insurance_quotes_conversation"
+    ON "{{SCHEMA_NAME}}"."insurance_quotes" ("conversation_id") WHERE "conversation_id" IS NOT NULL;
+CREATE INDEX IF NOT EXISTS "idx_resource_rentals_conversation"
+    ON "{{SCHEMA_NAME}}"."resource_rentals" ("conversation_id") WHERE "conversation_id" IS NOT NULL;
+-- END OPERATION ORIGIN THREAD

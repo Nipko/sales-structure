@@ -12,6 +12,7 @@ import { EmailTemplatesService } from '../email-templates/email-templates.servic
 import { APPOINTMENT_EMAIL_SLUGS } from '../email-templates/appointment-email-layout';
 import { formatDuration, normaliseLang, LANG_LOCALE } from './appointment-notifications-i18n';
 import { servedEmailConfirmationsEnabled } from '../../common/utils/served-confirmation-policy.util';
+import { appointmentConfirmationFamilies } from './appointment-confirmation-subject';
 import {
     ProactiveDispatchService, producerMayAdvance, type ProactiveSendResult,
 } from '../channels/proactive-dispatch.service';
@@ -439,9 +440,9 @@ export class AppointmentRemindersService {
     }
 
     /**
-     * `agent_personas.config_json.tools.appointments.emailConfirmations` —
-     * opt-out only, read from the agent that served the connection the
-     * appointment was BOOKED on.
+     * `agent_personas.config_json.tools.<family>.emailConfirmations` — opt-out
+     * only, read from the agent that served the connection the appointment was
+     * BOOKED on, under the family whose operation the appointment IS.
      *
      * The sweep already joins that connection in — `conversation_channel` and
      * `conversation_account_id` are how the WhatsApp reminder names its sender
@@ -454,11 +455,13 @@ export class AppointmentRemindersService {
         return servedEmailConfirmationsEnabled(
             <T>(sql: string, params: any[] = []) =>
                 this.prisma.executeInTenantSchema<T>(schemaName, sql, params),
-            // A test-drive reminder is a `vehicles` operation: the dealership's
-            // own switch decides it when they set one. `a.metadata` is already
-            // in the sweep's SELECT list.
-            appt?.metadata?.testDrive === true
-                ? ['vehicles', 'appointments'] : ['appointments'],
+            // A test-drive reminder is a `vehicles` operation, a property-visit
+            // reminder a `realEstate` one and a veterinary reminder a `pets`
+            // one: that family's own switch decides them when the owner set
+            // one, and the reminder must read the SAME switch the confirmation
+            // of the same booking read. `a.metadata` is already in the sweep's
+            // SELECT list, so the subject costs no extra query.
+            appointmentConfirmationFamilies(appt?.metadata),
             // No conversation means no serving agent to ask — booked by hand or
             // through the public page. The helper reads that as "not switched
             // off" rather than guessing at an agent.

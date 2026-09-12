@@ -5,16 +5,39 @@ import { assertOptionalContactId, requireTenantContact } from '../../common/util
 import { ensureOperationalNoticeOutbox, enqueueOperationalNotice, operationalContactWasErased } from '../operational-notices/operational-notice-outbox';
 import type { NoticeQuery } from '../operational-notices/operational-notice.contracts';
 import { enrollmentTerms, enrollmentTermsHash, type EnrollmentTerms } from './enrollment-terms';
+import type { OperationConfirmationService } from '../email-templates/operation-confirmation.service';
 
 export interface EnrollmentCommand {
     cohortId: string; contactId?: string; studentName: string; studentEmail?: string; studentPhone?: string;
     allowWaitlist?: boolean; enrollmentTerms?: EnrollmentTerms;
+    /**
+     * The thread the enrolment was taken in, when there is one. It names the
+     * connection and therefore the agent whose `education.emailConfirmations`
+     * switch decides the receipt; an enrolment typed at the front desk has
+     * none, which the policy reads as "the owner switched nothing off".
+     */
+    conversationId?: string | null;
 }
 const started = (value: unknown) => new Date(value as any).getTime() < new Date(new Date().toISOString().slice(0,10)).getTime();
 
 /** One domain implementation serves dashboard, tools and the isolated evaluation namespace. */
 export class EducationEnrollmentCommands {
-    constructor(private readonly prisma: PrismaService) {}
+    constructor(
+        private readonly prisma: PrismaService,
+        /**
+         * ═══ THE ENROLMENT RECEIPT `education.emailConfirmations` PROMISED ═══
+         *
+         * Declared by the contract, drawn as a switch by the editor — which
+         * names `education_enrollment_confirmation` — and read by NOTHING.
+         *
+         * Only a seat actually assigned produces it: `waitlisted` is not a
+         * place in the cohort, and an idempotent replay is the same enrolment
+         * answered again, whose receipt went out the first time. Optional in
+         * the signature only, because fixtures in two other modules construct
+         * this class with the database alone.
+         */
+        private readonly confirmations?: OperationConfirmationService,
+    ) {}
 
     async getTerms(schema: string, cohortId: string): Promise<EnrollmentTerms> {
         const [row] = await this.prisma.executeInTenantSchema<any[]>(schema,
@@ -28,7 +51,8 @@ export class EducationEnrollmentCommands {
         const contactId = assertOptionalContactId(data.contactId);
         if (data.allowWaitlist && !contactId) throw new BadRequestException('A contact is required to join the waitlist');
         await ensureOperationalNoticeOutbox(this.prisma,schema);
-        return this.prisma.transactionInTenantSchema(schema,async query=>{
+        let receipt: { enrollment: any; course: any; cohort: any } | null = null;
+        const enrolled = await this.prisma.transactionInTenantSchema(schema,async query=>{
             await query('SELECT pg_advisory_xact_lock_shared(hashtextextended($1,0))::text',[`agent-privacy:${schema}`]);
             await assertServedAgentAuthority(query, schema, operationalScope);
             await requireTenantContact(query,contactId);
@@ -55,12 +79,48 @@ export class EducationEnrollmentCommands {
             delete metadata.waitlistTermsChanged;
             const status=waiting?'waitlisted':'enrolled';
             const [enrollment]=existing ? await query<any[]>(`UPDATE enrollments SET status=$2,metadata=$3::jsonb,
-                student_name=$4,student_email=$5,student_phone=$6,updated_at=NOW() WHERE id=$1::uuid RETURNING *`,
-                [existing.id,status,JSON.stringify(metadata),data.studentName,data.studentEmail||null,data.studentPhone||null])
-                : await query<any[]>(`INSERT INTO enrollments(cohort_id,course_id,contact_id,student_name,student_email,student_phone,status,metadata)
-                    VALUES($1::uuid,$2::uuid,$3::uuid,$4,$5,$6,$7,$8::jsonb) RETURNING *`,
-                    [data.cohortId,cohort.course_id,contactId,data.studentName,data.studentEmail||null,data.studentPhone||null,status,JSON.stringify(metadata)]);
+                student_name=$4,student_email=$5,student_phone=$6,conversation_id=COALESCE($7::uuid,conversation_id),updated_at=NOW() WHERE id=$1::uuid RETURNING *`,
+                [existing.id,status,JSON.stringify(metadata),data.studentName,data.studentEmail||null,data.studentPhone||null,data.conversationId||null])
+                : await query<any[]>(`INSERT INTO enrollments(cohort_id,course_id,contact_id,student_name,student_email,student_phone,status,metadata,conversation_id)
+                    VALUES($1::uuid,$2::uuid,$3::uuid,$4,$5,$6,$7,$8::jsonb,$9::uuid) RETURNING *`,
+                    [data.cohortId,cohort.course_id,contactId,data.studentName,data.studentEmail||null,data.studentPhone||null,status,JSON.stringify(metadata),data.conversationId||null]);
+            if (!waiting) receipt={enrollment,course,cohort};
             return {...enrollment,waitlisted:waiting,seatAssigned:!waiting,charged:false};
+        });
+        // After the commit. The replay branch returns before `receipt` is set,
+        // so a retried enrolment cannot produce a second receipt.
+        if (receipt) await this.confirmEnrollment(schema,receipt);
+        return enrolled;
+    }
+
+    /**
+     * The receipt for one assigned seat.
+     *
+     * The address the student dictated (`student_email`) counts as much as the
+     * contact's, and for a parent enrolling a child it is often the only one
+     * the school was given.
+     */
+    private async confirmEnrollment(schema: string, receipt: { enrollment: any; course: any; cohort: any }): Promise<void> {
+        const starts=receipt.cohort?.starts_at;
+        await this.confirmations?.send({
+            schemaName: schema,
+            families: ['education'],
+            slug: 'education_enrollment_confirmation',
+            conversationId: receipt.enrollment?.conversation_id ?? null,
+            contactId: receipt.enrollment?.contact_id ?? null,
+            email: receipt.enrollment?.student_email ?? null,
+            operation: `enrollment ${receipt.enrollment?.id}`,
+            variables: {
+                service_name: String(receipt.course?.name ?? ''),
+                appointment_date: starts instanceof Date
+                    ? starts.toISOString().slice(0,10)
+                    : String(starts ?? '').slice(0,10),
+                // The cohort's timetable is free text ('Lun-Mie 18:00-20:00'),
+                // which is the only "time" an enrolment has.
+                appointment_time: String(receipt.cohort?.schedule ?? ''),
+                location: String(receipt.cohort?.room || receipt.cohort?.meeting_url || ''),
+                agent_name: String(receipt.cohort?.instructor_name ?? ''),
+            },
         });
     }
 

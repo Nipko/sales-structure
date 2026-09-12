@@ -11,6 +11,8 @@ import {
 } from '../../common/utils/tenant-contact.util';
 import { resolveNativeEvidenceOpportunity } from '../../common/utils/native-evidence-opportunity.util';
 import type { EvalNamespaceLease } from '../simulation/isolated-eval-namespace';
+import { OperationConfirmationService } from '../email-templates/operation-confirmation.service';
+import { escapeReceiptHtml, receiptMoney } from '../email-templates/receipt-format.util';
 
 /**
  * Restaurants module — menu catalog, food orders, and promotions.
@@ -31,6 +33,30 @@ export class RestaurantsService {
     constructor(
         private readonly prisma: PrismaService,
         private readonly eventEmitter: EventEmitter2,
+        /**
+         * ═══ THE FOOD-ORDER RECEIPT `restaurants.emailConfirmations` PROMISED ═══
+         *
+         * The control was declared by the business-profile contract, drawn as a
+         * switch by the agent editor and read by NOTHING. Worse than absent:
+         * the editor pointed it at `restaurant_reservation_confirmation` — "Tu
+         * Mesa está Reservada", with an hour and a 15-minute tolerance — and
+         * the only writer in this family produces a FOOD ORDER. Table
+         * reservations go through the appointments module (see the header
+         * above), so that email would have promised a table nobody booked.
+         *
+         * `restaurant_order_confirmation` was built for this operation instead,
+         * and it says what actually happened: the order was received, not
+         * delivered and not charged.
+         *
+         * Optional in the SIGNATURE only, so the fixtures that construct this
+         * service by hand — two of them outside this module — keep compiling
+         * and keep getting the writer with no mail attached, which is the shape
+         * they already had. Nest is unaffected: `?` does not touch
+         * `design:paramtypes`, so without `@Optional()` a missing provider
+         * still fails at bootstrap rather than silently stopping every
+         * customer's receipt.
+         */
+        private readonly confirmations?: OperationConfirmationService,
     ) {}
 
     // ── Categories ────────────────────────────────────────────────
@@ -508,7 +534,48 @@ export class RestaurantsService {
         } catch (error: any) {
             this.logger.error(`food_order.created listener failed after commit: ${error.message}`);
         }
+        // After the commit, and only for an order the kitchen actually has: an
+        // SMTP server that is down must not roll back a placed order, and an
+        // order that rolled back must never have produced a receipt.
+        if (!execution.sandboxNamespace) await this.confirmOrder(schemaName, order);
         return order;
+    }
+
+    /**
+     * The receipt for one food order.
+     *
+     * `food_orders.status` defaults to `received`, which is the business
+     * accepting the order — so this is a receipt and not a promise about
+     * delivery or payment, and the template says exactly that. An order that
+     * some other caller created already `cancelled` gets nothing.
+     */
+    private async confirmOrder(schemaName: string, order: any): Promise<void> {
+        if (String(order?.status ?? '') !== 'received') return;
+        const currency = String(order.currency || 'COP');
+        const minutes = Number(order.estimated_delivery_minutes);
+        await this.confirmations?.send({
+            schemaName,
+            families: ['restaurants'],
+            slug: 'restaurant_order_confirmation',
+            conversationId: order.conversation_id ?? null,
+            contactId: order.contact_id ?? null,
+            operation: `food order ${order.id}`,
+            variables: {
+                reference: String(order.id),
+                order_type: String(order.order_type ?? ''),
+                estimated_ready: Number.isFinite(minutes) && minutes > 0
+                    ? `${minutes} min` : '',
+                delivery_address: String(order.delivery_address ?? ''),
+                table_number: String(order.table_number ?? ''),
+                payment_method: String(order.payment_method ?? ''),
+                order_items_html: (order.items ?? []).map((item: any) =>
+                    `<p style="margin:4px 0;font-size:14px;">${escapeReceiptHtml(item.name_snapshot)} `
+                    + `&times; ${escapeReceiptHtml(item.quantity)} — `
+                    + `${escapeReceiptHtml(receiptMoney(Number(item.subtotal ?? 0), currency))}</p>`,
+                ).join(''),
+                order_total: receiptMoney(Number(order.total ?? 0), currency),
+            },
+        });
     }
 
     async updateOrderStatus(

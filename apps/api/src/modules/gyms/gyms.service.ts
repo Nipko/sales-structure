@@ -2,6 +2,7 @@ import { ensureOperationalNoticeOutbox, enqueueOperationalNotice, operationalCon
 import { assertServedAgentAuthority, type ServedAgentAuthority } from '../persona/served-agent-authority';
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { OperationConfirmationService } from '../email-templates/operation-confirmation.service';
 import { normalizePhoneE164 } from '../../common/utils/phone.util';
 import {
     normalizeCurrencyCode,
@@ -25,7 +26,24 @@ import {
 export class GymsService {
     private readonly logger = new Logger(GymsService.name);
 
-    constructor(private readonly prisma: PrismaService) {}
+    constructor(
+        private readonly prisma: PrismaService,
+        /**
+         * ═══ THE CLASS CONFIRMATION `gyms.emailConfirmations` PROMISED ═══
+         *
+         * The control was declared by the contract, drawn as a switch by the
+         * editor — which names `gym_class_confirmation` as the template it
+         * governs — and read by NOTHING.
+         *
+         * Only a booking that comes out `confirmed` produces it. A `waitlist`
+         * booking is not a place in the class, and telling somebody their spot
+         * is confirmed while they are third in line is the kind of lie this
+         * whole audit exists to remove. The promotion off the waitlist already
+         * has its own notice lane (`gym.waitlist_promoted` on the operational
+         * outbox); it is not duplicated here.
+         */
+        private readonly confirmations?: OperationConfirmationService,
+    ) {}
 
     // ── Plans ─────────────────────────────────────────────────────
 
@@ -495,8 +513,16 @@ export class GymsService {
      * has a credit allowance; refuses if no credits and the plan is
      * not unlimited. Decrements available_spots on the class atomically.
      */
-    async bookClass(schemaName: string, classId: string, memberId: string, operationalScope?: ServedAgentAuthority): Promise<any> {
-        return this.prisma.transactionInTenantSchema(schemaName, async (query) => {
+    /**
+     * `conversationId` is the thread the booking was taken in, when there is
+     * one. It is what names the connection — and therefore the agent whose
+     * `emailConfirmations` switch decides the receipt. A booking made at the
+     * front desk has none, which the policy reads as "the owner switched
+     * nothing off" rather than guessing at an agent.
+     */
+    async bookClass(schemaName: string, classId: string, memberId: string, operationalScope?: ServedAgentAuthority, conversationId?: string | null): Promise<any> {
+        let receipt: { booking: any; klass: any; contactId: string | null } | null = null;
+        const booked = await this.prisma.transactionInTenantSchema(schemaName, async (query) => {
             await query('SELECT pg_advisory_xact_lock_shared(hashtextextended($1,0))::text',[`agent-privacy:${schemaName}`]);
             await assertServedAgentAuthority(query, schemaName, operationalScope);
             // Every class transition locks the class before its members/bookings.
@@ -530,11 +556,42 @@ export class GymsService {
                 }
             }
             const [booking] = await query<any[]>(
-                `INSERT INTO class_bookings (class_id, member_id, contact_id, credits_used, status)
-                 VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5) RETURNING *`,
-                [classId, memberId, member.contact_id, required, waitlisted ? 'waitlist' : 'confirmed'],
+                `INSERT INTO class_bookings (class_id, member_id, contact_id, credits_used, status, conversation_id)
+                 VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6::uuid) RETURNING *`,
+                [classId, memberId, member.contact_id, required, waitlisted ? 'waitlist' : 'confirmed',
+                    conversationId || null],
             );
+            if (!waitlisted) receipt = { booking, klass, contactId: member.contact_id };
             return this.withWaitlistPosition(query, booking);
+        });
+        // After the commit. A replay returns early above and sets no receipt,
+        // so a retried booking cannot produce a second email.
+        if (receipt) await this.confirmBooking(schemaName, receipt);
+        return booked;
+    }
+
+    /** The receipt for one confirmed class booking. */
+    private async confirmBooking(
+        schemaName: string,
+        receipt: { booking: any; klass: any; contactId: string | null },
+    ): Promise<void> {
+        const at = receipt.klass?.scheduled_at instanceof Date
+            ? receipt.klass.scheduled_at.toISOString().slice(0, 19)
+            : String(receipt.klass?.scheduled_at ?? '').replace(' ', 'T').slice(0, 19);
+        await this.confirmations?.send({
+            schemaName,
+            families: ['gyms'],
+            slug: 'gym_class_confirmation',
+            conversationId: receipt.booking?.conversation_id ?? null,
+            contactId: receipt.contactId,
+            operation: `class booking ${receipt.booking?.id}`,
+            variables: {
+                service_name: String(receipt.klass?.name ?? ''),
+                appointment_date: at.slice(0, 10),
+                appointment_time: at.slice(11, 16),
+                location: String(receipt.klass?.room ?? ''),
+                agent_name: String(receipt.klass?.instructor_name ?? ''),
+            },
         });
     }
 

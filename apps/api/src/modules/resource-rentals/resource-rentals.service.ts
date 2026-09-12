@@ -3,9 +3,12 @@ import {
     ConflictException,
     ForbiddenException,
     Injectable,
+    Logger,
     NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { OperationConfirmationService } from '../email-templates/operation-confirmation.service';
+import { receiptDate } from '../email-templates/receipt-format.util';
 import {
     assertOptionalContactId,
     requireTenantContact,
@@ -40,6 +43,14 @@ export interface CreateResourceRentalInput {
     endDate: string;
     notes?: string;
     metadata?: Record<string, unknown>;
+    /**
+     * The thread the rental or boarding was taken in, when there is one. It
+     * names the connection and therefore the agent whose
+     * `vehicleRentals`/`petBoarding` `emailConfirmations` switch decides the
+     * receipt. A booking made at the counter has none, which the policy reads
+     * as "the owner switched nothing off" rather than guessing at an agent.
+     */
+    conversationId?: string | null;
 }
 
 export type RentalEligibilityDimension = 'identity' | 'driverLicense' | 'insurance' | 'payment';
@@ -89,7 +100,91 @@ const POSTGRES_INTEGER_MAX = 2_147_483_647;
 
 @Injectable()
 export class ResourceRentalsService {
-    constructor(private readonly prisma: PrismaService) {}
+    /**
+     * For the one thing this service must never do silently: swallow the
+     * failure of a receipt for an operation that is already committed. The
+     * customer does not get their email; the owner has to be able to find
+     * out from the log that a booked stay went unconfirmed.
+     */
+    private readonly logger = new Logger(ResourceRentalsService.name);
+
+    constructor(
+        private readonly prisma: PrismaService,
+        /**
+         * ═══ TWO CONTROLS, ONE TABLE, TWO DIFFERENT MOMENTS ═══
+         *
+         * `vehicleRentals.emailConfirmations` and
+         * `petBoarding.emailConfirmations` were both declared by the contract
+         * and read by NOTHING — and the editor hid both toggles, because no
+         * template described either operation. Both are date RANGES; the
+         * closest seeded template carried a date and an hour and would have
+         * rendered an empty "Hora del servicio" row on every send.
+         *
+         * `vehicle_rental_confirmation` and `pet_boarding_confirmation` were
+         * built for them. The moments differ and that is the point:
+         *
+         *   · a vehicle rental is born `pending_review` — identity, licence,
+         *     insurance and payment need a human — so the receipt belongs to
+         *     `approveVehicleRental`, the transition to `reserved`. Sending at
+         *     intake would tell a customer their car was booked while the
+         *     branch had approved nothing;
+         *   · a pet boarding is born `reserved`, so its receipt is the
+         *     creation itself.
+         */
+        private readonly confirmations?: OperationConfirmationService,
+    ) {}
+
+    /** The receipt for a reserved vehicle rental. */
+    private async confirmVehicleRental(schemaName: string, rental: any): Promise<void> {
+        const details = (rental?.metadata as any)?.details ?? {};
+        const vehicles = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+            'SELECT make, model, year, license_plate FROM vehicles WHERE id = $1::uuid LIMIT 1',
+            [rental?.resource_id]).catch(() => [] as any[]);
+        const vehicle = vehicles?.[0] ?? {};
+        const described = [vehicle.year, vehicle.make, vehicle.model]
+            .map((part: unknown) => String(part ?? '').trim()).filter(Boolean).join(' ');
+        const plate = String(vehicle.license_plate ?? '').trim();
+        await this.confirmations?.send({
+            schemaName,
+            families: ['vehicleRentals'],
+            slug: 'vehicle_rental_confirmation',
+            conversationId: rental?.conversation_id ?? null,
+            contactId: rental?.contact_id ?? null,
+            operation: `vehicle rental ${rental?.id}`,
+            variables: {
+                reference: String(rental?.id ?? ''),
+                vehicle: [described, plate && `(${plate})`].filter(Boolean).join(' ') || 'sin identificar',
+                pickup_date: receiptDate(rental?.start_date),
+                return_date: receiptDate(rental?.end_date),
+                pickup_location: String(details?.pickup?.location ?? ''),
+                driver_name: String(details?.driver?.name || rental?.customer_name || ''),
+            },
+        });
+    }
+
+    /** The receipt for a reserved boarding stay. */
+    private async confirmPetBoarding(schemaName: string, rental: any): Promise<void> {
+        const rows = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+            `SELECT (SELECT name FROM pets WHERE id = $1::uuid) AS pet_name,
+                    (SELECT name FROM services WHERE id = $2::uuid) AS service_name`,
+            [rental?.resource_id, rental?.service_id]).catch(() => [] as any[]);
+        const labels = rows?.[0] ?? {};
+        await this.confirmations?.send({
+            schemaName,
+            families: ['petBoarding'],
+            slug: 'pet_boarding_confirmation',
+            conversationId: rental?.conversation_id ?? null,
+            contactId: rental?.contact_id ?? null,
+            operation: `pet boarding ${rental?.id}`,
+            variables: {
+                reference: String(rental?.id ?? ''),
+                pet_name: String(labels.pet_name ?? ''),
+                service_name: String(labels.service_name ?? ''),
+                check_in: receiptDate(rental?.start_date),
+                check_out: receiptDate(rental?.end_date),
+            },
+        });
+    }
 
     async list(
         schemaName: string,
@@ -790,7 +885,11 @@ export class ResourceRentalsService {
             throw new BadRequestException('expectedVersion is required');
         }
         const id = this.assertUuid(rentalId, 'rentalId');
-        return this.prisma.transactionInTenantSchema(schemaName, async (query) => {
+        // `false` on a rental that was ALREADY reserved: the receipt went out
+        // with the transition that reserved it, and approving twice must not
+        // produce a second one.
+        let reserved = false;
+        const approved = await this.prisma.transactionInTenantSchema(schemaName, async (query) => {
             const rows = await query<any[]>(
                 `SELECT * FROM resource_rentals WHERE id = $1::uuid FOR UPDATE`,
                 [id],
@@ -846,8 +945,26 @@ export class ResourceRentalsService {
                 [id],
             );
             await this.insertEvent(query, id, 'rental_approved', 'pending_review', 'reserved', actorId, {});
+            reserved = true;
             return updated[0];
         });
+        // After the commit, and only for the transition that actually reserved.
+        //
+        // The catch is the guarantee, and it belongs HERE. `send` already
+        // swallows its own failures and answers with an outcome, so today
+        // nothing escapes — but that makes "a dead mail server must not undo
+        // a reservation" a property of the callee's internals, and one
+        // unguarded read added to the helper later would quietly end it. The
+        // rental is committed by the time we get here; nothing about a
+        // receipt may turn a reserved vehicle back into an error the caller
+        // will retry.
+        if (reserved) {
+            await this.confirmVehicleRental(schemaName, approved).catch(error => {
+                this.logger.warn(`Vehicle rental ${approved?.id} is reserved; its receipt `
+                    + `failed (${error?.message})`);
+            });
+        }
+        return approved;
     }
 
     async rejectVehicleRental(
@@ -1119,7 +1236,7 @@ export class ResourceRentalsService {
         contactId: string | null,
         createdBy: string | null,
     ): Promise<any> {
-        return this.prisma.transactionInTenantSchema(schemaName, async (query) => {
+        const boarding = await this.prisma.transactionInTenantSchema(schemaName, async (query) => {
             // Capacity is shared by service, while double-booking protection is
             // shared by pet. Both locks live until commit.
             await query(
@@ -1241,6 +1358,15 @@ export class ResourceRentalsService {
                 range,
             });
         });
+        // A boarding is born `reserved`, so the creation IS the confirmation.
+        // After the commit: a dead mail server must not undo a booked stay —
+        // and the catch is what makes that sentence true of this line rather
+        // than of the callee it calls.
+        await this.confirmPetBoarding(schemaName, boarding).catch(error => {
+            this.logger.warn(`Pet boarding ${boarding?.id} is booked; its receipt `
+                + `failed (${error?.message})`);
+        });
+        return boarding;
     }
 
     private async insertRental(
@@ -1260,11 +1386,11 @@ export class ResourceRentalsService {
             `INSERT INTO resource_rentals (
                 rental_type, resource_id, service_id, contact_id, opportunity_id,
                 customer_name, customer_phone, start_date, end_date,
-                status, notes, metadata, created_by
+                status, notes, metadata, created_by, conversation_id
              ) VALUES (
                 $1, $2::uuid, $3::uuid, $4::uuid, $5::uuid,
                 $6, $7, $8::date, $9::date,
-                $10, $11, $12::jsonb, $13::uuid
+                $10, $11, $12::jsonb, $13::uuid, $14::uuid
              ) RETURNING *`,
             [
                 data.type,
@@ -1280,6 +1406,7 @@ export class ResourceRentalsService {
                 data.notes || null,
                 JSON.stringify(data.metadata || {}),
                 data.createdBy,
+                data.conversationId || null,
             ],
         );
         await this.insertEvent(

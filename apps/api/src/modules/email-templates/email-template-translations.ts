@@ -11,6 +11,13 @@ import {
     appointmentEmailSubject,
     buildAppointmentEmail,
 } from './appointment-email-layout';
+import {
+    OPERATION_RECEIPT_KINDS,
+    OPERATION_RECEIPT_SLUGS,
+    buildOperationReceipt,
+    operationReceiptName,
+    operationReceiptSubject,
+} from './operation-receipt-layout';
 
 export type TemplateTranslation = { name?: string; subject: string; bodyHtml: string };
 
@@ -457,6 +464,17 @@ for (const lang of ['en', 'pt', 'fr']) {
             name: appointmentEmailName(kind, lang),
             subject: appointmentEmailSubject(kind, lang),
             bodyHtml: buildAppointmentEmail(kind, lang),
+        };
+    }
+    // The four operation receipts, for the same reason and from the same kind
+    // of table: a food order, a workshop intake, a vehicle rental and a pet
+    // boarding. Twelve more escaped blobs by hand is twelve more chances for
+    // one language to describe a different operation than the others.
+    for (const kind of OPERATION_RECEIPT_KINDS) {
+        bySlug[OPERATION_RECEIPT_SLUGS[kind]] = {
+            name: operationReceiptName(kind, lang),
+            subject: operationReceiptSubject(kind, lang),
+            bodyHtml: buildOperationReceipt(kind, lang),
         };
     }
 }

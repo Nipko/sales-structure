@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { resolveNativeEvidenceOpportunity } from '../../common/utils/native-evidence-opportunity.util';
+import { OperationConfirmationService } from '../email-templates/operation-confirmation.service';
 import { RepairOrderTerms, RepairTermsChangedError, repairOrderTerms, repairRequestHash } from './repair-order-terms';
 
 export const REPAIR_ORDER_STATUSES = [
@@ -138,7 +139,60 @@ function lineItemTotal(items: readonly RepairLineItem[]): number {
 
 @Injectable()
 export class RepairOrdersService {
-    constructor(private readonly prisma: PrismaService) {}
+    constructor(
+        private readonly prisma: PrismaService,
+        /**
+         * ═══ THE INTAKE RECEIPT, WHICH IS NOT AN APPOINTMENT ═══
+         *
+         * `tools.repairOrders.emailConfirmations` was declared by the contract
+         * and read by NOTHING — and the editor hid its toggle entirely, because
+         * no template described the operation: `automotive_service_confirmation`
+         * is an APPOINTMENT email ("Cita de servicio confirmada") and a
+         * workshop intake is not an appointment.
+         *
+         * `repair_order_confirmation` was built for this operation. The event
+         * is the INTAKE — the workshop accepting the vehicle and opening an
+         * order — because that is the only transition here a customer is owed a
+         * receipt for and the only one the writer can state without inventing
+         * anything. The receipt says so explicitly: the reported problem is what
+         * the customer described, not a diagnosis, and there is no estimate yet.
+         *
+         * `approved` is deliberately NOT a send: that transition is the
+         * CUSTOMER approving an estimate, and mailing them their own decision
+         * back is noise, not confirmation.
+         */
+        private readonly confirmations?: OperationConfirmationService,
+    ) {}
+
+    /**
+     * The receipt for one intake.
+     *
+     * Skipped on an idempotent replay: a retried request is the SAME order
+     * answered again, and its receipt went out with the first.
+     */
+    private async confirmIntake(schemaName: string, order: any): Promise<void> {
+        if (order?.idempotentReplay === true) return;
+        const vehicle = order?.vehicle ?? {};
+        const described = [vehicle.year, vehicle.make, vehicle.model]
+            .map((part: unknown) => String(part ?? '').trim())
+            .filter(Boolean).join(' ');
+        const plate = String(vehicle.license_plate ?? '').trim();
+        const km = Number(vehicle.mileage_km);
+        await this.confirmations?.send({
+            schemaName,
+            families: ['repairOrders'],
+            slug: 'repair_order_confirmation',
+            conversationId: order?.conversation_id ?? null,
+            contactId: order?.contact_id ?? null,
+            operation: `repair order ${order?.id}`,
+            variables: {
+                reference: String(order?.id ?? ''),
+                vehicle: [described, plate && `(${plate})`].filter(Boolean).join(' ') || 'sin identificar',
+                reported_concern: String(order?.customer_concern ?? ''),
+                mileage: Number.isFinite(km) && km > 0 ? `${km} km` : '',
+            },
+        });
+    }
 
     private transaction<T>(schema: string, work: (query: TenantQuery) => Promise<T>): Promise<T> {
         return this.prisma.transactionInTenantSchema(schema, async query => {
@@ -333,7 +387,7 @@ export class RepairOrdersService {
                 vin: cleanText(input.vehicle?.vin,80)?.toUpperCase() || null, licensePlate: cleanText(input.vehicle?.licensePlate,40)?.toUpperCase() || null,
                 year: input.vehicle?.year ?? null, color: cleanText(input.vehicle?.color,80), mileageKm: input.vehicle?.mileageKm ?? null } });
 
-        return this.transaction(schemaName, async (query) => {
+        const order = await this.transaction(schemaName, async (query) => {
             await assertServedAgentAuthority(query, schemaName, operationalScope);
             await this.assertContactAvailable(query, contactId);
             // Serialize before ANY vehicle mutation, including requests with
@@ -428,6 +482,11 @@ export class RepairOrdersService {
             });
             return { ...row, vehicle, idempotentReplay: false };
         });
+        // After the commit: a mail server that is down must not turn an
+        // accepted vehicle into a failed intake, and an intake that rolled back
+        // must never have produced a receipt.
+        await this.confirmIntake(schemaName, order);
+        return order;
     }
 
     async updateEstimate(schemaName: string, repairOrderId: string, input: {

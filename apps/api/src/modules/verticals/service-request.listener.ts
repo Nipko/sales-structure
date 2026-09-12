@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
+import { OperationConfirmationService } from '../email-templates/operation-confirmation.service';
 
 function escapeHtml(value: unknown): string {
     return String(value ?? '')
@@ -29,10 +30,31 @@ export class ServiceRequestListener {
     constructor(
         private readonly prisma: PrismaService,
         private readonly emailService: EmailService,
+        /**
+         * El aviso AL CLIENTE usa la plantilla del tenant
+         * (`homeservice_booking_confirmation`), no el correo interno de arriba:
+         * lo firma el negocio y sale en su idioma. Ver `notifyCustomer`.
+         */
+        private readonly confirmations: OperationConfirmationService,
     ) {}
 
+    /**
+     * Dos avisos distintos con el mismo disparador, y no comparten nada.
+     *
+     * El interno despierta a un humano cuando hay una emergencia; el del
+     * cliente confirma una visita agendada y lo gobierna el interruptor del
+     * dueño. Se ejecutan por separado a propósito: un SMTP flojo con los
+     * responsables no puede costarle al cliente su confirmación, ni al revés.
+     */
     @OnEvent('service_request.created')
     async onServiceRequestCreated(payload: { requestId: string; tenantSchemaName: string; urgency?: string }): Promise<void> {
+        await this.notifyCustomer(payload).catch((error: any) =>
+            this.logger.error(`No se pudo confirmar al cliente la solicitud `
+                + `${payload?.requestId}: ${error?.message}`));
+        await this.notifyEmergency(payload);
+    }
+
+    private async notifyEmergency(payload: { requestId: string; tenantSchemaName: string; urgency?: string }): Promise<void> {
         try {
             if (payload?.urgency !== 'emergencia') return;
 
@@ -86,5 +108,67 @@ export class ServiceRequestListener {
             // Nunca romper el flujo de la conversación por una notificación.
             this.logger.error(`No se pudo notificar la emergencia ${payload?.requestId}: ${e?.message}`);
         }
+    }
+
+    /**
+     * ═══ LA CONFIRMACIÓN AL CLIENTE QUE EL INTERRUPTOR PROMETÍA ═══
+     *
+     * `tools.homeServices.emailConfirmations` lo declara el contrato de perfil
+     * de negocio, el editor del agente lo dibuja como interruptor y hasta dice
+     * qué plantilla gobierna —`homeservice_booking_confirmation`— y NADIE lo
+     * leía. La plantilla se sembraba en cada tenant y no se renderizó nunca: el
+     * dueño podía prender las confirmaciones de visita, la pantalla decía que
+     * las prendió, y ningún cliente recibió una.
+     *
+     * ── SÓLO UNA VISITA AGENDADA, NUNCA UNA SOLICITUD REGISTRADA ────────────
+     *
+     * La plantilla dice «Visita Técnica Programada» y lista fecha y hora. Una
+     * solicitud nace `pending` cuando el cliente no eligió horario, y mandar
+     * eso sería afirmarle una visita que nadie agendó — la misma clase de
+     * mentira que un «pedido confirmado» sobre una orden pendiente. Así que la
+     * condición es `status = 'scheduled'` CON `scheduled_at`, que es exactamente
+     * lo que el writer escribe cuando la herramienta trae servicio y horario.
+     *
+     * Hueco conocido y deliberado: una solicitud que nace `pending` y que un
+     * humano agenda después NO produce confirmación, porque `updateRequest` no
+     * emite ningún evento. Cerrarlo es un cambio en `home-services/`.
+     */
+    private async notifyCustomer(payload: { requestId: string; tenantSchemaName: string }): Promise<void> {
+        const schema = String(payload?.tenantSchemaName ?? '').trim();
+        const requestId = String(payload?.requestId ?? '').trim();
+        if (!schema || !requestId) return;
+
+        const rows = await this.prisma.executeInTenantSchema<any[]>(schema,
+            `SELECT status, contact_id, conversation_id, service_type, address, city,
+                    assigned_technician_name, customer_name,
+                    to_char(scheduled_at, 'YYYY-MM-DD') AS scheduled_date,
+                    to_char(scheduled_at, 'HH24:MI') AS scheduled_time
+               FROM service_requests WHERE id = $1::uuid LIMIT 1`,
+            [requestId],
+        );
+        const req = rows?.[0];
+        if (!req) return;
+        // Una solicitud sin horario no tiene visita que confirmar.
+        if (req.status !== 'scheduled' || !req.scheduled_date) return;
+
+        // Quién decide y a quién se le escribe lo resuelve una sola pieza para
+        // toda la plataforma —`OperationConfirmationService`—: propiedad del
+        // schema, destinatario, interruptor del agente que atendió e idioma.
+        // Acá queda sólo lo que únicamente una visita técnica sabe.
+        await this.confirmations.send({
+            schemaName: schema,
+            families: ['homeServices'],
+            slug: 'homeservice_booking_confirmation',
+            conversationId: req.conversation_id,
+            contactId: req.contact_id,
+            operation: `service request ${requestId}`,
+            variables: {
+                service_name: String(req.service_type ?? ''),
+                appointment_date: String(req.scheduled_date ?? ''),
+                appointment_time: String(req.scheduled_time ?? ''),
+                location: [req.address, req.city].filter(Boolean).join(', '),
+                agent_name: String(req.assigned_technician_name ?? ''),
+            },
+        });
     }
 }

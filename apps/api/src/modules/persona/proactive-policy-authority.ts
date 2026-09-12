@@ -240,8 +240,17 @@ const campaignRecipientRevision = async (
     // Only a recipient still waiting is owed a message, and only while the
     // campaign is running.
     if (!['pending', 'queued'].includes(String(row.status ?? ''))) return null;
-    if (row.campaign_status !== null && row.campaign_status !== undefined
-        && !['active', 'draft'].includes(String(row.campaign_status))) return null;
+    // ── A CAMPAIGN THAT IS GONE IS NOT A CAMPAIGN THAT IS RUNNING ───────────
+    //
+    // This used to refuse only a status it could NAME, so the NULL the LEFT
+    // JOIN produces for a DELETED campaign was read as permission. Pausing a
+    // campaign stopped its queued messages and deleting it did not — the
+    // stronger action having the weaker effect, which is the worst way round.
+    //
+    // `campaign_recipients.campaign_id` is NOT NULL with no cascade, so the
+    // recipients outlive the campaign and nothing is left that says who
+    // authorised them. An allowlist answers both cases with one rule.
+    if (!['active', 'draft'].includes(String(row.campaign_status ?? ''))) return null;
     return revisionHash({
         status: row.status,
         campaignId: row.campaign_id ?? null,

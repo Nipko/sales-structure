@@ -223,7 +223,32 @@ export class BroadcastQueueProcessor extends WorkerHost {
             }
             throw new Error(`broadcast_not_dispatched:${result.kind}:${reason}`);
         }
-        if (!effectIsDurable(result)) return 'skipped:suppressed';
+        if (!effectIsDurable(result)) {
+            // ── THE RECIPIENT IS NOT OWED A MESSAGE, BUT THE CAMPAIGN IS
+            //    OWED A CONCLUSION ──────────────────────────────────────────
+            //
+            // `producerMayAdvance` was true, so there is nothing to retry: the
+            // lane suppressed this effect on a decision that stands — a
+            // ceiling, a duplicate, an effect already resolved. What it does
+            // NOT mean is that the row can be left where it is. The pre-send
+            // gate above leaves a recipient untouched because the campaign may
+            // be resumed; here the campaign is running and this person will
+            // never receive the message.
+            //
+            // This used to `return` bare. The recipient stayed `queued` for
+            // ever, `checkCampaignCompletion` was never called for it, and a
+            // campaign of a thousand people sat at 999 done with nothing
+            // saying why.
+            //
+            // And NO settle pass is scheduled: it reads the outbox row this
+            // recipient produced, a suppressed effect produced none, and twenty
+            // attempts against a row that will never exist would end by marking
+            // the recipient a second time.
+            const suppressed = 'reason' in result ? String(result.reason) : result.kind;
+            await this.markFailed(schemaName, campaignId, recipientId, data.variantId,
+                `suppressed:${suppressed}`);
+            return 'skipped:suppressed';
+        }
 
         // ── AND THE RECIPIENT IS *NOT* MARKED SENT HERE ─────────────────────
         //

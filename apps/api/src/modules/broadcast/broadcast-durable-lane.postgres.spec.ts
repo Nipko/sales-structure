@@ -263,6 +263,68 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
         expect(await outboxRows()).toEqual([]);
     });
 
+    it('closes the recipient when the LANE suppresses the effect', async () => {
+        // ── THE RECIPIENT NOBODY CLOSED ─────────────────────────────────────
+        //
+        // Two different suppressions reach this processor and only one of them
+        // was handled. The cases above are the pre-send gate: the recipient is
+        // no longer owed a message, and leaving the row exactly as it is is
+        // correct — a paused campaign is one somebody means to resume.
+        //
+        // This is the other one. The message WAS owed, the producer asked the
+        // lane for it, and the lane suppressed it — a ceiling, a duplicate, an
+        // effect already resolved. `producerMayAdvance` is true (there is
+        // nothing to retry) but `effectIsDurable` is false (no row exists), and
+        // the code fell into `return 'skipped:suppressed'` without marking the
+        // recipient and without scheduling the settle pass that would have.
+        //
+        // So the recipient stayed `queued` for ever, `checkCampaignCompletion`
+        // was never called for it, and a campaign of one thousand people sat at
+        // 999 done until somebody went looking. The customer is not owed a
+        // message; the campaign is owed a conclusion.
+        const c = await campaign();
+        // Only `send` is stubbed: the rest of the lane — resolving the
+        // conversation, minting the operator authority — has to run for real,
+        // or the test would be asserting about a path production does not take.
+        const real = (processor as any).proactive.send;
+        (processor as any).proactive.send =
+            async () => ({ kind: 'suppressed', reason: 'spend_cap_exhausted' });
+        let completed = 0;
+        const realCompletion = (processor as any).broadcastService.checkCampaignCompletion;
+        (processor as any).broadcastService.checkCampaignCompletion = async () => { completed += 1; };
+        try {
+            expect(await send(c)).toBe('skipped:suppressed');
+            expect(await outboxRows()).toEqual([]);
+            expect(await recipient(c.recipientId)).toMatchObject({
+                status: 'failed', error_message: expect.stringContaining('spend_cap_exhausted'),
+            });
+            // The conclusion, which is the half that was missing: without this
+            // the campaign never reports finished.
+            expect(completed).toBe(1);
+        } finally {
+            (processor as any).proactive.send = real;
+            (processor as any).broadcastService.checkCampaignCompletion = realCompletion;
+        }
+    });
+
+    it('does not schedule a settle pass for an effect that has no row', async () => {
+        // The settle pass reads the outbox row this recipient produced. A
+        // suppressed effect produced none, so scheduling one would be twenty
+        // attempts against something that will never exist — and its own
+        // give-up path would then mark the recipient a second time.
+        const c = await campaign();
+        const real = (processor as any).proactive.send;
+        (processor as any).proactive.send =
+            async () => ({ kind: 'suppressed', reason: 'duplicate_recent_send' });
+        try {
+            scheduled.length = 0;
+            await send(c);
+            expect(scheduled).toEqual([]);
+        } finally {
+            (processor as any).proactive.send = real;
+        }
+    });
+
     it('suppresses one whose campaign was paused after preparing', async () => {
         const c = await campaign();
         await send(c);

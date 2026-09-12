@@ -352,6 +352,33 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
                         .toBeUndefined();
                 });
 
+            it('is not authorised when the campaign row is gone entirely', async () => {
+                // The LEFT JOIN makes `campaign_status` NULL for a campaign that
+                // was deleted, and the guard read NULL as permissive: it only
+                // refused a status it could NAME. So pausing a campaign stopped
+                // its queued messages and DELETING it did not — the stronger
+                // action having the weaker effect.
+                //
+                // `campaign_id` is NOT NULL with no cascade, so the recipients
+                // outlive the campaign and there is nothing left that says who
+                // authorised them.
+                const { id, campaignId } = await recipient();
+                await sql('DELETE FROM campaigns WHERE id = $1::uuid', [campaignId]);
+                expect(await authorityFor('broadcast_message', id)).toBeUndefined();
+            });
+
+            it('is suppressed when the campaign is deleted after preparing', async () => {
+                // And the same at admission, which is where a row already
+                // committed gets its second look.
+                const { id, campaignId } = await recipient();
+                const result = await send(await authorityFor('broadcast_message', id));
+                expect(result.kind).toBe('prepared');
+                await sql('DELETE FROM campaigns WHERE id = $1::uuid', [campaignId]);
+                await expect(store.admit(tenantId, (await sql(
+                    'SELECT id FROM agent_dispatch_outbox LIMIT 1'))[0].id))
+                    .rejects.toMatchObject({ code: 'dispatch_effect_superseded' });
+            });
+
             it('is suppressed when the operator pauses the campaign before it goes out', async () => {
                 // THE FAILURE THIS EXISTS FOR. They pressed pause and the queued
                 // messages kept going, each one billed — the one outcome an

@@ -16,13 +16,13 @@ efectos puede llegar a producir **una sola respuesta lógica** en cada uno.
 
 | | |
 |---|---|
-| Sitios de llamada encontrados | **21** |
-| De ellos, que producen un mensaje cobrable | **20** |
+| Sitios de llamada encontrados | **31** |
+| De ellos, que producen un mensaje cobrable | **30** |
 | De ellos, presencia (no cobra Meta) | **1** |
-| Archivos productores distintos | **8** |
+| Archivos productores distintos | **16** |
 | Sitios que **no** pasan por un carril durable | **9** |
-| Sitios que pueden alcanzar WhatsApp (literal o dinámico) | **18** |
-| Sitios donde **una respuesta puede volverse varios cargos** | **10** |
+| Sitios que pueden alcanzar WhatsApp (literal o dinámico) | **28** |
+| Sitios donde **una respuesta puede volverse varios cargos** | **11** |
 
 ### Los cinco números que importan
 
@@ -33,11 +33,11 @@ objetivo: **cero productores cobrables fuera del carril durable**.
 
 | | |
 |---|---|
-| Sitios de llamada, en total | **21** |
-| De ellos, capaces de alcanzar WhatsApp | **19** |
-| De ellos, **cobrables por Meta** | **18** |
-| De ellos, dentro de la frontera económica | **18** |
-| De ellos, dentro del **carril durable** | **11** |
+| Sitios de llamada, en total | **31** |
+| De ellos, capaces de alcanzar WhatsApp | **29** |
+| De ellos, **cobrables por Meta** | **28** |
+| De ellos, dentro de la frontera económica | **28** |
+| De ellos, dentro del **carril durable** | **21** |
 
 | | |
 |---|---|
@@ -61,7 +61,7 @@ Por carril:
 
 | Carril | Sitios | Qué garantiza |
 |---|---:|---|
-| `dispatch_outbox` | 3 | publishes an already-committed `agent_dispatch_outbox` row |
+| `dispatch_outbox` | 13 | publishes an already-committed `agent_dispatch_outbox` row |
 | `approved_effect` | 1 | `tool_approval_effects` row a person approved |
 | `operational_notice` | 6 | `operational_notice_outbox`, written in the business transaction |
 | `handoff_effects` | 1 | one row per destination of one transfer |
@@ -106,6 +106,7 @@ reparto**, que es donde una sola respuesta lógica se multiplica.
 | `modules/conversations/tool-approval-effects.service.ts:36` | `schedule` | `approved_effect` | **n** | one effect per entry of `rows` (loop at the send) |
 | `modules/education/education-enrollment-commands.ts:106` | `promote` | `operational_notice` | **n** | one effect per entry of `candidates` (loop at the send) |
 | `modules/education/education-enrollment-commands.ts:111` | `promote` | `operational_notice` | **n** | one effect per entry of `candidates` (loop at the send) |
+| `modules/recall/recall.service.ts:250` | `recallOne` | `dispatch_outbox` | **n(recipients)** | one effect per recipient — a campaign, not one answer (fan-out at line 153) |
 
 ## Presencia, no mensajes
 
@@ -123,6 +124,13 @@ mensajes entregados, y un indicador de "escribiendo" no lo es.
 | Línea | Método | Primitiva | Carril | Disparador | Canales | Efectos por respuesta | Base |
 |---:|---|---|---|---|---|---|---|
 | 622 | `sendAgentMessage` | `channelGateway.sendMessage` | `inline` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
+| 735 | `replyThroughOutbox` | `dispatch.send` | `dispatch_outbox` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
+
+### `apps/api/src/modules/appointments/appointment-notifications.service.ts`
+
+| Línea | Método | Primitiva | Carril | Disparador | Canales | Efectos por respuesta | Base |
+|---:|---|---|---|---|---|---|---|
+| 628 | `dispatchNotice` | `proactive.send` | `dispatch_outbox` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
 
 ### `apps/api/src/modules/appointments/appointment-payment.listener.ts`
 
@@ -131,6 +139,36 @@ mensajes entregados, y un indicador de "escribiendo" no lo es.
 | 89 | `onPaid` | `enqueueOperationalNotice` | `operational_notice` | event 'tenant_payment.succeeded' | dynamic | n | one effect per entry of `rows` (fan-out at line 51) |
 | 107 | `onPaid` | `enqueueOperationalNotice` | `operational_notice` | event 'tenant_payment.succeeded' | dynamic | n | one effect per entry of `rows` (fan-out at line 51) |
 | 115 | `onPaid` | `enqueueOperationalNotice` | `operational_notice` | event 'tenant_payment.succeeded' | dynamic | n | one effect per entry of `rows` (fan-out at line 51) |
+
+### `apps/api/src/modules/appointments/appointment-reminders.service.ts`
+
+| Línea | Método | Primitiva | Carril | Disparador | Canales | Efectos por respuesta | Base |
+|---:|---|---|---|---|---|---|---|
+| 164 | `dispatchTemplate` | `proactive.send` | `dispatch_outbox` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
+
+### `apps/api/src/modules/automation/automation-jobs.processor.ts`
+
+| Línea | Método | Primitiva | Carril | Disparador | Canales | Efectos por respuesta | Base |
+|---:|---|---|---|---|---|---|---|
+| 311 | `handleSendTemplate` | `proactive.send` | `dispatch_outbox` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
+
+### `apps/api/src/modules/automation/drip-sequence.service.ts`
+
+| Línea | Método | Primitiva | Carril | Disparador | Canales | Efectos por respuesta | Base |
+|---:|---|---|---|---|---|---|---|
+| 799 | `executeStepAction` | `proactive.send` | `dispatch_outbox` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
+
+### `apps/api/src/modules/automation/nurturing.service.ts`
+
+| Línea | Método | Primitiva | Carril | Disparador | Canales | Efectos por respuesta | Base |
+|---:|---|---|---|---|---|---|---|
+| 929 | `dispatch` | `proactive.send` | `dispatch_outbox` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
+
+### `apps/api/src/modules/broadcast/broadcast-queue.processor.ts`
+
+| Línea | Método | Primitiva | Carril | Disparador | Canales | Efectos por respuesta | Base |
+|---:|---|---|---|---|---|---|---|
+| 205 | `dispatchWhatsApp` | `proactive.send` | `dispatch_outbox` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
 
 ### `apps/api/src/modules/channels/channel-management.controller.ts`
 
@@ -143,6 +181,7 @@ mensajes entregados, y un indicador de "escribiendo" no lo es.
 
 | Línea | Método | Primitiva | Carril | Disparador | Canales | Efectos por respuesta | Base |
 |---:|---|---|---|---|---|---|---|
+| 551 | `replyOnceThroughOutbox` | `proactiveDispatch.send` | `dispatch_outbox` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
 | 1175 | `(top level)` | `.sendTypingIndicator` | `inline` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
 | 2029 | `sendAfterHoursMessage` | `outboundQueue.enqueue` | `outbound_queue` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
 | 2302 | `sendResponse` | `outboundQueue.enqueue` | `outbound_queue` | called by another service | dynamic | n(bubbles) | one effect per text bubble (fan-out at line 1478) |
@@ -178,6 +217,18 @@ mensajes entregados, y un indicador de "escribiendo" no lo es.
 | Línea | Método | Primitiva | Carril | Disparador | Canales | Efectos por respuesta | Base |
 |---:|---|---|---|---|---|---|---|
 | 396 | `executeHandoff` | `admitHandoffEffect` | `handoff_effects` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
+
+### `apps/api/src/modules/recall/recall.service.ts`
+
+| Línea | Método | Primitiva | Carril | Disparador | Canales | Efectos por respuesta | Base |
+|---:|---|---|---|---|---|---|---|
+| 250 | `recallOne` | `proactive.send` | `dispatch_outbox` | called by another service | dynamic | n(recipients) | one effect per recipient — a campaign, not one answer (fan-out at line 153) |
+
+### `apps/api/src/modules/whatsapp/whatsapp.controller.ts`
+
+| Línea | Método | Primitiva | Carril | Disparador | Canales | Efectos por respuesta | Base |
+|---:|---|---|---|---|---|---|---|
+| 910 | `dispatchRest` | `dispatch.send` | `dispatch_outbox` | HTTP POST send/location | dynamic | 1 | one effect per invocation; no loop reaches this send |
 
 ## La frontera economica: cero productores cobrables fuera de ella
 
@@ -238,9 +289,17 @@ buscar una llamada a la autoridad economica en el codigo del archivo.
 | Archivo:linea | Metodo | Carril | Termina en | Admision |
 |---|---|---|---|---|
 | `modules/agent-console/agent-console.service.ts:622` | `sendAgentMessage` | `inline` | `modules/agent-console/agent-console.service.ts` | si |
+| `modules/agent-console/agent-console.service.ts:735` | `replyThroughOutbox` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
+| `modules/appointments/appointment-notifications.service.ts:628` | `dispatchNotice` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/appointments/appointment-payment.listener.ts:89` | `onPaid` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/appointments/appointment-payment.listener.ts:107` | `onPaid` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/appointments/appointment-payment.listener.ts:115` | `onPaid` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
+| `modules/appointments/appointment-reminders.service.ts:164` | `dispatchTemplate` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
+| `modules/automation/automation-jobs.processor.ts:311` | `handleSendTemplate` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
+| `modules/automation/drip-sequence.service.ts:799` | `executeStepAction` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
+| `modules/automation/nurturing.service.ts:929` | `dispatch` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
+| `modules/broadcast/broadcast-queue.processor.ts:205` | `dispatchWhatsApp` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
+| `modules/conversations/conversations.service.ts:551` | `replyOnceThroughOutbox` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/conversations/conversations.service.ts:2029` | `sendAfterHoursMessage` | `outbound_queue` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/conversations/conversations.service.ts:2302` | `sendResponse` | `outbound_queue` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/conversations/conversations.service.ts:2331` | `sendPaymentLink` | `outbound_queue` | `modules/channels/outbound-queue.processor.ts` | si |
@@ -254,6 +313,8 @@ buscar una llamada a la autoridad economica en el codigo del archivo.
 | `modules/education/education-enrollment-commands.ts:106` | `promote` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/education/education-enrollment-commands.ts:111` | `promote` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/gyms/gyms.service.ts:598` | `promoteFromWaitlist` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
+| `modules/recall/recall.service.ts:250` | `recallOne` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
+| `modules/whatsapp/whatsapp.controller.ts:910` | `dispatchRest` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
 
 ### Lo que esta comprobacion no puede ver
 
@@ -292,20 +353,13 @@ esperada y su clasificación queda **fuera del alcance de este generador**.
 |---|---|---|---|
 | `analytics.scheduled_reports` | `inline` | `live` | `modules/analytics/scheduled-reports.service.ts` |
 | `analytics.threshold_alerts` | `inline` | `live` | `modules/analytics/alerts.service.ts` |
-| `appointments.booking_confirmation` | `dispatch_outbox` | `live` | `modules/appointments/appointment-notifications.service.ts` |
-| `appointments.cancellation_notice` | `dispatch_outbox` | `live` | `modules/appointments/appointment-notifications.service.ts` |
-| `appointments.reminders` | `dispatch_outbox` | `live` | `modules/appointments/appointment-reminders.service.ts` |
 | `auth.transactional_email` | `inline` | `live` | `modules/auth/auth.service.ts` |
 | `auth.two_factor_sms` | `inline` | `off` | `modules/auth/platform-sms.service.ts` |
-| `automation.drip_sequence` | `dispatch_outbox` | `live` | `modules/automation/drip-sequence.service.ts` |
 | `automation.http_request` | `domain_queue` | `live` | `modules/automation/handlers/http-request.handler.ts` |
-| `automation.nurturing` | `dispatch_outbox` | `live` | `modules/automation/nurturing.service.ts` |
-| `automation.rule_template` | `dispatch_outbox` | `live` | `modules/automation/automation-jobs.processor.ts` |
 | `billing.card_and_void` | `inline` | `live` | `modules/billing/adapters/wompi.adapter.ts` |
 | `billing.lifecycle_email` | `inline` | `live` | `modules/billing/billing-email.service.ts` |
 | `billing.recurring_charge` | `domain_queue` | `live` | `modules/billing/recurring/processors/renewal-charge.processor.ts` |
 | `billing.stripe` | `inline` | `off` | `modules/billing/adapters/stripe.adapter.ts` |
-| `broadcast.campaign` | `domain_queue` | `live` | `modules/broadcast/broadcast-queue.processor.ts` |
 | `calendar.event_write` | `domain_queue` | `live` | `modules/appointments/calendar-sync-outbox.service.ts` |
 | `calendar.legacy_update` | `inline` | `legacy` | `modules/appointments/calendar-integration.service.ts` |
 | `channel.email.inbound_reply` | `outbound_queue` | `internal_only` | `modules/channels/email/email.adapter.ts` |
@@ -320,7 +374,6 @@ esperada y su clasificación queda **fuera del alcance de este generador**.
 | `handoff.sla_escalation.email` | `inline` | `live` | `modules/agent-console/agent-availability.service.ts` |
 | `handoff.slack` | `inline` | `live` | `modules/slack/slack-listener.service.ts` |
 | `human.email_template.test_send` | `inline` | `live` | `modules/email-templates/email-templates.service.ts` |
-| `human.whatsapp.manual_send` | `inline` | `live` | `modules/whatsapp/whatsapp.controller.ts` |
 | `identity.verification_code` | `inline` | `live` | `modules/conversations/chat-identity.service.ts` |
 | `integrations.commerce_readonly` | `inline` | `internal_only` | `modules/vertical-integrations/vertical-integrations.service.ts` |
 | `integrations.outbox_scaffolding` | `domain_queue` | `off` | `modules/integrations/integration-outbox.worker.ts` |
@@ -333,7 +386,6 @@ esperada y su clasificación queda **fuera del alcance de este generador**.
 | `payments.outcome_notice` | `outbound_queue` | `live` | `modules/conversations/payment-outcome-notifier.service.ts` |
 | `payments.tenant_payment_link` | `inline` | `live` | `modules/tenant-payments/tenant-payments.service.ts` |
 | `public_api.webhook_subscriptions` | `inline` | `live` | `modules/public-api/webhook-subscription.service.ts` |
-| `recall.win_back` | `dispatch_outbox` | `live` | `modules/recall/recall.service.ts` |
 | `reviews.gbp_reply` | `inline` | `live` | `modules/reviews/reviews.service.ts` |
 | `tenant.outbound_webhooks` | `inline` | `live` | `modules/webhooks/webhooks.service.ts` |
 | `verticals.service_request` | `inline` | `live` | `modules/verticals/service-request.listener.ts` |
@@ -349,6 +401,9 @@ El barrido busca **sitios de llamada** de estas primitivas:
 | `outboundQueue.enqueueDispatch(` | `dispatch_outbox` |
 | `dispatchOutbox.prepare(` | `dispatch_outbox` |
 | `prepareDispatchBatch(` | `dispatch_outbox` |
+| `proactive.send(` | `dispatch_outbox` |
+| `proactiveDispatch.send(` | `dispatch_outbox` |
+| `dispatch.send(` | `dispatch_outbox` |
 | `enqueueApprovedEffect(` | `approved_effect` |
 | `enqueueOperationalNotice(` | `operational_notice` |
 | `admitHandoffEffect(` | `handoff_effects` |

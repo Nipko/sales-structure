@@ -78,6 +78,25 @@ const EGRESS = [
         note: 'commits the batch of items one answer becomes' },
     { primitive: 'prepareDispatchBatch(', lane: 'dispatch_outbox',
         note: 'the batch primitive itself' },
+    // ── THE ENTRANCE THE SWEEP COULD NOT SEE ────────────────────────────────
+    //
+    // `proactive-dispatch.service.ts` is declared a ROAD, and the contract of
+    // that list is that the question MOVES one level up to whoever chose to use
+    // it — it is never dropped. It was dropped: no primitive here matched
+    // `proactive.send(`, so none of its call sites was classified at all, and
+    // fourteen producers migrated onto this lane inside one programme without
+    // appearing in the census, the bypass count or the ungated-egress sweep.
+    // A probe file added for the reproduction came back 0/0/0.
+    //
+    // Both spellings, because the receiver is named after the service in some
+    // files and after the lane in others, and a sweep that knows only one of
+    // them is a sweep with a blind spot shaped like a naming convention.
+    { primitive: 'proactive.send(', lane: 'dispatch_outbox',
+        note: 'the proactive entrance to the durable lane' },
+    { primitive: 'proactiveDispatch.send(', lane: 'dispatch_outbox',
+        note: 'the proactive entrance to the durable lane' },
+    { primitive: 'dispatch.send(', lane: 'dispatch_outbox',
+        note: 'the proactive entrance to the durable lane' },
     { primitive: 'enqueueApprovedEffect(', lane: 'approved_effect',
         note: '`tool_approval_effects` row a person approved' },
     { primitive: 'enqueueOperationalNotice(', lane: 'operational_notice',
@@ -556,9 +575,45 @@ function gateCensus(rows) {
         }
     }
 
+    // ═══ A RECEIVER NAME IS NOT A CONTRACT ═══
+    //
+    // Three of the primitives above are receiver NAMES — `proactive`,
+    // `proactiveDispatch`, `dispatch` — and the next producer may call its
+    // field `lane`. That is how this blind spot happened in the first place:
+    // `proactive-dispatch.service.ts` was declared a road, whose contract is
+    // that the question moves one level up, and no primitive matched its
+    // entrance, so the question was dropped instead. Fourteen producers moved
+    // onto the lane without appearing in any sweep.
+    //
+    // So the name is checked against the TYPE. Every file that declares a
+    // member of type `ProactiveDispatchService` and calls `.send(` on it must
+    // have a classified call site on that line. A member named something this
+    // list has never heard of is reported by name — a failure that says exactly
+    // what to add — rather than silently classifying nothing.
+    const laneEntrances = [];
+    const classifiedAt = new Set(classified.map(row => `${row.file}:${row.line}`));
+    for (const file of sources()) {
+        if (file.app !== 'api' || PROVIDER_ROADS[file.rel]) continue;
+        const text = fs.readFileSync(file.full, 'utf8');
+        if (!text.includes('ProactiveDispatchService')) continue;
+        const receivers = [...text.matchAll(
+            /(?:private|public|protected|readonly)\s+(?:readonly\s+)?([A-Za-z_$][\w$]*)[?]?\s*:\s*ProactiveDispatchService/g,
+        )].map(match => match[1]);
+        if (!receivers.length) continue;
+        const lines = withoutComments(text).split(/\r?\n/);
+        for (let i = 0; i < lines.length; i++) {
+            const calls = receivers.some(name =>
+                lines[i].includes(`this.${name}.send(`) || lines[i].includes(`this.${name}?.send(`));
+            if (!calls) continue;
+            if (classifiedAt.has(`${file.rel}:${i + 1}`)) continue;
+            laneEntrances.push({ file: file.rel, line: i + 1,
+                receiver: receivers.find(name => lines[i].includes(name)) || receivers[0] });
+        }
+    }
+
     const bypasses = classified.filter(row => row.needsGate && !row.gated);
     const ungatedEgress = egress.filter(entry => !entry.gated && !entry.road);
-    return { classified, egress, bypasses, ungatedEgress };
+    return { classified, egress, bypasses, ungatedEgress, laneEntrances };
 }
 
 /** Meta bills a delivered service message on this one, from 1 October 2026. */
@@ -1129,6 +1184,13 @@ function main() {
                     ? `asks the money authority but leaves its provider egress uncovered at line `
                         + `${row.terminusUncovered.join(', ')}`
                     : 'does not ask the money authority'}.\n`);
+            failed = true;
+        }
+        for (const entry of census.laneEntrances) {
+            process.stderr.write(`outbound-producer-inventory: UNCLASSIFIED DURABLE-LANE ENTRANCE at `
+                + `apps/api/src/${entry.file}:${entry.line} — \`this.${entry.receiver}.send(\` is a `
+                + `ProactiveDispatchService call this sweep does not recognise. Add `
+                + `'${entry.receiver}.send(' to EGRESS, or rename the member to one already there.\n`);
             failed = true;
         }
         for (const entry of census.ungatedEgress) {

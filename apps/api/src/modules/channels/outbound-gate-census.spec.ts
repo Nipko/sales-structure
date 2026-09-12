@@ -395,3 +395,110 @@ describe('the line numbers the audit publishes', () => {
         }
     });
 });
+
+describe('the durable lane has an entrance, and the sweep can see it', () => {
+    /**
+     * ═══ A ROAD REDIRECTS THE QUESTION; IT MUST NEVER DROP IT ═══
+     *
+     * `proactive-dispatch.service.ts` is declared a ROAD, and the contract of
+     * that list — written in the script and in the tests below — is that the
+     * question moves one level up to whoever chose to use the road. It was
+     * being dropped instead: no primitive matched `proactive.send(`, so not one
+     * of its call sites was classified at all. Ten billable WhatsApp producers
+     * were already through it and the census counted twenty-one call sites
+     * without them. A probe file that reached Meta through it came back
+     * absent from the producer list, absent from the bypasses and absent from
+     * the ungated-egress sweep: 0 / 0 / 0.
+     *
+     * Three of the primitives that fix it are receiver NAMES, which is exactly
+     * how the blind spot was born — so the name is also checked against the
+     * TYPE, and a member this list has never heard of is a failure that says
+     * what to add rather than a silence.
+     */
+    const PROBE = resolve(API_SRC, 'modules', 'recall', 'lane-entrance.generated.ts');
+
+    const probeSource = (receiver: string) => [
+        '// Temporary fixture written by outbound-gate-census.spec.ts.',
+        "import { ProactiveDispatchService } from '../channels/proactive-dispatch.service';",
+        '',
+        'export class LaneEntranceProbeService {',
+        '    constructor(private ' + receiver + ': ProactiveDispatchService) {}',
+        '    async remind(tenantId: string, to: string): Promise<void> {',
+        '        await this.' + receiver + '.send(tenantId, {',
+        "            channelType: 'whatsapp', channelAccountId: 'x', recipient: to,",
+        "            items: [{ kind: 'template', templateName: 'promo' }],",
+        '        } as never);',
+        '    }',
+        '}',
+        '',
+    ].join(String.fromCharCode(10));
+
+    afterEach(() => rmSync(PROBE, { force: true }));
+
+    it('classifies a producer that reaches Meta through the proactive entrance', () => {
+        writeFileSync(PROBE, probeSource('proactive'), 'utf8');
+        const rows = inventory.collect()
+            .filter((row: any) => row.file.endsWith('lane-entrance.generated.ts'));
+        expect(rows.length).toBe(1);
+        expect(rows[0].lane).toBe('dispatch_outbox');
+        // Classified AND covered: the durable lane's gate is at the sink it
+        // terminates on, which is the whole reason a road redirects the question.
+        expect(census().bypasses
+            .filter((row: any) => row.file.endsWith('lane-entrance.generated.ts'))).toEqual([]);
+    });
+
+    it('reports a receiver name the primitive list has never heard of', () => {
+        // The next producer may call its field `lane`. A sweep keyed on names
+        // would go silent again; this one names the file, the line and the fix.
+        writeFileSync(PROBE, probeSource('lane'), 'utf8');
+        const found = census().laneEntrances
+            .filter((entry: any) => entry.file.endsWith('lane-entrance.generated.ts'));
+        expect(found.length).toBe(1);
+        expect(found[0].receiver).toBe('lane');
+        // And it is NOT quietly classified as a producer, which is the state
+        // that made ten of them invisible.
+        expect(inventory.collect()
+            .filter((row: any) => row.file.endsWith('lane-entrance.generated.ts')).length).toBe(0);
+    });
+
+    it('exits non-zero on that unknown receiver, naming what to add', () => {
+        writeFileSync(PROBE, probeSource('lane'), 'utf8');
+        const out = mkdtempSync(join(tmpdir(), 'lane-entrance-'));
+        let status = 0;
+        let stderr = '';
+        try {
+            execFileSync(process.execPath, [SCRIPT, '--check', '--out', join(out, 'inventory.md')],
+                { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+        } catch (error: any) {
+            status = error.status;
+            stderr = String(error.stderr || '');
+        } finally {
+            rmSync(out, { recursive: true, force: true });
+        }
+        expect({ status, named: stderr.includes('lane-entrance.generated.ts'),
+            says: stderr.includes("'lane.send('") }).toEqual({ status: 1, named: true, says: true });
+    });
+
+    it('counts the producers already on the lane, by name', () => {
+        // A count alone would pass on the wrong ten. These are the producers the
+        // independent review listed as invisible; each must now be a call site.
+        const onLane = inventory.collect()
+            .filter((row: any) => row.lane === 'dispatch_outbox'
+                && row.primitive.includes('.send'))
+            .map((row: any) => row.file);
+        for (const file of [
+            'modules/appointments/appointment-notifications.service.ts',
+            'modules/appointments/appointment-reminders.service.ts',
+            'modules/automation/automation-jobs.processor.ts',
+            'modules/automation/drip-sequence.service.ts',
+            'modules/automation/nurturing.service.ts',
+            'modules/broadcast/broadcast-queue.processor.ts',
+            'modules/conversations/conversations.service.ts',
+            'modules/recall/recall.service.ts',
+            'modules/agent-console/agent-console.service.ts',
+            'modules/whatsapp/whatsapp.controller.ts',
+        ]) {
+            expect({ file, onTheLane: onLane.includes(file) }).toEqual({ file, onTheLane: true });
+        }
+    });
+});

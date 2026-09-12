@@ -70,6 +70,13 @@ const SOURCES = walk(SRC).map(file => ({ source: rel(file), text: fs.readFileSyn
  */
 const MESSAGE_EGRESS = [
     /from '[^']*outbound-queue\.service'/,
+    // The durable lane's entrance. Without it, a producer that reaches Meta
+    // through `ProactiveDispatchService` matched no pattern here and no
+    // primitive in the census either, so "a new producer fails a test instead
+    // of shipping uninventoried" was false for the very lane this programme is
+    // migrating everything onto. Ten billable producers were already through it.
+    /from '[^']*proactive-dispatch\.service'/,
+    /\.proactive\.send\(/, /\.proactiveDispatch\.send\(/,
     /\.sendMessage\(/, /\.sendTextMessage\(/, /\.sendMediaMessage\(/, /\.sendStrict\(/,
     /\.sendFlowMessage\(/, /\.sendTemplate\(/, /\.sendInteractiveMessage\(/, /\.sendLocationMessage\(/,
     /enqueueOperationalNotice\(/,

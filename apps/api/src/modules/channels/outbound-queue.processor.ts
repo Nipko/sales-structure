@@ -379,7 +379,78 @@ export class OutboundQueueProcessor extends WorkerHost {
                 recipient: String(admitted.row.binding!.recipient ?? ''),
                 producer,
                 disposition: proactive ? 'proactive' : 'reactive',
-                contentDigest: String(dispatchId),
+                // ── ONE ITEM'S IDENTITY IS NOT ITS CONTENT ──────────────────
+                //
+                // This was `String(dispatchId)`, unique per row — so on this
+                // lane `recentIdenticalDeliveries` could never match anything
+                // and `judgeRepetition` never fired. Measured: the same
+                // sentence to the same person four times produced four POSTs
+                // and four reservations with no refusal at all, while the
+                // legacy lane refused the second one. The guard was not weaker
+                // here, it was absent — on the lane the pilot moves everyone
+                // to.
+                //
+                // The field had been carrying effect IDENTITY, which it does
+                // not need to: `logicalEffectId` is derived from
+                // `binding.dispatchItemId` just below, so a retry of this row
+                // finds its own reservation whatever the digest says. That
+                // frees the digest to be what its contract says it is — what
+                // is being sent.
+                //
+                // Stable across attempts because the payload is READ FROM THE
+                // DURABLE ROW rather than re-rendered, so every pass digests
+                // the same bytes. `itemKind` is inside it so a text and a
+                // template carrying the same payload object are not one
+                // effect.
+                // ── ONE ITEM'S IDENTITY IS NOT ITS CONTENT ──────────────────
+                //
+                // This was `String(dispatchId)`, unique per row — so on this
+                // lane `recentIdenticalDeliveries` could never match anything
+                // and `judgeRepetition` never fired. Measured: the same
+                // sentence to the same person four times produced four POSTs
+                // and four reservations with no refusal at all, while the
+                // legacy lane refused the second one. The guard was not weaker
+                // here, it was absent — on the lane the pilot moves everyone
+                // to.
+                //
+                // The field had been carrying effect IDENTITY, which it does
+                // not need to: `logicalEffectId` is derived from
+                // `binding.dispatchItemId` just below, so a retry of this row
+                // finds its own reservation whatever the digest says. That
+                // frees the digest to be what its contract says it is — what
+                // is being sent.
+                //
+                // Stable across attempts because the payload is READ FROM THE
+                // DURABLE ROW rather than re-rendered, so every pass digests
+                // the same bytes. `itemKind` is inside it so a text and a
+                // template carrying the same payload object are not one
+                // effect.
+                // ── ONE ITEM'S IDENTITY IS NOT ITS CONTENT ──────────────────
+                //
+                // This was `String(dispatchId)`, unique per row — so on this
+                // lane `recentIdenticalDeliveries` could never match anything
+                // and `judgeRepetition` never fired. Measured: the same
+                // sentence to the same person four times produced four POSTs
+                // and four reservations with no refusal at all, while the
+                // legacy lane refused the second one. The guard was not weaker
+                // here, it was absent — on the lane the pilot moves everyone
+                // to.
+                //
+                // The field had been carrying effect IDENTITY, which it does
+                // not need to: `logicalEffectId` is derived from
+                // `binding.dispatchItemId` just below, so a retry of this row
+                // finds its own reservation whatever the digest says. That
+                // frees the digest to be what its contract says it is — what
+                // is being sent.
+                //
+                // Stable across attempts because the payload is READ FROM THE
+                // DURABLE ROW rather than re-rendered, so every pass digests
+                // the same bytes. `itemKind` is inside it so a text and a
+                // template carrying the same payload object are not one
+                // effect.
+                contentDigest: createHash('sha256')
+                    .update(JSON.stringify([admitted.row.itemKind, admitted.row.payload ?? null]))
+                    .digest('hex').slice(0, 32),
                 contactId: admitted.row.binding!.contactId ?? null,
                 template: priceFacts.template,
                 insideServiceWindow: priceFacts.insideServiceWindow,

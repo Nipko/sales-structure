@@ -785,4 +785,74 @@ const LEGACY_CONFIG = Object.freeze({ tone: 'cordial', goals: ['agendar'] });
                 .rejects.toMatchObject({ code: 'dispatch_binding_changed' });
         });
     });
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // WHAT THE METER IS ASKED TO COMPARE
+    // ══════════════════════════════════════════════════════════════════════════
+
+    describe('the digest names what is being sent, not which row is sending it', () => {
+        /**
+         * `contentDigest` was `String(dispatchId)` here — one value per row,
+         * so on this lane the repetition guard had nothing to match and the
+         * same sentence to the same person went out as many times as it was
+         * produced. The guard was not weaker on the durable lane; it was
+         * absent, on the lane the pilot moves everyone to.
+         *
+         * The field had been carrying effect identity, which it does not need
+         * to: `logicalEffectId` is derived from `binding.dispatchItemId`, so a
+         * retry of a row finds its own reservation whatever the digest says.
+         *
+         * These cases check the QUESTION, which is what this file can see —
+         * its meter records what it was asked and then refuses to answer.
+         * That an identical question actually gets REFUSED end-to-end is
+         * measured over the real ledger in
+         * `conversations/courtesy-chain-and-stalled-ask.postgres.spec.ts`.
+         */
+        const digestOf = async (item: { kind: any; payload: Record<string, any> }) => {
+            const { row } = await rowFor({ originKind: 'inbound_reply', item });
+            const { asked } = await driveDispatch(row.id);
+            expect(asked).toHaveLength(1);
+            return { digest: String(asked[0].contentDigest), rowId: String(row.id) };
+        };
+
+        it('asks about the same digest for the same body on two different rows', async () => {
+            const first = await digestOf({ kind: 'text', payload: { text: 'Abrimos de 9 a 6.' } });
+            const second = await digestOf({ kind: 'text', payload: { text: 'Abrimos de 9 a 6.' } });
+            expect(first.rowId).not.toBe(second.rowId);
+            expect(second.digest).toBe(first.digest);
+            // And never the value the guard was handed before: a row id, which
+            // cannot repeat by construction.
+            expect(first.digest).not.toBe(first.rowId);
+            expect(second.digest).not.toBe(second.rowId);
+        });
+
+        it('asks about a different digest when a single word of the body changed', async () => {
+            // The other direction matters as much: a guard that collapsed two
+            // different answers into one digest would refuse to send a price
+            // that changed by one peso.
+            const first = await digestOf({ kind: 'text', payload: { text: 'Cuesta $40.000.' } });
+            const second = await digestOf({ kind: 'text', payload: { text: 'Cuesta $41.000.' } });
+            expect(second.digest).not.toBe(first.digest);
+        });
+
+        it('separates a template from a text carrying the same payload', async () => {
+            // `itemKind` is inside the digest, so one approved template and a
+            // free-text message built from the same object are two effects.
+            const payload = { text: 'Tu turno es mañana.' };
+            const asText = await digestOf({ kind: 'text', payload });
+            const asTemplate = await digestOf({ kind: 'template', payload });
+            expect(asTemplate.digest).not.toBe(asText.digest);
+        });
+
+        it('carries no part of the body in the value it hands over', async () => {
+            // This value reaches an effect key, a log line and a queue id.
+            // None of them may hold a customer's words.
+            const { digest } = await digestOf({ kind: 'text',
+                payload: { text: 'Cedula 1032456789 y direccion Calle 45 12 30' } });
+            expect(digest).toMatch(/^[0-9a-f]{32}$/);
+            for (const fragment of ['1032456789', 'Calle', 'Cedula', '12 30']) {
+                expect(digest).not.toContain(fragment);
+            }
+        });
+    });
 });

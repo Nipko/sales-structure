@@ -528,7 +528,12 @@ export class KnowledgeService {
             return { suggestions: Array.isArray(suggestions) ? suggestions.slice(0, maxSuggestions) : [], queriesAnalyzed: unanswered.length };
         } catch (e: any) {
             this.logger.error(`[AI Suggestions] LLM call failed: ${e.message}`);
-            return { suggestions: [], error: e.message };
+            const lang = await this.getTenantLanguage(tenantId).catch(() => 'es');
+            return {
+                suggestions: [],
+                error: 'suggestions_unavailable',
+                message: kbmsg(lang, 'suggestions.unavailable'),
+            };
         }
     }
 
@@ -1703,37 +1708,52 @@ export class KnowledgeService {
         const schemaName = await this.resolveSchemaFromSlug(tenantSlug);
         if (!schemaName) return [];
 
-        const [legacy, docs] = await Promise.all([
+        const [legacy, docs] = await Promise.allSettled([
             this.prisma.executeInTenantSchema<any[]>(schemaName,
                 `SELECT id, title, slug, category, excerpt, content, published_at, updated_at, 'resource' AS _source
                  FROM knowledge_resources
                  WHERE is_public = true AND status = 'ready'
-                 ORDER BY category, published_at DESC`).catch(() => []),
+                 ORDER BY category, published_at DESC`),
             this.prisma.executeInTenantSchema<any[]>(schemaName,
                 `SELECT id, title, slug, category, excerpt, content_text AS content, created_at AS published_at, updated_at, 'document' AS _source
                  FROM knowledge_documents
                  WHERE is_public = true AND status = 'ready'
-                 ORDER BY category, created_at DESC`).catch(() => []),
+                 ORDER BY category, created_at DESC`),
         ]);
 
-        return [...(legacy || []), ...(docs || [])];
+        if (legacy.status === 'rejected' && docs.status === 'rejected') {
+            this.logger.error(`[Public KB] both article sources failed for ${tenantSlug}`);
+            throw new Error('public_knowledge_unavailable');
+        }
+        if (legacy.status === 'rejected') this.logger.warn(`[Public KB] legacy source unavailable for ${tenantSlug}`);
+        if (docs.status === 'rejected') this.logger.warn(`[Public KB] document source unavailable for ${tenantSlug}`);
+        return [
+            ...(legacy.status === 'fulfilled' ? legacy.value || [] : []),
+            ...(docs.status === 'fulfilled' ? docs.value || [] : []),
+        ];
     }
 
     async getPublicArticle(tenantSlug: string, slug: string): Promise<any | null> {
         const schemaName = await this.resolveSchemaFromSlug(tenantSlug);
         if (!schemaName) return null;
 
-        const legacy = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-            `SELECT id, title, slug, category, excerpt, content, published_at, updated_at
-             FROM knowledge_resources WHERE is_public = true AND status = 'ready' AND slug = $1 LIMIT 1`,
-            [slug]).catch(() => []);
-        if (legacy?.[0]) return legacy[0];
-
-        const docs = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-            `SELECT id, title, slug, category, excerpt, content_text AS content, created_at AS published_at, updated_at
-             FROM knowledge_documents WHERE is_public = true AND status = 'ready' AND slug = $1 LIMIT 1`,
-            [slug]).catch(() => []);
-        return docs?.[0] || null;
+        const [legacy, docs] = await Promise.allSettled([
+            this.prisma.executeInTenantSchema<any[]>(schemaName,
+                `SELECT id, title, slug, category, excerpt, content, published_at, updated_at
+                 FROM knowledge_resources WHERE is_public = true AND status = 'ready' AND slug = $1 LIMIT 1`,
+                [slug]),
+            this.prisma.executeInTenantSchema<any[]>(schemaName,
+                `SELECT id, title, slug, category, excerpt, content_text AS content, created_at AS published_at, updated_at
+                 FROM knowledge_documents WHERE is_public = true AND status = 'ready' AND slug = $1 LIMIT 1`,
+                [slug]),
+        ]);
+        if (legacy.status === 'fulfilled' && legacy.value?.[0]) return legacy.value[0];
+        if (docs.status === 'fulfilled' && docs.value?.[0]) return docs.value[0];
+        if (legacy.status === 'rejected' || docs.status === 'rejected') {
+            this.logger.error(`[Public KB] article lookup incomplete for ${tenantSlug}/${slug}`);
+            throw new Error('public_knowledge_unavailable');
+        }
+        return null;
     }
 
     private async resolveSchemaFromSlug(tenantSlug: string): Promise<string | null> {

@@ -28,9 +28,9 @@ import {
     type AgentContentProposal,
     type ToolDefinition,
     AGENT_CONFIGURATION_PATHS,
-    AGENT_OPERATION_REGISTRY,
+    getAgentOperation,
     misleadingAssistOperations,
-    routedAgentOperations,
+    type AgentRoutedOperation,
     CAPABILITY_EXCLUSION_TEXT,
 } from '@parallext/shared';
 
@@ -461,36 +461,32 @@ REGLA DE PLAN: estos valores son la ÚNICA fuente válida sobre límites y dispo
     }
 
     /**
-     * The tenant's vertical, as prose for the model AND as data for the code.
+     * Which business this is, and nothing more.
      *
-     * It used to return only the string. The capabilities were therefore
-     * available to the prompt and to nothing else, which is how the handoff list
-     * came to be built without them — and how Assist ended up offering a
-     * restaurant a screen its own panel hides.
+     * This block used to publish `effectiveCapabilities` into the prompt and
+     * call it "autoritativo". It is the subtype manifest snapshot written at
+     * provisioning: it does not know the plan, the agent's own toggles, whether
+     * the data behind a tool exists, or whether a provider is answering. So the
+     * prompt carried a SECOND capability list beside the shared diagnosis, and
+     * the two could disagree about the same account at the same moment — with
+     * the authoritative-sounding one being the one that knew least.
      *
-     * Fail-closed on error: an empty capability list authorises nothing, which
-     * is the safe direction for a list whose job is to decide what to offer.
+     * The one list now comes from the paths that enforce it: `listOperations`
+     * for what Assist may do, and the shared assessment's per-channel contract
+     * for what the agent publishes. Industry and subtype stay, because "this is
+     * a dental clinic" orients an example without granting anything.
      */
-    private async buildVerticalContext(
-        tenantId: string,
-    ): Promise<{ prompt: string; capabilities: readonly string[] }> {
+    private async buildVerticalContext(tenantId: string): Promise<{ prompt: string }> {
         try {
             const config = await this.verticals.getVerticalConfig(tenantId);
-            if (!config) return { prompt: '', capabilities: [] };
-            const effectiveCapabilities = Array.isArray(config.effectiveCapabilities)
-                ? config.effectiveCapabilities.filter((capability) => typeof capability === 'string')
-                : [];
-            const context = {
-                industry: config.industry,
-                subType: config.subType || null,
-                effectiveCapabilities,
-            };
-            return { capabilities: effectiveCapabilities, prompt: `## CONTEXTO VERTICAL EFECTIVO (autoritativo, derivado del tenant autenticado)
+            if (!config) return { prompt: '' };
+            const context = { industry: config.industry, subType: config.subType || null };
+            return { prompt: `## TIPO DE NEGOCIO (derivado del tenant autenticado)
 ${JSON.stringify(context)}
-REGLA VERTICAL: orienta la respuesta hacia esta industria y subtipo. Solo presentes como disponibles las capacidades incluidas en effectiveCapabilities; una lista vacía es fail-closed y no autoriza inferir funciones verticales.` };
+REGLA VERTICAL: orienta los ejemplos hacia esta industria y subtipo. Esto NO es una lista de capacidades y no autoriza nada: lo que esta cuenta puede hacer sale del bloque de operaciones y de la evaluación compartida.` };
         } catch (error: any) {
             this.logger.warn(`buildVerticalContext failed: ${error.message}`);
-            return { prompt: '', capabilities: [] };
+            return { prompt: '' };
         }
     }
 
@@ -518,6 +514,23 @@ REGLA VERTICAL: orienta la respuesta hacia esta industria y subtipo. Solo presen
     private static readonly EVIDENCE_VALUE_PATTERN = /^[a-z0-9_,:.-]{1,80}$/i;
     private static readonly MAX_EVIDENCE_KEYS = 8;
     private static readonly MAX_CHAT_ACTIONS = 3;
+
+    /**
+     * Why an operation is not available, in the vocabulary of the gate that
+     * refused it.
+     *
+     * One sentence per reason code of `AgentOperationBlockedReason`, so the
+     * explanation Assist gives is the explanation the API would give. Assist
+     * used to compose this itself from role and vertical only, which is how a
+     * plan limit came out of the chat as "available".
+     */
+    private static readonly BLOCKED_BECAUSE: Readonly<Record<string, string>> = Object.freeze({
+        role_not_permitted: 'la decide otro rol; hay que pedírsela a un administrador de la cuenta',
+        vertical_capability_missing: 'no forma parte de las capacidades de este rubro',
+        plan_limit_reached: 'el plan actual ya llegó a su límite para esto',
+        plan_feature_missing: 'el plan actual no incluye esta capacidad',
+        gate_unavailable: 'no se pudo leer el permiso; hay que reintentar, no asumir que está disponible',
+    });
 
     /** One line per tour, shown to the model so it can offer the right one. */
     private static readonly GUIDED_TOUR_DESCRIPTIONS: Record<GuidedTourId, string> = {
@@ -1215,51 +1228,43 @@ Reglas estrictas:
             }),
         ]);
 
-        // Creating content is a different permission from editing the agent, and
-        // narrower per object: a supervisor may write a FAQ but not a legal
-        // text. The enum offered to the model is filtered by the caller's role,
-        // so it cannot propose something the role would then be refused.
+        // ONE list, and it is the one the API enforces.
         //
-        // And by the tenant's vertical, for the same reason the handoffs below
-        // are: a course prepared for a restaurant is applied into a table whose
-        // screen that tenant cannot open. `AgentContentProposalService` refuses
-        // it either way; offering it here would only mean the refusal arrives
-        // after the person wrote the content.
-        const tenantCapabilities = new Set(verticalContext.capabilities);
-        const permitted = (operation: { roles: readonly string[]; requiresCapability?: string }) =>
-            operation.roles.includes(request.context.userRole as any)
-            && (!operation.requiresCapability || tenantCapabilities.has(operation.requiresCapability));
-        const creatableOperations = AGENT_OPERATION_REGISTRY
-            .filter(operation => operation.availability === 'executable' && permitted(operation))
-            .map(operation => operation.key);
+        // Assist used to re-derive this: role from `request.context.userRole`,
+        // vertical from `verticalConfig.effectiveCapabilities`. That second list
+        // is the manifest snapshot written at provisioning; it knows nothing
+        // about the plan, the agent's own toggles, readiness or a provider's
+        // health, and it was declared "autoritativo" in the prompt beside the
+        // shared diagnosis. So `knowledge.faq.create` — gated by the
+        // `knowledgeArticles` plan limit — was offered to a tenant already at
+        // that limit, who then wrote a FAQ in the chat and got a 403 from
+        // `enforcePlanLimit`. Two implementations of "can this account do this",
+        // and the one Assist used was not the one that decides.
+        //
+        // `listOperations` answers with the propose path's own verdict: role,
+        // vertical capability, plan feature and the live plan limit. Asking
+        // "¿podés?" and asking for it can no longer give different answers.
+        const operationVerdicts = this.operations && request.context.actorId
+            ? await this.operations.listOperations(tenantId,
+                { id: request.context.actorId, role: request.context.userRole }).catch((error: any) => {
+                this.logger.warn(`Operation availability unavailable: ${error?.message || error}`);
+                return null;
+            })
+            : null;
+        const creatableOperations = (operationVerdicts ?? [])
+            .filter(entry => entry.availability === 'executable').map(entry => entry.key);
         const canCreateContent = Boolean(this.operations && request.context.actorId && creatableOperations.length);
-        // What Assist will never do, stated to the model from the same registry
-        // the API enforces. Without it the model invents a capability or an
-        // apology; with it, it names the screen that owns the decision.
-        //
-        // The list used to be handed over whole, filtered by neither role nor
-        // vertical, so Assist would tell an inbox agent to open `/admin/users`
-        // and grant a role, and tell a restaurant to open `/admin/appointments`.
-        // The panel then bounced both: `roles.ts` denies by default and the
-        // layout hides a vertical surface the tenant's capabilities do not
-        // include. What the owner experienced was the assistant sending them
-        // somewhere that does not exist.
-        //
-        // Excluded ones are NOT dropped in silence. An operation the model has
-        // never heard of gets an invented apology or a different screen; one it
-        // has been told is unavailable, and why, gets said plainly.
-        // One call, partitioned. Two calls and an `includes` would depend on the
-        // registry handing back the same object references every time — true
-        // today, and the day it stops being true every operation lands in
-        // `notRoutable` and Assist tells the owner that connecting a channel is
-        // unavailable.
-        const everyRouted = routedAgentOperations();
-        const routedOperations = everyRouted.filter(permitted);
-        const notRoutable = everyRouted.filter(operation => !permitted(operation));
+        // A route the reader cannot open is not a direction. The registry's
+        // `roles` say who DECIDES the operation; the dashboard's own access
+        // table says who can open the screen, and those are two statements.
+        // Read from `@parallext/shared` rather than copied, for the same reason
+        // the article routes above are.
+        const reachable = (route: string) =>
+            dashboardRoleCanOpen(route, String(request.context.userRole ?? ''));
         // A write that cannot move the check the person was sent to fix is worse
         // than no write: they apply it, the banner stays red, and the next thing
-        // they distrust is the assessment. Both pairs are declared in the
-        // resolution table and stated here rather than left to the model.
+        // they distrust is the assessment. Declared in the resolution table and
+        // stated here rather than left to the model.
         const misleading = misleadingAssistOperations()
             .map(pair => `${pair.operation} NO resuelve ${pair.code}: ${pair.because}`)
             .join(' ');
@@ -1275,22 +1280,43 @@ Reglas estrictas:
 Y estas creaciones NO cierran el punto de calidad que lo parece; no las ofrezcas como el arreglo de ese punto: ${misleading}
 `
             : '';
-        const unavailableSentence = notRoutable.length
-            ? `Estas existen pero NO están disponibles en esta cuenta o para este rol; decilo así y no ofrezcas la pantalla: ${notRoutable.map(operation => {
-                const why = !operation.roles.includes(request.context.userRole as any)
-                    ? `la decide ${operation.roles.filter(role => role !== 'super_admin').join(' o ') || 'un administrador de la plataforma'}`
-                    : 'no forma parte de las capacidades de este rubro';
-                return `${operation.key} (${why})`;
-            }).join('; ')}.`
+        const blockedVerdicts = (operationVerdicts ?? []).filter(entry => entry.availability === 'blocked');
+        // Excluded ones are NOT dropped in silence. An operation the model has
+        // never heard of gets an invented apology or a different screen; one it
+        // has been told is unavailable, and why, gets said plainly. The reason
+        // is the enforcing path's own code, so the sentence cannot disagree with
+        // the refusal the person would get.
+        const unavailableSentence = blockedVerdicts.length
+            ? `Estas existen pero NO están disponibles en esta cuenta o para este rol; decilo así y no ofrezcas la pantalla: ${blockedVerdicts.map(entry =>
+                `${entry.key} (${CopilotService.BLOCKED_BECAUSE[String(entry.reason)] ?? 'no está disponible en esta cuenta'})`,
+            ).join('; ')}.`
             : '';
-        const routedSentence = routedOperations.length
-            ? `Estas NO las hace Assist —deriva a la pantalla que las decide—: ${routedOperations.map(operation => {
-                const asks = operation.requirements.map(requirement => requirement.choices?.length
-                    ? `${requirement.key} (${requirement.choices.join('|')})`
-                    : requirement.key).join(', ');
-                return `${operation.key} → ${operation.route} (${operation.reason}${asks ? `; preguntá antes: ${asks}` : ''})`;
-            }).join('; ')}. Antes de derivar, preguntá los datos NO secretos que figuran arriba y nunca pidas tokens, claves ni contraseñas: ese es el motivo por el que la pantalla es de la persona y no tuya.`
-            : 'Ninguna de las operaciones sensibles está disponible para este rol en esta cuenta; no ofrezcas ninguna de esas pantallas.';
+        const routedSentence = !operationVerdicts
+            ? 'No se pudo leer qué operaciones permite esta cuenta. No ofrezcas ninguna pantalla sensible ni infieras permisos; pedí reintentar la consulta.'
+            : (() => {
+                const routed = operationVerdicts
+                    .filter(entry => entry.availability === 'route_to_screen')
+                    .map(entry => getAgentOperation(entry.key))
+                    .filter((definition): definition is AgentRoutedOperation =>
+                        !!definition && definition.availability === 'route_to_screen');
+                const open = routed.filter(definition => reachable(definition.route));
+                const closed = routed.filter(definition => !reachable(definition.route));
+                const openSentence = open.length
+                    ? `Estas NO las hace Assist —deriva a la pantalla que las decide—: ${open.map(definition => {
+                        const asks = definition.requirements.map(requirement => requirement.choices?.length
+                            ? `${requirement.key} (${requirement.choices.join('|')})`
+                            : requirement.key).join(', ');
+                        return `${definition.key} → ${definition.route} (${definition.reason}${asks ? `; preguntá antes: ${asks}` : ''})`;
+                    }).join('; ')}. Antes de derivar, preguntá los datos NO secretos que figuran arriba y nunca pidas tokens, claves ni contraseñas: ese es el motivo por el que la pantalla es de la persona y no tuya.`
+                    : 'Ninguna de las operaciones sensibles está disponible para este rol en esta cuenta; no ofrezcas ninguna de esas pantallas.';
+                // Named rather than dropped in silence, and without the route:
+                // this role cannot open it, so printing it would send them to a
+                // redirect exactly like the nineteen article pairs above.
+                const closedSentence = closed.length
+                    ? ` Y estas las decide una pantalla que este rol NO puede abrir; hay que pedirlas a un administrador y no menciones la ruta: ${closed.map(definition => definition.key).join(', ')}.`
+                    : '';
+                return openSentence + closedSentence;
+            })();
         const handoffContext = `${canCreateContent ? 13 : 12}. **DERIVACIÓN:** ${[unavailableSentence, routedSentence].filter(Boolean).join(' ')}`;
         const contentOperationContext = `${creationContext}${handoffContext}`;
 
@@ -1314,7 +1340,7 @@ ${guidedTourContext ? '\n' + guidedTourContext + '\n' : ''}
 5. **ROLES:** si la acción requiere un rol que el usuario no tiene (ver "Requiere rol" del artículo y el rol del usuario abajo), acláralo amablemente ("esto lo configura un administrador de la cuenta").
 6. **FORMATO:** Markdown limpio: pasos numerados, viñetas, **negritas** para nombres de menús y botones. Respuestas concisas; máximo ~10 líneas salvo que pidan detalle.
 7. **CONSCIENCIA DE PLAN:** si hay un bloque "PLAN DEL USUARIO", úsalo para responder con precisión qué puede o no hacer el usuario según SU plan; para límites/disponibilidad por plan, ese bloque manda sobre cualquier cifra de los artículos. Si algo no está en su plan, indícalo y menciona desde qué plan se obtiene. Si NO hay bloque de plan, no reveles ni infieras el plan, las cuotas o la facturación del tenant; indica que esa información corresponde al administrador.
-8. **CONTEXTO VERTICAL:** si existe el bloque de contexto vertical, úsalo para priorizar ejemplos relevantes. No anuncies herramientas o flujos verticales que no aparezcan en effectiveCapabilities.
+8. **TIPO DE NEGOCIO:** si existe el bloque de tipo de negocio, úsalo solo para priorizar ejemplos relevantes; no es una lista de capacidades. Lo que esta cuenta puede hacer sale de la EVALUACIÓN COMPARTIDA (herramientas publicadas y exclusiones por canal) y del bloque de DERIVACIÓN. Si ninguno de esos dos está disponible, no anuncies herramientas ni flujos verticales: decí que hay que reintentar la consulta.
 9. **CALIDAD DEL AGENTE:** si existe el bloque de estado real, ese bloque manda sobre explicaciones genéricas de la KB. Explica evidencia y prioridad sin revelar identificadores internos, transcripciones ni texto de clientes. Los cambios siempre requieren revisión humana.
 10. **RECORRIDOS:** cuando exista un recorrido guiado para lo que pide el usuario, prefiere ofrecerlo antes que describir menús largos. El recorrido no cambia ninguna configuración por sí mismo: abre la pantalla y muestra dónde; la persona hace el cambio.
 11. **CONFIGURACIÓN ASISTIDA:** si tienes propose_agent_configuration y el usuario pide cambios, prepara valores concretos. editableConfiguration muestra el borrador actual cuando existe: parte de esos valores. La evaluación describe exclusivamente la versión operativa; nunca la presentes como verificación del borrador. La herramienta solo crea una propuesta para revisión; el botón guarda un borrador, sin publicarlo ni activarlo. account.businessHours modifica la cuenta completa y debe revisarse en una propuesta separada. Nunca afirmes haber guardado, activado ni aplicado cambios desde este chat. No solicites secretos ni propongas tareas ajenas a la plantilla.

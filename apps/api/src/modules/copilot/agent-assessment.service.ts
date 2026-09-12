@@ -13,6 +13,8 @@ import {
     type AgentMissionV1, type AgentSetupTask, type AgentQualityCheck, findGuidedTourForQualityCode,
 } from '@parallext/shared';
 import { PrismaService } from '../prisma/prisma.service';
+import { READINESS } from '../verticals/vertical-readiness.service';
+import { readinessTablesToInspect } from '../../common/utils/readiness-predicate-authority.util';
 import { AgentQualityService } from '../quality/agent-quality.service';
 import { TurnCapabilityComposerService } from '../conversations/turn-capability-composer.service';
 import { getVerticalCatalog } from '../../common/utils/vertical-catalog.util';
@@ -60,6 +62,49 @@ export class AgentAssessmentService {
      */
     private revisionAuthority(): EvaluationRevisionService | null {
         return this.revisions ?? null;
+    }
+
+    /**
+     * Which columns each readiness table actually has, in THIS tenant's schema.
+     *
+     * Readiness reports one boolean per key, and a failed lookup is reported by
+     * pushing `satisfied: true, count: 0` plus a report-wide degraded flag —
+     * except when the failure message looks like a table the tenant never
+     * provisioned, which is the branch that catches an absent COLUMN too,
+     * because PostgreSQL says "does not exist" for both. So a predicate that
+     * cannot run comes back as a real, confident zero, and the owner is told to
+     * load data they already loaded.
+     *
+     * One catalogue read per assessment answers it from the outside: if the
+     * predicate names a column this table does not have, the count it produced
+     * cannot have been about the tenant's data, whatever it said. `null` when
+     * the catalogue itself could not be read — which is not an empty schema, and
+     * must not be reported as one.
+     */
+    private async readinessColumns(schema: string): Promise<Record<string, ReadonlySet<string>> | null> {
+        const tables = readinessTablesToInspect(
+            Object.keys(READINESS) as Array<keyof typeof READINESS>, READINESS);
+        if (!tables.length) return {};
+        try {
+            const rows = await this.prisma.executeInTenantSchema<any[]>(schema,
+                `SELECT table_name, column_name FROM information_schema.columns
+                 WHERE table_schema = $1 AND table_name = ANY($2::text[])`,
+                [schema, tables]);
+            const byTable: Record<string, Set<string>> = {};
+            for (const row of rows ?? []) {
+                const table = String(row.table_name);
+                (byTable[table] ??= new Set()).add(String(row.column_name));
+            }
+            // A table the catalogue does not know is deliberately LEFT OUT
+            // rather than recorded as having no columns. Most of these tables
+            // are created lazily on first use, so "absent" means this tenant
+            // never touched that vertical — and zero rows is the honest answer
+            // to the question, exactly as the readiness lookup already treats
+            // it. Recording it as a column-less table would turn every
+            // unprovisioned vertical into an unreadable source, which is the
+            // same lie in the other direction.
+            return byTable;
+        } catch { return null; }
     }
 
     /**
@@ -264,11 +309,17 @@ export class AgentAssessmentService {
                         : channel.contract ? ('prepared' as const) : ('pending' as const),
         }));
         const toolNames = [...new Set(channels.flatMap(channel => channel.contract?.publishedTools ?? []))];
+        // One catalogue read for the whole assessment, so every readiness answer
+        // can say whether its source was readable instead of reporting a failed
+        // lookup as data the owner never loaded.
+        const readinessColumns = await this.readinessColumns(schema);
         const channelTools = statedChannels.map(channel => buildAgentToolExplanations({
             contract: channel.contract, domain, missionIntentKeys: definition.intentKeys, toolNames,
             evidenceByIntent: Object.fromEntries(requiredTests.map(test => [test.intentKey, test.evidence])),
             agentId: agent.id, language: typeof config.language === 'string' ? config.language : 'es',
             safeToolNames: new Set(AGENT_TEST_SAFE_TOOL_NAMES),
+            readinessDefinitions: READINESS as Record<string, { table: string; where?: string; repairRoute?: string }>,
+            readinessColumns,
         }));
         const tools = (channelTools[0] ?? []).map(first => {
             const entries = channelTools.map(items => items.find(item => item.tool === first.tool)!);

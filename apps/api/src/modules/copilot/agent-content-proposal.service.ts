@@ -75,12 +75,36 @@ export class AgentContentProposalService {
         const result: AgentOperationAvailability[] = [];
         for (const definition of AGENT_OPERATION_REGISTRY) {
             const base = { key: definition.key, domain: definition.domain, route: definition.route };
-            if (!isExecutableAgentOperation(definition)) {
-                result.push({ ...base, availability: 'route_to_screen', reason: definition.reason });
-                continue;
-            }
+            // Role first, and for ROUTED operations too.
+            //
+            // Routed entries used to be returned as `route_to_screen` for
+            // everybody, because "Assist will never run it" was read as "so
+            // there is nothing to judge". There is: the screen that owns the
+            // decision is not open to every role, and a supervisor told to go to
+            // `/admin/users` and grant a role lands on a redirect. Assist had
+            // its own copy of this filter, which is how the same question came
+            // to have two implementations giving two answers — and only one of
+            // them was the one the API enforces.
             if (!definition.roles.includes(actor.role as any)) {
                 result.push({ ...base, availability: 'blocked', reason: 'role_not_permitted' });
+                continue;
+            }
+            if (!isExecutableAgentOperation(definition)) {
+                // And the vertical, for the same reason: a screen the tenant's
+                // own layout hides is not a destination. A restaurant sent to
+                // the course catalogue is a dead end whoever sends them.
+                if (definition.requiresCapability) {
+                    if (!context) {
+                        result.push({ ...base, availability: 'blocked', reason: 'gate_unavailable' });
+                        continue;
+                    }
+                    const missing = await this.capabilityVerdict(definition, context);
+                    if (missing) {
+                        result.push({ ...base, availability: 'blocked', reason: missing });
+                        continue;
+                    }
+                }
+                result.push({ ...base, availability: 'route_to_screen', reason: definition.reason });
                 continue;
             }
             if (!context) {
@@ -289,7 +313,10 @@ export class AgentContentProposalService {
      * reaches this method, so a vertical service that is down cannot block a FAQ
      * or a legal text.
      */
-    private async assertCapability(definition: AgentExecutableOperation, context: ContentOperationContext): Promise<void> {
+    private async assertCapability(
+        definition: { key: string; requiresCapability?: string },
+        context: ContentOperationContext,
+    ): Promise<void> {
         const required = definition.requiresCapability;
         if (!required) return;
         const config = await this.verticals.getVerticalConfig(context.tenantId).catch((error: any) => {
@@ -305,7 +332,10 @@ export class AgentContentProposalService {
     }
 
     /** The same vertical gate, asked as a question instead of an assertion. */
-    private async capabilityVerdict(definition: AgentExecutableOperation, context: ContentOperationContext): Promise<AgentOperationBlockedReason | null> {
+    private async capabilityVerdict(
+        definition: { key: string; requiresCapability?: string },
+        context: ContentOperationContext,
+    ): Promise<AgentOperationBlockedReason | null> {
         if (!definition.requiresCapability) return null;
         return this.assertCapability(definition, context)
             .then(() => null)

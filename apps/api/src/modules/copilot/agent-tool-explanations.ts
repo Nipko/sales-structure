@@ -1,6 +1,8 @@
 import { composeSubtypeEvalPack, localizeCapabilityText, rollUpOperationalState, TOOL_GROUP_READINESS,
     type AgentOperationalState, type EffectiveCapabilityContract,
     type VerticalDomainContractV2, type VerticalToolGroup } from '@parallext/shared';
+import { citeReadiness, type ReadinessCitation, type ShippedReadinessDefinition }
+    from '../../common/utils/readiness-predicate-authority.util';
 import { TOOL_POLICY_REGISTRY, toolOrigin } from '../conversations/tool-policy-registry';
 import { TOOL_FAMILIES } from '../conversations/agent-tool-registry';
 import { PAYMENT_CREATE_TOOLS, PAYMENT_STATUS_TOOLS, REFUND_PAYMENT_TOOL } from '../conversations/tools/payment-tools';
@@ -49,6 +51,20 @@ export interface AgentToolExplanation {
         readonly repairRoute: string | null;
         readonly readiness: readonly string[];
     };
+    /**
+     * Each readiness requirement, citing the predicate its tool really runs.
+     *
+     * `requires.readiness` and `missing.readiness` are key names — `faq_content`,
+     * `appointment_services` — and a key name is not an audit. It does not say
+     * what was asked, on which table, about which dimension, or whether the
+     * answer came back at all. So a check that filters a column the table does
+     * not have and a tenant who genuinely loaded nothing produced the same two
+     * words on screen, and the owner was told to do the one thing that could not
+     * help. These citations name the predicate, the table, the dimensions it
+     * decides, whether the source was readable, and the screen whose write
+     * actually moves it — which is not always the one the CTA opens.
+     */
+    readonly readinessAudit: readonly ReadinessCitation[];
     /** A sentence from this business, not a generic one. */
     readonly example: string | null;
     /** Whether it can be exercised without touching a customer. */
@@ -137,6 +153,19 @@ export function buildAgentToolExplanations(input: {
     safeToolNames: ReadonlySet<string>;
     /** Explain the same tool universe on each real channel before aggregating. */
     toolNames?: readonly string[];
+    /**
+     * The shipped readiness definitions, so each citation can be checked against
+     * the columns the predicate actually reads. Passed in rather than imported
+     * so this function keeps no second copy of the readiness table.
+     */
+    readinessDefinitions?: Readonly<Record<string, ShippedReadinessDefinition>>;
+    /**
+     * Columns each readiness table has in THIS tenant's schema, or `null` when
+     * the schema could not be inspected. `null` is not an empty map: it means
+     * the question was not answered, which is a different thing from the table
+     * having no columns.
+     */
+    readinessColumns?: Readonly<Record<string, ReadonlySet<string>>> | null;
 }): readonly AgentToolExplanation[] {
     const language = input.language || 'es';
     const intents = input.domain.intents.filter(intent => input.missionIntentKeys.includes(intent.key));
@@ -170,13 +199,38 @@ export function buildAgentToolExplanations(input: {
             : evidence.includes('not_verified') || !evidence.length ? 'not_verified'
                 : evidence.includes('stale') ? 'stale' : 'verified';
 
+        // Each readiness requirement, audited against the predicate its tool
+        // runs. Built before the state, because a requirement whose source
+        // nobody could read changes what the state is allowed to say.
+        const definitions = input.readinessDefinitions ?? {};
+        const readinessAudit = readiness
+            .map(key => citeReadiness(key as any, {
+                unmet: (input.contract?.unmetReadiness ?? []).includes(key as any),
+                availableColumns: input.readinessColumns?.[definitions[key]?.table ?? ''] ?? null,
+                // No contract at all is not "nothing was wrong with it": the
+                // projection could not be read, so its readiness answers are
+                // unread too. Saying `satisfied` here would be the same lie as
+                // the one this file is about, told about a whole channel.
+                contractDegraded: !input.contract || input.contract.degraded === true,
+                readinessWhere: definitions[key]?.where,
+            }))
+            .filter((citation): citation is ReadinessCitation => !!citation);
+        // A readiness source nobody could read is not a requirement the owner
+        // failed to meet. `pending` is the word for "there is something to do
+        // here"; `prepared` is "nothing disproved it". Neither is true when the
+        // check could not run, and saying either sends the person to a screen
+        // where nothing they do will move the banner.
+        const unreadableReadiness = readinessAudit.some(citation => citation.verdict === 'read_error');
+
         const state: AgentOperationalState = !input.contract ? 'unknown'
             : input.contract.degraded ? 'unknown'
                 : !published.has(tool)
-                    ? (exclusion ? NOT_PUBLISHED_STATES[exclusion.reason] ?? 'pending' : 'pending')
+                    ? (unreadableReadiness && exclusion?.reason === 'readiness_unmet' ? 'unknown'
+                        : exclusion ? NOT_PUBLISHED_STATES[exclusion.reason] ?? 'pending' : 'pending')
                     : worstEvidence === 'verified' ? 'operating'
                         : worstEvidence === 'failed' ? 'degraded'
-                            : worstEvidence === 'stale' ? 'degraded' : 'prepared';
+                            : worstEvidence === 'stale' ? 'degraded'
+                                : unreadableReadiness ? 'unknown' : 'prepared';
 
         return Object.freeze({
             tool,
@@ -198,6 +252,7 @@ export function buildAgentToolExplanations(input: {
                 repairRoute: exclusion?.repairRoute ?? null,
                 readiness: Object.freeze(missingReadiness),
             }),
+            readinessAudit: Object.freeze(readinessAudit),
             example: businessExample(input.contract?.subtypeProfileId ?? null, using[0]?.key, language),
             safeTest: Object.freeze({
                 available: input.safeToolNames.has(tool),

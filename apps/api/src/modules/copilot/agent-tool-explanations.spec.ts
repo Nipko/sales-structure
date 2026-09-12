@@ -1,6 +1,7 @@
 import { buildAgentToolExplanations, rollUpToolExplanations } from './agent-tool-explanations';
 import { buildDomainContractDraft, composeSubtypeEvalPack, listCanonicalSubtypeExperienceProfileIds } from '@parallext/shared';
 import { TOOL_FAMILIES } from '../conversations/agent-tool-registry';
+import { READINESS } from '../verticals/vertical-readiness.service';
 
 /**
  * What a tenant is told about one tool.
@@ -208,5 +209,134 @@ describe('what a tenant is told about one tool', () => {
         // It is still something the model can be shown; a tenant seeing it in the
         // agent has a right to see it here too.
         expect(rows.map(row => row.tool)).toContain('check_availability');
+    });
+
+    describe('what each readiness requirement is actually about', () => {
+        // `requires.readiness: ['faq_content']` is a key name, and a key name is
+        // not an audit: it does not say what was asked, on which table, about
+        // which dimension, or whether the source answered. So a check that
+        // filters a column its table does not have looked exactly like a tenant
+        // who loaded nothing, and the owner was sent to do the one thing that
+        // could not possibly help.
+        const faqColumns = { faqs: new Set(['id', 'question', 'answer', 'is_published']) };
+
+        it('cites the predicate the tool runs, not the one the check runs', () => {
+            const rows = build({
+                missionIntentKeys: [domain.intents.find(entry => entry.key === 'ask_question')!.key],
+                contract: contract({ publishedTools: ['search_faqs'] }),
+                readinessDefinitions: READINESS as any,
+                readinessColumns: faqColumns,
+            });
+            const citation = find(rows, 'search_faqs').readinessAudit
+                .find(entry => entry.key === 'faq_content')!;
+            expect(citation).toMatchObject({
+                table: 'faqs', predicate: 'is_published = true', verdict: 'read_error',
+                writePath: '/admin/knowledge/faqs',
+            });
+            expect(citation.dimensions).toEqual(['active']);
+            // And the shipped check does not read that column at all.
+            expect(READINESS.faq_content?.where).not.toContain('is_published');
+        });
+
+        it('refuses to call a tool prepared when its readiness source could not be read', () => {
+            const rows = build({
+                missionIntentKeys: [domain.intents.find(entry => entry.key === 'ask_question')!.key],
+                contract: contract({ publishedTools: ['search_faqs'] }),
+                readinessDefinitions: READINESS as any,
+                readinessColumns: faqColumns,
+            });
+            // Published, nothing disproved it, and still not `prepared`: nobody
+            // could check the requirement, which is the honest word for it.
+            expect(find(rows, 'search_faqs').state).toBe('unknown');
+        });
+
+        it('does not call it pending either when the gate refused it over an unreadable check', () => {
+            const rows = build({
+                missionIntentKeys: [domain.intents.find(entry => entry.key === 'ask_question')!.key],
+                contract: contract({
+                    publishedTools: [], unmetReadiness: ['faq_content'],
+                    excluded: [{ subject: 'faqs', reason: 'readiness_unmet',
+                        detail: { es: 'Cargá una FAQ.', en: 'x', pt: 'x', fr: 'x' },
+                        repairRoute: '/admin/knowledge' }],
+                }),
+                readinessDefinitions: READINESS as any,
+                readinessColumns: faqColumns,
+            });
+            // `pending` means "there is something here for you to do". There is
+            // not: the answer did not come from this tenant's data.
+            expect(find(rows, 'search_faqs').state).toBe('unknown');
+            expect(find(rows, 'search_faqs').readinessAudit[0].verdict).toBe('read_error');
+        });
+
+        it('still calls a genuinely empty catalogue missing data, and pending', () => {
+            const rows = build({
+                toolNames: ['search_products'],
+                contract: contract({
+                    publishedTools: [], unmetReadiness: ['catalog_items'],
+                    excluded: [{ subject: 'catalog', reason: 'readiness_unmet',
+                        detail: { es: 'Cargá productos.', en: 'x', pt: 'x', fr: 'x' } }],
+                }),
+                readinessDefinitions: READINESS as any,
+                readinessColumns: { products: new Set(['id', 'name', 'is_available']) },
+            });
+            const row = find(rows, 'search_products');
+            expect(row.readinessAudit[0]).toMatchObject({ key: 'catalog_items', verdict: 'missing_data' });
+            expect(row.state).toBe('pending');
+        });
+
+        it('does not invent a read error for a vertical this tenant never provisioned', () => {
+            // Most of these tables are created on first use. Absent from the
+            // catalogue means the tenant never touched that vertical, and zero
+            // rows is the honest answer — not an unreadable source.
+            const rows = build({
+                toolNames: ['search_products'],
+                contract: contract({
+                    publishedTools: [], unmetReadiness: ['catalog_items'],
+                    excluded: [{ subject: 'catalog', reason: 'readiness_unmet',
+                        detail: { es: 'Cargá productos.', en: 'x', pt: 'x', fr: 'x' } }],
+                }),
+                readinessDefinitions: READINESS as any,
+                readinessColumns: {},
+            });
+            expect(find(rows, 'search_products').readinessAudit[0].verdict).toBe('missing_data');
+        });
+
+        it('reports a read error when the whole contract could not be evaluated', () => {
+            const rows = build({
+                toolNames: ['search_products'],
+                contract: contract({ publishedTools: ['search_products'], degraded: true }),
+                readinessDefinitions: READINESS as any,
+                readinessColumns: { products: new Set(['is_available']) },
+            });
+            expect(find(rows, 'search_products').readinessAudit[0].verdict).toBe('read_error');
+        });
+
+        it('does not report a readiness answer as satisfied when there is no contract to read', () => {
+            const rows = build({
+                toolNames: ['search_products'], contract: null,
+                readinessDefinitions: READINESS as any,
+                readinessColumns: { products: new Set(['is_available']) },
+            });
+            const row = find(rows, 'search_products');
+            expect(row.state).toBe('unknown');
+            // The channel projection could not be read, so its readiness
+            // answers were not read either. `satisfied` here would be the same
+            // lie, told about a whole channel.
+            expect(row.readinessAudit[0].verdict).toBe('read_error');
+        });
+
+        it('carries the audited divergence so the surface can say the check is weaker than its tool', () => {
+            const rows = build({
+                toolNames: ['search_listings'],
+                contract: contract({ publishedTools: ['search_listings'] }),
+                readinessDefinitions: READINESS as any,
+                readinessColumns: { real_estate_listings: new Set(['status', 'is_active']) },
+            });
+            const citation = find(rows, 'search_listings').readinessAudit
+                .find(entry => entry.key === 'listings')!;
+            expect(citation.verdict).toBe('satisfied');
+            expect(citation.auditedDivergence).toMatchObject({ kind: 'weaker_predicate' });
+            expect(citation.auditedDivergence!.missingDimensions).toEqual(['active']);
+        });
     });
 });

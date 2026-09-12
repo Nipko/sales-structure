@@ -1,0 +1,587 @@
+import type { VerticalReadinessKey } from '@parallext/shared';
+
+/**
+ * What each readiness key claims, against what its tool actually asks.
+ *
+ * `VerticalReadinessService` counts rows: one table, one WHERE, "is there at
+ * least one". That is a fine shape, and it was never audited against the query
+ * the TOOL runs, so the two drifted in every direction at once — and the drift
+ * is invisible from either side. Readiness says "you have a service"; the
+ * availability read never touches `services` and answers out of
+ * `availability_slots`. Readiness says "you have a listing"; the listing search
+ * also requires `is_active`, and archiving is a soft delete. Readiness says "you
+ * have no FAQs" to a tenant looking at three, because the column it filters on
+ * does not exist on that table and PostgreSQL reports an absent column with the
+ * same words it uses for an absent table.
+ *
+ * This file makes the comparison MECHANICAL instead of a claim in prose. Every
+ * key declares:
+ *
+ *  · the predicate the runtime tool evaluates, and where it is evaluated,
+ *  · which of the seven dimensions that predicate actually decides,
+ *  · the screen whose write really moves the check, which is not always the one
+ *    the repair CTA opens, and
+ *  · a declared divergence when the two disagree, with the correction and the
+ *    file that has to change.
+ *
+ * The columns a readiness predicate reads are NOT declared here. They are
+ * derived from the shipped predicate by `readinessPredicateColumns`, because a
+ * second hand-written copy of a WHERE clause is a second thing to go stale — and
+ * the whole defect this file describes is two predicates nobody compared.
+ *
+ * Two rules keep the register honest, both enforced by
+ * `readinessPredicateRegisterDefects`:
+ *
+ *  1. A key implemented in `READINESS` with no entry here is a defect. Adding a
+ *     readiness key without saying what its tool asks is how this started.
+ *  2. A declared divergence that no longer diverges is a defect too. A register
+ *     that only ever grows is a register nobody has to update.
+ *
+ * Nothing here evaluates authority. It is a description of two predicates and
+ * the difference between them, so that "readiness was audited against the real
+ * predicate" becomes something a test can fail.
+ */
+
+/** The dimensions a readiness answer can be about. */
+export type ReadinessPredicateDimension =
+    /** The row is switched on / not soft-deleted. */
+    | 'active'
+    /** There is a free slot, night, seat or date — not merely a sellable row. */
+    | 'availability'
+    /** The concurrency or seat count the quote would honour. */
+    | 'capacity'
+    /** There is a number to quote. */
+    | 'price'
+    /** That number carries a currency. */
+    | 'currency'
+    /** The row belongs to the subject the tool answers for. */
+    | 'ownership'
+    /** The row relates to the account, connection or agent asking. */
+    | 'account_relation';
+
+export type ReadinessDivergenceKind =
+    /** The readiness predicate cannot execute: it names a column that is absent. */
+    | 'unexecutable'
+    /** Both execute; the readiness predicate decides fewer dimensions. */
+    | 'weaker_predicate'
+    /**
+     * The two predicates agree, and neither decides a dimension the complete
+     * task needs — so the tenant is not blocked, they are answered wrongly. A
+     * property with no rate is quoted at zero; a course with no cohort is listed
+     * and cannot be enrolled in. "Una cuenta sin capacidad no está lista por
+     * tener un servicio" is this row, not a weaker predicate.
+     */
+    | 'undecided_dimension'
+    /** Readiness counts rows of a different subject than the tool answers for. */
+    | 'different_subject'
+    /** The repair CTA leads to a screen that cannot write the counted row. */
+    | 'repair_route_cannot_write';
+
+export interface ReadinessDivergence {
+    readonly kind: ReadinessDivergenceKind;
+    /** The dimensions readiness leaves undecided that its tool decides. */
+    readonly missingDimensions: readonly ReadinessPredicateDimension[];
+    /** What a tenant experiences because of it. Not a restatement of the kind. */
+    readonly consequence: string;
+    /** The exact change that closes it. One sentence, actionable. */
+    readonly correction: string;
+    /** The file that has to change. */
+    readonly owner: string;
+    /**
+     * For `unexecutable` only: the column the shipped predicate names and the
+     * table does not have. The divergence is stale the moment the predicate
+     * stops naming it.
+     */
+    readonly absentColumn?: string;
+}
+
+export interface ReadinessPredicateEntry {
+    /** Table the runtime tool reads to answer the question readiness gates. */
+    readonly toolTable: string;
+    /** The tool's own WHERE, verbatim enough to compare. */
+    readonly toolPredicate: string;
+    /** Where that predicate lives, so a reader can check this file. */
+    readonly toolSource: string;
+    /** What the tool's predicate decides. */
+    readonly dimensions: readonly ReadinessPredicateDimension[];
+    /** The screen whose write actually moves this check. */
+    readonly writePath: string;
+    readonly divergence: ReadinessDivergence | null;
+}
+
+/** Shape of one `READINESS` definition, as this file needs to read it. */
+export interface ShippedReadinessDefinition {
+    readonly table: string;
+    readonly where?: string;
+    readonly repairRoute?: string;
+}
+
+const READINESS_OWNER = 'apps/api/src/modules/verticals/vertical-readiness.service.ts';
+
+export const READINESS_PREDICATE_AUTHORITY:
+    Readonly<Partial<Record<VerticalReadinessKey, ReadinessPredicateEntry>>> = Object.freeze({
+    business_identity: {
+        toolTable: 'companies',
+        toolPredicate: 'is_primary = true',
+        toolSource: 'business-info/business-info.service.ts::getPrimary',
+        dimensions: ['ownership'],
+        writePath: '/admin/settings/business-info',
+        divergence: {
+            kind: 'different_subject',
+            missingDimensions: ['ownership'],
+            consequence: 'The CRM-B2B module writes customer organisations into the same `companies` table with '
+                + '`is_primary` false. A tenant with one B2B account and no business identity of its own satisfies '
+                + "this check, and the runtime fallback then answers as that customer's company.",
+            correction: 'Add `is_primary = true` to the readiness predicate, which is the only predicate the '
+                + 'runtime primary path uses.',
+            owner: READINESS_OWNER,
+        },
+    },
+    faq_content: {
+        toolTable: 'faqs',
+        toolPredicate: 'is_published = true',
+        toolSource: 'faqs/faqs.service.ts::search',
+        dimensions: ['active'],
+        writePath: '/admin/knowledge/faqs',
+        divergence: {
+            kind: 'unexecutable',
+            absentColumn: 'is_active',
+            missingDimensions: ['active'],
+            consequence: 'The `faqs` table has no `is_active` column — it has `is_published`. PostgreSQL raises '
+                + '42703, whose message matches the readiness lookup\'s "missing table" branch, so the failure is '
+                + 'counted as zero rows instead of a degraded read. `faq_content` is in BASE_READINESS and `faqs` '
+                + 'in BASE_TOOLS, so `search_faqs` is excluded as readiness_unmet for EVERY tenant of EVERY '
+                + 'vertical, and the owner is told to load a FAQ while looking at the ones they wrote.',
+            correction: 'Change the predicate to `is_published = true` and the repairRoute to '
+                + '`/admin/knowledge/faqs`, which is the screen that writes this table.',
+            owner: READINESS_OWNER,
+        },
+    },
+    appointment_services: {
+        toolTable: 'availability_slots',
+        toolPredicate: 'is_active = true AND day_of_week = $1 AND the owning platform user and tenant are active',
+        toolSource: 'conversations/ai-tool-executor.service.ts::check_availability',
+        dimensions: ['active', 'availability', 'account_relation'],
+        writePath: '/admin/appointments/config',
+        divergence: {
+            kind: 'different_subject',
+            missingDimensions: ['availability', 'account_relation'],
+            consequence: 'The availability read never touches `services`: the slot grid comes from '
+                + '`availability_slots` joined to an active platform user of an active tenant. One active service '
+                + 'and zero slots satisfies readiness, publishes the family, and every `check_availability` returns '
+                + '`appointments_not_configured` — the "no hay disponibilidad" loop.',
+            correction: 'Require a service AND at least one active `availability_slots` row owned by an active user '
+                + 'of this tenant, or split the key so the slot requirement has its own check and its own repair.',
+            owner: READINESS_OWNER,
+        },
+    },
+    catalog_items: {
+        toolTable: 'products',
+        toolPredicate: 'is_available = true',
+        toolSource: 'conversations/ai-tool-executor.service.ts::search_products',
+        dimensions: ['active'],
+        writePath: '/admin/inventory',
+        divergence: null,
+    },
+    treatment_catalog: {
+        toolTable: 'treatment_plans',
+        toolPredicate: "contact_id = $1::uuid AND status = 'active'",
+        toolSource: 'treatment-plans/treatment-plans.service.ts::summaryForContact',
+        dimensions: ['active', 'ownership'],
+        writePath: '/admin/treatment-plans',
+        divergence: {
+            kind: 'different_subject',
+            missingDimensions: ['active', 'ownership'],
+            consequence: '`treatment_plans` is a per-patient enrolment record, not a catalogue: the tool answers '
+                + "only for this conversation's contact and only for `status = 'active'`. Any row satisfies "
+                + 'readiness, including a cancelled plan belonging to somebody else.',
+            correction: 'Either point the key at whatever the tenant configures as a treatment catalogue, or state '
+                + "that the key means \"this practice has ever recorded a plan\" and add `status = 'active'`.",
+            owner: READINESS_OWNER,
+        },
+    },
+    listings: {
+        toolTable: 'real_estate_listings',
+        toolPredicate: "is_active = true AND status = 'available'",
+        toolSource: 'listings/listings.service.ts::search',
+        dimensions: ['active', 'availability'],
+        writePath: '/admin/listings',
+        divergence: {
+            kind: 'weaker_predicate',
+            missingDimensions: ['active'],
+            consequence: 'Deleting a listing is a soft delete (`is_active = false`). An archived listing keeps '
+                + '`status` available, so it satisfies readiness while being invisible to `search_listings`.',
+            correction: 'Add `is_active = true` to the readiness predicate.',
+            owner: READINESS_OWNER,
+        },
+    },
+    menu_items: {
+        toolTable: 'menu_items',
+        toolPredicate: 'is_active = true AND is_available = true',
+        toolSource: 'restaurants/restaurants.service.ts::searchMenu',
+        dimensions: ['active', 'availability'],
+        writePath: '/admin/menu',
+        divergence: {
+            kind: 'weaker_predicate',
+            missingDimensions: ['active'],
+            consequence: 'Deleting a dish is a soft delete. A row with `is_active = false` and `is_available = true` '
+                + 'satisfies readiness and never appears on the menu.',
+            correction: 'Add `is_active = true` to the readiness predicate.',
+            owner: READINESS_OWNER,
+        },
+    },
+    vehicle_inventory: {
+        toolTable: 'vehicles',
+        toolPredicate: "status = 'available'",
+        toolSource: 'conversations/ai-tool-executor.service.ts::search_vehicles',
+        dimensions: ['active', 'availability'],
+        writePath: '/admin/vehicles',
+        // The sales family matches exactly. The rental family shares this key and
+        // answers "is it free" out of `resource_rentals`; that is recorded as a
+        // family-level gap in the report rather than as a divergence of this
+        // predicate, which is right for the tool it was written for.
+        divergence: null,
+    },
+    tour_packages: {
+        toolTable: 'tour_packages',
+        toolPredicate: 'is_active = true',
+        toolSource: 'tours/tours.service.ts::searchPackages',
+        dimensions: ['active'],
+        writePath: '/admin/tours',
+        divergence: null,
+    },
+    properties: {
+        toolTable: 'properties',
+        toolPredicate: 'is_active = true',
+        toolSource: 'conversations/ai-tool-executor.service.ts::list_properties',
+        dimensions: ['active'],
+        writePath: '/admin/properties',
+        divergence: {
+            kind: 'undecided_dimension',
+            missingDimensions: ['price'],
+            consequence: 'The repair text promises "con su tarifa" and nothing enforces it: an active property with '
+                + 'no `night_price` satisfies readiness and is quoted at zero, so the customer is told a stay costs '
+                + 'only the cleaning fee.',
+            correction: 'Add `night_price IS NOT NULL AND night_price > 0`, or drop the rate promise from the '
+                + 'repair text so the check and the sentence agree.',
+            owner: READINESS_OWNER,
+        },
+    },
+    courses: {
+        toolTable: 'courses',
+        toolPredicate: 'is_active = true',
+        toolSource: 'education/education.service.ts::listCourses',
+        dimensions: ['active'],
+        writePath: '/admin/courses',
+        divergence: {
+            kind: 'undecided_dimension',
+            missingDimensions: ['capacity'],
+            consequence: 'The sellable unit is a cohort. With zero `course_cohorts` rows readiness is satisfied and '
+                + '`get_courses` lists courses, while `get_course_schedule` has nothing to show and `enroll_student` '
+                + 'cannot even waitlist.',
+            correction: 'Require an open future `course_cohorts` row, or give the cohort requirement its own key so '
+                + 'the catalogue check keeps its own meaning.',
+            owner: READINESS_OWNER,
+        },
+    },
+    professional_cases: {
+        toolTable: 'opportunities',
+        toolPredicate: "the calling contact's own open opportunities, via leads.contact_id",
+        toolSource: 'conversations/ai-tool-executor.service.ts::get_case_status',
+        dimensions: ['active', 'ownership'],
+        writePath: '/admin/pipeline',
+        divergence: {
+            kind: 'repair_route_cannot_write',
+            missingDimensions: ['ownership'],
+            consequence: '`/admin/cases` is a read-only screen: its controller exposes no create path, so the '
+                + 'repair CTA cannot produce the row it asks for. The only writer is `/admin/pipeline`. Readiness '
+                + 'also counts any tenant-wide open opportunity, while the tool answers only for the calling '
+                + "contact's own, and ignores `pipeline_stages.is_terminal`, which both the screen and the tool "
+                + 'treat as closed.',
+            correction: 'Point repairRoute at `/admin/pipeline`, and exclude rows parked in a terminal stage.',
+            owner: READINESS_OWNER,
+        },
+    },
+    pets: {
+        toolTable: 'services',
+        toolPredicate: 'is_active = true',
+        toolSource: 'conversations/ai-tool-executor.service.ts::list_pet_services',
+        dimensions: ['active'],
+        writePath: '/admin/appointments/config',
+        divergence: null,
+    },
+    membership_plans: {
+        toolTable: 'membership_plans',
+        toolPredicate: 'is_active = true',
+        toolSource: 'gyms/gyms.service.ts::listPlans',
+        dimensions: ['active'],
+        writePath: '/admin/memberships',
+        divergence: null,
+    },
+    insurance_plans: {
+        toolTable: 'insurance_plans',
+        toolPredicate: 'is_active = true',
+        toolSource: 'insurance/insurance.service.ts::listPlans',
+        dimensions: ['active'],
+        writePath: '/admin/insurance',
+        divergence: {
+            kind: 'undecided_dimension',
+            missingDimensions: ['price', 'currency'],
+            consequence: 'The repair text says "cotizable" and nothing checks a premium. A plan with null premiums '
+                + 'satisfies readiness, and `calculate_quote` writes a quote of zero into `insurance_quotes`.',
+            correction: 'Add `monthly_premium_min IS NOT NULL AND currency IS NOT NULL`, or stop calling the row '
+                + 'quotable in the repair text.',
+            owner: READINESS_OWNER,
+        },
+    },
+    service_catalog: {
+        toolTable: 'services',
+        toolPredicate: 'is_active = true AND duration_minutes > 0',
+        toolSource: 'home-services/home-services.service.ts::listCapacityServices',
+        dimensions: ['active', 'availability'],
+        writePath: '/admin/service-catalog',
+        divergence: {
+            kind: 'weaker_predicate',
+            missingDimensions: ['availability'],
+            consequence: "`duration_minutes` is NOT NULL DEFAULT 30, so this is not a null edge case: zero is "
+                + "written deliberately whenever `duration_type` is 'open', which is the natural shape for a "
+                + 'plumbing or fumigation quote. A tenant whose whole catalogue is open-duration satisfies '
+                + 'readiness and publishes the family, while `list_home_services` returns nothing and '
+                + 'the availability read raises HomeServiceCatalogUnavailableError.',
+            correction: 'Decide which side is wrong and change that one: either add `duration_minutes > 0` to the '
+                + 'readiness predicate, so an all-open catalogue is honestly reported as not publishable, or teach '
+                + "the home-services reads to handle `duration_type = 'open'` instead of filtering it out.",
+            owner: READINESS_OWNER,
+        },
+    },
+    photo_sessions: {
+        toolTable: 'services',
+        toolPredicate: 'is_active = true',
+        toolSource: 'conversations/ai-tool-executor.service.ts::list_photo_packages',
+        dimensions: ['active'],
+        writePath: '/admin/service-catalog',
+        divergence: null,
+    },
+    boarding_capacity: {
+        toolTable: 'services',
+        toolPredicate: "is_active = true AND accent-normalised category IN ('hotel','guarderia') "
+            + 'AND max_concurrent is an integer >= 1',
+        toolSource: 'resource-rentals/resource-rentals.service.ts::checkAvailability',
+        dimensions: ['active', 'capacity'],
+        writePath: '/admin/service-catalog',
+        divergence: {
+            kind: 'different_subject',
+            missingDimensions: ['account_relation'],
+            consequence: 'The runtime strips accents before comparing the category; readiness compares the literals. '
+                + "A service stored as 'guardería' fails readiness and passes the runtime. And the family this key "
+                + 'gates carries no read tool: the availability read is `check_daycare_availability`, which belongs '
+                + 'to `petServices` and is gated by the bare `pets` predicate, so boarding availability publishes '
+                + 'with `boarding_capacity` unmet.',
+            correction: 'Compare the category with the same accent normalisation the runtime uses, and gate the '
+                + 'daycare availability read on this key instead of on `pets`.',
+            owner: READINESS_OWNER,
+        },
+    },
+});
+
+/**
+ * Words that appear in a WHERE clause and are not columns.
+ *
+ * Deliberately a small list of SQL, not of this schema: a column name that
+ * happened to be listed here would be dropped from the executability check and
+ * the check would pass on a predicate that cannot run.
+ */
+const SQL_NON_COLUMNS = new Set([
+    'and', 'or', 'not', 'is', 'null', 'true', 'false', 'in', 'like', 'ilike', 'between',
+    'coalesce', 'nullif', 'lower', 'upper', 'trim', 'exists', 'any', 'all', 'distinct',
+    'from', 'cast', 'as', 'case', 'when', 'then', 'else', 'end', 'select', 'where',
+    'int', 'integer', 'text', 'boolean', 'uuid', 'date', 'timestamp', 'numeric',
+]);
+
+/**
+ * The columns a shipped readiness predicate reads.
+ *
+ * Derived from the predicate rather than declared beside it, so the answer
+ * cannot be a stale copy of the thing it is checking. String literals are
+ * removed first: `status = 'available'` names one column, not two.
+ */
+export function readinessPredicateColumns(where: string | undefined): readonly string[] {
+    if (!where) return Object.freeze([]);
+    const withoutLiterals = where.replace(/'[^']*'/g, ' ').replace(/\$\d+/g, ' ');
+    const tokens = withoutLiterals.toLowerCase().match(/[a-z_][a-z0-9_]*/g) ?? [];
+    return Object.freeze([...new Set(tokens.filter(token => !SQL_NON_COLUMNS.has(token)))].sort());
+}
+
+/**
+ * The keys `READINESS` implements that this register does not describe, and the
+ * declared divergences that are no longer true.
+ *
+ * Both directions matter. A key with no entry is an unaudited predicate, which
+ * is the state this file exists to end. A divergence that has been fixed and
+ * still stands here is a register nobody maintains, and the next reader cannot
+ * tell which half is stale.
+ */
+export function readinessPredicateRegisterDefects(
+    readiness: Readonly<Partial<Record<VerticalReadinessKey, ShippedReadinessDefinition>>>,
+): readonly string[] {
+    const defects: string[] = [];
+    for (const [key, definition] of Object.entries(readiness) as Array<[VerticalReadinessKey, ShippedReadinessDefinition]>) {
+        const entry = READINESS_PREDICATE_AUTHORITY[key];
+        if (!entry) {
+            defects.push(`${key}: implemented by READINESS and not audited against its tool's predicate`);
+            continue;
+        }
+        const divergence = entry.divergence;
+        if (!divergence) continue;
+        if (!divergence.correction.trim()) defects.push(`${key}: divergence declared with no correction`);
+        if (!divergence.consequence.trim()) defects.push(`${key}: divergence declared with no consequence`);
+        if (divergence.kind !== 'repair_route_cannot_write' && !divergence.missingDimensions.length) {
+            defects.push(`${key}: ${divergence.kind} without naming a dimension it leaves undecided`);
+        }
+        if (divergence.kind === 'unexecutable') {
+            if (!divergence.absentColumn) {
+                defects.push(`${key}: unexecutable without naming the absent column`);
+            } else if (!readinessPredicateColumns(definition.where).includes(divergence.absentColumn)) {
+                defects.push(`${key}: the predicate no longer reads ${divergence.absentColumn}; the divergence is stale`);
+            }
+        }
+        if (divergence.kind === 'repair_route_cannot_write' && definition.repairRoute === entry.writePath) {
+            defects.push(`${key}: repairRoute already points at ${entry.writePath}; the divergence is stale`);
+        }
+        if (divergence.kind === 'weaker_predicate' && predicateCovers(definition.where ?? '', entry.toolPredicate)) {
+            defects.push(`${key}: the readiness predicate now covers its tool's; the divergence is stale`);
+        }
+        // The inverse check, and it is not decoration. `undecided_dimension`
+        // claims the two predicates agree and both miss something the task
+        // needs. If they stop agreeing, the entry is describing a state that no
+        // longer exists and has to be reclassified rather than left to read as
+        // "readiness matches, we just want more".
+        if (divergence.kind === 'undecided_dimension' && !predicateCovers(definition.where ?? '', entry.toolPredicate)) {
+            defects.push(`${key}: declared as an undecided dimension, but the readiness predicate no longer matches its tool's`);
+        }
+    }
+    return Object.freeze(defects);
+}
+
+/**
+ * Does the readiness predicate already say everything the tool's does?
+ *
+ * Deliberately crude: it compares the `column op value` fragments of both, so it
+ * can only ever answer "yes, this is now at least as strict". It is used in one
+ * direction — to notice that a declared divergence went away — never to declare
+ * a predicate correct.
+ */
+function predicateCovers(readinessWhere: string, toolPredicate: string): boolean {
+    const fragments = (text: string) => new Set(text
+        .split(/\bAND\b/i)
+        .map(part => part.replace(/\s+/g, ' ').trim().toLowerCase())
+        .filter(Boolean));
+    const tool = fragments(toolPredicate);
+    if (!tool.size) return false;
+    const shipped = fragments(readinessWhere);
+    return [...tool].every(fragment => shipped.has(fragment));
+}
+
+/** The keys whose shipped predicate disagrees with the predicate its tool runs. */
+export function readinessPredicateDivergences(
+    readiness: Readonly<Partial<Record<VerticalReadinessKey, ShippedReadinessDefinition>>>,
+): readonly VerticalReadinessKey[] {
+    return Object.freeze((Object.keys(readiness) as VerticalReadinessKey[])
+        .filter(key => READINESS_PREDICATE_AUTHORITY[key]?.divergence)
+        .sort());
+}
+
+/**
+ * Why a readiness answer says what it says.
+ *
+ * Three words, not two. `VerticalReadinessService` reports a failed lookup by
+ * pushing `satisfied: true, count: 0` and raising a report-wide `degraded` flag,
+ * which is the right instinct — unknown is not unmet — but by the time the
+ * answer reaches a person it has become one boolean, and a boolean cannot say
+ * "nobody could read this". The distinction is the whole point: "load a product"
+ * is a thing the owner can do, and "this check could not be read" is neither
+ * their fault nor their task.
+ */
+export type ReadinessSourceVerdict = 'satisfied' | 'missing_data' | 'read_error';
+
+export interface ReadinessSourceInput {
+    /** The key was reported unmet by the readiness evaluation. */
+    readonly unmet: boolean;
+    /**
+     * Columns that exist on the readiness table in THIS tenant's schema, or
+     * `null` when the schema itself could not be inspected. `null` is not an
+     * empty set: an uninspectable schema proves nothing either way.
+     */
+    readonly availableColumns: ReadonlySet<string> | null;
+    /** The contract as a whole could not be evaluated. */
+    readonly contractDegraded: boolean;
+    /** The shipped predicate, whose columns decide whether it could execute. */
+    readonly readinessWhere?: string;
+}
+
+/**
+ * Classify one readiness key for one tenant.
+ *
+ * A predicate that names a column the tenant's schema does not have cannot have
+ * answered the question, whatever number came back: PostgreSQL reports the
+ * absent column with the same "does not exist" wording it uses for an absent
+ * table, and the lookup's missing-table branch turns that into a count of zero.
+ * So the classification is made from the schema, not from the count.
+ */
+export function classifyReadinessSource(
+    key: VerticalReadinessKey,
+    input: ReadinessSourceInput,
+): ReadinessSourceVerdict {
+    const columns = readinessPredicateColumns(input.readinessWhere);
+    if (input.availableColumns && columns.some(column => !input.availableColumns!.has(column))) {
+        return 'read_error';
+    }
+    if (input.contractDegraded) return 'read_error';
+    return input.unmet ? 'missing_data' : 'satisfied';
+}
+
+export interface ReadinessCitation {
+    readonly key: VerticalReadinessKey;
+    /** The predicate the TOOL evaluates, so the answer cites what it is about. */
+    readonly predicate: string;
+    readonly table: string;
+    readonly dimensions: readonly ReadinessPredicateDimension[];
+    readonly verdict: ReadinessSourceVerdict;
+    /** The screen whose write moves this check, which is not always the CTA's. */
+    readonly writePath: string;
+    /** Present when the shipped check decides less than its tool does. */
+    readonly auditedDivergence: ReadinessDivergence | null;
+}
+
+/**
+ * The citation a surface renders instead of a bare key name.
+ *
+ * `faq_content` told an owner nothing. "faqs, is_published = true, could not be
+ * read" tells them what was asked and that the answer is not about them.
+ */
+export function citeReadiness(
+    key: VerticalReadinessKey,
+    input: ReadinessSourceInput,
+): ReadinessCitation | null {
+    const entry = READINESS_PREDICATE_AUTHORITY[key];
+    if (!entry) return null;
+    return Object.freeze({
+        key,
+        predicate: entry.toolPredicate,
+        table: entry.toolTable,
+        dimensions: Object.freeze([...entry.dimensions]),
+        verdict: classifyReadinessSource(key, input),
+        writePath: entry.writePath,
+        auditedDivergence: entry.divergence,
+    });
+}
+
+/** Every table whose columns must be inspected to classify these keys. */
+export function readinessTablesToInspect(
+    keys: readonly VerticalReadinessKey[],
+    readiness: Readonly<Partial<Record<VerticalReadinessKey, ShippedReadinessDefinition>>>,
+): readonly string[] {
+    return Object.freeze([...new Set(keys
+        .map(key => readiness[key]?.table)
+        .filter((table): table is string => typeof table === 'string' && /^[a-z_][a-z0-9_]*$/.test(table)))].sort());
+}

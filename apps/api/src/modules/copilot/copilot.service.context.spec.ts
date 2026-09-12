@@ -1,4 +1,4 @@
-import { misleadingAssistOperations, routedAgentOperations } from '@parallext/shared';
+import { AGENT_OPERATION_REGISTRY, misleadingAssistOperations } from '@parallext/shared';
 import { CopilotService, CopilotChatRequest } from './copilot.service';
 
 const TENANT_ID = '11111111-1111-4111-8111-111111111111';
@@ -241,7 +241,7 @@ describe('CopilotService authenticated context', () => {
         expect(matches.map((article: any) => article.id)).toEqual(['integrations']);
     });
 
-    it('derives vertical context from the authenticated tenant configuration', async () => {
+    it('derives the business from the authenticated tenant configuration, and nothing else', async () => {
         const { service, verticals } = createService();
 
         const context = await (service as any).buildVerticalContext(TENANT_ID);
@@ -249,10 +249,13 @@ describe('CopilotService authenticated context', () => {
         expect(verticals.getVerticalConfig).toHaveBeenCalledWith(TENANT_ID);
         expect(context.prompt).toContain('"industry":"turismo"');
         expect(context.prompt).toContain('"subType":"alquiler_vacacional"');
-        expect(context.prompt).toContain('"nightly_booking"');
-        // Las mismas capacidades como dato, no solo como prosa: es lo que
-        // decide qué pantallas se ofrecen, y por eso sale por separado.
-        expect(context.capabilities).toEqual(['crm_pipeline', 'nightly_booking']);
+        // And NOT the manifest's capability array. It used to travel into the
+        // prompt as "autoritativo" beside the shared diagnosis — a second list,
+        // blind to the plan, the agent's toggles, readiness and provider health.
+        // What the account can do comes from the paths that enforce it.
+        expect(context.prompt).not.toContain('nightly_booking');
+        expect(context.prompt).not.toContain('effectiveCapabilities');
+        expect(context).not.toHaveProperty('capabilities');
     });
 
     it('injects only server-derived vertical context into the support prompt', async () => {
@@ -275,8 +278,9 @@ describe('CopilotService authenticated context', () => {
 
         expect(llmRouter.execute).toHaveBeenCalledWith(expect.objectContaining({
             tenantId: TENANT_ID,
-            systemPrompt: expect.stringContaining('"effectiveCapabilities":["crm_pipeline","nightly_booking"]'),
+            systemPrompt: expect.stringContaining('"industry":"turismo","subType":"alquiler_vacacional"'),
         }));
+        expect(llmRouter.execute.mock.calls[0][0].systemPrompt).not.toContain('effectiveCapabilities');
         expect((service as any).searchKb).toHaveBeenCalledWith(
             request.message,
             'es',
@@ -354,7 +358,15 @@ describe('CopilotService authenticated context', () => {
         // rows of two other tables — and a person who applies the write and
         // watches the banner stay red stops believing the assessment. The pairs
         // come from the resolution table, so this cannot drift from it.
-        const { service, llmRouter } = createService(null, null, { propose: jest.fn() });
+        const { service, llmRouter } = createService(null, null, {
+            propose: jest.fn(),
+            // The warning belongs to the half that can create, so the verdicts
+            // have to say something is creatable for it to be reachable at all.
+            listOperations: jest.fn(async () => misleadingAssistOperations().map(pair => ({
+                key: pair.operation, domain: 'knowledge', route: '/admin/knowledge',
+                availability: 'executable' as const, reason: null,
+            }))),
+        });
         jest.spyOn(service as any, 'searchKb').mockReturnValue([]);
         await service.chat(chatRequest({ actorId: 'user-1' } as any));
         const prompt = llmRouter.execute.mock.calls[0][0].systemPrompt;
@@ -365,17 +377,37 @@ describe('CopilotService authenticated context', () => {
     });
 
     /**
-     * The handoff list, filtered by the two things that decide whether the
-     * screen opens at all.
+     * The handoff list, as the service that authorises it answers.
      *
-     * It used to be handed over whole. Assist would tell an inbox agent to open
-     * `/admin/users` and grant a role, and a vacation rental to open
-     * `/admin/appointments` — and the panel bounced both, because `roles.ts`
-     * denies by default and the layout hides a vertical surface the tenant's
-     * capabilities do not include.
+     * It used to be handed over whole, then filtered by a copy of the rule that
+     * Assist kept for itself: the caller's role and the provisioning-time
+     * manifest. The copy was blind to the plan, so a limit reached came out of
+     * the chat as "available" and the refusal arrived after the person had
+     * written the content. The filter now lives once, in the path that enforces
+     * it, and Assist partitions its verdicts.
      */
     describe('las derivaciones que el panel sí va a abrir', () => {
-        const operationsStub = () => ({ propose: jest.fn() });
+        // El stub ya no decide: contesta como contestaría el servicio que
+        // autoriza, porque el defecto que esto cubre era justamente que Assist
+        // tenía su propia respuesta. Los veredictos completos, con el plan y el
+        // límite vivo, se prueban contra el servicio real en
+        // `assist-single-capability-list.spec.ts`.
+        const operationsStub = (capabilities: string[] = ['crm_pipeline', 'nightly_booking'],
+            role = 'tenant_admin') => ({
+            propose: jest.fn(),
+            listOperations: jest.fn(async () => AGENT_OPERATION_REGISTRY.map(definition => {
+                const base = { key: definition.key, domain: definition.domain, route: definition.route };
+                if (!definition.roles.includes(role as any)) {
+                    return { ...base, availability: 'blocked' as const, reason: 'role_not_permitted' as const };
+                }
+                if (definition.requiresCapability && !capabilities.includes(definition.requiresCapability)) {
+                    return { ...base, availability: 'blocked' as const, reason: 'vertical_capability_missing' as const };
+                }
+                return definition.availability === 'route_to_screen'
+                    ? { ...base, availability: 'route_to_screen' as const, reason: definition.reason }
+                    : { ...base, availability: 'executable' as const, reason: null };
+            })),
+        });
 
         it('no ofrece la pantalla de un rubro que este tenant no tiene', async () => {
             // El fixture es un alquiler vacacional: `nightly_booking` y
@@ -408,20 +440,22 @@ describe('CopilotService authenticated context', () => {
         });
 
         it('a un agente de inbox no le ofrece conceder roles ni publicar', async () => {
-            const { service, llmRouter } = createService(null, null, operationsStub());
+            const { service, llmRouter } = createService(null, null,
+                operationsStub(['crm_pipeline', 'nightly_booking'], 'tenant_agent'));
             jest.spyOn(service as any, 'searchKb').mockReturnValue([]);
             await service.chat(chatRequest({ userRole: 'tenant_agent', actorId: 'user-1' } as any));
             const prompt = llmRouter.execute.mock.calls[0][0].systemPrompt;
             for (const key of ['roles.member.grant', 'publication.agent.publish', 'payments.rail.configure']) {
                 expect(prompt).not.toContain(`${key} → `);
-                expect(prompt).toContain(`${key} (la decide tenant_admin)`);
+                expect(prompt).toContain(`${key} (la decide otro rol`);
             }
         });
 
         it('un rubro con agenda sí recibe la pantalla de agenda', async () => {
             // El otro lado: el arreglo tiene que dejar pasar lo que sirve, o
             // sería una pantalla menos para todos en vez de un consejo veraz.
-            const { service, llmRouter, verticals } = createService(null, null, operationsStub());
+            const { service, llmRouter, verticals } = createService(null, null,
+                operationsStub(['appointment_booking', 'faq_search']));
             verticals.getVerticalConfig.mockResolvedValue({
                 industry: 'salud', subType: 'clinica_general',
                 effectiveCapabilities: ['appointment_booking', 'faq_search'],
@@ -434,20 +468,24 @@ describe('CopilotService authenticated context', () => {
             expect(prompt).toContain('catalogue.campaign.create (no forma parte de las capacidades de este rubro)');
         });
 
-        it('sin contexto vertical legible no ofrece ninguna pantalla vertical', async () => {
-            // Fail-closed. Una lista de capacidades vacía no autoriza nada, que
-            // es la dirección segura para una lista que decide qué ofrecer.
-            const { service, llmRouter, verticals } = createService(null, null, operationsStub());
-            verticals.getVerticalConfig.mockRejectedValue(new Error('vertical service down'));
+        it('sin veredictos legibles no ofrece ninguna pantalla', async () => {
+            // Fail-closed, y ahora en el único lugar donde se decide: si el
+            // servicio que autoriza no contesta, Assist no ofrece nada. Antes
+            // caía sobre su propia lista vertical, que seguía contestando.
+            const { service, llmRouter } = createService(null, null, {
+                propose: jest.fn(),
+                listOperations: jest.fn().mockRejectedValue(new Error('gate down')),
+            });
             jest.spyOn(service as any, 'searchKb').mockReturnValue([]);
             await service.chat(chatRequest({ actorId: 'user-1' } as any));
             const prompt = llmRouter.execute.mock.calls[0][0].systemPrompt;
-            const vertical = routedAgentOperations().filter(operation => operation.requiresCapability);
-            expect(vertical.length).toBeGreaterThan(0);
-            for (const operation of vertical) expect(prompt).not.toContain(`${operation.key} → `);
-            // Y las transversales siguen ahí: caerse el servicio vertical no
-            // puede dejar al dueño sin la pantalla de canales.
-            expect(prompt).toContain('channels.account.connect → /admin/channels');
+            expect(prompt).toContain('No se pudo leer qué operaciones permite esta cuenta');
+            for (const operation of AGENT_OPERATION_REGISTRY) {
+                expect(prompt).not.toContain(`${operation.key} → `);
+            }
+            // Y las transversales tampoco: no ofrecer nada es la dirección
+            // segura cuando nadie pudo decir qué se puede.
+            expect(prompt).not.toContain('/admin/channels (');
         });
     });
 

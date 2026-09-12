@@ -416,11 +416,62 @@ describe('AgentContentProposalService.listOperations', () => {
         expect(byKey['policies.legal_text.create']).toMatchObject({ availability: 'blocked', reason: 'role_not_permitted' });
         expect(byKey['catalogue.course.create']).toMatchObject({ availability: 'executable', reason: null });
         expect(byKey['payments.rail.configure']).toMatchObject({
-            availability: 'route_to_screen', reason: 'credentials_required', route: '/admin/settings/integrations/payments',
+            availability: 'blocked', reason: 'role_not_permitted', route: '/admin/settings/integrations/payments',
         });
-        expect(byKey['publication.agent.publish']).toMatchObject({ availability: 'route_to_screen', reason: 'customer_facing_decision' });
-        expect(byKey['roles.member.grant']).toMatchObject({ availability: 'route_to_screen', reason: 'privilege_decision' });
+        // The route travels with the verdict either way, so a caller can say
+        // which screen owns the decision without offering to open it.
+        expect(byKey['channels.account.connect']).toMatchObject({
+            availability: 'blocked', reason: 'role_not_permitted', route: '/admin/channels',
+        });
+        // And a routed operation this role does decide still arrives as a route.
+        expect(byKey['agenda.appointment.book']).toMatchObject({
+            availability: 'route_to_screen', reason: 'outward_facing_effect', route: '/admin/appointments',
+        });
+        // Routed entries are judged by role too. They used to come back as
+        // `route_to_screen` for everybody — "Assist will never run it" read as
+        // "so there is nothing to judge" — and the screen that owns the
+        // decision is not open to every role. `publication.agent.publish` and
+        // `roles.member.grant` are declared for super_admin and tenant_admin,
+        // so a supervisor sent to `/admin/users` landed on a redirect.
+        expect(byKey['publication.agent.publish']).toMatchObject({ availability: 'blocked', reason: 'role_not_permitted' });
+        expect(byKey['roles.member.grant']).toMatchObject({ availability: 'blocked', reason: 'role_not_permitted' });
         expect(listed).toHaveLength(AGENT_OPERATION_REGISTRY.length);
+    });
+
+    it('deriva la pantalla al rol que la decide, y no al que no', async () => {
+        const kit = harness();
+        const admin = Object.fromEntries((await kit.service.listOperations(TENANT, ADMIN)).map(item => [item.key, item]));
+        expect(admin['roles.member.grant']).toMatchObject({
+            availability: 'route_to_screen', reason: 'privilege_decision', route: '/admin/users',
+        });
+        expect(admin['publication.agent.publish']).toMatchObject({ availability: 'route_to_screen' });
+        // Y la de agenda, que el supervisor sí decide, sigue llegándole.
+        const supervisor = Object.fromEntries((await kit.service.listOperations(TENANT, SUPERVISOR)).map(item => [item.key, item]));
+        expect(supervisor['agenda.availability.replace']).toMatchObject({ availability: 'route_to_screen' });
+    });
+
+    it('no deriva a una pantalla vertical que el rubro no tiene', async () => {
+        // El mismo criterio que para las ejecutables: una pantalla que el panel
+        // de este tenant esconde no es un destino. `agenda.appointment.book`
+        // exige `appointment_booking`.
+        const kit = harness();
+        kit.setCapabilities(['restaurant_ordering', 'faq_search']);
+        const byKey = Object.fromEntries((await kit.service.listOperations(TENANT, ADMIN)).map(item => [item.key, item]));
+        expect(byKey['agenda.appointment.book']).toMatchObject({
+            availability: 'blocked', reason: 'vertical_capability_missing',
+        });
+        // Las transversales no dependen del rubro.
+        expect(byKey['channels.account.connect']).toMatchObject({ availability: 'route_to_screen' });
+    });
+
+    it('sin schema del tenant tampoco inventa una derivación vertical', async () => {
+        const kit = harness();
+        kit.prisma.getTenantSchemaName.mockResolvedValue(null);
+        const byKey = Object.fromEntries((await kit.service.listOperations(TENANT, ADMIN)).map(item => [item.key, item]));
+        expect(byKey['agenda.appointment.book']).toMatchObject({
+            availability: 'blocked', reason: 'gate_unavailable',
+        });
+        expect(byKey['channels.account.connect']).toMatchObject({ availability: 'route_to_screen' });
     });
 
     it('lo que el rubro no incluye se informa como tal, no como "ejecutable"', async () => {

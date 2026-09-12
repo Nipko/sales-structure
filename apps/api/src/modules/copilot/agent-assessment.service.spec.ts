@@ -4,8 +4,24 @@ import { AgentAssessmentService } from './agent-assessment.service';
 
 const TENANT = '11111111-1111-4111-8111-111111111111';
 const AGENT = '22222222-2222-4222-8222-222222222222';
-function harness(options: { missing?: boolean; drift?: boolean; unknown?: boolean; mission?: any; runs?: any[]; teamNotApplicable?: boolean } = {}) {
-    const query = jest.fn(async (_schema, sql, params) => sql.startsWith('SELECT version') ? [{ version: options.drift ? 3 : 2 }] : options.missing ? [] : [{
+function harness(options: { missing?: boolean; drift?: boolean; unknown?: boolean; mission?: any; runs?: any[];
+    teamNotApplicable?: boolean;
+    /**
+     * The tenant's readiness tables, as the catalogue would report them.
+     * `undefined` keeps the provisioned shape; `null` makes the catalogue read
+     * fail, which is a different answer from a table that is not there.
+     */
+    readinessColumns?: Record<string, string[]> | null;
+} = {}) {
+    const catalogue = options.readinessColumns === undefined
+        ? { menu_items: ['id', 'name', 'price', 'is_available', 'is_active'], faqs: ['id', 'question', 'is_published'] }
+        : options.readinessColumns;
+    const query = jest.fn(async (_schema, sql, params) =>
+        sql.includes('FROM information_schema.columns')
+            ? (catalogue === null ? Promise.reject(new Error('catalogue unreadable'))
+                : Object.entries(catalogue).flatMap(([table, columns]) =>
+                    columns.map(column => ({ table_name: table, column_name: column }))))
+            : sql.startsWith('SELECT version') ? [{ version: options.drift ? 3 : 2 }] : options.missing ? [] : [{
         id: AGENT, version: 2, template_id: 'restaurant', channels: ['whatsapp', 'telegram'], channel_bindings: [],
         config_json: { persona: { role: 'Atender pedidos', name: 'Luna', secret: 'NEVER EXPOSE' },
             tools: { restaurants: { enabled: true, token: 'SECRET TOKEN' } }, mission: options.mission },
@@ -141,5 +157,97 @@ describe('shared agent assessment', () => {
         await expect(service.getAssessment(TENANT)).resolves.toMatchObject({ agent: null, nextTask: 'agent' });
         await expect(service.getAssessment(TENANT, AGENT)).rejects.toBeInstanceOf(NotFoundException);
         expect(capabilities.resolve).not.toHaveBeenCalled();
+    });
+
+    describe('why a readiness answer says what it says', () => {
+        // The readiness evaluator reports a failed lookup as `satisfied: true,
+        // count: 0` plus a report-wide degraded flag — except when the failure
+        // message looks like a table this tenant never provisioned, the branch
+        // that also catches an absent COLUMN, because PostgreSQL says "does not
+        // exist" for both. So a predicate that cannot run came back as a
+        // confident zero and the owner was told to load data they had loaded.
+        const blockedMenu = (capabilities: any) => capabilities.resolve.mockResolvedValue({
+            contract: {
+                publishedTools: [], unmetReadiness: ['menu_items'], degraded: false,
+                excluded: [{ subject: 'restaurants', reason: 'readiness_unmet',
+                    detail: { es: 'Cargá el menú.', en: 'x', pt: 'x', fr: 'x' }, repairRoute: '/admin/menu' }],
+                resolvedAt: '2026-09-06T00:00:00Z',
+            },
+        } as any);
+
+        it('reads the tenant catalogue once per assessment', async () => {
+            const { service, prisma } = harness();
+            await service.getAssessment(TENANT, AGENT);
+            const reads = prisma.executeInTenantSchema.mock.calls
+                .filter((call: any[]) => String(call[1]).includes('FROM information_schema.columns'));
+            expect(reads).toHaveLength(1);
+            // Bounded to the readiness tables, not the whole schema.
+            expect(reads[0][2][1]).toContain('menu_items');
+        });
+
+        it('calls an unmet key over a readable table missing data', async () => {
+            const { service, capabilities } = harness();
+            blockedMenu(capabilities);
+            const result = await service.getAssessment(TENANT, AGENT);
+            const menu = (result.tools as any[]).find(tool => tool.tool === 'get_menu')!;
+            expect(menu.readinessAudit[0]).toMatchObject({ key: 'menu_items', verdict: 'missing_data' });
+            expect(menu.state).toBe('pending');
+        });
+
+        it('calls it a read error when the predicate names a column the table lacks', async () => {
+            const { service, capabilities } = harness({
+                readinessColumns: { menu_items: ['id', 'name', 'price', 'is_active'] },
+            });
+            blockedMenu(capabilities);
+            const result = await service.getAssessment(TENANT, AGENT);
+            const menu = (result.tools as any[]).find(tool => tool.tool === 'get_menu')!;
+            expect(menu.readinessAudit[0]).toMatchObject({ key: 'menu_items', verdict: 'read_error' });
+            // Not `pending`: `pending` says there is something here for the
+            // owner to do, and there is not.
+            expect(menu.state).toBe('unknown');
+        });
+
+        it('does not invent a read error for a vertical this tenant never provisioned', async () => {
+            // Most of these tables are created on first use, so absent from the
+            // catalogue means untouched — and zero rows is the honest answer,
+            // exactly as the readiness lookup already treats it. Recording an
+            // absent table as a column-less one turns every unprovisioned
+            // vertical into an unreadable source: the same lie, reversed.
+            const { service, capabilities } = harness({ readinessColumns: {} });
+            blockedMenu(capabilities);
+            const result = await service.getAssessment(TENANT, AGENT);
+            const menu = (result.tools as any[]).find(tool => tool.tool === 'get_menu')!;
+            expect(menu.readinessAudit[0]).toMatchObject({ verdict: 'missing_data' });
+            expect(menu.state).toBe('pending');
+        });
+
+        it('does not turn an unreadable catalogue into a verdict of its own', async () => {
+            const { service, capabilities } = harness({ readinessColumns: null });
+            blockedMenu(capabilities);
+            const result = await service.getAssessment(TENANT, AGENT);
+            const menu = (result.tools as any[]).find(tool => tool.tool === 'get_menu')!;
+            // Nothing was proven about the columns, so the readiness report's
+            // own answer stands rather than being overridden either way.
+            expect(menu.readinessAudit[0]).toMatchObject({ verdict: 'missing_data' });
+        });
+
+        it('cites the predicate the tool runs on a published tool too', async () => {
+            const { service, capabilities } = harness();
+            capabilities.resolve.mockResolvedValue({
+                contract: { publishedTools: ['get_menu'], excluded: [], unmetReadiness: [], degraded: false,
+                    resolvedAt: '2026-09-06T00:00:00Z' },
+            } as any);
+            const result = await service.getAssessment(TENANT, AGENT);
+            const menu = (result.tools as any[]).find(tool => tool.tool === 'get_menu')!;
+            expect(menu.readinessAudit[0]).toMatchObject({
+                key: 'menu_items', table: 'menu_items',
+                predicate: 'is_active = true AND is_available = true', verdict: 'satisfied',
+                writePath: '/admin/menu',
+            });
+            // And the audited difference travels with it: the shipped check does
+            // not look at `is_active`, which is how a soft-deleted dish keeps a
+            // family published.
+            expect(menu.readinessAudit[0].auditedDivergence).toMatchObject({ kind: 'weaker_predicate' });
+        });
     });
 });

@@ -121,7 +121,20 @@ describe('who pays is resolved, never assembled', () => {
         };
         const service = new AgentConsoleService(
             prisma, { get: jest.fn(), set: jest.fn(), del: jest.fn() } as any,
-            { sendMessage: jest.fn(async () => ({ messageId: 'wamid.AGENT' })) } as any,
+            // The console's inline path takes the STRICT transport on a
+            // channel Meta bills, so a gateway double with only
+            // `sendMessage` no longer stands in for one: the lookup happens
+            // BEFORE the admission — deliberately, so a billed channel with
+            // no transport that can report an outcome is refused before a
+            // reservation exists — and an incomplete double therefore
+            // prevented the very call this case is about.
+            {
+                sendMessage: jest.fn(async () => ({ messageId: 'wamid.AGENT' })),
+                getStrictTransport: jest.fn(() => ({
+                    channelType: 'whatsapp',
+                    sendStrict: jest.fn(async () => ({ kind: 'accepted', receipt: 'wamid.AGENT' })),
+                })),
+            } as any,
             resolvingChannelToken({
                 getChannelToken: jest.fn(async () => ({ accessToken: 'token', accountId: 'phone-1' })),
             }),

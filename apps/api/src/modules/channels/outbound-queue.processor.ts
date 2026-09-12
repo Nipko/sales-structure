@@ -1,4 +1,4 @@
-import { OPERATIONAL_NOTICE_DELIVERY, type OperationalNoticeDeliveryPort, type OperationalNoticeReference } from '../operational-notices/operational-notice.contracts';
+import { OPERATIONAL_NOTICE_DELIVERY, NoticeSuppressed, type OperationalNoticeDeliveryPort, type OperationalNoticeReference } from '../operational-notices/operational-notice.contracts';
 import { APPROVED_EFFECT_DELIVERY, ApprovalEffectSuppressed, type ApprovedEffectDeliveryPort, type ApprovedEffectReference } from './approved-effect-delivery.port';
 import { Processor, WorkerHost, OnWorkerEvent } from '@nestjs/bullmq';
 import { Inject, Logger, Optional } from '@nestjs/common';
@@ -840,8 +840,22 @@ export class OutboundQueueProcessor extends WorkerHost {
                     // notice, and a retry of this job reads the same id.
                     const admission = await this.gateOrSuppress(outbound, 'operational_notice',
                         'proactive', { messageId: `notice:${reference.noticeId}` });
-                    if (admission === 'refused') return null;
-                    if (!(await this.beginOrStandDown(outbound, admission))) return null;
+                    // ── A REFUSAL IS NOT A MISSING RECEIPT ──────────────────
+                    //
+                    // Returning `null` here made the lane raise
+                    // `notice_provider_no_receipt` — and by then `started` is
+                    // already true, so the row closed
+                    // `reconciliation_required` / `notice_delivery_outcome_unknown`
+                    // and its own recovery query excludes that state. A notice
+                    // this platform PROVABLY never posted was filed as one that
+                    // might have arrived, and then nobody looked at it again.
+                    //
+                    // Thrown and typed instead: we issued this refusal ourselves,
+                    // before any request, so the outcome is known.
+                    if (admission === 'refused') throw new NoticeSuppressed('spend_refused');
+                    if (!(await this.beginOrStandDown(outbound, admission))) {
+                        throw new NoticeSuppressed('transmission_not_owned');
+                    }
                     const result=await this.channelGateway.sendMessage(outbound,creds.accessToken,
                         this.flowHooks(outbound, 'operational_notice', 'proactive',
                             { messageId: `notice:${reference.noticeId}` }));

@@ -13,12 +13,13 @@ import { EmailService } from '../email/email.service';
 import { PushService } from '../push/push.service';
 import { resolveReadyTenantContext } from '../../common/utils/tenant-lifecycle.util';
 import { resolveTenantSubscriptionAccess } from '../../common/utils/subscription-entitlement.util';
-import { type NoticeQuery, type OperationalNoticeReference, type OperationalNoticeTransport } from './operational-notice.contracts';
+import { NoticeSuppressed, type NoticeQuery, type OperationalNoticeReference, type OperationalNoticeTransport } from './operational-notice.contracts';
+import { deliveryOutcome } from '../channels/delivery-outcome';
 import { ensureOperationalNoticeOutbox } from './operational-notice-outbox';
 import { operationalNoticeText } from './operational-notice-text';
 
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
-class NoticeSuppressed extends Error { constructor(readonly code: string) { super(code); } }
+
 
 @Injectable()
 export class OperationalNoticeService {
@@ -150,8 +151,24 @@ export class OperationalNoticeService {
                 if (localWriteStarted) throw error;
                 const current = (await query<any[]>('SELECT * FROM operational_notice_outbox WHERE id=$1::uuid FOR UPDATE', [reference.noticeId]))[0];
                 if (!current || current.state !== 'processing' || current.lease_token !== lease) return 'lease_lost';
-                const state=started?'reconciliation_required':error instanceof NoticeSuppressed?'suppressed':'failed';
-                await this.finish(query,row.id,state,started?'notice_delivery_outcome_unknown':error instanceof NoticeSuppressed?error.code:'notice_preflight_failed');
+                // `started` is a PROXY for "a request may have left", set just
+                // before the send closure runs — and the spend gate lives inside
+                // that closure. A refusal therefore arrived with `started` true
+                // and closed the row `reconciliation_required` /
+                // `notice_delivery_outcome_unknown`, a state this lane's own
+                // recovery query excludes. `NoticeSuppressed` is raised only by
+                // our own checks, all of them before any request, so it is
+                // positive knowledge that nothing was sent — and that outranks
+                // the proxy.
+                const refused=error instanceof NoticeSuppressed;
+                // Shared with the approved-effect lane, which had the identical
+                // defect. Two inline copies of one rule is how one gets fixed.
+                const outcome=deliveryOutcome({started,refused});
+                const state=outcome.state;
+                await this.finish(query,row.id,state,
+                    outcome.reason==='refused'?(error as NoticeSuppressed).code
+                        :outcome.reason==='outcome_unknown'
+                            ?'notice_delivery_outcome_unknown':'notice_preflight_failed');
                 return state;
             }
         });

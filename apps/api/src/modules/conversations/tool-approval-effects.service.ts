@@ -7,6 +7,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { HandoffService } from '../handoff/handoff.service';
 import { OutboundQueueService } from '../channels/outbound-queue.service';
 import { ApprovalEffectSuppressed, type ApprovedEffectDeliveryPort, type ApprovedEffectReference, type ApprovedEffectTransport } from '../channels/approved-effect-delivery.port';
+import { deliveryOutcome } from '../channels/delivery-outcome';
 import { approvedEffectDescriptors, approvalMediaItems } from './tool-approval-effects.contracts';
 import { assertServedAgentAuthority, assertServedAgentConnectionAuthority, validServedAgentAuthority, ServedAgentAuthorityError } from '../persona/served-agent-authority';
 import { revisionHash } from '../evaluation-revision/evaluation-revision';
@@ -166,9 +167,27 @@ export class ToolApprovalEffectsService implements ApprovedEffectDeliveryPort {
                 await this.finish(query, reference.effectId, 'sent');
                 return { value: `effect:sent:${reference.effectId}` };
             } catch (error) {
+                // ── WHAT WE KNOW BEATS WHAT WE ASSUME ───────────────────────
+                //
+                // `started` is a PROXY for "a request may have left", and it is
+                // set immediately before the send closure runs. The spend gate
+                // lives INSIDE that closure, so a refusal arrived with `started`
+                // already true and the row closed `reconciliation_required` /
+                // `delivery_outcome_unknown` — whose own recovery query excludes
+                // it. An effect this platform provably never posted was filed as
+                // one that might have arrived, and then nobody looked again.
+                //
+                // `ApprovalEffectSuppressed` is raised only by our own checks,
+                // every one of them before any request. It is positive knowledge
+                // that nothing was sent, and positive knowledge outranks a proxy.
                 const suppressed = error instanceof ApprovalEffectSuppressed;
-                const state = started ? 'reconciliation_required' : suppressed ? 'suppressed' : 'failed';
-                const code = started ? 'delivery_outcome_unknown' : suppressed ? error.code : 'delivery_preflight_failed';
+                // Shared with the notice lane, which had the identical defect.
+                // Two inline copies of one rule is how one of them gets fixed.
+                const outcome = deliveryOutcome({ started, refused: suppressed });
+                const state = outcome.state;
+                const code = outcome.reason === 'refused' ? (error as ApprovalEffectSuppressed).code
+                    : outcome.reason === 'outcome_unknown'
+                        ? 'delivery_outcome_unknown' : 'delivery_preflight_failed';
                 await this.finish(query, reference.effectId, state, code);
                 return { value: `effect:${state}`, retry: state === 'failed' };
             }

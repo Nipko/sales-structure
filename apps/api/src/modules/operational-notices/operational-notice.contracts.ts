@@ -33,3 +33,17 @@ export const OPERATIONAL_NOTICE_DDL = `CREATE TABLE IF NOT EXISTS operational_no
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 )`;
+
+/**
+ * A notice this platform decided not to send, before it sent anything.
+ *
+ * Lives beside the port rather than inside the service because the DELIVERY
+ * side raises it too: the spend gate sits inside the send closure, and a
+ * refusal there used to come back as `null` — indistinguishable from a
+ * provider that gave no receipt, which closes the row `outcome unknown` and
+ * takes it out of every recovery sweep. A refusal we issued ourselves is
+ * knowledge, not an absence.
+ */
+export class NoticeSuppressed extends Error {
+    constructor(readonly code: string) { super(code); }
+}

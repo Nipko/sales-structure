@@ -1,3 +1,4 @@
+import { whatsAppSenderIdentity } from '@parallext/shared';
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
@@ -69,9 +70,39 @@ export class WebhookProcessor extends WorkerHost {
         ['message', JSON.stringify({ phoneNumberId, message, contacts }), `msg:${message.id}`],
       );
 
-      // 2. Extraer y upsert contacto
-      const contact = contacts?.[0] || {};
-      const fromPhone = message.from;
+      // ── 2. QUIÉN ESCRIBIÓ, QUE PUEDE NO TENER TELÉFONO ────────────────────
+      //
+      // `message.from` es un teléfono, y con los identificadores de usuario por
+      // portafolio de Meta puede no venir: el webhook trae `from_user_id` y la
+      // persona escribió sin que el negocio vea ningún número.
+      //
+      // Acá eso era peor que en el otro ingreso. `fromPhone` quedaba
+      // `undefined`, el INSERT escribía `external_id = NULL`, y como Postgres
+      // considera distintos a dos NULL en un índice único, CADA mensaje de esa
+      // persona creaba un contacto nuevo: sin hilo, sin historia y sin tope.
+      //
+      // La identidad sale del mismo módulo que usa el ingreso de la API — los
+      // dos caminos tienen que llegar al mismo registro — y un identificador
+      // opaco se clava con su portafolio, nunca pelado y nunca por la
+      // normalización de teléfonos.
+      const identity = whatsAppSenderIdentity(message, contacts ?? [], {
+        // Sin `waba_id` en este job: el alcance es el número, que también
+        // acota correctamente y es lo que este proceso tiene.
+        phoneNumberId,
+      });
+      if (!identity) {
+        // Ni teléfono ni identificador: no hay a quién contestarle ni a quién
+        // atribuirlo. Se descarta acá en vez de romper el INSERT, y el cuerpo
+        // crudo ya quedó guardado arriba en `whatsapp_webhook_events`.
+        this.logger.error(`[WhatsApp] mensaje SIN REMITENTE descartado — wamid=${message?.id} `
+          + `phone_number_id=${phoneNumberId}`);
+        return;
+      }
+      const contact = identity.kind === 'phone'
+        ? (contacts ?? []).find((row: any) => row?.wa_id === identity.identifier)
+          ?? ((contacts ?? []).length === 1 ? contacts[0] : {})
+        : (contacts ?? []).find((row: any) => row?.user_id === identity.identifier) ?? {};
+      const fromPhone = identity.addressKey;
 
       await this.prisma.executeInTenantSchema(
         schemaName,
@@ -79,7 +110,9 @@ export class WebhookProcessor extends WorkerHost {
          VALUES ($1, 'whatsapp', $2, $3, NOW(), NOW(), NOW())
          ON CONFLICT (channel_type, external_id)
          DO UPDATE SET name = COALESCE(EXCLUDED.name, contacts.name), last_contact_at = NOW(), updated_at = NOW()`,
-        [fromPhone, contact.profile?.name || null, fromPhone],
+        // `phone` es el teléfono de verdad o NULL. Guardar la clave opaca ahí
+        // pondría un identificador donde toda pantalla espera un número.
+        [fromPhone, contact.profile?.name || null, identity.phone],
       );
 
       // 3. Construir NormalizedMessage y enviar a la API interna para procesamiento por IA
@@ -98,6 +131,11 @@ export class WebhookProcessor extends WorkerHost {
           waMessageId: message.id,
           contactName: contact.profile?.name,
           phoneNumberId,
+          // Lo mismo que manda el ingreso de la API, para que lo que haya río
+          // abajo no tenga que adivinarlo por la forma de la clave.
+          senderKind: identity.kind,
+          senderPhone: identity.phone,
+          senderPhoneProvenance: identity.phoneProvenance,
         },
       });
 

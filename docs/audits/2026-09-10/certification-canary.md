@@ -83,7 +83,7 @@ No es una certificación y no debe leerse como una. Lo que dice, si sale verde:
 4. la matriz completa cuesta lo que el manifiesto dice que cuesta, porque un
    perfil ya se midió.
 
-Y si sale rojo, cuesta US$0,76 averiguarlo en vez de US$258,80.
+Y si sale rojo, cuesta US$1,08 averiguarlo en vez de US$258,80.
 
 ## Lo que falta para correrlo (gate externo 2)
 

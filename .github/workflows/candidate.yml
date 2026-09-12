@@ -428,6 +428,12 @@ jobs:
           node apps/api/scripts/generate-whatsapp-rates.cjs --check
           node docs/audits/2026-09-09/verify-artifacts.cjs
           node apps/api/scripts/outbound-producer-inventory.cjs --check
+          # The canary's figures, in the prose that quotes them. This one had
+          # never run anywhere: a repository-wide search for its name found only
+          # the file itself, so the documents naming a spending ceiling were
+          # checked by nobody — and that is the one number in this repository
+          # that gets used to ask for an authorisation to spend real money.
+          node apps/api/scripts/check-canary-figures.cjs --check
 
       # ── The API suite, on this SHA, with nothing skipped ──────────────────
       #

@@ -40,6 +40,34 @@ const DURABLE_LANES = new Set(['dispatch_outbox', 'approved_effect', 'operationa
     'handoff_effects']);
 
 /**
+ * A number these rows are about to put in a sentence, or the generator stops.
+ *
+ * M2 shipped `... y **undefined** entregas de servicio gratuitas por número y
+ * mes calendario` for as long as the artefact existed. The destructure below
+ * named `FREE_SERVICE_DELIVERIES_PER_MONTH`, which is not an export of anything
+ * — a repository-wide search found the name only inside this file — so
+ * JavaScript handed back `undefined` without a word, the template interpolated
+ * it, and the row read as a measured fact.
+ *
+ * `--check` agreed with it, because the committed JSON carried the same string:
+ * the check was comparing the mistake to itself. That is the shape of the
+ * defect, and it is why a guard on the VALUE is the only one that helps — a
+ * destructure of a missing export cannot be caught downstream of itself.
+ *
+ * Throwing rather than substituting a zero is deliberate: a zero would render,
+ * and "0 entregas de servicio gratuitas" is a different wrong fact, quieter
+ * than the first one.
+ */
+function figure(name, value) {
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+        throw new Error(`october authority \`${name}\` is not a finite number `
+            + `(${String(value)}): the export it is read from does not exist or changed name. `
+            + 'Fix the import — do not let the report render it.');
+    }
+    return value;
+}
+
+/**
  * Everything these rows are allowed to know, computed once from the code.
  *
  * `api` is the generator's own module loader, so these rows read exactly the
@@ -91,10 +119,28 @@ function octoberAuthorities({ root, api, shared }) {
         api('modules/billing/whatsapp-spend/acceptance-matrix.ts');
     const { DEFAULT_REPETITION_POLICY } = api('modules/billing/whatsapp-spend/spend-repetition.ts');
     const { WHATSAPP_MESSAGE_CATEGORIES } = api('modules/billing/whatsapp-rates/index.ts');
-    const { FREE_SERVICE_DELIVERIES_PER_MONTH } =
-        api('modules/billing/whatsapp-rates/whatsapp-free-allowance.ts');
-    const { WHATSAPP_RATE_CARDS, WHATSAPP_RATE_TABLE_VERSION } =
+    const { WHATSAPP_RATE_CARDS, WHATSAPP_RATE_TABLE_VERSION, WHATSAPP_FREE_SERVICE_ALLOWANCE } =
         api('modules/billing/whatsapp-rates/whatsapp-rate-table.generated.ts');
+    /**
+     * The free thousand is declared twice in the product, by two modules that do
+     * not import one another: the rate table carries it as evidence preserved
+     * from Meta's own cards, and the spend lane carries it as the constant the
+     * admission counter decrements. Reading only one of them would let the
+     * report agree with a number the sending path has stopped using.
+     *
+     * So both are read and they have to say the same thing. A disagreement is a
+     * real defect — one of the two has been edited — and it stops the generator
+     * instead of picking a winner.
+     */
+    const { FREE_SERVICE_MESSAGES_PER_NUMBER_MONTH } =
+        api('modules/billing/whatsapp-spend/free-allowance.ts');
+    const freeAllowance = figure('freeAllowance', WHATSAPP_FREE_SERVICE_ALLOWANCE?.deliveries);
+    if (figure('freeServiceMessagesPerNumberMonth', FREE_SERVICE_MESSAGES_PER_NUMBER_MONTH)
+        !== freeAllowance) {
+        throw new Error('the free service allowance disagrees between the rate table '
+            + `(${freeAllowance}) and the spend lane (${FREE_SERVICE_MESSAGES_PER_NUMBER_MONTH}); `
+            + 'the report will not pick one');
+    }
 
     /**
      * The REST item shapes the API accepts, against what the durable lane can
@@ -122,11 +168,18 @@ function octoberAuthorities({ root, api, shared }) {
         sendingRoles: SENDING_ROLES,
         itemKinds: DISPATCH_ITEM_KINDS,
         spendScopes: SPEND_SCOPE_KINDS,
-        acceptanceScenarios: ACCEPTANCE_MATRIX.length,
+        acceptanceScenarios: figure('acceptanceScenarios', ACCEPTANCE_MATRIX.length),
         uncoveredScenarios: uncoveredScenarios().map(row => row.scenario),
-        repetition: DEFAULT_REPETITION_POLICY,
+        // R2 divides two of these by 60000 to say the policy in minutes, so a
+        // missing one renders `NaN minutos` rather than failing.
+        repetition: {
+            ...DEFAULT_REPETITION_POLICY,
+            maxIdentical: figure('repetition.maxIdentical', DEFAULT_REPETITION_POLICY?.maxIdentical),
+            windowMs: figure('repetition.windowMs', DEFAULT_REPETITION_POLICY?.windowMs),
+            cooldownMs: figure('repetition.cooldownMs', DEFAULT_REPETITION_POLICY?.cooldownMs),
+        },
         categories: WHATSAPP_MESSAGE_CATEGORIES,
-        freeAllowance: FREE_SERVICE_DELIVERIES_PER_MONTH,
+        freeAllowance,
         rateCards: WHATSAPP_RATE_CARDS, rateTableVersion: WHATSAPP_RATE_TABLE_VERSION,
         unrepresentable,
     };
@@ -295,4 +348,4 @@ function octoberRows(row, A) {
     ];
 }
 
-module.exports = { octoberAuthorities, octoberRows, DURABLE_LANES };
+module.exports = { octoberAuthorities, octoberRows, DURABLE_LANES, figure };

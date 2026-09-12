@@ -38,6 +38,17 @@ const { resolve } = require('node:path');
  */
 function load(module) {
     try {
+        // ── ts-node LOOKS FOR A tsconfig FROM THE WORKING DIRECTORY ────────
+        //
+        // CI runs this from the repository ROOT, which has no tsconfig.json, so
+        // ts-node fell back to defaults and died on TS5109 before printing a
+        // figure — and the failure was invisible because the only test that ran
+        // it supplied TS_NODE_PROJECT itself, proving the test could fix the
+        // problem rather than that the script could. The script names its own
+        // project, from its own location, and an inherited value still wins so
+        // a caller can point it somewhere else on purpose.
+        process.env.TS_NODE_PROJECT = process.env.TS_NODE_PROJECT
+            || resolve(__dirname, '../tsconfig.json');
         require('ts-node/register/transpile-only');
         return require(resolve(__dirname, `../src/${module}.ts`));
     } catch (source) {

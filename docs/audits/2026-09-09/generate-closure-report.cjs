@@ -55,6 +55,18 @@ const { BENCHMARK_LEDGER_DDL } = api('modules/simulation/benchmark-harness.ts');
 const { agentIssueResolutionDefects, routedAgentOperations } = shared;
 const { octoberAuthorities, octoberRows } = require('./meta-october-rows.cjs');
 
+/**
+ * A list that is empty says so, in a word.
+ *
+ * `[].join(', ')` is the empty string, and the empty string interpolated into a
+ * sentence produces `Sin comando ligado: . Sin cobro ligado: .` and
+ * `Abiertos: .` — which is what A1 and G1 said for as long as those rows were
+ * green. A reader cannot tell that from a truncated sentence or a generator
+ * that half-ran, so the good news arrives looking like a bug. Zero is the
+ * interesting case here and it has to be legible.
+ */
+const listOrNone = (items, none) => items.length ? items.join(', ') : none;
+
 const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8' }).trim();
 const revision = git('rev-parse', 'HEAD');
 
@@ -189,8 +201,8 @@ const ROWS = [
         evidence: `Inventario calculado de ${FAMILY_TERMS_BINDINGS.length} familias `
             + `(\`terms-binding-inventory.ts\`). Cita y matrícula ligan comando y cobro; el pedido de catálogo pasó a `
             + `cobrar desde \`orders.catalog_terms\` y a rechazar la fila que no acordó nada. Sin comando ligado: `
-            + `${unboundCommand.map(entry => `\`${entry.family}\``).join(', ')}. Sin cobro ligado: `
-            + `${unboundCharge.map(entry => `\`${entry.family}\``).join(', ')}.`,
+            + `${listOrNone(unboundCommand.map(entry => `\`${entry.family}\``), 'ninguna')}. Sin cobro ligado: `
+            + `${listOrNone(unboundCharge.map(entry => `\`${entry.family}\``), 'ninguna')}.`,
         commits: ['a806ef62', 'f121dc5f'],
     }),
     row('A2', { provenance: 'declared',  gates: [1], evidence: 'Comando, retención, settlement, avisos durables y revisión sin reenvío implementados y probados con PostgreSQL. La conciliación contra un proveedor real no puede correrse sin su cuenta.' }),
@@ -271,7 +283,7 @@ const ROWS = [
         open: openStores.length,
         openLabel: `${openStores.length} lugares donde las palabras del agente descansan sin alcance completo`,
         evidence: `${AGENT_OUTPUT_STORES.length} lugares inventariados con barrido del árbol de fuentes, cada uno diciendo qué lo alcanza y por qué. Abiertos: `
-            + `${openStores.map(store => `\`${store.id}\``).join(', ')}.`,
+            + `${listOrNone(openStores.map(store => `\`${store.id}\``), 'ninguno')}.`,
         commits: ['d366baf3'],
     }),
     row('G2', { provenance: 'declared',  gates: [3], evidence: 'Curación y revisión en cuatro idiomas implementadas. La revisión humana de muestra necesita personas.' }),
@@ -304,32 +316,81 @@ const ROWS = [
 ROWS.push(...octoberRows(row, october));
 
 // ─── Consistency, checked rather than promised ──────────────────────────────
-const contradictions = [];
-for (const entry of ROWS) {
-    if (entry.status === 'aceptada' && (entry.open > 0 || entry.gates.length)) {
-        contradictions.push(`${entry.id}: aceptada con condiciones abiertas`);
+/**
+ * ═══ THE SWEEP THAT COULD NOT FAIL, AND WHAT REPLACED IT ═══
+ *
+ * The first version of this block asked three questions of the rows it had just
+ * built: `aceptada` with an open condition, `bloqueada` with no gate, `abierta`
+ * with no condition. `row()` derives `status` from exactly `open` and `gates`,
+ * so all three were unsatisfiable by construction — and the document reported
+ * the result as a finding ("Sin contradicciones: ninguna fila se declara
+ * aceptada con una condición abierta...") while a release note leaned on it. A
+ * check that cannot fail is not evidence; it is a sentence with the shape of
+ * one, which is worse than no sentence because it consumes the reader's trust.
+ *
+ * Two things changed.
+ *
+ *  · The predicates became a function over ROWS, so the same sweep also runs
+ *    over the rows PARSED BACK from the committed artefact. There `status` is a
+ *    stored string nobody recomputed, so recomputing it can disagree: a row
+ *    hand-edited to read `aceptada`, a gate renumbered out from under a row, a
+ *    status left behind by a half-finished regeneration.
+ *  · Predicates were added about what a row SAYS rather than about how it was
+ *    built, and those a freshly constructed row can violate too: an `abierta`
+ *    row whose `openLabel` is empty renders an empty "Qué falta" cell, and a
+ *    figure that failed to resolve renders the word `undefined` — which is
+ *    exactly what M2 did, for as long as this artefact existed, without a
+ *    single check noticing.
+ */
+const UNRESOLVED = /\b(undefined|NaN)\b/;
+function contradictionsIn(rows) {
+    const found = [];
+    for (const entry of rows) {
+        const gates = Array.isArray(entry.gates) ? entry.gates : [];
+        // Recomputed from the row's own conditions rather than read off it.
+        // Over freshly built rows this restates the constructor; over the rows
+        // read back from the artefact it is the only thing standing between a
+        // reader and a status somebody typed.
+        const expected = Number(entry.open) > 0 ? 'abierta' : gates.length ? 'bloqueada' : 'aceptada';
+        if (entry.status !== expected) {
+            found.push(`${entry.id}: el artefacto dice \`${entry.status}\` y sus condiciones `
+                + `(open=${entry.open}, gates=${gates.length}) dan \`${expected}\``);
+        }
+        // An open row that does not say what is missing prints an empty cell,
+        // and an empty cell reads as "nothing missing" — the opposite.
+        if (expected === 'abierta' && !String(entry.openLabel ?? '').trim()) {
+            found.push(`${entry.id}: abierta sin decir qué falta`);
+        }
+        for (const gate of gates) if (!GATES[gate]) found.push(`${entry.id}: gate ${gate} no existe`);
+        for (const [field, text] of [['openLabel', entry.openLabel], ['evidence', entry.evidence]]) {
+            if (UNRESOLVED.test(String(text ?? ''))) {
+                // The token itself is deliberately NOT repeated in this message:
+                // it ends up in the rendered document, where the sweep below
+                // would trip over the warning about the trip.
+                found.push(`${entry.id}: el campo \`${field}\` interpola una cifra que no resolvió; `
+                    + 'la autoridad de la que sale no existe o cambió de nombre');
+            }
+        }
+        if (entry.provenance === 'executed_evidence'
+            && !fs.existsSync(path.join(root, entry.artefact ?? ''))) {
+            found.push(`${entry.id}: nombra un artefacto que no existe (${entry.artefact})`);
+        }
     }
-    if (entry.status === 'bloqueada' && !entry.gates.length) contradictions.push(`${entry.id}: bloqueada sin gate`);
-    if (entry.status === 'abierta' && entry.open <= 0) contradictions.push(`${entry.id}: abierta sin condición`);
-    for (const gate of entry.gates) if (!GATES[gate]) contradictions.push(`${entry.id}: gate ${gate} no existe`);
-}
-const EXPECTED_ROWS = 39;
-if (ROWS.length !== EXPECTED_ROWS) {
-    contradictions.push(`la tabla tiene ${ROWS.length} filas y debe tener ${EXPECTED_ROWS} `
-        + '(25 de A1–H3 más 14 de M0–M6/R0–R6)');
-}
-// Every id exactly once. Two rows with one id is how a table reports a status
-// twice and a reader takes whichever they saw first.
-const seenIds = new Set();
-for (const entry of ROWS) {
-    if (seenIds.has(entry.id)) contradictions.push(`${entry.id}: la fila aparece dos veces`);
-    seenIds.add(entry.id);
-}
-for (const entry of ROWS) {
-    if (entry.provenance === 'executed_evidence' && !fs.existsSync(path.join(root, entry.artefact ?? ''))) {
-        contradictions.push(`${entry.id}: nombra un artefacto que no existe (${entry.artefact})`);
+    const EXPECTED_ROWS = 39;
+    if (rows.length !== EXPECTED_ROWS) {
+        found.push(`la tabla tiene ${rows.length} filas y debe tener ${EXPECTED_ROWS} `
+            + '(25 de A1–H3 más 14 de M0–M6/R0–R6)');
     }
+    // Every id exactly once. Two rows with one id is how a table reports a status
+    // twice and a reader takes whichever they saw first.
+    const seenIds = new Set();
+    for (const entry of rows) {
+        if (seenIds.has(entry.id)) found.push(`${entry.id}: la fila aparece dos veces`);
+        seenIds.add(entry.id);
+    }
+    return found;
 }
+const contradictions = contradictionsIn(ROWS);
 // The programme is not finished while any of these hold, and the document is
 // not allowed to imply otherwise.
 const finished = ROWS.every(entry => entry.status === 'aceptada') && matrix.summary.certifiedProfiles > 0;
@@ -372,32 +433,8 @@ const state = {
     rows: ROWS,
 };
 const jsonPath = path.join(__dirname, 'closure-report.json');
+const mdPath = path.join(__dirname, 'closure-report.md');
 const nextJson = JSON.stringify(state, null, 2) + '\n';
-/**
- * `--check` is what CI runs: it regenerates in memory and fails when the
- * committed artefact does not correspond to HEAD. The version of this document
- * that shipped had been generated two commits earlier and nothing noticed.
- * `generatedAt` is excluded from the comparison — it changes every run and is
- * not a fact about the repository.
- */
-const CHECK = process.argv.includes('--check');
-if (CHECK) {
-    const stored = fs.existsSync(jsonPath) ? JSON.parse(fs.readFileSync(jsonPath, 'utf8')) : null;
-    // Content, not the label. The revision and the timestamp change on every
-    // commit, so comparing them would make this impossible to satisfy: the
-    // artefact is regenerated, committed, and that commit moves HEAD past the
-    // revision it just recorded. What goes stale is the CONTENT — a counter that
-    // moved because somebody closed a gap, a row that changed status — and that
-    // is what this compares. The stored revision is printed so drift is visible.
-    const strip = value => value && JSON.stringify({ ...value, generatedAt: undefined, revision: undefined });
-    if (!stored || strip(stored) !== strip(state)) {
-        console.error(`closure-report.json is stale: regenerate it (stored at ${stored?.revision ?? 'missing'})`);
-        process.exit(1);
-    }
-    console.log(`closure-report.json content matches the code (generated at ${stored.revision})`);
-    process.exit(0);
-}
-fs.writeFileSync(jsonPath, nextJson);
 
 const label = entry => entry.status === 'aceptada' ? '**aceptada**'
     : entry.status === 'bloqueada'
@@ -419,8 +456,19 @@ const lines = [
     '',
     contradictions.length
         ? `⚠️ Contradicciones detectadas: ${contradictions.join('; ')}.`
-        : 'Sin contradicciones: ninguna fila se declara aceptada con una condición abierta o un gate pendiente, '
-            + 'ninguna se declara bloqueada sin nombrar el gate y ninguna se declara abierta sin decir qué falta.',
+        : `Sin contradicciones en las ${ROWS.length} filas: a cada una se le recalculó el estado a partir `
+            + 'de sus propias condiciones, ninguna fila abierta deja de decir qué falta, ningún gate '
+            + 'nombrado falta de la lista, ninguna cifra quedó sin resolver y todo artefacto citado '
+            + 'existe.',
+    '',
+    // Said out loud because the previous version of this line was not true of
+    // anything: over una fila recién construida el estado SALE del constructor,
+    // así que compararlo con el constructor no puede fallar. Lo que le da fuerza
+    // es la segunda pasada, sobre el artefacto releído del disco.
+    'Ese barrido corre dos veces: sobre las filas recién construidas y otra vez sobre las filas '
+        + 'releídas del artefacto versionado, donde el estado es una cadena guardada que nadie '
+        + 'recalculó. La primera pasada, sola, no podría fallar — el constructor deriva el estado de '
+        + 'las mismas condiciones con las que se lo compara — y por eso no se presenta sola.',
     '',
     '## Los gates externos',
     '',
@@ -484,5 +532,102 @@ const lines = [
     'Para actualizar: `node docs/audits/2026-09-09/generate-closure-report.cjs` desde la raíz.',
     '',
 ];
-fs.writeFileSync(path.join(__dirname, 'closure-report.md'), lines.join('\n'));
+const nextMarkdown = lines.join('\n');
+
+/**
+ * Last stop before anything is written or compared: a figure that did not
+ * resolve.
+ *
+ * `contradictionsIn` catches it inside a row, but the document says numbers
+ * outside the rows too — the counter table at the bottom is a plain
+ * interpolation of `october.*`, and that is where `| Entregas de servicio
+ * gratuitas por número y mes | undefined |` was printed. So the RENDERED text
+ * is swept as well: whatever path produced it, a report is not allowed to tell
+ * a reader `undefined`.
+ *
+ * The revision line is exempt because it is a SHA, and the word `NaN` can occur
+ * inside one.
+ */
+const unresolvedLines = nextMarkdown.split('\n')
+    .map((line, index) => ({ line, number: index + 1 }))
+    .filter(({ line }) => !line.startsWith('Revisión: `') && UNRESOLVED.test(line));
+if (unresolvedLines.length) {
+    console.error('el informe renderizó una cifra sin resolver; no se escribe:');
+    for (const { line, number } of unresolvedLines) console.error(`  línea ${number}: ${line.trim()}`);
+    process.exit(1);
+}
+
+/**
+ * `--check` is what CI runs: it regenerates in memory and fails when a committed
+ * artefact does not correspond to HEAD. The version of this document that
+ * shipped had been generated two commits earlier and nothing noticed.
+ * `generatedAt` is excluded from the comparison — it changes every run and is
+ * not a fact about the repository.
+ *
+ * ── AND THE MARKDOWN, WHICH IS THE FILE PEOPLE ACTUALLY READ ────────────────
+ *
+ * This block used to `process.exit(0)` here, BEFORE the markdown was built
+ * fifteen lines below, so `closure-report.md` was verified by nothing at all:
+ * `verify-artifacts.cjs` shells this script with `--check`, this script checked
+ * the JSON and left. A markdown edited by hand — or simply left behind by a run
+ * that wrote the JSON and died — passed every gate in the repository. So the
+ * markdown is rebuilt and compared too, which is the only comparison that
+ * covers the document the release note quotes.
+ */
+const CHECK = process.argv.includes('--check');
+if (CHECK) {
+    const stored = fs.existsSync(jsonPath) ? JSON.parse(fs.readFileSync(jsonPath, 'utf8')) : null;
+    // The rows as the ARTEFACT carries them, swept BEFORE the staleness
+    // comparison — order matters. A hand-edited status also makes the artefact
+    // differ from this run, so comparing first would answer every such edit
+    // with "regenerate it" and never once say what was actually wrong with the
+    // file somebody is reading.
+    const storedContradictions = contradictionsIn(stored?.rows ?? []);
+    if (stored && storedContradictions.length) {
+        console.error(`closure-report.json carries contradictory rows: ${storedContradictions.join('; ')}`);
+        process.exit(1);
+    }
+    // Content, not the label. The revision and the timestamp change on every
+    // commit, so comparing them would make this impossible to satisfy: the
+    // artefact is regenerated, committed, and that commit moves HEAD past the
+    // revision it just recorded. What goes stale is the CONTENT — a counter that
+    // moved because somebody closed a gap, a row that changed status — and that
+    // is what this compares. The stored revision is printed so drift is visible.
+    const strip = value => value && JSON.stringify({ ...value, generatedAt: undefined, revision: undefined });
+    if (!stored || strip(stored) !== strip(state)) {
+        console.error(`closure-report.json is stale: regenerate it (stored at ${stored?.revision ?? 'missing'})`);
+        process.exit(1);
+    }
+    // The same two exemptions as the JSON, and one more: `core.autocrlf` is
+    // true on the Windows checkouts this is developed on and false on CI, so a
+    // byte comparison would disagree between the two about a file neither
+    // machine changed.
+    const comparable = text => text.split('\r\n').join('\n').split('\n')
+        .map(line => line.startsWith('Revisión: `') ? 'Revisión: `<sha>`.' : line).join('\n');
+    const storedMarkdown = fs.existsSync(mdPath) ? fs.readFileSync(mdPath, 'utf8') : null;
+    if (storedMarkdown === null || comparable(storedMarkdown) !== comparable(nextMarkdown)) {
+        console.error('closure-report.md is stale: regenerate it (el markdown versionado no es el que '
+            + 'este HEAD produce)');
+        process.exit(1);
+    }
+    console.log(`closure-report.json and closure-report.md match the code (generated at ${stored.revision})`);
+    process.exit(0);
+}
+fs.writeFileSync(jsonPath, nextJson);
+fs.writeFileSync(mdPath, nextMarkdown);
+
+/**
+ * The sweep again, over what is now on disk.
+ *
+ * Writing and then verifying looks redundant next to verifying what is in
+ * memory, and is not: `JSON.stringify` drops `undefined` fields and turns a
+ * `Map` or a `BigInt` into something else or into an exception, so the rows a
+ * reader gets are not always the rows this process held. Reading them back is
+ * the only way to sweep the artefact rather than the intention.
+ */
+const writtenContradictions = contradictionsIn(JSON.parse(fs.readFileSync(jsonPath, 'utf8')).rows);
+if (writtenContradictions.length) {
+    console.error(`el artefacto escrito contiene contradicciones: ${writtenContradictions.join('; ')}`);
+    process.exit(1);
+}
 process.stdout.write(JSON.stringify({ counts, finished, contradictions }) + '\n');

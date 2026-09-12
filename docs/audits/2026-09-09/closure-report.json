@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "revision": "18716f684562595c2ff8a4b5a0ae6704cb42f3eb",
-  "generatedAt": "2026-09-11T23:52:56.344Z",
+  "revision": "0e14cd044f4ca902d5feece9d099ac0402d698e0",
+  "generatedAt": "2026-09-12T01:36:41.046Z",
   "finished": false,
   "counts": {
     "aceptada": 11,
@@ -37,8 +37,8 @@
     "channelsCertified": 0,
     "routedOperations": 8,
     "resolutionDefects": [],
-    "egressCallSites": 21,
-    "chargeableCallSites": 17,
+    "egressCallSites": 31,
+    "chargeableCallSites": 27,
     "chargeableOutsideGate": 0,
     "chargeableOffDurableLane": 7,
     "chargeableOffDurableByLane": {
@@ -84,7 +84,7 @@
       "status": "aceptada",
       "provenance": "derived",
       "artefact": null,
-      "evidence": "Inventario calculado de 15 familias (`terms-binding-inventory.ts`). Cita y matrícula ligan comando y cobro; el pedido de catálogo pasó a cobrar desde `orders.catalog_terms` y a rechazar la fila que no acordó nada. Sin comando ligado: . Sin cobro ligado: .",
+      "evidence": "Inventario calculado de 15 familias (`terms-binding-inventory.ts`). Cita y matrícula ligan comando y cobro; el pedido de catálogo pasó a cobrar desde `orders.catalog_terms` y a rechazar la fila que no acordó nada. Sin comando ligado: ninguna. Sin cobro ligado: ninguna.",
       "commits": [
         "a806ef62",
         "f121dc5f"
@@ -332,7 +332,7 @@
       "status": "aceptada",
       "provenance": "derived",
       "artefact": null,
-      "evidence": "20 lugares inventariados con barrido del árbol de fuentes, cada uno diciendo qué lo alcanza y por qué. Abiertos: .",
+      "evidence": "20 lugares inventariados con barrido del árbol de fuentes, cada uno diciendo qué lo alcanza y por qué. Abiertos: ninguno.",
       "commits": [
         "d366baf3"
       ]
@@ -417,7 +417,7 @@
       "status": "aceptada",
       "provenance": "derived",
       "artefact": null,
-      "evidence": "Censo derivado del árbol: 21 call sites, 17 cobrables, 0 fuera de la autoridad económica. El inventario de efectos declara 61 productores y 45 con al menos una propiedad en `none`. La condición es que el artefacto versionado se regenere desde el mismo HEAD, no que alguien lo haya leído.",
+      "evidence": "Censo derivado del árbol: 31 call sites, 27 cobrables, 0 fuera de la autoridad económica. El inventario de efectos declara 62 productores y 45 con al menos una propiedad en `none`. La condición es que el artefacto versionado se regenere desde el mismo HEAD, no que alguien lo haya leído.",
       "commits": []
     },
     {
@@ -444,7 +444,7 @@
       "status": "bloqueada",
       "provenance": "derived",
       "artefact": null,
-      "evidence": "Tarifas versionadas `meta-ratecards-2026@cdc5b132567ab1e7` con 4 tarjetas, 5 categorías que Meta cobra por separado y undefined entregas de servicio gratuitas por número y mes calendario. La categoría aprobada y la ventana de servicio se leen de la base del tenant antes de admitir. Lo que falta es una cuenta real: tarifa aplicada por Meta al entregar y conciliación contra factura.",
+      "evidence": "Tarifas versionadas `meta-ratecards-2026@cdc5b132567ab1e7` con 4 tarjetas, 5 categorías que Meta cobra por separado y 1000 entregas de servicio gratuitas por número y mes calendario. La categoría aprobada y la ventana de servicio se leen de la base del tenant antes de admitir. Lo que falta es una cuenta real: tarifa aplicada por Meta al entregar y conciliación contra factura.",
       "commits": []
     },
     {
@@ -506,7 +506,7 @@
       "status": "abierta",
       "provenance": "derived",
       "artefact": null,
-      "evidence": "De 17 call sites cobrables, 7 usan un carril que no escribe fila antes del POST — Redis es el registro, o no hay registro. Un productor ahí no puede contestar \"¿esto salió?\" después de un reinicio. El criterio principal de R6 es exactamente este número en cero.",
+      "evidence": "De 27 call sites cobrables, 7 usan un carril que no escribe fila antes del POST — Redis es el registro, o no hay registro. Un productor ahí no puede contestar \"¿esto salió?\" después de un reinicio. El criterio principal de R6 es exactamente este número en cero.",
       "commits": []
     },
     {
@@ -557,8 +557,8 @@
     },
     {
       "id": "R5",
-      "open": 3,
-      "openLabel": "3 de 18 escenarios de la matriz de aceptación sin prueba que los conteste: Pregunta resuelta y cinco \"gracias\"; Misma pregunta requerida sin progreso; Bot contra bot y ráfaga de contactos",
+      "open": 4,
+      "openLabel": "4 de 18 escenarios de la matriz de aceptación sin prueba que los conteste: Pregunta resuelta y cinco \"gracias\"; Misma pregunta requerida sin progreso; Bot contra bot y ráfaga de contactos; Humano, REST, campaña y recordatorio",
       "gates": [],
       "status": "abierta",
       "provenance": "derived",

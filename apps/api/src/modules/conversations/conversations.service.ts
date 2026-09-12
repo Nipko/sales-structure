@@ -34,9 +34,7 @@ import {
 } from './turn-outcome-effects';
 import { burstBufferKeys } from './burst-debounce-key';
 import { foldedContent, fragmentFor, mergeBurst, type BurstFragment } from './burst-fragments';
-import {
-    decideAndAssertTurnOutcome, failureNoticesInEpisode, resolveFailureNoticePolicy, waitResumesAt,
-} from './turn-outcome-wait';
+import { resolveTurnOutcome } from './turn-outcome-wait';
 import { ChannelTokenService } from '../channels/channel-token.service';
 import { ConversationsGateway } from './conversations.gateway';
 import { HandoffService } from '../handoff/handoff.service';
@@ -1402,30 +1400,66 @@ export class ConversationsService {
         // language or a request for a human cannot become a reason to stop
         // answering somebody.
         const failureNotice = isErrorFallback(response);
-        // How many notices, and over how long, is the tenant's decision — a
-        // clinic answering forty people a day and a shop answering four thousand
-        // have different tolerances for "say it once", and a number chosen in the
-        // code is wrong for one of them. Read only when a failure notice is
-        // actually in play, so the ordinary turn pays nothing for it.
-        const noticePolicy = failureNotice
-            ? resolveFailureNoticePolicy(await this.failureNoticeSettings(tenantId))
-            : undefined;
-        const episode = failureNotice && this.turnLedger && priorTurn && noticePolicy
-            ? await this.turnLedger.recentOutcomes(
-                schemaName, String(conversation.id), new Date(Date.now() - noticePolicy.episodeMs))
-            : [];
-        const decision = decideAndAssertTurnOutcome({
+        // How many notices, how long an episode lasts, how often one datum may
+        // be asked for and how many goodbyes a chain may hold are all the
+        // tenant's decision, and all of them are read, counted and applied in
+        // `turn-outcome-wait.ts` — so the rule can be tested without a turn and
+        // the turn keeps only what it alone can do: handing the conversation to
+        // a person, and putting one sentence on the wire.
+        const decision = await resolveTurnOutcome({
             hasEffects: turnHasEffects,
             isFailureNotice: failureNotice,
-            priorFailureNotices: failureNoticesInEpisode(episode, new Date(), noticePolicy),
-            // When the answer could genuinely change, not a round number: the
-            // moment the notice that caused the wait leaves the window.
-            episodeEndsAt: waitResumesAt(episode, new Date(), noticePolicy),
-            policy: noticePolicy,
+            reply: response,
+            carriesEffects: !!turnEffects.flow || turnEffects.paymentLinks.length > 0
+                || turnEffects.media.length > 0 || turnEffects.writers.length > 0,
+            // Which datum the deterministic runtime is STILL awaiting once this
+            // turn is over. Read from its own durable state, so "the same datum
+            // again" is a fact about the step we are on rather than a judgement
+            // that two sentences meant the same thing.
+            //
+            // A read that cannot answer reads as "no datum awaited", which can
+            // only ever make this turn SPEAK — the stop needs two recorded turns
+            // awaiting the same one, and an unknown datum matches none. Wrapped
+            // from the first call so a missing collaborator gives that same
+            // harmless answer instead of an exception that would kill a turn a
+            // customer is waiting on.
+            awaitingField: await Promise.resolve()
+                .then(() => this.procedureEngine.getState(String(conversation.id), schemaName))
+                .then(state => (state?.pausedAt ? null : state?.awaitingField ?? null))
+                .catch(() => null),
+            inboundMessageId: ledgerInboundId,
             draft: draftMode && !!response,
+            replyLanguage: autoProgressLang,
+            readPolicy: () => this.failureNoticeSettings(tenantId),
+            readEpisode: this.turnLedger && priorTurn
+                ? since => this.turnLedger!.recentOutcomes(schemaName, String(conversation.id), since)
+                : undefined,
         });
         if (this.turnLedger && priorTurn) {
             await this.turnLedger.recordOutcome(schemaName, ledgerInboundId, decision.outcome);
+        }
+        if (decision.route) {
+            // Not silence. Asking a third time for a datum two turns have failed
+            // to collect is the loop; falling quiet instead is the same dead end
+            // without the charge. So the conversation changes hands AND the
+            // customer is told, once per episode — both halves, or the reason
+            // code would be a promise the code does not keep.
+            this.logger.warn(`[Pipeline] Not asking ${ledgerInboundId} again: ${decision.outcome.reason}`
+                + ` — handing the conversation to a person.`);
+            this.recordAgentSignal(tenantId, 'turn_routed_to_human');
+            await this.handoffService.executeHandoff(
+                tenantId, conversation.id, normalizedMsg, decision.route.reason);
+            if (!await this.replyOnceThroughOutbox({
+                tenantId, conversation, msg: normalizedMsg,
+                operationalScope: turnScope, inboundMessageId,
+                item: { kind: 'text', payload: { text: decision.route.notice } },
+                originKey: `stalled-ask-route:${inboundMessageId}`,
+            })) {
+                await this.sendResponse(tenantId, decision.route.notice, normalizedMsg, undefined, 'handoff');
+                await this.saveAiMessage(tenantId, conversation.id, decision.route.notice,
+                    normalizedMsg.channelType);
+            }
+            return;
         }
         if (decision.outcome.kind === 'wait') {
             this.logger.warn(`[Pipeline] Not answering ${ledgerInboundId}: ${decision.outcome.reason} — `

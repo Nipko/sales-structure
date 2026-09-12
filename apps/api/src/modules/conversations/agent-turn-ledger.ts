@@ -416,7 +416,8 @@ export async function readRecentTurnOutcomes(query: TurnLedgerQuery, schema: str
     const [probe] = await query<any[]>(
         `SELECT to_regclass($1) IS NOT NULL AS present`, [`${schema}.agent_dispatch_outbox`]);
     const rows = probe?.present ? await query<any[]>(
-        `SELECT l.outcome, l.created_at, l.delivery_route, COALESCE(d.arrived, 0)::int AS arrived
+        `SELECT l.outcome, l.created_at, l.delivery_route, l.inbound_message_id,
+                COALESCE(d.arrived, 0)::int AS arrived
            FROM "${schema}".agent_turn_ledger l
            LEFT JOIN LATERAL (
                 SELECT count(*) AS arrived FROM "${schema}".agent_dispatch_outbox o
@@ -427,7 +428,7 @@ export async function readRecentTurnOutcomes(query: TurnLedgerQuery, schema: str
           ORDER BY l.created_at DESC LIMIT ${limit}`,
         [input.conversationId, input.since.toISOString()],
     ) : await query<any[]>(
-        `SELECT l.outcome, l.created_at, l.delivery_route, 0 AS arrived
+        `SELECT l.outcome, l.created_at, l.delivery_route, l.inbound_message_id, 0 AS arrived
            FROM "${schema}".agent_turn_ledger l
           WHERE l.conversation_id = $1::uuid AND l.outcome IS NOT NULL AND l.created_at >= $2::timestamptz
           ORDER BY l.created_at DESC LIMIT ${limit}`,
@@ -439,6 +440,7 @@ export async function readRecentTurnOutcomes(query: TurnLedgerQuery, schema: str
             createdAt: new Date(row.created_at),
             deliveredEffects: Number(row.arrived) || 0,
             deliveryRoute: (row.delivery_route ?? 'unknown') as TurnDeliveryRoute,
+            inboundMessageId: String(row.inbound_message_id),
         })));
 }
 
@@ -465,6 +467,17 @@ export interface RecentTurnOutcome {
     readonly createdAt: Date;
     readonly deliveredEffects: number;
     readonly deliveryRoute: TurnDeliveryRoute;
+    /**
+     * Which inbound this decision belongs to.
+     *
+     * The row is keyed by that inbound and UPDATED in place, so a turn that
+     * crashed after recording and is re-run by BullMQ finds ITS OWN previous
+     * decision inside the window it reads. A counter that judges "how often
+     * have we already done this" has to be able to leave that row out, or the
+     * second attempt at one turn counts the first attempt at the same turn and
+     * decides it has already happened twice.
+     */
+    readonly inboundMessageId: string;
 }
 
 export interface TurnLedgerRedactionScope {

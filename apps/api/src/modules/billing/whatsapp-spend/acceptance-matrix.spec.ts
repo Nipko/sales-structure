@@ -337,7 +337,7 @@ describe('the R5 acceptance matrix, checked rather than asserted', () => {
             expect(workflow).toContain('assert-no-skipped-tests.cjs');
         });
 
-        it('reports these four gaps, by name', () => {
+        it('reports these two gaps, by name', () => {
             // What replaces the assertion that used to stand here. That one
             // added the two halves and compared the sum to the whole, and
             // because `covered` is an object or `null` the sum WAS the whole
@@ -347,8 +347,6 @@ describe('the R5 acceptance matrix, checked rather than asserted', () => {
             // it is not computed from the thing it is checking: closing a gap
             // or opening one has to come here and say so.
             expect(uncoveredScenarios().map(row => row.scenario)).toEqual([
-                'Pregunta resuelta y cinco "gracias"',
-                'Misma pregunta requerida sin progreso',
                 'Bot contra bot y ráfaga de contactos',
                 'Humano, REST, campaña y recordatorio',
                 // The nurturing row was opened by the adversarial pass and is
@@ -356,6 +354,18 @@ describe('the R5 acceptance matrix, checked rather than asserted', () => {
                 // half got built: nurturing now honours `leads.opted_out`, the
                 // flag `compliance.isBlocked` cannot see, and a test fails if
                 // that gate is removed.
+                //
+                // The two courtesy/stalled-ask rows above them are closed the
+                // same way. Neither was a missing test: there was no turn that
+                // could decide not to answer a chain of goodbyes, and no
+                // per-datum ask counter and no alternative route at all. The
+                // decision now records what WE said, counts it per episode and
+                // per datum, and the stalled ask ends in a transfer to a person
+                // rather than in a third question or in silence. The two
+                // remaining rows are both blocked on something outside a test:
+                // a per-contact ceiling nobody has chosen a number for, and
+                // seven chargeable producers that still send outside the
+                // durable lane.
             ]);
         });
 

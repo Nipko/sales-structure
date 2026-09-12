@@ -145,10 +145,25 @@ export const ACCEPTANCE_MATRIX: readonly AcceptanceScenario[] = Object.freeze([
     {
         scenario: 'Pregunta resuelta y cinco "gracias"',
         evidence: 'Sin cadena nueva de respuestas automáticas',
-        covered: null,
-        missing: 'la política de repetición cubre el mismo TEXTO repetido, no el caso de cinco '
-            + 'agradecimientos distintos después de una pregunta ya resuelta. Falta el turno que '
-            + 'decide no contestar',
+        // ── WHAT CLOSED IT, AND WHY THE SECOND TITLE IS NOT OPTIONAL ────────
+        //
+        // The gap was real and the reason was structural: the repetition guard
+        // compares a digest of what is being sent, and five different
+        // courtesies are five different digests. So the chain was stopped one
+        // level up, in the turn's own outcome — a goodbye of OURS is recorded,
+        // and the second one in the episode becomes a `wait` with no effects.
+        //
+        // A saving made by not answering people is not a saving, so the row
+        // names the guard too: with the goodbye budget already spent, the very
+        // next real question is still answered. The thin half of THIS row is
+        // not "did it stop" but "did it stop something it should not have".
+        covered: {
+            file: 'modules/conversations/courtesy-chain-and-stalled-ask.postgres.spec.ts',
+            titles: [
+                'closes once, and lets four more thank-yous cost nothing',
+                'still answers a real question asked in the middle of the thank-yous',
+            ],
+        },
     },
     {
         scenario: 'Cliente confundido o reclamando',
@@ -161,9 +176,43 @@ export const ACCEPTANCE_MATRIX: readonly AcceptanceScenario[] = Object.freeze([
     {
         scenario: 'Misma pregunta requerida sin progreso',
         evidence: 'Reformulación limitada y vía alternativa, sin loop',
-        covered: null,
-        missing: 'falta la prueba de que una reformulación del mismo dato sin cambio se detiene y '
-            + 'ofrece otra vía, en vez de repetir la pregunta',
+        // ── THREE HALVES, AND A FOURTH TITLE THAT GUARDS THEM ───────────────
+        //
+        // *Reformulación limitada*: two turns may go by awaiting one datum —
+        // the question and one more attempt — counted per DATUM, off the
+        // procedure runtime's own durable state rather than off a judgement
+        // that two sentences meant the same thing.
+        //
+        // *Vía alternativa*: the third turn hands the conversation to a person
+        // and says so once, from the closed handoff catalog. Measured before,
+        // on both lanes: four asks straight through and no route at all. The
+        // spend gate's digest guard was never the alternative — it refuses a
+        // VERBATIM repeat and offers nothing behind the refusal, which is
+        // silence rather than another way, and a rephrased loop it cannot see.
+        // Both lanes are named because both had to grow the route.
+        //
+        // *Sin loop*: the announcement is once per episode, so a thread a
+        // person finishes and hands back does not buy a second one.
+        //
+        // The fourth title is the two guards composing: a model that repeats
+        // itself word for word is refused by the money authority, and the
+        // refusal must not swallow the escalation — a silent turn that never
+        // reached the counter would leave the customer with one unanswered
+        // question and no way out.
+        //
+        // And the last is the guard all of them need: an intake that collects a
+        // different field every turn is four question-only turns in a row, and
+        // it must never be stopped.
+        covered: {
+            file: 'modules/conversations/courtesy-chain-and-stalled-ask.postgres.spec.ts',
+            titles: [
+                'hands the conversation over instead of asking a third time',
+                'offers the person on the legacy lane too, which had no route at all',
+                'does not announce the handover twice when the agent gets the thread back',
+                'refuses a verbatim second ask and still offers the person',
+                'never stops an intake that collects a different datum every turn',
+            ],
+        },
     },
     {
         scenario: 'Nueva necesidad después de pausa',

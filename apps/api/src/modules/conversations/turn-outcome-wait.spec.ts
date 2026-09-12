@@ -4,6 +4,8 @@ import { assertTurnOutcome, type TurnOutcome } from '@parallext/shared';
 import {
     DEFAULT_FAILURE_NOTICE_POLICY, FAILURE_EPISODE_MS, TURN_OUTCOME_REASONS,
     resolveFailureNoticePolicy,
+    awaitingDatumReason, closingPleasantriesInEpisode, datumAskKey, isClosingPleasantry,
+    routeNoticesInEpisode, turnsAwaitingDatum,
     decideAndAssertTurnOutcome, decideTurnOutcome, failureNoticesInEpisode, waitResumesAt,
 } from './turn-outcome-wait';
 
@@ -221,11 +223,109 @@ describe('counting only our own failure notices', () => {
     });
 });
 
+describe('what counts as a goodbye of ours', () => {
+    /**
+     * The classifier reads OUR reply, never the customer's. What it has to get
+     * right is not "did it spot the goodbye" — a missed one costs a single
+     * message — but "did it ever call an ANSWER a goodbye", because that one
+     * costs a customer.
+     */
+    it.each([
+        ['¡Con gusto!'],
+        ['Gracias a ti.'],
+        ['Un placer, estoy para servirte.'],
+        ['Que tengas un buen día.'],
+        ['De nada, cualquier cosa estoy aquí.'],
+        ['My pleasure, happy to help.'],
+        ['Com prazer, disponha.'],
+        ['Avec plaisir, bonne journée.'],
+    ])('reads %s as one', reply => {
+        expect(isClosingPleasantry(reply)).toBe(true);
+    });
+
+    it.each([
+        // Every one of these is a real answer, and the early versions of this
+        // classifier called two of them goodbyes.
+        ['No, no hay.'],
+        ['Nada.'],
+        ['El corte cuesta cuarenta mil pesos.'],
+        ['Abrimos de lunes a sábado.'],
+        ['Claro, te agendo para mañana a las 3.'],
+        ['¿Te sirve el martes?'],
+        ['Con gusto, aquí tienes el enlace: https://pay.example.test/x'],
+        ['Gracias. Ahora necesito tu documento para continuar con la reserva de mañana.'],
+    ])('never reads %s as one', reply => {
+        expect(isClosingPleasantry(reply)).toBe(false);
+    });
+
+    it('stops reading a reply as a goodbye once it is longer than a goodbye', () => {
+        // Every word here is pleasantry vocabulary and the phrase is in the
+        // catalog, so the only thing refusing it is the length bound. A reply
+        // this long is doing something other than saying goodbye, whatever its
+        // vocabulary, and the whole classifier is built to err this way.
+        const short = 'Con gusto, gracias a ti, que tengas un buen dia.';
+        const long = `${short} ${short} ${short} ${short}`;
+        expect(short.length).toBeLessThanOrEqual(160);
+        expect(long.length).toBeGreaterThan(160);
+        expect(isClosingPleasantry(short)).toBe(true);
+        expect(isClosingPleasantry(long)).toBe(false);
+    });
+
+    it('is not a goodbye when the turn also handed over a link or a picture', () => {
+        // A reply that carries an effect is carrying something, whatever its
+        // words look like, and the effect is what the customer came for.
+        expect(isClosingPleasantry('¡Con gusto!', true)).toBe(false);
+        expect(isClosingPleasantry('¡Con gusto!', false)).toBe(true);
+    });
+
+    it('never counts the turn re-running after a crash as a previous turn', () => {
+        // The ledger row is keyed by the inbound and UPDATED in place, so a
+        // turn that recorded `send` and then died is read back by its own
+        // retry. Counted, the retry would see itself as two turns and hand a
+        // customer to a person on their FIRST attempt at the datum.
+        const own = {
+            createdAt: new Date(NOW.getTime() - 1_000), deliveredEffects: 0,
+            inboundMessageId: 'inbound-1',
+            outcome: { version: 1 as const, kind: 'send' as const,
+                reason: awaitingDatumReason('abcd1234'), effects: [] as readonly string[] },
+        };
+        const someoneElse = { ...own, inboundMessageId: 'inbound-0' };
+        expect(turnsAwaitingDatum([own], 'abcd1234', NOW,
+            DEFAULT_FAILURE_NOTICE_POLICY, 'inbound-1')).toBe(0);
+        expect(turnsAwaitingDatum([someoneElse], 'abcd1234', NOW,
+            DEFAULT_FAILURE_NOTICE_POLICY, 'inbound-1')).toBe(1);
+        // The same rule for the other two counters.
+        const closing = { ...own, outcome: { ...own.outcome, reason: TURN_OUTCOME_REASONS.courtesyClose } };
+        expect(closingPleasantriesInEpisode([closing], NOW,
+            DEFAULT_FAILURE_NOTICE_POLICY, 'inbound-1')).toBe(0);
+        const routed = { ...own, outcome: { version: 1 as const, kind: 'escalate' as const,
+            reason: TURN_OUTCOME_REASONS.stalledAskRoute, effects: [] as readonly string[] } };
+        expect(routeNoticesInEpisode([routed], NOW,
+            DEFAULT_FAILURE_NOTICE_POLICY, 'inbound-1')).toBe(0);
+        expect(routeNoticesInEpisode([{ ...routed, inboundMessageId: 'inbound-0' }], NOW,
+            DEFAULT_FAILURE_NOTICE_POLICY, 'inbound-1')).toBe(1);
+    });
+
+    it('gives two turns awaiting one field the same token, and two fields two', () => {
+        // The whole difference between a long task and a loop. It is also why
+        // the token is a digest: the reason code survives erasure, so it holds
+        // something comparable and nothing readable.
+        expect(datumAskKey('cedula')).toBe(datumAskKey('  CEDULA '));
+        expect(datumAskKey('cedula')).not.toBe(datumAskKey('fecha'));
+        expect(datumAskKey('')).toBeNull();
+        expect(datumAskKey(null)).toBeNull();
+        expect(datumAskKey('cedula')).not.toContain('cedula');
+    });
+});
+
 describe('the turn actually uses it', () => {
     const service = fs.readFileSync(path.join(__dirname, 'conversations.service.ts'), 'utf8');
 
     it('decides the outcome before it delivers anything', () => {
-        const decidedAt = service.indexOf('decideAndAssertTurnOutcome({');
+        // `resolveTurnOutcome` is the one call the turn makes now: it reads the
+        // policy, reads the episode and runs `decideAndAssertTurnOutcome`, so
+        // the counting cannot drift away from the rule it feeds.
+        const decidedAt = service.indexOf('await resolveTurnOutcome({');
         const deliveredAt = service.indexOf('const durable = await this.dispatchReplyThroughOutbox({');
         expect(decidedAt).toBeGreaterThan(0);
         expect(deliveredAt).toBeGreaterThan(decidedAt);
@@ -264,13 +364,25 @@ describe('the failure-notice policy', () => {
     const NOW = new Date('2026-10-05T12:00:00.000Z');
 
     it('ships with the behaviour that was hard-coded before it', () => {
-        expect(resolveFailureNoticePolicy(undefined))
-            .toEqual({ maxPerEpisode: 1, episodeMs: 30 * 60 * 1000 });
+        expect(resolveFailureNoticePolicy(undefined)).toEqual({
+            maxPerEpisode: 1, episodeMs: 30 * 60 * 1000,
+            // The three limits added with the courtesy chain and the stalled
+            // ask. Asserted whole rather than by field: a new limit that
+            // shipped without anybody choosing its default would fail here
+            // instead of arriving silently on every tenant.
+            maxClosingPleasantriesPerEpisode: 1,
+            maxTurnsAwaitingOneDatum: 2,
+            maxRouteNoticesPerEpisode: 1,
+        });
     });
 
     it('honours a tenant that wants to say it twice, over a longer episode', () => {
-        expect(resolveFailureNoticePolicy({ maxPerEpisode: 2, episodeMinutes: 90 }))
-            .toEqual({ maxPerEpisode: 2, episodeMs: 90 * 60 * 1000 });
+        expect(resolveFailureNoticePolicy({ maxPerEpisode: 2, episodeMinutes: 90 })).toEqual({
+            maxPerEpisode: 2, episodeMs: 90 * 60 * 1000,
+            maxClosingPleasantriesPerEpisode: 1,
+            maxTurnsAwaitingOneDatum: 2,
+            maxRouteNoticesPerEpisode: 1,
+        });
     });
 
     it('refuses to be configured into silence', () => {
@@ -316,6 +428,45 @@ describe('the failure-notice policy', () => {
         expect(decideTurnOutcome({
             hasEffects: true, isFailureNotice: true, priorFailureNotices: 2, policy, now: NOW,
         }).deliver).toBe(false);
+    });
+
+    it('refuses to be configured into never closing or never asking twice', () => {
+        // The floors of the three limits added with the courtesy chain and the
+        // stalled ask, and the one that is NOT one: at a single turn per datum
+        // the first rephrasing of a question would already hand the thread to a
+        // person, so a customer who mistyped their id once would never get a
+        // second chance to type it.
+        expect(resolveFailureNoticePolicy({ maxClosingPleasantries: 0 })
+            .maxClosingPleasantriesPerEpisode).toBe(1);
+        expect(resolveFailureNoticePolicy({ maxTurnsAwaitingOneDatum: 1 })
+            .maxTurnsAwaitingOneDatum).toBe(2);
+        expect(resolveFailureNoticePolicy({ maxTurnsAwaitingOneDatum: 0 })
+            .maxTurnsAwaitingOneDatum).toBe(2);
+        expect(resolveFailureNoticePolicy({ maxRouteNotices: 0 })
+            .maxRouteNoticesPerEpisode).toBe(1);
+    });
+
+    it('refuses to be configured into the loops those three exist to break', () => {
+        expect(resolveFailureNoticePolicy({ maxClosingPleasantries: 99 })
+            .maxClosingPleasantriesPerEpisode).toBe(5);
+        expect(resolveFailureNoticePolicy({ maxTurnsAwaitingOneDatum: 99 })
+            .maxTurnsAwaitingOneDatum).toBe(6);
+        expect(resolveFailureNoticePolicy({ maxRouteNotices: 99 })
+            .maxRouteNoticesPerEpisode).toBe(3);
+    });
+
+    it('honours a tenant that wants three attempts at one datum', () => {
+        const policy = resolveFailureNoticePolicy({ maxTurnsAwaitingOneDatum: 3 });
+        expect(decideTurnOutcome({
+            hasEffects: true, isFailureNotice: false, priorFailureNotices: 0,
+            awaitingDatumKey: 'abcd1234', priorTurnsAwaitingDatum: 2,
+            routeNotice: 'transfiriendo', policy, now: NOW,
+        }).deliver).toBe(true);
+        expect(decideTurnOutcome({
+            hasEffects: true, isFailureNotice: false, priorFailureNotices: 0,
+            awaitingDatumKey: 'abcd1234', priorTurnsAwaitingDatum: 3,
+            routeNotice: 'transfiriendo', policy, now: NOW,
+        }).outcome.kind).toBe('escalate');
     });
 
     it(`counts an episode by the tenant's own window`, () => {

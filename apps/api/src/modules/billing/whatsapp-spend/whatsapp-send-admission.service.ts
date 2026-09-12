@@ -1,3 +1,4 @@
+import { isScopedAddressKey } from '@parallext/shared';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PROVIDER_BILLED_CHANNELS, type OutboundSendContext } from '@parallext/shared';
@@ -377,6 +378,25 @@ export class WhatsappSendAdmissionService {
             this.logger.warn(`[Spend] pricing ${request.connection.channelAccountId} in `
                 + `${currency.currency}, last confirmed ${Math.floor(currency.ageMs / 86_400_000)} `
                 + `day(s) ago`);
+        }
+
+        // ── A DESTINATION NOTHING CAN ADDRESS ───────────────────────────────
+        //
+        // A business-scoped customer key reaches here as the recipient address.
+        // Meta's `/messages` endpoint takes a phone in `to`, so the POST cannot
+        // land — and by the time the transport says so, this service has already
+        // reserved money and the lane has committed a durable row, both for an
+        // effect that will never arrive.
+        //
+        // Refused here instead: nothing is reserved, nothing is committed, and
+        // the reason names the real situation rather than surfacing as a
+        // provider error about a malformed number.
+        if (isScopedAddressKey(request.recipientAddress ?? null)) {
+            return Object.freeze({
+                permitted: false, effectKey, enforcement,
+                block: spendBlock('recipient_not_addressable',
+                    `recipient=${String(request.recipientAddress).slice(0, 60)}`),
+            });
         }
 
         // ── The country being messaged, read before the address is hashed ───

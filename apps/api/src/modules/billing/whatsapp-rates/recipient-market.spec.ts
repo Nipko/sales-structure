@@ -111,6 +111,49 @@ describe('what the resolution carries', () => {
     });
 });
 
+describe('an address that is not a phone number at all', () => {
+    // A business-scoped address key — `bsuid:<portfolio>:<id>` — is what a
+    // portfolio-scoped conversation gives us instead of a phone number. It is
+    // an opaque identifier, and the first thing this module used to do with it
+    // was strip the punctuation and read a country off the digits that
+    // survived. Those digits are a Meta WABA id.
+
+    const portfolio = '529876543210';
+    const scoped = `bsuid:${portfolio}:BSU_abc`;
+
+    it('refuses to price an opaque identifier', () => {
+        const market = recipientMarket(scoped);
+        expect(market.kind).toBe('unlisted');
+        expect(recipientIso(scoped)).toBeNull();
+    });
+
+    it('and the digits inside it WOULD have priced, which is the whole danger', () => {
+        // Computed independently of the guard: the same id, as a bare number,
+        // resolves to a real market. That is the invoice line the guard
+        // prevents — a Mexican tariff on a message to nobody in Mexico.
+        expect(recipientMarket(`+${portfolio}`)).toMatchObject({
+            kind: 'resolved', iso: 'MX',
+        });
+    });
+
+    it('refuses every portfolio, not just one that happens to look Mexican', () => {
+        // 91 is India, 44 Great Britain, 1 the NANP. A prefix table has an
+        // answer for all of them and none of those answers is about this
+        // message.
+        for (const id of ['919876543210', '447700900123', '15551234567']) {
+            expect(recipientMarket(`bsuid:${id}:BSU_x`).kind).toBe('unlisted');
+        }
+    });
+
+    it('still prices a real phone number', () => {
+        // The guard must not be a blanket refusal: `bsuid` is a prefix, and
+        // every address without it goes down the normal path untouched.
+        expect(recipientMarket('+573001112233')).toMatchObject({
+            kind: 'resolved', iso: 'CO',
+        });
+    });
+});
+
 describe('the price that actually comes out', () => {
     const at = new Date('2026-10-05T12:00:00.000Z');
 

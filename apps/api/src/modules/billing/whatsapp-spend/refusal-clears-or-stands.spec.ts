@@ -63,6 +63,12 @@ const CLEARS: Readonly<Record<SpendBlockCode, { readonly clears: boolean; readon
         },
         effect_already_resolved: { clears: false, why: 'this effect already had its outcome' },
         transmission_outcome_unknown: { clears: false, why: 'a POST may have landed; a retry could be a second message' },
+        recipient_not_addressable: {
+            clears: false,
+            why: 'this customer has no phone number and the outbound half for a scoped '
+                + 'destination is not built. Waiting does not build it, and holding the '
+                + 'message would be holding it indefinitely while claiming it is on its way',
+        },
         effect_identity_missing: {
             clears: false,
             why: 'a producer defect that no waiting repairs. It is unreachable from the durable '

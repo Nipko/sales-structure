@@ -45,6 +45,15 @@ export const THREAD_CONTROL_STATES = [
      * has to be, or a dropped handover is a customer waiting for ever.
      */
     'standby',
+    /**
+     * A person in this business has the thread.
+     *
+     * Its own state, not a reuse of `meta_agent`. Folding the two together —
+     * which the first version did — meant a Meta "gave control" webhook set the
+     * thread back to `ours` and the AI answered over a human who was still
+     * typing. Meta cannot hand back something it never held.
+     */
+    'human_operator',
     /** Nobody has told us. Not a synonym for `ours`. */
     'unknown',
 ] as const;
@@ -99,7 +108,12 @@ export function nextThreadControl(
         case 'meta_took_control':
             return moved('meta_agent', event.detail ?? 'meta_took_control');
         case 'meta_gave_control':
-            return moved('ours', event.detail ?? 'meta_gave_control');
+            // A human's hold outranks this. Meta returning control it never had
+            // must not take the thread away from the person in it — that is the
+            // AI answering over somebody who is still typing.
+            return current.state === 'human_operator'
+                ? current
+                : moved('ours', event.detail ?? 'meta_gave_control');
         case 'we_handed_over':
             // `standby`, not `meta_agent`: we know we let go, and we do NOT know
             // that anybody caught it. Recording the optimistic state here is how
@@ -108,7 +122,7 @@ export function nextThreadControl(
         case 'human_took_over':
             // A person is in the thread. Neither agent speaks, and this is not
             // `standby` — somebody IS answering, so no timeout should fire.
-            return moved('meta_agent', event.detail ?? 'human_took_over');
+            return moved('human_operator', event.detail ?? 'human_took_over');
         case 'standby_expired':
             // Only from standby. Arriving here in any other state means a stale
             // timer fired after control already moved, and honouring it would
@@ -151,6 +165,22 @@ export function mayPlatformSpeak(input: {
     readonly now: Date;
 }): SpeakVerdict {
     const { control, coexistenceEnabled, now } = input;
+
+    if (control.state === 'human_operator') {
+        // BEFORE the flag, and deliberately. The flag is about the OTHER AGENT:
+        // it says whether Meta has one in this thread. A person in this business
+        // taking the conversation is the escalation that exists today, on every
+        // account, with coexistence off — and an AI reply delivered over their
+        // answer is precisely the failure a handoff exists to prevent.
+        //
+        // Not retryable, for a stronger reason than the agent case: there is no
+        // later moment at which sending it becomes right.
+        return {
+            maySpeak: false,
+            retryable: false,
+            reason: 'human_operator:a person in this business holds this thread',
+        };
+    }
 
     if (!coexistenceEnabled) {
         return {

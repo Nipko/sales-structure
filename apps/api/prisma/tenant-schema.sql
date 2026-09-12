@@ -5631,7 +5631,7 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."meta_agent_thread_control" (
     "reason"          TEXT,
     "updated_at"      TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
     CONSTRAINT "meta_agent_thread_control_state"
-        CHECK ("state" IN ('ours', 'meta_agent', 'standby', 'unknown'))
+        CHECK ("state" IN ('ours', 'meta_agent', 'human_operator', 'standby', 'unknown'))
 );
 CREATE INDEX IF NOT EXISTS "idx_meta_agent_thread_control_standby"
     ON "{{SCHEMA_NAME}}"."meta_agent_thread_control" ("since")

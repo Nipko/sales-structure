@@ -119,12 +119,18 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
         });
     });
 
-    it('revokes it when the connection is gone entirely', async () => {
+    it('does NOT revoke when there is no global row at all', async () => {
+        // ── NO ROW IS NOT SOMEBODY ELSE'S ROW ───────────────────────────────
+        //
+        // `channel-token.service.ts` reasons about this same table and says it
+        // plainly: a tenant provisioned before `channel_accounts` was populated
+        // has no row, and reading that absence as `false` would disconnect them
+        // all at once. A first version of this check did exactly that — it
+        // asked for THIS tenant's active row and revoked on absence, which is
+        // not a stricter check but an outage for every legacy tenant.
         const scope = await build();
         await exec('DELETE FROM public.channel_accounts WHERE id = $1::uuid', accountRowId);
-        expect(await revalidate(scope!)).toEqual({
-            kind: 'revoked', detail: expect.stringContaining('connection'),
-        });
+        expect(await revalidate(scope!)).toEqual({ kind: 'current' });
     });
 
     it('refuses to build one for a connection that is not this tenant’s', async () => {

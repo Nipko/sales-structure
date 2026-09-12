@@ -336,7 +336,20 @@ export class BroadcastQueueProcessor extends WorkerHost {
         // state: the campaign is finished, this person did not get the message,
         // and the outbox row is still there with its own diagnosis for whoever
         // asks why. It is deliberately not `sent`: nothing was delivered.
-        const lastAsk = !!job && (job.attemptsMade + 1) >= (job.opts?.attempts ?? 1);
+        // ── AND NOT WHILE A POST MAY BE IN FLIGHT ───────────────────────────
+        //
+        // `admitted` means a worker holds the lease and has been granted
+        // permission to POST. The transmission may be in the air, or already
+        // accepted with the settle not yet committed. Closing the recipient
+        // `failed` there records a delivery that happened as one that did not:
+        // the A/B variant counts a failure, the campaign reports finished, and
+        // the customer has the message on their phone with Meta billing for it.
+        //
+        // So the give-up applies only to states where nothing is in the air.
+        // An `admitted` row is left for the lease sweep, which is the mechanism
+        // that knows how to resolve an attempt nobody came back from.
+        const inFlight = String(row.state) === 'admitted';
+        const lastAsk = !inFlight && !!job && (job.attemptsMade + 1) >= (job.opts?.attempts ?? 1);
         if (lastAsk) {
             const detail = String(row.error_code ?? row.state ?? 'unknown').slice(0, 120);
             this.logger.warn(`Broadcast recipient ${recipientId} still ${row.state} after the `

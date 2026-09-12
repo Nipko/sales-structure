@@ -36,7 +36,7 @@ describe('who owns the thread', () => {
     it.each([
         ['meta_took_control', 'meta_agent'],
         ['meta_gave_control', 'ours'],
-        ['human_took_over', 'meta_agent'],
+        ['human_took_over', 'human_operator'],
     ] as const)('moves to %s → %s', (kind, expected) => {
         const after = nextThreadControl(initialThreadControl(), { kind } as ThreadControlEvent, NOW);
         expect(after.state).toBe(expected);
@@ -49,6 +49,26 @@ describe('who owns the thread', () => {
         // nobody answers.
         const after = nextThreadControl(at('ours'), { kind: 'we_handed_over' }, NOW);
         expect(after.state).toBe('standby');
+    });
+
+    it('never lets Meta hand back a thread a PERSON is holding', () => {
+        // Meta cannot return control it never had. Folding the human hold into
+        // `meta_agent` — which the first version did — meant a `gave control`
+        // webhook set the thread to `ours` and the AI answered over somebody
+        // who was still typing: the exact failure a handoff exists to prevent.
+        const held = nextThreadControl(at('ours'), { kind: 'human_took_over' }, NOW);
+        expect(held.state).toBe('human_operator');
+        expect(nextThreadControl(held, { kind: 'meta_gave_control' }, NOW)).toEqual(held);
+    });
+
+    it('stands down for a person even with coexistence off', () => {
+        // The flag is about the OTHER agent. A person in the thread outranks
+        // both agents whether or not Meta has one in it.
+        const verdict = mayPlatformSpeak({
+            control: at('human_operator'), coexistenceEnabled: false, now: NOW,
+        });
+        expect(verdict.maySpeak).toBe(false);
+        expect(verdict.reason).toContain('human_operator');
     });
 
     it('ignores a standby timeout that fires after control already moved', () => {
@@ -77,11 +97,12 @@ describe('may this platform answer right now', () => {
     const speak = (control: ThreadControl, coexistenceEnabled: boolean, now = NOW) =>
         mayPlatformSpeak({ control, coexistenceEnabled, now });
 
-    it('answers everything while coexistence is OFF', () => {
+    it('answers everything while coexistence is OFF, except over a PERSON', () => {
         // Every account today. There is no other agent in the thread, and
-        // refusing would be inventing a problem to protect against.
+        // refusing would be inventing a problem to protect against — but the
+        // flag is about the other AGENT, and a human handoff happens today.
         for (const state of THREAD_CONTROL_STATES) {
-            expect(speak(at(state), false).maySpeak).toBe(true);
+            expect(speak(at(state), false).maySpeak).toBe(state !== 'human_operator');
         }
     });
 

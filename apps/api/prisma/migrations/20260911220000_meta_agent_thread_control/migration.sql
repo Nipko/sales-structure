@@ -46,7 +46,7 @@ BEGIN
                 "reason"          TEXT,
                 "updated_at"      TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
                 CONSTRAINT "meta_agent_thread_control_state"
-                    CHECK ("state" IN ('ours', 'meta_agent', 'standby', 'unknown'))
+                    CHECK ("state" IN ('ours', 'meta_agent', 'human_operator', 'standby', 'unknown'))
             )
         $ddl$, target);
 

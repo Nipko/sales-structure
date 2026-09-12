@@ -47,7 +47,7 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
             reason TEXT,
             updated_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
             CONSTRAINT meta_agent_thread_control_state
-                CHECK (state IN ('ours','meta_agent','standby','unknown')))`);
+                CHECK (state IN ('ours','meta_agent','human_operator','standby','unknown')))`);
 
         prisma = Object.create(PrismaService.prototype);
         prisma.executeInTenantSchema = async (_s: string, text: string, params: any[] = []) =>

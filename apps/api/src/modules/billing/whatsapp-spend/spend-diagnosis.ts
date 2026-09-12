@@ -32,6 +32,7 @@ export const SPEND_BLOCK_CODES = [
     'account_paused',
     'account_pause_unknown',
     'effect_identity_missing',
+    'recipient_not_addressable',
 ] as const;
 
 export type SpendBlockCode = (typeof SPEND_BLOCK_CODES)[number];
@@ -274,6 +275,20 @@ Object.freeze({
         resolution: 'No se pudo leer si este número está pausado por un problema de cobro en '
             + 'Meta, así que no se envía. No es una pausa: es que no pudimos comprobarlo. Se '
             + 'reintenta solo en cuanto la base responda; si persiste, es un incidente nuestro.',
+    },
+    recipient_not_addressable: {
+        scope: 'contact',
+        // Not a fault of the tenant's and not a limit: this customer wrote
+        // without a phone number, and the outbound half for a business-scoped
+        // destination is not built. Refusing HERE rather than at the transport
+        // is the whole point — by the time the adapter sees it, a reservation
+        // has been taken and a durable row committed for an effect that cannot
+        // land, and both have to be unwound.
+        resolution: 'Esta persona escribió sin número de teléfono, y todavía no sabemos '
+            + 'entregarle: el destino con identificador de usuario de Meta no está '
+            + 'implementado. El mensaje queda guardado y visible en el inbox; para '
+            + 'contestarle hace falta pedirle el teléfono, o esperar a que se implemente '
+            + 'ese destino.',
     },
     effect_identity_missing: {
         scope: 'account',

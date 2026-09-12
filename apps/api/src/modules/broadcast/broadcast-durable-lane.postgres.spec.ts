@@ -459,6 +459,25 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
         expect(String(closed.error_message)).toContain('spend_funding_not_ready');
     });
 
+    it('never closes a recipient whose POST may be in the air', async () => {
+        // `admitted` means a worker holds the lease and was granted permission
+        // to POST. Closing it `failed` on the last ask would record a delivery
+        // that happened as one that did not: the variant counts a failure, the
+        // campaign reports finished, and the customer has the message with Meta
+        // billing for it. The lease sweep is what resolves an attempt nobody
+        // came back from; this pass must not pre-empt it.
+        const c = await campaign();
+        await send(c);
+        const [row] = await outboxRows();
+        await sql(`UPDATE agent_dispatch_outbox
+                      SET state = 'admitted', lease_token = gen_random_uuid(),
+                          lease_expires_at = NOW() + INTERVAL '5 minutes'
+                    WHERE id = $1::uuid`, [row.id]);
+
+        await expect(settle(c, 19)).rejects.toThrow(/broadcast_effect_in_flight/);
+        expect(await recipient(c.recipientId)).toMatchObject({ status: 'queued' });
+    });
+
     it('marks it failed, with the reason, when the effect was suppressed', async () => {
         const c = await campaign();
         await send(c);

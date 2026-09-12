@@ -1,3 +1,4 @@
+import { isScopedAddressKey } from '@parallext/shared';
 import { WHATSAPP_MARKET_BY_ISO_ALPHA2 } from './whatsapp-rate-table.generated';
 
 /**
@@ -138,6 +139,25 @@ const MAX_CODE_LENGTH = Math.max(
  * would resolve every Middle Eastern number to the wrong country.
  */
 export function recipientMarket(address: unknown): RecipientMarket {
+    // ── AN OPAQUE IDENTIFIER IS NOT A NUMBER WITH PUNCTUATION IN IT ─────────
+    //
+    // The first line of this function strips everything that is not a digit,
+    // which is right for `+57 300 111 2233` and catastrophic for a
+    // business-scoped address key. `bsuid:<portfolio>:<id>` reduces to the
+    // digits of a Meta WABA id, and the prefix lookup below then prices the
+    // message at whatever country those digits happen to start with — a WABA
+    // beginning 52 prices as Mexico, 91 as India, 44 as Great Britain.
+    //
+    // That is not a near miss. The tariff, the reservation and the ceiling all
+    // come from this answer, so a wrong country is a wrong invoice line and a
+    // ceiling measured in the wrong units. `unlisted` is the honest answer: we
+    // do not know what this costs, and the ledger already knows what to do with
+    // not knowing.
+    if (isScopedAddressKey(address)) {
+        return Object.freeze({
+            kind: 'unlisted', callingCode: null, version: RECIPIENT_MARKET_VERSION,
+        });
+    }
     const digits = String(address ?? '').replace(/[^0-9]/g, '');
     if (!digits) return Object.freeze({ kind: 'unlisted', callingCode: null, version: RECIPIENT_MARKET_VERSION });
 

@@ -179,13 +179,35 @@ export async function humanOperatorRevision(
 async function connectionStillTheirs(
     query: RevisionQuery, tenantId: string, channelType: string, channelAccountId: string,
 ): Promise<boolean> {
+    // ── NO ROW IS NOT THE SAME AS SOMEBODY ELSE'S ROW ───────────────────────
+    //
+    // The first version asked for this tenant's active row and read its absence
+    // as "not theirs". `channel-token.service.ts:373-376` reasons about the same
+    // table for the same question and says the opposite, correctly: "a tenant
+    // provisioned before that table was populated has none, and reading absence
+    // as `false` would disconnect them all at once". A revocation check that
+    // revokes every legacy tenant is not a stricter check; it is an outage.
+    //
+    // So the query asks about the CONNECTION, not about this tenant's copy of
+    // it, and the three answers stay distinct:
+    //
+    //   · a row owned by this tenant and active  → theirs, send;
+    //   · a row that is inactive, or owned by somebody else → revoked, which is
+    //     the case this function exists for;
+    //   · no row at all → this connection predates the global table, so there is
+    //     nothing here that says it was taken away. Allowed, deliberately: the
+    //     other guards on the send path still apply, and `assessConnection`
+    //     already treats the same absence the same way.
     const [row] = await query<any[]>(
-        `SELECT id FROM public.channel_accounts
-          WHERE tenant_id = $1::uuid AND channel_type = $2 AND account_id = $3
-            AND is_active = true
+        `SELECT tenant_id::text AS tenant_id, is_active
+           FROM public.channel_accounts
+          WHERE channel_type = $1 AND account_id = $2
+          ORDER BY (tenant_id = $3::uuid) DESC, updated_at DESC NULLS LAST
+          LIMIT 1
           FOR SHARE`,
-        [tenantId, channelType, channelAccountId]);
-    return !!row;
+        [channelType, channelAccountId, tenantId]);
+    if (!row) return true;
+    return String(row.tenant_id) === tenantId && row.is_active !== false;
 }
 
 /** Build one, or `undefined` when this person may not send from this connection. */

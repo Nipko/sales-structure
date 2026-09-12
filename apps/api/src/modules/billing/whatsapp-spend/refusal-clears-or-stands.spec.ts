@@ -2,6 +2,7 @@ import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import {
     SPEND_BLOCK_CODES, TRANSIENT_SPEND_BLOCKS, refusalMayClear, spendBlock,
+    spendRetryDelaySeconds,
     type SpendBlockCode,
 } from './spend-diagnosis';
 
@@ -126,5 +127,83 @@ describe('a condition that clears is not a decision that stands', () => {
             expect({ code, hasResolution: String(block.resolution || '').length > 25 })
                 .toEqual({ code, hasResolution: true });
         }
+    });
+});
+
+/**
+ * ═══ "KEPT UNTIL IT CLEARS" HAD TO BE WORTH SOMETHING ═══
+ *
+ * The list above says these conditions clear on their own, and its own
+ * annotations say how: "a nullable column an administrator can set at any
+ * moment", "clears on a reconnect through Embedded Signup". An independent
+ * review then measured what the promise was worth — four retries thirty
+ * seconds apart, about two minutes, and then the effect was suppressed.
+ *
+ * Nobody attaches a card or fixes a timezone in two minutes. These cases pin
+ * the NUMBER rather than the adjective, because the adjective is what was
+ * wrong: a comment that reads as though somebody thought about it, over a
+ * mechanism that did something else.
+ */
+describe('how long a refusal that can clear is actually held', () => {
+    // Read from the source of truth rather than repeated here: a test that
+    // hardcodes 5 keeps passing after somebody changes the constant.
+    const OUTBOX = readFileSync(
+        resolve(__dirname, '..', '..', 'channels', 'agent-dispatch-outbox.ts'), 'utf8');
+    const maxAttempts = Number(/DISPATCH_MAX_ATTEMPTS = (\d+)/.exec(OUTBOX)?.[1]);
+
+    it('reads its own bound from the lane that enforces it', () => {
+        expect(maxAttempts).toBeGreaterThan(1);
+    });
+
+    it('grows, instead of asking again every thirty seconds', () => {
+        const ladder = [1, 2, 3, 4].map(spendRetryDelaySeconds);
+        // Strictly increasing: a funding pause somebody is already looking at
+        // deserves a fast second ask; a template category nobody knows is
+        // missing does not deserve four of them inside two minutes.
+        for (let i = 1; i < ladder.length; i++) {
+            expect(ladder[i]).toBeGreaterThan(ladder[i - 1]);
+        }
+        expect(ladder[0]).toBeGreaterThanOrEqual(60);
+    });
+
+    it('adds up to something an administrator could plausibly act inside', () => {
+        // The whole budget: every delay the row can spend before the lane
+        // suppresses it. Two minutes was the measured reality; this is the
+        // claim the docblock is now entitled to make.
+        const spent = Array.from({ length: maxAttempts - 1 }, (_, i) => spendRetryDelaySeconds(i + 1))
+            .reduce((a, b) => a + b, 0);
+        expect(spent).toBeGreaterThan(30 * 60);
+        // And bounded. An effect held longer than about an hour is no longer
+        // an answer to anything, and the diagnosis outlives it either way.
+        expect(spent).toBeLessThanOrEqual(2 * 60 * 60);
+    });
+
+    it('never exceeds the per-delay cap the outbox enforces', () => {
+        // The outbox clamps any single delay to an hour. A ladder that ran
+        // past it would be silently trimmed, and the docblock's arithmetic
+        // would stop describing what happens.
+        for (const attempt of [1, 2, 3, 4, 5, 99]) {
+            expect(spendRetryDelaySeconds(attempt)).toBeLessThanOrEqual(3600);
+        }
+    });
+
+    it('is defined for an attempt number it was never meant to see', () => {
+        // It runs on a failure path. Returning NaN here would reach the outbox
+        // as a delay and settle a row to an invalid date.
+        for (const attempt of [0, -1, 1.5, 99]) {
+            const delay = spendRetryDelaySeconds(attempt);
+            expect(Number.isFinite(delay)).toBe(true);
+            expect(delay).toBeGreaterThan(0);
+        }
+    });
+
+    it('says in the file that the other three sinks keep nothing', () => {
+        // The half this change does NOT fix, written down where the list is,
+        // because `refusalMayClear` has one caller and the lane that carries
+        // every AI reply today is not it. A reader who takes this list as a
+        // platform-wide guarantee is reading it the way the review did.
+        const source = readFileSync(resolve(__dirname, 'spend-diagnosis.ts'), 'utf8');
+        expect(source).toContain('ONE caller');
+        expect(source).toContain('no retry whatsoever');
     });
 });

@@ -77,6 +77,36 @@ export type SpendBlockCode = (typeof SPEND_BLOCK_CODES)[number];
  * not yet cover a currency, a template whose Meta approval has not synced, a
  * connection whose payer Meta has not told us: each clears without the customer
  * ever knowing, provided the message is still there when it does.
+ *
+ * ── HOW LONG "KEPT" ACTUALLY IS, AND ON WHICH LANE ─────────────────────────
+ *
+ * This paragraph used to end at the sentence above, and an independent
+ * review measured what the sentence was worth: four retries thirty seconds
+ * apart, about two minutes, and then `suppressed`. No administrator attaches
+ * a card or sets a timezone inside two minutes, so "kept until the condition
+ * clears" described nothing that happens.
+ *
+ * The budget is now stated here in numbers, beside the list it is about, and
+ * `spendRetryDelaySeconds` below is what produces it. Two things bound it and
+ * both are elsewhere, so they are named rather than assumed:
+ * `DISPATCH_MAX_ATTEMPTS` is 5, and the outbox caps any single delay at an
+ * hour.
+ *
+ * ── AND WHERE IT DOES NOT APPLY AT ALL ──────────────────────────────────────
+ *
+ * `refusalMayClear` has ONE caller: the durable dispatch lane. The legacy
+ * `outbound_queue` sink, the operational-notice sink and the approved-effect
+ * sink all pass through a gate that collapses every code to the bare word
+ * `refused`, and drop the message with no retry whatsoever — which is the
+ * lane that carries every AI reply today, because the durable rollout is off
+ * by default.
+ *
+ * That is not fixed here, and saying so is the point: giving those three
+ * sinks a retry is a behaviour change on the busiest path in the platform,
+ * and it is not a change to make in the same breath as correcting a comment.
+ * What this list can honestly claim today is a durable-lane property. The
+ * three other sinks now at least name the code they dropped on, so an
+ * operator reading a job result is not sent to look at a ceiling.
  */
 export const TRANSIENT_SPEND_BLOCKS: readonly SpendBlockCode[] = Object.freeze([
     /** Meta refused to bill this business. Clears when funding is fixed. */
@@ -106,6 +136,34 @@ export const TRANSIENT_SPEND_BLOCKS: readonly SpendBlockCode[] = Object.freeze([
      */
     'counter_currency_mismatch',
 ]);
+
+/**
+ * How long to wait before asking again, given the attempt just consumed.
+ *
+ * A ladder rather than a constant, because the conditions in this list are
+ * not all the same shape. A funding pause can clear in a minute — somebody
+ * is probably already looking at it — while a missing timezone or an
+ * unsynced template category needs a person who does not yet know they are
+ * needed. Thirty seconds flat served neither.
+ *
+ * With `DISPATCH_MAX_ATTEMPTS = 5` the row is admitted five times, so four
+ * of these delays are spent before it is suppressed:
+ *
+ *     60 + 300 + 900 + 1800  =  3060 seconds, about 51 minutes
+ *
+ * That is the number this list is entitled to claim, and it is bounded: an
+ * effect held longer than that is no longer an answer to anything, and the
+ * diagnosis that outlives it is what an operator reads.
+ *
+ * The wait costs nothing while it happens. The lane moves the job to a
+ * delayed date rather than sleeping on a worker, so an hour of backoff holds
+ * no slot.
+ */
+export function spendRetryDelaySeconds(attempt: number): number {
+    const ladder = [60, 300, 900, 1800];
+    const index = Math.min(Math.max(Math.trunc(attempt), 1), ladder.length) - 1;
+    return ladder[index];
+}
 
 /** Does this refusal describe a condition that can clear on its own? */
 export function refusalMayClear(code: string | null | undefined): boolean {

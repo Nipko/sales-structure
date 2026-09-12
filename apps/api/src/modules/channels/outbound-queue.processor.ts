@@ -10,7 +10,7 @@ import {
     WhatsappSendAdmissionService, fromSendContext, type Admission,
 } from '../billing/whatsapp-spend/whatsapp-send-admission.service';
 import { SpendMeterUnavailable } from '../billing/whatsapp-spend/spend-unavailable';
-import { refusalMayClear } from '../billing/whatsapp-spend/spend-diagnosis';
+import { refusalMayClear, spendRetryDelaySeconds } from '../billing/whatsapp-spend/spend-diagnosis';
 import { isConnectionRefusal } from './connection-refusal';
 import { readProviderRefusal } from './funding-failure';
 import { AccountPauseStore } from './account-pause-store';
@@ -22,7 +22,7 @@ import { TenantNotificationSmsService } from '../sms-credits/tenant-notification
 import { PrismaService } from '../prisma/prisma.service';
 import { resolveTenantSubscriptionAccess } from '../../common/utils/subscription-entitlement.util';
 import { AgentDispatchOutboxStore } from './agent-dispatch-outbox.store';
-import { DISPATCH_TERMINAL_STATES } from './agent-dispatch-outbox';
+import { DISPATCH_TERMINAL_STATES, DISPATCH_MAX_ATTEMPTS } from './agent-dispatch-outbox';
 import { transportNotAvailable } from './strict-dispatch-transport';
 import { dispatchPriceFacts } from './dispatch-price-facts';
 import { OutboundQueueService } from './outbound-queue.service';
@@ -422,11 +422,20 @@ export class OutboundQueueProcessor extends WorkerHost {
             // payload kept, and the durable backoff is what stops it spinning.
             const code = admission.block?.code ?? 'refused';
             if (refusalMayClear(code)) {
+                // The delay is asked for rather than defaulted. Without it the
+                // outbox used thirty seconds, and with five attempts that is a
+                // two-minute window for conditions whose own annotations say
+                // "an administrator can set it at any moment" and "clears on a
+                // reconnect" — neither of which happens in two minutes. The
+                // ladder is next to the list it is about, and it makes the
+                // window about fifty minutes.
+                const retryInSeconds = spendRetryDelaySeconds(admitted.row.attempts);
                 const settled = await this.dispatchOutbox.settle(tenantId, dispatchId,
-                    admitted.leaseToken, { kind: 'failed', errorCode: `spend_${code}` })
+                    admitted.leaseToken, { kind: 'failed', errorCode: `spend_${code}`, retryInSeconds })
                     .catch(() => null);
                 this.logger.warn(`[Dispatch] ${dispatchId}: held back by ${code}; `
-                    + 'the effect is kept and retried when the condition clears');
+                    + `kept and retried in ${retryInSeconds}s `
+                    + `(attempt ${admitted.row.attempts} of ${DISPATCH_MAX_ATTEMPTS})`);
                 if (settled?.state === 'failed') await waitUntil(settled.availableAt, `spend_${code}`);
                 return `dispatch:failed:spend_${code}`;
             }
@@ -596,7 +605,21 @@ export class OutboundQueueProcessor extends WorkerHost {
                 jobId: durable?.jobId ?? null,
             },
         });
-        if (admission && !admission.permitted) return 'refused' as const;
+        if (admission && !admission.permitted) {
+            // Collapsed to one word for the caller, because these three sinks
+            // have no retry to offer and the only question they can answer is
+            // whether to send. The CODE is still said out loud here: a
+            // condition that could have cleared, dropped because this lane
+            // cannot hold anything, is exactly the thing an operator would
+            // otherwise never learn — and `spend_refused` alone sends them to
+            // look at a ceiling that is not the problem.
+            const code = admission.block?.code ?? 'refused';
+            this.logger.warn(`[Spend] ${producer} dropped tenant=${outbound.tenantId} on ${code}`
+                + (refusalMayClear(code)
+                    ? ' — a condition that CAN clear, and this lane keeps nothing'
+                    : ''));
+            return 'refused' as const;
+        }
         return admission;
     }
 

@@ -39,19 +39,43 @@ Once pasos, en el único orden en que se les permite ocurrir:
 |---:|---|---|
 | 1 | `inventory` | Censo de sólo lectura del host vivo, **hasheado y guardado**. Aborta si `unknown_probes` no es cero: una tabla que no se pudo consultar no es un cero |
 | 2 | `rehearsal` | Dump → **vaciar** el destino desechable → restore → **comparar esquemas y conteo de filas tabla por tabla**. Cualquier fallo es fatal |
-| 3 | `barrier` | Barrera **global**: ingress abajo *y* la base en `default_transaction_read_only` con los backends abiertos terminados |
+| 3 | `barrier` | Barrera **global**, dos capas: se detiene `parallext-tunnel` —el ingress de verdad: ningún servicio publica puerto, todo entra por el túnel— *y* la base queda en `default_transaction_read_only`, con los backends abiertos terminados. La bandera se **lee de vuelta** en una sesión nueva: que el `ALTER DATABASE` no dé error no es que la próxima sesión se niegue a escribir |
 | 4 | `drain` | Espera a que no quede trabajo en vuelo. Aborta si sigue habiendo colas activas a los 180 s |
 | 5 | `backup` | El punto de retorno, en el único formato, **leído de vuelta** con `pg_restore --list` y hasheado |
 | 6 | `preflight` | Términos acordados, sobre el esquema **viejo**. Aborta si la línea resumen no dice `blocks=0` |
-| 7 | `migrate` | `public` y después cada schema de tenant. Aborta sin `MIGRATE_TENANTS_SUMMARY` o con `skipped`/`warnings` distintos de cero |
-| 8 | `images` | El **único** `compose up` del archivo, fijado por los cinco digests |
+| 7 | `migrate` | `public` y después cada schema de tenant. La barrera de escritura se baja **para la migración y se vuelve a armar al terminar**, salga bien o mal. Aborta sin `MIGRATE_TENANTS_SUMMARY` o con `skipped`/`warnings` distintos de cero |
+| 8 | `images` | Recrea los **cinco servicios nombrados** (`worker api whatsapp dashboard landing`) con `--no-deps`, fijados por los cinco digests, **detrás del ingress cerrado**. `tunnel` no está en la lista, y `postgres`/`pgbouncer`/`redis` tampoco |
 | 9 | `health` | La API responde **y** los contenedores *son* los bytes aprobados (`--verify`) |
-| 10 | `canary` | Los tenants del piloto, por id. Una lista vacía se lee como **todos**, así que es un rechazo |
-| 11 | `reopen` | Se levanta la barrera y vuelven los escritores |
+| 10 | `canary` | Los tenants del piloto, por id: cada uno tiene que ser un UUID que nombre un tenant real. **Es una compuerta humana**: abre la ventana del piloto con el ingress todavía cerrado, se detiene, y sólo queda registrada cuando alguien vuelve con `--canary-verified '<quién miró qué y qué vio>'` |
+| 11 | `reopen` | **Se abre el ingress** — `parallext-tunnel` arranca y recién ahí puede llegar la primera petición de un cliente. Va último, después de confirmar que los servicios detrás de la puerta están arriba |
 
-Cada paso escribe su estado en `<evidence>/state/<paso>.done`, con la hora y el
-**hash del inventario** contra el que corrió. Volver a ejecutar el comando
-reanuda en el primer paso pendiente; `--status` dice dónde quedó una ventana.
+### Las dos puertas, y hasta qué paso dura cada una
+
+La barrera tiene dos capas y **no** duran lo mismo. Decir que sí es lo que hacía
+falsos a los comentarios del propio archivo:
+
+- La **barrera de escritura** (`default_transaction_read_only`) está baja sólo en
+  los dos pasos que no pueden funcionar sin escribir: el 7, donde corre la
+  migración —y que la vuelve a armar al terminar—, y del 8 en adelante, donde los
+  contenedores arrancan (`widget.service` hace `CREATE TABLE IF NOT EXISTS` desde
+  `onModuleInit`, así que un stack levantado contra una base de sólo lectura es un
+  stack que falla en cada arranque).
+- La **barrera de ingress** —`parallext-tunnel`— está baja del paso 3 al **11**.
+  Esa es la capa que significa «no se está sirviendo a ningún tenant», y es la que
+  tiene que sobrevivir al canario.
+
+Lo que había antes: el paso 7 encendía las escrituras y nada las volvía a apagar,
+el paso 8 corría `up -d --force-recreate` **sin lista de servicios** —así que
+volvía toda la superficie pública con él, y `postgres` entraba en el alcance de
+`--force-recreate` en mitad de su propia migración—, y el paso 10 se marcaba
+hecho solo, de modo que el bucle seguía al 11 en el mismo aliento. La ventana
+estaba viva para todos los tenants desde el paso 8, mientras el 11 se titulaba
+«las escrituras vuelven al final» y ejecutaba dos no-ops.
+
+Cada paso escribe su estado en `<evidence>/state/<paso>.done`, con la hora, el
+**hash del inventario** y el **commit del candidato** contra los que corrió.
+Volver a ejecutar el comando reanuda en el primer paso pendiente; `--status` dice
+dónde quedó una ventana y marca los pasos que corrieron contra otro inventario.
 
 **El orden no es un consejo:** el paso N se niega a correr si 1…N-1 no están
 registrados. Eso es lo que convierte «no arrancar contenedores antes de probar
@@ -59,12 +83,55 @@ el restore y abrir la ventana» en una propiedad del programa en vez de una fras
 en una página. Comprobado: `--only rehearsal` y `--only images` sin el
 inventario terminan en 1 nombrando el paso que falta.
 
+**Y «registrado» no alcanza: registrado *contra qué*.** Los dos campos que cada
+`.done` venía guardando —`inventorySha256` y `gitSha`— no los leía nadie: estaban
+escritos bajo el comentario «para que una ventana reanudada no continúe en
+silencio contra otro estado inicial», y ponerlos en `0` no habría cambiado nada.
+Ahora se comparan al reanudar. Si el censo del host cambió, o si esta corrida
+lleva otro candidato, el programa se detiene nombrando la diferencia:
+
+```
+[cutover] FATAL: this window did not start where it is being resumed:
+  · 'inventory' ran against candidate bbbb…; this run carries aaaa…
+```
+
+El override existe y **pide un motivo**, que queda escrito en
+`<evidence>/changed-start-accepted.txt`:
+
+```bash
+october-cutover.sh ... --accept-changed-start "se agregó disco el 2-oct; revisado por N."
+```
+
+### El canario es una compuerta, no un aviso
+
+El paso 10 no se marca hecho solo. Abre la ventana del piloto —escrituras
+permitidas, **ingress todavía cerrado**— y termina en 1 con el comando exacto que
+hay que repetir. Nada debajo corre y el túnel sigue abajo:
+
+```bash
+october-cutover.sh --only canary --evidence /opt/parallext-evidence/2026-10 \
+  --manifest /opt/parallext-evidence/2026-10/candidate-manifest.json \
+  --pilot-tenants <uuid>,<uuid> \
+  --canary-verified "N.L. revisó 6 entregas, 0 duplicados, 0 errores de fondeo"
+```
+
+La atestación queda en `<evidence>/canary-verified.txt`. Y la lista de tenants
+dejó de ser decorativa: antes sólo se escribía en un archivo que no leía nadie,
+mientras el rechazo de la lista vacía afirmaba una semántica —«una lista vacía se
+lee como TODOS»— que ningún consumidor implementaba. Hoy cada id tiene que ser un
+UUID y existir en `public.tenants`; un id con una errata es un canario que no
+verificó nada y un archivo que dice que sí.
+
 ### El ensayo de restore, y el defecto que encontró
 
-El paso 2 **no** es «el `pg_restore` no dio error». Eso ya lo decía
-`infra/backup/restore.sh`, que reporta un restore fallido como
-`WARN: some restore warnings (usually safe)` y sigue. El paso compara el nombre
-de cada schema y el **conteo real de filas de cada tabla** en las dos bases.
+El paso 2 **no** es «el `pg_restore` no dio error». Durante mucho tiempo eso era
+todo lo que decía `infra/backup/restore.sh`: reportaba un restore fallido como
+`WARN: some restore warnings (usually safe)` y seguía. Ya no — hoy corre con
+`--exit-on-error`, cuenta cada fallo y sale distinto de cero, y verifica contra
+la tabla de contenidos del archivo que cada schema que el archivo crea exista
+después (ver «El punto de retorno se restaura ENTERO»). Este paso va más allá y
+compara el nombre de cada schema y el **conteo real de filas de cada tabla** en
+las dos bases.
 
 Escribiendo ese paso apareció un defecto en el propio ensayo: un restore que
 traía **sólo `public`** comparaba limpio y decía «8 tables match, row for row»,
@@ -242,6 +309,39 @@ corra.
 | Antes de admitir escrituras nuevas (antes del paso 11) | Restaurar el conjunto consistente de datos **e** imágenes del punto de retorno: `<evidence>/return-point.dump`, con su `.sha256` y su `.toc` |
 | Después de admitirlas | **No** restaurar a ciegas: se perderían operaciones posteriores. Detener los efectos afectados y corregir hacia adelante, o ejecutar una reversión de datos probada |
 
+### El punto de retorno se restaura ENTERO, y el script lo dice
+
+`return-point.dump` —igual que el `predeploy_*.dump` que toma `deploy.yml`— es
+**un solo `pg_dump --format=custom` sin filtro `--schema`**: la base completa,
+todos los schemas, en un archivo.
+
+`infra/backup/restore.sh` lo copiaba a `public.dump` y lo restauraba con
+`--schema=public`, así que `pg_restore` **descartaba todos los objetos
+`tenant_*` del archivo**. El bucle de tenants de más abajo buscaba
+`tenant_*.dump`, no encontraba nada, no corría nunca, y el contador de fallos se
+quedaba en cero. Reproducido con un `pg_restore` simulado:
+
+```
+[2] Restoring database...
+  Restoring public schema...
+  OK — public schema
+  OK — all schemas restored
+Restore complete!                        (exit 0)
+```
+
+Es decir: volver atrás una migración mala dejaba `tenants`,
+`billing_subscriptions`, `billing_payments` y `audit_logs` en el punto de retorno
+**y todos los schemas de tenant en su estado post-migración** —las dos mitades de
+una base en dos momentos distintos— y lo certificaba como completo.
+
+Ahora el archivo se restaura **según lo que es**: un dump de base completa no
+lleva filtro, y sólo los dumps por-schema del tarball nocturno lo llevan. Y lo
+que el archivo *contiene* se lee de su propia tabla de contenidos
+(`pg_restore --list`) y se compara contra los schemas que existen después. Esa
+comprobación positiva es la única que podía ver el defecto original, porque el
+defecto no era un error: un filtro que excluye todo termina en 0 sin haber hecho
+nada. Un restore al que le falta un schema **no imprime OK y no termina en 0**.
+
 En los dos casos: no se borran efectos pendientes, historial ni reservas. Se
 concilian. Y **los cambios irreversibles del proveedor no se revierten cambiando
 la imagen**: un mensaje entregado se entregó.
@@ -264,6 +364,21 @@ esta rama:
 | **Ensayo de restore** del paso 2 | Dump, vaciado, restore y comparación: 8 tablas coinciden fila por fila |
 | Guardas de orden | `--only rehearsal` y `--only images` sin inventario terminan en 1 nombrando el paso que falta |
 | Destino no desechable | Rechazado por nombre antes de tocar nada |
+
+Y contra el propio programa, con `docker` y `pg_restore` simulados —sin tocar
+ningún host, que es todo lo que estas guardas necesitan para demostrarse—:
+
+| Prueba | Resultado |
+|---|---|
+| Punto de retorno (dump suelto) restaurado por `restore.sh` | Un solo `pg_restore`, **sin** `--schema`; antes era `--schema=public` y el bucle de tenants no corría |
+| Los schemas del archivo no están después del restore | `FAILED — … contains schema(s) that are NOT in the database`, salida **1**, sin «Restore complete!» |
+| Tarball nocturno completo | Sin cambios: `public.dump` con `--schema=public`, cada `tenant_*.dump` con el suyo, y la verificación en verde |
+| Tarball al que le faltó un dump de tenant | Rechazado por `full_backup.dump`, que es lo que esa noche se respaldó de verdad |
+| Ventana reanudada con el censo cambiado | Termina en 1 nombrando los dos hashes; con `--accept-changed-start '<motivo>'` sigue y lo deja escrito |
+| Ventana reanudada con otro candidato | Termina en 1 nombrando los dos commits |
+| Corrida completa sin atender, pasos 1-9 ya registrados | Se detiene en `canary` con salida 1; `reopen` **no** corre y el túnel **no** se levanta |
+| `canary` con la atestación | Queda registrado en `<evidence>/canary-verified.txt` y el paso 11 se vuelve alcanzable |
+| `canary` con un id de piloto que no nombra tenant | Rechazado antes de abrir nada |
 
 ## Lo que este procedimiento todavía no demuestra
 

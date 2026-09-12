@@ -117,19 +117,38 @@ echo "========================================"
 # only accepted `.tar.gz`, so the backup taken specifically to be restored
 # after a bad migration could not be restored by the restore script — the one
 # moment somebody reaches for it is the one moment it refused.
+#
+# ── AND THE TWO ARCHIVES ARE NOT THE SAME SHAPE ─────────────────────────────
+#
+# A nightly tarball holds ONE DUMP PER SCHEMA: `public.dump` taken with
+# `--schema=public`, one `tenant_*.dump` per active tenant, plus a whole-database
+# `full_backup.dump`. The pre-deploy return point and the cut-over's return point
+# are a single `pg_dump --format=custom` with NO `--schema` filter — the WHOLE
+# database, every schema, in one archive.
+#
+# Calling the second one `public.dump` made the restore below apply
+# `--schema=public` to it, which is what discarded every tenant schema it
+# contained. So the mode is decided HERE, once, by what the archive actually is,
+# and the restore follows it.
 echo "[1] Reading ${ARCHIVE}..."
 cd "${WORK_DIR}"
+RESTORE_MODE=""
+DB_ARCHIVE=""
 case "${ARCHIVE}" in
   *.dump)
-    # A single dump has no directory and no manifest. Named `public.dump` so
-    # the restore below finds it exactly as it finds one from a tarball.
-    cp "${ARCHIVE}" "${WORK_DIR}/public.dump"
+    # A single dump has no directory and no manifest. It keeps the name
+    # `full_backup.dump` — the same name `backup.sh` gives the unfiltered dump
+    # it writes nightly — because that is what it IS.
+    cp "${ARCHIVE}" "${WORK_DIR}/full_backup.dump"
     cd "${WORK_DIR}"
+    RESTORE_MODE="whole-database"
+    DB_ARCHIVE="full_backup.dump"
     ;;
   *)
     tar -xzf "${ARCHIVE}"
     BACKUP_SUBDIR=$(ls -d */ | head -1)
     cd "${BACKUP_SUBDIR}"
+    RESTORE_MODE="per-schema"
     ;;
 esac
 
@@ -139,6 +158,7 @@ echo ""
 
 if [ "${FLAG}" = "--dry-run" ]; then
   echo "DRY RUN — listing contents only, no changes made."
+  echo "Restore mode: ${RESTORE_MODE}"
   echo ""
   echo "Database dumps:"
   ls -lh *.dump 2>/dev/null || echo "  (none)"
@@ -171,40 +191,198 @@ fi
 #
 # `--exit-on-error` as well: without it `pg_restore` continues past a failed
 # statement and exits 0, so even a checked exit code would have said yes.
+#
+# ═══ AND A RESTORE THAT SKIPPED THE TENANT SCHEMAS DID NOT WORK ═══
+#
+# The other half of the same lie, reproduced with a stubbed `pg_restore`: a bare
+# `*.dump` — the pre-migration return point `.github/workflows/deploy.yml` takes
+# over the WHOLE database, and the one `infra/scripts/october-cutover.sh` takes
+# in `step_backup` — was copied to `public.dump` and then restored with
+# `--schema=public`. `pg_restore` obediently threw away every `tenant_*` object
+# the archive contained. The tenant loop below then globbed `tenant_*.dump`,
+# matched nothing, never executed, and left RESTORE_FAILURES at 0, so the script
+# printed
+#
+#     OK — public schema
+#     OK — all schemas restored
+#     Restore complete!            (exit 0)
+#
+# having restored `public` and DISCARDED every conversation, message, spend row
+# and outbox entry in the archive. Rolling back a bad migration that way resets
+# `tenants`, `billing_subscriptions`, `billing_payments` and `audit_logs` to the
+# return point while leaving every tenant schema at its post-migration state —
+# two halves of one database at two different points in time — and certifies it
+# as complete.
+#
+# Two changes, because either one alone still lies:
+#
+#   · the archive is restored ACCORDING TO WHAT IT IS. A whole-database dump gets
+#     no `--schema` filter, because it already contains every schema; only the
+#     per-schema dumps inside a nightly tarball get one.
+#   · what the archive CONTAINS is read back out of its own table of contents and
+#     checked against the schemas that exist afterwards. Checking exit codes
+#     could never have caught the original defect, because it was not an error: a
+#     filter that excludes everything exits 0 having done nothing. Only a
+#     positive statement about what is now there can.
+
+# Every schema named anywhere in a custom-format archive's table of contents.
+#
+# `pg_restore --list` prints one TOC entry per line:
+#     <dumpId>; <tableoid> <oid> <desc> <schema> <name> <owner>
+# ── ONLY THE LINE WHOSE SHAPE IS UNAMBIGUOUS ─────────────────────────────────
+#
+# A TOC line is `<id>; <tableoid> <oid> <desc> <schema> <name> <owner>`, and
+# `desc` is NOT one word: `TABLE DATA`, `SEQUENCE SET`, `FK CONSTRAINT`,
+# `MATERIALIZED VIEW DATA`, `DEFAULT ACL`, `TEXT SEARCH DICTIONARY` are all real.
+# Reading a fixed field number therefore reads the wrong column, and the first
+# version of this function did: against an ordinary archive it extracted `DATA`,
+# `SET` and `CONSTRAINT` as if they were schema names, then reported a perfectly
+# correct restore as FAILED because the database had no schema called `DATA`.
+# That is worse than the defect it replaced — it blocks the rollback it exists
+# to protect.
+#
+# So nothing here parses a variable-length field. `SCHEMA - <name> <owner>` is
+# the one TOC line with a fixed shape, pg_dump writes one per schema it creates,
+# and those are exactly the schemas a restore has to bring back.
+schemas_in_archive() {
+  docker exec -i "${PG_CONTAINER}" pg_restore --list < "$1" \
+    | tr -d '\r' \
+    | sed -E 's/^[0-9]+; [0-9]+ [0-9]+ //' \
+    | awk '$1 == "SCHEMA" && $2 == "-" { print $3 }' \
+    | sort -u
+}
+
+# How many TOC entries the archive has at all, so "creates no schema" can be
+# told from "is empty". A dump taken with `--schema=public` creates nothing —
+# public already exists — and must not be read as an archive of nothing.
+archive_entry_count() {
+  docker exec -i "${PG_CONTAINER}" pg_restore --list < "$1" \
+    | tr -d '\r' | grep -cE '^[0-9]+; [0-9]+ [0-9]+ ' || true
+}
+
+# Every non-system schema that exists in the live database right now.
+schemas_in_database() {
+  docker exec -i -e PGPASSWORD="${DB_PASSWORD:-}" "${PG_CONTAINER}" \
+    psql -U "${DB_USER}" -d "${DB_NAME}" -Atc \
+    "SELECT nspname FROM pg_namespace WHERE nspname NOT LIKE 'pg\\_%' AND nspname <> 'information_schema'" \
+    < /dev/null | tr -d '\r' | sed '/^$/d' | sort -u
+}
+
+# The archive says what should be there; the database says what is. Anything the
+# archive names and the database does not have means the restore did not restore
+# it — whatever `pg_restore` exited with.
+verify_schemas_restored() {
+  local archive="$1" archive_schemas live_schemas missing="" schema
+  if ! archive_schemas="$(schemas_in_archive "${archive}")"; then
+    echo "  FAILED — could not read the table of contents of ${archive}; what was restored cannot be verified"
+    return 1
+  fi
+  if [ -z "${archive_schemas}" ]; then
+    # No CREATE SCHEMA entry. Either the archive is empty — nothing was
+    # captured, which is a failure worth shouting about — or it is a
+    # `--schema=public` dump, which creates no schema because public already
+    # exists. The entry count is what tells those two apart.
+    local entries
+    entries="$(archive_entry_count "${archive}")"
+    if [ "${entries:-0}" -le 0 ]; then
+      echo "  FAILED — ${archive} has no table of contents at all; there was nothing in it to restore"
+      return 1
+    fi
+    archive_schemas="public"
+  fi
+  if ! live_schemas="$(schemas_in_database)"; then
+    echo "  FAILED — could not list the schemas in ${DB_NAME}; what was restored cannot be verified"
+    return 1
+  fi
+  for schema in ${archive_schemas}; do
+    printf '%s\n' "${live_schemas}" | grep -qxF "${schema}" || missing="${missing} ${schema}"
+  done
+  if [ -n "${missing}" ]; then
+    echo "  FAILED — ${archive} contains schema(s) that are NOT in the database after the restore:${missing}"
+    return 1
+  fi
+  echo "  Verified — every schema in ${archive} exists: $(printf '%s' "${archive_schemas}" | tr '\n' ' ')"
+  return 0
+}
+
 if [ "${FLAG}" != "--media-only" ]; then
   echo "[2] Restoring database..."
   RESTORE_FAILURES=0
 
-  # Public schema
-  if [ -f "public.dump" ]; then
-    echo "  Restoring public schema..."
+  if [ "${RESTORE_MODE}" = "whole-database" ]; then
+    # ONE archive holding every schema, so NO `--schema` filter. Applying one
+    # here is precisely the defect this branch exists in order not to have.
+    echo "  Restoring the whole database from ${DB_ARCHIVE} (all schemas)..."
     if docker exec -i -e PGPASSWORD="${DB_PASSWORD:-}" "${PG_CONTAINER}" \
       pg_restore -U "${DB_USER}" -d "${DB_NAME}" --exit-on-error \
-      --schema=public --clean --if-exists --no-owner --no-privileges \
-      < "public.dump" 2>&1; then
-      echo "  OK — public schema"
+      --clean --if-exists --no-owner --no-privileges \
+      < "${DB_ARCHIVE}" 2>&1; then
+      echo "  OK — whole-database archive applied"
     else
-      echo "  FAILED — public schema did not restore"
+      echo "  FAILED — the whole-database restore did not complete"
       RESTORE_FAILURES=$((RESTORE_FAILURES + 1))
     fi
-  fi
+    verify_schemas_restored "${DB_ARCHIVE}" || RESTORE_FAILURES=$((RESTORE_FAILURES + 1))
+  else
+    # Per-schema mode: one dump per schema, each restored with its own filter.
+    # `public.dump` here really IS public-only (`backup.sh` takes it with
+    # `--schema=public`), so the filter matches the archive.
 
-  # Tenant schemas
-  for DUMP in tenant_*.dump; do
-    if [ -f "${DUMP}" ]; then
-      SCHEMA="${DUMP%.dump}"
-      echo "  Restoring ${SCHEMA}..."
+    # Public schema
+    if [ -f "public.dump" ]; then
+      echo "  Restoring public schema..."
       if docker exec -i -e PGPASSWORD="${DB_PASSWORD:-}" "${PG_CONTAINER}" \
         pg_restore -U "${DB_USER}" -d "${DB_NAME}" --exit-on-error \
-        --schema="${SCHEMA}" --clean --if-exists --no-owner --no-privileges \
-        < "${DUMP}" 2>&1; then
-        echo "  OK — ${SCHEMA}"
+        --schema=public --clean --if-exists --no-owner --no-privileges \
+        < "public.dump" 2>&1; then
+        echo "  OK — public schema"
       else
-        echo "  FAILED — ${SCHEMA} did not restore"
+        echo "  FAILED — public schema did not restore"
         RESTORE_FAILURES=$((RESTORE_FAILURES + 1))
       fi
     fi
-  done
+
+    # Tenant schemas
+    for DUMP in tenant_*.dump; do
+      if [ -f "${DUMP}" ]; then
+        SCHEMA="${DUMP%.dump}"
+        echo "  Restoring ${SCHEMA}..."
+        if docker exec -i -e PGPASSWORD="${DB_PASSWORD:-}" "${PG_CONTAINER}" \
+          pg_restore -U "${DB_USER}" -d "${DB_NAME}" --exit-on-error \
+          --schema="${SCHEMA}" --clean --if-exists --no-owner --no-privileges \
+          < "${DUMP}" 2>&1; then
+          echo "  OK — ${SCHEMA}"
+        else
+          echo "  FAILED — ${SCHEMA} did not restore"
+          RESTORE_FAILURES=$((RESTORE_FAILURES + 1))
+        fi
+      fi
+    done
+
+    # `backup.sh` writes `full_backup.dump` alongside the per-schema ones, so the
+    # tarball carries its OWN statement of what that night's backup captured. It
+    # is the authority here: a tarball whose per-schema tenant dump silently
+    # failed — `backup.sh` only WARNs on that — restores `public` and nothing
+    # else, and the glob below it matches nothing, which without this check is
+    # once again a green "all schemas restored".
+    #
+    # It also catches the case `docs/backup-restore-runbook.md` already writes
+    # down and nothing enforced: a tenant that was `is_active = false` when the
+    # backup ran gets NO per-schema dump, so restoring a tarball the per-schema
+    # way into an empty database leaves that tenant's data behind — present in
+    # the archive, absent from the restore, and previously reported as complete.
+    if [ -f "full_backup.dump" ]; then
+      if ! verify_schemas_restored "full_backup.dump"; then
+        echo "  This backup captured a schema the per-schema restore did not bring back."
+        echo "  A tenant that was is_active=false when the backup ran has no tenant_*.dump:"
+        echo "  its data lives ONLY inside full_backup.dump. Restore that archive whole:"
+        echo "    $0 <extracted-dir>/full_backup.dump --db-only"
+        RESTORE_FAILURES=$((RESTORE_FAILURES + 1))
+      fi
+    elif [ -f "public.dump" ]; then
+      verify_schemas_restored "public.dump" || RESTORE_FAILURES=$((RESTORE_FAILURES + 1))
+    fi
+  fi
 
   if [ "${RESTORE_FAILURES}" -gt 0 ]; then
     echo ""

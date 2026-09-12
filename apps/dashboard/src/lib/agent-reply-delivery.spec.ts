@@ -27,6 +27,35 @@ describe('what the console says about a reply that was saved', () => {
         expect(pending.noticeKey).not.toBe(agentReplyDeliveryNotice('failed').noticeKey);
     });
 
+    it('keeps "nobody knows" separate from both, because the action differs', () => {
+        // THE DEFECT. `reconciliation_required` — the row the API writes when
+        // the provider gave NO answer — was an unrecognised value, and
+        // unrecognised means accepted here. So the state that means "nobody
+        // knows whether the customer has it" was shown as a delivered reply:
+        // the opposite lie from the one this file exists to stop, and the
+        // more expensive one, because nothing on screen says anything.
+        //
+        // The action is what separates the three. `failed`: send it again.
+        // `pending`: nothing was attempted, send it again. This one: do NOT
+        // send it again — on WhatsApp that is a second message the customer
+        // may already have, and a second charge to the business's own WABA.
+        const unknown = agentReplyDeliveryNotice('reconciliation_required');
+        expect(unknown).toMatchObject({ state: 'unconfirmed', badgeKey: 'outcomeUnknown' });
+        expect(unknown.state).not.toBe('sent');
+        for (const other of ['failed', 'pending']) {
+            const notice = agentReplyDeliveryNotice(other);
+            expect(unknown.badgeKey).not.toBe(notice.badgeKey);
+            expect(unknown.noticeKey).not.toBe(notice.noticeKey);
+        }
+    });
+
+    it('tells the agent not to resend the one they must not resend', () => {
+        // The sentence carries the instruction, not just the state: a badge
+        // saying "unconfirmed" invites exactly the retype that costs money.
+        const notice = agentReplyDeliveryNotice('reconciliation_required');
+        expect(messages[notice.noticeKey!]).toMatch(/No la vuelvas a enviar/i);
+    });
+
     it('does not warn on a value it does not recognise', () => {
         // An older API sends no status. A console that warned on everything
         // unknown would teach agents to ignore the warning, which costs more
@@ -37,7 +66,7 @@ describe('what the console says about a reply that was saved', () => {
     });
 
     it('has a real sentence behind every key it returns', () => {
-        for (const status of ['failed', 'pending']) {
+        for (const status of ['failed', 'pending', 'reconciliation_required']) {
             const notice = agentReplyDeliveryNotice(status);
             expect(typeof messages[notice.badgeKey!]).toBe('string');
             // The one the agent reads has to say the customer does not have it,

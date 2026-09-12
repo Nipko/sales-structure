@@ -207,8 +207,20 @@ export interface EffectReach {
  * 2026 Meta charges per delivered WhatsApp service message; Instagram and
  * Messenger remain free, which is why reaching them is not enough.
  */
+export const META_BILLED_CHANNELS: readonly string[] = Object.freeze(['whatsapp']);
+
 export const metaBillsDelivery = (reach: EffectReach): boolean =>
-    reach.channels.includes('whatsapp');
+    reach.channels.some(channel => META_BILLED_CHANNELS.includes(channel));
+
+/**
+ * Does Meta bill a delivery on this channel?
+ *
+ * For callers that hold a channel and not a reach — a lane deciding whether
+ * an inline POST is allowed to cost the tenant money. It reads the SAME list,
+ * so "which channel costs money" cannot be answered two ways.
+ */
+export const metaBillsChannel = (channelType: string): boolean =>
+    META_BILLED_CHANNELS.includes(channelType);
 
 /**
  * The producers the October WhatsApp rows are actually about.

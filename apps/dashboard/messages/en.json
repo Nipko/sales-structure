@@ -1791,6 +1791,8 @@
     "notConfirmed": "Unconfirmed",
     "sendNotDelivered": "Your reply was saved, but the channel did not accept it. The customer does not have it yet.",
     "sendNotConfirmed": "Your reply was saved, but we could not confirm it left through the channel.",
+    "outcomeUnknown": "No answer from the channel",
+    "sendOutcomeUnknown": "Your reply was saved and sent, but the channel gave no answer: it may have arrived. Do not send it again — it is being reconciled.",
     "whatsappMayBeCharged": "Replying on WhatsApp may cost money: Meta charges your account for every delivered message."
   },
   "smsNotificationsIntegration": {

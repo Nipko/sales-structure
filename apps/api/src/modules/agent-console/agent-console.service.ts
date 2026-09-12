@@ -23,6 +23,8 @@ import {
 } from '../billing/whatsapp-spend/whatsapp-send-admission.service';
 import { AccountPauseStore } from '../channels/account-pause-store';
 import { readProviderRefusal } from '../channels/funding-failure';
+import { metaBillsChannel } from '../channels/external-effect-inventory';
+import type { StrictDispatchOutcome } from '../channels/strict-dispatch-transport';
 import { WhatsappConnectionService } from '../whatsapp/services/whatsapp-connection.service';
 import { LLMRouterService } from '../ai/router/llm-router.service';
 import { AiResolutionService } from '../analytics/ai-resolution.service';
@@ -586,7 +588,9 @@ export class AgentConsoleService {
          * newer evidence than anything this code knows, and `redacted` outranks
          * everything. Same rule the outbox applies, for the same reason.
          */
-        const settle = async (status: 'sent' | 'failed', detail?: string) => {
+        const settle = async (
+            status: 'sent' | 'failed' | 'reconciliation_required', detail?: string,
+        ) => {
             try {
                 await this.prisma.executeInTenantSchema(schemaName,
                     `UPDATE messages SET status=$2,
@@ -619,6 +623,38 @@ export class AgentConsoleService {
                 // (multi-account aware, and works for non-WhatsApp channels — the old
                 // getValidAccessToken always returned a WhatsApp token).
                 const channelType = conv.channel_type || 'whatsapp';
+                // ── THE TRANSPORT THAT SAYS WHAT HAPPENED ──────────────────
+                //
+                // The durable lane above declined — not wired, or a binding
+                // this conversation cannot make — and its own docblock says
+                // this inline path exists "only for a channel with no strict
+                // transport". The code did not enforce that: it used
+                // `sendMessage` for every channel, and that call reports
+                // EVERY failure as `null`.
+                //
+                // One `null`, two contradictory stories. `recordAgentSend`
+                // filed a TIMEOUT — money retained, the effect indeterminate,
+                // "somebody may have sent this" — while the message row was
+                // stamped `failed`, which reads as "it did not leave" and is
+                // an invitation to retype. On WhatsApp that retype is a
+                // second charge for a message the customer may already have.
+                //
+                // The strict transport answers three ways, so both records
+                // come from ONE answer.
+                const strict = this.channelGateway.getStrictTransport(channelType as any);
+                if (!strict && metaBillsChannel(channelType)) {
+                    // A chargeable channel with no transport that can report
+                    // an outcome. Refused BEFORE the admission, so there is
+                    // no reservation and no intent to leave indeterminate:
+                    // nothing was spent and nothing was addressed.
+                    this.logger.error(`Agent reply ${msg.id}: ${channelType} bills per delivery `
+                        + 'and has no strict transport here; refused before admitting');
+                    await settle('failed', 'strict_transport_unavailable');
+                    return {
+                        id: msg.id, status: msg.status, content: msg.content_text,
+                        type: msg.content_type, sender: 'agent', timestamp: msg.created_at,
+                    } as any;
+                }
                 const creds = await this.channelToken.getChannelToken(tenantId, channelType, conv.channel_account_id || undefined);
                 const outContent: any = isMedia
                     ? { type: contentType, mediaUrl: this.absoluteMediaUrl(mediaUrl), caption: caption || content || undefined, ...(filename ? { filename } : {}) }
@@ -662,6 +698,53 @@ export class AgentConsoleService {
                     } as any;
                 }
                 sendAttempted = true;
+                if (strict) {
+                    // The same item shape the durable lane builds for this
+                    // reply, so the two paths cannot disagree about what one
+                    // effect is.
+                    const outcome = await strict.sendStrict({
+                        itemKind: isMedia ? 'media' : 'text',
+                        to: conv.phone,
+                        channelAccountId: String(conv.channel_account_id || creds.accountId),
+                        payload: isMedia
+                            ? {
+                                mediaType: ['image', 'document', 'audio', 'video'].includes(contentType)
+                                    ? contentType : 'image',
+                                mediaUrl: this.absoluteMediaUrl(mediaUrl),
+                                ...(caption || content ? { caption: caption || content } : {}),
+                                ...(filename ? { filename } : {}),
+                            }
+                            : { text: content },
+                    }, creds.accessToken);
+                    await this.recordStrictAgentSend(schemaName, admission, outcome);
+                    if (outcome.kind === 'accepted') {
+                        await this.pauses.clear(tenantId,
+                            String(conv.channel_account_id || creds.accountId),
+                            { by: 'provider_accepted' }).catch(() => undefined);
+                        await settle('sent');
+                    } else if (outcome.kind === 'rejected') {
+                        // The provider ANSWERED and did not act. Nothing
+                        // reached the customer, so `failed` is the truth and
+                        // retyping is safe.
+                        await this.observeFunding(tenantId, channelType,
+                            String(conv.channel_account_id || creds.accountId),
+                            { error: { code: String(outcome.errorCode).replace(/^\D*/, '') } });
+                        await settle('failed', outcome.errorCode);
+                    } else {
+                        // NO answer arrived. The request may have been
+                        // processed, so this must not read as "it did not
+                        // leave": the money stays retained and the row says
+                        // the same thing the durable lane says, which is the
+                        // one state that does not invite a second send.
+                        this.logger.error(`Agent reply ${msg.id} outcome unknown `
+                            + `(${outcome.errorCode}) — reconciliation required`);
+                        await settle('reconciliation_required', outcome.errorCode);
+                    }
+                    return {
+                        id: msg.id, status: msg.status, content: msg.content_text,
+                        type: msg.content_type, sender: 'agent', timestamp: msg.created_at,
+                    } as any;
+                }
                 const sent = await this.channelGateway.sendMessage(
                     {
                         tenantId,
@@ -1040,6 +1123,40 @@ export class AgentConsoleService {
         await this.pauses.observeFunding(tenantId, String(channelAccountId ?? ''),
             { source: 'http_response', code: refusal.code, detail: refusal.detail })
             .catch(() => undefined);
+    }
+
+    /**
+     * The spend outcome of a reply sent through the STRICT transport.
+     *
+     * Three answers, recorded as three things, from the one answer the
+     * transport gave. `recordAgentSend` below takes a `string | null` and can
+     * therefore only file `accepted` or `timeout` — so a provider that
+     * positively refused had its money retained as indeterminate, and a
+     * genuine timeout was indistinguishable from it.
+     *
+     *   · `accepted`  the receipt settles the reservation.
+     *   · `rejected`  the provider acted on nothing, so the money is
+     *                 released — `rejected_retryable` when its own contract
+     *                 invites the identical request again, which keeps the
+     *                 reservation held for that retry instead of orphaning it.
+     *   · `unknown`   retained. Nobody may say what the customer got.
+     */
+    private async recordStrictAgentSend(
+        schemaName: string, admission: unknown, outcome: StrictDispatchOutcome,
+    ) {
+        if (!admission || isRefusal(admission)) return;
+        try {
+            await this.spendGate.record(schemaName, admission as Admission,
+                outcome.kind === 'accepted'
+                    ? { kind: 'accepted', providerMessageId: outcome.receipt }
+                    : outcome.kind === 'unknown'
+                        ? { kind: 'timeout', errorCode: outcome.errorCode }
+                        : outcome.retryable
+                            ? { kind: 'rejected_retryable', errorCode: outcome.errorCode }
+                            : { kind: 'rejected', errorCode: outcome.errorCode });
+        } catch (error: any) {
+            this.logger.error(`[Spend] outcome not recorded for agent reply: ${error?.message}`);
+        }
     }
 
     private async recordAgentSend(schemaName: string, admission: unknown, result: string | null) {

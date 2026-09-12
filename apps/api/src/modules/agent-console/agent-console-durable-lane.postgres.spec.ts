@@ -9,6 +9,7 @@ import {
     permissiveSpendGate, resolvingChannelToken, openPauseStore,
 } from '../channels/__fixtures__/spend-gate-double';
 import { AgentConsoleService } from './agent-console.service';
+import { WhatsAppAdapter } from '../channels/whatsapp/whatsapp.adapter';
 
 /**
  * ═══ WHAT A PERSON'S REPLY LEAVES BEHIND ═══
@@ -38,6 +39,7 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
     let store: AgentDispatchOutboxStore;
     let lane: ProactiveDispatchService;
     let gateway: any;
+    let sendStrict: jest.Mock;
     let published: string[];
     let publishFails: boolean;
     let contactId: string;
@@ -66,10 +68,21 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
                 conversation_id, contact_id, inbound_message_id, message_id, operational_scope
            FROM agent_dispatch_outbox ORDER BY item_index`);
 
-    const service = (over: { strict?: boolean; lane?: any } = {}) => {
+    const service = (over: {
+        strict?: boolean; lane?: any; outcome?: any; spend?: any;
+    } = {}) => {
+        // The inline path uses the STRICT transport on a channel Meta bills,
+        // so the double has to be able to answer rather than only to exist:
+        // `getStrictTransport` used to return a `channelType` and nothing
+        // else, which was enough to decide whether the durable lane was
+        // possible and not enough to send anything.
+        sendStrict = jest.fn(async () => over.outcome
+            ?? { kind: 'accepted', receipt: 'wamid.STRICT' });
         gateway = {
             sendMessage: jest.fn(async () => ({ messageId: 'wamid.INLINE' })),
-            getStrictTransport: jest.fn(() => (over.strict === false ? undefined : { channelType: 'whatsapp' })),
+            getStrictTransport: jest.fn(() => (over.strict === false
+                ? undefined
+                : { channelType: 'whatsapp', sendStrict })),
         };
         return new AgentConsoleService(
             prisma, { get: async () => null, set: async () => undefined, del: async () => undefined } as any,
@@ -78,7 +91,7 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
                 getChannelToken: jest.fn(async () => ({ accessToken: 'tok', accountId: NUMBER })) }),
             {} as any, {} as any, { emit: jest.fn() } as any,
             { ensureResolutionColumns: async () => undefined } as any,
-            permissiveSpendGate(),
+            over.spend ?? permissiveSpendGate(),
             openPauseStore(),
             undefined,
             'lane' in over ? over.lane : lane);
@@ -406,33 +419,75 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
             await expect(store.admit(tenantId, String(row.id))).rejects.toBeDefined();
         });
 
-        it('keeps the inline path for a channel the lane could never deliver', async () => {
-            // A committed row for an adapter with no strict transport is an
-            // effect nothing can send. Worse than the inline POST it replaces,
-            // so it is not taken.
-            const message = await service({ strict: false })
+        it('sends nothing at all when a BILLED channel has no transport that can answer', async () => {
+            // This case used to assert the opposite: no durable row, and an
+            // inline POST through `sendMessage` instead, on the reasoning
+            // that a committed row nothing can deliver is worse than an
+            // inline send.
+            //
+            // Both halves of that are bad on a channel Meta bills. That
+            // gateway reports every failure as `null`, so a timeout and a
+            // refusal are one value: the money is retained as indeterminate
+            // while the row says the reply did not leave, and the agent
+            // retypes a message the customer may already have — a second
+            // charge against the tenant's own WABA.
+            //
+            // So it is refused BEFORE the admission: no reservation, no
+            // intent, nothing addressed, and the agent is told why. The case
+            // below shows this branch cannot be reached in production.
+            const spend = permissiveSpendGate();
+            const message = await service({ strict: false, spend })
                 .sendAgentMessage(tenantId, conversationId, await agent(), 'hola');
             expect(await rows()).toHaveLength(0);
-            expect(gateway.sendMessage).toHaveBeenCalled();
-            expect(message.status).toBe('sent');
+            expect(gateway.sendMessage).not.toHaveBeenCalled();
+            expect(spend.admitBySchema).not.toHaveBeenCalled();
+            expect(spend.beginTransmission).not.toHaveBeenCalled();
+            expect(message.status).toBe('failed');
+            expect((await sql('SELECT status, metadata FROM messages'))[0].metadata)
+                .toMatchObject({ sendError: 'strict_transport_unavailable' });
         });
 
-        it('keeps the inline path when no lane is wired in', async () => {
+        it('cannot happen on WhatsApp, because its adapter implements the strict transport', async () => {
+            // The flow-control half of the case above. A refusal for want of
+            // a strict transport would silence the only channel the business
+            // pays for, so it matters that the branch is unreachable rather
+            // than merely unlikely — and that is a property of the adapter,
+            // asserted here instead of written down in a report.
+            expect(typeof (WhatsAppAdapter.prototype as any).sendStrict).toBe('function');
+        });
+
+        it('sends through the strict transport when no lane is wired in', async () => {
             const message = await service({ lane: undefined })
                 .sendAgentMessage(tenantId, conversationId, await agent(), 'hola');
             expect(await rows()).toHaveLength(0);
-            expect(gateway.sendMessage).toHaveBeenCalled();
+            // The transport that says what happened, not the one that
+            // reports every failure as the same `null`.
+            expect(sendStrict).toHaveBeenCalled();
+            expect(gateway.sendMessage).not.toHaveBeenCalled();
             expect(message.status).toBe('sent');
         });
 
-        it('keeps the inline path for a thread that does not name its connection', async () => {
+        it('files an unknown inline outcome for reconciliation instead of as failed', async () => {
+            // The inline path is a fallback, not a lesser standard: an answer
+            // that never arrived must not read as one that did not leave.
+            const message = await service({ lane: undefined,
+                outcome: { kind: 'unknown', errorCode: 'timeout' } })
+                .sendAgentMessage(tenantId, conversationId, await agent(), 'hola');
+            expect(message.status).toBe('reconciliation_required');
+            expect((await sql('SELECT status FROM messages'))[0].status)
+                .toBe('reconciliation_required');
+        });
+
+        it('sends through the strict transport for a thread that does not name its connection', async () => {
             // A binding is four identifiers or it is nothing: a legacy row with
-            // no `channel_account_id` cannot say which account pays.
+            // no `channel_account_id` cannot say which account pays, so the
+            // durable lane declines — and the fallback still uses a transport
+            // that can report an outcome.
             await sql('UPDATE conversations SET channel_account_id = NULL WHERE id = $1::uuid',
                 [conversationId]);
             await service().sendAgentMessage(tenantId, conversationId, await agent(), 'hola');
             expect(await rows()).toHaveLength(0);
-            expect(gateway.sendMessage).toHaveBeenCalled();
+            expect(sendStrict).toHaveBeenCalled();
         });
     });
 

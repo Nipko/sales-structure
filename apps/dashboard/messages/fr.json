@@ -1791,6 +1791,8 @@
     "notConfirmed": "Non confirmé",
     "sendNotDelivered": "Votre réponse a été enregistrée, mais le canal ne l'a pas acceptée. Le client ne l'a pas encore.",
     "sendNotConfirmed": "Votre réponse a été enregistrée, mais nous n'avons pas pu confirmer son départ par le canal.",
+    "outcomeUnknown": "Aucune réponse du canal",
+    "sendOutcomeUnknown": "Votre réponse a été enregistrée et envoyée, mais le canal n'a pas répondu : elle a peut-être été reçue. Ne la renvoyez pas — elle est en cours de vérification.",
     "whatsappMayBeCharged": "Répondre sur WhatsApp peut avoir un coût : Meta facture votre compte pour chaque message livré."
   },
   "smsNotificationsIntegration": {

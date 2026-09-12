@@ -1791,6 +1791,8 @@
     "notConfirmed": "Sem confirmação",
     "sendNotDelivered": "Sua resposta foi salva, mas o canal não a aceitou. O cliente ainda não a recebeu.",
     "sendNotConfirmed": "Sua resposta foi salva, mas não conseguimos confirmar que saiu pelo canal.",
+    "outcomeUnknown": "Sem resposta do canal",
+    "sendOutcomeUnknown": "Sua resposta foi salva e enviada, mas o canal não respondeu: pode ter chegado. Não envie de novo — está sendo verificada.",
     "whatsappMayBeCharged": "Responder pelo WhatsApp pode ter custo: a Meta cobra da sua conta cada mensagem entregue."
   },
   "smsNotificationsIntegration": {

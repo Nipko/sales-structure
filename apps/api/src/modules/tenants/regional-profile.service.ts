@@ -182,7 +182,7 @@ export class RegionalProfileService {
     }
 
     private async build(tenantId: string, strict = false): Promise<TenantRegionalProfileV1> {
-        let tenant: any = null;
+        let tenant: any;
         try {
             tenant = await this.prisma.tenant.findUnique({
                 where: { id: tenantId },
@@ -195,10 +195,14 @@ export class RegionalProfileService {
                 },
             });
         } catch (error: any) {
-            if (strict) throw new Error('evaluation_regional_source_unavailable');
             this.logger.warn(`[Regional] tenant read failed for ${tenantId}: ${error?.message}`);
+            throw new Error(strict
+                ? 'evaluation_regional_source_unavailable'
+                : 'regional_source_unavailable');
         }
-        if (strict && !tenant) throw new Error('evaluation_regional_source_unavailable');
+        if (!tenant) throw new Error(strict
+            ? 'evaluation_regional_source_unavailable'
+            : 'regional_tenant_not_found');
         return this.compose(tenantId, tenant);
     }
 
@@ -437,8 +441,8 @@ export class RegionalProfileService {
      * Acá la precedencia es una sola y la declarada gana.
      */
     async timezoneFor(tenantId: string): Promise<string> {
-        const profile = await this.resolve(tenantId).catch(() => null);
-        return profile?.timezone?.value || COUNTRY_DEFAULT_TIMEZONE[PLATFORM_FALLBACK_COUNTRY];
+        const profile = await this.resolve(tenantId);
+        return profile.timezone.value;
     }
 
     /** Igual, para los llamadores que sólo tienen el nombre del schema. */
@@ -451,8 +455,9 @@ export class RegionalProfileService {
             if (tenant?.id) return this.timezoneFor(tenant.id);
         } catch (error: any) {
             this.logger.warn(`[Regional] timezone por schema falló (${schemaName}): ${error?.message}`);
+            throw new Error('regional_timezone_source_unavailable');
         }
-        return COUNTRY_DEFAULT_TIMEZONE[PLATFORM_FALLBACK_COUNTRY];
+        throw new Error('regional_schema_not_found');
     }
 
     /** Las revisiones abiertas, más el perfil que las produjo. */

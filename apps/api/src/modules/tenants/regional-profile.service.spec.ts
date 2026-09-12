@@ -88,6 +88,31 @@ describe('precedencia: declarado > derivado > inferido > fallback', () => {
     });
 });
 
+describe('fallos de la autoridad regional', () => {
+    it('no congela un perfil colombiano inventado cuando falla la base', async () => {
+        const prisma = { tenant: { findUnique: jest.fn().mockRejectedValue(new Error('database unavailable')) } };
+        const redis = {
+            getJson: jest.fn().mockResolvedValue(null),
+            setJson: jest.fn().mockResolvedValue(undefined),
+        };
+        const service = new RegionalProfileService(prisma as any, redis as any);
+        jest.spyOn((service as any).logger, 'warn').mockImplementation(() => undefined);
+
+        await expect(service.resolve(tenantId)).rejects.toThrow('regional_source_unavailable');
+        await expect(service.timezoneFor(tenantId)).rejects.toThrow('regional_source_unavailable');
+        expect(redis.setJson).not.toHaveBeenCalled();
+    });
+
+    it('no convierte un fallo al resolver el schema en America/Bogota', async () => {
+        const prisma = { tenant: { findFirst: jest.fn().mockRejectedValue(new Error('database unavailable')) } };
+        const service = new RegionalProfileService(prisma as any, {} as any);
+        jest.spyOn((service as any).logger, 'warn').mockImplementation(() => undefined);
+
+        await expect(service.timezoneForSchema('tenant_store'))
+            .rejects.toThrow('regional_timezone_source_unavailable');
+    });
+});
+
 describe('el tratamiento no se uniforma en toda la región', () => {
     it('Argentina, Uruguay y Paraguay usan vos', () => {
         for (const country of ['AR', 'UY', 'PY']) {

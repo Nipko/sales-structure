@@ -594,6 +594,37 @@ export class ConversationsService {
     }
 
     /**
+     * Resolve the clock authority for one turn without converting a failed
+     * tenant read into a Colombian date. Explicit agent/business-hours
+     * configuration can keep the turn honest while the broader regional
+     * profile is unavailable; without either, date-sensitive generation stops.
+     */
+    private async regionalContextForTurn(
+        tenantId: string,
+        executionContext: unknown,
+        evaluationRegional: EvaluationTurnContextInputs['regional'] | null,
+        explicitTimezone?: string,
+    ): Promise<{ regional: EvaluationTurnContextInputs['regional'] | null; timezone: string }> {
+        if (evaluationRegional) {
+            return { regional: evaluationRegional, timezone: explicitTimezone || evaluationRegional.timezone.value };
+        }
+        if (!this.regionalProfile) {
+            // Constructor compatibility for isolated legacy tests. The provider
+            // is mandatory in ConversationsModule and production never enters
+            // this branch.
+            return { regional: null, timezone: explicitTimezone || 'America/Bogota' };
+        }
+        try {
+            const regional = await this.regionalProfile.resolve(tenantId, executionContext as any);
+            return { regional, timezone: explicitTimezone || regional.timezone.value };
+        } catch (error: any) {
+            this.logger.error(`[Pipeline] regional context unavailable for ${tenantId}: ${error?.message}`);
+            if (explicitTimezone) return { regional: null, timezone: explicitTimezone };
+            throw new Error('turn_regional_context_unavailable');
+        }
+    }
+
+    /**
      * Main entry point for incoming messages from any channel
      */
     async processIncomingMessage(normalizedMsg: NormalizedMessage): Promise<void> {
@@ -2786,12 +2817,15 @@ export class ConversationsService {
         // a Colombian literal. `America/Bogota` was the last resort in four
         // separate places, so a Mexican restaurant computed "hoy" and "mañana"
         // in Bogota time and told guests the wrong day.
-        const regional = evaluationContext ? evaluationContext.regional
-            : await this.regionalProfile?.resolve(tenantId, executionContext).catch(() => null);
-        const tz = bizHours?.timezone
-            || config.hours?.timezone
-            || regional?.timezone.value
-            || 'America/Bogota';
+        const explicitTimezone = bizHours?.timezone || config.hours?.timezone;
+        const resolvedRegion = await this.regionalContextForTurn(
+            tenantId,
+            executionContext,
+            evaluationContext?.regional || null,
+            explicitTimezone,
+        );
+        const regional = resolvedRegion.regional;
+        const tz = resolvedRegion.timezone;
         const now = new Date();
         const businessHoursStatus: 'open' | 'closed' = this.isWithinBusinessHours(config, bizHours) ? 'open' : 'closed';
 

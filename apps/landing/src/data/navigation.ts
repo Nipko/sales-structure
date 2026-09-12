@@ -36,6 +36,11 @@ export const PRODUCT_MENU: MegaMenuItem = {
     { labelKey: "menuBooking", descKey: "menuBookingDesc", href: "/producto/reservas", emoji: "📅" },
     { labelKey: "menuCrm", descKey: "menuCrmDesc", href: "/producto/crm", emoji: "📊" },
     { labelKey: "menuAndroid", descKey: "menuAndroidDesc", href: "/producto/app-android", emoji: "📱" },
+    // Both of these answer a question a buyer asks before the trial, not after:
+    // who charges me, and how do you compare with what Meta already gives me.
+    // Leaving them for the footer would mean the answer arrives too late.
+    { labelKey: "menuCosts", descKey: "menuCostsDesc", href: "/costos-whatsapp", emoji: "🧾" },
+    { labelKey: "menuCompare", descKey: "menuCompareDesc", href: "/comparar/meta-business-agent", emoji: "⚖️" },
   ],
 };
 
@@ -46,6 +51,8 @@ export const FOOTER_SECTIONS = [
       { labelKey: "footerSolutions", href: "/soluciones" },
       { labelKey: "footerFeatures", href: "/#herramientas" },
       { labelKey: "footerPricing", href: "/precios" },
+      { labelKey: "footerCosts", href: "/costos-whatsapp" },
+      { labelKey: "footerCompare", href: "/comparar/meta-business-agent" },
       { labelKey: "footerDemo", href: "/#flujo" },
     ],
   },

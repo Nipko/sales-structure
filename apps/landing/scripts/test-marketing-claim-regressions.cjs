@@ -10,6 +10,14 @@ const probes = [
   // Meta bills the tenant's own WhatsApp account and revises its rates
   // quarterly: both halves of this sentence must be rejected.
   "Parallly pays Meta for you, so each WhatsApp reply costs you US$0.0008.",
+  // The audited closure report certifies 0 of 5 channels and 0 of 76 profiles.
+  // Both halves of this sentence were on the live landing until this pass, in
+  // four languages, and both must now be rejected on sight.
+  "18 vertical configurations and all certified channels included.",
+  "Canales certificados según el plan y 18 configuraciones verticales disponibles.",
+  // Opening Meta's billing page proves neither funding nor delivery. A screen
+  // that says it does is selling a guarantee made of somebody else's bank.
+  "Come back and you will see Payment verified — guaranteed delivery from day one.",
 ];
 
 for (const probe of probes) {

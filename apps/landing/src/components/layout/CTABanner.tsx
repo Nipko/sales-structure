@@ -3,6 +3,7 @@
 import { useTranslations } from "next-intl";
 import { Section } from "../ui/Section";
 import { Icon } from "../ui/Icon";
+import { ThreePaymentsNotice } from "../sections/ThreePaymentsNotice";
 import { SIGNUP_URL, WHATSAPP_URL } from "../../lib/constants";
 
 export function CTABanner() {
@@ -39,6 +40,13 @@ export function CTABanner() {
             </a>
           </div>
           <p className="mt-7 text-xs text-text-muted">{t("guarantees")}</p>
+          {/*
+            The banner sits at the bottom of every marketing page, and it is the
+            last thing read before somebody clicks "start". Meta's charge lands
+            on their own account whatever they were reading a moment ago, so the
+            notice belongs here rather than only on the pricing FAQ.
+          */}
+          <ThreePaymentsNotice className="mt-8" />
         </div>
       </div>
     </Section>

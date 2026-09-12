@@ -20,7 +20,7 @@
     "subtitle": "Estas son algunas herramientas disponibles. Cada una requiere la configuración, permisos y plan correspondientes."
   },
   "solutions": {
-    "heroSubtitle": "18 configuraciones verticales con modo de producto visible. Elegí tu industria y completá la configuración guiada; las capacidades especializadas requieren validación.",
+    "heroSubtitle": "Elegí tu industria y completá la configuración guiada. Cada una muestra su modo de producto y su estado de certificación; las capacidades especializadas requieren validación.",
     "ctaTitle": "¿No encontrás tu industria?"
   },
   "industryPage": {
@@ -92,15 +92,47 @@
     "demoTitle": "Mirá cómo funciona"
   },
   "verticals": {
-    "salud": { "demo4": "Perfecto ✅ Tu cita queda confirmada para jueves 9:00 AM. Te enviaré un recordatorio el miércoles. ¿Necesitás algo más?" },
-    "restaurantes": { "demo2": "¡Hola! Soy Luca 🍽️ Te paso el menú del día. ¿Querés ver el menú completo o las promociones?" },
-    "inmobiliaria": { "demo4": "Perfecto. Buscaré coincidencias en el inventario del negocio y te compartiré las fichas disponibles. ¿Querés revisar horarios de visita?" },
-    "belleza": { "demo4": "Sábado tenemos 10am y 2pm con Camila (especialista en color). ¿Cuál preferís?" },
-    "gimnasios": { "demo2": "¡Hola! Soy Coach 💪 Tenemos mensual $89k, trimestral $240k (ahorrás $27k). ¿Te agendo una visita?" },
-    "educacion": { "demo2": "¡Hola! Soy Ana 📚 Tenemos cursos A1-C2, presencial y virtual. ¿Sabés tu nivel actual?" },
-    "automotriz": { "demo2": "¡Hola! Soy Mech 🚗 La revisión de frenos cuesta $85k (incluye diagnóstico). ¿Qué vehículo tenés?" },
-    "servicios-profesionales": { "demo2": "¡Hola! ¿En qué área necesitás apoyo: laboral, societario, tributario?" },
-    "tecnologia": { "demo2": "¡Hola! ¿Es un problema técnico o querés info sobre planes y servicios?" },
-    "otro": { "demo4": "Perfecto. Te paso las opciones disponibles. ¿Preferís que te agende una llamada?" }
+    "salud": {
+      "demo4": "Perfecto ✅ Tu cita queda confirmada para jueves 9:00 AM. Te enviaré un recordatorio el miércoles. ¿Necesitás algo más?"
+    },
+    "restaurantes": {
+      "demo2": "¡Hola! Soy Luca 🍽️ Te paso el menú del día. ¿Querés ver el menú completo o las promociones?"
+    },
+    "inmobiliaria": {
+      "demo4": "Perfecto. Buscaré coincidencias en el inventario del negocio y te compartiré las fichas disponibles. ¿Querés revisar horarios de visita?"
+    },
+    "belleza": {
+      "demo4": "Sábado tenemos 10am y 2pm con Camila (especialista en color). ¿Cuál preferís?"
+    },
+    "gimnasios": {
+      "demo2": "¡Hola! Soy Coach 💪 Tenemos mensual $89k, trimestral $240k (ahorrás $27k). ¿Te agendo una visita?"
+    },
+    "educacion": {
+      "demo2": "¡Hola! Soy Ana 📚 Tenemos cursos A1-C2, presencial y virtual. ¿Sabés tu nivel actual?"
+    },
+    "automotriz": {
+      "demo2": "¡Hola! Soy Mech 🚗 La revisión de frenos cuesta $85k (incluye diagnóstico). ¿Qué vehículo tenés?"
+    },
+    "servicios-profesionales": {
+      "demo2": "¡Hola! ¿En qué área necesitás apoyo: laboral, societario, tributario?"
+    },
+    "tecnologia": {
+      "demo2": "¡Hola! ¿Es un problema técnico o querés info sobre planes y servicios?"
+    },
+    "otro": {
+      "demo4": "Perfecto. Te paso las opciones disponibles. ¿Preferís que te agende una llamada?"
+    }
+  },
+  "whatsappCosts": {
+    "heroTitle": "Quién te cobra qué cuando vendés por WhatsApp",
+    "noEstimateBody": "Un total estimado se lee como una factura y no lo es: depende de a cuánta gente respondés, desde qué números, hacia qué países y con qué categoría. El consumo real lo mide y lo factura Meta en su propia cuenta.",
+    "setupStep1Body": "Completás la ventana oficial de Meta que abre Parallly y volvés. Eso conecta el número: no configura el pago.",
+    "setupStep3Body": "Se abre la administración de WhatsApp de Meta en otra pestaña. Ahí elegís la cuenta, entrás a la configuración de pago y añadís el método. Quien lo haga necesita permisos de administración de esa cuenta en Meta: un rol de Parallly no los otorga.",
+    "faqA1": "Tu negocio. El cargo lo emite Meta contra tu propia cuenta de WhatsApp Business, con el medio de pago que cargués ahí. Ese dinero no pasa por Parallly y no forma parte de tu plan.",
+    "ctaTitle": "Ya sabés quién cobra qué"
+  },
+  "compareMeta": {
+    "nativeEnoughNoOperation": "No necesitás que la conversación deje rastro en un CRM, en una agenda con varios recursos o en un cobro.",
+    "nativeEnoughNote": "Si tu operación sí necesita eso, la comparación deja de ser de texto y pasa a ser de qué sistema queda actualizado cuando la conversación termina. Ahí es donde proponemos que nos evalúes."
   }
 }

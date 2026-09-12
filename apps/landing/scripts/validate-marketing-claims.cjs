@@ -4,6 +4,7 @@ const ts = require("typescript");
 const { metaChargeDisclosureFailures } = require("./meta-charge-disclosure.cjs");
 
 const landingRoot = path.resolve(__dirname, "..");
+const repoRoot = path.resolve(landingRoot, "..", "..");
 const locales = ["es", "en", "pt", "fr"];
 const failures = [];
 
@@ -243,6 +244,32 @@ const frozenClaimPatterns = [
     pattern: /\b18\b.{0,120}\b(?:pre-?configured services?|servicios pre-?configurados?|serviços pré-configurados?|services pré-configurés?)\b/i,
   },
   {
+    // The canonical constant is CERTIFIED_SELF_SERVICE_CHANNELS, and the word
+    // leaked out of it into eight strings per locale while the audited closure
+    // report says 0 of 5 channels have finished certification. "Self-service"
+    // is what the policy actually establishes; "certified" is a claim the
+    // report refuses. The pairing is frozen so it cannot come back by copy-edit
+    // — a real certification would change the report first, and this rule with it.
+    label: "channels described as certified",
+    pattern: /\b(?:canal(?:es)?|canais?|canaux)\s+certific(?:ad[oa]s?|és?|é)\b|\bcertified\s+channels?\b|\bchannels?\s+certified\b/i,
+  },
+  {
+    // An architectural count of verticals or profiles. It told a buyer nothing,
+    // and every version of it was wrong in one direction or the other: the
+    // catalogue is larger than 18 and the certified part of it is zero.
+    label: "architectural vertical or profile count",
+    pattern: /\b\d{1,3}\s+(?:configuraciones?\s+verticales?|configurações?\s+verticais?|configurations?\s+verticales?|vertical\s+configurations?|perfiles?\s+(?:de\s+)?industria|industry\s+profiles?|verticales?\s+disponibles?|industrias?\s+disponibles?)\b/i,
+  },
+  {
+    // Opening Meta's billing page, or coming back from it, proves neither that
+    // the account is funded nor that the next message will arrive. Meta's API
+    // reports whether a method is ATTACHED; balance, debt and delivery are not
+    // in that answer, and a page that says otherwise sells a guarantee made of
+    // somebody else's bank.
+    label: "verified Meta funding or guaranteed delivery",
+    pattern: /\b(?:pago\s+verificado|pagamento\s+verificado|paiement\s+vérifié|payment\s+verified|verified\s+payment)\b|\b(?:entrega\s+garantizada|entrega\s+garantida|livraison\s+garantie|guaranteed\s+delivery)\b/i,
+  },
+  {
     label: "unsupported autonomous-sales or zero-human promise",
     pattern: /\b(?:sells? on its own|vende solo|vende sozinho|vend toute seule|zero human intervention|cero intervenci[oó]n humana|zero interven[cç][aã]o humana|z[eé]ro intervention humaine|never sleeps|nunca duerme|nunca dorme|ne dort jamais)\b/i,
   },
@@ -321,6 +348,9 @@ const frozenClaimRegressionSamples = [
   ["instant human-handoff promise", "Passes the conversation to your team instantly"],
   ["unsupported absorption of Meta's WhatsApp charge", "Parallly pays Meta for you"],
   ["hard-coded Meta per-message rate", "Each WhatsApp reply costs US$0.0008"],
+  ["channels described as certified", "All certified channels in one place"],
+  ["architectural vertical or profile count", "18 vertical configurations available"],
+  ["verified Meta funding or guaranteed delivery", "Payment verified — guaranteed delivery"],
 ];
 for (const [label, sample] of frozenClaimRegressionSamples) {
   const rule = frozenClaimPatterns.find((claim) => claim.label === label);
@@ -522,10 +552,16 @@ for (const locale of locales) {
 
   assertMetaChargeDisclosure(locale, messages, locale);
 
-  const statLabels = [1, 2, 3, 4, 5].map((index) => messages?.socialProof?.[`stat${index}Label`]);
+  const statLabels = [1, 2, 3].map((index) => messages?.socialProof?.[`stat${index}Label`]);
   assert(
     statLabels.every((label) => typeof label === "string" && label.trim().length > 0),
-    `${locale}: all five code-backed capability labels are required`,
+    `${locale}: all three code-backed capability labels are required`,
+  );
+  // A retired claim whose label survives is a claim waiting to be re-rendered.
+  assert(
+    messages?.socialProof?.stat4Label === undefined
+      && messages?.socialProof?.stat5Label === undefined,
+    `${locale}: the retired knowledge-tier and prompt-layer labels must not be reintroduced`,
   );
   assert(
     Object.values(messages?.solutions?.productModeDescription || {}).length === 4
@@ -597,36 +633,68 @@ const certifiedChannelPolicy = loadTsModule(path.join(
   "..", "..", "packages", "shared", "src", "channel-policy.ts",
 )).CERTIFIED_SELF_SERVICE_CHANNELS;
 const expectedCertifiedChannelKeys = ["whatsapp", "instagram", "messenger", "telegram", "web_widget"];
-assert(capabilityCounts.verticals === verticals.length, "Capability stat must match the vertical registry");
 assert(
-  capabilityCounts.channels === certifiedChannelPolicy.length
+  capabilityCounts.publishedIndustryPages === verticals.length,
+  "Published industry-page count must match the vertical registry",
+);
+assert(
+  capabilityCounts.selfServiceChannels === certifiedChannelPolicy.length
     && JSON.stringify(certifiedChannelPolicy) === JSON.stringify(expectedCertifiedChannelKeys)
     && Object.keys(channelRegistry || {}).every((channel) => certifiedChannelPolicy.includes(channel)),
-  "Capability stat and demo skins must match the five certified self-service channels",
+  "Capability stat and demo skins must match the five self-service channels",
 );
 assert(capabilityCounts.interfaceLanguages === locales.length, "Capability stat must match es/en/pt/fr locales");
 
-const repoRoot = path.resolve(landingRoot, "..", "..");
+// ─── The certified count is not ours to choose ──────────────────────────────
+//
+// It is read from the generated closure report, which derives it from the code.
+// Typing a friendlier number here fails; making it true means certifying a
+// channel, which regenerates the report and turns this green on its own.
+const closureReport = JSON.parse(fs.readFileSync(
+  path.join(repoRoot, "docs", "audits", "2026-09-09", "closure-report.json"),
+  "utf8",
+));
+assert(
+  capabilityCounts.selfServiceChannels === closureReport.authorities?.channelsSelfService,
+  `Self-service channel count (${capabilityCounts.selfServiceChannels}) drifted from the closure report `
+  + `(${closureReport.authorities?.channelsSelfService})`,
+);
+assert(
+  capabilityCounts.certifiedChannels === closureReport.authorities?.channelsCertified,
+  `Certified channel count (${capabilityCounts.certifiedChannels}) drifted from the closure report `
+  + `(${closureReport.authorities?.channelsCertified})`,
+);
+// A landing may not present a catalogue as proven while the report certifies
+// none of it. This is the rule the retired vertical count kept breaking.
+assert(
+  closureReport.authorities?.certifiedProfiles !== 0
+    || !/certificad[oa]s?\b/i.test(String(loadJson("es")?.verticals?.title || "")),
+  "The industry headline must not describe the catalogue as certified while 0 profiles are certified",
+);
+
 const positiveRegistry = loadTsModule(path.join("src", "data", "marketing-claims.ts"));
 const positiveClaims = Object.values(positiveRegistry.MARKETING_CLAIMS || {});
 const validationDate = process.env.MARKETING_CLAIM_VALIDATION_DATE
   || new Date().toISOString().slice(0, 10);
 assert(
-  positiveRegistry.MARKETING_CLAIM_REGISTRY_VERSION === 1,
-  "Positive marketing claim registry must publish version 1",
+  positiveRegistry.MARKETING_CLAIM_REGISTRY_VERSION === 2,
+  "Positive marketing claim registry must publish version 2",
 );
-assert(positiveClaims.length === 5, "All five visible quantitative claims must be registered");
+assert(positiveClaims.length === 3, "All three visible quantitative claims must be registered");
 assert(
   new Set(positiveClaims.map((claim) => claim.claimId)).size === positiveClaims.length,
   "Positive marketing claim ids must be unique",
 );
 const capabilityValueByClaim = {
-  "product.verticals.count": capabilityCounts.verticals,
-  "product.channels.adapters.count": capabilityCounts.channels,
+  "product.channels.self_service.count": capabilityCounts.selfServiceChannels,
+  "product.channels.certified.count": capabilityCounts.certifiedChannels,
   "product.interface_languages.count": capabilityCounts.interfaceLanguages,
-  "product.knowledge_tiers.count": capabilityCounts.knowledgeTiers,
-  "product.prompt_layers.count": capabilityCounts.promptLayers,
 };
+assert(
+  JSON.stringify(positiveClaims.map((claim) => claim.claimId).sort())
+    === JSON.stringify(Object.keys(capabilityValueByClaim).sort()),
+  "The registry and the rendered capability counts must cover exactly the same claims",
+);
 for (const claim of positiveClaims) {
   assert(claim.status === "verified", `${claim.claimId}: visible quantitative claim must be verified`);
   assert(
@@ -636,7 +704,7 @@ for (const claim of positiveClaims) {
   assert(/^\d{4}-\d{2}-\d{2}$/.test(claim.verifiedAt || ""), `${claim.claimId}: verifiedAt is required`);
   assert(/^\d{4}-\d{2}-\d{2}$/.test(claim.expiresAt || ""), `${claim.claimId}: expiresAt is required`);
   assert(claim.expiresAt >= validationDate, `${claim.claimId}: evidence expired on ${claim.expiresAt}`);
-  const expectedPlanScope = claim.claimId === "product.channels.adapters.count"
+  const expectedPlanScope = claim.claimId === "product.channels.self_service.count"
     ? "plan_dependent_catalog"
     : "all";
   assert(
@@ -718,45 +786,26 @@ for (const [channel, adapterClass] of Object.entries(adapterClassByChannel)) {
     `${channel}: backend adapter must be registered in ChannelsModule`,
   );
 }
-const knowledgeEvidenceFiles = [
-  "apps/api/src/modules/business-info/business-info.service.ts",
-  "apps/api/src/modules/catalog/catalog.service.ts",
-  "apps/api/src/modules/faqs/faqs.service.ts",
-  "apps/api/src/modules/policies/policies.service.ts",
-  "apps/api/src/modules/knowledge/knowledge.service.ts",
-];
-assert(
-  capabilityCounts.knowledgeTiers === knowledgeEvidenceFiles.length
-    && knowledgeEvidenceFiles.every((file) => fs.existsSync(path.join(repoRoot, file))),
-  "Capability stat must match the five implemented knowledge tiers",
-);
-const promptAssemblerSource = fs.readFileSync(
-  path.join(repoRoot, "apps", "api", "src", "modules", "conversations", "prompt-assembler.service.ts"),
-  "utf8",
-);
-assert(
-  capabilityCounts.promptLayers === 3
-    && /const layer1\s*=\s*this\.buildContractLayer\(\)/.test(promptAssemblerSource)
-    && /const layer2\s*=\s*this\.personaService\.buildSystemPrompt/.test(promptAssemblerSource)
-    && /const layer3\s*=\s*this\.buildTurnLayer\(turn\)/.test(promptAssemblerSource),
-  "Capability stat must match the three-layer prompt assembler",
-);
-
+// The knowledge-tier and prompt-layer stats are gone: they were architecture,
+// not an answer to anything a buyer asks, and their assertions went with them.
+// What replaced them is the pair below, which a reader can act on.
 const statsSource = fs.readFileSync(
   path.join(landingRoot, "src", "components", "sections", "StatsCounter.tsx"),
   "utf8",
 );
 assert(
-  statsSource.includes("PRODUCT_CAPABILITY_COUNTS.verticals")
-    && statsSource.includes("PRODUCT_CAPABILITY_COUNTS.channels")
-    && statsSource.includes("PRODUCT_CAPABILITY_COUNTS.interfaceLanguages")
-    && statsSource.includes("PRODUCT_CAPABILITY_COUNTS.knowledgeTiers")
-    && statsSource.includes("PRODUCT_CAPABILITY_COUNTS.promptLayers"),
+  statsSource.includes("PRODUCT_CAPABILITY_COUNTS.selfServiceChannels")
+    && statsSource.includes("PRODUCT_CAPABILITY_COUNTS.certifiedChannels")
+    && statsSource.includes("PRODUCT_CAPABILITY_COUNTS.interfaceLanguages"),
   "StatsCounter must render only code-backed product capability counts",
 );
 assert(
+  !/PRODUCT_CAPABILITY_COUNTS\.publishedIndustryPages/.test(statsSource),
+  "The published-page count is a routing fact, not a headline number",
+);
+assert(
   statsSource.includes("MARKETING_CLAIMS")
-    && statsSource.includes("data-claim-id={s.claimId}"),
+    && /data-claim-id=\{\w+\.claimId\}/.test(statsSource),
   "Every StatsCounter quantitative claim must render its positive registry id",
 );
 
@@ -821,17 +870,436 @@ for (const slug of ["emprendedor", "starter", "pro", "enterprise", "custom"]) {
   assert(channelsFromSeed(slug).length > 0, `${slug}: billing seed must declare its channel set`);
 }
 
-const english = loadJson("en");
+// ─── The industry catalogue states its state, not its size ──────────────────
+//
+// The count is frozen above. What has to be PRESENT is the state: every locale's
+// two industry headlines must say that specialised capability waits on
+// validation, because that is the fact the number used to hide.
+const certificationStatePatterns = {
+  es: /valida(?:ci[oó]n|rse|da)|certificaci[oó]n|certificad/i,
+  en: /validat|certif/i,
+  pt: /valida(?:ç[aã]o|r|da)|certifica/i,
+  fr: /validation|valid[ée]|certifi/i,
+};
+for (const locale of locales) {
+  const messages = loadJson(locale);
+  for (const localePath of ["verticals.subtitle", "solutions.heroSubtitle", "howItWorks.step2Desc"]) {
+    const copy = String(getPath(messages, localePath) || "");
+    assert(copy.trim().length > 0, `${locale}: ${localePath} is required`);
+    assert(
+      certificationStatePatterns[locale].test(copy),
+      `${locale}: ${localePath} must state the certification/validation state of the industry catalogue`,
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//   THE THREE PAYMENTS
+// ════════════════════════════════════════════════════════════════════════════
+//
+// A page about somebody else's money is the easiest place on this site to be
+// accidentally wrong, and the most expensive: a reader who believes Meta's
+// charge is inside their plan budgets nothing for it and loses delivery on
+// 1 October 2026. So the shared contract is pinned to the rate table the engine
+// prices against, and the page copy is pinned to the contract.
+
+const paymentModel = loadTsModule(path.join("src", "data", "payment-model.ts"));
+const metaCharge = paymentModel.META_WHATSAPP_CHARGE;
+const paymentParties = paymentModel.PAYMENT_PARTIES || [];
+
 assert(
-  /\b18\b/.test(english?.verticals?.subtitle || "")
-    && /\bvertical configurations\b/i.test(english?.verticals?.subtitle || ""),
-  "en: verticals.subtitle must describe the 18 registered vertical configurations",
+  metaCharge?.effectiveFrom === freeServiceAllowance.effectiveFrom,
+  `payment-model effectiveFrom (${metaCharge?.effectiveFrom}) drifted from the rate table `
+  + `(${freeServiceAllowance.effectiveFrom})`,
 );
-assert(/\b18\b/.test(english?.howItWorks?.step2Desc || ""), "en: howItWorks.step2Desc must advertise 18 templates");
+assert(
+  metaCharge?.freeServiceDeliveries === freeServiceAllowance.deliveries,
+  `payment-model allowance (${metaCharge?.freeServiceDeliveries}) drifted from the rate table `
+  + `(${freeServiceAllowance.deliveries})`,
+);
+// Meta's deadline is the day before the charge starts. If the charge date moves,
+// this catches a deadline sentence that stayed behind.
+const dayBeforeCharge = new Date(`${freeServiceAllowance.effectiveFrom}T00:00:00Z`);
+dayBeforeCharge.setUTCDate(dayBeforeCharge.getUTCDate() - 1);
+assert(
+  metaCharge?.paymentMethodDeadline === dayBeforeCharge.toISOString().slice(0, 10),
+  "The funding deadline must be the day before Meta's charge begins",
+);
+// Every category the rate table prices must be disclosed. A subset reads as a
+// complete list, and the expensive one — marketing — is the easiest to omit.
+const tableCategories = new Set(whatsappRates.WHATSAPP_MESSAGE_CATEGORIES || []);
+for (const category of metaCharge?.billedCategories || []) {
+  assert(tableCategories.has(category), `payment-model names a category the rate table does not price: ${category}`);
+}
+for (const category of ["service", "marketing", "utility", "authentication"]) {
+  assert(
+    (metaCharge?.billedCategories || []).includes(category),
+    `payment-model must disclose the ${category} category Meta bills separately`,
+  );
+}
+for (const [field, url] of Object.entries({
+  officialRatesUrl: metaCharge?.officialRatesUrl,
+  billingManagerUrl: metaCharge?.billingManagerUrl,
+  addPaymentMethodHelpUrl: metaCharge?.addPaymentMethodHelpUrl,
+})) {
+  assert(
+    /^https:\/\/(?:[\w.-]+\.)?(?:facebook\.com|whatsapp\.com)\//.test(String(url || "")),
+    `payment-model.${field} must point at an official Meta destination over HTTPS`,
+  );
+}
+assert(
+  paymentParties.length === 3
+    && JSON.stringify(paymentParties.map((party) => party.id))
+      === JSON.stringify(["subscription", "whatsappDelivery", "customerPayments"]),
+  "The payment model must carry exactly the three payments, in order",
+);
+assert(
+  paymentParties.find((party) => party.id === "whatsappDelivery")?.methodEnteredAt === "meta"
+    && paymentParties.find((party) => party.id === "whatsappDelivery")?.parallelyVisibility === "status_only",
+  "Meta's card is entered at Meta, and our visibility of it stops at status",
+);
+assert(
+  paymentParties.find((party) => party.id === "customerPayments")?.parallelyVisibility === "none",
+  "Money from a tenant's customers does not pass through Parallly and must not claim visibility",
+);
+for (const party of paymentParties) {
+  for (const evidencePath of party.evidence || []) {
+    assert(
+      fs.existsSync(path.join(repoRoot, evidencePath)),
+      `payment-model ${party.id}: missing repository evidence ${evidencePath}`,
+    );
+  }
+}
+
+// The notice has to reach the two places where somebody is about to act.
+const noticeSource = fs.readFileSync(
+  path.join(landingRoot, "src", "components", "sections", "ThreePaymentsNotice.tsx"),
+  "utf8",
+);
+assert(
+  noticeSource.includes("routes.whatsappCosts") && noticeSource.includes('t("noticeShort")'),
+  "The three-payments notice must carry the short disclosure and link to the canonical page",
+);
+const ctaBannerSource = fs.readFileSync(
+  path.join(landingRoot, "src", "components", "layout", "CTABanner.tsx"),
+  "utf8",
+);
+const pricingPageSource = fs.readFileSync(
+  path.join(landingRoot, "src", "app", "(marketing)", "precios", "page.tsx"),
+  "utf8",
+);
+assert(
+  ctaBannerSource.includes("<ThreePaymentsNotice"),
+  "The CTA banner must carry the three-payments notice next to the call to action",
+);
+assert(
+  pricingPageSource.includes("<ThreePaymentsNotice") && pricingPageSource.includes("<ThreePaymentsPanel"),
+  "The pricing page must carry the notice next to the price and the full panel before the FAQ",
+);
+
+const deadlineMonth = Number(String(metaCharge.paymentMethodDeadline).split("-")[1]);
+assert(deadlineMonth === 9, `Copy is written for a September deadline, not month ${deadlineMonth}`);
+const deadlineDay = Number(String(metaCharge.paymentMethodDeadline).split("-")[2]);
+const deadlineYear = Number(String(metaCharge.paymentMethodDeadline).split("-")[0]);
+const deadlinePatterns = {
+  es: new RegExp(`\\b${deadlineDay}\\s+de\\s+septiembre\\s+de\\s+${deadlineYear}\\b`, "i"),
+  en: new RegExp(`\\b${deadlineDay}\\s+September\\s+${deadlineYear}\\b`, "i"),
+  pt: new RegExp(`\\b${deadlineDay}\\s+de\\s+setembro\\s+de\\s+${deadlineYear}\\b`, "i"),
+  fr: new RegExp(`\\b${deadlineDay}\\s+septembre\\s+${deadlineYear}\\b`, "i"),
+};
+const categoryWords = {
+  es: { marketing: /marketing/i, utility: /utilidad/i, authentication: /autenticaci[oó]n/i, service: /servicio/i },
+  en: { marketing: /marketing/i, utility: /utility/i, authentication: /authentication/i, service: /service/i },
+  pt: { marketing: /marketing/i, utility: /utilidade/i, authentication: /autentica[cç][aã]o/i, service: /servi[cç]o/i },
+  fr: { marketing: /marketing/i, utility: /utilitaires?/i, authentication: /authentification/i, service: /service/i },
+};
+// Negation in French is "ne … pas" but also "ne … ni … ni", and every locale
+// puts a pronoun between the verb and its negation. The patterns match the
+// concept in each language's own grammar rather than one blessed sentence.
+const custodyPatterns = {
+  es: { receive: /no recibe/i, store: /no (?:la |lo )?guarda/i, verify: /comprobar|verificar/i },
+  en: { receive: /does not receive/i, store: /does not store/i, verify: /verif/i },
+  pt: { receive: /n[aã]o recebe/i, store: /n[aã]o (?:o |a )?guarda/i, verify: /verific/i },
+  fr: {
+    receive: /ne re[cç]oit (?:pas|ni)/i,
+    store: /ne (?:la |le )?conserve pas/i,
+    verify: /v[ée]rifi/i,
+  },
+};
+const customerWord = /client|customer/i;
+
+/**
+ * Everything the three-payment copy must contain, in one locale.
+ *
+ * Taken as a function so the es-AR overlay can be checked on its MERGED result:
+ * the overlay overrides the voseo half of this copy, which means it can narrow
+ * the disclosure for one market without touching any of the four base files.
+ */
+function assertThreePaymentCopy(locale, messages, label) {
+  const payments = messages?.payments || {};
+  const costs = messages?.whatsappCosts || {};
+
+  // ── The shared three-payment copy ────────────────────────────────────────
+  assert(/Parallly/.test(String(payments.subscriptionWho || "")), `${label}: payment 1 must name Parallly as the payee`);
+  assert(/\bMeta\b/.test(String(payments.whatsappDeliveryWho || "")), `${label}: payment 2 must name Meta as the payee`);
+  assert(
+    customerWord.test(String(payments.customerPaymentsWho || "")),
+    `${label}: payment 3 must say the customers pay the business`,
+  );
+  assert(
+    metaChargeDatePatterns[locale].test(String(payments.whatsappDeliveryBody || "")),
+    `${label}: payment 2 must date the charge Meta starts issuing`,
+  );
+  assert(
+    metaChargeDatePatterns[locale].test(String(payments.noticeShort || ""))
+      && /Parallly/.test(String(payments.noticeShort || ""))
+      && /\bMeta\b/.test(String(payments.noticeShort || "")),
+    `${label}: the short notice must name all three payments and date Meta's charge`,
+  );
+  // The subscription card is the single most common thing a reader assumes
+  // also pays Meta. Every locale has to say, explicitly, that it does not.
+  assert(
+    /\bMeta\b/.test(String(payments.subscriptionNote || "")),
+    `${label}: the subscription card must say it does not configure or pay Meta`,
+  );
+
+  // ── /costos-whatsapp ─────────────────────────────────────────────────────
+  assert(Object.keys(costs).length > 0, `${label}: the whatsappCosts namespace is required`);
+  assert(
+    metaChargeDatePatterns[locale].test(String(costs.ruleIntro || "")),
+    `${label}: the costs page must date the start of Meta's charge`,
+  );
+  assert(
+    String(costs.allowanceBody || "").includes(allowanceTextByLocale[locale]),
+    `${label}: the costs page must state the free allowance exactly as the rate table counts it`,
+  );
+  for (const [category, pattern] of Object.entries(categoryWords[locale])) {
+    assert(
+      pattern.test(String(costs[`category${category.charAt(0).toUpperCase()}${category.slice(1)}`] || "")),
+      `${label}: the costs page must describe the ${category} category Meta bills`,
+    );
+  }
+  assert(
+    deadlinePatterns[locale].test(String(costs.deadlineBody || "")),
+    `${label}: the costs page must carry Meta's funding deadline`,
+  );
+  assert(
+    metaChargeDatePatterns[locale].test(String(costs.deadlineBody || "")),
+    `${label}: the deadline must say what changes on the day the charge starts`,
+  );
+  const custody = `${costs.security1 || ""} ${costs.security2 || ""} ${costs.security3 || ""}`;
+  for (const [aspect, pattern] of Object.entries(custodyPatterns[locale])) {
+    assert(
+      pattern.test(custody),
+      `${label}: the costs page must say Parallly does not ${aspect} the Meta card`,
+    );
+  }
+  // Embedded Signup and adding the card are different steps. A page that blurs
+  // them produces accounts that are connected and unfunded.
+  assert(
+    String(costs.setupIntro || "").length >= 40
+      && /\bMeta\b/.test(String(costs.setupIntro || ""))
+      && /Parallly/.test(String(costs.setupIntro || "")),
+    `${label}: the setup introduction must separate connecting the number from adding the card`,
+  );
+  assert(
+    String(costs.setupStep5Body || "").length >= 40,
+    `${label}: the costs page must explain what an attached payment method does not prove`,
+  );
+  // No rate, and no estimated total dressed as one.
+  assert(
+    String(costs.ratesBody || "").length >= 40 && String(costs.noEstimateBody || "").length >= 40,
+    `${label}: the costs page must explain why it publishes neither a rate nor an estimated maximum`,
+  );
+  assert(
+    !/(?:US\$|USD|COP|€)\s*\d/.test(JSON.stringify(costs)),
+    `${label}: the costs page must not print a currency figure for somebody else's rate card`,
+  );
+  // ── The two answers a narrowing edit would reach for first ───────────────
+  //
+  // "Who pays Meta" is the whole page in one sentence, and the es-AR overlay
+  // rewrites it for voseo — so an edit can shorten it to "your business" in one
+  // market and leave the other four intact. It has to keep naming both
+  // companies and keep saying the money does not run through us.
+  assert(
+    /\bMeta\b/.test(String(costs.faqA1 || ""))
+      && /Parallly/.test(String(costs.faqA1 || ""))
+      && String(costs.faqA1 || "").length >= 80,
+    `${label}: the "who pays Meta" answer must name both companies and say the money does not pass through Parallly`,
+  );
+  // The allowance is the most repeatable misreading on the page: per number,
+  // per calendar month, service only. An answer that stops stating the figure
+  // invites the reader to supply their own.
+  assert(
+    String(costs.faqA3 || "").includes(allowanceTextByLocale[locale]),
+    `${label}: the allowance answer must keep stating the figure the rate table counts`,
+  );
+}
+
+for (const locale of locales) assertThreePaymentCopy(locale, loadJson(locale), locale);
+// Argentina reads the merged result, and the overlay overrides the voseo half
+// of this copy — including the answer to "who pays Meta". Checked as Spanish,
+// reported as es-AR.
+assertThreePaymentCopy("es", argentinaMessages, "es-AR");
+
+// ════════════════════════════════════════════════════════════════════════════
+//   THE COMPARISON
+// ════════════════════════════════════════════════════════════════════════════
+//
+// Meta's own agent learns a business, sets a tone, books on Google Calendar and
+// hands off to a person. A comparison that denies any of that is refutable in
+// one click, and takes the rest of the page down with it. These rules keep the
+// page to states with sources, and out of superlatives nobody has measured.
+
+const comparison = loadTsModule(path.join("src", "data", "meta-comparison.ts"));
+const comparisonTasks = comparison.COMPARISON_TASKS || [];
+const comparisonSurfaces = comparison.META_SURFACES || [];
+
+assert(
+  /^\d{4}-\d{2}-\d{2}$/.test(comparison.COMPARISON_VERIFIED_AT || ""),
+  "The comparison must carry the date its sources were read",
+);
+assert(
+  comparison.COMPARISON_EXPIRES_AT >= validationDate,
+  `The Meta comparison expired on ${comparison.COMPARISON_EXPIRES_AT}; re-verify the sources or take it down`,
+);
+assert(comparisonTasks.length >= 8, "A task-by-task comparison needs the tasks");
+assert(comparisonSurfaces.length === 3, "The three Meta surfaces must stay distinguished");
+for (const surface of comparisonSurfaces) {
+  assert(/^https:\/\//.test(surface.sourceUrl || ""), `${surface.id}: surface source must be an HTTPS primary source`);
+}
+const validStates = new Set([
+  "implementedNotCertified", "documented", "documentedWithLimits", "requiresAccountCheck", "notDocumented",
+]);
+const validVerdicts = new Set(["bothCovered", "differentScope", "notComparable", "nativeMayBeEnough"]);
+for (const task of comparisonTasks) {
+  assert(validStates.has(task.parallly), `${task.id}: unknown evidence state for Parallly`);
+  assert(validStates.has(task.meta), `${task.id}: unknown evidence state for Meta`);
+  assert(validVerdicts.has(task.verdict), `${task.id}: unknown verdict`);
+  // Our own side may never read as certified: the closure report certifies none.
+  assert(
+    task.parallly !== "documented" || task.id === "cost",
+    `${task.id}: Parallly's state must be the product's own state, not a documentation claim`,
+  );
+  assert(
+    Array.isArray(task.sources) && task.sources.length > 0
+      && task.sources.every((url) => /^https:\/\//.test(url)),
+    `${task.id}: every compared task needs at least one HTTPS primary source`,
+  );
+  assert(
+    ["appAgent", "platformApi", "ownerAssistant"].includes(task.metaSurface),
+    `${task.id}: every row must name which Meta product it compares`,
+  );
+}
+
+const superlativePatterns = {
+  es: /\b(?:mejor(?:es)?|m[aá]s barat[oa]s?|m[aá]s r[aá]pid[oa]s?|l[ií]der del mercado)\b/i,
+  en: /\b(?:better|best|cheaper|cheapest|faster|fastest|market leader)\b/i,
+  pt: /\b(?:melhor(?:es)?|mais barat[oa]s?|mais r[aá]pid[oa]s?|l[ií]der de mercado)\b/i,
+  fr: /\b(?:meilleur(?:e|s|es)?|moins cher(?:s|ère|ères)?|plus rapides?|leader du march[ée])\b/i,
+};
+const notDocumentedCaveat = {
+  es: /no significa que/i,
+  en: /does not mean/i,
+  pt: /n[aã]o significa que/i,
+  fr: /ne signifie pas/i,
+};
+
+for (const locale of locales) {
+  const messages = loadJson(locale);
+  const compare = messages?.compareMeta || {};
+  assert(Object.keys(compare).length > 0, `${locale}: the compareMeta namespace is required`);
+
+  assert(
+    String(compare.heroDate || "").includes(comparison.COMPARISON_VERIFIED_AT.slice(0, 4)),
+    `${locale}: the comparison must print the year its sources were read`,
+  );
+  assert(
+    notDocumentedCaveat[locale].test(String(compare.method4 || "")),
+    `${locale}: the comparison must say that undocumented is not the same as absent`,
+  );
+  assert(
+    String(compare.methodLimit1 || "").length >= 40 && String(compare.methodLimit2 || "").length >= 40,
+    `${locale}: the comparison must state that no benchmark was run and that availability varies`,
+  );
+  assert(
+    String(compare.nativeEnoughIntro || "").length >= 40
+      && ["Single", "Informational", "NoOperation"].every(
+        (suffix) => String(compare[`nativeEnough${suffix}`] || "").length >= 20,
+      ),
+    `${locale}: the comparison must concede where the native agent is enough`,
+  );
+
+  for (const task of comparisonTasks) {
+    const id = task.id.charAt(0).toUpperCase() + task.id.slice(1);
+    for (const suffix of ["Label", "Parallly", "Meta"]) {
+      assert(
+        typeof compare[`task${id}${suffix}`] === "string" && compare[`task${id}${suffix}`].trim().length > 0,
+        `${locale}: missing comparison copy task${id}${suffix}`,
+      );
+    }
+  }
+
+  // Superlatives are allowed in exactly one place: the section that quotes the
+  // claims in order to refuse them, and the limits that say we will not make them.
+  for (const [key, value] of Object.entries(compare)) {
+    if (typeof value !== "string") continue;
+    if (/^(?:refuted|methodLimit)/.test(key)) continue;
+    assert(
+      !superlativePatterns[locale].test(value),
+      `${locale}: compareMeta.${key} makes a comparative claim with no benchmark behind it`,
+    );
+    assert(
+      !/\d+\s*%|\b\d+\s*x\b/i.test(value),
+      `${locale}: compareMeta.${key} publishes a quantitative result with no benchmark behind it`,
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//   ROUTES, PAGES AND THE SITEMAP AGREE
+// ════════════════════════════════════════════════════════════════════════════
+//
+// A page that exists and is not in the sitemap is a page nobody finds; a route
+// in the sitemap with no page behind it is a 404 served to a crawler.
+
+const routesModule = loadTsModule(path.join("src", "lib", "routes.ts")).routes;
+const sitemap = fs.readFileSync(path.join(landingRoot, "public", "sitemap.xml"), "utf8");
+const appRoot = path.join(landingRoot, "src", "app");
+const staticRoutes = Object.values(routesModule).filter((route) => typeof route === "string");
+
+for (const route of staticRoutes) {
+  if (route === "/") continue;
+  const candidates = [
+    path.join(appRoot, "(marketing)", ...route.split("/").filter(Boolean), "page.tsx"),
+    path.join(appRoot, ...route.split("/").filter(Boolean), "page.tsx"),
+  ];
+  assert(candidates.some((candidate) => fs.existsSync(candidate)), `route ${route} has no page behind it`);
+  assert(sitemap.includes(`https://parallly-chat.cloud${route}</loc>`), `route ${route} is missing from the sitemap`);
+}
+for (const newRoute of ["/costos-whatsapp", "/comparar/meta-business-agent"]) {
+  const layout = path.join(appRoot, "(marketing)", ...newRoute.split("/").filter(Boolean), "layout.tsx");
+  const layoutSourceText = fs.existsSync(layout) ? fs.readFileSync(layout, "utf8") : "";
+  assert(
+    layoutSourceText.includes("buildMetadata") && layoutSourceText.includes(`path: "${newRoute}"`),
+    `${newRoute}: metadata must declare its own canonical path`,
+  );
+}
+const navigationSource = fs.readFileSync(path.join(landingRoot, "src", "data", "navigation.ts"), "utf8");
+assert(
+  navigationSource.includes('href: "/costos-whatsapp"')
+    && navigationSource.includes('href: "/comparar/meta-business-agent"'),
+  "Both new pages must be reachable from navigation, not only from a link inside prose",
+);
 
 if (failures.length) {
   console.error("Marketing claim contract failed:\n" + failures.map((failure) => `- ${failure}`).join("\n"));
   process.exit(1);
 }
 
-console.log("Marketing claim contract passed for 18 verticals, es/en/pt/fr + es-AR, evidence gates and plan floors.");
+console.log(
+  `Marketing claim contract passed: ${verticals.length} industry pages, es/en/pt/fr + es-AR, `
+  + `${positiveClaims.length} registered counts (${capabilityCounts.certifiedChannels} of `
+  + `${capabilityCounts.selfServiceChannels} channels certified), the three payments, `
+  + `${comparisonTasks.length} sourced comparison rows, evidence gates and plan floors.`,
+);

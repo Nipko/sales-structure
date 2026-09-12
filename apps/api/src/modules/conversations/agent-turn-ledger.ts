@@ -423,13 +423,13 @@ export async function readRecentTurnOutcomes(query: TurnLedgerQuery, schema: str
                  WHERE o.inbound_message_id = l.inbound_message_id
                    AND o.state IN ('sent','stored') AND o.receipt IS NOT NULL
            ) d ON true
-          WHERE l.conversation_id = $1::uuid AND l.outcome IS NOT NULL AND l.created_at >= $2
+          WHERE l.conversation_id = $1::uuid AND l.outcome IS NOT NULL AND l.created_at >= $2::timestamptz
           ORDER BY l.created_at DESC LIMIT ${limit}`,
         [input.conversationId, input.since.toISOString()],
     ) : await query<any[]>(
         `SELECT l.outcome, l.created_at, l.delivery_route, 0 AS arrived
            FROM "${schema}".agent_turn_ledger l
-          WHERE l.conversation_id = $1::uuid AND l.outcome IS NOT NULL AND l.created_at >= $2
+          WHERE l.conversation_id = $1::uuid AND l.outcome IS NOT NULL AND l.created_at >= $2::timestamptz
           ORDER BY l.created_at DESC LIMIT ${limit}`,
         [input.conversationId, input.since.toISOString()]);
     return Object.freeze(rows

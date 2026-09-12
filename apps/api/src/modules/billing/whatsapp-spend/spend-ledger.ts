@@ -1111,7 +1111,7 @@ export async function recentIdenticalDeliveries(query: SpendQuery, schema: strin
         `SELECT effect_key, admission_reason, created_at, state
            FROM "${schema}".whatsapp_spend_reservations
           WHERE channel_account_id = $1 AND recipient_ref = $2 AND content_digest = $3
-            AND created_at >= $4
+            AND created_at >= $4::timestamptz
             AND state IN ('held','accepted','settled',
                           'pending_reconciliation','estimated','indeterminate')
           ORDER BY created_at DESC
@@ -1201,7 +1201,7 @@ export async function readSpendSignals(query: SpendQuery, schema: string, input:
                     WHERE state IN ('accepted','pending_reconciliation',
                                     'estimated','indeterminate')), 0)::bigint AS uncertain_minor
            FROM "${schema}".whatsapp_spend_reservations
-          WHERE created_at >= $1 AND state <> 'released'
+          WHERE created_at >= $1::timestamptz AND state <> 'released'
             AND ($2::text IS NULL OR channel_account_id = $2)
           GROUP BY recipient_ref, currency
           ORDER BY settled_minor DESC, proactive DESC
@@ -1214,7 +1214,7 @@ export async function readSpendSignals(query: SpendQuery, schema: string, input:
                 COALESCE(sum(charged_minor) FILTER (WHERE state = 'settled'), 0)::bigint AS settled_minor,
                 count(*) FILTER (WHERE disposition = 'proactive')::int AS proactive
            FROM "${schema}".whatsapp_spend_reservations
-          WHERE created_at >= $1 AND state <> 'released'
+          WHERE created_at >= $1::timestamptz AND state <> 'released'
             AND ($2::text IS NULL OR channel_account_id = $2)
           GROUP BY category, market, currency
           ORDER BY settled_minor DESC`,
@@ -2367,7 +2367,7 @@ export async function readExposure(query: SpendQuery, schema: string, input: {
                 COALESCE(SUM(free_deliveries),0)::int AS free_deliveries,
                 COALESCE(SUM(charged_deliveries) FILTER (WHERE state <> 'released'),0)::int AS charged_deliveries
            FROM "${schema}".whatsapp_spend_reservations
-          WHERE created_at >= $1
+          WHERE created_at >= $1::timestamptz
             AND ($2::text IS NULL OR channel_account_id = $2)
             AND ($3::text IS NULL OR payer_waba_id = $3)
           GROUP BY currency ORDER BY currency`,

@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "revision": "2dc082445b89cb2fdcbe12b58354bfcc3b26de9f",
-  "generatedAt": "2026-09-12T02:30:21.232Z",
+  "revision": "0d88d8a7a2751b6fa77381c256c60858f6f07f27",
+  "generatedAt": "2026-09-12T03:18:17.638Z",
   "finished": false,
   "counts": {
     "aceptada": 11,
@@ -431,7 +431,7 @@
       "status": "abierta",
       "provenance": "derived",
       "artefact": null,
-      "evidence": "Remitente, pagador y credencial salen del resolver único; la unión de autoridades cubre agente servido, 9 políticas proactivas (appointment_reminder, attendance_check, appointment_notification, appointment_cancellation, drip_step, nurturing_followup, broadcast_message, automation_rule_action, recall_reminder) y operador humano con 4 roles. BSUID/BISU y la coexistencia con el agente Meta siguen siendo trabajo de un solo escritor y no están en el código: esta fila no puede cerrarse por declaración.",
+      "evidence": "Remitente, pagador y credencial salen del resolver único; la unión de autoridades cubre agente servido, 9 políticas proactivas (appointment_reminder, attendance_check, appointment_notification, appointment_cancellation, drip_step, nurturing_followup, broadcast_message, automation_rule_action, recall_reminder) y operador humano con 4 roles. BSUID, la procedencia del token BISU y el control del hilo frente al agente de Meta ya están en el código y probados: un remitente sin teléfono se contesta en vez de descartarse, un token del portafolio del proveedor se rechaza en vez de firmar el envío de un tenant, y el control del hilo es durable y se recupera solo. Lo que falta es una cuenta real: ninguna de esas transiciones vio todavía un traspaso de verdad, y por eso la coexistencia va detrás de un interruptor apagado. El contador de esta fila mide otra cosa —productores de mensajería sin autoridad o sin idempotencia— y sigue siendo lo que la mantiene abierta.",
       "commits": []
     },
     {
@@ -557,8 +557,8 @@
     },
     {
       "id": "R5",
-      "open": 5,
-      "openLabel": "5 de 18 escenarios de la matriz de aceptación sin prueba que los conteste: Pregunta resuelta y cinco \"gracias\"; Misma pregunta requerida sin progreso; Bot contra bot y ráfaga de contactos; Humano, REST, campaña y recordatorio; Nurturing fuera de ventana/baja/cap",
+      "open": 4,
+      "openLabel": "4 de 18 escenarios de la matriz de aceptación sin prueba que los conteste: Pregunta resuelta y cinco \"gracias\"; Misma pregunta requerida sin progreso; Bot contra bot y ráfaga de contactos; Humano, REST, campaña y recordatorio",
       "gates": [],
       "status": "abierta",
       "provenance": "derived",

@@ -220,8 +220,14 @@ function octoberRows(row, A) {
             evidence: 'Remitente, pagador y credencial salen del resolver único; la unión de '
                 + `autoridades cubre agente servido, ${A.policies.length} políticas proactivas `
                 + `(${list(A.policies)}) y operador humano con ${A.sendingRoles.length} roles. `
-                + 'BSUID/BISU y la coexistencia con el agente Meta siguen siendo trabajo de un solo '
-                + 'escritor y no están en el código: esta fila no puede cerrarse por declaración.' }),
+                + 'BSUID, la procedencia del token BISU y el control del hilo frente al agente de '
+                + 'Meta ya están en el código y probados: un remitente sin teléfono se contesta en '
+                + 'vez de descartarse, un token del portafolio del proveedor se rechaza en vez de '
+                + 'firmar el envío de un tenant, y el control del hilo es durable y se recupera '
+                + 'solo. Lo que falta es una cuenta real: ninguna de esas transiciones vio todavía '
+                + 'un traspaso de verdad, y por eso la coexistencia va detrás de un interruptor '
+                + 'apagado. El contador de esta fila mide otra cosa —productores de mensajería sin '
+                + 'autoridad o sin idempotencia— y sigue siendo lo que la mantiene abierta.' }),
 
         row('M2', { provenance: 'derived',
             open: A.rateCards && A.rateCards.length ? 0 : 1,

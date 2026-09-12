@@ -336,8 +336,8 @@ const ready = !!databaseUrl && !!redisUrl;
         }, 120_000);
     });
 
-    describe('a provider that stops answering', () => {
-        it('leaves the row uncertain when the lease lapses mid-request, and never retries it', async () => {
+    describe('a provider that answers after its lease lapses', () => {
+        it('retains the late acceptance and never retries the effect', async () => {
             const [row] = await batchOf(oneText('El proveedor no contesta'));
             // Five seconds is the shortest permission the outbox grants; the
             // request outlives it, which is the shape of a provider that accepted
@@ -365,13 +365,10 @@ const ready = !!databaseUrl && !!redisUrl;
             expect(released).toBe(1);
             expect(sendStrict).toHaveBeenCalledTimes(1);
             const after = await rowOf(row.id);
-            expect(after).toMatchObject({ state: 'reconciliation_required',
-                error_code: 'lease_expired_after_admission' });
-            // OBSERVATION: the acceptance the provider did give back is dropped.
-            // `settleDispatch` refuses a lease the row no longer holds, so the
-            // receipt an operator would need is written nowhere — the runbook
-            // sends them to WhatsApp Manager to find it by hand.
-            expect(after.receipt).toBeNull();
+            // The recovery pass retired the live lease, but retained its token.
+            // That exact attempt may record the positive receipt without
+            // granting another send; a different attempt cannot do so.
+            expect(after).toMatchObject({ state: 'sent', receipt: 'wamid.TOO_LATE' });
 
             // Nothing brings it back: not the recovery pass, not a republished job.
             const { rows: stillPending } = await store.pending(tenantId, 200);
@@ -381,8 +378,8 @@ const ready = !!databaseUrl && !!redisUrl;
             expect(sendStrict).toHaveBeenCalledTimes(1);
             admit.mockRestore();
             metrics.samples('lease_lapse.time_to_reconciliation').add(lapsed);
-            metrics.count('slow_provider.uncertain_rows');
-            metrics.note('lease 5s vs 6.5s provider: row uncertain, receipt not retained, zero automatic retries');
+            metrics.count('slow_provider.late_acceptances');
+            metrics.note('lease 5s vs 6.5s provider: late acceptance retained, zero automatic retries');
         }, 240_000);
     });
 

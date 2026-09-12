@@ -616,6 +616,19 @@ export class OutboundQueueProcessor extends WorkerHost {
             return `dispatch:${settled.state}:${outcome.errorCode}`;
         } catch (error: any) {
             if (error instanceof DelayedError) throw error;
+            if (outcome.kind === 'accepted') {
+                // Recovery may have moved the row to reconciliation while Meta
+                // was still answering. The expired attempt token is retained on
+                // that row specifically so this exact receipt can close it; it
+                // cannot authorize a new POST or settle a different attempt.
+                const late = await this.dispatchOutbox!.recordLateAcceptance(
+                    tenantId, dispatchId, admitted.leaseToken, outcome.receipt).catch(() => null);
+                if (late?.state === 'sent') {
+                    await this.throttle.recordUsage(tenantId, 'outbound').catch(() => {});
+                    await this.chainNext(tenantId, dispatchId);
+                    return `dispatch:sent:${outcome.receipt}`;
+                }
+            }
             // Recording the outcome failed. The row keeps its live permission, so
             // no other worker can send this item; when the lease lapses it becomes
             // a reconciliation, which is the honest state — especially after an

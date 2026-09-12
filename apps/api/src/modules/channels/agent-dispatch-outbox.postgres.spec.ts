@@ -6,6 +6,7 @@ import {
     admitDispatch, applyDispatchProviderStatus, expireDispatchLeases, markDispatchQueued,
     prepareDispatchBatch, readDispatchRow,
     readNextDispatchInBatch, readPendingDispatch, redactDispatchOutbox, redactSettledDispatchOutbox, settleDispatch,
+    recordLateDispatchAcceptance,
     type DispatchBinding, type DispatchItem,
 } from './agent-dispatch-outbox';
 import { ensureSyntheticGlobalTables } from '../../common/__fixtures__/synthetic-global-tables';
@@ -221,6 +222,26 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
     });
 
     describe('recording what an attempt produced', () => {
+        it('records a late acceptance only for the exact expired attempt', async () => {
+            const { rows } = await prepare(await fixture());
+            const lease = randomUUID();
+            await admit(rows[0].id, lease, 5);
+            await sql("UPDATE agent_dispatch_outbox SET lease_expires_at=NOW()-INTERVAL '1 second' WHERE id=$1::uuid",
+                [rows[0].id]);
+            await tx(query => expireDispatchLeases(query, schema));
+
+            expect(await code(tx(query => recordLateDispatchAcceptance(query, schema, {
+                dispatchId: rows[0].id, leaseToken: randomUUID(), receipt: 'wamid.WRONG',
+            })))).toBe('dispatch_late_receipt_not_authorized');
+            const sent = await tx(query => recordLateDispatchAcceptance(query, schema, {
+                dispatchId: rows[0].id, leaseToken: lease, receipt: 'wamid.LATE',
+            }));
+            expect(sent).toMatchObject({ state: 'sent', receipt: 'wamid.LATE' });
+            expect(await tx(query => recordLateDispatchAcceptance(query, schema, {
+                dispatchId: rows[0].id, leaseToken: lease, receipt: 'wamid.LATE',
+            }))).toMatchObject({ state: 'sent', receipt: 'wamid.LATE' });
+        });
+
         it('keeps an accepted receipt readable and refuses to downgrade it', async () => {
             const { rows } = await prepare(await fixture());
             const lease = randomUUID();

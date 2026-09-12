@@ -166,11 +166,11 @@ Lo que sí se cumplía: no había segundo mensaje de Slack ni segundo SMS pago; 
 
 El rechazo pasó a ser un **estado devuelto** en vez de una excepción, así que la transición confirma con él, y `expireHandoffEffectLeases` barre las filas de transferencias que nunca se reanudan. Sigue sin haber una pantalla que liste esos efectos inciertos: la cola de reconciliación de despacho tiene la suya, ésta no.
 
-### O1 — El recibo de una aceptación tardía se descartaba · **cerrado del lado del handoff**
+### O1 — El recibo de una aceptación tardía se descartaba · **cerrado**
 
 Cuando el lease vence con la petición en el aire, el recibo que el proveedor sí devolvió era el único registro de que el destino se alcanzó, y se perdía. Para los efectos de handoff ahora se guarda en la fila —que sigue incierta— y se guarda **devolviendo** en vez de lanzar, porque un `throw` habría revertido también ese registro: el mismo error, por tercera vez.
 
-`settleDispatch` conserva el comportamiento anterior: rechaza el lease que la fila ya no tiene y el recibo no se escribe. Es coherente con su diseño —la fila ya es de la reconciliación— pero deja al operador buscando a mano en WhatsApp Manager el dato que el proceso tuvo en la mano. Queda anotado como pendiente, no como cerrado.
+Despacho conserva el token del intento al vencer el lease y acepta el recibo tardío únicamente cuando coincide con ese token y la fila sigue en reconciliación. La transición cierra la fila como `sent`, actualiza el historial y encadena el siguiente efecto sin conceder un segundo envío. Un token distinto o una decisión humana que ya cambió el estado se rechazan.
 
 ## Lo que este harness NO cubre
 

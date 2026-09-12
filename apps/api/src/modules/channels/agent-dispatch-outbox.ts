@@ -760,6 +760,35 @@ export async function settleDispatch(query: DispatchOutboxQuery, schema: string,
 }
 
 /**
+ * Preserve a provider acceptance that arrives after the recovery pass retired
+ * the attempt's lease. The settled lease token is the authority: it proves the
+ * receipt belongs to the one POST represented by this row. A receipt from any
+ * other attempt, or one arriving after a human resolution, is refused.
+ */
+export async function recordLateDispatchAcceptance(query: DispatchOutboxQuery, schema: string, input: {
+    dispatchId: string; leaseToken: string; receipt: string;
+}): Promise<DispatchRow> {
+    if (!SCHEMA.test(schema) || !UUID.test(String(input?.dispatchId)) || !UUID.test(String(input?.leaseToken)))
+        fail('dispatch_invalid_reference');
+    const receipt = typeof input.receipt === 'string' ? input.receipt.trim() : '';
+    if (!receipt || receipt.length > 300) fail('dispatch_receipt_required');
+    const [row] = await query<any[]>(
+        'SELECT * FROM agent_dispatch_outbox WHERE id=$1::uuid FOR UPDATE', [input.dispatchId]);
+    if (!row) fail('dispatch_unavailable');
+    if (row.state === 'sent' && row.settled_lease_token === input.leaseToken) return mapRow(row);
+    if (row.state !== 'reconciliation_required' || row.settled_lease_token !== input.leaseToken)
+        fail('dispatch_late_receipt_not_authorized');
+    const [sent] = await query<any[]>(
+        `UPDATE agent_dispatch_outbox SET state='sent', receipt=$2, error_code=NULL, updated_at=NOW()
+         WHERE id=$1::uuid RETURNING *`, [input.dispatchId, receipt]);
+    if (row.message_id) {
+        await query(`UPDATE messages SET status='sent'
+                     WHERE id=$1::uuid AND status='pending'`, [row.message_id]);
+    }
+    return mapRow(sent);
+}
+
+/**
  * Rows a recovery pass may re-publish. An `admitted` row whose lease ran out is
  * deliberately NOT here: it needs reconciliation, not another attempt.
  */

@@ -57,6 +57,10 @@ describe('OutboundQueueProcessor durable dispatch', () => {
                 ? jest.fn(options.admit)
                 : jest.fn(async () => ({ schemaName: 'tenant_x', leaseToken: 'lease-1', row: row({ state: 'admitted', attempts: 1 }) })),
             settle,
+            recordLateAcceptance: jest.fn(async () => {
+                if (options.settleFails) throw new Error('late receipt write failed');
+                return row({ state: 'sent', receipt: 'wamid.OK', attempts: 1 });
+            }),
             failPreflight: jest.fn(async (_t: string, _d: string, input: any) =>
                 row({ state: input.permanent ? 'suppressed' : 'failed', attempts: 1, errorCode: input.errorCode })),
         };
@@ -131,6 +135,18 @@ describe('OutboundQueueProcessor durable dispatch', () => {
         // lapse turns it into a reconciliation, which is the honest state.
         await expect(h.processor.process(h.job)).resolves.toBe('dispatch:outcome_unrecorded:accepted');
         expect(h.sendStrict).toHaveBeenCalledTimes(1);
+        expect(h.dispatchOutbox.recordLateAcceptance).toHaveBeenCalledWith(
+            tenantId, dispatchId, 'lease-1', 'wamid.OK');
+    });
+
+    it('closes reconciliation when expiry races a positive provider receipt', async () => {
+        const h = harness();
+        h.dispatchOutbox.settle.mockRejectedValueOnce(new DispatchOutboxError('dispatch_lease_lost'));
+        await expect(h.processor.process(h.job)).resolves.toBe('dispatch:sent:wamid.OK');
+        expect(h.sendStrict).toHaveBeenCalledTimes(1);
+        expect(h.dispatchOutbox.recordLateAcceptance).toHaveBeenCalledWith(
+            tenantId, dispatchId, 'lease-1', 'wamid.OK');
+        expect(h.throttle.recordUsage).toHaveBeenCalledTimes(1);
     });
 
     it('refuses a channel whose adapter is not migrated instead of using the loose gateway', async () => {

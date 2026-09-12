@@ -11,7 +11,7 @@ import {
     readDispatchBacklog, readDispatchBatchForInbound, readDispatchReconciliation, readDispatchRow,
     readNextDispatchInBatch, readPendingDispatch, recordDispatchPreflightFailure,
     markDispatchResolutionExported, readUnexportedDispatchResolutions,
-    resolveDispatchReconciliation, settleDispatch,
+    resolveDispatchReconciliation, settleDispatch, recordLateDispatchAcceptance,
     redactSettledDispatchOutbox,
     type DispatchReconciliationBacklog, type DispatchReconciliationEntry, type DispatchResolution,
     type DispatchResolutionRecord,
@@ -420,6 +420,16 @@ export class AgentDispatchOutboxStore {
         // often the write broke.
         await recordDispatchLatency(this.redis, 'settle', Date.now() - startedAt);
         return row;
+    }
+
+    /** Save a positive provider receipt that raced the lease-expiry pass. */
+    async recordLateAcceptance(tenantId: string, dispatchId: string, leaseToken: string,
+        receipt: string): Promise<DispatchRow> {
+        const schema = await this.schemaFor(tenantId);
+        return this.prisma.transactionInTenantSchema(schema, async query => {
+            await this.privacy(query, schema, tenantId);
+            return recordLateDispatchAcceptance(query, schema, { dispatchId, leaseToken, receipt });
+        });
     }
 
     /** The uncertain effects waiting for a person, oldest first. */

@@ -3,6 +3,16 @@ export interface ConnectedAgentChannel {
   accountId: string;
 }
 
+export function channelOverviewIsAuthoritative(value: unknown): value is {
+  data: ConnectedAgentChannel[];
+  degraded?: string[];
+} {
+  if (!value || typeof value !== 'object') return false;
+  const response = value as { data?: unknown; degraded?: unknown };
+  return Array.isArray(response.data)
+    && (!Array.isArray(response.degraded) || response.degraded.length === 0);
+}
+
 export function normalizeAgentChannelAssignments(input: {
   accounts: ConnectedAgentChannel[];
   channels: string[];

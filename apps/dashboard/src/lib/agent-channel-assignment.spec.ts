@@ -1,8 +1,13 @@
-import { normalizeAgentChannelAssignments } from './agent-channel-assignment';
+import { channelOverviewIsAuthoritative, normalizeAgentChannelAssignments } from './agent-channel-assignment';
 
 const supported = ['whatsapp', 'instagram', 'messenger', 'telegram', 'web_widget'];
 
 describe('agent channel assignment normalization', () => {
+  it('rejects a syntactically valid but partially degraded overview', () => {
+    expect(channelOverviewIsAuthoritative({ data: [], degraded: ['web_widget'] })).toBe(false);
+    expect(channelOverviewIsAuthoritative({ data: [], degraded: [] })).toBe(true);
+  });
+
   it('preserves assignments when the connected-account inventory is unavailable', () => {
     expect(normalizeAgentChannelAssignments({
       accounts: [], channels: ['whatsapp'], bindings: ['instagram:ig-1'],

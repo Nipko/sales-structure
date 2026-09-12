@@ -20,7 +20,7 @@ import { HelpPanel } from "@/components/ui/help-panel";
 import { AgentReadinessBanner } from "@/components/AgentReadinessBanner";
 import { AGENT_CONFIGURATION_APPLIED_EVENT, requestQualityHealthRefresh } from "@/lib/quality-health-events";
 import { guidedTourAnchorId } from "@/lib/guided-tours";
-import { normalizeAgentChannelAssignments } from "@/lib/agent-channel-assignment";
+import { channelOverviewIsAuthoritative, normalizeAgentChannelAssignments } from "@/lib/agent-channel-assignment";
 import type { AgentConfigurationWorkspace } from '@parallext/shared';
 import { AgentDraftStatus } from '@/components/quality/AgentDraftStatus';
 import { agentDraftTestHref, prepareDraftSave, type DraftSaveAttempt } from '@/lib/agent-draft-save';
@@ -197,7 +197,7 @@ export default function AgentEditorPage() {
     ])
       .then(([agentRes, agentsRes, overviewRes]: any[]) => {
         if (cancelled) return;
-        const overviewAvailable = Array.isArray(overviewRes?.data);
+        const overviewAvailable = channelOverviewIsAuthoritative(overviewRes);
         const accts: ChannelAccountLite[] = overviewAvailable
           ? overviewRes.data.map((a: any) => ({ channelType: a.channelType, accountId: a.accountId, displayName: a.displayName }))
           : [];

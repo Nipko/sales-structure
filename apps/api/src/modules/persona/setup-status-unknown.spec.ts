@@ -81,6 +81,28 @@ describe('what setup-status says when a count cannot be read', () => {
         expect(seen.some(sql => sql.includes('DISTINCT channel_type'))).toBe(false);
     });
 
+    it('does not turn an unreadable connected-channel list into no connected channels', async () => {
+        const controller = harness(sql => {
+            if (sql.includes('FROM channel_accounts') && sql.includes('COUNT')) return rows(1);
+            if (sql.includes('DISTINCT channel_type')) throw new Error('detail read unavailable');
+            return rows(1);
+        });
+        const answer: any = await controller.getSetupStatus(tenantId);
+        expect(answer.data.hasAnyChannel).toBeUndefined();
+        expect(answer.data.connectedChannelTypes).toEqual([]);
+    });
+
+    it('does not claim the default agent is absent when its detail cannot be read', async () => {
+        const controller = harness(sql => {
+            if (sql.includes('agent_personas') && sql.includes('COUNT')) return rows(1);
+            if (sql.includes('FROM "tenant_demo".agent_personas')) throw new Error('agent read unavailable');
+            return rows(0);
+        });
+        const answer: any = await controller.getSetupStatus(tenantId);
+        expect(answer.data.hasPersona).toBeUndefined();
+        expect(answer.data.defaultAgent).toBeNull();
+    });
+
     it('reports every flag as unknown when the whole block fails, never as a bare account', async () => {
         const controller = harness(() => { throw new Error('schema unavailable'); });
         const answer: any = await controller.getSetupStatus(tenantId);

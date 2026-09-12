@@ -623,7 +623,7 @@ export class PersonaController {
                     const typeRows = (await this.prisma.$queryRawUnsafe(
                         `SELECT DISTINCT channel_type FROM channel_accounts WHERE tenant_id = $1::uuid AND is_active = true`,
                         tenantId,
-                    ).catch(() => [])) as Array<{ channel_type?: string | null }>;
+                    )) as Array<{ channel_type?: string | null }>;
                     connectedChannelTypes = typeRows
                         .map((row) => (typeof row?.channel_type === 'string' ? row.channel_type.trim() : ''))
                         .filter((value) => value.length > 0);
@@ -633,7 +633,7 @@ export class PersonaController {
                     `SELECT id, name, template_id, config_json FROM "${schema}".agent_personas
                      WHERE is_default = true AND is_active = true
                      ORDER BY created_at ASC LIMIT 1`,
-                ).catch(() => [])) as Array<{ id?: string; name?: string; template_id?: string; config_json?: any }>;
+                )) as Array<{ id?: string; name?: string; template_id?: string; config_json?: any }>;
                 defaultAgentTemplateId = agentRows?.[0]?.template_id ?? null;
                 defaultAgentName = agentRows?.[0]?.name ?? null;
                 if (agentRows?.[0]?.id) {

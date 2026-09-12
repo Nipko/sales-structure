@@ -20,6 +20,7 @@
  */
 const fs = require('node:fs');
 const path = require('node:path');
+const ts = require('typescript');
 
 const ROOT = path.resolve(__dirname, '..', '..', '..');
 const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8');
@@ -42,6 +43,94 @@ function mustFind(value, what) {
             + 'y una fila no puede quedar en cero porque su lectura se rompió');
     }
     return value;
+}
+
+function unwrapExpression(node) {
+    let current = node;
+    while (current && (ts.isAsExpression(current) || ts.isParenthesizedExpression(current)
+        || ts.isSatisfiesExpression(current) || ts.isTypeAssertionExpression(current))) {
+        current = current.expression;
+    }
+    if (current && ts.isCallExpression(current) && current.arguments.length === 1) {
+        return unwrapExpression(current.arguments[0]);
+    }
+    return current;
+}
+
+function propertyName(node) {
+    if (!node) return '';
+    if (ts.isIdentifier(node) || ts.isStringLiteral(node) || ts.isNumericLiteral(node)) return node.text;
+    return '';
+}
+
+/** Read the live authority register; one non-null divergence is one open T2 correction. */
+function readinessDivergenceGaps(source = read('apps/api/src/common/utils/readiness-predicate-authority.util.ts')) {
+    const tree = ts.createSourceFile('readiness-predicate-authority.util.ts', source,
+        ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+    let registry = null;
+    const visit = node => {
+        if (ts.isVariableDeclaration(node) && propertyName(node.name) === 'READINESS_PREDICATE_AUTHORITY') {
+            registry = unwrapExpression(node.initializer);
+        }
+        ts.forEachChild(node, visit);
+    };
+    visit(tree);
+    if (!registry || !ts.isObjectLiteralExpression(registry)) {
+        mustFind(null, 'el objeto READINESS_PREDICATE_AUTHORITY');
+    }
+    const entries = [];
+    const gaps = [];
+    for (const member of registry.properties) {
+        if (!ts.isPropertyAssignment(member)) continue;
+        const key = propertyName(member.name);
+        const body = unwrapExpression(member.initializer);
+        if (!key || !body || !ts.isObjectLiteralExpression(body)) continue;
+        entries.push(key);
+        const divergence = body.properties.find(prop => ts.isPropertyAssignment(prop)
+            && propertyName(prop.name) === 'divergence');
+        if (!divergence || !ts.isPropertyAssignment(divergence)) {
+            throw new Error(`tools rows: ${key} no declara divergence; T2 no puede inferir silencio como conformidad`);
+        }
+        if (unwrapExpression(divergence.initializer).kind !== ts.SyntaxKind.NullKeyword) gaps.push(key);
+    }
+    mustFind(entries, 'las entradas de READINESS_PREDICATE_AUTHORITY');
+    return gaps;
+}
+
+/** Structural proof that Assist gets executable operations from the enforcing service. */
+function assistOperationAuthorityGaps(source = read('apps/api/src/modules/copilot/copilot.service.ts')) {
+    const tree = ts.createSourceFile('copilot.service.ts', source,
+        ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+    let importsAuthority = false;
+    let injectsAuthority = false;
+    let callsAuthority = false;
+    let derivesCreatable = false;
+    let readsProvisioningCapabilities = false;
+    const textOf = node => source.slice(node.getStart(tree), node.end);
+    const visit = node => {
+        if (ts.isImportDeclaration(node) && node.moduleSpecifier.getText(tree).includes('agent-content-proposal.service')) {
+            importsAuthority = textOf(node).includes('AgentContentProposalService');
+        }
+        if (ts.isParameter(node) && propertyName(node.name) === 'operations'
+            && node.type?.getText(tree).includes('AgentContentProposalService')) injectsAuthority = true;
+        if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
+            && node.expression.name.text === 'listOperations'
+            && node.expression.expression.getText(tree) === 'this.operations') callsAuthority = true;
+        if (ts.isVariableDeclaration(node) && propertyName(node.name) === 'creatableOperations'
+            && node.initializer && textOf(node.initializer).includes('operationVerdicts')) derivesCreatable = true;
+        if (ts.isPropertyAccessExpression(node) && node.name.text === 'effectiveCapabilities') {
+            readsProvisioningCapabilities = true;
+        }
+        ts.forEachChild(node, visit);
+    };
+    visit(tree);
+    const gaps = [];
+    if (!importsAuthority) gaps.push('Assist no importa AgentContentProposalService');
+    if (!injectsAuthority) gaps.push('Assist no inyecta AgentContentProposalService');
+    if (!callsAuthority) gaps.push('Assist no consulta listOperations');
+    if (!derivesCreatable) gaps.push('Assist no deriva las operaciones ejecutables del veredicto compartido');
+    if (readsProvisioningCapabilities) gaps.push('Assist vuelve a leer effectiveCapabilities como autoridad paralela');
+    return gaps;
 }
 
 /**
@@ -242,6 +331,8 @@ function toolsRows(row, audit) {
 
     const scope = evidenceScopeWired();
     const tours = tourCoverageGaps();
+    const readinessGaps = readinessDivergenceGaps();
+    const assistGaps = assistOperationAuthorityGaps();
 
     /**
      * The five `file_claim` tasks are step-up NEGATIVES on purpose: the product
@@ -266,17 +357,14 @@ function toolsRows(row, audit) {
                 + 'pruebas. Una bandera que sólo su esquema y su formulario mencionan es un '
                 + 'control que el dueño puede mover sin consecuencia, y la pantalla dice que hizo algo.' }),
 
-        row('T2', { provenance: 'declared',
-            open: 1,
-            openLabel: 'la preparación por herramienta todavía no se audita contra el predicado '
-                + 'real de cada una (activo, disponibilidad, capacidad, precio/moneda, propiedad '
-                + 'del dato y relación con la cuenta)',
+        row('T2', { provenance: 'derived',
+            open: readinessGaps.length,
+            openLabel: `${readinessGaps.length} predicados de preparación aún divergen de su herramienta`
+                + (readinessGaps.length ? `: ${readinessGaps.join(', ')}` : ''),
             gates: [],
-            evidence: 'Condición de cierre: cada readiness cita el predicado que su herramienta '
-                + 'evalúa de verdad y distingue falta de datos de error de lectura. Contar una '
-                + 'fila cualquiera no basta: una cuenta sin capacidad no está lista por tener un '
-                + 'servicio. Esta fila es `declared` porque la comparación predicado-a-predicado '
-                + 'todavía no es mecánica; la condición dice qué la cerraría.' }),
+            evidence: 'Derivado de cada entrada no nula de `READINESS_PREDICATE_AUTHORITY`. '
+                + 'Cada readiness cita el predicado que su herramienta evalúa y el registro se '
+                + 'reduce únicamente cuando la corrección aterriza junto con su prueba.' }),
 
         row('T3', { provenance: 'derived',
             open: scope.wired ? 0 : 1,
@@ -309,15 +397,14 @@ function toolsRows(row, audit) {
                 + `certificación por canal y modelo real sigue en cero (${coverage.certifiedProfiles ?? 0}`
                 + '/76) y es gate externo, no trabajo local.' }),
 
-        row('T6', { provenance: 'declared',
-            open: 1,
-            openLabel: 'Assist todavía no consume el diagnóstico común como única lista de '
-                + 'capacidades y operaciones ejecutables',
+        row('T6', { provenance: 'derived',
+            open: assistGaps.length,
+            openLabel: assistGaps.join('; '),
             gates: [],
-            evidence: 'Condición de cierre: Assist propone sólo operaciones que puede ejecutar, '
-                + 'explica las demás con destino permitido por rol, y no mantiene un segundo '
-                + 'listado de capacidades en los prompts. Activado, preparado, probado, degradado '
-                + 'y bloqueado se mantienen como estados distintos.' }),
+            evidence: 'Derivado del AST de `copilot.service.ts`: Assist inyecta '
+                + '`AgentContentProposalService`, consulta `listOperations`, deriva de sus '
+                + 'veredictos la lista ejecutable y no vuelve a leer `effectiveCapabilities` '
+                + 'como una autoridad paralela.' }),
     ];
 
     /**
@@ -345,4 +432,5 @@ function toolsRows(row, audit) {
 
 module.exports = {
     toolsRows, controlsWithoutConsumer, evidenceScopeWired, tourCoverageGaps, closureWiring,
+    readinessDivergenceGaps, assistOperationAuthorityGaps,
 };

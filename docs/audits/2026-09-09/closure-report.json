@@ -1,18 +1,18 @@
 {
   "version": 1,
-  "revision": "abcbbea8ebfe76e55ce3e563ae53902e99441cfe",
-  "generatedAt": "2026-09-12T19:17:11.369Z",
+  "revision": "858a38220ca6bb2d882ec7a3603f2b393660f63b",
+  "generatedAt": "2026-09-12T19:24:45.219Z",
   "finished": false,
   "counts": {
-    "aceptada": 14,
+    "aceptada": 15,
     "bloqueada": 22,
-    "abierta": 9,
+    "abierta": 8,
     "diferida": 1
   },
   "provenance": {
-    "derived": 27,
+    "derived": 29,
     "executed_evidence": 3,
-    "declared": 16
+    "declared": 14
   },
   "contradictions": [],
   "gates": {
@@ -637,13 +637,13 @@
     },
     {
       "id": "T2",
-      "open": 1,
-      "openLabel": "la preparación por herramienta todavía no se audita contra el predicado real de cada una (activo, disponibilidad, capacidad, precio/moneda, propiedad del dato y relación con la cuenta)",
+      "open": 8,
+      "openLabel": "8 predicados de preparación aún divergen de su herramienta: appointment_services, treatment_catalog, properties, courses, professional_cases, insurance_plans, service_catalog, boarding_capacity",
       "gates": [],
       "status": "abierta",
-      "provenance": "declared",
+      "provenance": "derived",
       "artefact": null,
-      "evidence": "Condición de cierre: cada readiness cita el predicado que su herramienta evalúa de verdad y distingue falta de datos de error de lectura. Contar una fila cualquiera no basta: una cuenta sin capacidad no está lista por tener un servicio. Esta fila es `declared` porque la comparación predicado-a-predicado todavía no es mecánica; la condición dice qué la cerraría.",
+      "evidence": "Derivado de cada entrada no nula de `READINESS_PREDICATE_AUTHORITY`. Cada readiness cita el predicado que su herramienta evalúa y el registro se reduce únicamente cuando la corrección aterriza junto con su prueba.",
       "commits": [],
       "deferral": null
     },
@@ -688,13 +688,13 @@
     },
     {
       "id": "T6",
-      "open": 1,
-      "openLabel": "Assist todavía no consume el diagnóstico común como única lista de capacidades y operaciones ejecutables",
+      "open": 0,
+      "openLabel": "",
       "gates": [],
-      "status": "abierta",
-      "provenance": "declared",
+      "status": "aceptada",
+      "provenance": "derived",
       "artefact": null,
-      "evidence": "Condición de cierre: Assist propone sólo operaciones que puede ejecutar, explica las demás con destino permitido por rol, y no mantiene un segundo listado de capacidades en los prompts. Activado, preparado, probado, degradado y bloqueado se mantienen como estados distintos.",
+      "evidence": "Derivado del AST de `copilot.service.ts`: Assist inyecta `AgentContentProposalService`, consulta `listOperations`, deriva de sus veredictos la lista ejecutable y no vuelve a leer `effectiveCapabilities` como una autoridad paralela.",
       "commits": [],
       "deferral": null
     },

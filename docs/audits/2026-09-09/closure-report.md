@@ -5,10 +5,10 @@ el estado sale de ella: con una condición local sin cumplir la fila está `abie
 cumplida y un gate externo nombrado está `bloqueada`; sólo sin condición y sin gate está `aceptada`.
 Cerrar un hueco cambia esta tabla cambiando el código, y reabrirlo la cambia de vuelta.
 
-Revisión: `abcbbea8ebfe76e55ce3e563ae53902e99441cfe`.
+Revisión: `858a38220ca6bb2d882ec7a3603f2b393660f63b`.
 
-**El programa no está terminado.** 14 filas aceptadas, 22 bloqueadas por un
-gate externo concreto, 9 abiertas y 1 diferidas por decisión
+**El programa no está terminado.** 15 filas aceptadas, 22 bloqueadas por un
+gate externo concreto, 8 abiertas y 1 diferidas por decisión
 explícita de alcance; 0 perfiles certificados
 de 76.
 
@@ -70,18 +70,18 @@ Ese barrido corre dos veces: sobre las filas recién construidas y otra vez sobr
 | R5 | **abierta** | contador | 1 de 18 escenarios de la matriz de aceptación sin prueba que los conteste: Humano, REST, campaña y recordatorio | La matriz dejó de ser una tabla en un documento: sus 18 filas son datos, cada una nombra el archivo y UN TÍTULO POR MITAD del escenario, y una comprobación verifica que cada título sea el de un `it()` que de verdad corre — ni prosa, ni un `describe`, ni un `skip`. Una fila vale lo que su mitad más delgada: si una de ellas no está probada, la fila entera figura con `null` y dice qué haría falta, en vez de quedar fuera de la tabla para que la columna parezca llena — que es exactamente cómo un contador llega a cero sin que nadie cierre nada. | — |
 | R6 | **bloqueada** por gate 1 y 5 y 7 | contador | — | El criterio principal de R6, textual: **ningún productor de WhatsApp puede generar una entrega fuera de la autorización aplicable**. Esa autorización es la autoridad económica transaccional, y el censo derivado del árbol cuenta 0 productores cobrables que llegan a un POST sin pasarla — incluido el carril legado de BullMQ, que sí la pasa. Lo verifica una mutación que borra el gate del sink real, no esta frase. **Este contador sumó hasta este HEAD los 7 productores fuera del carril durable (1 en `inline`, 6 en `outbound_queue`), que es otra propiedad**: no hay fila antes del POST, así que nadie puede contestar "¿esto salió?" tras un reinicio. No desaparece: es exactamente lo que mantienen abiertas R0 y R4. Con la condición local cumplida esta fila queda bloqueada por el modo observación, el canario con techo explícito y la autorización de activar `enforce`. | — |
 | T1 | **aceptada** | contador | — | Derivado del contrato de perfil de negocio contra los módulos que pueden actuar sobre cada bandera, excluyendo el propio contrato, el editor y las pruebas. Una bandera que sólo su esquema y su formulario mencionan es un control que el dueño puede mover sin consecuencia, y la pantalla dice que hizo algo. | — |
-| T2 | **abierta** | **declaración** | la preparación por herramienta todavía no se audita contra el predicado real de cada una (activo, disponibilidad, capacidad, precio/moneda, propiedad del dato y relación con la cuenta) | Condición de cierre: cada readiness cita el predicado que su herramienta evalúa de verdad y distingue falta de datos de error de lectura. Contar una fila cualquiera no basta: una cuenta sin capacidad no está lista por tener un servicio. Esta fila es `declared` porque la comparación predicado-a-predicado todavía no es mecánica; la condición dice qué la cerraría. | — |
+| T2 | **abierta** | contador | 8 predicados de preparación aún divergen de su herramienta: appointment_services, treatment_catalog, properties, courses, professional_cases, insurance_plans, service_catalog, boarding_capacity | Derivado de cada entrada no nula de `READINESS_PREDICATE_AUTHORITY`. Cada readiness cita el predicado que su herramienta evalúa y el registro se reduce únicamente cuando la corrección aterriza junto con su prueba. | — |
 | T3 | **aceptada** | contador | — | Leído de la llamada, no de un comentario: the assessment passes a scope to intentEvidence. Sin scope el lector no puede reconocer evidencia producida bajo la configuración actual, y un agente probado se ve igual que uno que nadie probó. | — |
 | T4 | **aceptada** | contador | — | Derivado de `DISCOVERY_ORDER` contra la tabla por elemento del tour. Un elemento que aparece en el panel y no en el recorrido es una pantalla a la que se manda al dueño sin decirle para qué sirve, qué datos necesita, qué puede confirmar ni qué cuesta. | — |
 | T5 | **bloqueada** por gate 1 y 4 | contador | — | Universo canónico conservado: 76 perfiles, 268 tareas, 146 que comprometen al negocio. La verificación determinista local es lo que esta fila mide; la certificación por canal y modelo real sigue en cero (0/76) y es gate externo, no trabajo local. | — |
-| T6 | **abierta** | **declaración** | Assist todavía no consume el diagnóstico común como única lista de capacidades y operaciones ejecutables | Condición de cierre: Assist propone sólo operaciones que puede ejecutar, explica las demás con destino permitido por rol, y no mantiene un segundo listado de capacidades en los prompts. Activado, preparado, probado, degradado y bloqueado se mantienen como estados distintos. | — |
+| T6 | **aceptada** | contador | — | Derivado del AST de `copilot.service.ts`: Assist inyecta `AgentContentProposalService`, consulta `listOperations`, deriva de sus veredictos la lista ejecutable y no vuelve a leer `effectiveCapabilities` como una autoridad paralela. | — |
 | T7 | **aceptada** | contador | — | El programa de herramientas entra al gate oficial por UNA autoridad compartida: `verify-artifacts.cjs` ejecuta `generate-tool-profile-audit --check` junto con los otros generadores, y `candidate`, `deploy` y `vertical-quality` llaman a ese verificador en vez de llevar cada uno su propia lista. El artefacto de herramientas quedó stale sin impedir un cierre precisamente porque no estaba ahí. Que el gate se pone rojo ante una fuente modificada lo demuestra una prueba que cambia una fuente auditada y captura la transición, no la afirmación de que el árbol está al día. Las seis filas T1–T6 se derivan de lecturas del código, nunca de prosa ni de la existencia de un test. | — |
 
 ## De dónde sale cada fila
 
-27 filas salen de un contador leído del código: cerrar el hueco las cambia solo.
+29 filas salen de un contador leído del código: cerrar el hueco las cambia solo.
 3 descansan sobre un artefacto de una corrida real, nombrado en la tabla.
-**16 son declaraciones humanas pendientes de revisión**: A2, A3, A4, C1, D1, D3, E3, F3, F4, G2, G3, H2, M4, M6, T2, T6. Cambiar el código de esas áreas no cambia su estado, y por eso se dicen aparte en vez de presentarse como calculadas.
+**14 son declaraciones humanas pendientes de revisión**: A2, A3, A4, C1, D1, D3, E3, F3, F4, G2, G3, H2, M4, M6. Cambiar el código de esas áreas no cambia su estado, y por eso se dicen aparte en vez de presentarse como calculadas.
 
 ## Los contadores de los que sale la tabla
 

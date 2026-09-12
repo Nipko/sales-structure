@@ -171,6 +171,25 @@ describe('the tools programme rows read something real', () => {
         expect(String(scope.detail)).not.toContain('TODO');
     });
 
+    it('derives T2 from the readiness authority instead of a declared number', () => {
+        const gaps = rowsModule.readinessDivergenceGaps();
+        const t2 = find('T2');
+        expect(gaps.length).toBeGreaterThan(0);
+        expect(t2).toMatchObject({ provenance: 'derived', open: gaps.length });
+        for (const key of gaps) expect(String(t2.openLabel)).toContain(key);
+    });
+
+    it('derives T6 from the service Assist actually calls', () => {
+        const t6 = find('T6');
+        expect(rowsModule.assistOperationAuthorityGaps()).toEqual([]);
+        expect(t6).toMatchObject({ provenance: 'derived', open: 0 });
+
+        const source = fs.readFileSync(resolve(ROOT, 'apps/api/src/modules/copilot/copilot.service.ts'), 'utf8');
+        const broken = source.replace('.listOperations(tenantId', '.listOperationsRemoved(tenantId');
+        expect(rowsModule.assistOperationAuthorityGaps(broken))
+            .toContain('Assist no consulta listOperations');
+    });
+
     it('does not count the five step-up negatives as missing positives', () => {
         // The `file_claim` tasks are refusals on purpose. Counting them as gaps
         // invites somebody to fabricate a positive, which is the one outcome

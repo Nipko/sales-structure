@@ -1,12 +1,12 @@
 {
   "version": 1,
-  "revision": "9659f5979436cf69931d6350ea5df152c4d6933f",
-  "generatedAt": "2026-09-12T08:45:58.659Z",
+  "revision": "b9e1246e35b0fb54dac891686b7740bc3884ff57",
+  "generatedAt": "2026-09-12T08:58:20.515Z",
   "finished": false,
   "counts": {
-    "aceptada": 11,
+    "aceptada": 13,
     "bloqueada": 21,
-    "abierta": 13
+    "abierta": 11
   },
   "provenance": {
     "derived": 26,
@@ -605,21 +605,21 @@
     },
     {
       "id": "T3",
-      "open": 1,
-      "openLabel": "assessment no entrega un scope autoritativo, así que toda evidencia queda `not_verified` de forma permanente",
+      "open": 0,
+      "openLabel": "",
       "gates": [],
-      "status": "abierta",
+      "status": "aceptada",
       "provenance": "derived",
       "artefact": null,
-      "evidence": "Leído de la llamada, no de un comentario: intentEvidence is called with no scope: intent.key, Number(agent.version) || null, sealedRuns. Sin scope el lector no puede reconocer evidencia producida bajo la configuración actual, y un agente probado se ve igual que uno que nadie probó.",
+      "evidence": "Leído de la llamada, no de un comentario: the assessment passes a scope to intentEvidence. Sin scope el lector no puede reconocer evidencia producida bajo la configuración actual, y un agente probado se ve igual que uno que nadie probó.",
       "commits": []
     },
     {
       "id": "T4",
-      "open": 1,
-      "openLabel": "1 de 20 elementos de descubrimiento sin recorrido: serviceCatalog",
+      "open": 0,
+      "openLabel": "0 de 23 elementos de descubrimiento sin recorrido",
       "gates": [],
-      "status": "abierta",
+      "status": "aceptada",
       "provenance": "derived",
       "artefact": null,
       "evidence": "Derivado de `DISCOVERY_ORDER` contra la tabla por elemento del tour. Un elemento que aparece en el panel y no en el recorrido es una pantalla a la que se manda al dueño sin decirle para qué sirve, qué datos necesita, qué puede confirmar ni qué cuesta.",

@@ -6398,6 +6398,12 @@
       "openCopilot": "Abrir copiloto",
       "copilotQueued": "Se abrirá al finalizar",
       "opensInNewTab": "abre en una pestaña nueva",
+      "briefLabels": {
+        "needs": "Necesita:",
+        "confirms": "Confirma:",
+        "cost": "Cuesta:",
+        "test": "Pruébalo:"
+      },
       "tools": {
         "knowledge": {
           "name": "Base de conocimiento",
@@ -6498,6 +6504,38 @@
         "orders": {
           "name": "Pedidos",
           "desc": "Gestiona pedidos para que el agente informe estados y tome nuevos."
+        },
+        "stays": {
+          "name": "Reservas",
+          "desc": "Todas las estadías de todos tus alojamientos en un solo lugar, con su origen y su estado.",
+          "needs": "Al menos un alojamiento publicado en Propiedades; el huésped y las fechas llegan con cada reserva.",
+          "confirms": "Entrada, salida, estado del pago y si la reserva la tomó el agente o una persona.",
+          "cost": "Cargar una reserva a mano toma un minuto, y la pantalla verifica la disponibilidad antes de dejarte guardar.",
+          "test": "Abre Nueva reserva, elige fechas y mira si te dice que están libres. Puedes cerrar sin guardar nada."
+        },
+        "tourBookings": {
+          "name": "Reservas de tours",
+          "desc": "Las salidas de cada día con sus viajeros, sin tener que abrir el paquete que las vende.",
+          "needs": "Tus tours cargados en Tours y paquetes; los viajeros llegan con cada reserva.",
+          "confirms": "Fecha de salida, tamaño del grupo, estado del pago y si la reserva la tomó el agente.",
+          "cost": "Nada: es una pantalla de solo lectura. Las reservas se crean desde el paquete o desde la conversación.",
+          "test": "Busca por el nombre de un viajero o filtra por estado; la columna Origen te dice de dónde salió."
+        },
+        "cases": {
+          "name": "Casos",
+          "desc": "Los expedientes del estudio en su propio idioma: en qué etapa está cada uno y cuándo se movió.",
+          "needs": "Nada que cargar: un caso se abre solo cuando una consulta avanza en tu embudo.",
+          "confirms": "La etapa de cada expediente, el cliente al que pertenece y su último movimiento.",
+          "cost": "Nada: es de solo lectura. Abrir o mover un caso sigue pasando por las reglas del embudo que definiste.",
+          "test": "Filtra por Abiertos y entra a Ver conversación para leer de dónde salió el caso."
+        },
+        "serviceCatalog": {
+          "name": "Paquetes y servicios",
+          "desc": "Carga lo que vendes para que el agente lo ofrezca, lo explique y lo cotice.",
+          "needs": "Nombre, duración y precio de cada paquete o servicio.",
+          "confirms": "Qué puede ofrecer el agente hoy: con el catálogo vacío, la pantalla te avisa que responderá que no hay nada.",
+          "cost": "Unos minutos por paquete. Es el mismo editor de la Agenda, así que lo que cargues acá vale para los dos lados.",
+          "test": "Carga un paquete y pregúntale al agente qué ofrecen en el chat de prueba de este asistente."
         },
         "crm": {
           "name": "CRM y contactos"

@@ -5,10 +5,10 @@ el estado sale de ella: con una condición local sin cumplir la fila está `abie
 cumplida y un gate externo nombrado está `bloqueada`; sólo sin condición y sin gate está `aceptada`.
 Cerrar un hueco cambia esta tabla cambiando el código, y reabrirlo la cambia de vuelta.
 
-Revisión: `9659f5979436cf69931d6350ea5df152c4d6933f`.
+Revisión: `b9e1246e35b0fb54dac891686b7740bc3884ff57`.
 
-**El programa no está terminado.** 11 filas aceptadas, 21 bloqueadas por un
-gate externo concreto y 13 abiertas; 0 perfiles certificados
+**El programa no está terminado.** 13 filas aceptadas, 21 bloqueadas por un
+gate externo concreto y 11 abiertas; 0 perfiles certificados
 de 76.
 
 Sin contradicciones en las 45 filas: a cada una se le recalculó el estado a partir de sus propias condiciones, ninguna fila abierta deja de decir qué falta, ningún gate nombrado falta de la lista, ninguna cifra quedó sin resolver y todo artefacto citado existe.
@@ -70,8 +70,8 @@ Ese barrido corre dos veces: sobre las filas recién construidas y otra vez sobr
 | R6 | **abierta** | contador | 7 productores pueden entregar fuera de la autorización aplicable (y después, gate 1 y 5 y 7) | El criterio principal de R6, textual: **ningún productor de WhatsApp puede generar una entrega fuera de la autorización aplicable**. Mientras el contador sea distinto de cero la fila está abierta, y después seguirá bloqueada por el modo observación, el canario con techo explícito y la autorización de activar `enforce`. | — |
 | T1 | **abierta** | contador | 15 controles configurables (familia.bandera) sin consumidor productivo: orders.emailConfirmations, treatments.emailConfirmations, realEstate.emailConfirmations, pets.emailConfirmations, restaurants.emailConfirmations, gyms.emailConfirmations y 9 más | Derivado del contrato de perfil de negocio contra los módulos que pueden actuar sobre cada bandera, excluyendo el propio contrato, el editor y las pruebas. Una bandera que sólo su esquema y su formulario mencionan es un control que el dueño puede mover sin consecuencia, y la pantalla dice que hizo algo. | — |
 | T2 | **abierta** | **declaración** | la preparación por herramienta todavía no se audita contra el predicado real de cada una (activo, disponibilidad, capacidad, precio/moneda, propiedad del dato y relación con la cuenta) | Condición de cierre: cada readiness cita el predicado que su herramienta evalúa de verdad y distingue falta de datos de error de lectura. Contar una fila cualquiera no basta: una cuenta sin capacidad no está lista por tener un servicio. Esta fila es `declared` porque la comparación predicado-a-predicado todavía no es mecánica; la condición dice qué la cerraría. | — |
-| T3 | **abierta** | contador | assessment no entrega un scope autoritativo, así que toda evidencia queda `not_verified` de forma permanente | Leído de la llamada, no de un comentario: intentEvidence is called with no scope: intent.key, Number(agent.version) || null, sealedRuns. Sin scope el lector no puede reconocer evidencia producida bajo la configuración actual, y un agente probado se ve igual que uno que nadie probó. | — |
-| T4 | **abierta** | contador | 1 de 20 elementos de descubrimiento sin recorrido: serviceCatalog | Derivado de `DISCOVERY_ORDER` contra la tabla por elemento del tour. Un elemento que aparece en el panel y no en el recorrido es una pantalla a la que se manda al dueño sin decirle para qué sirve, qué datos necesita, qué puede confirmar ni qué cuesta. | — |
+| T3 | **aceptada** | contador | — | Leído de la llamada, no de un comentario: the assessment passes a scope to intentEvidence. Sin scope el lector no puede reconocer evidencia producida bajo la configuración actual, y un agente probado se ve igual que uno que nadie probó. | — |
+| T4 | **aceptada** | contador | — | Derivado de `DISCOVERY_ORDER` contra la tabla por elemento del tour. Un elemento que aparece en el panel y no en el recorrido es una pantalla a la que se manda al dueño sin decirle para qué sirve, qué datos necesita, qué puede confirmar ni qué cuesta. | — |
 | T5 | **bloqueada** por gate 1 y 4 | contador | — | Universo canónico conservado: 76 perfiles, 268 tareas, 146 que comprometen al negocio. La verificación determinista local es lo que esta fila mide; la certificación por canal y modelo real sigue en cero (0/76) y es gate externo, no trabajo local. | — |
 | T6 | **abierta** | **declaración** | Assist todavía no consume el diagnóstico común como única lista de capacidades y operaciones ejecutables | Condición de cierre: Assist propone sólo operaciones que puede ejecutar, explica las demás con destino permitido por rol, y no mantiene un segundo listado de capacidades en los prompts. Activado, preparado, probado, degradado y bloqueado se mantienen como estados distintos. | — |
 

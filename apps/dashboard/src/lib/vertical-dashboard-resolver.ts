@@ -160,10 +160,22 @@ export function isVerticalDashboardPathVisible(
   return !item || resolution.visibleItems.includes(item);
 }
 
-/** Domain-first ordering shared by setup discovery and the product tour. */
-const DISCOVERY_ORDER: readonly VerticalDashboardItem[] = [
+/**
+ * Domain-first ordering shared by setup discovery and the product tour.
+ *
+ * Exported because the tour is the only consumer that can be wrong about it:
+ * an item reachable here with no card in `ToolsTour` disappears from discovery
+ * without anything failing, which is exactly how `serviceCatalog` sat in this
+ * list while the tour silently dropped it.
+ */
+export const DISCOVERY_ORDER: readonly VerticalDashboardItem[] = [
   "properties",
+  // El registro operativo va junto a su catálogo, e inmediatamente después:
+  // el catálogo es lo que hay que cargar para que exista una reserva, pero la
+  // reserva es lo que se trabaja todos los días.
+  "stays",
   "tours",
+  "tourBookings",
   "listings",
   "resourceRentals",
   "repairOrders",
@@ -181,6 +193,11 @@ const DISCOVERY_ORDER: readonly VerticalDashboardItem[] = [
   "pets",
   "photoSessions",
   "serviceCatalog",
+  // Antes de la agenda a propósito: el manifiesto declara `professional_case`
+  // como objeto PRIMARIO de `servicios_profesionales` y publica `/admin/cases`
+  // antes que `/admin/appointments`. Con los casos después, el estudio abría el
+  // tour y lo primero que le presentábamos era la agenda.
+  "cases",
   "appointments",
 ];
 

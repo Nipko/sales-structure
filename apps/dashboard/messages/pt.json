@@ -6398,6 +6398,12 @@
       "openCopilot": "Abrir copiloto",
       "copilotQueued": "Abrirá ao finalizar",
       "opensInNewTab": "abre em uma nova aba",
+      "briefLabels": {
+        "needs": "Precisa:",
+        "confirms": "Confirma:",
+        "cost": "Custa:",
+        "test": "Teste:"
+      },
       "tools": {
         "knowledge": {
           "name": "Base de conhecimento",
@@ -6498,6 +6504,38 @@
         "orders": {
           "name": "Pedidos",
           "desc": "Gerencie pedidos para o agente informar status e receber novos."
+        },
+        "stays": {
+          "name": "Reservas",
+          "desc": "Todas as estadias de todas as suas acomodações em um só lugar, com origem e status.",
+          "needs": "Pelo menos uma acomodação publicada em Imóveis; o hóspede e as datas chegam com cada reserva.",
+          "confirms": "Entrada, saída, status do pagamento e se a reserva foi feita pelo agente ou por uma pessoa.",
+          "cost": "Lançar uma reserva à mão leva um minuto, e a tela verifica a disponibilidade antes de deixar você salvar.",
+          "test": "Abra Nova reserva, escolha datas e veja se ela diz que estão livres. Você pode fechar sem salvar nada."
+        },
+        "tourBookings": {
+          "name": "Reservas de tours",
+          "desc": "As saídas de cada dia com seus viajantes, sem precisar abrir o pacote que as vende.",
+          "needs": "Seus passeios cadastrados em Passeios e pacotes; os viajantes chegam com cada reserva.",
+          "confirms": "Data de saída, tamanho do grupo, status do pagamento e se a reserva foi feita pelo agente.",
+          "cost": "Nada: é uma tela somente de leitura. As reservas são criadas pelo pacote ou pela conversa.",
+          "test": "Busque pelo nome de um viajante ou filtre por status; a coluna Origem diz de onde ela veio."
+        },
+        "cases": {
+          "name": "Casos",
+          "desc": "Os processos do escritório na linguagem do escritório: em que etapa está cada um e quando se moveu.",
+          "needs": "Nada para cadastrar: um caso abre sozinho quando uma consulta avança no seu funil.",
+          "confirms": "A etapa de cada processo, o cliente a quem pertence e a sua última movimentação.",
+          "cost": "Nada: é somente leitura. Abrir ou mover um caso continua passando pelas regras do funil que você definiu.",
+          "test": "Filtre por Abertos e entre em Ver conversa para ler de onde o caso saiu."
+        },
+        "serviceCatalog": {
+          "name": "Pacotes e serviços",
+          "desc": "Cadastre o que você vende para o agente oferecer, explicar e orçar.",
+          "needs": "Nome, duração e preço de cada pacote ou serviço.",
+          "confirms": "O que o agente pode oferecer hoje: com o catálogo vazio, a tela avisa que ele vai responder que não há nada.",
+          "cost": "Alguns minutos por pacote. É o mesmo editor da Agenda, então o que você cadastrar aqui vale nos dois lados.",
+          "test": "Cadastre um pacote e pergunte ao agente o que vocês oferecem no chat de teste deste assistente."
         },
         "crm": {
           "name": "CRM e contatos"

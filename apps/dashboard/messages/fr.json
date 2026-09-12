@@ -6398,6 +6398,12 @@
       "openCopilot": "Ouvrir le copilote",
       "copilotQueued": "S’ouvrira à la fin",
       "opensInNewTab": "s’ouvre dans un nouvel onglet",
+      "briefLabels": {
+        "needs": "Nécessite :",
+        "confirms": "Confirme :",
+        "cost": "Coûte :",
+        "test": "Essayez :"
+      },
       "tools": {
         "knowledge": {
           "name": "Base de connaissances",
@@ -6498,6 +6504,38 @@
         "orders": {
           "name": "Commandes",
           "desc": "Gérez les commandes pour que l'agent indique les statuts et en prenne."
+        },
+        "stays": {
+          "name": "Séjours",
+          "desc": "Tous les séjours de tous vos hébergements au même endroit, avec leur origine et leur statut.",
+          "needs": "Au moins un hébergement publié dans Biens immobiliers ; le client et les dates arrivent avec chaque réservation.",
+          "confirms": "Arrivée, départ, statut du paiement et si la réservation vient de l'agent ou d'une personne.",
+          "cost": "Saisir une réservation à la main prend une minute, et l'écran vérifie la disponibilité avant de vous laisser enregistrer.",
+          "test": "Ouvrez Nouvelle réservation, choisissez des dates et voyez s'il vous dit qu'elles sont libres. Vous pouvez fermer sans rien enregistrer."
+        },
+        "tourBookings": {
+          "name": "Réservations de tours",
+          "desc": "Les départs de chaque jour avec leurs voyageurs, sans ouvrir le forfait qui les vend.",
+          "needs": "Vos circuits saisis dans Circuits et forfaits ; les voyageurs arrivent avec chaque réservation.",
+          "confirms": "Date de départ, taille du groupe, statut du paiement et si la réservation vient de l'agent.",
+          "cost": "Rien : l'écran est en lecture seule. Les réservations se créent depuis le forfait ou depuis la conversation.",
+          "test": "Cherchez le nom d'un voyageur ou filtrez par statut ; la colonne Origine vous dit d'où elle vient."
+        },
+        "cases": {
+          "name": "Dossiers",
+          "desc": "Les dossiers du cabinet dans les mots du cabinet : à quelle étape est chacun et quand il a bougé.",
+          "needs": "Rien à saisir : un dossier s'ouvre tout seul quand une demande avance dans votre pipeline.",
+          "confirms": "L'étape de chaque dossier, le client auquel il appartient et son dernier mouvement.",
+          "cost": "Rien : c'est en lecture seule. Ouvrir ou déplacer un dossier passe toujours par les règles du pipeline que vous avez définies.",
+          "test": "Filtrez sur Ouverts et utilisez Voir la conversation pour lire d'où vient le dossier."
+        },
+        "serviceCatalog": {
+          "name": "Forfaits et services",
+          "desc": "Saisissez ce que vous vendez pour que l'agent le propose, l'explique et le chiffre.",
+          "needs": "Un nom, une durée et un prix pour chaque forfait ou service.",
+          "confirms": "Ce que l'agent peut proposer aujourd'hui : avec un catalogue vide, l'écran vous prévient qu'il répondra qu'il n'y a rien.",
+          "cost": "Quelques minutes par forfait. C'est le même éditeur que l'Agenda, donc ce que vous saisissez ici vaut des deux côtés.",
+          "test": "Saisissez un forfait et demandez à l'agent ce que vous proposez dans le chat de test de cet assistant."
         },
         "crm": {
           "name": "CRM et contacts"

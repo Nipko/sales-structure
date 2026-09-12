@@ -6398,6 +6398,12 @@
       "openCopilot": "Open copilot",
       "copilotQueued": "Opens after setup",
       "opensInNewTab": "opens in a new tab",
+      "briefLabels": {
+        "needs": "Needs:",
+        "confirms": "Confirms:",
+        "cost": "Costs:",
+        "test": "Try it:"
+      },
       "tools": {
         "knowledge": {
           "name": "Knowledge base",
@@ -6498,6 +6504,38 @@
         "orders": {
           "name": "Orders",
           "desc": "Manage orders so the agent reports status and takes new ones."
+        },
+        "stays": {
+          "name": "Stays",
+          "desc": "Every stay across every property in one place, with its origin and its status.",
+          "needs": "At least one property published under Properties; the guest and the dates arrive with each booking.",
+          "confirms": "Check-in, check-out, payment status, and whether the agent or a person took the booking.",
+          "cost": "Adding a booking by hand takes a minute, and the screen checks availability before it lets you save.",
+          "test": "Open New booking, pick dates and see whether it says they are free. You can close without saving anything."
+        },
+        "tourBookings": {
+          "name": "Tour bookings",
+          "desc": "Each day's departures with their travellers, without opening the package that sells them.",
+          "needs": "Your tours loaded under Tours & packages; travellers arrive with each booking.",
+          "confirms": "Departure date, party size, payment status, and whether the agent took the booking.",
+          "cost": "Nothing: the screen is read-only. Bookings are created from the package or from the conversation.",
+          "test": "Search a traveller's name or filter by status; the Origin column tells you where it came from."
+        },
+        "cases": {
+          "name": "Cases",
+          "desc": "Your practice's files in your practice's words: what stage each one is at and when it last moved.",
+          "needs": "Nothing to load: a case opens on its own when an enquiry advances in your pipeline.",
+          "confirms": "The stage of each file, the client it belongs to, and its last movement.",
+          "cost": "Nothing: it is read-only. Opening or moving a case still goes through the pipeline rules you defined.",
+          "test": "Filter by Open and use View conversation to read where the case came from."
+        },
+        "serviceCatalog": {
+          "name": "Packages & services",
+          "desc": "Load what you sell so the agent offers it, explains it and quotes it.",
+          "needs": "A name, a duration and a price for each package or service.",
+          "confirms": "What the agent can offer today: with an empty catalogue the screen warns you it will answer that there is nothing.",
+          "cost": "A few minutes per package. It is the same editor as Appointments, so what you load here counts on both sides.",
+          "test": "Load a package and ask the agent what you offer in this wizard's test chat."
         },
         "crm": {
           "name": "CRM & contacts"

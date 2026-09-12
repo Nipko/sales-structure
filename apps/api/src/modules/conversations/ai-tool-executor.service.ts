@@ -2702,9 +2702,23 @@ export class AIToolExecutorService {
                 `SELECT config_json->'hours'->>'timezone' as tz FROM "${schema}".persona_config WHERE is_active = true LIMIT 1`,
             ) as any[];
             return rows[0]?.tz || 'America/Bogota';
-        } catch {
-            return 'America/Bogota';
+        } catch (error: any) {
+            // A database outage is not evidence that this tenant is in Bogotá.
+            // Guessing here shifts every offered and committed appointment for
+            // tenants in another timezone while the rest of the tool succeeds.
+            this.logger.error(`[Tool] tenant timezone could not be read for ${schema}: ${error?.message}`);
+            throw new Error('appointment_timezone_unavailable');
         }
+    }
+
+    private availabilityInfrastructureFailure(code: string): Record<string, unknown> {
+        return {
+            available: false,
+            error: code,
+            message: 'Scheduling availability could not be verified. Do not offer or book a slot; offer a human handoff instead.',
+            slots: [],
+            shouldHandoff: true,
+        };
     }
 
     private async checkAvailability(schema: string, date: string, serviceId: string, staffId?: string, namespace?: EvalNamespaceLease, vehicleId?: string): Promise<any> {
@@ -2802,10 +2816,16 @@ export class AIToolExecutorService {
         // ruta del dashboard los respeta (appointments.service.ts:598) y la de chat
         // no, así que el bot vendía turnos el 25 de diciembre. user_id NULL = el
         // negocio entero cerrado ese día.
-        const blockedRows: any[] = await this.prisma.$queryRawUnsafe(
-            `SELECT user_id FROM "${schema}".blocked_dates WHERE blocked_date = $1::date`,
-            date,
-        ).catch(() => []);
+        let blockedRows: any[];
+        try {
+            blockedRows = await this.prisma.$queryRawUnsafe(
+                `SELECT user_id FROM "${schema}".blocked_dates WHERE blocked_date = $1::date`,
+                date,
+            ) as any[];
+        } catch (error: any) {
+            this.logger.warn(`[Tool] blocked-date availability could not be verified: ${error?.message}`);
+            return this.availabilityInfrastructureFailure('calendar_availability_unverified');
+        }
         if (blockedRows.length) {
             const closedForAll = blockedRows.some(b => !b.user_id);
             if (closedForAll) return this.buildNoSlotsResult(schema);
@@ -2858,7 +2878,12 @@ export class AIToolExecutorService {
 
         // Generate available time slots
         const availableSlots: any[] = [];
-        const timezone = await this.getTenantTimezone(schema, namespace);
+        let timezone: string;
+        try {
+            timezone = await this.getTenantTimezone(schema, namespace);
+        } catch {
+            return this.availabilityInfrastructureFailure('appointment_timezone_unavailable');
+        }
 
         for (const slot of slots) {
             const [startH, startM] = slot.start_time.split(':').map(Number);
@@ -3020,10 +3045,16 @@ export class AIToolExecutorService {
 
         // blocked_dates también acá: una pernocta o una sesión de día completo no
         // debería ofrecerse un feriado que el dueño cerró.
-        const blockedOpen: any[] = await this.prisma.$queryRawUnsafe(
-            `SELECT user_id FROM "${schema}".blocked_dates WHERE blocked_date = $1::date`,
-            date,
-        ).catch(() => []);
+        let blockedOpen: any[];
+        try {
+            blockedOpen = await this.prisma.$queryRawUnsafe(
+                `SELECT user_id FROM "${schema}".blocked_dates WHERE blocked_date = $1::date`,
+                date,
+            ) as any[];
+        } catch (error: any) {
+            this.logger.warn(`[Tool] blocked-date availability could not be verified: ${error?.message}`);
+            return this.availabilityInfrastructureFailure('calendar_availability_unverified');
+        }
         if (blockedOpen.length) {
             if (blockedOpen.some(b => !b.user_id)) return this.buildNoSlotsResult(schema);
             const blockedIds = new Set(blockedOpen.map(b => b.user_id));
@@ -5852,6 +5883,13 @@ export class AIToolExecutorService {
     }
 
     private appointmentTemporalFailure(error: unknown): Record<string, unknown> {
+        if (error instanceof Error && error.message === 'appointment_timezone_unavailable') {
+            return {
+                error: 'appointment_timezone_unavailable',
+                message: 'The business timezone could not be verified. Do not create or reschedule an appointment; offer a human handoff instead.',
+                shouldHandoff: true,
+            };
+        }
         const response = error instanceof BadRequestException ? error.getResponse() : null;
         if (response && typeof response === 'object' && (response as any).requiresClarification === true) {
             return { error: (response as any).error, timezone: (response as any).timezone, requiresClarification: true,

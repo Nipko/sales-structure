@@ -673,4 +673,48 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
         expect(harness.prisma.$queryRawUnsafe.mock.calls.some(([sql]) =>
             String(sql).includes('availability_slots'))).toBe(false);
     });
+
+    it('does not offer a slot when closed dates cannot be read', async () => {
+        const service = { id: appointment.service_id, name: 'Consulta', duration_minutes: 30,
+            buffer_minutes: 0, duration_type: 'fixed', max_concurrent: 1 };
+        const harness = createHarness([[service], [{ user_id: null, start_time: '09:00:00', end_time: '10:00:00' }]]);
+        const original = harness.prisma.$queryRawUnsafe.getMockImplementation()!;
+        harness.prisma.$queryRawUnsafe.mockImplementation((sql: string, ...params: unknown[]) => {
+            if (sql.includes('blocked_dates')) return Promise.reject(new Error('relation unavailable'));
+            return original(sql, ...params);
+        });
+
+        const result = await harness.executor.execute(
+            schemaName, tenantId, contactId, 'check_availability',
+            { serviceId: appointment.service_id, date: '2026-08-12' }, undefined,
+            { operationalScope, authority: authorityFor('check_availability') },
+        );
+
+        expect(result).toMatchObject({ available: false, slots: [],
+            error: 'calendar_availability_unverified', shouldHandoff: true });
+    });
+
+    it('does not silently schedule in Bogotá when the tenant timezone read fails', async () => {
+        const service = { id: appointment.service_id, name: 'Consulta', duration_minutes: 30,
+            buffer_minutes: 0, duration_type: 'fixed', max_concurrent: 1 };
+        const harness = createHarness([
+            [service], [{ user_id: null, start_time: '09:00:00', end_time: '10:00:00' }], [], [],
+        ]);
+        const original = harness.prisma.$queryRawUnsafe.getMockImplementation()!;
+        harness.prisma.$queryRawUnsafe.mockImplementation((sql: string, ...params: unknown[]) => {
+            if (sql.includes("config_json->'hours'->>'timezone'")) {
+                return Promise.reject(new Error('database unavailable'));
+            }
+            return original(sql, ...params);
+        });
+
+        const result = await harness.executor.execute(
+            schemaName, tenantId, contactId, 'check_availability',
+            { serviceId: appointment.service_id, date: '2026-08-12' }, undefined,
+            { operationalScope, authority: authorityFor('check_availability') },
+        );
+
+        expect(result).toMatchObject({ available: false, slots: [],
+            error: 'appointment_timezone_unavailable', shouldHandoff: true });
+    });
 });

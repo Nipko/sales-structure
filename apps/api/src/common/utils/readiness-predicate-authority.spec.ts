@@ -41,12 +41,8 @@ describe('readiness predicates, audited against the predicate each tool runs', (
         expect(readinessPredicateDivergences(READINESS)).toEqual([
             'appointment_services',
             'boarding_capacity',
-            'business_identity',
             'courses',
-            'faq_content',
             'insurance_plans',
-            'listings',
-            'menu_items',
             'professional_cases',
             'properties',
             'service_catalog',
@@ -55,8 +51,9 @@ describe('readiness predicates, audited against the predicate each tool runs', (
     });
 
     it('agrees with the shipped predicates that match their tool', () => {
-        for (const key of ['catalog_items', 'tour_packages', 'pets', 'membership_plans',
-            'photo_sessions', 'vehicle_inventory'] as const) {
+        for (const key of ['business_identity', 'faq_content', 'catalog_items', 'listings',
+            'menu_items', 'tour_packages', 'pets', 'membership_plans', 'photo_sessions',
+            'vehicle_inventory'] as const) {
             expect(READINESS_PREDICATE_AUTHORITY[key]?.divergence).toBeNull();
             // A matching entry still has to be about the same table the tool
             // reads, or "matches" would only mean "nobody declared otherwise".
@@ -109,26 +106,22 @@ describe('readiness predicates, audited against the predicate each tool runs', (
             })).toBe('missing_data');
         });
 
-        it('calls a predicate that names a column the table does not have a read error', () => {
-            // The defect itself: `faqs` has `is_published`, the predicate filters
-            // `is_active`, PostgreSQL answers "column does not exist", and the
-            // lookup's missing-table branch turns that into zero rows. Nothing
-            // downstream could tell it from a tenant with no FAQs.
+        it('calls an empty but readable FAQ source missing data', () => {
             expect(classifyReadinessSource('faq_content', {
                 unmet: true,
                 availableColumns: faqs,
                 contractDegraded: false,
                 readinessWhere: READINESS.faq_content?.where,
-            })).toBe('read_error');
+            })).toBe('missing_data');
         });
 
-        it('calls it a read error even when the count came back satisfied', () => {
+        it('calls a published FAQ source satisfied', () => {
             expect(classifyReadinessSource('faq_content', {
                 unmet: false,
                 availableColumns: faqs,
                 contractDegraded: false,
                 readinessWhere: READINESS.faq_content?.where,
-            })).toBe('read_error');
+            })).toBe('satisfied');
         });
 
         it('does not invent a read error when the schema could not be inspected', () => {
@@ -155,7 +148,7 @@ describe('readiness predicates, audited against the predicate each tool runs', (
     });
 
     describe('the citation a surface renders instead of a key name', () => {
-        it('cites the predicate the tool evaluates, not the one readiness runs', () => {
+        it('cites the predicate shared by readiness and the tool', () => {
             const citation = citeReadiness('faq_content', {
                 unmet: true,
                 availableColumns: new Set(['is_published']),
@@ -167,13 +160,11 @@ describe('readiness predicates, audited against the predicate each tool runs', (
                 table: 'faqs',
                 predicate: 'is_published = true',
                 dimensions: ['active'],
-                verdict: 'read_error',
-                // And the screen that writes the counted row, which is not the
-                // one the repair CTA opens today.
+                verdict: 'missing_data',
                 writePath: '/admin/knowledge/faqs',
             });
-            expect(citation!.auditedDivergence?.kind).toBe('unexecutable');
-            expect(READINESS.faq_content?.repairRoute).not.toBe(citation!.writePath);
+            expect(citation!.auditedDivergence).toBeNull();
+            expect(READINESS.faq_content?.repairRoute).toBe(citation!.writePath);
         });
 
         it('cites the availability source for a key whose tool never reads its table', () => {
@@ -193,23 +184,15 @@ describe('readiness predicates, audited against the predicate each tool runs', (
         });
     });
 
-    it('disagrees with the other surface that counts the same table, today', () => {
-        // The independent derivation, and the sharpest evidence in the file:
-        // Salud's own preparation fact counts the SAME `faqs` table with
-        // `is_published = true`. So the quality panel says "3 published FAQs,
-        // pass" while readiness says "zero, blocked", about one tenant at one
-        // moment. Read out of the quality service's source rather than computed
-        // here, so this cannot agree with itself.
+    it('agrees with the quality surface that counts published FAQs', () => {
         const qualitySource = readFileSync(
             resolve(__dirname, '../../modules/quality/agent-quality.service.ts'), 'utf8');
         const faqFact = qualitySource.slice(qualitySource.indexOf('FROM faqs'));
         const factPredicate = faqFact.slice(faqFact.indexOf('WHERE') + 6, faqFact.indexOf('\n', faqFact.indexOf('WHERE')));
         expect(factPredicate).toContain('is_published = true');
         expect(factPredicate).not.toContain('is_active');
-        // Which is the predicate this register attributes to the tool, and is
-        // not the predicate readiness runs.
         expect(READINESS_PREDICATE_AUTHORITY.faq_content!.toolPredicate).toBe('is_published = true');
-        expect(READINESS.faq_content!.where).toBe('is_active = true');
+        expect(READINESS.faq_content!.where).toBe('is_published = true');
     });
 
     it('inspects one table per readiness table, and no invented identifier', () => {

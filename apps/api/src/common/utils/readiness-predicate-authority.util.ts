@@ -126,16 +126,7 @@ export const READINESS_PREDICATE_AUTHORITY:
         toolSource: 'business-info/business-info.service.ts::getPrimary',
         dimensions: ['ownership'],
         writePath: '/admin/settings/business-info',
-        divergence: {
-            kind: 'different_subject',
-            missingDimensions: ['ownership'],
-            consequence: 'The CRM-B2B module writes customer organisations into the same `companies` table with '
-                + '`is_primary` false. A tenant with one B2B account and no business identity of its own satisfies '
-                + "this check, and the runtime fallback then answers as that customer's company.",
-            correction: 'Add `is_primary = true` to the readiness predicate, which is the only predicate the '
-                + 'runtime primary path uses.',
-            owner: READINESS_OWNER,
-        },
+        divergence: null,
     },
     faq_content: {
         toolTable: 'faqs',
@@ -143,19 +134,7 @@ export const READINESS_PREDICATE_AUTHORITY:
         toolSource: 'faqs/faqs.service.ts::search',
         dimensions: ['active'],
         writePath: '/admin/knowledge/faqs',
-        divergence: {
-            kind: 'unexecutable',
-            absentColumn: 'is_active',
-            missingDimensions: ['active'],
-            consequence: 'The `faqs` table has no `is_active` column — it has `is_published`. PostgreSQL raises '
-                + '42703, whose message matches the readiness lookup\'s "missing table" branch, so the failure is '
-                + 'counted as zero rows instead of a degraded read. `faq_content` is in BASE_READINESS and `faqs` '
-                + 'in BASE_TOOLS, so `search_faqs` is excluded as readiness_unmet for EVERY tenant of EVERY '
-                + 'vertical, and the owner is told to load a FAQ while looking at the ones they wrote.',
-            correction: 'Change the predicate to `is_published = true` and the repairRoute to '
-                + '`/admin/knowledge/faqs`, which is the screen that writes this table.',
-            owner: READINESS_OWNER,
-        },
+        divergence: null,
     },
     appointment_services: {
         toolTable: 'availability_slots',
@@ -206,14 +185,7 @@ export const READINESS_PREDICATE_AUTHORITY:
         toolSource: 'listings/listings.service.ts::search',
         dimensions: ['active', 'availability'],
         writePath: '/admin/listings',
-        divergence: {
-            kind: 'weaker_predicate',
-            missingDimensions: ['active'],
-            consequence: 'Deleting a listing is a soft delete (`is_active = false`). An archived listing keeps '
-                + '`status` available, so it satisfies readiness while being invisible to `search_listings`.',
-            correction: 'Add `is_active = true` to the readiness predicate.',
-            owner: READINESS_OWNER,
-        },
+        divergence: null,
     },
     menu_items: {
         toolTable: 'menu_items',
@@ -221,14 +193,7 @@ export const READINESS_PREDICATE_AUTHORITY:
         toolSource: 'restaurants/restaurants.service.ts::searchMenu',
         dimensions: ['active', 'availability'],
         writePath: '/admin/menu',
-        divergence: {
-            kind: 'weaker_predicate',
-            missingDimensions: ['active'],
-            consequence: 'Deleting a dish is a soft delete. A row with `is_active = false` and `is_available = true` '
-                + 'satisfies readiness and never appears on the menu.',
-            correction: 'Add `is_active = true` to the readiness predicate.',
-            owner: READINESS_OWNER,
-        },
+        divergence: null,
     },
     vehicle_inventory: {
         toolTable: 'vehicles',

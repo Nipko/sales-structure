@@ -66,15 +66,15 @@ interface ReadinessDefinition {
 export const READINESS: Readonly<Partial<Record<VerticalReadinessKey, ReadinessDefinition>>> = Object.freeze({
     business_identity: {
         table: 'companies',
-        where: `name IS NOT NULL AND name <> ''`,
+        where: `is_primary = true AND name IS NOT NULL AND name <> ''`,
         repair: 'Completá los datos del negocio para que el agente sepa a quién representa.',
         repairRoute: '/admin/settings/business-info',
     },
     faq_content: {
         table: 'faqs',
-        where: 'is_active = true',
+        where: 'is_published = true',
         repair: 'Cargá al menos una pregunta frecuente.',
-        repairRoute: '/admin/knowledge',
+        repairRoute: '/admin/knowledge/faqs',
     },
     appointment_services: {
         table: 'services',
@@ -95,13 +95,13 @@ export const READINESS: Readonly<Partial<Record<VerticalReadinessKey, ReadinessD
     },
     listings: {
         table: 'real_estate_listings',
-        where: `status = 'available'`,
+        where: `is_active = true AND status = 'available'`,
         repair: 'Publicá al menos un inmueble disponible.',
         repairRoute: '/admin/listings',
     },
     menu_items: {
         table: 'menu_items',
-        where: 'is_available = true',
+        where: 'is_active = true AND is_available = true',
         repair: 'Cargá el menú: sin platos disponibles el agente no puede tomar pedidos.',
         repairRoute: '/admin/menu',
     },
@@ -296,7 +296,7 @@ export class VerticalReadinessService {
         } catch (error: any) {
             // A table this tenant never provisioned means zero rows, which is a
             // real answer. Anything else is a degraded lookup.
-            if (/does not exist|undefined table|42P01/i.test(String(error?.message || ''))) return 0;
+            if (String(error?.code || '') === '42P01') return 0;
             this.logger.warn(`[Readiness] ${definition.table} lookup failed: ${error?.message}`);
             return null;
         }

@@ -99,7 +99,7 @@ const TABLES = ['faqs', 'products', 'companies', 'menu_items', 'real_estate_list
         await pool.end();
     });
 
-    describe('faq_content: the predicate that reads a column the table does not have', () => {
+    describe('faq_content: readiness and the search tool share one executable predicate', () => {
         beforeAll(async () => {
             await sql('TRUNCATE faqs');
             for (let index = 0; index < 3; index++) {
@@ -115,32 +115,31 @@ const TABLES = ['faqs', 'products', 'companies', 'menu_items', 'real_estate_list
                 .toEqual({ total: 3 });
         });
 
-        it('cannot execute the shipped readiness predicate at all', async () => {
+        it('finds the same three FAQs through readiness', async () => {
             const result = await countWith(READINESS.faq_content!.table, READINESS.faq_content!.where);
-            expect(result).toMatchObject({ code: '42703' });
-            expect((result as any).error).toContain('does not exist');
+            expect(result).toEqual({ total: 3 });
         });
 
-        it('has that failure swallowed by the missing-table branch of the lookup', async () => {
-            // This is the whole defect. `countRows` returns `null` — degraded —
-            // for a failed lookup, EXCEPT when the message looks like a table
-            // this tenant never provisioned. An absent COLUMN produces the same
-            // words, so the failure is counted as a real zero: the report is not
-            // degraded, the key is unmet, and `search_faqs` is excluded as
-            // readiness_unmet for every tenant of every vertical, because
-            // `faq_content` is in BASE_READINESS and `faqs` is in BASE_TOOLS.
-            const result = await countWith(READINESS.faq_content!.table, READINESS.faq_content!.where) as any;
-            expect(/does not exist|undefined table|42P01/i.test(result.error)).toBe(true);
+        it('distinguishes an absent column from an absent table by PostgreSQL code', async () => {
+            const readiness = new VerticalReadinessService({
+                executeInTenantSchema: async (_schema: string, text: string) => sql(text),
+            } as any, {} as any);
+            await expect((readiness as any).countRows(schema, {
+                table: 'faqs', where: 'missing_column = true',
+            })).resolves.toBeNull();
+            await expect((readiness as any).countRows(schema, {
+                table: 'table_that_does_not_exist',
+            })).resolves.toBe(0);
         });
 
-        it('is classified as a read error rather than as data the owner never loaded', async () => {
+        it('is classified as readable configuration data', async () => {
             const columns = await columnsOf('faqs');
             expect(columns.has('is_published')).toBe(true);
             expect(columns.has('is_active')).toBe(false);
             expect(classifyReadinessSource('faq_content', {
-                unmet: true, availableColumns: columns, contractDegraded: false,
+                unmet: false, availableColumns: columns, contractDegraded: false,
                 readinessWhere: READINESS.faq_content!.where,
-            })).toBe('read_error');
+            })).toBe('satisfied');
         });
 
         it('reaches the same verdict for every audited key from the live catalogue', async () => {
@@ -155,25 +154,25 @@ const TABLES = ['faqs', 'products', 'companies', 'menu_items', 'real_estate_list
                     .filter(column => !columns.has(column));
                 if (missing.length) unexecutable.push(`${key}: ${definition.table} has no ${missing.join(', ')}`);
             }
-            expect(unexecutable).toEqual(['faq_content: faqs has no is_active']);
+            expect(unexecutable).toEqual([]);
         });
     });
 
     describe('predicates that execute and still disagree with their tool', () => {
-        it('counts a soft-deleted listing that search_listings will never return', async () => {
+        it('excludes a soft-deleted listing just like search_listings', async () => {
             await sql('TRUNCATE real_estate_listings');
             await sql(`INSERT INTO real_estate_listings (name, transaction_type, status, is_active)
                        VALUES ('Archivado', 'sale', 'available', false)`);
-            expect(await countWith('real_estate_listings', READINESS.listings!.where)).toEqual({ total: 1 });
+            expect(await countWith('real_estate_listings', READINESS.listings!.where)).toEqual({ total: 0 });
             expect(await countWith('real_estate_listings',
                 READINESS_PREDICATE_AUTHORITY.listings!.toolPredicate)).toEqual({ total: 0 });
         });
 
-        it('counts a soft-deleted dish that the menu will never show', async () => {
+        it('excludes a soft-deleted dish just like the menu search', async () => {
             await sql('TRUNCATE menu_items');
             await sql(`INSERT INTO menu_items (name, price, is_available, is_active)
                        VALUES ('Bandeja retirada', 30000, true, false)`);
-            expect(await countWith('menu_items', READINESS.menu_items!.where)).toEqual({ total: 1 });
+            expect(await countWith('menu_items', READINESS.menu_items!.where)).toEqual({ total: 0 });
             expect(await countWith('menu_items',
                 READINESS_PREDICATE_AUTHORITY.menu_items!.toolPredicate)).toEqual({ total: 0 });
         });
@@ -191,10 +190,10 @@ const TABLES = ['faqs', 'products', 'companies', 'menu_items', 'real_estate_list
                 READINESS_PREDICATE_AUTHORITY.service_catalog!.toolPredicate)).toEqual({ total: 0 });
         });
 
-        it('counts a B2B customer organisation as the tenant own business identity', async () => {
+        it('does not count a B2B customer organisation as the tenant identity', async () => {
             await sql('TRUNCATE companies');
             await sql(`INSERT INTO companies (name, is_primary) VALUES ('Cliente Mayorista SAS', false)`);
-            expect(await countWith('companies', READINESS.business_identity!.where)).toEqual({ total: 1 });
+            expect(await countWith('companies', READINESS.business_identity!.where)).toEqual({ total: 0 });
             expect(await countWith('companies',
                 READINESS_PREDICATE_AUTHORITY.business_identity!.toolPredicate)).toEqual({ total: 0 });
         });
@@ -324,7 +323,7 @@ const TABLES = ['faqs', 'products', 'companies', 'menu_items', 'real_estate_list
         });
     });
 
-    describe('the same chain for faq_content, which closes at neither end', () => {
+    describe('the complete repair chain for faq_content', () => {
         const tenantId = randomUUID();
         const cache = new Map<string, string>();
         const prismaLike = {
@@ -381,24 +380,7 @@ const TABLES = ['faqs', 'products', 'companies', 'menu_items', 'real_estate_list
                 .toEqual(['¿Hacen envíos a Medellín?']);
         });
 
-        it('leaves the readiness blockage standing even though the row exists', async () => {
-            // THE HALF THAT IS STILL OPEN. The write works now; the check does
-            // not. `READINESS.faq_content` filters `is_active = true` and the
-            // `faqs` table has `is_published` — there is no `is_active` column,
-            // so the predicate cannot execute for any tenant, and the branch
-            // written for an absent TABLE swallows the absent COLUMN and
-            // reports a confident zero.
-            //
-            // Because `faq_content` is in `BASE_READINESS` and `faqs` is in
-            // `BASE_TOOLS`, that keeps `search_faqs` excluded as
-            // `readiness_unmet` for every tenant of every vertical, while the
-            // tool answers the customer from the row perfectly well.
-            //
-            // The correction is stated in the register and is NOT applied:
-            // predicate `is_published = true`, repairRoute
-            // `/admin/knowledge/faqs`. This case pins the defect as it stands
-            // so that landing that correction turns it red and whoever lands
-            // it has to come here and say what changed.
+        it('clears readiness after the write and publishes the searchable row', async () => {
             await sql(`INSERT INTO faqs (question, answer, category, is_published, search_tsv)
                        SELECT $1, $2, $3, true, to_tsvector('simple', $1 || ' ' || $2)`,
             ['¿Cuál es el horario?', 'Lunes a sábado, 9 a 18.', 'horarios']);
@@ -406,23 +388,19 @@ const TABLES = ['faqs', 'products', 'companies', 'menu_items', 'real_estate_list
             const readiness = new VerticalReadinessService(prismaLike as any, redisLike as any);
             // Re-read, for real — the refresh path, not a second cached answer.
             const after = await readiness.evaluate(tenantId, schema, ['faq_content'], undefined, { refresh: true });
-            expect(after.unmet).toEqual(['faq_content']);
+            expect(after.unmet).toEqual([]);
             expect(after.degraded).toBe(false);
-            expect(after.checks[0]).toMatchObject({ satisfied: false, count: 0 });
+            expect(after.checks[0]).toMatchObject({ satisfied: true, count: 2 });
+            expect(READINESS.faq_content!.repairRoute).toBe('/admin/knowledge/faqs');
 
-            // While the tool the check gates answers the customer from that very
-            // row. The check and the tool disagree about the same tenant at the
-            // same moment, and only one of them is right.
             const faqs = await service();
             const found = await faqs.search(tenantId, 'horario', 5);
             expect(found.map(item => item.question)).toEqual(['¿Cuál es el horario?']);
 
-            // So it is a read error, and has to be reported as one: "load a FAQ"
-            // is not something this owner can do about it.
             expect(classifyReadinessSource('faq_content', {
-                unmet: true, availableColumns: await columnsOf('faqs'), contractDegraded: false,
+                unmet: false, availableColumns: await columnsOf('faqs'), contractDegraded: false,
                 readinessWhere: READINESS.faq_content!.where,
-            })).toBe('read_error');
+            })).toBe('satisfied');
         });
     });
 });

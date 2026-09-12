@@ -120,7 +120,12 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
             metadata JSONB DEFAULT '{}'::jsonb, created_at TIMESTAMPTZ DEFAULT NOW())`);
         await sql(`CREATE UNIQUE INDEX uidx_messages_external_id ON messages(external_id)
             WHERE external_id IS NOT NULL`);
-        await sql(`CREATE TABLE leads(id UUID PRIMARY KEY, contact_id UUID)`);
+        // `opted_out` and `updated_at` are what the unsubscribe gate reads. A
+        // fixture missing them would make the gate throw, and the gate stands
+        // down when it cannot read — so the test would pass for the wrong
+        // reason, which is the worst way to cover a consent rule.
+        await sql(`CREATE TABLE leads(id UUID PRIMARY KEY, contact_id UUID,
+            opted_out BOOLEAN DEFAULT false, updated_at TIMESTAMPTZ DEFAULT NOW())`);
         await sql(`CREATE TABLE tasks(id UUID PRIMARY KEY DEFAULT gen_random_uuid(), lead_id UUID,
             title TEXT, description TEXT, type TEXT, status TEXT, due_at TIMESTAMPTZ)`);
         for (const statement of DISPATCH_OUTBOX_DDL) await sql(statement);
@@ -353,6 +358,41 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
         await expect(store.admit(tenantId, row.id))
             .rejects.toMatchObject({ code: 'dispatch_effect_superseded' });
         expect(String((await outboxRows())[0].error_code)).toContain('proactive_gone');
+    });
+
+    it('sends nothing to a contact who used the unsubscribe link', async () => {
+        // ── THE HALF OF "BAJA" THAT `isBlocked` DOES NOT SEE ────────────────
+        //
+        // The public form sets `leads.opted_out`; it never writes an
+        // `opt_out_records` row, so the compliance check this service already
+        // ran returned false and the nudge went out. A customer who pressed
+        // unsubscribe went on being messaged by the one producer whose entire
+        // purpose is writing to people who stopped replying.
+        //
+        // Asserted as ZERO EFFECT rather than as a return value: the point is
+        // that nothing is committed, not that a function said no.
+        const t = await thread();
+        await sql('UPDATE leads SET opted_out = true WHERE id = $1::uuid', [t.leadId]);
+
+        await run(t, 1);
+        // Zero effect is the assertion. `executeFollowUp` returns nothing, and
+        // a test that read a return value would be asking the producer whether
+        // it behaved rather than asking the outbox what happened.
+        expect(await outboxRows()).toEqual([]);
+    });
+
+    it('stands down when it cannot tell whether they unsubscribed', async () => {
+        // A gate that fails open is not a gate. The cost of a missed follow-up
+        // is a follow-up; the cost of the other mistake is a message somebody
+        // explicitly asked us never to send again.
+        const t = await thread();
+        await sql('ALTER TABLE leads RENAME COLUMN opted_out TO opted_out_hidden');
+        try {
+            await run(t, 1);
+            expect(await outboxRows()).toEqual([]);
+        } finally {
+            await sql('ALTER TABLE leads RENAME COLUMN opted_out_hidden TO opted_out');
+        }
     });
 
     it('still admits one whose thread has not moved', async () => {

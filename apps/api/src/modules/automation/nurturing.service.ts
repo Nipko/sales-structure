@@ -821,6 +821,42 @@ export class NurturingService {
             return false;
         }
 
+        // ── THE OTHER HALF OF "BAJA", WHICH `isBlocked` DOES NOT SEE ────────
+        //
+        // `drip-sequence.service.ts:327-330` checks BOTH and says why: the
+        // public-form unsubscribe sets `leads.opted_out`, which never becomes
+        // an `opt_out_records` row, and it also sidesteps the E.164 `+`/no-`+`
+        // mismatch that can make a confirmed opt-out invisible to a phone
+        // lookup. Nurturing checked only the first, so a customer who used the
+        // unsubscribe link went on being nudged — by the one producer whose
+        // entire purpose is messaging people who have stopped replying.
+        //
+        // A failure to READ this is not permission to send: an unreadable
+        // answer stops the nudge, because the cost of a missed follow-up is a
+        // follow-up, and the cost of the other mistake is a message somebody
+        // explicitly asked us never to send again.
+        try {
+            const [lead] = await this.prisma.executeInTenantSchema<any[]>(
+                schemaName,
+                `SELECT l.opted_out
+                   FROM leads l
+                   JOIN contacts ct ON ct.id = l.contact_id
+                  WHERE ct.id = $1::uuid
+                  ORDER BY l.updated_at DESC NULLS LAST
+                  LIMIT 1`,
+                [contact.id],
+            );
+            if (lead?.opted_out === true) {
+                this.logger.log(`[Nurturing] Contact unsubscribed via the public form — `
+                    + `skipping proactive follow-up for conv ${conversationId}`);
+                return false;
+            }
+        } catch (error: any) {
+            this.logger.warn(`[Nurturing] could not read the unsubscribe flag for conv `
+                + `${conversationId} (${error?.message}); standing down rather than guessing`);
+            return false;
+        }
+
         const conversation = await this.getConversation(schemaName, conversationId);
         const channelType = conversation?.channel_type || 'whatsapp';
 

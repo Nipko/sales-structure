@@ -210,26 +210,28 @@ export const ACCEPTANCE_MATRIX: readonly AcceptanceScenario[] = Object.freeze([
         evidence: 'Cero efecto no permitido; no fallback más permisivo',
         // ── A ROW IS ONLY AS COVERED AS ITS THINNEST HALF ───────────────────
         //
-        // Two of the three are answered and named below in `missing` for
-        // whoever closes this: the out-of-window nudge goes as the tenant's
-        // approved template rather than as free text, and the daily cap refuses
-        // the second one. The third is `baja` — the opt-out — and it is not
-        // covered because it is not IMPLEMENTED: `drip-sequence.service.ts`
-        // checks `leads.opted_out` and `compliance.isBlocked` before enrolling,
-        // and `nurturing.service.ts` checks neither.
+        // Three halves, three titles. Marking the row covered on the strength of
+        // the HANDOFF test was the error the review caught: a thread handed to a
+        // person is not a customer who asked to stop hearing from us, and
+        // reading one as the other closes a scenario about consent with a test
+        // about routing.
         //
-        // Marking it covered on the strength of the handoff test was the error
-        // the review caught: a thread handed to a person is not a customer who
-        // asked to stop hearing from us, and reading one as the other is how a
-        // scenario about consent gets closed by a test about routing.
-        covered: null,
-        missing: 'nurturing no consulta ninguna baja. `drip-sequence.service.ts:327-330` salta '
-            + 'los contactos con `leads.opted_out` o bloqueados por compliance antes de '
-            + 'inscribirlos; `nurturing.service.ts` no mira ninguno de los dos, así que un '
-            + 'contacto que pidió no recibir más mensajes sigue recibiendo nudges. Las otras '
-            + 'dos mitades SÍ están probadas en `nurturing-durable-lane.postgres.spec.ts` '
-            + '(«commits an out-of-window nudge», «still refuses a second nudge the same day»); '
-            + 'falta la compuerta de baja y su prueba, en ese orden',
+        // The opt-out half then turned out to be half-built rather than absent —
+        // `nurturing.service.ts` did check `compliance.isBlocked`, but not the
+        // `leads.opted_out` flag the public unsubscribe form sets, which
+        // `drip-sequence.service.ts:327-330` checks precisely because
+        // `isBlocked` cannot see it. So a customer who pressed unsubscribe went
+        // on being nudged by the one producer whose whole purpose is writing to
+        // people who stopped replying. The gate exists now, and the title below
+        // is the test that would fail if it were removed.
+        covered: {
+            file: 'modules/automation/nurturing-durable-lane.postgres.spec.ts',
+            titles: [
+                'commits an out-of-window nudge',
+                'sends nothing to a contact who used the unsubscribe link',
+                'still refuses a second nudge the same day',
+            ],
+        },
     },
     {
         scenario: 'Operación ejecutada antes de pausa',

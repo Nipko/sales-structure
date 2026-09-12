@@ -337,7 +337,7 @@ describe('the R5 acceptance matrix, checked rather than asserted', () => {
             expect(workflow).toContain('assert-no-skipped-tests.cjs');
         });
 
-        it('reports these five gaps, by name', () => {
+        it('reports these four gaps, by name', () => {
             // What replaces the assertion that used to stand here. That one
             // added the two halves and compared the sum to the whole, and
             // because `covered` is an object or `null` the sum WAS the whole
@@ -351,13 +351,11 @@ describe('the R5 acceptance matrix, checked rather than asserted', () => {
                 'Misma pregunta requerida sin progreso',
                 'Bot contra bot y ráfaga de contactos',
                 'Humano, REST, campaña y recordatorio',
-                // Opened by the adversarial pass, not closed by it: two of the
-                // three halves of the nurturing row are proven, and the third
-                // — `baja` — is not covered because it is not implemented.
-                // Nurturing consults no opt-out at all. A row is only as
-                // covered as its thinnest half, and marking this one green on
-                // the strength of a handoff test read consent as routing.
-                'Nurturing fuera de ventana/baja/cap',
+                // The nurturing row was opened by the adversarial pass and is
+                // closed again — not by relabelling it, but because the missing
+                // half got built: nurturing now honours `leads.opted_out`, the
+                // flag `compliance.isBlocked` cannot see, and a test fails if
+                // that gate is removed.
             ]);
         });
 

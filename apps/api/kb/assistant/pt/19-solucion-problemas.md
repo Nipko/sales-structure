@@ -38,7 +38,7 @@ Detalhes úteis:
 
 ## O agente de IA não responde (ou responde mal)
 
-Confira esta lista na ordem; quase sempre a causa é uma destas. Antes, um aviso sobre permissões: **Agente IA**, **Canais** e **Plano e faturamento** são telas de administração: se você é supervisor ou agente, não consegue abri-las — não estão no seu menu e, se digitar o endereço, o painel redireciona você —, então esses passos são do administrador da conta, e o seu papel é reconhecer o sintoma pela **Caixa de entrada** e avisá-lo. **Campanhas** é diferente: o administrador e o supervisor abrem, o agente não.
+Confira esta lista na ordem; quase sempre a causa é uma destas. Antes, um aviso sobre permissões: **Agente IA**, **Canais** e **Plano e faturamento** são telas de administração: se você é supervisor ou agente, não consegue abri-las — não estão no seu menu e, se digitar o endereço, o painel redireciona você —, então esses passos são do administrador da conta, e o seu papel é reconhecer o sintoma pela **Caixa de entrada** e avisá-lo. **Campanhas** é diferente: o administrador e o supervisor abrem, o agente não. E o supervisor não fica sem o que olhar: **Saúde dos agentes** está no menu dele, e ali dá para ver se o agente vem respondendo pior que o normal antes de pedir que alguém abra uma tela de administração.
 
 1. **A conexão tem um agente atribuído?** Acesse **Agente IA**. Se você vir um aviso do tipo "canais sem agente atribuído", essas conexões são atendidas pelo seu agente padrão com uma configuração genérica. Abra o agente correto e, em **Atribuição de conexões**, marque a conta exata que ele deve atender. Lembre-se: há **um agente de IA por conexão**.
 2. **O agente está ativo?** Na lista de agentes, verifique se ele não está **pausado**.

@@ -11,12 +11,9 @@ describe('vertical readiness executable contract', () => {
         expect(missing).toEqual([]);
     });
 
-    it('backs professional cases with the same open opportunities shown by Cases', () => {
-        expect(READINESS.professional_cases).toMatchObject({
-            table: 'opportunities',
-            where: 'won_at IS NULL AND lost_at IS NULL',
-            repairRoute: '/admin/cases',
-        });
+    it('does not mistake customer records for business configuration', () => {
+        expect(READINESS).not.toHaveProperty('professional_cases');
+        expect(READINESS).not.toHaveProperty('treatment_catalog');
     });
 
     it('sends agenda-less and dispatch profiles to the direct service catalogue', () => {
@@ -25,7 +22,7 @@ describe('vertical readiness executable contract', () => {
         }
     });
 
-    it('executes the professional-case predicate instead of silently skipping it', async () => {
+    it('does not invent a check for an operational professional case', async () => {
         const prisma = {
             executeInTenantSchema: jest.fn().mockResolvedValue([{ total: 1 }]),
         };
@@ -39,22 +36,14 @@ describe('vertical readiness executable contract', () => {
         const report = await service.evaluate(
             '11111111-1111-4111-8111-111111111111',
             'tenant_professional',
-            ['professional_cases'],
+            [],
         );
 
         expect(report).toMatchObject({
             degraded: false,
             unmet: [],
-            checks: [expect.objectContaining({
-                key: 'professional_cases',
-                satisfied: true,
-                count: 1,
-                repairRoute: '/admin/cases',
-            })],
+            checks: [],
         });
-        expect(prisma.executeInTenantSchema).toHaveBeenCalledWith(
-            'tenant_professional',
-            expect.stringContaining('FROM opportunities WHERE won_at IS NULL AND lost_at IS NULL'),
-        );
+        expect(prisma.executeInTenantSchema).not.toHaveBeenCalled();
     });
 });

@@ -88,11 +88,6 @@ export const READINESS: Readonly<Partial<Record<VerticalReadinessKey, ReadinessD
         repair: 'Cargá al menos un producto disponible en el catálogo.',
         repairRoute: '/admin/inventory',
     },
-    treatment_catalog: {
-        table: 'treatment_plans',
-        repair: 'Definí al menos un plan de tratamiento.',
-        repairRoute: '/admin/treatment-plans',
-    },
     listings: {
         table: 'real_estate_listings',
         where: `is_active = true AND status = 'available'`,
@@ -152,12 +147,6 @@ export const READINESS: Readonly<Partial<Record<VerticalReadinessKey, ReadinessD
         where: 'is_active = true',
         repair: 'Definí los servicios que despachás, con su duración y precio.',
         repairRoute: '/admin/service-catalog',
-    },
-    professional_cases: {
-        table: 'opportunities',
-        where: 'won_at IS NULL AND lost_at IS NULL',
-        repair: 'Creá al menos un caso activo para poder consultar su estado.',
-        repairRoute: '/admin/cases',
     },
     photo_sessions: {
         table: 'services',

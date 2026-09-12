@@ -179,7 +179,6 @@ export const TOOL_GROUP_READINESS: Readonly<Partial<Record<VerticalToolGroup, Ve
     appointments: 'appointment_services',
     catalog: 'catalog_items',
     faqs: 'faq_content',
-    treatments: 'treatment_catalog',
     realEstate: 'listings',
     restaurants: 'menu_items',
     vehicles: 'vehicle_inventory',

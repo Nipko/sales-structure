@@ -162,23 +162,6 @@ export const READINESS_PREDICATE_AUTHORITY:
         writePath: '/admin/inventory',
         divergence: null,
     },
-    treatment_catalog: {
-        toolTable: 'treatment_plans',
-        toolPredicate: "contact_id = $1::uuid AND status = 'active'",
-        toolSource: 'treatment-plans/treatment-plans.service.ts::summaryForContact',
-        dimensions: ['active', 'ownership'],
-        writePath: '/admin/treatment-plans',
-        divergence: {
-            kind: 'different_subject',
-            missingDimensions: ['active', 'ownership'],
-            consequence: '`treatment_plans` is a per-patient enrolment record, not a catalogue: the tool answers '
-                + "only for this conversation's contact and only for `status = 'active'`. Any row satisfies "
-                + 'readiness, including a cancelled plan belonging to somebody else.',
-            correction: 'Either point the key at whatever the tenant configures as a treatment catalogue, or state '
-                + "that the key means \"this practice has ever recorded a plan\" and add `status = 'active'`.",
-            owner: READINESS_OWNER,
-        },
-    },
     listings: {
         toolTable: 'real_estate_listings',
         toolPredicate: "is_active = true AND status = 'available'",
@@ -246,24 +229,6 @@ export const READINESS_PREDICATE_AUTHORITY:
                 + 'cannot even waitlist.',
             correction: 'Require an open future `course_cohorts` row, or give the cohort requirement its own key so '
                 + 'the catalogue check keeps its own meaning.',
-            owner: READINESS_OWNER,
-        },
-    },
-    professional_cases: {
-        toolTable: 'opportunities',
-        toolPredicate: "the calling contact's own open opportunities, via leads.contact_id",
-        toolSource: 'conversations/ai-tool-executor.service.ts::get_case_status',
-        dimensions: ['active', 'ownership'],
-        writePath: '/admin/pipeline',
-        divergence: {
-            kind: 'repair_route_cannot_write',
-            missingDimensions: ['ownership'],
-            consequence: '`/admin/cases` is a read-only screen: its controller exposes no create path, so the '
-                + 'repair CTA cannot produce the row it asks for. The only writer is `/admin/pipeline`. Readiness '
-                + 'also counts any tenant-wide open opportunity, while the tool answers only for the calling '
-                + "contact's own, and ignores `pipeline_stages.is_terminal`, which both the screen and the tool "
-                + 'treat as closed.',
-            correction: 'Point repairRoute at `/admin/pipeline`, and exclude rows parked in a terminal stage.',
             owner: READINESS_OWNER,
         },
     },

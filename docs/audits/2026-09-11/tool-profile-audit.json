@@ -2,7 +2,7 @@
   "version": 1,
   "evidenceKind": "structural_only",
   "sourceHashEncoding": "utf8-lf",
-  "sourceRevision": "abcbbea8ebfe76e55ce3e563ae53902e99441cfe",
+  "sourceRevision": "074914de71a2ecfdb1984f8cfd6816f0cf00c873",
   "summary": {
     "verticals": 20,
     "profiles": 76,
@@ -88,7 +88,7 @@
     "packages/shared/src/country-language-pack.ts": "fd22dd3077cfad6fc7ccb76172320a7a1f8bb7e758254d0dda1a6a0d542802b4",
     "packages/shared/src/dashboard-page-access.ts": "2dabaf76e5ad13138460915bd99185698698b3cdb5cb14cf925603b9a228fb20",
     "packages/shared/src/dispatch-pilot-scope.ts": "5a95eb6591d744c7a78b9bf40a2c60400836b7f538eaad7823c913789e9cb73a",
-    "packages/shared/src/effective-capability-contract.ts": "dffda9e9057c979a59020ea7c965d44cc93a7984f2aab999bf9ac3d2e5cdd9ea",
+    "packages/shared/src/effective-capability-contract.ts": "c92e3e87efc3cc8378e36516011b5cd1ce39b381245bf8b0c933f6bddf450f5c",
     "packages/shared/src/email-verification-policy.ts": "65ec4e669d3e43fc3fbba597eb8a60ce3d0ffec8f30a1725ba298d34bd49c178",
     "packages/shared/src/eval-phrase.ts": "b8b346f5bf1d46a7d3769eafa43e67ec31e9033ea4bb6304c16e9cee3875c980",
     "packages/shared/src/guided-tour-contract.ts": "e1a5875056bc084e88be38ca7625dabd2fcda8c9283bfeaf3238ea63eb995a0f",
@@ -121,7 +121,7 @@
     "packages/shared/src/vehicle-task-eval-pack.ts": "d57fe85e5fb8ea1d81d8480933077753c80b078b5a989383873fca36f812dfa0",
     "packages/shared/src/vertical-authoring-package.ts": "e03798b6bb73d952335c6a20b247f2bc90780a56a409845e6ed4227e45adb017",
     "packages/shared/src/vertical-builder-contract.ts": "6b0cadc40de0060010e35001c0b2db674fe59b6d5ce4b7d489873a7661d62c55",
-    "packages/shared/src/vertical-capability-manifest.ts": "67a2bc3e75a47262c39786e10db7896f22cabede7e81cd08d181469db36c27c7",
+    "packages/shared/src/vertical-capability-manifest.ts": "2c2efb6b8434e1624668828d27e71616a065092e6b590875c5374d6c81b77deb",
     "packages/shared/src/vertical-certification-contract.ts": "3a062cf0e9d930e506975b3dbc5b7c4b56df6f3bba621b050db4d25d6f327c28",
     "packages/shared/src/vertical-domain-contract.ts": "d5d78d29a04ffe3bf0603cf6f04b612e9996173d7136a66afb676337ad484e77",
     "packages/shared/src/vertical-operation-contract.ts": "17a76884978832eba5a226584fb7cd7cb962d0d71cacd08b1e20a66ae2253a4e",
@@ -3656,8 +3656,7 @@
         "business_identity",
         "pipeline",
         "faq_content",
-        "appointment_services",
-        "treatment_catalog"
+        "appointment_services"
       ],
       "routes": [
         {
@@ -3726,7 +3725,7 @@
             "get_treatment_plan",
             "list_upcoming_sessions"
           ],
-          "readiness": "treatment_catalog",
+          "readiness": null,
           "planFeature": null
         }
       ],
@@ -3918,8 +3917,7 @@
         "business_identity",
         "pipeline",
         "faq_content",
-        "appointment_services",
-        "treatment_catalog"
+        "appointment_services"
       ],
       "routes": [
         {
@@ -3988,7 +3986,7 @@
             "get_treatment_plan",
             "list_upcoming_sessions"
           ],
-          "readiness": "treatment_catalog",
+          "readiness": null,
           "planFeature": null
         }
       ],
@@ -6243,8 +6241,7 @@
         "business_identity",
         "pipeline",
         "faq_content",
-        "appointment_services",
-        "treatment_catalog"
+        "appointment_services"
       ],
       "routes": [
         {
@@ -6313,7 +6310,7 @@
             "get_treatment_plan",
             "list_upcoming_sessions"
           ],
-          "readiness": "treatment_catalog",
+          "readiness": null,
           "planFeature": null
         }
       ],
@@ -6389,8 +6386,7 @@
         "business_identity",
         "pipeline",
         "faq_content",
-        "appointment_services",
-        "treatment_catalog"
+        "appointment_services"
       ],
       "routes": [
         {
@@ -6459,7 +6455,7 @@
             "get_treatment_plan",
             "list_upcoming_sessions"
           ],
-          "readiness": "treatment_catalog",
+          "readiness": null,
           "planFeature": null
         }
       ],
@@ -6798,8 +6794,7 @@
         "business_identity",
         "pipeline",
         "faq_content",
-        "appointment_services",
-        "treatment_catalog"
+        "appointment_services"
       ],
       "routes": [
         {
@@ -6868,7 +6863,7 @@
             "get_treatment_plan",
             "list_upcoming_sessions"
           ],
-          "readiness": "treatment_catalog",
+          "readiness": null,
           "planFeature": null
         }
       ],
@@ -8280,8 +8275,7 @@
         "business_identity",
         "pipeline",
         "faq_content",
-        "appointment_services",
-        "professional_cases"
+        "appointment_services"
       ],
       "routes": [
         {
@@ -8424,8 +8418,7 @@
         "business_identity",
         "pipeline",
         "faq_content",
-        "appointment_services",
-        "professional_cases"
+        "appointment_services"
       ],
       "routes": [
         {
@@ -8568,8 +8561,7 @@
         "business_identity",
         "pipeline",
         "faq_content",
-        "appointment_services",
-        "professional_cases"
+        "appointment_services"
       ],
       "routes": [
         {
@@ -8712,8 +8704,7 @@
         "business_identity",
         "pipeline",
         "faq_content",
-        "appointment_services",
-        "professional_cases"
+        "appointment_services"
       ],
       "routes": [
         {

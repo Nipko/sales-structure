@@ -176,14 +176,12 @@ export type VerticalReadinessKey =
     | 'faq_content'
     | 'appointment_services'
     | 'catalog_items'
-    | 'treatment_catalog'
     | 'listings'
     | 'menu_items'
     | 'vehicle_inventory'
     | 'tour_packages'
     | 'properties'
     | 'courses'
-    | 'professional_cases'
     | 'pets'
     | 'membership_plans'
     | 'insurance_plans'
@@ -492,19 +490,16 @@ export const VERTICAL_CAPABILITY_MANIFEST: VerticalCapabilityManifest = {
                 addCapabilities: ['treatment_management'],
                 addToolGroups: ['treatments'],
                 addRoutes: ['/admin/treatment-plans'],
-                addReadiness: ['treatment_catalog'],
             },
             dermatologia: {
                 addCapabilities: ['treatment_management'],
                 addToolGroups: ['treatments'],
                 addRoutes: ['/admin/treatment-plans'],
-                addReadiness: ['treatment_catalog'],
             },
             psicologia: {
                 addCapabilities: ['treatment_management'],
                 addToolGroups: ['treatments'],
                 addRoutes: ['/admin/treatment-plans'],
-                addReadiness: ['treatment_catalog'],
             },
             farmacia: {
                 ...APPOINTMENT_PATCH_REMOVAL,
@@ -571,13 +566,11 @@ export const VERTICAL_CAPABILITY_MANIFEST: VerticalCapabilityManifest = {
                 addCapabilities: ['treatment_management'],
                 addToolGroups: ['treatments'],
                 addRoutes: ['/admin/treatment-plans'],
-                addReadiness: ['treatment_catalog'],
             },
             estetica: {
                 addCapabilities: ['treatment_management'],
                 addToolGroups: ['treatments'],
                 addRoutes: ['/admin/treatment-plans'],
-                addReadiness: ['treatment_catalog'],
             },
         },
     },
@@ -794,7 +787,7 @@ export const VERTICAL_CAPABILITY_MANIFEST: VerticalCapabilityManifest = {
             // `/admin/appointments`, el estudio tenía la agenda y ninguna
             // pantalla donde vivieran los casos.
             routes: ['/admin/cases', '/admin/appointments'],
-            readiness: ['appointment_services', 'professional_cases'],
+            readiness: ['appointment_services'],
             events: APPOINTMENT_EVENTS,
             assurance: {
                 minimum: 'A0',

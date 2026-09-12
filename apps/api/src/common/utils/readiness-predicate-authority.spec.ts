@@ -43,10 +43,8 @@ describe('readiness predicates, audited against the predicate each tool runs', (
             'boarding_capacity',
             'courses',
             'insurance_plans',
-            'professional_cases',
             'properties',
             'service_catalog',
-            'treatment_catalog',
         ]);
     });
 
@@ -90,7 +88,7 @@ describe('readiness predicates, audited against the predicate each tool runs', (
 
         it('reads nothing from a key with no predicate', () => {
             expect(readinessPredicateColumns(undefined)).toEqual([]);
-            expect(readinessPredicateColumns(READINESS.treatment_catalog?.where)).toEqual([]);
+            expect(readinessPredicateColumns(undefined)).toEqual([]);
         });
     });
 

@@ -198,16 +198,6 @@ const TABLES = ['faqs', 'products', 'companies', 'menu_items', 'real_estate_list
                 READINESS_PREDICATE_AUTHORITY.business_identity!.toolPredicate)).toEqual({ total: 0 });
         });
 
-        it('counts a cancelled plan belonging to another patient as a treatment catalogue', async () => {
-            await sql('TRUNCATE treatment_plans');
-            const other = randomUUID();
-            await sql(`INSERT INTO treatment_plans (contact_id, name, status)
-                       VALUES ($1::uuid, 'Ortodoncia', 'cancelled')`, [other]);
-            expect(await countWith('treatment_plans', READINESS.treatment_catalog!.where)).toEqual({ total: 1 });
-            expect(await countWith('treatment_plans',
-                `contact_id = '${randomUUID()}'::uuid AND status = 'active'`)).toEqual({ total: 0 });
-        });
-
         it('fails an accented boarding category the runtime comparison accepts', async () => {
             await sql('TRUNCATE services');
             await sql(`INSERT INTO services (name, duration_minutes, is_active, category, max_concurrent)

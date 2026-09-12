@@ -1,3 +1,4 @@
+import { isScopedAddressKey } from '@parallext/shared';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { IChannelAdapter } from '../channel-gateway.service';
@@ -43,6 +44,27 @@ export class WhatsAppAdapter implements IChannelAdapter, StrictDispatchTransport
      * admitted item, after a rejection somebody actually observed.
      */
     async sendStrict(request: StrictDispatchRequest, accessToken: string): Promise<StrictDispatchOutcome> {
+        // ── A DESTINATION THIS ENDPOINT DOES NOT UNDERSTAND ─────────────────
+        //
+        // The ingress can now accept a customer who wrote without a phone
+        // number: their `contacts.external_id` is `bsuid:<portfolio>:<id>`, and
+        // that is what a producer carries as the recipient. Put in `to`, it is
+        // not a destination — Meta rejects it, and what an operator sees is a
+        // provider error about a malformed number for a conversation that looks
+        // ordinary.
+        //
+        // Meta DOES accept a business-scoped id as a destination, through a
+        // different field. That is not implemented here, and implementing it
+        // against a shape nobody has exercised would be guessing. So this
+        // refuses, by name and without posting: an outbound half that does not
+        // exist yet is a gap, and a gap that says so is not an outage.
+        if (isScopedAddressKey(request.to)) {
+            return {
+                kind: 'rejected',
+                errorCode: 'scoped_recipient_unsupported',
+                retryable: false,
+            };
+        }
         let body: Record<string, any>;
         try { body = this.strictBody(request); }
         catch (error: any) {

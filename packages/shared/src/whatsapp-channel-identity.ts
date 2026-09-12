@@ -185,6 +185,21 @@ export function whatsAppStatusIdentity(
     );
 }
 
+/** The prefix a business-scoped address key carries. */
+export const SCOPED_ADDRESS_PREFIX = 'bsuid:';
+
+/**
+ * Is this stored address key a business-scoped id rather than a phone?
+ *
+ * The question every SEND has to ask now that the ingress can accept one.
+ * `contacts.external_id` is what producers carry as the recipient, and for a
+ * scoped sender that string is `bsuid:<portfolio>:<id>` — which is not a
+ * destination Meta's `/messages` endpoint understands in the `to` field.
+ */
+export function isScopedAddressKey(address: unknown): boolean {
+    return typeof address === 'string' && address.startsWith(SCOPED_ADDRESS_PREFIX);
+}
+
 /**
  * Is this string safe to hand to phone normalisation?
  *

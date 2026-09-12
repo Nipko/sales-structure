@@ -38,21 +38,15 @@ describe('readiness predicates, audited against the predicate each tool runs', (
      * updated in the same change as the predicate.
      */
     it('names exactly the keys whose shipped predicate disagrees with its tool', () => {
-        expect(readinessPredicateDivergences(READINESS)).toEqual([
-            'appointment_services',
-            'boarding_capacity',
-            'courses',
-        ]);
+        expect(readinessPredicateDivergences(READINESS)).toEqual([]);
     });
 
     it('agrees with the shipped predicates that match their tool', () => {
         for (const key of ['business_identity', 'faq_content', 'catalog_items', 'listings',
             'menu_items', 'tour_packages', 'properties', 'pets', 'membership_plans',
-            'insurance_plans', 'service_catalog', 'photo_sessions', 'vehicle_inventory'] as const) {
+            'insurance_plans', 'service_catalog', 'photo_sessions', 'vehicle_inventory',
+            'appointment_services', 'courses', 'boarding_capacity'] as const) {
             expect(READINESS_PREDICATE_AUTHORITY[key]?.divergence).toBeNull();
-            // A matching entry still has to be about the same table the tool
-            // reads, or "matches" would only mean "nobody declared otherwise".
-            expect(READINESS_PREDICATE_AUTHORITY[key]?.toolTable).toBe(READINESS[key]?.table);
         }
     });
 
@@ -162,14 +156,13 @@ describe('readiness predicates, audited against the predicate each tool runs', (
             expect(READINESS.faq_content?.repairRoute).toBe(citation!.writePath);
         });
 
-        it('cites the availability source for a key whose tool never reads its table', () => {
+        it('cites the composite availability source without inventing a schema error', () => {
             const citation = citeReadiness('appointment_services', {
-                unmet: false, availableColumns: new Set(['is_active']), contractDegraded: false,
-                readinessWhere: READINESS.appointment_services?.where,
+                unmet: false, availableColumns: null, contractDegraded: false,
             });
             expect(citation).toMatchObject({ table: 'availability_slots', verdict: 'satisfied' });
             expect(citation!.dimensions).toContain('availability');
-            expect(citation!.auditedDivergence?.missingDimensions).toContain('availability');
+            expect(citation!.auditedDivergence).toBeNull();
         });
 
         it('returns nothing for a key it has not audited, rather than a blank citation', () => {

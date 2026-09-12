@@ -7,6 +7,7 @@ import {
     OPERATIONAL_ROLES,
     TOOL_GROUP_PLAN_FEATURE,
     TOOL_GROUP_READINESS,
+    TOOL_READINESS,
     VERTICAL_TOOL_GROUPS,
     PROVIDER_PROFILE_IDS,
     providerFreshnessFor,
@@ -26,6 +27,7 @@ import { enabledToolFamilies, staticToolsForAgentConfig } from './agent-tool-reg
 import { isNonCommittalTool, toolOrigin } from './tool-policy-registry';
 import { SystemOfRecordBoundaryService } from '../integrations/system-of-record-boundary.service';
 import { buildVerticalOperationContract } from '../verticals/vertical-operation-contract';
+import type { EvalNamespaceLease } from '../simulation/isolated-eval-namespace';
 
 /**
  * Lo que se sabe de un proveedor externo en el momento del turno.
@@ -233,6 +235,8 @@ export class EffectiveCapabilityService {
         providers?: Readonly<Record<string, ProviderHealthInput>>;
         /** Both durable ownership lookups failed; this is not evidence of an unbound domain. */
         providerOwnershipUnavailable?: boolean;
+        /** Proof for actor-scoped readiness reads inside an isolated evaluation schema. */
+        sandboxNamespace?: EvalNamespaceLease;
     }): Promise<EffectiveCapabilityContract> {
         const profile = resolveSubtypeExperienceProfile(input.industry, input.subType);
         const excluded: ExcludedCapability[] = [];
@@ -321,14 +325,31 @@ export class EffectiveCapabilityService {
 
         // (3) Readiness. "Enabled" and "has something to answer with" were never
         // the same claim, and only the first was being made.
-        const readinessKeys = withinPlan
+        const candidateConfig = Object.fromEntries(
+            [...withinPlan, ...globalFamilies].map(group => [
+                group,
+                { ...(input.toolsConfig as Record<string, any> | null)?.[group], enabled: true },
+            ]),
+        );
+        const candidateToolNames = staticToolsForAgentConfig(candidateConfig)
+            .map((tool: ToolDefinition) => String(tool.name));
+        const readinessKeys = [
+            ...withinPlan
             .map(group => TOOL_GROUP_READINESS[group])
-            .filter((key): key is NonNullable<typeof key> => !!key);
+            .filter((key): key is NonNullable<typeof key> => !!key),
+            ...candidateToolNames
+                .map(tool => TOOL_READINESS[tool])
+                .filter((key): key is NonNullable<typeof key> => !!key),
+        ];
 
         const readinessReport = this.readiness
-            ? await (input.refreshReadiness
-                ? this.readiness.evaluate(input.tenantId, input.schemaName, [...new Set(readinessKeys)], input.executionContext, { refresh: true })
-                : this.readiness.evaluate(input.tenantId, input.schemaName, [...new Set(readinessKeys)], input.executionContext))
+            ? await this.readiness.evaluate(
+                input.tenantId,
+                input.schemaName,
+                [...new Set(readinessKeys)],
+                input.executionContext,
+                { refresh: input.refreshReadiness, sandboxNamespace: input.sandboxNamespace },
+            )
                 .catch(() => null)
             : null;
         if (this.readiness && !readinessReport) degraded = true;
@@ -363,6 +384,27 @@ export class EffectiveCapabilityService {
         );
         let publishedTools = staticToolsForAgentConfig(publishedConfig)
             .map((tool: ToolDefinition) => String(tool.name));
+
+        // A readiness requirement may describe just one reader in a broader
+        // family.  Filter it after family publication so an unmet boarding
+        // capacity never hides a valid grooming/walking catalogue.
+        const toolReadinessBlocked = publishedTools.filter((tool) => {
+            const key = TOOL_READINESS[tool];
+            return !!key && unmet.has(key);
+        });
+        if (toolReadinessBlocked.length) {
+            publishedTools = publishedTools.filter(tool => !toolReadinessBlocked.includes(tool));
+            for (const tool of toolReadinessBlocked) {
+                const key = TOOL_READINESS[tool]!;
+                const check = readinessReport?.checks.find(row => row.key === key);
+                excluded.push({
+                    subject: tool,
+                    reason: 'readiness_unmet',
+                    detail: CAPABILITY_EXCLUSION_TEXT.readiness_unmet,
+                    repairRoute: check?.repairRoute,
+                });
+            }
+        }
 
         // (4) Salud, scopes y frescura del proveedor.
         //

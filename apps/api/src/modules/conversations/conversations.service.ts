@@ -3093,6 +3093,7 @@ export class ConversationsService {
                 operatingCountry: turnContext.regional?.operatingCountry,
                 jurisdiction: turnContext.regional?.operatingCountry,
                 executionContext,
+                sandboxNamespace: session?.sandboxNamespace,
                 evaluationInputs: session?.snapshot.runtimeInputs ? {
                     providerHealth: session.snapshot.runtimeInputs.providerHealth,
                     mcp: { tools: session.snapshot.mcpTools || [], discoveredCount: session.snapshot.runtimeInputs.mcpDiscoveredCount,

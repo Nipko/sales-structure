@@ -4,6 +4,8 @@ import type { VerticalReadinessKey } from '@parallext/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { persistenceDisabled, type ServiceExecutionContext } from '../../common/types/execution-context';
+import { tenantActorDirectory } from '../appointments/tenant-user-scope.util';
+import type { EvalNamespaceLease } from '../simulation/isolated-eval-namespace';
 
 /**
  * Does this tenant actually have the data its capabilities promise?
@@ -42,11 +44,22 @@ export interface ReadinessReport {
     degraded: boolean;
 }
 
-interface ReadinessDefinition {
+interface ReadinessQueryContext {
+    schemaName: string;
+    actors?: { users: string; tenants: string };
+}
+
+export interface ReadinessDefinition {
     /** Tenant table the capability reads. */
     table: string;
+    /** Exact source when the capability spans more than one table. */
+    from?: string | ((context: ReadinessQueryContext) => string);
     /** Extra predicate — an inactive row cannot answer a customer. */
     where?: string;
+    /** Values owned by the server for predicates that cross the tenant boundary. */
+    params?: (context: ReadinessQueryContext) => unknown[];
+    /** Resolve the production/evaluation user directory before building SQL. */
+    actorScoped?: boolean;
     repair: string;
     repairRoute?: string;
 }
@@ -77,9 +90,30 @@ export const READINESS: Readonly<Partial<Record<VerticalReadinessKey, ReadinessD
         repairRoute: '/admin/knowledge/faqs',
     },
     appointment_services: {
-        table: 'services',
-        where: 'is_active = true',
-        repair: 'Creá al menos un servicio agendable con su duración y precio.',
+        table: 'availability_slots',
+        actorScoped: true,
+        from: ({ actors }) => `availability_slots availability
+            JOIN ${actors!.users} staff_user
+              ON staff_user.id = availability.user_id AND staff_user.is_active = true
+            JOIN ${actors!.tenants} tenant_owner
+              ON tenant_owner.id = staff_user.tenant_id
+             AND tenant_owner.schema_name = $1
+             AND tenant_owner.is_active = true`,
+        where: `availability.is_active = true
+            AND availability.day_of_week BETWEEN 0 AND 6
+            AND availability.start_time < availability.end_time
+            AND EXISTS (
+                SELECT 1 FROM services service
+                WHERE service.is_active = true
+                  AND COALESCE(service.duration_type, 'fixed') IN ('fixed', 'flexible')
+                  AND CASE
+                      WHEN service.duration_type = 'flexible'
+                        THEN COALESCE(service.duration_minutes_max, service.duration_minutes)
+                      ELSE service.duration_minutes
+                  END BETWEEN 1 AND 1440
+            )`,
+        params: ({ schemaName }) => [schemaName],
+        repair: 'Creá un servicio agendable válido y al menos un horario para un colaborador activo.',
         repairRoute: '/admin/appointments/config',
     },
     catalog_items: {
@@ -119,9 +153,15 @@ export const READINESS: Readonly<Partial<Record<VerticalReadinessKey, ReadinessD
         repairRoute: '/admin/properties',
     },
     courses: {
-        table: 'courses',
-        where: 'is_active = true',
-        repair: 'Creá al menos un curso activo.',
+        table: 'course_cohorts',
+        from: 'course_cohorts cohort JOIN courses course ON course.id = cohort.course_id',
+        where: `course.is_active = true
+            AND cohort.status IN ('open', 'full')
+            AND cohort.starts_at >= CURRENT_DATE
+            AND cohort.starts_at <= CURRENT_DATE + INTERVAL '180 days'
+            AND cohort.max_capacity >= 1
+            AND cohort.available_seats BETWEEN 0 AND cohort.max_capacity`,
+        repair: 'Publicá un curso con un cohorte abierto o con lista de espera dentro de los próximos 180 días.',
         repairRoute: '/admin/courses',
     },
     pets: {
@@ -163,7 +203,9 @@ export const READINESS: Readonly<Partial<Record<VerticalReadinessKey, ReadinessD
     // agent quote capacity it cannot honour.
     boarding_capacity: {
         table: 'services',
-        where: `is_active = true AND category IN ('guarderia', 'hotel') AND COALESCE(max_concurrent, 0) >= 1`,
+        where: `is_active = true
+            AND translate(lower(category), 'áéíóúü', 'aeiouu') IN ('guarderia', 'hotel')
+            AND COALESCE(max_concurrent, 0) >= 1`,
         repair: 'Configurá el servicio de guardería u hotel con su capacidad simultánea.',
         repairRoute: '/admin/service-catalog',
     },
@@ -192,7 +234,7 @@ export class VerticalReadinessService {
         schemaName: string,
         keys: readonly VerticalReadinessKey[],
         executionContext?: ServiceExecutionContext,
-        options?: { refresh?: boolean },
+        options?: { refresh?: boolean; sandboxNamespace?: EvalNamespaceLease },
     ): Promise<ReadinessReport> {
         if (!keys.length) {
             return { checks: [], unmet: [], evaluatedAt: new Date().toISOString(), degraded: false };
@@ -229,7 +271,7 @@ export class VerticalReadinessService {
             // it would punish the tenant for our gap.
             if (!definition) continue;
 
-            const count = await this.countRows(schemaName, definition);
+            const count = await this.countRows(schemaName, definition, options?.sandboxNamespace);
             if (count === null) {
                 degraded = true;
                 // Unknown is not unmet. A failed lookup must not switch off a
@@ -271,16 +313,29 @@ export class VerticalReadinessService {
     }
 
     /** Row count, or null when the lookup itself failed. */
-    private async countRows(schemaName: string, definition: ReadinessDefinition): Promise<number | null> {
+    private async countRows(
+        schemaName: string,
+        definition: ReadinessDefinition,
+        sandboxNamespace?: EvalNamespaceLease,
+    ): Promise<number | null> {
         const where = definition.where ? ` WHERE ${definition.where}` : '';
         try {
+            const context: ReadinessQueryContext = { schemaName };
+            if (definition.actorScoped) {
+                context.actors = await tenantActorDirectory(this.prisma, schemaName, sandboxNamespace);
+            }
+            const from = typeof definition.from === 'function'
+                ? definition.from(context)
+                : definition.from || definition.table;
+            const params = definition.params?.(context) ?? [];
             // Bounded so a tenant with a million rows does not pay for a full
             // count to answer "is there at least one".
             const rows = await this.prisma.executeInTenantSchema<any[]>(
                 schemaName,
                 `SELECT COUNT(*)::int AS total FROM (
-                     SELECT 1 FROM ${definition.table}${where} LIMIT 50
+                     SELECT 1 FROM ${from}${where} LIMIT 50
                  ) sample`,
+                params,
             );
             return Number(rows?.[0]?.total ?? 0);
         } catch (error: any) {

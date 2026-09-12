@@ -112,6 +112,8 @@ export interface ReadinessPredicateEntry {
 /** Shape of one `READINESS` definition, as this file needs to read it. */
 export interface ShippedReadinessDefinition {
     readonly table: string;
+    /** Present when the evaluator joins more than the primary inspection table. */
+    readonly from?: unknown;
     readonly where?: string;
     readonly repairRoute?: string;
 }
@@ -138,21 +140,11 @@ export const READINESS_PREDICATE_AUTHORITY:
     },
     appointment_services: {
         toolTable: 'availability_slots',
-        toolPredicate: 'is_active = true AND day_of_week = $1 AND the owning platform user and tenant are active',
+        toolPredicate: 'valid active appointment service AND an active slot owned by an active platform user and tenant',
         toolSource: 'conversations/ai-tool-executor.service.ts::check_availability',
         dimensions: ['active', 'availability', 'account_relation'],
         writePath: '/admin/appointments/config',
-        divergence: {
-            kind: 'different_subject',
-            missingDimensions: ['availability', 'account_relation'],
-            consequence: 'The availability read never touches `services`: the slot grid comes from '
-                + '`availability_slots` joined to an active platform user of an active tenant. One active service '
-                + 'and zero slots satisfies readiness, publishes the family, and every `check_availability` returns '
-                + '`appointments_not_configured` — the "no hay disponibilidad" loop.',
-            correction: 'Require a service AND at least one active `availability_slots` row owned by an active user '
-                + 'of this tenant, or split the key so the slot requirement has its own check and its own repair.',
-            owner: READINESS_OWNER,
-        },
+        divergence: null,
     },
     catalog_items: {
         toolTable: 'products',
@@ -207,21 +199,12 @@ export const READINESS_PREDICATE_AUTHORITY:
         divergence: null,
     },
     courses: {
-        toolTable: 'courses',
-        toolPredicate: 'is_active = true',
-        toolSource: 'education/education.service.ts::listCourses',
-        dimensions: ['active'],
+        toolTable: 'course_cohorts JOIN courses',
+        toolPredicate: "course is active AND cohort status IN ('open','full') AND starts within 180 days AND capacity is valid",
+        toolSource: 'education/education.service.ts::upcomingCohorts + education-enrollment-commands.ts::enroll',
+        dimensions: ['active', 'availability', 'capacity'],
         writePath: '/admin/courses',
-        divergence: {
-            kind: 'undecided_dimension',
-            missingDimensions: ['capacity'],
-            consequence: 'The sellable unit is a cohort. With zero `course_cohorts` rows readiness is satisfied and '
-                + '`get_courses` lists courses, while `get_course_schedule` has nothing to show and `enroll_student` '
-                + 'cannot even waitlist.',
-            correction: 'Require an open future `course_cohorts` row, or give the cohort requirement its own key so '
-                + 'the catalogue check keeps its own meaning.',
-            owner: READINESS_OWNER,
-        },
+        divergence: null,
     },
     pets: {
         toolTable: 'services',
@@ -271,18 +254,7 @@ export const READINESS_PREDICATE_AUTHORITY:
         toolSource: 'resource-rentals/resource-rentals.service.ts::checkAvailability',
         dimensions: ['active', 'capacity'],
         writePath: '/admin/service-catalog',
-        divergence: {
-            kind: 'different_subject',
-            missingDimensions: ['account_relation'],
-            consequence: 'The runtime strips accents before comparing the category; readiness compares the literals. '
-                + "A service stored as 'guardería' fails readiness and passes the runtime. And the family this key "
-                + 'gates carries no read tool: the availability read is `check_daycare_availability`, which belongs '
-                + 'to `petServices` and is gated by the bare `pets` predicate, so boarding availability publishes '
-                + 'with `boarding_capacity` unmet.',
-            correction: 'Compare the category with the same accent normalisation the runtime uses, and gate the '
-                + 'daycare availability read on this key instead of on `pets`.',
-            owner: READINESS_OWNER,
-        },
+        divergence: null,
     },
 });
 
@@ -484,6 +456,9 @@ export function readinessTablesToInspect(
     readiness: Readonly<Partial<Record<VerticalReadinessKey, ShippedReadinessDefinition>>>,
 ): readonly string[] {
     return Object.freeze([...new Set(keys
-        .map(key => readiness[key]?.table)
+        // A composite predicate is executed as one SQL statement and reports
+        // degradation itself. Inspecting only its primary table would falsely
+        // classify columns from the joined tables as missing.
+        .map(key => readiness[key]?.from == null ? readiness[key]?.table : undefined)
         .filter((table): table is string => typeof table === 'string' && /^[a-z_][a-z0-9_]*$/.test(table)))].sort());
 }

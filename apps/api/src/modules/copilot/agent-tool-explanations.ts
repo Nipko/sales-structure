@@ -1,4 +1,4 @@
-import { composeSubtypeEvalPack, localizeCapabilityText, rollUpOperationalState, TOOL_GROUP_READINESS,
+import { composeSubtypeEvalPack, localizeCapabilityText, rollUpOperationalState, TOOL_GROUP_READINESS, TOOL_READINESS,
     type AgentOperationalState, type EffectiveCapabilityContract,
     type VerticalDomainContractV2, type VerticalToolGroup } from '@parallext/shared';
 import { citeReadiness, type ReadinessCitation, type ShippedReadinessDefinition }
@@ -111,10 +111,12 @@ function providerSubjects(tool: string): ReadonlySet<string> {
 
 /** Provider reads have their own health gate, not a native-table prerequisite. */
 function readinessForTools(tools: readonly string[]): readonly string[] {
-    return [...new Set(tools.flatMap(tool => TOOL_FAMILIES
-        .filter(family => family.tools.some(definition => definition.name === tool))
-        .map(family => TOOL_GROUP_READINESS[family.key as VerticalToolGroup])
-        .filter((key): key is NonNullable<typeof key> => !!key)))];
+    return [...new Set(tools.flatMap(tool => [
+        TOOL_READINESS[tool],
+        ...TOOL_FAMILIES
+            .filter(family => family.tools.some(definition => definition.name === tool))
+            .map(family => TOOL_GROUP_READINESS[family.key as VerticalToolGroup]),
+    ]).filter((key): key is NonNullable<typeof key> => !!key))];
 }
 
 /**
@@ -204,16 +206,22 @@ export function buildAgentToolExplanations(input: {
         // nobody could read changes what the state is allowed to say.
         const definitions = input.readinessDefinitions ?? {};
         const readinessAudit = readiness
-            .map(key => citeReadiness(key as any, {
-                unmet: (input.contract?.unmetReadiness ?? []).includes(key as any),
-                availableColumns: input.readinessColumns?.[definitions[key]?.table ?? ''] ?? null,
-                // No contract at all is not "nothing was wrong with it": the
-                // projection could not be read, so its readiness answers are
-                // unread too. Saying `satisfied` here would be the same lie as
-                // the one this file is about, told about a whole channel.
-                contractDegraded: !input.contract || input.contract.degraded === true,
-                readinessWhere: definitions[key]?.where,
-            }))
+            .map(key => {
+                const definition = definitions[key];
+                const composite = definition?.from != null;
+                return citeReadiness(key as any, {
+                    unmet: (input.contract?.unmetReadiness ?? []).includes(key as any),
+                    availableColumns: composite
+                        ? null
+                        : input.readinessColumns?.[definition?.table ?? ''] ?? null,
+                    // No contract at all is not "nothing was wrong with it": the
+                    // projection could not be read, so its readiness answers are
+                    // unread too. Saying `satisfied` here would be the same lie as
+                    // the one this file is about, told about a whole channel.
+                    contractDegraded: !input.contract || input.contract.degraded === true,
+                    readinessWhere: composite ? undefined : definition?.where,
+                });
+            })
             .filter((citation): citation is ReadinessCitation => !!citation);
         // A readiness source nobody could read is not a requirement the owner
         // failed to meet. `pending` is the word for "there is something to do

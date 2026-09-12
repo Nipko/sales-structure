@@ -652,4 +652,25 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
         expect(result.slots.map((slot: any) => slot.time)).toEqual(['01:00', '03:00', '03:30']);
         expect(harness.prisma.transactionInTenantSchema).not.toHaveBeenCalled();
     });
+
+    it('does not turn an invalid zero-minute service into a bookable 30-minute slot', async () => {
+        const harness = createHarness([[
+            { id: appointment.service_id, name: 'Consulta inválida', duration_minutes: 0,
+                buffer_minutes: 0, duration_type: 'fixed', max_concurrent: 1 },
+        ]]);
+
+        const result = await harness.executor.execute(
+            schemaName, tenantId, contactId, 'check_availability',
+            { serviceId: appointment.service_id, date: '2026-08-12' }, undefined,
+            { operationalScope, authority: authorityFor('check_availability') },
+        );
+
+        expect(result).toMatchObject({
+            available: false,
+            slots: [],
+            error: 'invalid_appointment_temporal_contract',
+        });
+        expect(harness.prisma.$queryRawUnsafe.mock.calls.some(([sql]) =>
+            String(sql).includes('availability_slots'))).toBe(false);
+    });
 });

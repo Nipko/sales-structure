@@ -66,7 +66,7 @@ describe('what a tenant is told about one tool', () => {
     });
 
     it('reports only readiness owned by the tool and its prerequisites', () => {
-        const rows = build({ toolNames: ['search_products', 'get_courses', 'schedule_test_drive'],
+        const rows = build({ toolNames: ['search_products', 'get_courses', 'schedule_test_drive', 'check_daycare_availability'],
             contract: contract({ publishedTools: [], unmetReadiness: ['catalog_items', 'courses', 'vehicle_inventory'],
                 excluded: [{ subject: 'catalog', reason: 'readiness_unmet', detail: { es: 'Cargue productos.', en: 'x', pt: 'x', fr: 'x' } }] }) });
         expect(find(rows, 'search_products').requires.readiness).toEqual(['catalog_items']);
@@ -76,6 +76,8 @@ describe('what a tenant is told about one tool', () => {
         expect(find(rows, 'create_appointment').missing.readiness).toEqual([]);
         expect(find(rows, 'schedule_test_drive').requires.readiness).toEqual(expect.arrayContaining(['vehicle_inventory', 'appointment_services']));
         expect(find(rows, 'schedule_test_drive').missing.readiness).toEqual(['vehicle_inventory']);
+        expect(find(rows, 'check_daycare_availability').requires.readiness)
+            .toEqual(expect.arrayContaining(['pets', 'boarding_capacity']));
     });
 
     it.each([
@@ -220,7 +222,7 @@ describe('what a tenant is told about one tool', () => {
         // could not possibly help.
         const faqColumns = { faqs: new Set(['id', 'question', 'answer', 'is_published']) };
 
-        it('cites the predicate the tool runs, not the one the check runs', () => {
+        it('cites the predicate shared by the tool and the repaired check', () => {
             const rows = build({
                 missionIntentKeys: [domain.intents.find(entry => entry.key === 'ask_question')!.key],
                 contract: contract({ publishedTools: ['search_faqs'] }),
@@ -230,27 +232,24 @@ describe('what a tenant is told about one tool', () => {
             const citation = find(rows, 'search_faqs').readinessAudit
                 .find(entry => entry.key === 'faq_content')!;
             expect(citation).toMatchObject({
-                table: 'faqs', predicate: 'is_published = true', verdict: 'read_error',
+                table: 'faqs', predicate: 'is_published = true', verdict: 'satisfied',
                 writePath: '/admin/knowledge/faqs',
             });
             expect(citation.dimensions).toEqual(['active']);
-            // And the shipped check does not read that column at all.
-            expect(READINESS.faq_content?.where).not.toContain('is_published');
+            expect(READINESS.faq_content?.where).toContain('is_published');
         });
 
-        it('refuses to call a tool prepared when its readiness source could not be read', () => {
+        it('calls a published tool prepared when its readable requirement is satisfied', () => {
             const rows = build({
                 missionIntentKeys: [domain.intents.find(entry => entry.key === 'ask_question')!.key],
                 contract: contract({ publishedTools: ['search_faqs'] }),
                 readinessDefinitions: READINESS as any,
                 readinessColumns: faqColumns,
             });
-            // Published, nothing disproved it, and still not `prepared`: nobody
-            // could check the requirement, which is the honest word for it.
-            expect(find(rows, 'search_faqs').state).toBe('unknown');
+            expect(find(rows, 'search_faqs').state).toBe('prepared');
         });
 
-        it('does not call it pending either when the gate refused it over an unreadable check', () => {
+        it('calls it pending when the readable source is genuinely empty', () => {
             const rows = build({
                 missionIntentKeys: [domain.intents.find(entry => entry.key === 'ask_question')!.key],
                 contract: contract({
@@ -262,10 +261,8 @@ describe('what a tenant is told about one tool', () => {
                 readinessDefinitions: READINESS as any,
                 readinessColumns: faqColumns,
             });
-            // `pending` means "there is something here for you to do". There is
-            // not: the answer did not come from this tenant's data.
-            expect(find(rows, 'search_faqs').state).toBe('unknown');
-            expect(find(rows, 'search_faqs').readinessAudit[0].verdict).toBe('read_error');
+            expect(find(rows, 'search_faqs').state).toBe('pending');
+            expect(find(rows, 'search_faqs').readinessAudit[0].verdict).toBe('missing_data');
         });
 
         it('still calls a genuinely empty catalogue missing data, and pending', () => {
@@ -325,7 +322,7 @@ describe('what a tenant is told about one tool', () => {
             expect(row.readinessAudit[0].verdict).toBe('read_error');
         });
 
-        it('carries the audited divergence so the surface can say the check is weaker than its tool', () => {
+        it('reports no stale divergence after listings readiness matches the tool', () => {
             const rows = build({
                 toolNames: ['search_listings'],
                 contract: contract({ publishedTools: ['search_listings'] }),
@@ -335,8 +332,7 @@ describe('what a tenant is told about one tool', () => {
             const citation = find(rows, 'search_listings').readinessAudit
                 .find(entry => entry.key === 'listings')!;
             expect(citation.verdict).toBe('satisfied');
-            expect(citation.auditedDivergence).toMatchObject({ kind: 'weaker_predicate' });
-            expect(citation.auditedDivergence!.missingDimensions).toEqual(['active']);
+            expect(citation.auditedDivergence).toBeNull();
         });
     });
 });

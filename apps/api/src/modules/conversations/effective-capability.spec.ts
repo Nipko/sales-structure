@@ -1,5 +1,5 @@
 import { EffectiveCapabilityService } from './effective-capability.service';
-import { TOOL_GROUP_READINESS } from '@parallext/shared';
+import { TOOL_GROUP_READINESS, TOOL_READINESS } from '@parallext/shared';
 
 /**
  * Las tools se publicaban desde toggles guardados en cada agente.
@@ -174,6 +174,50 @@ describe('plan y readiness recortan lo que el subtipo concede', () => {
         // Nunca se consulta la tabla de una familia que igual no se iba a
         // publicar: es trabajo por turno que no cambia ninguna decisión.
         expect(keys).not.toContain('insurance_plans');
+    });
+
+    it('threads the server-owned evaluation lease into actor-scoped readiness', async () => {
+        const { service, readiness } = build();
+        const sandboxNamespace = {
+            schemaName: 'tenant_eval_11111111_111111111111111111111111',
+            sourceSchema: 'tenant_source',
+            tenantId,
+            token: '22222222-2222-4222-8222-222222222222',
+            tables: [],
+            expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        };
+
+        await service.resolve({
+            tenantId,
+            schemaName: sandboxNamespace.schemaName,
+            industry: 'salud',
+            subType: 'dental',
+            toolsConfig: { appointments: { enabled: true } },
+            sandboxNamespace,
+        });
+
+        expect((readiness!.evaluate as jest.Mock).mock.calls[0][4])
+            .toMatchObject({ sandboxNamespace });
+    });
+
+    it('gates boarding availability without hiding other pet services', async () => {
+        const { service, readiness } = build({ unmet: ['boarding_capacity'] });
+
+        const contract = await service.resolve({
+            tenantId, schemaName, industry: 'pet_services', subType: 'peluqueria',
+            toolsConfig: { petServices: { enabled: true } },
+        });
+
+        expect(TOOL_READINESS.check_daycare_availability).toBe('boarding_capacity');
+        expect((readiness!.evaluate as jest.Mock).mock.calls[0][2])
+            .toEqual(expect.arrayContaining(['pets', 'boarding_capacity']));
+        expect(contract.publishedGroups).toContain('petServices');
+        expect(contract.publishedTools).toContain('list_pet_services');
+        expect(contract.publishedTools).not.toContain('check_daycare_availability');
+        expect(contract.excluded).toContainEqual(expect.objectContaining({
+            subject: 'check_daycare_availability',
+            reason: 'readiness_unmet',
+        }));
     });
 
     it('un readiness ilegible marca degradado sin apagar el agente', async () => {

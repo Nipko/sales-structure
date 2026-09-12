@@ -216,14 +216,11 @@ const TABLES = ['faqs', 'products', 'companies', 'menu_items', 'real_estate_list
                 READINESS_PREDICATE_AUTHORITY.insurance_plans!.toolPredicate)).toEqual({ total: 1 });
         });
 
-        it('fails an accented boarding category the runtime comparison accepts', async () => {
+        it('accepts the same accented boarding category as the runtime resolver', async () => {
             await sql('TRUNCATE services');
             await sql(`INSERT INTO services (name, duration_minutes, is_active, category, max_concurrent)
                        VALUES ('Guardería día', 480, true, 'guardería', 4)`);
-            expect(await countWith('services', READINESS.boarding_capacity!.where)).toEqual({ total: 0 });
-            // The runtime strips accents before comparing, so the same row is
-            // acceptable there: the readiness answer is stricter than the gate
-            // it is supposed to predict.
+            expect(await countWith('services', READINESS.boarding_capacity!.where)).toEqual({ total: 1 });
             expect(await countWith('services',
                 `is_active = true
                  AND translate(lower(category), 'áéíóúü', 'aeiouu') IN ('hotel', 'guarderia')

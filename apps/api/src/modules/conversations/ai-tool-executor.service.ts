@@ -2757,9 +2757,9 @@ export class AIToolExecutorService {
         }
 
         // For flexible services, use max duration for calendar blocking
-        const duration = durationType === 'flexible' && svcRows[0].duration_minutes_max
+        const duration = Number(durationType === 'flexible' && svcRows[0].duration_minutes_max != null
             ? svcRows[0].duration_minutes_max
-            : (svcRows[0].duration_minutes || 30);
+            : svcRows[0].duration_minutes);
         const buffer = svcRows[0].buffer_minutes || 0;
         // Total block time = service duration + post-buffer
         const totalBlock = duration + buffer;
@@ -5282,7 +5282,9 @@ export class AIToolExecutorService {
             const svcRows = await this.prisma.executeInTenantSchema<any[]>(
                 schemaName,
                 `SELECT id FROM services
-                 WHERE is_active = true AND category IN ('guarderia', 'hotel')
+                 WHERE is_active = true
+                   AND translate(lower(category), 'áéíóúü', 'aeiouu') IN ('guarderia', 'hotel')
+                   AND COALESCE(max_concurrent, 0) >= 1
                  ORDER BY COALESCE(max_concurrent, 1) DESC, name ASC
                  LIMIT 1`,
             ).catch(() => null);

@@ -26,6 +26,7 @@ import {
 } from './tools/vertical-integration-tools';
 import { isNonCommittalTool, toolOrigin } from './tool-policy-registry';
 import { buildTurnAuthority, type TurnAuthorityInput } from './turn-authority';
+import type { EvalNamespaceLease } from '../simulation/isolated-eval-namespace';
 
 export interface ComposedTurnCapability {
     contract: EffectiveCapabilityContract | null;
@@ -54,6 +55,8 @@ export interface ComposeTurnCapabilityInput {
     channelType?: string;
     operatingCountry?: string;
     jurisdiction?: string;
+    /** Server-owned lease; never accepted from an API payload. */
+    sandboxNamespace?: EvalNamespaceLease;
 }
 
 const PROVIDER_DEFINITIONS: Readonly<Record<string, ToolDefinition>> = Object.freeze({
@@ -190,6 +193,7 @@ export class TurnCapabilityComposerService {
                 providerOwnershipUnavailable,
                 executionContext: input.executionContext,
                 refreshReadiness: input.refreshReadiness,
+                sandboxNamespace: input.sandboxNamespace,
             });
         } catch (error: any) {
             this.logger.warn(`Capability contract unresolved for ${input.tenantId}: ${error?.message}`);

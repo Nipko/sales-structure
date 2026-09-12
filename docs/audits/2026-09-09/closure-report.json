@@ -1,12 +1,12 @@
 {
   "version": 1,
-  "revision": "b82bb66883389bf7d04ecb73c0b41d1f0b24a0a0",
-  "generatedAt": "2026-09-12T19:38:02.485Z",
+  "revision": "88cca889407fd1ad95baebf680b6924d5f028ee9",
+  "generatedAt": "2026-09-12T19:52:31.146Z",
   "finished": false,
   "counts": {
-    "aceptada": 15,
+    "aceptada": 16,
     "bloqueada": 22,
-    "abierta": 8,
+    "abierta": 7,
     "diferida": 1
   },
   "provenance": {
@@ -637,10 +637,10 @@
     },
     {
       "id": "T2",
-      "open": 3,
-      "openLabel": "3 predicados de preparación aún divergen de su herramienta: appointment_services, courses, boarding_capacity",
+      "open": 0,
+      "openLabel": "0 predicados de preparación aún divergen de su herramienta",
       "gates": [],
-      "status": "abierta",
+      "status": "aceptada",
       "provenance": "derived",
       "artefact": null,
       "evidence": "Derivado de cada entrada no nula de `READINESS_PREDICATE_AUTHORITY`. Cada readiness cita el predicado que su herramienta evalúa y el registro se reduce únicamente cuando la corrección aterriza junto con su prueba.",

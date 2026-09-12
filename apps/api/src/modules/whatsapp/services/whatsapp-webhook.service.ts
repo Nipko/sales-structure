@@ -1,3 +1,4 @@
+import { whatsAppSenderIdentity } from '@parallext/shared';
 import { Injectable, Logger, BadRequestException, Inject, Optional, forwardRef } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -317,8 +318,25 @@ export class WhatsappWebhookService {
              this.resolveAccessTokenAndMarkRead(tenantId, phoneNumberId, waMessageId);
          }
 
-         const fromPhone = msg?.from;
-         if (typeof fromPhone !== 'string' || !fromPhone.trim()) {
+         // ── WHO WROTE, WHEN THERE MAY BE NO PHONE NUMBER ────────────────
+         //
+         // `msg.from` is a phone, and Meta's business-scoped user ids mean it
+         // can be absent: the webhook then carries `from_user_id` and the
+         // person has written without this business ever seeing a number. The
+         // guard below used to require `from` and discard everything else, so
+         // against a portfolio where usernames have rolled out the customer
+         // wrote, nothing answered, and the only trace was an error log.
+         //
+         // The identity carries its KIND, and a scoped id is keyed with the
+         // portfolio it means something inside — never on the bare string,
+         // which two portfolios could collide on, and never through phone
+         // normalisation, which would turn an all-digit opaque id into a
+         // diallable number belonging to a stranger.
+         const identity = whatsAppSenderIdentity(msg, contacts, {
+             wabaId: value?.metadata?.waba_id ?? null, phoneNumberId,
+         });
+         const fromPhone = identity?.addressKey;
+         if (!identity || typeof fromPhone !== 'string' || !fromPhone.trim()) {
              // Sin remitente el mensaje no es contestable ni atribuible: se
              // descarta acá en vez de romper el INSERT de `contacts` dentro del
              // worker. Se loguea el cuerpo CRUDO porque esta ruta —a diferencia
@@ -384,6 +402,13 @@ export class WhatsappWebhookService {
              metadata: {
                  contactName: contact?.profile?.name,
                  waMessageId,
+                 // Carried so nothing downstream has to guess from the key's
+                 // shape. `senderPhone` is null for somebody who has not shared
+                 // their number, and that is a real answer: they can still ask a
+                 // question and get one answered.
+                 senderKind: identity.kind,
+                 senderPhone: identity.phone,
+                 senderPhoneProvenance: identity.phoneProvenance,
              },
          };
 

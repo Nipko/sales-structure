@@ -58,6 +58,7 @@ export * from './provider-integration-policy';
 // ---- Navigation semantics: two objects never share a label ----
 export * from './navigation-semantics';
 export * from './dashboard-page-access';
+export * from './whatsapp-channel-identity';
 export * from './agent-skillset-policy';
 
 // ---- Plan gating for navigation: no visible option that ends in 403 ----

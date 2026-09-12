@@ -1590,10 +1590,24 @@ export class ConversationsService {
             // inventado fusiona a dos personas. Sin país declarado se guarda
             // null y el cruce simplemente no ocurre.
             const contactRegion = await this.regionalProfile?.phoneRegionFor(tenantId) ?? null;
-            const phoneNorm = normalizePhoneE164(contactId, contactRegion);
+            // ── THE KEY IS NOT ALWAYS A PHONE ───────────────────────────────
+            //
+            // On WhatsApp `contactId` used to BE the number. With business-scoped
+            // user ids it can be `bsuid:<portfolio>:<id>`, and the ingress says
+            // which: `senderPhone` is the number Meta actually sent, or null for
+            // somebody who has not shared one.
+            //
+            // Storing the key in `phone` would put an opaque identifier where
+            // every screen, export and SMS fallback expects a number. Null is
+            // the honest value, and it is what makes "ask them for it, and say
+            // what for" possible later instead of a silent wrong dial.
+            const senderPhone: string | null = (msg.metadata as any)?.senderKind === 'business_scoped'
+                ? ((msg.metadata as any)?.senderPhone ?? null)
+                : contactId;
+            const phoneNorm = senderPhone ? normalizePhoneE164(senderPhone, contactRegion) : null;
             contact = await this.prisma.executeInTenantSchema<any[]>(schemaName,
                 `INSERT INTO contacts (external_id, channel_type, name, phone, phone_normalized, avatar_url) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-                [contactId, channelType, metaName || 'Unknown', contactId, phoneNorm, metaPic || null],
+                [contactId, channelType, metaName || 'Unknown', senderPhone, phoneNorm, metaPic || null],
             ).then(res => res[0]);
         } else {
             // Update name/avatar if we now have better data

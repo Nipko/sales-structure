@@ -50,12 +50,12 @@ Los que todavía están fuera del carril durable:
 | Archivo:línea | Método | Carril |
 |---|---|---|
 | `modules/agent-console/agent-console.service.ts:622` | `sendAgentMessage` | `inline` |
-| `modules/conversations/conversations.service.ts:2029` | `sendAfterHoursMessage` | `outbound_queue` |
-| `modules/conversations/conversations.service.ts:2302` | `sendResponse` | `outbound_queue` |
-| `modules/conversations/conversations.service.ts:2331` | `sendPaymentLink` | `outbound_queue` |
-| `modules/conversations/conversations.service.ts:2354` | `sendMedia` | `outbound_queue` |
-| `modules/conversations/conversations.service.ts:2404` | `sendFlow` | `outbound_queue` |
-| `modules/conversations/conversations.service.ts:5994` | `sendCollectedFlow` | `outbound_queue` |
+| `modules/conversations/conversations.service.ts:2043` | `sendAfterHoursMessage` | `outbound_queue` |
+| `modules/conversations/conversations.service.ts:2316` | `sendResponse` | `outbound_queue` |
+| `modules/conversations/conversations.service.ts:2345` | `sendPaymentLink` | `outbound_queue` |
+| `modules/conversations/conversations.service.ts:2368` | `sendMedia` | `outbound_queue` |
+| `modules/conversations/conversations.service.ts:2418` | `sendFlow` | `outbound_queue` |
+| `modules/conversations/conversations.service.ts:6008` | `sendCollectedFlow` | `outbound_queue` |
 
 Por carril:
 
@@ -80,12 +80,12 @@ llevar a la admisión económica.
 | `modules/agent-console/agent-console.service.ts:622` | `sendAgentMessage` | `inline` | dynamic | 1 (read) |
 | `modules/channels/channel-management.controller.ts:519` | `testTelegram` | `inline` | telegram | 1 (read) |
 | `modules/channels/channel-management.controller.ts:1483` | `testSms` | `inline` | sms | 1 (read) |
-| `modules/conversations/conversations.service.ts:2029` | `sendAfterHoursMessage` | `outbound_queue` | dynamic | 1 (read) |
-| `modules/conversations/conversations.service.ts:2302` | `sendResponse` | `outbound_queue` | dynamic | n(bubbles) (derived) |
-| `modules/conversations/conversations.service.ts:2331` | `sendPaymentLink` | `outbound_queue` | dynamic | n(links) (derived) |
-| `modules/conversations/conversations.service.ts:2354` | `sendMedia` | `outbound_queue` | dynamic | n(media) (derived) |
-| `modules/conversations/conversations.service.ts:2404` | `sendFlow` | `outbound_queue` | dynamic | 1 (read) |
-| `modules/conversations/conversations.service.ts:5994` | `sendCollectedFlow` | `outbound_queue` | dynamic | 1 (read) |
+| `modules/conversations/conversations.service.ts:2043` | `sendAfterHoursMessage` | `outbound_queue` | dynamic | 1 (read) |
+| `modules/conversations/conversations.service.ts:2316` | `sendResponse` | `outbound_queue` | dynamic | n(bubbles) (derived) |
+| `modules/conversations/conversations.service.ts:2345` | `sendPaymentLink` | `outbound_queue` | dynamic | n(links) (derived) |
+| `modules/conversations/conversations.service.ts:2368` | `sendMedia` | `outbound_queue` | dynamic | n(media) (derived) |
+| `modules/conversations/conversations.service.ts:2418` | `sendFlow` | `outbound_queue` | dynamic | 1 (read) |
+| `modules/conversations/conversations.service.ts:6008` | `sendCollectedFlow` | `outbound_queue` | dynamic | 1 (read) |
 
 ## Donde una respuesta se vuelve varios cargos
 
@@ -99,10 +99,10 @@ reparto**, que es donde una sola respuesta lógica se multiplica.
 | `modules/appointments/appointment-payment.listener.ts:89` | `onPaid` | `operational_notice` | **n** | one effect per entry of `rows` (fan-out at line 51) |
 | `modules/appointments/appointment-payment.listener.ts:107` | `onPaid` | `operational_notice` | **n** | one effect per entry of `rows` (fan-out at line 51) |
 | `modules/appointments/appointment-payment.listener.ts:115` | `onPaid` | `operational_notice` | **n** | one effect per entry of `rows` (fan-out at line 51) |
-| `modules/conversations/conversations.service.ts:2302` | `sendResponse` | `outbound_queue` | **n(bubbles)** | one effect per text bubble (fan-out at line 1478) |
-| `modules/conversations/conversations.service.ts:2331` | `sendPaymentLink` | `outbound_queue` | **n(links)** | one effect per canonical link (fan-out at line 1495) |
-| `modules/conversations/conversations.service.ts:2354` | `sendMedia` | `outbound_queue` | **n(media)** | one effect per attachment (fan-out at line 1502) |
-| `modules/conversations/conversations.service.ts:6083` | `dispatchReplyThroughOutbox` | `dispatch_outbox` | **n(items)** | one committed row per item; the whole batch is one answer |
+| `modules/conversations/conversations.service.ts:2316` | `sendResponse` | `outbound_queue` | **n(bubbles)** | one effect per text bubble (fan-out at line 1478) |
+| `modules/conversations/conversations.service.ts:2345` | `sendPaymentLink` | `outbound_queue` | **n(links)** | one effect per canonical link (fan-out at line 1495) |
+| `modules/conversations/conversations.service.ts:2368` | `sendMedia` | `outbound_queue` | **n(media)** | one effect per attachment (fan-out at line 1502) |
+| `modules/conversations/conversations.service.ts:6097` | `dispatchReplyThroughOutbox` | `dispatch_outbox` | **n(items)** | one committed row per item; the whole batch is one answer |
 | `modules/conversations/tool-approval-effects.service.ts:36` | `schedule` | `approved_effect` | **n** | one effect per entry of `rows` (loop at the send) |
 | `modules/education/education-enrollment-commands.ts:106` | `promote` | `operational_notice` | **n** | one effect per entry of `candidates` (loop at the send) |
 | `modules/education/education-enrollment-commands.ts:111` | `promote` | `operational_notice` | **n** | one effect per entry of `candidates` (loop at the send) |
@@ -162,7 +162,7 @@ mensajes entregados, y un indicador de "escribiendo" no lo es.
 
 | Línea | Método | Primitiva | Carril | Disparador | Canales | Efectos por respuesta | Base |
 |---:|---|---|---|---|---|---|---|
-| 929 | `dispatch` | `proactive.send` | `dispatch_outbox` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
+| 965 | `dispatch` | `proactive.send` | `dispatch_outbox` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
 
 ### `apps/api/src/modules/broadcast/broadcast-queue.processor.ts`
 
@@ -183,15 +183,15 @@ mensajes entregados, y un indicador de "escribiendo" no lo es.
 |---:|---|---|---|---|---|---|---|
 | 551 | `replyOnceThroughOutbox` | `proactiveDispatch.send` | `dispatch_outbox` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
 | 1175 | `(top level)` | `.sendTypingIndicator` | `inline` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
-| 2029 | `sendAfterHoursMessage` | `outboundQueue.enqueue` | `outbound_queue` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
-| 2302 | `sendResponse` | `outboundQueue.enqueue` | `outbound_queue` | called by another service | dynamic | n(bubbles) | one effect per text bubble (fan-out at line 1478) |
-| 2331 | `sendPaymentLink` | `outboundQueue.enqueue` | `outbound_queue` | called by another service | dynamic | n(links) | one effect per canonical link (fan-out at line 1495) |
-| 2354 | `sendMedia` | `outboundQueue.enqueue` | `outbound_queue` | called by another service | dynamic | n(media) | one effect per attachment (fan-out at line 1502) |
-| 2404 | `sendFlow` | `outboundQueue.enqueue` | `outbound_queue` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
-| 5968 | `resumeOwnedDispatchBatch` | `outboundQueue.enqueueDispatch` | `dispatch_outbox` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
-| 5994 | `sendCollectedFlow` | `outboundQueue.enqueue` | `outbound_queue` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
-| 6038 | `dispatchReplyThroughOutbox` | `outboundQueue.enqueueDispatch` | `dispatch_outbox` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
-| 6083 | `dispatchReplyThroughOutbox` | `dispatchOutbox.prepare` | `dispatch_outbox` | called by another service | dynamic | n(items) | one committed row per item; the whole batch is one answer |
+| 2043 | `sendAfterHoursMessage` | `outboundQueue.enqueue` | `outbound_queue` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
+| 2316 | `sendResponse` | `outboundQueue.enqueue` | `outbound_queue` | called by another service | dynamic | n(bubbles) | one effect per text bubble (fan-out at line 1478) |
+| 2345 | `sendPaymentLink` | `outboundQueue.enqueue` | `outbound_queue` | called by another service | dynamic | n(links) | one effect per canonical link (fan-out at line 1495) |
+| 2368 | `sendMedia` | `outboundQueue.enqueue` | `outbound_queue` | called by another service | dynamic | n(media) | one effect per attachment (fan-out at line 1502) |
+| 2418 | `sendFlow` | `outboundQueue.enqueue` | `outbound_queue` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
+| 5982 | `resumeOwnedDispatchBatch` | `outboundQueue.enqueueDispatch` | `dispatch_outbox` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
+| 6008 | `sendCollectedFlow` | `outboundQueue.enqueue` | `outbound_queue` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
+| 6052 | `dispatchReplyThroughOutbox` | `outboundQueue.enqueueDispatch` | `dispatch_outbox` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
+| 6097 | `dispatchReplyThroughOutbox` | `dispatchOutbox.prepare` | `dispatch_outbox` | called by another service | dynamic | n(items) | one committed row per item; the whole batch is one answer |
 
 ### `apps/api/src/modules/conversations/tool-approval-effects.service.ts`
 
@@ -297,18 +297,18 @@ buscar una llamada a la autoridad economica en el codigo del archivo.
 | `modules/appointments/appointment-reminders.service.ts:164` | `dispatchTemplate` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/automation/automation-jobs.processor.ts:311` | `handleSendTemplate` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/automation/drip-sequence.service.ts:799` | `executeStepAction` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
-| `modules/automation/nurturing.service.ts:929` | `dispatch` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
+| `modules/automation/nurturing.service.ts:965` | `dispatch` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/broadcast/broadcast-queue.processor.ts:205` | `dispatchWhatsApp` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/conversations/conversations.service.ts:551` | `replyOnceThroughOutbox` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
-| `modules/conversations/conversations.service.ts:2029` | `sendAfterHoursMessage` | `outbound_queue` | `modules/channels/outbound-queue.processor.ts` | si |
-| `modules/conversations/conversations.service.ts:2302` | `sendResponse` | `outbound_queue` | `modules/channels/outbound-queue.processor.ts` | si |
-| `modules/conversations/conversations.service.ts:2331` | `sendPaymentLink` | `outbound_queue` | `modules/channels/outbound-queue.processor.ts` | si |
-| `modules/conversations/conversations.service.ts:2354` | `sendMedia` | `outbound_queue` | `modules/channels/outbound-queue.processor.ts` | si |
-| `modules/conversations/conversations.service.ts:2404` | `sendFlow` | `outbound_queue` | `modules/channels/outbound-queue.processor.ts` | si |
-| `modules/conversations/conversations.service.ts:5968` | `resumeOwnedDispatchBatch` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
-| `modules/conversations/conversations.service.ts:5994` | `sendCollectedFlow` | `outbound_queue` | `modules/channels/outbound-queue.processor.ts` | si |
-| `modules/conversations/conversations.service.ts:6038` | `dispatchReplyThroughOutbox` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
-| `modules/conversations/conversations.service.ts:6083` | `dispatchReplyThroughOutbox` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
+| `modules/conversations/conversations.service.ts:2043` | `sendAfterHoursMessage` | `outbound_queue` | `modules/channels/outbound-queue.processor.ts` | si |
+| `modules/conversations/conversations.service.ts:2316` | `sendResponse` | `outbound_queue` | `modules/channels/outbound-queue.processor.ts` | si |
+| `modules/conversations/conversations.service.ts:2345` | `sendPaymentLink` | `outbound_queue` | `modules/channels/outbound-queue.processor.ts` | si |
+| `modules/conversations/conversations.service.ts:2368` | `sendMedia` | `outbound_queue` | `modules/channels/outbound-queue.processor.ts` | si |
+| `modules/conversations/conversations.service.ts:2418` | `sendFlow` | `outbound_queue` | `modules/channels/outbound-queue.processor.ts` | si |
+| `modules/conversations/conversations.service.ts:5982` | `resumeOwnedDispatchBatch` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
+| `modules/conversations/conversations.service.ts:6008` | `sendCollectedFlow` | `outbound_queue` | `modules/channels/outbound-queue.processor.ts` | si |
+| `modules/conversations/conversations.service.ts:6052` | `dispatchReplyThroughOutbox` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
+| `modules/conversations/conversations.service.ts:6097` | `dispatchReplyThroughOutbox` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/conversations/tool-approval-effects.service.ts:36` | `schedule` | `approved_effect` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/education/education-enrollment-commands.ts:106` | `promote` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/education/education-enrollment-commands.ts:111` | `promote` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |

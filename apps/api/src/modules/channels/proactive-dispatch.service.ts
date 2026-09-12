@@ -46,6 +46,25 @@ export type ProactiveSendResult =
     | { readonly kind: 'refused'; readonly reason: string };
 
 /** Did this result leave a durable effect that will be delivered exactly once? */
+/**
+ * The `kind` every authority the outbox accepts carries.
+ *
+ * ── WHY THIS LIST IS CHECKED AGAINST THE FACTORIES, NOT WRITTEN FROM MEMORY ──
+ *
+ * A served agent's scope is `agent` or `legacy` — NOT `served_agent`, which is
+ * what the authority is called in prose and what a first version of the guard
+ * below looked for. The result was a guard that refused every deterministic
+ * reply on the durable lane: thirteen tests went red at once, which is the only
+ * reason it was caught before it silenced a producer.
+ *
+ * So `proactive-scope-required.spec.ts` builds one of each authority through
+ * its real factory and asserts the kind it comes out with is in this list. A
+ * new authority whose kind is not here fails there rather than at a customer.
+ */
+export const DISPATCH_AUTHORITY_KINDS: readonly string[] = Object.freeze([
+    'agent', 'legacy', 'proactive_policy', 'human_operator',
+]);
+
 export function effectIsDurable(result: ProactiveSendResult): boolean {
     return result.kind === 'prepared' || result.kind === 'already_present';
 }
@@ -296,13 +315,11 @@ export class ProactiveDispatchService {
         // hours later for a scheduled message, with a diagnosis that reads like
         // a permission problem rather than a producer bug.
         //
-        // The three kinds are the closed set the outbox accepts. Checking the
-        // KIND here rather than validating the whole scope keeps the two ends
-        // honest about their jobs: this is "did the producer bring one at all",
-        // the full validation belongs to the transaction that grants the lease
-        // and can read the rows it refers to.
-        const scopeKind = String((input.operationalScope as any)?.kind ?? '');
-        if (!['served_agent', 'proactive_policy', 'human_operator'].includes(scopeKind)) {
+        // Checking the KIND here rather than validating the whole scope keeps
+        // the two ends honest about their jobs: this is "did the producer bring
+        // one at all", and the full validation belongs to the transaction that
+        // grants the lease, which can read the rows the scope refers to.
+        if (!DISPATCH_AUTHORITY_KINDS.includes(String((input.operationalScope as any)?.kind ?? ''))) {
             return { kind: 'suppressed', reason: 'policy_authority_unavailable' };
         }
         const originKind: DispatchOriginKind = input.originKind === 'inbound_reply'

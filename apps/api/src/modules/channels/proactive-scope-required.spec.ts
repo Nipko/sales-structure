@@ -1,4 +1,5 @@
-import { ProactiveDispatchService } from './proactive-dispatch.service';
+import { ProactiveDispatchService, DISPATCH_AUTHORITY_KINDS } from './proactive-dispatch.service';
+import { servedAgentAuthority } from '../persona/served-agent-authority';
 
 /**
  * ═══ AN EMPTY OBJECT IS TRUTHY, AND IT IS NOT AN AUTHORITY ═══
@@ -19,6 +20,9 @@ import { ProactiveDispatchService } from './proactive-dispatch.service';
  * These cases never reach a database: the refusal has to happen BEFORE the row
  * exists, so a test that needed one would be testing the wrong end.
  */
+const TENANT = '11111111-1111-4111-8111-111111111111';
+const SCHEMA = 'tenant_probe';
+
 describe('the authority a proactive effect is sent under', () => {
     /** No store, no queue: nothing below the guard may be reached. */
     const service = () => new ProactiveDispatchService(
@@ -38,12 +42,39 @@ describe('the authority a proactive effect is sent under', () => {
         operationalScope,
     } as any);
 
+    it('recognises the kind every real authority factory produces', () => {
+        // ── THE LIST IS CHECKED, NOT REMEMBERED ─────────────────────────────
+        //
+        // A served agent's scope is `agent` or `legacy`. The authority is CALLED
+        // "served agent" everywhere in prose, and a first version of the guard
+        // looked for `served_agent` — which refused every deterministic reply on
+        // the durable lane. Thirteen tests went red at once, which is the only
+        // reason it was caught before it silenced a producer.
+        //
+        // So the kinds are read off the real factories rather than written from
+        // memory. An authority whose kind is not in the list fails here.
+        const agent = servedAgentAuthority(TENANT, SCHEMA, {
+            agentId: '00000000-0000-4000-8000-00000000000a', version: 3,
+            operationalHash: 'a'.repeat(64),
+        })!;
+        const legacy = servedAgentAuthority(TENANT, SCHEMA, {
+            agentId: null, version: null, legacyConfigHash: 'b'.repeat(64),
+        })!;
+        for (const scope of [agent, legacy]) {
+            expect({ kind: scope.kind, known: DISPATCH_AUTHORITY_KINDS.includes(scope.kind) })
+                .toEqual({ kind: scope.kind, known: true });
+        }
+        // And the two that ARE named after themselves, so the list stays whole.
+        expect(DISPATCH_AUTHORITY_KINDS).toContain('proactive_policy');
+        expect(DISPATCH_AUTHORITY_KINDS).toContain('human_operator');
+    });
+
     it.each([
         ['nothing at all', undefined],
         ['null', null],
         ['an empty object a lookup returned', {}],
         ['an object with no kind', { tenantId: 't-1', schemaName: 'tenant_x' }],
-        ['a kind nobody defined', { kind: 'legacy' }],
+        ['a kind nobody defined', { kind: 'whatever_this_is' }],
         ['a kind that is not a string', { kind: 7 }],
     ])('refuses %s before any row exists', async (_case, scope) => {
         await expect(send(scope)).resolves.toEqual({
@@ -51,7 +82,7 @@ describe('the authority a proactive effect is sent under', () => {
         });
     });
 
-    it.each(['served_agent', 'proactive_policy', 'human_operator'])(
+    it.each([...DISPATCH_AUTHORITY_KINDS])(
         'lets a %s scope through to the machinery that can really check it', async kind => {
             // Past the entrance, the stubs throw and the service turns that
             // into `deferred` — which is the assertion: whatever refused this

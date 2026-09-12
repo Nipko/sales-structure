@@ -313,9 +313,13 @@ describe('a gate deleted from a REAL sink', () => {
         const bypasses = withoutTheLegacyGate(() => census().bypasses);
         // Named rather than counted: the point is WHICH producers lose cover,
         // and the answer has to include the lane that serves every tenant today.
-        const at = bypasses.map((row: any) => row.file + ':' + row.line);
-        expect(at.length).toBeGreaterThan(5);
-        expect(at).toContain('modules/conversations/conversations.service.ts:2302');
+        // Named by FILE, not by file:line. A line number here is a second
+        // place to update every time an unrelated edit shifts the file, and a
+        // test that fails for that reason teaches people to re-baseline it —
+        // which is how a check stops being believed.
+        const files = new Set(bypasses.map((row: any) => row.file));
+        expect(bypasses.length).toBeGreaterThan(5);
+        expect([...files]).toContain('modules/conversations/conversations.service.ts');
         for (const row of bypasses) {
             expect(row.terminus).toBe('modules/channels/outbound-queue.processor.ts');
         }

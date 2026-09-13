@@ -9,6 +9,7 @@ const ready = !!redisUrl;
     let client: Redis;
     let service: TenantThrottleService;
     let tenantId: string;
+    let clock: jest.SpyInstance<number, []> | undefined;
 
     beforeAll(() => {
         const parsed = new URL(redisUrl!);
@@ -27,6 +28,8 @@ const ready = !!redisUrl;
     beforeEach(() => { tenantId = randomUUID(); });
 
     afterEach(async () => {
+        clock?.mockRestore();
+        clock = undefined;
         const keys = await client.keys(`*${tenantId}*`);
         if (keys.length) await client.del(...keys);
     });
@@ -58,5 +61,25 @@ const ready = !!redisUrl;
         await service.commitActionUsage(tenantId, 'outbound', 'next');
         await service.releaseActionUsage(tenantId, 'outbound', 'next');
         expect((await service.reserveActionUsage(tenantId, 'outbound', 'third')).count).toBe(2);
+    });
+
+    it('moves a held retry into the current hour only when that hour has capacity', async () => {
+        const hour = 2_000_000;
+        clock = jest.spyOn(Date, 'now').mockReturnValue(hour * 3_600_000);
+        await service.reserveActionUsage(tenantId, 'outbound', 'carried');
+
+        clock.mockReturnValue((hour + 1) * 3_600_000);
+        await service.reserveActionUsage(tenantId, 'outbound', 'current-a');
+        await service.reserveActionUsage(tenantId, 'outbound', 'current-b');
+        await service.reserveActionUsage(tenantId, 'outbound', 'current-c');
+
+        expect(await service.reserveActionUsage(tenantId, 'outbound', 'carried'))
+            .toEqual({ allowed: false, count: 3, adopted: true });
+
+        await service.releaseActionUsage(tenantId, 'outbound', 'current-a');
+        expect(await service.reserveActionUsage(tenantId, 'outbound', 'carried'))
+            .toEqual({ allowed: true, count: 3, adopted: true });
+        expect(await client.get(`throttle:outbound:${tenantId}:${hour}`)).toBe('0');
+        expect(await client.get(`throttle:outbound:${tenantId}:${hour + 1}`)).toBe('3');
     });
 });

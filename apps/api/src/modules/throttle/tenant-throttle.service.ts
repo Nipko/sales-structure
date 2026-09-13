@@ -158,8 +158,21 @@ export class TenantThrottleService {
         const result = await this.redis.getClient().eval(
             `local marker = redis.call('GET', KEYS[2])
              local current = tonumber(redis.call('GET', KEYS[1]) or '0')
-             if marker then return {1, current, 1} end
              local quota = tonumber(ARGV[1])
+             if marker then
+                 if string.sub(marker, 1, 5) ~= 'held:' then return {1, current, 1} end
+                 local heldWindow = string.sub(marker, 6)
+                 if heldWindow == ARGV[4] then return {1, current, 1} end
+                 if quota >= 0 and current >= quota then return {0, current, 1} end
+                 if quota < 0 then return {1, current, 1} end
+                 local oldCountKey = 'throttle:' .. ARGV[5] .. ':' .. ARGV[6] .. ':' .. heldWindow
+                 local oldCount = tonumber(redis.call('GET', oldCountKey) or '0')
+                 if oldCount > 0 then redis.call('DECR', oldCountKey) end
+                 current = redis.call('INCR', KEYS[1])
+                 redis.call('EXPIRE', KEYS[1], tonumber(ARGV[2]))
+                 redis.call('SET', KEYS[2], 'held:' .. ARGV[4], 'EX', tonumber(ARGV[3]))
+                 return {1, current, 1}
+             end
              if quota >= 0 and current >= quota then return {0, current, 0} end
              if quota < 0 then return {1, current, 0} end
              current = redis.call('INCR', KEYS[1])
@@ -173,6 +186,8 @@ export class TenantThrottleService {
             String(WINDOW_SECONDS),
             String(markerTtl),
             String(window),
+            action,
+            tenantId,
         ) as [number, number, number];
         return { allowed: result[0] === 1, count: Number(result[1]), adopted: result[2] === 1 };
     }

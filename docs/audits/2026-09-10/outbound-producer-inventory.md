@@ -369,7 +369,7 @@ esperada y su clasificación queda **fuera del alcance de este generador**.
 |---|---|---|---|
 | `auth.access_code_email` | `delivery_outbox` | `live` | `modules/auth/auth.service.ts` |
 | `auth.transactional_email` | `delivery_outbox` | `live` | `modules/auth/auth.service.ts` |
-| `auth.two_factor_sms` | `inline` | `off` | `modules/auth/platform-sms.service.ts` |
+| `auth.two_factor_sms` | `delivery_outbox` | `off` | `modules/auth/platform-sms.service.ts` |
 | `automation.http_request` | `domain_queue` | `live` | `modules/automation/handlers/http-request.handler.ts` |
 | `billing.card_and_void` | `inline` | `live` | `modules/billing/adapters/wompi.adapter.ts` |
 | `billing.lifecycle_email` | `delivery_outbox` | `live` | `modules/billing/billing-email.service.ts` |

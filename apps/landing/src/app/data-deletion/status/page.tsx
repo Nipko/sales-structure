@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
-import Link from "next/link";
+import Link from "@/components/LocalizedLink";
 import { useSearchParams } from "next/navigation";
 import { useLang } from "@/components/LangProvider";
 import LegalLangSwitcher from "@/components/LegalLangSwitcher";

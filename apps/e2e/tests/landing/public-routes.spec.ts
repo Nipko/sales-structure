@@ -49,7 +49,7 @@ test.describe("landing public routes", () => {
     await expect(
       page.getByRole("link", { name: "Empezar prueba gratis", exact: true }).first(),
     ).toHaveAttribute("href", "https://parallly-chat.cloud/signup");
-    await expect(page.locator('header a[href="/precios"]')).toHaveText("Precios");
+    await expect(page.locator('header a[href="/es/precios"]')).toHaveText("Precios");
     await expect(
       page.locator('header a[href="https://admin.parallly-chat.cloud/login"]'),
     ).toHaveText("Ingresar");
@@ -107,7 +107,7 @@ test.describe("landing public routes", () => {
       "href",
       "mailto:it.executive@parallext.com?subject=Soporte%20Parallly",
     );
-    await expect(page.locator('footer a[href="/support"]')).toHaveText("Soporte");
+    await expect(page.locator('footer a[href="/es/support"]')).toHaveText("Soporte");
 
     const language = page.locator("header select");
     const localizedTitles = {
@@ -118,6 +118,7 @@ test.describe("landing public routes", () => {
 
     for (const [locale, title] of Object.entries(localizedTitles)) {
       await language.selectOption(locale);
+      await expect(page).toHaveURL(new RegExp(`/${locale}/support/?$`));
       await expect(page.getByTestId("support-page-title")).toHaveText(title);
     }
   });

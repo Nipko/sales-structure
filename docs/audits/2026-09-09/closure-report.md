@@ -5,10 +5,10 @@ el estado sale de ella: con una condición local sin cumplir la fila está `abie
 cumplida y un gate externo nombrado está `bloqueada`; sólo sin condición y sin gate está `aceptada`.
 Cerrar un hueco cambia esta tabla cambiando el código, y reabrirlo la cambia de vuelta.
 
-Revisión: `dbabb7e1d66064da130a5ac776c66a7dd8b10bad`.
+Revisión: `43c55c8fc0f5ecbd5f04d1559c88ed2c087952d7`.
 
-**El programa no está terminado.** 24 filas aceptadas, 27 bloqueadas por un
-gate externo concreto, 1 abiertas y 1 diferidas por decisión
+**El programa no está terminado.** 25 filas aceptadas, 27 bloqueadas por un
+gate externo concreto, 0 abiertas y 1 diferidas por decisión
 explícita de alcance; 0 perfiles certificados
 de 76.
 
@@ -81,7 +81,7 @@ Ese barrido corre dos veces: sobre las filas recién construidas y otra vez sobr
 | L1 | **aceptada** | contador | — | Planes, capacidades, tarifas de WhatsApp y decisiones pendientes salen de fuentes versionadas; no se completan con cifras de diseño. | — |
 | L2 | **aceptada** | contador | — | La web distingue suscripción a Parallly, entregas que Meta cobra a la WABA y pagos que el cliente final hace directamente al negocio. | — |
 | L3 | **aceptada** | contador | — | Cuatro demos ilustrativas declaran su naturaleza y evidencia; la comparación con Meta tiene superficie, fecha, fuente y límites. | — |
-| L4 | **abierta** | contador | 5 brechas de rutas localizadas, metadata o sitemap | La paridad cubre 4 idiomas. Las URLs indexables, el HTML inicial, canonical, hreflang y sitemap se miden por estructura, no por una cookie de navegador. | — |
+| L4 | **aceptada** | contador | — | La paridad cubre 4 idiomas. Las URLs indexables, el HTML inicial, canonical, hreflang y sitemap se miden por estructura, no por una cookie de navegador. | — |
 | L5 | **bloqueada** por gate 8 | contador | — | Términos, privacidad y tratamiento tienen contenido en cuatro idiomas y un borrador coordinado. La aprobación de responsables legal y financiero sigue siendo externa. | — |
 | L6 | **bloqueada** por gate 3 y 5 | contador | — | El build ejecuta paridad, claims, regresiones adversarias, costos y evidencia competitiva. La comprensión con usuarios nuevos y el ensayo del candidato pertenecen a sus gates externos. | — |
 
@@ -119,6 +119,6 @@ Ese barrido corre dos veces: sobre las filas recién construidas y otra vez sobr
 | Tipos de item que el carril durable transporta | 7 |
 | Alcances de gasto | 5 |
 | Entregas de servicio gratuitas por número y mes | 1000 |
-| Brechas SEO/localización de la landing | 5 |
+| Brechas SEO/localización de la landing | 0 |
 
 Para actualizar: `node docs/audits/2026-09-09/generate-closure-report.cjs` desde la raíz.

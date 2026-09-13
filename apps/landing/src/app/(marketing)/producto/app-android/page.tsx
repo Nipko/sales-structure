@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/LocalizedLink";
 import { motion } from "motion/react";
 import { useTranslations } from "next-intl";
 import { AndroidAppMockup } from "../../../../components/sections/MobileAppSection";

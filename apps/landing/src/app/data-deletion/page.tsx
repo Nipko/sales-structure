@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
+import Link from "@/components/LocalizedLink";
 import { useLang } from "@/components/LangProvider";
 import LegalLangSwitcher from "@/components/LegalLangSwitcher";
 

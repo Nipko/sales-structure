@@ -9,7 +9,7 @@ import { InboxDemo } from "../demos/InboxDemo";
 import { AgentConfigDemo } from "../demos/AgentConfigDemo";
 import { LABELLED_DEMOS, type DemoId } from "../../data/demo-catalog";
 import { routes } from "../../lib/routes";
-import Link from "next/link";
+import Link from "../LocalizedLink";
 
 /**
  * The four tasks, each drawn and each labelled as a drawing.

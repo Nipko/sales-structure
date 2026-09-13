@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "../LocalizedLink";
 import { useTranslations } from "next-intl";
 import { Icon } from "../ui/Icon";
 import { routes } from "../../lib/routes";

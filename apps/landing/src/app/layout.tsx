@@ -44,7 +44,7 @@ export const metadata: Metadata = {
     type: "website",
     locale: "es_CO",
     siteName: "Parallly",
-    url: "https://parallly-chat.cloud",
+    url: "https://parallly-chat.cloud/es",
     images: [
       {
         url: "/og/parallly-social.png",
@@ -69,7 +69,7 @@ export const metadata: Metadata = {
     "max-video-preview": -1,
   },
   alternates: {
-    canonical: "https://parallly-chat.cloud",
+    canonical: "https://parallly-chat.cloud/es",
   },
 };
 
@@ -81,6 +81,7 @@ export default function RootLayout({
   return (
     <html lang="es" className={jakarta.variable}>
       <head>
+        <script dangerouslySetInnerHTML={{ __html: `(function(){var m=location.pathname.match(/^\\/(es|en|pt|fr)(?:\\/|$)/);document.documentElement.lang=m?m[1]:'es';})();` }} />
         <link rel="icon" href="/favicon.ico" />
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
         <link rel="dns-prefetch" href="https://admin.parallly-chat.cloud" />

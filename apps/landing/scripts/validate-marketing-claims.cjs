@@ -100,6 +100,13 @@ function readMarketingSourceTree(directory) {
   return chunks.join("\n");
 }
 
+function sourceFiles(directory) {
+  return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const fullPath = path.join(directory, entry.name);
+    return entry.isDirectory() ? sourceFiles(fullPath) : [fullPath];
+  });
+}
+
 function translatedDemoText(messages, slug) {
   const vertical = messages?.verticals?.[slug] || {};
   return Object.entries(vertical)
@@ -1707,8 +1714,31 @@ for (const route of staticRoutes) {
     path.join(appRoot, ...route.split("/").filter(Boolean), "page.tsx"),
   ];
   assert(candidates.some((candidate) => fs.existsSync(candidate)), `route ${route} has no page behind it`);
-  assert(sitemap.includes(`https://parallly-chat.cloud${route}</loc>`), `route ${route} is missing from the sitemap`);
+  for (const locale of ["es", "en", "pt", "fr"]) {
+    assert(
+      sitemap.includes(`https://parallly-chat.cloud/${locale}${route}</loc>`),
+      `localized route /${locale}${route} is missing from the sitemap`,
+    );
+  }
 }
+
+const localizedAppRoot = path.join(appRoot, "[locale]");
+for (const route of staticRoutes) {
+  if (route === "/") continue;
+  const candidates = [
+    path.join(localizedAppRoot, "(marketing)", ...route.split("/").filter(Boolean), "page.tsx"),
+    path.join(localizedAppRoot, ...route.split("/").filter(Boolean), "page.tsx"),
+  ];
+  assert(candidates.some((candidate) => fs.existsSync(candidate)), `localized route /[locale]${route} has no page behind it`);
+}
+
+const directNextLinks = sourceFiles(path.join(landingRoot, "src"))
+  .filter((file) => file.endsWith(".tsx") && !file.endsWith(`${path.sep}LocalizedLink.tsx`))
+  .filter((file) => fs.readFileSync(file, "utf8").includes('from "next/link"'));
+assert(
+  directNextLinks.length === 0,
+  `internal links must use LocalizedLink so a language URL is not lost: ${directNextLinks.join(", ")}`,
+);
 for (const newRoute of ["/costos-whatsapp", "/comparar/meta-business-agent"]) {
   const layout = path.join(appRoot, "(marketing)", ...newRoute.split("/").filter(Boolean), "layout.tsx");
   const layoutSourceText = fs.existsSync(layout) ? fs.readFileSync(layout, "utf8") : "";

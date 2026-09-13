@@ -1,12 +1,12 @@
 {
   "version": 1,
-  "revision": "dbabb7e1d66064da130a5ac776c66a7dd8b10bad",
-  "generatedAt": "2026-09-13T03:55:38.049Z",
+  "revision": "43c55c8fc0f5ecbd5f04d1559c88ed2c087952d7",
+  "generatedAt": "2026-09-13T04:06:45.259Z",
   "finished": false,
   "counts": {
-    "aceptada": 24,
+    "aceptada": 25,
     "bloqueada": 27,
-    "abierta": 1,
+    "abierta": 0,
     "diferida": 1
   },
   "provenance": {
@@ -78,13 +78,7 @@
       "offerGaps": [],
       "paymentGaps": [],
       "demonstrationGaps": [],
-      "seoGaps": [
-        "rutas estáticas por idioma",
-        "alternativas hreflang en metadata",
-        "alternativas hreflang en sitemap",
-        "idioma de ruta fijado antes de hidratar",
-        "selector que navega a la URL del idioma"
-      ],
+      "seoGaps": [],
       "legalGaps": [],
       "validationGaps": [],
       "locales": 4,
@@ -775,10 +769,10 @@
     },
     {
       "id": "L4",
-      "open": 5,
-      "openLabel": "5 brechas de rutas localizadas, metadata o sitemap",
+      "open": 0,
+      "openLabel": "0 brechas de rutas localizadas, metadata o sitemap",
       "gates": [],
-      "status": "abierta",
+      "status": "aceptada",
       "provenance": "derived",
       "artefact": null,
       "evidence": "La paridad cubre 4 idiomas. Las URLs indexables, el HTML inicial, canonical, hreflang y sitemap se miden por estructura, no por una cookie de navegador.",

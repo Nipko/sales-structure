@@ -3,7 +3,7 @@
 import { useParams } from "next/navigation";
 import { motion } from "motion/react";
 import { useTranslations } from "next-intl";
-import Link from "next/link";
+import Link from "@/components/LocalizedLink";
 import { getVerticalBySlug, getVerticalsByCluster } from "../../../../data/verticals";
 import { Section } from "../../../../components/ui/Section";
 import { Icon, getVerticalIcon } from "../../../../components/ui/Icon";

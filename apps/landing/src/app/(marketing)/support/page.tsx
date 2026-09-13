@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/LocalizedLink";
 import { useTranslations } from "next-intl";
 import { Icon } from "../../../components/ui/Icon";
 import { CONTACT_EMAIL } from "../../../lib/constants";

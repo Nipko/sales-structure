@@ -8,6 +8,7 @@ import esARMessages from "../../messages/es-AR.json";
 import enMessages from "../../messages/en.json";
 import ptMessages from "../../messages/pt.json";
 import frMessages from "../../messages/fr.json";
+import { isSupportedLocale, localizeInternalHref, type SupportedLocale } from "../lib/seo";
 
 /**
  * Deep-merge the es-AR voseo overrides onto the tuteo base, so the overlay only
@@ -80,20 +81,29 @@ export function useLang() {
     return useContext(LangContext);
 }
 
-export default function LangProvider({ children }: { children: ReactNode }) {
-    const [locale, setLocaleState] = useState("es");
+export default function LangProvider({ children, initialLocale }: {
+    children: ReactNode;
+    initialLocale?: SupportedLocale;
+}) {
+    const [locale, setLocaleState] = useState<SupportedLocale>(initialLocale ?? "es");
     // Spanish dialect: neutral tuteo (false) or voseo (true). Only matters for "es".
     const [voseo, setVoseo] = useState(false);
 
     useEffect(() => {
+        if (initialLocale) return;
+        const routeLocale = window.location.pathname.split("/").filter(Boolean)[0];
+        if (routeLocale && isSupportedLocale(routeLocale)) {
+            setLocaleState(routeLocale);
+        } else {
         const saved = document.cookie.match(/locale=([\w-]+)/)?.[1];
-        if (saved && allMessages[saved]) {
+        if (saved && isSupportedLocale(saved)) {
             setLocaleState(saved);
         } else {
             const browserLocale = [navigator.language, ...(navigator.languages || [])]
                 .map((language) => language?.split("-")[0]?.toLowerCase())
                 .find((language) => language && allMessages[language]);
-            if (browserLocale) setLocaleState(browserLocale);
+            if (browserLocale && isSupportedLocale(browserLocale)) setLocaleState(browserLocale);
+        }
         }
 
         // An explicit dialect choice (cookie) wins; otherwise auto-detect by country.
@@ -101,16 +111,42 @@ export default function LangProvider({ children }: { children: ReactNode }) {
         if (savedDialect === "voseo") setVoseo(true);
         else if (savedDialect === "tuteo") setVoseo(false);
         else setVoseo(detectVoseo());
-    }, []);
+    }, [initialLocale]);
 
     useEffect(() => {
-        document.documentElement.lang = locale;
+        const routeLocale = window.location.pathname.split("/").filter(Boolean)[0];
+        document.documentElement.lang = routeLocale && isSupportedLocale(routeLocale) ? routeLocale : locale;
     }, [locale]);
 
+    useEffect(() => {
+        if (!initialLocale) return;
+        const rewrite = (anchor: HTMLAnchorElement) => {
+            const href = anchor.getAttribute("href");
+            if (href?.startsWith("/")) anchor.setAttribute("href", localizeInternalHref(href, initialLocale));
+        };
+        const rewriteAll = () => document.querySelectorAll<HTMLAnchorElement>('a[href^="/"]').forEach(rewrite);
+        rewriteAll();
+        const observer = new MutationObserver(rewriteAll);
+        observer.observe(document.body, { childList: true, subtree: true });
+        const preserveRouteLocale = (event: MouseEvent) => {
+            const anchor = (event.target as Element | null)?.closest<HTMLAnchorElement>('a[href^="/"]');
+            if (anchor) rewrite(anchor);
+        };
+        document.addEventListener("click", preserveRouteLocale, true);
+        return () => {
+            observer.disconnect();
+            document.removeEventListener("click", preserveRouteLocale, true);
+        };
+    }, [initialLocale]);
+
     const setLocale = (lang: string) => {
-        if (!allMessages[lang]) return;
+        if (!isSupportedLocale(lang)) return;
         document.cookie = `locale=${lang};path=/;max-age=31536000;SameSite=Lax`;
         setLocaleState(lang);
+        window.location.assign(localizeInternalHref(
+            `${window.location.pathname}${window.location.search}${window.location.hash}`,
+            lang,
+        ));
     };
 
     const messages = locale === "es" && voseo ? esVoseo : (allMessages[locale] || allMessages.es);

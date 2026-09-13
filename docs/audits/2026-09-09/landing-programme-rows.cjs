@@ -6,6 +6,7 @@ const exists = (root, relative) => fs.existsSync(path.join(root, relative));
 
 const REQUIRED_CLAIM_CHECKS = Object.freeze([
     'generate-whatsapp-rate-projection.cjs --check',
+    'generate-localized-sitemap.cjs --check',
     'validate-i18n-parity.cjs',
     'test-whatsapp-cost-estimate.cjs',
     'validate-marketing-claims.cjs',
@@ -17,6 +18,7 @@ function landingAuthorities({ root }) {
     const landing = relative => `apps/landing/${relative}`;
     const packageJson = JSON.parse(read(root, landing('package.json')));
     const claimCommand = String(packageJson.scripts?.['check:claims'] ?? '');
+    const buildCommand = String(packageJson.scripts?.build ?? '');
     const seoSource = read(root, landing('src/lib/seo.ts'));
     const langProvider = read(root, landing('src/components/LangProvider.tsx'));
     const sitemap = read(root, landing('public/sitemap.xml'));
@@ -51,6 +53,7 @@ function landingAuthorities({ root }) {
         /hreflang=/.test(sitemap) ? null : 'alternativas hreflang en sitemap',
         langProvider.includes('initialLocale') ? null : 'idioma de ruta fijado antes de hidratar',
         langProvider.includes('window.location') ? null : 'selector que navega a la URL del idioma',
+        buildCommand.includes('postprocess-localized-html.cjs') ? null : 'atributo lang del HTML exportado',
     ].filter(Boolean);
     const legalGaps = ['terms', 'privacy', 'data-policy'].flatMap(section =>
         ['es', 'en', 'pt', 'fr']

@@ -2,7 +2,7 @@
 
 import { motion, AnimatePresence } from "motion/react";
 import { useTranslations } from "next-intl";
-import Link from "next/link";
+import Link from "../LocalizedLink";
 import { useLang } from "../LangProvider";
 import { SIGNUP_URL, LOGIN_URL } from "../../lib/constants";
 import { PRODUCT_MENU } from "../../data/navigation";

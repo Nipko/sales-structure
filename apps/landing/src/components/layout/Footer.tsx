@@ -1,7 +1,7 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import Link from "next/link";
+import Link from "../LocalizedLink";
 import { FOOTER_SECTIONS } from "../../data/navigation";
 
 export function Footer() {

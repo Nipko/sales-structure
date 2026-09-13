@@ -14,6 +14,7 @@
         "test:watch": "jest --watch",
         "test:bootstrap": "jest --testPathPattern=bootstrap",
         "test:migrate:tenants": "node scripts/test-tenant-migration.js",
+        "test:migrate:global-upgrade": "node scripts/rehearse-global-upgrade.cjs",
         "test:e2e": "jest --config ./test/jest-e2e.json",
         "db:migrate": "prisma migrate dev",
         "db:seed": "ts-node prisma/seed.ts",

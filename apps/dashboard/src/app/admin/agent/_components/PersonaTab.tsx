@@ -10,6 +10,7 @@ import {
 import { inputCls, selectCls, labelCls } from "../_types";
 import type { PersonaConfig } from "../_types";
 import { guidedTourAnchorId } from "@/lib/guided-tours";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface PersonaTabProps {
   config: PersonaConfig;
@@ -98,7 +99,13 @@ export function PersonaTab({ config, onChange, errors = {}, focusField = null }:
   const tv = useTranslations("agent");
   const ti = useTranslations("agent.identity");
   const tp = useTranslations("agent.personality");
+  const { verticalConfig, isVerticalConfigLoading } = useAuth();
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const businessProfile = !isVerticalConfigLoading && verticalConfig
+    ? [verticalConfig.industry, verticalConfig.subType ?? verticalConfig.subtype]
+        .filter((value): value is string => typeof value === "string" && !!value.trim())
+        .map(value => value.replaceAll("_", " ")).join(" / ")
+    : config.industry.replaceAll("_", " ");
 
   function updatePersona(field: string, value: string) {
     onChange({ persona: { ...config.persona, [field]: value } });
@@ -227,31 +234,11 @@ export function PersonaTab({ config, onChange, errors = {}, focusField = null }:
           </div>
           <div>
             <label className={labelCls}>{ti("industry")}</label>
-            <select
-              className={selectCls}
-              value={config.industry}
-              onChange={e => onChange({ industry: e.target.value })}
-            >
-              <option value="general">{ti("industryGeneral")}</option>
-              <option value="turismo">{ti("industryTourism")}</option>
-              <option value="education">{ti("industryEducation")}</option>
-              <option value="salud">{ti("industryHealth")}</option>
-              <option value="veterinaria">{ti("industryVeterinaria")}</option>
-              <option value="retail">{ti("industryRetail")}</option>
-              <option value="technology">{ti("industryTechnology")}</option>
-              <option value="servicios_profesionales">{ti("industryServiciosProfesionales")}</option>
-              <option value="restaurantes">{ti("industryRestaurantes")}</option>
-              <option value="inmobiliaria">{ti("industryInmobiliaria")}</option>
-              <option value="automotriz">{ti("industryAutomotriz")}</option>
-              <option value="finanzas">{ti("industryFinanzas")}</option>
-              <option value="moda_belleza">{ti("industryModaBelleza")}</option>
-              <option value="gimnasios">{ti("industryGimnasios")}</option>
-              <option value="seguros">{ti("industrySeguros")}</option>
-              <option value="servicios_hogar">{ti("industryServiciosHogar")}</option>
-              <option value="pet_services">{ti("industryPetServices")}</option>
-              <option value="fotografia">{ti("industryFotografia")}</option>
-              <option value="otro">{ti("industryOtro")}</option>
-            </select>
+            <input className={cn(inputCls, "capitalize")} value={businessProfile}
+              readOnly aria-readonly="true" />
+            <p className="mt-1 text-[11px] text-neutral-500 dark:text-neutral-400">
+              {ti("businessProfileManaged")}
+            </p>
           </div>
         </div>
       </section>

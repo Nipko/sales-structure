@@ -4376,6 +4376,7 @@
       "fallbackPlaceholder": "Mensagem de fallback quando o agente não sabe como responder...",
       "language": "Idioma",
       "industry": "Indústria",
+      "businessProfileManaged": "Este perfil pertence à empresa e é gerenciado uma vez para todos os agentes.",
       "langEsCO": "Espanhol (Colômbia)",
       "langEsMX": "Espanhol (México)",
       "langEnUS": "Inglês (EUA)",

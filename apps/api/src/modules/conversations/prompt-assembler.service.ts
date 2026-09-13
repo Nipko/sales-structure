@@ -44,11 +44,23 @@ export class PromptAssemblerService {
     constructor(private readonly personaService: PersonaService) {}
 
     /**
+     * Business profile is tenant authority carried by the turn. Historical
+     * agents may still contain an `industry` copied from an old editor; letting
+     * that value select sales/no-pitch policy makes Layer 2 disagree with the
+     * tools and domain contract in Layer 3.
+     */
+    private personaConfigForTurn(config: TenantConfig, turn: TurnContext): TenantConfig {
+        const industry = typeof turn.verticalContext?.industry === 'string'
+            ? turn.verticalContext.industry.trim() : '';
+        return industry && industry !== config.industry ? { ...config, industry } : config;
+    }
+
+    /**
      * Assemble the full system prompt for a given turn.
      */
     assemble(config: TenantConfig, turn: TurnContext, tenantBusinessHours?: any): string {
         const layer1 = this.buildContractLayer();
-        const layer2 = this.personaService.buildSystemPrompt(config, tenantBusinessHours);
+        const layer2 = this.personaService.buildSystemPrompt(this.personaConfigForTurn(config, turn), tenantBusinessHours);
         const layer3 = this.buildTurnLayer(turn);
         return `${layer1}\n\n${layer2}\n\n${layer3}`;
     }
@@ -61,7 +73,7 @@ export class PromptAssemblerService {
      */
     assembleWithCacheBoundary(config: TenantConfig, turn: TurnContext, tenantBusinessHours?: any): { systemPrompt: string; cachePrefixChars: number } {
         const layer1 = this.buildContractLayer();
-        const layer2 = this.personaService.buildSystemPrompt(config, tenantBusinessHours);
+        const layer2 = this.personaService.buildSystemPrompt(this.personaConfigForTurn(config, turn), tenantBusinessHours);
         const stablePrefix = `${layer1}\n\n${layer2}`;
         const layer3 = this.buildTurnLayer(turn);
         return {

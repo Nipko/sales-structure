@@ -4376,6 +4376,7 @@
       "fallbackPlaceholder": "Mensaje de respaldo cuando el agente no sabe cómo responder...",
       "language": "Idioma",
       "industry": "Industria",
+      "businessProfileManaged": "Este perfil pertenece al negocio y se administra una sola vez para todos sus agentes.",
       "langEsCO": "Español (Colombia)",
       "langEsMX": "Español (México)",
       "langEnUS": "Inglés (EE.UU.)",

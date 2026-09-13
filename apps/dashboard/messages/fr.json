@@ -4376,6 +4376,7 @@
       "fallbackPlaceholder": "Message de repli quand l'agent ne sait pas comment répondre...",
       "language": "Langue",
       "industry": "Secteur",
+      "businessProfileManaged": "Ce profil appartient à l’entreprise et se gère une seule fois pour tous ses agents.",
       "langEsCO": "Espagnol (Colombie)",
       "langEsMX": "Espagnol (Mexique)",
       "langEnUS": "Anglais (É-U)",

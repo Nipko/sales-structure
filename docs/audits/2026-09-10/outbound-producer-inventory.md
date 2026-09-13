@@ -402,7 +402,7 @@ esperada y su clasificación queda **fuera del alcance de este generador**.
 | `ops.platform_alerts` | `inline` | `internal_only` | `modules/health/platform-monitor.service.ts` |
 | `payments.tenant_payment_link` | `inline` | `live` | `modules/tenant-payments/tenant-payments.service.ts` |
 | `public_api.webhook_subscriptions` | `delivery_outbox` | `live` | `modules/public-api/webhook-subscription.service.ts` |
-| `push.operational_events` | `inline` | `live` | `modules/push/push-listener.service.ts` |
+| `push.operational_events` | `operational_notice` | `live` | `modules/push/push-listener.service.ts` |
 | `reviews.gbp_reply` | `domain_queue` | `live` | `modules/reviews/reviews.service.ts` |
 | `tenant.outbound_webhooks` | `inline` | `live` | `modules/webhooks/webhooks.service.ts` |
 | `verticals.service_request` | `operational_notice` | `live` | `modules/home-services/home-services.service.ts` |

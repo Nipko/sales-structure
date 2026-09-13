@@ -1,9 +1,9 @@
 # Modules Reference
 
-Technical inventory for 88 API module declaration files, 144 dashboard pages
-(131 admin + 13 non-admin), 11 BullMQ queues, and the documented cron jobs.
+Technical inventory for 99 API module declaration files, 160 dashboard pages
+(147 admin + 13 non-admin), 11 BullMQ queues, and the documented cron jobs.
 
-**Last updated:** 13 ago 2026 — Salud proactiva de agentes, Parallly Assist contextual, navegación IA y alineación de roles
+**Last updated:** 13 sep 2026 — Runtime único del agente y retiro de la superficie Carla heredada
 
 > Counts are a filesystem snapshot, not a product contract. Recalculate with
 > `rg --files apps/api/src/modules -g '*.module.ts'` and
@@ -11,7 +11,7 @@ Technical inventory for 88 API module declaration files, 144 dashboard pages
 
 ---
 
-## API Modules (88 module declaration files)
+## API Modules (99 module declaration files)
 
 ### Infrastructure (6 modules)
 
@@ -1434,19 +1434,10 @@ Technical inventory for 88 API module declaration files, 144 dashboard pages
   - `GET /meta/data-deletion/status` — Status
   - `PATCH /meta/data-deletion/status/:code` — Advance request status (super_admin)
 
-#### 65. carla
-- **Purpose:** AI profile management (legacy/internal)
-- **Services:** `carla.service.ts`
-- **Controller:** `carla.controller.ts`
-- **Endpoints:**
-  - `GET /carla/profiles/:tenantId` — List profiles
-  - `POST /carla/profiles/:tenantId` — Create
-  - `PUT /carla/profiles/:tenantId/:id` — Update
-  - `GET /carla/prompts/:tenantId` — Prompts
-  - `POST /carla/prompts/:tenantId` — Create prompt
-  - `PUT /carla/prompts/:tenantId/:id` — Update prompt
-  - `GET /carla/context/:tenantId` — Context data
-  - `GET /carla/context/:tenantId/build/:conversationId` — Build context for conversation
+#### 65. carla (retired)
+- **Status:** The unused `/carla/*` HTTP surface and Nest module were removed.
+- **Authority:** Agent configuration is owned by `persona`; each turn is assembled by `PromptAssemblerService` from the published agent release.
+- **Data:** Historical `carla_*` tables remain in tenant schemas for non-destructive compatibility. They have no mounted reader or writer.
 
 #### 66. public-api
 - **Purpose:** Tenant-facing REST API with key-based auth, scoped access, rate limiting, and outbound webhooks

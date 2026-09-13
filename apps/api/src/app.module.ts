@@ -57,7 +57,6 @@ import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
 import { AutomationModule } from './modules/automation/automation.module';
 import { CatalogModule } from './modules/catalog/catalog.module';
 import { ComplianceModule } from './modules/compliance/compliance.module';
-import { CarlaModule } from './modules/carla/carla.module';
 import { CrmModule } from './modules/crm/crm.module';
 import { EmailModule } from './modules/email/email.module';
 import { InternalModule } from './modules/internal/internal.module';
@@ -247,7 +246,6 @@ import { TenantPaymentsModule } from './modules/tenant-payments/tenant-payments.
         AutomationModule,
         CatalogModule,
         ComplianceModule,
-        CarlaModule,
         InternalModule,
         MediaModule,
         EmailTemplatesModule,

@@ -783,6 +783,10 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."consent_records" (
     "conversation_id" UUID,
     "execution_ledger_id" UUID,
     "capture_mode"    VARCHAR(50),
+    "contact_id"      UUID,
+    "expires_at"      TIMESTAMPTZ,
+    "revoked_at"      TIMESTAMPTZ,
+    "consent_request_id" UUID,
     "ip_address"      VARCHAR(45),
     "user_agent"      TEXT,
     "origin_url"      TEXT,
@@ -796,7 +800,13 @@ ALTER TABLE "{{SCHEMA_NAME}}"."consent_records" ADD COLUMN IF NOT EXISTS "consen
 ALTER TABLE "{{SCHEMA_NAME}}"."consent_records" ADD COLUMN IF NOT EXISTS "conversation_id" UUID;
 ALTER TABLE "{{SCHEMA_NAME}}"."consent_records" ADD COLUMN IF NOT EXISTS "execution_ledger_id" UUID;
 ALTER TABLE "{{SCHEMA_NAME}}"."consent_records" ADD COLUMN IF NOT EXISTS "capture_mode" VARCHAR(50);
+ALTER TABLE "{{SCHEMA_NAME}}"."consent_records" ADD COLUMN IF NOT EXISTS "contact_id" UUID;
+ALTER TABLE "{{SCHEMA_NAME}}"."consent_records" ADD COLUMN IF NOT EXISTS "expires_at" TIMESTAMPTZ;
+ALTER TABLE "{{SCHEMA_NAME}}"."consent_records" ADD COLUMN IF NOT EXISTS "revoked_at" TIMESTAMPTZ;
+ALTER TABLE "{{SCHEMA_NAME}}"."consent_records" ADD COLUMN IF NOT EXISTS "consent_request_id" UUID;
 CREATE UNIQUE INDEX IF NOT EXISTS "uidx_consent_execution_ledger" ON "{{SCHEMA_NAME}}"."consent_records" ("execution_ledger_id") WHERE "execution_ledger_id" IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS "uidx_consent_request" ON "{{SCHEMA_NAME}}"."consent_records" ("consent_request_id") WHERE "consent_request_id" IS NOT NULL;
+CREATE INDEX IF NOT EXISTS "idx_consent_contact_scope_active" ON "{{SCHEMA_NAME}}"."consent_records" ("contact_id", "consent_scope", "created_at" DESC) WHERE "revoked_at" IS NULL;
 
 -- ---- Opt-Out Records ----
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."opt_out_records" (

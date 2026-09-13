@@ -2373,7 +2373,12 @@ export class AIToolExecutorService {
             `ALTER TABLE "${schema}".consent_records ADD COLUMN IF NOT EXISTS conversation_id UUID`,
             `ALTER TABLE "${schema}".consent_records ADD COLUMN IF NOT EXISTS execution_ledger_id UUID`,
             `ALTER TABLE "${schema}".consent_records ADD COLUMN IF NOT EXISTS capture_mode VARCHAR(50)`,
+            `ALTER TABLE "${schema}".consent_records ADD COLUMN IF NOT EXISTS contact_id UUID`,
+            `ALTER TABLE "${schema}".consent_records ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ`,
+            `ALTER TABLE "${schema}".consent_records ADD COLUMN IF NOT EXISTS revoked_at TIMESTAMPTZ`,
+            `ALTER TABLE "${schema}".consent_records ADD COLUMN IF NOT EXISTS consent_request_id UUID`,
             `CREATE UNIQUE INDEX IF NOT EXISTS "uidx_consent_execution_ledger_${schema}" ON "${schema}".consent_records (execution_ledger_id) WHERE execution_ledger_id IS NOT NULL`,
+            `CREATE UNIQUE INDEX IF NOT EXISTS "uidx_consent_request_${schema}" ON "${schema}".consent_records (consent_request_id) WHERE consent_request_id IS NOT NULL`,
         ];
         for (const statement of statements) await this.prisma.$executeRawUnsafe(statement);
         this.consentSchemaReady.add(schema);
@@ -2398,12 +2403,14 @@ export class AIToolExecutorService {
             if (existing[0]?.id) return { success: true, consentId: existing[0].id, recorded: false };
             const rows: any[] = await this.prisma.$queryRawUnsafe(
                 `INSERT INTO "${schema}".consent_records
-                    (lead_id, channel, legal_version, legal_text_hash, policy_id, policy_type,
-                     policy_version, consent_scope, conversation_id, execution_ledger_id, capture_mode)
-                 VALUES ($1::uuid, $2, $3, $4, $5::uuid, $6, $7, $8, $9::uuid, $10::uuid,
-                         'signed_conversation_confirmation')
+                    (lead_id, contact_id, channel, legal_version, legal_text_hash, policy_id, policy_type,
+                     policy_version, consent_scope, conversation_id, execution_ledger_id, capture_mode,
+                     expires_at)
+                 VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6::uuid, $7, $8, $9, $10::uuid, $11::uuid,
+                         'signed_conversation_confirmation', NOW() + INTERVAL '1 year')
                  RETURNING id`,
                 leadId,
+                contactId,
                 String(channelType || 'conversation').slice(0, 50),
                 `${consent.policyType}:v${consent.policyVersion}`,
                 consent.legalTextHash,

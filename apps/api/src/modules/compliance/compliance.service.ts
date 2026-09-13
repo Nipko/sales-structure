@@ -313,10 +313,14 @@ export class ComplianceService {
             [contactId],
         );
 
-        // 9. Consent records — keep for legal compliance but mark as erased
+        // 9. Consent records — keep proof for legal compliance, remove network
+        // identifiers and revoke every active processing grant immediately.
         await run('consent_records',
-            `UPDATE consent_records SET ip_address = NULL, user_agent = NULL
-             WHERE lead_id IN (SELECT id FROM leads WHERE contact_id = $1::uuid)
+            `UPDATE consent_records
+                SET ip_address = NULL, user_agent = NULL,
+                    revoked_at = COALESCE(revoked_at, NOW())
+              WHERE contact_id = $1::uuid
+                 OR lead_id IN (SELECT id FROM leads WHERE contact_id = $1::uuid)
              RETURNING id`,
             [contactId],
         );

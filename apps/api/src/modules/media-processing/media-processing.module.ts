@@ -8,6 +8,7 @@ import { MediaProcessingController } from './media-processing.controller';
 import { ChannelsModule } from '../channels/channels.module';
 import { SettingsModule } from '../settings/settings.module';
 import { MediaModule } from '../media/media.module';
+import { MediaConsentService } from './media-consent.service';
 
 @Module({
     imports: [
@@ -21,6 +22,7 @@ import { MediaModule } from '../media/media.module';
         AudioTranscriptionService,
         ImageVisionService,
         MediaThrottleService,
+        MediaConsentService,
     ],
     controllers: [MediaProcessingController],
     exports: [MediaProcessingService, MediaThrottleService],

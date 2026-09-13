@@ -2493,6 +2493,22 @@ export class ConversationsService {
             && (msg.channelType !== 'web_widget' || (msg.metadata as any)?.allowHumanHandoff === true);
         let userText = msg.content.text || '';
 
+        // A media-consent challenge is a deterministic platform workflow, not a
+        // persona/tool-family feature. Resolve its answer before the LLM can
+        // reinterpret a "yes" as consent to an unrelated pending operation.
+        if (!session && !draftMode && msg.content.type === 'text' && userText) {
+            const mediaConsentReply = await this.mediaProcessing.handlePendingConsentReply(
+                tenantId,
+                conversation.contact_id || contact?.id || '',
+                conversation.id,
+                userText,
+                config.language || 'es',
+            );
+            if (mediaConsentReply.handled && mediaConsentReply.message) {
+                return mediaConsentReply.message;
+            }
+        }
+
         // Opt-in WhatsApp Flow completion: the adapter sets content.text to the
         // '__flow_response__' sentinel and stashes the submitted fields on
         // interactiveReply.data — surface them for the booking engine fast-forward.
@@ -2517,6 +2533,7 @@ export class ConversationsService {
             const recentContext = userText || msg.content.caption || '';
 
             const described: string[] = [];
+            const blockedMessages: string[] = [];
             let governance: { allowDurablePersistence: boolean } | null = null;
             for (const attachment of attachments) {
                 // One message per attachment so the throttle, the download and
@@ -2530,6 +2547,10 @@ export class ConversationsService {
                     item, contactDbId, conversation.id, recentContext,
                 );
                 if (!result) continue;
+                if ('blockedMessage' in result) {
+                    blockedMessages.push(result.blockedMessage);
+                    continue;
+                }
                 described.push(result.text);
                 governance = result.governance;
             }
@@ -2559,6 +2580,10 @@ export class ConversationsService {
                     ).catch(e => this.logger.warn(`Failed to persist media text (non-fatal): ${e.message}`));
                 }
             } else {
+                // The last challenge includes the union accumulated from a
+                // mixed burst (audio + image); the first names only the first
+                // attachment that happened to be iterated.
+                if (blockedMessages.length) return blockedMessages[blockedMessages.length - 1];
                 const configuredLang = config.language || 'es';
                 return this.mediaProcessing.getFallbackMessage(msg.content.type, configuredLang);
             }

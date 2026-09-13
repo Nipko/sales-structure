@@ -16,6 +16,11 @@ export interface MediaAiConsentAttestation {
 }
 
 export interface MediaRetentionAttestation {
+    /**
+     * Source media plus machine extraction (transcript/description). A final
+     * customer-facing business reply is a communication record, not an AI
+     * extraction artifact; it follows the conversation retention policy.
+     */
     scope: 'source_and_derived';
     mode: 'ephemeral' | 'bounded';
     deleteAt: string;

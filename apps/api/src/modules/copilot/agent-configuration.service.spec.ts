@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { AgentConfigurationService } from './agent-configuration.service';
-import { AGENT_ACCOUNT_DAYS, AGENT_EMAIL_CONFIRMATION_FAMILIES, type AgentAccountBusinessHours, type AgentConfigurationChange } from '@parallext/shared';
+import { AGENT_ACCOUNT_DAYS, AGENT_CONFIGURATION_PATHS, AGENT_EMAIL_CONFIRMATION_FAMILIES, type AgentAccountBusinessHours, type AgentConfigurationChange } from '@parallext/shared';
 import { operationalConfigurationBody, operationalConfigurationHash } from '../persona/agent-configuration-revision';
 import { staticToolsForAgentConfig } from '../conversations/agent-tool-registry';
 import { randomUUID } from 'crypto';
@@ -70,6 +70,22 @@ function harness() {
 }
 
 describe('reviewed agent configuration', () => {
+    it('keeps Assist on reviewable editor fields and away from activation, routing, prompts, and secrets', () => {
+        expect(AGENT_CONFIGURATION_PATHS).toEqual(expect.arrayContaining([
+            'persona.name', 'persona.role', 'persona.greeting', 'persona.fallbackMessage',
+            'language', 'behavior.mainInstructions', 'behavior.rules', 'behavior.forbiddenTopics',
+            'behavior.handoffTriggers', 'behavior.requiredFields', 'hours.aiOutsideHours',
+            'hours.afterHoursMessageOverride', 'skillset', 'upsell.enabled', 'upsell.intensity',
+            'upsell.maxDiscountPercent', 'llm.temperature', 'llm.maxTokens', 'rag.enabled',
+            'rag.topK', 'rag.similarityThreshold', 'mission', 'account.businessHours',
+        ]));
+        for (const forbidden of [
+            'isActive', 'isDefault', 'channels', 'channelBindings', 'templateId',
+            'customPrompt', 'editorMode', 'industry', 'subType', 'credentials', 'accessToken',
+        ]) expect(AGENT_CONFIGURATION_PATHS).not.toContain(forbidden);
+        expect(AGENT_CONFIGURATION_PATHS.some(path => /(^|\.)(credential|accessToken|secret|password)(\.|$)/i.test(path))).toBe(false);
+    });
+
     it('limits editable context to reviewed paths and reads the latest saved draft without exposing tool secrets', async () => {
         const h = harness();
         const operational = await h.service.getEditableContext(TENANT, AGENT, ACTOR);

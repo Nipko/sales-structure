@@ -27,6 +27,22 @@ export const dashboardShell = (tenantId = TENANT): ApiRoutes => ({
   "auth/tenant/timezone": ok({ timezone: "America/Bogota" }),
   "platform-status": ok({ incidents: [], status: "operational" }),
   "system-updates": ok([]),
+  // The authenticated top bar reads the user's notification policy before it
+  // decides whether an incoming event may make a sound. This is shell state,
+  // not state owned by the screen underneath it.
+  "push/preferences": ok({
+    version: 1,
+    soundEnabled: true,
+    categories: {
+      chat: true,
+      handoff: true,
+      compliance: true,
+      appointments: true,
+      automation: false,
+      orders: false,
+      system: true,
+    },
+  }),
   [`persona/${tenantId}/plan-features`]: ok({
     features: { maxAgents: 3, maxChannelAccounts: 1 },
     plan: { slug: "pro", name: "Pro" },

@@ -338,6 +338,23 @@ async function bootstrapTenantAdmin(
       return;
     }
 
+    if (method === "GET" && path === "/push/preferences") {
+      await fulfillSuccess(route, {
+        version: 1,
+        soundEnabled: true,
+        categories: {
+          chat: true,
+          handoff: true,
+          compliance: true,
+          appointments: true,
+          automation: false,
+          orders: false,
+          system: true,
+        },
+      });
+      return;
+    }
+
     if (method === "GET" && path === `/business-info/${TENANT_ID}`) {
       await fulfillSuccess(route, {});
       return;

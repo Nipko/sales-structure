@@ -16,11 +16,11 @@ efectos puede llegar a producir **una sola respuesta lógica** en cada uno.
 
 | | |
 |---|---|
-| Sitios de llamada encontrados | **29** |
-| De ellos, que producen un mensaje cobrable | **28** |
+| Sitios de llamada encontrados | **28** |
+| De ellos, que producen un mensaje cobrable | **27** |
 | De ellos, presencia (no cobra Meta) | **1** |
 | Archivos productores distintos | **20** |
-| Sitios que **no** pasan por un carril durable | **2** |
+| Sitios que **no** pasan por un carril durable | **1** |
 | Sitios que pueden alcanzar WhatsApp (literal o dinámico) | **26** |
 | Sitios donde **una respuesta puede volverse varios cargos** | **9** |
 
@@ -33,7 +33,7 @@ objetivo: **cero productores cobrables fuera del carril durable**.
 
 | | |
 |---|---|
-| Sitios de llamada, en total | **29** |
+| Sitios de llamada, en total | **28** |
 | De ellos, capaces de alcanzar WhatsApp | **27** |
 | De ellos, **cobrables por Meta** | **26** |
 | De ellos, dentro de la frontera económica | **26** |
@@ -53,7 +53,7 @@ Por carril:
 | `approved_effect` | 1 | `tool_approval_effects` row a person approved |
 | `operational_notice` | 10 | `operational_notice_outbox`, written in the business transaction |
 | `handoff_effects` | 1 | one row per destination of one transfer |
-| `inline` | 2 | straight to the adapter, on the caller's stack |
+| `inline` | 1 | straight to the adapter, on the caller's stack |
 
 ## Los que esquivan el carril durable
 
@@ -65,7 +65,6 @@ llevar a la admisión económica.
 | Archivo:línea | Método | Carril | Canales | Efectos por respuesta |
 |---|---|---|---|---|
 | `modules/channels/channel-management.controller.ts:530` | `testTelegram` | `inline` | telegram | 1 (read) |
-| `modules/channels/channel-management.controller.ts:1494` | `testSms` | `inline` | sms | 1 (read) |
 
 ## Donde una respuesta se vuelve varios cargos
 
@@ -152,7 +151,6 @@ mensajes entregados, y un indicador de "escribiendo" no lo es.
 | Línea | Método | Primitiva | Carril | Disparador | Canales | Efectos por respuesta | Base |
 |---:|---|---|---|---|---|---|---|
 | 530 | `testTelegram` | `.sendTextMessage` | `inline` | HTTP POST telegram/test | telegram | 1 | one effect per invocation; no loop reaches this send |
-| 1494 | `testSms` | `.sendTextMessage` | `inline` | HTTP POST sms/test | sms | 1 | one effect per invocation; no loop reaches this send |
 
 ### `apps/api/src/modules/conversations/conversations.service.ts`
 
@@ -193,7 +191,7 @@ mensajes entregados, y un indicador de "escribiendo" no lo es.
 
 | Línea | Método | Primitiva | Carril | Disparador | Canales | Efectos por respuesta | Base |
 |---:|---|---|---|---|---|---|---|
-| 396 | `executeHandoff` | `admitHandoffEffect` | `handoff_effects` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
+| 397 | `executeHandoff` | `admitHandoffEffect` | `handoff_effects` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
 
 ### `apps/api/src/modules/orders/catalog-order-commands.ts`
 
@@ -329,7 +327,7 @@ direcciones**: lo que el barrido encuentra y ella no nombra, y lo que ella
 nombra y el barrido no encuentra. Un desacuerdo no es un error de ninguno de
 los dos — es exactamente el sitio donde hay que ir a mirar.
 
-Entradas declaradas allí: **62**.
+Entradas declaradas allí: **64**.
 
 ### Encontrados por el barrido y no declarados como productores
 
@@ -346,6 +344,7 @@ esperada y su clasificación queda **fuera del alcance de este generador**.
 |---|---|---|---|
 | `analytics.scheduled_reports` | `inline` | `live` | `modules/analytics/scheduled-reports.service.ts` |
 | `analytics.threshold_alerts` | `inline` | `live` | `modules/analytics/alerts.service.ts` |
+| `appointments.slack` | `inline` | `live` | `modules/slack/slack-listener.service.ts` |
 | `auth.transactional_email` | `inline` | `live` | `modules/auth/auth.service.ts` |
 | `auth.two_factor_sms` | `inline` | `off` | `modules/auth/platform-sms.service.ts` |
 | `automation.http_request` | `domain_queue` | `live` | `modules/automation/handlers/http-request.handler.ts` |
@@ -362,10 +361,10 @@ esperada y su clasificación queda **fuera del alcance de este generador**.
 | `feature_requests.status_email` | `inline` | `live` | `modules/feature-requests/feature-requests.service.ts` |
 | `fiscal.invoice_email` | `domain_queue` | `live` | `modules/fiscal/fiscal-email.service.ts` |
 | `fiscal.invoice_issue` | `domain_queue` | `live` | `modules/fiscal/adapters/factus.adapter.ts` |
-| `handoff.agent_sms` | `inline` | `off` | `modules/sms-notifications/sms-notification-listener.service.ts` |
-| `handoff.push` | `inline` | `live` | `modules/push/push-listener.service.ts` |
+| `handoff.agent_sms` | `handoff_effects` | `off` | `modules/sms-notifications/sms-notification-listener.service.ts` |
+| `handoff.push` | `handoff_effects` | `live` | `modules/push/push-listener.service.ts` |
 | `handoff.sla_escalation.email` | `operational_notice` | `live` | `modules/agent-console/agent-availability.service.ts` |
-| `handoff.slack` | `inline` | `live` | `modules/slack/slack-listener.service.ts` |
+| `handoff.slack` | `handoff_effects` | `live` | `modules/slack/slack-listener.service.ts` |
 | `human.email_template.test_send` | `inline` | `live` | `modules/email-templates/email-templates.service.ts` |
 | `identity.verification_code` | `inline` | `live` | `modules/conversations/chat-identity.service.ts` |
 | `integrations.commerce_readonly` | `inline` | `internal_only` | `modules/vertical-integrations/vertical-integrations.service.ts` |
@@ -378,6 +377,7 @@ esperada y su clasificación queda **fuera del alcance de este generador**.
 | `ops.platform_alerts` | `inline` | `internal_only` | `modules/health/platform-monitor.service.ts` |
 | `payments.tenant_payment_link` | `inline` | `live` | `modules/tenant-payments/tenant-payments.service.ts` |
 | `public_api.webhook_subscriptions` | `delivery_outbox` | `live` | `modules/public-api/webhook-subscription.service.ts` |
+| `push.operational_events` | `inline` | `live` | `modules/push/push-listener.service.ts` |
 | `reviews.gbp_reply` | `inline` | `live` | `modules/reviews/reviews.service.ts` |
 | `tenant.outbound_webhooks` | `inline` | `live` | `modules/webhooks/webhooks.service.ts` |
 | `verticals.service_request` | `operational_notice` | `live` | `modules/home-services/home-services.service.ts` |

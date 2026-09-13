@@ -437,7 +437,7 @@ Solo hay dos severidades (`warning`/`critical`, via `c >= 10 ? 'critical' : 'war
 
 ### Circuit breaker de COSTO (por tenant)
 
-Distinto del breaker de disponibilidad: `trackStats()` acumula el gasto mensual en `llm:cost:{tenantId}:{YYYY-MM}` (centi-USD, TTL ~40 dias). `TenantThrottleService.getLlmSpendUsdCents()` lo lee y, al alcanzar el `llmCostBudgetUsdCents` del plan, se corta el acceso a LLM. El Ops Center alerta al `llmBudgetPct` (default 90%) antes del corte (`llm:budget:{tenantId}`, ver §15).
+Distinto del breaker de disponibilidad: `trackStats()` acumula el gasto mensual en `llm:cost:{tenantId}:{YYYY-MM}` (centi-USD, TTL ~40 dias). `TenantThrottleService.getLlmSpendUsdCents()` lo lee y, al alcanzar el `llmCostBudgetUsdCents` del plan, restringe el enrutamiento a los modelos economicos permitidos por el plan. El agente sigue respondiendo. Es un umbral blando para proteger margen, no un techo duro ni una garantia de gasto maximo. El Ops Center alerta al `llmBudgetPct` (default 90%) antes de alcanzar el umbral (`llm:budget:{tenantId}`, ver §15).
 
 ### Redis Keys (salud + costo LLM)
 

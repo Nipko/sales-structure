@@ -11287,7 +11287,7 @@
       "knowledgeEmbeddingsPerMonth": "Embeddings par mois",
       "knowledgeCrawlPages": "Pages d'exploration",
       "knowledgeAnalytics": "Analytique des connaissances",
-      "llmCostBudgetUsdCents": "Plafond de coût LLM (cents USD)",
+      "llmCostBudgetUsdCents": "Seuil mensuel de coût LLM (cents USD)",
       "publicApi": "API publique",
       "publicApiKeys": "Clés d'API publique",
       "publicApiRateLimit": "Limite de débit API (rpm)",

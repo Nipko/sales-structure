@@ -1708,7 +1708,9 @@ export class PlatformMonitorService implements OnModuleInit {
                         `Tenant ${t.name} al ${pct}% de su presupuesto de IA`,
                         `El tenant <b>${t.name}</b> consumio <b>$${(spentCents / 100).toFixed(2)}</b> de su
                          presupuesto mensual de IA de <b>$${((budget as number) / 100).toFixed(2)}</b> (${pct}%).<br><br>
-                         Al llegar al 100% se corta el acceso a LLM (circuit breaker de costo).`,
+                         Al llegar al 100%, el runtime conserva las respuestas pero restringe el enrutamiento
+                         a los modelos economicos permitidos por el plan. Este umbral es una proteccion de margen,
+                         no un corte duro del servicio ni una garantia de gasto maximo.`,
                         pct,
                     );
                 } else {

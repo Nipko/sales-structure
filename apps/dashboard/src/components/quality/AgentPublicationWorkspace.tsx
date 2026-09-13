@@ -14,6 +14,7 @@ import {
     type AgentActivation, type AgentPublicationHistory, type AgentPublicationReceipt,
     type PublicationAttempt, type PublishAgentConfigurationRequest, type RollbackAgentConfigurationRequest,
 } from '@/lib/agent-publication';
+import { guidedTourAnchorId } from '@/lib/guided-tours';
 
 /**
  * Which configuration customers actually get, and the way back.
@@ -229,7 +230,7 @@ export function AgentPublicationWorkspace({ tenantId, agentId, role }: {
                 <p className="mt-3 text-sm text-muted-foreground">{t('current.bodiesNote')}</p>
             </section>
 
-            <section aria-labelledby="publication-publish" className={`${CARD} p-5`}>
+            <section id={guidedTourAnchorId('agent-publication-publish')} aria-labelledby="publication-publish" className={`${CARD} p-5`}>
                 <h2 id="publication-publish" className="text-lg font-semibold text-foreground">{t('publish.title')}</h2>
                 <p className="mt-1 max-w-3xl text-sm text-muted-foreground">{t('publish.help')}</p>
 

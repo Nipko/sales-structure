@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import type { AgentReleaseReviewSubject, AgentReleaseSubjectValue } from '@parallext/shared';
 import { canReviewRelease, emptyReleaseReviewChecks, RELEASE_REVIEW_CHECKS, releaseErrorKind,
     type AgentReleaseDetail, type ReleaseReviewChecks } from '@/lib/agent-release-review';
+import { guidedTourAnchorId } from '@/lib/guided-tours';
 
 const button = 'min-h-10 rounded-lg border px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-40';
 const panel = 'rounded-xl border bg-white p-5 dark:bg-neutral-900';
@@ -55,7 +56,7 @@ export function AgentReleaseReview({ candidate, role, busy, decide }: { candidat
     const status = (value: string) => t(t.has(`states.${value}`) ? `states.${value}` : 'unknown');
     const channel = (value: string) => t(t.has(`channels.${value}`) ? `channels.${value}` : 'unknown');
     const language = (value: string) => t(t.has(`languages.${value}`) ? `languages.${value}` : 'unknown');
-    return <div className="space-y-5"><section className={`${panel} space-y-3`}>
+    return <div id={guidedTourAnchorId('agent-release-review')} className="space-y-5"><section className={`${panel} space-y-3`}>
         <h2 className="font-semibold">{t('candidateTitle')}</h2><p role="status">{status(candidate.status)} · {t('version', { version: candidate.version })}</p>
         <p className="text-sm">{t('reviewDoesNotPublish')}</p>
         {!current && <p role="alert" className="rounded-lg border border-amber-400 p-3">{t(candidate.revisionState === 'changed' || candidate.revisionState === 'invalidated' ? 'changed' : 'unavailable')}</p>}

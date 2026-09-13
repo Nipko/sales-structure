@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useTenant } from "@/contexts/TenantContext";
 import { useLocale, useTranslations } from "next-intl";
 import { api } from "@/lib/api";
+import { guidedTourAnchorId } from "@/lib/guided-tours";
 import { ArrowLeft, Send, Wrench, Search, FileCode, Activity, RotateCcw, Bot, User, Loader2, ShieldCheck } from "lucide-react";
 import type { ConversationalChannelType, EffectiveCapabilityContract, AgentConfigurationWorkspace } from "@parallext/shared";
 
@@ -173,7 +174,7 @@ export default function TestAgentPage() {
                     </div>
                 </div>
                 <div className="flex items-center gap-2">
-                    <label className="flex items-center gap-2 text-xs">
+                    <label id={guidedTourAnchorId("agent-test-configuration")} className="flex items-center gap-2 text-xs">
                         <span>{tDraft('testSelection')}</span>
                         <select aria-label={tDraft('testSelection')} disabled={sending || !workspace} value={configurationRevisionId ?? 'operational'}
                             onChange={event => { setConfigurationRevisionId(event.target.value === 'operational' ? undefined : event.target.value); setSelectionError(false); reset(); }}

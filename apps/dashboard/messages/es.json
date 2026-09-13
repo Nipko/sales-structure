@@ -13590,8 +13590,8 @@
           "content": "Marca solo los canales que este agente responde. Un canal marcado sin conectar aparece como cobertura incompleta."
         },
         "save": {
-          "title": "Guarda el cambio",
-          "content": "Nada se aplica hasta que tocas Guardar. La salud del agente se actualiza después."
+          "title": "Guarda el borrador",
+          "content": "Guardar prepara la asignación para probar y revisar. La conexión cambia de agente únicamente cuando publicas la versión aprobada."
         }
       }
     },
@@ -13618,9 +13618,18 @@
           "content": "Agrega los motivos que obligan a escalar: un reclamo, un pedido de precio especial, lo que definas."
         },
         "save": {
-          "title": "Guarda el cambio",
-          "content": "Toca Guardar para publicar la versión nueva del agente."
+          "title": "Guarda el borrador",
+          "content": "Guardar conserva esta revisión sin cambiar el agente operativo. Después debes probarla, aprobarla y publicarla."
         }
+      }
+    },
+    "publish_agent_revision": {
+      "steps": {
+        "draft": { "title": "Guarda un borrador", "content": "El borrador reúne la configuración y las conexiones que quieres revisar; todavía no responde a clientes." },
+        "test": { "title": "Prueba el borrador", "content": "Elige Borrador guardado y prueba los objetivos, herramientas, límites y derivación humana sin afectar conversaciones reales." },
+        "prepare": { "title": "Prepara una versión", "content": "Crea el candidato desde el borrador vigente. La evidencia debe corresponder exactamente a esta revisión." },
+        "review": { "title": "Revisa y decide", "content": "Comprueba los cambios, canales, escenarios y límites de la evidencia antes de aprobar. Revisar no publica." },
+        "publish": { "title": "Publica la versión aprobada", "content": "Elige el candidato aprobado y decide si también activas el agente. Confirma sólo cuando esta sea la configuración que debe atender." }
       }
     },
     "human_handoff_route": {

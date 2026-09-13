@@ -93,7 +93,7 @@ const entry = (row: AgentIssueResolution): AgentIssueResolution => Object.freeze
 
 export const AGENT_ISSUE_RESOLUTIONS: readonly AgentIssueResolution[] = Object.freeze([
     // ── Alcance del negocio ──────────────────────────────────────────────────
-    entry({ code: 'agent_active', kind: 'screen', clears: 'closes' }),
+    entry({ code: 'agent_active', kind: 'guided_tour', tourId: 'publish_agent_revision', clears: 'closes' }),
     entry({ code: 'persona_identity', kind: 'guided_tour', tourId: 'agent_handoff_rules', clears: 'closes' }),
     entry({ code: 'business_identity', kind: 'guided_tour', tourId: 'business_identity', clears: 'closes' }),
     entry({ code: 'business_contact', kind: 'guided_tour', tourId: 'business_identity', clears: 'closes' }),

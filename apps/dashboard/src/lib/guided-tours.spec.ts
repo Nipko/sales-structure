@@ -70,6 +70,19 @@ describe("guided tour catalogue", () => {
     expect(steps[1].prepareSelector).toBe('[data-tab-id="persona"]');
   });
 
+  it('walks an inactive agent through draft, test, review, and publication in order', () => {
+    const steps = getGuidedTourStepDefinitions('publish_agent_revision', CONTEXT);
+    expect(steps.map(step => step.key)).toEqual(['draft', 'test', 'prepare', 'review', 'publish']);
+    expect(steps.map(step => step.route ?? null)).toEqual([
+      `/admin/agent/${AGENT_ID}`,
+      `/admin/agent/${AGENT_ID}/test`,
+      `/admin/agent/${AGENT_ID}/releases`,
+      null,
+      `/admin/agent/${AGENT_ID}/publications`,
+    ]);
+    expect(getGuidedTour('publish_agent_revision')?.qualityCodes).toContain('agent_active');
+  });
+
   it('does not navigate away after opening a FAQ or invitation editor', () => {
     const faq = getGuidedTourStepDefinitions('knowledge_base');
     expect(faq.slice(faq.findIndex(step => step.key === 'fields')).every(step => !step.route)).toBe(true);

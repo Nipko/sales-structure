@@ -13590,8 +13590,8 @@
           "content": "Tick only the channels this agent handles. A ticked channel that is not connected shows up as incomplete coverage."
         },
         "save": {
-          "title": "Save the change",
-          "content": "Nothing applies until you tap Save. Agent health updates afterwards."
+          "title": "Save the draft",
+          "content": "Saving prepares the assignment for testing and review. The connection changes agents only when you publish the approved version."
         }
       }
     },
@@ -13618,9 +13618,18 @@
           "content": "Add the reasons that force an escalation: a complaint, a special-price request, whatever you decide."
         },
         "save": {
-          "title": "Save the change",
-          "content": "Tap Save to publish the new version of the agent."
+          "title": "Save the draft",
+          "content": "Saving preserves this revision without changing the operational agent. You must then test, approve, and publish it."
         }
+      }
+    },
+    "publish_agent_revision": {
+      "steps": {
+        "draft": { "title": "Save a draft", "content": "The draft gathers the configuration and connections you want to review; it does not answer customers yet." },
+        "test": { "title": "Test the draft", "content": "Choose Saved draft and test goals, tools, limits, and human handoff without affecting real conversations." },
+        "prepare": { "title": "Prepare a release", "content": "Create the candidate from the current draft. Its evidence must match this exact revision." },
+        "review": { "title": "Review and decide", "content": "Check changes, channels, scenarios, and evidence limits before approving. Review does not publish." },
+        "publish": { "title": "Publish the approved version", "content": "Choose the approved candidate and decide whether to activate the agent too. Confirm only when this is the configuration that should serve customers." }
       }
     },
     "human_handoff_route": {

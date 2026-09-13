@@ -9,6 +9,7 @@ import { isAdmin } from '@/lib/roles';
 import { prepareReleaseRequest, prepareReleaseReview, releaseErrorKind, type AgentReleaseDetail, type AgentReleaseListItem,
     type AgentReleaseRequest, type AgentReleaseReviewRequest, type ReleaseCommandAttempt, type ReleaseReviewChecks } from '@/lib/agent-release-review';
 import { AgentReleaseReview } from './AgentReleaseReview';
+import { guidedTourAnchorId } from '@/lib/guided-tours';
 
 const button = 'min-h-10 rounded-lg border px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-40';
 
@@ -84,7 +85,7 @@ export function AgentReleaseWorkspace({ tenantId, agentId, role }: { tenantId: s
         <Link href={`/admin/agent/${agentId}`} className={button}>{t('back')}</Link><button type="button" disabled={busy || loading || reading} className={button} onClick={() => void refresh()}>{t('refresh')}</button></div>
         <header><h1 className="text-2xl font-semibold">{t('title')}</h1><p className="mt-2 text-neutral-600 dark:text-neutral-300">{t('intro')}</p></header>
         {error && <p role="alert" className="rounded-lg border border-red-400 p-3">{error}</p>}{notice && <p role="status">{notice}</p>}
-        <section className="space-y-3 rounded-xl border bg-white p-5 dark:bg-neutral-900"><h2 className="font-semibold">{t('prepareTitle')}</h2>
+        <section id={guidedTourAnchorId('agent-release-prepare')} className="space-y-3 rounded-xl border bg-white p-5 dark:bg-neutral-900"><h2 className="font-semibold">{t('prepareTitle')}</h2>
             <p className="text-sm">{t('prepareHelp')}</p><p>{loading ? t('loading') : workspace?.evaluationRevisionId ? t('currentDraft') : t('draftRequired')}</p>
             {isAdmin(role) && <button type="button" className={`${button} border-indigo-500`} disabled={busy || loading || !workspace?.evaluationRevisionId} onClick={() => void prepare()}>{t(busy ? 'saving' : 'prepare')}</button>}
         </section>

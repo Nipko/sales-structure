@@ -13590,8 +13590,8 @@
           "content": "Marque só os canais que este agente responde. Um canal marcado sem conexão aparece como cobertura incompleta."
         },
         "save": {
-          "title": "Salve a mudança",
-          "content": "Nada é aplicado até você tocar em Salvar. A saúde do agente se atualiza depois."
+          "title": "Salve o rascunho",
+          "content": "Salvar prepara a atribuição para teste e revisão. A conexão só muda de agente quando você publica a versão aprovada."
         }
       }
     },
@@ -13618,9 +13618,18 @@
           "content": "Adicione os motivos que obrigam a escalar: uma reclamação, um pedido de preço especial, o que você definir."
         },
         "save": {
-          "title": "Salve a mudança",
-          "content": "Toque em Salvar para publicar a nova versão do agente."
+          "title": "Salve o rascunho",
+          "content": "Salvar preserva esta revisão sem alterar o agente operacional. Depois você deve testar, aprovar e publicar."
         }
+      }
+    },
+    "publish_agent_revision": {
+      "steps": {
+        "draft": { "title": "Salve um rascunho", "content": "O rascunho reúne a configuração e as conexões que você quer revisar; ainda não responde aos clientes." },
+        "test": { "title": "Teste o rascunho", "content": "Escolha Rascunho salvo e teste objetivos, ferramentas, limites e transferência humana sem afetar conversas reais." },
+        "prepare": { "title": "Prepare uma versão", "content": "Crie o candidato a partir do rascunho atual. A evidência deve corresponder exatamente a esta revisão." },
+        "review": { "title": "Revise e decida", "content": "Confira mudanças, canais, cenários e limites da evidência antes de aprovar. Revisar não publica." },
+        "publish": { "title": "Publique a versão aprovada", "content": "Escolha o candidato aprovado e decida se também ativa o agente. Confirme somente quando esta for a configuração que deve atender." }
       }
     },
     "human_handoff_route": {

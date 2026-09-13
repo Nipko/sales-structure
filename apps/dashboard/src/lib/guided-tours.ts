@@ -132,6 +132,9 @@ type AdminRoute = `/admin${string}`;
 const agentRoute = (context: GuidedTourContext): AdminRoute =>
   context.agentId ? `/admin/agent/${context.agentId}` : "/admin/agent";
 
+const agentWorkspaceRoute = (context: GuidedTourContext, workspace: string): AdminRoute =>
+  context.agentId ? `/admin/agent/${context.agentId}/${workspace}` : "/admin/agent";
+
 const STEP_DEFINITIONS: Record<GuidedTourId, StepFactory> = {
   // ── Part I: repairing what Agent health flags ───────────────────────────
   connect_channel: (context) => [
@@ -166,6 +169,13 @@ const STEP_DEFINITIONS: Record<GuidedTourId, StepFactory> = {
     { selector: guidedTourSelector("agent-rules"), key: "rules", icon: "📏", side: "top", prepareSelector: '[data-tab-id="instructions"]', completedWhen: { kind: "filled", within: "input" } },
     { selector: guidedTourSelector("agent-handoff-triggers"), key: "handoff", icon: "🙋", side: "top", prepareSelector: '[data-tab-id="instructions"]', completedWhen: { kind: "filled", within: "input" } },
     { selector: guidedTourSelector("agent-save"), key: "save", icon: "💾", side: "top" },
+  ],
+  publish_agent_revision: (context) => [
+    { selector: guidedTourSelector("agent-save"), route: agentRoute(context), key: "draft", icon: "💾", side: "top" },
+    { selector: guidedTourSelector("agent-test-configuration"), route: agentWorkspaceRoute(context, "test"), key: "test", icon: "🧪", side: "bottom" },
+    { selector: guidedTourSelector("agent-release-prepare"), route: agentWorkspaceRoute(context, "releases"), key: "prepare", icon: "📋", side: "top" },
+    { selector: guidedTourSelector("agent-release-review"), key: "review", icon: "✅", side: "top", optional: true },
+    { selector: guidedTourSelector("agent-publication-publish"), route: agentWorkspaceRoute(context, "publications"), key: "publish", icon: "🚀", side: "top" },
   ],
   human_handoff_route: () => [
     { selector: sidebarTourSelector("users"), route: "/admin/users", key: "menu", icon: "👥", side: "right" },

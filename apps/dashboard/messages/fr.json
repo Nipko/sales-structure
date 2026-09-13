@@ -13590,8 +13590,8 @@
           "content": "Cochez seulement les canaux auxquels cet agent répond. Un canal coché mais non connecté apparaît comme couverture incomplète."
         },
         "save": {
-          "title": "Enregistrez",
-          "content": "Rien ne s'applique tant que vous n'avez pas touché Enregistrer. La santé de l'agent se met à jour ensuite."
+          "title": "Enregistrez le brouillon",
+          "content": "L'enregistrement prépare l'assignation pour test et examen. La connexion ne change d'agent qu'après publication de la version approuvée."
         }
       }
     },
@@ -13618,9 +13618,18 @@
           "content": "Ajoutez les motifs qui obligent à escalader : une réclamation, une demande de prix spécial, ce que vous décidez."
         },
         "save": {
-          "title": "Enregistrez",
-          "content": "Touchez Enregistrer pour publier la nouvelle version de l'agent."
+          "title": "Enregistrez le brouillon",
+          "content": "L'enregistrement conserve cette révision sans modifier l'agent opérationnel. Vous devez ensuite la tester, l'approuver et la publier."
         }
+      }
+    },
+    "publish_agent_revision": {
+      "steps": {
+        "draft": { "title": "Enregistrez un brouillon", "content": "Le brouillon rassemble la configuration et les connexions à examiner ; il ne répond pas encore aux clients." },
+        "test": { "title": "Testez le brouillon", "content": "Choisissez Brouillon enregistré et testez objectifs, outils, limites et transfert humain sans affecter les conversations réelles." },
+        "prepare": { "title": "Préparez une version", "content": "Créez le candidat à partir du brouillon actuel. Ses preuves doivent correspondre exactement à cette révision." },
+        "review": { "title": "Examinez et décidez", "content": "Vérifiez changements, canaux, scénarios et limites des preuves avant d'approuver. L'examen ne publie rien." },
+        "publish": { "title": "Publiez la version approuvée", "content": "Choisissez le candidat approuvé et décidez s'il faut aussi activer l'agent. Confirmez seulement si cette configuration doit servir les clients." }
       }
     },
     "human_handoff_route": {

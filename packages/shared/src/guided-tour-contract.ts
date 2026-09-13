@@ -22,6 +22,7 @@ export const GUIDED_TOUR_IDS = [
     'connect_channel',
     'assign_agent_channel',
     'agent_handoff_rules',
+    'publish_agent_revision',
     'human_handoff_route',
     'business_identity',
     'knowledge_base',
@@ -85,6 +86,13 @@ export const GUIDED_TOURS: readonly GuidedTourDefinition[] = [
         minRole: 'tenant_admin',
         qualityCodes: ['handoff_triggers', 'forbidden_topics', 'fallback_message', 'behavior_rules', 'persona_identity', 'custom_prompt', 'greeting', 'brand_voice'],
         kbArticleIds: ['agentes-ia'],
+    },
+    {
+        id: 'publish_agent_revision',
+        route: '/admin/agent',
+        minRole: 'tenant_admin',
+        qualityCodes: ['agent_active'],
+        kbArticleIds: ['agentes-ia', 'probar-agente', 'centro-calidad-agente'],
     },
     {
         id: 'human_handoff_route',

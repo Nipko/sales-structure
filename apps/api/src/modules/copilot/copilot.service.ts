@@ -537,6 +537,7 @@ REGLA VERTICAL: orienta los ejemplos hacia esta industria y subtipo. Esto NO es 
         connect_channel: 'dónde conectar, revisar o reautorizar un canal',
         assign_agent_channel: 'dónde elegir qué canales atiende un agente',
         agent_handoff_rules: 'dónde configurar reglas de comportamiento, motivos de escalamiento y mensaje de respaldo',
+        publish_agent_revision: 'cómo guardar, probar, revisar y publicar una versión del agente antes de activarla',
         human_handoff_route: 'dónde invitar personas que reciban las conversaciones escaladas',
         business_identity: 'dónde completar los datos del negocio que usa el agente',
         knowledge_base: 'dónde cargar documentos y preguntas frecuentes de la base de conocimiento',

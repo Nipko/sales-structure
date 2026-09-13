@@ -108,6 +108,7 @@ const GUIDED_TOUR_CAPABILITY: Record<GuidedTourId, GuidedTourCapability | null> 
     connect_channel: "canManageChannels",
     assign_agent_channel: "canEditAgent",
     agent_handoff_rules: "canEditAgent",
+    publish_agent_revision: "canEditAgent",
     human_handoff_route: "canManageUsers",
     business_identity: "canManageSettings",
     knowledge_base: "canEditKnowledge",

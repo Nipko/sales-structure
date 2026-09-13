@@ -12240,6 +12240,10 @@
       "vertical_tool": "Ferramenta operacional da indústria",
       "unknown": "Controle de configuração",
       "tool_vehicles": "Estoque de veículos disponível",
+      "tool_vehicle_rentals": "Estoque para aluguel de veículos",
+      "tool_pet_boarding": "Capacidade de creche e hotel",
+      "tool_repair_orders": "Ordens da oficina",
+      "tool_payments": "Provedor de cobranças",
       "test_drive_permissions": "Permissão para reservar test drives",
       "test_drive_service": "Serviço para test drives",
       "test_drive_staff": "Atendente e disponibilidade para test drives"

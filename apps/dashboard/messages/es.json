@@ -12241,6 +12241,10 @@
       "vertical_tool": "Herramienta operativa de la industria",
       "unknown": "Control de configuración",
       "tool_vehicles": "Inventario de vehículos disponible",
+      "tool_vehicle_rentals": "Inventario para alquileres",
+      "tool_pet_boarding": "Capacidad de guardería y hotel",
+      "tool_repair_orders": "Órdenes de taller",
+      "tool_payments": "Proveedor de cobros",
       "test_drive_permissions": "Permiso para reservar pruebas de manejo",
       "test_drive_service": "Servicio para pruebas de manejo",
       "test_drive_staff": "Asesor y horario para pruebas de manejo"

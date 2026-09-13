@@ -12240,6 +12240,10 @@
       "vertical_tool": "Outil opérationnel du secteur",
       "unknown": "Contrôle de configuration",
       "tool_vehicles": "Stock de véhicules disponible",
+      "tool_vehicle_rentals": "Stock pour la location de véhicules",
+      "tool_pet_boarding": "Capacité de garderie et pension",
+      "tool_repair_orders": "Ordres d’atelier",
+      "tool_payments": "Prestataire de paiement",
       "test_drive_permissions": "Autorisation de réserver des essais routiers",
       "test_drive_service": "Service pour les essais routiers",
       "test_drive_staff": "Conseiller et disponibilité pour les essais"

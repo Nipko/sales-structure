@@ -12240,6 +12240,10 @@
       "vertical_tool": "Industry operational tool",
       "unknown": "Configuration check",
       "tool_vehicles": "Available vehicle inventory",
+      "tool_vehicle_rentals": "Vehicle rental inventory",
+      "tool_pet_boarding": "Daycare and boarding capacity",
+      "tool_repair_orders": "Workshop orders",
+      "tool_payments": "Payment provider",
       "test_drive_permissions": "Permission to book test drives",
       "test_drive_service": "Test-drive service",
       "test_drive_staff": "Test-drive staff and availability"

@@ -41,6 +41,7 @@ const AGENT = {
         tools: Object.fromEntries(['appointments', 'catalog', 'ecommerce', 'orders', 'offers', 'crm', 'faqs',
             'policies', 'vehicles', 'properties', 'tours', 'treatments', 'realEstate', 'pets', 'restaurants',
             'gyms', 'education', 'insurance', 'homeServices', 'petServices', 'photography', 'professionalServices',
+            'vehicleRentals', 'petBoarding', 'repairOrders', 'payments',
         ].map(tool => [tool, { enabled: true }])),
         rag: { enabled: true, chunkSize: 500, topK: 5, similarityThreshold: 0.65 },
         hours: { schedule: { mon: [] } },
@@ -72,6 +73,8 @@ const FACTS = {
     policies: 1, privacyPolicies: 1, policiesUpdatedAt: null,
     services: 1, availabilitySlots: 1, testDriveServices: 1, testDriveSlots: 1,
     vehicles: 1, products: 1, orders: 1, offers: 1,
+    boardingServices: 1,
+    paymentProviderLookupAvailable: true, paymentProviderReady: true, paymentProvider: 'wompi',
     verticalCatalogs: {},
 };
 

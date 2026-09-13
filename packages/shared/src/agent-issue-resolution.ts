@@ -165,6 +165,12 @@ export const AGENT_ISSUE_RESOLUTIONS: readonly AgentIssueResolution[] = Object.f
             + 'set rather than adding a row, so a person does that on the agenda screen.',
     }),
     entry({ code: 'tool_vehicles', kind: 'screen', clears: 'closes' }),
+    entry({ code: 'tool_vehicle_rentals', kind: 'screen', clears: 'closes' }),
+    entry({ code: 'tool_pet_boarding', kind: 'screen', clears: 'closes' }),
+    entry({ code: 'tool_repair_orders', kind: 'screen', clears: 'closes' }),
+    entry({
+        code: 'tool_payments', kind: 'assist_route', operation: 'payments.rail.configure', clears: 'closes',
+    }),
     entry({
         code: 'test_drive_permissions', kind: 'screen', clears: 'closes',
         note: 'Deliberately no tour: the fix is two switches on the agent itself, and the setup card suppresses a '

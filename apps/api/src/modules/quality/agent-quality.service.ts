@@ -15,9 +15,10 @@ import type {
     AgentQualityTestedPillar,
     TenantConfig,
 } from '@parallext/shared';
-import { AGENT_QUALITY_DIMENSIONS } from '@parallext/shared';
+import { AGENT_QUALITY_DIMENSIONS, AGENT_CONFIG_TOOL_FAMILIES } from '@parallext/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
+import { TenantPaymentsService } from '../tenant-payments/tenant-payments.service';
 import {
     CREDENTIAL_TYPE_BY_CHANNEL,
     isCredentialFailure,
@@ -117,6 +118,10 @@ type ReadinessFacts = {
     products: number;
     orders: number;
     offers: number;
+    boardingServices: number;
+    paymentProviderLookupAvailable: boolean;
+    paymentProviderReady: boolean;
+    paymentProvider: string | null;
     verticalCatalogs: Record<string, number>;
 };
 
@@ -158,6 +163,7 @@ export class AgentQualityService {
     constructor(
         private readonly prisma: PrismaService,
         @Optional() private readonly throttle?: TenantThrottleService,
+        @Optional() private readonly tenantPayments?: TenantPaymentsService,
     ) {}
 
     async listAgents(tenantId: string): Promise<Array<{ id: string; name: string; is_default: boolean; is_active: boolean }>> {
@@ -189,7 +195,7 @@ export class AgentQualityService {
         if (!agent) throw new NotFoundException('Agent not found');
 
         const [facts, tests, production] = await Promise.all([
-            this.loadReadinessFacts(schemaName),
+            this.loadReadinessFacts(tenantId, schemaName),
             this.loadTestRows(schemaName, agentId),
             this.loadProductionFacts(schemaName, agentId, Number(agent.version) || 1),
         ]);
@@ -424,7 +430,7 @@ export class AgentQualityService {
         };
     }
 
-    private async loadReadinessFacts(schemaName: string): Promise<ReadinessFacts> {
+    private async loadReadinessFacts(tenantId: string, schemaName: string): Promise<ReadinessFacts> {
         const unavailableSources: string[] = [];
         const safe = <T>(source: string, query: string, params: any[] = [], fallback: T): Promise<T> =>
             this.prisma.executeInTenantSchema<T>(schemaName, query, params).catch((error: any) => {
@@ -433,7 +439,18 @@ export class AgentQualityService {
                 return fallback;
             });
 
-        const [companies, knowledge, faqRows, policyRows, appointmentRows, productRows, orderRows, offerRows, verticalRows, vehicleRows] = await Promise.all([
+        const paymentState = this.tenantPayments
+            ? this.tenantPayments.getConfig(tenantId).then(config => ({
+                available: true,
+                ready: config.ready === true && !!config.activeProvider,
+                provider: config.activeProvider || null,
+            })).catch((error: any) => {
+                unavailableSources.push('payments');
+                this.logger.debug(`[Agent quality] Payment readiness probe skipped: ${error?.message || error}`);
+                return { available: false, ready: false, provider: null };
+            })
+            : Promise.resolve({ available: false, ready: false, provider: null });
+        const [companies, knowledge, faqRows, policyRows, appointmentRows, productRows, orderRows, offerRows, verticalRows, vehicleRows, payments] = await Promise.all([
             safe<any[]>(
                 'company',
                 `SELECT name, industry, about, phone, email, website, address, city, country, updated_at
@@ -481,7 +498,10 @@ export class AgentQualityService {
                         AND EXISTS(SELECT 1 FROM services s WHERE s.is_active=true AND btrim(s.name)<>''
                             AND COALESCE(s.duration_type,'fixed')='fixed' AND s.duration_minutes BETWEEN 1 AND 1440
                             AND COALESCE(s.location_type,'in_person') IN ('in_person','hybrid')
-                            AND EXTRACT(EPOCH FROM (a.end_time-a.start_time))/60 >= s.duration_minutes)) AS test_drive_slots`,
+                            AND EXTRACT(EPOCH FROM (a.end_time-a.start_time))/60 >= s.duration_minutes)) AS test_drive_slots,
+                    (SELECT COUNT(*)::int FROM services WHERE is_active = true
+                        AND translate(lower(category), 'áéíóúü', 'aeiouu') IN ('guarderia', 'hotel')
+                        AND COALESCE(max_concurrent, 0) >= 1) AS boarding_services`,
                 [schemaName], [{ services: 0, slots: 0 }],
             ),
             safe<any[]>('products', `SELECT COUNT(*)::int AS count FROM products WHERE is_available = true AND btrim(name) <> ''`, [], [{ count: 0 }]),
@@ -505,6 +525,7 @@ export class AgentQualityService {
                     (SELECT COUNT(*)::int FROM services WHERE is_active = true) AS professional_services`, [], [{}],
             ),
             safe<any[]>('vehicles', `SELECT COUNT(*)::int AS count FROM vehicles WHERE status='available'`, [], [{ count: 0 }]),
+            paymentState,
         ]);
 
         const company = companies[0] || null;
@@ -528,6 +549,10 @@ export class AgentQualityService {
             products: Number(productRows[0]?.count) || 0,
             orders: Number(orderRows[0]?.count) || 0,
             offers: Number(offerRows[0]?.count) || 0,
+            boardingServices: Number(appointmentRows[0]?.boarding_services) || 0,
+            paymentProviderLookupAvailable: payments.available,
+            paymentProviderReady: payments.ready,
+            paymentProvider: payments.provider,
             verticalCatalogs: Object.fromEntries(Object.entries(vertical).map(([key, value]) => [key, Number(value) || 0])),
         };
     }
@@ -817,6 +842,7 @@ export class AgentQualityService {
             tool_appointments: ['appointments'], tool_catalog: ['products'], tool_ecommerce: ['products'],
             tool_orders: ['orders'], tool_offers: ['offers'],
             tool_vehicles: ['vehicles'], test_drive_service: ['appointments'], test_drive_staff: ['appointments'],
+            tool_vehicle_rentals: ['vehicles'], tool_pet_boarding: ['appointments'], tool_payments: ['payments'],
         };
         const add = (check: CheckInput) => {
             const required = dependencies[check.code] ?? (check.code.startsWith('tool_') && check.evidence && 'records' in check.evidence ? ['verticalCatalogs'] : []);
@@ -962,6 +988,22 @@ export class AgentQualityService {
         add({ code: 'tool_orders', dimension: 'actions_outcomes', status: tools.orders?.enabled === true ? 'pass' : 'not_applicable', critical: false, weight: 2, href: '/admin/orders', evidence: { enabled: tools.orders?.enabled === true, existingOrders: facts.orders } });
         add({ code: 'tool_offers', dimension: 'actions_outcomes', status: this.optionalToolStatus(tools.offers, facts.offers > 0), critical: false, weight: 2, href: '/admin/catalog/offers', evidence: { enabled: tools.offers?.enabled === true, activeOffers: facts.offers } });
         add({ code: 'tool_crm', dimension: 'actions_outcomes', status: tools.crm?.enabled === true ? 'pass' : 'not_applicable', critical: false, weight: 2, href: '/admin/contacts', evidence: { enabled: tools.crm?.enabled === true } });
+        add({ code: 'tool_vehicle_rentals', dimension: 'actions_outcomes', status: this.optionalToolStatus(tools.vehicleRentals, facts.vehicles > 0), critical: tools.vehicleRentals?.enabled === true,
+            weight: 4, href: '/admin/vehicles', evidence: { enabled: tools.vehicleRentals?.enabled === true, records: facts.vehicles } });
+        add({ code: 'tool_pet_boarding', dimension: 'actions_outcomes', status: this.optionalToolStatus(tools.petBoarding, facts.boardingServices > 0), critical: tools.petBoarding?.enabled === true,
+            weight: 4, href: '/admin/service-catalog', evidence: { enabled: tools.petBoarding?.enabled === true, records: facts.boardingServices } });
+        // A workshop order is created from customer-provided vehicle details;
+        // it has no tenant catalogue prerequisite. Still expose the family so
+        // the quality surface covers every control the agent editor can enable.
+        add({ code: 'tool_repair_orders', dimension: 'actions_outcomes', status: tools.repairOrders?.enabled === true ? 'pass' : 'not_applicable', critical: false,
+            weight: 2, href: '/admin/repair-orders', evidence: { enabled: tools.repairOrders?.enabled === true } });
+        add({ code: 'tool_payments', dimension: 'actions_outcomes',
+            status: tools.payments?.enabled !== true ? 'not_applicable'
+                : !facts.paymentProviderLookupAvailable ? 'unknown'
+                    : facts.paymentProviderReady ? 'pass' : 'fail',
+            critical: tools.payments?.enabled === true, weight: 5, href: '/admin/settings/integrations/payments',
+            evidence: { enabled: tools.payments?.enabled === true, providerReady: facts.paymentProviderReady, provider: facts.paymentProvider },
+        });
 
         const verticalRoutes: Record<string, string> = {
             properties: '/admin/properties', tours: '/admin/tours', treatments: '/admin/treatment-plans', realEstate: '/admin/listings',
@@ -983,6 +1025,18 @@ export class AgentQualityService {
                 href: verticalRoutes[tool],
                 evidence: { enabled: tools[tool]?.enabled === true, records: facts.verticalCatalogs[factKey] || 0 },
             });
+        }
+
+        // Make the diagnostic taxonomy fail visibly during development when a
+        // new editor family ships without a quality check. Knowledge is the one
+        // deliberate alias: its readiness is represented by `rag_knowledge`.
+        const representedFamilies = new Set(checks.flatMap(item => item.code.startsWith('tool_')
+            ? [item.code.slice('tool_'.length)] : item.code === 'rag_knowledge' ? ['knowledge'] : []));
+        for (const family of AGENT_CONFIG_TOOL_FAMILIES) {
+            if (!representedFamilies.has(this.snake(family)) && tools[family]?.enabled === true) {
+                add({ code: `tool_${this.snake(family)}`, dimension: 'actions_outcomes', status: 'unknown', critical: true,
+                    weight: 1, href: `/admin/agent/${agent.id}`, evidence: { diagnosticCoverage: 'missing' } });
+            }
         }
 
         add({ code: 'forbidden_topics', dimension: 'safety_handoff', status: promptMode ? 'not_applicable' : status(list(behavior.forbiddenTopics), 'warning'), critical: false, weight: 4, href: `/admin/agent/${agent.id}`, evidence: { count: Array.isArray(behavior.forbiddenTopics) ? behavior.forbiddenTopics.length : 0 } });

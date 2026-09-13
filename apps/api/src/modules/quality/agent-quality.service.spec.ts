@@ -58,6 +58,8 @@ type HarnessOptions = {
     products?: number;
     orders?: number;
     offers?: number;
+    boardingServices?: number;
+    paymentConfig?: { ready: boolean; activeProvider: string | null } | Error;
     verticalCatalogs?: Record<string, number>;
     latestEval?: Record<string, any> | null;
     latestSimulation?: Record<string, any> | null;
@@ -134,7 +136,7 @@ function createHarness(options: HarnessOptions = {}) {
         if (query.includes('FROM faqs')) return [{ count: options.faqs ?? 0, updated_at: null }];
         if (query.includes('FROM policies')) return [{ count: options.policies ?? 0, privacy_count: options.privacyPolicies ?? 0, updated_at: null }];
         if (query.includes('FROM properties') && query.includes('tour_packages')) return [options.verticalCatalogs ?? {}];
-        if (query.includes('FROM services') && query.includes('availability_slots')) return [{ services: options.services ?? 0, slots: options.slots ?? 0, test_drive_services: options.testDriveServices ?? 0, test_drive_slots: options.testDriveSlots ?? 0 }];
+        if (query.includes('FROM services') && query.includes('availability_slots')) return [{ services: options.services ?? 0, slots: options.slots ?? 0, test_drive_services: options.testDriveServices ?? 0, test_drive_slots: options.testDriveSlots ?? 0, boarding_services: options.boardingServices ?? 0 }];
         if (query.includes('FROM vehicles')) return [{ count: options.vehicles ?? 0 }];
         if (query.includes('FROM products')) return [{ count: options.products ?? 0 }];
         if (query.includes('FROM orders')) return [{ count: options.orders ?? 0 }];
@@ -204,7 +206,12 @@ function createHarness(options: HarnessOptions = {}) {
             ? Promise.reject(new Error('plan lookup failed'))
             : Promise.resolve({ mediaProcessing: options.mediaProcessing ?? { audioPerMonth: 0, imagePerMonth: 0 } })),
     };
-    return { service: new AgentQualityService(prisma, throttle), prisma, calls };
+    const tenantPayments: any = {
+        getConfig: jest.fn(() => options.paymentConfig instanceof Error
+            ? Promise.reject(options.paymentConfig)
+            : Promise.resolve(options.paymentConfig ?? { ready: false, activeProvider: null })),
+    };
+    return { service: new AgentQualityService(prisma, throttle, tenantPayments), prisma, calls };
 }
 
 function check(overview: AgentQualityOverview, code: string) {
@@ -212,6 +219,35 @@ function check(overview: AgentQualityOverview, code: string) {
 }
 
 describe('AgentQualityService', () => {
+    it('diagnoses every configurable tool family, including the latest native operations', async () => {
+        const tools = Object.fromEntries([
+            'faqs', 'appointments', 'catalog', 'treatments', 'realEstate', 'restaurants', 'vehicles', 'tours',
+            'properties', 'education', 'professionalServices', 'pets', 'gyms', 'insurance', 'homeServices',
+            'petServices', 'vehicleRentals', 'petBoarding', 'photography', 'repairOrders', 'knowledge', 'policies',
+            'orders', 'crm', 'offers', 'ecommerce', 'payments',
+        ].map(family => [family, { enabled: true }]));
+        const result = await createHarness({
+            config: { ...completeConfig, tools }, vehicles: 0, boardingServices: 0,
+            paymentConfig: { ready: false, activeProvider: null },
+        }).service.getOverview(TENANT_ID, AGENT_ID);
+        const codes = new Set(result.preparation.dimensions.flatMap(dimension => dimension.checks.map(item => item.code)));
+        for (const family of Object.keys(tools)) {
+            const snake = family.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+            expect(codes.has(family === 'knowledge' ? 'rag_knowledge' : `tool_${snake}`)).toBe(true);
+        }
+        expect(check(result, 'tool_vehicle_rentals')).toMatchObject({ status: 'fail', critical: true, href: '/admin/vehicles' });
+        expect(check(result, 'tool_pet_boarding')).toMatchObject({ status: 'fail', critical: true, href: '/admin/service-catalog' });
+        expect(check(result, 'tool_repair_orders')).toMatchObject({ status: 'pass' });
+        expect(check(result, 'tool_payments')).toMatchObject({ status: 'fail', critical: true, href: '/admin/settings/integrations/payments' });
+    });
+
+    it('reports payment-provider inspection failures as unknown', async () => {
+        const result = await createHarness({
+            config: { ...completeConfig, tools: { payments: { enabled: true } } },
+            paymentConfig: new Error('payment authority unavailable'),
+        }).service.getOverview(TENANT_ID, AGENT_ID);
+        expect(check(result, 'tool_payments')).toMatchObject({ status: 'unknown', critical: true });
+    });
     it('blocks media processing when the plan includes it but no active privacy policy exists', async () => {
         const result = await createHarness({
             mediaProcessing: { audioPerMonth: 100, imagePerMonth: 50 },

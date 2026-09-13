@@ -11,12 +11,14 @@ import { AgentQualityService } from './agent-quality.service';
 import { AgentQualitySignalService } from './agent-quality-signal.service';
 import { QualityRegressionService } from './regressions/quality-regression.service';
 import { QualityRegressionController } from './regressions/quality-regression.controller';
+import { TenantPaymentsModule } from '../tenant-payments/tenant-payments.module';
 
 @Module({
     imports: [
         PrismaModule,
         RedisModule,
         AIModule,
+        TenantPaymentsModule,
         BullModule.registerQueue({ name: QUALITY_QUEUE }),
     ],
     providers: [QualityService, AgentQualityService, AgentQualitySignalService, QualityListenerService, QualityProcessor, QualityRegressionService],

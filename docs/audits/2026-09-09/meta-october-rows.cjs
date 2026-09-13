@@ -37,7 +37,7 @@ const path = require('node:path');
 
 /** Lanes that commit a row before the provider is called. */
 const DURABLE_LANES = new Set(['dispatch_outbox', 'approved_effect', 'operational_notice',
-    'handoff_effects']);
+    'handoff_effects', 'delivery_outbox']);
 
 /**
  * A number these rows are about to put in a sentence, or the generator stops.

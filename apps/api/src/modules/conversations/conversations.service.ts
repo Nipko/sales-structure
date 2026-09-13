@@ -2223,6 +2223,7 @@ export class ConversationsService {
         this.eventEmitter.emit('message.inbound', {
             tenantId,
             conversationId,
+            messageId: result[0].id,
             contactId: msg.contactId,
             phone: msg.metadata?.phone,
             channel: msg.channelType,
@@ -2230,7 +2231,7 @@ export class ConversationsService {
             text: msg.content.text,
         });
 
-        return { id: result[0]?.id as string | undefined, duplicate: false };
+        return { id: result[0].id as string, duplicate: false };
     }
 
     private async saveAiMessage(

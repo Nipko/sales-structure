@@ -201,7 +201,7 @@ export class WebhooksService {
         event: string,
         body: string,
         maxAttempts = 3,
-        deliveryId = crypto.randomUUID(),
+        deliveryId: string = crypto.randomUUID(),
     ) {
         // Defense-in-depth: validate URL at delivery time for pre-existing endpoints
         let target: PinnedHttpsTarget;

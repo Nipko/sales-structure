@@ -89,6 +89,8 @@ export const EGRESS_LANES = [
     'operational_notice',
     /** `agent_handoff_effects` row per destination, admitted and settled in place. */
     'handoff_effects',
+    /** A producer-owned PostgreSQL outbox with a fenced lease and terminal receipt. */
+    'delivery_outbox',
     /** `OutboundQueueService.enqueue` → `outbound-messages` job `send`. Redis is the record. */
     'outbound_queue',
     /** A module's own BullMQ queue, with its own retry policy and no shared record. */
@@ -742,7 +744,7 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
     producer({
         id: 'public_api.webhook_subscriptions',
         effect: 'Zapier-style hook subscriptions created through the public API',
-        lane: 'inline',
+        lane: 'delivery_outbox',
         status: 'live',
         derivation: 'declared',
         source: 'modules/public-api/webhook-subscription.service.ts',
@@ -753,17 +755,19 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
             channels: ['webhook'],
         },
         properties: {
-            authority: none('the dispatch is an unawaited promise from the event path; no row records '
-                + 'that an attempt was permitted or made'),
-            idempotency: partial('each call carries X-Hook-Delivery and dispatch waits for its fan-out; '
-                + 'the public hook still has no durable domain-event key across process replay'),
-            receipt: partial('an awaited `last_triggered_at` follows only a conclusive 2xx; the response '
-                + 'status is classified in memory but no per-delivery receipt row exists'),
-            uncertainOutcome: partial('the transport distinguishes a 2xx acceptance, an answered '
-                + 'rejection and no response; only the acceptance survives in PostgreSQL'),
-            erasure: none('the payload can name a contact and is not recorded, so erasure has nothing '
-                + 'to reach and no way to show that it did not'),
-            recovery: none('a single attempt with no retry: an event lost to a restart is lost for good'),
+            authority: durable('one webhook_delivery_outbox row commits before a fenced lease grants '
+                + 'the attempt, and the subscription must still be active when claimed'),
+            idempotency: partial('each call carries the durable delivery-row id in X-Hook-Delivery and '
+                + 'every subscribed event has an aggregate or message key; the in-process domain emitter '
+                + 'is not itself a transactional outbox'),
+            receipt: durable('the per-delivery row stores accepted/rejected/unknown and the HTTP status; '
+                + '`last_triggered_at` is updated atomically only with a conclusive 2xx'),
+            uncertainOutcome: durable('no provider answer settles the leased row as unknown and never '
+                + 'makes it eligible for another POST'),
+            erasure: none('the durable payload can name a contact, but contact erasure does not yet '
+                + 'scrub or remove matching webhook delivery rows'),
+            recovery: durable('the per-minute sweep claims pending rows; an expired admitted lease '
+                + 'becomes unknown instead of being transmitted a second time'),
         },
     }),
 

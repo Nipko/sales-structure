@@ -79,7 +79,7 @@ reparto**, que es donde una sola respuesta lógica se multiplica.
 | `modules/appointments/appointment-payment.listener.ts:89` | `onPaid` | `operational_notice` | **n** | one effect per entry of `rows` (fan-out at line 51) |
 | `modules/appointments/appointment-payment.listener.ts:107` | `onPaid` | `operational_notice` | **n** | one effect per entry of `rows` (fan-out at line 51) |
 | `modules/appointments/appointment-payment.listener.ts:115` | `onPaid` | `operational_notice` | **n** | one effect per entry of `rows` (fan-out at line 51) |
-| `modules/conversations/conversations.service.ts:6014` | `dispatchReplyThroughOutbox` | `dispatch_outbox` | **n(items)** | one committed row per item; the whole batch is one answer |
+| `modules/conversations/conversations.service.ts:6015` | `dispatchReplyThroughOutbox` | `dispatch_outbox` | **n(items)** | one committed row per item; the whole batch is one answer |
 | `modules/conversations/tool-approval-effects.service.ts:37` | `schedule` | `approved_effect` | **n** | one effect per entry of `rows` (loop at the send) |
 | `modules/education/education-enrollment-commands.ts:166` | `promote` | `operational_notice` | **n** | one effect per entry of `candidates` (loop at the send) |
 | `modules/education/education-enrollment-commands.ts:171` | `promote` | `operational_notice` | **n** | one effect per entry of `candidates` (loop at the send) |
@@ -126,7 +126,7 @@ mensajes entregados, y un indicador de "escribiendo" no lo es.
 
 | Línea | Método | Primitiva | Carril | Disparador | Canales | Efectos por respuesta | Base |
 |---:|---|---|---|---|---|---|---|
-| 328 | `handleSendTemplate` | `proactive.send` | `dispatch_outbox` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
+| 432 | `handleSendTemplate` | `proactive.send` | `dispatch_outbox` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
 
 ### `apps/api/src/modules/automation/drip-sequence.service.ts`
 
@@ -159,9 +159,9 @@ mensajes entregados, y un indicador de "escribiendo" no lo es.
 |---:|---|---|---|---|---|---|---|
 | 553 | `replyOnceThroughOutbox` | `proactiveDispatch.send` | `dispatch_outbox` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
 | 1205 | `(top level)` | `.sendTypingIndicator` | `inline` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
-| 5920 | `resumeOwnedDispatchBatch` | `outboundQueue.enqueueDispatch` | `dispatch_outbox` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
-| 5971 | `dispatchReplyThroughOutbox` | `outboundQueue.enqueueDispatch` | `dispatch_outbox` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
-| 6014 | `dispatchReplyThroughOutbox` | `dispatchOutbox.prepare` | `dispatch_outbox` | called by another service | dynamic | n(items) | one committed row per item; the whole batch is one answer |
+| 5921 | `resumeOwnedDispatchBatch` | `outboundQueue.enqueueDispatch` | `dispatch_outbox` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
+| 5972 | `dispatchReplyThroughOutbox` | `outboundQueue.enqueueDispatch` | `dispatch_outbox` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
+| 6015 | `dispatchReplyThroughOutbox` | `dispatchOutbox.prepare` | `dispatch_outbox` | called by another service | dynamic | n(items) | one committed row per item; the whole batch is one answer |
 
 ### `apps/api/src/modules/conversations/payment-outcome-notifier.service.ts`
 
@@ -269,14 +269,14 @@ buscar una llamada a la autoridad economica en el codigo del archivo.
 | `modules/appointments/appointment-payment.listener.ts:107` | `onPaid` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/appointments/appointment-payment.listener.ts:115` | `onPaid` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/appointments/appointment-reminders.service.ts:166` | `dispatchTemplate` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
-| `modules/automation/automation-jobs.processor.ts:328` | `handleSendTemplate` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
+| `modules/automation/automation-jobs.processor.ts:432` | `handleSendTemplate` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/automation/drip-sequence.service.ts:799` | `executeStepAction` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/automation/nurturing.service.ts:965` | `dispatch` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/broadcast/broadcast-queue.processor.ts:205` | `dispatchWhatsApp` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/conversations/conversations.service.ts:553` | `replyOnceThroughOutbox` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
-| `modules/conversations/conversations.service.ts:5920` | `resumeOwnedDispatchBatch` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
-| `modules/conversations/conversations.service.ts:5971` | `dispatchReplyThroughOutbox` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
-| `modules/conversations/conversations.service.ts:6014` | `dispatchReplyThroughOutbox` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
+| `modules/conversations/conversations.service.ts:5921` | `resumeOwnedDispatchBatch` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
+| `modules/conversations/conversations.service.ts:5972` | `dispatchReplyThroughOutbox` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
+| `modules/conversations/conversations.service.ts:6015` | `dispatchReplyThroughOutbox` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/conversations/payment-outcome-notifier.service.ts:147` | `notifyCustomer` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/conversations/tool-approval-effects.service.ts:37` | `schedule` | `approved_effect` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/education/education-enrollment-commands.ts:166` | `promote` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
@@ -353,7 +353,7 @@ esperada y su clasificación queda **fuera del alcance de este generador**.
 | `ops.coupon_alerts` | `inline` | `internal_only` | `modules/health/coupon-alert.listener.ts` |
 | `ops.platform_alerts` | `inline` | `internal_only` | `modules/health/platform-monitor.service.ts` |
 | `payments.tenant_payment_link` | `inline` | `live` | `modules/tenant-payments/tenant-payments.service.ts` |
-| `public_api.webhook_subscriptions` | `inline` | `live` | `modules/public-api/webhook-subscription.service.ts` |
+| `public_api.webhook_subscriptions` | `delivery_outbox` | `live` | `modules/public-api/webhook-subscription.service.ts` |
 | `reviews.gbp_reply` | `inline` | `live` | `modules/reviews/reviews.service.ts` |
 | `tenant.outbound_webhooks` | `inline` | `live` | `modules/webhooks/webhooks.service.ts` |
 | `tours.booking_confirmation` | `inline` | `live` | `modules/tours/tours.service.ts` |

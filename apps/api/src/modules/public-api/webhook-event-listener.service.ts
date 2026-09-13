@@ -13,7 +13,7 @@ export class WebhookEventListenerService {
     ) {}
 
     @OnEvent('lead.captured')
-    handleLeadCreated(event: {
+    async handleLeadCreated(event: {
         tenantId: string;
         leadId: string;
         contactId: string;
@@ -23,7 +23,7 @@ export class WebhookEventListenerService {
         channel?: string;
         source?: string;
     }) {
-        this.dispatch(event.tenantId, 'lead.created', {
+        await this.dispatch(event.tenantId, 'lead.created', {
             leadId: event.leadId,
             contactId: event.contactId,
             conversationId: event.conversationId,
@@ -31,41 +31,42 @@ export class WebhookEventListenerService {
             name: event.name,
             channel: event.channel,
             source: event.source,
-        });
+        }, `lead.created:${event.leadId}`);
     }
 
     @OnEvent('message.inbound')
-    handleMessageReceived(event: {
+    async handleMessageReceived(event: {
         tenantId: string;
         conversationId: string;
+        messageId: string;
         contactId?: string;
         phone?: string;
         channel?: string;
         messageType?: string;
         text?: string;
     }) {
-        this.dispatch(event.tenantId, 'message.received', {
+        await this.dispatch(event.tenantId, 'message.received', {
             conversationId: event.conversationId,
             contactId: event.contactId,
             phone: event.phone,
             channel: event.channel,
             messageType: event.messageType,
             text: event.text?.slice(0, 500),
-        });
+        }, `message.received:${event.messageId}`);
     }
 
     @OnEvent('conversation.archived')
-    handleConversationClosed(event: {
+    async handleConversationClosed(event: {
         tenantId: string;
         conversationId: string;
     }) {
-        this.dispatch(event.tenantId, 'conversation.closed', {
+        await this.dispatch(event.tenantId, 'conversation.closed', {
             conversationId: event.conversationId,
-        });
+        }, `conversation.closed:${event.conversationId}`);
     }
 
     @OnEvent('pipeline.stage_changed')
-    handleDealStageChanged(event: {
+    async handleDealStageChanged(event: {
         tenantId: string;
         dealId: string;
         leadId?: string;
@@ -73,13 +74,13 @@ export class WebhookEventListenerService {
         toStage: string;
         value?: number;
     }) {
-        this.dispatch(event.tenantId, 'deal.stage_changed', {
+        await this.dispatch(event.tenantId, 'deal.stage_changed', {
             dealId: event.dealId,
             leadId: event.leadId,
             fromStage: event.fromStage,
             toStage: event.toStage,
             value: event.value,
-        });
+        }, `deal.stage_changed:${event.dealId}:${event.toStage}`);
     }
 
     @OnEvent('appointment.created')
@@ -90,25 +91,32 @@ export class WebhookEventListenerService {
         const tenantId = await this.resolveTenantId(event.schemaName);
         if (!tenantId) return;
 
-        this.dispatch(tenantId, 'appointment.booked', {
+        await this.dispatch(tenantId, 'appointment.booked', {
             appointmentId: event.appointment.id,
             contactId: event.appointment.contact_id || event.appointment.contactId,
             serviceName: event.appointment.service_name || event.appointment.serviceName,
             startAt: event.appointment.start_at || event.appointment.startAt,
             endAt: event.appointment.end_at || event.appointment.endAt,
             status: event.appointment.status,
-        });
+        }, `appointment.booked:${event.appointment.id}`);
     }
 
     // ── Helpers ────────────────────────────────────────────────────────
 
-    private dispatch(tenantId: string, event: string, payload: Record<string, any>): void {
-        // Fire-and-forget — don't block the event handler
-        this.webhookSubscription.dispatchEvent(tenantId, event, payload).catch((err) =>
+    private async dispatch(
+        tenantId: string,
+        event: string,
+        payload: Record<string, any>,
+        eventKey?: string,
+    ): Promise<void> {
+        try {
+            await this.webhookSubscription.dispatchEvent(tenantId, event, payload, eventKey);
+        } catch (err: any) {
             this.logger.error(
                 `Zapier webhook dispatch failed: event=${event} tenant=${tenantId} error=${err.message}`,
-            ),
-        );
+            );
+            throw err;
+        }
     }
 
     private async resolveTenantId(schemaName: string): Promise<string | null> {

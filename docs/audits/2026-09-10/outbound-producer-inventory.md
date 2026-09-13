@@ -371,7 +371,7 @@ esperada y su clasificación queda **fuera del alcance de este generador**.
 | `auth.two_factor_sms` | `inline` | `off` | `modules/auth/platform-sms.service.ts` |
 | `automation.http_request` | `domain_queue` | `live` | `modules/automation/handlers/http-request.handler.ts` |
 | `billing.card_and_void` | `inline` | `live` | `modules/billing/adapters/wompi.adapter.ts` |
-| `billing.lifecycle_email` | `inline` | `live` | `modules/billing/billing-email.service.ts` |
+| `billing.lifecycle_email` | `delivery_outbox` | `live` | `modules/billing/billing-email.service.ts` |
 | `billing.recurring_charge` | `domain_queue` | `live` | `modules/billing/recurring/processors/renewal-charge.processor.ts` |
 | `billing.stripe` | `inline` | `off` | `modules/billing/adapters/stripe.adapter.ts` |
 | `calendar.event_write` | `domain_queue` | `live` | `modules/appointments/calendar-sync-outbox.service.ts` |
@@ -380,7 +380,7 @@ esperada y su clasificación queda **fuera del alcance de este generador**.
 | `channels.token_refresh` | `inline` | `live` | `modules/channels/instagram-token-refresh.service.ts` |
 | `customer_portal.access_code` | `inline` | `live` | `modules/customer-portal/customer-portal.service.ts` |
 | `external_crm.sync` | `domain_queue` | `live` | `modules/external-crm/external-crm.service.ts` |
-| `feature_requests.status_email` | `delivery_outbox` | `live` | `modules/feature-requests/feature-notification-outbox.service.ts` |
+| `feature_requests.status_email` | `delivery_outbox` | `live` | `modules/platform-notifications/platform-notification-outbox.service.ts` |
 | `fiscal.invoice_email` | `domain_queue` | `live` | `modules/fiscal/fiscal-email.service.ts` |
 | `fiscal.invoice_issue` | `domain_queue` | `live` | `modules/fiscal/adapters/factus.adapter.ts` |
 | `handoff.agent_sms` | `handoff_effects` | `off` | `modules/sms-notifications/sms-notification-listener.service.ts` |

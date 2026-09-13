@@ -1,5 +1,4 @@
 import { ConversationsService } from './conversations.service';
-import { outboundDedupeId } from '../../common/utils/provider-message-id.util';
 
 /**
  * What a replay of an interrupted turn is owed.
@@ -79,11 +78,13 @@ describe('recovering a turn from its ledger', () => {
             recordAgentSignal: jest.fn(),
             generateResponse: jest.fn().mockResolvedValue('una respuesta nueva'),
             sendAfterHoursMessage: jest.fn(),
-            sendResponse: jest.fn(async (_t: string, text: string) => { sends.push({ kind: 'text', text }); }),
-            sendPaymentLink: jest.fn(async (_t: string, _m: any, url: string) => { sends.push({ kind: 'payment_link', url }); }),
-            sendMedia: jest.fn(async (_t: string, _m: any, url: string, caption?: string) => { sends.push({ kind: 'media', url, caption }); }),
-            dispatchReplyThroughOutbox: jest.fn().mockResolvedValue(false),
-            sendCollectedFlow: jest.fn(async (_t: string, _m: any, flow: any) => { sends.push({ kind: 'flow', flowId: flow.flowId }); }),
+            dispatchReplyThroughOutbox: jest.fn(async (input: any) => {
+                for (const text of input.chunks || []) sends.push({ kind: 'text', text });
+                for (const url of input.paymentLinks || []) sends.push({ kind: 'payment_link', url });
+                for (const media of input.media || []) sends.push({ kind: 'media', ...media });
+                if (input.flow) sends.push({ kind: 'flow', flowId: input.flow.flowId });
+                return true;
+            }),
             resumeOwnedDispatchBatch: jest.fn().mockResolvedValue(false),
         });
         const message: any = {
@@ -156,7 +157,7 @@ describe('recovering a turn from its ledger', () => {
             sink.writers.push({ tool: 'place_catalog_order', status: 'succeeded', ledgerId: null, receipt: 'order-9' });
             return 'la respuesta';
         });
-        service.sendResponse = jest.fn(async () => { order.push('send'); });
+        service.dispatchReplyThroughOutbox = jest.fn(async () => { order.push('send'); return true; });
 
         await service.runTurn(message);
 
@@ -226,7 +227,6 @@ describe('recovering a turn from its ledger', () => {
         expect(service.dispatchReplyThroughOutbox).toHaveBeenCalledWith(expect.objectContaining({
             chunks: [], flow: expect.objectContaining({ flowId: '9911', flowToken: 'tok-1' }),
         }));
-        expect(service.sendResponse).not.toHaveBeenCalled();
     });
 
     it('records the form in the ledger so a replay does not produce a second one', async () => {
@@ -243,7 +243,7 @@ describe('recovering a turn from its ledger', () => {
         }));
     });
 
-    it('sends the recovered form once through the old path, and never asks the engine again', async () => {
+    it('sends the recovered form once through the durable path, and never asks the engine again', async () => {
         const { service, message } = fixture({
             state: 'result_recorded', attempts: 2, writers: [],
             envelope: { text: '', chunks: [], paymentLinks: [], media: [], learningFootprints: [], flow: storedFlow },
@@ -251,14 +251,11 @@ describe('recovering a turn from its ledger', () => {
         await service.runTurn(message);
 
         expect(service.generateResponse).not.toHaveBeenCalled();
-        expect(service.sendCollectedFlow).toHaveBeenCalledTimes(1);
-        expect(service.sendCollectedFlow).toHaveBeenCalledWith('11111111-1111-4111-8111-111111111111',
-            message, expect.objectContaining({ flowId: '9911', flowToken: 'tok-1' }));
-        // Recorded in the history like the link and the pictures are, with the
-        // same dedupe identifier the other legacy effects use.
-        expect(service.saveAiMessage).toHaveBeenCalledWith(
-            '11111111-1111-4111-8111-111111111111', conversationId, 'Elegi el servicio', 'whatsapp',
-            outboundDedupeId(message, 'flow-history', 0));
+        expect(service.dispatchReplyThroughOutbox).toHaveBeenCalledTimes(1);
+        expect(service.dispatchReplyThroughOutbox).toHaveBeenCalledWith(expect.objectContaining({
+            flow: expect.objectContaining({ flowId: '9911', flowToken: 'tok-1' }),
+        }));
+        expect(service.saveAiMessage).not.toHaveBeenCalled();
     });
 
     it('never leaves learning-derived words in a cache a retraction cannot reach', async () => {

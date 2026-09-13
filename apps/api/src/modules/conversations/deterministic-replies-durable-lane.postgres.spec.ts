@@ -225,7 +225,7 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
         for (const key of keys) {
             // Either the customer message it answers, or the identity the
             // BullMQ jobId carried. Both vary per effect; a bare string does not.
-            expect(key).toMatch(/\$\{(inboundMessageId|outbound\.dedupeId|input\.[A-Za-z.]+)\}/);
+            expect(key).toMatch(/\$\{(inboundMessageId|dedupeId|input\.[A-Za-z.]+)\}/);
         }
         // And each one names WHICH reply it is, so two different answers to the
         // same customer message cannot collide on one row.
@@ -312,18 +312,18 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
             expect(await rows()).toHaveLength(1);
         });
 
-        it('falls back to the queue rather than claiming a reply to a foreign message',
+        it('fails the turn rather than claiming a reply to a foreign message',
             async () => {
                 // An inbound id from another thread would let this row claim an
                 // answer to something nobody wrote on this conversation.
-                const sent = await service().replyOnceThroughOutbox({
+                await expect(service().replyOnceThroughOutbox({
                     tenantId, conversation: conversation(), msg: msg(),
                     operationalScope: scope(), inboundMessageId: randomUUID(),
                     item: { kind: 'text', payload: { text: 'Confirmado' } },
                     originKey: 'k:foreign',
-                });
-                expect(sent).toBe(false);
+                })).rejects.toThrow(/^durable_reply_not_committed:refused:/);
                 expect(await rows()).toHaveLength(0);
+                expect(enqueued).toEqual([]);
             });
     });
 
@@ -376,15 +376,15 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
             expect((await store.admit(tenantId, String(row.id))).row.state).toBe('admitted');
         });
 
-        it('keeps the queue when the turn could not name an agent at all', async () => {
-            const sent = await service().replyOnceThroughOutbox({
+        it('fails closed when the turn could not name an agent at all', async () => {
+            await expect(service().replyOnceThroughOutbox({
                 tenantId, conversation: conversation(), msg: msg(),
                 operationalScope: undefined, inboundMessageId: await inbound(),
                 item: { kind: 'text', payload: { text: 'Confirmado' } },
                 originKey: 'k:no-scope',
-            });
-            expect(sent).toBe(false);
+            })).rejects.toThrow('durable_reply_binding_unavailable:k:no-scope');
             expect(await rows()).toHaveLength(0);
+            expect(enqueued).toEqual([]);
         });
     });
 
@@ -428,30 +428,29 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
         it.each([
             ['no lane is wired in', { lane: undefined }],
             ['the channel has no strict transport', { strict: false }],
-        ])('keeps the outbound queue when %s', async (_why, over) => {
-            // Committing a row an adapter can never deliver is worse than the
-            // queue it replaces: the notice would exist and never arrive.
-            await notice(service(over));
+        ])('fails closed when %s', async (_why, over) => {
+            await expect(notice(service(over))).rejects.toThrow(/^durable_reply_/);
             expect(await rows()).toHaveLength(0);
-            expect(enqueued).toHaveLength(1);
-            expect(enqueued[0].content).toEqual({ type: 'text', text: 'Estamos cerrados' });
+            expect(enqueued).toEqual([]);
         });
 
-        it('keeps the outbound queue when the message has no provider identity', async () => {
+        it('fails closed when the message has no provider identity', async () => {
             // Without one there is no stable key, and a constant key would merge
             // every customer's notice into one row and deliver exactly one.
-            await notice(service(), { metadata: {} });
+            await expect(notice(service(), { metadata: {} }))
+                .rejects.toThrow('after_hours_durable_identity_unavailable');
             expect(await rows()).toHaveLength(0);
-            expect(enqueued).toHaveLength(1);
+            expect(enqueued).toEqual([]);
         });
 
-        it('keeps the outbound queue when the thread is not known', async () => {
+        it('fails closed when the thread is not known', async () => {
             const instance = service();
-            await instance.sendAfterHoursMessage(tenantId, msg(),
+            await expect(instance.sendAfterHoursMessage(tenantId, msg(),
                 { hours: { afterHoursMessage: 'Estamos cerrados' } } as any,
-                undefined, undefined, scope());
+                undefined, undefined, scope()))
+                .rejects.toThrow('after_hours_durable_identity_unavailable');
             expect(await rows()).toHaveLength(0);
-            expect(enqueued).toHaveLength(1);
+            expect(enqueued).toEqual([]);
         });
     });
 
@@ -501,7 +500,7 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
             await expect(store.admit(tenantId, String(row.id))).rejects.toBeDefined();
         });
 
-        it('keeps the queue when the lane defers instead of committing', async () => {
+        it('fails closed when the lane defers instead of committing', async () => {
             // Only `prepared` and `already_present` mean the effect exists.
             // `deferred` is nothing written for a reason that may pass, and a
             // producer that read it as success would leave the customer with
@@ -510,26 +509,26 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
                 prepare: async () => { throw new Error('database unavailable'); },
                 publishBatch: async () => 0,
             } as any, { enqueueDispatch: async () => undefined } as any);
-            const sent = await service({ lane: deferring }).replyOnceThroughOutbox({
+            await expect(service({ lane: deferring }).replyOnceThroughOutbox({
                 tenantId, conversation: conversation(), msg: msg(),
                 operationalScope: scope(), inboundMessageId: await inbound(),
                 item: { kind: 'text', payload: { text: 'Confirmado' } },
                 originKey: 'k:deferred',
-            });
-            expect(sent).toBe(false);
+            })).rejects.toThrow(/^durable_reply_not_committed:deferred:/);
             expect(await rows()).toHaveLength(0);
+            expect(enqueued).toEqual([]);
         });
 
-        it('keeps the queue for a thread that does not name its connection', async () => {
-            const sent = await service().replyOnceThroughOutbox({
+        it('fails closed for a thread that does not name its connection', async () => {
+            await expect(service().replyOnceThroughOutbox({
                 tenantId, conversation: conversation(),
                 msg: msg({ channelAccountId: '' }),
                 operationalScope: scope(), inboundMessageId: await inbound(),
                 item: { kind: 'text', payload: { text: 'Confirmado' } },
                 originKey: 'k:no-account',
-            });
-            expect(sent).toBe(false);
+            })).rejects.toThrow('durable_reply_binding_unavailable:k:no-account');
             expect(await rows()).toHaveLength(0);
+            expect(enqueued).toEqual([]);
         });
     });
 });

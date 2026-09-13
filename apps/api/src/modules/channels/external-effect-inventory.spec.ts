@@ -257,8 +257,9 @@ describe('the lanes match the code that owns them', () => {
                 'template', 'text']);
         const durableReply = EXTERNAL_EFFECT_PRODUCERS.find(row => row.id === 'agent.reply.durable')!;
         expect(durableReply.lane).toBe('dispatch_outbox');
-        // And it is not on by default, which is the honest half of that claim.
-        expect(durableReply.status).toBe('pilot_gated');
+        // The mandatory lane is live; rollout now controls economic enforcement,
+        // never whether the effect gets a durable owner.
+        expect(durableReply.status).toBe('live');
     });
 
     it('accounts for every handoff destination the table can hold', () => {
@@ -337,13 +338,10 @@ describe('no entry claims a property the code does not support', () => {
         expect(inlineDurable).toEqual(['human.agent.reply.widget', 'channels.token_refresh']);
     });
 
-    it('says out loud that the durable reply path is off by default', () => {
-        const rollout = fs.readFileSync(
-            path.join(SRC, 'modules', 'channels', 'dispatch-rollout.service.ts'), 'utf8');
-        // The inventory calls it `pilot_gated`; this is where that word comes from.
-        expect(rollout).toContain('enabled: raw.enabled === true');
-        expect(EXTERNAL_EFFECT_PRODUCERS.some(row =>
-            row.id === 'agent.reply.legacy' && row.status === 'live')).toBe(true);
+    it('says out loud that the durable reply path is the live path', () => {
+        expect(EXTERNAL_EFFECT_PRODUCERS.find(row => row.id === 'agent.reply.durable')?.status)
+            .toBe('live');
+        expect(EXTERNAL_EFFECT_PRODUCERS.some(row => row.id === 'agent.reply.legacy')).toBe(false);
     });
 });
 
@@ -368,13 +366,7 @@ describe('the inventory is honest about what is not covered', () => {
         // below says which producers are meant to be here, so the second case
         // fails rather than passes.
         expect(summary.uncovered.length).toBeGreaterThan(0);
-        // `human.agent.reply.inline`, not `human.agent.reply`: the console now
-        // takes the durable lane for every channel with a strict transport, and
-        // the inline path is what is left for the channels without one. The
-        // entry was split rather than re-labelled, so this list names the half
-        // that is genuinely still uncovered instead of the file it lives in.
-        for (const id of ['human.agent.reply.inline', 'automation.http_request',
-            'agent.reply.legacy']) {
+        for (const id of ['automation.http_request']) {
             expect(summary.uncovered).toContain(id);
         }
         // `human.whatsapp.manual_send` USED to be on that list and is not any
@@ -391,41 +383,20 @@ describe('the inventory is honest about what is not covered', () => {
             .toContain('No silent fall back to the inline POST');
     });
 
-    it('keeps the human reply honest about the half of it that is still uncovered', () => {
-        const human = EXTERNAL_EFFECT_PRODUCERS.find(row => row.id === 'human.agent.reply.inline')!;
+    it('does not expose inbound-only email or one-way SMS as reply transports', () => {
         const service = fs.readFileSync(
             path.join(SRC, 'modules', 'agent-console', 'agent-console.service.ts'), 'utf8');
-        // The worst cell of this table was the receipt: the row was written
-        // `delivered` before the send and the send was swallowed by a catch that
-        // only logged, so a reply that never left read as delivered. That is
-        // fixed — the row starts `pending` and settles on the outcome — and the
-        // inventory may only say so while the code still does it.
-        expect(service).toContain("'outbound', 'pending'");
-        expect(service).not.toContain("'outbound', 'delivered'");
-        expect(human.properties.receipt.level).toBe('partial');
-        expect(human.properties.receipt.note).toContain('pending');
-
-        // What did NOT change: no queue, no lease, no dedupe, nothing durable to
-        // retry from, and `sendMessage` still returns null for every failure, so
-        // a timeout that may have reached the customer settles like a refusal.
-        for (const property of ['authority', 'idempotency', 'uncertainOutcome', 'recovery'] as const) {
-            expect(human.properties[property].level).toBe('none');
-        }
-        expect(service).toContain('Could not send agent message via channel');
+        expect(EXTERNAL_EFFECT_PRODUCERS.some(row => row.id === 'human.agent.reply.inline'))
+            .toBe(false);
+        expect(service).not.toContain('channelGateway.sendMessage(');
+        expect(service).toContain('sin un transporte durable');
     });
 
-    it('says which half of the console is durable, and does not claim the other', () => {
-        // ── ONE FILE, TWO LANES ─────────────────────────────────────────────
-        //
-        // For a while one entry described both, said `inline`, and understated
-        // the console's coverage so a reader could not tell which path a given
-        // channel takes. The split has to stay honest in BOTH directions: the
-        // durable half may only claim what the code does, and the inline half
-        // may not be quietly deleted once it looks embarrassing.
+    it('keeps console provider replies durable and the local widget separate', () => {
         const durable = EXTERNAL_EFFECT_PRODUCERS.find(row => row.id === 'human.agent.reply')!;
-        const inline = EXTERNAL_EFFECT_PRODUCERS.find(row => row.id === 'human.agent.reply.inline')!;
-        expect({ durable: durable.lane, inline: inline.lane })
-            .toEqual({ durable: 'dispatch_outbox', inline: 'inline' });
+        const widget = EXTERNAL_EFFECT_PRODUCERS.find(row => row.id === 'human.agent.reply.widget')!;
+        expect({ durable: durable.lane, widget: widget.lane })
+            .toEqual({ durable: 'dispatch_outbox', widget: 'inline' });
 
         const service = fs.readFileSync(
             path.join(SRC, 'modules', 'agent-console', 'agent-console.service.ts'), 'utf8');

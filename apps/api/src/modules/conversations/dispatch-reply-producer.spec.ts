@@ -59,9 +59,7 @@ describe('ConversationsService durable reply producer', () => {
             { id: 'd-1', itemIndex: 1, state: 'prepared', redacted: false },
         ];
 
-        it('keeps the reply even when the switch has since been turned off', async () => {
-            // Ownership is decided before the switch is consulted, and the switch
-            // never revokes it: otherwise a replay would answer a second time.
+        it('keeps an existing reply independently of the retired rollout switch', async () => {
             const h = harness({ enabled: false, existingBatch: batch });
             await expect(run(h.service)).resolves.toBe(true);
             expect(h.dispatchOutbox.prepare).not.toHaveBeenCalled();
@@ -103,19 +101,19 @@ describe('ConversationsService durable reply producer', () => {
             await expect(run(h.service)).rejects.toThrow('outbox unreadable');
         });
 
-        it('releases the reply to the old path only on a demonstrated absence', async () => {
+        it('fails the turn when prepare failed and no committed batch exists', async () => {
             const h = harness({ enabled: true, prepareFails: true });
             h.dispatchOutbox.findBatchForInbound.mockResolvedValue(null);
-            await expect(run(h.service)).resolves.toBe(false);
+            await expect(run(h.service)).rejects.toThrow('outbox unavailable');
             expect(h.dispatchOutbox.findBatchForInbound).toHaveBeenCalledTimes(2);
         });
     });
 
-    it('takes the durable path only when the switch names this tenant and channel', async () => {
+    it('always takes the durable path regardless of the retired rollout switch', async () => {
         const off = harness();
-        await expect(run(off.service)).resolves.toBe(false);
-        expect(off.dispatchOutbox.prepare).not.toHaveBeenCalled();
-        expect(off.dispatchRollout.enabledFor).toHaveBeenCalledWith(tenantId, 'whatsapp');
+        await expect(run(off.service)).resolves.toBe(true);
+        expect(off.dispatchOutbox.prepare).toHaveBeenCalledTimes(1);
+        expect(off.dispatchRollout.enabledFor).not.toHaveBeenCalled();
 
         const on = harness({ enabled: true });
         await expect(run(on.service)).resolves.toBe(true);
@@ -160,13 +158,13 @@ describe('ConversationsService durable reply producer', () => {
         expect(h.dispatchOutbox.prepare).toHaveBeenCalledTimes(1);
     });
 
-    it('leaves the reply to the existing path when nothing was committed', async () => {
+    it('fails when nothing durable was committed', async () => {
         const h = harness({ enabled: true, prepareFails: true });
-        await expect(run(h.service)).resolves.toBe(false);
+        await expect(run(h.service)).rejects.toThrow('outbox unavailable');
         expect(h.outboundQueue.enqueueDispatch).not.toHaveBeenCalled();
     });
 
-    it('declines without a persisted inbound, a contact or an operational scope', async () => {
+    it('fails without a persisted inbound, a contact or an operational scope', async () => {
         const h = harness({ enabled: true });
         for (const over of [
             { inboundMessageId: undefined },
@@ -175,25 +173,25 @@ describe('ConversationsService durable reply producer', () => {
             { operationalScope: undefined },
             { chunks: [] },
         ]) {
-            await expect(run(h.service, over)).resolves.toBe(false);
+            await expect(run(h.service, over)).rejects.toThrow('durable_dispatch_binding_unavailable');
         }
         expect(h.dispatchOutbox.prepare).not.toHaveBeenCalled();
     });
 
-    it('declines when the outbox or the switch is not wired at all', async () => {
+    it('requires the outbox and no longer depends on the rollout switch', async () => {
         const h = harness({ enabled: true });
         (h.service as any).dispatchOutbox = undefined;
-        await expect(run(h.service)).resolves.toBe(false);
+        await expect(run(h.service)).rejects.toThrow('durable_dispatch_binding_unavailable');
         (h.service as any).dispatchOutbox = h.dispatchOutbox;
         (h.service as any).dispatchRollout = undefined;
-        await expect(run(h.service)).resolves.toBe(false);
+        await expect(run(h.service)).resolves.toBe(true);
     });
 
-    it('fails closed instead of falling back when the switch cannot be read', async () => {
+    it('does not consult the retired rollout switch', async () => {
         const h = harness({ enabled: true });
         h.dispatchRollout.enabledFor.mockRejectedValue(new Error('settings unavailable'));
-        await expect(run(h.service)).rejects.toThrow('settings unavailable');
-        expect(h.dispatchOutbox.prepare).not.toHaveBeenCalled();
+        await expect(run(h.service)).resolves.toBe(true);
+        expect(h.dispatchRollout.enabledFor).not.toHaveBeenCalled();
     });
 
     /**
@@ -283,13 +281,13 @@ describe('ConversationsService durable reply producer', () => {
             expect(empty.dispatchOutbox.prepare.mock.calls[0][1].learningFootprints).toEqual([]);
         });
 
-        it('no se queda con la respuesta si no puede expresar un efecto', async () => {
+        it('rechaza el turno si no puede expresar un efecto', async () => {
             // Un medio sin URL no es despachable. Rechazar el lote entero deja la
-            // respuesta al camino viejo, que sí puede entregar el texto; aceptar
-            // el resto entregaría una respuesta a la que le falta una parte sin
-            // que nadie se entere.
+            // respuesta completa; aceptar el resto entregaría una respuesta a
+            // la que le falta una parte sin que nadie se entere.
             const h = harness({ enabled: true });
-            await expect(run(h.service, { media: [{ url: '   ' }] })).resolves.toBe(false);
+            await expect(run(h.service, { media: [{ url: '   ' }] }))
+                .rejects.toThrow('dispatch_item_empty_media');
             expect(h.dispatchOutbox.prepare).not.toHaveBeenCalled();
         });
     });

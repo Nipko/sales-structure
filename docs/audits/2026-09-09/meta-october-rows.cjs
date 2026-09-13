@@ -347,19 +347,11 @@ function octoberRows(row, A) {
             evidence: `De ${A.billable.length} call sites cobrables, ${A.offDurable.length} usan un `
                 + 'carril que no escribe fila antes del POST — Redis es el registro, o no hay '
                 + 'registro. Un productor ahí no puede contestar "¿esto salió?" después de un '
-                + 'reinicio. **Este número NO es el criterio de R6**, que pregunta por la '
+                + 'reinicio. **Este número no es el criterio de R6**, que pregunta por la '
                 + 'autorización aplicable y la mide con los productores fuera del gate '
-                + 'económico: el carril legado sí pasa por la admisión, así que R6 está en cero '
-                + 'y esta fila no. Lo que falta acá es la FILA antes del POST, no el permiso. '
-                + 'Ninguno de los siete carece del camino durable: seis son el repliegue de '
-                + '`conversations.service.ts` cuando el interruptor de despliegue está apagado — '
-                + 'y con el interruptor encendido son inalcanzables, porque la propiedad del '
-                + 'lote se decide ANTES de consultarlo y el bloque legado entero cuelga de que '
-                + 'el carril durable haya dicho no. El séptimo es la consola humana: desde este '
-                + 'HEAD entrega exactamente un efecto por el transporte estricto y distingue '
-                + 'aceptado, rechazado y desconocido, así que lo que le falta es la fila, no el '
-                + 'resultado. Por eso el número no baja escribiendo código: baja encendiendo un '
-                + 'interruptor —decisión de piloto del dueño.' }),
+                + 'económico. Lo que esta fila mide es la fila durable antes del POST; desde este '
+                + 'HEAD todo productor cobrable la crea y ningún interruptor puede devolverlo al '
+                + 'carril anterior.' }),
 
         row('R1', { provenance: 'derived',
             open: A.unrepresentable.length,
@@ -400,8 +392,8 @@ function octoberRows(row, A) {
                 + `(${laneBreakdown})`,
             evidence: 'La consola humana, la API REST y las campañas necesitan la misma admisión '
                 + 'que el agente: un handoff detiene la IA, pero las respuestas humanas siguen '
-                + 'generando cargos. La autoridad de operador humano existe desde este HEAD; lo que '
-                + 'falta es que cada productor la use, y eso se cuenta arriba.' }),
+                + 'generando cargos. Desde este HEAD cada productor usa una fila durable y la '
+                + 'autoridad correspondiente; cualquier ruta nueva vuelve a abrir este contador.' }),
 
         row('R5', { provenance: 'derived',
             open: A.uncoveredScenarios.length,

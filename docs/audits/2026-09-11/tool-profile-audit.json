@@ -2,7 +2,7 @@
   "version": 1,
   "evidenceKind": "structural_only",
   "sourceHashEncoding": "utf8-lf",
-  "sourceRevision": "702db403e4a2a8a7845aba665af3364b67ef7ae9",
+  "sourceRevision": "824b4c8d2ff313fe7865456e359a49ea98bb68dc",
   "summary": {
     "verticals": 20,
     "profiles": 76,
@@ -37,7 +37,7 @@
     "apps/api/src/common/conversation/intent-normalizer.ts": "0f58a2e4a8a3d6dad75db81e108f8a9877c8d276b008d989787c113bd98d1eba",
     "apps/api/src/modules/conversations/agent-test-tool-policy.ts": "3b5cc73fbe9db77fa44f3f45aab3b6549f9424d12c61da3b81a4035630c00f2d",
     "apps/api/src/modules/conversations/agent-tool-registry.ts": "eb0d07f5a197dc167a3b52aba549b60f47743f0244d7437921dbb22772f28c0a",
-    "apps/api/src/modules/conversations/ai-tool-executor.service.ts": "f64281263778dc59b2bf6c1c9ecdffa90b7b18e67721c6565c13d26bf72903cd",
+    "apps/api/src/modules/conversations/ai-tool-executor.service.ts": "b28d08e3966d835c34f32f9828afaa484ccd7243e83abf0922de4411af368c3f",
     "apps/api/src/modules/conversations/tool-policy-registry.ts": "6df5643daa47901af534374c69c4625a0710173c7b6271504925dcffdf751a13",
     "apps/api/src/modules/conversations/tool-task-dependencies.ts": "6cd3988fd8377d8156a9dff7eae6659aead26e8054ddf953f92352e36ebff653",
     "apps/api/src/modules/conversations/tools/appointment-tools.ts": "7cb1cab12f52e4fbeba0ba08918f7542d7525f603a214f2dfda45f1f1c053f8a",

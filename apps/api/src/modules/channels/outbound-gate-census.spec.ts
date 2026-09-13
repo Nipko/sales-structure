@@ -436,8 +436,8 @@ describe('a gate deleted from a REAL sink', () => {
      * producer behind it red". Every mutation above ADDS a file; none removed a
      * gate from a sink that already exists, and that is the one the census got
      * wrong: it asked "does this file contain a gate call anywhere?", and
-     * `outbound-queue.processor.ts` contains eight of them across several
-     * methods. Deleting the one that guards the live send path left the answer
+     * `outbound-queue.processor.ts` contains several across distinct lanes.
+     * Deleting the one that guards the durable send path left the answer
      * yes, the census reported zero producers outside the boundary, and every
      * AI reply on every tenant would have gone to Meta unauthorised.
      *
@@ -459,16 +459,16 @@ describe('a gate deleted from a REAL sink', () => {
      */
     const SINK_REL = 'modules/channels/outbound-queue.processor.ts';
     const SINK = resolve(API_SRC, 'modules', 'channels', 'outbound-queue.processor.ts');
-    const GATE = "this.gateOrSuppress(outbound, 'outbound_queue'";
+    const GATE = 'admission = await this.admitSpend({';
 
     /** Runs `work` against a tree where that one gate call is gone. */
-    function withoutTheLegacyGate<T>(work: () => T): T {
+    function withoutTheDurableGate<T>(work: () => T): T {
         const original = readFileSync(SINK, 'utf8');
         if (!original.includes(GATE)) throw new Error('the gate call site moved; update this test');
         return inventory.withSourceOverlay([{
             app: 'api',
             rel: SINK_REL,
-            text: original.replace(GATE, "this.noGateAtAll(outbound, 'outbound_queue'"),
+            text: original.replace(GATE, 'admission = await this.noGateAtAll({'),
         }], work);
     }
 
@@ -476,17 +476,17 @@ describe('a gate deleted from a REAL sink', () => {
         // The property that matters more than any assertion below it: this
         // suite cannot damage the send path, whatever happens to the process.
         const before = readFileSync(SINK, 'utf8');
-        withoutTheLegacyGate(() => census());
+        withoutTheDurableGate(() => census());
         expect(readFileSync(SINK, 'utf8')).toBe(before);
         // And during, too — the mutation must be invisible to anything reading
         // the disk, which is what a concurrent `git add` is doing.
-        withoutTheLegacyGate(() => expect(readFileSync(SINK, 'utf8')).toBe(before));
+        withoutTheDurableGate(() => expect(readFileSync(SINK, 'utf8')).toBe(before));
     });
 
     it('turns the sink itself from gated to not gated', () => {
         expect(inventory.sinkVerdict('modules/channels/outbound-queue.processor.ts').fullyGated)
             .toBe(true);
-        const after = withoutTheLegacyGate(() => {
+        const after = withoutTheDurableGate(() => {
             // The memo is per-run and `gateCensus` clears it; ask through a run.
             census();
             return inventory.sinkVerdict('modules/channels/outbound-queue.processor.ts');
@@ -500,7 +500,7 @@ describe('a gate deleted from a REAL sink', () => {
 
     it('turns every producer behind it into a violation, in the same run', () => {
         expect(census().bypasses).toEqual([]);
-        const bypasses = withoutTheLegacyGate(() => census().bypasses);
+        const bypasses = withoutTheDurableGate(() => census().bypasses);
         // Named rather than counted: the point is WHICH producers lose cover,
         // and the answer has to include the lane that serves every tenant today.
         // Named by FILE, not by file:line. A line number here is a second
@@ -519,7 +519,7 @@ describe('a gate deleted from a REAL sink', () => {
         // "does not ask the money authority" would be a lie here: it asks seven
         // times. A violation message that misdescribes the defect sends the next
         // person to add a gate that is already there.
-        const rows = withoutTheLegacyGate(() => census().bypasses);
+        const rows = withoutTheDurableGate(() => census().bypasses);
         expect(rows[0].terminusUncovered.length).toBeGreaterThan(0);
     });
 
@@ -544,7 +544,7 @@ describe('a gate deleted from a REAL sink', () => {
         };
         const r6 = (rows: any[]) => rows.find(entry => entry.id === 'R6')!;
 
-        // At HEAD: the legacy lane passes the money authority, so nothing is
+        // At HEAD every durable send passes the money authority, so nothing is
         // outside it and the row waits on its external gates.
         const atHead = r6(rowsFor());
         expect(atHead.open).toBe(0);
@@ -552,26 +552,23 @@ describe('a gate deleted from a REAL sink', () => {
 
         // With that one gate gone, every producer behind it is unauthorised
         // and the row says so.
-        const mutated = r6(withoutTheLegacyGate(rowsFor));
+        const mutated = r6(withoutTheDurableGate(rowsFor));
         expect(mutated.open).toBeGreaterThan(0);
         expect(String(mutated.openLabel)).toContain('autorización aplicable');
 
-        // And the property it stopped counting did not vanish: R0 and R4
-        // carry the producers outside the durable lane, and they are open on
-        // exactly that number at this HEAD.
+        // R0 and R4 now have no legacy lane left either. They are local
+        // implementation rows, so zero means accepted without inventing an
+        // external gate that their criteria never named.
         const rows = rowsFor();
         for (const id of ['R0', 'R4']) {
             const entry = rows.find((candidate: any) => candidate.id === id)!;
-            //  IS what makes a row open — the generator derives
-            // the word from it, and this double does not, so the condition
-            // is what gets asserted rather than the label.
-            expect(entry.open).toBeGreaterThan(0);
+            expect(entry.open).toBe(0);
             expect(entry.gates ?? []).toEqual([]);
         }
     });
 
     it('goes back to zero when the gate comes back', () => {
-        withoutTheLegacyGate(() => census());
+        withoutTheDurableGate(() => census());
         expect(census().bypasses).toEqual([]);
         expect(census().ungatedEgress).toEqual([]);
     });

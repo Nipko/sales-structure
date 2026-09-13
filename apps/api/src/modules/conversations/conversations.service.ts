@@ -46,7 +46,7 @@ import { PipelineService } from '../pipeline/pipeline.service';
 import { NurturingService } from '../automation/nurturing.service';
 import { DripSequenceService } from '../automation/drip-sequence.service';
 import {
-    NormalizedMessage, OutboundMessage, TenantConfig, TurnContext, RetrievedKnowledgeItem,
+    NormalizedMessage, TenantConfig, TurnContext, RetrievedKnowledgeItem,
     ModelTier, RoutingFactors,
     localizedTerm, subtypeTerminologyFor, resolveSubtypeExperienceProfile,
     type EffectiveCapabilityContract, type TurnCapability,
@@ -508,7 +508,7 @@ export class ConversationsService {
     ) {}
 
     /**
-     * One reply, committed before it leaves. `false` means "not this one".
+     * One reply, committed before it leaves.
      *
      * The turn's own answer travels as a BATCH through
      * `dispatchReplyThroughOutbox`. This is for the single, deterministic
@@ -520,10 +520,9 @@ export class ConversationsService {
      * second effect on the same customer message would collide with the first.
      * That is also why the turn's fan-out is not here.
      *
-     * `false` for every reason the lane could not honestly carry this: no lane
-     * wired in, no authority, an incomplete binding, or a channel whose adapter
-     * cannot perform one effect and say what happened. The caller then keeps
-     * the queue it has, which is the behaviour it had before this existed.
+     * A missing authority, incomplete binding or unsupported transport is a
+     * failed turn. Falling back after any of them would create an effect with
+     * no durable owner and no safe answer after a restart.
      */
     private async replyOnceThroughOutbox(input: {
         readonly tenantId: string;
@@ -544,8 +543,12 @@ export class ConversationsService {
         const channelAccountId = String(input.msg.channelAccountId ?? '').trim();
         const recipient = String(input.msg.contactId ?? '').trim();
         if (!this.proactiveDispatch || !input.operationalScope
-            || !PERSISTED_ID.test(contactId) || !channelAccountId || !recipient) return false;
-        if (!this.channelGateway.getStrictTransport?.(input.msg.channelType as any)) return false;
+            || !PERSISTED_ID.test(contactId) || !channelAccountId || !recipient) {
+            throw new Error(`durable_reply_binding_unavailable:${input.originKey}`);
+        }
+        if (!this.channelGateway.getStrictTransport?.(input.msg.channelType as any)) {
+            throw new Error(`durable_reply_transport_unavailable:${input.msg.channelType}`);
+        }
         const answersInbound = !!input.inboundMessageId && PERSISTED_ID.test(input.inboundMessageId);
         const result = await this.proactiveDispatch.send(input.tenantId, {
             originKey: input.originKey,
@@ -566,11 +569,7 @@ export class ConversationsService {
                 : {}),
         });
         if (effectIsDurable(result)) return true;
-        // Nothing was committed. The caller falls back to the queue rather than
-        // leaving the customer with silence, and the reason is on the record.
-        this.logger.warn(`[Dispatch] ${input.originKey} not committed (${result.kind}: `
-            + `${(result as any).reason}) — falling back to the outbound queue`);
-        return false;
+        throw new Error(`durable_reply_not_committed:${result.kind}:${(result as any).reason}`);
     }
 
     /**
@@ -1052,15 +1051,12 @@ export class ConversationsService {
                             );
                             this.logger.log(`[Reminder] Client confirmed appointment ${upcomingAppt[0].id}`);
                             const confirmMsg = apptReplies(apptReplyLang).confirmed(upcomingAppt[0].service_name);
-                            if (!await this.replyOnceThroughOutbox({
+                            await this.replyOnceThroughOutbox({
                                 tenantId, conversation, msg: normalizedMsg,
                                 operationalScope: turnScope, inboundMessageId,
                                 item: { kind: 'text', payload: { text: confirmMsg } },
                                 originKey: `appt-confirm:${inboundMessageId}`,
-                            })) {
-                                await this.sendResponse(tenantId, confirmMsg, normalizedMsg, undefined, 'appt:confirm');
-                                await this.saveAiMessage(tenantId, conversation.id, confirmMsg, normalizedMsg.channelType);
-                            }
+                            });
                         } else {
                             this.logger.log(`[Reminder] Client wants to reschedule appointment ${upcomingAppt[0].id}`);
                             const tenantRows = await this.prisma.$queryRawUnsafe(
@@ -1071,15 +1067,12 @@ export class ConversationsService {
                             const bookingLink = slug ? `${dashboardUrl}/book/${slug}` : '';
                             const R = apptReplies(apptReplyLang);
                             const rescheduleMsg = bookingLink ? R.rescheduleLink(bookingLink) : R.rescheduleNoLink;
-                            if (!await this.replyOnceThroughOutbox({
+                            await this.replyOnceThroughOutbox({
                                 tenantId, conversation, msg: normalizedMsg,
                                 operationalScope: turnScope, inboundMessageId,
                                 item: { kind: 'text', payload: { text: rescheduleMsg } },
                                 originKey: `appt-reschedule:${inboundMessageId}`,
-                            })) {
-                                await this.sendResponse(tenantId, rescheduleMsg, normalizedMsg, undefined, 'appt:reschedule');
-                                await this.saveAiMessage(tenantId, conversation.id, rescheduleMsg, normalizedMsg.channelType);
-                            }
+                            });
                         }
                         return;
                     }
@@ -1141,15 +1134,12 @@ export class ConversationsService {
                             );
                             this.logger.log(`[Attendance] Client confirmed attendance for appointment ${apptId}`);
                             const thankYou = apptReplies(apptReplyLang).attendanceThanks(pendingAppt[0].service_name);
-                            if (!await this.replyOnceThroughOutbox({
+                            await this.replyOnceThroughOutbox({
                                 tenantId, conversation, msg: normalizedMsg,
                                 operationalScope: turnScope, inboundMessageId,
                                 item: { kind: 'text', payload: { text: thankYou } },
                                 originKey: `appt-thankyou:${inboundMessageId}`,
-                            })) {
-                                await this.sendResponse(tenantId, thankYou, normalizedMsg, undefined, 'appt:thankyou');
-                                await this.saveAiMessage(tenantId, conversation.id, thankYou, normalizedMsg.channelType);
-                            }
+                            });
                         } else {
                             await this.prisma.executeInTenantSchema(schemaName,
                                 `UPDATE appointments SET status = 'no_show', updated_at = NOW() WHERE id = $1::uuid`,
@@ -1157,15 +1147,12 @@ export class ConversationsService {
                             );
                             this.logger.log(`[Attendance] Client confirmed no-show for appointment ${apptId}`);
                             const noShowMsg = apptReplies(apptReplyLang).noShow(pendingAppt[0].service_name);
-                            if (!await this.replyOnceThroughOutbox({
+                            await this.replyOnceThroughOutbox({
                                 tenantId, conversation, msg: normalizedMsg,
                                 operationalScope: turnScope, inboundMessageId,
                                 item: { kind: 'text', payload: { text: noShowMsg } },
                                 originKey: `appt-noshow:${inboundMessageId}`,
-                            })) {
-                                await this.sendResponse(tenantId, noShowMsg, normalizedMsg, undefined, 'appt:noshow');
-                                await this.saveAiMessage(tenantId, conversation.id, noShowMsg, normalizedMsg.channelType);
-                            }
+                            });
                         }
                         return; // Don't process through AI — attendance handled
                     }
@@ -1221,15 +1208,12 @@ export class ConversationsService {
                 const position = Number(queueCount?.[0]?.cnt || 1);
                 handoffMsg = position <= 1 ? hl.queueHead : hl.queueN(position);
             }
-            if (!await this.replyOnceThroughOutbox({
+            await this.replyOnceThroughOutbox({
                 tenantId, conversation, msg: normalizedMsg,
                 operationalScope: turnScope, inboundMessageId,
                 item: { kind: 'text', payload: { text: handoffMsg } },
                 originKey: `handoff-notice:${inboundMessageId}`,
-            })) {
-                await this.sendResponse(tenantId, handoffMsg, normalizedMsg, undefined, 'handoff');
-                await this.saveAiMessage(tenantId, conversation.id, handoffMsg, normalizedMsg.channelType);
-            }
+            });
             return;
         }
 
@@ -1258,15 +1242,12 @@ export class ConversationsService {
                     await this.persistDraft(tenantId, schemaName, conversation.id, fallback, contact?.name, inboundMessageId);
                     return;
                 }
-                if (!await this.replyOnceThroughOutbox({
+                await this.replyOnceThroughOutbox({
                     tenantId, conversation, msg: normalizedMsg,
                     operationalScope: turnScope, inboundMessageId,
                     item: { kind: 'text', payload: { text: fallback } },
                     originKey: `quota-fallback:${inboundMessageId}`,
-                })) {
-                    await this.sendResponse(tenantId, fallback, normalizedMsg, undefined, 'fallback');
-                    await this.saveAiMessage(tenantId, conversation.id, fallback, channelType);
-                }
+                });
             }
             this.eventEmitter.emit('billing.quota.ai_messages_exhausted', { tenantId });
             return;
@@ -1487,16 +1468,12 @@ export class ConversationsService {
             this.recordAgentSignal(tenantId, 'turn_routed_to_human');
             await this.handoffService.executeHandoff(
                 tenantId, conversation.id, normalizedMsg, decision.route.reason);
-            if (!await this.replyOnceThroughOutbox({
+            await this.replyOnceThroughOutbox({
                 tenantId, conversation, msg: normalizedMsg,
                 operationalScope: turnScope, inboundMessageId,
                 item: { kind: 'text', payload: { text: decision.route.notice } },
                 originKey: `stalled-ask-route:${inboundMessageId}`,
-            })) {
-                await this.sendResponse(tenantId, decision.route.notice, normalizedMsg, undefined, 'handoff');
-                await this.saveAiMessage(tenantId, conversation.id, decision.route.notice,
-                    normalizedMsg.channelType);
-            }
+            });
             return;
         }
         if (decision.outcome.kind === 'wait') {
@@ -1551,7 +1528,7 @@ export class ConversationsService {
                 // The durable path records the bubbles and their history in one
                 // transaction and answers true; otherwise this tenant and channel
                 // keep the two independent writes they have today.
-                const durable = await this.dispatchReplyThroughOutbox({
+                await this.dispatchReplyThroughOutbox({
                     tenantId, schemaName, conversation, inboundMsg: normalizedMsg, inboundMessageId,
                     // Both: the folded answer for the batch builder, and the same
                     // bubbles and links flat, so a reader of this call — and the
@@ -1563,52 +1540,7 @@ export class ConversationsService {
                     flow: turnEffects.flow,
                 });
                 if (this.turnLedger && priorTurn) {
-                    await this.turnLedger.recordDelivery(schemaName, ledgerInboundId, durable ? 'durable' : 'legacy');
-                }
-                if (!durable) {
-                    this.logger.log(`[Pipeline] Sending response via outbound queue (${chunks.length} bubble(s))...`);
-                    if (turnEffects.flow) {
-                        await this.sendCollectedFlow(tenantId, normalizedMsg, turnEffects.flow);
-                        await this.saveAiMessage(
-                            tenantId, conversation.id, turnEffects.flow.text, normalizedMsg.channelType,
-                            outboundDedupeId(normalizedMsg, 'flow-history', 0),
-                        );
-                    }
-                    const turnPmid = providerMessageId(normalizedMsg) || normalizedMsg.id || '';
-                    for (let i = 0; i < chunks.length; i++) {
-                        await this.sendResponse(tenantId, chunks[i], normalizedMsg, i * CHUNK_GAP_MS, `reply:${i}`);
-                        await this.saveAiMessage(
-                            tenantId, conversation.id, chunks[i], normalizedMsg.channelType,
-                            turnPmid ? `out:${turnPmid}:reply:${i}` : undefined,
-                        );
-                    }
-                    // The old path, with the delays and dedupe identifiers it
-                    // always used. These ran inside `generateResponse` before;
-                    // moving them here is what lets one decision cover the whole
-                    // turn, and the identifiers keep a reprocessed turn from
-                    // delivering any of it twice.
-                    // Only the links compaction could not fold into the words.
-                    // The folded ones already travelled inside their bubble, and
-                    // its history row carries the URL, so nothing is lost — one
-                    // fewer charge, and the same thing on the customer's screen.
-                    let linkIndex = 0;
-                    for (const url of new Set(composed.answer.paymentLinks)) {
-                        await this.sendPaymentLink(tenantId, normalizedMsg, url);
-                        await this.saveAiMessage(
-                            tenantId, conversation.id, url, normalizedMsg.channelType,
-                            outboundDedupeId(normalizedMsg, 'payment-link-history', linkIndex++),
-                        );
-                    }
-                    for (let i = 0; i < turnEffects.media.length; i++) {
-                        await this.sendMedia(tenantId, normalizedMsg, turnEffects.media[i].url,
-                            turnEffects.media[i].caption, 2000 + i * 1200, i);
-                        await this.saveAiMessage(
-                            tenantId, conversation.id,
-                            `[📷 ${turnEffects.media[i].caption || 'imagen'}]`,
-                            normalizedMsg.channelType,
-                            outboundDedupeId(normalizedMsg, 'media-history', i),
-                        );
-                    }
+                    await this.turnLedger.recordDelivery(schemaName, ledgerInboundId, 'durable');
                 }
                 this.logger.log(`[Pipeline] Response sent and saved`);
             }
@@ -2109,19 +2041,10 @@ export class ConversationsService {
             text = result.content || text;
         } catch {} // Fallback to raw message
 
-        const outbound: OutboundMessage = {
-            tenantId,
-            channelType: msg.channelType,
-            channelAccountId: msg.channelAccountId,
-            to: msg.contactId,
-            content: { type: 'text', text },
-            // Keep e2e latency coverage consistent with sendResponse/sendMedia.
-            metadata: { inboundTs: this.inboundTs(msg) },
-            // This branch replies and returns WITHOUT saving the inbound message,
-            // so the external_id dedupe never sees it — the jobId is the only
-            // thing stopping a redelivery from sending the notice twice.
-            dedupeId: outboundDedupeId(msg, 'after-hours'),
-        };
+        // This branch replies and returns WITHOUT saving the inbound message,
+        // so its provider identity is the origin key that makes a redelivery
+        // adopt the same durable row.
+        const dedupeId = outboundDedupeId(msg, 'after-hours');
 
         // The SAME identity the jobId carried, now as a row that survives a
         // restart. This branch answers and returns before the inbound is
@@ -2129,19 +2052,14 @@ export class ConversationsService {
         // `external_id` dedupe behind it either — the BullMQ jobId was the only
         // thing standing between a redelivery and a second notice.
         //
-        // No jobId means no stable identity, and then the lane is NOT taken: a
-        // key that is constant because its ingredients are missing would merge
-        // every customer's after-hours notice into one row and send exactly one
-        // of them. Un-deduped through the queue is what this does today, and
-        // worse is not an improvement.
-        if (conversation && outbound.dedupeId && await this.replyOnceThroughOutbox({
+        if (!conversation || !dedupeId) {
+            throw new Error('after_hours_durable_identity_unavailable');
+        }
+        await this.replyOnceThroughOutbox({
             tenantId, conversation, msg, operationalScope,
             item: { kind: 'text', payload: { text } },
-            originKey: `after-hours:${outbound.dedupeId}`,
-        })) return;
-
-        const accessToken = await this.resolveAccessToken(tenantId, msg.channelType, msg.channelAccountId);
-        await this.outboundQueue.enqueue(outbound, accessToken);
+            originKey: `after-hours:${dedupeId}`,
+        });
     }
 
     /**
@@ -2399,83 +2317,6 @@ export class ConversationsService {
     }
 
     /**
-     * @param dedupe stable identity of this send WITHIN the turn (e.g. 'reply:0',
-     * 'handoff'), turned into a BullMQ jobId so a replay of the turn cannot send
-     * the same message to the customer twice. Omit only where no stable position
-     * exists; then the send behaves exactly as before (un-deduped).
-     */
-    private async sendResponse(tenantId: string, text: string, inboundMsg: NormalizedMessage, delayMs?: number, dedupe?: string) {
-        const outbound: OutboundMessage = {
-            tenantId,
-            channelType: inboundMsg.channelType,
-            channelAccountId: inboundMsg.channelAccountId,
-            to: inboundMsg.contactId,
-            content: { type: 'text', text },
-            // Server-receipt time (see inboundTs) → the outbound processor computes the
-            // customer→reply latency on send, both ends on the server clock.
-            metadata: { inboundTs: this.inboundTs(inboundMsg) },
-            ...(dedupe ? { dedupeId: outboundDedupeId(inboundMsg, dedupe) } : {}),
-        };
-
-        const accessToken = await this.resolveAccessToken(tenantId, inboundMsg.channelType, inboundMsg.channelAccountId);
-        // Use BullMQ queue for retry resilience (3 attempts, exponential backoff).
-        // delayMs staggers chunked bubbles so they arrive in order with a pause.
-        await this.outboundQueue.enqueue(outbound, accessToken, delayMs);
-    }
-
-    /** Send an image (or other media) to the customer on their channel. */
-    /**
-     * El enlace de pago sale del backend, no de la boca del modelo.
-     *
-     * El 19-ago el enlace se creó bien y el modelo igual contestó "voy a generar
-     * el enlace… un momento", así que nunca llegó. Se le puede pedir mejor y se
-     * le pidió —la directiva ahora es corta y clara— pero pedir no es garantizar,
-     * y esto es plata. Una URL transcrita por un modelo también puede salir
-     * cortada o con un carácter de más y no abrir.
-     *
-     * Va como mensaje aparte y con un retardo corto: llega justo después del
-     * texto, en el orden en que una persona lo mandaría.
-     */
-    private async sendPaymentLink(tenantId: string, inboundMsg: NormalizedMessage, url: string, delayMs = 1200) {
-        const outbound: OutboundMessage = {
-            tenantId,
-            channelType: inboundMsg.channelType,
-            channelAccountId: inboundMsg.channelAccountId,
-            to: inboundMsg.contactId,
-            content: { type: 'text', text: url },
-            metadata: { inboundTs: this.inboundTs(inboundMsg) },
-            // Atado al enlace, no al turno: si el turno se reprocesa tras un
-            // reinicio, el cliente no recibe el mismo enlace dos veces.
-            dedupeId: `paylink-${url.slice(-64)}`,
-        };
-        const accessToken = await this.resolveAccessToken(tenantId, inboundMsg.channelType, inboundMsg.channelAccountId);
-        await this.outboundQueue.enqueue(outbound, accessToken, delayMs);
-    }
-
-    private async sendMedia(
-        tenantId: string,
-        inboundMsg: NormalizedMessage,
-        mediaUrl: string,
-        caption: string | undefined,
-        delayMs?: number,
-        dedupeIndex?: number,
-    ) {
-        const outbound: OutboundMessage = {
-            tenantId,
-            channelType: inboundMsg.channelType,
-            channelAccountId: inboundMsg.channelAccountId,
-            to: inboundMsg.contactId,
-            content: { type: 'image', mediaUrl, caption },
-            metadata: { inboundTs: this.inboundTs(inboundMsg) },
-            ...(dedupeIndex !== undefined
-                ? { dedupeId: outboundDedupeId(inboundMsg, 'media', dedupeIndex) }
-                : {}),
-        };
-        const accessToken = await this.resolveAccessToken(tenantId, inboundMsg.channelType, inboundMsg.channelAccountId);
-        await this.outboundQueue.enqueue(outbound, accessToken, delayMs);
-    }
-
-    /**
      * Read the opt-in WhatsApp Flows config (tenant.settings.bookingFlows). Fetched
      * fresh per WhatsApp booking turn so a toggle takes effect immediately; the
      * global Tenant table is a PK lookup, so the cost is negligible.
@@ -2489,40 +2330,6 @@ export class ConversationsService {
             this.logger.debug(`bookingFlows config read failed (non-fatal): ${e.message}`);
             return null;
         }
-    }
-
-    /**
-     * Enqueue an opt-in WhatsApp Flow message (one-step booking form). The gateway
-     * routes it by `metadata.flowId`; `content.text` is the fallback body delivered
-     * if the Flow can't render. Uses the same BullMQ outbound path as every reply.
-     */
-    private async sendFlow(
-        tenantId: string,
-        inboundMsg: NormalizedMessage,
-        flow: { headerText?: string; body: string; footerText?: string; flowCta?: string; initialScreen?: string; initialData?: Record<string, unknown> },
-        cfg: { flowId: string; flowCta: string; flowMode: 'published' | 'draft' },
-        flowToken: string,
-    ) {
-        const outbound: OutboundMessage = {
-            tenantId,
-            channelType: inboundMsg.channelType,
-            channelAccountId: inboundMsg.channelAccountId,
-            to: inboundMsg.contactId,
-            content: { type: 'text', text: flow.body },
-            metadata: {
-                flowId: cfg.flowId,
-                flowToken,
-                flowCta: flow.flowCta || cfg.flowCta,
-                flowMode: cfg.flowMode,
-                headerText: flow.headerText,
-                footerText: flow.footerText,
-                initialScreen: flow.initialScreen,
-                initialData: flow.initialData,
-                inboundTs: this.inboundTs(inboundMsg),
-            },
-        };
-        const accessToken = await this.resolveAccessToken(tenantId, inboundMsg.channelType, inboundMsg.channelAccountId);
-        await this.outboundQueue.enqueue(outbound, accessToken);
     }
 
     /**
@@ -3549,8 +3356,11 @@ export class ConversationsService {
                                 initialData: engineResult.flowMessage.initialData ?? null,
                             };
                         } else {
-                            await this.sendFlow(tenantId, msg, engineResult.flowMessage, flowCfg, flowToken);
-                            await this.saveAiMessage(tenantId, conversation.id, engineResult.flowMessage.body, msg.channelType);
+                            // Agent Test and evaluations execute the same
+                            // decision core without a transport. Returning the
+                            // form's text lets the reviewer inspect it without
+                            // turning a preview into a real provider effect.
+                            return engineResult.flowMessage.body;
                         }
                         this.throttle.incrementAiMessageCount(tenantId).catch(() => {});
                         this.logger.log(`[Pipeline] WhatsApp Flow produced (flow_id=${flowCfg.flowId}) — bypassing LLM`);
@@ -4643,7 +4453,6 @@ export class ConversationsService {
             const paymentLinks = executedToolsThisTurn
                 .map(t => (t?.result as any)?.paymentLink)
                 .filter((u): u is string => typeof u === 'string' && /^https:\/\//i.test(u));
-            let paymentLinkIndex = 0;
             for (const url of draftMode || session ? [] : new Set(paymentLinks)) {
                 if (msg.channelType === 'web_widget') {
                     // Widget transport delivers the validated final answer only.
@@ -4656,14 +4465,7 @@ export class ConversationsService {
                 // Sending them here would put a link outside the batch that owns
                 // the answer, where nothing could recover or deduplicate it.
                 if (effectSink) { effectSink.paymentLinks.push(url); continue; }
-                await this.sendPaymentLink(tenantId, msg, url);
-                await this.saveAiMessage(
-                    tenantId,
-                    conversation.id,
-                    url,
-                    msg.channelType,
-                    outboundDedupeId(msg, 'payment-link-history', paymentLinkIndex++),
-                );
+                if (!finalResponse.includes(url)) finalResponse += `\n${url}`;
             }
 
             // Multimodal out (#13): dispatch product images the LLM requested,
@@ -4678,21 +4480,7 @@ export class ConversationsService {
                         mediaType: mediaToSend[i].mediaType ?? null });
                     continue;
                 }
-                await this.sendMedia(
-                    tenantId,
-                    msg,
-                    mediaToSend[i].url,
-                    mediaToSend[i].caption,
-                    2000 + i * 1200,
-                    i,
-                );
-                await this.saveAiMessage(
-                    tenantId,
-                    conversation.id,
-                    `[📷 ${mediaToSend[i].caption || 'imagen'}]`,
-                    msg.channelType,
-                    outboundDedupeId(msg, 'media-history', i),
-                );
+                finalResponse += `\n${mediaToSend[i].url}`;
             }
 
             // Reset failedAttempts on successful AI response
@@ -6059,13 +5847,7 @@ export class ConversationsService {
     }
 
     /**
-     * Deliver the model's reply through the durable outbox, when this tenant and
-     * channel have actually been switched to it.
-     *
-     * Returns false to mean "not this one" — no gate, no persisted inbound, no
-     * scope, or a result this cannot express — and the caller keeps the path it
-     * has today. The switch is off by default and off for everything unlisted,
-     * so until somebody writes the setting this always returns false.
+     * Deliver the model's reply through the durable outbox.
      *
      * Once `prepare` has COMMITTED there is no falling back: that batch owns the
      * reply, and a later failure is recovered from those rows rather than sent
@@ -6094,11 +5876,12 @@ export class ConversationsService {
             channelAccountId: inboundMsg.channelAccountId,
             recipient: inboundMsg.contactId,
         };
-        const existing = await this.dispatchOutbox.findBatchForInbound(tenantId, schemaName, binding)
-            .catch(error => {
-                this.logger.warn(`[Dispatch] could not check batch ownership for ${inboundMessageId}: ${error?.message}`);
-                return null;
-            });
+        // An unreadable ownership ledger is not proof that no batch exists.
+        // Let the turn retry instead of executing its tools and possibly
+        // creating a second business effect while the first reply is committed.
+        const existing = await this.dispatchOutbox.findBatchForInbound(
+            tenantId, schemaName, binding,
+        );
         if (!existing?.length) return false;
         await this.dispatchOutbox.publishBatch(tenantId, existing, (dispatchId, delayMs) =>
             this.outboundQueue.enqueueDispatch(tenantId, dispatchId, delayMs)
@@ -6107,27 +5890,6 @@ export class ConversationsService {
         this.logger.warn(`[Dispatch] the reply to ${inboundMessageId} was already committed as `
             + `${existing.length} durable item(s) — resumed without asking the model again`);
         return true;
-    }
-
-    /** Re-send a collected form through the same transport `sendFlow` uses. */
-    private async sendCollectedFlow(tenantId: string, inboundMsg: NormalizedMessage,
-        flow: NonNullable<TurnEffectSink['flow']>): Promise<void> {
-        const outbound: OutboundMessage = {
-            tenantId,
-            channelType: inboundMsg.channelType,
-            channelAccountId: inboundMsg.channelAccountId,
-            to: inboundMsg.contactId,
-            content: { type: 'text', text: flow.text },
-            metadata: {
-                flowId: flow.flowId, flowToken: flow.flowToken,
-                flowCta: flow.flowCta ?? undefined, flowMode: flow.flowMode ?? undefined,
-                headerText: flow.headerText ?? undefined, footerText: flow.footerText ?? undefined,
-                initialScreen: flow.initialScreen ?? undefined, initialData: flow.initialData ?? undefined,
-                inboundTs: this.inboundTs(inboundMsg),
-            },
-        };
-        const accessToken = await this.resolveAccessToken(tenantId, inboundMsg.channelType, inboundMsg.channelAccountId);
-        await this.outboundQueue.enqueue(outbound, accessToken);
     }
 
     private async dispatchReplyThroughOutbox(input: {
@@ -6159,10 +5921,12 @@ export class ConversationsService {
             flow: input.flow ?? null,
         }, { lane: 'durable', channelType: inboundMsg.channelType });
         const answer = composed.answer;
-        if (!this.dispatchOutbox || !this.dispatchRollout || !input.operationalScope
+        if (!this.dispatchOutbox || !input.operationalScope
             || !input.inboundMessageId || !PERSISTED_ID.test(input.inboundMessageId)
             || !PERSISTED_ID.test(contactId)
-            || !(answer.chunks.length || input.flow || answer.paymentLinks.length || input.media?.length)) return false;
+            || !(answer.chunks.length || input.flow || answer.paymentLinks.length || input.media?.length)) {
+            throw new Error('durable_dispatch_binding_unavailable');
+        }
         const binding = {
             conversationId: String(conversation.id), contactId,
             inboundMessageId: input.inboundMessageId,
@@ -6187,13 +5951,6 @@ export class ConversationsService {
             this.logger.log(`[Dispatch] reply for ${conversation.id} already owned by its batch (${existing.length} item(s))`);
             return true;
         }
-        // A deliberate OFF may use the legacy lane during the pilot. An
-        // unreadable authority may not: treating an outage as OFF sends without
-        // the durable evidence the pilot exists to measure and can duplicate a
-        // turn whose ownership cannot be reconstructed. Let the turn fail and
-        // retry after the authority is readable again.
-        if (!(await this.dispatchRollout.enabledFor(tenantId, inboundMsg.channelType))) return false;
-
         let prepared;
         try {
             // The whole turn, in the order the customer should see it. The link
@@ -6243,9 +6000,8 @@ export class ConversationsService {
                 this.logger.warn(`[Dispatch] prepare reported ${error?.message} but its batch exists — recovered`);
                 return true;
             }
-            // Only a demonstrated absence releases the reply to the old path.
             this.logger.error(`[Dispatch] durable path unavailable for ${conversation.id}: ${error?.message}`);
-            return false;
+            throw error;
         }
 
         await this.dispatchOutbox.publishBatch(tenantId, prepared.rows, publish, input.gapMs);

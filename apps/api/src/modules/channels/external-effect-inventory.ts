@@ -411,41 +411,18 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         effect: 'The AI turn\'s reply to the customer — text bubbles, media with captions, the '
             + 'canonical payment link and a WhatsApp Flow, one outbox row per remote effect',
         lane: 'dispatch_outbox',
-        // Off unless an operator writes `platform_settings` key `dispatch.normalOutbox` AND the
-        // channel has a strict transport. Nothing on this path has met a real provider yet, so
-        // the switch defaults to off and every tenant keeps `agent.reply.legacy` below.
-        status: 'pilot_gated',
+        // The only production lane for an AI reply. Provider certification is
+        // still a release gate, but it cannot reopen an undurable fallback.
+        status: 'live',
         derivation: 'census',
         source: 'modules/conversations/conversations.service.ts',
         symbol: 'dispatchReplyThroughOutbox',
         egress: 'OutboundQueueProcessor.processDispatch → StrictDispatchTransport.sendStrict',
         reach: {
             class: 'customer_message', audience: 'contact', personalData: true,
-            channels: ['whatsapp', 'instagram', 'messenger', 'telegram', 'web_widget'],
+            channels: ['whatsapp', 'instagram', 'messenger', 'telegram'],
         },
         properties: DISPATCH_OUTBOX_PROPERTIES,
-    }),
-
-    producer({
-        id: 'agent.reply.legacy',
-        effect: 'The same reply when the durable switch is off — which is every tenant today. Also '
-            + 'the after-hours message, the payment link, media and Flow bubbles that the durable '
-            + 'path does not own',
-        lane: 'outbound_queue',
-        status: 'live',
-        derivation: 'census',
-        source: 'modules/conversations/conversations.service.ts',
-        symbol: 'sendResponse',
-        egress: 'OutboundQueueService.enqueue → ChannelGatewayService.sendMessage',
-        reach: {
-            class: 'customer_message', audience: 'contact', personalData: true,
-            channels: ['whatsapp', 'instagram', 'messenger', 'telegram', 'web_widget'],
-        },
-        properties: queued(partial('`sendResponse` passes a `dedupeId` derived from the inbound and the '
-            + 'position in the turn, so a replayed turn collapses. `sendPaymentLink`, `sendMedia`, '
-            + '`sendFlow`, `sendCollectedFlow` and `sendAfterHoursMessage` pass none, and '
-            + '`OutboundQueueService.enqueue` deliberately drops a rejected job id and re-adds '
-            + 'undeduped rather than lose the reply')),
     }),
 
     // -- People -----------------------------------------------------------------
@@ -465,7 +442,7 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
             + 'event `conversation:send`',
         reach: {
             class: 'customer_message', audience: 'contact', personalData: true,
-            channels: ['whatsapp', 'instagram', 'messenger', 'telegram', 'web_widget'],
+            channels: ['whatsapp', 'instagram', 'messenger', 'telegram'],
         },
         properties: {
             authority: durable('`human_operator`, minted by `operatorAuthority` and revalidated inside '
@@ -487,53 +464,6 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
                 + 'settled, while the paired `messages` row is redacted too'),
             recovery: durable('the row survives a restart and is retried from its own payload rather '
                 + 'than from a person typing it again'),
-        },
-    }),
-
-    producer({
-        // ── ONE FILE, TWO LANES ─────────────────────────────────────────────
-        //
-        // `sendAgentMessage` tries `replyThroughOutbox` FIRST and takes it for
-        // every channel the gateway has a strict transport for. The inline path
-        // is what is left: a channel with no transport that can send exactly
-        // one effect and say what happened.
-        //
-        // Splitting the entry is the honest way to say so — the same choice
-        // `appointments.booking_confirmation` makes — because a single row
-        // would have to describe both a durable lane and an inline one, and
-        // whichever it named would be wrong for half the channels. For a while
-        // this entry said `inline` for all of them, which understated the
-        // console's coverage and left the reader unable to tell which path a
-        // given channel takes.
-        id: 'human.agent.reply.inline',
-        effect: 'The same human reply on a channel with NO strict transport, sent inline inside the '
-            + 'request that typed it',
-        lane: 'inline',
-        status: 'live',
-        derivation: 'census',
-        source: 'modules/agent-console/agent-console.service.ts',
-        symbol: 'sendAgentMessage',
-        egress: 'ChannelGatewayService.sendMessage, called directly',
-        reach: {
-            class: 'customer_message', audience: 'contact', personalData: true,
-            channels: ['email', 'sms'],
-        },
-        properties: {
-            authority: none('no queue, no row, no lease. The send happens inline inside the request '
-                + 'that typed it'),
-            idempotency: none('no dedupeId, no job id, no unique constraint. A double click, a retried '
-                + 'request or a reconnecting socket sends the message again'),
-            receipt: partial('the `messages` row is written `pending` and settled to `sent` or '
-                + '`failed` by the outcome of the send, and the failure reaches the agent instead of only '
-                + 'the log. Still partial: the provider id returned by `sendMessage` is discarded, so '
-                + 'there is no identifier to reconcile the send against later'),
-            uncertainOutcome: none('`sendMessage` returns null for every failure, so a timeout that may '
-                + 'have reached the customer settles as `failed` exactly like a refusal did. The status is '
-                + 'honest about "did not confirm"; it cannot distinguish "may have arrived"'),
-            erasure: partial('GDPR erasure redacts the `messages` row like any other. There is no other '
-                + 'record of the attempt to erase, which is the same reason there is nothing to recover'),
-            recovery: none('nothing durable exists to retry from. A failed human reply is visible to '
-                + 'the agent, but re-sending it is a person typing it again'),
         },
     }),
 

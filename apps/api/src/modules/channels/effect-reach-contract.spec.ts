@@ -130,8 +130,8 @@ describe('what the October WhatsApp rows are allowed to count', () => {
     it('includes, BY NAME, the replies a customer actually receives', () => {
         // The half that stops this from being a way to make a row green. If any
         // of these leaves the set, a real WhatsApp send has left the counter.
-        for (const id of ['agent.reply.durable', 'agent.reply.legacy', 'human.agent.reply',
-            'human.agent.reply.inline', 'human.whatsapp.manual_send', 'broadcast.campaign',
+        for (const id of ['agent.reply.durable', 'human.agent.reply',
+            'human.whatsapp.manual_send', 'broadcast.campaign',
             'appointments.booking_confirmation', 'payments.outcome_notice']) {
             expect(billable.map(producer => producer.id)).toContain(id);
         }

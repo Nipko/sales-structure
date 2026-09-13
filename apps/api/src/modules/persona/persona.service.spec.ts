@@ -21,6 +21,27 @@ describe('Canonical persona validation for editable revisions', () => {
     it('requires the actual custom prompt in prompt mode', () => {
         expect(() => service.assertAgentConfigValid({ editorMode: 'prompt', customPrompt: 'Respond using the supplied facts.' })).not.toThrow();
         expect(() => service.assertAgentConfigValid({ _mode: 'prompt', _customPrompt: ' ' })).toThrow();
+        expect(() => service.assertAgentConfigValid({ editorMode: 'prompt', customPrompt: 'x'.repeat(16001) })).toThrow();
+        expect(() => service.assertAgentConfigValid({ editorMode: 'guided', _mode: 'prompt', customPrompt: 'x' }, { partial: true })).toThrow();
+    });
+    it('rejects malformed prompt fields before they become misleading prompt text', () => {
+        const cases: Array<[any, string]> = [
+            [[], 'config'],
+            [{ persona: 'Luna' }, 'persona'],
+            [{ behavior: { rules: ['valid', { injected: true }] } }, 'behavior.rules'],
+            [{ behavior: { handoffTriggers: ['valid'], forbiddenTopics: [false] } }, 'behavior.forbiddenTopics'],
+            [{ behavior: { draftMode: 'yes' } }, 'behavior.draftMode'],
+            [{ persona: { greeting: { text: 'hello' } } }, 'persona.greeting'],
+            [{ persona: { personality: { tone: 42 } } }, 'persona.personality.tone'],
+        ];
+        for (const [config, field] of cases) {
+            try {
+                service.assertAgentConfigValid(config, { partial: true });
+                throw new Error('expected_invalid_prompt_configuration');
+            } catch (error: any) {
+                expect(error.response?.fields).toContain(field);
+            }
+        }
     });
     it('accepts existing bounded model settings while rejecting states the editor cannot safely produce', () => {
         expect(() => service.assertAgentConfigValid({ persona: { name: 'Alex' }, language: 'es',

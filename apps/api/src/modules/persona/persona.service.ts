@@ -572,7 +572,7 @@ export class PersonaService {
      */
     /** Canonical validator also used by reviewed configuration commands. */
     assertAgentConfigValid(config: any, options: { partial?: boolean } = {}): void {
-        if (!config || typeof config !== 'object') {
+        if (!config || typeof config !== 'object' || Array.isArray(config)) {
             throw new BadRequestException({
                 error: 'agent_invalid',
                 fields: ['config'],
@@ -581,6 +581,11 @@ export class PersonaService {
         }
 
         const invalid: string[] = [];
+        const plainObject = (value: unknown) => !!value && typeof value === 'object' && !Array.isArray(value);
+        for (const key of ['persona', 'behavior', 'hours', 'llm', 'rag', 'upsell'] as const) {
+            if (config[key] !== undefined && !plainObject(config[key])) invalid.push(key);
+        }
+        if (config.persona?.personality !== undefined && !plainObject(config.persona.personality)) invalid.push('persona.personality');
         if (config.mission !== undefined && !isAgentMissionV1(config.mission)) invalid.push('mission');
 
         // Modo prompt: la persona escribió sus propias instrucciones y ese texto
@@ -589,10 +594,13 @@ export class PersonaService {
         // Las dos claves conviven en producción (`_mode`/`_customPrompt` es la
         // forma vieja); el centro de calidad ya lee ambas y acá se lee igual,
         // para no rechazar un agente que el panel considera válido.
-        const promptMode = config.editorMode === 'prompt' || config._mode === 'prompt';
+        const configuredMode = config.editorMode ?? config._mode;
+        if (configuredMode !== undefined && !['guided', 'prompt'].includes(configuredMode)) invalid.push('editorMode');
+        if (config.editorMode !== undefined && config._mode !== undefined && config.editorMode !== config._mode) invalid.push('_mode');
+        const promptMode = configuredMode === 'prompt';
         if (promptMode) {
             const customPrompt = config.customPrompt ?? config._customPrompt;
-            if (!PersonaService.isNonEmptyText(customPrompt)) invalid.push('customPrompt');
+            if (!PersonaService.isNonEmptyText(customPrompt) || customPrompt.length > 16000) invalid.push('customPrompt');
         } else {
             for (const field of PersonaService.AGENT_REQUIRED_FIELDS) {
                 const value = field.read(config);
@@ -605,6 +613,26 @@ export class PersonaService {
         const finite = (value: unknown, min: number, max: number, integer = false) =>
             typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max && (!integer || Number.isInteger(value));
         const oneOf = (value: unknown, allowed: readonly string[]) => typeof value === 'string' && allowed.includes(value);
+        const optionalText = (path: string, value: unknown, max: number) => {
+            if (value !== undefined && (typeof value !== 'string' || value.length > max)) invalid.push(path);
+        };
+        const optionalTextList = (path: string, value: unknown, maxItems = 100, maxItemLength = 2000) => {
+            if (value !== undefined && (!Array.isArray(value) || value.length > maxItems
+                || value.some(item => typeof item !== 'string' || !item.trim() || item.length > maxItemLength))) invalid.push(path);
+        };
+        optionalText('customPrompt', config.customPrompt, 16000);
+        optionalText('_customPrompt', config._customPrompt, 16000);
+        optionalText('persona.name', config.persona?.name, 500);
+        optionalText('persona.role', config.persona?.role, 500);
+        optionalText('persona.greeting', config.persona?.greeting, 2000);
+        optionalText('persona.fallbackMessage', config.persona?.fallbackMessage, 2000);
+        optionalText('persona.personality.tone', config.persona?.personality?.tone, 1000);
+        optionalText('persona.personality.formality', config.persona?.personality?.formality, 1000);
+        optionalText('persona.personality.humor', config.persona?.personality?.humor, 1000);
+        optionalTextList('behavior.rules', config.behavior?.rules);
+        optionalTextList('behavior.forbiddenTopics', config.behavior?.forbiddenTopics);
+        optionalTextList('behavior.handoffTriggers', config.behavior?.handoffTriggers);
+        if (config.behavior?.draftMode !== undefined && typeof config.behavior.draftMode !== 'boolean') invalid.push('behavior.draftMode');
         if (config.language !== undefined && !oneOf(config.language, ['es', 'en', 'pt', 'fr', 'es-CO', 'es-MX', 'en-US', 'pt-BR', 'fr-FR'])) invalid.push('language');
         if (config.persona?.personality?.emojiUsage !== undefined
             && !oneOf(config.persona.personality.emojiUsage, ['none', 'minimal', 'moderate', 'heavy'])) invalid.push('persona.personality.emojiUsage');
@@ -637,7 +665,7 @@ export class PersonaService {
         if (invalid.length > 0) {
             throw new BadRequestException({
                 error: 'agent_invalid',
-                fields: invalid,
+                fields: [...new Set(invalid)],
                 message: 'Faltan datos obligatorios del agente. Revisá los campos marcados.',
             });
         }

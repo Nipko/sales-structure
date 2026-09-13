@@ -35,6 +35,12 @@ const USER_COLUMNS: ReadonlyArray<[string, string]> = [
     ['role', 'TEXT'],
     ['first_name', 'TEXT'],
     ['last_name', 'TEXT'],
+    ['email_verify_code', 'TEXT'],
+    ['email_verify_expires', 'TIMESTAMPTZ'],
+    ['email_challenge_revision', 'INTEGER NOT NULL DEFAULT 0'],
+    ['two_factor_email_code', 'TEXT'],
+    ['two_factor_email_expires', 'TIMESTAMPTZ'],
+    ['two_factor_email_revision', 'INTEGER NOT NULL DEFAULT 0'],
 ];
 
 /**

@@ -1209,26 +1209,47 @@ producer({
 
     producer({
         id: 'auth.transactional_email',
-        effect: 'Password setup and reset, email verification, the 2FA code, the new trusted device '
-            + 'notice and the password-changed notice',
+        effect: 'The new trusted-device and password-changed security notices',
         lane: 'inline',
         status: 'live',
         derivation: 'census',
         source: 'modules/auth/auth.service.ts',
-        symbol: 'sendVerificationEmail',
-        egress: 'EmailService.send inline, some of it not awaited',
+        symbol: 'passwordChangedEmail',
+        egress: 'EmailService.send inline and not always awaited',
         reach: {
             class: 'operator_notification', audience: 'tenant_operator', personalData: true,
             channels: ['email'],
         },
         properties: {
             authority: none('inline in the request; nothing records an attempt'),
-            idempotency: partial('the CODE is idempotent — it lives in `users.email_verify_code` or in '
-                + 'Redis and only the latest one works. The EMAIL is not: asking twice sends twice'),
+            idempotency: none('the account mutation has no stable outbound-effect key, so a retry may send the same notice again'),
             receipt: none(INLINE_EMAIL),
-            uncertainOutcome: none('the boolean collapses a refusal and a lost acknowledgement'),
+            uncertainOutcome: none('an unanswered SMTP request is indistinguishable from a refusal'),
             erasure: none('nothing records what was sent'),
-            recovery: none('the user pressing "resend" is the whole recovery mechanism'),
+            recovery: none('there is no source marker from which to reconstruct a missed security notice'),
+        },
+    }),
+
+    producer({
+        id: 'auth.access_code_email',
+        effect: 'Email verification, password reset and email 2FA access codes',
+        lane: 'delivery_outbox',
+        status: 'live',
+        derivation: 'declared',
+        source: 'modules/auth/auth.service.ts',
+        symbol: 'issueAccessCodeEmail',
+        egress: 'user challenge revision plus platform_notification_outbox, followed by bounded SMTP',
+        reach: {
+            class: 'operator_notification', audience: 'tenant_operator', personalData: true,
+            channels: ['email'],
+        },
+        properties: {
+            authority: durable('the current code, expiry, revision and outbound intent commit under the user row lock before SMTP'),
+            idempotency: durable('purpose and monotonic revision form the unique event key; a new code suppresses every older pending effect'),
+            receipt: durable('the bounded SMTP message id is required and stored on the exact challenge delivery'),
+            uncertainOutcome: durable('claimed and sending are separate; a send with no answer freezes for reconciliation'),
+            erasure: durable('the delivery is owned by recipient_user_id and cascades when the account is erased'),
+            recovery: durable('the global outbox recovers only attempts that did not cross the SMTP boundary'),
         },
     }),
 

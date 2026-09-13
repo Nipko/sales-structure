@@ -352,7 +352,7 @@ direcciones**: lo que el barrido encuentra y ella no nombra, y lo que ella
 nombra y el barrido no encuentra. Un desacuerdo no es un error de ninguno de
 los dos — es exactamente el sitio donde hay que ir a mirar.
 
-Entradas declaradas allí: **64**.
+Entradas declaradas allí: **65**.
 
 ### Encontrados por el barrido y no declarados como productores
 
@@ -367,6 +367,7 @@ esperada y su clasificación queda **fuera del alcance de este generador**.
 
 | id declarado | carril | estado | fuente |
 |---|---|---|---|
+| `auth.access_code_email` | `delivery_outbox` | `live` | `modules/auth/auth.service.ts` |
 | `auth.transactional_email` | `inline` | `live` | `modules/auth/auth.service.ts` |
 | `auth.two_factor_sms` | `inline` | `off` | `modules/auth/platform-sms.service.ts` |
 | `automation.http_request` | `domain_queue` | `live` | `modules/automation/handlers/http-request.handler.ts` |

@@ -5,7 +5,8 @@ import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 import { CronLockService } from '../redis/cron-lock.service';
-import { invitationEmail, welcomeTeamMemberEmail } from '../email/email-layouts';
+import { invitationEmail, passwordResetEmail, twoFactorEmail, verificationEmail,
+    welcomeTeamMemberEmail } from '../email/email-layouts';
 import { emsg } from '../email/email-i18n';
 
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
@@ -78,43 +79,62 @@ export class PlatformNotificationOutboxService {
                 return { state: row.state };
             }
             let canonical: any = null;
-            const available = row.kind === 'feature_request.status_changed'
-                ? (await tx.$queryRawUnsafe(`SELECT 1
+            let available: any = null;
+            if (row.kind === 'feature_request.status_changed') {
+                available = (await tx.$queryRawUnsafe(`SELECT 1
                     FROM feature_requests fr
                     JOIN feature_request_subscribers s ON s.request_id=fr.id
                     WHERE fr.id=$1::uuid AND s.user_id=$2::uuid
                       AND EXISTS(SELECT 1 FROM users u WHERE u.id=s.user_id AND u.is_active=true AND u.email IS NOT NULL)
-                    LIMIT 1`, row.entity_id, row.recipient_user_id))[0]
-                : row.kind === 'billing.lifecycle_email'
-                    ? (await tx.$queryRawUnsafe(`SELECT 1 FROM tenants WHERE id=$1::uuid LIMIT 1`, row.tenant_id))[0]
-                    : row.kind === 'invitation.invite_email'
-                        ? Number.isInteger(Number(row.payload?.revision))
-                            ? (canonical = (await tx.$queryRawUnsafe(`SELECT i.email,i.token,i.role,i.expires_at,
-                                    t.name AS tenant_name,t.settings,t.language,
-                                    NULLIF(TRIM(CONCAT(COALESCE(inviter.first_name,''),' ',COALESCE(inviter.last_name,''))), '') AS inviter_name,
-                                    inviter.email AS inviter_email
-                                FROM tenant_invitations i
-                                JOIN tenants t ON t.id=i.tenant_id AND t.is_active=true
-                                LEFT JOIN users inviter ON inviter.id::text=i.invited_by_user_id
-                                WHERE i.id=$1::uuid AND i.tenant_id=$2::uuid
-                                  AND i.accepted_at IS NULL AND i.revoked_at IS NULL AND i.expires_at>NOW()
-                                  AND i.notification_revision=$3 AND LOWER(i.email)=LOWER($4)
-                                LIMIT 1`, row.entity_id, row.tenant_id, Number(row.payload.revision), row.recipient_email))[0])
-                            : null
-                        : row.kind === 'invitation.welcome_email'
-                            ? typeof row.payload?.acceptedUserId === 'string'
-                                ? (canonical = (await tx.$queryRawUnsafe(`SELECT u.email,u.first_name,i.role,
-                                    t.name AS tenant_name,t.language
-                                FROM tenant_invitations i
-                                JOIN tenants t ON t.id=i.tenant_id AND t.is_active=true
-                                JOIN users u ON u.id::text=i.accepted_user_id AND u.is_active=true
-                                WHERE i.id=$1::uuid AND i.tenant_id=$2::uuid
-                                  AND i.accepted_at IS NOT NULL AND i.revoked_at IS NULL
-                                  AND LOWER(u.email)=LOWER($3) AND u.id::text=$4
-                                LIMIT 1`, row.entity_id, row.tenant_id, row.recipient_email,
-                                row.payload.acceptedUserId))[0])
-                                : null
-                            : null;
+                    LIMIT 1`, row.entity_id, row.recipient_user_id))[0];
+            } else if (row.kind === 'billing.lifecycle_email') {
+                available = (await tx.$queryRawUnsafe(
+                    'SELECT 1 FROM tenants WHERE id=$1::uuid LIMIT 1', row.tenant_id))[0];
+            } else if (row.kind === 'invitation.invite_email' && Number.isInteger(Number(row.payload?.revision))) {
+                canonical = (await tx.$queryRawUnsafe(`SELECT i.email,i.token,i.role,i.expires_at,
+                        t.name AS tenant_name,t.settings,t.language,
+                        NULLIF(TRIM(CONCAT(COALESCE(inviter.first_name,''),' ',COALESCE(inviter.last_name,''))), '') AS inviter_name,
+                        inviter.email AS inviter_email
+                    FROM tenant_invitations i
+                    JOIN tenants t ON t.id=i.tenant_id AND t.is_active=true
+                    LEFT JOIN users inviter ON inviter.id::text=i.invited_by_user_id
+                    WHERE i.id=$1::uuid AND i.tenant_id=$2::uuid
+                      AND i.accepted_at IS NULL AND i.revoked_at IS NULL AND i.expires_at>NOW()
+                      AND i.notification_revision=$3 AND LOWER(i.email)=LOWER($4)
+                    LIMIT 1`, row.entity_id, row.tenant_id, Number(row.payload.revision), row.recipient_email))[0];
+                available = canonical;
+            } else if (row.kind === 'invitation.welcome_email' && typeof row.payload?.acceptedUserId === 'string') {
+                canonical = (await tx.$queryRawUnsafe(`SELECT u.email,u.first_name,i.role,
+                        t.name AS tenant_name,t.language
+                    FROM tenant_invitations i
+                    JOIN tenants t ON t.id=i.tenant_id AND t.is_active=true
+                    JOIN users u ON u.id::text=i.accepted_user_id AND u.is_active=true
+                    WHERE i.id=$1::uuid AND i.tenant_id=$2::uuid
+                      AND i.accepted_at IS NOT NULL AND i.revoked_at IS NULL
+                      AND LOWER(u.email)=LOWER($3) AND u.id::text=$4
+                    LIMIT 1`, row.entity_id, row.tenant_id, row.recipient_email,
+                row.payload.acceptedUserId))[0];
+                available = canonical;
+            } else if (row.kind === 'auth.access_code_email') {
+                canonical = (await tx.$queryRawUnsafe(`SELECT u.email,u.first_name,
+                        u.email_verify_code,u.email_verify_expires,u.email_challenge_revision,
+                        u.two_factor_email_code,u.two_factor_email_expires,u.two_factor_email_revision,
+                        COALESCE(t.language,'es') AS language
+                    FROM users u LEFT JOIN tenants t ON t.id=u.tenant_id
+                    WHERE u.id=$1::uuid AND u.is_active=true AND LOWER(u.email)=LOWER($2)
+                    LIMIT 1`, row.entity_id, row.user_email))[0];
+                const purpose = String(row.payload?.purpose || '');
+                const revision = Number(row.payload?.revision);
+                const twoFactor = purpose === 'two_factor';
+                const code = twoFactor ? canonical?.two_factor_email_code : canonical?.email_verify_code;
+                const expires = new Date(twoFactor ? canonical?.two_factor_email_expires : canonical?.email_verify_expires);
+                const currentRevision = Number(twoFactor
+                    ? canonical?.two_factor_email_revision : canonical?.email_challenge_revision);
+                available = canonical && ['email_verification', 'password_reset', 'two_factor'].includes(purpose)
+                    && Number.isInteger(revision) && revision === currentRevision && code
+                    && Number.isFinite(expires.getTime()) && expires.getTime() > Date.now();
+                if (available) canonical = { ...canonical, purpose, code };
+            }
             if (!available) {
                 await tx.$executeRawUnsafe(`UPDATE platform_notification_outbox
                     SET state='suppressed',error_code='notification_recipient_unavailable',
@@ -173,6 +193,31 @@ export class PlatformNotificationOutboxService {
 
     private render(row: any): { to: string; subject: string; html: string } {
         const payload = row.payload && typeof row.payload === 'object' ? row.payload : {};
+        if (row.kind === 'auth.access_code_email') {
+            const challenge = row.canonical;
+            if (!challenge || !/^\d{6}$/.test(challenge.code)
+                || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.email)) {
+                throw new Error('notification_payload_invalid');
+            }
+            const lang = String(challenge.language || 'es');
+            const templates: Record<string, { subject: string; html: string }> = {
+                email_verification: {
+                    subject: 'Tu codigo de verificacion — Parallly',
+                    html: verificationEmail(challenge.first_name, challenge.code, lang),
+                },
+                password_reset: {
+                    subject: 'Restablece tu contrasena — Parallly',
+                    html: passwordResetEmail(challenge.first_name, challenge.code, lang),
+                },
+                two_factor: {
+                    subject: 'Tu codigo de autenticacion — Parallly',
+                    html: twoFactorEmail(challenge.first_name, challenge.code, lang),
+                },
+            };
+            const rendered = templates[challenge.purpose];
+            if (!rendered) throw new Error('notification_payload_invalid');
+            return { to: row.email, ...rendered };
+        }
         if (row.kind === 'invitation.invite_email') {
             const invitation = row.canonical;
             if (!invitation || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.email)) {

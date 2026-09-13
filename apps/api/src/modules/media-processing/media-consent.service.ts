@@ -1,7 +1,6 @@
 import { createHash, randomUUID } from 'crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { RedisService } from '../redis/redis.service';
 import {
     authorizesEffect,
     normalizeCustomerIntent,
@@ -13,7 +12,7 @@ import {
     type MediaRetentionAttestation,
 } from './media-ai-governance.policy';
 
-const CONSENT_TTL_SECONDS = 15 * 60;
+const CONSENT_TTL_MS = 15 * 60_000;
 const CONSENT_LIFETIME_MS = 365 * 24 * 60 * 60_000;
 const EPHEMERAL_RETENTION_MS = 60 * 60_000;
 const MEDIA_AI_SCOPE = 'media.ai';
@@ -65,34 +64,30 @@ const COPY: Record<string, {
         clarify: 'Necesito una respuesta clara para procesar archivos con IA: “sí, autorizo” o “no”.',
     },
     en: {
-        request: (kind, policy, url) => `To analyze ${kind} with AI, I need your authorization for that use. You can read “${policy}” here: ${url}. Reply “yes, I authorize” if you agree, or “no” if you prefer that I do not process it.`,
+        request: (kind, policy, url) => `To analyze ${kind} with AI, I need your authorization for that use. You can read “${policy}” here: ${url}. Reply “yes, I confirm” if you agree, or “no” if you prefer that I do not process it.`,
         missing: 'I received the file, but the business does not yet have an active privacy policy that can authorize AI analysis. You can type what you need.',
         granted: 'Authorization recorded. For privacy, I did not keep the previous file; send it again and I can analyze it.',
         declined: 'Understood. I will not analyze the file with AI. You can type what you need.',
-        clarify: 'I need a clear answer to process files with AI: “yes, I authorize” or “no”.',
+        clarify: 'I need a clear answer to process files with AI: “yes, I confirm” or “no”.',
     },
     pt: {
-        request: (kind, policy, url) => `Para analisar ${kind} com IA, preciso da sua autorização para esse uso. Você pode ler “${policy}” aqui: ${url}. Responda “sim, autorizo” se concordar ou “não” se preferir que eu não processe.`,
+        request: (kind, policy, url) => `Para analisar ${kind} com IA, preciso da sua autorização para esse uso. Você pode ler “${policy}” aqui: ${url}. Responda “sim, confirmo” se concordar ou “não” se preferir que eu não processe.`,
         missing: 'Recebi o arquivo, mas o negócio ainda não tem uma política de privacidade ativa que autorize a análise com IA. Você pode escrever o que precisa.',
         granted: 'Autorização registrada. Por privacidade, não guardei o arquivo anterior; envie-o novamente e poderei analisá-lo.',
         declined: 'Entendido. Não analisarei o arquivo com IA. Você pode escrever o que precisa.',
-        clarify: 'Preciso de uma resposta clara para processar arquivos com IA: “sim, autorizo” ou “não”.',
+        clarify: 'Preciso de uma resposta clara para processar arquivos com IA: “sim, confirmo” ou “não”.',
     },
     fr: {
-        request: (kind, policy, url) => `Pour analyser ${kind} avec l’IA, j’ai besoin de votre autorisation pour cet usage. Vous pouvez lire « ${policy} » ici : ${url}. Répondez « oui, j’autorise » si vous acceptez, ou « non » si vous préférez que je ne le traite pas.`,
+        request: (kind, policy, url) => `Pour analyser ${kind} avec l’IA, j’ai besoin de votre autorisation pour cet usage. Vous pouvez lire « ${policy} » ici : ${url}. Répondez « oui, je confirme » si vous acceptez, ou « non » si vous préférez que je ne le traite pas.`,
         missing: 'J’ai reçu le fichier, mais l’entreprise n’a pas encore de politique de confidentialité active permettant son analyse par IA. Vous pouvez écrire votre demande.',
         granted: 'Autorisation enregistrée. Pour protéger votre vie privée, je n’ai pas conservé le fichier précédent ; envoyez-le à nouveau et je pourrai l’analyser.',
         declined: 'Compris. Je n’analyserai pas le fichier avec l’IA. Vous pouvez écrire votre demande.',
-        clarify: 'J’ai besoin d’une réponse claire pour traiter les fichiers avec l’IA : « oui, j’autorise » ou « non ».',
+        clarify: 'J’ai besoin d’une réponse claire pour traiter les fichiers avec l’IA : « oui, je confirme » ou « non ».',
     },
 };
 
 function languageCopy(language?: string) {
     return COPY[String(language || 'es').slice(0, 2).toLowerCase()] || COPY.es;
-}
-
-function pendingKey(tenantId: string, conversationId: string): string {
-    return `media:consent:pending:${tenantId}:${conversationId}`;
 }
 
 function privacyUrl(slug: string): string {
@@ -107,7 +102,6 @@ export class MediaConsentService {
 
     constructor(
         private readonly prisma: PrismaService,
-        private readonly redis: RedisService,
     ) {}
 
     async resolve(
@@ -192,29 +186,58 @@ export class MediaConsentService {
 
         const now = new Date();
         const requested = [...new Set(purposes)].sort();
-        const key = pendingKey(tenantId, conversationId);
-        const existing = await this.redis.getJson<PendingMediaConsent>(key).catch(() => null);
-        const pending: PendingMediaConsent = existing
-            && existing.contactId === contactId
-            && existing.policyId === String(policy.id)
-            && existing.policyVersion === Number(policy.version)
-            ? { ...existing, purposes: [...new Set([...existing.purposes, ...requested])].sort() }
-            : {
-                version: 1,
-                requestId: randomUUID(),
-                tenantId,
-                contactId,
-                conversationId,
-                channel: String(channel || 'conversation').slice(0, 50),
-                purposes: requested,
-                policyId: String(policy.id),
-                policyTitle: String(policy.title),
-                policyVersion: Number(policy.version),
-                legalTextHash: createHash('sha256').update(String(policy.content)).digest('hex'),
-                issuedAt: now.toISOString(),
-                expiresAt: new Date(now.getTime() + CONSENT_TTL_SECONDS * 1000).toISOString(),
-            };
-        await this.redis.setJson(key, pending, CONSENT_TTL_SECONDS);
+        const pendingRows = await this.prisma.executeInTenantSchema<any[]>(
+            schemaName,
+            `INSERT INTO media_ai_consent_challenges
+                (request_id, contact_id, conversation_id, channel, purposes,
+                 policy_id, policy_title, policy_version, legal_text_hash,
+                 issued_at, expires_at)
+             VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5::text[], $6::uuid, $7, $8, $9,
+                     $10::timestamptz, $11::timestamptz)
+             ON CONFLICT (conversation_id) WHERE resolved_at IS NULL
+             DO UPDATE SET
+                contact_id = EXCLUDED.contact_id,
+                channel = EXCLUDED.channel,
+                purposes = ARRAY(SELECT DISTINCT unnest(media_ai_consent_challenges.purposes || EXCLUDED.purposes)),
+                policy_id = EXCLUDED.policy_id,
+                policy_title = EXCLUDED.policy_title,
+                policy_version = EXCLUDED.policy_version,
+                legal_text_hash = EXCLUDED.legal_text_hash,
+                issued_at = CASE
+                    WHEN media_ai_consent_challenges.expires_at <= NOW()
+                      OR media_ai_consent_challenges.policy_id <> EXCLUDED.policy_id
+                    THEN EXCLUDED.issued_at ELSE media_ai_consent_challenges.issued_at END,
+                expires_at = CASE
+                    WHEN media_ai_consent_challenges.expires_at <= NOW()
+                      OR media_ai_consent_challenges.policy_id <> EXCLUDED.policy_id
+                    THEN EXCLUDED.expires_at ELSE media_ai_consent_challenges.expires_at END
+             RETURNING request_id, contact_id, conversation_id, channel, purposes,
+                       policy_id, policy_title, policy_version, legal_text_hash,
+                       issued_at, expires_at`,
+            [
+                randomUUID(), contactId, conversationId, String(channel || 'conversation').slice(0, 50),
+                requested, String(policy.id), String(policy.title), Number(policy.version),
+                createHash('sha256').update(String(policy.content)).digest('hex'),
+                now.toISOString(), new Date(now.getTime() + CONSENT_TTL_MS).toISOString(),
+            ],
+        );
+        const row = pendingRows[0];
+        if (!row) return { available: false, message: copy.missing, reason: 'privacy_policy_missing' };
+        const pending: PendingMediaConsent = {
+            version: 1,
+            requestId: String(row.request_id),
+            tenantId,
+            contactId: String(row.contact_id),
+            conversationId: String(row.conversation_id),
+            channel: String(row.channel),
+            purposes: row.purposes as MediaAiOperation[],
+            policyId: String(row.policy_id),
+            policyTitle: String(row.policy_title),
+            policyVersion: Number(row.policy_version),
+            legalTextHash: String(row.legal_text_hash),
+            issuedAt: new Date(row.issued_at).toISOString(),
+            expiresAt: new Date(row.expires_at).toISOString(),
+        };
         const kind = requested.includes('audio_transcription') && requested.includes('image_analysis')
             ? (language?.startsWith('en') ? 'the audio and images' : language?.startsWith('pt') ? 'os áudios e as imagens' : language?.startsWith('fr') ? 'les audios et les images' : 'los audios y las imágenes')
             : requested.includes('audio_transcription')
@@ -234,32 +257,52 @@ export class MediaConsentService {
         messageText: string,
         language?: string,
     ): Promise<MediaConsentReply> {
-        const key = pendingKey(tenantId, conversationId);
-        const pending = await this.redis.getJson<PendingMediaConsent>(key).catch(() => null);
-        if (!pending) return { handled: false };
-        if (pending.version !== 1 || pending.tenantId !== tenantId || pending.contactId !== contactId
-            || pending.conversationId !== conversationId || Date.parse(pending.expiresAt) <= Date.now()) {
-            await this.redis.del(key).catch(() => 0);
-            return { handled: false };
-        }
-
         const intent = normalizeCustomerIntent(messageText, { answeringExplicitQuestion: true });
         const copy = languageCopy(language);
-        if (['reject', 'cancel', 'opt_out'].includes(intent.intent)) {
-            await this.redis.del(key);
-            return { handled: true, message: copy.declined };
-        }
-        if (!authorizesEffect(intent, 'high_impact', { answeringExplicitQuestion: true })) {
-            return { handled: true, message: copy.clarify };
-        }
-
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
-        if (!schemaName) return { handled: true, message: copy.missing };
+        if (!schemaName || !contactId) return { handled: false };
+        const disposition = ['reject', 'cancel', 'opt_out'].includes(intent.intent)
+            ? 'declined'
+            : authorizesEffect(intent, 'high_impact', { answeringExplicitQuestion: true })
+                ? 'granted'
+                : 'unclear';
         const expiresAt = new Date(Date.now() + CONSENT_LIFETIME_MS).toISOString();
         try {
-            await this.prisma.executeInTenantSchema(
+            const outcome = await this.prisma.transactionInTenantSchema(
                 schemaName,
-                `INSERT INTO consent_records
+                async query => {
+                    const pendingRows = await query<any[]>(
+                        `SELECT request_id, contact_id, conversation_id, channel, purposes,
+                                policy_id, policy_title, policy_version, legal_text_hash,
+                                issued_at, expires_at
+                           FROM media_ai_consent_challenges
+                          WHERE conversation_id = $1::uuid AND resolved_at IS NULL
+                          FOR UPDATE`,
+                        [conversationId],
+                    );
+                    const pending = pendingRows[0];
+                    if (!pending || String(pending.contact_id) !== contactId) return 'absent';
+                    if (Date.parse(String(pending.expires_at)) <= Date.now()) {
+                        await query(
+                            `UPDATE media_ai_consent_challenges
+                                SET resolved_at = NOW(), resolution = 'expired'
+                              WHERE request_id = $1::uuid`,
+                            [pending.request_id],
+                        );
+                        return 'expired';
+                    }
+                    if (disposition === 'unclear') return 'unclear';
+                    if (disposition === 'declined') {
+                        await query(
+                            `UPDATE media_ai_consent_challenges
+                                SET resolved_at = NOW(), resolution = 'declined'
+                              WHERE request_id = $1::uuid`,
+                            [pending.request_id],
+                        );
+                        return 'declined';
+                    }
+                    await query(
+                        `INSERT INTO consent_records
                     (contact_id, channel, legal_version, legal_text_hash, policy_id, policy_type,
                      policy_version, consent_scope, conversation_id, capture_mode, expires_at,
                      consent_request_id)
@@ -268,20 +311,27 @@ export class MediaConsentService {
                  ON CONFLICT (consent_request_id) WHERE consent_request_id IS NOT NULL
                  DO UPDATE SET consent_request_id = EXCLUDED.consent_request_id
                  RETURNING id`,
-                [
-                    contactId,
-                    pending.channel,
-                    `privacy:v${pending.policyVersion}`,
-                    pending.legalTextHash,
-                    pending.policyId,
-                    pending.policyVersion,
+                        [
+                    contactId, pending.channel, `privacy:v${pending.policy_version}`,
+                    pending.legal_text_hash, pending.policy_id, pending.policy_version,
                     MEDIA_AI_SCOPE,
                     conversationId,
                     expiresAt,
-                    pending.requestId,
+                    pending.request_id,
                 ],
+                    );
+                    await query(
+                        `UPDATE media_ai_consent_challenges
+                            SET resolved_at = NOW(), resolution = 'granted'
+                          WHERE request_id = $1::uuid`,
+                        [pending.request_id],
+                    );
+                    return 'granted';
+                },
             );
-            await this.redis.del(key);
+            if (outcome === 'absent' || outcome === 'expired') return { handled: false };
+            if (outcome === 'declined') return { handled: true, message: copy.declined };
+            if (outcome === 'unclear') return { handled: true, message: copy.clarify };
             return { handled: true, message: copy.granted };
         } catch (error: any) {
             this.logger.warn(`Failed to record media consent for ${conversationId}: ${error?.message}`);

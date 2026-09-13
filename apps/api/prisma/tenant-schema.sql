@@ -808,6 +808,34 @@ CREATE UNIQUE INDEX IF NOT EXISTS "uidx_consent_execution_ledger" ON "{{SCHEMA_N
 CREATE UNIQUE INDEX IF NOT EXISTS "uidx_consent_request" ON "{{SCHEMA_NAME}}"."consent_records" ("consent_request_id") WHERE "consent_request_id" IS NOT NULL;
 CREATE INDEX IF NOT EXISTS "idx_consent_contact_scope_active" ON "{{SCHEMA_NAME}}"."consent_records" ("contact_id", "consent_scope", "created_at" DESC) WHERE "revoked_at" IS NULL;
 
+-- Durable challenge shown before an inbound audio/image may be sent to an AI
+-- provider. One unresolved challenge per conversation prevents two workers
+-- from asking/recording two different grants for the same customer reply.
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."media_ai_consent_challenges" (
+    "request_id"       UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    "contact_id"       UUID NOT NULL,
+    "conversation_id"  UUID NOT NULL,
+    "channel"          VARCHAR(50) NOT NULL,
+    "purposes"         TEXT[] NOT NULL,
+    "policy_id"        UUID NOT NULL,
+    "policy_title"     VARCHAR(500) NOT NULL,
+    "policy_version"   INTEGER NOT NULL,
+    "legal_text_hash"  VARCHAR(64) NOT NULL,
+    "issued_at"        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    "expires_at"       TIMESTAMPTZ NOT NULL,
+    "resolved_at"      TIMESTAMPTZ,
+    "resolution"       VARCHAR(20),
+    CONSTRAINT "media_ai_consent_challenges_resolution" CHECK (
+        ("resolved_at" IS NULL AND "resolution" IS NULL)
+        OR ("resolved_at" IS NOT NULL AND "resolution" IN ('granted','declined','expired','superseded'))
+    )
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "uidx_media_ai_consent_challenge_pending"
+    ON "{{SCHEMA_NAME}}"."media_ai_consent_challenges" ("conversation_id")
+    WHERE "resolved_at" IS NULL;
+CREATE INDEX IF NOT EXISTS "idx_media_ai_consent_challenge_contact"
+    ON "{{SCHEMA_NAME}}"."media_ai_consent_challenges" ("contact_id", "issued_at" DESC);
+
 -- ---- Opt-Out Records ----
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."opt_out_records" (
     "id"          UUID DEFAULT uuid_generate_v4() PRIMARY KEY,

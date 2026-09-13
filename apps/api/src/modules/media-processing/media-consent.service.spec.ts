@@ -8,19 +8,29 @@ describe('MediaConsentService', () => {
     const policyId = '44444444-4444-4444-8444-444444444444';
     const content = 'We use AI only to understand media the customer asks us to process.';
 
+    const challenge = () => ({
+        request_id: '55555555-5555-4555-8555-555555555555',
+        contact_id: contactId,
+        conversation_id: conversationId,
+        channel: 'whatsapp',
+        purposes: ['audio_transcription'],
+        policy_id: policyId,
+        policy_title: 'Privacy v3',
+        policy_version: 3,
+        legal_text_hash: createHash('sha256').update(content).digest('hex'),
+        issued_at: new Date().toISOString(),
+        expires_at: new Date(Date.now() + 15 * 60_000).toISOString(),
+    });
+
     function harness() {
-        const state = new Map<string, any>();
+        const query = jest.fn();
         const prisma = {
             getTenantSchemaName: jest.fn().mockResolvedValue('tenant_test'),
             executeInTenantSchema: jest.fn(),
+            transactionInTenantSchema: jest.fn(async (_schema: string, callback: any) => callback(query)),
             tenant: { findUnique: jest.fn().mockResolvedValue({ slug: 'acme' }) },
         };
-        const redis = {
-            getJson: jest.fn(async (key: string) => state.get(key) ?? null),
-            setJson: jest.fn(async (key: string, value: any) => { state.set(key, value); }),
-            del: jest.fn(async (key: string) => state.delete(key) ? 1 : 0),
-        };
-        return { service: new MediaConsentService(prisma as any, redis as any), prisma, redis, state };
+        return { service: new MediaConsentService(prisma as any), prisma, query };
     }
 
     it('accepts only a current consent whose contact, scope and active policy hash match', async () => {
@@ -55,7 +65,11 @@ describe('MediaConsentService', () => {
         const h = harness();
         h.prisma.executeInTenantSchema
             .mockResolvedValueOnce([{ id: policyId, title: 'Privacy v3', content, version: 3 }])
-            .mockResolvedValueOnce([{ id: 'consent-1' }]);
+            .mockResolvedValueOnce([challenge()]);
+        h.query
+            .mockResolvedValueOnce([challenge()])
+            .mockResolvedValueOnce([{ id: 'consent-1' }])
+            .mockResolvedValueOnce([]);
 
         const request = await h.service.request(
             tenantId, contactId, conversationId, 'whatsapp', ['audio_transcription'], 'es',
@@ -69,11 +83,11 @@ describe('MediaConsentService', () => {
         );
         expect(result).toMatchObject({ handled: true });
         expect(result.message).toContain('Autorización registrada');
-        expect(h.prisma.executeInTenantSchema.mock.calls[1][1]).toContain('ON CONFLICT (consent_request_id)');
-        expect(h.prisma.executeInTenantSchema.mock.calls[1][2]).toEqual(expect.arrayContaining([
+        expect(h.query.mock.calls[1][0]).toContain('ON CONFLICT (consent_request_id)');
+        expect(h.query.mock.calls[1][1]).toEqual(expect.arrayContaining([
             contactId, policyId, 'media.ai', conversationId,
         ]));
-        expect(h.state.size).toBe(0);
+        expect(h.query.mock.calls[2][0]).toContain("resolution = 'granted'");
     });
 
     it('does not turn an acknowledgement or qualified yes into sensitive-data consent', async () => {
@@ -81,7 +95,8 @@ describe('MediaConsentService', () => {
             const h = harness();
             h.prisma.executeInTenantSchema.mockResolvedValueOnce([{
                 id: policyId, title: 'Privacy v3', content, version: 3,
-            }]);
+            }]).mockResolvedValueOnce([challenge()]);
+            h.query.mockResolvedValueOnce([challenge()]);
             await h.service.request(
                 tenantId, contactId, conversationId, 'telegram', ['image_analysis'], 'es',
             );
@@ -89,7 +104,7 @@ describe('MediaConsentService', () => {
                 tenantId, contactId, conversationId, reply, 'es',
             );
             expect(result.message).toContain('respuesta clara');
-            expect(h.prisma.executeInTenantSchema).toHaveBeenCalledTimes(1);
+            expect(h.query).toHaveBeenCalledTimes(1);
         }
     });
 
@@ -97,7 +112,8 @@ describe('MediaConsentService', () => {
         const h = harness();
         h.prisma.executeInTenantSchema.mockResolvedValueOnce([{
             id: policyId, title: 'Privacy v3', content, version: 3,
-        }]);
+        }]).mockResolvedValueOnce([challenge()]);
+        h.query.mockResolvedValueOnce([challenge()]).mockResolvedValueOnce([]);
         await h.service.request(
             tenantId, contactId, conversationId, 'messenger', ['image_analysis'], 'en',
         );
@@ -105,6 +121,6 @@ describe('MediaConsentService', () => {
             tenantId, contactId, conversationId, 'No, do not do that', 'en',
         );
         expect(result.message).toContain('will not analyze');
-        expect(h.prisma.executeInTenantSchema).toHaveBeenCalledTimes(1);
+        expect(h.query.mock.calls[1][0]).toContain("resolution = 'declined'");
     });
 });

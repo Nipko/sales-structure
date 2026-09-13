@@ -96,7 +96,7 @@ export class BookingPaymentListener {
                     body: `Se acreditó un pago para el ${booking.check_in} al ${booking.check_out} `
                         + 'pero las fechas ya se ocuparon. Hay que reubicar o devolver.',
                     tag: `paid-no-room-${booking.id}`,
-                }).catch(() => { /* el aviso es best-effort; el log ya quedó */ });
+                }, 'orders').catch(() => { /* el aviso es best-effort; el log ya quedó */ });
                 this.events.emit('property_booking.paid_but_unavailable', {
                     tenantId: event.tenantId,
                     bookingId: booking.id,

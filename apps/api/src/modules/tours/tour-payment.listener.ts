@@ -72,7 +72,7 @@ export class TourPaymentListener {
                     body: `Se acreditó un pago para la salida del ${booking.departure_date} `
                         + 'pero la retención ya había vencido y el cupo volvió al inventario.',
                     tag: `paid-late-tour-${booking.id}`,
-                }).catch(() => { /* best-effort: el log ya quedó */ });
+                }, 'orders').catch(() => { /* best-effort: el log ya quedó */ });
                 this.events.emit('tour_booking.paid_but_expired', {
                     tenantId: event.tenantId,
                     bookingId: booking.id,

@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import { PushNotificationToggle } from "@/components/pwa/PushNotificationToggle";
@@ -15,9 +14,11 @@ import {
     Settings,
 } from "lucide-react";
 import { HelpPanel } from "@/components/ui/help-panel";
+import { useNotificationPreferences } from "@/hooks/useNotificationPreferences";
+import type { NotificationCategoryKey } from "@/lib/notification-preferences";
 
 interface NotificationCategory {
-    id: string;
+    id: NotificationCategoryKey;
     labelKey: string;
     descriptionKey: string;
     icon: any;
@@ -25,27 +26,25 @@ interface NotificationCategory {
     enabled: boolean;
 }
 
-const defaultCategories: NotificationCategory[] = [
-    { id: "chat", labelKey: "catChat", descriptionKey: "catChatDesc", icon: MessageSquare, iconColor: "text-green-500", enabled: true },
-    { id: "handoff", labelKey: "catHandoff", descriptionKey: "catHandoffDesc", icon: UserCheck, iconColor: "text-blue-500", enabled: true },
-    { id: "compliance", labelKey: "catCompliance", descriptionKey: "catComplianceDesc", icon: Shield, iconColor: "text-amber-500", enabled: true },
-    { id: "appointments", labelKey: "catAppointments", descriptionKey: "catAppointmentsDesc", icon: CalendarDays, iconColor: "text-purple-500", enabled: true },
-    { id: "automation", labelKey: "catAutomation", descriptionKey: "catAutomationDesc", icon: Workflow, iconColor: "text-indigo-500", enabled: false },
-    { id: "orders", labelKey: "catOrders", descriptionKey: "catOrdersDesc", icon: ShoppingCart, iconColor: "text-emerald-500", enabled: false },
-    { id: "system", labelKey: "catSystem", descriptionKey: "catSystemDesc", icon: Settings, iconColor: "text-neutral-500", enabled: true },
+const categories: Omit<NotificationCategory, "enabled">[] = [
+    { id: "chat", labelKey: "catChat", descriptionKey: "catChatDesc", icon: MessageSquare, iconColor: "text-green-500" },
+    { id: "handoff", labelKey: "catHandoff", descriptionKey: "catHandoffDesc", icon: UserCheck, iconColor: "text-blue-500" },
+    { id: "compliance", labelKey: "catCompliance", descriptionKey: "catComplianceDesc", icon: Shield, iconColor: "text-amber-500" },
+    { id: "appointments", labelKey: "catAppointments", descriptionKey: "catAppointmentsDesc", icon: CalendarDays, iconColor: "text-purple-500" },
+    { id: "automation", labelKey: "catAutomation", descriptionKey: "catAutomationDesc", icon: Workflow, iconColor: "text-indigo-500" },
+    { id: "orders", labelKey: "catOrders", descriptionKey: "catOrdersDesc", icon: ShoppingCart, iconColor: "text-emerald-500" },
+    { id: "system", labelKey: "catSystem", descriptionKey: "catSystemDesc", icon: Settings, iconColor: "text-neutral-500" },
 ];
 
 export default function NotificationsPage() {
     const t = useTranslations("notifications");
     const tHelp = useTranslations("help");
-    const [categories, setCategories] = useState(defaultCategories);
-    const [emailDigest, setEmailDigest] = useState("realtime");
-    const [soundEnabled, setSoundEnabled] = useState(true);
+    const { preferences, loading, saving, error, updatePreferences } = useNotificationPreferences();
 
-    const toggleCategory = (id: string) => {
-        setCategories(prev =>
-            prev.map(c => c.id === id ? { ...c, enabled: !c.enabled } : c)
-        );
+    const toggleCategory = (id: NotificationCategoryKey) => {
+        void updatePreferences({ ...preferences, categories: {
+            ...preferences.categories, [id]: !preferences.categories[id],
+        } });
     };
 
     return (
@@ -71,37 +70,26 @@ export default function NotificationsPage() {
             <div className="rounded-xl border border-neutral-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900 space-y-5">
                 <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">{t("generalPrefs")}</h2>
 
-                <div>
-                    <label className="mb-1.5 block text-[13px] font-medium text-neutral-700 dark:text-neutral-300">
-                        {t("emailDigest")}
-                    </label>
-                    <select
-                        value={emailDigest}
-                        onChange={(e) => setEmailDigest(e.target.value)}
-                        className="h-10 w-full max-w-xs rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-3 text-sm text-neutral-900 dark:text-neutral-100 outline-none focus:border-indigo-500 cursor-pointer"
-                    >
-                        <option value="realtime">{t("digestRealtime")}</option>
-                        <option value="hourly">{t("digestHourly")}</option>
-                        <option value="daily">{t("digestDaily")}</option>
-                        <option value="off">{t("digestOff")}</option>
-                    </select>
-                </div>
-
                 <div className="flex items-center justify-between">
                     <div>
                         <div className="text-sm font-medium text-neutral-900 dark:text-neutral-100">{t("sound")}</div>
                         <div className="text-xs text-neutral-500 dark:text-neutral-400">{t("soundDesc")}</div>
                     </div>
                     <button
-                        onClick={() => setSoundEnabled(!soundEnabled)}
+                        type="button"
+                        role="switch"
+                        aria-checked={preferences.soundEnabled}
+                        aria-label={t("sound")}
+                        onClick={() => void updatePreferences({ ...preferences, soundEnabled: !preferences.soundEnabled })}
+                        disabled={loading || saving}
                         className={cn(
                             "relative h-6 w-12 shrink-0 cursor-pointer rounded-full border-none transition-colors",
-                            soundEnabled ? "bg-indigo-600" : "bg-neutral-300 dark:bg-neutral-600"
+                            preferences.soundEnabled ? "bg-indigo-600" : "bg-neutral-300 dark:bg-neutral-600"
                         )}
                     >
                         <div className={cn(
                             "absolute top-[3px] h-[18px] w-[18px] rounded-full bg-white transition-[left] duration-200",
-                            soundEnabled ? "left-[27px]" : "left-[3px]"
+                            preferences.soundEnabled ? "left-[27px]" : "left-[3px]"
                         )} />
                     </button>
                 </div>
@@ -119,6 +107,7 @@ export default function NotificationsPage() {
                 <div className="space-y-3">
                     {categories.map((cat) => {
                         const Icon = cat.icon;
+                        const enabled = preferences.categories[cat.id];
                         return (
                             <div
                                 key={cat.id}
@@ -132,15 +121,20 @@ export default function NotificationsPage() {
                                     <div className="text-xs text-neutral-500 dark:text-neutral-400">{t(cat.descriptionKey)}</div>
                                 </div>
                                 <button
+                                    type="button"
+                                    role="switch"
+                                    aria-checked={enabled}
+                                    aria-label={t(cat.labelKey)}
                                     onClick={() => toggleCategory(cat.id)}
+                                    disabled={loading || saving}
                                     className={cn(
                                         "relative h-6 w-12 shrink-0 cursor-pointer rounded-full border-none transition-colors",
-                                        cat.enabled ? "bg-indigo-600" : "bg-neutral-300 dark:bg-neutral-600"
+                                        enabled ? "bg-indigo-600" : "bg-neutral-300 dark:bg-neutral-600"
                                     )}
                                 >
                                     <div className={cn(
                                         "absolute top-[3px] h-[18px] w-[18px] rounded-full bg-white transition-[left] duration-200",
-                                        cat.enabled ? "left-[27px]" : "left-[3px]"
+                                        enabled ? "left-[27px]" : "left-[3px]"
                                     )} />
                                 </button>
                             </div>
@@ -149,9 +143,13 @@ export default function NotificationsPage() {
                 </div>
             </div>
 
-            <div className="flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2.5 text-xs text-neutral-600 dark:border-indigo-500/20 dark:bg-indigo-500/10 dark:text-neutral-400">
+            <div
+                role={error ? "alert" : "status"}
+                aria-live="polite"
+                className="flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2.5 text-xs text-neutral-600 dark:border-indigo-500/20 dark:bg-indigo-500/10 dark:text-neutral-400"
+            >
                 <Bell size={14} className="text-indigo-500 shrink-0" />
-                {t("localNote")}
+                {error ? t("saveError") : saving ? t("saving") : t("serverNote")}
             </div>
         </div>
     );

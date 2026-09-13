@@ -357,10 +357,10 @@ esta rama:
 
 | Prueba | Resultado |
 |---|---|
-| Migración **limpia** (base vacía → HEAD) | 93 migraciones aplicadas, 0 sin terminar, 0 revertidas |
+| Migración **limpia** (base vacía → HEAD) | 94 migraciones aplicadas, 0 sin terminar, 0 revertidas |
 | Migración de **schemas de tenant** sobre esa base | `MIGRATE_TENANTS_SUMMARY ok=2 skipped=1 warnings=0` para activo/retenido/schema ausente; la colisión 23505 posterior dejó `ok=1 skipped=2 warnings=1` y preservó las filas |
-| **Upgrade desde `main`** (sus 50 migraciones aplicadas con sus checksums, evidencia previa escrita) | `GLOBAL_UPGRADE_REHEARSAL base=main baseline=50 current=93 unfinished=0 evidence=preserved` mediante `scripts/rehearse-global-upgrade.cjs` |
-| Migración **bajo carga representativa** (`migration-under-load.postgres.spec.ts`) | 53 migraciones mientras corrían 2.217 escrituras en 8 schemas; migración más lenta 47 ms, escritura más lenta 29 ms; 0 fallidas |
+| **Upgrade desde `main`** (sus 50 migraciones aplicadas con sus checksums, evidencia previa escrita) | `GLOBAL_UPGRADE_REHEARSAL base=main baseline=50 current=94 unfinished=0 evidence=preserved` mediante `scripts/rehearse-global-upgrade.cjs` |
+| Migración **bajo carga representativa** (`migration-under-load.postgres.spec.ts`) | 54 migraciones mientras corrían 2.092 escrituras en 8 schemas; migración más lenta 54 ms, escritura más lenta 27 ms; 0 fallidas |
 | **Ensayo de restore** del paso 2 | Dump, vaciado, restore y comparación: 8 tablas coinciden fila por fila |
 | Guardas de orden | `--only rehearsal` y `--only images` sin inventario terminan en 1 nombrando el paso que falta |
 | Destino no desechable | Rechazado por nombre antes de tocar nada |

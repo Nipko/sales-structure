@@ -36,6 +36,8 @@ const USER_COLUMNS: ReadonlyArray<[string, string]> = [
     ['role', 'TEXT'],
     ['first_name', 'TEXT'],
     ['last_name', 'TEXT'],
+    ['notification_preferences', `JSONB NOT NULL DEFAULT
+        '{"version":1,"soundEnabled":true,"categories":{"chat":true,"handoff":true,"compliance":true,"appointments":true,"automation":false,"orders":false,"system":true}}'::jsonb`],
     ['phone', 'TEXT'],
     ['email_verify_code', 'TEXT'],
     ['email_verify_expires', 'TIMESTAMPTZ'],

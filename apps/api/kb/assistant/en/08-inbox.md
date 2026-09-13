@@ -1,7 +1,7 @@
 ---
 id: inbox
 title: "Inbox and human support"
-routes: ["/admin/inbox", "/admin/settings/macros", "/admin/settings/integrations/sms-notifications"]
+routes: ["/admin/inbox", "/admin/settings/macros", "/admin/settings/notifications"]
 roles: ["tenant_admin", "tenant_supervisor", "tenant_agent"]
 keywords: ["inbox", "handoff", "take conversation", "assist customer", "human agent", "return to bot", "internal notes", "macros", "quick replies", "canned responses", "snooze", "assign conversation", "resolve conversation", "copilot", "AI summary", "rewrite message", "AI suggestion", "notifications", "bell", "escalation", "unattended", "180 minutes", "returns to the ai"]
 ---
@@ -84,9 +84,9 @@ The number of people who can use Parallly depends on your account capacity; chec
 
 ## Notifications
 
-The **bell** in the top bar gathers all alerts and groups them by category: **Messages**, **Transfers** (escalations to a human), **Privacy**, **Appointments**, **Automation**, **Orders** and **System**. Direct escalations (the customer asked for a human) are highlighted in red; escalations due to low AI confidence, in yellow; and supervisor alerts arrive with sound.
+The **bell** in the top bar gathers all alerts and groups them by category: **Messages**, **Transfers** (escalations to a human), **Compliance**, **Appointments**, **Automation**, **Orders** and **System**. Direct escalations (the customer asked for a human) are highlighted in red, and escalations due to low AI confidence in yellow.
 
-If SMS alerts are enabled for your account, turn them on under **Settings → Channels & Integrations → SMS alerts**.
+Under **Settings → Notifications** you can disable categories and sound. Your selection is saved to your account and applies both to the bell and to push notifications sent by the server. Browser push permission is enabled separately on each device. This screen does not schedule email digests.
 
 ## Teamwork without stepping on each other
 

@@ -16,6 +16,7 @@ import type { DiscardAgentDraftRequest } from '@parallext/shared';
 import type { AgentReleaseDetail, AgentReleaseListItem, AgentReleaseRequest, AgentReleaseReviewRequest } from './agent-release-review';
 import type { AgentPublicationHistory, AgentPublicationReceipt, PublishAgentConfigurationRequest, RollbackAgentConfigurationRequest } from './agent-publication';
 import type { DispatchReconciliationQueue, DispatchResolution, DispatchResolutionExport, DispatchResolutionReceipt, DispatchRolloutRequest, DispatchRolloutState } from './dispatch-operations';
+import type { NotificationPreferences } from './notification-preferences';
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.parallly-chat.cloud/api/v1";
 
@@ -588,6 +589,9 @@ async function doRefresh(): Promise<string | null> {
 // ============================================
 
 export const api = {
+    getNotificationPreferences: () => apiGet<NotificationPreferences>('/push/preferences'),
+    updateNotificationPreferences: (preferences: NotificationPreferences) =>
+        apiPut<NotificationPreferences>('/push/preferences', preferences),
     getOperationalNotices: (tenantId:string,filters:{state?:string;conversationId?:string;cursor?:string}={}) => {
         const query=new URLSearchParams(Object.entries(filters).filter((entry):entry is [string,string]=>!!entry[1]));
         return apiGet<OperationalNoticeList>(`/operational-notices/${tenantId}${query.size?`?${query}`:''}`);

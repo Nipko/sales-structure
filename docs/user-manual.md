@@ -474,15 +474,19 @@ Pills arriba de la lista:
 
 Filtros por canal: WhatsApp, Instagram, Messenger y Telegram. Email puede aparecer en datos históricos o integraciones administradas, pero no implica que exista configuración autoservicio certificada.
 
-## 6.3 Notificaciones de handoff
+## 6.3 Notificaciones
 
-La campana en TopBar muestra 7 categorías:
-- **handoff_direct** — el cliente pidió hablar con humano (rojo)
-- **handoff_normal** — IA escaló por baja confianza (amarillo)
-- **escalation** — supervisor: alguien lleva >5min sin responder (rojo + sonido)
-- **system** — alertas de plataforma
-- **billing** — pagos, trials terminando
-- **mention** — alguien te etiquetó
+La campana de la barra superior reúne los avisos en siete categorías visibles:
+**Mensajes, Transferencias, Cumplimiento, Citas, Automatización, Pedidos y Sistema**.
+Los avisos directos de transferencia se resaltan en rojo y los originados por baja
+confianza de la IA, en amarillo.
+
+Cada usuario puede abrir **Configuración → Notificaciones** para apagar categorías o
+el sonido. La selección se guarda en su cuenta, se conserva al cambiar de dispositivo
+y filtra tanto la campana en vivo como las notificaciones push que el servidor envía a
+ese usuario. Activar push en el navegador es un permiso adicional por dispositivo: una
+categoría habilitada no sustituye ese permiso, y quitarlo no cambia las preferencias de
+la cuenta. Esta pantalla no programa resúmenes por correo.
 
 ## 6.4 Acciones de conversación
 
@@ -1580,7 +1584,8 @@ Si un cliente escribe "BAJA" o sinónimos → automáticamente:
 ## 18.1 Cuenta (Admin, Supervisor, Agent, Viewer y Super Admin)
 - Perfil personal
 - Seguridad y cambio de contraseña
-- Preferencias de notificaciones
+- Preferencias de notificaciones por usuario: siete categorías para campana y push,
+  sonido del panel y activación push separada por dispositivo
 - Apariencia
 
 ## 18.2 Empresa (Admin)

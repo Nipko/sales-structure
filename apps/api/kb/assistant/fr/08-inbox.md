@@ -1,7 +1,7 @@
 ---
 id: inbox
 title: "Boîte de réception et prise en charge humaine"
-routes: ["/admin/inbox", "/admin/settings/macros", "/admin/settings/integrations/sms-notifications"]
+routes: ["/admin/inbox", "/admin/settings/macros", "/admin/settings/notifications"]
 roles: ["tenant_admin", "tenant_supervisor", "tenant_agent"]
 keywords: ["boîte de réception", "inbox", "transfert", "handoff", "prendre la conversation", "prendre en charge un client", "agent humain", "rendre au bot", "notes internes", "macros", "réponses rapides", "reporter", "snooze", "assigner une conversation", "résoudre une conversation", "copilote", "résumé IA", "reformuler un message", "suggestion IA", "notifications", "cloche", "escalade", "sans reponse", "180 minutes", "revient a l ia"]
 ---
@@ -84,9 +84,9 @@ Le nombre de personnes pouvant utiliser Parallly dépend de la capacité de votr
 
 ## Notifications
 
-La **cloche** dans la barre supérieure regroupe les avis et les classe par catégorie : **Messages**, **Transferts** (escalades vers un humain), **Confidentialité**, **Rendez-vous**, **Automatisation**, **Commandes** et **Système**. Les escalades directes (le client a demandé un humain) ressortent en rouge ; les escalades pour faible confiance de l'IA, en jaune ; et les alertes de superviseur arrivent avec un son.
+La **cloche** dans la barre supérieure regroupe les avis et les classe par catégorie : **Messages**, **Transferts** (escalades vers un humain), **Conformité**, **Rendez-vous**, **Automatisation**, **Commandes** et **Système**. Les escalades directes (le client a demandé un humain) ressortent en rouge et les escalades pour faible confiance de l'IA en jaune.
 
-Si les alertes SMS sont activées pour votre compte, configurez-les dans **Paramètres → Canaux et intégrations → Alertes SMS**.
+Dans **Paramètres → Notifications**, vous pouvez désactiver des catégories et le son. Votre sélection est enregistrée dans votre compte et s'applique à la cloche ainsi qu'aux notifications push envoyées par le serveur. L'autorisation push du navigateur s'active séparément sur chaque appareil. Cet écran ne programme pas de résumés par e-mail.
 
 ## Travailler en équipe sans se marcher dessus
 

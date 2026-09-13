@@ -1540,10 +1540,10 @@ Technical inventory for 88 API module declaration files, 144 dashboard pages
 - **Endpoints:** `GET /sms-notifications/:tenantId/config` permite soporte legacy; `PUT` solo conserva/edita una activación heredada o la apaga y responde `sms_product_retired` al intentar habilitar una nueva. La ruta dashboard redirige a Configuración
 
 #### 71. push
-- **Purpose:** Notificaciones push a agentes/admins — **Web Push** (navegador) y **Expo** (app móvil `@parallext/mobile`). Escucha eventos de handoff/escalación y entrega push
+- **Purpose:** Notificaciones a agentes/admins — **Web Push** (navegador), **Expo** (app móvil `@parallext/mobile`) y preferencias por usuario que también filtran los avisos en vivo del dashboard
 - **Services:** `push.service.ts` (suscripciones + envío), `push-listener.service.ts` (@OnEvent), `push-i18n.ts`
 - **Controller:** `push.controller.ts` (`/push`)
-- **Endpoints:** `POST /push/subscribe` (Web Push), `POST /push/unsubscribe`, `POST /push/expo-subscribe` (token Expo de la app móvil)
+- **Endpoints:** `POST /push/subscribe` (Web Push), `POST /push/unsubscribe`, `POST /push/expo-subscribe` (token Expo de la app móvil), `GET|PUT /push/preferences` (sonido + siete categorías, siempre acotadas al usuario autenticado y su tenant)
 
 #### 72. slack
 - **Purpose:** Notificaciones a Slack en eventos de negocio clave (T2.16) vía webhook de Slack por-tenant. Mismo patrón listener que push
@@ -1780,7 +1780,7 @@ Technical inventory for 88 API module declaration files, 144 dashboard pages
 | `/admin/settings` | Settings hub (card grid) | Super Admin/Admin/Supervisor/Agent/Viewer | ✅ |
 | `/admin/settings/profile` | User profile | Super Admin/Admin/Supervisor/Agent/Viewer | ✅ |
 | `/admin/settings/security` | 2FA management | Super Admin/Admin/Supervisor/Agent/Viewer | ✅ |
-| `/admin/settings/notifications` | Notification preferences | Super Admin/Admin/Supervisor/Agent/Viewer | ⚠️ Hardcoded EN |
+| `/admin/settings/notifications` | Preferencias por usuario para panel y push | Super Admin/Admin/Supervisor/Agent/Viewer | ✅ |
 | `/admin/settings/appearance` | Theme switcher | Super Admin/Admin/Supervisor/Agent/Viewer | ✅ |
 | `/admin/settings/change-password` | Change password | Super Admin/Admin/Supervisor/Agent/Viewer | ✅ |
 | `/admin/settings/business-info` | Company identity | Admin | ✅ |

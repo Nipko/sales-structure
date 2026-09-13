@@ -1,7 +1,7 @@
 ---
 id: inbox
 title: "Caixa de entrada e atendimento humano"
-routes: ["/admin/inbox", "/admin/settings/macros", "/admin/settings/integrations/sms-notifications"]
+routes: ["/admin/inbox", "/admin/settings/macros", "/admin/settings/notifications"]
 roles: ["tenant_admin", "tenant_supervisor", "tenant_agent"]
 keywords: ["inbox", "caixa de entrada", "handoff", "assumir conversa", "atender cliente", "agente humano", "devolver ao bot", "notas internas", "macros", "respostas rapidas", "adiar", "snooze", "atribuir conversa", "resolver conversa", "copiloto", "resumo IA", "reescrever mensagem", "sugestao IA", "notificacoes", "sino", "escalonamento", "sem atendimento", "180 minutos", "volta para a ia"]
 ---
@@ -84,9 +84,9 @@ A quantidade de pessoas que podem usar a Parallly depende da capacidade da sua c
 
 ## Notificações
 
-O **sino** na barra superior concentra os avisos e os agrupa por categoria: **Mensagens**, **Transferências** (escalonamentos para humano), **Privacidade**, **Agendamentos**, **Automação**, **Pedidos** e **Sistema**. Os escalonamentos diretos (o cliente pediu um humano) ficam destacados em vermelho; os escalonamentos por baixa confiança da IA, em amarelo; e os alertas de supervisor chegam com som.
+O **sino** na barra superior concentra os avisos e os agrupa por categoria: **Mensagens**, **Transferências** (escalonamentos para humano), **Conformidade**, **Agendamentos**, **Automação**, **Pedidos** e **Sistema**. Os escalonamentos diretos (o cliente pediu um humano) ficam destacados em vermelho e os escalonamentos por baixa confiança da IA, em amarelo.
 
-Se os avisos por SMS estiverem habilitados para sua conta, ative-os em **Configurações → Canais e integrações → Avisos por SMS**.
+Em **Configurações → Notificações** você pode desativar categorias e o som. Sua seleção fica salva na conta e vale tanto para o sino quanto para as notificações push enviadas pelo servidor. A permissão push do navegador é ativada separadamente em cada dispositivo. Essa tela não agenda resumos por email.
 
 ## Trabalho em equipe sem atropelos
 

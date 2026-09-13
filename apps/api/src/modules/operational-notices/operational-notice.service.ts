@@ -153,11 +153,11 @@ export class OperationalNoticeService {
                 } else if (hydrated.route === 'operator') {
                     send=async()=>`push:${await this.push.sendToTenantRole(reference.tenantId,hydrated.role || 'tenant_admin', {
                         title:hydrated.text.split('\n')[0],body:hydrated.text,tag:`operational-${row.id}`,
-                    })}`;
+                    }, 'appointments')}`;
                 } else if (hydrated.route === 'operator_user') {
                     send=async()=>`push:${await this.push.sendToUser(hydrated.userId, {
                         title: hydrated.title, body: hydrated.text, url: hydrated.url, tag: hydrated.tag,
-                    })}`;
+                    }, hydrated.category)}`;
                 } else if (hydrated.route === 'slack') {
                     const slack=this.slack;
                     if (!slack) throw new Error('notice_slack_unavailable');
@@ -278,8 +278,11 @@ export class OperationalNoticeService {
             if (await operationalContactWasErased(query, notice.contact_id)) {
                 throw new NoticeSuppressed('notice_contact_erased');
             }
+            const category = eventType === 'message.inbound' ? 'chat'
+                : eventType === 'appointment.created' ? 'appointments'
+                    : eventType === 'handoff.escalated_supervisor' ? 'handoff' : 'orders';
             return { route: 'operator_user', userId: notice.recipient_user_id,
-                conversationId: notice.conversation_id || null, title, text: body, url, tag };
+                conversationId: notice.conversation_id || null, title, text: body, url, tag, category };
         }
         let facts: any;
         if (notice.kind === 'appointment.operator_slack') {

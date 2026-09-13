@@ -28,8 +28,33 @@ import { api } from "@/lib/api";
 import { useLocale, useTranslations } from "next-intl";
 import { locales, localeNames } from "@/i18n/config";
 import { useCurrentNavigationPageTitle } from "@/contexts/NavigationPageContext";
+import { useNotificationPreferences } from "@/hooks/useNotificationPreferences";
+import type { NotificationCategoryKey } from "@/lib/notification-preferences";
 
 type NotifType = "chat" | "handoff" | "compliance" | "appointment" | "automation" | "order" | "system";
+
+const preferenceCategory = (type: NotifType): NotificationCategoryKey => (
+  type === "appointment" ? "appointments" : type === "order" ? "orders" : type
+);
+
+function playNotificationSound() {
+  try {
+    const AudioContextClass = window.AudioContext
+      || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextClass) return;
+    const context = new AudioContextClass();
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    oscillator.frequency.value = 740;
+    gain.gain.setValueAtTime(0.035, context.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.12);
+    oscillator.connect(gain);
+    gain.connect(context.destination);
+    oscillator.start();
+    oscillator.stop(context.currentTime + 0.12);
+    oscillator.addEventListener("ended", () => void context.close(), { once: true });
+  } catch { /* browser audio can be blocked until the first user gesture */ }
+}
 
 interface Notification {
   id: string;
@@ -60,6 +85,7 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
   const userMenuButtonRef = useRef<HTMLButtonElement>(null);
   const notificationButtonRef = useRef<HTMLButtonElement>(null);
   const socketRef = useRef<Socket | null>(null);
+  const { preferences: notificationPreferences } = useNotificationPreferences();
 
   const currentLocale = useLocale();
   const tRoles = useTranslations("roles");
@@ -137,9 +163,11 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
   ]);
 
   const addNotif = useCallback((type: NotifType, title: string, body: string) => {
+    if (!notificationPreferences.categories[preferenceCategory(type)]) return;
     const time = new Date().toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
     setNotifications(prev => [{ id: `${type}-${Date.now()}-${Math.random()}`, type, title, body, time, read: false }, ...prev].slice(0, 100));
-  }, []);
+    if (notificationPreferences.soundEnabled) playNotificationSound();
+  }, [notificationPreferences]);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -178,14 +206,8 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
     };
   }, [showNotifications, showUserMenu]);
 
-  // WebSocket: listen to all real-time events
-  // Request browser notification permission
-  useEffect(() => {
-    if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
-      Notification.requestPermission().catch(() => {});
-    }
-  }, []);
-
+  // WebSocket: listen to all real-time events. Browser notification permission
+  // is requested only from the explicit push control in Settings.
   useEffect(() => {
     const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
     if (!token || !activeTenantId) return;
@@ -210,17 +232,14 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
       const contactName = payload.contactName || t("notifications.unknownClient");
       const lastMsg = payload.lastMessage ? `: "${payload.lastMessage.slice(0, 60)}"` : "";
       addNotif("handoff", `🔴 ${contactName}`, `${payload.reason || t("notifications.transfer")}${lastMsg}`);
-      // Play notification sound
-      try { new Audio("data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdH2JkYyGfnJ3fomVnJmSkol/dnN3gY2VmZaRi4R+eHd7hI6Ul5WQioN+eXl8hI6UlpWQioN+eXl8g42UlpWQioN+eXp8g42Tl5WQioN9eXp8hI2UlpWQioN+eXl8hI6UlpWQioJ+eXl8hI6UlpWQioN+eXl8g42UlpWQioN+eXp8g42Tl5WQioN9eXp8hI2UlpWQioN+eXl8hI6UlpWQioJ+eXl8hI6UlpaQioN+eXp8g42UlpWQioN+eXp8g42Tl5WQioJ+eXl8hI2UlpWQioN+eXl8hI6UlpWQioN+eXl8hI6UlpaQioN+eXp8g42UlpWQioN+eXp8g42Tl5WQioN9eXl8hI2UlpWQioJ+eXl8hI6UlpWQioN+eXl8hI6UlpaQioN+eXp8g42UlpWQioN+eXp8g42UlpWQioJ9eXl8hI2UlpWQioN+eXl8hI6UlpWQioN+eXl8hI6UlpaQioN+eXp8g42UlpWQioN+eXl8g42Tl5WQioJ+eXl8hI2UlpWQioN+eXl8hI6UlpWQioN+eXl8hI6UlpaQioN+eXp8g42UlpWQioN+eXp8g42Tl5WQioN9eXl8hI2UlpWQioJ+eXl8hI6UlpWQioN+eXl8hI6UlpaQioN+eXp8g42UlpWQioN+eXp8g42UlpWQioJ9eXl8hI2UlpWQioN+eXl8hI6UlpWQioN+").play().catch(() => {}); } catch {}
     });
     socket.on("inbox:handoff", (payload: any) => {
       if (payload.urgent) {
         const contactName = payload.contactName || t("notifications.unknownClient");
         addNotif("handoff", `🔴 ${contactName}`, `${payload.reason || t("notifications.transfer")}${payload.lastMessage ? `: "${payload.lastMessage.slice(0, 60)}"` : ""}`);
-        try { new Audio("data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdH2JkYyGfnJ3fomVnJmSkol/dnN3gY2VmZaRi4R+eHd7hI6Ul5WQioN+eXl8hI6UlpWQioN+eXl8g42UlpWQioN+eXp8g42Tl5WQioN9eXp8hI2UlpWQioN+eXl8hI6UlpWQioJ+eXl8hI6UlpWQioN+eXl8g42UlpWQioN+eXp8g42Tl5WQioN9eXp8hI2UlpWQioN+eXl8hI6UlpWQioJ+eXl8hI6UlpaQioN+eXp8g42UlpWQioN+eXp8g42Tl5WQioJ+eXl8hI2UlpWQioN+eXl8hI6UlpWQioN+eXl8hI6UlpaQioN+eXp8g42UlpWQioN+eXp8g42Tl5WQioN9eXl8hI2UlpWQioJ+eXl8hI6UlpWQioN+eXl8hI6UlpaQioN+eXp8g42UlpWQioN+eXp8g42UlpWQioJ9eXl8hI2UlpWQioN+eXl8hI6UlpWQioN+eXl8hI6UlpaQioN+eXp8g42UlpWQioN+eXl8g42Tl5WQioJ+eXl8hI2UlpWQioN+eXl8hI6UlpWQioN+eXl8hI6UlpaQioN+eXp8g42UlpWQioN+eXp8g42Tl5WQioN9eXl8hI2UlpWQioJ+eXl8hI6UlpWQioN+eXl8hI6UlpaQioN+eXp8g42UlpWQioN+eXp8g42UlpWQioJ9eXl8hI2UlpWQioN+eXl8hI6UlpWQioN+").play().catch(() => {}); } catch {}
         
         // Browser push for unassigned handoff (critical — works even with tab minimized/in background)
-        if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && document.visibilityState === 'hidden') {
+        if (notificationPreferences.categories.handoff && typeof Notification !== 'undefined' && Notification.permission === 'granted' && document.visibilityState === 'hidden') {
           new Notification(`🔴 ${t("notifications.leadWaiting", { name: contactName })}`, {
             body: `Se requiere atención humana. Motivo: ${payload.reason || 'Traspaso'}`,
             icon: '/favicon.ico',
@@ -234,7 +253,7 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
     socket.on("inbox:escalation", (payload: any) => {
       addNotif("handoff", `⚠️ ${payload.contactName || t("notifications.unknownClient")} — ${payload.waitMinutes}min`, `${t("notifications.escalation")}: ${payload.reason || t("notifications.noResponse")}`);
       // Browser push for escalation (critical — works even with tab minimized)
-      if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+      if (notificationPreferences.categories.handoff && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
         new Notification(`⚠️ ${t("notifications.escalationTitle", { name: payload.contactName })}`, {
           body: `Esperando ${payload.waitMinutes} min sin respuesta. ${payload.reason || ''}`,
           icon: '/favicon.ico',
@@ -242,20 +261,18 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
           requireInteraction: true,
         });
       }
-      try { new Audio("data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdH2JkYyGfnJ3fomVnJmSkol/dnN3gY2VmZaRi4R+eHd7hI6Ul5WQioN+eXl8hI6UlpWQioN+eXl8g42UlpWQioN+eXp8g42Tl5WQioN9eXp8hI2UlpWQioN+eXl8hI6UlpWQioJ+eXl8hI6UlpWQioN+eXl8g42UlpWQioN+eXp8g42Tl5WQioN9eXp8hI2UlpWQioN+eXl8hI6UlpWQioJ+eXl8hI6UlpaQioN+eXp8g42UlpWQioN+eXp8g42Tl5WQioJ+eXl8hI2UlpWQioN+eXl8hI6UlpWQioN+eXl8hI6UlpaQioN+eXp8g42UlpWQioN+eXp8g42Tl5WQioN9eXl8hI2UlpWQioJ+eXl8hI6UlpWQioN+eXl8hI6UlpaQioN+eXp8g42UlpWQioN+eXp8g42UlpWQioJ9eXl8hI2UlpWQioN+eXl8hI6UlpWQioN+eXl8hI6UlpaQioN+eXp8g42UlpWQioN+eXl8g42Tl5WQioJ+eXl8hI2UlpWQioN+eXl8hI6UlpWQioN+eXl8hI6UlpaQioN+eXp8g42UlpWQioN+eXp8g42Tl5WQioN9eXl8hI2UlpWQioJ+eXl8hI6UlpWQioN+eXl8hI6UlpaQioN+eXp8g42UlpWQioN+eXp8g42UlpWQioJ9eXl8hI2UlpWQioN+eXl8hI6UlpWQioN+").play().catch(() => {}); } catch {}
     });
     // Direct assignment notification
     socket.on("inbox:assigned_to_you", (payload: any) => {
       addNotif("handoff", `⚡ ${t("notifications.assignedToYou")}`, payload.message || t("notifTitles.conversationAssigned"));
       // Browser push notification (works even if tab is in background)
-      if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+      if (notificationPreferences.categories.handoff && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
         new Notification(`⚡ ${payload.contactName || t("notifications.unknownClient")} ${t("notifications.assignedToYou").toLowerCase()}`, {
           body: payload.reason || t("notifications.transfer"),
           icon: '/favicon.ico',
           tag: `handoff-${payload.conversationId}`,
         });
       }
-      try { new Audio("data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdH2JkYyGfnJ3fomVnJmSkol/dnN3gY2VmZaRi4R+eHd7hI6Ul5WQioN+eXl8hI6UlpWQioN+eXl8g42UlpWQioN+eXp8g42Tl5WQioN9eXp8hI2UlpWQioN+eXl8hI6UlpWQioJ+eXl8hI6UlpWQioN+eXl8g42UlpWQioN+eXp8g42Tl5WQioN9eXp8hI2UlpWQioN+eXl8hI6UlpWQioJ+eXl8hI6UlpaQioN+eXp8g42UlpWQioN+eXp8g42Tl5WQioJ+eXl8hI2UlpWQioN+eXl8hI6UlpWQioN+eXl8hI6UlpaQioN+eXp8g42UlpWQioN+eXp8g42Tl5WQioN9eXl8hI2UlpWQioJ+eXl8hI6UlpWQioN+eXl8hI6UlpaQioN+eXp8g42UlpWQioN+eXp8g42UlpWQioJ9eXl8hI2UlpWQioN+eXl8hI6UlpWQioN+eXl8hI6UlpaQioN+eXp8g42UlpWQioN+eXl8g42Tl5WQioJ+eXl8hI2UlpWQioN+eXl8hI6UlpWQioN+eXl8hI6UlpaQioN+eXp8g42UlpWQioN+eXp8g42Tl5WQioN9eXl8hI2UlpWQioJ+eXl8hI6UlpWQioN+eXl8hI6UlpaQioN+eXp8g42UlpWQioN+eXp8g42UlpWQioJ9eXl8hI2UlpWQioN+eXl8hI6UlpWQioN+").play().catch(() => {}); } catch {}
     });
 
     // ── Compliance / Opt-out ──
@@ -296,7 +313,8 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
         ? t("notifTitles.llmCritical", { provider: payload.provider })
         : t("notifTitles.llmWarning", { provider: payload.provider });
       addNotif("system", title, (payload.error || "").slice(0, 100));
-      if (isCritical && typeof Notification !== "undefined" && Notification.permission === "granted") {
+      if (isCritical && notificationPreferences.categories.system
+        && typeof Notification !== "undefined" && Notification.permission === "granted") {
         new Notification(title, {
           body: payload.error || t("notifTitles.llmDown"),
           icon: "/favicon.ico",
@@ -307,7 +325,7 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
 
     socketRef.current = socket;
     return () => { socket.disconnect(); };
-  }, [activeTenantId, addNotif, t]);
+  }, [activeTenantId, addNotif, notificationPreferences.categories, t]);
 
   function markAllRead() {
     setNotifications(prev => prev.map(n => ({ ...n, read: true })));

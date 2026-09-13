@@ -92,7 +92,8 @@ La colección localizada debe cubrir, además de los artículos funcionales actu
    breadcrumbs y retorno desde Configuración.
 2. Matriz real de roles y diferencia entre leer y editar.
 3. Cinco planes sin fijar valores runtime en el texto.
-4. Las 18 verticales, diferenciando con claridad las que aún no tienen certificación
+4. Las 20 industrias y 76 perfiles del contrato, distinguiendo las 18 industrias con
+   oferta seleccionable, los perfiles en lista de espera y la ausencia de certificación
    funcional integral.
 5. App móvil y límites frente a la web.
 6. Tour de configuración y la tarjeta Puesta en marcha esencial que reemplaza la

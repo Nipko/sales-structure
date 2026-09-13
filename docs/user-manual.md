@@ -86,7 +86,7 @@ Parallly es una plataforma SaaS que permite a negocios automatizar y centralizar
   permanece deshabilitado por procedimiento hasta cerrar los controles descritos en
   la sección 12
 - Analizar métricas de rendimiento
-- Adaptar la experiencia a 18 industrias verticales con capacidades disponibles según el negocio
+- Adaptar la experiencia a 18 industrias seleccionables y a su perfil de negocio dentro del contrato técnico de 20 industrias y 76 perfiles
 
 ---
 
@@ -2008,12 +2008,17 @@ documento debe quedar bloqueado y visible para reintento; no se considera emitid
 
 # 21. Adaptación por Industria — Verticales
 
-Parallly reconoce **18 industrias verticales**. El onboarding configura terminología,
-pipeline, FAQs, servicios y módulos a partir de la industria y el subtipo; la pantalla
-final también depende del rol, plan y capacidades publicadas para el tenant.
+Parallly mantiene un contrato técnico de **20 industrias y 76 perfiles canónicos de
+negocio**. Una vertical agrupa capacidades; el perfil combina industria y subtipo y
+determina las herramientas, rutas, términos y requisitos efectivos. Hoy el onboarding
+ofrece **18 industrias con al menos un perfil seleccionable**. Planeación de eventos y
+construcción están presentes en el manifiesto para conservar identidad y evolución del
+producto, pero sus perfiles actuales permanecen en lista de espera. Algunos subtipos de
+las otras industrias también pueden estar en espera y por eso no aparecen en un alta
+nueva.
 
-> **Alcance honesto:** las 18 verticales tienen comportamiento implementado, pero a
-> agosto de 2026 ninguna cuenta todavía con certificación E2E completa. Usa estas
+> **Alcance honesto:** los perfiles ofrecidos tienen comportamiento implementado, pero
+> a septiembre de 2026 ninguno cuenta todavía con certificación E2E completa. Usa estas
 > secciones para operar lo que aparece habilitado en tu cuenta, no como garantía de
 > cobertura total del sector. En actividades reguladas, decisiones sensibles y
 > excepciones, interviene una persona autorizada.

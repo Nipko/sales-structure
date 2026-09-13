@@ -192,12 +192,23 @@ valores mostrados en **Configuración → Facturación** son los aplicables a la
 Las tablas de seeds o documentos fechados son referencias de fábrica, no una fuente
 contractual de límites vigentes.
 
-## Matriz de las 18 verticales
+## Matriz de verticales y perfiles de negocio
 
-Las 18 verticales están implementadas en el manifiesto v2, pero su estado de producto
-es **`implemented_not_certified`**: existe comportamiento respaldado por código, sin
+El contrato técnico contiene **20 industrias y 76 perfiles canónicos de negocio**. No
+son dos nombres para lo mismo: una vertical agrupa capacidades compartidas; cada perfil
+combina esa industria con un subtipo y decide qué herramientas, términos, rutas,
+readiness y límites corresponden. Hoy **18 industrias tienen al menos un perfil
+seleccionable**. `event_planning/weddings` y
+`construccion/contratista_general` permanecen en lista de espera y no se ofrecen en el
+alta. Además, cinco de las 18 industrias seleccionables contienen algún subtipo puntual
+en espera. El API entrega el catálogo completo con su disponibilidad para conservar a
+cuentas existentes; onboarding y creación administrativa filtran esa disponibilidad y
+el servidor vuelve a validarla al guardar.
+
+El estado de producto de los perfiles implementados sigue siendo
+**`implemented_not_certified`**: existe comportamiento respaldado por código, sin
 certificación E2E completa ni autorización para prometer paridad total con referentes
-del sector. La pantalla exacta depende del subtipo, capacidades publicadas, rol y plan.
+del sector. La pantalla exacta depende del perfil, capacidades publicadas, rol y plan.
 
 | ID canónico | Nombre | Base funcional / operación principal |
 |-------------|--------|--------------------------------------|
@@ -219,6 +230,10 @@ del sector. La pantalla exacta depende del subtipo, capacidades publicadas, rol 
 | `pet_services` | Servicios para mascotas | Agenda o hospedaje según subtipo |
 | `fotografia` | Fotografía | Sesiones fotográficas y seguimiento de entrega |
 | `otro` | Otro | Fallback genérico de CRM, catálogo y pedidos |
+
+Las otras dos entradas del manifiesto son `event_planning` y `construccion`. Sus
+perfiles actuales son de lista de espera y publican únicamente el alcance horizontal
+seguro; no se cuentan entre las 18 opciones que una cuenta nueva puede elegir.
 
 Para `turismo/hotel` y `turismo/alquiler_vacacional`, **Reservas** abre el registro
 directo `/admin/stays`; **Propiedades** es su catálogo. Si una unidad está vinculada

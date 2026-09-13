@@ -971,6 +971,30 @@ describe('Parallly Assist knowledge-base contract', () => {
     }
   });
 
+  it('describes the agent editor and Assist from the settings they can actually change', () => {
+    const assistMarkers: Record<(typeof LOCALES)[number], RegExp> = {
+      es: /Assist muestra una propuesta.{0,160}guarda un \*\*borrador\*\*.{0,80}no publica ni activa/i,
+      en: /Assist presents a proposal.{0,160}saves a \*\*draft\*\*.{0,80}does not publish or activate/i,
+      pt: /Assist mostra uma proposta.{0,160}salva um \*\*rascunho\*\*.{0,80}sem publicar nem ativar/i,
+      fr: /Assist présente une proposition.{0,160}enregistre un \*\*brouillon\*\*.{0,80}sans publier ni activer/i,
+    };
+    const accountHours: Record<(typeof LOCALES)[number], RegExp> = {
+      es: /horario comercial pertenece al negocio y se comparte entre sus agentes/i,
+      en: /Business hours belong to the tenant and are shared by its agents/i,
+      pt: /horário comercial pertence ao tenant e é compartilhado entre seus agentes/i,
+      fr: /horaires d'ouverture appartiennent au tenant et sont partagés par ses agents/i,
+    };
+    const inventedControls = /\*\*(?:Modelo IA|AI Model|Modèle IA)\*\*|(?:siempre IA, siempre humano o híbrido|always AI, always human or hybrid|sempre IA, sempre humano ou híbrido|toujours IA, toujours humain ou hybride)/i;
+
+    for (const locale of LOCALES) {
+      const article = byLocale[locale].find((candidate) => candidate.id === 'agentes-ia');
+      expect(article).toBeDefined();
+      expect(article!.body).toMatch(assistMarkers[locale]);
+      expect(article!.body).toMatch(accountHours[locale]);
+      expect(article!.body).not.toMatch(inventedControls);
+    }
+  });
+
   it('keeps volatile prices, trial durations, and plan matrices out of runtime help', () => {
     for (const locale of LOCALES) {
       for (const article of byLocale[locale]) {

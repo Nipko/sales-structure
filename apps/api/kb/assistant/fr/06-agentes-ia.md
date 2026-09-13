@@ -3,7 +3,7 @@ id: agentes-ia
 title: "Agents IA : créer et configurer"
 routes: ["/admin/agent", "/admin/agent/simulation"]
 roles: ["tenant_admin"]
-keywords: ["agent", "agents ia", "bot", "chatbot", "assistant virtuel", "créer un agent", "modèle", "personnalité", "instructions", "ton", "horaires de l'agent", "assigner un canal", "connexion", "dupliquer un agent", "agent par défaut", "limite d'agents", "canaux sans agent", "tester l'agent", "règles", "sujets interdits", "champs obligatoires", "quand passer a un humain", "message de repli", "actif inactif", "avance"]
+keywords: ["agent", "agents ia", "bot", "chatbot", "assistant virtuel", "créer un agent", "modèle", "personnalité", "instructions", "ton", "horaires de l'agent", "assigner un canal", "connexion", "dupliquer un agent", "agent par défaut", "limite d'agents", "canaux sans agent", "tester l'agent", "règles", "sujets interdits", "champs obligatoires", "quand passer a un humain", "message de repli", "actif inactif", "avance", "assist", "instructions principales", "vente et assistance", "brouillon de l'agent"]
 ---
 
 # Agents IA : créer et configurer
@@ -48,11 +48,11 @@ Si vous videz l'un de ces champs pour le réécrire, enregistrez seulement une f
 Dans **Agent IA**, cliquez sur **Modifier** sur l'agent. L'éditeur est organisé en onglets et en cartes :
 
 - **Identité** — nom, rôle ou titre (par exemple, « Conseillère commerciale ») et langue.
-- **Personnalité** — le **Style de communication** (Amical, Professionnel, Formel, Décontracté ou Empathique), la **Longueur des réponses** (Concis, Standard ou Détaillé) et le message d'accueil initial.
+- **Personnalité** — style de communication, usage des emojis et de l'humour, **Longueur des réponses** (Concis, Standard ou Détaillé) et message d'accueil initial.
 - **Message lorsqu'il ne peut pas répondre** — le texte de repli, obligatoire.
-- **Instructions** — vos propres règles en texte libre (par exemple, « proposer toujours la formule familiale avant de conclure »), les sujets interdits que l'agent ne doit jamais aborder et le mode de réponse (toujours IA, toujours humain ou hybride).
+- **Instructions** — une consigne principale, des règles concrètes, les sujets interdits et les informations à demander dans chaque contexte. La consigne principale fait partie du prompt effectif en mode guidé.
 - **Quand passer à un humain** — la liste des motifs qui font que l'agent cesse de répondre et alerte votre équipe : le client le demande, se plaint, pose une question de remise, ou l'agent échoue plusieurs fois de suite. Sans au moins un motif, la conversation n'atteint jamais une personne.
-- **Modèle IA** — le moteur utilisé par l'agent. L'éditeur affiche les modèles activés pour votre compte.
+- **Vente et assistance** — choisissez si l'agent vend, assiste ou fait les deux ; pour la vente, vous pouvez aussi régler l'intensité des recommandations et la remise maximale autorisée.
 - **Horaires** — quand l'agent est actif (voir plus bas).
 - **Capacités** — ce que l'agent peut faire, avec des interrupteurs pour activer ou désactiver chaque capacité :
   - Chercher des réponses dans votre base de connaissances
@@ -61,12 +61,18 @@ Dans **Agent IA**, cliquez sur **Modifier** sur l'agent. L'éditeur est organis�
   - Créer des commandes ou des réservations
   - Transférer la conversation à un membre de votre équipe quand c'est nécessaire
 
+Les capacités spécialisées dépendent du **type d'activité** du tenant. L'éditeur ne propose que les familles de ce profil et explique si des données, le forfait ou un fournisseur manquent pour les activer.
+
 **Avancé** n'est pas une carte : ce sont deux sections repliables, dans deux onglets différents, et c'est pourquoi vous ne les trouvez jamais ensemble :
 
 - **Avancé : affiner la recherche** — dans **Capacités**, sous l'interrupteur de la recherche dans vos connaissances (il n'apparaît que si cet interrupteur est activé). C'est là que se trouvent le nombre de passages à utiliser et le degré de correspondance exigé.
 - **Avancé** — dans **Instructions**, avec les données que l'agent doit demander dans chaque contexte.
 
 Les deux arrivent avec des valeurs raisonnables ; ne les changez que si vous savez ce que vous réglez.
+
+## Configurer avec Parallly Assist
+
+Vous pouvez demander à Assist d'examiner l'agent et de préparer des changements d'identité, de langue, d'instructions, de règles, d'informations requises, de comportement hors horaires, de vente/assistance, de recommandations, de longueur de réponse, de connaissances et d'autorisations. Assist présente une proposition à vérifier ; l'accepter enregistre un **brouillon**, sans publier ni activer l'agent. En mode prompt personnalisé, Assist ne propose pas de modifier la personnalité, la consigne principale, les règles ni les champs requis, car le prompt les remplace. N'envoyez jamais d'identifiants ou de connexions dans le chat.
 
 Quand vous avez terminé, cliquez sur **Enregistrer les modifications** — le bouton reste toujours visible dans la barre inférieure, vous ne perdez donc pas vos modifications en faisant défiler la page.
 
@@ -76,11 +82,11 @@ L'en-tête de l'éditeur comporte un interrupteur **Actif / Inactif**. Un agent 
 
 ## Comment définir les horaires de l'agent
 
-1. Dans l'éditeur de l'agent, ouvrez la carte **Horaires**.
-2. Cochez les jours et les plages horaires pendant lesquels l'agent répond (par exemple, « Quotidien 9:00–18:00 » ou seulement 5 jours par semaine).
-3. Enregistrez avec **Enregistrer les modifications**.
+1. Configurez les jours, les plages et le fuseau de tout le compte dans **Paramètres → Horaires d'ouverture**.
+2. Dans l'éditeur de l'agent, ouvrez **Horaires** pour consulter ce calendrier et décider si l'IA continue à répondre en dehors de celui-ci.
+3. Si vous désactivez l'IA hors horaires, rédigez le message propre à cet agent et enregistrez le brouillon.
 
-En dehors de ces horaires, l'agent ne répond pas automatiquement ; combinez ce réglage avec le mode de réponse si vous préférez que votre équipe prenne le relais à certains moments.
+Les horaires d'ouverture appartiennent au tenant et sont partagés par ses agents ; chaque agent choisit uniquement son comportement en dehors de ces horaires.
 
 ## Comment assigner l'agent à chaque connexion
 

@@ -3,7 +3,7 @@ id: agentes-ia
 title: "AI Agents: create and configure"
 routes: ["/admin/agent", "/admin/agent/simulation"]
 roles: ["tenant_admin"]
-keywords: ["agent", "ai agents", "bot", "chatbot", "virtual assistant", "create agent", "template", "personality", "instructions", "tone", "agent schedule", "assign channel", "connection", "duplicate agent", "default agent", "agent limit", "channels without agent", "test agent", "rules", "forbidden topics", "required fields", "when to hand off to a human", "fallback message", "active inactive", "advanced"]
+keywords: ["agent", "ai agents", "bot", "chatbot", "virtual assistant", "create agent", "template", "personality", "instructions", "tone", "agent schedule", "assign channel", "connection", "duplicate agent", "default agent", "agent limit", "channels without agent", "test agent", "rules", "forbidden topics", "required fields", "when to hand off to a human", "fallback message", "active inactive", "advanced", "assist", "main instructions", "sales and support", "agent draft"]
 ---
 
 # AI Agents: create and configure
@@ -48,11 +48,11 @@ If you clear one of those fields to rewrite it, save only once it is complete ag
 Inside **AI Agent**, click **Edit** on the agent. The editor is organized into tabs and cards:
 
 - **Identity** — name, role or title (for example, "Sales advisor") and language.
-- **Personality** — the **Communication style** (Friendly, Professional, Formal, Casual or Empathetic), the **Response length** (Concise, Standard or Detailed) and the opening greeting.
+- **Personality** — communication style, emoji and humor use, **Response length** (Concise, Standard or Detailed), and the opening greeting.
 - **Message for when it cannot answer** — the fallback text, required.
-- **Instructions** — your own free-text rules (for example, "always offer the family combo before closing"), the forbidden topics the agent must never touch, and the response mode (always AI, always human or hybrid).
+- **Instructions** — one main guide, concrete rules, forbidden topics, and the information to ask for in each context. The main guide is part of the effective prompt in guided mode.
 - **When to hand off to a human** — the list of reasons that make the agent stop replying and alert your team: the customer asks for it, complains, asks about a discount, or the agent fails several times in a row. Without at least one reason, the conversation never reaches a person.
-- **AI Model** — which engine the agent uses. The editor shows the models enabled for your account.
+- **Sales and support** — choose whether the agent sells, supports, or does both; sales agents can also set recommendation intensity and the maximum allowed discount.
 - **Schedule** — when the agent is active (see below).
 - **Capabilities** — what the agent can do, with switches to turn each one on or off:
   - Search for answers in your knowledge base
@@ -61,12 +61,18 @@ Inside **AI Agent**, click **Edit** on the agent. The editor is organized into t
   - Create orders or reservations
   - Hand the conversation over to a person on your team when needed
 
+Specialized capabilities depend on the tenant's **business type**. The editor only offers families that belong to that profile and explains when missing data, plan access, or a provider prevents activation.
+
 **Advanced** is not one card: it is two collapsible sections in two different tabs, which is why you never find them together:
 
 - **Advanced: fine-tune the search** — inside **Capabilities**, under the knowledge-search switch (it only appears when that switch is on). That is where how many passages to use and how closely they must match live.
 - **Advanced** — inside **Instructions**, with the data the agent must ask for in each context.
 
 Both ship with sensible values; change them only if you know what you are tuning.
+
+## Configure with Parallly Assist
+
+You can ask Assist to review the agent and prepare changes to identity, language, instructions, rules, required information, after-hours behavior, sales/support mode, recommendations, response length, knowledge, and permissions. Assist presents a proposal for review; accepting it saves a **draft** and does not publish or activate the agent. In custom-prompt mode, Assist withholds personality, main-guide, rules, and required-field edits because the custom prompt replaces them. Never send credentials or connection details through chat.
 
 When you're done, click **Save changes** — the button is always visible in the bottom bar, so you won't lose edits while scrolling.
 
@@ -76,11 +82,11 @@ The editor header has an **Active / Inactive** switch. An **inactive** agent rep
 
 ## How to set the agent's schedule
 
-1. In the agent editor, open the **Schedule** card.
-2. Select the days and time slots when the agent responds (for example, "Daily 9:00–18:00" or only 5 days a week).
-3. Save with **Save changes**.
+1. Configure the account-wide days, time ranges, and time zone under **Settings → Business hours**.
+2. Open **Schedule** in the agent editor to review that calendar and choose whether AI keeps replying outside it.
+3. If you turn after-hours AI off, write this agent's specific fallback and save the draft.
 
-Outside those hours the agent doesn't reply automatically; combine this with the response mode if you'd rather have your team take over at certain times.
+Business hours belong to the tenant and are shared by its agents; each agent only chooses its own behavior outside them.
 
 ## How to assign the agent to each connection
 

@@ -3,7 +3,7 @@ id: agentes-ia
 title: "Agentes de IA: criar e configurar"
 routes: ["/admin/agent", "/admin/agent/simulation"]
 roles: ["tenant_admin"]
-keywords: ["agente", "agentes de ia", "bot", "chatbot", "assistente virtual", "criar agente", "modelo", "personalidade", "instruções", "tom", "horário do agente", "atribuir canal", "conexão", "duplicar agente", "agente padrão", "limite de agentes", "canais sem agente", "testar agente", "regras", "temas proibidos", "campos obrigatorios", "quando passar para um humano", "mensagem de apoio", "ativo inativo", "avancado"]
+keywords: ["agente", "agentes de ia", "bot", "chatbot", "assistente virtual", "criar agente", "modelo", "personalidade", "instruções", "tom", "horário do agente", "atribuir canal", "conexão", "duplicar agente", "agente padrão", "limite de agentes", "canais sem agente", "testar agente", "regras", "temas proibidos", "campos obrigatorios", "quando passar para um humano", "mensagem de apoio", "ativo inativo", "avancado", "assist", "instruções principais", "vendas e suporte", "rascunho do agente"]
 ---
 
 # Agentes de IA: criar e configurar
@@ -48,11 +48,11 @@ Se você esvaziar um desses campos para reescrevê-lo, salve só quando estiver 
 Dentro de **Agente IA**, clique em **Editar** no agente. O editor está organizado em abas e cartões:
 
 - **Identidade** — nome, função ou título (por exemplo, "Consultora de vendas") e idioma.
-- **Personalidade** — o **Estilo de comunicação** (Amigável, Profissional, Formal, Casual ou Empático), o **Tamanho das respostas** (Conciso, Padrão ou Detalhado) e a saudação inicial.
+- **Personalidade** — estilo de comunicação, uso de emojis e humor, **Tamanho das respostas** (Conciso, Padrão ou Detalhado) e saudação inicial.
 - **Mensagem para quando não souber responder** — o texto de apoio, obrigatório.
-- **Instruções** — suas próprias regras em texto livre (por exemplo, "sempre ofereça o combo família antes de fechar"), os temas proibidos que o agente nunca deve tocar e o modo de resposta (sempre IA, sempre humano ou híbrido).
+- **Instruções** — uma orientação principal, regras concretas, temas proibidos e os dados que deve pedir em cada contexto. A orientação principal faz parte do prompt efetivo no modo guiado.
 - **Quando passar para um humano** — a lista de motivos que fazem o agente parar de responder e avisar sua equipe: o cliente pede, reclama, pergunta por desconto, ou o agente erra várias vezes seguidas. Sem pelo menos um motivo, a conversa nunca chega a uma pessoa.
-- **Modelo IA** — qual mecanismo o agente usa. O editor mostra os modelos habilitados para a sua conta.
+- **Vendas e suporte** — escolha se o agente vende, atende ou faz as duas coisas; em vendas também é possível ajustar a intensidade das recomendações e o desconto máximo permitido.
 - **Horário** — quando ele está ativo (veja mais abaixo).
 - **Capacidades** — o que o agente pode fazer, com interruptores para ativar ou desativar cada uma:
   - Buscar respostas na sua base de conhecimento
@@ -61,12 +61,18 @@ Dentro de **Agente IA**, clique em **Editar** no agente. O editor está organiza
   - Criar pedidos ou reservas
   - Passar a conversa para uma pessoa da sua equipe quando for preciso
 
+As capacidades especializadas dependem do **tipo de negócio** do tenant. O editor só oferece as famílias que pertencem a esse perfil e explica quando faltam dados, plano ou provedor para ativá-las.
+
 **Avançado** não é um cartão: são duas seções recolhidas, em duas abas diferentes, e por isso você não as encontra juntas:
 
 - **Avançado: ajustar a busca** — dentro de **Capacidades**, abaixo do interruptor da busca no seu conhecimento (só aparece com esse interruptor ligado). É ali que ficam quantos trechos usar e o quão parecido o conteúdo precisa ser.
 - **Avançado** — dentro de **Instruções**, com os dados que o agente deve pedir em cada contexto.
 
 As duas vêm com valores razoáveis; mude só se souber o que está ajustando.
+
+## Configurar com o Parallly Assist
+
+Você pode pedir ao Assist que revise o agente e prepare mudanças de identidade, idioma, instruções, regras, dados obrigatórios, comportamento fora do horário, vendas/suporte, recomendações, tamanho da resposta, conhecimento e permissões. O Assist mostra uma proposta para revisão; ao aceitar, salva um **rascunho**, sem publicar nem ativar o agente. No modo prompt personalizado, o Assist não oferece mudanças de personalidade, orientação principal, regras ou campos obrigatórios porque o prompt os substitui. Nunca envie credenciais ou conexões pelo chat.
 
 Quando terminar, clique em **Salvar alterações** — o botão fica sempre visível na barra inferior, então você não perde as edições ao rolar a página.
 
@@ -76,11 +82,11 @@ No cabeçalho do editor há um interruptor **Ativo / Inativo**. Um agente **inat
 
 ## Como definir o horário do agente
 
-1. No editor do agente, abra o cartão **Horário**.
-2. Marque os dias e as faixas em que o agente responde (por exemplo, "Diário 9:00–18:00" ou só 5 dias por semana).
-3. Salve com **Salvar alterações**.
+1. Configure os dias, faixas e fuso de toda a conta em **Configurações → Horário comercial**.
+2. No editor do agente, abra **Horário** para revisar esse calendário e decidir se a IA continua respondendo fora dele.
+3. Se desativar a IA fora do horário, escreva a mensagem específica desse agente e salve o rascunho.
 
-Fora desse horário o agente não atende automaticamente; combine isso com o modo de resposta se preferir que a sua equipe assuma o controle em certos momentos.
+O horário comercial pertence ao tenant e é compartilhado entre seus agentes; cada agente decide apenas o próprio comportamento fora dele.
 
 ## Como atribuir o agente a cada conexão
 

@@ -1,4 +1,6 @@
 import { randomUUID } from 'crypto';
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
 import { PrismaClient } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { OperationConfirmationService } from '../operation-confirmation.service';
@@ -195,10 +197,6 @@ export async function startConfirmationHarness(
  * statements their table has acquired since.
  */
 export function productionTableDdl(table: string): string {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { readFileSync } = require('fs');
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { resolve } = require('path');
     const ddl: string = readFileSync(
         resolve(__dirname, '../../../../prisma/tenant-schema.sql'), 'utf8');
     const start = ddl.indexOf(`CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."${table}" (`);

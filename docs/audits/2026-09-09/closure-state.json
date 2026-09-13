@@ -1,5 +1,5 @@
 {
-  "revision": "1112a93f300c831b5ea4355241f4b81899a39cce",
+  "revision": "41795e96c3a895671623f732a1256b983c63121a",
   "generatedFrom": [
     "modules/simulation/task-competence-matrix.ts",
     "modules/simulation/certification-plan.ts",
@@ -39,10 +39,10 @@
       "inputPerTurn": 8000,
       "outputPerTurn": 1000
     },
-    "requiredCases": 87240,
-    "modelCalls": 245420,
-    "maxCostUsdCents": 89740,
-    "maxSeconds": 1472520,
+    "requiredCases": 93320,
+    "modelCalls": 260620,
+    "maxCostUsdCents": 95020,
+    "maxSeconds": 1563720,
     "refusals": []
   },
   "channelCertification": {
@@ -315,7 +315,7 @@
     "open": []
   },
   "termsBinding": {
-    "families": 15,
+    "families": 18,
     "unboundCommand": [],
     "unboundCharge": []
   }

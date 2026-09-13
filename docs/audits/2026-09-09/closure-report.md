@@ -5,7 +5,7 @@ el estado sale de ella: con una condición local sin cumplir la fila está `abie
 cumplida y un gate externo nombrado está `bloqueada`; sólo sin condición y sin gate está `aceptada`.
 Cerrar un hueco cambia esta tabla cambiando el código, y reabrirlo la cambia de vuelta.
 
-Revisión: `1112a93f300c831b5ea4355241f4b81899a39cce`.
+Revisión: `41795e96c3a895671623f732a1256b983c63121a`.
 
 **El programa no está terminado.** 25 filas aceptadas, 27 bloqueadas por un
 gate externo concreto, 0 abiertas y 1 diferidas por decisión
@@ -31,12 +31,12 @@ Ese barrido corre dos veces: sobre las filas recién construidas y otra vez sobr
 
 | ID | Estado | De dónde sale | Qué falta | Evidencia | Commits |
 |---|---|---|---|---|---|
-| A1 | **aceptada** | contador | — | Inventario calculado de 15 familias (`terms-binding-inventory.ts`). Cita y matrícula ligan comando y cobro; el pedido de catálogo pasó a cobrar desde `orders.catalog_terms` y a rechazar la fila que no acordó nada. Sin comando ligado: ninguna. Sin cobro ligado: ninguna. | `a806ef62` `f121dc5f` |
+| A1 | **aceptada** | contador | — | Inventario calculado de 18 familias (`terms-binding-inventory.ts`). Cita y matrícula ligan comando y cobro; el pedido de catálogo pasó a cobrar desde `orders.catalog_terms` y a rechazar la fila que no acordó nada. Sin comando ligado: ninguna. Sin cobro ligado: ninguna. | `a806ef62` `f121dc5f` |
 | A2 | **bloqueada** por gate 1 | **declaración** | — | Comando, retención, settlement, avisos durables y revisión sin reenvío implementados y probados con PostgreSQL. La conciliación contra un proveedor real no puede correrse sin su cuenta. | — |
 | A3 | **bloqueada** por gate 1 | **declaración** | — | Propuesta, consentimiento, aprobación humana y entrega durable probados con PostgreSQL y Socket.IO. La entrega real necesita un canal conectado. | — |
 | A4 | **bloqueada** por gate 1 | **declaración** | — | Transacciones, lectores, promoción y restauración única comprobadas contra PostgreSQL. | — |
 | B1 | **bloqueada** por gate 1 | corrida (`docs/audits/2026-09-09/order-sensitivity-runs.md`) | — | El turno completo corre de punta a punta sobre PostgreSQL, Valkey, BullMQ y Socket.IO reales, con crash en cada frontera, una erasure en vuelo y los primitivos a través de un PgBouncer real en modo transacción. | — |
-| B2 | **aceptada** | contador | — | Las 15 familias del registro tienen writer canónico auditado, con id de inbound compartido con el runtime y el ledger. Cero bloqueadas. | — |
+| B2 | **aceptada** | contador | — | Las 18 familias del registro tienen writer canónico auditado, con id de inbound compartido con el runtime y el ledger. Cero bloqueadas. | — |
 | C1 | **bloqueada** por gate 1 | **declaración** | — | Árbitro, dueño por puerto, consentimiento por misión, corrección y reanudación probados en los cuatro idiomas del contrato (es/en/pt/fr). | — |
 | C2 | **aceptada** | contador | — | Ciclos de agenda y de mascotas con recibos atómicos comprobados. El cierre de esta fila es el mismo que el de A1. | — |
 | C3 | **bloqueada** por gate 2 | contador | — | Contratos MCP y dependencias base implementados. El ejecutor está cableado a servicio, cola y endpoint, y se ensaya sin proveedor; la cobertura por tarea la decide una corrida real: 0 perfiles certificados de 76. | — |
@@ -99,7 +99,7 @@ Ese barrido corre dos veces: sobre las filas recién construidas y otra vez sobr
 | Tareas | 420 |
 | Perfiles certificados | 0 |
 | Tareas sin positivo o sin verificador, fuera de las declaradas | 0 |
-| Familias con términos inventariadas | 15 |
+| Familias con términos inventariadas | 18 |
 | Familias sin comando ligado | 0 |
 | Familias sin cobro ligado | 0 |
 | Familias de writer bloqueadas | 0 |

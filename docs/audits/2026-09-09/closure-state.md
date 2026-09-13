@@ -5,7 +5,7 @@ Generado por `docs/audits/2026-09-09/generate-closure-state.cjs`. **Ningún núm
 programa que sí se escribieron a mano envejecieron —el 32/10 de la matriz, el `complete` de canales,
 «otras salidas», «faltan términos en otras familias»—, y ése es exactamente el motivo.
 
-Revisión: `1112a93f300c831b5ea4355241f4b81899a39cce`. Sin base de datos, sin modelo, sin proveedor, sin tenant.
+Revisión: `41795e96c3a895671623f732a1256b983c63121a`. Sin base de datos, sin modelo, sin proveedor, sin tenant.
 
 ## Matriz de tareas
 
@@ -17,10 +17,10 @@ Revisión: `1112a93f300c831b5ea4355241f4b81899a39cce`. Sin base de datos, sin mo
 
 Un modelo (`gpt-4.1-mini`), 5 canales, 4 idiomas, k=1:
 
-- **87.240** casos requeridos
-- **245.420** llamadas al modelo (derivadas de los mensajes de cliente de cada escenario)
-- techo **US$897.40** con un límite declarado de 8000 tokens de entrada y 1000 de salida por turno
-- **409 h** de tiempo de modelo
+- **93.320** casos requeridos
+- **260.620** llamadas al modelo (derivadas de los mensajes de cliente de cada escenario)
+- techo **US$950.20** con un límite declarado de 8000 tokens de entrada y 1000 de salida por turno
+- **434 h** de tiempo de modelo
 - rechazos del plan: —
 
 ## Certificación de canales
@@ -73,7 +73,7 @@ después no se confunden, porque la revisión difiere y `assertCurrent` rechaza 
 
 ## Términos que el cliente aceptó
 
-15 familias. Sin comando vinculado: —.
+18 familias. Sin comando vinculado: —.
 
 Sin cobro vinculado: —.
 

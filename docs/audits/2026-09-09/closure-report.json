@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "revision": "1112a93f300c831b5ea4355241f4b81899a39cce",
-  "generatedAt": "2026-09-13T13:38:54.887Z",
+  "revision": "41795e96c3a895671623f732a1256b983c63121a",
+  "generatedAt": "2026-09-13T14:07:18.568Z",
   "finished": false,
   "counts": {
     "aceptada": 25,
@@ -29,7 +29,7 @@
     "profiles": 76,
     "tasks": 420,
     "certifiedProfiles": 0,
-    "termsFamilies": 15,
+    "termsFamilies": 18,
     "unboundCommand": [],
     "unboundCharge": [],
     "blockedWriterFamilies": [],
@@ -94,7 +94,7 @@
       "status": "aceptada",
       "provenance": "derived",
       "artefact": null,
-      "evidence": "Inventario calculado de 15 familias (`terms-binding-inventory.ts`). Cita y matrícula ligan comando y cobro; el pedido de catálogo pasó a cobrar desde `orders.catalog_terms` y a rechazar la fila que no acordó nada. Sin comando ligado: ninguna. Sin cobro ligado: ninguna.",
+      "evidence": "Inventario calculado de 18 familias (`terms-binding-inventory.ts`). Cita y matrícula ligan comando y cobro; el pedido de catálogo pasó a cobrar desde `orders.catalog_terms` y a rechazar la fila que no acordó nada. Sin comando ligado: ninguna. Sin cobro ligado: ninguna.",
       "commits": [
         "a806ef62",
         "f121dc5f"
@@ -165,7 +165,7 @@
       "status": "aceptada",
       "provenance": "derived",
       "artefact": null,
-      "evidence": "Las 15 familias del registro tienen writer canónico auditado, con id de inbound compartido con el runtime y el ledger. Cero bloqueadas.",
+      "evidence": "Las 18 familias del registro tienen writer canónico auditado, con id de inbound compartido con el runtime y el ledger. Cero bloqueadas.",
       "commits": [],
       "deferral": null
     },

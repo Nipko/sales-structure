@@ -380,7 +380,7 @@ esperada y su clasificación queda **fuera del alcance de este generador**.
 | `channels.token_refresh` | `inline` | `live` | `modules/channels/instagram-token-refresh.service.ts` |
 | `customer_portal.access_code` | `inline` | `live` | `modules/customer-portal/customer-portal.service.ts` |
 | `external_crm.sync` | `domain_queue` | `live` | `modules/external-crm/external-crm.service.ts` |
-| `feature_requests.status_email` | `inline` | `live` | `modules/feature-requests/feature-requests.service.ts` |
+| `feature_requests.status_email` | `delivery_outbox` | `live` | `modules/feature-requests/feature-notification-outbox.service.ts` |
 | `fiscal.invoice_email` | `domain_queue` | `live` | `modules/fiscal/fiscal-email.service.ts` |
 | `fiscal.invoice_issue` | `domain_queue` | `live` | `modules/fiscal/adapters/factus.adapter.ts` |
 | `handoff.agent_sms` | `handoff_effects` | `off` | `modules/sms-notifications/sms-notification-listener.service.ts` |

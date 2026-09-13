@@ -5,8 +5,10 @@ verde y un hueco del tamaño de lo que no corrió. Las omitidas de este reposito
 no están desactivadas — están **condicionadas a infraestructura**, y cada una se
 salta sola cuando la variable que nombra su base o su proxy no está puesta.
 
-Este documento es la lista completa de esas variables. Con todas puestas, el
-resultado es **594 suites, 0 falladas, 0 omitidas**.
+Este documento es la lista completa de esas variables. La última corrida completa,
+el 13-sep-2026 sobre `8f233c2b`, produjo **792 suites, 9.382 pruebas, 0 falladas y
+0 omitidas**. El total crece con el código; la condición estable es que ninguna
+suite falle ni quede omitida.
 
 ## Instancias desechables
 
@@ -56,7 +58,7 @@ export PARALLLY_SAMPLING_REDIS_URL='redis://127.0.0.1:55440'
 export JWT_SECRET=... JWT_REFRESH_SECRET=... INTERNAL_JWT_SECRET=...
 export ENCRYPTION_KEY=$(printf 'a%.0s' {1..64})
 
-export NODE_OPTIONS=--max-old-space-size=6144
+export NODE_OPTIONS=--max-old-space-size=8192
 ```
 
 `PARALLLY_PGBOUNCER_DIRECT_URL` no es un duplicado: la suite de PgBouncer hace el
@@ -67,7 +69,7 @@ base, el schema se crea donde nadie lo lee.
 ## El comando
 
 ```bash
-cd apps/api && node ../../node_modules/jest/bin/jest.js --config jest.config.js --maxWorkers=2
+cd apps/api && node ../../node_modules/jest/bin/jest.js --config jest.config.js --maxWorkers=2 --forceExit
 ```
 
 Dos cosas que no son negociables y ya costaron una corrida cada una:
@@ -76,7 +78,7 @@ Dos cosas que no son negociables y ya costaron una corrida cada una:
   la suite entera corre en ~4.5 minutos. Nunca dos corridas a la vez: cada worker
   se crea su propia copia de la base (`jest.global-setup.ts`), y dos corridas
   simultáneas se pisan las copias.
-- **`NODE_OPTIONS=--max-old-space-size=6144`.** Sin eso, V8 muere por heap a
+- **`NODE_OPTIONS=--max-old-space-size=8192`.** Sin eso, V8 muere por heap a
   mitad de la corrida con un stack trace nativo que no dice qué suite lo causó.
 
 Para probar que el orden no importa, `JEST_SEQUENCE_SEED=<n>` baraja el orden de

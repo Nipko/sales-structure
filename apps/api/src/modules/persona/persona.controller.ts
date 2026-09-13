@@ -807,10 +807,14 @@ export class PersonaController {
             name: body.name,
             templateId: body.templateId,
             configJson: body.configJson,
-            channels: body.channels,
-            channelBindings: body.channelBindings,
+            // A self-service create is preparation, not publication. Never let
+            // this endpoint put an unreviewed template in front of customers or
+            // steal a live connection. The reviewed draft may declare routing
+            // and default ownership when it is published.
+            channels: [],
+            channelBindings: [],
             scheduleMode: body.scheduleMode,
-            isDefault: body.isDefault,
+            isDefault: false,
             createdBy: req.user?.email || 'system',
         });
         return { success: true, data: agent };

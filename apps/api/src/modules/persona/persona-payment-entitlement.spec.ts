@@ -71,12 +71,18 @@ describe('PersonaController customer payment entitlement', () => {
 
         await expect(controller.createAgent(
             tenantId,
-            { name: 'Ventas', configJson: paymentConfig },
+            {
+                name: 'Ventas', configJson: paymentConfig,
+                channels: ['whatsapp'], channelBindings: ['whatsapp:phone-1'], isDefault: true,
+            },
             { user: { email: 'admin@example.com' } },
         )).resolves.toMatchObject({ success: true });
         expect(personaService.createAgent).toHaveBeenCalledWith(
             tenantId,
-            expect.objectContaining({ configJson: paymentConfig }),
+            expect.objectContaining({
+                configJson: paymentConfig,
+                channels: [], channelBindings: [], isDefault: false,
+            }),
         );
     });
 

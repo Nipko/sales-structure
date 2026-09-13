@@ -175,8 +175,11 @@ export default function AgentListPage() {
         name: template.name,
         templateId: template.id,
         configJson: template.config_json || {},
-        channels: agents.length === 0 ? ['whatsapp', 'instagram', 'messenger', 'telegram'] : [],
-        isDefault: agents.length === 0,
+        // Creation prepares an agent to review. Connections and default routing
+        // become operational only through the draft/release/publication flow.
+        channels: [],
+        channelBindings: [],
+        isDefault: false,
       });
       if (res?.success && res.data) {
         const newId = res.data.id || res.data[0]?.id;

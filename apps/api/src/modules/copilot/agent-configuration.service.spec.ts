@@ -110,13 +110,13 @@ describe('reviewed agent configuration', () => {
             { path: 'skillset', value: 'support' },
             { path: 'upsell.enabled', value: true },
             { path: 'llm.maxTokens', value: 1200 },
-            { path: 'rag.similarityThreshold', value: 0.6 },
+            { path: 'llm.temperature', value: 0.8 },
         ];
         const proposal = await h.service.propose(TENANT, AGENT, safe, ACTOR);
         await h.service.apply(TENANT, proposal.id, proposal.digest, ACTOR);
         expect(h.draft().body.configJson).toMatchObject({
             language: 'fr-FR', skillset: 'support', hours: { aiOutsideHours: false }, upsell: { enabled: true },
-            llm: { maxTokens: 1200 }, rag: { similarityThreshold: 0.6 },
+            llm: { maxTokens: 1200, temperature: 0.8 },
             persona: { personality: { emojiUsage: 'moderate', humor: 'léger' } },
             behavior: { mainInstructions: 'Aide le client à choisir.', requiredFields: { quote: [{ field: 'email', question: 'Quel est votre e-mail ?', validation: 'email' }] } },
         });
@@ -260,6 +260,7 @@ describe('reviewed agent configuration', () => {
         [{ path: 'persona.name', value: '' }],
         [{ path: 'language', value: 'de-DE' }],
         [{ path: 'llm.maxTokens', value: 99 }],
+        [{ path: 'llm.maxTokens', value: 800 }, { path: 'llm.temperature', value: 0.8 }],
         [{ path: 'rag.topK', value: 11 }],
         [{ path: 'rag.similarityThreshold', value: 1.1 }],
         [{ path: 'upsell.maxDiscountPercent', value: 31 }],

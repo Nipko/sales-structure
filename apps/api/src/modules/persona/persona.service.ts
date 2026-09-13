@@ -600,6 +600,33 @@ export class PersonaService {
             }
         }
 
+        const finite = (value: unknown, min: number, max: number, integer = false) =>
+            typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max && (!integer || Number.isInteger(value));
+        const oneOf = (value: unknown, allowed: readonly string[]) => typeof value === 'string' && allowed.includes(value);
+        if (config.language !== undefined && !oneOf(config.language, ['es', 'en', 'pt', 'fr', 'es-CO', 'es-MX', 'en-US', 'pt-BR', 'fr-FR'])) invalid.push('language');
+        if (config.persona?.personality?.emojiUsage !== undefined
+            && !oneOf(config.persona.personality.emojiUsage, ['none', 'minimal', 'moderate', 'heavy'])) invalid.push('persona.personality.emojiUsage');
+        if (config.behavior?.mainInstructions !== undefined
+            && (typeof config.behavior.mainInstructions !== 'string' || config.behavior.mainInstructions.length > 4000)) invalid.push('behavior.mainInstructions');
+        if (config.hours?.aiOutsideHours !== undefined && typeof config.hours.aiOutsideHours !== 'boolean') invalid.push('hours.aiOutsideHours');
+        if (config.hours?.afterHoursMessageOverride !== undefined
+            && (typeof config.hours.afterHoursMessageOverride !== 'string' || config.hours.afterHoursMessageOverride.length > 4000)) invalid.push('hours.afterHoursMessageOverride');
+        if (config.skillset !== undefined && !oneOf(config.skillset, ['sales', 'support', 'both'])) invalid.push('skillset');
+        if (config.upsell?.enabled !== undefined && typeof config.upsell.enabled !== 'boolean') invalid.push('upsell.enabled');
+        if (config.upsell?.intensity !== undefined && !oneOf(config.upsell.intensity, ['subtle', 'moderate', 'aggressive'])) invalid.push('upsell.intensity');
+        if (config.upsell?.maxDiscountPercent !== undefined && !finite(config.upsell.maxDiscountPercent, 0, 30)) invalid.push('upsell.maxDiscountPercent');
+        if (config.llm?.temperature !== undefined && !finite(config.llm.temperature, 0, 2)) invalid.push('llm.temperature');
+        if (config.llm?.maxTokens !== undefined && !finite(config.llm.maxTokens, 100, 4000, true)) invalid.push('llm.maxTokens');
+        if (config.rag?.enabled !== undefined && typeof config.rag.enabled !== 'boolean') invalid.push('rag.enabled');
+        if (config.rag?.topK !== undefined && !finite(config.rag.topK, 1, 10, true)) invalid.push('rag.topK');
+        if (config.rag?.similarityThreshold !== undefined && !finite(config.rag.similarityThreshold, 0, 1)) invalid.push('rag.similarityThreshold');
+        for (const [family, settings] of Object.entries(config.tools ?? {})) {
+            if (!settings || typeof settings !== 'object' || Array.isArray(settings)) { invalid.push(`tools.${family}`); continue; }
+            for (const flag of ['enabled', 'canBook', 'canCancel', 'canCheckStock', 'canRecommend', 'canApplyDiscount', 'canCreateLinks', 'emailConfirmations']) {
+                if ((settings as any)[flag] !== undefined && typeof (settings as any)[flag] !== 'boolean') invalid.push(`tools.${family}.${flag}`);
+            }
+        }
+
         if (invalid.length > 0) {
             throw new BadRequestException({
                 error: 'agent_invalid',

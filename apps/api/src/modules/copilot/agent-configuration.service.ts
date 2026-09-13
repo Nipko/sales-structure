@@ -115,9 +115,9 @@ export class AgentConfigurationService {
             } else if (change.path === 'upsell.intensity') {
                 if (!['subtle', 'moderate', 'aggressive'].includes(change.value as string)) throw new BadRequestException('Invalid upsell intensity');
             } else if (change.path === 'llm.temperature') {
-                if (typeof change.value !== 'number' || !Number.isFinite(change.value) || change.value < 0 || change.value > 2) throw new BadRequestException('Invalid model temperature');
+                if (typeof change.value !== 'number' || ![0.5, 0.7, 0.8].includes(change.value)) throw new BadRequestException('Invalid model temperature');
             } else if (change.path === 'llm.maxTokens') {
-                if (typeof change.value !== 'number' || !Number.isInteger(change.value) || change.value < 100 || change.value > 4000) throw new BadRequestException('Invalid answer length');
+                if (typeof change.value !== 'number' || ![400, 800, 1200].includes(change.value)) throw new BadRequestException('Invalid answer length');
             } else if (change.path === 'rag.topK') {
                 if (typeof change.value !== 'number' || !Number.isInteger(change.value) || change.value < 1 || change.value > 10) throw new BadRequestException('Invalid knowledge result count');
             } else if (change.path === 'rag.similarityThreshold') {
@@ -129,6 +129,13 @@ export class AgentConfigurationService {
             } else if (typeof change.value !== 'string' || !change.value.trim() || change.value.length > (change.path === 'persona.name' ? 100 : 2000)) {
                 throw new BadRequestException('Invalid persona value');
             }
+        }
+        const temperature = changes.find(change => change.path === 'llm.temperature');
+        const maxTokens = changes.find(change => change.path === 'llm.maxTokens');
+        if (Boolean(temperature) !== Boolean(maxTokens)
+            || (temperature && maxTokens && ![[0.5, 400], [0.7, 800], [0.8, 1200]]
+                .some(([candidateTemperature, candidateTokens]) => temperature.value === candidateTemperature && maxTokens.value === candidateTokens))) {
+            throw new BadRequestException('Answer length and model temperature must use one editor preset');
         }
         return changes;
     }

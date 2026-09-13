@@ -22,6 +22,22 @@ describe('Canonical persona validation for editable revisions', () => {
         expect(() => service.assertAgentConfigValid({ editorMode: 'prompt', customPrompt: 'Respond using the supplied facts.' })).not.toThrow();
         expect(() => service.assertAgentConfigValid({ _mode: 'prompt', _customPrompt: ' ' })).toThrow();
     });
+    it('accepts existing bounded model settings while rejecting states the editor cannot safely produce', () => {
+        expect(() => service.assertAgentConfigValid({ persona: { name: 'Alex' }, language: 'es',
+            llm: { temperature: 0.6, maxTokens: 500 }, rag: { enabled: true, topK: 5, similarityThreshold: 0.75 },
+            upsell: { enabled: true, intensity: 'subtle', maxDiscountPercent: 15 },
+            tools: { appointments: { enabled: true, canBook: true } } }, { partial: true })).not.toThrow();
+        for (const config of [
+            { language: 'de-DE' },
+            { persona: { personality: { emojiUsage: 'always' } } },
+            { skillset: 'marketing' },
+            { upsell: { enabled: true, maxDiscountPercent: 31 } },
+            { llm: { temperature: Number.NaN, maxTokens: 800 } },
+            { rag: { enabled: true, topK: 0, similarityThreshold: 0.75 } },
+            { hours: { aiOutsideHours: 'yes' } },
+            { tools: { appointments: { enabled: 'yes' } } },
+        ]) expect(() => service.assertAgentConfigValid(config, { partial: true })).toThrow();
+    });
 });
 
 describe('PersonaService — plantilla de preguntas frecuentes', () => {

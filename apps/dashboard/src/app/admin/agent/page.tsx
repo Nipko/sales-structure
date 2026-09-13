@@ -235,6 +235,10 @@ export default function AgentListPage() {
       setMenuOpen(null);
       return;
     }
+    if (!window.confirm(t("retireAgentConfirm", { name: agent?.name || t("unnamedAgent") }))) {
+      setMenuOpen(null);
+      return;
+    }
     try {
       const res = await api.deleteAgent(activeTenantId, agentId);
       if (res?.success) {

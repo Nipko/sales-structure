@@ -87,6 +87,16 @@ function landingTarget(rawUrl) {
 }
 
 const landingServer = createServer((request, response) => {
+  if (
+    request.method === "POST" &&
+    request.url === "/__parallly_e2e_shutdown__" &&
+    request.headers["x-parallly-e2e-control"] === "shutdown"
+  ) {
+    response.writeHead(204);
+    response.end(shutdown);
+    return;
+  }
+
   let target = null;
   try {
     target = landingTarget(request.url || "/");
@@ -111,3 +121,21 @@ landingServer.listen(3003, "127.0.0.1");
 process.env.PORT = "3001";
 process.env.HOSTNAME = "127.0.0.1";
 require(dashboardServer);
+
+// Playwright owns this process. Global teardown asks this process to exit
+// before Playwright falls back to OS-level tree termination, which is not
+// always available in a restricted Windows runner. The dashboard listener
+// lives in this same process and closes with it.
+let shuttingDown = false;
+function shutdown() {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  const forceExit = setTimeout(() => process.exit(0), 1_000);
+  forceExit.unref();
+  landingServer.close(() => process.exit(0));
+}
+
+process.on("SIGINT", shutdown);
+process.on("SIGTERM", shutdown);
+process.on("SIGHUP", shutdown);
+process.on("disconnect", shutdown);

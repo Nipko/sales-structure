@@ -26,6 +26,7 @@ const safeBrowserEnvironment = {
 export default defineConfig({
   testDir: "./tests",
   outputDir: "./test-results",
+  globalTeardown: require.resolve("./global-teardown.cjs"),
   fullyParallel: true,
   forbidOnly: isCI,
   failOnFlakyTests: isCI,

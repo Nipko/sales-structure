@@ -126,7 +126,7 @@ describe('every chargeable effect names something durable', () => {
         const root = path.join(__dirname, '..', '..');
         const sinks = [
             ['channels/outbound-queue.processor.ts', /binding: \{/],
-            ['agent-console/agent-console.service.ts', /binding: \{ messageId \}/],
+            ['agent-console/agent-console.service.ts', /this\.dispatch\.send\(input\.tenantId, \{[\s\S]*?originKey:/],
             ['whatsapp/services/whatsapp-messaging.service.ts', /binding: \{ requestId:/],
         ] as const;
         for (const [relative, pattern] of sinks) {

@@ -287,12 +287,13 @@ describe('the R5 acceptance matrix, checked rather than asserted', () => {
     describe('every scenario it admits is not', () => {
         const missing = uncoveredScenarios();
 
-        it.each(missing.map(row => [row.scenario, row] as const))(
-            '%s says what a test would have to do', (_scenario, row) => {
+        it('every uncovered scenario says what a test would have to do', () => {
+            for (const row of missing) {
                 // A gap with no description is a gap nobody can pick up.
                 expect(row.missing).toBeDefined();
                 expect(row.missing!.length).toBeGreaterThan(60);
-            });
+            }
+        });
 
         it('is counted, not hidden', () => {
             // The number is the point. It is what R5 reports, and it is a fact

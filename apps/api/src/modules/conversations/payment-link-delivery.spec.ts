@@ -69,9 +69,11 @@ describe('el envío', () => {
         expect(SRC).toMatch(/for \(const url of .*new Set\(paymentLinks\)\)/);
     });
 
-    it('el dedupeId va atado al enlace, no al turno', () => {
-        // Si el turno se reprocesa tras un reinicio, el cliente no puede recibir
-        // el mismo enlace dos veces.
-        expect(SRC).toContain('dedupeId: `paylink-${url.slice(-64)}`');
+    it('el enlace queda dentro del lote durable del inbound', () => {
+        // El lote es la autoridad de identidad del turno: un reintento encuentra
+        // el mismo batch antes de volver a ejecutar o enviar sus efectos.
+        expect(SRC).toContain('effectSink.paymentLinks.push(url)');
+        expect(SRC).toContain('paymentLinks: [...new Set(output.paymentLinks)]');
+        expect(SRC).toContain('findBatchForInbound(tenantId, input.schemaName, binding)');
     });
 });

@@ -326,7 +326,7 @@ describe('the turn actually uses it', () => {
         // policy, reads the episode and runs `decideAndAssertTurnOutcome`, so
         // the counting cannot drift away from the rule it feeds.
         const decidedAt = service.indexOf('await resolveTurnOutcome({');
-        const deliveredAt = service.indexOf('const durable = await this.dispatchReplyThroughOutbox({');
+        const deliveredAt = service.indexOf('await this.dispatchReplyThroughOutbox({');
         expect(decidedAt).toBeGreaterThan(0);
         expect(deliveredAt).toBeGreaterThan(decidedAt);
     });

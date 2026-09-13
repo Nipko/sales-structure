@@ -229,7 +229,7 @@ export const ACCEPTANCE_MATRIX: readonly AcceptanceScenario[] = Object.freeze([
             file: 'modules/conversations/courtesy-chain-and-stalled-ask.postgres.spec.ts',
             titles: [
                 'hands the conversation over instead of asking a third time',
-                'offers the person on the legacy lane too, which had no route at all',
+                'keeps durable delivery when the validation cohort is inactive',
                 'does not announce the handover twice when the agent gets the thread back',
                 'refuses a verbatim second ask and still offers the person',
                 'never stops an intake that collects a different datum every turn',
@@ -300,15 +300,13 @@ export const ACCEPTANCE_MATRIX: readonly AcceptanceScenario[] = Object.freeze([
         // Five production boundaries answer the one scenario. The four origin
         // specs prove that their request stack leaves a dispatch row and does
         // not POST; the processor spec proves every such row asks the shared
-        // spend authority before transport. The human-only inline fallback is
-        // named too, because it remains intentionally available during rollout
-        // and has to preserve the same order even without an outbox row.
+        // spend authority before transport. Human replies use the same durable
+        // boundary; disabling a validation cohort never restores an inline POST.
         covered: [
             {
                 file: 'modules/agent-console/agent-console-durable-lane.postgres.spec.ts',
                 titles: [
                     'commits a row instead of POSTing on the request stack',
-                    'admits the inline human fallback before its provider POST',
                 ],
             },
             {

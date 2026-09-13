@@ -55,6 +55,8 @@ const DECLINE_RATE_THRESHOLD = 0.4;
 /** Below this many settled attempts a "rate" is noise, not a signal. */
 const DECLINE_MIN_ATTEMPTS = 10;
 const PAYMENT_SOURCE_KINDS = ['card', 'nequi', 'daviplata', 'bancolombia_transfer', 'pse', 'unknown'];
+const BACKUP_HEARTBEAT_KEY = 'backup:last_success';
+const BACKUP_MONITOR_STARTED_KEY = 'backup:monitor_started_at';
 
 @Injectable()
 export class PlatformMonitorService implements OnModuleInit {
@@ -1721,10 +1723,40 @@ export class PlatformMonitorService implements OnModuleInit {
     private async checkBackupHeartbeat() {
         try {
             const cfg = await this.alertConfig.get();
-            const last = await this.redis.get('backup:last_success');
-            if (!last) return; // heartbeat not wired yet — stay silent (no false positive)
+            const last = await this.redis.get(BACKUP_HEARTBEAT_KEY);
+            if (!last) {
+                const monitoringStarted = await this.redis.get(BACKUP_MONITOR_STARTED_KEY);
+                if (!monitoringStarted) {
+                    await this.redis.set(BACKUP_MONITOR_STARTED_KEY, String(Date.now()));
+                    return;
+                }
+                const startedAt = Number(monitoringStarted);
+                const missingAgeH = (Date.now() - startedAt) / (60 * 60 * 1000);
+                if (!Number.isFinite(startedAt) || startedAt <= 0 || missingAgeH < 0
+                    || missingAgeH > cfg.backupStaleHours) {
+                    await this.alert(
+                        'backup:stale',
+                        'Ningun backup exitoso ha publicado heartbeat',
+                        `No existe <code>${BACKUP_HEARTBEAT_KEY}</code> despues de `
+                        + `<b>${Math.max(0, Math.round(missingAgeH))} horas</b> de monitoreo.<br>`
+                        + 'Revisa <code>/var/log/parallext-backup.log</code>, el cron de las 2AM y la conexion a Valkey.',
+                        Number.isFinite(missingAgeH) ? Math.max(0, Math.round(missingAgeH)) : cfg.backupStaleHours + 1,
+                    );
+                }
+                return;
+            }
             const ts = Number(last) || Date.parse(last);
-            if (!Number.isFinite(ts)) return;
+            if (!Number.isFinite(ts) || ts <= 0 || ts > Date.now() + 5 * 60 * 1000) {
+                await this.alert(
+                    'backup:stale',
+                    'Heartbeat de backup invalido',
+                    `El valor de <code>${BACKUP_HEARTBEAT_KEY}</code> no es una fecha valida. `
+                    + 'Revisa el script de backup y Valkey antes de confiar en el ultimo punto de restauracion.',
+                    cfg.backupStaleHours + 1,
+                );
+                return;
+            }
+            await this.redis.del(BACKUP_MONITOR_STARTED_KEY);
             const ageH = (Date.now() - ts) / (60 * 60 * 1000);
             if (ageH > cfg.backupStaleHours) {
                 await this.alert(

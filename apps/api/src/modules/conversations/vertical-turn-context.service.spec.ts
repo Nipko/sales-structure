@@ -42,18 +42,23 @@ describe('VerticalTurnContextService', () => {
         expect(context?.industryGuidance).toContain('place_order');
     });
 
-    it.each(['en', 'pt', 'fr'])('does not inject Spanish source prose into %s', async language => {
+    it.each([
+        ['en', 'For an order'],
+        ['pt', 'Para um pedido'],
+        ['fr', 'Pour une commande'],
+    ])('uses reviewed tool-flow guidance in %s without injecting Spanish source prose', async (language, expectedGuidance) => {
         const context = await service.resolve({
             tenantId: 'tenant-id', language,
             toolsConfig: { restaurants: { enabled: true } },
         });
         expect(context?.notOffered).toBeUndefined();
         expect(context?.avoidTerms).toBeUndefined();
-        expect(context?.industryGuidance).toBeUndefined();
+        expect(context?.industryGuidance).toContain(expectedGuidance);
+        expect(context?.industryGuidance).toContain('place_order');
         expect(context?.domainReviewRequired).toEqual(expect.arrayContaining([
             `prompt.notOffered.${language}`,
-            `flowGuidance.${language}`,
         ]));
+        expect(context?.domainReviewRequired).not.toContain(`flowGuidance.${language}`);
         expect(context?.domainContract?.intents.length).toBeGreaterThan(0);
     });
 

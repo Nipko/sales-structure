@@ -507,12 +507,13 @@ export function CapabilitiesSection({ config, onChange, apptReadiness }: Capabil
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {availability.catalog.visible && <ToolToggleCard icon={ShoppingBag} family="catalog" title={t("catalogTitle")} description={t("catalogDesc")} enabled={tools.catalog?.enabled === true} canEnable={availability.catalog.canEnable} blockedReason={availability.catalog.reason ? t(`toolAvailabilityState.${availability.catalog.reason}`) : undefined} onToggle={(v) => toggleTool("catalog", v)} t={t} />}
         {availability.faqs.visible && <ToolToggleCard icon={HelpCircle} family="faqs" title={t("faqsTitle")} description={t("faqsDesc")} enabled={tools.faqs?.enabled === true} canEnable={availability.faqs.canEnable} blockedReason={availability.faqs.reason ? t(`toolAvailabilityState.${availability.faqs.reason}`) : undefined} onToggle={(v) => toggleTool("faqs", v)} t={t} />}
-        <ToolToggleCard icon={Scale} title={t("policiesTitle")} description={t("policiesDesc")} enabled={tools.policies?.enabled === true} onToggle={(v) => onChange({ tools: { ...tools, policies: { enabled: v } } })} t={t} />
-        <ToolToggleCard icon={Tag} title={t("offersTitle")} description={t("offersDesc")} enabled={tools.offers?.enabled === true} onToggle={(v) => onChange({ tools: { ...tools, offers: { enabled: v } } })} t={t} />
+        <ToolToggleCard icon={Scale} family="policies" title={t("policiesTitle")} description={t("policiesDesc")} enabled={tools.policies?.enabled === true} onToggle={(v) => onChange({ tools: { ...tools, policies: { enabled: v } } })} t={t} />
+        <ToolToggleCard icon={Tag} family="offers" title={t("offersTitle")} description={t("offersDesc")} enabled={tools.offers?.enabled === true} onToggle={(v) => onChange({ tools: { ...tools, offers: { enabled: v } } })} t={t} />
         
         {/* Orders supports confirmation emails! */}
         <ToolToggleCard
           icon={Package}
+          family="orders"
           title={t("ordersTitle")}
           description={t("ordersDesc")}
           enabled={tools.orders?.enabled === true}
@@ -523,7 +524,7 @@ export function CapabilitiesSection({ config, onChange, apptReadiness }: Capabil
           t={t}
         />
 
-        <ToolToggleCard icon={UserCircle} title={t("crmTitle")} description={t("crmDesc")} enabled={tools.crm?.enabled === true} onToggle={(v) => onChange({ tools: { ...tools, crm: { enabled: v } } })} t={t} />
+        <ToolToggleCard icon={UserCircle} family="crm" title={t("crmTitle")} description={t("crmDesc")} enabled={tools.crm?.enabled === true} onToggle={(v) => onChange({ tools: { ...tools, crm: { enabled: v } } })} t={t} />
       </div>
 
       {/* ── E-commerce sales tools (T2.17) ── */}
@@ -835,6 +836,10 @@ function KnowledgeSection({ config, onChange, t }: { config: PersonaConfig; onCh
         </div>
         <button
           type="button"
+          role="switch"
+          aria-checked={rag.enabled}
+          aria-label={t("knowledgeToggleTitle")}
+          data-rag-control="automatic-retrieval"
           onClick={() => onChange({ rag: { ...rag, enabled: !rag.enabled } })}
           className={cn(
             "relative w-11 h-6 rounded-full transition-colors shrink-0",
@@ -848,8 +853,7 @@ function KnowledgeSection({ config, onChange, t }: { config: PersonaConfig; onCh
         </button>
       </div>
 
-      {rag.enabled && (
-        <div className="border-t border-neutral-100 dark:border-neutral-800 pt-3">
+      <div className="border-t border-neutral-100 dark:border-neutral-800 pt-3">
           <button
             type="button"
             onClick={() => setAdvancedOpen(!advancedOpen)}
@@ -863,7 +867,7 @@ function KnowledgeSection({ config, onChange, t }: { config: PersonaConfig; onCh
 
           {advancedOpen && (
           <div className="space-y-3 mt-3">
-
+          {rag.enabled && <>
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <label className="text-xs text-neutral-600 dark:text-neutral-400">{t("topK")}</label>
@@ -881,9 +885,10 @@ function KnowledgeSection({ config, onChange, t }: { config: PersonaConfig; onCh
             <input type="range" min={0} max={1} step={0.05} value={rag.similarityThreshold ?? 0.75} onChange={e => onChange({ rag: { ...rag, similarityThreshold: parseFloat(e.target.value) } })} className="w-full accent-indigo-500" />
             <p className="text-[10px] text-neutral-500 mt-1">{t("similarityHint")}</p>
           </div>
+          </>}
 
           <label className="flex items-center gap-3 cursor-pointer pt-2 border-t border-neutral-100 dark:border-neutral-800">
-            <input type="checkbox" checked={kbToolEnabled} onChange={e => onChange({ tools: { ...tools, knowledge: { enabled: e.target.checked } } })} className="w-4 h-4 rounded border-neutral-300 dark:border-neutral-600 accent-indigo-500" />
+            <input type="checkbox" data-tool-family="knowledge" checked={kbToolEnabled} onChange={e => onChange({ tools: { ...tools, knowledge: { enabled: e.target.checked } } })} className="w-4 h-4 rounded border-neutral-300 dark:border-neutral-600 accent-indigo-500" />
             <div>
               <span className="text-sm font-medium text-neutral-800 dark:text-neutral-200">{t("kbTool")}</span>
               <p className="text-xs text-neutral-500 dark:text-neutral-400">{t("kbToolDesc")}</p>
@@ -891,8 +896,7 @@ function KnowledgeSection({ config, onChange, t }: { config: PersonaConfig; onCh
           </label>
           </div>
           )}
-        </div>
-      )}
+      </div>
     </div>
   );
 }

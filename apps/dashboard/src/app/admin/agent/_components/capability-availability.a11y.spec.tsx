@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { listVerticalCapabilityConfigurations, VERTICAL_TOOL_GROUPS } from "@parallext/shared";
+import { AGENT_CONFIG_TOOL_FAMILIES, listVerticalCapabilityConfigurations, VERTICAL_TOOL_GROUPS } from "@parallext/shared";
 import { interact, renderScreen } from "@/test/a11y";
 import { CapabilitiesSection } from "./CapabilitiesSection";
 import { defaultConfig, type PersonaConfig } from "../_types";
@@ -117,6 +117,37 @@ describe("rendered tools match the business subtype", () => {
       await interact(() => discount.click());
       expect(recommend.checked).toBe(false);
       expect(discount.checked).toBe(true);
+    } finally { screen.unmount(); }
+  });
+
+  it("keeps the independent knowledge tool visible when automatic RAG is off", async () => {
+    context.verticalConfig = { industry: "retail", subType: "moda" };
+    const screen = await renderScreen(<Editor tools={{ knowledge: { enabled: true } }} />);
+    try {
+      const rag = screen.container.querySelector<HTMLButtonElement>('button[data-rag-control="automatic-retrieval"]')!;
+      expect(rag.getAttribute("role")).toBe("switch");
+      expect(rag.getAttribute("aria-label")).toBeTruthy();
+      expect(rag.getAttribute("aria-checked")).toBe("false");
+      await interact(() => screen.container.querySelector<HTMLButtonElement>('button[aria-expanded="false"]')!.click());
+      const knowledge = screen.container.querySelector<HTMLInputElement>('input[data-tool-family="knowledge"]')!;
+      expect(knowledge.checked).toBe(true);
+      await interact(() => knowledge.click());
+      expect(knowledge.checked).toBe(false);
+      expect(rag.getAttribute("aria-checked")).toBe("false");
+    } finally { screen.unmount(); }
+  });
+
+  it("exposes every horizontal tool family through a counted control", async () => {
+    context.verticalConfig = { industry: "retail", subType: "moda" };
+    const screen = await renderScreen(<Editor />);
+    try {
+      await interact(() => screen.container.querySelector<HTMLButtonElement>('button[aria-expanded="false"]')!.click());
+      const vertical = new Set<string>(VERTICAL_TOOL_GROUPS);
+      const expected = AGENT_CONFIG_TOOL_FAMILIES.filter(family => !vertical.has(family)).sort();
+      const actual = Array.from(screen.container.querySelectorAll<HTMLElement>("[data-tool-family]"))
+        .map(control => control.dataset.toolFamily!)
+        .filter(family => !vertical.has(family)).sort();
+      expect(actual).toEqual(expected);
     } finally { screen.unmount(); }
   });
 

@@ -12,6 +12,7 @@ import { eraseSimulationContactReplays } from '../simulation/simulation-replay-r
 import { eraseContactRegressionArtifacts } from '../quality/regressions/quality-regression-retention';
 import { requestCrmNoteRetraction } from '../external-crm/crm-note-receipts';
 import { eraseOperationalContactNotices } from '../operational-notices/operational-notice-erasure';
+import { erasePublicWebhookDeliveries } from '../public-api/webhook-delivery-erasure';
 import { eraseContactMissionEvidence } from '../quality/mission-evidence';
 import { retireKnowledgeReplicasInTransaction } from '../evaluation-revision/evaluation-knowledge-lifecycle';
 
@@ -468,6 +469,9 @@ export class ComplianceService {
             const regressionCases = await eraseContactRegressionArtifacts(query, contactIds);
             const simulationReplays = await eraseSimulationContactReplays(query, contactIds);
             const operationalNotices = await eraseOperationalContactNotices(query,schema,contactIds);
+            const publicWebhookDeliveries = await erasePublicWebhookDeliveries(
+                query, tenantId, contactIds,
+            );
             await eraseContactMissionEvidence(query,contactIds);
             const [petReceipts] = await query<any[]>('SELECT to_regclass($1)::text AS name', [`${schema}.pet_command_receipts`]);
             if (petReceipts?.name) await query('DELETE FROM pet_command_receipts WHERE contact_id=ANY($1::uuid[])', [contactIds]);
@@ -513,7 +517,8 @@ export class ComplianceService {
             const merged = await query<any[]>(
                 `DELETE FROM customer_memories WHERE contact_id = ANY($1::uuid[]) RETURNING contact_id`, [contactIds]);
             return facts.length + merged.length + widgetSessions + widgetReplies + dispatchItems
-                + regressionCases + simulationReplays + operationalNotices + crmNotes;
+                + regressionCases + simulationReplays + operationalNotices + publicWebhookDeliveries
+                + crmNotes;
         });
     }
 

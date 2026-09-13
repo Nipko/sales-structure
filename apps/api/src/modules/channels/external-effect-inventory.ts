@@ -764,8 +764,8 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
                 + '`last_triggered_at` is updated atomically only with a conclusive 2xx'),
             uncertainOutcome: durable('no provider answer settles the leased row as unknown and never '
                 + 'makes it eligible for another POST'),
-            erasure: none('the durable payload can name a contact, but contact erasure does not yet '
-                + 'scrub or remove matching webhook delivery rows'),
+            erasure: durable('contact erasure redacts matching payloads and terminally rejects pending '
+                + 'or in-flight rows under the shared privacy fence'),
             recovery: durable('the per-minute sweep claims pending rows; an expired admitted lease '
                 + 'becomes unknown instead of being transmitted a second time'),
         },

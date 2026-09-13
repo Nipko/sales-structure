@@ -6,6 +6,7 @@ import {
     resolveSubtypeExperienceProfile,
     resolveIntentWorkflow,
     subtypeTerminologyFor,
+    localizeVerticalPromptPhrases,
     type LocalizedTerm,
     type VerticalContext,
 } from '@parallext/shared';
@@ -110,28 +111,22 @@ export class VerticalTurnContextService {
             context.transactionNoun = pick(terms.transactionNoun) || context.transactionNoun;
             context.primaryObjectNoun = pick(terms.primaryObject);
             context.primaryObjectNounPlural = pick(terms.primaryObjectPlural);
-            // Avoid lists are source-authored in Spanish today. Injecting them
-            // into EN/PT/FR is not localization; it is prompt contamination.
-            if (language === 'es' && terms.avoid?.length) {
-                context.avoidTerms = [...terms.avoid];
-            }
+            const avoid = localizeVerticalPromptPhrases(terms.avoid ?? [], language);
+            if (avoid.values.length) context.avoidTerms = avoid.values;
         }
 
         const profile = resolveSubtypeExperienceProfile(config.industry, config.subType ?? null);
-        // Same rule as avoid terms: retain the boundary structurally through
-        // domain intents/capability, but do not present Spanish prose as if it
-        // were an English, Portuguese or French instruction.
-        if (language === 'es' && profile.exclusions?.length) {
-            context.notOffered = [...profile.exclusions];
-        }
+        const localizedExclusions = localizeVerticalPromptPhrases(profile.exclusions, language);
+        if (localizedExclusions.values.length) context.notOffered = localizedExclusions.values;
 
         const domain = buildDomainContractDraft(config.industry, config.subType ?? null);
+        const localizedClaims = localizeVerticalPromptPhrases(domain.prompt.claims, language);
         context.domainContract = {
             contractVersion: domain.contractVersion,
             profileId: domain.profileId,
             status: domain.status,
             scope: domain.prompt.scope,
-            claims: language === 'es' ? [...domain.prompt.claims] : [],
+            claims: localizedClaims.values,
             intents: domain.intents.map(intent => ({
                 ...(() => {
                     const workflow = resolveIntentWorkflow({ profileId: domain.profileId, intent });
@@ -158,15 +153,10 @@ export class VerticalTurnContextService {
         const review = new Set<string>([...domain.unresolved, ...missingLocalizedTerms]);
         if (!domain.prompt.terminology.customerNoun) review.add('terminology.customerNoun');
         if (!domain.prompt.terminology.transactionNoun) review.add('terminology.transactionNoun');
-        if (language !== 'es' && profile.exclusions.length) {
-            review.add(`prompt.notOffered.${language}`);
-        }
-        if (language !== 'es' && domain.prompt.claims.length) {
-            review.add(`prompt.claims.${language}`);
-        }
-        if (language !== 'es' && (terms?.avoid?.length || 0) > 0) {
-            review.add(`terminology.avoid.${language}`);
-        }
+        if (localizedExclusions.missing.length) review.add(`prompt.notOffered.${language}`);
+        if (localizedClaims.missing.length) review.add(`prompt.claims.${language}`);
+        const localizedAvoid = localizeVerticalPromptPhrases(terms?.avoid ?? [], language);
+        if (localizedAvoid.missing.length) review.add(`terminology.avoid.${language}`);
 
         const guidance = this.flowGuidance(config.industry, input.toolsConfig, language);
         if (guidance) context.industryGuidance = guidance;

@@ -51,7 +51,6 @@ import {
     localizedTerm, subtypeTerminologyFor, resolveSubtypeExperienceProfile,
     type EffectiveCapabilityContract, type TurnCapability,
     isToolAuthorityDenial,
-    isScopedAddressKey,
     type LocalizedTerm, type ToolExecutionAuthority,
 } from '@parallext/shared';
 import { outboundDedupeId, providerMessageId } from '../../common/utils/provider-message-id.util';
@@ -864,34 +863,6 @@ export class ConversationsService {
                     triggeredBy: 'customer_reply',
                 },
             );
-        }
-
-        // ── 1b. A CUSTOMER WE CANNOT ANSWER YET ─────────────────────────────
-        //
-        // They wrote from a business-scoped id, so `contacts.external_id` is
-        // `bsuid:<portfolio>:<id>` and `contacts.phone` is null — deliberately,
-        // because an opaque id put where a phone goes is a message delivered to
-        // a stranger. Every producer below copies the contact key straight into
-        // `to`, and no provider endpoint takes that string as a destination.
-        //
-        // Ingesting the message is right: the business sees a real customer
-        // wrote, in the inbox, and can act on it. Running the TURN is not.
-        // Without this the model runs, the tools run, and `saveAiMessage`
-        // inserts the reply with a hardcoded `status='delivered'` — so the
-        // inbox shows a delivered answer the customer never received — and only
-        // then does the queue refuse it, leaving a worker log line as the only
-        // trace of the contradiction. Paying a model to write an answer that
-        // cannot leave is the smaller half of that.
-        //
-        // Placed ABOVE the after-hours branch on purpose: that branch SENDS,
-        // and it would send here too.
-        if (isScopedAddressKey(normalizedMsg.contactId)) {
-            this.logger.warn(`[Pipeline] ${conversation.id}: the customer is addressed by a `
-                + 'business-scoped id, which no endpoint accepts as a destination. Inbound kept, '
-                + 'no reply attempted.');
-            await this.saveMessage(tenantId, conversation.id, normalizedMsg);
-            this.recordAgentSignal(tenantId, 'recipient_not_addressable');
-            return;
         }
 
         // 2. Load Persona & Check Business Hours — per-connection agent resolution

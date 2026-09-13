@@ -1131,12 +1131,12 @@ export class OutboundQueueProcessor extends WorkerHost {
         //
         // Returns, never throws. An exception burns one of the attempts, and at
         // the end of them the reply is dropped with nothing saying why — while
-        // waiting changes nothing about a destination that does not exist.
+        // waiting cannot make a WhatsApp identity valid on another channel.
         // Nothing is released because nothing was reserved: this is before
         // `gateOrSuppress`, which is the only thing here that reserves.
-        if (isScopedAddressKey(outbound.to)) {
+        if (outbound.channelType !== 'whatsapp' && isScopedAddressKey(outbound.to)) {
             this.logger.warn(`[Outbound] tenant=${outbound.tenantId}: recipient is a `
-                + 'business-scoped id, which no endpoint accepts as a destination. Not sent, '
+                + 'WhatsApp business-scoped id, which this channel cannot address. Not sent, '
                 + 'not retried, nothing reserved.');
             return 'skipped:recipient_not_addressable';
         }

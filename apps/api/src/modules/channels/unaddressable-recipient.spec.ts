@@ -7,23 +7,19 @@ import {
 } from './__fixtures__/spend-gate-double';
 
 /**
- * ═══ A CUSTOMER WE CAN HEAR AND CANNOT ANSWER ═══
+ * ═══ A SCOPED KEY ONLY WHATSAPP CAN ADDRESS ═══
  *
  * The ingress accepts somebody who wrote without a phone number: their
  * `contacts.external_id` is `bsuid:<portfolio>:<id>`, and that string is what
- * every producer carries as the recipient. It is not a destination — Meta's
- * `/messages` takes a phone in `to` — and the outbound half does not exist.
- *
- * The refusal was originally reachable only through `sendStrict`. Durable
- * delivery is now mandatory, and the gateway retains the same invariant so a
- * new producer cannot bypass it by reaching a lower-level sender.
+ * every producer carries as the recipient. WhatsApp accepts its raw BSUID;
+ * every other adapter must reject this channel-specific storage key.
  *
  * These cases pin the three places that now answer, each of which is reached by
  * a different caller.
  */
 const SCOPED = `${SCOPED_ADDRESS_PREFIX}102290129340398:BSU_abc123XYZ`;
 
-describe('the gateway refuses what no endpoint can address', () => {
+describe('the gateway routes a scoped key only to WhatsApp', () => {
     const gateway = () => {
         const g = new ChannelGatewayService();
         const sent: any[] = [];
@@ -40,17 +36,11 @@ describe('the gateway refuses what no endpoint can address', () => {
         content: { type: 'text', text: 'hola' },
     }) as any;
 
-    it('throws rather than returning null, and posts nothing', async () => {
-        // The asymmetry is the whole point. This gateway turns every transport
-        // failure into `null`, and the processor reads a `null` as "no
-        // answer came back": it records the reservation as a TIMEOUT — which
-        // RETAINS the money for a message provably never posted — and then
-        // throws, burning the job's attempts. Nothing was sent here, and
-        // nothing can be.
+    it('lets the WhatsApp adapter decode the key at its provider boundary', async () => {
         const { g, sent } = gateway();
         await expect(g.sendMessage(outbound(SCOPED), 'token', {} as any))
-            .rejects.toBeInstanceOf(UnaddressableRecipient);
-        expect(sent).toEqual([]);
+            .resolves.toBe('wamid.SENT');
+        expect(sent).toEqual([SCOPED]);
     });
 
     it('refuses on a channel that never mints such a key either', async () => {
@@ -104,7 +94,7 @@ describe('unaddressable is not a billing question', () => {
         connection: {
             tenantId: '11111111-1111-1111-1111-111111111111',
             schema: 'tenant_x', channelType,
-            channelAccountId: '15550001111', wabaId: 'waba-1',
+            channelAccountId: '15550001111', payerWabaId: '102290129340398',
         },
         schema: 'tenant_x',
         recipientAddress,
@@ -112,7 +102,7 @@ describe('unaddressable is not a billing question', () => {
         category: 'service',
     }) as any;
 
-    it.each(['telegram', 'instagram', 'messenger', 'whatsapp'])(
+    it.each(['telegram', 'instagram', 'messenger'])(
         'refuses a scoped recipient on %s', async channelType => {
             const verdict = await admission().admit(request(channelType, SCOPED));
             expect(verdict.permitted).toBe(false);
@@ -121,18 +111,30 @@ describe('unaddressable is not a billing question', () => {
             // nothing reserved means nothing to release.
         });
 
+    it('takes an in-scope WhatsApp BSUID to the economic authority', async () => {
+        await expect(admission().admit(request('whatsapp', SCOPED)))
+            .rejects.toThrow('spend_meter_unavailable');
+    });
+
+    it('refuses a WhatsApp BSUID scoped to another portfolio', async () => {
+        const verdict = await admission().admit(request(
+            'whatsapp', `${SCOPED_ADDRESS_PREFIX}another-waba:BSU_abc123XYZ`));
+        expect(verdict.permitted).toBe(false);
+        expect(verdict.block?.code).toBe('recipient_not_addressable');
+    });
+
     it('says whether enforcement is on, rather than claiming observe', async () => {
         // The verdict carries the mode on every path. Hardcoding 'observe' here
         // to avoid one memoised read would tell an operator enforcement was off
         // while it was on.
         const svc = admission();
         svc.enforcementFor = async () => 'enforce';
-        const verdict = await svc.admit(request('whatsapp', SCOPED));
+        const verdict = await svc.admit(request('telegram', SCOPED));
         expect(verdict.enforcement).toBe('enforce');
     });
 });
 
-describe('the busiest lane stops before the credential, and says why', () => {
+describe('the legacy lane also lets WhatsApp address a BSUID', () => {
     /**
      * The loose `outbound_queue` lane carries every AI reply today, because
      * `DispatchRolloutService` leaves the durable lane off by default.
@@ -171,22 +173,20 @@ describe('the busiest lane stops before the credential, and says why', () => {
         return { processor, job, channelGateway, channelToken };
     };
 
-    it('completes the job once, names the real reason, and never reaches the gateway', async () => {
+    it('sends it through the same admitted gateway', async () => {
         const h = harness();
-        // Completes rather than throws. An exception burns one of the job's
-        // attempts, and at the end of them the reply is dropped with nothing
-        // saying why — while waiting changes nothing about a destination that
-        // does not exist.
-        await expect(h.processor.process(h.job(SCOPED))).resolves.toBe('skipped:recipient_not_addressable');
-        expect(h.channelGateway.sendMessage).not.toHaveBeenCalled();
+        await expect(h.processor.process(h.job(SCOPED))).resolves.toBe('wamid.SENT');
+        expect(h.channelGateway.sendMessage).toHaveBeenCalledWith(
+            expect.objectContaining({ to: SCOPED, channelType: 'whatsapp' }),
+            expect.any(String), expect.any(Object),
+        );
     });
 
-    it('does not even fetch the access token for it', async () => {
-        // Before the credential, deliberately: resolving a token is a network
-        // call and a decrypt for a send that cannot happen.
+    it('resolves the exact connection token for it', async () => {
         const h = harness();
         await h.processor.process(h.job(SCOPED));
-        expect(h.channelToken.getChannelToken).not.toHaveBeenCalled();
+        expect(h.channelToken.getChannelToken).toHaveBeenCalledWith(
+            TENANT, 'whatsapp', 'phone-1');
     });
 
     it('still sends an ordinary message', async () => {

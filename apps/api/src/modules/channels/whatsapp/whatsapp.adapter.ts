@@ -1,4 +1,4 @@
-import { isScopedAddressKey } from '@parallext/shared';
+import { whatsAppProviderRecipient } from '@parallext/shared';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { IChannelAdapter } from '../channel-gateway.service';
@@ -44,24 +44,14 @@ export class WhatsAppAdapter implements IChannelAdapter, StrictDispatchTransport
      * admitted item, after a rejection somebody actually observed.
      */
     async sendStrict(request: StrictDispatchRequest, accessToken: string): Promise<StrictDispatchOutcome> {
-        // ── A DESTINATION THIS ENDPOINT DOES NOT UNDERSTAND ─────────────────
-        //
-        // The ingress can now accept a customer who wrote without a phone
-        // number: their `contacts.external_id` is `bsuid:<portfolio>:<id>`, and
-        // that is what a producer carries as the recipient. Put in `to`, it is
-        // not a destination — Meta rejects it, and what an operator sees is a
-        // provider error about a malformed number for a conversation that looks
-        // ordinary.
-        //
-        // Meta DOES accept a business-scoped id as a destination, through a
-        // different field. That is not implemented here, and implementing it
-        // against a shape nobody has exercised would be guessing. So this
-        // refuses, by name and without posting: an outbound half that does not
-        // exist yet is a gap, and a gap that says so is not an outage.
-        if (isScopedAddressKey(request.to)) {
+        // Meta accepts both a phone and a raw BSUID in `to`. The stored contact
+        // key carries `bsuid:<portfolio>:` to prevent cross-business identity
+        // collisions; strip only that verified envelope at the provider edge.
+        const recipient = whatsAppProviderRecipient(request.to);
+        if (!recipient) {
             return {
                 kind: 'rejected',
-                errorCode: 'scoped_recipient_unsupported',
+                errorCode: 'recipient_not_addressable',
                 retryable: false,
             };
         }
@@ -78,7 +68,7 @@ export class WhatsAppAdapter implements IChannelAdapter, StrictDispatchTransport
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
                 body: JSON.stringify({ messaging_product: 'whatsapp', recipient_type: 'individual',
-                    to: request.to, ...body }),
+                    to: recipient, ...body }),
                 signal: AbortSignal.timeout(10_000),
             });
         } catch (error) {
@@ -248,6 +238,8 @@ export class WhatsAppAdapter implements IChannelAdapter, StrictDispatchTransport
      */
     async sendTypingIndicator(phoneNumberId: string, to: string, accessToken: string): Promise<void> {
         if (!phoneNumberId || !to) return;
+        const recipient = whatsAppProviderRecipient(to);
+        if (!recipient) return;
 
         try {
             const url = `${this.apiUrl}/${phoneNumberId}/messages`;
@@ -260,7 +252,7 @@ export class WhatsAppAdapter implements IChannelAdapter, StrictDispatchTransport
                 body: JSON.stringify({
                     messaging_product: 'whatsapp',
                     recipient_type: 'individual',
-                    to,
+                    to: recipient,
                     type: 'typing_indicator',
                     typing_indicator: {
                         type: 'text',
@@ -346,6 +338,7 @@ export class WhatsAppAdapter implements IChannelAdapter, StrictDispatchTransport
      */
     async sendTextMessage(to: string, text: string, phoneNumberId: string, accessToken: string): Promise<string> {
         const url = `${this.apiUrl}/${phoneNumberId}/messages`;
+        const recipient = this.requireRecipient(to);
 
         const response = await fetch(url, {
             method: 'POST',
@@ -356,7 +349,7 @@ export class WhatsAppAdapter implements IChannelAdapter, StrictDispatchTransport
             body: JSON.stringify({
                 messaging_product: 'whatsapp',
                 recipient_type: 'individual',
-                to,
+                to: recipient,
                 type: 'text',
                 text: { body: toWhatsAppFormatting(text) },
             }),
@@ -386,6 +379,7 @@ export class WhatsAppAdapter implements IChannelAdapter, StrictDispatchTransport
         filename?: string,
     ): Promise<string> {
         const url = `${this.apiUrl}/${phoneNumberId}/messages`;
+        const recipient = this.requireRecipient(to);
 
         // Build the per-type media object. Documents carry a filename; audio has no caption.
         const type = ['image', 'document', 'audio', 'video'].includes(mediaType) ? mediaType : 'image';
@@ -402,7 +396,7 @@ export class WhatsAppAdapter implements IChannelAdapter, StrictDispatchTransport
             body: JSON.stringify({
                 messaging_product: 'whatsapp',
                 recipient_type: 'individual',
-                to,
+                to: recipient,
                 type,
                 [type]: mediaObj,
             }),
@@ -531,10 +525,11 @@ export class WhatsAppAdapter implements IChannelAdapter, StrictDispatchTransport
         sections: Array<{ title: string; rows: Array<{ id: string; title: string; description?: string }> }>,
     ): Promise<string> {
         const url = `${this.apiUrl}/${phoneNumberId}/messages`;
+        const recipient = this.requireRecipient(to);
         const payload = {
             messaging_product: 'whatsapp',
             recipient_type: 'individual',
-            to,
+            to: recipient,
             type: 'interactive',
             interactive: {
                 type: 'list',
@@ -583,6 +578,7 @@ export class WhatsAppAdapter implements IChannelAdapter, StrictDispatchTransport
         buttons: Array<{ id: string; title: string }>,
     ): Promise<string> {
         const url = `${this.apiUrl}/${phoneNumberId}/messages`;
+        const recipient = this.requireRecipient(to);
         this.logger.log(`[WhatsApp] Sending button message with ${buttons.length} buttons`);
         const response = await fetch(url, {
             method: 'POST',
@@ -590,7 +586,7 @@ export class WhatsAppAdapter implements IChannelAdapter, StrictDispatchTransport
             body: JSON.stringify({
                 messaging_product: 'whatsapp',
                 recipient_type: 'individual',
-                to,
+                to: recipient,
                 type: 'interactive',
                 interactive: {
                     type: 'button',
@@ -640,6 +636,7 @@ export class WhatsAppAdapter implements IChannelAdapter, StrictDispatchTransport
         },
     ): Promise<string> {
         const url = `${this.apiUrl}/${phoneNumberId}/messages`;
+        const recipient = this.requireRecipient(to);
         const interactive: any = {
             type: 'flow',
             body: { text: toWhatsAppFormatting(body || '').slice(0, 1024) },
@@ -678,7 +675,7 @@ export class WhatsAppAdapter implements IChannelAdapter, StrictDispatchTransport
             body: JSON.stringify({
                 messaging_product: 'whatsapp',
                 recipient_type: 'individual',
-                to,
+                to: recipient,
                 type: 'interactive',
                 interactive,
             }),
@@ -696,5 +693,11 @@ export class WhatsAppAdapter implements IChannelAdapter, StrictDispatchTransport
                 { status: response.status, body: data });
         }
         return data?.messages?.[0]?.id || '';
+    }
+
+    private requireRecipient(address: string): string {
+        const recipient = whatsAppProviderRecipient(address);
+        if (!recipient) throw new Error('recipient_not_addressable');
+        return recipient;
     }
 }

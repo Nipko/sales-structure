@@ -1,4 +1,4 @@
-import { isScopedAddressKey } from '@parallext/shared';
+import { isScopedAddressKey, parseScopedAddressKey } from '@parallext/shared';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PROVIDER_BILLED_CHANNELS, type OutboundSendContext } from '@parallext/shared';
@@ -279,7 +279,7 @@ export class WhatsappSendAdmissionService {
         // Checked before the identity requirement below: an unbilled channel is
         // not a chargeable effect, so demanding a durable identity from it would
         // stop Telegram replies to protect a WhatsApp invoice.
-        // ── A DESTINATION NOTHING CAN ADDRESS ───────────────────────────────
+        // ── A DESTINATION ONLY ITS WHATSAPP PORTFOLIO CAN ADDRESS ───────────
         //
         // Above the unbilled early return, deliberately. "No provider bills
         // this channel" and "this string is a destination" are different
@@ -289,16 +289,17 @@ export class WhatsappSendAdmissionService {
         // Nothing mints such a key for those channels today, which is
         // exactly why the guard belongs here rather than in whoever might.
         //
-        // A business-scoped customer key reaches here as the recipient
-        // address. Meta's `/messages` takes a phone in `to`, so the POST
-        // cannot land — and by the time the transport says so, this service
-        // has already reserved money and the lane has committed a durable
-        // row, both for an effect that will never arrive.
-        //
-        // Refused here: nothing reserved, nothing committed, and the reason
-        // names the real situation instead of surfacing as a provider error
-        // about a malformed number.
-        if (isScopedAddressKey(request.recipientAddress ?? null)) {
+        // A WhatsApp BSUID is valid only within the portfolio that minted it.
+        // The transport can unwrap it into Meta's `to` field, but admission
+        // must first prove that the selected payer belongs to the same WABA.
+        // A malformed or cross-WABA key is refused before money is reserved.
+        const scopedRecipient = parseScopedAddressKey(request.recipientAddress ?? null);
+        const scopedCannotUseConnection = isScopedAddressKey(request.recipientAddress ?? null)
+            && (channel !== 'whatsapp'
+                || !scopedRecipient
+                || ![request.connection.payerWabaId, request.connection.channelAccountId]
+                    .filter(Boolean).includes(scopedRecipient.portfolioId));
+        if (scopedCannotUseConnection) {
             return Object.freeze({
                 permitted: false, effectKey,
                 // Read even though this is not a money decision: the verdict

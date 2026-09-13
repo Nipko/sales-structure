@@ -82,8 +82,8 @@ export interface WhatsAppChannelIdentity {
     readonly phoneProvenance: 'message_sender' | 'portfolio_contact' | null;
 }
 
-/** A scoped id is opaque: digits, letters, and the separators Meta uses. */
-const SCOPED_ID = /^[A-Za-z0-9_-]{4,120}$/;
+/** A scoped id is opaque and can contain up to 256 characters. */
+const SCOPED_ID = /^[A-Za-z0-9._-]{4,256}$/;
 /** A phone as Meta sends it on this surface: digits, no plus, no spaces. */
 const WA_PHONE = /^[0-9]{6,20}$/;
 
@@ -201,6 +201,28 @@ export function whatsAppStatusIdentity(
 /** The prefix a business-scoped address key carries. */
 export const SCOPED_ADDRESS_PREFIX = 'bsuid:';
 
+export interface ScopedAddressKey {
+    readonly portfolioId: string;
+    readonly identifier: string;
+}
+
+/**
+ * Decode the storage key without ever treating either part as a phone.
+ *
+ * The provider receives only `identifier`; `portfolioId` is the fence the
+ * admission layer compares with the selected WABA before a POST is allowed.
+ */
+export function parseScopedAddressKey(address: unknown): ScopedAddressKey | null {
+    if (typeof address !== 'string' || !address.startsWith(SCOPED_ADDRESS_PREFIX)) return null;
+    const encoded = address.slice(SCOPED_ADDRESS_PREFIX.length);
+    const separator = encoded.indexOf(':');
+    if (separator < 1) return null;
+    const portfolioId = encoded.slice(0, separator).trim();
+    const identifier = encoded.slice(separator + 1).trim();
+    if (!portfolioId || !SCOPED_ID.test(identifier)) return null;
+    return Object.freeze({ portfolioId, identifier });
+}
+
 /**
  * Is this stored address key a business-scoped id rather than a phone?
  *
@@ -211,6 +233,19 @@ export const SCOPED_ADDRESS_PREFIX = 'bsuid:';
  */
 export function isScopedAddressKey(address: unknown): boolean {
     return typeof address === 'string' && address.startsWith(SCOPED_ADDRESS_PREFIX);
+}
+
+/**
+ * The value accepted by WhatsApp's `to` field.
+ *
+ * Meta accepts a phone or a raw BSUID in the same field. Our stored key carries
+ * the portfolio as well, so it must be decoded at the final WhatsApp boundary.
+ * A malformed scoped key is refused instead of being posted as a phone.
+ */
+export function whatsAppProviderRecipient(address: unknown): string | null {
+    if (typeof address !== 'string' || !address.trim()) return null;
+    if (!isScopedAddressKey(address)) return address;
+    return parseScopedAddressKey(address)?.identifier ?? null;
 }
 
 /**

@@ -6,21 +6,21 @@ import type { StrictDispatchTransport } from './strict-dispatch-transport';
 import { classifyFlowFailure } from './flow-fallback';
 
 /**
- * A recipient no channel endpoint can address.
+ * A recipient the selected channel endpoint cannot address.
  *
  * Thrown rather than returned as `null`, and the asymmetry is the point.
  * This gateway turns every transport failure into `null`, and a `null`
  * means "no answer came back": the legacy processor records the
  * reservation as a TIMEOUT, which RETAINS the money for a message provably
  * never posted, and then throws — burning the job's attempts. Neither is
- * true here. Nothing was sent, nothing can be, and waiting does not turn a
- * business-scoped id into a phone number.
+ * true here. Nothing was sent, nothing can be, and waiting does not make a
+ * WhatsApp-specific identity valid on another channel.
  *
  * Every caller of `sendMessage` asks the spend authority first, and that
  * authority refuses this by name (`recipient_not_addressable`), so this
  * should never fire. It remains a transport-boundary invariant because a
- * future caller must not turn a business-scoped identity into a provider
- * destination merely by omitting admission.
+ * future caller must not send a WhatsApp-specific identity to another
+ * provider merely by omitting admission.
  */
 export class UnaddressableRecipient extends Error {
     constructor(readonly channelType: string) {
@@ -182,22 +182,18 @@ export class ChannelGatewayService {
             return null;
         }
 
-        // ── A DESTINATION NO ENDPOINT UNDERSTANDS ───────────────────────
+        // ── A DESTINATION THIS CHANNEL DOES NOT UNDERSTAND ─────────────
         //
-        // One question — is this stored address a business-scoped id rather
-        // than something a provider takes in a destination field — and the
-        // answer is the same for every channel that arrives here. WhatsApp
-        // is where such a key is minted; Telegram, Instagram, Messenger and
-        // the widget would not know what to do with one either. So it is
-        // not gated on the channel.
+        // WhatsApp mints and can address the raw BSUID carried inside this
+        // storage key. Telegram, Instagram, Messenger and the widget cannot.
         //
         // Deliberately BEFORE `sendOutbound` and the five legacy senders,
         // and deliberately OUTSIDE the try below: that catch turns every
         // exception into `null`, which is the one answer this refusal must
         // never be confused with.
-        if (isScopedAddressKey(outbound.to)) {
+        if (outbound.channelType !== 'whatsapp' && isScopedAddressKey(outbound.to)) {
             this.logger.error(`[Gateway] refusing ${outbound.channelType}: the recipient is a `
-                + 'business-scoped id, which no channel endpoint accepts as a destination');
+                + 'WhatsApp business-scoped id, which this channel cannot address');
             throw new UnaddressableRecipient(outbound.channelType);
         }
 

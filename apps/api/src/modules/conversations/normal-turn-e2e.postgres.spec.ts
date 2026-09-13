@@ -724,19 +724,13 @@ const ready = !!databaseUrl && !!redisUrl;
             });
         });
 
-        it('hears a customer with no phone number, and does not pretend to answer them', async () => {
+        it('hears and answers a customer identified only by BSUID', async () => {
             // Meta's business-scoped user ids: the person writes and the
             // business never sees a number, so the webhook carries
             // `from_user_id` where it used to carry `from`. The ingress now
             // accepts that — the contact key becomes `bsuid:<portfolio>:<id>`
-            // — and the outbound half does not exist, because no provider
-            // endpoint takes that string as a destination.
-            //
-            // The turn used to run anyway: model, tools, and an outbound row
-            // written with a hardcoded `status='delivered'`. The queue then
-            // refused it, so the inbox showed a DELIVERED answer the customer
-            // never received, and the only trace of the contradiction was a
-            // worker log line.
+            // — and the WhatsApp transport removes the storage-only portfolio
+            // prefix before putting the raw BSUID in Meta's `to` field.
             const wamid = `wamid.IN.${randomUUID()}`;
             const turns = () => (conversations.generateResponse as jest.Mock).mock.calls.length;
             const before = turns();
@@ -766,16 +760,11 @@ const ready = !!databaseUrl && !!redisUrl;
                    ORDER BY created_at`, [inboundId]);
             expect(thread.filter((row: any) => row.direction === 'inbound').length).toBe(1);
 
-            // NOT ANSWERED, and not claimed to be. No outbound row at all is
-            // the only honest state: one saying `delivered` would be a lie,
-            // and one saying `failed` would invite a retry that cannot work.
-            expect(thread.filter((row: any) => row.direction === 'outbound')).toEqual([]);
-
-            // Nothing was queued for it either, so no lane can post later.
-            expect(await outboxRows(inboundId)).toEqual([]);
-
-            // And no model was paid to write an answer that cannot leave.
-            expect(turns()).toBe(before);
+            expect(thread.filter((row: any) => row.direction === 'outbound').length)
+                .toBeGreaterThan(0);
+            expect(await outboxRows(inboundId)).not.toEqual([]);
+            expect(turns()).toBe(before + 1);
+            expect(remoteEffects.length).toBeGreaterThan(0);
         });
 
         it('refuses to acknowledge a webhook it could not enqueue', async () => {

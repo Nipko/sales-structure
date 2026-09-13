@@ -1,24 +1,19 @@
 import { WhatsAppAdapter } from './whatsapp.adapter';
-import { isScopedAddressKey, SCOPED_ADDRESS_PREFIX } from '@parallext/shared';
+import {
+    isScopedAddressKey, parseScopedAddressKey, SCOPED_ADDRESS_PREFIX,
+    whatsAppProviderRecipient,
+} from '@parallext/shared';
 
 /**
- * ═══ THE OUTBOUND HALF THAT DOES NOT EXIST YET ═══
+ * ═══ THE OUTBOUND HALF OF A PHONE-PRIVATE CUSTOMER ═══
  *
  * The ingress can now accept a customer who wrote without a phone number: their
  * `contacts.external_id` is `bsuid:<portfolio>:<id>`, and that string is what a
  * producer carries as the recipient.
  *
- * Put in `to`, it is not a destination. Meta's `/messages` endpoint expects a
- * phone there, so the POST is rejected and what an operator sees is a provider
- * error about a malformed number, on a conversation that looks entirely
- * ordinary. Worse, it is a charge attempt and a retry loop for a message that
- * can never land.
- *
- * Meta DOES accept a business-scoped id as a destination, through a different
- * field. Implementing that against a shape nobody here has exercised would be
- * guessing, and guessing about a destination is how a message reaches the wrong
- * person. So the transport refuses by name and without posting: a gap that says
- * so is not an outage, and the refusal is the thing that keeps it visible.
+ * Meta accepts either a phone or a raw BSUID in the same `to` field. The
+ * portfolio prefix exists only in our storage key, to prevent two businesses
+ * from merging contacts. The transport removes that envelope at the last hop.
  */
 describe('sending to a customer who has no phone number', () => {
     function adapter() {
@@ -47,18 +42,23 @@ describe('sending to a customer who has no phone number', () => {
         payload: { text: 'hola' },
     });
 
-    it('refuses a business-scoped recipient without posting anything', async () => {
+    it('posts a raw business-scoped id without its storage-only portfolio prefix', async () => {
         const a = adapter();
         try {
             const outcome = await a.instance.sendStrict(
                 request(`${SCOPED_ADDRESS_PREFIX}waba-1:BSU_abc123XYZ`), 'token');
+            expect(outcome).toEqual({ kind: 'accepted', receipt: 'wamid.OUT' });
+            expect(a.posts).toHaveLength(1);
+            expect(a.posts[0].body.to).toBe('BSU_abc123XYZ');
+        } finally { a.restore(); }
+    });
+
+    it('refuses a malformed scoped key before posting', async () => {
+        const a = adapter();
+        try {
+            const outcome = await a.instance.sendStrict(request('bsuid:waba-1:'), 'token');
             expect(outcome).toEqual({
-                kind: 'rejected',
-                errorCode: 'scoped_recipient_unsupported',
-                // Not retryable: no amount of waiting turns this into an
-                // address, and a retry is a second charge attempt for a message
-                // that can never land.
-                retryable: false,
+                kind: 'rejected', errorCode: 'recipient_not_addressable', retryable: false,
             });
             expect(a.posts).toEqual([]);
         } finally { a.restore(); }
@@ -83,5 +83,17 @@ describe('sending to a customer who has no phone number', () => {
         expect(isScopedAddressKey('')).toBe(false);
         expect(isScopedAddressKey(null)).toBe(false);
         expect(isScopedAddressKey(undefined)).toBe(false);
+        expect(parseScopedAddressKey('bsuid:waba-1:BSU_abc123XYZ'))
+            .toEqual({ portfolioId: 'waba-1', identifier: 'BSU_abc123XYZ' });
+        expect(whatsAppProviderRecipient('bsuid:waba-1:BSU_abc123XYZ')).toBe('BSU_abc123XYZ');
+        expect(whatsAppProviderRecipient('573001112233')).toBe('573001112233');
+    });
+
+    it('accepts the documented 256-character BSUID bound and refuses 257', () => {
+        const atLimit = 'A'.repeat(256);
+        const overLimit = 'A'.repeat(257);
+        expect(parseScopedAddressKey(`bsuid:waba-1:${atLimit}`)?.identifier).toBe(atLimit);
+        expect(parseScopedAddressKey(`bsuid:waba-1:${overLimit}`)).toBeNull();
+        expect(whatsAppProviderRecipient(`bsuid:waba-1:${overLimit}`)).toBeNull();
     });
 });

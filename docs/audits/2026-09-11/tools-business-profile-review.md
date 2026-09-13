@@ -1,8 +1,8 @@
 # Auditoría de herramientas, tipos de negocio y configuración del agente
 
-Fecha: 2026-09-11. Base inspeccionada:
-`96ee640e40884742371889f19f916d1e80d9ed70`; la rama recibió trabajo concurrente de
-mensajería. Los hashes de las fuentes usadas por el censo están en
+Auditoría iniciada el 2026-09-11 y actualizada el 2026-09-13. La base histórica
+inspeccionada fue `96ee640e40884742371889f19f916d1e80d9ed70`; el estado actual se
+deriva del HEAD mediante el generador. Los hashes de sus fuentes están en
 [tool-profile-audit.json](./tool-profile-audit.json).
 
 ## Conclusión
@@ -10,7 +10,7 @@ mensajería. Los hashes de las fuentes usadas por el censo están en
 La arquitectura tiene contratos compartidos y una cobertura estructural amplia,
 pero configuración, navegación, diagnósticos y ejecución no estaban completamente
 alineados. Esta tanda corrige defectos reproducidos y agrega un plan de cierre
-específico. **No certifica las 268 tareas ni los 76 perfiles.**
+específico. **No certifica las 420 tareas ni los 76 perfiles.**
 
 El cambio de enfoque necesario es organizar la configuración por tareas del
 negocio, mostrando sus herramientas y requisitos, con una autoridad común para
@@ -31,7 +31,7 @@ políticas, rutas de navegación y matriz de tareas.
 | Familias del registro nativo | 26 |
 | Herramientas estáticas | 123 |
 | Origen core / vertical / provider | 38 / 81 / 4 |
-| Tareas / tareas que comprometen al negocio | 268 / 146 |
+| Tareas / tareas que comprometen al negocio | 420 / 146 |
 
 Las familias configurables no equivalen a herramientas individuales: pagos y otras
 herramientas se componen fuera del registro nativo. MCP se registra dinámicamente
@@ -100,8 +100,9 @@ de fixtures o evaluación se omiten y se conservan los ejemplos canónicos legib
 Un caso negativo aislado con prefijo de intención podía hacer parecer verificada
 la tarea. El lector ahora requiere autoridad actual, perfil/canal/idioma,
 definiciones canónicas y todos los casos pertinentes. Sin scope actual no certifica.
-**Falta integrar ese scope en assessment** con la autoridad de snapshots; está
-documentado como pendiente local, no como certificación terminada.
+Assessment integra ese scope con la autoridad de snapshots y sólo reconoce
+evidencia sellada de la revisión vigente. Esto permite distinguir una tarea
+preparada de una probada sin reutilizar resultados de una configuración anterior.
 
 ### Ayuda de Assist
 
@@ -109,23 +110,22 @@ Se agregó el artículo 27 en es/en/pt/fr sobre tipo de negocio, misión, permis
 datos, proveedor, diagnóstico y pruebas. Distingue activado, preparado y probado,
 y separa la ayuda de plataforma de la base de conocimiento del negocio.
 
-## Brechas confirmadas que continúan abiertas
+## Estado de las brechas confirmadas
 
-| Prioridad | Brecha | Consecuencia / criterio de cierre |
-|---|---|---|
-| Alta | 11 controles emailConfirmations visibles sin consumidor | Implementar el evento y envío de cada familia, o retirar la promesa; probar efecto real del control. |
-| Alta | Consumidores de confirmaciones eligen el primer agente activo | Configuración incorrecta en cuentas con varios agentes; vincular autoridad de origen y política del scheduler. |
-| Alta | Scope de evidencia actual no conectado | Assessment no puede pasar legítimamente de preparado a probado; integrar autoridad sin copiar hashes históricos. |
-| Alta | Diagnóstico de canal/global incompleto | Incluir writersBlocked, herramientas y pruebas requeridas, con estados consistentes y recuperables. |
-| Media | canCheckStock / canRecommend sin controles específicos | El permiso existe en backend pero el dueño no puede gobernarlo completamente desde el editor. |
-| Media | Descuentos/refund no operables por el proveedor actual | No venderlos como capacidad completa; ligar flags, procedimiento y proveedor, o declarar indisponibilidad. |
-| Media | Tours omiten cases, stays, tourBookings y serviceCatalog | Completar rutas, explicaciones, accesibilidad y vuelta a configuración por perfil. |
-| Alta | Resoluciones de preparación sin prueba completa de reparación | Una FAQ/RAG o una ruta existente no acredita que se arregle la tabla consultada por la herramienta. |
-| Alta | Competencia por tarea pendiente | Probar escenarios, persistencia, capacidad, confirmación y resultados en la matriz de 76 perfiles. |
+T1–T4 y T6–T7 están aceptadas por contadores derivados. T5 tiene cero trabajo
+local abierto y queda bloqueada únicamente por las cuentas y modelos necesarios
+para certificar: 0 de 76 perfiles y 0 de 5 canales cuentan hoy como certificados.
 
-Los flags tipados de notificaciones alcanzan 18 familias; cuatro no tienen control
-en la UI. La decisión debe ser coherente por función, evitando agregar interruptores
-inoperantes sólo para igualar un conteo.
+Los controles de confirmación visibles tienen consumidor productivo; la selección
+usa la autoridad del agente que atendió la operación; assessment liga la evidencia
+a la revisión vigente; el diagnóstico agrega canales, writers, herramientas y
+pruebas; los permisos de stock, recomendaciones y descuentos son gobernables; y
+los 23 elementos de descubrimiento tienen recorrido. El censo vuelve a abrir la
+fila correspondiente si cualquiera de esas propiedades deja de cumplirse.
+
+Siguen pendientes por gate externo las ejecuciones con canales, modelos y
+proveedores reales. Los cinco casos `file_claim` son negativos deliberados de
+step-up y no deben convertirse en éxitos para hacer bajar un contador.
 
 El censo no constituye una auditoría de cada endpoint o pantalla móvil, de MCP instalado en
 una cuenta ni de respuestas reales de proveedores. Esos recorridos se incluyen
@@ -142,6 +142,6 @@ completa mediante modelos pagos. No se hizo push ni despliegue.
 ## Continuación
 
 El [addendum de ejecución para Claude](../../handoffs/2026-09-11/claude-tools-business-profile-alignment.md)
-define T1–T7, orden, paralelización por archivos, pruebas de aceptación y relación
-con mensajería económica, durabilidad, aprendizaje y release. Cerrar esos puntos
-antes de declarar completa la alineación de herramientas de la plataforma.
+define el origen de T1–T7, las pruebas de aceptación y su relación con mensajería
+económica, durabilidad, aprendizaje y release. El estado vigente está en el
+[reporte de cierre](../2026-09-09/closure-report.md), derivado junto con este censo.

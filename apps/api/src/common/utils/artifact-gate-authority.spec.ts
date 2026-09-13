@@ -7,7 +7,7 @@ import { resolve } from 'path';
  *
  * `verify-artifacts.cjs` ran three generators and printed "todos los artefactos
  * reflejan el codigo actual". A fourth generator — the tools programme audit,
- * the artefact that claims 20 verticals, 76 profiles, 123 static tools and 268
+ * the artefact that claims 20 verticals, 76 profiles, 123 static tools and 420
  * tasks — lived in a different directory, was wired into no workflow, and had
  * been red for days. The sentence was true of the three it knew and read by
  * everybody as true of the repository.

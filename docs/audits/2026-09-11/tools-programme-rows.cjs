@@ -2,7 +2,7 @@
  * ═══ T1–T6: THE TOOLS PROGRAMME, MEASURED THE WAY M0–M6 IS ═══
  *
  * The tools programme had a generated audit — 20 verticals, 76 profiles, 123
- * static tools, 268 tasks — and no row in the closure table. So its state lived
+ * static tools, 420 tasks — and no row in the closure table. So its state lived
  * in prose, which is the arrangement that produced the October disagreement:
  * one document saying zero rows open and an independent review saying forty-five
  * per cent, both about the same repository, and a reader with no way to tell.

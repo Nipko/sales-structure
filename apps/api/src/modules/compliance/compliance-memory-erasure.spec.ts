@@ -6,7 +6,8 @@ const profileId = '33333333-3333-4333-8333-333333333333';
 
 function build(failMemory = false) {
     const state = { tombstones: [] as string[], facts: ['active', 'superseded'], merged: [contactId, siblingId],
-        ledgerPresent: false, ledgerErased: null as string[] | null, notesPresent: false };
+        ledgerPresent: false, ledgerErased: null as string[] | null, notesPresent: false,
+        ledgerReplies: [] as Array<{ contact_id: string; provider_message_id: string }> };
     const query = jest.fn(async (sql: string, params: any[] = []) => {
         if (sql.includes('current_schema() AS schema') && sql.includes('AS replies')) return [{schema:'tenant_memory',replies:null,sources:null}];
         // Same shape for the dispatch outbox: this tenant has no such table yet,
@@ -26,6 +27,9 @@ function build(failMemory = false) {
         if (sql.includes('UPDATE "tenant_memory".agent_turn_ledger')) {
             state.ledgerErased = params[0];
             return [{ id: 'turn-1' }];
+        }
+        if (sql.includes('SELECT contact_id,provider_message_id FROM agent_turn_ledger')) {
+            return state.ledgerReplies;
         }
         if (sql.includes('SELECT DISTINCT customer_profile_id')) return [{ customer_profile_id: profileId }];
         if (sql.includes('SELECT DISTINCT contact_id')) return [{ contact_id: contactId }, { contact_id: siblingId }];
@@ -157,6 +161,28 @@ describe('Contact erasure reaches memory derivatives', () => {
         // Erasing the outbound item is not enough on its own: the ledger holds
         // the same words one step earlier, and a replay would repopulate them.
         expect(state.ledgerErased).toEqual([contactId, siblingId]);
+    });
+
+    it('removes current and historical reply-cache keys before redacting their ledger address', async () => {
+        const { service, state, redis } = build();
+        state.ledgerPresent = true;
+        state.ledgerReplies = [{ contact_id: contactId, provider_message_id: 'wamid.IN.privacy' }];
+        await service.eraseContactData('tenant_memory', profileId, contactId, 'admin');
+        expect(redis.del).toHaveBeenCalledWith(
+            `turn:reply:${profileId}:${contactId}:wamid.IN.privacy`);
+        expect(redis.del).toHaveBeenCalledWith(`turn:reply:${profileId}:wamid.IN.privacy`);
+        expect(state.ledgerErased).toEqual([contactId, siblingId]);
+    });
+
+    it('keeps the ledger address and reports incomplete when reply-cache erasure fails', async () => {
+        const { service, state, redis } = build();
+        state.ledgerPresent = true;
+        state.ledgerReplies = [{ contact_id: contactId, provider_message_id: 'wamid.IN.retry' }];
+        redis.del.mockRejectedValue(new Error('cache unavailable'));
+        const result = await service.eraseContactData('tenant_memory', profileId, contactId, 'admin');
+        expect(result.completed).toBe(false);
+        expect(result.failedTables).toContain('customer_memory');
+        expect(state.ledgerErased).toBeNull();
     });
 
     it('does not refuse the whole erasure when the tenant has no turn ledger yet', async () => {

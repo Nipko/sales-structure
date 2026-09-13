@@ -7,6 +7,7 @@ import { redactWidgetAgentReplies } from '../widget/widget-agent-reply-retention
 import { redactOutboundPayloadsForContact } from '../channels/outbound-payload-store';
 import { redactDispatchOutbox } from '../channels/agent-dispatch-outbox';
 import { redactTurnLedger } from '../conversations/agent-turn-ledger';
+import { eraseTurnReplyCaches } from '../conversations/turn-reply-cache';
 import { eraseSimulationContactReplays } from '../simulation/simulation-replay-retention';
 import { eraseContactRegressionArtifacts } from '../quality/regressions/quality-regression-retention';
 import { requestCrmNoteRetraction } from '../external-crm/crm-note-receipts';
@@ -374,6 +375,15 @@ export class ComplianceService {
                 ...contactIds.map(id => `customer-memory:${schema}:contact:${id}`),
             ].sort();
             for (const lock of locks) await query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))::text`, [lock]);
+
+            // Redis contains a short-lived copy of replies for interrupted-turn
+            // recovery. Resolve its provider ids while the ledger still carries
+            // them, then remove both the contact-addressable shape and the
+            // historical shape before redacting that ledger. Failure aborts the
+            // transaction so a retry can still discover the keys; deleting a
+            // cache before a later PostgreSQL rollback is harmless because the
+            // durable envelope remains authoritative.
+            await eraseTurnReplyCaches(query, this.redis, schema, tenantId, contactIds);
             await query(`INSERT INTO customer_memory_erasure (contact_id)
                 SELECT unnest($1::uuid[]) ON CONFLICT (contact_id) DO UPDATE SET erased_at = NOW()`, [contactIds]);
             // `pendingDraft` goes with them. It is a reply this person was

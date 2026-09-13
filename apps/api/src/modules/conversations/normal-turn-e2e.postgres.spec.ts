@@ -29,6 +29,7 @@ import { DispatchRolloutService } from '../channels/dispatch-rollout.service';
 import { DispatchRecoveryService } from '../channels/dispatch-recovery.service';
 import { redactDispatchOutbox } from '../channels/agent-dispatch-outbox';
 import { redactTurnLedger } from './agent-turn-ledger';
+import { eraseTurnReplyCaches, legacyTurnReplyKey, turnReplyKey } from './turn-reply-cache';
 import { operationalConfigurationHash } from '../persona/agent-configuration-revision';
 import { ensureSyntheticGlobalTables } from '../../common/__fixtures__/synthetic-global-tables';
 import { valkeyConnection, workerValkeyDb } from '../../common/__fixtures__/worker-valkey';
@@ -1218,19 +1219,7 @@ const ready = !!databaseUrl && !!redisUrl;
                 .toBeLessThanOrEqual(1);
         });
 
-        /**
-         * DEFECT, PROVEN HERE — the words outlive the erasure in Valkey.
-         *
-         * `conversations.service.ts:1103-1105` caches the whole reply under
-         * `turn:reply:{tenant}:{pmid}` for 24 h. The cache is skipped for replies
-         * derived from learned examples — the authors reasoned about a withdrawn
-         * RELEASE, which cannot find this key — but a CONTACT erasure has the same
-         * problem and nothing clears it. `ComplianceService.eraseCustomerMemory`
-         * touches PostgreSQL only. Within the TTL a provider redelivery replays
-         * the erased words to the customer (`:823-828`).
-         */
-        it('leaves the erased words in the Redis reply cache, where a redelivery can '
-            + 'still replay them (KNOWN DEFECT)', async () => {
+        it('removes current and historical reply caches when the contact is erased', async () => {
             const wamid = `wamid.IN.${randomUUID()}`;
             (conversations as any).__pmid = wamid;
             const marker = `SECRETO-${randomUUID().slice(0, 8)}`;
@@ -1242,9 +1231,17 @@ const ready = !!databaseUrl && !!redisUrl;
             const [{ contact_id: contactId }] = await sql(
                 'SELECT contact_id FROM agent_dispatch_outbox WHERE inbound_message_id=$1::uuid LIMIT 1',
                 [inboundMessageId]);
+            const currentKey = turnReplyKey(tenantId, String(contactId), wamid);
+            const historicalKey = legacyTurnReplyKey(tenantId, wamid);
+            expect(await redis.get(currentKey)).toContain(marker);
+            // Recreate a key written by the previous release: the erasure must
+            // clean already-live caches as well as the new key shape.
+            await redis.set(historicalKey, `Legacy ${marker}`, 86400);
+
             await prisma.transactionInTenantSchema(schema, async (query: any) => {
                 await query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))::text',
                     [`agent-privacy:${schema}`]);
+                await eraseTurnReplyCaches(query, redis, schema, tenantId, [String(contactId)]);
                 await redactDispatchOutbox(query, schema, { contactIds: [String(contactId)] });
                 await redactTurnLedger(query, schema, { contactIds: [String(contactId)] });
                 await query(
@@ -1254,10 +1251,8 @@ const ready = !!databaseUrl && !!redisUrl;
             });
 
             expect(await survivorsInPostgres(marker)).toEqual([]);
-            // But the whole reply is still sitting in Valkey, reachable only by
-            // provider id and cleared by nothing.
-            const cached = await redis.get(`turn:reply:${tenantId}:${wamid}`);
-            expect(cached).toContain(marker);
+            expect(await redis.get(currentKey)).toBeNull();
+            expect(await redis.get(historicalKey)).toBeNull();
         });
     });
 

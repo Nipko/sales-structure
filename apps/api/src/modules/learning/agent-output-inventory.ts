@@ -148,15 +148,15 @@ export const AGENT_OUTPUT_STORES: readonly AgentOutputStore[] = Object.freeze([
     // ── Caches ───────────────────────────────────────────────────────────────
     store({
         id: 'turn_reply_cache',
-        store: 'Redis `turn:reply:{tenant}:{pmid}` (24 h)',
-        sources: ['modules/conversations/conversations.service.ts'],
+        store: 'Redis `turn:reply:{tenant}:{contact}:{pmid}` plus legacy keys (24 h)',
+        sources: ['modules/conversations/conversations.service.ts',
+            'modules/conversations/turn-reply-cache.ts', 'modules/compliance/compliance.service.ts'],
         carriesProvenance: false,
         reachedByRetraction: 'by_design',
-        reachedByContactErasure: 'by_design',
+        reachedByContactErasure: 'yes',
         status: 'accepted',
-        rationale: 'Reachable only by provider message id, so neither key can find it. It is therefore never WRITTEN for '
-            + 'a reply that derives from learned examples — the gap is closed at the door instead of at the sweep — and '
-            + 'it is written after the ledger, so it can only ever be the fallback for a turn whose ledger row is absent.',
+        rationale: 'New keys name their contact; the erasure also resolves old provider-only keys from the ledger before '
+            + 'redacting it. Learning-derived replies are still never cached because release rollback has a different key.',
     }),
     store({
         id: 'widget_reply_cache',

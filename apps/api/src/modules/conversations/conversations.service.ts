@@ -54,6 +54,7 @@ import {
     type LocalizedTerm, type ToolExecutionAuthority,
 } from '@parallext/shared';
 import { outboundDedupeId, providerMessageId } from '../../common/utils/provider-message-id.util';
+import { legacyTurnReplyKey, turnReplyKey } from './turn-reply-cache';
 import { IdentityService } from '../identity/identity.service';
 import { AIToolExecutorService } from './ai-tool-executor.service';
 import { buildUnverifiedPriceReply, enforceVerifiedPriceReply, ResponseValidatorService } from './response-validator.service';
@@ -439,8 +440,6 @@ const turnDoneKey = (tenantId: string, providerMsgId: string) => `turn:done:${te
  * were not, so the customer read the opening of one answer followed by the
  * middle of another. Same lifetime as `turn:done`.
  */
-const turnReplyKey = (tenantId: string, providerMsgId: string) => `turn:reply:${tenantId}:${providerMsgId}`;
-
 @Injectable()
 export class ConversationsService {
     private readonly logger = new Logger(ConversationsService.name);
@@ -980,7 +979,14 @@ export class ConversationsService {
             // The ledger answers this better when it can; Redis stays the cache
             // in front of it for turns that started before the row existed.
             if (!recoveredEnvelope && dupPmid) {
-                resumedReply = await this.redis.get(turnReplyKey(tenantId, dupPmid)).catch(() => null);
+                resumedReply = await this.redis.get(turnReplyKey(tenantId, ledgerContactId, dupPmid))
+                    .catch(() => null);
+                // Compatibility for a turn interrupted before contact-addressable
+                // reply keys were deployed. New writes never use this shape.
+                if (!resumedReply) {
+                    resumedReply = await this.redis.get(legacyTurnReplyKey(tenantId, dupPmid))
+                        .catch(() => null);
+                }
                 if (resumedReply) {
                     this.logger.warn(`[Pipeline] Reusing the reply the interrupted attempt had already produced for ${dupPmid}`);
                 }
@@ -1347,7 +1353,8 @@ export class ConversationsService {
         const derivesFromLearning = turnEffects.learningFootprints.some(
             footprint => footprint.entries.length > 0);
         if (response && !resumedReply && replyPmid && !isErrorFallback(response) && !derivesFromLearning) {
-            await this.redis.set(turnReplyKey(tenantId, replyPmid), response, 86400).catch(() => {});
+            await this.redis.set(turnReplyKey(tenantId, ledgerContactId, replyPmid), response, 86400)
+                .catch(() => {});
         }
 
         // Auto-progress signals from the RESOLVED inbound text (post audio/image processing,

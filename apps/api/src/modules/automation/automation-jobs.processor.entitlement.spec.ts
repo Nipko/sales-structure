@@ -89,7 +89,9 @@ describe('AutomationJobsProcessor subscription boundary', () => {
                 .mockResolvedValueOnce({ allowed: true, count: 1, adopted: true }),
             commitActionUsage: jest.fn().mockResolvedValue(undefined),
         };
-        const http = { execute: jest.fn().mockResolvedValue({ status: 200 }) };
+        const http = { execute: jest.fn().mockResolvedValue({
+            outcome: 'accepted', statusCode: 200, idempotencyKey: 'unused-by-mock',
+        }) };
         const processor = new AutomationJobsProcessor(
             prisma as any,
             throttle as any,
@@ -117,6 +119,13 @@ describe('AutomationJobsProcessor subscription boundary', () => {
         );
         expect(throttle.commitActionUsage).toHaveBeenCalledTimes(2);
         expect(http.execute).toHaveBeenCalledTimes(2);
+        expect(http.execute).toHaveBeenNthCalledWith(
+            1,
+            'tenant_test',
+            { type: 'http_request' },
+            {},
+            { idempotencyKey: `automation-job:${first.id}` },
+        );
     });
 
     it('does not execute or commit when the atomic reservation is denied', async () => {
@@ -159,5 +168,47 @@ describe('AutomationJobsProcessor subscription boundary', () => {
         await expect(processor.process(job({ id: undefined })))
             .rejects.toThrow('automation_job_missing_stable_id');
         expect(throttle.reserveActionUsage).not.toHaveBeenCalled();
+    });
+
+    it.each([
+        ['unknown', 'reconciliation_required'],
+        ['rejected', 'failed'],
+    ])('persists a %s HTTP outcome and completes without another provider attempt', async (
+        outcome,
+        expectedStatus,
+    ) => {
+        const prisma = {
+            tenant: { findUnique: jest.fn().mockResolvedValue(activeTenant()) },
+            executeInTenantSchema: jest.fn().mockResolvedValue(undefined),
+        };
+        const throttle = {
+            reserveActionUsage: jest.fn().mockResolvedValue({ allowed: true, count: 1, adopted: false }),
+            commitActionUsage: jest.fn().mockResolvedValue(undefined),
+        };
+        const result = {
+            outcome,
+            statusCode: outcome === 'unknown' ? null : 503,
+            idempotencyKey: 'automation-job:stable',
+        };
+        const http = { execute: jest.fn().mockResolvedValue(result) };
+        const processor = new AutomationJobsProcessor(
+            prisma as any,
+            throttle as any,
+            http as any,
+            {} as any,
+            {} as any,
+        );
+
+        await expect(processor.process(job())).resolves.toEqual(result);
+        expect(http.execute).toHaveBeenCalledTimes(1);
+        expect(prisma.executeInTenantSchema).toHaveBeenCalledWith(
+            'tenant_test',
+            expect.stringContaining('SET status = $2'),
+            [
+                '22222222-2222-4222-8222-222222222222',
+                expectedStatus,
+                JSON.stringify(result),
+            ],
+        );
     });
 });

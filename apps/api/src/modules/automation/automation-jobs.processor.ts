@@ -151,7 +151,12 @@ export class AutomationJobsProcessor extends WorkerHost {
                     break;
 
                 case 'http_request':
-                    result = await this.httpRequestHandler.execute(schemaName, action.config || action, event);
+                    result = await this.httpRequestHandler.execute(
+                        schemaName,
+                        action.config || action,
+                        event,
+                        { idempotencyKey: quotaEffectId },
+                    );
                     break;
 
                 default:
@@ -163,14 +168,22 @@ export class AutomationJobsProcessor extends WorkerHost {
                     throw new Error(`Tipo de accion desconocido: ${action.type}`);
             }
 
-            // Actualizar registro de ejecucion como exitoso
+            // A provider response is a receipt. A missing response is not a
+            // failure and never authorises another mutating HTTP request: it
+            // remains visible for reconciliation. A conclusive non-2xx answer
+            // is recorded as failed and likewise completes this BullMQ job.
+            const terminalStatus = result?.outcome === 'unknown'
+                ? 'reconciliation_required'
+                : result?.outcome === 'rejected' ? 'failed' : 'success';
+
+            // Actualizar registro de ejecucion con el resultado conocido
             if (executionId) {
                 await this.prisma.executeInTenantSchema(
                     schemaName,
                     `UPDATE automation_executions
-                     SET status = 'success', finished_at = CURRENT_TIMESTAMP, result_json = $2::jsonb
+                     SET status = $2, finished_at = CURRENT_TIMESTAMP, result_json = $3::jsonb
                      WHERE id = $1::uuid`,
-                    [executionId, JSON.stringify(result || {})],
+                    [executionId, terminalStatus, JSON.stringify(result || {})],
                 );
             }
 

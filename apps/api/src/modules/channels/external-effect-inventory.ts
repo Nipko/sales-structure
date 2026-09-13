@@ -1865,18 +1865,23 @@ producer({
             channels: ['webhook'],
         },
         properties: {
-            authority: none('no record that an attempt was permitted; the queue job is the only trace'),
-            // The sharpest edge in this table: the tenant chose the verb, so a repeat can create a
-            // second order or a second charge at their own system, and nothing here can tell.
-            idempotency: none('no idempotency key and no delivery id. The handler retries up to three '
-                + 'times on its own AND the BullMQ job retries, with a caller-chosen method that '
-                + 'defaults to POST'),
-            receipt: none('response fields are extracted into the rule context and not persisted as a '
-                + 'reference to anything'),
-            uncertainOutcome: none('a timeout is retried like any other failure'),
+            authority: partial('the automation execution row and the atomic per-job quota reservation '
+                + 'commit before transport; a delayed non-message action still needs the same '
+                + 'under-lock rule revision check that send_template already has'),
+            idempotency: partial('every attempt carries the stable BullMQ job identity as '
+                + 'Idempotency-Key and mutating methods have no internal retry; an arbitrary receiver '
+                + 'is not required to honour that header'),
+            receipt: partial('the HTTP status and mapped response fields are persisted in '
+                + 'automation_executions.result_json; multiple actions on one execution still share '
+                + 'that result cell'),
+            uncertainOutcome: durable('a mutating request with no answer is persisted as '
+                + 'reconciliation_required and completes its BullMQ job without another POST'),
             erasure: none('the request body may carry contact data and is not recorded, so erasure has '
-                + 'nothing to reach and no way to prove it'),
-            recovery: partial('BullMQ retries; nothing durable records the intent'),
+                + 'nothing to reach in PostgreSQL; completed BullMQ payload retention is still outside '
+                + 'the contact-erasure transaction'),
+            recovery: partial('BullMQ retains the stable job and retries preflight failures; an '
+                + 'uncertain mutating request deliberately waits for human reconciliation instead of '
+                + 'being sent again'),
         },
     }),
 

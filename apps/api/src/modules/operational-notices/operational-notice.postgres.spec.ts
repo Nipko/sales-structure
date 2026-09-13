@@ -14,6 +14,7 @@ import { WidgetMessageStore } from '../widget/widget-message-store.service';
 import { eraseOperationalContactNotices } from './operational-notice-erasure';
 import { noticeReceiptEvidence } from './operational-notice-review.contracts';
 import { isDisposableDatabaseUrl } from '../../common/__fixtures__/disposable-database';
+import { AlertsService } from '../analytics/alerts.service';
 
 const connection=process.env.PARALLLY_ISOLATION_TEST_URL;
 (connection?describe:describe.skip)('operational notices and canonical waitlists on disposable PostgreSQL',()=>{
@@ -24,7 +25,7 @@ const connection=process.env.PARALLLY_ISOLATION_TEST_URL;
     let pool:any,prisma:any,education:EducationEnrollmentCommands,gym:GymsService,notices:OperationalNoticeService,queue:any,send:any,transport:any;
     const tables=['customer_profiles','contact_identities','contacts','conversations','messages','persona_config','agent_personas','courses','campaigns','companies','leads','opportunities',
         'pipelines','pipeline_stages','deals','services','service_staff','calendar_integrations','appointments','calendar_sync_outbox','availability_slots','blocked_dates',
-        'membership_plans','members','fitness_classes','class_bookings','course_cohorts','enrollments'];
+        'membership_plans','members','fitness_classes','class_bookings','course_cohorts','enrollments','alert_rules','alert_history'];
     const raw=async(sql:string,params:any[]=[]) => (await pool.query(sql,params)).rows;
     const q=(sql:string,params:any[]=[])=>prisma.executeInTenantSchema(schema,sql,params);
     beforeAll(async()=>{
@@ -62,6 +63,7 @@ const connection=process.env.PARALLLY_ISOLATION_TEST_URL;
     },30000);
     beforeEach(async()=>{
         await q('DELETE FROM operational_notice_outbox');await q('DELETE FROM calendar_sync_outbox');await q('DELETE FROM appointments');
+        await q('DELETE FROM alert_history');await q('DELETE FROM alert_rules');
         await q('DELETE FROM calendar_integrations');
         await q('DELETE FROM enrollments');await q('DELETE FROM class_bookings');await q('DELETE FROM members');await q('DELETE FROM fitness_classes');
         await q('DELETE FROM course_cohorts');await q('DELETE FROM courses');await q('DELETE FROM services');
@@ -173,6 +175,44 @@ const connection=process.env.PARALLLY_ISOLATION_TEST_URL;
         expect(slack.notifyStrict).toHaveBeenCalledTimes(1);
         expect(slack.notifyStrict).toHaveBeenCalledWith(tenantId,'appointment','📅 *Nueva cita*: Ana — Service');
         expect((await noticeRows())[0].provider_reference).toBe('slack:accepted');
+    });
+    it('commits an alert history row and one recoverable SMTP effect per recipient',async()=>{
+        const rule=(await q(`INSERT INTO alert_rules(tenant_id,name,metric,operator,threshold,channel,notify_emails,is_active,cooldown_minutes)
+            VALUES($1::uuid,'Queue alert','queue_depth','gt',2,'email',ARRAY['OWNER@EXAMPLE.INVALID','owner@example.invalid'],true,60)
+            RETURNING *`,[tenantId]))[0];
+        const smtp=jest.fn().mockResolvedValue('smtp:alert-accepted');
+        const email={prepareBoundedSend:jest.fn().mockReturnValue(smtp)};
+        const delivery=new OperationalNoticeService(prisma,{get:async()=>null} as any,{getPriority:async()=>2} as any,
+            {} as any,email as any,{} as any,{} as any,queue);
+        const alerts:any=Object.create(AlertsService.prototype);
+        Object.assign(alerts,{prisma,notices:delivery,logger:{log:jest.fn(),warn:jest.fn()}});
+        await alerts.fireAlert(schema,tenantId,rule,5);
+        expect(await q('SELECT rule_id,metric_value::int,threshold::int FROM alert_history')).toEqual([
+            {rule_id:rule.id,metric_value:5,threshold:2},
+        ]);
+        const [notice]=await noticeRows();
+        expect(notice).toMatchObject({kind:'analytics.threshold_alert',recipient_email:'owner@example.invalid',state:'queued'});
+        expect(await delivery.deliver({tenantId,noticeId:notice.id},transport)).toBe('notice:sent');
+        expect(await delivery.deliver({tenantId,noticeId:notice.id},transport)).toBe('notice:sent');
+        expect(smtp).toHaveBeenCalledTimes(1);
+        expect((await noticeRows())[0].provider_reference).toBe('smtp:alert-accepted');
+        await alerts.fireAlert(schema,tenantId,rule,6);
+        expect(await q('SELECT id FROM alert_history')).toHaveLength(1);
+    });
+    it('rolls the alert history and cooldown back when its email effect cannot be admitted',async()=>{
+        const rule=(await q(`INSERT INTO alert_rules(tenant_id,name,metric,operator,threshold,channel,notify_emails,is_active,cooldown_minutes)
+            VALUES($1::uuid,'Atomic alert','queue_depth','gt',2,'email',ARRAY['owner@example.invalid'],true,60)
+            RETURNING *`,[tenantId]))[0];
+        const faulty={...prisma,transactionInTenantSchema:(s:string,work:any)=>prisma.transactionInTenantSchema(s,(query:any)=>work((sql:string,p:any[])=>{
+            if(sql.startsWith('INSERT INTO operational_notice_outbox'))throw new Error('notice_storage_failed');
+            return query(sql,p);
+        }))};
+        const alerts:any=Object.create(AlertsService.prototype);
+        Object.assign(alerts,{prisma:faulty,notices:{recoverTenant:jest.fn()},logger:{log:jest.fn(),warn:jest.fn()}});
+        await expect(alerts.fireAlert(schema,tenantId,rule,5)).rejects.toThrow('notice_storage_failed');
+        expect(await q('SELECT id FROM alert_history')).toHaveLength(0);
+        expect((await q('SELECT last_triggered_at FROM alert_rules WHERE id=$1::uuid',[rule.id]))[0].last_triggered_at).toBeNull();
+        expect(await noticeRows()).toHaveLength(0);
     });
     it('does not guess that historical confirmations were never delivered',async()=>{
         const appointment=await paidAppointment();await q("UPDATE appointments SET status='confirmed' WHERE id=$1::uuid",[appointment.id]);

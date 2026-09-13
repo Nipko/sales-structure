@@ -2,6 +2,7 @@ import type { OutboundMessage } from '@parallext/shared';
 
 export type OperationalNoticeKind = 'appointment.payment_confirmed' | 'appointment.payment_review'
     | 'appointment.operator_slack'
+    | 'analytics.threshold_alert'
     | 'gym.waitlist_promoted' | 'education.waitlist_promoted' | 'education.waitlist_review'
     | 'home_service.emergency' | 'tour.booking_confirmed' | 'property.booking_confirmed'
     | 'order.confirmed' | 'handoff.sla_escalated';
@@ -19,11 +20,13 @@ export type NoticeQuery = <T = any[]>(sql: string, params?: any[]) => Promise<T>
 export const OPERATIONAL_NOTICE_DDL = `CREATE TABLE IF NOT EXISTS operational_notice_outbox (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     event_key VARCHAR(200) NOT NULL UNIQUE,
-    kind VARCHAR(60) NOT NULL CHECK(kind IN ('appointment.payment_confirmed','appointment.payment_review','appointment.operator_slack','gym.waitlist_promoted','education.waitlist_promoted','education.waitlist_review','home_service.emergency','tour.booking_confirmed','property.booking_confirmed','order.confirmed','handoff.sla_escalated')),
+    kind VARCHAR(60) NOT NULL CHECK(kind IN ('appointment.payment_confirmed','appointment.payment_review','appointment.operator_slack','analytics.threshold_alert','gym.waitlist_promoted','education.waitlist_promoted','education.waitlist_review','home_service.emergency','tour.booking_confirmed','property.booking_confirmed','order.confirmed','handoff.sla_escalated')),
     entity_id UUID NOT NULL,
     contact_id UUID,
     conversation_id UUID,
     recipient_user_id UUID,
+    recipient_email TEXT,
+    payload JSONB,
     state VARCHAR(40) NOT NULL DEFAULT 'pending' CHECK(state IN ('pending','queued','processing','sent','stored','failed','suppressed','reconciliation_required')),
     route VARCHAR(30),
     provider_reference VARCHAR(512),

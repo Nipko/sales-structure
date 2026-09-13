@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
@@ -6,6 +6,9 @@ import { EmailService } from '../email/email.service';
 import { DashboardAnalyticsService } from './dashboard-analytics.service';
 import { CronLockService } from '../redis/cron-lock.service';
 import { resolveTenantSubscriptionAccess } from '../../common/utils/subscription-entitlement.util';
+import { createHash } from 'crypto';
+import { OperationalNoticeService } from '../operational-notices/operational-notice.service';
+import { enqueueOperationalNotice, ensureOperationalNoticeOutbox } from '../operational-notices/operational-notice-outbox';
 
 interface AlertRule {
     id: string;
@@ -29,9 +32,10 @@ export class AlertsService {
     constructor(
         private prisma: PrismaService,
         private redis: RedisService,
-        private email: EmailService,
+        private _email: EmailService,
         private dashboardAnalytics: DashboardAnalyticsService,
         private readonly cronLock: CronLockService,
+        @Optional() private readonly notices?: OperationalNoticeService,
     ) { }
 
     private async ensureAlertTables(schemaName: string): Promise<void> {
@@ -262,40 +266,41 @@ export class AlertsService {
         // Close the TOCTOU window between metric evaluation and the external
         // email/history side effect.
         if (!await this.canDeliverCustomerOutput(tenantId)) return;
-        this.logger.log(`Alert triggered: ${rule.name} (${rule.metric} ${rule.operator} ${rule.threshold}, current: ${currentValue})`);
-
-        // Record in history
-        await this.prisma.$queryRawUnsafe(
-            `INSERT INTO "${schemaName}".alert_history (rule_id, metric_value, threshold, notified_via)
-             VALUES ($1::uuid, $2, $3, $4)`,
-            rule.id, currentValue, rule.threshold, rule.channel,
-        );
-
-        // Update last_triggered_at
-        await this.prisma.$queryRawUnsafe(
-            `UPDATE "${schemaName}".alert_rules SET last_triggered_at = NOW() WHERE id = $1::uuid`,
-            rule.id,
-        );
-
-        // Send email if configured
-        if (rule.notify_emails?.length > 0) {
-            for (const emailAddr of rule.notify_emails) {
-                await this.email.send({
-                    to: emailAddr,
-                    subject: `[Parallly Alert] ${rule.name}`,
-                    html: `
-                        <div style="font-family:sans-serif;max-width:500px;margin:auto;padding:20px;">
-                            <h2 style="color:#6c5ce7;">Alert: ${rule.name}</h2>
-                            <p>The metric <strong>${rule.metric}</strong> has reached <strong>${currentValue}</strong>,
-                            which is ${rule.operator} your threshold of <strong>${rule.threshold}</strong>.</p>
-                            <p style="color:#666;font-size:13px;">This alert was triggered at ${new Date().toISOString()}.</p>
-                            <hr style="border:none;border-top:1px solid #eee;margin:20px 0;">
-                            <p style="color:#999;font-size:12px;">Parallly Analytics — Manage alerts in your dashboard settings.</p>
-                        </div>
-                    `,
-                });
+        if (!this.notices) throw new Error('alert_notice_lane_unavailable');
+        await ensureOperationalNoticeOutbox(this.prisma,schemaName);
+        const admitted=await this.prisma.transactionInTenantSchema(schemaName,async query=>{
+            const [current]=await query<AlertRule[]>(`SELECT * FROM alert_rules WHERE id=$1::uuid AND tenant_id::text=$2 FOR UPDATE`,[rule.id,tenantId]);
+            if (!current?.is_active || !this.evaluateCondition(currentValue,current.operator,Number(current.threshold))) return 0;
+            if (current.last_triggered_at
+                && Date.now()-new Date(current.last_triggered_at).getTime()<Number(current.cooldown_minutes)*60_000) return 0;
+            const [history]=await query<any[]>(`INSERT INTO alert_history(rule_id,metric_value,threshold,notified_via)
+                VALUES($1::uuid,$2,$3,$4) RETURNING id,created_at`,[current.id,currentValue,current.threshold,current.channel]);
+            const recipients=[...new Set((current.notify_emails || []).map(value=>String(value).trim().toLowerCase())
+                .filter(value=>/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)))];
+            const esc=(value:unknown)=>String(value??'').replace(/[&<>"']/g,char=>({
+                '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;',
+            })[char]!);
+            const subject=`[Parallly Alert] ${String(current.name).replace(/[\r\n]+/g,' ').slice(0,200)}`;
+            const html=`<div style="font-family:sans-serif;max-width:500px;margin:auto;padding:20px;">
+                <h2 style="color:#6c5ce7;">Alert: ${esc(current.name)}</h2>
+                <p>The metric <strong>${esc(current.metric)}</strong> has reached <strong>${esc(currentValue)}</strong>,
+                which is ${esc(current.operator)} your threshold of <strong>${esc(current.threshold)}</strong>.</p>
+                <p style="color:#666;font-size:13px;">This alert was triggered at ${new Date(history.created_at).toISOString()}.</p>
+                <hr style="border:none;border-top:1px solid #eee;margin:20px 0;">
+                <p style="color:#999;font-size:12px;">Parallly Analytics — Manage alerts in your dashboard settings.</p>
+            </div>`;
+            for(const recipientEmail of recipients){
+                const revision=createHash('sha256').update(recipientEmail).digest('hex').slice(0,24);
+                await enqueueOperationalNotice(query,schemaName,{kind:'analytics.threshold_alert',entityId:history.id,
+                    revision,recipientEmail,payload:{subject,html}});
             }
-        }
+            await query('UPDATE alert_rules SET last_triggered_at=clock_timestamp() WHERE id=$1::uuid',[current.id]);
+            return recipients.length;
+        });
+        this.logger.log(`Alert triggered: ${rule.name} (${rule.metric} ${rule.operator} ${rule.threshold}, current: ${currentValue}); ${admitted} email notice(s) admitted`);
+        if(admitted)await this.notices.recoverTenant(tenantId).catch(error=>{
+            this.logger.warn(`Alert notice enqueue deferred for tenant ${tenantId}: ${error?.message || error}`);
+        });
     }
 
     private async canDeliverCustomerOutput(tenantId: string): Promise<boolean> {

@@ -15,6 +15,7 @@ const databaseUrl=process.env.PARALLLY_ISOLATION_TEST_URL;
     const orderMigration=readFileSync(join(__dirname,'../../../prisma/migrations/20260913130000_add_catalog_order_confirmation_notices/migration.sql'),'utf8');
     const slaMigration=readFileSync(join(__dirname,'../../../prisma/migrations/20260913140000_add_handoff_sla_notices/migration.sql'),'utf8');
     const appointmentSlackMigration=readFileSync(join(__dirname,'../../../prisma/migrations/20260913150000_add_appointment_slack_notices/migration.sql'),'utf8');
+    const analyticsAlertMigration=readFileSync(join(__dirname,'../../../prisma/migrations/20260913160000_add_analytics_alert_notices/migration.sql'),'utf8');
     beforeAll(async()=>{
         const parsed=new URL(databaseUrl!);
         if(!['localhost','127.0.0.1','[::1]'].includes(parsed.hostname)||!parsed.pathname.endsWith('_eval_isolation'))throw new Error('disposable_loopback_database_required');
@@ -49,6 +50,8 @@ const databaseUrl=process.env.PARALLLY_ISOLATION_TEST_URL;
         await client.$executeRawUnsafe(slaMigration);
         await client.$executeRawUnsafe(appointmentSlackMigration);
         await client.$executeRawUnsafe(appointmentSlackMigration);
+        await client.$executeRawUnsafe(analyticsAlertMigration);
+        await client.$executeRawUnsafe(analyticsAlertMigration);
         const recipient=randomUUID();
         await client.$executeRawUnsafe(`INSERT INTO "${schema}".operational_notice_outbox(
             event_key,kind,entity_id,recipient_user_id) VALUES($1,'home_service.emergency',$2::uuid,$3::uuid)`,
@@ -67,6 +70,10 @@ const databaseUrl=process.env.PARALLLY_ISOLATION_TEST_URL;
         await client.$executeRawUnsafe(`INSERT INTO "${schema}".operational_notice_outbox(
             event_key,kind,entity_id) VALUES($1,'appointment.operator_slack',$2::uuid)`,
             `appointment-slack:${recipient}`,randomUUID());
+        await client.$executeRawUnsafe(`INSERT INTO "${schema}".operational_notice_outbox(
+            event_key,kind,entity_id,recipient_email,payload)
+            VALUES($1,'analytics.threshold_alert',$2::uuid,'operator@example.invalid','{"subject":"Alert","html":"<p>Alert</p>"}'::jsonb)`,
+            `analytics-alert:${recipient}`,randomUUID());
         const columns=await client.$queryRawUnsafe<any[]>(`SELECT column_name FROM information_schema.columns
             WHERE table_schema=$1 AND table_name='property_bookings' AND column_name='language'`,schema);
         expect(columns).toHaveLength(1);

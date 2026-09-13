@@ -1437,26 +1437,23 @@ producer({
     producer({
         id: 'analytics.threshold_alerts',
         effect: 'The email a tenant gets when a metric crosses a threshold they configured',
-        lane: 'inline',
+        lane: 'operational_notice',
         status: 'live',
         derivation: 'census',
         source: 'modules/analytics/alerts.service.ts',
-        symbol: 'fireAlert',
-        egress: 'EmailService.send from the `*/15 * * * *` cron',
+        symbol: 'enqueueOperationalNotice',
+        egress: 'one analytics.threshold_alert row per normalized recipient, committed with alert_history',
         reach: {
             class: 'operator_notification', audience: 'tenant_operator', personalData: true,
             channels: ['email'],
         },
         properties: {
-            authority: none('the send happens inline inside the cron tick; nothing records that an '
-                + 'attempt was permitted'),
-            idempotency: partial('an `alert_history` row and `last_triggered_at` are written BEFORE the '
-                + 'send, so a failure is never retried — the safe direction for an alert, and the '
-                + 'reason a failed alert is silently lost'),
-            receipt: none(INLINE_EMAIL),
-            uncertainOutcome: none('the boolean collapses the two cases'),
-            erasure: none('tenant metrics, not contact data'),
-            recovery: none('the history row suppresses a second attempt'),
+            authority: durable('the history row, cooldown and one effect per recipient commit in one transaction before SMTP'),
+            idempotency: durable('the history id plus a recipient digest is the UNIQUE event key; cooldown is re-read under the rule lock'),
+            receipt: durable('the SMTP message id is stored on the exact operational notice row'),
+            uncertainOutcome: durable('an attempted SMTP send with no answer becomes reconciliation_required and is never retried'),
+            erasure: notApplicable('the payload contains aggregate tenant metrics and an operator-configured destination, not customer data'),
+            recovery: durable('the operational notice recovery cron republishes pending and preflight-failed rows'),
         },
     }),
 

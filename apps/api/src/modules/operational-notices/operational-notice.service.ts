@@ -198,6 +198,23 @@ export class OperationalNoticeService {
     }
 
     private async hydrate(query: NoticeQuery, schema: string, tenantId: string, notice: any): Promise<any> {
+        if (notice.kind === 'analytics.threshold_alert') {
+            const recipient=String(notice.recipient_email || '').trim().toLowerCase();
+            const payload=notice.payload && typeof notice.payload==='object' ? notice.payload : {};
+            const subject=String(payload.subject || ''),html=String(payload.html || '');
+            if (!recipient || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient)
+                || !subject || subject.length>300 || !html || Buffer.byteLength(html,'utf8')>200_000) {
+                throw new NoticeSuppressed('notice_payload_invalid');
+            }
+            const active=await query<any[]>(`SELECT ah.id FROM alert_history ah
+                JOIN alert_rules ar ON ar.id=ah.rule_id
+                WHERE ah.id=$1::uuid AND ar.is_active=true
+                  AND EXISTS(SELECT 1 FROM unnest(ar.notify_emails) email WHERE lower(trim(email))=$2)
+                FOR SHARE OF ah,ar`,
+            [notice.entity_id,recipient]);
+            if (!active.length) throw new NoticeSuppressed('notice_domain_state_changed');
+            return {route:'email',email:recipient,subject,html,text:subject,conversationId:null};
+        }
         let facts: any;
         if (notice.kind === 'appointment.operator_slack') {
             facts=(await query<any[]>(`SELECT a.*,a.service_name AS name

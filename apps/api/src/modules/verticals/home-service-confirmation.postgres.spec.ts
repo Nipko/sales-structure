@@ -41,7 +41,6 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
     let client: PrismaClient;
     let prisma: any;
     let renderAndSend: jest.Mock;
-    let staffEmail: jest.Mock;
     let listener: ServiceRequestListener;
     jest.setTimeout(180_000);
 
@@ -167,10 +166,8 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
 
     beforeEach(async () => {
         renderAndSend = jest.fn().mockResolvedValue(true);
-        staffEmail = jest.fn().mockResolvedValue(undefined);
         listener = new ServiceRequestListener(
-            prisma, { send: staffEmail } as any,
-            new OperationConfirmationService(prisma, { renderAndSend } as any));
+            prisma, new OperationConfirmationService(prisma, { renderAndSend } as any));
         await client.$executeRawUnsafe(
             'UPDATE public.tenants SET is_active=true WHERE id=$1::uuid', tenantId);
         await query(`TRUNCATE "${schema}".service_requests, "${schema}".conversations,
@@ -258,30 +255,4 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
         expect(renderAndSend).not.toHaveBeenCalled();
     });
 
-    it('keeps the customer confirmation and the staff emergency alert independent', async () => {
-        // The switch governs the CUSTOMER's confirmation. The internal alert
-        // that wakes a human over a gas leak is not the owner's to silence
-        // through it, and a failure in one lane must not take the other down.
-        prisma.user = { findMany: async () => [{ email: 'owner@example.com' }] };
-        try {
-            renderAndSend.mockRejectedValue(new Error('smtp_unreachable'));
-            const req = await request({ account: ACCOUNT_ON, urgency: 'emergencia' });
-
-            await emit(req.id, 'emergencia');
-
-            expect(staffEmail).toHaveBeenCalledTimes(1);
-        } finally { prisma.user = { findMany: async () => [] }; }
-    });
-
-    it('still alerts staff for an emergency the owner silenced confirmations on', async () => {
-        prisma.user = { findMany: async () => [{ email: 'owner@example.com' }] };
-        try {
-            const req = await request({ account: ACCOUNT_OFF, urgency: 'emergencia' });
-
-            await emit(req.id, 'emergencia');
-
-            expect(renderAndSend).not.toHaveBeenCalled();
-            expect(staffEmail).toHaveBeenCalledTimes(1);
-        } finally { prisma.user = { findMany: async () => [] }; }
-    });
 });

@@ -321,8 +321,8 @@ const APPROVED_EFFECT_PROPERTIES: Record<EffectProperty, EffectCoverage> = {
 const OPERATIONAL_NOTICE_PROPERTIES: Record<EffectProperty, EffectCoverage> = {
     authority: durable('a 120s lease claimed before the send, in the transaction that reads the '
         + 'canonical rows the notice describes'),
-    idempotency: durable('UNIQUE `event_key` = kind:entityId:revision, written in the SAME transaction '
-        + 'as the payment confirmation or waitlist promotion that justifies it'),
+    idempotency: durable('UNIQUE `event_key` names the kind, entity, revision and, when the effect '
+        + 'targets an operator, that exact user; it is written in the SAME domain transaction'),
     receipt: durable('`provider_reference` on the notice row'),
     uncertainOutcome: durable('a lapsed lease becomes `reconciliation_required`; '
         + '`OperationalNoticeReviewService` records a person\'s decision and cannot resend'),
@@ -1286,18 +1286,17 @@ producer({
     producer({
         id: 'verticals.service_request',
         effect: 'The email alerting a home-services tenant to an emergency service request',
-        lane: 'inline',
+        lane: 'operational_notice',
         status: 'live',
         derivation: 'census',
-        source: 'modules/verticals/service-request.listener.ts',
-        symbol: 'ServiceRequestListener',
-        egress: 'EmailService.send, fire and forget per recipient',
+        source: 'modules/home-services/home-services.service.ts',
+        symbol: 'enqueueOperationalNoticesForTenantRoles',
+        egress: 'one operational_notice_outbox row per active admin or supervisor, committed with the request',
         reach: {
             class: 'operator_notification', audience: 'tenant_operator', personalData: true,
             channels: ['email'],
         },
-        properties: uncovered('an un-awaited `EmailService.send` per recipient, from an event listener. '
-            + 'Nothing records the attempt, the result or the recipient'),
+        properties: OPERATIONAL_NOTICE_PROPERTIES,
     }),
 
     // -- Identity and account email -------------------------------------------

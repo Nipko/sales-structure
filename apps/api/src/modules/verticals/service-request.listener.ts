@@ -1,27 +1,14 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
-import { EmailService } from '../email/email.service';
 import { OperationConfirmationService } from '../email-templates/operation-confirmation.service';
-
-function escapeHtml(value: unknown): string {
-    return String(value ?? '')
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-}
 
 /**
  * Escucha `service_request.created` (emitido por el writer canónico de
- * servicios_hogar, tanto para IA como para altas manuales) y notifica a los
- * humanos cuando la urgencia es emergencia.
- *
- * Hasta ahora el evento se emitía al vacío: una fuga de gas creaba el request y
- * ningún humano recibía aviso — ni email, ni inbox. La única escalación real era
- * por keywords de handoff en el texto del cliente, y el board de despacho se
- * enteraba por su refresh de 20 segundos.
+ * servicios_hogar, tanto para IA como para altas manuales) y confirma al
+ * cliente las visitas programadas. La alerta interna de emergencia nace como
+ * una fila durable dentro de la transacción del writer; un listener posterior
+ * no puede ofrecer atomicidad.
  */
 @Injectable()
 export class ServiceRequestListener {
@@ -29,7 +16,6 @@ export class ServiceRequestListener {
 
     constructor(
         private readonly prisma: PrismaService,
-        private readonly emailService: EmailService,
         /**
          * El aviso AL CLIENTE usa la plantilla del tenant
          * (`homeservice_booking_confirmation`), no el correo interno de arriba:
@@ -39,75 +25,14 @@ export class ServiceRequestListener {
     ) {}
 
     /**
-     * Dos avisos distintos con el mismo disparador, y no comparten nada.
-     *
-     * El interno despierta a un humano cuando hay una emergencia; el del
-     * cliente confirma una visita agendada y lo gobierna el interruptor del
-     * dueño. Se ejecutan por separado a propósito: un SMTP flojo con los
-     * responsables no puede costarle al cliente su confirmación, ni al revés.
+     * El aviso interno ya fue comprometido con la solicitud antes de este
+     * evento. Aquí sólo se procesa la confirmación al cliente.
      */
     @OnEvent('service_request.created')
     async onServiceRequestCreated(payload: { requestId: string; tenantSchemaName: string; urgency?: string }): Promise<void> {
         await this.notifyCustomer(payload).catch((error: any) =>
             this.logger.error(`No se pudo confirmar al cliente la solicitud `
                 + `${payload?.requestId}: ${error?.message}`));
-        await this.notifyEmergency(payload);
-    }
-
-    private async notifyEmergency(payload: { requestId: string; tenantSchemaName: string; urgency?: string }): Promise<void> {
-        try {
-            if (payload?.urgency !== 'emergencia') return;
-
-            const tenant = await this.prisma.tenant.findFirst({
-                where: { schemaName: payload.tenantSchemaName },
-                select: { id: true, name: true },
-            });
-            if (!tenant) return;
-
-            const rows = (await this.prisma.executeInTenantSchema(
-                payload.tenantSchemaName,
-                `SELECT service_type, customer_name, customer_phone, address, city, issue_description
-                 FROM service_requests WHERE id = $1::uuid LIMIT 1`,
-                [payload.requestId],
-            )) as any[];
-            const req = rows?.[0];
-            if (!req) return;
-
-            // Admin + supervisores del tenant: los que pueden despachar un técnico.
-            const recipients = await this.prisma.user.findMany({
-                where: {
-                    tenantId: tenant.id,
-                    isActive: true,
-                    role: { in: ['tenant_admin', 'tenant_supervisor'] },
-                },
-                select: { email: true },
-            });
-            if (recipients.length === 0) return;
-
-            const address = [req.address, req.city]
-                .filter(Boolean)
-                .map((value) => escapeHtml(value))
-                .join(', ') || 'sin dirección';
-            const detalle = [
-                `Servicio: ${escapeHtml(req.service_type || '—')}`,
-                `Cliente: ${escapeHtml(req.customer_name || 'sin nombre')} · ${escapeHtml(req.customer_phone || 'sin teléfono')}`,
-                `Dirección: ${address}`,
-                `Problema: ${escapeHtml(req.issue_description || '—')}`,
-            ].join('<br>');
-
-            // Fire-and-forget por destinatario: un SMTP flojo no debe frenar el turno.
-            for (const r of recipients) {
-                void this.emailService.send({
-                    to: r.email,
-                    subject: `🚨 EMERGENCIA — nueva solicitud de servicio (${tenant.name})`,
-                    html: `<p>El asistente registró una solicitud marcada como <strong>EMERGENCIA</strong>:</p><p>${detalle}</p><p>Revisala en el panel: <a href="https://admin.parallly-chat.cloud/admin/service-requests">Solicitudes de servicio</a></p>`,
-                });
-            }
-            this.logger.log(`Emergencia notificada a ${recipients.length} responsable(s) del tenant ${tenant.id} (request ${payload.requestId})`);
-        } catch (e: any) {
-            // Nunca romper el flujo de la conversación por una notificación.
-            this.logger.error(`No se pudo notificar la emergencia ${payload?.requestId}: ${e?.message}`);
-        }
     }
 
     /**

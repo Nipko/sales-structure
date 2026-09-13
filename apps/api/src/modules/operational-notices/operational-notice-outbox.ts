@@ -18,9 +18,40 @@ export async function ensureOperationalNoticeOutbox(prisma: PrismaService, schem
     await prisma.transactionInTenantSchema(schema, async query => {
         await query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))::text', [`${schema}:operational-notice-schema`]);
         await query(OPERATIONAL_NOTICE_DDL);
+        await query('ALTER TABLE operational_notice_outbox ADD COLUMN IF NOT EXISTS recipient_user_id UUID');
+        const [kindConstraint] = await query<any[]>(`SELECT pg_get_constraintdef(oid) AS definition
+            FROM pg_constraint WHERE conrelid='operational_notice_outbox'::regclass
+              AND conname='operational_notice_outbox_kind_check'`);
+        if (!String(kindConstraint?.definition || '').includes('home_service.emergency')) {
+            await query('ALTER TABLE operational_notice_outbox DROP CONSTRAINT IF EXISTS operational_notice_outbox_kind_check');
+            await query(`ALTER TABLE operational_notice_outbox ADD CONSTRAINT operational_notice_outbox_kind_check
+                CHECK(kind IN ('appointment.payment_confirmed','appointment.payment_review','gym.waitlist_promoted',
+                    'education.waitlist_promoted','education.waitlist_review','home_service.emergency'))`);
+        }
         await query("CREATE INDEX IF NOT EXISTS idx_operational_notice_due ON operational_notice_outbox(state,next_attempt_at) WHERE state IN ('pending','queued','failed')");
     });
     const schemas = prepared.get(prisma) || new Set<string>(); schemas.add(schema); prepared.set(prisma, schemas);
+}
+
+/**
+ * Snapshot one durable intent per active operator. A role may have many users,
+ * and each SMTP transaction needs its own authority and receipt; one row per
+ * role would hide several remote effects behind one state.
+ */
+export async function enqueueOperationalNoticesForTenantRoles(query: NoticeQuery, schema: string, input: {
+    kind: 'home_service.emergency'; entityId: string; contactId?: string | null;
+    conversationId?: string | null; roles: Array<'tenant_admin' | 'tenant_supervisor'>; revision?: string;
+}): Promise<string[]> {
+    if (!operationalNoticesAllowed(schema)) return [];
+    const rows = await query<any[]>(`INSERT INTO operational_notice_outbox(
+            event_key,kind,entity_id,contact_id,conversation_id,recipient_user_id,state)
+        SELECT $1 || ':' || u.id::text || ':' || $7,$2,$3::uuid,$4::uuid,$5::uuid,u.id,'pending'
+          FROM public.tenants t
+          JOIN public.users u ON u.tenant_id=t.id
+         WHERE t.schema_name=$6 AND t.is_active=true AND u.is_active=true AND u.role=ANY($8::text[])
+        ON CONFLICT(event_key) DO NOTHING RETURNING id`, [input.kind, input.kind, input.entityId,
+        input.contactId || null, input.conversationId || null, schema, input.revision || '1', input.roles]);
+    return rows.map(row => row.id);
 }
 
 /** Called inside the same transaction that confirms a payment or promotes a waitlist entry. */

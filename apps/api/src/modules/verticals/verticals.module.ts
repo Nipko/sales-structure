@@ -14,7 +14,6 @@ import { VerticalMigrationService } from './vertical-migration.service';
 import { TenantsModule } from '../tenants/tenants.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { RedisModule } from '../redis/redis.module';
-import { EmailModule } from '../email/email.module';
 import { EmailTemplatesModule } from '../email-templates/email-templates.module';
 import { VerticalAuditController } from './vertical-audit.controller';
 import { VerticalTaxonomyInventoryService } from './vertical-taxonomy-inventory.service';
@@ -27,7 +26,6 @@ import { AppointmentCommandsModule } from '../appointments/appointment-commands.
     imports: [
         PrismaModule,
         RedisModule,
-        EmailModule,
         // La confirmación de visita al cliente que gobierna
         // `tools.homeServices.emailConfirmations` se renderiza desde la
         // plantilla `homeservice_booking_confirmation` del propio tenant.

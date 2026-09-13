@@ -135,7 +135,7 @@ export class OperationalNoticeService {
                 if (hydrated.route === 'email') {
                     send=this.email.prepareBoundedSend({to:hydrated.email,subject:hydrated.text.split('\n')[0],text:hydrated.text});
                 } else if (hydrated.route === 'operator') {
-                    send=()=>this.push.sendToTenantRole(reference.tenantId,'tenant_admin', {
+                    send=()=>this.push.sendToTenantRole(reference.tenantId,hydrated.role || 'tenant_admin', {
                         title:hydrated.text.split('\n')[0],body:hydrated.text,tag:`operational-${row.id}`,
                     });
                 } else {
@@ -192,7 +192,7 @@ export class OperationalNoticeService {
             const booking=fc && (await query<any[]>('SELECT * FROM class_bookings WHERE id=$1::uuid FOR SHARE',[notice.entity_id]))[0];
             facts=booking && {...booking,name:fc.name,when_text:fc.when_text,scheduled_at:fc.scheduled_at,is_cancelled:fc.is_cancelled};
             if (!facts || facts.status!=='confirmed' || facts.is_cancelled || new Date(facts.scheduled_at).getTime()<=Date.now()) throw new NoticeSuppressed('notice_domain_state_changed');
-        } else {
+        } else if (notice.kind.startsWith('education.')) {
             const ref=(await query<any[]>('SELECT cohort_id FROM enrollments WHERE id=$1::uuid',[notice.entity_id]))[0];
             const co=ref && (await query<any[]>('SELECT *,starts_at::text AS when_text FROM course_cohorts WHERE id=$1::uuid FOR SHARE',[ref.cohort_id]))[0];
             const enrollment=co && (await query<any[]>('SELECT * FROM enrollments WHERE id=$1::uuid FOR SHARE',[notice.entity_id]))[0];
@@ -200,12 +200,31 @@ export class OperationalNoticeService {
             const expected=notice.kind==='education.waitlist_review'?'waitlist_review':'enrolled';
             if (!facts || facts.status!==expected || ['cancelled','finished'].includes(facts.cohort_status)) throw new NoticeSuppressed('notice_domain_state_changed');
             if (new Date(facts.starts_at).getTime()<new Date(new Date().toISOString().slice(0,10)).getTime()) throw new NoticeSuppressed('notice_event_expired');
+        } else if (notice.kind === 'home_service.emergency') {
+            facts=(await query<any[]>(`SELECT * FROM service_requests WHERE id=$1::uuid FOR SHARE`,[notice.entity_id]))[0];
+            if (!facts || facts.urgency!=='emergencia' || ['completed','cancelled'].includes(facts.status)) {
+                throw new NoticeSuppressed('notice_domain_state_changed');
+            }
+        } else {
+            throw new NoticeSuppressed('notice_kind_unsupported');
         }
         if (facts.contact_id!==notice.contact_id) throw new NoticeSuppressed('notice_contact_changed');
         const erased=await query<any[]>("SELECT to_regclass('customer_memory_erasure')::text AS name");
         if (notice.contact_id && erased[0]?.name && (await query<any[]>('SELECT contact_id FROM customer_memory_erasure WHERE contact_id=$1::uuid',[notice.contact_id])).length) throw new NoticeSuppressed('notice_contact_erased');
         const tenant=await this.prisma.tenant.findUnique({where:{id:tenantId},select:{language:true}});
         if (notice.kind==='appointment.payment_review') return {route:'operator',conversationId:notice.conversation_id||null,text:operationalNoticeText(notice.kind,tenant?.language,{})};
+        if (notice.kind==='home_service.emergency') {
+            if (!notice.recipient_user_id) throw new NoticeSuppressed('notice_operator_missing');
+            const [operator]=await query<any[]>(`SELECT id,email FROM public.users
+                WHERE id=$1::uuid AND tenant_id=$2::uuid AND is_active=true
+                  AND role IN ('tenant_admin','tenant_supervisor') FOR SHARE`,[notice.recipient_user_id,tenantId]);
+            if (!operator?.email) throw new NoticeSuppressed('notice_operator_unavailable');
+            return {route:'email',email:operator.email,conversationId:notice.conversation_id||null,
+                text:operationalNoticeText(notice.kind,tenant?.language,{
+                    service:facts.service_type,customer:facts.customer_name,phone:facts.customer_phone,
+                    address:[facts.address,facts.city].filter(Boolean).join(', '),problem:facts.issue_description,
+                })};
+        }
         if (!notice.contact_id) throw new NoticeSuppressed('notice_contact_missing');
         const contacts=await query<any[]>('SELECT * FROM contacts WHERE id=$1::uuid FOR SHARE',[notice.contact_id]);
         if (!contacts[0]) throw new NoticeSuppressed('notice_contact_missing');

@@ -79,7 +79,7 @@ const MESSAGE_EGRESS = [
     /\.proactive\.send\(/, /\.proactiveDispatch\.send\(/,
     /\.sendMessage\(/, /\.sendTextMessage\(/, /\.sendMediaMessage\(/, /\.sendStrict\(/,
     /\.sendFlowMessage\(/, /\.sendTemplate\(/, /\.sendInteractiveMessage\(/, /\.sendLocationMessage\(/,
-    /enqueueOperationalNotice\(/,
+    /enqueueOperationalNotice(?:sForTenantRoles)?\(/,
     /from '[^']*email\/email\.service'/,
     // ── THE OTHER EMAIL DOOR, AND THE ONE THAT WAS OPEN ──────────────────
     //

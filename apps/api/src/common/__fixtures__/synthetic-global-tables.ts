@@ -30,6 +30,7 @@ const TENANT_COLUMNS: ReadonlyArray<[string, string]> = [
 /** Columnas de `public.users` que alguna suite lee. */
 const USER_COLUMNS: ReadonlyArray<[string, string]> = [
     ['tenant_id', 'UUID'],
+    ['email', 'TEXT'],
     ['is_active', 'BOOLEAN'],
     ['role', 'TEXT'],
     ['first_name', 'TEXT'],

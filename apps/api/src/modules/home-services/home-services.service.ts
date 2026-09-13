@@ -27,6 +27,11 @@ import {
     inspectHomeServiceCapacity,
     lockAndAssertHomeServiceCapacity,
 } from './home-service-capacity';
+import {
+    enqueueOperationalNoticesForTenantRoles,
+    ensureOperationalNoticeOutbox,
+    operationalNoticesAllowed,
+} from '../operational-notices/operational-notice-outbox';
 
 const HOME_SERVICE_LOCAL_TIMESTAMPS = ['scheduled_at', 'completed_at'] as const;
 
@@ -138,11 +143,9 @@ export class HomeServicesService {
      * `execution.sandboxNamespace` es el arriendo de una evaluación aislada.
      *
      * Presente, la solicitud se escribe igual —es lo que la evaluación mide—
-     * pero el aviso NO sale: `service_request.created` termina en un correo a
-     * los responsables del tenant cuando la urgencia es emergencia, y una fuga
-     * de gas simulada no puede despertar a nadie. Se apaga por el arriendo y no
-     * por el nombre del schema, para que un llamador de producción no pueda
-     * quedarse sin aviso por parecerse a una prueba.
+     * pero no crea avisos operativos. Se apaga por el arriendo y no por el
+     * nombre del schema, para que un llamador de producción no pueda quedarse
+     * sin aviso por parecerse a una prueba.
      */
     async createRequest(
         schemaName: string,
@@ -166,6 +169,10 @@ export class HomeServicesService {
         );
         const currency = normalizeCurrencyCode(data.currency);
         const contactId = assertOptionalContactId(data.contactId);
+        const durableEmergency = !execution.sandboxNamespace
+            && data.urgency === 'emergencia'
+            && operationalNoticesAllowed(schemaName);
+        if (durableEmergency) await ensureOperationalNoticeOutbox(this.prisma, schemaName);
         const sql = `INSERT INTO service_requests (
                 contact_id, opportunity_id, conversation_id, service_id, service_type, urgency,
                 customer_name, customer_phone, address, address_notes, city,
@@ -196,7 +203,7 @@ export class HomeServicesService {
 
         let rows: any[];
         try {
-            rows = contactId || data.opportunityId || status === 'scheduled'
+            rows = contactId || data.opportunityId || status === 'scheduled' || durableEmergency
                 ? await this.prisma.transactionInTenantSchema(schemaName, async (query) => {
                 const canonicalContactId = await requireTenantContact(query, contactId);
                 const opportunityId = await resolveNativeEvidenceOpportunity(query, {
@@ -214,7 +221,18 @@ export class HomeServicesService {
                     estimatedDurationMinutes = capacity.service.durationMinutes;
                     effectiveServiceType = capacity.service.category;
                 }
-                return query<any[]>(sql, buildParams(canonicalContactId, opportunityId));
+                const inserted = await query<any[]>(sql, buildParams(canonicalContactId, opportunityId));
+                const request = inserted[0];
+                if (durableEmergency && request) {
+                    await enqueueOperationalNoticesForTenantRoles(query, schemaName, {
+                        kind: 'home_service.emergency',
+                        entityId: request.id,
+                        contactId: request.contact_id,
+                        conversationId: request.conversation_id,
+                        roles: ['tenant_admin', 'tenant_supervisor'],
+                    });
+                }
+                return inserted;
             })
                 : await this.prisma.executeInTenantSchema<any[]>(
                     schemaName,

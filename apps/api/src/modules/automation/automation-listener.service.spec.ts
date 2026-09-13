@@ -7,7 +7,7 @@ describe('AutomationListenerService event bridges', () => {
             executeInTenantSchema: jest.fn(),
         };
         const persona = { getActivePersona: jest.fn().mockResolvedValue({ hours: { schedule: {} } }) };
-        const throttle = { isLimited: jest.fn(), getPriority: jest.fn() };
+        const throttle = { isOverLimit: jest.fn(), getPriority: jest.fn() };
         const queue = { add: jest.fn() };
         const service = new AutomationListenerService(prisma as any, persona as any, throttle as any, queue as any,
         { timezoneFor: jest.fn().mockResolvedValue('America/Bogota'), timezoneForSchema: jest.fn().mockResolvedValue('America/Bogota') } as any,

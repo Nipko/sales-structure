@@ -59,8 +59,10 @@ export class AutomationListenerService {
                 return;
             }
 
-            // 3. Check tenant rate limit before queueing any jobs
-            if (await this.throttle.isLimited(event.tenantId, 'automation')) {
+            // 3. Read the tenant limit before discovering work. This must not
+            // consume a slot: the processor atomically reserves one slot for
+            // each stable BullMQ job after subscription admission succeeds.
+            if (await this.throttle.isOverLimit(event.tenantId, 'automation')) {
                 this.logger.warn(
                     `[AutomationListener] Tenant ${event.tenantId} rate limited — skipping ${activeRules.length} rules`,
                 );
@@ -324,7 +326,9 @@ export class AutomationListenerService {
         );
         if (!rules?.length) return;
 
-        if (await this.throttle.isLimited(tenantId, 'automation')) {
+        // Discovery is read-only. The processor owns the one atomic quota
+        // reservation for every logical action, including all of its retries.
+        if (await this.throttle.isOverLimit(tenantId, 'automation')) {
             throw new Error(`automation_trigger_rate_limited:${triggerType}:${tenantId}`);
         }
         const priority = await this.throttle.getPriority(tenantId);

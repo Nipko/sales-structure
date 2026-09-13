@@ -85,6 +85,7 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
     /** The whole job, so `automation_executions` is written by the real path. */
     const run = (firingRow: { contactId: string; ruleId: string; executionId: string }) =>
         processor.process({
+            id: `automation-${firingRow.executionId}-0`,
             attemptsMade: 0, opts: { attempts: 3 },
             data: {
                 tenantId, schemaName: schema, executionId: firingRow.executionId,
@@ -141,7 +142,10 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
         processor = Object.create(AutomationJobsProcessor.prototype);
         Object.assign(processor, {
             prisma, proactive,
-            throttle: { isLimited: async () => false },
+            throttle: {
+                reserveActionUsage: async () => ({ allowed: true, count: 1, adopted: false }),
+                commitActionUsage: async () => undefined,
+            },
             httpRequestHandler: { execute: async () => ({}) },
             pipelineService: {},
             logger: { log: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },

@@ -94,10 +94,27 @@ export class AutomationJobsProcessor extends WorkerHost {
             return { skipped: true, reason };
         }
 
-        // Per-tenant rate limit check — if exceeded, throw to trigger BullMQ retry
-        if (await this.throttle.isLimited(tenantId, 'automation')) {
+        // One quota unit belongs to one logical BullMQ action, not to every
+        // execution attempt. BullMQ preserves job.id across retries and the
+        // listener assigns deterministic ids to durable rule actions. Without
+        // that identity a retry could consume another unit, so fail closed.
+        const jobId = String(job.id ?? '').trim();
+        if (!jobId) {
+            throw new Error('automation_job_missing_stable_id');
+        }
+        const quotaEffectId = `automation-job:${jobId}`;
+        const reservation = await this.throttle.reserveActionUsage(
+            tenantId,
+            'automation',
+            quotaEffectId,
+        );
+        if (!reservation.allowed) {
             throw new Error(`Tenant ${tenantId} rate limited for automation — will retry`);
         }
+        // Automation quota measures admitted logical work. Commit before the
+        // handler because an HTTP request or provider hand-off may have taken
+        // effect even when its response is lost. A retry adopts this marker.
+        await this.throttle.commitActionUsage(tenantId, 'automation', quotaEffectId);
 
         this.logger.log(
             `[AutomationJobs] Procesando job '${action.type}' para regla '${ruleName}' tenant=${tenantId} (intento ${job.attemptsMade + 1})`,

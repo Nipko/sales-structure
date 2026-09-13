@@ -104,7 +104,9 @@ export class TemporalEvaluatorService {
         ).catch(() => [] as any[]);
         if (!rules.length) return 0;
 
-        if (await this.throttle.isLimited(tenantId, 'automation')) {
+        // Merely scanning due work cannot consume quota. Each queued action
+        // reserves its own stable slot inside AutomationJobsProcessor.
+        if (await this.throttle.isOverLimit(tenantId, 'automation')) {
             this.logger.warn(`[Temporal] tenant ${tenantId} rate limited — se omite la corrida`);
             return 0;
         }

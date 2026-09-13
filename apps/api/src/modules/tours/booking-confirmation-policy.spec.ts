@@ -104,10 +104,11 @@ describe('the tour booking confirmation follows the agent that took the booking'
         return { service, emailTemplates, resolvedBinding, conversationId };
     };
 
-    const book = (service: ToursService, conversationId: string | null) =>
+    const book = (service: ToursService, conversationId: string | null, language = 'es') =>
         service.createBooking(SCHEMA, {
             packageId: PACKAGE, departureDate: '2026-10-01', partySize: 2,
             guestName: 'Ana', guestEmail: 'ana@example.com',
+            language,
             ...(conversationId ? { conversationId } : {}),
         } as any);
 
@@ -152,6 +153,14 @@ describe('the tour booking confirmation follows the agent that took the booking'
 
         expect(emailTemplates.renderAndSend).toHaveBeenCalledTimes(1);
         expect(resolvedBinding()).toBeUndefined();
+    });
+
+    it('renders the confirmation in the guest language captured by the booking', async () => {
+        const { service, emailTemplates } = build({ bookedOn: null, toolsByAccount: {} });
+
+        await book(service, null, 'pt-BR');
+
+        expect(emailTemplates.renderAndSend.mock.calls[0][4]).toBe('pt');
     });
 
     it('is not decided by another family switched off on the same agent', async () => {
@@ -207,10 +216,11 @@ describe('the stay confirmation follows the agent that took the booking', () => 
         return { service, emailTemplates, resolvedBinding, conversationId };
     };
 
-    const book = (service: PropertiesService, conversationId: string | null) =>
+    const book = (service: PropertiesService, conversationId: string | null, language = 'es') =>
         service.createBooking(SCHEMA, PROPERTY, {
             guestName: 'Ana', guestEmail: 'ana@example.com', guestsCount: 2,
             checkIn: '2026-10-01', checkOut: '2026-10-03',
+            language,
             ...(conversationId ? { conversationId } : {}),
         } as any);
 
@@ -256,5 +266,13 @@ describe('the stay confirmation follows the agent that took the booking', () => 
         await book(service, conversationId);
 
         expect(emailTemplates.renderAndSend).toHaveBeenCalledTimes(1);
+    });
+
+    it('renders the confirmation in the guest language captured by the booking', async () => {
+        const { service, emailTemplates } = build({ bookedOn: null, toolsByAccount: {} });
+
+        await book(service, null, 'fr-FR');
+
+        expect(emailTemplates.renderAndSend.mock.calls[0][4]).toBe('fr');
     });
 });

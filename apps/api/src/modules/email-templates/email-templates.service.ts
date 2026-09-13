@@ -19,6 +19,7 @@ import {
     operationReceiptVariables,
 } from './operation-receipt-layout';
 import { LEGACY_STOCK_BODIES } from './email-template-legacy-bodies';
+import { normalizeEmailTemplateLanguage } from './email-template-language';
 import { randomUUID } from 'crypto';
 
 export interface EmailTemplate {
@@ -1181,10 +1182,11 @@ export class EmailTemplatesService {
     ): Promise<(() => Promise<string>) | null> {
         await this.refreshManagedDefaults(schemaName, slug);
 
-        let template = await this.getBySlug(schemaName, slug, lang);
+        const templateLanguage = normalizeEmailTemplateLanguage(lang);
+        let template = await this.getBySlug(schemaName, slug, templateLanguage);
         if (!template) {
             await this.seedDefaults(schemaName);
-            template = await this.getBySlug(schemaName, slug, lang);
+            template = await this.getBySlug(schemaName, slug, templateLanguage);
         }
         if (!template) {
             this.logger.warn(`Template "${slug}" not found after seeding — email not sent`);

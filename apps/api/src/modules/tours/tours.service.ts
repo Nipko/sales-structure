@@ -2,6 +2,7 @@ import { Injectable, Logger, BadRequestException, NotFoundException } from '@nes
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { EmailTemplatesService } from '../email-templates/email-templates.service';
+import { normalizeEmailTemplateLanguage } from '../email-templates/email-template-language';
 import {
     normalizeCurrencyCode,
     requirePositiveIntegerUnit,
@@ -458,9 +459,6 @@ export class ToursService {
                 );
 
                 if (emailConfirmationsEnabled) {
-                    // TODO(i18n): this is a guest-facing email — pass the guest's
-                    // detected/preferred language as the trailing `lang` arg once
-                    // it's captured. Defaults to 'es' (unchanged behaviour).
                     await this.emailTemplates.renderAndSend(schemaName, 'tour_booking_confirmation', guestEmail, {
                         guest_name: data.guestName || 'Huésped',
                         package_name: pkg.name,
@@ -472,7 +470,7 @@ export class ToursService {
                         total_price: String(totalPrice),
                         currency: pkg.currency || 'COP',
                         departure_location: pkg.departure_location || '',
-                    });
+                    }, normalizeEmailTemplateLanguage(data.language));
                 }
             }
         } catch (e: any) {

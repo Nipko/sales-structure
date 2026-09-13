@@ -9,6 +9,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import type { ServiceExecutionContext } from '../../common/types/execution-context';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { EmailTemplatesService } from '../email-templates/email-templates.service';
+import { normalizeEmailTemplateLanguage } from '../email-templates/email-template-language';
 import {
     assertOptionalContactId,
     requireTenantContact,
@@ -743,9 +744,6 @@ export class PropertiesService {
                 );
 
                 if (emailConfirmationsEnabled) {
-                    // TODO(i18n): this is a guest-facing email — pass the guest's
-                    // detected/preferred language as the trailing `lang` arg once
-                    // it's captured. Defaults to 'es' (unchanged behaviour).
                     await this.emailTemplates.renderAndSend(schemaName, 'property_booking_confirmation', data.guestEmail, {
                         guest_name: data.guestName || 'Huésped',
                         property_name: property?.name || '',
@@ -755,7 +753,7 @@ export class PropertiesService {
                         total_price: String(totalPrice),
                         currency: booking.currency,
                         check_in_instructions: property?.check_in_instructions || '',
-                    });
+                    }, normalizeEmailTemplateLanguage(data.language));
                 }
             }
         } catch (e: any) {

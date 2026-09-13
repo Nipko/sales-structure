@@ -390,7 +390,7 @@ esperada y su clasificación queda **fuera del alcance de este generador**.
 | `handoff.push` | `handoff_effects` | `live` | `modules/push/push-listener.service.ts` |
 | `handoff.sla_escalation.email` | `operational_notice` | `live` | `modules/agent-console/agent-availability.service.ts` |
 | `handoff.slack` | `handoff_effects` | `live` | `modules/slack/slack-listener.service.ts` |
-| `human.email_template.test_send` | `inline` | `live` | `modules/email-templates/email-templates.service.ts` |
+| `human.email_template.test_send` | `platform_notification_outbox` | `live` | `modules/email-templates/email-templates.service.ts` |
 | `identity.verification_code` | `delivery_outbox` | `live` | `modules/conversations/chat-identity.service.ts` |
 | `integrations.commerce_readonly` | `inline` | `internal_only` | `modules/vertical-integrations/vertical-integrations.service.ts` |
 | `integrations.outbox_scaffolding` | `domain_queue` | `off` | `modules/integrations/integration-outbox.worker.ts` |

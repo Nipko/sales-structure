@@ -155,13 +155,18 @@ const deferred = () => { let resolve!: () => void; const promise = new Promise<v
         await expect(pets.update(schema, row.id, { name: 'After erasure' }, options())).rejects.toThrow('contact_erased');
     });
     it('the real tool adapters carry private scope and preserve camelCase data through the canonical service', async () => {
-        const executor = Object.create(AIToolExecutorService.prototype); executor.petsService = pets;
+        const executor = Object.create(AIToolExecutorService.prototype);
+        executor.petsService = pets;
+        // Object.create bypasses Nest and class field initializers. Preserve the
+        // production failure boundary so this harness can inspect an ownership
+        // denial instead of crashing while trying to log it.
+        executor.logger = { error: jest.fn(), warn: jest.fn(), log: jest.fn(), debug: jest.fn() };
         const result = await executor.registerPet(schema, contactId, { name: 'Tool pet', species: 'rabbit', weightKg: 2 }, conversationId, randomUUID(), scope);
         expect(result).toMatchObject({ name: 'Tool pet', species: 'rabbit' });
         const updated = await executor.updatePetTool(schema, contactId, { petId: result.petId, weightKg: 2.5, isNeutered: true }, conversationId, randomUUID(), scope);
         expect(updated.success).toBe(true);
         expect((await pets.getById(schema, result.petId)).is_neutered).toBe(true);
         const wrong = await executor.updatePetTool(schema, otherContact, { petId: result.petId, weightKg: 3 }, undefined, randomUUID(), scope);
-        expect(wrong.error).toBe('pet_unavailable');
+        expect(wrong.error).toBe('update_pet_unavailable');
     });
 });

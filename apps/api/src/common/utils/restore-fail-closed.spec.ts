@@ -1,6 +1,10 @@
 import { spawnSync } from 'child_process';
-import { readFileSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { resolve } from 'path';
+
+const WINDOWS_GIT_BASH = 'C:/Program Files/Git/bin/bash.exe';
+const BASH = process.platform === 'win32' && existsSync(WINDOWS_GIT_BASH)
+    ? WINDOWS_GIT_BASH : 'bash';
 
 /**
  * ═══ THE RESTORE SCRIPT MAY NOT SAY "OK" WHEN NOTHING WAS RESTORED ═══
@@ -125,7 +129,7 @@ describe('a restore that did not restore may not report success', () => {
  * script's own branching — which is exactly where the defect lived.
  */
 const bash = (harness: string): { stdout: string; calls: string; exit: number } => {
-    const result = spawnSync('bash', ['-c', harness], { encoding: 'utf8', timeout: 60_000 });
+    const result = spawnSync(BASH, ['-c', harness], { encoding: 'utf8', timeout: 60_000 });
     if (result.error) throw result.error;
     const out = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
     const calls = out.split('---DOCKER-CALLS---')[1]?.split('---EXIT---')[0] ?? '';

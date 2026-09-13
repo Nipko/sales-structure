@@ -25,7 +25,7 @@ Fuentes de esta reconstrucción:
 |---|---|
 | Reglas y tarifas oficiales, con URL, SHA-256 y archivos preservados | `docs/research/2026-09-10/meta-official-pricing-evidence.md` |
 | La tabla que el código aplica de verdad | `apps/api/src/modules/billing/whatsapp-rates/whatsapp-rate-table.generated.ts` |
-| Quién paga, márgenes, planes y la decisión pendiente | `docs/audits/2026-09-12/m4-pricing-proposal.md` |
+| Quién paga, márgenes, planes y la decisión aplicada | `docs/audits/2026-09-12/m4-pricing-proposal.md` |
 | Estado derivado del programa de octubre (M0–M6/R0–R6) | `docs/audits/2026-09-09/closure-report.md` |
 
 ---
@@ -123,9 +123,16 @@ contradice la tarjeta.
   `outbound-gate-census.spec.ts`). Es la fila M3 del cierre.
 - **La categoría aprobada y la ventana de servicio se leen de la base del
   tenant** antes de admitir, no se adivinan.
-- **Todo alcance nace en `observe`** salvo la franquicia: mide y no rechaza.
-  Nada escribe `enforce` hoy. Un tenant que no configuró un techo no tiene
-  ninguno.
+- **Cada número y cada contacto nacen con límites observables.** El valor
+  inicial es 2.000 entregas por número y mes calendario y 60 por contacto y
+  mes, con avisos al 80 % y pausa suave al 95 %. `INSERT ... ON CONFLICT DO
+  NOTHING` conserva cualquier límite explícito que ya tuviera el tenant.
+- **`observe` sigue siendo el modo inicial.** Mide, muestra presión y conserva
+  toda la contabilidad sin rechazar. Un `tenant_admin` puede activar o devolver
+  `enforce` desde **Canais/Canales → WhatsApp**; el cambio queda auditado y se
+  propaga a todos los workers mediante Valkey. Un supervisor puede ver el
+  estado, pero no cambiarlo (`GET /whatsapp/spend/policy`,
+  `POST /whatsapp/spend/policy/enforcement`).
 - **`whatsappCreditUsdCents` es decorativo.** Existe en
   `plan-features.registry.ts` y en el seed de planes, y **ningún consumidor lo
   lee para decidir nada**. No presentarlo como un saldo ni como una protección.
@@ -135,7 +142,9 @@ contradice la tarjeta.
 - El carril durable de despacho es obligatorio para toda salida externa. La
   clave heredada `dispatch.normalOutbox` sólo delimita qué tenants y canales se
   revisan en el canario; apagarla no devuelve mensajes al carril anterior.
-- El modo `enforce` del gasto **no está activado** en ningún tenant.
+- El modo `enforce` está implementado y es operable por tenant, pero sigue
+  apagado por defecto. El código no afirma que exista hoy un tenant productivo
+  con esa activación: eso sólo se comprueba durante el cutover.
 - La coexistencia con Meta Business Agent está detrás de un interruptor apagado.
 - **0 de 5 canales y 0 de 76 perfiles certificados** (`closure-report.md`,
   `tool-profile-audit.json`). Un test sintético verde no certifica nada.
@@ -153,17 +162,18 @@ contradice la tarjeta.
   Parallly no la recibe, no la guarda y no puede comprobarla. La landing lo dice
   así, junto a cada CTA y precio.
 
-## 7. Qué tenía el original y no está acá
+## 7. Qué tenía el original y qué autoridad lo reemplaza
 
 El original registraba un **plan F0–F3** y un conjunto de **decisiones del
 dueño**. No se reconstruyen porque no hay artefacto del que derivarlos, y
 escribirlos de memoria sería inventar autoridad. Lo que existe hoy en su lugar:
 
-- **Las decisiones comerciales pendientes** están enumeradas, con escenario
-  recomendado y alternativas costeadas, en
+- **La decisión comercial M4 ya está aplicada** en
   `docs/audits/2026-09-12/m4-pricing-proposal.md` §8: precios, techo por número,
   techo por contacto, los dos textos de comunicación y la fecha del aviso del
-  método de pago. Ninguna es código y ninguna está aplicada.
+  método de pago. Su autoridad ejecutable es
+  `WHATSAPP_OCTOBER_COMMERCIAL_POLICY`; el ledger siembra esos límites y el
+  informe de cierre lee el mismo objeto.
 - **El estado de ejecución** vive en `docs/audits/2026-09-09/closure-report.md`,
   generado desde el código: cada fila declara su condición y su estado sale de
   ella.

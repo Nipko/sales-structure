@@ -1,8 +1,9 @@
-# M4 — Propuesta comercial para aprobación
+# M4 — Decisión comercial aplicada
 
-**Estado: PROPUESTA. Nada de esto está aplicado.** No se cambió ningún precio,
-ninguna capacidad de plan, ningún contrato aceptado ni ninguna comunicación a
-clientes. La fila M4 sigue `abierta` y sólo la cierra una decisión del dueño.
+**Estado: DECIDIDA Y APLICADA EN CÓDIGO.** No se cambió ningún precio, ninguna
+capacidad de plan ni ningún contrato aceptado. La política, los límites
+observables y las superficies dentro del producto están construidos; todavía
+requieren despliegue y activación operativa para llegar a clientes.
 
 Fecha: 12 de septiembre de 2026. Revisión de las cifras: ver §7.
 
@@ -160,9 +161,10 @@ bot consume la cuota entera de la cuenta y **el siguiente cliente real queda sin
 respuesta**. Con los dos, el bucle se detiene en su propio techo (3 de 30
 intentos) y la cuenta conserva 17 de sus 20 entregas para las demás personas.
 
-El mecanismo está construido y probado; **el número no está elegido**, y hoy
-todo alcance salvo la franquicia nace en `observe`, así que un tenant que no
-configuró nada no tiene ninguno de los dos.
+El mecanismo está construido y probado. Los dos valores están elegidos y se
+siembran en `observe`: 2.000 por número y mes calendario y 60 por contacto y
+mes. Los límites explícitos existentes ganan y no se sobrescriben al crear o
+volver a leer un contador.
 
 **Decisión:** sembrar ambos en `observe` con el mismo criterio —medir un ciclo
 antes de que refusen algo— y un techo por contacto inicial deliberadamente alto,
@@ -180,10 +182,10 @@ y es visibilidad, no capacidad:
 
 | Plan | Precio | Qué cambia en el plan | Qué necesita el dueño de ese plan |
 |---|---:|---|---|
-| emprendedor | USD 21 | nada | el aviso del método de pago; con un número y tráfico doméstico, la franquicia lo cubre casi siempre |
-| starter | USD 49 | nada | el aviso, más el panel de gasto visible en el alta y no sólo en Facturación |
-| pro | USD 129 | nada | lo anterior, y el techo por número sembrado en `observe` (3 agentes = más tráfico por número) |
-| enterprise | USD 349 | nada | lo anterior, y su mezcla real de destinatarios antes de la primera factura |
+| emprendedor | USD 21 | nada | aviso del método de pago, límites observables por número/contacto y panel de gasto |
+| starter | USD 49 | nada | lo anterior, con proyección visible para su volumen real |
+| pro | USD 129 | nada | lo anterior; cada número conserva su propio límite aunque el plan admita más agentes |
+| enterprise | USD 349 | nada | lo anterior, y revisión de su mezcla real de destinatarios antes de activar `enforce` |
 | custom | negociado | nada | igual que enterprise, y revisión de su contrato por si menciona costos de mensajería |
 
 La migración sólo existe si se aprueba el escenario C, y entonces es: leer
@@ -217,7 +219,7 @@ primer soporte es "¿por qué Parallly me está cobrando WhatsApp?" — cuando n
 estamos cobrando. **El peor resultado de los cinco**, y el único que ocurre por
 omisión.
 
-## 7. Qué hay que verificar antes de aprobar
+## 7. Qué hay que verificar antes de comunicar y activar
 
 1. **La tarjeta de octubre contra la superficie de Meta.** Las tarifas de §2
    salen del CSV preservado en el repositorio, con su `sourceSha256` y su

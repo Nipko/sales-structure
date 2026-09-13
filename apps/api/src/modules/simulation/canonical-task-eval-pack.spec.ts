@@ -97,4 +97,18 @@ describe('complete canonical task evaluation packs', () => {
         expect(matrix.summary.certifiedProfiles).toBe(0);
         expect(matrix.profiles.every(profile => profile.certification.evidence === 'not_loaded')).toBe(true);
     });
+
+    it('does not demand a database row from a provider-only channel effect', () => {
+        const matrix = buildTaskCompetenceMatrix();
+        const listingTasks = matrix.profiles.flatMap(profile => profile.tasks)
+            .filter(task => task.key === 'find_listing');
+        expect(listingTasks).toHaveLength(3);
+        for (const task of listingTasks) {
+            expect(task.tools.find(tool => tool.name === 'send_listing_image')).toMatchObject({
+                effect: 'write', externalEffect: 'channel_write', persistentWriter: false,
+            });
+            expect(task.gaps).not.toContain('effect_verifier_missing');
+            expect(task.gaps).not.toContain('positive_task_case_missing');
+        }
+    });
 });

@@ -68,6 +68,11 @@ export function buildTaskCompetenceMatrix(profileId?: string, execution?: {
                     const family = familyEntry?.[1];
                     return { name, registered: !!policy, prerequisite: !intent.toolPlan.includes(name),
                         effect: policy?.effect ?? 'unknown', commitsBusiness: policy?.commitsBusiness ?? false,
+                        // `write` also covers transient/provider effects (for example sending a
+                        // listing image). A database verifier is required only when the tool has
+                        // an admitted persistence family, or when it commits the business even
+                        // though the eval deliberately refuses that command (file_claim).
+                        persistentWriter: !!familyEntry || policy?.commitsBusiness === true,
                         ownership: policy?.ownership ?? 'unknown',
                         assurance: policy?.assurance ?? 'unknown', confirmation: policy?.confirmation ?? 'unknown',
                         idempotency: policy?.idempotency ?? 'unknown', externalEffect: policy?.externalEffect ?? 'unknown',
@@ -87,7 +92,7 @@ export function buildTaskCompetenceMatrix(profileId?: string, execution?: {
                         positiveAssertions: positive.length, negativeAssertions: negative.length };
                 });
                 const gaps: string[] = [];
-                const persistentTools = tools.filter(tool => tool.effect === 'write' || tool.commitsBusiness);
+                const persistentTools = tools.filter(tool => tool.persistentWriter);
                 if (tools.some(tool => !tool.registered)) gaps.push('tool_not_registered');
                 if (persistentTools.some(tool => !tool.effectVerifier)) gaps.push('effect_verifier_missing');
                 if (persistentTools.length && scenarios.some(scenario => !scenario.positiveAssertions)) gaps.push('positive_task_case_missing');

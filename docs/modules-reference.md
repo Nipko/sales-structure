@@ -842,7 +842,6 @@ Technical inventory for 88 API module declaration files, 144 dashboard pages
   - `3,18,33,48 * * * *` — send1hReminders
   - `5,35 * * * *` — markNoShows
   - `20 * * * *` — autoCompleteAppointments (ended 2+h ago)
-  - `0 */12 * * *` — renewWatchChannels: renew Google Calendar push channels
 
 ---
 
@@ -1667,7 +1666,6 @@ Technical inventory for 88 API module declaration files, 144 dashboard pages
 | `17 */6 * * *` | quality | reconcileAgentAttention | Conciliar snapshots y señales de calidad en lotes acotados |
 | `0 */6 * * *` | crm-b2b | detectRotting | Flag stale open opportunities (per-tenant rottingDays) |
 | `30 */6 * * *` | reviews | syncAll | Sync GBP reviews + auto-reply |
-| `0 */12 * * *` | appointments | renewWatchChannels | Renew Google Calendar push channels |
 | `0 1 1 * *` | financials | generateMonthlySnapshot | Monthly SaaS financial snapshot |
 | `0 2 * * *` | analytics | aggregateYesterday | Nightly metrics aggregation |
 | `30 2 * * *` | billing | applyPendingDowngrades | Apply scheduled plan downgrades |

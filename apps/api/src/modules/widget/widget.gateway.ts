@@ -337,14 +337,6 @@ export class WidgetGateway implements OnGatewayConnection, OnGatewayDisconnect, 
         }
     }
 
-    @SubscribeMessage('widget:typing')
-    async handleTyping(
-        @ConnectedSocket() client: Socket,
-        @MessageBody() data: { isTyping: boolean },
-    ) {
-        // Could relay to agent console in the future
-    }
-
     emitToSession(sessionId: string, event: string, data: any) {
         // Legacy callers may only signal a stored message. Arbitrary payloads cannot bypass session revalidation.
         if(event!=='widget:message'||typeof data?.messageId!=='string')return;

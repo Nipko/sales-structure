@@ -8904,10 +8904,10 @@
     },
     "settingsNotifications": {
       "title": "How to configure your notifications?",
-      "description": "Here you control which alerts you receive and through which channel. Adjust categories so you only get what truly matters and never miss key signals from your conversations.",
+      "description": "Here you control which alerts you receive in the dashboard and by push. Adjust categories so you only get what truly matters.",
       "tips": [
         "Enable 'Push notifications' to receive real-time alerts even when the dashboard is in the background.",
-        "If you get too many emails, change 'Email digest' to 'Daily' for one consolidated digest instead of one per event.",
+        "Push permission is granted per device; your categories and sound preference are saved to the account.",
         "Disable the 'Automations' category if your flows are already stable and you don't need to monitor every trigger.",
         "Always keep the 'Handoff' category active so you never miss a conversation transferred to a human agent."
       ]
@@ -9329,15 +9329,15 @@
       "title": "General Metrics Panel",
       "description": "Your real-time control center. Monitor leads, AI containment rates, and operational costs across your messaging channels.",
       "sub1Title": "AI Containment Rate",
-      "sub1Desc": "Displays the percentage of chats resolved 100% automatically by Carla without requiring a human agent handoff.",
+      "sub1Desc": "Shows the percentage of chats resolved by the AI agent without requiring a transfer to a person.",
       "sub2Title": "Quick Access",
       "sub2Desc": "Navigate using the left menu to interact with leads in the inbox, configure agents, or view detailed analytics."
     },
     "inbox": {
       "title": "Unified Inbox",
-      "description": "Manage WhatsApp, Instagram, Messenger, Telegram, Email, and web chat conversations in one place while preventing collisions between your agents.",
+      "description": "Manage WhatsApp, Instagram, Messenger, Telegram, and web chat conversations in one place while preventing collisions between your agents.",
       "sub1Title": "Agent Presence",
-      "sub1Desc": "Observe real-time visual indicators to know which teammate is viewing or typing in a customer's chat.",
+      "sub1Desc": "Use real-time indicators to see which teammate currently has a customer's conversation open.",
       "sub2Title": "Manual & AI Handoff",
       "sub2Desc": "Manually assign chats to team members, or let the bot escalate the conversation to the human waiting queue when necessary."
     },
@@ -11623,53 +11623,6 @@
     },
     "planLimit": "You have reached the trigger limit for your plan",
     "noWidgetWarning": "No widget configured yet. Create a widget first."
-  },
-  "emailChannel": {
-    "title": "Email Channel",
-    "subtitle": "Configure sending and receiving emails in your inbox",
-    "status": {
-      "connected": "Connected",
-      "notConfigured": "Not configured"
-    },
-    "helpText": "Configure email to receive and send emails through your Parallly inbox.",
-    "form": {
-      "senderSettings": "Sender settings",
-      "fromEmail": "From email",
-      "fromName": "From name",
-      "replyTo": "Reply to",
-      "provider": "Provider",
-      "providerSmtp": "SMTP",
-      "providerSendgrid": "SendGrid",
-      "providerConfig": "Configuration",
-      "smtpHost": "Host",
-      "smtpPort": "Port",
-      "smtpUser": "Username",
-      "smtpPass": "Password",
-      "smtpEncryption": "Encryption",
-      "sendgridApiKey": "SendGrid API Key",
-      "inboundType": "Email reception",
-      "inboundHint": "Set up SendGrid Inbound Parse to receive incoming emails in your inbox.",
-      "active": "Channel active",
-      "fromEmailHelp": "The email from which the AI agent sends replies (e.g. contact@yourdomain.com).",
-      "fromNameHelp": "The name your customers see when receiving your emails (e.g. Parallly Support).",
-      "replyToHelp": "Optional address where direct customer replies will be sent if not processed by chat.",
-      "smtpHostHelp": "Outgoing server address from your email provider (e.g. smtp.gmail.com or smtp.office365.com).",
-      "smtpPortHelp": "Connection port. TLS: 587 (recommended), SSL: 465, None: 25.",
-      "smtpUserHelp": "Your full email login username.",
-      "smtpPassHelp": "Your password. IMPORTANT: If using Gmail or Outlook with 2-Step Verification active, you must create and use a 16-character 'App Password'.",
-      "sendgridApiKeyHelp": "SendGrid API Key with Mail Send permissions.",
-      "webhookCopyTitle": "Email Inbound Webhook URL",
-      "webhookCopyHint": "Copy this inbound URL and enter it in SendGrid > Settings > Inbound Parse to receive emails in your Parallly inbox:",
-      "webhookCopyBtn": "Copy Webhook URL",
-      "webhookCopied": "URL copied!",
-      "smtpGuideTitle": "Guide to Common SMTP Servers and Ports"
-    },
-    "save": "Save configuration",
-    "saving": "Saving...",
-    "toast": {
-      "saved": "Email configuration saved",
-      "error": "Error saving configuration"
-    }
   },
   "apiKeys": {
     "title": "API Keys",

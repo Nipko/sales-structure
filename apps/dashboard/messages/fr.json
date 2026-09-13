@@ -8904,10 +8904,10 @@
     },
     "settingsNotifications": {
       "title": "Comment configurer vos notifications ?",
-      "description": "Ici vous contrôlez quelles alertes vous recevez et par quel canal. Ajustez les catégories pour ne recevoir que ce qui compte vraiment et ne jamais manquer de signaux clés.",
+      "description": "Ici vous contrôlez les alertes reçues dans le tableau de bord et par push. Ajustez les catégories pour ne recevoir que ce qui compte vraiment.",
       "tips": [
         "Activez 'Notifications push' pour recevoir des alertes en temps réel même quand le dashboard est en arrière-plan.",
-        "Si vous recevez trop d'e-mails, passez le 'Résumé e-mail' sur 'Quotidien' pour un seul digest consolidé.",
+        "L'autorisation push est accordée par appareil ; vos catégories et votre préférence de son sont enregistrées dans le compte.",
         "Désactivez la catégorie 'Automatisations' si vos flux sont déjà stables et n'ont pas besoin d'être surveillés.",
         "Gardez toujours active la catégorie 'Handoff' pour ne manquer aucune conversation transférée à un agent humain."
       ]
@@ -9329,15 +9329,15 @@
       "title": "Tableau de Bord Général",
       "description": "Votre centre de contrôle en temps réel. Suivez les leads, les taux de confinement de l'IA et les coûts opérationnels de vos canaux.",
       "sub1Title": "Taux de Confinement IA",
-      "sub1Desc": "Affiche le pourcentage de discussions résolues 100% automatiquement par Carla sans nécessiter de transfert à un agent humain.",
+      "sub1Desc": "Affiche le pourcentage de discussions résolues par l’agent IA sans transfert vers une personne.",
       "sub2Title": "Accès Rapide",
       "sub2Desc": "Naviguez via le menu de gauche pour interagir avec les leads dans la boîte de réception, configurer les agents ou consulter les analyses détaillées."
     },
     "inbox": {
       "title": "Boîte de Réception Unifiée",
-      "description": "Gérez les conversations WhatsApp, Instagram, Messenger, Telegram, Email et chat web en un seul endroit et évitez les collisions entre vos agents.",
+      "description": "Gérez les conversations WhatsApp, Instagram, Messenger, Telegram et chat web en un seul endroit et évitez les collisions entre vos agents.",
       "sub1Title": "Présence des Agents",
-      "sub1Desc": "Observez des indicateurs visuels en temps réel pour savoir quel collègue consulte ou écrit dans le chat d'un client.",
+      "sub1Desc": "Utilisez les indicateurs en temps réel pour savoir quel collègue a ouvert la conversation d'un client.",
       "sub2Title": "Transfert Manuel et IA",
       "sub2Desc": "Attribuez manuellement des chats aux membres de l'équipe, ou laissez le bot escalader la conversation vers la file d'attente humaine si nécessaire."
     },
@@ -11623,53 +11623,6 @@
     },
     "planLimit": "Vous avez atteint la limite de triggers de votre plan",
     "noWidgetWarning": "Aucun widget configuré pour l'instant. Créez un widget en premier."
-  },
-  "emailChannel": {
-    "title": "Canal Email",
-    "subtitle": "Configurez l'envoi et la réception d'emails dans votre boîte de réception",
-    "status": {
-      "connected": "Connecté",
-      "notConfigured": "Non configuré"
-    },
-    "helpText": "Configurez l'email pour recevoir et envoyer des emails via votre boîte de réception Parallly.",
-    "form": {
-      "senderSettings": "Paramètres de l'expéditeur",
-      "fromEmail": "Email d'envoi",
-      "fromName": "Nom de l'expéditeur",
-      "replyTo": "Répondre à",
-      "provider": "Fournisseur",
-      "providerSmtp": "SMTP",
-      "providerSendgrid": "SendGrid",
-      "providerConfig": "Configuration",
-      "smtpHost": "Hôte",
-      "smtpPort": "Port",
-      "smtpUser": "Nom d'utilisateur",
-      "smtpPass": "Mot de passe",
-      "smtpEncryption": "Chiffrement",
-      "sendgridApiKey": "Clé API SendGrid",
-      "inboundType": "Réception d'email",
-      "inboundHint": "Configurez l'Inbound Parse de SendGrid pour recevoir les emails entrants dans votre boîte de réception.",
-      "active": "Canal actif",
-      "fromEmailHelp": "L'adresse e-mail depuis laquelle l'agent IA enverra les réponses (ex. contact@votredomaine.com).",
-      "fromNameHelp": "Le nom que vos clients verront en recevant vos e-mails (ex. Support Parallly).",
-      "replyToHelp": "Adresse facultative où les réponses seront envoyées si vous ne voulez pas qu'elles soient traitées par chat.",
-      "sendgridApiKeyHelp": "Clé API SendGrid avec les privilèges d'envoi (Mail Send).",
-      "smtpGuideTitle": "Guide des ports et hôtes SMTP courants",
-      "smtpHostHelp": "Serveur sortant de votre fournisseur de messagerie (ex. smtp.gmail.com ou smtp.office365.com).",
-      "smtpPassHelp": "Votre mot de passe. IMPORTANT : si vous utilisez Gmail ou Outlook avec la validation en deux étapes activée, vous devez créer et utiliser un « mot de passe d'application » de 16 caractères.",
-      "smtpPortHelp": "Port de connexion. TLS : 587 (recommandé), SSL : 465, sans chiffrement : 25.",
-      "smtpUserHelp": "Votre adresse e-mail complète de connexion.",
-      "webhookCopied": "URL copiée !",
-      "webhookCopyBtn": "Copier l'URL du Webhook",
-      "webhookCopyHint": "Copiez cette URL de réception et saisissez-la dans SendGrid > Settings > Inbound Parse pour recevoir les e-mails dans votre boîte Parallly :",
-      "webhookCopyTitle": "Webhook de réception des e-mails"
-    },
-    "save": "Enregistrer la configuration",
-    "saving": "Enregistrement...",
-    "toast": {
-      "saved": "Configuration email enregistrée",
-      "error": "Erreur lors de l'enregistrement de la configuration"
-    }
   },
   "apiKeys": {
     "title": "Clés API",

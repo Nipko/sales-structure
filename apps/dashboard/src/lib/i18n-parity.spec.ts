@@ -139,6 +139,13 @@ describe("i18n key parity across es/en/pt/fr", () => {
         expect(copy).not.toMatch(/ya está activo en este número|now live on this number|já está ativo neste número|est actif sur ce numéro/i);
     });
 
+    it.each([REFERENCE, ...TRANSLATIONS] as const)("does not resurrect retired notification or email-channel promises in %s", (locale) => {
+        const source = JSON.parse(fs.readFileSync(path.join(MESSAGES, `${locale}.json`), "utf8"));
+        expect(source.emailChannel).toBeUndefined();
+        expect(JSON.stringify(source.help.settingsNotifications)).not.toMatch(/email digest|resumen de email|resumo de e-mail|résumé e-mail/i);
+        expect(source.help.inbox.description).not.toMatch(/e-?mail/i);
+    });
+
     it("keeps the allow-list documented and empty unless deliberately grown", () => {
         // Not a style rule: an allow-list is how a parity check quietly stops
         // checking. If this number changes, the diff has to explain each entry.

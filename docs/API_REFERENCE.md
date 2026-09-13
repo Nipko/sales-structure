@@ -475,7 +475,7 @@ The controller verifies that the portal token belongs to the `tenantId` in the U
 
 Messages are not REST endpoints. The browser connects to Socket.IO namespace
 `/widget` with the session token in the handshake. It sends `widget:message`
-(`{content, type?}`) and may send `widget:typing`. Server events include
+(`{content, type?}`). Server events include
 `widget:connected`, `widget:history`, `widget:message-received`, `widget:typing`,
 `widget:stream_start`, `widget:stream_chunk`, `widget:stream_end`,
 `widget:stream_error`, `widget:message` (backward compatibility) and `widget:error`.

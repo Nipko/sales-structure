@@ -530,7 +530,7 @@ Cuando varios agentes humanos abren la misma conversación al mismo tiempo, Para
 - Reduce confusión en equipos grandes con inbox compartido
 - No requiere configuración — funciona de forma automática para todas las conversaciones
 
-> **Tip:** Si ves la pill de otro agente, coordina por chat interno antes de responder. La pill solo indica que la conversación está abierta, no que alguien esté escribiendo.
+> **Tip:** Si ves la pill de otro agente, deja una nota interna o coordina con tu equipo antes de responder. La pill solo indica que la conversación está abierta, no que alguien esté escribiendo.
 
 ---
 

@@ -7,7 +7,6 @@ import {
     ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { RegionalProfileService } from '../tenants/regional-profile.service';
 import { RedisService } from '../redis/redis.service';
@@ -1448,11 +1447,4 @@ export class CalendarIntegrationService {
         return crypto.createHash('sha256').update(idempotencyKey).digest('hex').slice(0, 52);
     }
 
-    // ── Cron: renew Google watch channels ─────────────────────────
-
-    @Cron('0 */12 * * *')
-    async renewWatchChannels(): Promise<void> {
-        // Future: implement Google Calendar push notifications
-        // For now, availability is checked on-demand via freebusy.query()
-    }
 }

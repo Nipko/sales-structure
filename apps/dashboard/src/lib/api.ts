@@ -1734,10 +1734,6 @@ export const api = {
     updateSlackConfig: (tenantId: string, body: any) => apiPut(`/slack/${tenantId}/config`, body),
     testSlack: (tenantId: string) => apiPost(`/slack/${tenantId}/test`, {}),
 
-    // SMS notifications (tenant opt-in) — Phase 2
-    getSmsNotificationsConfig: (tenantId: string) => apiGet(`/sms-notifications/${tenantId}/config`),
-    updateSmsNotificationsConfig: (tenantId: string, body: any) => apiPut(`/sms-notifications/${tenantId}/config`, body),
-
     // KB health / contradictions (T2.14)
     getKnowledgeConflicts: (tenantId: string) => apiGet<KnowledgeConflictOverview>(`/kb-health/${tenantId}/conflicts`),
     scanKnowledgeConflicts: (tenantId: string, language: string) => apiPost(`/kb-health/${tenantId}/conflicts/scan`, {language}),

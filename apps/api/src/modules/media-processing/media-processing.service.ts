@@ -227,15 +227,18 @@ export class MediaProcessingService {
 
         this.logger.log(`[MediaProcessing] Processing ${content.type} from ${msg.channelType}, mime=${content.mimeType || 'unknown'}`);
 
-        // 1. Check all quotas
-        const throttleResult = await this.mediaThrottle.checkQuota(
-            tenantId, mediaType, contactDbId, conversationId,
+        // 1. Reserve every quota and worst-case cost before a provider can be
+        // paid. The media/provider id makes webhook retries adopt one effect.
+        const effectId = `${msg.id}:${String(content.mediaUrl)}:${mediaType}`;
+        const throttleResult = await this.mediaThrottle.reserveQuota(
+            tenantId, mediaType, contactDbId, conversationId, effectId,
         );
 
-        if (!throttleResult.allowed) {
+        if (!throttleResult.allowed || !throttleResult.mayProcess || !throttleResult.reservationId) {
             this.logger.warn(`[MediaProcessing] Throttled: ${throttleResult.reason} for tenant ${tenantId}`);
             return null;
         }
+        const reservationId = throttleResult.reservationId;
 
         let downloadedBuffer: Buffer | undefined;
         try {
@@ -268,10 +271,8 @@ export class MediaProcessingService {
                 }
             }
 
-            // 3. Record usage
-            await this.mediaThrottle.recordUsage(
-                tenantId, mediaType, contactDbId, conversationId, result.costCentsUsd,
-            );
+            // 3. Settle the reservation with the provider-reported amount.
+            await this.mediaThrottle.settleQuota(reservationId, result.costCentsUsd);
 
             // 4. Track stats for observability
             await this.trackMediaStats(tenantId, mediaType, result).catch(() => {});
@@ -292,6 +293,7 @@ export class MediaProcessingService {
             };
 
         } catch (error: any) {
+            await this.mediaThrottle.releaseQuota(reservationId).catch(() => undefined);
             this.logger.error(`[MediaProcessing] Failed to process ${mediaType}: ${error.message}`, error.stack);
             return null;
         } finally {
@@ -355,19 +357,22 @@ export class MediaProcessingService {
         const baseKey = `media:stats:${tenantId}:${date}`;
         const ttl = 90 * 86400;
 
-        await Promise.allSettled([
-            this.redis.incrBy(`${baseKey}:${mediaType}:count`, 1),
-            this.redis.incrBy(`${baseKey}:${mediaType}:cost_cents`, result.costCentsUsd),
-            this.redis.incrBy(`${baseKey}:${result.provider}:count`, 1),
-            // Track tenants with media usage so the unified usage report includes
-            // tenants that used ONLY media that day (the LLM tenant set misses them).
-            this.redis.sadd(`media:stats:tenants:${date}`, tenantId),
-        ]);
-        await Promise.allSettled([
-            this.redis.expire(`${baseKey}:${mediaType}:count`, ttl),
-            this.redis.expire(`${baseKey}:${mediaType}:cost_cents`, ttl),
-            this.redis.expire(`${baseKey}:${result.provider}:count`, ttl),
-        ]);
+        const tenantSet = `media:stats:tenants:${date}`;
+        const transaction = this.redis.getClient().multi();
+        transaction.incrby(`${baseKey}:${mediaType}:count`, 1);
+        transaction.incrby(`${baseKey}:${mediaType}:cost_cents`, result.costCentsUsd);
+        transaction.incrby(`${baseKey}:${result.provider}:count`, 1);
+        // Track tenants with media usage so the unified usage report includes
+        // tenants that used ONLY media that day (the LLM tenant set misses them).
+        transaction.sadd(tenantSet, tenantId);
+        for (const key of [
+            `${baseKey}:${mediaType}:count`, `${baseKey}:${mediaType}:cost_cents`,
+            `${baseKey}:${result.provider}:count`, tenantSet,
+        ]) transaction.expire(key, ttl);
+        const resultSet = await transaction.exec();
+        if (!resultSet || resultSet.some(([error]) => !!error)) {
+            throw new Error('media_stats_transaction_failed');
+        }
     }
 
     /**

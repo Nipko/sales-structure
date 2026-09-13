@@ -3,7 +3,10 @@ import { MediaProcessingService } from './media-processing.service';
 describe('MediaProcessingService governance integration', () => {
     function harness() {
         const download = { download: jest.fn() };
-        const throttle = { checkQuota: jest.fn(), recordUsage: jest.fn() };
+        const throttle = {
+            reserveQuota: jest.fn(), settleQuota: jest.fn().mockResolvedValue(undefined),
+            releaseQuota: jest.fn().mockResolvedValue(undefined),
+        };
         const consent = { resolve: jest.fn().mockResolvedValue(null), request: jest.fn().mockResolvedValue({
             message: 'consent required', reason: 'consent_required',
         }) };
@@ -42,7 +45,7 @@ describe('MediaProcessingService governance integration', () => {
         }, 'contact-1', 'conversation-1');
 
         expect(result).toEqual({ blockedMessage: 'consent required', blockedReason: 'consent_required' });
-        expect(throttle.checkQuota).not.toHaveBeenCalled();
+        expect(throttle.reserveQuota).not.toHaveBeenCalled();
         expect(download.download).not.toHaveBeenCalled();
     });
 
@@ -61,7 +64,10 @@ describe('MediaProcessingService governance integration', () => {
                 deleteAt: new Date(now + 60_000).toISOString(), enforcement: 'in_memory_only',
             },
         });
-        throttle.checkQuota.mockResolvedValue({ allowed: true, limits: { maxAudioDurationSec: 60 } });
+        throttle.reserveQuota.mockResolvedValue({
+            allowed: true, mayProcess: true, adopted: false, reservationId: 'media:reservation:t:m:h',
+            limits: { maxAudioDurationSec: 60 },
+        });
         download.download.mockResolvedValue({ buffer: Buffer.from('audio'), mimeType: 'audio/ogg' });
         (service as any).transcription = { transcribe: jest.fn().mockResolvedValue({
             text: 'necesito una cita', durationSec: 2, costCentsUsd: 1, model: 'whisper-1',
@@ -85,5 +91,38 @@ describe('MediaProcessingService governance integration', () => {
         expect(consent.resolve).toHaveBeenCalledWith('tenant-1', 'contact-1', 'audio_transcription');
         expect((service as any).media.saveBuffer).not.toHaveBeenCalled();
         expect((service as any).prisma.executeInTenantSchema).not.toHaveBeenCalled();
+        expect(throttle.settleQuota).toHaveBeenCalledWith('media:reservation:t:m:h', 1);
+    });
+
+    it('releases the whole reservation when download or provider work fails', async () => {
+        const { service, download, throttle, consent } = harness();
+        const now = Date.now();
+        consent.resolve.mockResolvedValue({
+            consent: {
+                version: 1, proofId: 'proof', subjectId: 'contact-1',
+                source: 'verified_consent_registry', purposes: ['image_analysis'],
+                grantedAt: new Date(now - 1_000).toISOString(),
+                expiresAt: new Date(now + 60_000).toISOString(),
+            },
+            retention: {
+                scope: 'source_and_derived', mode: 'ephemeral',
+                deleteAt: new Date(now + 60_000).toISOString(), enforcement: 'in_memory_only',
+            },
+        });
+        throttle.reserveQuota.mockResolvedValue({
+            allowed: true, mayProcess: true, adopted: false,
+            reservationId: 'media:reservation:t:m:failed', limits: { maxAudioDurationSec: 60 },
+        });
+        download.download.mockRejectedValue(new Error('provider unavailable'));
+
+        await expect(service.processMedia({
+            id: 'message-2', tenantId: 'tenant-1', channelType: 'whatsapp',
+            channelAccountId: 'account-1', contactId: 'external', conversationId: 'conversation-1',
+            direction: 'inbound', timestamp: new Date(), status: 'delivered', metadata: {},
+            content: { type: 'image', mediaUrl: 'media-id' },
+        }, 'contact-1', 'conversation-1')).resolves.toBeNull();
+
+        expect(throttle.releaseQuota).toHaveBeenCalledWith('media:reservation:t:m:failed');
+        expect(throttle.settleQuota).not.toHaveBeenCalled();
     });
 });

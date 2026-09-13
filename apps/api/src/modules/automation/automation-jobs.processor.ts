@@ -18,6 +18,8 @@ export interface AutomationJobData {
     executionId: string;
     ruleId: string;
     ruleName: string;
+    /** Position in the rule snapshot. It binds delayed work to that exact action. */
+    actionIndex?: number;
     action: {
         type: string;
         delay_seconds?: number;
@@ -92,6 +94,48 @@ export class AutomationJobsProcessor extends WorkerHost {
                 `[AutomationJobs] Omitido '${action.type}' para tenant=${tenantId}: ${reason}`,
             );
             return { skipped: true, reason };
+        }
+
+        // A delayed job is authority carried through time. Re-read the exact
+        // rule action before consuming quota or producing any effect: disabling
+        // the rule, deleting it, or editing this position revokes old jobs.
+        // `send_template` also has a transactional check at outbox admission,
+        // but the other five action families previously had no check at all.
+        const actionIndex = job.data.actionIndex;
+        if (!executionId || !job.data.ruleId || !Number.isInteger(actionIndex) || actionIndex! < 0) {
+            throw new Error('automation_job_missing_rule_authority');
+        }
+        const authority = await this.prisma.executeInTenantSchema<Array<{ authorised: boolean }>>(
+            schemaName,
+            `SELECT EXISTS (
+                 SELECT 1
+                   FROM automation_executions ae
+                   JOIN automation_rules ar ON ar.id = ae.rule_id
+                  WHERE ae.id = $1::uuid
+                    AND ae.rule_id = $2::uuid
+                    AND ar.active = TRUE
+                    AND ar.actions_json -> $3 = $4::jsonb
+             ) AS authorised`,
+            [executionId, job.data.ruleId, actionIndex, JSON.stringify(action)],
+        );
+        if (authority?.[0]?.authorised !== true) {
+            const result = {
+                action: action.type,
+                suppressed: 'rule_no_longer_authorises',
+                actionIndex,
+            };
+            await this.prisma.executeInTenantSchema(
+                schemaName,
+                `UPDATE automation_executions
+                    SET status = 'suppressed', finished_at = CURRENT_TIMESTAMP,
+                        result_json = $2::jsonb
+                  WHERE id = $1::uuid`,
+                [executionId, JSON.stringify(result)],
+            );
+            this.logger.log(
+                `[AutomationJobs] Regla ${job.data.ruleId} ya no autoriza la accion ${actionIndex}; suprimida`,
+            );
+            return result;
         }
 
         // One quota unit belongs to one logical BullMQ action, not to every

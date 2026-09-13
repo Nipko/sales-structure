@@ -397,6 +397,9 @@ export class AutomationListenerService {
             eventKey ? [rule.id, entityType, entityId, eventKey] : [rule.id, entityType, entityId],
         );
         const executionId = execution?.[0]?.id;
+        if (!executionId) {
+            throw new Error(`automation_execution_not_persisted:${rule.id}`);
+        }
 
         // Programar cada accion como un job con delay en BullMQ
         for (const [actionIndex, action] of actions.entries()) {
@@ -417,6 +420,7 @@ export class AutomationListenerService {
                     executionId,
                     ruleId: rule.id,
                     ruleName: rule.name,
+                    actionIndex,
                     action,
                     event: payload,
                 },
@@ -429,9 +433,10 @@ export class AutomationListenerService {
                     removeOnFail: { age: 3600 * 24 * 7 },
                     // Re-admitting a durable event after a crash adopts every
                     // action already accepted by BullMQ and fills only the gap.
-                    ...(eventKey && executionId
-                        ? { jobId: `automation-${executionId}-${actionIndex}` }
-                        : {}),
+                    // Every queued action has a stable identity, including
+                    // events without a caller-supplied replay key. BullMQ uses
+                    // it across retries and the quota ledger adopts it.
+                    jobId: `automation-${executionId}-${actionIndex}`,
                 },
             );
 

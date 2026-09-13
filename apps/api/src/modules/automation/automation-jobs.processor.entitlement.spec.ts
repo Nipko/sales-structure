@@ -27,6 +27,7 @@ describe('AutomationJobsProcessor subscription boundary', () => {
                 executionId: '22222222-2222-4222-8222-222222222222',
                 ruleId: '33333333-3333-4333-8333-333333333333',
                 ruleName: 'follow-up',
+                actionIndex: 0,
                 action: { type: 'http_request' },
                 event: {},
             },
@@ -81,7 +82,7 @@ describe('AutomationJobsProcessor subscription boundary', () => {
     it('uses one stable reservation for every retry of a logical action', async () => {
         const prisma = {
             tenant: { findUnique: jest.fn().mockResolvedValue(activeTenant()) },
-            executeInTenantSchema: jest.fn().mockResolvedValue(undefined),
+            executeInTenantSchema: jest.fn().mockResolvedValue([{ authorised: true }]),
         };
         const throttle = {
             reserveActionUsage: jest.fn()
@@ -131,7 +132,7 @@ describe('AutomationJobsProcessor subscription boundary', () => {
     it('does not execute or commit when the atomic reservation is denied', async () => {
         const prisma = {
             tenant: { findUnique: jest.fn().mockResolvedValue(activeTenant()) },
-            executeInTenantSchema: jest.fn().mockResolvedValue(undefined),
+            executeInTenantSchema: jest.fn().mockResolvedValue([{ authorised: true }]),
         };
         const throttle = {
             reserveActionUsage: jest.fn().mockResolvedValue({ allowed: false, count: 10, adopted: false }),
@@ -154,7 +155,7 @@ describe('AutomationJobsProcessor subscription boundary', () => {
     it('refuses a job without a stable identity before it consumes quota', async () => {
         const prisma = {
             tenant: { findUnique: jest.fn().mockResolvedValue(activeTenant()) },
-            executeInTenantSchema: jest.fn().mockResolvedValue(undefined),
+            executeInTenantSchema: jest.fn().mockResolvedValue([{ authorised: true }]),
         };
         const throttle = { reserveActionUsage: jest.fn(), commitActionUsage: jest.fn() };
         const processor = new AutomationJobsProcessor(
@@ -179,7 +180,7 @@ describe('AutomationJobsProcessor subscription boundary', () => {
     ) => {
         const prisma = {
             tenant: { findUnique: jest.fn().mockResolvedValue(activeTenant()) },
-            executeInTenantSchema: jest.fn().mockResolvedValue(undefined),
+            executeInTenantSchema: jest.fn().mockResolvedValue([{ authorised: true }]),
         };
         const throttle = {
             reserveActionUsage: jest.fn().mockResolvedValue({ allowed: true, count: 1, adopted: false }),
@@ -210,5 +211,29 @@ describe('AutomationJobsProcessor subscription boundary', () => {
                 JSON.stringify(result),
             ],
         );
+    });
+
+    it('suppresses an action edited or disabled while its delayed job was waiting', async () => {
+        const prisma = {
+            tenant: { findUnique: jest.fn().mockResolvedValue(activeTenant()) },
+            executeInTenantSchema: jest.fn()
+                .mockResolvedValueOnce([{ authorised: false }])
+                .mockResolvedValueOnce(undefined),
+        };
+        const throttle = { reserveActionUsage: jest.fn(), commitActionUsage: jest.fn() };
+        const http = { execute: jest.fn() };
+        const processor = new AutomationJobsProcessor(
+            prisma as any, throttle as any, http as any, {} as any, {} as any,
+        );
+
+        await expect(processor.process(job())).resolves.toEqual({
+            action: 'http_request',
+            suppressed: 'rule_no_longer_authorises',
+            actionIndex: 0,
+        });
+        expect(throttle.reserveActionUsage).not.toHaveBeenCalled();
+        expect(http.execute).not.toHaveBeenCalled();
+        expect(prisma.executeInTenantSchema.mock.calls[0][1])
+            .toContain('ar.actions_json -> $3 = $4::jsonb');
     });
 });

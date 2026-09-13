@@ -3,6 +3,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { RedisService } from '../../redis/redis.service';
 import { Opportunity } from '../interfaces/opportunity.interface';
 import { PipelineService } from '../../pipeline/pipeline.service';
+import { isolatedEvalNamespaceForPrisma, type EvalNamespaceLease } from '../../simulation/isolated-eval-namespace';
 
 type TenantQuery = <R = any[]>(sql: string, params?: any[]) => Promise<R>;
 
@@ -35,6 +36,15 @@ export class OpportunitiesRepository {
         return schema;
     }
     return null;
+  }
+
+  private async writableSchema(tenantId: string, sandboxNamespace?: EvalNamespaceLease): Promise<string | null> {
+    if (!sandboxNamespace) return this.getTenantSchema(tenantId);
+    if (sandboxNamespace.tenantId !== tenantId || sandboxNamespace.schemaName === sandboxNamespace.sourceSchema) {
+      throw new Error('crm_eval_namespace_scope_mismatch');
+    }
+    await isolatedEvalNamespaceForPrisma(this.prisma).assertOwned(sandboxNamespace);
+    return sandboxNamespace.schemaName;
   }
 
   async getOpportunities(tenantId: string, stage?: string): Promise<Opportunity[]> {
@@ -86,8 +96,9 @@ export class OpportunitiesRepository {
   async createOpportunityIdempotently(
     tenantId: string,
     data: Partial<Opportunity>,
+    execution: { sandboxNamespace?: EvalNamespaceLease } = {},
   ): Promise<{ opportunity: Opportunity | null; created: boolean }> {
-    const schema = await this.getTenantSchema(tenantId);
+    const schema = await this.writableSchema(tenantId, execution.sandboxNamespace);
     if (!schema) return { opportunity: null, created: false };
 
     const prepared = await this.prepareOpportunityInsert(tenantId, schema, data);

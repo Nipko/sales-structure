@@ -58,6 +58,18 @@ describe('Learning operation evidence does not equate table deltas with success'
         const f=setup();for(const call of [{name:'place_catalog_order',result:{error:'confirmation_required'}},{name:'get_catalog_order',result:f.result}])
             expect(await verifyLearningOperation(f.prisma,f.scope,call,{available:true,entries:{}})).toEqual({status:'not_applicable'});
     });
+    it('binds a CRM task to the current contact through its lead',async()=>{
+        const f=setup();
+        const result={success:true,taskId:objectId,created:true,activeObject:{kind:'crm_task',id:objectId}};
+        Object.assign(f.state.ledgers[0],{tool_name:'create_follow_up_task',response_payload:result});
+        Object.assign(f.state.objects[0],{data:{id:objectId,lead_id:'55555555-5555-4555-8555-555555555555',status:'pending'}});
+        const proof=await verifyLearningOperation(f.prisma,f.scope,{name:'create_follow_up_task',result},{available:true,entries:{}});
+        expect(proof).toMatchObject({status:'verified',effect:'committed',table:'tasks',objectId});
+        const ownershipQuery=f.prisma.executeInTenantSchema.mock.calls
+            .map((call:any[])=>String(call[1])).find((sql:string)=>sql.includes('FROM tasks t'));
+        expect(ownershipQuery).toContain('JOIN leads owner ON owner.id=t.lead_id');
+        expect(ownershipQuery).toContain('owner.contact_id=$2::uuid');
+    });
     it('keeps missing writer results unknown and rejects inconsistent target references',async()=>{
         const f=setup(),before={available:true,entries:{}};
         expect(await verifyLearningOperation(f.prisma,f.scope,{name:'place_catalog_order'},before))

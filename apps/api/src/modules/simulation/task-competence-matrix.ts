@@ -72,8 +72,10 @@ export function buildTaskCompetenceMatrix(profileId?: string, execution?: {
                         assurance: policy?.assurance ?? 'unknown', confirmation: policy?.confirmation ?? 'unknown',
                         idempotency: policy?.idempotency ?? 'unknown', externalEffect: policy?.externalEffect ?? 'unknown',
                         previewExecutable: policy?.agentTestAllowed === true,
-                        effectVerifier: family?.contactColumn && (family.status === 'audited' || family.verifierAudited)
-                            ? { family: familyEntry![0], table: family.table, ownershipColumn: family.contactColumn } : null,
+                        effectVerifier: (family?.contactColumn || family?.ownershipJoin)
+                            && (family.status === 'audited' || family.verifierAudited)
+                            ? { family: familyEntry![0], table: family.table,
+                                ownershipColumn: family.contactColumn || family.ownershipJoin!.ownerContactColumn } : null,
                     };
                 });
                 const scenarios = packs.map(pack => {
@@ -85,9 +87,10 @@ export function buildTaskCompetenceMatrix(profileId?: string, execution?: {
                         positiveAssertions: positive.length, negativeAssertions: negative.length };
                 });
                 const gaps: string[] = [];
+                const persistentTools = tools.filter(tool => tool.effect === 'write' || tool.commitsBusiness);
                 if (tools.some(tool => !tool.registered)) gaps.push('tool_not_registered');
-                if (intent.commits && tools.filter(tool => tool.effect === 'write' || tool.commitsBusiness).some(tool => !tool.effectVerifier)) gaps.push('effect_verifier_missing');
-                if (intent.commits && scenarios.some(scenario => !scenario.positiveAssertions)) gaps.push('positive_task_case_missing');
+                if (persistentTools.some(tool => !tool.effectVerifier)) gaps.push('effect_verifier_missing');
+                if (persistentTools.length && scenarios.some(scenario => !scenario.positiveAssertions)) gaps.push('positive_task_case_missing');
                 // Only while the profile has not been shown to do the work. It
                 // used to be pushed unconditionally, so the gap could never clear
                 // however many runs existed.

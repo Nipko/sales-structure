@@ -37,10 +37,10 @@ describe('versioned multilingual eval infrastructure', () => {
             .toEqual(new Set(['es', 'en', 'pt', 'fr']));
         expect(inserts.every((call: any[]) => String(call[1]).includes('DO UPDATE SET'))).toBe(true);
         expect(inserts.every((call: any[]) => String(call[2][0]).startsWith(
-            'eval:v2:retail/moda:',
+            'eval:v3:retail/moda:',
         ))).toBe(true);
         expect(inserts.find((call: any[]) => call[2][3] === 'es')?.[2][4]).toBe('es-CO');
-        expect(inserts.every((call: any[]) => call[2][6] === 2)).toBe(true);
+        expect(inserts.every((call: any[]) => call[2][6] === 3)).toBe(true);
         expect(inserts.every((call: any[]) => call[2][8])).toBe(true);
         expect(inserts.every((call: any[]) => call[2][9] === 'active')).toBe(true);
 
@@ -73,8 +73,8 @@ describe('versioned multilingual eval infrastructure', () => {
 
     it('has one contact-scoped verifier for every mutating sandbox family', () => {
         expect(Object.keys(EVAL_EFFECT_VERIFIERS).sort()).toEqual([
-            'appointment_transitions', 'appointments', 'catalog_orders', 'class_bookings', 'enrollments',
-            'insurance_quotes', 'pets',
+            'appointment_transitions', 'appointments', 'catalog_orders', 'class_bookings',
+            'crm_leads', 'crm_opportunities', 'crm_tasks', 'enrollments', 'insurance_quotes', 'pets',
             'photo_sessions', 'property_bookings', 'repair_orders', 'resource_rentals',
             'restaurant_orders', 'service_requests', 'tour_bookings',
         ]);

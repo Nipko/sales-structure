@@ -780,11 +780,11 @@ export class AIToolExecutorService {
                     return this.recordContactInterest(schemaName, contactId, args.interest);
 
                 case 'ensure_crm_lead':
-                    return this.ensureCrmLead(tenantId, schemaName, contactId, args.reason);
+                    return this.ensureCrmLead(tenantId, schemaName, contactId, args.reason, canonicalSandbox);
 
                 case 'create_crm_opportunity':
                     return this.createCrmOpportunity(
-                        tenantId, schemaName, contactId, conversationId, args,
+                        tenantId, schemaName, contactId, conversationId, args, canonicalSandbox,
                     );
 
                 case 'move_crm_opportunity_stage':
@@ -794,7 +794,7 @@ export class AIToolExecutorService {
 
                 case 'create_follow_up_task':
                     return this.createFollowUpTask(
-                        tenantId, schemaName, contactId, args,
+                        tenantId, schemaName, contactId, args, canonicalSandbox,
                     );
 
                 case 'record_contact_consent':
@@ -2082,6 +2082,7 @@ export class AIToolExecutorService {
         schema: string,
         contactId: string,
         reason: unknown,
+        sandboxNamespace?: EvalNamespaceLease,
     ): Promise<any> {
         if (!AIToolExecutorService.UUID_PATTERN.test(contactId || '')) {
             return { error: 'no_contact', message: 'No tengo identificado al cliente de esta conversación.' };
@@ -2125,7 +2126,7 @@ export class AIToolExecutorService {
                     source: 'conversational_agent',
                     creation_reason: factualReason,
                 },
-            });
+            }, { sandboxNamespace });
             const lead = outcome.lead;
             if (!lead?.id) throw new Error('lead_insert_returned_no_id');
             return { success: true, leadId: lead.id, created: outcome.created };
@@ -2141,6 +2142,7 @@ export class AIToolExecutorService {
         contactId: string,
         conversationId: string | undefined,
         args: Record<string, any>,
+        sandboxNamespace?: EvalNamespaceLease,
     ): Promise<any> {
         const title = typeof args.title === 'string' ? args.title.trim() : '';
         const summary = typeof args.summary === 'string' ? args.summary.trim() : '';
@@ -2183,7 +2185,7 @@ export class AIToolExecutorService {
                     title,
                     ...(summary ? { notes: summary } : {}),
                 },
-            } as any);
+            } as any, { sandboxNamespace });
             const created = outcome.opportunity;
             if (!created?.id) throw new Error('opportunity_insert_returned_no_id');
             return {
@@ -2250,6 +2252,7 @@ export class AIToolExecutorService {
         schema: string,
         contactId: string,
         args: Record<string, any>,
+        sandboxNamespace?: EvalNamespaceLease,
     ): Promise<any> {
         const title = typeof args.title === 'string' ? args.title.trim() : '';
         const description = typeof args.description === 'string' ? args.description.trim() : '';
@@ -2302,7 +2305,7 @@ export class AIToolExecutorService {
                 type,
                 dueAt,
                 createdBy: 'conversational_agent',
-            });
+            }, { sandboxNamespace });
             const task = outcome.task;
             if (!task?.id) throw new Error('task_insert_returned_no_id');
             return {

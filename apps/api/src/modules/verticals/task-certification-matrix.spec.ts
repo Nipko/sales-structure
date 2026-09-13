@@ -4,7 +4,7 @@ import { EVAL_WRITER_SANDBOX_FAMILIES } from '../conversations/agent-test-tool-p
 /**
  * La matriz que las auditorías venían transcribiendo a mano.
  *
- * «76 perfiles, 268 tareas, 146 transaccionales» se regeneraba en cada tanda y
+ * «76 perfiles, 420 tareas, 146 transaccionales» se regeneraba en cada tanda y
  * se copiaba a la prosa. Acá se deriva de las mismas fuentes que usa el runtime,
  * así que la cifra es una consecuencia: si alguien agrega un perfil, renombra un
  * intent o audita un verificador, esta prueba se cae y la cifra se corrige en el
@@ -14,9 +14,9 @@ const matrix = buildTaskCertificationMatrix();
 const summary = summariseTaskCertificationMatrix(matrix);
 
 describe('la matriz de tareas se calcula, no se transcribe', () => {
-    it('reproduce el censo canónico: 76 perfiles, 268 tareas, 146 transaccionales', () => {
+    it('reproduce el censo canónico: 76 perfiles, 420 tareas, 146 transaccionales', () => {
         expect(summary.profiles).toBe(76);
-        expect(summary.tasks).toBe(268);
+        expect(summary.tasks).toBe(420);
         expect(summary.transactional).toBe(146);
     });
 

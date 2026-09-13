@@ -122,7 +122,7 @@ describe('barrido semántico de todos los perfiles', () => {
         }));
         expect(packs.some(scenario => scenario.key === 'greeting')).toBe(true);
         expect(packs.every(scenario => scenario.storageKey?.startsWith(
-            'eval:v2:turismo/alquiler_vacacional:',
+            'eval:v3:turismo/alquiler_vacacional:',
         ))).toBe(true);
         expect(new Set(packs.map(scenario => scenario.storageKey)).size).toBe(packs.length);
     });

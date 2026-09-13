@@ -56,6 +56,16 @@ export interface EvalWriterSandboxFamily {
     tools: readonly string[];
     table: string;
     contactColumn?: string;
+    /**
+     * Code-owned ownership path for rows whose table points to a lead instead
+     * of repeating contact_id. Identifiers come only from this registry.
+     */
+    ownershipJoin?: Readonly<{
+        localColumn: string;
+        ownerTable: string;
+        ownerIdColumn: string;
+        ownerContactColumn: string;
+    }>;
     /** Why a pending family is not executable yet. */
     pendingReason?: string;
     /** Read-only effect verification is independent of permission to execute a writer. */
@@ -184,6 +194,24 @@ export const EVAL_WRITER_SANDBOX_FAMILIES: Readonly<Record<string, EvalWriterSan
         status: 'audited', tools: Object.freeze(['create_repair_order', 'approve_repair', 'cancel_repair_order']),
         table: 'repair_orders', contactColumn: 'contact_id', verifierAudited: true,
         canonicalOnly: true,
+    }),
+    crm_leads: Object.freeze({
+        status: 'audited', tools: Object.freeze(['ensure_crm_lead', 'record_contact_interest']),
+        table: 'leads', contactColumn: 'contact_id', verifierAudited: true, canonicalOnly: true,
+    }),
+    crm_opportunities: Object.freeze({
+        status: 'audited', tools: Object.freeze(['create_crm_opportunity']),
+        table: 'opportunities', verifierAudited: true, canonicalOnly: true,
+        ownershipJoin: Object.freeze({
+            localColumn: 'lead_id', ownerTable: 'leads', ownerIdColumn: 'id', ownerContactColumn: 'contact_id',
+        }),
+    }),
+    crm_tasks: Object.freeze({
+        status: 'audited', tools: Object.freeze(['create_follow_up_task']),
+        table: 'tasks', verifierAudited: true, canonicalOnly: true,
+        ownershipJoin: Object.freeze({
+            localColumn: 'lead_id', ownerTable: 'leads', ownerIdColumn: 'id', ownerContactColumn: 'contact_id',
+        }),
     }),
 });
 

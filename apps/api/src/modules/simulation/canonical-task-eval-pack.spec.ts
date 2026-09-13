@@ -29,9 +29,12 @@ describe('complete canonical task evaluation packs', () => {
                         for(const scenario of cases) expect(JSON.stringify(bindCanonicalEvalFixtures(scenario,fixture))).not.toMatch(/\{\{fixture\.|2099/);
                         continue;
                     }
-                    if (!supported.has(intent.key) || !intent.commits) { expect(cases).toEqual([]); continue; }
+                    const crmStateful = intent.key === 'capture_interest' || intent.key === 'request_follow_up';
+                    if ((!supported.has(intent.key) && !crmStateful) || (!intent.commits && !crmStateful)) {
+                        expect(cases).toEqual([]); continue;
+                    }
                     tasks++;
-                    expect(cases.length).toBeGreaterThanOrEqual(3);
+                    expect(cases.length).toBeGreaterThanOrEqual(crmStateful ? 2 : 3);
                     expect(cases.every(scenario => scenario.language === language && scenario.profileId === id)).toBe(true);
                     expect(cases.every(scenario => scenario.messages.length <= 8)).toBe(true);
                     for (const scenario of cases) {
@@ -44,7 +47,7 @@ describe('complete canonical task evaluation packs', () => {
                         expect.objectContaining({ kind: 'db_effect', type: 'row_count', count: 1 }),
                         expect.objectContaining({ kind: 'db_effect', type: 'row_exists' }),
                     ]));
-                    expect(complete.messages.some(message => message.includes('{{fixture.customerEmail}}'))).toBe(true);
+                    if (!crmStateful) expect(complete.messages.some(message => message.includes('{{fixture.customerEmail}}'))).toBe(true);
                 }
             }
         }

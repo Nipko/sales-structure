@@ -52,6 +52,10 @@ describe('eval writable tools', () => {
             'reschedule_appointment',
             'schedule_test_drive',
             'calculate_quote',
+            'ensure_crm_lead',
+            'record_contact_interest',
+            'create_crm_opportunity',
+            'create_follow_up_task',
         ];
         expect([...EVAL_SANDBOX_MUTATING_TOOL_NAMES].sort()).toEqual(reviewedMutations.sort());
         expect([...EVAL_WRITABLE_TOOL_NAMES].sort()).toEqual([
@@ -105,7 +109,8 @@ describe('eval writable tools', () => {
         // si alguien la hubiera pedido.
         for (const name of ['register_pet', 'update_pet', 'place_catalog_order', 'cancel_catalog_order',
             'create_repair_order', 'approve_repair', 'cancel_repair_order',
-            'cancel_appointment', 'reschedule_appointment', 'schedule_test_drive', 'calculate_quote']) {
+            'cancel_appointment', 'reschedule_appointment', 'schedule_test_drive', 'calculate_quote',
+            'ensure_crm_lead', 'record_contact_interest', 'create_crm_opportunity', 'create_follow_up_task']) {
             expect(isEvalWritableToolName(name)).toBe(true);
             expect(canEvalExecuteWriter(name, EVAL_SANDBOX_CONTACT_ID)).toBe(false);
             expect(isAgentTestSafeToolName(name)).toBe(false);

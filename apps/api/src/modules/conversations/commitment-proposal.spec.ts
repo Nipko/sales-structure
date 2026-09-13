@@ -91,7 +91,7 @@ describe('every family that commits the business says how to rebuild its terms',
         // list quietly shrinking: a family that stops being covered has to be
         // moved into this set on purpose.
         const boundElsewhere = ['appointments', 'enrollments', 'catalog_orders'];
-        const commitsNothing = ['pets', 'insurance_claims'];
+        const commitsNothing = ['pets', 'insurance_claims', 'crm_leads', 'crm_opportunities', 'crm_tasks'];
         const expected = declaredWriterFamilies()
             .filter(family => !boundElsewhere.includes(family) && !commitsNothing.includes(family))
             .sort();

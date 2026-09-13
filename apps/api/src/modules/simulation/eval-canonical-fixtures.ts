@@ -21,6 +21,8 @@ export const CANONICAL_EVAL_FIXTURE_IDS = Object.freeze({
     petOwner: '00000000-0000-4000-8000-00000000b016',
     otherPet: '00000000-0000-4000-8000-00000000b017',
     insurancePlan: '00000000-0000-4000-8000-00000000b018',
+    crmPipeline: '00000000-0000-4000-8000-00000000b019',
+    crmPipelineStage: '00000000-0000-4000-8000-00000000b020',
 });
 
 type Window = { day: number; start: number; end: number };
@@ -149,6 +151,15 @@ export async function prepareCanonicalEvalFixtures(query: EvalNamespaceQuery, sc
             [DAYS[window.day][0], { start: clock(window.start), end: clock(window.end) }])) } };
     await seed(`INSERT INTO ${table('persona_config')} (id, config_yaml, config_json, version, is_active) VALUES ($1::uuid, '{}', $2::jsonb, 1, true)`,
         [f.persona, JSON.stringify(fixtureConfig)]);
+    // CRM task scenarios need the same canonical stage authority production
+    // uses. The tenant id comes from the lease marker; no live pipeline rows
+    // or customer data are copied into the namespace.
+    await seed(`INSERT INTO ${table('pipelines')} (id,tenant_id,name,is_default,is_active)
+        SELECT $1::uuid,tenant_id,'[EVAL] CRM',true,true FROM ${table('__eval_namespace')}`,
+        [f.crmPipeline]);
+    await seed(`INSERT INTO ${table('pipeline_stages')} (id,tenant_id,pipeline_id,name,slug,position,default_probability,is_terminal,terminal_outcome)
+        SELECT $1::uuid,tenant_id,$2::uuid,'[EVAL] Nuevo','nuevo',0,10,false,NULL FROM ${table('__eval_namespace')}`,
+        [f.crmPipelineStage, f.crmPipeline]);
     // No global users, provider accounts or credentials are created here.
     await seed(`INSERT INTO ${table('__eval_ref_users')} (id,tenant_id,is_active,first_name,last_name) SELECT $1::uuid,tenant_id,true,'Eval','Staff' FROM ${table('__eval_namespace')} ON CONFLICT DO NOTHING`, [f.staffUser]);
     for (const window of fixture.windows) await seed(`INSERT INTO ${table('availability_slots')} (user_id, day_of_week, start_time, end_time, is_active) VALUES ($1::uuid,$2,$3::time,$4::time,true)`,

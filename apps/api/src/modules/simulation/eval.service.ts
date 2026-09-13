@@ -114,10 +114,12 @@ const regressionProvenance=(scenario:any)=>scenario?.regressionCaseId?{
  */
 export const EVAL_EFFECT_VERIFIERS: Readonly<Record<string, import('./eval-effect-verifier').EffectVerifier>> = Object.freeze(Object.fromEntries(
     Object.entries(EVAL_WRITER_SANDBOX_FAMILIES)
-        .filter(([, family]) => (family.status === 'audited' || family.verifierAudited) && !!family.contactColumn)
+        .filter(([, family]) => (family.status === 'audited' || family.verifierAudited)
+            && (!!family.contactColumn !== !!family.ownershipJoin))
         .map(([name, family]) => [name, Object.freeze({
             table: family.table,
-            contactColumn: family.contactColumn!,
+            ...(family.contactColumn ? { contactColumn: family.contactColumn } : {}),
+            ...(family.ownershipJoin ? { ownershipJoin: family.ownershipJoin } : {}),
             // Keyed on the TABLE, not the family name: these projections
             // describe how `appointments` stores vehicle and service terms, so
             // every family that verifies that table needs them. Keying them on

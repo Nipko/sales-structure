@@ -5,6 +5,7 @@ import { Lead } from '../interfaces/lead.interface';
 import { normalizePhoneE164 } from '../../../common/utils/phone.util';
 import { RegionalProfileService } from '../../tenants/regional-profile.service';
 import { PipelineService } from '../../pipeline/pipeline.service';
+import { isolatedEvalNamespaceForPrisma, type EvalNamespaceLease } from '../../simulation/isolated-eval-namespace';
 
 /**
  * Columns of `leads` that a caller may write, as they actually exist in
@@ -82,6 +83,15 @@ export class LeadsRepository {
         return schema;
     }
     return null;
+  }
+
+  private async writableSchema(tenantId: string, sandboxNamespace?: EvalNamespaceLease): Promise<string | null> {
+    if (!sandboxNamespace) return this.getTenantSchema(tenantId);
+    if (sandboxNamespace.tenantId !== tenantId || sandboxNamespace.schemaName === sandboxNamespace.sourceSchema) {
+      throw new Error('crm_eval_namespace_scope_mismatch');
+    }
+    await isolatedEvalNamespaceForPrisma(this.prisma).assertOwned(sandboxNamespace);
+    return sandboxNamespace.schemaName;
   }
 
   async listLeads(tenantId: string, params: {
@@ -304,8 +314,9 @@ export class LeadsRepository {
     tenantId: string,
     contactId: string,
     data: Partial<Lead>,
+    execution: { sandboxNamespace?: EvalNamespaceLease } = {},
   ): Promise<{ lead: Lead | null; created: boolean }> {
-    const schema = await this.getTenantSchema(tenantId);
+    const schema = await this.writableSchema(tenantId, execution.sandboxNamespace);
     if (!schema) return { lead: null, created: false };
 
     const prepared = await this.prepareLeadInsert(tenantId, schema, {

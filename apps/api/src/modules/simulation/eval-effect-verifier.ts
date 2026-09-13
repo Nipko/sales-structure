@@ -2,7 +2,13 @@ import type { ExpectedAction } from './eval.service';
 
 export interface EffectVerifier {
     table: string;
-    contactColumn: string;
+    contactColumn?: string;
+    ownershipJoin?: Readonly<{
+        localColumn: string;
+        ownerTable: string;
+        ownerIdColumn: string;
+        ownerContactColumn: string;
+    }>;
     /** Code-owned projections only; assertions never provide JSON paths or SQL. */
     jsonFields?: Readonly<Record<string, { column: string; path: readonly string[] }>>;
 }
@@ -39,13 +45,20 @@ export async function verifyExpectedEffects(input: {
         }
         const verifier = assertion.family ? input.verifiers[assertion.family]
             : Object.values(input.verifiers).find(item => item.table === assertion.table);
-        if (!verifier || verifier.table !== assertion.table || !IDENTIFIER.test(verifier.table) || !IDENTIFIER.test(verifier.contactColumn)) {
+        const join = verifier?.ownershipJoin;
+        const directOwnership = !!verifier?.contactColumn && IDENTIFIER.test(verifier.contactColumn);
+        const joinedOwnership = !!join && [join.localColumn, join.ownerTable, join.ownerIdColumn, join.ownerContactColumn]
+            .every(value => IDENTIFIER.test(value));
+        if (!verifier || verifier.table !== assertion.table || !IDENTIFIER.test(verifier.table)
+            || directOwnership === joinedOwnership) {
             fail('effect_verifier_unavailable'); continue;
         }
         if (assertion.where !== undefined && (!assertion.where || typeof assertion.where !== 'object' || Array.isArray(assertion.where))) {
             fail('invalid_effect_filter'); continue;
         }
-        const conditions = [`${verifier.contactColumn} = $1::uuid`];
+        const conditions = [directOwnership
+            ? `${verifier.contactColumn} = $1::uuid`
+            : `owner.${join!.ownerContactColumn} = $1::uuid`];
         const parameters: unknown[] = [input.contactId];
         let invalid = false;
         for (const [column, raw] of Object.entries(assertion.where || {})) {
@@ -63,7 +76,7 @@ export async function verifyExpectedEffects(input: {
                 || !projection.path.length || projection.path.some(key => !JSON_KEY.test(key)))) { invalid = true; break; }
             const quoted = projection
                 ? `"${projection.column}" #>> '{${projection.path.join(',')}}'`
-                : `"${column}"`;
+                : joinedOwnership ? `effect."${column}"` : `"${column}"`;
             if (filter.value === null) { conditions.push(`${quoted} IS NULL`); continue; }
             if (filter.op === 'ilike') conditions.push(`${quoted} ILIKE $${index}`);
             else if (filter.op === 'date_eq') conditions.push(`DATE(${quoted}) = $${index}::date`);
@@ -73,7 +86,10 @@ export async function verifyExpectedEffects(input: {
         }
         if (invalid) { fail('invalid_effect_filter'); continue; }
         try {
-            const rows = await input.query(`SELECT COUNT(*)::int AS cnt FROM ${verifier.table} WHERE ${conditions.join(' AND ')}`, parameters);
+            const from = joinedOwnership
+                ? `${verifier.table} effect JOIN ${join!.ownerTable} owner ON owner.${join!.ownerIdColumn}=effect.${join!.localColumn}`
+                : verifier.table;
+            const rows = await input.query(`SELECT COUNT(*)::int AS cnt FROM ${from} WHERE ${conditions.join(' AND ')}`, parameters);
             const rawCount = Array.isArray(rows) && rows.length === 1 ? rows[0]?.cnt : undefined;
             if (!(typeof rawCount === 'number' || (typeof rawCount === 'string' && /^\d+$/.test(rawCount))) ||
                 !Number.isSafeInteger(Number(rawCount)) || Number(rawCount) < 0) { fail('invalid_verification_result'); continue; }

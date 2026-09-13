@@ -59,4 +59,17 @@ describe('committed effect evidence', () => {
         expect(query.mock.calls[0][0]).not.toContain('DROP');
         expect(query.mock.calls[0][1]).toEqual([contactId, "x'; DROP TABLE repair_orders; --"]);
     });
+    it('verifies CRM rows through their lead without accepting a caller-provided join', async () => {
+        const query = jest.fn().mockResolvedValue([{ cnt: 1 }]);
+        const result = await verifyExpectedEffects({ contactId, query,
+            verifiers: { crm_tasks: { table: 'tasks', ownershipJoin: {
+                localColumn: 'lead_id', ownerTable: 'leads', ownerIdColumn: 'id', ownerContactColumn: 'contact_id',
+            } } },
+            expected: [{ kind: 'db_effect', type: 'row_exists', family: 'crm_tasks', table: 'tasks', where: { status: 'pending' } }],
+        });
+        expect(result.passed).toBe(true);
+        expect(query.mock.calls[0][0]).toContain('FROM tasks effect JOIN leads owner ON owner.id=effect.lead_id');
+        expect(query.mock.calls[0][0]).toContain('owner.contact_id = $1::uuid');
+        expect(query.mock.calls[0][1]).toEqual([contactId, 'pending']);
+    });
 });

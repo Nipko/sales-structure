@@ -9,7 +9,7 @@ import { isBusinessWriteTool } from '../conversations/tool-policy-registry';
 /**
  * ═══ LA MATRIZ, CALCULADA EN VEZ DE TRANSCRITA ═══
  *
- * «76 perfiles, 268 tareas, 146 transaccionales, 32 sin positivo propio, 10 sin
+ * «76 perfiles, 420 tareas, 146 transaccionales, 32 sin positivo propio, 10 sin
  * verificador» vivía únicamente en la prosa de las auditorías, regenerada a mano
  * cada vez y sin nada que la comprobara. Un número así envejece en silencio: un
  * perfil nuevo, un intent renombrado o un verificador que pasa de pendiente a

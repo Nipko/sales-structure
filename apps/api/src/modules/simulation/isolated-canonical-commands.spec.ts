@@ -38,6 +38,10 @@ import { bindCanonicalEvalFixtures, prepareCanonicalEvalFixtures } from './eval-
 import { composeSubtypeEvalPack, listCanonicalSubtypeExperienceProfileIds } from '@parallext/shared';
 import { PrismaClient } from '@prisma/client';
 import { RegionalProfileService } from '../tenants/regional-profile.service';
+import { PipelineService } from '../pipeline/pipeline.service';
+import { LeadsRepository } from '../crm/repositories/leads.repository';
+import { OpportunitiesRepository } from '../crm/repositories/opportunities.repository';
+import { TasksService } from '../crm/services/tasks/tasks.service';
 import { ensureSyntheticGlobalTables } from '../../common/__fixtures__/synthetic-global-tables';
 import { isDisposableDatabaseUrl } from '../../common/__fixtures__/disposable-database';
 
@@ -57,8 +61,8 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
         isVerified: jest.fn(() => { throw new Error('live_identity_read_forbidden'); }),
         startVerification: jest.fn(() => { throw new Error('live_identity_otp_forbidden'); }),
     };
-    const tables = ['customer_memory_erasure','customer_profiles','contact_identities','contacts','conversations','messages','persona_config','agent_personas','courses','campaigns','companies','leads','opportunities',
-        'pipelines','pipeline_stages','deals','services','service_staff','calendar_integrations','appointments','availability_slots','blocked_dates',
+    const tables = ['customer_memory_erasure','customer_profiles','contact_identities','contacts','conversations','messages','persona_config','agent_personas','courses','campaigns','companies','leads','opportunities','tasks',
+        'pipelines','pipeline_stages','stage_transitions','deals','services','service_staff','calendar_integrations','appointments','availability_slots','blocked_dates',
         'membership_plans','members','fitness_classes','class_bookings','course_cohorts','enrollments',
         'properties','property_bookings','tour_packages','tour_inventory','tour_bookings','menu_items','food_orders','food_order_items',
         // `insurance_plans` is part of the EvalSession fixture set: the seed
@@ -114,7 +118,8 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
         namespaces = isolatedEvalNamespaceForPrisma(prisma);
         appointments = new AppointmentsService(prisma,effects as any,calendar as any,{ timezoneForSchema: async()=> 'America/Bogota' } as any);
         gyms = new GymsService(prisma); education = new EducationService(prisma);
-        const slots = { acquireLockToken:async()=>randomUUID(),releaseLockToken:async()=>true,get:async()=>null,incr:async()=>1,expire:async()=>true };
+        const slots = { acquireLockToken:async()=>randomUUID(),releaseLockToken:async()=>true,get:async()=>null,incr:async()=>1,expire:async()=>true,
+            getJson:async()=>null,setJson:async()=>undefined };
         const control = new ToolExecutionControlService(prisma,{ get:()=> 'isolated-test-secret-length-32-characters' } as any,identityBoundary as any,slots as any);
         // Los comandos de servicio, hospedaje y comida, con sus dos únicas
         // salidas al mundo montadas para EXPLOTAR: si alguno emitiera su evento
@@ -122,16 +127,19 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
         // meses después en la casilla de un huésped.
         properties = new PropertiesService(prisma,{} as any,mail as any);
         const args: any[] = Array(32).fill({});
+        const pipeline = new PipelineService(prisma, slots as any, effects as any, {} as any, {} as any);
         Object.assign(args,{0:prisma,1:slots,2:effects,7:properties,8:new ToursService(prisma,{} as any,mail as any),
             11:new PetsService(prisma),12:new RestaurantsService(prisma,effects as any),13:gyms,14:education,
             17:new HomeServicesService(prisma,effects as any),21:control,22:{},
-            23:new PhotographyService(prisma,effects as any),26:new ResourceRentalsService(prisma),31:appointments});
+            23:new PhotographyService(prisma,effects as any),26:new ResourceRentalsService(prisma),
+            27:new LeadsRepository(prisma,slots as any,pipeline,{phoneRegionFor:async()=>null} as any),
+            28:new OpportunitiesRepository(prisma,slots as any,pipeline),29:new TasksService(prisma,slots as any),31:appointments});
         executor = new (AIToolExecutorService as any)(...args);
     },30000);
     beforeEach(async () => {
         lease = await namespaces.provision(tenantId,source,tables);
         const q = (sql: string,params: any[]=[])=>prisma.executeInTenantSchema(lease.schemaName,sql,params);
-        await q("INSERT INTO contacts(id,external_id,channel_type,name) VALUES($1::uuid,'eval','web_widget','Eval'),($2::uuid,'other','web_widget','Other')",[contactId,otherContact]);
+        await q("INSERT INTO contacts(id,external_id,channel_type,name,phone) VALUES($1::uuid,'eval','web_widget','Eval','+573000000001'),($2::uuid,'other','web_widget','Other',NULL)",[contactId,otherContact]);
         conversationId=(await q("INSERT INTO conversations(contact_id,channel_type,channel_account_id) VALUES($1::uuid,'web_widget','eval') RETURNING id",[contactId]))[0].id;
         await q("INSERT INTO persona_config(config_yaml,config_json,is_active) VALUES('{}',$1::jsonb,true)",[JSON.stringify({hours:{timezone:'America/Bogota'}})]);
         await q("INSERT INTO services(id,name,duration_minutes,max_concurrent,price,currency,payment_policy,deposit_percent) VALUES($1::uuid,'Service',30,1,100,'COP','none',NULL)",[serviceId]);
@@ -853,6 +861,53 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
             'service_requests','photo_sessions','resource_rentals','resource_rental_events'])
             expect((await query(`SELECT count(*)::int AS n FROM "${source}".${table}`))[0].n).toBe(0);
         expect((await q('SELECT count(*)::int AS n FROM resource_rental_events'))[0].n).toBe(2);
+    },60000);
+
+    it('persists and verifies both horizontal CRM missions without touching the tenant schema',async()=>{
+        const q=(sql:string,params:any[]=[])=>prisma.executeInTenantSchema(lease.schemaName,sql,params);
+        await q('DELETE FROM persona_config');
+        const fixtures=await prepareCanonicalEvalFixtures(q as any,lease.schemaName,
+            {capturedAt:new Date().toISOString(),config:{hours:{timezone:'America/Bogota',schedule:{}}}} as any);
+        expect(fixtures.status).toBe('ready');
+        if(fixtures.status!=='ready') throw new Error('fixture_blocked');
+        const calls:Array<{name:string;result:any}>=[];
+        let inboundMessageId='';
+        const invoke=async(name:string,args:any)=>{
+            const result=await executor.execute(lease.schemaName,tenantId,contactId,name,args,conversationId,{
+                authority:authorityFor(name),executionContext:AGENT_TEST_EXECUTION_CONTEXT,evalMode:true,sandboxNamespace:lease,
+                idempotencyKey:`${inboundMessageId}:${name}`,
+            });
+            calls.push({name,result});
+            expect(result.error).toBeUndefined();
+            return result;
+        };
+        const run=async()=>{
+            inboundMessageId=(await q("INSERT INTO messages(conversation_id,direction,content_type,content_text,status,created_at) VALUES($1::uuid,'inbound','text','CRM mission','delivered',clock_timestamp()) RETURNING id::text",[conversationId]))[0].id;
+            await invoke('ensure_crm_lead',{reason:'Interested in the annual plan'});
+            await invoke('record_contact_interest',{interest:'annual plan for ten people'});
+            await invoke('create_crm_opportunity',{title:'Annual plan for ten people'});
+            await invoke('create_follow_up_task',{title:'Call about annual plan',type:'call'});
+        };
+        await run();
+        await run();
+        expect((await q('SELECT count(*)::int AS n FROM leads'))[0].n).toBe(1);
+        expect((await q('SELECT count(*)::int AS n FROM opportunities'))[0].n).toBe(1);
+        expect((await q('SELECT count(*)::int AS n FROM tasks'))[0].n).toBe(1);
+        expect((await q('SELECT count(*)::int AS n FROM deals'))[0].n).toBe(1);
+
+        const pack=composeSubtypeEvalPack({industry:'salud',subtype:'dental',language:'en'});
+        for(const key of ['capture_interest','request_follow_up']) {
+            const seed=pack.find(item=>item.key===`intent_${key}_canonical_repeat_v1`);
+            expect(seed).toBeDefined();
+            const verified=await verifyExpectedEffects({expected:seed!.expectedActions as any,contactId,
+                verifiers:EVAL_EFFECT_VERIFIERS,observedToolCalls:calls,query:q});
+            expect({key,failures:verified.checks.filter(check=>!check.ok)}).toEqual({key,failures:[]});
+            expect((await verifyExpectedEffects({expected:seed!.expectedActions as any,contactId:otherContact,
+                verifiers:EVAL_EFFECT_VERIFIERS,observedToolCalls:calls,query:q})).passed).toBe(false);
+        }
+        for(const table of ['leads','opportunities','tasks','deals']) {
+            expect((await query(`SELECT count(*)::int AS n FROM "${source}".${table}`))[0].n).toBe(0);
+        }
     },60000);
 
     it('persists a draft review without an appointment, then resumes the approved command exactly once',async()=>{

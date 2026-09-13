@@ -7,6 +7,7 @@ import { vehicleTaskEvalScenarios } from './vehicle-task-eval-pack';
 import { petTaskEvalScenarios } from './pet-task-eval-pack';
 import { insuranceTaskEvalScenarios } from './insurance-task-eval-pack';
 import { operationTaskEvalScenarios } from './operation-task-eval-pack';
+import { crmTaskEvalScenarios } from './crm-task-eval-pack';
 
 type Domain = 'appointments' | 'class_bookings' | 'enrollments';
 const F = (name: string) => `{{fixture.${name}}}`;
@@ -59,6 +60,8 @@ function effects(domain: Domain, cancelled = false, corrected = false): EvalActi
 
 /** Complete fixtures are additive. Unrelated contracts retain their explicit coverage gaps. */
 export function canonicalTaskEvalScenarios(intent: IntentContract, language: EvalLanguageCode): EvalScenarioSeed[] {
+    const crm = crmTaskEvalScenarios(intent, language);
+    if (crm.length) return crm;
     const repair = repairTaskEvalScenarios(intent, language);
     if (repair.length) return repair;
     const catalog = catalogTaskEvalScenarios(intent,language);

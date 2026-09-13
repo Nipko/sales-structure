@@ -93,6 +93,21 @@ export const FAMILY_TERMS_BINDINGS: readonly FamilyTermsBinding[] = Object.freez
             + 'which is a different guarantee from an accepted quote.',
     }),
     entry({
+        family: 'crm_leads', command: 'not_applicable', charge: 'not_applicable', legacyRows: 'not_applicable',
+        evidence: 'Creating the contact lead and recording a stated interest are additive internal CRM facts. They '
+            + 'do not promise a price, qualification, stage or external action and are state-guarded by contact.',
+    }),
+    entry({
+        family: 'crm_opportunities', command: 'not_applicable', charge: 'not_applicable', legacyRows: 'not_applicable',
+        evidence: 'A conversational opportunity starts in the tenant canonical stage and is deduplicated by lead, '
+            + 'conversation and factual title. It records interest but does not commit the business.',
+    }),
+    entry({
+        family: 'crm_tasks', command: 'not_applicable', charge: 'not_applicable', legacyRows: 'not_applicable',
+        evidence: 'A follow-up task records the customer request for the human team. It does not assert that contact '
+            + 'will happen or that an outcome was achieved, and repeated requests are state-guarded.',
+    }),
+    entry({
         family: 'property_bookings', command: 'bound', charge: 'bound', legacyRows: 'fails_closed',
         evidence: 'The shared commitment gate rebuilds the stay from the property and refuses when the nightly rate, '
             + 'the cleaning fee, the dates, the guest count or the deposit policy moved since the guest was told. The '

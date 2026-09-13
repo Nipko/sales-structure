@@ -76,7 +76,7 @@ export class QualityRegressionService {
         await this.schema(tenantId,agentId);
         return {profiles:listCanonicalSubtypeExperienceProfileIds().map(id=>{const [industry,subtype]=id.split('/');
             return {id,intents:buildDomainContractDraft(industry,subtype).intents.map(intent=>({key:intent.key,tools:intent.toolPlan,commits:intent.commits}))};}),
-            families:Object.entries(EVAL_WRITER_SANDBOX_FAMILIES).filter(([,family])=>(family.status==='audited'||family.verifierAudited)&&family.contactColumn)
+            families:Object.entries(EVAL_WRITER_SANDBOX_FAMILIES).filter(([,family])=>(family.status==='audited'||family.verifierAudited)&&(family.contactColumn||family.ownershipJoin))
                 .map(([key,family])=>({key,table:family.table,executable:family.status==='audited'}))};
     }
 

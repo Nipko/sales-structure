@@ -52,7 +52,7 @@ export async function verifyLearningOperation(prisma:PrismaService,scope:Learnin
     if(!record(result))return {status:'unverified',reason:'result_unavailable'};
     if(result.error||result.isError||result.success===false||result.ok===false)return {status:'not_applicable'};
     const familyKey=CANONICAL_EVAL_TOOL_FAMILIES[call.name],family=EVAL_WRITER_SANDBOX_FAMILIES[familyKey];
-    if(!family||family.status!=='audited'||!family.contactColumn||!WRITER_ACTIVE_OBJECTS[call.name]?.kind)return {status:'unverified',reason:'verifier_unavailable'};
+    if(!family||family.status!=='audited'||(!family.contactColumn&&!family.ownershipJoin)||!WRITER_ACTIVE_OBJECTS[call.name]?.kind)return {status:'unverified',reason:'verifier_unavailable'};
     // Do not let an inconsistent display reference hide the handler's target.
     const {activeObject:displayReference,...handlerResult}=result;
     const reference=(attachWriterActiveObject(call.name,handlerResult,call.args) as any)?.activeObject;
@@ -67,8 +67,11 @@ export async function verifyLearningOperation(prisma:PrismaService,scope:Learnin
     if(!exists[0]?.relation)return {status:'unverified',reason:'object_table_unavailable'};
     // Identifiers come only from the reviewed family registry. Row data never
     // leaves this verifier; returned traces contain hashes and operational state.
+    const join=family.ownershipJoin;
+    const from=join?`${family.table} t JOIN ${join.ownerTable} owner ON owner.${join.ownerIdColumn}=t.${join.localColumn}`:`${family.table} t`;
+    const ownership=join?`owner.${join.ownerContactColumn}`:`t.${family.contactColumn}`;
     const objects=await prisma.executeInTenantSchema<any[]>(schema,`SELECT md5(to_jsonb(t)::text) AS hash,to_jsonb(t) AS data
-        FROM ${family.table} t WHERE id=$1::uuid AND ${family.contactColumn}=$2::uuid`,[reference.id,scope.contactId]);
+        FROM ${from} WHERE t.id=$1::uuid AND ${ownership}=$2::uuid`,[reference.id,scope.contactId]);
     await scope.assertLease();
     if(objects.length!==1)return {status:'unverified',reason:'owned_object_missing'};
     const object=objects[0].data,body=result.order||result.appointment||result.repairOrder||result.enrollment||result;

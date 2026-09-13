@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { RedisService } from '../../../redis/redis.service';
+import { isolatedEvalNamespaceForPrisma, type EvalNamespaceLease } from '../../../simulation/isolated-eval-namespace';
 
 @Injectable()
 export class TasksService {
@@ -23,6 +24,15 @@ export class TasksService {
             return schema;
         }
         return null;
+    }
+
+    private async writableSchema(tenantId: string, sandboxNamespace?: EvalNamespaceLease): Promise<string | null> {
+        if (!sandboxNamespace) return this.getTenantSchema(tenantId);
+        if (sandboxNamespace.tenantId !== tenantId || sandboxNamespace.schemaName === sandboxNamespace.sourceSchema) {
+            throw new Error('crm_eval_namespace_scope_mismatch');
+        }
+        await isolatedEvalNamespaceForPrisma(this.prisma).assertOwned(sandboxNamespace);
+        return sandboxNamespace.schemaName;
     }
 
     async getTasks(tenantId: string, filters: { leadId?: string, assignedTo?: string, status?: string }) {
@@ -97,8 +107,8 @@ export class TasksService {
         dueAt?: string,
         assignedTo?: string,
         createdBy?: string,
-    }): Promise<{ task: any | null; created: boolean }> {
-        const schema = await this.getTenantSchema(tenantId);
+    }, execution: { sandboxNamespace?: EvalNamespaceLease } = {}): Promise<{ task: any | null; created: boolean }> {
+        const schema = await this.writableSchema(tenantId, execution.sandboxNamespace);
         if (!schema) throw new Error('Tenant not found');
 
         return this.prisma.transactionInTenantSchema(schema, async (query) => {

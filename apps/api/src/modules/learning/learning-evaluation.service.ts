@@ -237,13 +237,16 @@ export class LearningEvaluationService {
         await session.assertLease();
         const schema=namespace.schemaName;
         const state:Record<string,{hash:string;count:number}>={};
-        for(const family of Object.values(EVAL_WRITER_SANDBOX_FAMILIES).filter(f=>f.status==='audited'&&f.contactColumn)){
+        for(const family of Object.values(EVAL_WRITER_SANDBOX_FAMILIES).filter(f=>f.status==='audited'&&(f.contactColumn||f.ownershipJoin))){
             const exists=await this.prisma.executeInTenantSchema<any[]>(schema,`SELECT to_regclass($1)::text AS relation`,[`${schema}.${family.table}`]);
             if(!exists[0]?.relation)continue;
             // Both identifiers belong to the static audited sandbox registry.
+            const join=family.ownershipJoin;
+            const from=join?`${family.table} t JOIN ${join.ownerTable} owner ON owner.${join.ownerIdColumn}=t.${join.localColumn}`:`${family.table} t`;
+            const ownership=join?`owner.${join.ownerContactColumn}`:`t.${family.contactColumn}`;
             const rows=await this.prisma.executeInTenantSchema<any[]>(schema,`SELECT COUNT(*)::int AS count,
-                md5(COALESCE(string_agg(to_jsonb(t)::text,',' ORDER BY id::text),'')) AS hash
-                FROM ${family.table} t WHERE ${family.contactColumn}=$1::uuid`,[contactId]);
+                md5(COALESCE(string_agg(to_jsonb(t)::text,',' ORDER BY t.id::text),'')) AS hash
+                FROM ${from} WHERE ${ownership}=$1::uuid`,[contactId]);
             state[family.table]=rows[0];
         }
         await session.assertLease();

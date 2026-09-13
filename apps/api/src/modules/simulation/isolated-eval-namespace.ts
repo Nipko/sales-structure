@@ -41,6 +41,8 @@ export const CANONICAL_EVAL_TOOL_FAMILIES: Readonly<Record<string, string>> = Ob
     place_order: 'restaurant_orders', create_service_request: 'service_requests',
     request_photo_quote: 'photo_sessions', create_pet_boarding: 'resource_rentals',
     create_vehicle_rental: 'resource_rentals',
+    ensure_crm_lead: 'crm_leads', record_contact_interest: 'crm_leads',
+    create_crm_opportunity: 'crm_opportunities', create_follow_up_task: 'crm_tasks',
 });
 /** Private readers keep their normal identity/ownership guards; this only admits
  * their schema-local implementation after a fixture lease has been verified. */
@@ -72,7 +74,7 @@ const NAMESPACE = /^tenant_eval_[a-f0-9]{8}_[a-f0-9]{24}$/;
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const TABLES = new Set([
     'customer_profiles', 'contact_identities', 'contacts', 'conversations', 'messages', 'tool_execution_ledger', 'customer_memory_erasure', 'tool_approval_tickets', 'tool_approval_events', 'persona_config', 'agent_personas',
-    'pipelines', 'pipeline_stages', 'deals', 'opportunities', 'leads', 'companies', 'campaigns', 'calendar_integrations', 'staff_members', 'operational_locations',
+    'pipelines', 'pipeline_stages', 'stage_transitions', 'deals', 'opportunities', 'leads', 'tasks', 'companies', 'campaigns', 'calendar_integrations', 'staff_members', 'operational_locations',
     'customer_vehicles', 'repair_orders', 'repair_order_events',
     'blocked_dates', 'availability_slots', 'service_staff', 'services', 'appointments', 'appointment_blocked_dates', 'appointment_settings', 'appointment_holds',
     'members', 'membership_plans', 'fitness_classes', 'class_bookings', 'class_waitlist',

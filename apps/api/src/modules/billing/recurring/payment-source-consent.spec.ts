@@ -62,10 +62,26 @@ describe('PaymentSourceService consent challenge', () => {
                 }]),
                 updateMany: jest.fn().mockResolvedValue({ count: 1 }),
             },
-            $queryRawUnsafe: jest.fn().mockResolvedValue([{
-                id: 'source-1', tenantId: TENANT, metadata: {}, pendingCheckCount: 0,
-            }]),
+            $queryRawUnsafe: jest.fn(async (sql: string, ...params: any[]) => {
+                if (sql.includes('FROM billing_provider_effects')) return [];
+                if (sql.includes('INSERT INTO billing_provider_effects')) {
+                    return [{ leaseToken: params[4] }];
+                }
+                return [{
+                    id: 'source-1', tenantId: TENANT, metadata: {}, pendingCheckCount: 0,
+                }];
+            }),
+            $executeRawUnsafe: jest.fn().mockResolvedValue(1),
         };
+        prisma.$transaction = jest.fn(async (work: any) => {
+            if (typeof work === 'function') {
+                return work({
+                    ...prisma,
+                    $executeRawUnsafe: jest.fn().mockResolvedValue(1),
+                });
+            }
+            return Promise.all(work);
+        });
         const providerFactory = {
             capabilitiesOf: jest.fn().mockReturnValue(WOMPI_CAPABILITIES),
             getCharging: jest.fn().mockReturnValue(charging),

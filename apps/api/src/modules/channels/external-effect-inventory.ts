@@ -1698,32 +1698,71 @@ producer({
     }),
 
     producer({
-        id: 'billing.card_and_void',
-        effect: 'Registering a tenant\'s saved payment source, voiding one, voiding a charge, and the '
-            + 'self-serve checkout link',
+        id: 'billing.payment_source_management',
+        effect: 'Registering and revoking the reusable payment source that pays for a tenant subscription',
         lane: 'inline',
         status: 'live',
         derivation: 'declared',
-        source: 'modules/billing/adapters/wompi.adapter.ts',
-        symbol: 'createPaymentSource',
-        egress: 'POST /payment_sources, PUT /payment_sources/:id/void, POST /transactions/:id/void, '
-            + 'POST /payment_links',
+        source: 'modules/billing/recurring/payment-source.service.ts',
+        symbol: 'PaymentSourceService',
+        egress: 'POST /payment_sources and PUT /payment_sources/:id/void',
         reach: {
             class: 'commercial_write', audience: 'provider', personalData: true,
             channels: ['provider_api'],
         },
         properties: {
-            authority: none('called inline from the billing service; no lease commits before the request'),
-            idempotency: partial('the voids are naturally idempotent and the checkout link carries a '
-                + '`sku` derived from the reference. Creating a payment source has no key at all'),
-            receipt: durable('the provider ids are stored on the payment source and the checkout rows'),
-            uncertainOutcome: none('a lost answer to `createPaymentSource` leaves a source registered at '
-                + 'Wompi that we have no row for'),
-            erasure: none('billing records are retained for accounting and sit outside contact '
-                + 'erasure by design'),
-            recovery: none('no sweep looks for a source or a link created by an attempt whose answer '
-                + 'was lost'),
+            authority: durable('a unique provider-effect row and lease commit before either provider write'),
+            idempotency: partial('one consent can create at most one source; a source void is naturally '
+                + 'idempotent and may be retried under a new lease'),
+            receipt: durable('provider and local source ids commit with the accepted effect in one transaction'),
+            uncertainOutcome: durable('a lost answer is frozen as `unknown`; it cannot become another '
+                + 'non-idempotent source creation'),
+            erasure: notApplicable('payment-method and consent evidence follows mandatory billing retention; '
+                + 'card tokens and acceptance JWTs are never stored'),
+            recovery: partial('accepted creates replay their local receipt and unknown voids can retry safely; '
+                + 'Wompi exposes no key or lookup that can reconcile an unknown source creation automatically'),
         },
+    }),
+
+    producer({
+        id: 'billing.charge_void',
+        effect: 'Voiding a tenant subscription charge before settlement',
+        lane: 'inline',
+        status: 'live',
+        derivation: 'declared',
+        source: 'modules/billing/billing.service.ts',
+        symbol: 'refundPayment',
+        egress: 'POST /transactions/:id/void followed by canonical GET reconciliation',
+        reach: {
+            class: 'commercial_write', audience: 'provider', personalData: true,
+            channels: ['provider_api'],
+        },
+        properties: {
+            authority: durable('the payment row reserves the exact refund amount before the provider command'),
+            idempotency: durable('the reservation rejects a second click and Wompi void is naturally idempotent'),
+            receipt: durable('canonical VOIDED confirmation promotes the reserved amount into the payment ledger'),
+            uncertainOutcome: durable('an accepted command without confirmation preserves the reservation '
+                + 'and a due reconciliation time'),
+            erasure: notApplicable('refund evidence follows mandatory accounting retention'),
+            recovery: durable('the pending-refund reconciler reads the canonical charge until VOIDED is confirmed'),
+        },
+    }),
+
+    producer({
+        id: 'billing.checkout_link_primitive',
+        effect: 'Creating a platform-subscription checkout link directly in Wompi',
+        lane: 'inline',
+        status: 'off',
+        derivation: 'declared',
+        source: 'modules/billing/adapters/wompi.adapter.ts',
+        symbol: 'createCheckoutLink',
+        egress: 'POST /payment_links',
+        reach: {
+            class: 'commercial_write', audience: 'provider', personalData: true,
+            channels: ['provider_api'],
+        },
+        properties: uncovered('the adapter primitive has no production caller; it must gain a durable caller '
+            + 'before any route may expose it'),
     }),
 
     producer({

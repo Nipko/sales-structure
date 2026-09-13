@@ -344,7 +344,11 @@ describe('no entry claims a property the code does not support', () => {
         const inlineDurable = EXTERNAL_EFFECT_PRODUCERS
             .filter(row => row.lane === 'inline' && row.properties.recovery.level === 'durable')
             .map(row => row.id);
-        expect(inlineDurable).toEqual(['human.agent.reply.widget', 'channels.token_refresh']);
+        expect(inlineDurable).toEqual([
+            'human.agent.reply.widget',
+            'billing.charge_void',
+            'channels.token_refresh',
+        ]);
     });
 
     it('says out loud that the durable reply path is the live path', () => {

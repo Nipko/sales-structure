@@ -587,6 +587,34 @@ model BillingPaymentSource {
   @@schema("public")
 }
 
+// Admission and outcome ledger for provider-side billing writes that happen
+// outside the recurring charge engine. It stores identifiers and fingerprints,
+// never card tokens or acceptance JWTs.
+model BillingProviderEffect {
+  id                 String    @id @default(uuid())
+  tenantId           String    @map("tenant_id")
+  effectKey          String    @unique @map("effect_key")
+  effectType         String    @map("effect_type")
+  provider           String
+  state              String
+  requestFingerprint String    @map("request_fingerprint") @db.Char(64)
+  providerResourceId String?   @map("provider_resource_id")
+  localResourceId    String?   @map("local_resource_id") @db.Uuid
+  attempts           Int       @default(1)
+  leaseToken         String?   @map("lease_token") @db.Uuid
+  leaseExpiresAt     DateTime? @map("lease_expires_at") @db.Timestamptz(6)
+  startedAt          DateTime  @default(now()) @map("started_at") @db.Timestamptz(6)
+  completedAt        DateTime? @map("completed_at") @db.Timestamptz(6)
+  error              String?
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@index([tenantId, state])
+  @@index([state, leaseExpiresAt])
+  @@map("billing_provider_effects")
+  @@schema("public")
+}
+
 // ---- Billing Charge Attempts ----
 // The ledger of charge attempts, and the AUTHORITATIVE idempotency guarantee of
 // the recurring engine — not the queue, not the cron lock.
@@ -1328,4 +1356,3 @@ model AutomationTemplate {
   @@map("automation_templates")
   @@schema("public")
 }
-

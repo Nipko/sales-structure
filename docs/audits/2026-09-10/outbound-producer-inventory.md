@@ -347,7 +347,7 @@ esperada y su clasificación queda **fuera del alcance de este generador**.
 | `integrations.commerce_readonly` | `inline` | `internal_only` | `modules/vertical-integrations/vertical-integrations.service.ts` |
 | `integrations.outbox_scaffolding` | `domain_queue` | `off` | `modules/integrations/integration-outbox.worker.ts` |
 | `invitations.user_invite` | `inline` | `live` | `modules/invitations/invitations.service.ts` |
-| `mcp.remote_tool_call` | `inline` | `live` | `modules/mcp/mcp-client.service.ts` |
+| `mcp.remote_tool_call` | `tool_ledger` | `live` | `modules/mcp/mcp-client.service.ts` |
 | `meta_compliance.data_request` | `inline` | `live` | `modules/meta-compliance/meta-compliance.service.ts` |
 | `offboarding.external_revocation` | `inline` | `live` | `modules/offboarding/offboarding.service.ts` |
 | `ops.coupon_alerts` | `inline` | `internal_only` | `modules/health/coupon-alert.listener.ts` |

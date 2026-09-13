@@ -174,7 +174,7 @@ describe('the tools programme rows read something real', () => {
     it('derives T2 from the readiness authority instead of a declared number', () => {
         const gaps = rowsModule.readinessDivergenceGaps();
         const t2 = find('T2');
-        expect(gaps.length).toBeGreaterThan(0);
+        expect(gaps).toEqual([]);
         expect(t2).toMatchObject({ provenance: 'derived', open: gaps.length });
         for (const key of gaps) expect(String(t2.openLabel)).toContain(key);
     });

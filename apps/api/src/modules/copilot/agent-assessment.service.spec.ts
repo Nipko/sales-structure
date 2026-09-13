@@ -244,10 +244,9 @@ describe('shared agent assessment', () => {
                 predicate: 'is_active = true AND is_available = true', verdict: 'satisfied',
                 writePath: '/admin/menu',
             });
-            // And the audited difference travels with it: the shipped check does
-            // not look at `is_active`, which is how a soft-deleted dish keeps a
-            // family published.
-            expect(menu.readinessAudit[0].auditedDivergence).toMatchObject({ kind: 'weaker_predicate' });
+            // The shipped check and the tool now read the same sellable menu.
+            // A leftover divergence would make the assessment accuse a closed gap.
+            expect(menu.readinessAudit[0].auditedDivergence).toBeNull();
         });
     });
 });

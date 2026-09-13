@@ -267,7 +267,7 @@ export const READINESS_PREDICATE_AUTHORITY:
  */
 const SQL_NON_COLUMNS = new Set([
     'and', 'or', 'not', 'is', 'null', 'true', 'false', 'in', 'like', 'ilike', 'between',
-    'coalesce', 'nullif', 'lower', 'upper', 'trim', 'exists', 'any', 'all', 'distinct',
+    'coalesce', 'nullif', 'lower', 'upper', 'trim', 'translate', 'exists', 'any', 'all', 'distinct',
     'from', 'cast', 'as', 'case', 'when', 'then', 'else', 'end', 'select', 'where',
     'int', 'integer', 'text', 'boolean', 'uuid', 'date', 'timestamp', 'numeric',
 ]);

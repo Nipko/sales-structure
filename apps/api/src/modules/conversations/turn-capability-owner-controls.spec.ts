@@ -110,9 +110,14 @@ describe('owner controls through the production capability composer', () => {
         const { composer } = build({ configured: false, readiness });
         const args = input('gimnasios/gimnasio_general', true);
         await composer.resolve(args);
-        expect(readiness.evaluate.mock.calls[0]).toHaveLength(4);
+        expect(readiness.evaluate.mock.calls[0]).toHaveLength(5);
+        expect(readiness.evaluate.mock.calls[0][4]).toEqual({
+            refresh: undefined, sandboxNamespace: undefined,
+        });
         await composer.resolve({ ...args, refreshReadiness: true });
         expect(readiness.evaluate.mock.calls[1]).toHaveLength(5);
-        expect(readiness.evaluate.mock.calls[1][4]).toEqual({ refresh: true });
+        expect(readiness.evaluate.mock.calls[1][4]).toEqual({
+            refresh: true, sandboxNamespace: undefined,
+        });
     });
 });

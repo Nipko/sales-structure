@@ -12,7 +12,9 @@ describe('readiness isolation at the capability reader', () => {
         const { service, prisma, redis } = make();
         const result = await service.evaluate('tenant-id', schema, ['catalog_items'], AGENT_TEST_EXECUTION_CONTEXT);
         expect(result.unmet).toEqual(['catalog_items']);
-        expect(prisma.executeInTenantSchema).toHaveBeenCalledWith(schema, expect.stringContaining('FROM products'));
+        expect(prisma.executeInTenantSchema).toHaveBeenCalledWith(
+            schema, expect.stringContaining('FROM products'), [],
+        );
         expect(redis.getJson).not.toHaveBeenCalled();
         expect(redis.setJson).not.toHaveBeenCalled();
     });
@@ -34,7 +36,10 @@ describe('readiness isolation at the capability reader', () => {
         const service = new EffectiveCapabilityService(throttle as any, readiness as any);
         await service.resolve({ tenantId: 'tenant-id', schemaName: 'tenant_eval_owned', industry: 'retail', subType: 'moda',
             toolsConfig: { catalog: { enabled: true } }, executionContext: AGENT_TEST_EXECUTION_CONTEXT });
-        expect(readiness.evaluate).toHaveBeenCalledWith('tenant-id', 'tenant_eval_owned', expect.any(Array), AGENT_TEST_EXECUTION_CONTEXT);
+        expect(readiness.evaluate).toHaveBeenCalledWith(
+            'tenant-id', 'tenant_eval_owned', expect.any(Array), AGENT_TEST_EXECUTION_CONTEXT,
+            { refresh: undefined, sandboxNamespace: undefined },
+        );
     });
 });
 

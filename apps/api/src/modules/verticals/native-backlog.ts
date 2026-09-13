@@ -188,7 +188,9 @@ function routeToSurfaceItem(route: string): string | null {
 }
 
 function isRouteReachableFromManifest(route: string, manifestRoutes: readonly string[]): boolean {
-    if (route.startsWith('/admin/settings/') || route === '/admin/knowledge') return true;
+    if (route.startsWith('/admin/settings/')
+        || route === '/admin/knowledge'
+        || route.startsWith('/admin/knowledge/')) return true;
     return manifestRoutes.some(base => route === base || route.startsWith(`${base}/`));
 }
 

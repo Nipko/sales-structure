@@ -149,10 +149,13 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
             if (![source,sandbox].includes(schema)) throw new Error('unexpected_schema');
             return query(sql.replace('FROM services',`FROM "${schema}".services`));
         } } as any, redis as any);
-        const live = await service.evaluate(tenantId,source,['appointment_services'],AGENT_TEST_EXECUTION_CONTEXT);
-        const isolated = await service.evaluate(tenantId,sandbox,['appointment_services'],AGENT_TEST_EXECUTION_CONTEXT);
+        // This fixture deliberately contains only a service catalog. Appointment
+        // readiness also requires an active staff availability slot and therefore
+        // belongs to the appointment integration tests, not this namespace fence.
+        const live = await service.evaluate(tenantId,source,['service_catalog'],AGENT_TEST_EXECUTION_CONTEXT);
+        const isolated = await service.evaluate(tenantId,sandbox,['service_catalog'],AGENT_TEST_EXECUTION_CONTEXT);
         expect(live.checks[0].count).toBe(1);
-        expect(isolated.unmet).toEqual(['appointment_services']);
+        expect(isolated.unmet).toEqual(['service_catalog']);
         expect(redis.getJson).not.toHaveBeenCalled(); expect(redis.setJson).not.toHaveBeenCalled();
     });
     it('runs the candidate capture transaction read-only', async () => {

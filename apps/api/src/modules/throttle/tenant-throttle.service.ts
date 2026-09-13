@@ -132,6 +132,87 @@ export class TenantThrottleService {
         await this.redis.incrementRateLimit(key, WINDOW_SECONDS);
     }
 
+    /**
+     * Atomically reserve one rate-limited action for a stable logical effect.
+     *
+     * `isOverLimit()` followed by `recordUsage()` is useful for display, but it
+     * cannot authorise a provider call: two workers can both read the last free
+     * slot. The marker below makes the limit decision and the increment one
+     * Redis operation, while a retry of the same effect adopts the reservation
+     * instead of consuming a second slot.
+     */
+    async reserveActionUsage(
+        tenantId: string,
+        action: ActionType,
+        effectId: string,
+    ): Promise<{ allowed: boolean; count: number; adopted: boolean }> {
+        const { limits } = await this.resolveLimits(tenantId);
+        const limit = limits[action];
+        const window = Math.floor(Date.now() / (WINDOW_SECONDS * 1000));
+        const countKey = `throttle:${action}:${tenantId}:${window}`;
+        const effectHash = createHash('sha256').update(effectId).digest('hex');
+        const reservationKey = `throttle:reservation:${action}:${tenantId}:${effectHash}`;
+        const markerTtl = WINDOW_SECONDS * 2;
+        const finiteLimit = Number.isFinite(limit) ? Math.max(0, Math.floor(limit)) : -1;
+
+        const result = await this.redis.getClient().eval(
+            `local marker = redis.call('GET', KEYS[2])
+             local current = tonumber(redis.call('GET', KEYS[1]) or '0')
+             if marker then return {1, current, 1} end
+             local quota = tonumber(ARGV[1])
+             if quota >= 0 and current >= quota then return {0, current, 0} end
+             if quota < 0 then return {1, current, 0} end
+             current = redis.call('INCR', KEYS[1])
+             redis.call('EXPIRE', KEYS[1], tonumber(ARGV[2]))
+             redis.call('SET', KEYS[2], 'held:' .. ARGV[4], 'EX', tonumber(ARGV[3]))
+             return {1, current, 0}`,
+            2,
+            countKey,
+            reservationKey,
+            String(finiteLimit),
+            String(WINDOW_SECONDS),
+            String(markerTtl),
+            String(window),
+        ) as [number, number, number];
+        return { allowed: result[0] === 1, count: Number(result[1]), adopted: result[2] === 1 };
+    }
+
+    /** Keep a successful or possibly-transmitted effect counted across retries. */
+    async commitActionUsage(tenantId: string, action: ActionType, effectId: string): Promise<void> {
+        const effectHash = createHash('sha256').update(effectId).digest('hex');
+        const reservationKey = `throttle:reservation:${action}:${tenantId}:${effectHash}`;
+        await this.redis.getClient().eval(
+            `if redis.call('EXISTS', KEYS[1]) == 1 then
+                 redis.call('SET', KEYS[1], 'committed', 'EX', tonumber(ARGV[1]))
+                 return 1
+             end
+             return 0`,
+            1,
+            reservationKey,
+            String(WINDOW_SECONDS * 2),
+        );
+    }
+
+    /** Release only a pre-provider reservation; committed effects are immutable. */
+    async releaseActionUsage(tenantId: string, action: ActionType, effectId: string): Promise<void> {
+        const effectHash = createHash('sha256').update(effectId).digest('hex');
+        const reservationKey = `throttle:reservation:${action}:${tenantId}:${effectHash}`;
+        await this.redis.getClient().eval(
+            `local marker = redis.call('GET', KEYS[1])
+             if not marker or string.sub(marker, 1, 5) ~= 'held:' then return 0 end
+             local window = string.sub(marker, 6)
+             local countKey = 'throttle:' .. ARGV[1] .. ':' .. ARGV[2] .. ':' .. window
+             redis.call('DEL', KEYS[1])
+             local current = tonumber(redis.call('GET', countKey) or '0')
+             if current > 0 then redis.call('DECR', countKey) end
+             return 1`,
+            1,
+            reservationKey,
+            action,
+            tenantId,
+        );
+    }
+
     async getPriority(tenantId: string): Promise<number> {
         const { limits } = await this.resolveLimits(tenantId);
         return limits.priority;

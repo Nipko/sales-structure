@@ -178,6 +178,7 @@ model User {
 
   tenant         Tenant?         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   trustedDevices TrustedDevice[]
+  platformNotifications PlatformNotificationOutbox[]
 
   @@index([tenantId])
   @@index([isSelfServeSignup, createdAt(sort: Desc)], map: "idx_users_self_serve_signup_created")
@@ -1031,6 +1032,7 @@ model FeatureRequest {
   mergedIntoId   String?                      @map("merged_into_id") // when admin merges duplicates
   shippedAt      DateTime?                    @map("shipped_at")
   declinedReason String?                      @map("declined_reason")
+  statusRevision Int                          @default(0) @map("status_revision")
   createdAt      DateTime                     @default(now()) @map("created_at")
   updatedAt      DateTime                     @updatedAt @map("updated_at")
 
@@ -1043,6 +1045,32 @@ model FeatureRequest {
   @@index([authorTenantId])
   @@index([category])
   @@map("feature_requests")
+  @@schema("public")
+}
+
+model PlatformNotificationOutbox {
+  id                String   @id @default(uuid()) @db.Uuid
+  eventKey          String   @unique @map("event_key")
+  kind              String   @db.VarChar(60)
+  entityId          String   @map("entity_id") @db.Uuid
+  recipientUserId   String   @map("recipient_user_id") @db.Uuid
+  payload           Json     @default("{}")
+  state             String   @default("pending") @db.VarChar(32)
+  attempts          Int      @default(0)
+  leaseToken        String?  @map("lease_token") @db.Uuid
+  leaseExpiresAt    DateTime? @map("lease_expires_at") @db.Timestamptz(6)
+  providerReference String?  @map("provider_reference")
+  errorCode         String?  @map("error_code")
+  nextAttemptAt     DateTime @default(now()) @map("next_attempt_at") @db.Timestamptz(6)
+  startedAt         DateTime? @map("started_at") @db.Timestamptz(6)
+  completedAt       DateTime? @map("completed_at") @db.Timestamptz(6)
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  recipient User @relation(fields: [recipientUserId], references: [id], onDelete: Cascade)
+
+  @@index([recipientUserId, createdAt(sort: Desc)], map: "idx_platform_notification_recipient")
+  @@map("platform_notification_outbox")
   @@schema("public")
 }
 

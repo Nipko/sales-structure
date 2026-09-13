@@ -1502,18 +1502,24 @@ producer({
     producer({
         id: 'feature_requests.status_email',
         effect: 'The email telling subscribers that a feature request they follow changed status',
-        lane: 'inline',
+        lane: 'delivery_outbox',
         status: 'live',
         derivation: 'census',
-        source: 'modules/feature-requests/feature-requests.service.ts',
-        symbol: 'notifySubscribersStatus',
-        egress: 'EmailService.send in a sequential loop',
+        source: 'modules/feature-requests/feature-notification-outbox.service.ts',
+        symbol: 'FeatureNotificationOutboxService',
+        egress: 'one platform_notification_outbox row per subscriber and status revision, delivered by bounded SMTP',
         reach: {
             class: 'operator_notification', audience: 'tenant_operator', personalData: true,
             channels: ['email'],
         },
-        properties: uncovered('a sequential inline loop of `EmailService.send`. A failure part-way '
-            + 'through leaves some subscribers told and some not, with no record of which'),
+        properties: {
+            authority: durable('the status change and one intent per active subscriber commit in the same global transaction; delivery revalidates the user and subscription'),
+            idempotency: durable('UNIQUE event_key names request, monotonic status revision and recipient; terminal rows cannot be claimed again'),
+            receipt: durable('the bounded SMTP message id is required and stored in provider_reference'),
+            uncertainOutcome: durable('claimed and sending are different states; an expired or failed send becomes reconciliation_required and is never retried'),
+            erasure: durable('recipient_user_id cascades on user deletion, while every claim re-reads the current user and subscription instead of retaining an address in the row'),
+            recovery: durable('the per-minute recovery pass retries pending/preflight-failed rows and retires expired leases according to whether a send may have started'),
+        },
     }),
 
     // -- Retained surfaces -----------------------------------------------------

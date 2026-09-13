@@ -24,10 +24,10 @@ export async function ensureOperationalNoticeOutbox(prisma: PrismaService, schem
         const [kindConstraint] = await query<any[]>(`SELECT pg_get_constraintdef(oid) AS definition
             FROM pg_constraint WHERE conrelid='operational_notice_outbox'::regclass
               AND conname='operational_notice_outbox_kind_check'`);
-        if (!String(kindConstraint?.definition || '').includes('analytics.threshold_alert')) {
+        if (!String(kindConstraint?.definition || '').includes('analytics.scheduled_report')) {
             await query('ALTER TABLE operational_notice_outbox DROP CONSTRAINT IF EXISTS operational_notice_outbox_kind_check');
             await query(`ALTER TABLE operational_notice_outbox ADD CONSTRAINT operational_notice_outbox_kind_check
-                CHECK(kind IN ('appointment.payment_confirmed','appointment.payment_review','appointment.operator_slack','analytics.threshold_alert','gym.waitlist_promoted',
+                CHECK(kind IN ('appointment.payment_confirmed','appointment.payment_review','appointment.operator_slack','analytics.threshold_alert','analytics.scheduled_report','gym.waitlist_promoted',
                     'education.waitlist_promoted','education.waitlist_review','home_service.emergency',
                     'tour.booking_confirmed','property.booking_confirmed','order.confirmed','handoff.sla_escalated'))`);
         }

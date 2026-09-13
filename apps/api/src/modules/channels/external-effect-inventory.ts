@@ -1411,26 +1411,23 @@ producer({
     producer({
         id: 'analytics.scheduled_reports',
         effect: 'The weekly and monthly analytics report emailed to a tenant',
-        lane: 'inline',
+        lane: 'operational_notice',
         status: 'live',
         derivation: 'census',
         source: 'modules/analytics/scheduled-reports.service.ts',
-        symbol: 'generateAndSendReport',
-        egress: 'EmailService.send from two crons, after `canDeliverCustomerOutput` revalidates '
-            + 'entitlement',
+        symbol: 'enqueueOperationalNotice',
+        egress: 'one analytics.scheduled_report row per normalized recipient and reporting period',
         reach: {
             class: 'operator_notification', audience: 'tenant_operator', personalData: true,
             channels: ['email'],
         },
         properties: {
-            authority: partial('entitlement is revalidated immediately before the send, which is a gate '
-                + 'rather than an admission: nothing records that an attempt happened'),
-            idempotency: partial('`last_sent_at` is updated after the loop, so a crash mid-loop re-sends '
-                + 'to everyone already served'),
-            receipt: none(INLINE_EMAIL),
-            uncertainOutcome: none('the boolean collapses the two cases'),
-            erasure: none('the report aggregates the tenant\'s own data; nothing records the send'),
-            recovery: none('the next scheduled run, which is a week or a month away'),
+            authority: durable('entitlement is revalidated and each effect commits under the locked report configuration before SMTP'),
+            idempotency: durable('configuration, period and recipient digest form the unique event key, so a repeated cron adopts the rows'),
+            receipt: durable('each recipient row stores its own SMTP message id; last_sent_at moves only after the whole period is sent'),
+            uncertainOutcome: durable('an attempted SMTP send with no answer freezes only that recipient for reconciliation'),
+            erasure: notApplicable('the report contains aggregate tenant metrics and operator-configured destinations, not customer records'),
+            recovery: durable('pending and preflight-failed report rows are republished every minute'),
         },
     }),
 

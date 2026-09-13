@@ -1907,6 +1907,7 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."scheduled_reports" (
     "recipients" TEXT[] NOT NULL,
     "is_active" BOOLEAN DEFAULT true,
     "last_sent_at" TIMESTAMP,
+    "last_enqueued_at" TIMESTAMP,
     "created_at" TIMESTAMP DEFAULT NOW(),
     "updated_at" TIMESTAMP DEFAULT NOW()
 );
@@ -4924,7 +4925,7 @@ CREATE INDEX IF NOT EXISTS idx_quality_sampling_pending ON "{{SCHEMA_NAME}}"."qu
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."operational_notice_outbox" (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     event_key VARCHAR(200) NOT NULL UNIQUE,
-    kind VARCHAR(60) NOT NULL CHECK(kind IN ('appointment.payment_confirmed','appointment.payment_review','appointment.operator_slack','analytics.threshold_alert','gym.waitlist_promoted','education.waitlist_promoted','education.waitlist_review','home_service.emergency','tour.booking_confirmed','property.booking_confirmed','order.confirmed','handoff.sla_escalated')),
+    kind VARCHAR(60) NOT NULL CHECK(kind IN ('appointment.payment_confirmed','appointment.payment_review','appointment.operator_slack','analytics.threshold_alert','analytics.scheduled_report','gym.waitlist_promoted','education.waitlist_promoted','education.waitlist_review','home_service.emergency','tour.booking_confirmed','property.booking_confirmed','order.confirmed','handoff.sla_escalated')),
     entity_id UUID NOT NULL,
     contact_id UUID,
     conversation_id UUID,
@@ -5121,7 +5122,7 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_publication_heads" (
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."operational_notice_outbox" (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     event_key VARCHAR(200) NOT NULL UNIQUE,
-    kind VARCHAR(60) NOT NULL CHECK(kind IN ('appointment.payment_confirmed','appointment.payment_review','appointment.operator_slack','analytics.threshold_alert','gym.waitlist_promoted','education.waitlist_promoted','education.waitlist_review','home_service.emergency','tour.booking_confirmed','property.booking_confirmed','order.confirmed','handoff.sla_escalated')),
+    kind VARCHAR(60) NOT NULL CHECK(kind IN ('appointment.payment_confirmed','appointment.payment_review','appointment.operator_slack','analytics.threshold_alert','analytics.scheduled_report','gym.waitlist_promoted','education.waitlist_promoted','education.waitlist_review','home_service.emergency','tour.booking_confirmed','property.booking_confirmed','order.confirmed','handoff.sla_escalated')),
     entity_id UUID NOT NULL,
     contact_id UUID,
     conversation_id UUID,

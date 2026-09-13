@@ -15,6 +15,7 @@ import { eraseOperationalContactNotices } from './operational-notice-erasure';
 import { noticeReceiptEvidence } from './operational-notice-review.contracts';
 import { isDisposableDatabaseUrl } from '../../common/__fixtures__/disposable-database';
 import { AlertsService } from '../analytics/alerts.service';
+import { ScheduledReportsService } from '../analytics/scheduled-reports.service';
 
 const connection=process.env.PARALLLY_ISOLATION_TEST_URL;
 (connection?describe:describe.skip)('operational notices and canonical waitlists on disposable PostgreSQL',()=>{
@@ -25,7 +26,7 @@ const connection=process.env.PARALLLY_ISOLATION_TEST_URL;
     let pool:any,prisma:any,education:EducationEnrollmentCommands,gym:GymsService,notices:OperationalNoticeService,queue:any,send:any,transport:any;
     const tables=['customer_profiles','contact_identities','contacts','conversations','messages','persona_config','agent_personas','courses','campaigns','companies','leads','opportunities',
         'pipelines','pipeline_stages','deals','services','service_staff','calendar_integrations','appointments','calendar_sync_outbox','availability_slots','blocked_dates',
-        'membership_plans','members','fitness_classes','class_bookings','course_cohorts','enrollments','alert_rules','alert_history'];
+        'membership_plans','members','fitness_classes','class_bookings','course_cohorts','enrollments','alert_rules','alert_history','scheduled_reports'];
     const raw=async(sql:string,params:any[]=[]) => (await pool.query(sql,params)).rows;
     const q=(sql:string,params:any[]=[])=>prisma.executeInTenantSchema(schema,sql,params);
     beforeAll(async()=>{
@@ -64,6 +65,7 @@ const connection=process.env.PARALLLY_ISOLATION_TEST_URL;
     beforeEach(async()=>{
         await q('DELETE FROM operational_notice_outbox');await q('DELETE FROM calendar_sync_outbox');await q('DELETE FROM appointments');
         await q('DELETE FROM alert_history');await q('DELETE FROM alert_rules');
+        await q('DELETE FROM scheduled_reports');
         await q('DELETE FROM calendar_integrations');
         await q('DELETE FROM enrollments');await q('DELETE FROM class_bookings');await q('DELETE FROM members');await q('DELETE FROM fitness_classes');
         await q('DELETE FROM course_cohorts');await q('DELETE FROM courses');await q('DELETE FROM services');
@@ -213,6 +215,30 @@ const connection=process.env.PARALLLY_ISOLATION_TEST_URL;
         expect(await q('SELECT id FROM alert_history')).toHaveLength(0);
         expect((await q('SELECT last_triggered_at FROM alert_rules WHERE id=$1::uuid',[rule.id]))[0].last_triggered_at).toBeNull();
         expect(await noticeRows()).toHaveLength(0);
+    });
+    it('settles a scheduled report only after its per-recipient SMTP effects are sent',async()=>{
+        const config=(await q(`INSERT INTO scheduled_reports(tenant_id,frequency,recipients,is_active)
+            VALUES($1::uuid,'weekly',ARRAY['OWNER@EXAMPLE.INVALID','owner@example.invalid'],true) RETURNING *`,[tenantId]))[0];
+        const smtp=jest.fn().mockResolvedValue('smtp:report-accepted');
+        const email={prepareBoundedSend:jest.fn().mockReturnValue(smtp)};
+        const delivery=new OperationalNoticeService(prisma,{get:async()=>null} as any,{getPriority:async()=>2} as any,
+            {} as any,email as any,{} as any,{} as any,queue);
+        const dashboard={
+            getOverviewKPIs:jest.fn().mockResolvedValue({kpis:[]}),
+            getAIMetrics:jest.fn().mockResolvedValue({resolutionRate:0,containmentRate:0,handoffs:0}),
+        };
+        const reports:any=new ScheduledReportsService(prisma,{} as any,{} as any,dashboard as any,{} as any,{} as any,delivery);
+        await reports.generateAndSendReport({id:tenantId,name:'Tenant',schemaName:schema},config);
+        const [before]=await q('SELECT last_enqueued_at,last_sent_at FROM scheduled_reports WHERE id=$1::uuid',[config.id]);
+        expect(before.last_enqueued_at).not.toBeNull();expect(before.last_sent_at).toBeNull();
+        const [notice]=await noticeRows();
+        expect(notice).toMatchObject({kind:'analytics.scheduled_report',recipient_email:'owner@example.invalid',state:'queued'});
+        await delivery.deliver({tenantId,noticeId:notice.id},transport);
+        expect((await q('SELECT last_sent_at FROM scheduled_reports WHERE id=$1::uuid',[config.id]))[0].last_sent_at).not.toBeNull();
+        expect(smtp).toHaveBeenCalledTimes(1);
+        await reports.generateAndSendReport({id:tenantId,name:'Tenant',schemaName:schema},config);
+        expect(await noticeRows()).toHaveLength(1);
+        expect(smtp).toHaveBeenCalledTimes(1);
     });
     it('does not guess that historical confirmations were never delivered',async()=>{
         const appointment=await paidAppointment();await q("UPDATE appointments SET status='confirmed' WHERE id=$1::uuid",[appointment.id]);

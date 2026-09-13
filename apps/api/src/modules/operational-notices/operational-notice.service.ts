@@ -164,7 +164,9 @@ export class OperationalNoticeService {
                 started=true;
                 const receipt=await send();
                 if (!receipt) throw new Error('notice_provider_no_receipt');
-                await this.finish(query,row.id,'sent',null,typeof receipt==='string'?receipt.slice(0,512):null); return 'sent';
+                await this.finish(query,row.id,'sent',null,typeof receipt==='string'?receipt.slice(0,512):null);
+                if(row.kind==='analytics.scheduled_report')await this.completeScheduledReport(query,row);
+                return 'sent';
             } catch (error) {
                 // The local message and its outbox outcome are one atomic write.
                 // Roll both back even when a JS/adapter error follows persistence.
@@ -198,7 +200,7 @@ export class OperationalNoticeService {
     }
 
     private async hydrate(query: NoticeQuery, schema: string, tenantId: string, notice: any): Promise<any> {
-        if (notice.kind === 'analytics.threshold_alert') {
+        if (notice.kind === 'analytics.threshold_alert' || notice.kind === 'analytics.scheduled_report') {
             const recipient=String(notice.recipient_email || '').trim().toLowerCase();
             const payload=notice.payload && typeof notice.payload==='object' ? notice.payload : {};
             const subject=String(payload.subject || ''),html=String(payload.html || '');
@@ -206,12 +208,16 @@ export class OperationalNoticeService {
                 || !subject || subject.length>300 || !html || Buffer.byteLength(html,'utf8')>200_000) {
                 throw new NoticeSuppressed('notice_payload_invalid');
             }
-            const active=await query<any[]>(`SELECT ah.id FROM alert_history ah
-                JOIN alert_rules ar ON ar.id=ah.rule_id
-                WHERE ah.id=$1::uuid AND ar.is_active=true
-                  AND EXISTS(SELECT 1 FROM unnest(ar.notify_emails) email WHERE lower(trim(email))=$2)
-                FOR SHARE OF ah,ar`,
-            [notice.entity_id,recipient]);
+            const active=notice.kind==='analytics.threshold_alert'
+                ? await query<any[]>(`SELECT ah.id FROM alert_history ah
+                    JOIN alert_rules ar ON ar.id=ah.rule_id
+                    WHERE ah.id=$1::uuid AND ar.is_active=true
+                      AND EXISTS(SELECT 1 FROM unnest(ar.notify_emails) email WHERE lower(trim(email))=$2)
+                    FOR SHARE OF ah,ar`,[notice.entity_id,recipient])
+                : await query<any[]>(`SELECT id FROM scheduled_reports
+                    WHERE id=$1::uuid AND is_active=true AND frequency=$3
+                      AND EXISTS(SELECT 1 FROM unnest(recipients) email WHERE lower(trim(email))=$2)
+                    FOR SHARE`,[notice.entity_id,recipient,String(payload.frequency || '')]);
             if (!active.length) throw new NoticeSuppressed('notice_domain_state_changed');
             return {route:'email',email:recipient,subject,html,text:subject,conversationId:null};
         }
@@ -375,6 +381,15 @@ export class OperationalNoticeService {
     private finish(query:NoticeQuery,id:string,state:string,error:string|null=null,providerReference:string|null=null) {
         return query(`UPDATE operational_notice_outbox SET state=$2::text,error_code=$3,provider_reference=COALESCE($4,provider_reference),lease_token=NULL,lease_expires_at=NULL,
             completed_at=CASE WHEN $2::text IN ('sent','stored','suppressed') THEN NOW() ELSE NULL END,next_attempt_at=NOW()+INTERVAL '60 seconds',updated_at=NOW() WHERE id=$1::uuid`,[id,state,error,providerReference]);
+    }
+    private async completeScheduledReport(query:NoticeQuery,row:any):Promise<void>{
+        const periodKey=String(row.payload?.periodKey || '');
+        if(!periodKey)return;
+        const [remaining]=await query<any[]>(`SELECT COUNT(*)::int AS count FROM operational_notice_outbox
+            WHERE kind='analytics.scheduled_report' AND entity_id=$1::uuid
+              AND payload->>'periodKey'=$2 AND state<>'sent'`,[row.entity_id,periodKey]);
+        if(Number(remaining?.count||0)===0)await query(
+            'UPDATE scheduled_reports SET last_sent_at=clock_timestamp(),updated_at=clock_timestamp() WHERE id=$1::uuid',[row.entity_id]);
     }
     private async schema(tenantId:string):Promise<string> {
         if (!UUID.test(tenantId)) throw new Error('operational_notice_invalid_tenant');

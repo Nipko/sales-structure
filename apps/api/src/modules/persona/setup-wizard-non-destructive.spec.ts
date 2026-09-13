@@ -216,7 +216,7 @@ describe('PersonaController setup wizard — avanzar sin destruir', () => {
             .toBeUndefined();
     });
 
-    it.each(['save', 'createAgent', 'updateAgent', 'duplicateAgent'] as const)(
+    it.each(['createAgent', 'updateAgent', 'duplicateAgent'] as const)(
         'la verificación de correo sigue gateando %s',
         (method) => {
             expect(Reflect.getMetadata(VERIFIED_EMAIL_CAPABILITY_KEY, PersonaController.prototype[method]))

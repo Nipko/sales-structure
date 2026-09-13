@@ -418,9 +418,7 @@ Technical inventory for 99 API module declaration files, 160 dashboard pages
   - `POST /persona/:tenantId/setup-wizard/skip` — Skip wizard
   - `GET /persona/:tenantId/setup-status` — Wizard status
   - `GET /persona/:tenantId/plan-features` — Plan feature flags
-  - `GET /persona/:tenantId/active` — Active persona config
-  - `GET /persona/:tenantId/versions` — Config version history
-  - `PUT /persona/:tenantId` — Update persona
+  - Agent configuration reads and writes use the per-agent draft, publication, history and rollback routes; the tenant-wide legacy persona HTTP routes are retired
   - `GET /persona/:tenantId/agents` — List all agents
   - `GET /persona/:tenantId/agents/:agentId` — Agent detail
   - `POST /persona/:tenantId/agents` — Create agent

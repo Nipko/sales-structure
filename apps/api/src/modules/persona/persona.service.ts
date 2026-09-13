@@ -411,16 +411,6 @@ export class PersonaService {
 
 
     /**
-     * Get persona config version history
-     */
-    async getVersionHistory(tenantId: string): Promise<any[]> {
-        const schemaName = await this.tenantsService.getSchemaName(tenantId);
-        return this.prisma.$queryRawUnsafe(
-            `SELECT id, version, is_active, created_by, created_at FROM "${schemaName}".persona_config ORDER BY version DESC`,
-        ) as Promise<any[]>;
-    }
-
-    /**
      * Deep merge two config objects (template overrides default).
      */
     private deepMergeConfig(target: any, source: any): any {

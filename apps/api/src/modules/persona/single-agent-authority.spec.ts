@@ -20,4 +20,15 @@ describe('single agent configuration authority', () => {
 
         expect(appModule).not.toMatch(/modules\/carla|Controller\(['"]carla['"]\)/);
     });
+
+    it('does not mount legacy tenant-wide persona read or write routes', () => {
+        const controller = readFileSync(resolve(ROOT, 'src/modules/persona/persona.controller.ts'), 'utf8');
+
+        expect(controller).not.toContain("@Get(':tenantId/active')");
+        expect(controller).not.toContain("@Get(':tenantId/versions')");
+        expect(controller).not.toContain("@Put(':tenantId')");
+        const draftController = readFileSync(resolve(ROOT, 'src/modules/persona/agent-draft.controller.ts'), 'utf8');
+        expect(draftController).toContain("@Controller('persona/:tenantId/agents/:agentId/configuration')");
+        expect(draftController).toContain("@Put('draft')");
+    });
 });

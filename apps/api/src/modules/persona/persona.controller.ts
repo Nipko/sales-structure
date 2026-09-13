@@ -731,34 +731,6 @@ export class PersonaController {
         return { success: true, data: features };
     }
 
-    // ── Existing endpoints ──
-
-    @Get(':tenantId/active')
-    @ApiOperation({ summary: 'Get active persona config for a tenant' })
-    async getActive(@Param('tenantId') tenantId: string) {
-        const config = await this.personaService.getActivePersona(tenantId);
-        return { success: true, data: config };
-    }
-
-    @Get(':tenantId/versions')
-    @ApiOperation({ summary: 'Get persona version history' })
-    async getVersions(@Param('tenantId') tenantId: string) {
-        const versions = await this.personaService.getVersionHistory(tenantId);
-        return { success: true, data: versions };
-    }
-
-    @Put(':tenantId')
-    @Roles('tenant_admin')
-    @RequiresVerifiedEmail('activate_agent')
-    @ApiOperation({ summary: 'Save persona config (JSON → converts to YAML internally)' })
-    async save(
-        @Param('tenantId') tenantId: string,
-        @Body() body: any,
-        @Req() req: any,
-    ) {
-        throw new BadRequestException({ error: 'agent_draft_contract_required' });
-    }
-
     // ── Multi-Agent CRUD ──────────────────────────────────────
 
     @Get(':tenantId/agents')

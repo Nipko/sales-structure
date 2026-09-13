@@ -86,12 +86,11 @@ describe('PersonaController customer payment entitlement', () => {
         );
     });
 
-    it('legacy configuration writes cannot bypass the draft boundary even with payments disabled', async () => {
+    it('direct agent updates cannot bypass the draft boundary even with payments disabled', async () => {
         const { controller, throttleService, personaService } = makeController(false);
         const config = { tools: { payments: { enabled: false } } };
 
         await expect(controller.updateAgent(tenantId, agentId, { configJson: config, expectedVersion: 1 })).rejects.toMatchObject({ response: { error: 'agent_draft_contract_required' } });
-        await expect(controller.save(tenantId, config, { user: {} })).rejects.toMatchObject({ response: { error: 'agent_draft_contract_required' } });
 
         expect(throttleService.isFeatureEnabled).not.toHaveBeenCalled();
         expect(personaService.updateAgent).not.toHaveBeenCalled();

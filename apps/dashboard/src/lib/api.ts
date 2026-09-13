@@ -898,15 +898,6 @@ export const api = {
         apiPost(`/automation/templates/${tenantId}/install`, { templateId, variables }),
 
     // --- Persona / Agent Config ---
-    getPersonaConfig: (tenantId: string) =>
-        apiGet(`/persona/${tenantId}/active`),
-
-    getPersonaVersions: (tenantId: string) =>
-        apiGet(`/persona/${tenantId}/versions`),
-
-    savePersonaConfig: (tenantId: string, config: any) =>
-        apiPut(`/persona/${tenantId}`, config),
-
     // --- Onboarding helpers ---
     getWhatsappStatus: () => apiGet(`/channels/whatsapp/status`),
     crawlUrl: (url: string, title?: string, category?: string) => apiPost(`/knowledge/documents/crawl`, { url, title, category }),

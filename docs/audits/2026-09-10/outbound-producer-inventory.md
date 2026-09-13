@@ -16,13 +16,13 @@ efectos puede llegar a producir **una sola respuesta lógica** en cada uno.
 
 | | |
 |---|---|
-| Sitios de llamada encontrados | **31** |
-| De ellos, que producen un mensaje cobrable | **30** |
+| Sitios de llamada encontrados | **32** |
+| De ellos, que producen un mensaje cobrable | **31** |
 | De ellos, presencia (no cobra Meta) | **1** |
-| Archivos productores distintos | **22** |
+| Archivos productores distintos | **23** |
 | Sitios que **no** pasan por un carril durable | **1** |
-| Sitios que pueden alcanzar WhatsApp (literal o dinámico) | **29** |
-| Sitios donde **una respuesta puede volverse varios cargos** | **10** |
+| Sitios que pueden alcanzar WhatsApp (literal o dinámico) | **30** |
+| Sitios donde **una respuesta puede volverse varios cargos** | **11** |
 
 ### Los cinco números que importan
 
@@ -33,11 +33,11 @@ objetivo: **cero productores cobrables fuera del carril durable**.
 
 | | |
 |---|---|
-| Sitios de llamada, en total | **31** |
-| De ellos, capaces de alcanzar WhatsApp | **30** |
-| De ellos, **cobrables por Meta** | **29** |
-| De ellos, dentro de la frontera económica | **29** |
-| De ellos, dentro del **carril durable** | **29** |
+| Sitios de llamada, en total | **32** |
+| De ellos, capaces de alcanzar WhatsApp | **31** |
+| De ellos, **cobrables por Meta** | **30** |
+| De ellos, dentro de la frontera económica | **30** |
+| De ellos, dentro del **carril durable** | **30** |
 
 | | |
 |---|---|
@@ -51,7 +51,7 @@ Por carril:
 |---|---:|---|
 | `dispatch_outbox` | 14 | publishes an already-committed `agent_dispatch_outbox` row |
 | `approved_effect` | 1 | `tool_approval_effects` row a person approved |
-| `operational_notice` | 13 | `operational_notice_outbox`, written in the business transaction |
+| `operational_notice` | 14 | `operational_notice_outbox`, written in the business transaction |
 | `handoff_effects` | 1 | one row per destination of one transfer |
 | `inline` | 1 | straight to the adapter, on the caller's stack |
 
@@ -76,6 +76,7 @@ reparto**, que es donde una sola respuesta lógica se multiplica.
 | Archivo:línea | Método | Carril | Efectos por respuesta | Por qué |
 |---|---|---|---|---|
 | `modules/analytics/alerts.service.ts:294` | `fireAlert` | `operational_notice` | **n(recipients)** | one effect per recipient — a campaign, not one answer (loop at the send) |
+| `modules/analytics/scheduled-reports.service.ts:280` | `generateAndSendReport` | `operational_notice` | **n(recipients)** | one effect per recipient — a campaign, not one answer (loop at the send) |
 | `modules/appointments/appointment-payment.listener.ts:89` | `onPaid` | `operational_notice` | **n** | one effect per entry of `rows` (fan-out at line 51) |
 | `modules/appointments/appointment-payment.listener.ts:107` | `onPaid` | `operational_notice` | **n** | one effect per entry of `rows` (fan-out at line 51) |
 | `modules/appointments/appointment-payment.listener.ts:115` | `onPaid` | `operational_notice` | **n** | one effect per entry of `rows` (fan-out at line 51) |
@@ -108,6 +109,12 @@ mensajes entregados, y un indicador de "escribiendo" no lo es.
 | Línea | Método | Primitiva | Carril | Disparador | Canales | Efectos por respuesta | Base |
 |---:|---|---|---|---|---|---|---|
 | 294 | `fireAlert` | `enqueueOperationalNotice` | `operational_notice` | cron '*/15 * * * *' | dynamic | n(recipients) | one effect per recipient — a campaign, not one answer (loop at the send) |
+
+### `apps/api/src/modules/analytics/scheduled-reports.service.ts`
+
+| Línea | Método | Primitiva | Carril | Disparador | Canales | Efectos por respuesta | Base |
+|---:|---|---|---|---|---|---|---|
+| 280 | `generateAndSendReport` | `enqueueOperationalNotice` | `operational_notice` | called by another service | dynamic | n(recipients) | one effect per recipient — a campaign, not one answer (loop at the send) |
 
 ### `apps/api/src/modules/appointments/appointment-notifications.service.ts`
 
@@ -297,6 +304,7 @@ buscar una llamada a la autoridad economica en el codigo del archivo.
 |---|---|---|---|---|
 | `modules/agent-console/agent-console.service.ts:568` | `replyThroughOutbox` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/analytics/alerts.service.ts:294` | `fireAlert` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
+| `modules/analytics/scheduled-reports.service.ts:280` | `generateAndSendReport` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/appointments/appointment-notifications.service.ts:667` | `dispatchNotice` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/appointments/appointment-payment.listener.ts:89` | `onPaid` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/appointments/appointment-payment.listener.ts:107` | `onPaid` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
@@ -359,7 +367,6 @@ esperada y su clasificación queda **fuera del alcance de este generador**.
 
 | id declarado | carril | estado | fuente |
 |---|---|---|---|
-| `analytics.scheduled_reports` | `inline` | `live` | `modules/analytics/scheduled-reports.service.ts` |
 | `auth.transactional_email` | `inline` | `live` | `modules/auth/auth.service.ts` |
 | `auth.two_factor_sms` | `inline` | `off` | `modules/auth/platform-sms.service.ts` |
 | `automation.http_request` | `domain_queue` | `live` | `modules/automation/handlers/http-request.handler.ts` |

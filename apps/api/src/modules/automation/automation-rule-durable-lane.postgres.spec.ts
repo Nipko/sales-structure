@@ -45,6 +45,8 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
     const sql = (text: string, params: any[] = []): Promise<any[]> =>
         prisma.executeInTenantSchema(schema, text, params);
 
+    const action = { type: 'send_template', template_name: 'bienvenida', language: 'es', components: [] };
+
     /** One active rule, one captured lead, one execution row waiting on it. */
     const firing = async (over: { active?: boolean } = {}) => {
         const contactId = randomUUID();
@@ -54,14 +56,17 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
             [contactId, 'Ana', '+573001112233', 'whatsapp']);
         await sql(`INSERT INTO automation_rules(id, active, trigger_type, actions_json, conditions_json)
             VALUES($1::uuid, $2, 'lead.captured', $3::jsonb, '{}'::jsonb)`,
-            [ruleId, over.active ?? true,
-                JSON.stringify([{ type: 'send_template', template_name: 'bienvenida' }])]);
-        await sql(`INSERT INTO automation_executions(id, rule_id, entity_type, entity_id, status)
-            VALUES($1::uuid,$2::uuid,'lead',$3,'queued')`, [executionId, ruleId, contactId]);
+            [ruleId, over.active ?? true, JSON.stringify([action])]);
+        await sql(`INSERT INTO automation_executions
+                (id, rule_id, entity_type, entity_id, status, result_json)
+            VALUES($1::uuid,$2::uuid,'lead',$3,'queued',$4::jsonb)`, [
+            executionId, ruleId, contactId,
+            JSON.stringify({ version: 1, actions: [{
+                index: 0, type: action.type, status: 'queued', action,
+            }] }),
+        ]);
         return { contactId, ruleId, executionId };
     };
-
-    const action = { type: 'send_template', template_name: 'bienvenida', language: 'es', components: [] };
     const event = (contactId: string) => ({
         tenantId, schemaName: schema, leadId: randomUUID(), contactId,
         phone: '+573001112233', source: 'whatsapp_inbound',
@@ -89,7 +94,7 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
             attemptsMade: 0, opts: { attempts: 3 },
             data: {
                 tenantId, schemaName: schema, executionId: firingRow.executionId,
-                ruleId: firingRow.ruleId, ruleName: 'bienvenida', action,
+                ruleId: firingRow.ruleId, ruleName: 'bienvenida', actionIndex: 0, action,
                 event: event(firingRow.contactId),
             },
         });
@@ -274,9 +279,36 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
         const fired = await firing();
         await run(fired);
         const execution = await executionStatus(fired.executionId);
-        expect(execution.result_json).toMatchObject({
-            action: 'send_template', templateName: 'bienvenida', dispatch: 'prepared',
+        expect(execution.result_json.actions[0]).toMatchObject({
+            status: 'success',
+            result: { action: 'send_template', templateName: 'bienvenida', dispatch: 'prepared' },
         });
+    });
+
+    it('preserves concurrent outcomes from two actions in one rule firing', async () => {
+        const fired = await firing();
+        await sql(`UPDATE automation_executions SET result_json = $2::jsonb
+                    WHERE id = $1::uuid`, [fired.executionId, JSON.stringify({
+            version: 1,
+            actions: [
+                { index: 0, type: 'http_request', status: 'queued', action: { type: 'http_request' } },
+                { index: 1, type: 'create_task', status: 'queued', action: { type: 'create_task' } },
+            ],
+        })]);
+
+        await Promise.all([
+            processor.recordActionOutcome(schema, fired.executionId, 0,
+                'reconciliation_required', { outcome: 'unknown' }),
+            processor.recordActionOutcome(schema, fired.executionId, 1,
+                'success', { taskId: 'task-1' }),
+        ]);
+
+        const execution = await executionStatus(fired.executionId);
+        expect(execution.status).toBe('reconciliation_required');
+        expect(execution.result_json.actions).toEqual(expect.arrayContaining([
+            expect.objectContaining({ status: 'reconciliation_required', result: { outcome: 'unknown' } }),
+            expect.objectContaining({ status: 'success', result: { taskId: 'task-1' } }),
+        ]));
     });
 
     it('does not mark the execution successful when the outbox refuses', async () => {
@@ -287,7 +319,7 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
         const broken = jest.spyOn(store, 'prepare')
             .mockRejectedValueOnce(new DispatchOutboxError('dispatch_binding_changed'));
         await expect(run(fired)).rejects.toThrow(/automation_rule_action_no_despachada:refused/);
-        expect((await executionStatus(fired.executionId)).status).toBe('queued');
+        expect((await executionStatus(fired.executionId)).status).toBe('in_progress');
         expect(await outboxRows()).toEqual([]);
         broken.mockRestore();
     });
@@ -299,7 +331,7 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
         const flaky = jest.spyOn(store, 'prepare')
             .mockRejectedValueOnce(new Error('connection terminated unexpectedly'));
         await expect(run(fired)).rejects.toThrow(/automation_rule_action_no_despachada:deferred/);
-        expect((await executionStatus(fired.executionId)).status).toBe('queued');
+        expect((await executionStatus(fired.executionId)).status).toBe('in_progress');
         flaky.mockRestore();
         // And the retry finds nothing in the way.
         await run(fired);
@@ -355,7 +387,7 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
     it('closes the execution rather than retrying a suppressed action', async () => {
         const fired = await firing({ active: false });
         await run(fired);
-        expect((await executionStatus(fired.executionId)).status).toBe('success');
+        expect((await executionStatus(fired.executionId)).status).toBe('suppressed');
     });
 
     it('suppresses one whose rule was switched off after preparing', async () => {

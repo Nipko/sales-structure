@@ -1865,15 +1865,15 @@ producer({
             channels: ['webhook'],
         },
         properties: {
-            authority: partial('the automation execution row and the atomic per-job quota reservation '
-                + 'commit before transport; a delayed non-message action still needs the same '
-                + 'under-lock rule revision check that send_template already has'),
+            authority: partial('the exact action position is re-read from the active rule before quota '
+                + 'or transport; unlike send_template outbox admission, an edit can still race the '
+                + 'gap between that read and an arbitrary receiver call'),
             idempotency: partial('every attempt carries the stable BullMQ job identity as '
                 + 'Idempotency-Key and mutating methods have no internal retry; an arbitrary receiver '
                 + 'is not required to honour that header'),
-            receipt: partial('the HTTP status and mapped response fields are persisted in '
-                + 'automation_executions.result_json; multiple actions on one execution still share '
-                + 'that result cell'),
+            receipt: partial('the HTTP status and mapped response fields are merged into the exact '
+                + 'action slot in automation_executions.result_json without concurrent last-writer '
+                + 'loss; persistence after an accepted call can still fail'),
             uncertainOutcome: durable('a mutating request with no answer is persisted as '
                 + 'reconciliation_required and completes its BullMQ job without another POST'),
             erasure: none('the request body may carry contact data and is not recorded, so erasure has '

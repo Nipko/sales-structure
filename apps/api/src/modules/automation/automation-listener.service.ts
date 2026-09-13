@@ -382,27 +382,65 @@ export class AutomationListenerService {
             actions = rule.actions_json;
         }
 
+        // One rule firing owns several independently completing actions. Seed
+        // their slots before publishing any job so concurrent workers can merge
+        // outcomes without overwriting one another.
+        const initialResult = JSON.stringify({
+            version: 1,
+            actions: actions.map((action, index) => ({
+                index,
+                type: action?.type ?? 'unknown',
+                status: 'queued',
+                action,
+            })),
+        });
+
         // Crear registro de ejecucion (audit trail)
         const execution = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
             eventKey
                 ? `INSERT INTO automation_executions
-                       (rule_id, entity_type, entity_id, status, event_key)
-                   VALUES ($1, $2, $3, 'queued', $4)
+                       (rule_id, entity_type, entity_id, status, event_key, result_json)
+                   VALUES ($1::uuid, $2, $3::uuid, 'queued', $4, $5::jsonb)
                    ON CONFLICT (event_key) WHERE event_key IS NOT NULL
                    DO UPDATE SET event_key = EXCLUDED.event_key
                    RETURNING *`
-                : `INSERT INTO automation_executions (rule_id, entity_type, entity_id, status)
-                   VALUES ($1, $2, $3, 'queued') RETURNING *`,
-            eventKey ? [rule.id, entityType, entityId, eventKey] : [rule.id, entityType, entityId],
+                : `INSERT INTO automation_executions
+                       (rule_id, entity_type, entity_id, status, result_json)
+                   VALUES ($1::uuid, $2, $3::uuid, 'queued', $4::jsonb)
+                   RETURNING *`,
+            eventKey
+                ? [rule.id, entityType, entityId, eventKey, initialResult]
+                : [rule.id, entityType, entityId, initialResult],
         );
         const executionId = execution?.[0]?.id;
         if (!executionId) {
             throw new Error(`automation_execution_not_persisted:${rule.id}`);
         }
 
+        // Event replay must refill a missing queue publication from the firing's
+        // original snapshot. Re-reading the rule here would let a later edit add
+        // a new side effect to an event that happened before that edit.
+        const storedSlots = execution?.[0]?.result_json?.actions;
+        const admittedActions = Array.isArray(storedSlots)
+            && storedSlots.every((slot: any) => Number.isInteger(slot?.index) && slot?.action)
+            ? [...storedSlots]
+                .sort((left: any, right: any) => left.index - right.index)
+                .map((slot: any) => slot.action)
+            : actions;
+        if (admittedActions.length === 0) {
+            await this.prisma.executeInTenantSchema(
+                schemaName,
+                `UPDATE automation_executions
+                    SET status = 'success', finished_at = CURRENT_TIMESTAMP
+                  WHERE id = $1::uuid`,
+                [executionId],
+            );
+            return;
+        }
+
         // Programar cada accion como un job con delay en BullMQ
-        for (const [actionIndex, action] of actions.entries()) {
+        for (const [actionIndex, action] of admittedActions.entries()) {
             // `delay` y `delay_seconds` son el MISMO campo con dos nombres. Las
             // plantillas sembradas escriben `delay` (seed-templates.ts) y esto
             // leia solo `delay_seconds`, asi que las 10 acciones sembradas con

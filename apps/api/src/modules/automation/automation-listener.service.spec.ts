@@ -181,4 +181,36 @@ describe('AutomationListenerService event bridges', () => {
             `automation-${executionId}-0`, `automation-${executionId}-1`,
         ]);
     });
+
+    it('replays the action snapshot admitted with the original event', async () => {
+        const executionId = '22222222-2222-4222-8222-222222222222';
+        const oldAction = { type: 'create_task', task_description: 'Original' };
+        const prisma = { executeInTenantSchema: jest.fn().mockResolvedValue([{
+            id: executionId,
+            result_json: {
+                version: 1,
+                actions: [{ index: 0, type: 'create_task', status: 'queued', action: oldAction }],
+            },
+        }]) };
+        const queue = { add: jest.fn().mockResolvedValue({}) };
+        const service = new AutomationListenerService(
+            prisma as any, {} as any, {} as any, queue as any, {} as any,
+        );
+
+        await service.dispatchRule({
+            tenantId: 'tenant-1', schemaName: 'tenant_schema',
+            rule: {
+                id: '33333333-3333-4333-8333-333333333333', name: 'Edited',
+                conditions_json: [],
+                actions_json: [{ type: 'http_request', config: { url: 'https://new.invalid' } }],
+            },
+            entityType: 'appointment',
+            entityId: '11111111-1111-4111-8111-111111111111',
+            payload: {}, priority: 1, eventKey: 'appointment.completed:event:rule',
+        });
+
+        expect(queue.add).toHaveBeenCalledTimes(1);
+        expect(queue.add.mock.calls[0][1]).toMatchObject({ action: oldAction, actionIndex: 0 });
+        expect(queue.add.mock.calls[0][2].jobId).toBe(`automation-${executionId}-0`);
+    });
 });

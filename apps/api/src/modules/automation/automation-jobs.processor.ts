@@ -74,6 +74,10 @@ export class AutomationJobsProcessor extends WorkerHost {
     async process(job: Job<AutomationJobData>): Promise<any> {
         const { tenantId, schemaName, executionId, ruleName, action, event } = job.data;
         const startTime = Date.now();
+        const actionIndex = job.data.actionIndex;
+        if (!executionId || !job.data.ruleId || !Number.isInteger(actionIndex) || actionIndex! < 0) {
+            throw new Error('automation_job_missing_rule_authority');
+        }
 
         const entitlement = await resolveTenantSubscriptionAccess(this.prisma, tenantId, 'write');
         if (!entitlement.allowed) {
@@ -81,15 +85,10 @@ export class AutomationJobsProcessor extends WorkerHost {
                 throw new Error(`subscription_entitlement_unavailable:${entitlement.error ?? 'unknown'}`);
             }
             const reason = entitlement.error ?? 'subscription_restricted';
-            if (executionId) {
-                await this.prisma.executeInTenantSchema(
-                    schemaName,
-                    `UPDATE automation_executions
-                     SET status = 'failed', finished_at = CURRENT_TIMESTAMP, result_json = $2::jsonb
-                     WHERE id = $1::uuid`,
-                    [executionId, JSON.stringify({ error: reason, skipped: true })],
-                );
-            }
+            await this.recordActionOutcome(schemaName, executionId, actionIndex!, 'failed', {
+                error: reason,
+                skipped: true,
+            });
             this.logger.warn(
                 `[AutomationJobs] Omitido '${action.type}' para tenant=${tenantId}: ${reason}`,
             );
@@ -101,10 +100,6 @@ export class AutomationJobsProcessor extends WorkerHost {
         // the rule, deleting it, or editing this position revokes old jobs.
         // `send_template` also has a transactional check at outbox admission,
         // but the other five action families previously had no check at all.
-        const actionIndex = job.data.actionIndex;
-        if (!executionId || !job.data.ruleId || !Number.isInteger(actionIndex) || actionIndex! < 0) {
-            throw new Error('automation_job_missing_rule_authority');
-        }
         const authority = await this.prisma.executeInTenantSchema<Array<{ authorised: boolean }>>(
             schemaName,
             `SELECT EXISTS (
@@ -114,7 +109,7 @@ export class AutomationJobsProcessor extends WorkerHost {
                   WHERE ae.id = $1::uuid
                     AND ae.rule_id = $2::uuid
                     AND ar.active = TRUE
-                    AND ar.actions_json -> $3 = $4::jsonb
+                    AND ar.actions_json -> $3::int = $4::jsonb
              ) AS authorised`,
             [executionId, job.data.ruleId, actionIndex, JSON.stringify(action)],
         );
@@ -124,13 +119,8 @@ export class AutomationJobsProcessor extends WorkerHost {
                 suppressed: 'rule_no_longer_authorises',
                 actionIndex,
             };
-            await this.prisma.executeInTenantSchema(
-                schemaName,
-                `UPDATE automation_executions
-                    SET status = 'suppressed', finished_at = CURRENT_TIMESTAMP,
-                        result_json = $2::jsonb
-                  WHERE id = $1::uuid`,
-                [executionId, JSON.stringify(result)],
+            await this.recordActionOutcome(
+                schemaName, executionId, actionIndex!, 'suppressed', result,
             );
             this.logger.log(
                 `[AutomationJobs] Regla ${job.data.ruleId} ya no autoriza la accion ${actionIndex}; suprimida`,
@@ -159,6 +149,14 @@ export class AutomationJobsProcessor extends WorkerHost {
         // handler because an HTTP request or provider hand-off may have taken
         // effect even when its response is lost. A retry adopts this marker.
         await this.throttle.commitActionUsage(tenantId, 'automation', quotaEffectId);
+        await this.recordActionOutcome(
+            schemaName,
+            executionId,
+            actionIndex!,
+            'in_progress',
+            { attempt: job.attemptsMade + 1 },
+            false,
+        );
 
         this.logger.log(
             `[AutomationJobs] Procesando job '${action.type}' para regla '${ruleName}' tenant=${tenantId} (intento ${job.attemptsMade + 1})`,
@@ -221,15 +219,9 @@ export class AutomationJobsProcessor extends WorkerHost {
                 : result?.outcome === 'rejected' ? 'failed' : 'success';
 
             // Actualizar registro de ejecucion con el resultado conocido
-            if (executionId) {
-                await this.prisma.executeInTenantSchema(
-                    schemaName,
-                    `UPDATE automation_executions
-                     SET status = $2, finished_at = CURRENT_TIMESTAMP, result_json = $3::jsonb
-                     WHERE id = $1::uuid`,
-                    [executionId, terminalStatus, JSON.stringify(result || {})],
-                );
-            }
+            await this.recordActionOutcome(
+                schemaName, executionId, actionIndex!, terminalStatus, result || {},
+            );
 
             const durationMs = Date.now() - startTime;
             this.logger.log(`[AutomationJobs] Job '${action.type}' completado para '${ruleName}' tenant=${tenantId} (${durationMs}ms)`);
@@ -243,19 +235,74 @@ export class AutomationJobsProcessor extends WorkerHost {
 
             // Si es el ultimo intento, marcar ejecucion como fallida
             if (job.attemptsMade + 1 >= (job.opts?.attempts || 3)) {
-                if (executionId) {
-                    await this.prisma.executeInTenantSchema(
-                        schemaName,
-                        `UPDATE automation_executions
-                         SET status = 'failed', finished_at = CURRENT_TIMESTAMP, result_json = $2::jsonb
-                         WHERE id = $1::uuid`,
-                        [executionId, JSON.stringify({ error: error.message })],
-                    ).catch(e => this.logger.warn(`No se pudo actualizar ejecucion fallida: ${e.message}`));
-                }
+                await this.recordActionOutcome(
+                    schemaName,
+                    executionId,
+                    actionIndex!,
+                    'failed',
+                    { error: error.message },
+                ).catch(e => this.logger.warn(`No se pudo actualizar ejecucion fallida: ${e.message}`));
             }
 
             throw error; // Re-throw para que BullMQ maneje el retry
         }
+    }
+
+    /**
+     * Merge one action into the firing's JSON ledger, then derive the parent
+     * status from every slot. PostgreSQL serialises concurrent UPDATEs on the
+     * same row, so two workers preserve both outcomes instead of last-writer
+     * winning over `result_json`.
+     */
+    private async recordActionOutcome(
+        schemaName: string,
+        executionId: string,
+        actionIndex: number,
+        status: string,
+        result: Record<string, unknown>,
+        terminal = true,
+    ): Promise<void> {
+        await this.prisma.executeInTenantSchema(
+            schemaName,
+            `UPDATE automation_executions
+                SET result_json = jsonb_set(
+                        jsonb_set(COALESCE(result_json, '{}'::jsonb),
+                            ARRAY['actions', $2::text, 'status'], to_jsonb($3::text), false),
+                        ARRAY['actions', $2::text, 'result'], $4::jsonb, true)
+              WHERE id = $1::uuid
+                AND jsonb_typeof(result_json->'actions') = 'array'
+                AND jsonb_array_length(result_json->'actions') > $2`,
+            [executionId, actionIndex, status, JSON.stringify(result)],
+        );
+        await this.prisma.executeInTenantSchema(
+            schemaName,
+            `UPDATE automation_executions ae
+                SET status = summary.status,
+                    finished_at = CASE WHEN summary.terminal THEN CURRENT_TIMESTAMP ELSE NULL END
+               FROM (
+                    SELECT
+                        CASE
+                            WHEN bool_or(item->>'status' = 'reconciliation_required')
+                                THEN 'reconciliation_required'
+                            WHEN bool_or(item->>'status' IN ('queued', 'in_progress'))
+                                THEN 'in_progress'
+                            WHEN bool_or(item->>'status' = 'failed') THEN 'failed'
+                            WHEN bool_and(item->>'status' = 'suppressed') THEN 'suppressed'
+                            ELSE 'success'
+                        END AS status,
+                        NOT bool_or(item->>'status' IN ('queued', 'in_progress')) AS terminal
+                      FROM automation_executions source
+                      CROSS JOIN LATERAL jsonb_array_elements(
+                          COALESCE(source.result_json->'actions', '[]'::jsonb)
+                      ) item
+                     WHERE source.id = $1::uuid
+               ) summary
+              WHERE ae.id = $1::uuid`,
+            [executionId],
+        );
+        // `terminal` documents the caller's intent and guards future refactors:
+        // an in-progress write must never leave a finished timestamp behind.
+        if (!terminal) return;
     }
 
     /**

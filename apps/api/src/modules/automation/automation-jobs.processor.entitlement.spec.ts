@@ -73,7 +73,7 @@ describe('AutomationJobsProcessor subscription boundary', () => {
             reason: 'subscription_expired',
         });
 
-        expect(prisma.executeInTenantSchema).toHaveBeenCalledTimes(1);
+        expect(prisma.executeInTenantSchema).toHaveBeenCalledTimes(2);
         expect(throttle.reserveActionUsage).not.toHaveBeenCalled();
         expect(throttle.commitActionUsage).not.toHaveBeenCalled();
         expect(http.execute).not.toHaveBeenCalled();
@@ -204,9 +204,10 @@ describe('AutomationJobsProcessor subscription boundary', () => {
         expect(http.execute).toHaveBeenCalledTimes(1);
         expect(prisma.executeInTenantSchema).toHaveBeenCalledWith(
             'tenant_test',
-            expect.stringContaining('SET status = $2'),
+            expect.stringContaining("ARRAY['actions', $2::text, 'status']"),
             [
                 '22222222-2222-4222-8222-222222222222',
+                0,
                 expectedStatus,
                 JSON.stringify(result),
             ],
@@ -234,6 +235,6 @@ describe('AutomationJobsProcessor subscription boundary', () => {
         expect(throttle.reserveActionUsage).not.toHaveBeenCalled();
         expect(http.execute).not.toHaveBeenCalled();
         expect(prisma.executeInTenantSchema.mock.calls[0][1])
-            .toContain('ar.actions_json -> $3 = $4::jsonb');
+            .toContain('ar.actions_json -> $3::int = $4::jsonb');
     });
 });

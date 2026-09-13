@@ -1,6 +1,6 @@
 import { OutboundQueueService } from './outbound-queue.service';
 import { OutboundQueueProcessor } from './outbound-queue.processor';
-import { ApprovalEffectSuppressed } from './approved-effect-delivery.port';
+import { ApprovalEffectDeferred, ApprovalEffectSuppressed } from './approved-effect-delivery.port';
 import { resolveTenantSubscriptionAccess } from '../../common/utils/subscription-entitlement.util';
 import { permissiveSpendGate, resolvingChannelToken, schemaNamingPrisma, openPauseStore } from './__fixtures__/spend-gate-double';
 jest.mock('../../common/utils/subscription-entitlement.util',()=>({resolveTenantSubscriptionAccess:jest.fn()}));
@@ -36,5 +36,23 @@ describe('approved delivery queue boundary',()=>{
         (resolveTenantSubscriptionAccess as jest.Mock).mockResolvedValue({allowed:false,restrictionLevel:'suspended'});
         await expect(processor.process({data:{approvalEffect:reference}} as any)).rejects.toBeInstanceOf(ApprovalEffectSuppressed);
         expect(gateway.sendMessage).toHaveBeenCalledTimes(1);
+    });
+    it('delays without spending an effect attempt when the provider quota has no slot',async()=>{
+        const reserveActionUsage=jest.fn(async()=>({allowed:false,count:3,adopted:false}));
+        const deliver=jest.fn(async(_ref,transport)=>{
+            if (!(await transport.reserve({kind:'media',channelType:'whatsapp'}))) {
+                throw new ApprovalEffectDeferred('plan_outbound_rate_limited');
+            }
+            throw new Error('unreachable');
+        });
+        const processor=new OutboundQueueProcessor({} as any,{isOverLimit:async()=>true,recordUsage:async()=>{},
+            reserveActionUsage,commitActionUsage:async()=>{},releaseActionUsage:async()=>{}} as any,
+        {} as any,{} as any,{} as any,schemaNamingPrisma(),permissiveSpendGate(),openPauseStore(),{deliver});
+        const job={data:{approvalEffect:reference},moveToDelayed:jest.fn()};
+
+        await expect(processor.process(job as any,'worker-token')).rejects.toMatchObject({name:'DelayedError'});
+        expect(job.moveToDelayed).toHaveBeenCalledWith(expect.any(Number),'worker-token');
+        expect(reserveActionUsage).toHaveBeenCalledWith(reference.tenantId,'outbound',
+            `approval:${reference.ticketId}:${reference.effectId}`);
     });
 });

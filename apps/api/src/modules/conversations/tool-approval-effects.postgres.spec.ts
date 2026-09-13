@@ -90,6 +90,21 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
         expect((prepare.mock.calls as any)[0][0]).toMatchObject({to:'synthetic-recipient',content:{mediaUrl:'https://media.example.test/photo.png'}});
         expect(await state(reference.effectId)).toMatchObject({state:'sent',attempts:1});
     });
+    it('checks provider quota before claiming an attempt, while local effects need no quota',async()=>{
+        const provider=await complete();
+        const prepare=jest.fn();
+        await expect(service.deliver(provider.reference,{reserve:async()=>false,prepare}))
+            .rejects.toThrow('plan_outbound_rate_limited');
+        expect(prepare).not.toHaveBeenCalled();
+        expect(await state(provider.reference.effectId)).toMatchObject({state:'pending',attempts:0});
+
+        const local=await complete('create_insurance_claim',{success:true,shouldHandoff:true});
+        handoff.executeHandoff.mockResolvedValue(undefined);
+        const reserve=jest.fn(async()=>false);
+        await service.deliver(local.reference,{reserve,prepare:async()=>async()=>null});
+        expect(reserve).not.toHaveBeenCalled();
+        expect(await state(local.reference.effectId)).toMatchObject({state:'completed',attempts:1});
+    });
     it('suppresses a queued delivery after contact erasure without hydrating or sending',async()=>{
         const {reference}=await complete();await service.schedule(tenantId,reference.ticketId);
         await scoped('INSERT INTO customer_memory_erasure(contact_id) VALUES($1::uuid)',[contact]);

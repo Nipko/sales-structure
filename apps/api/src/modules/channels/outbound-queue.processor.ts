@@ -1,5 +1,5 @@
 import { OPERATIONAL_NOTICE_DELIVERY, NoticeSuppressed, type OperationalNoticeDeliveryPort, type OperationalNoticeReference } from '../operational-notices/operational-notice.contracts';
-import { APPROVED_EFFECT_DELIVERY, ApprovalEffectSuppressed, type ApprovedEffectDeliveryPort, type ApprovedEffectReference } from './approved-effect-delivery.port';
+import { APPROVED_EFFECT_DELIVERY, ApprovalEffectDeferred, ApprovalEffectSuppressed, type ApprovedEffectDeliveryPort, type ApprovedEffectReference } from './approved-effect-delivery.port';
 import { Processor, WorkerHost, OnWorkerEvent } from '@nestjs/bullmq';
 import { Inject, Logger, Optional } from '@nestjs/common';
 import { Job, DelayedError } from 'bullmq';
@@ -1036,15 +1036,18 @@ export class OutboundQueueProcessor extends WorkerHost {
             const reference = job.data.approvalEffect;
             if (!this.approvalEffects) throw new Error('approval_effect_delivery_unavailable');
             const rateEffectId = `approval:${reference.ticketId}:${reference.effectId}`;
-            const rateReservation = await this.throttle.reserveActionUsage(
-                reference.tenantId, 'outbound', rateEffectId,
-            );
-            if (!rateReservation.allowed) {
-                await job.moveToDelayed(Date.now() + 60_000, token); throw new DelayedError();
-            }
+            let rateReserved = false;
             let providerStarted = false;
             try {
-                const result = await this.approvalEffects.deliver(reference, { prepare: async outbound => {
+                const result = await this.approvalEffects.deliver(reference, {
+                reserve: async () => {
+                    const reservation = await this.throttle.reserveActionUsage(
+                        reference.tenantId, 'outbound', rateEffectId,
+                    );
+                    rateReserved = reservation.allowed;
+                    return reservation.allowed;
+                },
+                prepare: async outbound => {
                 const entitlement = await resolveTenantSubscriptionAccess(this.prisma, reference.tenantId, 'write');
                 if (!entitlement.allowed) {
                     if (entitlement.restrictionLevel === 'unavailable') throw new Error('subscription_entitlement_unavailable');
@@ -1070,17 +1073,21 @@ export class OutboundQueueProcessor extends WorkerHost {
                     return result;
                 };
                 } });
-                if (providerStarted) {
+                if (rateReserved && providerStarted) {
                     await this.throttle.commitActionUsage(reference.tenantId, 'outbound', rateEffectId).catch(() => undefined);
-                } else {
+                } else if (rateReserved) {
                     await this.throttle.releaseActionUsage(reference.tenantId, 'outbound', rateEffectId).catch(() => undefined);
                 }
                 return result;
             } catch (error) {
-                if (providerStarted) {
+                if (rateReserved && providerStarted) {
                     await this.throttle.commitActionUsage(reference.tenantId, 'outbound', rateEffectId).catch(() => undefined);
-                } else {
+                } else if (rateReserved) {
                     await this.throttle.releaseActionUsage(reference.tenantId, 'outbound', rateEffectId).catch(() => undefined);
+                }
+                if (error instanceof ApprovalEffectDeferred) {
+                    await job.moveToDelayed(Date.now() + 60_000, token);
+                    throw new DelayedError();
                 }
                 throw error;
             }

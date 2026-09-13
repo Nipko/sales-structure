@@ -6,7 +6,7 @@ import type { ChannelType, NormalizedMessage, OutboundMessage } from '@parallext
 import { PrismaService } from '../prisma/prisma.service';
 import { HandoffService } from '../handoff/handoff.service';
 import { OutboundQueueService } from '../channels/outbound-queue.service';
-import { ApprovalEffectSuppressed, type ApprovedEffectDeliveryPort, type ApprovedEffectReference, type ApprovedEffectTransport } from '../channels/approved-effect-delivery.port';
+import { ApprovalEffectDeferred, ApprovalEffectSuppressed, type ApprovedEffectDeliveryPort, type ApprovedEffectReference, type ApprovedEffectTransport } from '../channels/approved-effect-delivery.port';
 import { deliveryOutcome } from '../channels/delivery-outcome';
 import { approvedEffectDescriptors, approvalMediaItems } from './tool-approval-effects.contracts';
 import { assertServedAgentAuthority, assertServedAgentConnectionAuthority, validServedAgentAuthority, ServedAgentAuthorityError } from '../persona/served-agent-authority';
@@ -60,11 +60,20 @@ export class ToolApprovalEffectsService implements ApprovedEffectDeliveryPort {
         if (![reference.ticketId, reference.effectId].every(id => UUID.test(id))) throw new Error('approval_effect_invalid_reference');
         const schema = await this.schema(reference.tenantId);
         const effect = await this.prisma.executeInTenantSchema<any[]>(schema,
-            `SELECT e.kind,e.state,l.channel_type FROM tool_approval_effects e JOIN tool_approval_tickets t ON t.id=e.ticket_id
+            `SELECT e.kind,e.state,e.attempts,l.channel_type FROM tool_approval_effects e JOIN tool_approval_tickets t ON t.id=e.ticket_id
                 JOIN tool_execution_ledger l ON l.id=t.execution_ledger_id WHERE e.id=$1::uuid AND t.id=$2::uuid`, [reference.effectId,reference.ticketId]);
         if (effect[0]?.channel_type === 'web_widget' && ['media','payment_link'].includes(effect[0]?.kind)) {
             if (['stored','sent','completed','suppressed','reconciliation_required'].includes(effect[0].state)) return `effect:${effect[0].state}`;
             return this.deliverApprovedWidget(reference, schema);
+        }
+        const providerEffect = effect[0]
+            && effect[0].kind !== 'handoff'
+            && effect[0].channel_type !== 'web_widget'
+            && ['pending', 'queued', 'failed'].includes(effect[0].state)
+            && Number(effect[0].attempts) < 5;
+        if (providerEffect && transport.reserve
+            && !(await transport.reserve({ kind: effect[0].kind, channelType: effect[0].channel_type }))) {
+            throw new ApprovalEffectDeferred('plan_outbound_rate_limited');
         }
         // Canonical handoff lazily prepares columns. Do that before our transaction
         // reads the conversation: cross-connection ALTER would otherwise deadlock.

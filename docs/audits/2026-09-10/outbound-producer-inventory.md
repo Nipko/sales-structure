@@ -382,7 +382,7 @@ esperada y su clasificación queda **fuera del alcance de este generador**.
 | `customer_portal.access_code` | `delivery_outbox` | `live` | `modules/customer-portal/customer-portal-access.service.ts` |
 | `external_crm.sync` | `domain_queue` | `live` | `modules/external-crm/external-crm.service.ts` |
 | `feature_requests.status_email` | `delivery_outbox` | `live` | `modules/platform-notifications/platform-notification-outbox.service.ts` |
-| `fiscal.invoice_email` | `domain_queue` | `live` | `modules/fiscal/fiscal-email.service.ts` |
+| `fiscal.invoice_email` | `delivery_outbox` | `live` | `modules/fiscal/fiscal-email.service.ts` |
 | `fiscal.invoice_issue` | `domain_queue` | `live` | `modules/fiscal/adapters/factus.adapter.ts` |
 | `handoff.agent_sms` | `handoff_effects` | `off` | `modules/sms-notifications/sms-notification-listener.service.ts` |
 | `handoff.push` | `handoff_effects` | `live` | `modules/push/push-listener.service.ts` |

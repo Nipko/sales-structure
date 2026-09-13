@@ -1,4 +1,6 @@
 node_modules
+.npm-cache
+.pnpm-store
 apps/e2e/
 .git
 .env
@@ -18,4 +20,7 @@ docs/*
 !docs/vertical-competitive-evidence.json
 !docs/vertical-competitive-matrix-2026-08.md
 .claude
+.claude-memory
+.agent
 .vscode
+apps/api/api-jest-full.json

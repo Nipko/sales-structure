@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService, EmailAttachment } from '../email/email.service';
 import { TEMPLATE_TRANSLATIONS } from './email-template-translations';
@@ -21,6 +21,7 @@ import {
 import { LEGACY_STOCK_BODIES } from './email-template-legacy-bodies';
 import { normalizeEmailTemplateLanguage } from './email-template-language';
 import { randomUUID } from 'crypto';
+import { PlatformNotificationOutboxService } from '../platform-notifications/platform-notification-outbox.service';
 
 export interface EmailTemplate {
     id: string;
@@ -1009,6 +1010,7 @@ export class EmailTemplatesService {
     constructor(
         private prisma: PrismaService,
         private emailService: EmailService,
+        @Optional() private notifications?: PlatformNotificationOutboxService,
     ) {}
 
     /**
@@ -1339,7 +1341,7 @@ export class EmailTemplatesService {
     /**
      * Send a test email with sample data
      */
-    async sendTest(schemaName: string, templateId: string, to: string): Promise<boolean> {
+    async sendTest(schemaName: string, tenantId: string, templateId: string, to: string, requestKey: string): Promise<boolean> {
         const template = await this.getById(schemaName, templateId);
 
         // Resolve dynamic branding variables from the companies table
@@ -1388,7 +1390,11 @@ export class EmailTemplatesService {
         const subject = `[TEST] ${this.renderVariables(template.subject, mergedVars)}`;
         const html = this.renderVariables(template.bodyHtml, mergedVars);
 
-        return this.emailService.send({ to, subject, html });
+        if (!this.notifications) throw new Error('platform_notification_outbox_unavailable');
+        const result = await this.notifications.sendEmailTemplateTest({
+            tenantId, templateId, requestKey, to, subject, html,
+        });
+        return result === 'notification:sent';
     }
 
     // ── Private ───────────────────────────────────────────────

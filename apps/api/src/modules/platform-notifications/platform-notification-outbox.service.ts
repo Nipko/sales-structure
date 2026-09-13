@@ -1,7 +1,7 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron } from '@nestjs/schedule';
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 import { CronLockService } from '../redis/cron-lock.service';
@@ -39,6 +39,46 @@ export class PlatformNotificationOutboxService {
         private readonly cronLock: CronLockService,
         @Optional() private readonly platformSms?: PlatformSmsService,
     ) {}
+
+    async sendEmailTemplateTest(input: {
+        tenantId: string;
+        templateId: string;
+        requestKey: string;
+        to: string;
+        subject: string;
+        html: string;
+    }): Promise<string> {
+        const to = String(input.to || '').trim().toLowerCase();
+        const requestKey = String(input.requestKey || '').trim();
+        const subject = String(input.subject || '').replace(/[\r\n]/g, ' ').trim();
+        const html = String(input.html || '');
+        if (!UUID.test(input.tenantId) || !UUID.test(input.templateId)
+            || !/^[a-zA-Z0-9_-]{8,100}$/.test(requestKey)
+            || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)
+            || !subject || subject.length > 240 || !html || html.length > 250_000) {
+            throw new Error('email_template_test_invalid');
+        }
+        const fingerprint = createHash('sha256').update(JSON.stringify([
+            input.tenantId, input.templateId, to, subject, html,
+        ])).digest('hex');
+        const eventKey = `email-template-test:${input.tenantId}:${requestKey}`;
+        const row = await this.prisma.$transaction(async (tx: any) => {
+            await tx.$executeRawUnsafe(`INSERT INTO platform_notification_outbox(
+                    event_key,kind,entity_id,tenant_id,recipient_email,payload)
+                VALUES($1,'email_template.test_send',$2::uuid,$3::uuid,$4,$5::jsonb)
+                ON CONFLICT(event_key) DO NOTHING`, eventKey, input.templateId, input.tenantId, to,
+            JSON.stringify({ fingerprint, subject, html }));
+            const [existing] = await tx.$queryRawUnsafe(`SELECT id,entity_id,tenant_id,recipient_email,payload
+                FROM platform_notification_outbox WHERE event_key=$1 FOR UPDATE`, eventKey);
+            if (!existing || existing.entity_id !== input.templateId || existing.tenant_id !== input.tenantId
+                || String(existing.recipient_email || '').toLowerCase() !== to
+                || existing.payload?.fingerprint !== fingerprint) {
+                throw new Error('email_template_test_request_key_conflict');
+            }
+            return existing;
+        });
+        return this.deliver(row.id);
+    }
 
     @Cron('37 * * * * *')
     async recoverCron(): Promise<void> {
@@ -158,6 +198,10 @@ export class PlatformNotificationOutboxService {
                         requested_at,notes FROM meta_compliance_requests
                     WHERE code=$1::uuid AND retention_until>NOW() LIMIT 1`, row.entity_id))[0];
                 available = canonical && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(row.recipient_email || ''));
+            } else if (row.kind === 'email_template.test_send') {
+                available = (await tx.$queryRawUnsafe(`SELECT 1 FROM tenants
+                    WHERE id=$1::uuid AND is_active=true LIMIT 1`, row.tenant_id))[0]
+                    && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(row.recipient_email || ''));
             }
             if (!available) {
                 await tx.$executeRawUnsafe(`UPDATE platform_notification_outbox
@@ -220,6 +264,15 @@ export class PlatformNotificationOutboxService {
 
     private render(row: any): { to: string; subject: string; html: string } {
         const payload = row.payload && typeof row.payload === 'object' ? row.payload : {};
+        if (row.kind === 'email_template.test_send') {
+            const subject = String(payload.subject || '').replace(/[\r\n]/g, ' ').trim().slice(0, 240);
+            const html = String(payload.html || '');
+            if (!/^[a-f0-9]{64}$/.test(String(payload.fingerprint || '')) || !subject || !html
+                || html.length > 250_000 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.email)) {
+                throw new Error('notification_payload_invalid');
+            }
+            return { to: row.email, subject, html };
+        }
         if (row.kind === 'meta_compliance.request_email') {
             const request = row.canonical;
             if (!request || !UUID.test(String(request.code))

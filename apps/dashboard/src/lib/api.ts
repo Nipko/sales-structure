@@ -1414,7 +1414,10 @@ export const api = {
     deleteEmailTemplate: (tenantId: string, templateId: string) =>
         apiDelete(`/email-templates/${tenantId}/${templateId}`),
     testEmailTemplate: (tenantId: string, templateId: string, to: string) =>
-        apiPost(`/email-templates/${tenantId}/${templateId}/test`, { to }),
+        apiPost(`/email-templates/${tenantId}/${templateId}/test`, {
+            to,
+            requestKey: globalThis.crypto.randomUUID(),
+        }),
 
     // --- Compliance / Opt-Outs ---
     getOptOuts: (tenantId: string, status?: string, page?: number) =>

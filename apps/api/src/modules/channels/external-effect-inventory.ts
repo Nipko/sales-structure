@@ -556,30 +556,24 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
 
     producer({
         id: 'human.email_template.test_send',
-        effect: 'The "send a test" button on a tenant\'s email templates, and every rendered template '
-            + 'send other producers reach through it',
-        lane: 'inline',
+        effect: 'The "send a test" button on a tenant\'s email templates',
+        lane: 'platform_notification_outbox',
         status: 'live',
         derivation: 'census',
         source: 'modules/email-templates/email-templates.service.ts',
-        symbol: 'renderAndPrepare',
-        egress: 'EmailService.send, or the bounded transport `renderAndPrepare` returns',
+        symbol: 'sendTest',
+        egress: 'one email_template.test_send row followed by bounded SMTP',
         reach: {
             class: 'operator_notification', audience: 'tenant_operator', personalData: false,
             channels: ['email'],
         },
         properties: {
-            authority: partial('`renderAndPrepare` returns an attempt the CALLER may fence — the handoff '
-                + 'does exactly that. `renderAndSend` and `sendTest` do not, and send inline'),
-            idempotency: none('none of its own; whatever the caller brings'),
-            receipt: partial('the bounded transport returns the SMTP id to the caller, and the handoff '
-                + 'stores it. `renderAndSend` and `sendTest` return a boolean'),
-            uncertainOutcome: partial('`sendBoundedSmtp` has a 25s deadline and throws a classified '
-                + 'error, which is what lets the handoff record `unknown`. The boolean path cannot '
-                + 'distinguish an unconfigured transport from a server that accepted and died'),
-            erasure: notApplicable('nothing records what was sent to whom'),
-            recovery: none('no record of the attempt, so a rendered template lost to an SMTP outage is '
-                + 'never sent and nobody is told'),
+            authority: durable('the rendered snapshot and operator destination are committed before SMTP'),
+            idempotency: durable('the browser request key is unique and a conflicting snapshot is refused'),
+            receipt: durable('the SMTP message id is stored on the exact test-send row'),
+            uncertainOutcome: durable('a request that may have left becomes reconciliation_required and is never resent'),
+            erasure: durable('the outbox row has a tenant foreign key with ON DELETE CASCADE'),
+            recovery: durable('preflight failures are retried by the platform notification recovery cron'),
         },
     }),
 

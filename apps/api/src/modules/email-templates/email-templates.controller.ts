@@ -87,10 +87,10 @@ export class EmailTemplatesController {
     async sendTest(
         @Param('tenantId') tenantId: string,
         @Param('templateId') templateId: string,
-        @Body() body: { to: string },
+        @Body() body: { to: string; requestKey: string },
         @CurrentUser() user: any,
     ) {
-        const sent = await this.service.sendTest(user.schemaName, templateId, body.to);
+        const sent = await this.service.sendTest(user.schemaName, tenantId, templateId, body.to, body.requestKey);
         return { success: true, data: { sent } };
     }
 }

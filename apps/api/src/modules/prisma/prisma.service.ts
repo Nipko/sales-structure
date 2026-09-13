@@ -4,13 +4,14 @@ import { resolveMirroredDealStatus } from '../pipeline/pipeline-outcome.util';
 import { ensurePrimaryPipeline } from '../../common/utils/primary-pipeline.util';
 
 const TENANT_PUBLIC_PURGE_ORDER = [
-    'push_subscriptions', 'feature_request_subscribers', 'feature_request_comments',
-    'feature_request_votes', 'feature_requests', 'webhook_subscriptions',
+    'chat_identity_challenges', 'customer_portal_access_challenges', 'platform_notification_outbox', 'push_subscriptions',
+    'feature_request_subscribers', 'feature_request_comments',
+    'feature_request_votes', 'feature_requests', 'webhook_delivery_outbox', 'webhook_subscriptions',
     'email_channel_configs', 'widget_sessions', 'widget_configs', 'billing_events',
     'billing_payments', 'billing_coupon_redemptions',
     // Recurring engine. Attempts and ledger hang off billing_subscriptions, so
     // they are deleted before it; payment sources only reference the tenant.
-    'billing_charge_attempts', 'billing_credit_ledger', 'billing_payment_sources',
+    'billing_provider_effects', 'billing_charge_attempts', 'billing_credit_ledger', 'billing_payment_sources',
     'billing_subscriptions',
     // Tenant-owned customer payment credentials. These are encrypted provider
     // secrets (Wompi private/events keys, MercadoPago access tokens): the purge

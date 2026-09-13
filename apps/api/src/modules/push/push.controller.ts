@@ -1,4 +1,4 @@
-import { Controller, Post, Body, UseGuards, Logger } from '@nestjs/common';
+import { Controller, Post, Body, UseGuards, Logger, Get, Put } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -14,6 +14,20 @@ export class PushController {
     private readonly logger = new Logger(PushController.name);
 
     constructor(private readonly pushService: PushService) {}
+
+    @Get('preferences')
+    @ApiOperation({ summary: 'Read notification preferences for the authenticated user' })
+    async preferences(@CurrentUser() user: any) {
+        return { success: true, data: await this.pushService.getPreferences(user.id || user.sub, user.tenantId) };
+    }
+
+    @Put('preferences')
+    @ApiOperation({ summary: 'Replace notification preferences for the authenticated user' })
+    async updatePreferences(@CurrentUser() user: any, @Body() body: unknown) {
+        return { success: true, data: await this.pushService.updatePreferences(
+            user.id || user.sub, user.tenantId, body,
+        ) };
+    }
 
     @Post('subscribe')
     @ApiOperation({ summary: 'Register push notification subscription' })

@@ -67,7 +67,7 @@ export class CalendarSyncOutboxService {
         operation: CalendarSyncOperation,
     ): Promise<{ outboxId: string; revision: number } | null> {
         const appointments = await query<any[]>(
-            `SELECT id, assigned_to, service_id, service_name,
+            `SELECT id, assigned_to, service_id, service_name, status,
                     to_char(start_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS start_at,
                     to_char(end_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS end_at,
                     location, notes, metadata, customer_email,
@@ -81,6 +81,10 @@ export class CalendarSyncOutboxService {
         );
         const appointment = appointments?.[0];
         if (!appointment) throw new Error('Appointment not found while enqueuing calendar sync');
+        if (appointment.metadata?.source === 'eval_gate') return null;
+        // Every caller, including rescheduling and reconciliation, respects
+        // payment holds. Only verified settlement can publish the occupied slot.
+        if (operation === 'upsert' && ['pending_payment', 'expired'].includes(appointment.status)) return null;
 
         const owner = await this.resolveOwner(query, appointment);
         if (!owner) {

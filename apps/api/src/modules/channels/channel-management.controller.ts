@@ -18,6 +18,8 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { AGENT_QUALITY_DEPENDENCIES_UPDATED } from '../quality/agent-quality-events';
 import { CERTIFIED_SELF_SERVICE_CHANNELS, advanceOnboardingStage } from '@parallext/shared';
 import { mutateTenantSettingsAtomic } from '../../common/utils/tenant-settings.util';
+import { buildChannelCertificationMatrix, summariseChannelCertification } from './channel-certification-matrix';
+import { channelCertificationRuntime } from './channel-certification-runtime';
 import { RequiresVerifiedEmail } from '../../common/decorators/requires-verified-email.decorator';
 import {
     CREDENTIAL_TYPE_BY_CHANNEL,
@@ -25,7 +27,7 @@ import {
     isCredentialFailure,
     resolveCredentialHealth,
     type ChannelCredentialRecord,
-} from './channel-credential-health.util';
+} from '@parallext/shared';
 
 @ApiTags('channel-management')
 @Controller('channels')
@@ -92,6 +94,28 @@ export class ChannelManagementController {
         }
     }
 
+    /**
+     * What each channel may be said to do, and what it may not.
+     *
+     * Declared BEFORE `:channelType/status`: Nest matches in declaration order,
+     * so below it this path would be answered by a status lookup for a channel
+     * called "certification".
+     *
+     * Platform scope, not tenant scope — it answers what the product has
+     * certified, which is the same for every tenant. What one tenant's
+     * connection can do today is the assessment's question, and the two are
+     * deliberately different: a certified capability nobody connected is not
+     * operating, and a connected channel cannot acquire a capability the
+     * product never certified.
+     */
+    @Get('certification')
+    @Roles('super_admin', 'tenant_admin', 'tenant_supervisor')
+    @ApiOperation({ summary: 'Certified capability matrix for every channel type' })
+    getCertification() {
+        const channels = buildChannelCertificationMatrix(channelCertificationRuntime());
+        return { success: true, data: { channels, summary: summariseChannelCertification(channels) } };
+    }
+
     @Get('overview')
     @ApiOperation({ summary: 'Get all connected channels with agent assignment status' })
     async getOverview(@Req() req: any) {
@@ -108,19 +132,23 @@ export class ChannelManagementController {
         // lo contaba como conectado y esta respuesta no: la tarjeta de puesta en
         // marcha pedía "conectá un canal" a un negocio que ya recibía mensajes
         // por el widget, con el aviso de calidad diciendo lo contrario al lado.
+        let widgetLookupAvailable = true;
         const widgets = await this.prisma.$queryRawUnsafe(
             `SELECT widget_id AS account_id, name
                FROM public.widget_configs
               WHERE tenant_id = $1::uuid AND is_active = true`,
             tenantId,
-        ).catch(() => [] as any[]) as Array<{ account_id: string; name: string | null }>;
+        ).catch(() => {
+            widgetLookupAvailable = false;
+            return [] as any[];
+        }) as Array<{ account_id: string; name: string | null }>;
 
         // Fetch agent assignments from tenant schema. Resolution is per-connection:
         // an exact channel_binding ("type:accountId") wins over the type-level channel.
         const byType: Record<string, { id: string; name: string }> = {};
         const byBinding: Record<string, { id: string; name: string }> = {};
-        const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } })
-            .catch(() => null);
+        let assignmentLookupAvailable = true;
+        const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
         try {
             if (tenant?.schemaName) {
                 // Self-heal: existing tenants whose agent_personas predates multi-account
@@ -149,6 +177,7 @@ export class ChannelManagementController {
             }
         } catch (e: any) {
             if (!e.message?.includes('does not exist') && !e.message?.includes('relation')) {
+                assignmentLookupAvailable = false;
                 this.logger.warn(`Failed to load agent assignments: ${e.message}`);
             }
         }
@@ -227,7 +256,8 @@ export class ChannelManagementController {
                     isActive: a.isActive,
                     metadata: a.metadata,
                     assignedAgent: assigned,
-                    needsAssignment: !assigned,
+                    assignmentStatus: assigned ? 'assigned' : assignmentLookupAvailable ? 'unassigned' : 'unknown',
+                    needsAssignment: assignmentLookupAvailable && !assigned,
                     credentialStatus: status,
                     credentialExpiresAt: expiresAt,
                     credentialDaysToExpiry: expiresAt
@@ -247,7 +277,8 @@ export class ChannelManagementController {
                     isActive: true,
                     metadata: null,
                     assignedAgent: assigned,
-                    needsAssignment: !assigned,
+                    assignmentStatus: assigned ? 'assigned' : assignmentLookupAvailable ? 'unassigned' : 'unknown',
+                    needsAssignment: assignmentLookupAvailable && !assigned,
                     // El widget se sirve desde la propia plataforma: no depende
                     // de un token de Meta que pueda vencer o ser revocado.
                     credentialStatus: 'ok' as const,
@@ -256,6 +287,10 @@ export class ChannelManagementController {
                     needsReauth: false,
                 };
             })),
+            degraded: [
+                ...(!widgetLookupAvailable ? ['web_widget'] : []),
+                ...(!assignmentLookupAvailable ? ['agent_assignments'] : []),
+            ],
         };
     }
 
@@ -468,13 +503,26 @@ export class ChannelManagementController {
     @RequiresVerifiedEmail('send_outbound')
     @ApiOperation({ summary: 'Send a test message through the connected Telegram bot' })
     async testTelegram(
-        @Body() body: { chatId: string },
+        @Body() body: { chatId: string; accountId?: string },
         @Req() req: any,
     ) {
         const tenantId = req.user?.tenantId;
         if (!tenantId) throw new BadRequestException('Tenant ID required');
 
-        const creds = await this.channelToken.getChannelToken(tenantId, 'telegram');
+        // Which bot to test used to be whichever one the resolver happened to
+        // return. A tenant with two got a test that proved nothing about the one
+        // it was looking at, so `accountId` names it. Left optional: with a
+        // single bot the question does not arise, and that is most tenants.
+        let creds: { accessToken: string; accountId: string };
+        try {
+            creds = await this.channelToken.getChannelToken(tenantId, 'telegram', body.accountId);
+        } catch (error: any) {
+            if (error?.code === 'connection_ambiguous') {
+                throw new BadRequestException(
+                    'Tienes más de un bot de Telegram conectado: indicá cuál querés probar (accountId)');
+            }
+            throw new BadRequestException('No hay bot de Telegram conectado');
+        }
         if (!creds?.accessToken) {
             throw new BadRequestException('No hay bot de Telegram conectado');
         }
@@ -1164,32 +1212,62 @@ export class ChannelManagementController {
         let sessionExpired = false;
 
         try {
-            const creds = await this.channelToken.getChannelToken(tenantId, 'instagram');
-            if (!creds?.accessToken) {
-                providerError = 'No active Instagram credentials';
-                // No token to call DELETE with — same practical outcome as
-                // an expired session: the local row gets cleaned up and
-                // nothing can flow either way.
-                sessionExpired = true;
-            } else {
-                const res = await fetch(
-                    `https://graph.instagram.com/me/permissions?access_token=${creds.accessToken}`,
-                    { method: 'DELETE' },
-                );
-                if (res.ok) {
-                    providerOk = true;
-                    this.logger.log(`Instagram permissions revoked for tenant ${tenantId}`);
-                } else {
-                    const body = await res.text().catch(() => '');
-                    providerError = `Instagram returned ${res.status}: ${body.substring(0, 200)}`;
-                    if (this.isMetaSessionExpiredError(body)) {
-                        sessionExpired = true;
-                        this.logger.log(`Instagram disconnect soft-success (token expired) for tenant ${tenantId}`);
-                    } else {
-                        this.logger.warn(providerError);
+            // EVERY connected account, not the one the resolver happened to
+            // return. `finalizeChannelDisconnect` deactivates all the rows of the
+            // type, so a tenant with two Instagram accounts had both switched off
+            // locally while only one had its permissions revoked at Meta — the
+            // other stayed subscribed, delivering to an inactive row. Telegram
+            // and Messenger already iterate; Instagram was the one left behind.
+            const accounts = await this.prisma.channelAccount.findMany({
+                where: { tenantId, channelType: 'instagram', isActive: true },
+                select: { accountId: true },
+            });
+            const targets: Array<string | undefined> = accounts.length
+                ? accounts.map(a => a.accountId)
+                : [undefined]; // legacy tenant with no per-account row
+            const errors: string[] = [];
+            let okCount = 0;
+            let expiredCount = 0;
+
+            for (const target of targets) {
+                const label = target ?? 'legacy';
+                try {
+                    const creds = await this.channelToken.getChannelToken(tenantId, 'instagram', target);
+                    if (!creds?.accessToken) {
+                        // No token to call DELETE with — same practical outcome as
+                        // an expired session: the local row gets cleaned up and
+                        // nothing can flow either way.
+                        expiredCount++;
+                        errors.push(`${label}: No active Instagram credentials`);
+                        continue;
                     }
+                    const res = await fetch(
+                        `https://graph.instagram.com/me/permissions?access_token=${creds.accessToken}`,
+                        { method: 'DELETE' },
+                    );
+                    if (res.ok) {
+                        okCount++;
+                        this.logger.log(`Instagram permissions revoked for ${label} (tenant ${tenantId})`);
+                    } else {
+                        const body = await res.text().catch(() => '');
+                        errors.push(`${label}: Instagram returned ${res.status}: ${body.substring(0, 200)}`);
+                        if (this.isMetaSessionExpiredError(body)) {
+                            expiredCount++;
+                            this.logger.log(`Instagram disconnect soft-success (token expired) for ${label}`);
+                        } else {
+                            this.logger.warn(`Instagram disconnect error for ${label}: ${res.status}`);
+                        }
+                    }
+                } catch (e: any) {
+                    errors.push(`${label}: ${e?.message || 'unknown error'}`);
                 }
             }
+
+            providerOk = okCount > 0;
+            // Only "everything we could not revoke was already dead" counts as a
+            // soft success; one live account we failed to revoke does not.
+            sessionExpired = okCount + expiredCount === targets.length && expiredCount > 0;
+            if (errors.length) providerError = errors.join('; ');
         } catch (err: any) {
             providerError = err?.message || 'unknown error calling Instagram';
             this.logger.warn(`Instagram disconnect error for tenant ${tenantId}: ${providerError}`);
@@ -1405,22 +1483,10 @@ export class ChannelManagementController {
     @Roles('tenant_admin')
     @ApiOperation({ summary: 'Send a test SMS' })
     async testSms(
-        @Body() body: { to: string },
-        @Req() req: any,
+        @Body() _body: { to: string },
+        @Req() _req: any,
     ) {
         this.rejectRetiredSms('test');
-        const tenantId = req.user?.tenantId;
-        if (!tenantId) throw new BadRequestException('Tenant ID required');
-
-        const creds = await this.channelToken.getChannelToken(tenantId, 'sms');
-        await this.smsAdapter.sendTextMessage(
-            body.to,
-            'Test message from Parallly - SMS channel connected successfully!',
-            creds.accountId,
-            creds.accessToken,
-        );
-
-        return { success: true, message: `Test SMS sent to ${body.to}` };
     }
 
     // ==========================================

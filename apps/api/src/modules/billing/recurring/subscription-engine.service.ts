@@ -569,7 +569,7 @@ export class SubscriptionEngineService {
 
             // Mirrors the provider-webhook path so a redelivery is deduplicated
             // by the same UNIQUE(provider, providerEventId) index.
-            await tx.billingEvent.create({
+            const billingEvent = await tx.billingEvent.create({
                 data: {
                     tenantId: attempt.tenantId,
                     subscriptionId: attempt.subscriptionId,
@@ -578,9 +578,16 @@ export class SubscriptionEngineService {
                     eventType: BillingEventType.PAYMENT_SUCCEEDED,
                     payload: { charge, attemptId: attempt.id } as any,
                 },
+                select: { id: true },
             }).catch(() => undefined);
 
-            return { paymentId: payment.id, tenantIsInternal, entitlementBlocked, entitlementBlockReason };
+            return {
+                paymentId: payment.id,
+                billingEventId: billingEvent?.id,
+                tenantIsInternal,
+                entitlementBlocked,
+                entitlementBlockReason,
+            };
         });
 
         if ('alreadySettled' in result) {
@@ -599,6 +606,7 @@ export class SubscriptionEngineService {
             tenantId: attempt.tenantId,
             subscriptionId: attempt.subscriptionId,
             paymentId: result.paymentId,
+            billingEventId: result.billingEventId,
             providerPaymentId: charge.providerChargeId,
             amountCents: attempt.amountCents,
             currency: attempt.currency,
@@ -678,7 +686,22 @@ export class SubscriptionEngineService {
                     settledAt: new Date(),
                 },
             });
-            return { kind: 'failed' as const, attempt };
+            const billingEvent = await tx.billingEvent.create({
+                data: {
+                    tenantId: attempt.tenantId,
+                    subscriptionId: attempt.subscriptionId,
+                    provider: attempt.provider,
+                    providerEventId: `engine_fail_${attempt.id}`,
+                    eventType: BillingEventType.PAYMENT_FAILED,
+                    payload: {
+                        attemptId: attempt.id,
+                        failureClass,
+                        reason: charge.statusMessage ?? charge.status,
+                    } as any,
+                },
+                select: { id: true },
+            });
+            return { kind: 'failed' as const, attempt, billingEventId: billingEvent.id };
         });
 
         if (outcome.kind === 'noop') return;
@@ -700,6 +723,7 @@ export class SubscriptionEngineService {
         this.eventEmitter.emit(BillingEventType.PAYMENT_FAILED, {
             tenantId: attempt.tenantId,
             subscriptionId: attempt.subscriptionId,
+            billingEventId: outcome.billingEventId,
             attemptId: attempt.id,
             failureClass,
             reason: charge.statusMessage ?? charge.status,

@@ -7,13 +7,18 @@ import { Send, Bot, User, Loader2 } from "lucide-react";
 
 interface AgentTestChatProps {
     tenantId: string;
+    agentId: string | null;
+    configurationRevisionId?: string;
+    blocked?: boolean;
 }
 
 type Turn = { role: "user" | "assistant"; content: string };
 
-export default function AgentTestChat({ tenantId }: AgentTestChatProps) {
+export default function AgentTestChat({ tenantId, agentId, configurationRevisionId, blocked }: AgentTestChatProps) {
     const t = useTranslations("setupWizard.test");
-    const [agentId, setAgentId] = useState<string | null>(null);
+    const tDraft = useTranslations('agentDraft');
+    const runtimeSessionId = useRef<string | undefined>(undefined);
+    const requestScope = useRef(0);
     const [turns, setTurns] = useState<Turn[]>([]);
     const [input, setInput] = useState("");
     const [sending, setSending] = useState(false);
@@ -21,24 +26,17 @@ export default function AgentTestChat({ tenantId }: AgentTestChatProps) {
     const scrollRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
-        if (!tenantId) return;
-        api.listAgents(tenantId)
-            .then((res: any) => {
-                const agents = res?.data || res?.agents || [];
-                const active = Array.isArray(agents)
-                    ? (agents.find((a: any) => a.is_active || a.is_default) || agents[0])
-                    : null;
-                if (active?.id) setAgentId(active.id);
-            })
-            .catch(() => {});
-    }, [tenantId]);
+        requestScope.current++; runtimeSessionId.current = undefined;
+        setTurns([]); setError(''); setSending(false);
+    }, [tenantId, agentId, configurationRevisionId, blocked]);
 
     useEffect(() => {
         if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }, [turns, sending]);
 
     const send = async () => {
-        if (!agentId || !input.trim() || sending) return;
+        if (!agentId || !input.trim() || sending || blocked) return;
+        const scope = requestScope.current;
         const msg = input.trim();
         setInput("");
         setError("");
@@ -46,13 +44,16 @@ export default function AgentTestChat({ tenantId }: AgentTestChatProps) {
         setTurns((prev) => [...prev, { role: "user", content: msg }]);
         setSending(true);
         try {
-            const res: any = await api.testAgent(tenantId, agentId, { message: msg, conversationHistory: history });
+            const res: any = await api.testAgent(tenantId, agentId, { message: msg, conversationHistory: history, configurationRevisionId, runtimeSessionId: runtimeSessionId.current });
+            if (scope !== requestScope.current) return;
             if (res?.success && res?.data?.reply) {
                 setTurns((prev) => [...prev, { role: "assistant", content: res.data.reply }]);
+                runtimeSessionId.current = res.data.debug?.runtimeSessionId;
             } else {
                 setError(res?.error || t("error"));
             }
         } catch (e: any) {
+            if (scope !== requestScope.current) return;
             setError(e?.message || t("error"));
         }
         setSending(false);
@@ -60,6 +61,7 @@ export default function AgentTestChat({ tenantId }: AgentTestChatProps) {
 
     return (
         <div className="flex flex-col h-[340px] rounded-xl border border-neutral-200 dark:border-white/10 overflow-hidden bg-white dark:bg-white/[0.02]">
+            <p role="status" className="px-3 py-2 text-xs font-medium">{tDraft(blocked ? 'saveBeforeTest' : configurationRevisionId ? 'testingDraft' : 'testingOperational')}</p>
             <p className="border-b border-amber-200 bg-amber-50 px-3 py-1.5 text-[11px] text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-200">
                 {t("limitations")}
             </p>
@@ -106,13 +108,13 @@ export default function AgentTestChat({ tenantId }: AgentTestChatProps) {
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
                         onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && send()}
-                        disabled={sending || !agentId}
+                        disabled={sending || !agentId || blocked}
                         placeholder={t("placeholder")}
                         className="flex-1 h-10 rounded-lg border border-neutral-200 dark:border-white/10 bg-neutral-50 dark:bg-white/5 px-3 text-sm text-foreground outline-none focus:border-indigo-500"
                     />
                     <button
                         onClick={send}
-                        disabled={sending || !input.trim() || !agentId}
+                        disabled={sending || !input.trim() || !agentId || blocked}
                         className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 px-4 text-sm font-medium text-white cursor-pointer"
                     >
                         <Send size={14} /> {t("send")}

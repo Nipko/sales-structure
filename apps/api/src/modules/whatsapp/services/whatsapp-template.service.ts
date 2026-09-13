@@ -112,17 +112,105 @@ export class WhatsappTemplateService {
     async seedTemplates(tenantId: string): Promise<{ submitted: number; skipped: boolean }> {
         const schemaName = await this.tenantsService.getSchemaName(tenantId);
 
-        // Resolve active channel + decrypted token.
+        // Every connection, not the oldest one.
+        //
+        // Templates live on a WABA, and a tenant with two numbers on two WABAs
+        // has two catalogues. Seeding only the first left the second number
+        // without the approved templates the reminders send — so a reminder
+        // from it failed at Meta with "template does not exist", months after
+        // the number was connected and with nothing pointing back here. And
+        // asking unnamed now refuses, so the whole seed had become a quiet
+        // no-op for exactly those tenants.
+        const numbers = await this.sendableNumbers(schemaName);
+        if (!numbers.length) {
+            this.logger.warn(`[seedTemplates] No active WhatsApp channel for tenant ${tenantId}`);
+            return { submitted: 0, skipped: true };
+        }
+        if (numbers.length > 1) {
+            let submitted = 0, everySkipped = true;
+            for (const phoneNumberId of numbers) {
+                const one = await this.seedTemplatesForNumber(tenantId, schemaName, phoneNumberId);
+                submitted += one.submitted;
+                everySkipped = everySkipped && one.skipped;
+            }
+            return { submitted, skipped: everySkipped };
+        }
+        return this.seedTemplatesForNumber(tenantId, schemaName, numbers[0]);
+    }
+
+    /**
+     * The numbers of a tenant that can actually send, oldest first.
+     *
+     * A row with no `phone_number_id` is an onboarding that Meta has not
+     * finished; it has no catalogue to seed and cannot send.
+     */
+    private async sendableNumbers(schemaName: string): Promise<string[]> {
+        return (await this.oneNumberPerWaba(schemaName)).map(entry => entry.phoneNumberId);
+    }
+
+    /**
+     * ONE number per WABA, oldest first.
+     *
+     * A template catalogue belongs to the WhatsApp Business Account, not to a
+     * phone number. Iterating numbers meant a tenant with two numbers on the
+     * SAME WABA submitted every seed template twice — two POSTs to Meta for
+     * one catalogue, the second answered with a duplicate-name error, and a
+     * sync that wrote the same rows through two channel ids.
+     *
+     * Grouping here rather than at each call site is deliberate: three
+     * operations need this rule and three copies of it would drift.
+     *
+     * ── AND THE REPRESENTATIVE HAS TO BE ABLE TO SEND ───────────────────────
+     *
+     * "Oldest first" alone picked whichever row came back first, including a
+     * DISCONNECTED one. Every operation then resolved credentials for that
+     * number, was refused, and logged "not usable" — so a WABA with one
+     * disconnected number and one working one had no catalogue seeded, no
+     * template statuses synced and no categories resolved, because the broken
+     * sibling was standing in front of the working one.
+     *
+     * Usable rows are preferred, oldest first among them. An unusable row is
+     * still returned when it is the ONLY one for its WABA: the operation then
+     * fails with a diagnosis naming that WABA, which is the honest outcome and
+     * is what an operator needs. Silently dropping it would turn "your number
+     * is disconnected" into "nothing happened".
+     */
+    private async oneNumberPerWaba(schemaName: string):
+        Promise<{ phoneNumberId: string; wabaId: string }[]> {
+        const status = await this.connectionService.getChannelStatus(schemaName);
+        const byWaba = new Map<string, { phoneNumberId: string; wabaId: string; usable: boolean }>();
+        for (const channel of status.channels || []) {
+            const phoneNumberId = String(channel.phone_number_id || '').trim();
+            // A row with no phone number is an onboarding Meta has not
+            // finished: no catalogue to seed and nothing that can send.
+            if (!phoneNumberId) continue;
+            // A missing WABA id would collapse every such row onto one key and
+            // seed only one of them, so those are kept separate under their own
+            // number rather than merged.
+            const wabaId = String(channel.meta_waba_id || '').trim() || `unknown:${phoneNumberId}`;
+            const usable = String(channel.channel_status ?? '').trim().toLowerCase() === 'connected';
+            const chosen = byWaba.get(wabaId);
+            // First usable wins; otherwise the first of any kind, so the WABA is
+            // still represented and still reports why it could not be used.
+            if (!chosen || (usable && !chosen.usable)) {
+                byWaba.set(wabaId, { phoneNumberId, wabaId, usable });
+            }
+        }
+        return [...byWaba.values()].map(({ phoneNumberId, wabaId }) => ({ phoneNumberId, wabaId }));
+    }
+
+    private async seedTemplatesForNumber(tenantId: string, schemaName: string, phoneNumberId: string):
+        Promise<{ submitted: number; skipped: boolean }> {
         let accessToken: string;
         let wabaId: string;
         let channelId: string;
         try {
-            const creds = await this.connectionService.getValidAccessToken(schemaName);
+            const creds = await this.connectionService.getValidAccessToken(schemaName, phoneNumberId);
             accessToken = creds.accessToken;
             wabaId = creds.wabaId;
             channelId = creds.channelId;
         } catch (e: any) {
-            this.logger.warn(`[seedTemplates] No active WhatsApp channel for tenant ${tenantId}: ${e.message}`);
+            this.logger.warn(`[seedTemplates] ${phoneNumberId} of tenant ${tenantId} is not usable: ${e.message}`);
             return { submitted: 0, skipped: true };
         }
 
@@ -182,26 +270,48 @@ export class WhatsappTemplateService {
             message_template_language: string;
             event: string;
             reason?: string;
+            /**
+             * The WABA the event came from.
+             *
+             * A template catalogue belongs to a WABA, and the fallback match is
+             * on `(name, language)` — two strings a tenant's second WABA is very
+             * likely to reuse, because they are OUR seed template names. So an
+             * approval on one WABA was projecting onto the identically named
+             * template of the other, marking as APPROVED something Meta had
+             * never approved there and letting a send fail at the provider.
+             *
+             * Optional so an older caller still compiles, and when it is absent
+             * the fallback match is dropped instead of widened: `meta_template_id`
+             * alone is globally unique, so the update is still correct, just
+             * narrower.
+             */
+            wabaId?: string | null;
         },
     ): Promise<void> {
+        const waba = String(event.wabaId ?? '').trim();
         await this.prisma.executeInTenantSchema(
             schemaName,
-            `UPDATE whatsapp_templates
+            `UPDATE whatsapp_templates t
                 SET approval_status = $1,
                     rejected_reason = $2,
                     last_sync_at = NOW(),
                     updated_at = NOW()
-              WHERE meta_template_id = $3
-                 OR (name = $4 AND language = $5)`,
+              FROM whatsapp_channels c
+              WHERE c.id = t.channel_id
+                AND ($6 = '' OR c.meta_waba_id = $6)
+                AND (t.meta_template_id = $3
+                     OR ($6 <> '' AND t.name = $4 AND t.language = $5))`,
             [
                 event.event || 'PENDING',
                 event.reason && event.reason !== 'NONE' ? event.reason : null,
                 event.message_template_id,
                 event.message_template_name,
                 event.message_template_language,
+                waba,
             ],
         );
-        this.logger.log(`Template status updated: ${event.message_template_name} → ${event.event}${event.reason ? ` (${event.reason})` : ''}`);
+        this.logger.log(`Template status updated: ${event.message_template_name} → ${event.event}`
+            + `${event.reason ? ` (${event.reason})` : ''}${waba ? ` on WABA ${waba}` : ''}`);
     }
 
     /**
@@ -209,30 +319,47 @@ export class WhatsappTemplateService {
      * than 12 hours. Catches cases where the webhook fails to arrive.
      */
     async pollPendingTemplates(schemaName: string): Promise<{ refreshed: number }> {
+        // `channel_id` comes along because a template belongs to ONE channel and
+        // is readable only with that channel's token. Resolving one token for
+        // the whole batch asked Meta about the second WABA's templates with the
+        // first WABA's credential: those rows stayed PENDING forever, which is
+        // the state this polling exists to escape.
         const stale = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
-            `SELECT id, meta_template_id, name, language
-               FROM whatsapp_templates
-              WHERE approval_status = 'PENDING'
-                AND meta_template_id IS NOT NULL
-                AND submitted_at < NOW() - INTERVAL '12 hours'
+            `SELECT t.id, t.meta_template_id, t.name, t.language, c.phone_number_id
+               FROM whatsapp_templates t
+               JOIN whatsapp_channels c ON c.id = t.channel_id
+              WHERE t.approval_status = 'PENDING'
+                AND t.meta_template_id IS NOT NULL
+                AND t.submitted_at < NOW() - INTERVAL '12 hours'
               LIMIT 50`,
         );
         if (stale.length === 0) return { refreshed: 0 };
 
-        let creds: { accessToken: string; wabaId: string; channelId: string };
-        try {
-            creds = await this.connectionService.getValidAccessToken(schemaName);
-        } catch {
-            return { refreshed: 0 };
-        }
+        // One resolution per channel, not per row: fifty pending templates on
+        // one number are still one credential.
+        const tokenOf = new Map<string, string | null>();
+        const tokenFor = async (phoneNumberId: string): Promise<string | null> => {
+            const key = String(phoneNumberId || '');
+            if (tokenOf.has(key)) return tokenOf.get(key) ?? null;
+            let token: string | null = null;
+            try {
+                token = (await this.connectionService.getValidAccessToken(schemaName, key || undefined)).accessToken;
+            } catch (e: any) {
+                this.logger.warn(`[pollPendingTemplates] no usable credential for ${key || 'the tenant'}: ${e.message}`);
+            }
+            tokenOf.set(key, token);
+            return token;
+        };
 
         let refreshed = 0;
         for (const row of stale) {
             try {
+                const accessToken = await tokenFor(row.phone_number_id);
+                if (!accessToken) continue;
                 const url = `https://graph.facebook.com/${META_GRAPH_VERSION}/${row.meta_template_id}`;
                 const res = await firstValueFrom(
-                    this.httpService.get(url, { headers: { Authorization: `Bearer ${creds.accessToken}` } }),
+                    this.httpService.get(url, { headers: { Authorization: `Bearer ${accessToken}` } }),
                 );
                 const status = res.data?.status || 'PENDING';
                 const reason = res.data?.rejected_reason;
@@ -261,9 +388,35 @@ export class WhatsappTemplateService {
         return (SEED_TEMPLATE_NAMES as string[]).includes(name);
     }
 
+  /**
+   * Sincroniza el catálogo de TODOS los números del tenant, no el del primero.
+   *
+   * Las plantillas viven en la WABA, así que un tenant con dos números en dos
+   * WABAs tiene dos catálogos. Sincronizar sólo el primero dejaba al segundo
+   * mostrando plantillas que no eran suyas y ocultando las que sí; y pedir el
+   * token sin nombrar número ahora se rechaza, así que en esos tenants la
+   * sincronización pasó a fallar entera. Cada número se sincroniza por separado
+   * y el resultado dice cuáles fueron.
+   */
   async syncTemplatesFromMeta(schemaName: string) {
+    const numbers = await this.sendableNumbers(schemaName);
+    if (numbers.length > 1) {
+      let count = 0, total = 0;
+      const perNumber: { phoneNumberId: string; count: number; total: number }[] = [];
+      for (const phoneNumberId of numbers) {
+        const one = await this.syncTemplatesForNumber(schemaName, phoneNumberId);
+        count += one.count; total += one.total;
+        perNumber.push({ phoneNumberId, count: one.count, total: one.total });
+      }
+      return { success: true, count, total, perNumber };
+    }
+    return this.syncTemplatesForNumber(schemaName, numbers[0]);
+  }
+
+  private async syncTemplatesForNumber(schemaName: string, phoneNumberId?: string) {
     // 1. Obtener token real descifrado y datos del canal
-    const { accessToken, wabaId, channelId } = await this.connectionService.getValidAccessToken(schemaName);
+    const { accessToken, wabaId, channelId } =
+      await this.connectionService.getValidAccessToken(schemaName, phoneNumberId);
 
     this.logger.log(`Syncing templates from Meta for WABA: ${wabaId}`);
 

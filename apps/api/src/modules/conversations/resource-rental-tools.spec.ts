@@ -386,6 +386,27 @@ describe('guardería/hotel: el cupo que se consulta es el que se reserva', () =>
         expect(result.capacity).toBe(8);
     });
 
+    it('resuelve guardería con tilde y exige capacidad real', async () => {
+        const checkAvailability = jest.fn().mockResolvedValue({
+            available: true, type: 'pet_boarding', startDate: '2026-09-01', endDate: '2026-09-02',
+            nights: 1, capacity: 4,
+        });
+        const executeInTenantSchema = jest.fn().mockResolvedValue([{ id: SERVICE_ID }]);
+        const { executor } = createExecutor({ checkAvailability });
+        (executor as any).prisma.executeInTenantSchema = executeInTenantSchema;
+
+        await executor.execute(
+            schemaName, tenantId, contactId, 'check_daycare_availability',
+            { checkIn: '2026-09-01' }, conversationId,
+            { authority: authorityFor('check_daycare_availability') },
+        );
+
+        const resolverSql = String(executeInTenantSchema.mock.calls[0][1]);
+        expect(resolverSql).toContain("translate(lower(category), 'áéíóúü', 'aeiouu')");
+        expect(resolverSql).toContain('COALESCE(max_concurrent, 0) >= 1');
+        expect(checkAvailability).toHaveBeenCalled();
+    });
+
     it('una estadía de un solo día ocupa una noche, no cero', async () => {
         const checkAvailability = jest.fn().mockResolvedValue({
             available: true, type: 'pet_boarding', startDate: '2026-09-01', endDate: '2026-09-02', nights: 1, capacity: 8,

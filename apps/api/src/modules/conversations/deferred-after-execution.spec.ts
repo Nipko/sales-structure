@@ -54,7 +54,12 @@ describe('el cableado', () => {
     it('sólo se controla cuando la operación ya se ejecutó', () => {
         // Fuera de ese caso "dame un momento" es legítimo, y el auditor de
         // reclamos lo excluye a propósito. Disparar siempre sería ruido.
-        expect(SRC).toContain('const outcomeAlreadyKnown = (executedTools || []).some(t => isBackingTool(t?.name))');
+        // El predicado ganó un segundo argumento (el resultado de la tool), que
+        // sólo lo hace más estricto: se afirma que la señal sigue saliendo de
+        // `isBackingTool` sobre las tools ejecutadas, no la firma exacta.
+        expect(SRC).toMatch(
+            /const outcomeAlreadyKnown = \(executedTools \|\| \[\]\)\.some\(t => isBackingTool\(t\?\.name[^)]*\)\)/,
+        );
         // La condición ganó una salvedad: cuando el backend manda el enlace en
         // su propia burbuja, anunciarlo es CIERTO y no se reescribe.
         expect(SRC).toContain('outcomeAlreadyKnown && !backendWillDeliver && promisesLaterDelivery(response)');

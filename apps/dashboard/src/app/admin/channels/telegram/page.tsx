@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { DisconnectChannelModal } from "@/components/ui/disconnect-channel-modal";
 import { HelpPanel } from "@/components/ui/help-panel";
+import { LoadFailureNotice } from "@/components/ui/load-failure";
 
 const BRAND = "#0088cc";
 
@@ -34,6 +35,7 @@ export default function TelegramSetupPage() {
     const tHelp = useTranslations("help");
 
     const [status, setStatus] = useState<any>(null);
+    const [statusUnavailable, setStatusUnavailable] = useState(false);
     const [forceSetup, setForceSetup] = useState(false);
     const [botToken, setBotToken] = useState("");
     const [loading, setLoading] = useState(true);
@@ -52,7 +54,15 @@ export default function TelegramSetupPage() {
             const res = await api.fetch("/channels/telegram/status");
             const data = res?.data || res;
             setStatus(data);
-        } catch { /* ignore */ }
+            setStatusUnavailable(false);
+        } catch {
+            // A failed status read used to fall straight through to the setup
+            // wizard, which tells someone with a working bot to go create it
+            // again in BotFather. We do not know whether this bot is connected,
+            // so we say that instead of guessing "no".
+            setStatus(null);
+            setStatusUnavailable(true);
+        }
         setLoading(false);
     };
 
@@ -132,6 +142,16 @@ export default function TelegramSetupPage() {
         return (
             <div className="flex items-center justify-center h-[60vh]">
                 <Loader2 size={24} className="animate-spin text-[var(--text-secondary)]" />
+            </div>
+        );
+    }
+
+    // Stop before the wizard: offering "connect your bot" is a claim that it is
+    // not connected, and we never got an answer.
+    if (statusUnavailable) {
+        return (
+            <div className="mx-auto max-w-[640px] mt-4">
+                <LoadFailureNotice onRetry={() => { void loadStatus(); }} />
             </div>
         );
     }

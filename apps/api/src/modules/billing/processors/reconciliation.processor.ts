@@ -370,8 +370,9 @@ export class BillingReconciliationProcessor {
 
         for (const sub of trialing) {
             const providerEventId = `synthetic_trial_ending_soon_${sub.id}`;
+            let billingEvent: { id: string };
             try {
-                await this.prisma.billingEvent.create({
+                billingEvent = await this.prisma.billingEvent.create({
                     data: {
                         tenantId: sub.tenantId,
                         subscriptionId: sub.id,
@@ -380,6 +381,7 @@ export class BillingReconciliationProcessor {
                         eventType: BillingEventType.TRIAL_ENDING_SOON,
                         payload: { trialEndsAt: sub.trialEndsAt, source: 'cron' } as any,
                     },
+                    select: { id: true },
                 });
             } catch {
                 // UNIQUE violation → already fired. Skip the emit so the email
@@ -390,6 +392,7 @@ export class BillingReconciliationProcessor {
             this.eventEmitter.emit(BillingEventType.TRIAL_ENDING_SOON, {
                 tenantId: sub.tenantId,
                 subscriptionId: sub.id,
+                billingEventId: billingEvent.id,
                 trialEndsAt: sub.trialEndsAt,
             });
         }

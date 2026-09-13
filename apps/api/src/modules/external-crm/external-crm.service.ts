@@ -1,4 +1,5 @@
-import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException, Optional } from '@nestjs/common';
+import { Cron } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
@@ -8,6 +9,11 @@ import { PrismaService } from '../prisma/prisma.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { CrmCryptoService } from './crm-crypto.service';
 import { CrmAdapterFactory } from './crm-adapter.factory';
+import { CronLockService } from '../redis/cron-lock.service';
+import {
+    ensureCrmNoteReceipts, pendingCrmNoteRetractions, recordCrmNoteReceipt,
+    settleCrmNoteRetraction, type CrmRetractionOutcome,
+} from './crm-note-receipts';
 import type {
     CanonicalContact,
     CanonicalDeal,
@@ -23,9 +29,28 @@ export interface CrmSyncJob {
     connectionId: string;
     provider: string;
     entity: CrmEntity;
-    operation: 'upsertContact' | 'upsertDeal' | 'pushActivity';
+    operation: 'upsertContact' | 'upsertDeal' | 'pushActivity' | 'retractActivity';
     payload: any;
+    /**
+     * What produced this note, so the id the provider gives back can be written
+     * down against something stable.
+     *
+     * Without it the note id was returned and dropped — the copy outside the
+     * platform had no address, and an erasure could clear everything inside and
+     * still leave the customer's summary in somebody's CRM. `sourceId` has to be
+     * stable across attempts, which is why it is the handoff receipt id and not
+     * the activity's own freshly generated UUID.
+     */
+    receipt?: {
+        sourceKind: string;
+        sourceId: string;
+        conversationId?: string | null;
+        contactId?: string | null;
+    };
 }
+
+/** The CRM note is one paragraph and its transcript is the next. */
+const NOTE_SEPARATOR = String.fromCharCode(10);
 
 @Injectable()
 export class ExternalCrmService {
@@ -38,7 +63,46 @@ export class ExternalCrmService {
         private readonly factory: CrmAdapterFactory,
         private readonly throttle: TenantThrottleService,
         @InjectQueue(CRM_SYNC_QUEUE) private readonly queue: Queue<CrmSyncJob>,
+        /** Optional so a unit test can build this service without Redis. */
+        @Optional() private readonly cronLock?: CronLockService,
     ) {}
+
+    /**
+     * Turns the retractions an erasure asked for into calls, and keeps asking.
+     *
+     * The erasure only marks its rows, on its own transaction. This is what
+     * makes that mark mean something, and it is deliberately the SAME mechanism
+     * as the recovery: the row is the queue, so a BullMQ job lost to a restart
+     * is simply re-enqueued on the next tick, and a `retract_pending` receipt
+     * cannot go quiet just because a worker died holding it.
+     *
+     * Locked, because the API and the worker both load this module and an
+     * unlocked `@Cron` body runs twice — which here would mean two DELETEs of
+     * the same note in a tenant's CRM.
+     */
+    @Cron('*/5 * * * *')
+    async drainCrmRetractionsCron(): Promise<void> {
+        const run = () => this.drainCrmRetractions();
+        await (this.cronLock
+            ? this.cronLock.runExclusive('external-crm.drainRetractions', 150, run, { prefer: 'api' })
+            : run());
+    }
+
+    async drainCrmRetractions(): Promise<number> {
+        const connections = await this.prisma.crmConnection.findMany({
+            where: { status: 'active' }, select: { tenantId: true }, distinct: ['tenantId'],
+        });
+        let drained = 0;
+        for (const row of connections) {
+            // One tenant whose schema is mid-migration must not stop the rest:
+            // every other person's erasure is waiting behind this loop.
+            try { drained += await this.retractPendingCrmNotes(row.tenantId); }
+            catch (error: any) {
+                this.logger.warn(`CRM retraction drain deferred for ${row.tenantId}: ${error?.message}`);
+            }
+        }
+        return drained;
+    }
 
     // ─── Connection management ──────────────────────────────────────────────
 
@@ -130,30 +194,66 @@ export class ExternalCrmService {
         ]);
     }
 
-    @OnEvent('handoff.escalated')
-    async onHandoffEscalated(payload: { tenantId: string; conversation: any; contact: any; lastMessages: any[] }) {
-        const summary = (payload.lastMessages ?? [])
-            .slice(-5)
-            .map((m: any) => `[${m.direction}] ${m.content?.slice(0, 200)}`)
-            .join('\n');
+    // One destination, one event. A transfer used to announce itself once to
+    // all six consumers, so a single failure among them re-announced it to
+    // the five that had already succeeded.
+    @OnEvent('handoff.escalated.crm')
+    async onHandoffEscalated(payload: {
+        tenantId: string; conversationId?: string; contactId?: string | null;
+        channelType?: string | null; contactName?: string; reason?: string;
+        summary?: string; lastMessage?: string; handoffReceiptId?: string | null;
+    }) {
+        // This handler read `payload.conversation`, `payload.contact` and
+        // `payload.lastMessages`, none of which the event has ever carried: the
+        // note reached the CRM attached to no contact, on no channel, with an
+        // empty transcript. What the event does carry is the summary the
+        // transfer already generated.
+        // A note that names no contact lands nowhere a person will find it, and
+        // every one written until now named none: the handler read fields the
+        // event does not have.
+        if (!payload?.tenantId || !payload.contactId) {
+            this.logger.warn(`Handoff note not pushed: the escalation carried no contact`);
+            return;
+        }
+        const summary = payload.summary || payload.lastMessage || '';
+        const reasonNote = payload.reason ? ` (${payload.reason})` : '';
+        const body = summary
+            ? `Handoff a agente humano${reasonNote}.` + NOTE_SEPARATOR + summary
+            : `Handoff a agente humano${reasonNote}.`;
+        // A note pushed without a stable source id can be written but never
+        // found again, so it is said out loud rather than discovered later by
+        // somebody wondering why an erasure left a paragraph in their CRM.
+        if (!payload.handoffReceiptId) {
+            this.logger.warn('Handoff note pushed with no receipt id: the external copy will not be addressable');
+        }
         await this.enqueueForAllConnections(payload.tenantId, [
             {
                 entity: 'activity',
                 operation: 'pushActivity',
                 payload: this.mapActivity({
-                    contactId: payload.contact?.id,
+                    contactId: payload.contactId,
                     type: 'note',
-                    body: `Handoff a agente humano. Últimos mensajes:\n${summary}`,
+                    body,
                     occurredAt: new Date(),
-                    channel: payload.conversation?.channel_type,
+                    channel: payload.channelType ?? undefined,
                 }),
+                ...(payload.handoffReceiptId ? { receipt: {
+                    sourceKind: 'handoff_summary',
+                    sourceId: String(payload.handoffReceiptId),
+                    conversationId: payload.conversationId ?? null,
+                    contactId: payload.contactId,
+                } } : {}),
             },
-        ]);
+        ], payload.handoffReceiptId ? `handoff-${payload.handoffReceiptId}` : undefined);
     }
 
     private async enqueueForAllConnections(
         tenantId: string,
         jobs: Array<Omit<CrmSyncJob, 'tenantId' | 'connectionId' | 'provider'>>,
+        /** Stable across attempts, so a retried announcement enqueues once.
+         *  No ':' in it — BullMQ rejects that in a job id and the dedupe dies
+         *  silently, which is how a duplicate delivery got shipped before. */
+        dedupeKey?: string,
     ) {
         const conns = await this.prisma.crmConnection.findMany({
             where: { tenantId, status: 'active' },
@@ -166,7 +266,13 @@ export class ExternalCrmService {
                 await this.queue.add(
                     `${conn.provider}:${job.entity}:${job.operation}`,
                     { tenantId, connectionId: conn.id, provider: conn.provider, ...job },
-                    { attempts: 3, backoff: { type: 'exponential', delay: 5_000 }, removeOnComplete: 100, removeOnFail: 200 },
+                    {
+                        attempts: 3, backoff: { type: 'exponential', delay: 5_000 },
+                        removeOnComplete: 100, removeOnFail: 200,
+                        ...(dedupeKey
+                            ? { jobId: `${dedupeKey}-${conn.id}-${job.entity}-${job.operation}` }
+                            : {}),
+                    },
                 );
             }
         }
@@ -210,6 +316,37 @@ export class ExternalCrmService {
                 if (!contactExternalId) throw new Error(`Contact ${act.contactId} not synced — skipping activity`);
                 const r = await adapter.pushActivity(ctx, { ...act, contactId: contactExternalId });
                 externalId = r.externalId;
+                // Where it went. The note id used to end here as a log line; it
+                // is an address now, and an erasure can reach it.
+                if (job.receipt && r.externalId) {
+                    const schema = await this.tenantSchema(job.tenantId);
+                    await recordCrmNoteReceipt(
+                        (sql: string, params?: any[]) => this.prisma.executeInTenantSchema(schema, sql, params ?? []) as any,
+                        {
+                            connectionId: job.connectionId, provider: job.provider,
+                            sourceKind: job.receipt.sourceKind, sourceId: job.receipt.sourceId,
+                            externalId: r.externalId, externalUrl: r.externalUrl ?? null,
+                            conversationId: job.receipt.conversationId ?? null,
+                            contactId: job.receipt.contactId ?? act.contactId ?? null,
+                        });
+                }
+            } else if (job.operation === 'retractActivity') {
+                // The real call goes through exactly the gate every other CRM
+                // effect goes through: `buildContext` above refuses a connection
+                // that is not active and refreshes the token before it is used.
+                const receiptId = String(job.payload?.receiptId ?? '');
+                externalId = String(job.payload?.externalId ?? '') || null;
+                const result = adapter.retractActivity && externalId
+                    ? await adapter.retractActivity(ctx, externalId)
+                    // A provider that cannot delete a note is an `unknown` with
+                    // the reason on it — visible — never a silent success.
+                    : { outcome: 'unknown' as CrmRetractionOutcome, detail: 'provider_cannot_retract' };
+                const schema = await this.tenantSchema(job.tenantId);
+                await settleCrmNoteRetraction(
+                    (sql: string, params?: any[]) => this.prisma.executeInTenantSchema(schema, sql, params ?? []) as any,
+                    receiptId, result.outcome, result.detail ?? null);
+                if (result.outcome !== 'accepted') status = 'skipped';
+                operation = `retract_${result.outcome}`;
             }
         } catch (e: any) {
             status = 'failed';
@@ -234,6 +371,44 @@ export class ExternalCrmService {
                 });
             }
         }
+    }
+
+    /**
+     * Turns the retractions an erasure asked for into work.
+     *
+     * The erasure itself only MARKS, inside its own transaction: it must not be
+     * held open across a third party's HTTP timeout, and must not be rolled back
+     * by one either. This is the other half, and it is deliberately re-runnable —
+     * a settled receipt is no longer pending, so a second pass over the same
+     * tenant finds nothing and deletes nothing twice.
+     *
+     * `rejected` and `unknown` are not swept back up. They are answers somebody
+     * has to look at, and retrying a refusal forever would be a loop against the
+     * tenant's own CRM rather than progress.
+     */
+    async retractPendingCrmNotes(tenantId: string, limit = 100): Promise<number> {
+        const schema = await this.tenantSchema(tenantId);
+        const query = (sql: string, params?: any[]) =>
+            this.prisma.executeInTenantSchema(schema, sql, params ?? []) as any;
+        const pending = await pendingCrmNoteRetractions(query, limit);
+        for (const receipt of pending) {
+            await this.queue.add(
+                `${receipt.provider}:activity:retractActivity`,
+                {
+                    tenantId, connectionId: receipt.connectionId, provider: receipt.provider,
+                    entity: 'activity', operation: 'retractActivity',
+                    payload: { receiptId: receipt.id, externalId: receipt.externalId },
+                },
+                {
+                    // One attempt. A retry here would re-ask a question that has
+                    // already been answered into a state; the reconcile pass is
+                    // what re-asks, and only for the states that deserve it.
+                    attempts: 1, removeOnComplete: 100, removeOnFail: 200,
+                    jobId: `crm-retract-${receipt.id}`,
+                },
+            );
+        }
+        return pending.length;
     }
 
     // ─── Helpers ────────────────────────────────────────────────────────────
@@ -442,6 +617,11 @@ export class ExternalCrmService {
         for (const ddl of ddls) {
             await this.prisma.$executeRawUnsafe(ddl);
         }
+        // Where a pushed note went, so an erasure can take it back. Its own DDL
+        // constant rather than another literal here, because the erasure path
+        // and the parity test read the same one.
+        await ensureCrmNoteReceipts((sql: string, params?: any[]) =>
+            this.prisma.executeInTenantSchema(schema, sql, params ?? []) as any);
     }
 
     // ─── Mappers ────────────────────────────────────────────────────────────

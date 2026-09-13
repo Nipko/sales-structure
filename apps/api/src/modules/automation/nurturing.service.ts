@@ -6,10 +6,11 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { PersonaService } from '../persona/persona.service';
 import { LLMRouterService } from '../ai/router/llm-router.service';
-import { OutboundQueueService } from '../channels/outbound-queue.service';
 import { ChannelTokenService } from '../channels/channel-token.service';
+import { ProactiveSendConnection } from '../channels/proactive-connection';
 import { ComplianceService } from '../analytics/compliance.service';
-import { OutboundMessage } from '@parallext/shared';
+import type { DispatchItem } from '../channels/agent-dispatch-outbox';
+import { ProactiveDispatchService, effectIsDurable } from '../channels/proactive-dispatch.service';
 import { nurtureMsg, LANG_NAME } from './nurturing-i18n';
 import { CronLockService } from '../redis/cron-lock.service';
 import { PipelineService } from '../pipeline/pipeline.service';
@@ -51,9 +52,22 @@ export class NurturingService {
         private readonly redis: RedisService,
         private readonly personaService: PersonaService,
         private readonly llmRouter: LLMRouterService,
-        private readonly outboundQueue: OutboundQueueService,
         private readonly channelToken: ChannelTokenService,
+        // A follow-up inherits its conversation's number when there is one and
+        // raises a task for the business when there is not. Never the oldest.
+        private readonly connections: ProactiveSendConnection,
         private readonly compliance: ComplianceService,
+        /**
+         * The durable lane, which a nudge could not use before.
+         *
+         * The in-window text went onto the legacy queue, where Redis is the
+         * only record and nothing carries an identity; the out-of-window
+         * template went straight to the adapter. Neither could be re-checked
+         * against the conversation, so a nudge asking whether anybody was still
+         * there could arrive a minute after the customer wrote — the most
+         * irritating thing this lane can do, and billed.
+         */
+        private readonly proactive: ProactiveDispatchService,
         private readonly cronLock: CronLockService,
         private readonly pipelineService: PipelineService,
     ) {}
@@ -164,9 +178,15 @@ export class NurturingService {
             return;
         }
 
-        // 3. Check attempt count
+        // 3. Past the last attempt: this is the CLOSING PASS, not a nudge.
+        //
+        // The final action used to run in the same breath as the farewell, and
+        // resolving the conversation makes its own revision `gone` — the policy
+        // reads a resolved thread as one nobody should be writing into. The
+        // farewell, still waiting for a lease, would have been suppressed. So
+        // the closure is a pass of its own and it waits for that effect.
         if (attempt > maxAttempts) {
-            this.logger.log(`Max attempts (${maxAttempts}) reached for conversation ${conversationId}`);
+            await this.closeAfterFinalFollowUp(tenantId, schemaName, conversationId, maxAttempts, config);
             return;
         }
 
@@ -174,22 +194,123 @@ export class NurturingService {
         const contact = await this.getContact(schemaName, conversationId);
         const lastMessages = await this.getRecentMessages(schemaName, conversationId, 5);
 
-        // 5. Execute based on attempt number
-        if (attempt === 1) {
-            await this.executeAttempt1(tenantId, schemaName, conversationId, contact, lastMessages);
-        } else if (attempt === 2) {
-            await this.executeAttempt2(tenantId, schemaName, conversationId, contact);
-        } else if (attempt >= 3) {
-            await this.executeAttempt3(tenantId, schemaName, conversationId, leadId, contact, config);
+        // ═══ THE ATTEMPT IS RECORDED FIRST, AND UNRECORDED IF NOTHING LEFT ═══
+        //
+        // `nurturing_last_attempt` is part of this conversation's revision — so
+        // that a nudge prepared under one attempt cannot be delivered as
+        // another — and the effect sits on the lane until it gets a lease.
+        // Recording the attempt AFTER preparing would make every nudge stale at
+        // admission and none would ever arrive.
+        //
+        // So it is written first and restored when no durable effect exists.
+        // The end state is the invariant: the conversation never records an
+        // attempt the customer was never sent.
+        const previousAttempt = await this.readAttemptMarker(schemaName, conversationId);
+        await this.recordAttempt(schemaName, conversationId, attempt);
+        let delivered = false;
+        try {
+            if (attempt === 1) {
+                delivered = await this.executeAttempt1(
+                    tenantId, schemaName, conversationId, contact, lastMessages, attempt);
+            } else if (attempt === 2) {
+                delivered = await this.executeAttempt2(
+                    tenantId, schemaName, conversationId, contact, attempt);
+            } else if (attempt >= 3) {
+                delivered = await this.executeAttempt3(
+                    tenantId, schemaName, conversationId, leadId, contact, config, attempt);
+            }
+        } finally {
+            if (!delivered) {
+                await this.restoreAttemptMarker(schemaName, conversationId, previousAttempt);
+            }
         }
 
-        // 6. Record attempt in conversation metadata
-        await this.recordAttempt(schemaName, conversationId, attempt);
-
-        // 7. Schedule next follow-up if not at max
+        // 7. Schedule what comes next: another nudge, or the closing pass.
         if (attempt < maxAttempts) {
             await this.scheduleNextFollowUp(tenantId, conversationId, leadId, attempt + 1, config);
+        } else if (delivered && (config.finalAction || 'mark_not_interested') === 'mark_not_interested') {
+            await this.nurturingQueue.add('follow-up',
+                { tenantId, conversationId, leadId, attempt: maxAttempts + 1 }, {
+                    jobId: this.buildJobId(tenantId, conversationId, maxAttempts + 1),
+                    // Long enough for the lane to admit the farewell, and
+                    // BullMQ's own backoff is what it waits with when it is not.
+                    delay: 30_000,
+                    attempts: 5,
+                    backoff: { type: 'fixed', delay: 30_000 },
+                    removeOnComplete: { age: 3600 },
+                    removeOnFail: { age: 86400 },
+                });
         }
+    }
+
+    /**
+     * Close the conversation after the last nudge, once that nudge is out.
+     *
+     * `prepared` and `queued` are the two states in which the admission — and
+     * with it the revalidation of this conversation — has not happened yet.
+     * Resolving the thread before then turns the farewell into a suppression;
+     * afterwards the lease is granted and the POST no longer depends on it.
+     */
+    private async closeAfterFinalFollowUp(
+        tenantId: string, schemaName: string, conversationId: string,
+        maxAttempts: number, config: NurturingConfig,
+    ): Promise<void> {
+        if ((config.finalAction || 'mark_not_interested') !== 'mark_not_interested') return;
+        if (await this.followUpAwaitingAdmission(schemaName, conversationId, maxAttempts)) {
+            throw new Error(`nurturing_farewell_awaiting_admission:${conversationId}`);
+        }
+        await this.prisma.executeInTenantSchema(schemaName,
+            `UPDATE conversations SET status = 'resolved', resolved_at = NOW() WHERE id = $1::uuid`,
+            [conversationId]);
+        this.logger.log(`Conversation ${conversationId} resolved after the final follow-up`);
+    }
+
+    /** Is the last nudge still waiting for a lease? An outage answers "yes". */
+    private async followUpAwaitingAdmission(
+        schemaName: string, conversationId: string, attempt: number,
+    ): Promise<boolean> {
+        const originId = ProactiveDispatchService.originId(
+            `nurturing_followup:${conversationId}:attempt:${attempt}`);
+        try {
+            // Asked separately: a missing table is a PARSE failure, so it
+            // cannot be guarded inside the query that reads it.
+            const [present] = await this.prisma.executeInTenantSchema<any[]>(
+                schemaName, 'SELECT to_regclass($1)::text AS relation',
+                [`${schemaName}.agent_dispatch_outbox`]);
+            if (!present?.relation) return false;
+            const rows = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+                `SELECT state FROM agent_dispatch_outbox
+                  WHERE inbound_message_id = $1::uuid AND state IN ('prepared','queued')
+                  LIMIT 1`, [originId]);
+            return !!rows?.length;
+        } catch (e: any) {
+            this.logger.warn(`Could not read the last follow-up of ${conversationId}: ${e.message}`);
+            return true;
+        }
+    }
+
+    /** What the conversation currently claims about its last nurturing attempt. */
+    private async readAttemptMarker(schemaName: string, conversationId: string): Promise<string | null> {
+        const rows = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+            `SELECT metadata->>'nurturing_last_attempt' AS attempt
+               FROM conversations WHERE id = $1::uuid`, [conversationId]);
+        return rows?.[0]?.attempt ?? null;
+    }
+
+    /** Put it back. A record of an attempt that never left is a lie in the file. */
+    private async restoreAttemptMarker(
+        schemaName: string, conversationId: string, previous: string | null,
+    ): Promise<void> {
+        await this.prisma.executeInTenantSchema(schemaName,
+            previous === null
+                ? `UPDATE conversations
+                      SET metadata = (COALESCE(metadata, '{}'::jsonb) - 'nurturing_last_attempt')
+                    WHERE id = $1::uuid`
+                : `UPDATE conversations
+                      SET metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb),
+                          '{nurturing_last_attempt}', $2::text::jsonb)
+                    WHERE id = $1::uuid`,
+            previous === null ? [conversationId] : [conversationId, previous]);
     }
 
     /**
@@ -376,7 +497,8 @@ export class NurturingService {
 
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schema,
-            `SELECT c.id AS conversation_id, c.metadata->'bookingState' AS booking_state
+            `SELECT c.id AS conversation_id, c.metadata->'bookingState' AS booking_state,
+                    c.metadata->>'bookingStateUpdatedAt' AS booking_cycle
              FROM conversations c
              WHERE c.status = 'active'
                AND (c.metadata->'bookingState'->>'step') = ANY($1::text[])
@@ -402,23 +524,32 @@ export class NurturingService {
 
         for (const row of rows) {
             try {
-                await this.sendBookingFollowUp(tenantId, schema, row.conversation_id, row.booking_state);
+                await this.sendBookingFollowUp(tenantId, schema, row.conversation_id,
+                    row.booking_state, String(row.booking_cycle ?? ''));
             } catch (e: any) {
                 this.logger.warn(`Booking follow-up failed for conv ${row.conversation_id}: ${e.message}`);
             }
         }
     }
 
-    private async sendBookingFollowUp(tenantId: string, schemaName: string, conversationId: string, bookingState: any): Promise<void> {
+    private async sendBookingFollowUp(tenantId: string, schemaName: string, conversationId: string,
+        bookingState: any, bookingCycle: string): Promise<void> {
         const contact = await this.getContact(schemaName, conversationId);
         if (!contact) return;
 
         const lang = await this.resolveFollowUpLanguage(schemaName, conversationId, tenantId);
         const text = await this.generateBookingFollowUpText(tenantId, contact, bookingState, lang);
         // Reuse the generic sender — it enforces opt-out, the 24h window, allowed
-        // channels, the once-per-day cap, and persists the message. Returns whether it
-        // actually sent.
-        const sent = await this.sendFollowUpText(tenantId, schemaName, conversationId, contact, text);
+        // channels, the once-per-day cap, and commits the effect. Returns whether a
+        // durable effect now exists.
+        //
+        // The abandonment CYCLE is what makes this nudge this nudge:
+        // `bookingStateUpdatedAt` is the instant the customer stopped, it is
+        // what the query filters on, and it is durable. Two attempts at the
+        // same abandonment collide on one row; a customer who abandons again
+        // next week is a different effect.
+        const sent = await this.sendFollowUpText(tenantId, schemaName, conversationId, contact, text,
+            `booking:${bookingCycle || 'unknown'}`);
 
         // Mark this abandonment cycle as nudged ONLY if we actually sent — otherwise a
         // skip (opt-out / outside window / cap) would "burn" the follow-up without
@@ -477,16 +608,17 @@ export class NurturingService {
         conversationId: string,
         contact: any,
         lastMessages: any[],
-    ): Promise<void> {
+        attempt: number,
+    ): Promise<boolean> {
         const lang = await this.resolveFollowUpLanguage(schemaName, conversationId, tenantId);
         const i18n = nurtureMsg(lang);
+        const effectKey = `attempt:${attempt}`;
 
         const personaConfig = await this.personaService.getActivePersona(tenantId);
         if (!personaConfig) {
             this.logger.warn(`No persona config for tenant ${tenantId} — sending default follow-up`);
-            await this.sendFollowUpText(tenantId, schemaName, conversationId, contact,
-                i18n.attempt1Default);
-            return;
+            return this.sendFollowUpText(tenantId, schemaName, conversationId, contact,
+                i18n.attempt1Default, effectKey);
         }
 
         // Build context for follow-up generation
@@ -520,11 +652,12 @@ export class NurturingService {
             });
 
             const followUpText = response.content || i18n.attempt1SuccessFallback;
-            await this.sendFollowUpText(tenantId, schemaName, conversationId, contact, followUpText);
+            return await this.sendFollowUpText(tenantId, schemaName, conversationId, contact,
+                followUpText, effectKey);
         } catch (e: any) {
             this.logger.warn(`LLM follow-up generation failed, using fallback: ${e.message}`);
-            await this.sendFollowUpText(tenantId, schemaName, conversationId, contact,
-                i18n.attempt1CatchFallback);
+            return this.sendFollowUpText(tenantId, schemaName, conversationId, contact,
+                i18n.attempt1CatchFallback, effectKey);
         }
     }
 
@@ -536,47 +669,32 @@ export class NurturingService {
         schemaName: string,
         conversationId: string,
         contact: any,
-    ): Promise<void> {
-        const phone = contact?.external_id || contact?.phone;
-        if (!phone) {
-            this.logger.warn(`No phone for contact in conversation ${conversationId} — cannot send template`);
-            return;
-        }
-
+        attempt = 2,
+    ): Promise<boolean> {
+        // ═══ THIS USED TO BYPASS EVERY GUARD THE OTHER TWO ATTEMPTS USE ═══
+        //
+        // It built its own outbound and put it on the queue directly, which
+        // skipped, in order: the opt-out check, the allowed-channel list, the
+        // one-per-day cap, and the 24-hour window. Then it logged "Attempt 2:
+        // Template sent" — for a free-form text.
+        //
+        // Attempt 2 fires a day after the customer stopped replying, so it is
+        // OUTSIDE the window almost by definition, and a free-form message
+        // outside the window is refused by Meta. The whole attempt failed
+        // silently, its catch sent another text that failed the same way, and
+        // the conversation log said a template had gone out.
+        //
+        // It now goes through `sendFollowUpText`, like attempts 1 and 3 —
+        // which, outside the window, sends the tenant's configured APPROVED
+        // TEMPLATE and skips when there is none. The config field for that
+        // template already existed and nothing had ever read it.
         const lang = await this.resolveFollowUpLanguage(schemaName, conversationId, tenantId);
         const i18n = nurtureMsg(lang);
-        const displayName = contact?.name || 'estimado cliente';
-
-        // Try to send a template. If the tenant has a nurturing template configured, use it.
-        // Otherwise, fall back to a text message (if within 24h window).
-        try {
-            const { accessToken, accountId } = await this.resolveChannelCredentials(tenantId);
-            const outbound: OutboundMessage = {
-                tenantId,
-                channelType: 'whatsapp',
-                channelAccountId: accountId,
-                to: phone,
-                content: {
-                    type: 'text' as any,
-                    text: i18n.attempt2TemplateText(displayName),
-                },
-            };
-
-            await this.outboundQueue.enqueue(outbound, accessToken);
-
-            // Save as outbound message — the [Plantilla…] prefix is intentional as a
-            // technical audit marker visible to agents reviewing the conversation log.
-            // It is NOT shown to the customer (the `content.text` above is sent instead).
-            await this.saveOutboundMessage(schemaName, conversationId,
-                i18n.attempt2SavedText(displayName));
-
-            this.logger.log(`Attempt 2: Template sent for conversation ${conversationId}`);
-        } catch (e: any) {
-            this.logger.warn(`Template send failed for attempt 2, falling back to text: ${e.message}`);
-            // Fallback: send text if within 24h window
-            await this.sendFollowUpText(tenantId, schemaName, conversationId, contact,
-                i18n.attempt2CatchFallback(contact?.name || ''));
-        }
+        const sent = await this.sendFollowUpText(tenantId, schemaName, conversationId, contact,
+            i18n.attempt2TemplateText(contact?.name || 'estimado cliente'), `attempt:${attempt}`);
+        this.logger.log(`Attempt 2 for conversation ${conversationId}: `
+            + `${sent ? 'sent' : 'not sent (opted out, capped, or no template outside the window)'}`);
+        return sent;
     }
 
     /**
@@ -590,13 +708,14 @@ export class NurturingService {
         leadId: string,
         contact: any,
         config: NurturingConfig,
-    ): Promise<void> {
+        attempt = 3,
+    ): Promise<boolean> {
         const lang = await this.resolveFollowUpLanguage(schemaName, conversationId, tenantId);
         const i18n = nurtureMsg(lang);
 
         // Send final "we're here if you need us" message
-        await this.sendFollowUpText(tenantId, schemaName, conversationId, contact,
-            i18n.attempt3FinalText(contact?.name || ''));
+        const sent = await this.sendFollowUpText(tenantId, schemaName, conversationId, contact,
+            i18n.attempt3FinalText(contact?.name || ''), `attempt:${attempt}`);
 
         // Create a task for human agent to review
         await this.prisma.executeInTenantSchema(schemaName,
@@ -612,7 +731,13 @@ export class NurturingService {
 
         this.logger.log(`Attempt 3: Task created for conversation ${conversationId}, lead ${leadId}`);
 
-        // Apply final action: mark as not interested or just leave the task
+        // Apply final action: mark as not interested or just leave the task.
+        //
+        // The lead's stage is not part of the conversation's revision, so it
+        // moves here. CLOSING THE CONVERSATION is — a resolved thread reads as
+        // one nobody should be writing into — so it waits for the farewell to
+        // be admitted and happens in `closeAfterFinalFollowUp`, scheduled by
+        // the caller. Doing it here suppressed the very message it follows.
         const finalAction = config.finalAction || 'mark_not_interested';
         if (finalAction === 'mark_not_interested') {
             const write = await this.pipelineService.writeLeadStage(
@@ -621,13 +746,10 @@ export class NurturingService {
                 'no_interesado',
                 { schemaName, onlyActiveOpportunities: true },
             );
-            // Close the conversation
-            await this.prisma.executeInTenantSchema(schemaName,
-                `UPDATE conversations SET status = 'resolved', resolved_at = NOW() WHERE id = $1::uuid`,
-                [conversationId],
-            );
-            this.logger.log(`Final action: marked lead ${leadId} as ${write.stage.slug}, conversation resolved`);
+            this.logger.log(`Final action: marked lead ${leadId} as ${write.stage.slug}; `
+                + 'the thread closes once the farewell has left');
         }
+        return sent;
     }
 
     // ─── Private Helpers ─────────────────────────────────────────────
@@ -668,12 +790,22 @@ export class NurturingService {
         return 'es';
     }
 
+    /**
+     * One nudge, on the durable lane, whatever it turns out to be.
+     *
+     * `effectKey` is what makes this effect THIS effect in the conversation's
+     * own terms — the attempt number, or the abandonment cycle a booking nudge
+     * belongs to. Without it two nudges for one thread would derive the same
+     * origin, collide on one row, and the second would never be sent while the
+     * record said it had been.
+     */
     private async sendFollowUpText(
         tenantId: string,
         schemaName: string,
         conversationId: string,
         contact: any,
         text: string,
+        effectKey: string,
     ): Promise<boolean> {
         const phone = contact?.external_id || contact?.phone;
         if (!phone) {
@@ -686,6 +818,42 @@ export class NurturingService {
         // BOTH the free-form and the WhatsApp-template path below.
         if (await this.compliance.isBlocked(tenantId, phone)) {
             this.logger.log(`[Nurturing] Contact opted-out — skipping proactive follow-up for conv ${conversationId}`);
+            return false;
+        }
+
+        // ── THE OTHER HALF OF "BAJA", WHICH `isBlocked` DOES NOT SEE ────────
+        //
+        // `drip-sequence.service.ts:327-330` checks BOTH and says why: the
+        // public-form unsubscribe sets `leads.opted_out`, which never becomes
+        // an `opt_out_records` row, and it also sidesteps the E.164 `+`/no-`+`
+        // mismatch that can make a confirmed opt-out invisible to a phone
+        // lookup. Nurturing checked only the first, so a customer who used the
+        // unsubscribe link went on being nudged — by the one producer whose
+        // entire purpose is messaging people who have stopped replying.
+        //
+        // A failure to READ this is not permission to send: an unreadable
+        // answer stops the nudge, because the cost of a missed follow-up is a
+        // follow-up, and the cost of the other mistake is a message somebody
+        // explicitly asked us never to send again.
+        try {
+            const [lead] = await this.prisma.executeInTenantSchema<any[]>(
+                schemaName,
+                `SELECT l.opted_out
+                   FROM leads l
+                   JOIN contacts ct ON ct.id = l.contact_id
+                  WHERE ct.id = $1::uuid
+                  ORDER BY l.updated_at DESC NULLS LAST
+                  LIMIT 1`,
+                [contact.id],
+            );
+            if (lead?.opted_out === true) {
+                this.logger.log(`[Nurturing] Contact unsubscribed via the public form — `
+                    + `skipping proactive follow-up for conv ${conversationId}`);
+                return false;
+            }
+        } catch (error: any) {
+            this.logger.warn(`[Nurturing] could not read the unsubscribe flag for conv `
+                + `${conversationId} (${error?.message}); standing down rather than guessing`);
             return false;
         }
 
@@ -729,8 +897,8 @@ export class NurturingService {
                     );
                     return false;
                 }
-                await this.sendWhatsAppTemplate(tenantId, schemaName, conversationId, contact, config.whatsappTemplateName);
-                return true;
+                return this.sendWhatsAppTemplate(tenantId, schemaName, conversationId, contact,
+                    config.whatsappTemplateName, effectKey);
             }
 
             // Other channels outside window: skip
@@ -738,24 +906,106 @@ export class NurturingService {
             return false;
         }
 
-        // Within 24h window: send free-form text
-        const { accessToken, accountId } = await this.resolveChannelCredentials(tenantId, channelType);
-
-        const outbound: OutboundMessage = {
-            tenantId,
-            channelType,
-            channelAccountId: conversation?.channel_account_id || accountId,
-            to: phone,
-            content: { type: 'text', text },
-        };
-
-        await this.outboundQueue.enqueue(outbound, accessToken);
-        await this.saveOutboundMessage(schemaName, conversationId, text);
-        return true;
+        // Within the window: free-form text, on the same lane as everything else.
+        return this.dispatch(tenantId, schemaName, conversationId, conversation, contact, {
+            effectKey, channelType, recipient: String(phone),
+            item: { kind: 'text', payload: { text } },
+        });
     }
 
     /**
-     * Send a WhatsApp approved template (HSM) for follow-up outside 24h window.
+     * Commit one nudge and say whether a durable effect now exists.
+     *
+     * ── THE SENDER IS THE THREAD'S OWN, OR THERE IS NONE ────────────────────
+     *
+     * The outbox refuses a binding whose conversation does not belong to the
+     * connection the row names, and this producer's authority is ABOUT that
+     * conversation. So the account is the one on the thread — never "the
+     * tenant's first WhatsApp number", which on a two-number tenant opened the
+     * follow-up from a number the customer had never seen. A thread that names
+     * none cannot be billed to anybody; the resolver is still asked, because it
+     * is what raises the configuration task the business has to act on.
+     */
+    private async dispatch(
+        tenantId: string, schemaName: string, conversationId: string, conversation: any,
+        contact: any, input: {
+            readonly effectKey: string;
+            readonly channelType: string;
+            readonly recipient: string;
+            readonly item: DispatchItem;
+        },
+    ): Promise<boolean> {
+        const sender = String(conversation?.channel_account_id ?? '').trim();
+        if (!sender) {
+            await this.resolveChannelCredentials(tenantId, schemaName, input.channelType, null);
+            this.logger.warn(`[Nurturing] conv ${conversationId} names no connection `
+                + '— nothing dispatched');
+            return false;
+        }
+        const contactId = String(conversation?.contact_id ?? contact?.id ?? '').trim();
+        if (!contactId) {
+            this.logger.warn(`[Nurturing] conv ${conversationId} has no contact — nothing dispatched`);
+            return false;
+        }
+        // ── THE AUTHORITY, READ FROM THE CONVERSATION ───────────────────────
+        //
+        // Its revision carries the time of the last inbound message, so a
+        // customer who writes between preparing this nudge and sending it makes
+        // it stale — and a nudge asking whether anybody is still there,
+        // arriving a minute after they wrote, is the worst thing this lane can
+        // do. It is also billed.
+        const operationalScope = await this.proactive.policyAuthority(schemaName, {
+            tenantId, producer: 'nurturing_followup', channelType: input.channelType,
+            channelAccountId: sender, entityId: conversationId,
+        });
+        if (!operationalScope) {
+            this.logger.log(`[Nurturing] conv ${conversationId} no longer justifies a nudge — suppressed`);
+            return false;
+        }
+        const result = await this.proactive.send(tenantId, {
+            originKey: `nurturing_followup:${conversationId}:${input.effectKey}`,
+            conversationId, contactId,
+            channelType: input.channelType, channelAccountId: sender,
+            recipient: input.recipient,
+            items: [input.item],
+            operationalScope,
+        });
+        if (effectIsDurable(result)) {
+            // The once-a-day cap used to count history rows carrying
+            // `metadata.source = 'nurturing'`, and the lane writes that row
+            // itself without any metadata of ours. Left alone, the cap would
+            // have silently stopped capping. It is a mark on the conversation
+            // now, written only over a durable effect.
+            await this.prisma.executeInTenantSchema(schemaName,
+                `UPDATE conversations
+                    SET metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb),
+                        '{nurturing_last_sent_at}', to_jsonb(NOW()::text))
+                  WHERE id = $1::uuid`, [conversationId]);
+        }
+        this.logger.log(`[Nurturing] ${result.kind} a ${input.item.kind} nudge for conv ${conversationId}`);
+        // `suppressed` is deliberately NOT a send here. The two markers this
+        // answer gates — the attempt and the booking cycle — say "the customer
+        // was nudged", and a policy that refused the nudge did not nudge them.
+        return effectIsDurable(result);
+    }
+
+    /**
+     * Send a WhatsApp approved template for a follow-up outside the 24h window.
+     *
+     * ── WHY THIS DOES NOT GO THROUGH THE QUEUE ──────────────────────────────
+     *
+     * It used to. It built an outbound whose `content.text` was the literal
+     * string `[Template: nurture_followup]` and put the real template name in
+     * `metadata.isTemplate`/`templateName` — which is read by NOTHING. No
+     * adapter, no processor, no sink. So either the customer received that
+     * literal marker, or Meta refused it for being free-form outside the
+     * window; both end with the follow-up never arriving and the conversation
+     * log saying it did.
+     *
+     * The drip sequence hit the same bug and its fix is the one used here:
+     * `WhatsappMessagingService.sendTemplate`, which is the only road that
+     * builds a real template payload — and the road that asks the money
+     * authority first.
      */
     private async sendWhatsAppTemplate(
         tenantId: string,
@@ -763,54 +1013,50 @@ export class NurturingService {
         conversationId: string,
         contact: any,
         templateName: string,
-    ): Promise<void> {
+        effectKey: string,
+    ): Promise<boolean> {
         const phone = contact?.external_id || contact?.phone;
-        if (!phone) return;
+        if (!phone) return false;
 
-        const { accessToken, accountId } = await this.resolveChannelCredentials(tenantId, 'whatsapp');
-
-        const outbound: OutboundMessage = {
-            tenantId,
-            channelType: 'whatsapp',
-            channelAccountId: accountId,
-            to: phone,
-            content: {
-                type: 'text',
-                text: `[Template: ${templateName}]`,
-            },
-            metadata: {
-                isTemplate: true,
-                templateName,
-                templateLanguage: 'es',
-                templateComponents: [
-                    {
-                        type: 'body',
-                        parameters: [
-                            { type: 'text', text: contact?.name || 'cliente' },
-                        ],
-                    },
+        const conversation = await this.getConversation(schemaName, conversationId);
+        // Approved IN a language. Meta refuses a template in one it was not
+        // approved for, and `'es'` was hardcoded while every other line of this
+        // follow-up already resolved the conversation's own language.
+        const language = await this.resolveFollowUpLanguage(schemaName, conversationId, tenantId);
+        return this.dispatch(tenantId, schemaName, conversationId, conversation, contact, {
+            effectKey, channelType: 'whatsapp', recipient: String(phone),
+            item: { kind: 'template', payload: {
+                templateName, language,
+                components: [
+                    { type: 'body', parameters: [{ type: 'text', text: contact?.name || 'cliente' }] },
                 ],
-            },
-        };
-
-        await this.outboundQueue.enqueue(outbound, accessToken);
-        await this.saveOutboundMessage(schemaName, conversationId,
-            `[Plantilla WA: ${templateName}] Seguimiento enviado a ${contact?.name || 'cliente'}`);
-
-        this.logger.log(`[Nurturing] WhatsApp template "${templateName}" sent for conv ${conversationId}`);
+            } },
+        });
     }
 
     /**
      * Check if a nurturing message was already sent today for this conversation.
      */
     private async hasNurturingSentToday(schemaName: string, conversationId: string): Promise<boolean> {
+        // Two sources, because the cap has to keep working across the move.
+        //
+        // It used to count history rows carrying `metadata.source =
+        // 'nurturing'`, and the durable lane writes that row itself with no
+        // metadata of ours — so on its own the old test would have started
+        // answering "no" for ever and the once-a-day cap would have stopped
+        // capping. The mark on the conversation is written only over a durable
+        // effect; the message query stays for threads nudged before this.
         const result = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-            `SELECT EXISTS(
-                SELECT 1 FROM messages
-                WHERE conversation_id = $1::uuid
-                  AND direction = 'outbound'
-                  AND metadata->>'source' = 'nurturing'
-                  AND created_at > CURRENT_DATE
+            `SELECT (
+                COALESCE((SELECT (metadata->>'nurturing_last_sent_at')::timestamptz
+                            FROM conversations WHERE id = $1::uuid),
+                         '1970-01-01'::timestamptz) > CURRENT_DATE
+                OR EXISTS(
+                    SELECT 1 FROM messages
+                    WHERE conversation_id = $1::uuid
+                      AND direction = 'outbound'
+                      AND metadata->>'source' = 'nurturing'
+                      AND created_at > CURRENT_DATE)
             ) AS sent_today`,
             [conversationId],
         );
@@ -834,13 +1080,11 @@ export class NurturingService {
         return result?.[0]?.within_window === true;
     }
 
-    private async saveOutboundMessage(schemaName: string, conversationId: string, text: string): Promise<void> {
-        await this.prisma.executeInTenantSchema(schemaName,
-            `INSERT INTO messages (conversation_id, direction, content_type, content_text, status, metadata)
-             VALUES ($1::uuid, 'outbound', 'text', $2, 'delivered', '{"source":"nurturing"}'::jsonb)`,
-            [conversationId, text],
-        );
-    }
+    // `saveOutboundMessage` used to live here, and the comment above it argued
+    // about which status was honest for a message the producer had handed to a
+    // queue. The durable lane settles that: it writes the history row in the
+    // same transaction as the effect, as `pending`, and the receipt reaches it
+    // when a provider actually accepts the thing it describes.
 
     private async hasCustomerRespondedSince(schemaName: string, conversationId: string, attempt: number): Promise<boolean> {
         // Check if there's any inbound message after the last outbound nurturing message
@@ -1032,20 +1276,35 @@ export class NurturingService {
         return updated;
     }
 
-    private async resolveChannelCredentials(tenantId: string, channelType = 'whatsapp'): Promise<{ accessToken: string; accountId: string }> {
-        try {
-            const creds = await this.channelToken.getChannelToken(tenantId, channelType);
-            return { accessToken: creds.accessToken, accountId: creds.accountId };
-        } catch (e: any) {
-            this.logger.warn(`Could not resolve ${channelType} token for tenant ${tenantId}: ${e.message}`);
-            return { accessToken: '', accountId: '' };
-        }
-    }
-
-    /** @deprecated Use resolveChannelCredentials instead */
-    private async resolveAccessToken(tenantId: string): Promise<string> {
-        const { accessToken } = await this.resolveChannelCredentials(tenantId);
-        return accessToken;
+    /**
+     * The connection this follow-up leaves from, or nothing.
+     *
+     * ── IT USED TO RETURN AN EMPTY TOKEN ────────────────────────────────────
+     *
+     * On any refusal it logged a warning and returned
+     * `{ accessToken: '', accountId: '' }`, which its callers then enqueued: an
+     * outbound message with no credential and no sender, travelling to a
+     * transport that could only fail. The customer got nothing, the tenant was
+     * told nothing, and the failure surfaced as a provider error about an
+     * invalid token rather than as "you have two numbers and have not said
+     * which one your follow-ups come from".
+     *
+     * `null` now, and the resolver raises the configuration task on the way.
+     *
+     * An INFRASTRUCTURE failure is a different thing and is deliberately not
+     * caught here: the resolver raises `ProactiveConnectionUnavailable` and it
+     * propagates to the BullMQ job that called this, which retries. Swallowing
+     * it would turn a database that was busy for ten seconds into a follow-up
+     * that never happens — the message is dropped, the sequence moves on, and
+     * nothing in the product says a step was skipped.
+     */
+    private async resolveChannelCredentials(tenantId: string, schemaName: string,
+        channelType = 'whatsapp', channelAccountId?: string | null,
+    ): Promise<{ accessToken: string; accountId: string } | null> {
+        return this.connections.resolve({
+            tenantId, schemaName, channelType, channelAccountId,
+            purpose: 'los seguimientos automáticos',
+        });
     }
 
     private buildJobId(tenantId: string, conversationId: string, attempt: number): string {

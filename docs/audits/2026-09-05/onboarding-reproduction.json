@@ -1,0 +1,207 @@
+{
+  "auditDate": "2026-09-05",
+  "verification": "Actual pure functions; modeled initial-render selector sets; no browser or live tenant.",
+  "tourResults": [
+    {
+      "name": "Appointments initial calendar tab",
+      "tourId": "appointments_setup",
+      "route": "/admin/appointments",
+      "context": {},
+      "presentSelectors": [
+        "#tour-target-appointments-tabs"
+      ],
+      "sourceEvidence": [
+        "apps/dashboard/src/app/admin/appointments/page.tsx:142",
+        "apps/dashboard/src/app/admin/appointments/page.tsx:965",
+        "apps/dashboard/src/app/admin/appointments/page.tsx:981"
+      ],
+      "plan": {
+        "tourId": "appointments_setup",
+        "stepIndexes": [
+          0,
+          1,
+          2
+        ],
+        "inPlace": false
+      },
+      "retainedSteps": [
+        "tabs",
+        "service",
+        "schedule"
+      ],
+      "omittedSteps": []
+    },
+    {
+      "name": "Agent review launched without the default agent id",
+      "tourId": "agent_handoff_rules",
+      "route": "/admin/agent",
+      "context": {},
+      "presentSelectors": [],
+      "sourceEvidence": [
+        "apps/dashboard/src/components/InitialSetupCard.tsx:107",
+        "apps/dashboard/src/lib/guided-tours.ts:58"
+      ],
+      "plan": {
+        "tourId": "agent_handoff_rules",
+        "stepIndexes": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "inPlace": false
+      },
+      "retainedSteps": [
+        "name",
+        "greeting",
+        "fallback",
+        "rules",
+        "handoff",
+        "save"
+      ],
+      "omittedSteps": []
+    },
+    {
+      "name": "Agent review with selected agent, initial persona tab",
+      "tourId": "agent_handoff_rules",
+      "route": "/admin/agent/agent-id",
+      "context": {
+        "agentId": "agent-id"
+      },
+      "presentSelectors": [
+        "#tour-target-agent-name",
+        "#tour-target-agent-greeting",
+        "#tour-target-agent-fallback",
+        "#tour-target-agent-save"
+      ],
+      "sourceEvidence": [
+        "apps/dashboard/src/app/admin/agent/[agentId]/page.tsx:134",
+        "apps/dashboard/src/app/admin/agent/[agentId]/page.tsx:820"
+      ],
+      "plan": {
+        "tourId": "agent_handoff_rules",
+        "stepIndexes": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "inPlace": false
+      },
+      "retainedSteps": [
+        "name",
+        "greeting",
+        "fallback",
+        "rules",
+        "handoff",
+        "save"
+      ],
+      "omittedSteps": []
+    },
+    {
+      "name": "Human handoff tour with invitation dialog closed",
+      "tourId": "human_handoff_route",
+      "route": "/admin/users",
+      "context": {},
+      "presentSelectors": [
+        "#tour-users",
+        "#tour-target-users-invite",
+        "#tour-target-users-list"
+      ],
+      "sourceEvidence": [
+        "apps/dashboard/src/app/admin/users/page.tsx:192",
+        "apps/dashboard/src/app/admin/users/page.tsx:729"
+      ],
+      "plan": {
+        "tourId": "human_handoff_route",
+        "stepIndexes": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "inPlace": false
+      },
+      "retainedSteps": [
+        "menu",
+        "pending",
+        "invite",
+        "role"
+      ],
+      "omittedSteps": []
+    }
+  ],
+  "checklist": {
+    "input": {
+      "tasks": [
+        {
+          "key": "channel",
+          "status": "fail",
+          "state": "blocked",
+          "checks": [],
+          "href": "/admin/channels",
+          "tourId": "channel_connection",
+          "dependsOn": []
+        },
+        {
+          "key": "knowledge",
+          "status": "unknown",
+          "state": "unknown",
+          "checks": [],
+          "href": "/admin/knowledge",
+          "tourId": "knowledge_first_source",
+          "dependsOn": []
+        },
+        {
+          "key": "catalog",
+          "status": "not_applicable",
+          "state": null,
+          "checks": [],
+          "href": "/admin/catalog",
+          "tourId": null,
+          "dependsOn": []
+        },
+        {
+          "key": "team",
+          "status": "warning",
+          "state": "degraded",
+          "checks": [],
+          "href": "/admin/users",
+          "tourId": "human_handoff_route",
+          "dependsOn": []
+        }
+      ],
+      "deniedRoute": "/admin/users"
+    },
+    "roleAccessAssumption": "The team route is denied; all other modeled routes are allowed.",
+    "output": [
+      {
+        "key": "channel",
+        "href": "/admin/channels",
+        "done": false,
+        "tourId": "channel_connection"
+      },
+      {
+        "key": "knowledge",
+        "href": "/admin/knowledge",
+        "done": false,
+        "tourId": "knowledge_first_source",
+        "verification": "unavailable"
+      },
+      {
+        "key": "catalog",
+        "href": "/admin/catalog",
+        "done": true,
+        "tourId": null
+      }
+    ],
+    "sourceEvidence": [
+      "apps/dashboard/src/lib/initial-setup.ts",
+      "apps/dashboard/src/components/InitialSetupCard.tsx"
+    ]
+  }
+}

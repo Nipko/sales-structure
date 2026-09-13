@@ -43,7 +43,7 @@ Vous pouvez rouvrir l'assistant quand vous voulez depuis **Paramètres → Assis
 
 ## Comment connecter votre premier canal
 
-Sans canal connecté, votre agent est prêt mais **ne reçoit aucun message**. Nous vous recommandons de commencer par **WhatsApp**, le canal le plus utilisé en Amérique latine.
+Sans canal connecté, l'entreprise **ne reçoit aucun message par ce canal**. La connexion ne publie pas le brouillon de l'agent : vous devez ensuite vérifier son affectation, tester le brouillon et publier la version approuvée. Nous vous recommandons de commencer par **WhatsApp**, le canal le plus utilisé en Amérique latine.
 
 Avant de connecter WhatsApp, préparez :
 
@@ -61,16 +61,9 @@ Par la suite, vous gérez l'ensemble depuis **Canaux**, dans la section **Admini
 
 ## La visite guidée du produit et « Montrez-moi où »
 
-Si vous terminez l'assistant **avec un canal déjà connecté**, la dernière étape ajoute un bouton qui vous **propose** une courte **visite guidée** (elle ne se déclenche pas toute seule) et met en avant l'essentiel :
+Lorsque l'assistant dispose d'un brouillon d'agent, la dernière étape propose **Vérifier et publier mon agent**. Ce parcours ne publie rien de lui-même : il passe par l'éditeur, le test, la préparation et la révision du candidat, puis se termine à la confirmation de publication. Connecter un canal et publier l'agent sont deux états indépendants ; le parcours vous demande de vérifier l'affectation avant de confirmer.
 
-- **Votre agent IA** — là où résident sa personnalité, ses connaissances et ses procédures.
-- **Vos canaux** — là où vous connectez et gérez WhatsApp et les autres canaux.
-- **Conversations** — là où vous suivez les échanges en direct et reprenez la main quand vous le souhaitez.
-- **Analytique** — là où vous mesurez les performances de l'agent.
-
-Avancez avec **Suivant** et fermez avec **Terminé**. Si votre activité relève d'un secteur vertical, la visite vous présente également l'outil spécifique à votre domaine.
-
-Si vous êtes sorti avec **Connecter plus tard**, ce bouton n'apparaît pas : la visite démarrerait sur un écran de canaux encore vide. Connectez d'abord, puis demandez le parcours depuis l'aide de cet écran ou depuis Parallly Assist.
+La visite générale du produit reste disponible depuis l'**Accueil**. Elle présente l'agent, les canaux, les conversations, l'analytique et, le cas échéant, l'outil propre à votre secteur.
 
 Au-delà de cette visite générale, lorsque cet écran ou cette étape dispose d'un parcours, la carte en attente, le panneau d'**Aide** de l'écran et Parallly Assist affichent le bouton **Montrez-moi où** (ou **Montrez-moi comment**) : il ouvre le bon écran et met en évidence, étape par étape, où se fait la modification. Le parcours **ne modifie** rien de lui-même ; il vous amène seulement à l'endroit exact.
 
@@ -93,11 +86,12 @@ tâches avancées restent dans leurs modules et ne gonflent pas cette progressio
 
 ## Par quoi commencer : ordre recommandé
 
-1. **Connectez WhatsApp** (ou votre canal principal) — sans cela, rien n'arrive à votre agent.
-2. **Envoyez-lui un message de test** depuis votre propre téléphone et suivez la conversation dans **Conversations**.
-3. **Alimentez la base de connaissances** depuis le menu **Base de Connaissances** : importez votre site web, vos documents ou vos questions fréquentes. Plus l'agent a de contexte, meilleures sont ses réponses.
-4. **Affinez votre agent** dans le menu **Agent IA** : ton, règles, message d'accueil et outils.
-5. **Invitez votre équipe** depuis le menu **Utilisateurs** et attribuez les rôles : administrateur, superviseur ou agent.
+1. **Complétez les informations et les connaissances de l'entreprise** : site web, documents, politiques, questions fréquentes et catalogue pertinent.
+2. **Connectez WhatsApp** (ou votre canal principal). La connexion ne met pas encore un brouillon au service des clients.
+3. **Ajustez le brouillon de l'agent** : ton, règles, accueil, outils et affectation du canal ; testez-le dans le chat interne.
+4. **Préparez, révisez et publiez** la version approuvée. La publication rend opérationnels le contenu et les affectations du brouillon.
+5. **Envoyez un message depuis votre téléphone** et confirmez la réponse ainsi que la conversation dans **Conversations**.
+6. **Invitez votre équipe** depuis **Utilisateurs** et attribuez les rôles : administrateur, superviseur ou agent.
 
 ## Questions fréquentes
 

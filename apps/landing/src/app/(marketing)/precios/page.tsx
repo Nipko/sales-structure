@@ -16,6 +16,8 @@ import { Section } from "../../../components/ui/Section";
 import { Icon } from "../../../components/ui/Icon";
 import { FAQItem } from "../../../components/ui/FAQItem";
 import { CTABanner } from "../../../components/layout/CTABanner";
+import { ThreePaymentsNotice } from "../../../components/sections/ThreePaymentsNotice";
+import { ThreePaymentsPanel } from "../../../components/sections/ThreePaymentsPanel";
 import { JsonLd } from "../../../components/ui/JsonLd";
 import { pricingJsonLd, breadcrumbJsonLd } from "../../../lib/seo";
 import { CONTACT_EMAIL, planContactUrl, planSignupUrl } from "../../../lib/constants";
@@ -289,6 +291,12 @@ export default function PricingPage() {
             })}
           </div>
         )}
+        {/*
+          Immediately under the price, not in an FAQ twelve screens down. The
+          number in the card is the only charge we issue; the reader is entitled
+          to learn about the other two in the same glance.
+        */}
+        <ThreePaymentsNotice className="mt-10" />
       </Section>
 
       {/* Full Comparison Matrix */}
@@ -446,13 +454,24 @@ export default function PricingPage() {
         </div>
       </Section>
 
+      {/* The three payments, in full, before the FAQ that used to carry them alone */}
+      <Section className="border-y border-border/50">
+        <ThreePaymentsPanel />
+      </Section>
+
       {/* Pricing FAQ */}
       <Section>
         <div className="text-center mb-12">
           <h2 className="text-3xl font-bold mb-4">{t("faqTitle")}</h2>
         </div>
         <div className="max-w-3xl mx-auto space-y-3">
-          {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
+          {/*
+            9 is the Meta WhatsApp charge. It is not ours and it is not in the
+            plan, and from 1 October 2026 it decides whether a number delivers
+            at all — so it gets asked and answered on the pricing page rather
+            than discovered on somebody else's invoice.
+          */}
+          {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
             <FAQItem
               key={n}
               idx={n}

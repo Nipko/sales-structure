@@ -1,0 +1,830 @@
+name: Candidate images (manual)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Build the images for a commit that is NOT on main, and prove what they are.
+#
+# The gap this closes is specific and was reproduced rather than suspected: the
+# only path that builds images runs `if: github.ref == 'refs/heads/main'` and is
+# followed by the production deploy job. So the only way to obtain images for a
+# candidate was to merge it — which deploys it. "Build and validate the candidate
+# before merge" had no mechanism.
+#
+# This is that mechanism, in three jobs that exist because they need three
+# different amounts of power:
+#
+#   authorize — no permissions at all. Decides WHO asked and for WHICH commit.
+#   verify    — `contents: read`, no secrets. Brings up PostgreSQL 17, PgBouncer
+#               in transaction mode and Valkey with noeviction, and runs the
+#               suites, the typechecks, the builds and the generators against
+#               that exact commit. Cannot write to the registry.
+#   publish   — `packages: write`, behind a PROTECTED ENVIRONMENT. Runs only if
+#               `verify` was green. Builds the five images, tags them ONLY by the
+#               commit — never `latest`, which is what the production compose
+#               falls back to — and publishes the immutable DIGEST of each one.
+#
+# The digest is the point. A tag that looks like a SHA is still a tag: it can be
+# moved. Evidence gathered from "the candidate" means nothing unless the thing
+# that ran and the thing that was approved are the same bytes, and only the
+# digest says that. The cut-over runbook pins digests, not tags.
+#
+# It does not deploy. It cannot: it has no host credentials and no SSH step.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── WHY THERE ARE TWO TRIGGERS, AND WHY THE LABEL NAMES A COMMIT ─────────────
+#
+# `workflow_dispatch` cannot run this file before it is merged. GitHub only
+# offers "Run workflow" for workflows that exist on the DEFAULT branch, so a
+# candidate workflow written on a branch is unreachable from exactly the branch
+# it was written to validate. That is not a configuration mistake; it is how the
+# trigger works, and it made "build and validate the candidate before merge"
+# impossible in practice.
+#
+# The `pull_request` trigger runs from the PULL REQUEST'S OWN branch, which is
+# the only pre-merge mechanism that does — and it used to be authorised by a
+# STICKY label. `build-candidate` stayed on the pull request, `synchronize` and
+# `reopened` were listened for, and so one human approval kept authorising every
+# later push: a reviewer approved commit A and commit F got built, with secrets
+# and `packages: write`, from code the approver never saw.
+#
+# The approval now names the commit. The label is
+#
+#     build-candidate-<first 12 characters of the head SHA>
+#
+# and the workflow refuses any label whose suffix is not the head it is looking
+# at. A new push makes the old label meaningless instead of powerful: authorising
+# the new commit is a new, reviewable, named human act. `synchronize` and
+# `reopened` are gone from the trigger list, so nothing re-runs by itself.
+#
+# Three more things must hold before any of this matters, and all three are
+# checked rather than assumed: the repository is ours, the branch is ours (a
+# fork cannot reach the registry and must not reach the secrets either), and the
+# person who asked is on the authorised list. The list lives in a repository
+# variable, and an EMPTY list is a refusal — fail closed, because an
+# authorisation control that defaults to "everyone" is not one.
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: Full 40-character commit SHA to build
+        required: true
+        type: string
+      confirm:
+        description: Type "candidate" to confirm this publishes images
+        required: true
+        type: string
+  pull_request:
+    # `labeled` ONLY. `synchronize` and `reopened` are what made one approval
+    # authorise every later commit.
+    types: [labeled]
+
+concurrency:
+  group: parallext-candidate-${{ inputs.sha || github.event.pull_request.head.sha }}
+  cancel-in-progress: false
+
+# Nothing by default. Every job below asks for exactly what it needs, and only
+# the one that pushes images is given `packages: write`.
+permissions: {}
+
+env:
+  REGISTRY: ghcr.io
+  API_IMAGE: ghcr.io/nipko/parallext-api
+  WORKER_IMAGE: ghcr.io/nipko/parallext-worker
+  DASHBOARD_IMAGE: ghcr.io/nipko/parallext-dashboard
+  WHATSAPP_IMAGE: ghcr.io/nipko/parallext-whatsapp
+  LANDING_IMAGE: ghcr.io/nipko/parallext-landing
+  # The one repository this workflow may ever run for. A fork that copies the
+  # file would otherwise inherit the whole thing.
+  EXPECTED_REPOSITORY: Nipko/sales-structure
+
+jobs:
+  # ═══════════════════════════════════════════════════════════════════════════
+  # 1. WHO ASKED, AND FOR WHICH COMMIT
+  # ═══════════════════════════════════════════════════════════════════════════
+  #
+  # No permissions, no checkout, no secrets: this job decides an identity and
+  # nothing else, so there is nothing here for a crafted branch to steal.
+  authorize:
+    name: Who asked, and for which commit
+    runs-on: ubuntu-latest
+    permissions: {}
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      || startsWith(github.event.label.name, 'build-candidate-')
+    outputs:
+      sha: ${{ steps.subject.outputs.sha }}
+      how: ${{ steps.subject.outputs.how }}
+    steps:
+      - name: This is the repository this workflow is for
+        env:
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -eu
+          if [ "$REPOSITORY" != "${EXPECTED_REPOSITORY}" ]; then
+            echo "::error::this workflow builds ${EXPECTED_REPOSITORY}; it was started in ${REPOSITORY}"
+            exit 1
+          fi
+
+      - name: The branch is ours, not a fork's
+        if: github.event_name == 'pull_request'
+        env:
+          HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+        run: |
+          set -eu
+          # A fork has no package-write token, so the old file's rationale was
+          # that the build would "fail confusingly". The real problem is earlier:
+          # a fork's branch must never reach a job that can read secrets, and the
+          # only place to stop it is before anything checks it out.
+          if [ "$HEAD_REPOSITORY" != "${EXPECTED_REPOSITORY}" ]; then
+            echo "::error::the head branch lives in ${HEAD_REPOSITORY}; a fork cannot authorise a candidate"
+            exit 1
+          fi
+
+      - name: The person who asked is authorised to
+        env:
+          ACTOR: ${{ github.actor }}
+          TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+          AUTHORISED: ${{ vars.CANDIDATE_AUTHORIZED_ACTORS }}
+        run: |
+          set -eu
+          # Comma- or whitespace-separated logins, in a repository variable so
+          # changing it is itself an audited act. Empty is a REFUSAL: a control
+          # whose unset state means "anyone" is not a control.
+          if [ -z "${AUTHORISED:-}" ]; then
+            echo "::error::CANDIDATE_AUTHORIZED_ACTORS is not set. Set it to the logins allowed to"
+            echo "::error::publish candidate images. Refusing rather than defaulting to everyone."
+            exit 1
+          fi
+          allowed=0
+          for login in $(printf '%s' "$AUTHORISED" | tr ',;' '  '); do
+            [ "$login" = "$ACTOR" ] && allowed=1
+          done
+          if [ "$allowed" != "1" ]; then
+            echo "::error::${ACTOR} is not in CANDIDATE_AUTHORIZED_ACTORS"
+            exit 1
+          fi
+          if [ -n "${TRIGGERING_ACTOR:-}" ] && [ "$TRIGGERING_ACTOR" != "$ACTOR" ]; then
+            echo "::error::the run was triggered by ${TRIGGERING_ACTOR} but attributed to ${ACTOR}"
+            exit 1
+          fi
+          echo "authorised by ${ACTOR}"
+
+      - name: Which commit this is, and how it was asked for
+        id: subject
+        env:
+          # `inputs.sha`, not this step's own output. It used to read
+          # `steps.subject.outputs.sha` — its OWN, not yet written — so a manual
+          # dispatch resolved the empty string and the run died at the next step
+          # complaining the SHA was not 40 characters. The `workflow_dispatch`
+          # trigger had never once worked.
+          DISPATCH_SHA: ${{ inputs.sha }}
+          PR_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -eu
+          # One place decides, so every later job reads the same value whichever
+          # trigger fired. A workflow that resolved the SHA twice would
+          # eventually build one commit and label it with another.
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            echo "sha=${DISPATCH_SHA}" >> "$GITHUB_OUTPUT"
+            echo "how=dispatch" >> "$GITHUB_OUTPUT"
+          else
+            echo "sha=${PR_SHA}" >> "$GITHUB_OUTPUT"
+            echo "how=pull_request_label" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: The approval names THIS commit
+        if: github.event_name == 'pull_request'
+        env:
+          LABEL: ${{ github.event.label.name }}
+          SHA: ${{ steps.subject.outputs.sha }}
+        run: |
+          set -eu
+          # The whole point of the change. `build-candidate` on its own outlives
+          # the commit it was applied to; `build-candidate-<sha12>` cannot.
+          EXPECTED="build-candidate-$(printf '%s' "$SHA" | cut -c1-12)"
+          if [ "$LABEL" != "$EXPECTED" ]; then
+            echo "::error::the label '${LABEL}' does not authorise ${SHA}."
+            echo "::error::Apply '${EXPECTED}' to approve this exact commit."
+            exit 1
+          fi
+
+      - name: Confirmation typed
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          if [ "$CONFIRM" != "candidate" ]; then
+            echo "::error::Confirmation not typed. This publishes images to the registry."
+            exit 1
+          fi
+
+      - name: The SHA is a full commit, not a prefix or a tag
+        env:
+          SHA: ${{ steps.subject.outputs.sha }}
+        run: |
+          # A 7-character prefix is ambiguous and a branch name is a moving
+          # target. Evidence has to name one commit and keep naming it.
+          if ! printf '%s' "$SHA" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "::error::sha must be a full 40-character commit SHA (got '$SHA')"
+            exit 1
+          fi
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # 2. THE CANDIDATE PROVES ITSELF, AGAINST THE STACK IT WILL RUN ON
+  # ═══════════════════════════════════════════════════════════════════════════
+  #
+  # `contents: read` and NO secrets. This job runs the pull request's own code,
+  # so the smallest useful token and nothing to exfiltrate is the whole design.
+  # The registry credential lives one job further down, behind an environment.
+  #
+  # ── WHY REAL INFRASTRUCTURE AND NOT `--ci` ON AN EMPTY MACHINE ─────────────
+  #
+  # Every PostgreSQL-, PgBouncer- and Valkey-backed suite here skips ITSELF when
+  # the variable naming its database is unset. The previous version of this file
+  # ran `npx jest --ci` with no database at all and called the result a green
+  # suite: the money engine, the durable outbox, the migrations and the pooling
+  # semantics every tenant primitive depends on were all skipped, and the run was
+  # green. `assert-no-skipped-tests.cjs` reads Jest's own report and refuses a
+  # run with a single pending test, so "it skipped" and "it passed" can no longer
+  # look the same.
+  verify:
+    name: The candidate proves itself
+    needs: authorize
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+
+    services:
+      # PostgreSQL 17 with pgvector — the same major version and the same
+      # extension the suites and the knowledge store need.
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: candidate_ci_only
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
+      # PgBouncer in TRANSACTION mode, in front of that PostgreSQL, exactly as
+      # production runs it. `default_pool_size=1` is what makes the pooling
+      # suite able to observe a server connection being handed around.
+      pgbouncer:
+        # Pinned by digest, not by a tag, and specifically by the digest of the
+        # PgBouncer 1.25.2 the local proof stack runs: a candidate proven against
+        # "whatever `latest` was that morning" is proven against something nobody
+        # can name afterwards. It is also the only image reference in this file
+        # that is not one of ours, which is exactly why it gets pinned hardest.
+        image: edoburu/pgbouncer@sha256:4c1ca296ef525f108f5d3552cc337c0c09587cf8dae7f0067fd93349e47dc1cd
+        env:
+          DB_HOST: postgres
+          DB_PORT: "5432"
+          DB_USER: postgres
+          DB_PASSWORD: candidate_ci_only
+          DB_NAME: parallly_eval_isolation
+          AUTH_TYPE: md5
+          POOL_MODE: transaction
+          ADMIN_USERS: postgres
+          MAX_CLIENT_CONN: "200"
+          DEFAULT_POOL_SIZE: "1"
+          IGNORE_STARTUP_PARAMETERS: extra_float_digits,options
+        ports:
+          - 6432:5432
+      # Valkey. The eviction policy is asserted below rather than trusted: a
+      # service container cannot carry a command line, and `allkeys-lru` silently
+      # dropping BullMQ jobs is a failure this repository has already had.
+      valkey:
+        image: valkey/valkey:8.1-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "valkey-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
+
+    env:
+      PGPASSWORD: candidate_ci_only
+      BASE_PG: postgresql://postgres:candidate_ci_only@127.0.0.1:5432
+      BASE_VALKEY: redis://127.0.0.1:6379
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The candidate's own tree, not the default branch. Without this the
+          # workflow would test whatever main happens to be, and label the
+          # result with the candidate's SHA — which is worse than not testing.
+          #
+          # On a pull request this is the HEAD commit of the branch, not the
+          # merge commit GitHub synthesises: the merge commit does not exist
+          # anywhere after the run, so evidence pinned to it could never be
+          # reproduced or audited.
+          ref: ${{ needs.authorize.outputs.sha }}
+          fetch-depth: 0
+
+      - name: The checkout really is that commit
+        env:
+          SHA: ${{ needs.authorize.outputs.sha }}
+        run: |
+          ACTUAL="$(git rev-parse HEAD)"
+          if [ "$ACTUAL" != "$SHA" ]; then
+            echo "::error::checkout resolved to $ACTUAL, not $SHA"
+            exit 1
+          fi
+
+      # ── The stack is the stack it claims to be ────────────────────────────
+      #
+      # Three properties, each asserted rather than configured-and-hoped:
+      # PostgreSQL is 17, PgBouncer pools per TRANSACTION, and Valkey evicts
+      # NOTHING. A suite that ran against session pooling, or against a Valkey
+      # that drops keys under memory pressure, proves the opposite of what the
+      # summary says it proved.
+      - name: PostgreSQL 17, PgBouncer transaction mode, Valkey noeviction
+        run: |
+          set -eu
+          sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client redis-tools
+
+          SERVER_VERSION="$(psql "${BASE_PG}/postgres" -Atc 'SHOW server_version')"
+          echo "postgres: ${SERVER_VERSION}"
+          case "$SERVER_VERSION" in
+            17.*) ;;
+            *) echo "::error::the candidate must be proven on PostgreSQL 17, not ${SERVER_VERSION}"; exit 1 ;;
+          esac
+
+          # The bases every suite's variable names. The per-worker copies are made
+          # by jest.global-setup.ts; these are the ones it copies FROM and the one
+          # PgBouncer is pointed at.
+          for db in parallly_eval_isolation parallly_knowledge_eval_isolation parallly_migration_eval_isolation; do
+            psql "${BASE_PG}/postgres" -v ON_ERROR_STOP=1 -c "CREATE DATABASE \"${db}\" TEMPLATE template0"
+            psql "${BASE_PG}/${db}" -v ON_ERROR_STOP=1 \
+              -c 'CREATE EXTENSION IF NOT EXISTS "uuid-ossp"' \
+              -c 'CREATE EXTENSION IF NOT EXISTS vector'
+          done
+
+          POOL_MODE="$(psql "postgresql://postgres:candidate_ci_only@127.0.0.1:6432/pgbouncer" \
+            -Atc 'SHOW CONFIG' | awk -F'|' '$1=="pool_mode"{print $2}')"
+          echo "pgbouncer pool_mode: ${POOL_MODE:-<unreadable>}"
+          if [ "${POOL_MODE:-}" != "transaction" ]; then
+            echo "::error::PgBouncer is not in transaction mode (got '${POOL_MODE:-nothing}')"
+            exit 1
+          fi
+
+          # A service container carries no command line, so the policy is set and
+          # then read back. Reading it back is the part that matters: it proves
+          # the server is running with it, which a compose flag nobody queries
+          # does not.
+          redis-cli -u "${BASE_VALKEY}" CONFIG SET maxmemory-policy noeviction > /dev/null
+          POLICY="$(redis-cli -u "${BASE_VALKEY}" CONFIG GET maxmemory-policy | tail -1)"
+          echo "valkey maxmemory-policy: ${POLICY}"
+          if [ "$POLICY" != "noeviction" ]; then
+            echo "::error::Valkey would evict keys (${POLICY}); BullMQ jobs would disappear silently"
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - name: Generate Prisma client
+        env:
+          DATABASE_URL: postgresql://postgres:candidate_ci_only@127.0.0.1:5432/parallly_eval_isolation
+          DIRECT_DATABASE_URL: postgresql://postgres:candidate_ci_only@127.0.0.1:5432/parallly_eval_isolation
+        run: npx prisma generate --schema=apps/api/prisma/schema.prisma
+
+      # The same gate the production build depends on, run here so a candidate
+      # cannot be built out of a tree that would not have been allowed to merge.
+      # Five projects: the shared package plus the four applications whose source
+      # ends up in the five images (the worker is built from the API tree).
+      - name: Typecheck the five
+        run: |
+          npx tsc -p packages/shared/tsconfig.json --noEmit --pretty false
+          npx tsc -p apps/api/tsconfig.json --noEmit --pretty false
+          npx tsc -p apps/dashboard/tsconfig.json --noEmit --pretty false
+          npx tsc -p apps/whatsapp/tsconfig.json --noEmit --pretty false
+          npx tsc -p apps/landing/tsconfig.json --noEmit --pretty false
+      - name: Lint contracts
+        run: |
+          (cd apps/api && npx eslint "src/**/*.ts" --quiet)
+          (cd apps/dashboard && npx eslint . --quiet)
+          (cd apps/whatsapp && npx eslint "src/**/*.ts" --quiet)
+      # ── Generated artefacts must still reflect the code ───────────────────
+      #
+      # Every one of these is checked in AND produced by a script, and the only
+      # thing keeping the two equal is somebody remembering to run the
+      # generator. That already failed once: the closure artefacts each
+      # described a revision one or two commits behind the one they claimed,
+      # and nothing noticed. A rate table that drifts from its sources is the
+      # same failure with money attached — it prices a delivery Meta bills at
+      # a number nobody authorised.
+      #
+      # `--check` regenerates in memory and compares; it writes nothing.
+      - name: Generated artefacts match their sources
+        run: |
+          node apps/api/scripts/generate-whatsapp-rates.cjs --check
+          node docs/audits/2026-09-09/verify-artifacts.cjs
+          node apps/api/scripts/outbound-producer-inventory.cjs --check
+          # The canary's figures, in the prose that quotes them. This one had
+          # never run anywhere: a repository-wide search for its name found only
+          # the file itself, so the documents naming a spending ceiling were
+          # checked by nobody — and that is the one number in this repository
+          # that gets used to ask for an authorisation to spend real money.
+          node apps/api/scripts/check-canary-figures.cjs --check
+
+      # ── The API suite, on this SHA, with nothing skipped ──────────────────
+      #
+      # Every variable below is one suite that would otherwise gate itself off.
+      # The names end in `_eval_isolation` because the specs refuse anything
+      # else — a guard that exists so a mistyped variable cannot reach a shared
+      # or production instance.
+      - name: API suite against the real stack
+        env:
+          PARALLLY_ISOLATION_TEST_URL: postgresql://postgres:candidate_ci_only@127.0.0.1:5432/parallly_eval_isolation
+          AGENT_RELEASE_TEST_DATABASE_URL: postgresql://postgres:candidate_ci_only@127.0.0.1:5432/parallly_eval_isolation
+          AGENT_REVISION_TEST_DATABASE_URL: postgresql://postgres:candidate_ci_only@127.0.0.1:5432/parallly_eval_isolation
+          CATALOG_ORDERS_TEST_DATABASE_URL: postgresql://postgres:candidate_ci_only@127.0.0.1:5432/parallly_eval_isolation
+          REPAIR_ORDERS_TEST_DATABASE_URL: postgresql://postgres:candidate_ci_only@127.0.0.1:5432/parallly_eval_isolation
+          OPERATIONAL_NOTICE_REVIEW_TEST_DATABASE_URL: postgresql://postgres:candidate_ci_only@127.0.0.1:5432/parallly_eval_isolation
+          DATABASE_URL: postgresql://postgres:candidate_ci_only@127.0.0.1:5432/parallly_eval_isolation
+          PARALLLY_MIGRATION_TEST_URL: postgresql://postgres:candidate_ci_only@127.0.0.1:5432/parallly_migration_eval_isolation
+          KNOWLEDGE_MEMORY_TEST_DATABASE_URL: postgresql://postgres:candidate_ci_only@127.0.0.1:5432/parallly_knowledge_eval_isolation
+          KNOWLEDGE_TEST_DATABASE_URL: postgresql://postgres:candidate_ci_only@127.0.0.1:5432/parallly_knowledge_eval_isolation
+          KNOWLEDGE_CONFLICT_TEST_DATABASE_URL: postgresql://postgres:candidate_ci_only@127.0.0.1:5432/parallly_knowledge_eval_isolation
+          LEARNING_EVIDENCE_TEST_DATABASE_URL: postgresql://postgres:candidate_ci_only@127.0.0.1:5432/parallly_knowledge_eval_isolation
+          PARALLLY_PGBOUNCER_TEST_URL: postgresql://postgres:candidate_ci_only@127.0.0.1:6432/parallly_eval_isolation?pgbouncer=true
+          PARALLLY_PGBOUNCER_DIRECT_URL: postgresql://postgres:candidate_ci_only@127.0.0.1:5432/parallly_eval_isolation
+          DISPATCH_QUEUE_TEST_REDIS_URL: redis://127.0.0.1:6379
+          PARALLLY_SAMPLING_REDIS_URL: redis://127.0.0.1:6379
+          RUN_PIPELINE_OWNERSHIP_PG_TESTS: '1'
+          JWT_SECRET: candidate-ci-only
+          JWT_REFRESH_SECRET: candidate-ci-only-refresh
+          INTERNAL_JWT_SECRET: candidate-ci-only-internal
+          NODE_OPTIONS: --max-old-space-size=6144
+        run: |
+          set -o pipefail
+          # `|| true` on purpose: the exit code is not the check. The report is,
+          # and a run that failed AND skipped should say both.
+          npx jest --config apps/api/jest.config.js --ci --maxWorkers=2 \
+            --json --outputFile "${GITHUB_WORKSPACE}/api-jest.json" || true
+          node infra/scripts/assert-no-skipped-tests.cjs \
+            --report "${GITHUB_WORKSPACE}/api-jest.json" --label "API suite"
+
+      - name: NestJS dependency injection really resolves
+        env:
+          JWT_SECRET: candidate-ci-only
+          JWT_REFRESH_SECRET: candidate-ci-only-refresh
+          INTERNAL_JWT_SECRET: candidate-ci-only-internal
+        # `tsc` cannot see a missing provider; this is the only thing that can.
+        # Judged by its own report for the same reason as the other two: it is a
+        # Jest run, so "no bootstrap spec matched the pattern" would otherwise
+        # exit 0 and read as "the dependency graph resolves".
+        run: |
+          set -o pipefail
+          npm run test:bootstrap --workspace=@parallext/api -- --ci \
+            --json --outputFile "${GITHUB_WORKSPACE}/bootstrap-jest.json" || true
+          node infra/scripts/assert-no-skipped-tests.cjs \
+            --report "${GITHUB_WORKSPACE}/bootstrap-jest.json" --label "DI bootstrap"
+
+      - name: Dashboard suite
+        run: |
+          set -o pipefail
+          npm run test --workspace=@parallext/dashboard -- --ci \
+            --json --outputFile "${GITHUB_WORKSPACE}/dashboard-jest.json" || true
+          node infra/scripts/assert-no-skipped-tests.cjs \
+            --report "${GITHUB_WORKSPACE}/dashboard-jest.json" --label "Dashboard suite"
+
+      # ── The five builds ───────────────────────────────────────────────────
+      #
+      # `tsc --noEmit` is not a build. These produce the artefacts the images
+      # copy, and a failure here is cheap; the same failure inside the Docker
+      # build is discovered after other images have already been pushed.
+      - name: Build the five
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'
+          # Build-time only, and deliberately not the real values: this job has
+          # no secrets. The bundle the product ships is built in `publish`, from
+          # the values the manifest then records the provenance of.
+          NEXT_PUBLIC_API_URL: http://127.0.0.1:3999/api/v1
+        run: |
+          npm run build --workspace=@parallext/shared
+          npm run build --workspace=@parallext/api
+          npm run build --workspace=@parallext/whatsapp
+          npm run build --workspace=@parallext/dashboard
+          npm run build --workspace=landing
+
+      # ── The browser journeys ──────────────────────────────────────────────
+      #
+      # Playwright starts the landing and dashboard servers itself and resolves
+      # every hostname but loopback to NOTFOUND, so this cannot reach production
+      # or a third party. Desktop and mobile projects both run.
+      - name: Install the browser and its dependencies
+        run: |
+          npm ci --prefix apps/e2e
+          npm exec --prefix apps/e2e -- playwright install --with-deps chromium
+      - name: Browser journeys, desktop and mobile
+        env:
+          CI: 'true'
+        run: npm run test:e2e
+      - name: Browser evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: candidate-browser-${{ needs.authorize.outputs.sha }}-${{ github.run_id }}
+          path: |
+            apps/e2e/playwright-report/
+            apps/e2e/test-results/
+          if-no-files-found: ignore
+          retention-days: 30
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # 3. PUBLISH — ONLY AFTER A GREEN RUN, AND ONLY BEHIND THE ENVIRONMENT
+  # ═══════════════════════════════════════════════════════════════════════════
+  #
+  # `environment:` is the protected gate. Its reviewers, its branch restrictions
+  # and its scoped secrets are configured in repository settings, which means the
+  # approval to write to the registry is recorded outside this file and cannot be
+  # granted by editing it.
+  #
+  # `needs` already implies "only if verify succeeded"; the `if` says it out loud
+  # so the invariant is visible in the file and assertable by a contract test.
+  # `upload-artifact` used to carry `if: always()`, which published a consumable
+  # manifest out of a RED run — the exact artefact a cut-over pins.
+  publish:
+    name: Publish the candidate, by digest
+    needs: [authorize, verify]
+    if: needs.verify.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: candidate-images
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.authorize.outputs.sha }}
+          fetch-depth: 0
+      - name: The checkout really is that commit
+        env:
+          SHA: ${{ needs.authorize.outputs.sha }}
+        run: |
+          ACTUAL="$(git rev-parse HEAD)"
+          if [ "$ACTUAL" != "$SHA" ]; then
+            echo "::error::checkout resolved to $ACTUAL, not $SHA"
+            exit 1
+          fi
+
+      # ── The dashboard's build-time inputs, all of them, checked first ─────
+      #
+      # `NEXT_PUBLIC_*` is baked into the bundle at BUILD time. A missing one
+      # does not fail the build: it bakes an empty string, and the page ships
+      # with Embedded Signup that cannot open, a Google button that cannot sign
+      # in, push that cannot subscribe and a version field that says nothing.
+      # The candidate would then be validated as a product nobody is shipping.
+      #
+      # Production bakes eleven of these. Ten are required for our direct Tech
+      # Provider path; META_SOLUTION_ID is deliberately optional and stays
+      # empty unless an accepted multi-partner solution exists in Meta.
+      - name: Every public build input is present
+        id: publicenv
+        env:
+          NEXT_PUBLIC_API_URL: ${{ vars.CANDIDATE_PUBLIC_API_URL }}
+          NEXT_PUBLIC_WA_SERVICE_URL: ${{ vars.CANDIDATE_PUBLIC_WA_URL }}
+          NEXT_PUBLIC_META_APP_ID: ${{ secrets.META_APP_ID }}
+          NEXT_PUBLIC_META_CONFIG_ID: ${{ secrets.META_CONFIG_ID }}
+          NEXT_PUBLIC_META_SOLUTION_ID: ${{ secrets.META_SOLUTION_ID }}
+          NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+          NEXT_PUBLIC_MESSENGER_FB_LOGIN_CONFIG_ID: ${{ secrets.MESSENGER_FB_LOGIN_CONFIG_ID }}
+          NEXT_PUBLIC_VAPID_PUBLIC_KEY: ${{ secrets.VAPID_PUBLIC_KEY }}
+          # Constants rather than secrets, and checked anyway: this step exists
+          # to prove the bundle is COMPLETE, and a constant somebody deletes
+          # bakes the same empty string as a secret somebody forgets.
+          NEXT_PUBLIC_INSTAGRAM_APP_ID: '1472258884595741'
+          NEXT_PUBLIC_INSTAGRAM_REDIRECT_URI: https://admin.parallly-chat.cloud/admin/channels/instagram/callback
+          SHA: ${{ needs.authorize.outputs.sha }}
+        run: |
+          set -eu
+          missing=""
+          for name in NEXT_PUBLIC_API_URL NEXT_PUBLIC_WA_SERVICE_URL \
+                      NEXT_PUBLIC_META_APP_ID NEXT_PUBLIC_META_CONFIG_ID \
+                      NEXT_PUBLIC_GOOGLE_CLIENT_ID \
+                      NEXT_PUBLIC_MESSENGER_FB_LOGIN_CONFIG_ID NEXT_PUBLIC_VAPID_PUBLIC_KEY \
+                      NEXT_PUBLIC_INSTAGRAM_APP_ID NEXT_PUBLIC_INSTAGRAM_REDIRECT_URI; do
+            eval "value=\${${name}:-}"
+            [ -n "$value" ] || missing="${missing} ${name}"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::the candidate dashboard would be built without:${missing}."
+            echo "::error::Set them as repository variables or secrets before building a candidate."
+            exit 1
+          fi
+          # The version string the page shows, derived from the commit it IS.
+          echo "version=candidate-$(printf '%s' "$SHA" | cut -c1-12)" >> "$GITHUB_OUTPUT"
+
+          # ── Provenance without leaking ───────────────────────────────────
+          #
+          # The two URLs are not secret and go into the manifest verbatim: the
+          # single most useful question about a candidate dashboard is which API
+          # it reads from, and a digest cannot answer it. Everything else is an
+          # app id or a key. The optional solution id is also hashed when empty,
+          # so the manifest proves the direct-provider build did not silently
+          # acquire a partner. The manifest carries a SHA-256 of each — enough
+          # to prove that what was verified and what is approved were built from
+          # the same values, and not enough to be one of them.
+          {
+            echo "publicUrls<<JSON"
+            printf '{"NEXT_PUBLIC_API_URL":"%s","NEXT_PUBLIC_WA_SERVICE_URL":"%s"}\n' \
+              "$NEXT_PUBLIC_API_URL" "$NEXT_PUBLIC_WA_SERVICE_URL"
+            echo "JSON"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo "publicDigests<<JSON"
+            printf '{'
+            first=1
+            for name in NEXT_PUBLIC_META_APP_ID NEXT_PUBLIC_META_CONFIG_ID \
+                        NEXT_PUBLIC_META_SOLUTION_ID NEXT_PUBLIC_GOOGLE_CLIENT_ID \
+                        NEXT_PUBLIC_MESSENGER_FB_LOGIN_CONFIG_ID NEXT_PUBLIC_VAPID_PUBLIC_KEY \
+                        NEXT_PUBLIC_INSTAGRAM_APP_ID NEXT_PUBLIC_INSTAGRAM_REDIRECT_URI; do
+              eval "value=\${${name}}"
+              digest="$(printf '%s' "$value" | sha256sum | cut -c1-16)"
+              [ $first -eq 1 ] || printf ','
+              printf '"%s":"%s"' "$name" "$digest"
+              first=0
+            done
+            printf '}\n'
+            echo "JSON"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - run: mkdir -p artifacts
+
+      # ── The five images. `candidate-<sha>` and nothing else. ───────────────
+      #
+      # Never `latest`: `docker-compose.prod.yml` falls back to it, so a
+      # candidate tagged `latest` becomes what a manual `up` on the VPS starts.
+      - name: API
+        id: api
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: infra/docker/Dockerfile.api
+          push: true
+          tags: ${{ env.API_IMAGE }}:candidate-${{ needs.authorize.outputs.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Worker
+        id: worker
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: infra/docker/Dockerfile.worker
+          push: true
+          tags: ${{ env.WORKER_IMAGE }}:candidate-${{ needs.authorize.outputs.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Dashboard
+        id: dashboard
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: infra/docker/Dockerfile.dashboard
+          push: true
+          tags: ${{ env.DASHBOARD_IMAGE }}:candidate-${{ needs.authorize.outputs.sha }}
+          # The dashboard bakes `NEXT_PUBLIC_*` into its bundle at build time, so
+          # the API it talks to is decided HERE and cannot be changed by a `.env`
+          # on the host afterwards. This candidate is built for the operational
+          # environment, which is the one it will be verified on; anything else
+          # would produce a page that reads from somewhere the evidence does not
+          # describe.
+          build-args: |
+            NEXT_PUBLIC_API_URL=${{ vars.CANDIDATE_PUBLIC_API_URL }}
+            NEXT_PUBLIC_WA_SERVICE_URL=${{ vars.CANDIDATE_PUBLIC_WA_URL }}
+            NEXT_PUBLIC_META_APP_ID=${{ secrets.META_APP_ID }}
+            NEXT_PUBLIC_META_CONFIG_ID=${{ secrets.META_CONFIG_ID }}
+            NEXT_PUBLIC_META_SOLUTION_ID=${{ secrets.META_SOLUTION_ID }}
+            NEXT_PUBLIC_GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+            NEXT_PUBLIC_MESSENGER_FB_LOGIN_CONFIG_ID=${{ secrets.MESSENGER_FB_LOGIN_CONFIG_ID }}
+            NEXT_PUBLIC_INSTAGRAM_APP_ID=1472258884595741
+            NEXT_PUBLIC_INSTAGRAM_REDIRECT_URI=https://admin.parallly-chat.cloud/admin/channels/instagram/callback
+            NEXT_PUBLIC_APP_VERSION=${{ steps.publicenv.outputs.version }}
+            NEXT_PUBLIC_VAPID_PUBLIC_KEY=${{ secrets.VAPID_PUBLIC_KEY }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: WhatsApp
+        id: whatsapp
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: infra/docker/Dockerfile.whatsapp
+          push: true
+          tags: ${{ env.WHATSAPP_IMAGE }}:candidate-${{ needs.authorize.outputs.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Landing
+        id: landing
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: infra/docker/Dockerfile.landing
+          push: true
+          tags: ${{ env.LANDING_IMAGE }}:candidate-${{ needs.authorize.outputs.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # ── What the candidate IS. Digests, a commit, and a green run. ─────────
+      #
+      # Version 3 adds `verification`, because a manifest that named five digests
+      # and nothing about the run that produced them could be written by a red
+      # run and read by a cut-over as approval. The consumer refuses a manifest
+      # whose verification did not conclude `success`.
+      - name: Publish the digest manifest
+        env:
+          SHA: ${{ needs.authorize.outputs.sha }}
+          HOW: ${{ needs.authorize.outputs.how }}
+          VERIFY_RESULT: ${{ needs.verify.result }}
+          PUBLIC_URLS: ${{ steps.publicenv.outputs.publicUrls }}
+          PUBLIC_DIGESTS: ${{ steps.publicenv.outputs.publicDigests }}
+          API_DIGEST: ${{ steps.api.outputs.digest }}
+          WORKER_DIGEST: ${{ steps.worker.outputs.digest }}
+          DASHBOARD_DIGEST: ${{ steps.dashboard.outputs.digest }}
+          WHATSAPP_DIGEST: ${{ steps.whatsapp.outputs.digest }}
+          LANDING_DIGEST: ${{ steps.landing.outputs.digest }}
+        run: |
+          set -eu
+          # A tag shaped like a SHA is still mutable. The digest is the identity
+          # every later step pins, so that "the candidate we tested" and "the
+          # candidate we approved" are provably the same bytes.
+          for name in API WORKER DASHBOARD WHATSAPP LANDING; do
+            eval "value=\${${name}_DIGEST}"
+            if [ -z "$value" ]; then
+              echo "::error::no digest for ${name}; the manifest would name a tag it cannot pin"
+              exit 1
+            fi
+          done
+          if [ "${VERIFY_RESULT}" != "success" ]; then
+            echo "::error::verification concluded '${VERIFY_RESULT}'; refusing to write a manifest a cut-over would read as approval"
+            exit 1
+          fi
+          cat > artifacts/candidate-manifest.json <<EOF
+          {
+            "version": 3,
+            "sha": "${SHA}",
+            "builtAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "runId": "${GITHUB_RUN_ID}",
+            "triggeredBy": "${HOW}",
+            "verification": {
+              "workflow": "candidate",
+              "runId": "${GITHUB_RUN_ID}",
+              "runAttempt": "${GITHUB_RUN_ATTEMPT}",
+              "repository": "${GITHUB_REPOSITORY}",
+              "conclusion": "${VERIFY_RESULT}"
+            },
+            "dashboardBuildInputs": {
+              "urls": ${PUBLIC_URLS},
+              "digests": ${PUBLIC_DIGESTS}
+            },
+            "images": {
+              "api":       { "tag": "${API_IMAGE}:candidate-${SHA}",       "digest": "${API_DIGEST}" },
+              "worker":    { "tag": "${WORKER_IMAGE}:candidate-${SHA}",    "digest": "${WORKER_DIGEST}" },
+              "dashboard": { "tag": "${DASHBOARD_IMAGE}:candidate-${SHA}", "digest": "${DASHBOARD_DIGEST}" },
+              "whatsapp":  { "tag": "${WHATSAPP_IMAGE}:candidate-${SHA}",  "digest": "${WHATSAPP_DIGEST}" },
+              "landing":   { "tag": "${LANDING_IMAGE}:candidate-${SHA}",   "digest": "${LANDING_DIGEST}" }
+            }
+          }
+          EOF
+          cat artifacts/candidate-manifest.json
+
+      # ── The manifest has to be CONSUMABLE, not merely produced ────────────
+      #
+      # "Pinned by digest" was a claim until something read the file and turned
+      # it into the thing a host actually runs. This is that something, run here
+      # so a manifest that cannot produce a valid override never leaves the job.
+      - name: The manifest produces a compose override that pins every digest
+        run: |
+          node infra/scripts/apply-candidate-manifest.cjs \
+            --manifest artifacts/candidate-manifest.json \
+            --out artifacts/docker-compose.candidate.yml
+          cat artifacts/docker-compose.candidate.yml
+
+      # `if: success()`, never `always()`. An artefact published out of a red run
+      # is a consumable manifest for a candidate nothing vouched for, and the
+      # cut-over's first step is to download exactly this.
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: candidate-${{ needs.authorize.outputs.sha }}-${{ github.run_id }}
+          path: |
+            artifacts/candidate-manifest.json
+            artifacts/docker-compose.candidate.yml
+          if-no-files-found: error
+          retention-days: 90

@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "../LocalizedLink";
 import { motion } from "motion/react";
 import { useTranslations } from "next-intl";
 import { ANDROID_EARLY_ACCESS_URL } from "../../lib/constants";

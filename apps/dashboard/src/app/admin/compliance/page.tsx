@@ -2,6 +2,7 @@
 
 import { PageHeader } from "@/components/ui/page-header";
 import { HelpPanel } from "@/components/ui/help-panel";
+import { LoadFailureNotice } from "@/components/ui/load-failure";
 import { useState, useEffect, useCallback } from "react";
 import { useTranslations } from "next-intl";
 import { useTenant } from "@/contexts/TenantContext";
@@ -33,6 +34,8 @@ export default function CompliancePage() {
   const [optOuts, setOptOuts] = useState<any[]>([]);
   const [deletions, setDeletions] = useState<any[]>([]);
   const [auditLog, setAuditLog] = useState<any[]>([]);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [auditFailed, setAuditFailed] = useState(false);
   const [showModal, setShowModal] = useState<"create-legal" | "edit-legal" | "optout" | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [editingLegal, setEditingLegal] = useState<any | null>(null);
@@ -54,6 +57,10 @@ export default function CompliancePage() {
 
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 2500); };
 
+  // The five lists share one `Promise.all`, so one rejection used to blank all
+  // of them at once. "No hay bajas de consentimiento" then reads as permission
+  // to message someone who withdrew it — the one screen where an empty state
+  // invented by a network error has a legal cost.
   const loadAll = useCallback(async () => {
     if (!activeTenantId) return;
     try {
@@ -71,15 +78,25 @@ export default function CompliancePage() {
       if (Array.isArray(dr)) setDeletions(dr);
       if (stats?.success) setOptOutStats(stats.data);
       if (Array.isArray(ag)) setAgents(ag);
-    } catch (err) { console.error(err); }
+      setLoadFailed(false);
+    } catch (err) {
+      console.error(err);
+      setLegalTexts([]); setConsents([]); setOptOuts([]); setDeletions([]); setOptOutStats(null);
+      setLoadFailed(true);
+    }
   }, [activeTenantId]);
 
   const loadAuditLog = useCallback(async () => {
     if (!activeTenantId) return;
     try {
       const data = await api.getComplianceAuditLog(activeTenantId);
-      if (Array.isArray(data)) setAuditLog(data);
-    } catch { }
+      if (!Array.isArray(data)) throw new Error("compliance_audit_unavailable");
+      setAuditLog(data);
+      setAuditFailed(false);
+    } catch {
+      setAuditLog([]);
+      setAuditFailed(true);
+    }
   }, [activeTenantId]);
 
   useEffect(() => { loadAll(); }, [loadAll]);
@@ -187,6 +204,16 @@ export default function CompliancePage() {
     } catch (err) { console.error(err); }
   };
 
+  const handleRevokeConsent = async (id: string) => {
+    if (!activeTenantId) return;
+    try {
+      const response = await api.revokeConsent(activeTenantId, id);
+      const revokedAt = response?.data?.revoked_at || new Date().toISOString();
+      setConsents(prev => prev.map(item => item.id === id ? { ...item, revoked_at: revokedAt } : item));
+      showToast(t("toast.consentRevoked"));
+    } catch (err) { console.error(err); }
+  };
+
   // ─── Helpers ───────────────────────────────────────────────────────────
 
   const getTypeColor = (type: string) => {
@@ -250,6 +277,13 @@ export default function CompliancePage() {
           tips={tHelp.raw("compliance.tips") as string[]}
           mediaKey="compliance"
         />
+
+        {(tab === "audit" ? auditFailed : loadFailed) && (
+          <LoadFailureNotice
+            className="mb-5"
+            onRetry={() => { void (tab === "audit" ? loadAuditLog() : loadAll()); }}
+          />
+        )}
 
         {/* Info banner */}
         <div className="mb-5 px-4 py-3 rounded-xl bg-blue-500/5 border border-blue-500/20 flex items-start gap-3">
@@ -453,19 +487,36 @@ export default function CompliancePage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-border text-left">
-                      <th className="px-4 py-3 font-medium text-muted-foreground text-xs">Lead</th>
+                      <th className="px-4 py-3 font-medium text-muted-foreground text-xs">{t("subject")}</th>
                       <th className="px-4 py-3 font-medium text-muted-foreground text-xs">{t("channel")}</th>
+                      <th className="px-4 py-3 font-medium text-muted-foreground text-xs">{t("scope")}</th>
                       <th className="px-4 py-3 font-medium text-muted-foreground text-xs">{t("version")}</th>
                       <th className="px-4 py-3 font-medium text-muted-foreground text-xs">{t("consentDate")}</th>
+                      <th className="px-4 py-3 font-medium text-muted-foreground text-xs">{t("status")}</th>
+                      <th className="px-4 py-3 font-medium text-muted-foreground text-xs"></th>
                     </tr>
                   </thead>
                   <tbody>
                     {consents.map(c => (
                       <tr key={c.id} className="border-b border-border last:border-0 hover:bg-neutral-50 dark:hover:bg-neutral-800/50">
-                        <td className="px-4 py-3 text-foreground font-medium">{c.lead_id?.substring(0, 8)}...</td>
+                        <td className="px-4 py-3 text-foreground font-medium">{(c.contact_id || c.lead_id || "").substring(0, 8) || tc("noData")}</td>
                         <td className="px-4 py-3"><span className="text-[11px] px-2 py-0.5 rounded-md bg-blue-500/10 text-blue-500">{c.channel}</span></td>
+                        <td className="px-4 py-3 text-muted-foreground text-xs">{c.consent_scope || tc("noData")}</td>
                         <td className="px-4 py-3 text-muted-foreground">v{c.legal_text_version || c.legal_version}</td>
-                        <td className="px-4 py-3 text-muted-foreground text-xs">{new Date(c.granted_at).toLocaleString()}</td>
+                        <td className="px-4 py-3 text-muted-foreground text-xs">{new Date(c.created_at).toLocaleString()}</td>
+                        <td className="px-4 py-3">
+                          <span className={cn("text-[11px] px-2 py-0.5 rounded-md",
+                            c.revoked_at ? "bg-red-500/10 text-red-500" : "bg-emerald-500/10 text-emerald-600")}
+                          >{c.revoked_at ? t("revoked") : t("activeConsent")}</span>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          {!c.revoked_at && c.consent_scope?.startsWith("media.") && (
+                            <button onClick={() => void handleRevokeConsent(c.id)}
+                              className="px-2.5 py-1 rounded-md border border-red-500/30 bg-transparent text-red-500 text-xs cursor-pointer hover:bg-red-500/10">
+                              {t("revoke")}
+                            </button>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>

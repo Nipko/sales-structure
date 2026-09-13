@@ -1,3 +1,4 @@
+import { WidgetDeliveryModule } from '../widget/widget-delivery.module';
 import { Module, forwardRef } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
@@ -17,15 +18,19 @@ import { AIModule } from '../ai/ai.module';
 import { CopilotModule } from '../copilot/copilot.module';
 import { OffboardingModule } from '../offboarding/offboarding.module';
 import { AnalyticsModule } from '../analytics/analytics.module';
+import { WhatsappSpendModule } from '../billing/whatsapp-spend/whatsapp-spend.module';
 
 @Module({
     imports: [
+        WidgetDeliveryModule,
         forwardRef(() => ChannelsModule),
         forwardRef(() => WhatsappModule),
         AIModule,
         CopilotModule,
         OffboardingModule,
         AnalyticsModule,
+        // A human agent's reply is a chargeable WhatsApp send like any other.
+        WhatsappSpendModule,
         BullModule.registerQueue({ name: SNOOZE_QUEUE }),
         JwtModule.registerAsync({
             imports: [ConfigModule],

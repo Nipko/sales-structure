@@ -1,12 +1,17 @@
-import { Injectable, Logger, BadRequestException, Inject, forwardRef } from '@nestjs/common';
+import { whatsAppSenderIdentity } from '@parallext/shared';
+import { Injectable, Logger, BadRequestException, Inject, Optional, forwardRef } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { InboundQueueService } from '../../inbound/inbound-queue.service';
-import { ComplianceService } from '../../analytics/compliance.service';
+import { InboundNotDurableError } from '../../inbound/inbound-queue.constants';
 import { WhatsappConnectionService } from './whatsapp-connection.service';
+import { WhatsappTemplateService } from './whatsapp-template.service';
 import { WhatsAppAdapter } from '../../channels/whatsapp/whatsapp.adapter';
 import { RedisService } from '../../redis/redis.service';
 import * as crypto from 'crypto';
+import { parseMetaDeliveryStatuses, recordChannelDeliveryStatuses }
+    from '../../channels/channel-delivery-status';
+import { WhatsappSpendService } from '../../billing/whatsapp-spend/whatsapp-spend.service';
 
 @Injectable()
 export class WhatsappWebhookService {
@@ -23,10 +28,24 @@ export class WhatsappWebhookService {
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
     private readonly inboundQueue: InboundQueueService,
-    private readonly complianceService: ComplianceService,
     private readonly whatsappConnection: WhatsappConnectionService,
     private readonly whatsappAdapter: WhatsAppAdapter,
     private readonly redis: RedisService,
+    // forwardRef because the template service resolves connections and this
+    // file is reached from the same module graph. What it buys is one writer
+    // for template status instead of two copies of the same UPDATE.
+    @Inject(forwardRef(() => WhatsappTemplateService))
+    private readonly templateService: WhatsappTemplateService,
+    // Where a receipt settles or releases the money it belongs to, AND — since
+    // the rule moved there — pauses the number when Meta says the business
+    // cannot be billed. The POST could only ever say "Meta accepted it"; the
+    // charge lands on DELIVERY, so without this every reservation stays
+    // counted for ever and every ceiling fills with messages that arrived
+    // hours ago.
+    //
+    // Not optional: an ingress that receives Meta's receipts and cannot reach
+    // the ledger is the configuration where the money never resolves.
+    private readonly spendLedger: WhatsappSpendService,
   ) {}
 
   /**
@@ -110,7 +129,14 @@ export class WhatsappWebhookService {
               const phoneNumberId = value?.metadata?.phone_number_id;
 
               if (phoneNumberId) {
-                 await this.processMessageEvent(phoneNumberId, value);
+                 // `entry.id` IS the WABA id. It is not inside `value.metadata`
+                 // — Meta puts `display_phone_number` and `phone_number_id`
+                 // there and nothing else — so a business-scoped identifier read
+                 // downstream had been falling back to scoping on the NUMBER.
+                 // A scoped id belongs to the PORTFOLIO, so that split one
+                 // person into a different contact per number of the same
+                 // business.
+                 await this.processMessageEvent(phoneNumberId, value, wabaId ?? null);
                  handled = true;
               }
             } else if (change?.field === 'message_template_status_update' && wabaId) {
@@ -118,6 +144,12 @@ export class WhatsappWebhookService {
               handled = true;
             }
           } catch (err: any) {
+            // A customer message that never reached the queue is the ONE failure
+            // allowed out of here. The controller turns it into a 500 and Meta
+            // redelivers, which is the whole point of enqueuing before we
+            // acknowledge. Everything else stays swallowed on purpose: a body we
+            // can never process would otherwise come back forever.
+            if (err instanceof InboundNotDurableError) throw err;
             this.logger.error(`Webhook change processing failed (field=${change?.field}): ${err.message}`, err.stack);
             handled = true;
           }
@@ -151,19 +183,12 @@ export class WhatsappWebhookService {
         reason: value?.reason ? String(value.reason) : undefined,
       };
 
-      await this.prisma.executeInTenantSchema(
-        tenantInfo.schemaName,
-        `UPDATE whatsapp_templates
-            SET approval_status = $1,
-                rejected_reason = $2,
-                last_sync_at = NOW(),
-                updated_at = NOW()
-          WHERE meta_template_id = $3
-             OR (name = $4 AND language = $5)`,
-        [event.event, event.reason && event.reason !== 'NONE' ? event.reason : null,
-         event.message_template_id, event.message_template_name, event.message_template_language],
-      );
-      this.logger.log(`Template status applied: ${event.message_template_name} (${event.message_template_language}) → ${event.event}`);
+      // Delegated instead of duplicated. This file carried its own copy of
+      // the UPDATE, so the WABA restriction had to be added twice or it was
+      // added to the copy nobody called. One writer, one rule.
+      await this.templateService.applyStatusUpdate(tenantInfo.schemaName, { ...event, wabaId });
+      this.logger.log(`Template status applied: ${event.message_template_name} `
+        + `(${event.message_template_language}) → ${event.event} on WABA ${wabaId}`);
     } catch (err: any) {
       this.logger.warn(`Failed to process template status update for WABA ${wabaId}: ${err.message}`);
     }
@@ -205,47 +230,58 @@ export class WhatsappWebhookService {
    * como fallido y se loguea el código de Meta, que es lo que permite
    * diagnosticar sin adivinar.
    */
-  private async recordDeliveryStatuses(phoneNumberId: string, statuses: any[] | undefined): Promise<void> {
-    const failed = (statuses || []).filter((s: any) => String(s?.status || '').toLowerCase() === 'failed');
-    if (!failed.length) return;
-
-    for (const status of failed) {
-      const error = status?.errors?.[0] || {};
-      this.logger.error(
-        `[WA] Meta RECHAZÓ el mensaje ${status?.id || 'sin-id'} a ${status?.recipient_id || 'desconocido'} ` +
-        `(phone_number_id ${phoneNumberId}): code=${error.code ?? '?'} title="${error.title ?? ''}" ` +
-        `details="${error.error_data?.details ?? error.message ?? ''}"`,
-      );
-    }
-
-    // Marcar en la bandeja. Sin tenant resuelto no se puede, pero el log de
-    // arriba ya salió: el diagnóstico nunca depende de que esto funcione.
-    try {
-      const tenantId = await this.resolveTenantId(phoneNumberId);
-      if (!tenantId) return;
-      const schemaName = await this.prisma.getTenantSchemaName(tenantId);
-      if (!schemaName) return;
-      const ids = failed.map((s: any) => s?.id).filter(Boolean);
-      if (!ids.length) return;
-      await this.prisma.executeInTenantSchema(
-        schemaName,
-        `UPDATE messages SET status = 'failed'
-          WHERE external_id = ANY($1::text[]) AND direction = 'outbound' AND status <> 'failed'`,
-        [ids],
-      );
-    } catch (e: any) {
-      this.logger.warn(`[WA] no se pudo marcar el mensaje fallido: ${e.message}`);
-    }
+  /**
+   * Meta's delivery lifecycle, applied to the conversation record.
+   *
+   * Only rejections used to be handled, and they were looked up in
+   * `messages.external_id` — which holds OUR deduplication identity, never the
+   * wamid — so nothing was ever found. The lookup, the ranking and the legacy
+   * fallback now live in `channel-delivery-status`, shared with the internal
+   * endpoint the deployed WhatsApp worker calls: one rule, one place.
+   */
+  private async recordDeliveryStatuses(
+    phoneNumberId: string, statuses: any[] | undefined, wabaId: string | null,
+  ): Promise<void> {
+    const events = parseMetaDeliveryStatuses(statuses, 'whatsapp', {
+      wabaId, phoneNumberId,
+    });
+    // The tenant is resolved ONCE and carried, because both halves of a receipt
+    // need it: the schema the conversation record lives in, and the (tenant,
+    // account) pair a funding pause is written against.
+    const tenantId = await this.resolveTenantId(phoneNumberId);
+    await recordChannelDeliveryStatuses(
+      events,
+      { channelType: 'whatsapp', channelAccountId: phoneNumberId, tenantId },
+      {
+        store: this.prisma,
+        logger: this.logger,
+        resolveSchema: async () => {
+          if (!tenantId) return null;
+          return (await this.prisma.getTenantSchemaName(tenantId)) || null;
+        },
+        // Settles, releases — and pauses the number when Meta says the account
+        // cannot be billed. That last rule used to live here as a second copy,
+        // which meant the deployed worker's ingress had no copy at all. It is
+        // now inside the ledger, so all three ingresses get it from one place.
+        spendLedger: this.spendLedger,
+      },
+    );
   }
 
-  private async processMessageEvent(phoneNumberId: string, value: any) {
+  private async processMessageEvent(phoneNumberId: string, value: any,
+     wabaId: string | null = null) {
      this.logger.log(`Processing message event for phone_number_id: ${phoneNumberId}`);
+
+     // Statuses first, and unconditionally. This used to run only on the branch
+     // where the payload carried no `messages`, so a batch that mixed customer
+     // messages with delivery receipts — which Meta is free to send — silently
+     // dropped every receipt in it.
+     await this.recordDeliveryStatuses(phoneNumberId, value?.statuses, wabaId);
 
      // Say WHY we stop. A status/read receipt carries no `messages`, and this
      // early return used to be silent — indistinguishable in the logs from a
      // customer message being dropped.
      if (!value?.messages || value.messages.length === 0) {
-         await this.recordDeliveryStatuses(phoneNumberId, value?.statuses);
          this.logger.log(
              `No messages in payload for ${phoneNumberId} ` +
              `(statuses=${value?.statuses?.length ?? 0}) — nothing to process`,
@@ -269,6 +305,13 @@ export class WhatsappWebhookService {
 
      // Process EVERY message in the batch — WhatsApp can deliver several messages
      // in a single webhook; taking only messages[0] silently dropped the rest.
+     // Raised by the first message of the batch that failed to become
+     // durable, thrown once the rest of the batch has had its turn: one broken
+     // message must not strand its siblings, and the ones that DID make it are
+     // protected from the redelivery by their own idempotency claim and by the
+     // unique index on `messages.external_id`.
+     let notDurable: InboundNotDurableError | null = null;
+
      for (const msg of value.messages) {
          const waMessageId = msg?.id; // wamid.xxx
 
@@ -285,8 +328,28 @@ export class WhatsappWebhookService {
              this.resolveAccessTokenAndMarkRead(tenantId, phoneNumberId, waMessageId);
          }
 
-         const fromPhone = msg?.from;
-         if (typeof fromPhone !== 'string' || !fromPhone.trim()) {
+         // ── WHO WROTE, WHEN THERE MAY BE NO PHONE NUMBER ────────────────
+         //
+         // `msg.from` is a phone, and Meta's business-scoped user ids mean it
+         // can be absent: the webhook then carries `from_user_id` and the
+         // person has written without this business ever seeing a number. The
+         // guard below used to require `from` and discard everything else, so
+         // against a portfolio where usernames have rolled out the customer
+         // wrote, nothing answered, and the only trace was an error log.
+         //
+         // The identity carries its KIND, and a scoped id is keyed with the
+         // portfolio it means something inside — never on the bare string,
+         // which two portfolios could collide on, and never through phone
+         // normalisation, which would turn an all-digit opaque id into a
+         // diallable number belonging to a stranger.
+         const identity = whatsAppSenderIdentity(msg, contacts, {
+             // The portfolio first, the number only as a fallback: Meta scopes a
+             // business-scoped user id to the BUSINESS, so two numbers of one
+             // business must give the same person the same key.
+             wabaId, phoneNumberId,
+         });
+         const fromPhone = identity?.addressKey;
+         if (!identity || typeof fromPhone !== 'string' || !fromPhone.trim()) {
              // Sin remitente el mensaje no es contestable ni atribuible: se
              // descarta acá en vez de romper el INSERT de `contacts` dentro del
              // worker. Se loguea el cuerpo CRUDO porque esta ruta —a diferencia
@@ -311,21 +374,6 @@ export class WhatsappWebhookService {
              || msg?.button?.text
              || msg?.interactive?.button_reply?.title
              || '';
-
-         // === Compliance: Opt-out detection (registers for admin review, does NOT block message) ===
-         if (messageText && this.complianceService.detectOptOut(messageText)) {
-             this.logger.warn(`OptOut candidate from ${fromPhone}: "${messageText}" — pending admin review`);
-             try {
-                 await this.complianceService.processOptOut(tenantId, {
-                     phone: fromPhone,
-                     channel: 'whatsapp',
-                     triggerMessage: messageText,
-                     detectedFrom: 'keyword',
-                 });
-             } catch (e: any) {
-                 this.logger.error(`OptOut registration failed for ${fromPhone}: ${e.message}`, e.stack);
-             }
-         }
 
          const contentType = msg.type === 'button' || msg.type === 'interactive' ? 'text' : msg.type;
          const mediaObj = msg[msg.type];
@@ -352,6 +400,13 @@ export class WhatsappWebhookService {
              metadata: {
                  contactName: contact?.profile?.name,
                  waMessageId,
+                 // Carried so nothing downstream has to guess from the key's
+                 // shape. `senderPhone` is null for somebody who has not shared
+                 // their number, and that is a real answer: they can still ask a
+                 // question and get one answered.
+                 senderKind: identity.kind,
+                 senderPhone: identity.phone,
+                 senderPhoneProvenance: identity.phoneProvenance,
              },
          };
 
@@ -373,8 +428,22 @@ export class WhatsappWebhookService {
              // turn instead of answering the customer twice. If that dedupe is ever
              // removed, this release becomes a double-reply generator.
              if (waMessageId) await this.redis.del(`idem:wa:${waMessageId}`).catch(() => {});
+             // ...and REFUSE THE ACKNOWLEDGEMENT. Releasing the claim only helps
+             // if Meta redelivers, and Meta redelivers exactly what it was not
+             // told we have — so swallowing here made the release pointless and
+             // the message lost: a transient Valkey outage answered 200 for a
+             // turn that never existed. `enqueue` discards a structurally broken
+             // message with `return` and never a throw, so anything caught here
+             // is infrastructure, which is the case a redelivery fixes.
+             //
+             // This is the same contract the other six producers already have
+             // in `ChannelsController`; WhatsApp's own route reached the queue
+             // through this service, and the swallow below it undid it.
+             notDurable ??= new InboundNotDurableError(waMessageId, error);
          }
      }
+
+     if (notDurable) throw notDurable;
   }
 
   /**
@@ -382,8 +451,14 @@ export class WhatsappWebhookService {
    * Fire-and-forget — errors are logged but don't block processing.
    */
   private resolveAccessTokenAndMarkRead(tenantId: string, phoneNumberId: string, waMessageId: string): void {
+      // The number that received the message is the number that acknowledges it,
+      // and it is right here as a parameter. Asking unnamed used to return the
+      // tenant's oldest connection, so a two-number tenant marked messages read
+      // with the wrong account's credential — and the `.catch` below meant that
+      // once the resolver started refusing instead, read receipts would have
+      // stopped silently.
       this.prisma.getTenantSchemaName(tenantId)
-          .then(schemaName => this.whatsappConnection.getValidAccessToken(schemaName))
+          .then(schemaName => this.whatsappConnection.getValidAccessToken(schemaName, phoneNumberId))
           .then(async creds => {
               await this.whatsappAdapter.markAsRead(phoneNumberId, waMessageId, creds.accessToken);
           })

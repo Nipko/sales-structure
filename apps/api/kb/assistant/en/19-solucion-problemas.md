@@ -3,7 +3,7 @@ id: solucion-problemas
 title: "Troubleshooting common issues"
 routes: ["/admin/channels", "/admin/agent", "/admin/inbox", "/admin/broadcast", "/admin/appointments", "/admin/settings/billing"]
 roles: ["tenant_admin", "tenant_supervisor", "tenant_agent"]
-keywords: ["troubleshooting", "not working", "messages not arriving", "not responding", "bot not responding", "channel disconnected", "token expired", "reconnect", "campaign won't send", "template rejected", "plan limit", "limit reached", "appointment missing", "calendar not syncing", "verification email", "code not arriving", "error", "help", "support", "contact support"]
+keywords: ["troubleshooting", "not working", "messages not arriving", "not responding", "bot not responding", "channel disconnected", "token expired", "reconnect", "campaign won't send", "template rejected", "plan limit", "limit reached", "appointment missing", "calendar not syncing", "verification email", "code not arriving", "error", "help", "support", "contact support", "sending paused", "meta cannot bill", "agent stopped replying on whatsapp", "whatsapp payment method", "resume sending"]
 ---
 
 # Troubleshooting common issues
@@ -38,7 +38,7 @@ Helpful details:
 
 ## The AI agent isn't responding (or responds poorly)
 
-Run through this list in order; the cause is almost always one of these:
+Run through this list in order; the cause is almost always one of these. One note on permissions first: **AI Agent**, **Channels** and **Plan & Billing** are administration screens: if you are a supervisor or an agent you cannot open them — they are not in your menu, and typing the address redirects you — so those steps belong to the account administrator, and your part is to recognise the symptom from the **Inbox** and tell them. **Campaigns** is different: the administrator and the supervisor can open it, an agent cannot. And a supervisor is not left with nothing to look at: **Agent health** IS in their menu, and it shows whether the agent has been answering worse than usual before they ask anyone to open an administration screen.
 
 1. **Does the connection have an agent assigned?** Go to **AI Agent**. If you see a notice like "channels without an assigned agent", those connections are handled by your default agent with a generic setup. Open the correct agent and, under **Connection assignment**, check the exact account it should handle. Remember: there's **one AI agent per connection**.
 2. **Is the agent active?** In the agent list, make sure it isn't **paused**.
@@ -46,6 +46,7 @@ Run through this list in order; the cause is almost always one of these:
 4. **Is the response mode correct?** Under **Behavior**, if the mode is set to "always human", the AI never replies on its own. Switch it to "always AI" or "hybrid" depending on what you need.
 5. **Is the conversation with a human?** If you or someone on the team took over the conversation in the **Inbox** (or the customer asked to speak with a person), the AI stays paused in that conversation until **Resolve** is clicked. This is expected behavior, not a failure.
 6. **Did you run out of AI message capacity?** Open **Plan & Billing** and review the usage bar and current options.
+7. **Is it WhatsApp, with sending paused?** From **1 October 2026** Meta charges your WhatsApp Business account for every delivered service message; if Meta cannot bill that account it stops delivering, and Parallly pauses that number's sends. **If you are the admin**, open **Channels → WhatsApp** and look at the **WhatsApp charges (Meta)** card: if it says **Sending paused**, fix the payment method in Meta's tools and then press **Resume sending**. **If you are a supervisor or an agent**, that screen does not open for you: the symptom is recognisable from the **Inbox** — WhatsApp stops going out while Instagram, Messenger or Telegram keep answering — and your part is to tell the admin, because the payment method lives on Meta and resuming is theirs alone. Incoming messages keep being received in the meantime.
 
 If the agent **responds, but responds poorly** (makes up data, doesn't know your prices, or goes off topic):
 

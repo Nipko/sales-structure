@@ -1,0 +1,124 @@
+{
+  "version": 1,
+  "revision": "c09068a7c2ec000d2427f3755642d14c20369354",
+  "generatedFrom": [
+    "modules/simulation/certification-plan.ts",
+    "modules/simulation/certification-ledger.ts",
+    "modules/ai/router/llm-router.service.ts"
+  ],
+  "gate": "llm_credentials_and_budget",
+  "scope": {
+    "profiles": 76,
+    "languages": [
+      "es",
+      "en",
+      "pt",
+      "fr"
+    ],
+    "channels": [
+      "whatsapp",
+      "instagram",
+      "messenger",
+      "telegram",
+      "web_widget"
+    ],
+    "k": 1
+  },
+  "requiredEnvironmentVariables": [
+    "OPENAI_API_KEY",
+    "XAI_API_KEY",
+    "DEEPSEEK_API_KEY",
+    "ANTHROPIC_API_KEY"
+  ],
+  "perModel": [
+    {
+      "model": "gpt-4o-mini",
+      "provider": "openai",
+      "tier": "tier_2_standard",
+      "envVar": "OPENAI_API_KEY",
+      "requiredCases": 93320,
+      "modelCalls": 260620,
+      "maxCostUsdCents": 44980,
+      "maxHours": 434,
+      "planHash": "d2a1679c77823678de056bab9940eb6f5be083f742aab71b2635ef1a9b914f8a"
+    },
+    {
+      "model": "grok-4-1-fast-non-reasoning",
+      "provider": "xai",
+      "tier": "tier_2_standard",
+      "envVar": "XAI_API_KEY",
+      "requiredCases": 93320,
+      "modelCalls": 260620,
+      "maxCostUsdCents": 50040,
+      "maxHours": 434,
+      "planHash": "1507d9f508870a2dfe7f4c3c027a15a915047223ca44612525a56afceef096a1"
+    },
+    {
+      "model": "deepseek-chat",
+      "provider": "deepseek",
+      "tier": "tier_4_budget",
+      "envVar": "DEEPSEEK_API_KEY",
+      "requiredCases": 93320,
+      "modelCalls": 260620,
+      "maxCostUsdCents": 69220,
+      "maxHours": 434,
+      "planHash": "77ad341e1445b7edce1c76f53d803c8d06606dcd4fc26c6f0de73b6d9afd1aef"
+    },
+    {
+      "model": "gpt-4.1-mini",
+      "provider": "openai",
+      "tier": "tier_2_standard",
+      "envVar": "OPENAI_API_KEY",
+      "requiredCases": 93320,
+      "modelCalls": 260620,
+      "maxCostUsdCents": 95020,
+      "maxHours": 434,
+      "planHash": "e0040181d350950a7dc3af60dea4144cb9c98df6ef56668bad6e71d4819e56a1"
+    },
+    {
+      "model": "gpt-4o",
+      "provider": "openai",
+      "tier": "tier_1_premium",
+      "envVar": "OPENAI_API_KEY",
+      "requiredCases": 93320,
+      "modelCalls": 260620,
+      "maxCostUsdCents": 516760,
+      "maxHours": 434,
+      "planHash": "1b752c6c09b2f4032d286612b8b6c5dcacea314b9d25644fd4415e67e75620d1"
+    },
+    {
+      "model": "claude-sonnet-4-6",
+      "provider": "anthropic",
+      "tier": "tier_1_premium",
+      "envVar": "ANTHROPIC_API_KEY",
+      "requiredCases": 93320,
+      "modelCalls": 260620,
+      "maxCostUsdCents": 667100,
+      "maxHours": 434,
+      "planHash": "9b854ec527e7e21537aad0b43bd19dfdbb20c168be5fbef84b86786877bcec71"
+    }
+  ],
+  "excludedModels": [
+    {
+      "model": "gemini-2.5-pro",
+      "provider": "google",
+      "reason": "no_tool_support"
+    },
+    {
+      "model": "gemini-2.5-flash",
+      "provider": "google",
+      "reason": "no_tool_support"
+    }
+  ],
+  "tokenBound": {
+    "inputPerTurn": 8000,
+    "outputPerTurn": 1000
+  },
+  "ledgerTables": [
+    "agent_certification_runs",
+    "agent_certification_subjects",
+    "agent_certification_cases",
+    "uidx_certification_case_attempt",
+    "idx_certification_case_claimable"
+  ]
+}

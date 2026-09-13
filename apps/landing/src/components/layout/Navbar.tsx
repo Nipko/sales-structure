@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { useTranslations } from "next-intl";
-import Link from "next/link";
+import Link from "../LocalizedLink";
 import { useLang } from "../LangProvider";
 import { SIGNUP_URL, LOGIN_URL } from "../../lib/constants";
 import { SOLUTIONS_MENU, PRODUCT_MENU } from "../../data/navigation";
@@ -15,7 +15,7 @@ export function Navbar() {
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const t = useTranslations("nav");
-  const { locale, setLocale, localeNames } = useLang();
+  const { locale, setLocale, localeNames, hydrated } = useLang();
 
   const openMenu = (key: string) => {
     if (closeTimer.current) clearTimeout(closeTimer.current);
@@ -152,6 +152,7 @@ export function Navbar() {
             <select
               value={locale}
               onChange={(e) => setLocale(e.target.value)}
+              disabled={!hydrated}
               aria-label={t("languageAriaLabel")}
               className="bg-transparent text-xs text-text-secondary border border-border rounded-lg px-2 py-1.5 outline-none cursor-pointer hover:border-border-light transition-colors"
             >

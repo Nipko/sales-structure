@@ -3,7 +3,7 @@ id: facturacion-planes
 title: "Plans, billing, and tax details"
 routes: ["/admin/settings/billing", "/admin/settings/fiscal"]
 roles: ["tenant_admin"]
-keywords: ["plans", "pricing", "billing", "payment", "payment method", "change plan", "trial", "cycle", "invoice", "payment history", "tax details", "plan limit", "sms credits", "coupon", "cancel subscription"]
+keywords: ["plans", "pricing", "billing", "payment", "payment method", "change plan", "trial", "cycle", "invoice", "payment history", "tax details", "plan limit", "sms credits", "coupon", "cancel subscription", "meta charges separately", "does the plan include whatsapp", "whatsapp charges", "two payments", "meta invoice"]
 ---
 
 # Plans, billing, and tax details
@@ -40,6 +40,16 @@ These actions are available only when they appear on the page. Before pausing or
 
 Usage bars state the applicable period and current capacity. When a limit is reached, behavior depends on the resource: the page explains whether to free space, wait for the next period, or choose another option. Do not use quotas copied from a different account.
 
+## What Meta charges separately for WhatsApp
+
+Your Parallly subscription pays for the software. **It does not pay for the messages WhatsApp delivers.**
+
+From **1 October 2026**, Meta charges **your own WhatsApp Business account** for every delivered service message, with the payment method you added **on Meta**. Parallly does not invoice it, does not pay it for you and does not include it in the plan; changing plan here does not change what Meta charges. Each number gets **1,000 free service messages per calendar month**.
+
+That invoice does not appear in **Plan & Billing**: Meta issues it and you read it in Meta's tools. What you do see in Parallly, under **Channels → WhatsApp**, is how much of the free allowance is gone and which numbers have sending paused. The details are in the **Connect WhatsApp** article.
+
+If a WhatsApp Business account is left with no valid payment method, it stops delivering service messages: the agent goes quiet even though your Parallly subscription is fully paid.
+
 ## Frequently asked questions
 
 **Can I change plans or cancel?**
@@ -47,6 +57,9 @@ Only when the action is enabled. Read the confirmation summary to learn when it 
 
 **Does a trial require a payment method?**
 It depends on the available option. Registration and **Plan & Billing** show the requirement and any date before confirmation.
+
+**Does my Parallly plan include what Meta charges for WhatsApp?**
+No. They are two separate payments: the plan is the software, and the messages WhatsApp delivers are paid by your business to Meta with the payment method on your WhatsApp Business account.
 
 **How do I get an invoice?**
 Check the history and **Tax details**. If no download or issuance status appears, contact support; do not assume a fiscal integration is active.

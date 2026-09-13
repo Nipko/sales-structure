@@ -3,7 +3,7 @@ id: solucion-problemas
 title: "Résolution des problèmes fréquents"
 routes: ["/admin/channels", "/admin/agent", "/admin/inbox", "/admin/broadcast", "/admin/appointments", "/admin/settings/billing"]
 roles: ["tenant_admin", "tenant_supervisor", "tenant_agent"]
-keywords: ["problèmes", "ne fonctionne pas", "messages non reçus", "ne répond pas", "le bot ne répond pas", "canal déconnecté", "jeton expiré", "token expiré", "reconnecter", "la campagne n'envoie pas", "modèle refusé", "limite du forfait", "limite atteinte", "rendez-vous n'apparaît pas", "calendrier ne se synchronise pas", "email de vérification", "code non reçu", "erreur", "aide", "support", "contacter le support"]
+keywords: ["problèmes", "ne fonctionne pas", "messages non reçus", "ne répond pas", "le bot ne répond pas", "canal déconnecté", "jeton expiré", "token expiré", "reconnecter", "la campagne n'envoie pas", "modèle refusé", "limite du forfait", "limite atteinte", "rendez-vous n'apparaît pas", "calendrier ne se synchronise pas", "email de vérification", "code non reçu", "erreur", "aide", "support", "contacter le support", "envoi en pause", "meta ne peut pas facturer", "agent ne repond plus sur whatsapp", "moyen de paiement whatsapp", "reprendre les envois"]
 ---
 
 # Résolution des problèmes fréquents
@@ -38,7 +38,7 @@ Détails utiles :
 
 ## L'agent IA ne répond pas (ou répond mal)
 
-Passez cette liste en revue dans l'ordre ; la cause est presque toujours l'une des suivantes :
+Passez cette liste en revue dans l'ordre ; la cause est presque toujours l'une des suivantes. D'abord un mot sur les permissions : **Agent IA**, **Canaux** et **Forfait et facturation** sont des écrans d'administration : si vous êtes superviseur ou agent, vous ne pouvez pas les ouvrir — ils ne figurent pas dans votre menu et, si vous saisissez l'adresse, le panneau vous redirige —, donc ces étapes reviennent à l'administrateur du compte, et votre rôle est de reconnaître le symptôme depuis la **Boîte de réception** et de le prévenir. **Campagnes** est différent : l’administrateur et le superviseur peuvent l’ouvrir, pas l’agent. Et le superviseur n’est pas démuni : **Santé des agents** figure bien dans son menu, et il y voit si l’agent répond moins bien que d’habitude avant de demander à quiconque d’ouvrir un écran d’administration.
 
 1. **La connexion a-t-elle un agent assigné ?** Ouvrez **Agent IA**. Si vous voyez un avertissement du type « canaux sans agent assigné », ces connexions sont prises en charge par votre agent par défaut avec une configuration générique. Ouvrez le bon agent et, dans **Affectation des connexions**, cochez le compte exact qui doit les prendre en charge. Rappel : il y a **un agent IA par connexion**.
 2. **L'agent est-il actif ?** Dans la liste des agents, vérifiez qu'il n'est pas **en pause**.
@@ -46,6 +46,7 @@ Passez cette liste en revue dans l'ordre ; la cause est presque toujours l'une d
 4. **Le mode de réponse est-il le bon ?** Dans **Comportement**, si le mode est réglé sur « toujours humain », l'IA ne répond jamais seule. Passez-le à « toujours IA » ou « hybride » selon vos besoins.
 5. **La conversation est-elle prise en charge par un humain ?** Si vous ou un membre de l'équipe avez pris la conversation dans la **Boîte de réception** (ou si le client a demandé à parler à une personne), l'IA reste en pause sur cette conversation jusqu'à ce que l'on appuie sur **Résoudre**. C'est le comportement attendu, pas une panne.
 6. **La capacité de messages IA est-elle épuisée ?** Ouvrez **Forfait et facturation** et consultez la barre d'utilisation et les options actuelles.
+7. **S'agit-il de WhatsApp, avec l'envoi en pause ?** À partir du **1er octobre 2026**, Meta facture à votre compte WhatsApp Business chaque message de service livré ; si Meta ne peut pas facturer ce compte, elle cesse de livrer et Parallly met en pause les envois de ce numéro. **Si vous êtes administrateur**, ouvrez **Canaux → WhatsApp** et regardez la carte **Facturation WhatsApp (Meta)** : si elle indique **Envoi en pause**, corrigez le moyen de paiement dans les outils de Meta puis appuyez sur **Reprendre les envois**. **Si vous êtes superviseur ou agent**, cet écran ne s'ouvre pas pour vous : le symptôme se reconnaît depuis la **Boîte de réception** — WhatsApp cesse de sortir alors qu'Instagram, Messenger ou Telegram continuent de répondre — et votre rôle est de prévenir l'administrateur, car le moyen de paiement est chez Meta et la reprise n'appartient qu'à lui. Les messages entrants continuent d'être reçus entre-temps.
 
 Si l'agent **répond, mais répond mal** (invente des données, ne connaît pas vos prix ou sort du sujet) :
 

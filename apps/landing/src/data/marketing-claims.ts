@@ -1,4 +1,4 @@
-export const MARKETING_CLAIM_REGISTRY_VERSION = 1 as const;
+export const MARKETING_CLAIM_REGISTRY_VERSION = 2 as const;
 
 export type MarketingClaimStatus = 'verified' | 'illustrative' | 'disabled';
 
@@ -13,7 +13,7 @@ export interface MarketingClaimContract {
   capabilityId: string;
   status: MarketingClaimStatus;
   value: number;
-  localeKey: `socialProof.stat${1 | 2 | 3 | 4 | 5}Label`;
+  localeKey: `socialProof.stat${1 | 2 | 3}Label`;
   localePaths?: readonly string[];
   locales: readonly ['es', 'en', 'pt', 'fr'];
   scope: { plans: 'all' | 'plan_dependent_catalog'; regions: 'global' };
@@ -29,49 +29,49 @@ export interface MarketingClaimContract {
  * scanner: new surfaces must be registered before they may carry a number.
  * Narrative copy remains subject to the denylist until it is migrated to an
  * explicit claimId.
+ *
+ * ── VERSION 2: WHAT LEFT, AND WHY ──────────────────────────────────────────
+ *
+ * Three claims were retired rather than restated.
+ *
+ * `product.verticals.count` put the number eighteen in front of the words
+ * "vertical configurations" across nine locale paths. It was defensible as a
+ * count of PUBLIC industry presets and
+ * indefensible as a product claim: the canonical catalogue is 20 industries and
+ * 76 profiles, of which the audited closure report certifies zero. A number that
+ * is simultaneously smaller than the catalogue and larger than what has been
+ * proven is not made honest by swapping the digit — so the copy now states the
+ * certification STATE, and the count is gone from every customer-facing string.
+ *
+ * `product.knowledge_tiers.count` and `product.prompt_layers.count` were
+ * internal architecture. Nobody chooses a platform on how many tiers its RAG has.
+ *
+ * What replaced them is the pair a reader can act on — how many channels you can
+ * connect, and how many have finished certification — with the second one
+ * published at its real value of zero.
  */
 export const MARKETING_CLAIMS = Object.freeze({
-  verticalCount: {
-    claimId: 'product.verticals.count', capabilityId: 'vertical_catalog_v1', status: 'verified', value: 18,
+  selfServiceChannelCount: {
+    claimId: 'product.channels.self_service.count', capabilityId: 'self_service_channels', status: 'verified', value: 5,
     localeKey: 'socialProof.stat1Label', locales: ['es', 'en', 'pt', 'fr'],
-    localePaths: [
-      'meta.description', 'nav.viewAllSolutions', 'verticals.subtitle',
-      'solutions.heroSubtitle', 'howItWorks.step2Desc', 'howItWorks.step2Tag',
-      'cta.guarantees', 'product.agentDesc', 'product.agentFeature2',
-    ],
-    scope: { plans: 'all', regions: 'global' }, verifiedAt: '2026-08-08', expiresAt: '2026-11-08', owner: 'product-engineering',
-    evidence: [
-      { id: 'vertical-manifest', repositoryPath: 'packages/shared/src/vertical-capability-manifest.ts', description: '18 public industries; two additional canonical industries remain waitlisted.' },
-      { id: 'vertical-matrix', repositoryPath: 'apps/api/scripts/run-vertical-contract-matrix.cjs', description: 'Static 76 x 4 x 5 contract runner.' },
-    ],
-  },
-  channelCount: {
-    claimId: 'product.channels.adapters.count', capabilityId: 'certified_self_service_channels', status: 'verified', value: 5,
-    localeKey: 'socialProof.stat2Label', locales: ['es', 'en', 'pt', 'fr'],
     localePaths: ['cta.guarantees', 'product.channelsFeaturesTitle'],
-    scope: { plans: 'plan_dependent_catalog', regions: 'global' }, verifiedAt: '2026-08-24', expiresAt: '2026-11-24', owner: 'product-engineering',
-    evidence: [{ id: 'channel-policy', repositoryPath: 'packages/shared/src/channel-policy.ts', description: 'Canonical certified self-service channel policy.' }],
+    scope: { plans: 'plan_dependent_catalog', regions: 'global' }, verifiedAt: '2026-09-12', expiresAt: '2026-12-12', owner: 'product-engineering',
+    evidence: [{ id: 'channel-policy', repositoryPath: 'packages/shared/src/channel-policy.ts', description: 'Canonical self-service channel policy: whatsapp, instagram, messenger, telegram, web_widget.' }],
+  },
+  certifiedChannelCount: {
+    claimId: 'product.channels.certified.count', capabilityId: 'certified_channels', status: 'verified', value: 0,
+    localeKey: 'socialProof.stat2Label', locales: ['es', 'en', 'pt', 'fr'],
+    scope: { plans: 'all', regions: 'global' }, verifiedAt: '2026-09-12', expiresAt: '2026-12-12', owner: 'product-engineering',
+    evidence: [
+      { id: 'closure-report', repositoryPath: 'docs/audits/2026-09-09/closure-report.md', description: 'Derived closure report: 0 of 5 channels and 0 of 76 profiles have finished certification.' },
+      { id: 'closure-report-data', repositoryPath: 'docs/audits/2026-09-09/closure-report.json', description: 'Machine-readable counters behind the same report.' },
+    ],
   },
   interfaceLanguageCount: {
     claimId: 'product.interface_languages.count', capabilityId: 'interface_i18n', status: 'verified', value: 4,
     localeKey: 'socialProof.stat3Label', locales: ['es', 'en', 'pt', 'fr'],
     localePaths: ['trust.latamBadge', 'cta.guarantees'],
-    scope: { plans: 'all', regions: 'global' }, verifiedAt: '2026-08-08', expiresAt: '2026-11-08', owner: 'product-engineering',
-    evidence: [{ id: 'landing-locales', repositoryPath: 'apps/landing/messages', description: 'Four complete landing locale catalogs.' }],
-  },
-  knowledgeTierCount: {
-    claimId: 'product.knowledge_tiers.count', capabilityId: 'knowledge_architecture', status: 'verified', value: 5,
-    localeKey: 'socialProof.stat4Label', locales: ['es', 'en', 'pt', 'fr'],
-    scope: { plans: 'all', regions: 'global' }, verifiedAt: '2026-08-08', expiresAt: '2026-11-08', owner: 'product-engineering',
-    evidence: [
-      { id: 'knowledge-service', repositoryPath: 'apps/api/src/modules/knowledge/knowledge.service.ts', description: 'RAG and knowledge runtime.' },
-      { id: 'catalog-service', repositoryPath: 'apps/api/src/modules/catalog/catalog.service.ts', description: 'Catalog tier runtime.' },
-    ],
-  },
-  promptLayerCount: {
-    claimId: 'product.prompt_layers.count', capabilityId: 'prompt_assembler_v3', status: 'verified', value: 3,
-    localeKey: 'socialProof.stat5Label', locales: ['es', 'en', 'pt', 'fr'],
-    scope: { plans: 'all', regions: 'global' }, verifiedAt: '2026-08-08', expiresAt: '2026-11-08', owner: 'product-engineering',
-    evidence: [{ id: 'prompt-assembler', repositoryPath: 'apps/api/src/modules/conversations/prompt-assembler.service.ts', description: 'Contract, persona and turn-context assembler.' }],
+    scope: { plans: 'all', regions: 'global' }, verifiedAt: '2026-09-12', expiresAt: '2026-12-12', owner: 'product-engineering',
+    evidence: [{ id: 'landing-locales', repositoryPath: 'apps/landing/messages', description: 'Four complete landing locale catalogs plus the es-AR regional overlay.' }],
   },
 } as const satisfies Record<string, MarketingClaimContract>);

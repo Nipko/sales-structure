@@ -10,6 +10,7 @@ export const AGENT_QUALITY_DEPENDENCY_SOURCES = [
     'services',
     'catalog',
     'vertical',
+    'payments',
 ] as const;
 
 export type AgentQualityDependencySource = typeof AGENT_QUALITY_DEPENDENCY_SOURCES[number];

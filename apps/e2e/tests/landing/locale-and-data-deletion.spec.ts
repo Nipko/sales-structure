@@ -23,6 +23,7 @@ test.describe("landing locale", () => {
     await expect(spanishLanguageSelect).toHaveValue("es");
     await spanishLanguageSelect.selectOption("en");
 
+    await expect(page).toHaveURL(/\/en\/?$/);
     await expect(page.locator("html")).toHaveAttribute("lang", "en");
     await expect(page.locator("#hero-title")).toContainText(
       "Turn every conversation into a sale, an appointment or a resolved task",
@@ -33,10 +34,34 @@ test.describe("landing locale", () => {
     expect(localeCookie?.value).toBe("en");
 
     await page.reload();
+    await expect(page).toHaveURL(/\/en\/?$/);
     await expect(page.getByLabel("Site language")).toHaveValue("en");
     await expect(page.locator("#hero-title")).toContainText(
       "Turn every conversation into a sale, an appointment or a resolved task",
     );
+  });
+
+  test("serves localized HTML, metadata and internal navigation at a stable URL", async ({ page }) => {
+    await page.goto("/en/precios");
+
+    await expect(page.locator("html")).toHaveAttribute("lang", "en");
+    await expect(page).toHaveTitle("Plans and pricing | Parallly");
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
+      "href",
+      "https://parallly-chat.cloud/en/precios",
+    );
+    for (const locale of ["es", "en", "pt", "fr"]) {
+      await expect(page.locator(`link[rel="alternate"][hreflang="${locale}"]`)).toHaveAttribute(
+        "href",
+        `https://parallly-chat.cloud/${locale}/precios`,
+      );
+    }
+    await expect(page.locator('header a[href="/en/soluciones"]')).toHaveCount(1);
+
+    await page.getByLabel("Site language").selectOption("pt");
+    await expect(page).toHaveURL(/\/pt\/precios\/?$/);
+    await expect(page).toHaveTitle("Planos e preços | Parallly");
+    await expect(page.locator("html")).toHaveAttribute("lang", "pt");
   });
 });
 
@@ -78,7 +103,7 @@ test.describe("data deletion request", () => {
     await expect(page.getByText("DEL-E2E-2026", { exact: true })).toBeVisible();
     await expect(page.getByRole("link", { name: "Consultar estado" })).toHaveAttribute(
       "href",
-      "/data-deletion/status?code=DEL-E2E-2026",
+      "/es/data-deletion/status?code=DEL-E2E-2026",
     );
     expect(submittedPayload).toEqual({
       email: "qa+deletion@parallext.com",

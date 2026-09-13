@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ToolDefinition } from '@parallext/shared';
+import { retainTaskDependencies } from './tool-task-dependencies';
 
 const MAX_TOOLS_PER_TURN = 10;
 const MIN_SCORE = 0.15;
@@ -36,6 +37,7 @@ export class ToolRetrievalService {
         candidates: ToolDefinition[],
         topK = MAX_TOOLS_PER_TURN,
         pinned?: ReadonlySet<string>,
+        authoredPlans: readonly (readonly string[])[] = [],
     ): ToolDefinition[] {
         if (!candidates.length) return candidates;
 
@@ -54,7 +56,7 @@ export class ToolRetrievalService {
         const slots = budget - mustKeep.length;
 
         const queryTokens = this.tokenize(query);
-        if (!query || !queryTokens.length) return [...mustKeep, ...optional.slice(0, slots)];
+        if (!query || !queryTokens.length) return retainTaskDependencies([...mustKeep, ...optional.slice(0, slots)], candidates, authoredPlans);
 
         const scored = optional.map(tool => {
             const descTokens = this.tokenize(`${tool.name} ${tool.description} ${JSON.stringify(tool.parameters || {})}`);
@@ -79,7 +81,7 @@ export class ToolRetrievalService {
             }
         }
 
-        const final = [...mustKeep, ...result.slice(0, slots)];
+        const final = retainTaskDependencies([...mustKeep, ...result.slice(0, slots)], candidates, authoredPlans);
         this.logger.debug(`[ToolRetrieval] ${candidates.length} → ${final.length} (${mustKeep.length} pinned) for query "${query.slice(0, 60)}"`);
         return final;
     }

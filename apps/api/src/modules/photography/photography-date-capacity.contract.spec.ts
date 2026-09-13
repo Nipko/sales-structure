@@ -87,7 +87,12 @@ describe('photography date capacity contract', () => {
     });
 
     it('provisions the hold clock for new and existing tenant schemas', () => {
-        const sql = readFileSync(resolve(__dirname, '../../../prisma/tenant-schema.sql'), 'utf8');
+        // Line endings normalised before anything is matched. `core.autocrlf`
+        // hands a Windows checkout CRLF and a Linux one LF, so a multi-line
+        // substring passes on one machine and fails on the other about a file
+        // neither of them changed.
+        const sql = readFileSync(resolve(__dirname, '../../../prisma/tenant-schema.sql'), 'utf8')
+            .split('\r\n').join('\n');
         const compatibilityAlter =
             'ALTER TABLE "{{SCHEMA_NAME}}"."photo_sessions"\n    ADD COLUMN IF NOT EXISTS "hold_expires_at" TIMESTAMPTZ;';
         const capacityIndex = 'CREATE INDEX IF NOT EXISTS "idx_photo_sessions_capacity"';

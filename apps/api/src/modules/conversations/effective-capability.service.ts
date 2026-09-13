@@ -1,3 +1,4 @@
+import type { ServiceExecutionContext } from '../../common/types/execution-context';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import {
     CAPABILITY_EXCLUSION_TEXT,
@@ -6,6 +7,7 @@ import {
     OPERATIONAL_ROLES,
     TOOL_GROUP_PLAN_FEATURE,
     TOOL_GROUP_READINESS,
+    TOOL_READINESS,
     VERTICAL_TOOL_GROUPS,
     PROVIDER_PROFILE_IDS,
     providerFreshnessFor,
@@ -25,6 +27,7 @@ import { enabledToolFamilies, staticToolsForAgentConfig } from './agent-tool-reg
 import { isNonCommittalTool, toolOrigin } from './tool-policy-registry';
 import { SystemOfRecordBoundaryService } from '../integrations/system-of-record-boundary.service';
 import { buildVerticalOperationContract } from '../verticals/vertical-operation-contract';
+import type { EvalNamespaceLease } from '../simulation/isolated-eval-namespace';
 
 /**
  * Lo que se sabe de un proveedor externo en el momento del turno.
@@ -97,6 +100,8 @@ export interface ProviderHealthInput {
  * honesta es "lo confirma el equipo".
  */
 export interface ProviderIntegrationPolicy {
+    /** The agent's family toggle also controls provider-backed reads. */
+    toolGroup: VerticalToolGroup;
     /**
      * Las industrias donde este proveedor significa algo. Fuera de esta lista
      * no se publica ni una tool suya, aunque la conexión esté sana: un dato
@@ -115,6 +120,7 @@ export interface ProviderIntegrationPolicy {
 
 const PROVIDER_POLICIES: Readonly<Record<string, ProviderIntegrationPolicy>> = Object.freeze({
     toast: Object.freeze({
+        toolGroup: 'restaurants',
         profileIds: PROVIDER_PROFILE_IDS.toast,
         tools: Object.freeze(['get_restaurant_menu']),
         // Toast es el POS. Publicar su menú y crear/cancelar el pedido sólo en
@@ -122,6 +128,7 @@ const PROVIDER_POLICIES: Readonly<Record<string, ProviderIntegrationPolicy>> = O
         localWritersDisplaced: Object.freeze(['place_order', 'cancel_order']),
     }),
     mindbody: Object.freeze({
+        toolGroup: 'gyms',
         profileIds: PROVIDER_PROFILE_IDS.mindbody,
         tools: Object.freeze(['get_fitness_schedule']),
         // Mindbody ES la agenda del gimnasio. Consultar los cupos allá y
@@ -129,6 +136,7 @@ const PROVIDER_POLICIES: Readonly<Record<string, ProviderIntegrationPolicy>> = O
         localWritersDisplaced: Object.freeze(['book_class', 'cancel_class_booking']),
     }),
     cliniko: Object.freeze({
+        toolGroup: 'appointments',
         profileIds: PROVIDER_PROFILE_IDS.cliniko,
         tools: Object.freeze(['list_clinic_services', 'check_clinic_availability']),
         // Lo mismo con la agenda clínica, donde el turno vendido dos veces se
@@ -193,6 +201,8 @@ export class EffectiveCapabilityService {
     ) {}
 
     async resolve(input: {
+        executionContext?: ServiceExecutionContext;
+        refreshReadiness?: boolean;
         tenantId: string;
         schemaName: string;
         industry: string;
@@ -223,6 +233,10 @@ export class EffectiveCapabilityService {
          * duplicarla sería pagarla dos veces por turno.
          */
         providers?: Readonly<Record<string, ProviderHealthInput>>;
+        /** Both durable ownership lookups failed; this is not evidence of an unbound domain. */
+        providerOwnershipUnavailable?: boolean;
+        /** Proof for actor-scoped readiness reads inside an isolated evaluation schema. */
+        sandboxNamespace?: EvalNamespaceLease;
     }): Promise<EffectiveCapabilityContract> {
         const profile = resolveSubtypeExperienceProfile(input.industry, input.subType);
         const excluded: ExcludedCapability[] = [];
@@ -273,7 +287,7 @@ export class EffectiveCapabilityService {
         let planFeatures: Record<string, any> = {};
         let planSlug = 'unknown';
         try {
-            planFeatures = await this.throttle.getPlanFeatures(input.tenantId);
+            planFeatures = await this.throttle.getPlanFeatures(input.tenantId, input.executionContext);
             // `getPlanFeatures()` deliberately returns the flattened feature
             // payload, not the tenant's plan slug. Reading `features.plan`
             // therefore recorded `unknown` in every real contract even though
@@ -281,7 +295,7 @@ export class EffectiveCapabilityService {
             // snapshot from the authoritative plan lookup when available.
             const getTenantPlan = (this.throttle as any).getTenantPlan;
             const runtimePlan = typeof getTenantPlan === 'function'
-                ? await getTenantPlan.call(this.throttle, input.tenantId)
+                ? await getTenantPlan.call(this.throttle, input.tenantId, input.executionContext)
                 : null;
             planSlug = String(
                 (typeof runtimePlan === 'string' ? runtimePlan : runtimePlan?.slug)
@@ -311,13 +325,31 @@ export class EffectiveCapabilityService {
 
         // (3) Readiness. "Enabled" and "has something to answer with" were never
         // the same claim, and only the first was being made.
-        const readinessKeys = withinPlan
+        const candidateConfig = Object.fromEntries(
+            [...withinPlan, ...globalFamilies].map(group => [
+                group,
+                { ...(input.toolsConfig as Record<string, any> | null)?.[group], enabled: true },
+            ]),
+        );
+        const candidateToolNames = staticToolsForAgentConfig(candidateConfig)
+            .map((tool: ToolDefinition) => String(tool.name));
+        const readinessKeys = [
+            ...withinPlan
             .map(group => TOOL_GROUP_READINESS[group])
-            .filter((key): key is NonNullable<typeof key> => !!key);
+            .filter((key): key is NonNullable<typeof key> => !!key),
+            ...candidateToolNames
+                .map(tool => TOOL_READINESS[tool])
+                .filter((key): key is NonNullable<typeof key> => !!key),
+        ];
 
         const readinessReport = this.readiness
-            ? await this.readiness
-                .evaluate(input.tenantId, input.schemaName, [...new Set(readinessKeys)])
+            ? await this.readiness.evaluate(
+                input.tenantId,
+                input.schemaName,
+                [...new Set(readinessKeys)],
+                input.executionContext,
+                { refresh: input.refreshReadiness, sandboxNamespace: input.sandboxNamespace },
+            )
                 .catch(() => null)
             : null;
         if (this.readiness && !readinessReport) degraded = true;
@@ -353,6 +385,27 @@ export class EffectiveCapabilityService {
         let publishedTools = staticToolsForAgentConfig(publishedConfig)
             .map((tool: ToolDefinition) => String(tool.name));
 
+        // A readiness requirement may describe just one reader in a broader
+        // family.  Filter it after family publication so an unmet boarding
+        // capacity never hides a valid grooming/walking catalogue.
+        const toolReadinessBlocked = publishedTools.filter((tool) => {
+            const key = TOOL_READINESS[tool];
+            return !!key && unmet.has(key);
+        });
+        if (toolReadinessBlocked.length) {
+            publishedTools = publishedTools.filter(tool => !toolReadinessBlocked.includes(tool));
+            for (const tool of toolReadinessBlocked) {
+                const key = TOOL_READINESS[tool]!;
+                const check = readinessReport?.checks.find(row => row.key === key);
+                excluded.push({
+                    subject: tool,
+                    reason: 'readiness_unmet',
+                    detail: CAPABILITY_EXCLUSION_TEXT.readiness_unmet,
+                    repairRoute: check?.repairRoute,
+                });
+            }
+        }
+
         // (4) Salud, scopes y frescura del proveedor.
         //
         // Las lecturas externas se publicaban por estar CONECTADAS, y fuera del
@@ -367,6 +420,7 @@ export class EffectiveCapabilityService {
         const now = Date.now();
         /** Escritores locales que un binding autoritativo desplaza en este turno. */
         const displacedWriters = new Set<string>();
+        const ownershipUnknownWriters = new Set<string>();
         for (const [providerName, policy] of Object.entries(PROVIDER_POLICIES)) {
             const providerTools = policy.tools;
             // ═══ EL TECHO DEL SUBTIPO TAMBIÉN ALCANZA A LO EXTERNO ═══
@@ -386,6 +440,17 @@ export class EffectiveCapabilityService {
                 }
                 continue;
             }
+            if (input.providerOwnershipUnavailable) {
+                degraded = true;
+                for (const writer of policy.localWritersDisplaced) ownershipUnknownWriters.add(writer);
+                excluded.push({
+                    subject: providerName,
+                    reason: 'provider_unavailable',
+                    detail: CAPABILITY_EXCLUSION_TEXT.provider_unavailable,
+                    repairRoute: '/admin/settings/integrations/vertical',
+                });
+                continue;
+            }
             const health = input.providers?.[providerName];
 
             // Ownership is durable; health is ephemeral. Once the tenant has
@@ -398,6 +463,11 @@ export class EffectiveCapabilityService {
             if (authoritativeBinding) {
                 for (const writer of policy.localWritersDisplaced) displacedWriters.add(writer);
             }
+
+            // Ownership survives the toggle, publication does not. Use the
+            // subtype/plan-approved family before local-data readiness: a live
+            // provider can have data even when the native catalogue is empty.
+            if (!withinPlan.includes(policy.toolGroup)) continue;
 
             if (!health) {
                 // Sin canal de medicion no hay puerta que fallara: el llamador
@@ -452,6 +522,19 @@ export class EffectiveCapabilityService {
             }
 
             publishedTools = [...publishedTools, ...availableProviderTools];
+        }
+
+        if (ownershipUnknownWriters.size) {
+            const unavailable = publishedTools.filter(tool => ownershipUnknownWriters.has(tool));
+            publishedTools = publishedTools.filter(tool => !ownershipUnknownWriters.has(tool));
+            if (unavailable.length) {
+                excluded.push({
+                    subject: unavailable.join(', '),
+                    reason: 'provider_unavailable',
+                    detail: CAPABILITY_EXCLUSION_TEXT.provider_unavailable,
+                    repairRoute: '/admin/settings/integrations/vertical',
+                });
+            }
         }
 
         if (displacedWriters.size) {
@@ -576,8 +659,11 @@ export class EffectiveCapabilityService {
             }
         }
 
-        const regional = this.regionalProfile
-            ? await this.regionalProfile.resolve(input.tenantId).catch(() => null)
+        // The shared core already resolved both values (or captured them for
+        // evaluation). Only resolve a missing fallback; do not re-read facts
+        // that cannot affect this decision.
+        const regional = (input.operatingCountry == null || input.jurisdiction == null) && this.regionalProfile
+            ? await this.regionalProfile.resolve(input.tenantId, input.executionContext).catch(() => null)
             : null;
 
         const operatingCountry = input.operatingCountry

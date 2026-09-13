@@ -51,6 +51,25 @@ describe('PromptAssemblerService', () => {
         service = new PromptAssemblerService(personaService as any);
     });
 
+    it('uses the tenant business profile for persona policy without mutating the saved agent', () => {
+        const config = { industry: 'inmobiliaria' } as any;
+        const turn = {
+            language: 'es', timezone: 'America/Bogota', now: '2026-09-13T12:00:00.000Z',
+            upcomingDays: [], businessHoursStatus: 'open',
+            verticalContext: { industry: 'event_planning', subType: 'venue' },
+        } as any;
+        service.assemble(config, turn);
+        expect(personaService.buildSystemPrompt).toHaveBeenLastCalledWith(
+            expect.objectContaining({ industry: 'event_planning' }), undefined,
+        );
+        expect(config.industry).toBe('inmobiliaria');
+
+        service.assembleWithCacheBoundary(config, turn);
+        expect(personaService.buildSystemPrompt).toHaveBeenLastCalledWith(
+            expect.objectContaining({ industry: 'event_planning' }), undefined,
+        );
+    });
+
     it('renders country vocabulary and the compact domain contract as escaped turn data', () => {
         const prompt = service.assemble({} as any, {
             language: 'es', timezone: 'America/Bogota', now: '2026-08-23T12:00:00.000Z',

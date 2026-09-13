@@ -1,0 +1,37 @@
+{
+  "accessed_at": "2026-09-10",
+  "source_page": "https://developers.facebook.com/documentation/business-messaging/whatsapp/pricing",
+  "discovery": "Links observed directly in rendered official pricing page; signed CDN URLs may expire.",
+  "sources": [
+    {
+      "currency": "USD",
+      "effective_from": "2026-07-01",
+      "kind": "rates",
+      "url": "https://scontent.fbog23-1.fna.fbcdn.net/v/t39.8562-6/735608455_876449615529066_702006520977041900_n.csv?_nc_cat=100&ccb=1-7&_nc_sid=b8d81d&_nc_ohc=6eDV8zVUjGUQ7kNvwEuc9VX&_nc_oc=AdqxD-b1KeokRbHMACpd-WCej71iqEz_qqd6WgBlZu-4Y8ROGaiyWrL9X7kO-NsddTA&_nc_zt=14&_nc_ht=scontent.fbog23-1.fna&_nc_gid=jyzMPmIqxWJLMFEO1j5-ng&_nc_ss=7a289&oh=00_AQIpnAVbrSLY1r8n10FeC9paOe1QxAyTA9oBidoEppjZLg&oe=6AA87FCA"
+    },
+    {
+      "currency": "COP",
+      "effective_from": "2026-07-01",
+      "kind": "rates",
+      "url": "https://scontent.fbog23-1.fna.fbcdn.net/v/t39.8562-6/735482743_2296023081140804_2474258772751213192_n.csv?_nc_cat=110&ccb=1-7&_nc_sid=b8d81d&_nc_ohc=vWv2DSfOKJgQ7kNvwGHAyGr&_nc_oc=AdpePGMVbpuYQpmuf80RAADON0S8li0EElPEJsLpm5UP6qQ2sK0_O7tY_GTiSl_ow98&_nc_zt=14&_nc_ht=scontent.fbog23-1.fna&_nc_gid=jyzMPmIqxWJLMFEO1j5-ng&_nc_ss=7a289&oh=00_AQLPSVIFTbTVODCw6UxdEIwJxuUwtNNgSi3Odl-uwifnZw&oe=6AA88EB1"
+    },
+    {
+      "currency": "USD",
+      "effective_from": "2026-10-01",
+      "kind": "rates",
+      "url": "https://scontent.fbog23-1.fna.fbcdn.net/v/t39.8562-6/789612890_1382606183999337_7470194220917189092_n.csv?_nc_cat=110&ccb=1-7&_nc_sid=b8d81d&_nc_ohc=VwBrRKSLaTMQ7kNvwGGpBru&_nc_oc=Adpri_GpzCh00X95QTs0xT1yDuEVP2jQaaIJCBrKQRFzjjqswP7kOdYK6nOYzQGNv1k&_nc_zt=14&_nc_ht=scontent.fbog23-1.fna&_nc_gid=jyzMPmIqxWJLMFEO1j5-ng&_nc_ss=7a289&oh=00_AQLtTXNKRiYjQ3vf2EHa4EliyBHuiDu21ilotxF-wytXCw&oe=6AA89950"
+    },
+    {
+      "currency": "COP",
+      "effective_from": "2026-10-01",
+      "kind": "rates",
+      "url": "https://scontent.fbog23-1.fna.fbcdn.net/v/t39.8562-6/789740745_1989457894930581_212461347617315538_n.csv?_nc_cat=108&ccb=1-7&_nc_sid=b8d81d&_nc_ohc=0UgkcZ6c2ekQ7kNvwFZdsY6&_nc_oc=Ado0iErvb9toIuZXBcX1KhM07qFxL0nRlRSutRI7d_jtghTgSLEd28IXfa0WEZq1JTU&_nc_zt=14&_nc_ht=scontent.fbog23-1.fna&_nc_gid=jyzMPmIqxWJLMFEO1j5-ng&_nc_ss=7a289&oh=00_AQJy5BzZzbo6Y1M4w7mKWdEFp8o8aiTs4hMvcBHyUpezYQ&oe=6AA88C10"
+    },
+    {
+      "currency": "USD",
+      "effective_from": "2026-10-01",
+      "kind": "volume_tiers",
+      "url": "https://scontent.fbog23-1.fna.fbcdn.net/v/t39.8562-6/786354115_1797646594890310_8414709780847412526_n.csv?_nc_cat=100&ccb=1-7&_nc_sid=b8d81d&_nc_ohc=CGVOJCy5C6kQ7kNvwG9Y1mS&_nc_oc=AdoUokVTehb1Gx9OvkpTGxFbp2MhWTc-kPM7S2ccxzxyJDgcxo20GFe10-QwYqjFKbo&_nc_zt=14&_nc_ht=scontent.fbog23-1.fna&_nc_gid=jyzMPmIqxWJLMFEO1j5-ng&_nc_ss=7a289&oh=00_AQJ2n73UX6B7M4SBVLDZmJ10lXw6l8UWDHaULyvl4TqqwA&oe=6AA89EB9"
+    }
+  ]
+}

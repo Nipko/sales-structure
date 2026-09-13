@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { ICrmAdapter } from './crm-adapter.interface';
+import { ICrmAdapter, type CrmRetraction } from './crm-adapter.interface';
 import type {
     CanonicalActivity,
     CanonicalContact,
@@ -231,6 +231,34 @@ export class HubSpotAdapter implements ICrmAdapter {
             }),
         });
         return { externalId: data.id, operation: 'create' };
+    }
+
+    /**
+     * Deletes one note, and says which of the three things happened.
+     *
+     * Not through `req`: that throws on any non-2xx, which would collapse "the
+     * note is already gone" and "HubSpot is down" into the same failure. The
+     * difference is the whole point here — one means the erasure is complete
+     * and the other means nobody knows yet.
+     */
+    async retractActivity(ctx: CrmAdapterContext, externalId: string): Promise<CrmRetraction> {
+        if (!/^\d+$/.test(externalId)) return { outcome: 'rejected', detail: 'note_id_unrecognised' };
+        let res: Response;
+        try {
+            res = await fetch(`${HUBSPOT_API}/crm/v3/objects/notes/${externalId}`, {
+                method: 'DELETE',
+                headers: { Authorization: `Bearer ${ctx.accessToken}` },
+            });
+        } catch (error: any) {
+            // The request may or may not have reached HubSpot. `unknown` is the
+            // only honest answer, and it stays visible until somebody asks again.
+            return { outcome: 'unknown', detail: `transport:${error?.message ?? 'unavailable'}` };
+        }
+        if (res.ok || res.status === 204 || res.status === 404 || res.status === 410) {
+            return { outcome: 'accepted', detail: `http_${res.status}` };
+        }
+        if (res.status === 429 || res.status >= 500) return { outcome: 'unknown', detail: `http_${res.status}` };
+        return { outcome: 'rejected', detail: `http_${res.status}` };
     }
 
     async pullContacts(ctx: CrmAdapterContext, cursor?: string): Promise<PullPage<CanonicalContact>> {

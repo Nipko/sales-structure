@@ -1,8 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { persistenceDisabled, type ServiceExecutionContext } from '../../common/types/execution-context';
 import { PrismaService } from '../prisma/prisma.service';
 import { replaceTenantSettingsBranch } from '../../common/utils/tenant-settings-branch.util';
 import { RedisService } from '../redis/redis.service';
-import { FEATURE_OVERRIDE_KEYS, OVERRIDABLE_QUOTA_KEYS, isOverridableQuotaKey, CHANNEL_ACCOUNT_KEYS } from './plan-features.registry';
+import { OVERRIDABLE_QUOTA_KEYS, isOverridableQuotaKey, CHANNEL_ACCOUNT_KEYS } from './plan-features.registry';
+import { applyPlanFeatureOverrides } from './plan-feature-overrides';
+import { createHash } from 'crypto';
 
 /**
  * Plan-based rate limiting and feature gating for multi-tenant fairness.
@@ -129,6 +132,102 @@ export class TenantThrottleService {
         await this.redis.incrementRateLimit(key, WINDOW_SECONDS);
     }
 
+    /**
+     * Atomically reserve one rate-limited action for a stable logical effect.
+     *
+     * `isOverLimit()` followed by `recordUsage()` is useful for display, but it
+     * cannot authorise a provider call: two workers can both read the last free
+     * slot. The marker below makes the limit decision and the increment one
+     * Redis operation, while a retry of the same effect adopts the reservation
+     * instead of consuming a second slot.
+     */
+    async reserveActionUsage(
+        tenantId: string,
+        action: ActionType,
+        effectId: string,
+    ): Promise<{ allowed: boolean; count: number; adopted: boolean }> {
+        const { limits } = await this.resolveLimits(tenantId);
+        const limit = limits[action];
+        const window = Math.floor(Date.now() / (WINDOW_SECONDS * 1000));
+        const countKey = `throttle:${action}:${tenantId}:${window}`;
+        const effectHash = createHash('sha256').update(effectId).digest('hex');
+        const reservationKey = `throttle:reservation:${action}:${tenantId}:${effectHash}`;
+        const markerTtl = WINDOW_SECONDS * 2;
+        const finiteLimit = Number.isFinite(limit) ? Math.max(0, Math.floor(limit)) : -1;
+
+        const result = await this.redis.getClient().eval(
+            `local marker = redis.call('GET', KEYS[2])
+             local current = tonumber(redis.call('GET', KEYS[1]) or '0')
+             local quota = tonumber(ARGV[1])
+             if marker then
+                 if string.sub(marker, 1, 5) ~= 'held:' then return {1, current, 1} end
+                 local heldWindow = string.sub(marker, 6)
+                 if heldWindow == ARGV[4] then return {1, current, 1} end
+                 if quota >= 0 and current >= quota then return {0, current, 1} end
+                 if quota < 0 then return {1, current, 1} end
+                 local oldCountKey = 'throttle:' .. ARGV[5] .. ':' .. ARGV[6] .. ':' .. heldWindow
+                 local oldCount = tonumber(redis.call('GET', oldCountKey) or '0')
+                 if oldCount > 0 then redis.call('DECR', oldCountKey) end
+                 current = redis.call('INCR', KEYS[1])
+                 redis.call('EXPIRE', KEYS[1], tonumber(ARGV[2]))
+                 redis.call('SET', KEYS[2], 'held:' .. ARGV[4], 'EX', tonumber(ARGV[3]))
+                 return {1, current, 1}
+             end
+             if quota >= 0 and current >= quota then return {0, current, 0} end
+             if quota < 0 then return {1, current, 0} end
+             current = redis.call('INCR', KEYS[1])
+             redis.call('EXPIRE', KEYS[1], tonumber(ARGV[2]))
+             redis.call('SET', KEYS[2], 'held:' .. ARGV[4], 'EX', tonumber(ARGV[3]))
+             return {1, current, 0}`,
+            2,
+            countKey,
+            reservationKey,
+            String(finiteLimit),
+            String(WINDOW_SECONDS),
+            String(markerTtl),
+            String(window),
+            action,
+            tenantId,
+        ) as [number, number, number];
+        return { allowed: result[0] === 1, count: Number(result[1]), adopted: result[2] === 1 };
+    }
+
+    /** Keep a successful or possibly-transmitted effect counted across retries. */
+    async commitActionUsage(tenantId: string, action: ActionType, effectId: string): Promise<void> {
+        const effectHash = createHash('sha256').update(effectId).digest('hex');
+        const reservationKey = `throttle:reservation:${action}:${tenantId}:${effectHash}`;
+        await this.redis.getClient().eval(
+            `if redis.call('EXISTS', KEYS[1]) == 1 then
+                 redis.call('SET', KEYS[1], 'committed', 'EX', tonumber(ARGV[1]))
+                 return 1
+             end
+             return 0`,
+            1,
+            reservationKey,
+            String(WINDOW_SECONDS * 2),
+        );
+    }
+
+    /** Release only a pre-provider reservation; committed effects are immutable. */
+    async releaseActionUsage(tenantId: string, action: ActionType, effectId: string): Promise<void> {
+        const effectHash = createHash('sha256').update(effectId).digest('hex');
+        const reservationKey = `throttle:reservation:${action}:${tenantId}:${effectHash}`;
+        await this.redis.getClient().eval(
+            `local marker = redis.call('GET', KEYS[1])
+             if not marker or string.sub(marker, 1, 5) ~= 'held:' then return 0 end
+             local window = string.sub(marker, 6)
+             local countKey = 'throttle:' .. ARGV[1] .. ':' .. ARGV[2] .. ':' .. window
+             redis.call('DEL', KEYS[1])
+             local current = tonumber(redis.call('GET', countKey) or '0')
+             if current > 0 then redis.call('DECR', countKey) end
+             return 1`,
+            1,
+            reservationKey,
+            action,
+            tenantId,
+        );
+    }
+
     async getPriority(tenantId: string): Promise<number> {
         const { limits } = await this.resolveLimits(tenantId);
         return limits.priority;
@@ -158,15 +257,15 @@ export class TenantThrottleService {
      * Returns a flat object with all feature keys from the seed.
      * Callers should access specific keys (e.g. result.maxAgents).
      */
-    async getPlanFeatures(tenantId: string): Promise<Record<string, any>> {
+    async getPlanFeatures(tenantId: string, executionContext?: ServiceExecutionContext): Promise<Record<string, any>> {
         const cacheKey = `plan_features:${tenantId}`;
-        const cached = await this.redis.getJson(cacheKey);
+        const cached = persistenceDisabled(executionContext) ? null : await this.redis.getJson(cacheKey);
         if (cached) {
             const overrides = await this.getQuotaOverrides(tenantId);
             return this.applyOverrides(cached as Record<string, any>, overrides);
         }
 
-        const plan = await this.getTenantPlan(tenantId);
+        const plan = await this.getTenantPlan(tenantId, executionContext);
         const row = await this.prisma.billingPlan.findUnique({
             where: { slug: plan },
             select: { maxAgents: true, maxAiMessages: true, features: true },
@@ -179,29 +278,22 @@ export class TenantThrottleService {
             maxAiMessages: row?.maxAiMessages ?? 0,
         };
 
-        await this.redis.setJson(cacheKey, base, FEATURES_CACHE_TTL);
+        if (!persistenceDisabled(executionContext)) await this.redis.setJson(cacheKey, base, FEATURES_CACHE_TTL);
 
         const overrides = await this.getQuotaOverrides(tenantId);
         return this.applyOverrides(base, overrides);
     }
 
     private applyOverrides(base: Record<string, any>, overrides: QuotaOverrides): Record<string, any> {
-        const merged: Record<string, any> = { ...base };
-        // Apply every overridable flat feature/limit key present as a number.
-        // (Rate-limit keys are applied separately in resolveLimits.)
-        for (const key of FEATURE_OVERRIDE_KEYS) {
-            const ov = (overrides as Record<string, any>)[key];
-            if (typeof ov === 'number') merged[key] = ov;
-        }
-        return merged;
+        return applyPlanFeatureOverrides(base, overrides);
     }
 
     /**
      * Check if a boolean feature flag is enabled for this tenant's plan.
      * Returns false if the key doesn't exist.
      */
-    async isFeatureEnabled(tenantId: string, featureKey: string): Promise<boolean> {
-        const features = await this.getPlanFeatures(tenantId);
+    async isFeatureEnabled(tenantId: string, featureKey: string, executionContext?: ServiceExecutionContext): Promise<boolean> {
+        const features = await this.getPlanFeatures(tenantId, executionContext);
         return features[featureKey] === true;
     }
 
@@ -410,6 +502,72 @@ export class TenantThrottleService {
         return newCount;
     }
 
+    /**
+     * Reserve one monthly AI reply for a stable inbound effect.
+     *
+     * The old read-then-increment path was not a quota: concurrent turns could
+     * both observe the last free slot, and retries counted the same inbound
+     * message again. This Lua script decides the limit and records the effect
+     * identity in one Redis transaction. A retry adopts its existing marker.
+     */
+    async reserveAiMessageCount(
+        tenantId: string,
+        effectId: string,
+        limit: number,
+    ): Promise<{ allowed: boolean; count: number; adopted: boolean }> {
+        const monthKey = this.currentMonthKey();
+        const countKey = `ai_msg:${tenantId}:${monthKey}`;
+        const effectHash = createHash('sha256').update(effectId).digest('hex');
+        const reservationKey = `ai_msg:reservation:${tenantId}:${monthKey}:${effectHash}`;
+        const ttl = 35 * 24 * 60 * 60;
+        const finiteLimit = Number.isFinite(limit) ? Math.max(0, Math.floor(limit)) : -1;
+        const result = await this.redis.getClient().eval(
+            `local marker = redis.call('GET', KEYS[2])
+             local current = tonumber(redis.call('GET', KEYS[1]) or '0')
+             if marker then return {1, current, 1} end
+             local quota = tonumber(ARGV[1])
+             if quota >= 0 and current >= quota then return {0, current, 0} end
+             current = redis.call('INCR', KEYS[1])
+             redis.call('EXPIRE', KEYS[1], tonumber(ARGV[2]))
+             redis.call('SET', KEYS[2], 'held', 'EX', tonumber(ARGV[2]))
+             return {1, current, 0}`,
+            2, countKey, reservationKey, String(finiteLimit), String(ttl),
+        ) as [number, number, number];
+        return { allowed: result[0] === 1, count: Number(result[1]), adopted: result[2] === 1 };
+    }
+
+    /** The generated reply is now an accounted fact; retries keep adopting it. */
+    async commitAiMessageCount(tenantId: string, effectId: string): Promise<void> {
+        const monthKey = this.currentMonthKey();
+        const effectHash = createHash('sha256').update(effectId).digest('hex');
+        const reservationKey = `ai_msg:reservation:${tenantId}:${monthKey}:${effectHash}`;
+        const ttl = 35 * 24 * 60 * 60;
+        await this.redis.getClient().eval(
+            `if redis.call('EXISTS', KEYS[1]) == 1 then
+                 redis.call('SET', KEYS[1], 'committed', 'EX', tonumber(ARGV[1]))
+                 return 1
+             end
+             return 0`,
+            1, reservationKey, String(ttl),
+        );
+    }
+
+    /** Release only a still-held reservation; a committed retry is immutable. */
+    async releaseAiMessageCount(tenantId: string, effectId: string): Promise<void> {
+        const monthKey = this.currentMonthKey();
+        const effectHash = createHash('sha256').update(effectId).digest('hex');
+        const reservationKey = `ai_msg:reservation:${tenantId}:${monthKey}:${effectHash}`;
+        const countKey = `ai_msg:${tenantId}:${monthKey}`;
+        await this.redis.getClient().eval(
+            `if redis.call('GET', KEYS[1]) ~= 'held' then return 0 end
+             redis.call('DEL', KEYS[1])
+             local current = tonumber(redis.call('GET', KEYS[2]) or '0')
+             if current > 0 then redis.call('DECR', KEYS[2]) end
+             return 1`,
+            2, reservationKey, countKey,
+        );
+    }
+
     async hasAiMessageQuota(tenantId: string): Promise<boolean> {
         const { used, limit } = await this.getAiMessageUsage(tenantId);
         if (!Number.isFinite(limit)) return true;
@@ -439,9 +597,9 @@ export class TenantThrottleService {
     /**
      * Resolve tenant plan with Redis caching (5 min TTL).
      */
-    async getTenantPlan(tenantId: string): Promise<string> {
+    async getTenantPlan(tenantId: string, executionContext?: ServiceExecutionContext): Promise<string> {
         const cacheKey = `tenant_plan:${tenantId}`;
-        const cached = await this.redis.get(cacheKey);
+        const cached = persistenceDisabled(executionContext) ? null : await this.redis.get(cacheKey);
         if (cached) return cached;
 
         try {
@@ -450,9 +608,10 @@ export class TenantThrottleService {
                 select: { plan: true },
             });
             const plan = tenant?.plan || DEFAULT_PLAN;
-            await this.redis.set(cacheKey, plan, PLAN_CACHE_TTL);
+            if (!persistenceDisabled(executionContext)) await this.redis.set(cacheKey, plan, PLAN_CACHE_TTL);
             return plan;
-        } catch {
+        } catch (error) {
+            if (persistenceDisabled(executionContext)) throw error;
             return DEFAULT_PLAN;
         }
     }

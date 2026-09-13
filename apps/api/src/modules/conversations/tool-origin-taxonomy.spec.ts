@@ -70,30 +70,36 @@ describe('cada tool estática declara de dónde viene', () => {
 });
 
 describe('la procedencia declarada coincide con la familia real', () => {
-    it('toda tool de una familia vertical se declara `vertical`', () => {
-        const wrong = [...toolsOfFamilies(VERTICAL_FAMILIES)].filter(
-            name => toolOrigin(name) !== 'vertical',
+    /**
+     * Encender cada lista por separado deja fuera a las tools que exigen DOS
+     * familias a la vez. `schedule_test_drive` es la primera: desde que la
+     * prueba de manejo se consolidó en la agenda canónica pide `vehicles` **y**
+     * `appointments`, así que no aparecía ni entre las verticales ni entre las
+     * core, y su procedencia no la miraba nadie. La pregunta correcta no es en
+     * qué lista está, sino si desaparece al apagar las verticales.
+     */
+    const withEverything = toolsOfFamilies([...VERTICAL_FAMILIES, ...CORE_FAMILIES]);
+    const withoutVerticals = toolsOfFamilies(CORE_FAMILIES);
+
+    it('toda tool que sólo existe con una familia vertical se declara `vertical`', () => {
+        const wrong = [...withEverything].filter(
+            name => !withoutVerticals.has(name) && toolOrigin(name) !== 'vertical',
         );
         // Publicar `file_claim` en una peluquería no es un permiso de más: es
         // una tool que ahí no significa nada.
         expect(wrong).toEqual([]);
     });
 
-    it('ninguna tool de una familia core se declara `vertical`', () => {
-        const coreTools = toolsOfFamilies(CORE_FAMILIES);
-        const wrong = [...coreTools].filter(name => toolOrigin(name) === 'vertical');
+    it('ninguna tool disponible sin familias verticales se declara `vertical`', () => {
+        const wrong = [...withoutVerticals].filter(name => toolOrigin(name) === 'vertical');
         expect(wrong).toEqual([]);
     });
 
-    it('las dos listas de familias cubren el registro entero', () => {
+    it('las familias declaradas cubren el registro entero', () => {
         // Una familia nueva que nadie clasifique dejaría a sus tools fuera de
         // las dos comprobaciones de arriba: pasarían en verde sin ser miradas.
-        const covered = new Set([
-            ...toolsOfFamilies(VERTICAL_FAMILIES),
-            ...toolsOfFamilies(CORE_FAMILIES),
-        ]);
         const uncovered = STATIC_TOOL_NAMES.filter(
-            name => !covered.has(name) && toolOrigin(name) !== 'provider',
+            name => !withEverything.has(name) && toolOrigin(name) !== 'provider',
         );
         // Lo que queda fuera de las familias son las que se agregan por otro
         // camino (pagos, la llave de identidad); ninguna puede ser `vertical`.

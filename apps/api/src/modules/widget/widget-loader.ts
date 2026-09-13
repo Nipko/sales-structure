@@ -34,6 +34,7 @@ function initSess(pc,cb){
 
 function newSess(pc,cb){
   var b={widgetId:WID,visitorId:getVid(),page:location.href};
+  var prior=getSess();if(prior&&prior.token)b.resumeToken=prior.token;
   if(pc){if(pc.name)b.name=pc.name;if(pc.email)b.email=pc.email;if(pc.phone)b.phone=pc.phone}
   fetch(API+'/widget/sessions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)})
   .then(function(r){return r.json()}).then(function(d){
@@ -48,40 +49,32 @@ function connectWS(){
   st.sock=io(wsUrl+'/widget',{auth:{token:st.sess.token},transports:['websocket','polling'],reconnection:true,reconnectionDelay:2000,reconnectionAttempts:15});
   st.sock.on('widget:connected',function(){});
   st.sock.on('widget:history',function(d){
-    if(d.messages&&d.messages.length){
-      st.msgs=d.messages.map(function(m){return{role:m.direction==='inbound'?'user':'assistant',content:m.content_text,ts:m.created_at}});
-      renderMsgs()
-    }
+    (d.messages||[]).forEach(function(m){mergeWidgetMessage(m)});renderMsgs();
+    (d.messages||[]).forEach(ackWidgetMessage)
   });
   st.sock.on('widget:message',function(d){
-    // Dedup: the gateway double-emits widget:message after a stream for old loaders;
-    // if we already rendered this content via streaming, skip it.
-    var prev=st.msgs[st.msgs.length-1];
-    if(prev&&prev.role==='assistant'&&!prev.streaming&&prev.content===d.content) return;
-    st.msgs.push({role:d.role||'assistant',content:d.content,ts:d.timestamp||new Date().toISOString()});
-    st.typing=false;renderMsgs();renderTyping();
-    if(!st.open){st.unread++;renderBadge()}
-    playSound()
+    var added=mergeWidgetMessage(d);st.typing=false;renderMsgs();renderTyping();ackWidgetMessage(d);
+    if(added){if(!st.open){st.unread++;renderBadge()}playSound()}
   });
   // Streaming (#6 Fase-2): the assistant reply arrives token-by-token.
   st.sock.on('widget:stream_start',function(d){
     st.streamingId=d.messageId;
-    st.msgs.push({role:d.role||'assistant',content:'',ts:d.timestamp||new Date().toISOString(),streaming:true});
+    var old=findWidgetMessage(d.messageId);if(old){old.streaming=true;old.content=''}else st.msgs.push({id:d.messageId,role:d.role||'assistant',content:'',ts:d.timestamp||new Date().toISOString(),streaming:true});
     st.typing=false;renderMsgs();renderTyping();
   });
   st.sock.on('widget:stream_chunk',function(d){
-    var last=st.msgs[st.msgs.length-1];
+    var last=findWidgetMessage(d.messageId||st.streamingId);
     if(last&&last.streaming){last.content+=d.delta;renderMsgs();}
   });
   st.sock.on('widget:stream_end',function(d){
-    var last=st.msgs[st.msgs.length-1];
+    var last=findWidgetMessage(d.messageId||st.streamingId);
     if(last&&last.streaming){last.content=d.content||last.content;last.streaming=false;}
     st.streamingId=null;renderMsgs();
     if(!st.open){st.unread++;renderBadge()}
     playSound()
   });
   st.sock.on('widget:stream_error',function(d){
-    var last=st.msgs[st.msgs.length-1];
+    var last=findWidgetMessage(d.messageId||st.streamingId);
     if(last&&last.streaming){last.streaming=false;if(!last.content){last.content='⚠️';}}
     st.streamingId=null;renderMsgs();
   });
@@ -91,7 +84,7 @@ function connectWS(){
   st.sock.on('widget:message-received',function(d){
     for(var i=st.msgs.length-1;i>=0;i--){
       var m=st.msgs[i];
-      if(m.role==='user'&&m.pending&&m.content===d.content){m.pending=false;break}
+      if(m.role==='user'&&m.pending&&m.content===d.content){m.pending=false;m.id=d.id;break}
     }
     renderMsgs()
   });
@@ -101,6 +94,18 @@ function connectWS(){
   st.sock.on('widget:typing',function(d){st.typing=d.isTyping;renderTyping()});
   st.sock.on('widget:error',function(d){console.warn('Parallly:',d.message)});
 }
+
+function findWidgetMessage(id){if(!id)return null;for(var i=0;i<st.msgs.length;i++)if(st.msgs[i].id===id)return st.msgs[i];return null}
+function mergeWidgetMessage(d){
+  var id=d.messageId||d.id;var role=d.role||(d.direction==='inbound'?'user':'assistant');
+  var found=findWidgetMessage(id);var value={id:id,role:role,content:d.content!=null?d.content:d.content_text,
+    type:d.type||d.content_type||'text',mediaUrl:d.mediaUrl||d.media_url,caption:d.caption,filename:d.filename,
+    ts:d.timestamp||d.created_at||new Date().toISOString(),pending:false,streaming:false};
+  if(found){Object.assign(found,value);return false}
+  if(!id){var last=st.msgs[st.msgs.length-1];if(last&&last.role===role&&last.content===value.content)return false}
+  st.msgs.push(value);st.msgs.sort(function(a,b){return new Date(a.ts)-new Date(b.ts)});return true
+}
+function ackWidgetMessage(d){var id=d.messageId||d.id;if(d.receiptRequired&&id&&st.sock)st.sock.emit('widget:received',{messageId:id})}
 
 function markPendingFailed(){
   var changed=false;
@@ -345,7 +350,19 @@ function renderMsgs(){
     var d=document.createElement('div');
     d.className='pw-msg '+(m.role==='user'?'out':'in');
     if(m.role==='user')d.style.background=st.cfg.primaryColor||'#6c5ce7';
-    d.textContent=m.content||'';
+    d.textContent=m.caption||((m.mediaUrl&&m.content===m.mediaUrl)?'':m.content)||'';
+    if(m.mediaUrl){
+      try{var u=new URL(m.mediaUrl);if(u.protocol==='https:'&&!u.username&&!u.password){
+        var media;if(m.type==='image'){media=document.createElement('img');media.src=u.href;media.alt=m.caption||'';media.style.maxWidth='100%';media.style.borderRadius='8px'}
+        else if(m.type==='audio'||m.type==='video'){media=document.createElement(m.type);media.src=u.href;media.controls=true;media.style.maxWidth='100%'}
+        else{media=document.createElement('a');media.href=u.href;media.textContent=m.filename||u.href;media.target='_blank';media.rel='noopener noreferrer'}
+        d.appendChild(media)
+      }}catch(e){}
+    }else if(m.content){
+      try{var link=new URL(m.content.trim());if(link.protocol==='https:'&&!link.username&&!link.password){
+        var anchor=document.createElement('a');anchor.href=link.href;anchor.textContent=m.content;anchor.target='_blank';anchor.rel='noopener noreferrer';d.textContent='';d.appendChild(anchor)
+      }}catch(e){}
+    }
     if(m.pending)d.style.opacity='0.6';
     if(m.failed)d.style.opacity='0.6';
     var t=document.createElement('div');t.className='pw-msg-time';

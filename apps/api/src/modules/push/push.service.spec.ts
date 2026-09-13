@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException } from '@nestjs/common';
 import { promises as dns } from 'node:dns';
 import { prepareTrustedWebPushTarget, PushService } from './push.service';
+import { DEFAULT_NOTIFICATION_PREFERENCES } from './notification-preferences';
 
 describe('PushService outbound endpoint policy', () => {
     let lookupSpy: jest.SpyInstance;
@@ -223,5 +224,55 @@ describe('PushService outbound endpoint policy', () => {
 
         expect(dispatch).toHaveBeenCalledTimes(2);
         expect(prisma.$queryRawUnsafe.mock.calls[1][3]).toBe(firstPage[99].id);
+        expect(prisma.$queryRawUnsafe.mock.calls[0][5]).toBe('system');
+    });
+
+    it('stores a complete preference object under the authenticated user and tenant', async () => {
+        const stored = { ...DEFAULT_NOTIFICATION_PREFERENCES, soundEnabled: false };
+        const prisma = { $queryRawUnsafe: jest.fn().mockResolvedValue([
+            { notification_preferences: stored },
+        ]) } as any;
+        const service = new PushService(prisma, { get: jest.fn() } as any);
+
+        await expect(service.updatePreferences(
+            '11111111-1111-4111-8111-111111111111',
+            '22222222-2222-4222-8222-222222222222',
+            stored,
+        )).resolves.toEqual(stored);
+
+        expect(prisma.$queryRawUnsafe).toHaveBeenCalledWith(
+            expect.stringContaining('notification_preferences = $3::jsonb'),
+            '11111111-1111-4111-8111-111111111111',
+            '22222222-2222-4222-8222-222222222222',
+            JSON.stringify(stored),
+        );
+    });
+
+    it('filters server push by the category chosen by the user', async () => {
+        const prisma = { $queryRawUnsafe: jest.fn().mockResolvedValue([]) } as any;
+        const service = new PushService(prisma, { get: jest.fn() } as any);
+        await service.sendToUser(
+            '11111111-1111-4111-8111-111111111111',
+            { title: 'Message', body: 'Body' },
+            'chat',
+        );
+        expect(prisma.$queryRawUnsafe).toHaveBeenCalledWith(
+            expect.stringContaining("notification_preferences->'categories'->>$4"),
+            '11111111-1111-4111-8111-111111111111', null, 100, 'chat', 'true',
+        );
+    });
+
+    it('uses the product default when an older preference object lacks a category', async () => {
+        const prisma = { $queryRawUnsafe: jest.fn().mockResolvedValue([]) } as any;
+        const service = new PushService(prisma, { get: jest.fn() } as any);
+        await service.sendToUser(
+            '11111111-1111-4111-8111-111111111111',
+            { title: 'Order', body: 'Body' },
+            'orders',
+        );
+        expect(prisma.$queryRawUnsafe).toHaveBeenCalledWith(
+            expect.stringContaining("COALESCE(u.notification_preferences->'categories'->>$4, $5)"),
+            '11111111-1111-4111-8111-111111111111', null, 100, 'orders', 'false',
+        );
     });
 });

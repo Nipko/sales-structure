@@ -93,7 +93,7 @@ describe('native evidence opportunity schema contract', () => {
             "ensureNativeEvidenceOpportunityOwnershipForTable(schema, 'orders')",
         );
         const cacheWrite = ordersServiceSource.indexOf("redis.set(cacheKey, 'true', 86400)");
-        expect(ordersServiceSource).toContain('orders:tables:v2:${schema}');
+        expect(ordersServiceSource).toContain('orders:tables:v3:${schema}');
         expect(hardeningCall).toBeGreaterThanOrEqual(0);
         expect(cacheWrite).toBeGreaterThan(hardeningCall);
         expect(ordersServiceSource).toContain('throw error;');

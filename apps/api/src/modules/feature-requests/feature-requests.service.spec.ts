@@ -34,7 +34,6 @@ describe('FeatureRequestsService OpenAI key resolution', () => {
         const service = new FeatureRequestsService(
             prisma as any,
             config as any,
-            { send: jest.fn() } as any,
             { runExclusive: jest.fn() } as any,
             llmKeys,
         );

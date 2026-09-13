@@ -1,0 +1,2 @@
+# Preserve the verified patch bytes; spaces on patch context lines are intentional.
+normal-widget-integration.draft.patch -text -whitespace

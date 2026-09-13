@@ -26,14 +26,19 @@ const safeBrowserEnvironment = {
 export default defineConfig({
   testDir: "./tests",
   outputDir: "./test-results",
+  globalTeardown: require.resolve("./global-teardown.cjs"),
   fullyParallel: true,
   forbidOnly: isCI,
   failOnFlakyTests: isCI,
   retries: isCI ? 1 : 0,
   workers: isCI ? 1 : undefined,
-  timeout: 45_000,
+  // Dev servers compile each route the first time it is asked for, and both of
+  // them are running while the suite does. A first hit under that contention
+  // has exceeded 45s more than once, always on a different test — a machine
+  // under load, not a slow page. More patience, never a weaker assertion.
+  timeout: 90_000,
   expect: {
-    timeout: 10_000,
+    timeout: 15_000,
   },
   reporter: isCI
     ? [
@@ -83,28 +88,31 @@ export default defineConfig({
         baseURL: dashboardUrl,
       },
     },
-  ],
-  webServer: [
     {
-      command: "npm run dev --workspace=landing",
-      cwd: repositoryRoot,
-      env: safeBrowserEnvironment,
-      url: landingUrl,
-      reuseExistingServer: false,
-      timeout: 180_000,
-      stdout: "pipe",
-      stderr: "pipe",
-    },
-    {
-      command:
-        "npm run build --workspace=@parallext/shared && npm run dev --workspace=@parallext/dashboard",
-      cwd: repositoryRoot,
-      env: safeBrowserEnvironment,
-      url: `${dashboardUrl}/login`,
-      reuseExistingServer: false,
-      timeout: 180_000,
-      stdout: "pipe",
-      stderr: "pipe",
+      // The same specs at a phone viewport. Most of this product is used from
+      // a phone by the person who owns the business, and a layout that only
+      // works at 1280px is a layout most of its users never see working.
+      // Kept as a project rather than a viewport override inside each test so
+      // adding a spec covers both sizes without anybody remembering to.
+      name: "dashboard-mobile",
+      testMatch: /dashboard[\/](session-and-roles|locales-and-access|assist-handoffs|guided-tours|oauth-return|signup-to-first-agent|assist-proposal-loop|assist-guided-creation|contrast-and-zoom|agent-publication)\.spec\.ts$/,
+      use: {
+        ...devices["Pixel 7"],
+        baseURL: dashboardUrl,
+      },
     },
   ],
+  // One process builds and serves both production artefacts. Keeping both
+  // listeners in the Playwright-owned process prevents Next's dev compiler
+  // descendants from surviving teardown on Windows.
+  webServer: {
+    command: "node start-servers.cjs",
+    cwd: resolve(repositoryRoot, "apps", "e2e"),
+    env: safeBrowserEnvironment,
+    url: `${dashboardUrl}/login`,
+    reuseExistingServer: false,
+    timeout: 300_000,
+    stdout: "pipe",
+    stderr: "pipe",
+  },
 });

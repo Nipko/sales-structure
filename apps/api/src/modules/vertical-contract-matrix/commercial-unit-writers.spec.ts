@@ -115,60 +115,21 @@ describe('retail currency lineage', () => {
         expect(params[4]).toBe('BRL');
     });
 
-    it('derives an order currency from authoritative product rows', async () => {
-        const transactionQuery = jest.fn()
-            .mockResolvedValueOnce([{
-                id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-                name: 'Producto',
-                price: '100',
-                currency: 'MXN',
-                stock: 2,
-                is_available: true,
-            }])
-            .mockResolvedValueOnce([{ id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' }])
-            .mockResolvedValueOnce([])
-            .mockResolvedValueOnce([{ stock: 1 }])
-            .mockResolvedValueOnce([]);
-        const prisma = {
-            transactionInTenantSchema: jest.fn((_schema, callback) => callback(transactionQuery)),
-        };
-        const redis = { get: jest.fn().mockResolvedValue('tenant_schema'), set: jest.fn() };
-        const service = new OrdersService(prisma as any, redis as any);
-
-        await service.createOrder('tenant-id', {
-            items: [{
-                productId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-                productName: 'Producto', quantity: 1, unitPrice: 100,
-            }],
-        });
-
-        const orderParams = transactionQuery.mock.calls[1][1];
-        expect(orderParams[5]).toBe('MXN');
+    function catalogService(products:any[]) {
+        const query=jest.fn(async(sql:string)=>sql.includes('FROM products')?products:[]);
+        const service=new OrdersService({transactionInTenantSchema:async(_schema:string,work:any)=>work(query)} as any,{get:async()=> 'tenant_schema'} as any);
+        return {service,query};
+    }
+    it('derives reviewed currency from authoritative product rows, ignoring submitted labels',async()=>{
+        const id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+        const {service}=catalogService([{id,name:'Product',price:'100',currency:'MXN',stock:2,is_available:true}]);
+        const review=await service.quoteOrder('tenant-id',{items:[{productId:id,quantity:1,currency:'COP',unitPrice:1}]});
+        expect(review.terms).toMatchObject({currency:'MXN',totalAmountCents:'10000'});
     });
-
-    it('rejects mixed catalog currencies instead of labelling the order COP', async () => {
-        const transactionQuery = jest.fn().mockResolvedValueOnce([
-            {
-                id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-                name: 'A', price: '1', currency: 'MXN', stock: 1, is_available: true,
-            },
-            {
-                id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
-                name: 'B', price: '1', currency: 'COP', stock: 1, is_available: true,
-            },
-        ]);
-        const prisma = {
-            transactionInTenantSchema: jest.fn((_schema, callback) => callback(transactionQuery)),
-        };
-        const redis = { get: jest.fn().mockResolvedValue('tenant_schema'), set: jest.fn() };
-        const service = new OrdersService(prisma as any, redis as any);
-
-        await expect(service.createOrder('tenant-id', {
-            items: [
-                { productId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', productName: 'A', quantity: 1, unitPrice: 1 },
-                { productId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', productName: 'B', quantity: 1, unitPrice: 1 },
-            ],
-        })).rejects.toThrow('All order items must use the same currency');
-        expect(transactionQuery).toHaveBeenCalledTimes(1);
+    it('rejects mixed currencies before any order write or review',async()=>{
+        const first='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',second='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+        const {service,query}=catalogService([{id:first,name:'A',price:'1',currency:'MXN',stock:1,is_available:true},{id:second,name:'B',price:'1',currency:'COP',stock:1,is_available:true}]);
+        await expect(service.quoteOrder('tenant-id',{items:[{productId:first,quantity:1},{productId:second,quantity:1}]})).rejects.toThrow('catalog_currency_mismatch');
+        expect(query.mock.calls.every(call=>!call[0].includes('INSERT'))).toBe(true);
     });
 });

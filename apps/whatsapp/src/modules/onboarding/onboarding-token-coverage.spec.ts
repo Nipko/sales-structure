@@ -28,7 +28,10 @@ describe('Embedded Signup tenant-wide token coverage', () => {
       'tenant-1', 'waba-new', 'temporary-candidate', 5_184_000,
     );
 
-    expect(result).toEqual({ accessToken: 'permanent-existing', expiresInSeconds: 0 });
+    // `minted: false` is the load-bearing half: this token came OUT OF THE
+    // TABLE, so the flow knows nothing about whose portfolio it is and must
+    // not stamp provenance on it.
+    expect(result).toEqual({ accessToken: 'permanent-existing', expiresInSeconds: 0, minted: false });
     expect(metaGraph.getWabaDirectly).toHaveBeenCalledWith('waba-old', 'permanent-existing');
     expect(metaGraph.getWabaDirectly).toHaveBeenCalledWith('waba-new', 'permanent-existing');
   });
@@ -47,7 +50,8 @@ describe('Embedded Signup tenant-wide token coverage', () => {
     const result = await (service as any).resolveCredentialForCoverage(
       'tenant-1', 'waba-new', 'new-system-token', 0,
     );
-    expect(result).toEqual({ accessToken: 'new-system-token', expiresInSeconds: 0 });
+    // Obtained by this flow, so provenance may be recorded against it.
+    expect(result).toEqual({ accessToken: 'new-system-token', expiresInSeconds: 0, minted: true });
     expect(metaGraph.getWabaDirectly).toHaveBeenCalledWith('waba-old', 'new-system-token');
     expect(metaGraph.getWabaDirectly).toHaveBeenCalledWith('waba-new', 'new-system-token');
   });

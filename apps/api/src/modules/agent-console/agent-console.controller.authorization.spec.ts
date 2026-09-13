@@ -74,6 +74,10 @@ describe('AgentConsoleController mutation authorization', () => {
         expect(h.service.assertCanActOnConversation).toHaveBeenCalledTimes(2);
         expect(h.service.sendAgentMessage).toHaveBeenCalledWith(
             tenantId, conversationId, actorId, 'Hola', undefined, undefined, undefined, undefined,
+            // The press key, absent here: this body carries none, and a caller
+            // that names no press gets no protection against its own retry
+            // rather than an invented identity it could never reproduce.
+            undefined,
         );
         expect(h.service.addNote).toHaveBeenCalledWith(tenantId, conversationId, actorId, 'Nota');
     });

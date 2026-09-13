@@ -121,14 +121,17 @@ const BASE_READINESS = new Set<VerticalReadinessKey>([
 const PRIMARY_OBJECT_READINESS: Readonly<Partial<Record<VerticalPrimaryObject, readonly VerticalReadinessKey[]>>> = {
     appointment: ['appointment_services'],
     catalog_item: ['catalog_items'],
-    treatment_plan: ['treatment_catalog'],
+    // Patient plans and professional cases are operational records. A new
+    // business with no customers is not misconfigured, and both readers return
+    // an honest empty result for the current contact.
+    treatment_plan: [],
     real_estate_listing: ['listings'],
     food_order: ['menu_items'],
     vehicle: ['vehicle_inventory'],
     tour_package: ['tour_packages'],
     property_booking: ['properties'],
     course: ['courses'],
-    professional_case: ['professional_cases'],
+    professional_case: [],
     pet: ['pets'],
     membership: ['membership_plans'],
     insurance_policy: ['insurance_plans'],
@@ -185,7 +188,9 @@ function routeToSurfaceItem(route: string): string | null {
 }
 
 function isRouteReachableFromManifest(route: string, manifestRoutes: readonly string[]): boolean {
-    if (route.startsWith('/admin/settings/') || route === '/admin/knowledge') return true;
+    if (route.startsWith('/admin/settings/')
+        || route === '/admin/knowledge'
+        || route.startsWith('/admin/knowledge/')) return true;
     return manifestRoutes.some(base => route === base || route.startsWith(`${base}/`));
 }
 

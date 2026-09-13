@@ -1,159 +1,85 @@
-import { BadRequestException } from '@nestjs/common';
 import { PersonaService } from './persona.service';
 
-/**
- * Dos defectos que se veían como éxitos:
- *
- * 1. `updateAgent` escribía `config_json` sin mirarlo. Se podía borrar el
- *    nombre, el mensaje de fallback, todas las reglas y todos los motivos de
- *    escalado, recibir "guardado" y enterarse después por un bloqueo crítico.
- * 2. `tpl_faq` encendía `rag`, así que el check crítico `rag_knowledge` marcaba
- *    en rojo a un tenant cuyas preguntas frecuentes funcionaban perfecto.
- */
-describe('PersonaService — agente válido antes de escribir', () => {
-    const tenantId = '11111111-1111-4111-8111-111111111111';
-    const agentId = '22222222-2222-4222-8222-222222222222';
-
-    const validConfig = () => ({
-        persona: {
-            name: 'Sofía',
-            role: 'Asistente de recepción',
-            greeting: 'Hola, soy Sofía. ¿En qué te ayudo?',
-            fallbackMessage: 'Te paso con una persona del equipo.',
-        },
-        behavior: {
-            rules: ['Confirmar los datos antes de agendar'],
-            handoffTriggers: ['El cliente pide hablar con un humano'],
-            forbiddenTopics: [],
-            requiredFields: {},
-        },
+// Drafts reuse this validator. Operational update is now deactivation-only.
+describe('Canonical persona validation for editable revisions', () => {
+    const service = Object.create(PersonaService.prototype) as PersonaService;
+    const valid = () => ({ persona: { name: 'Sofía', role: 'Support', fallbackMessage: 'A colleague can help.' },
+        behavior: { rules: ['Use confirmed facts'], handoffTriggers: ['Human requested'] } });
+    it('accepts a complete configuration', () => expect(() => service.assertAgentConfigValid(valid())).not.toThrow());
+    it.each(['name', 'role', 'fallbackMessage'])('rejects an empty %s', key => {
+        const config: any = valid(); config.persona[key] = ' ';
+        expect(() => service.assertAgentConfigValid(config)).toThrow();
     });
-
-    function makeService(priorConfig: any = validConfig()) {
-        const statements: string[] = [];
-        const prisma = {
-            $queryRawUnsafe: jest.fn(async (sql: string) => {
-                statements.push(sql);
-                if (sql.includes('SELECT channel_bindings')) {
-                    return [{ channel_bindings: [], config_json: priorConfig }];
-                }
-                if (sql.includes('RETURNING *')) return [{ id: agentId, name: 'Sofía' }];
-                return [];
-            }),
-            $executeRawUnsafe: jest.fn(async () => 1),
-            channelAccount: { findMany: jest.fn(async () => []) },
-        };
-        const redis = { del: jest.fn(async () => undefined) };
-        const tenantsService = { getSchemaName: jest.fn(async () => 'tenant_test') };
-        const eventEmitter = { emit: jest.fn() };
-        const service = new PersonaService(
-            prisma as any,
-            redis as any,
-            tenantsService as any,
-            {} as any,
-            eventEmitter as any,
-        );
-        // La DDL perezosa no es lo que se está probando.
-        (service as any).initializedTenants.add(tenantId);
-        return { service, prisma, statements };
-    }
-
-    const writes = (statements: string[]) => statements.filter((sql) => /^\s*UPDATE/i.test(sql));
-
-    async function expectAgentInvalid(promise: Promise<unknown>, fields: string[]) {
-        await expect(promise).rejects.toBeInstanceOf(BadRequestException);
-        await promise.catch((error: BadRequestException) => {
-            expect(error.getResponse()).toMatchObject({ error: 'agent_invalid' });
-            expect((error.getResponse() as any).fields).toEqual(expect.arrayContaining(fields));
-        });
-    }
-
-    it('rechaza el guardado que vacía identidad, fallback, reglas y escalado — y no escribe nada', async () => {
-        const { service, statements } = makeService();
-        const emptied = {
-            persona: { name: '   ', role: '', greeting: 'Hola', fallbackMessage: '' },
-            behavior: { rules: [], handoffTriggers: [], forbiddenTopics: [], requiredFields: {} },
-        };
-
-        await expectAgentInvalid(
-            service.updateAgent(tenantId, agentId, { configJson: emptied }),
-            ['persona.name', 'persona.role', 'persona.fallbackMessage', 'behavior.rules', 'behavior.handoffTriggers'],
-        );
-        expect(writes(statements)).toHaveLength(0);
+    it.each(['rules', 'handoffTriggers'])('rejects empty or whitespace-only %s', key => {
+        const config: any = valid(); config.behavior[key] = [' '];
+        expect(() => service.assertAgentConfigValid(config)).toThrow();
     });
-
-    it('rechaza una lista de reglas que solo tiene entradas en blanco', async () => {
-        const { service } = makeService();
-        const config = validConfig();
-        config.behavior.rules = ['   ', ''];
-
-        await expectAgentInvalid(
-            service.updateAgent(tenantId, agentId, { configJson: config }),
-            ['behavior.rules'],
-        );
+    it('allows missing fields in an explicitly partial draft while rejecting a present empty value', () => {
+        expect(() => service.assertAgentConfigValid({ persona: { name: 'Alex' } }, { partial: true })).not.toThrow();
+        expect(() => service.assertAgentConfigValid({ persona: { name: '' } }, { partial: true })).toThrow();
     });
-
-    it('guarda un agente completo', async () => {
-        const { service, statements } = makeService();
-
-        await expect(service.updateAgent(tenantId, agentId, { configJson: validConfig() }))
-            .resolves.toMatchObject({ id: agentId });
-        expect(writes(statements).length).toBeGreaterThan(0);
+    it('requires the actual custom prompt in prompt mode', () => {
+        expect(() => service.assertAgentConfigValid({ editorMode: 'prompt', customPrompt: 'Respond using the supplied facts.' })).not.toThrow();
+        expect(() => service.assertAgentConfigValid({ _mode: 'prompt', _customPrompt: ' ' })).toThrow();
+        expect(() => service.assertAgentConfigValid({ editorMode: 'prompt', customPrompt: 'x'.repeat(16001) })).toThrow();
+        expect(() => service.assertAgentConfigValid({ editorMode: 'guided', _mode: 'prompt', customPrompt: 'x' }, { partial: true })).toThrow();
     });
-
-    it('en modo prompt exige el prompt propio en vez de reglas y motivos de escalado', async () => {
-        const { service } = makeService();
-        const promptAgent = {
-            editorMode: 'prompt',
-            persona: { name: 'Sofía', role: 'Asistente', fallbackMessage: 'Te paso con alguien.' },
-            behavior: { rules: [], handoffTriggers: [] },
-        };
-
-        await expectAgentInvalid(
-            service.updateAgent(tenantId, agentId, { configJson: { ...promptAgent, customPrompt: '  ' } }),
-            ['customPrompt'],
-        );
-
-        await expect(service.updateAgent(tenantId, agentId, {
-            configJson: { ...promptAgent, customPrompt: 'Atendé como recepcionista de la clínica.' },
-        })).resolves.toMatchObject({ id: agentId });
+    it('rejects malformed prompt fields before they become misleading prompt text', () => {
+        const cases: Array<[any, string]> = [
+            [[], 'config'],
+            [{ persona: 'Luna' }, 'persona'],
+            [{ behavior: { rules: ['valid', { injected: true }] } }, 'behavior.rules'],
+            [{ behavior: { handoffTriggers: ['valid'], forbiddenTopics: [false] } }, 'behavior.forbiddenTopics'],
+            [{ behavior: { draftMode: 'yes' } }, 'behavior.draftMode'],
+            [{ persona: { greeting: { text: 'hello' } } }, 'persona.greeting'],
+            [{ persona: { personality: { tone: 42 } } }, 'persona.personality.tone'],
+        ];
+        for (const [config, field] of cases) {
+            try {
+                service.assertAgentConfigValid(config, { partial: true });
+                throw new Error('expected_invalid_prompt_configuration');
+            } catch (error: any) {
+                expect(error.response?.fields).toContain(field);
+            }
+        }
     });
-
-    it('acepta el borrador parcial del asistente (solo los campos que ya se escribieron)', async () => {
-        const { service } = makeService();
-
-        await expect(service.updateAgent(tenantId, agentId, {
-            configJson: { persona: { name: 'Sofía', greeting: 'Hola, soy Sofía' } },
-            partialDraft: true,
-        })).resolves.toMatchObject({ id: agentId });
+    it('accepts existing bounded model settings while rejecting states the editor cannot safely produce', () => {
+        expect(() => service.assertAgentConfigValid({ persona: { name: 'Alex' }, language: 'es',
+            llm: { temperature: 0.6, maxTokens: 500 }, rag: { enabled: true, topK: 5, similarityThreshold: 0.75 },
+            upsell: { enabled: true, intensity: 'subtle', maxDiscountPercent: 15 },
+            tools: { appointments: { enabled: true, canBook: true } } }, { partial: true })).not.toThrow();
+        for (const config of [
+            { language: 'de-DE' },
+            { persona: { personality: { emojiUsage: 'always' } } },
+            { skillset: 'marketing' },
+            { upsell: { enabled: true, maxDiscountPercent: 31 } },
+            { llm: { temperature: Number.NaN, maxTokens: 800 } },
+            { rag: { enabled: true, topK: 0, similarityThreshold: 0.75 } },
+            { hours: { aiOutsideHours: 'yes' } },
+            { tools: { appointments: { enabled: 'yes' } } },
+        ]) expect(() => service.assertAgentConfigValid(config, { partial: true })).toThrow();
     });
-
-    it('en el borrador sigue rechazando un campo presente pero vacío', async () => {
-        const { service } = makeService();
-
-        await expectAgentInvalid(
-            service.updateAgent(tenantId, agentId, {
-                configJson: { persona: { name: '', greeting: 'Hola' } },
-                partialDraft: true,
-            }),
-            ['persona.name'],
-        );
-    });
-
-    it('rechaza vaciar el nombre de la columna que muestra el panel', async () => {
-        const { service, statements } = makeService();
-
-        await expectAgentInvalid(service.updateAgent(tenantId, agentId, { name: '  ' }), ['persona.name']);
-        expect(writes(statements)).toHaveLength(0);
-    });
-
-    it('no valida la configuración en un cambio de estado (activar/desactivar)', async () => {
-        // Un agente heredado con la configuración incompleta tiene que poder
-        // apagarse; si no, el único arreglo disponible queda bloqueado.
-        const { service } = makeService({ persona: { name: 'Viejo' }, behavior: {} });
-
-        await expect(service.updateAgent(tenantId, agentId, { isActive: false }))
-            .resolves.toMatchObject({ id: agentId });
+    it('rejects unknown tool families and family-specific permission typos', () => {
+        const cases: Array<[any, string]> = [
+            [{ tools: { paymnts: { enabled: true } } }, 'tools.paymnts'],
+            [{ tools: { payments: { enabled: true, canCreateLink: true } } }, 'tools.payments.canCreateLink'],
+            [{ tools: { offers: { enabled: true, canBook: true } } }, 'tools.offers.canBook'],
+            [{ tools: [] }, 'tools'],
+        ];
+        for (const [config, field] of cases) {
+            try {
+                service.assertAgentConfigValid(config, { partial: true });
+                throw new Error('expected_invalid_tool_configuration');
+            } catch (error: any) {
+                expect(error.response?.fields).toContain(field);
+            }
+        }
+        expect(() => service.assertAgentConfigValid({ tools: {
+            appointments: { enabled: false, pendingPrerequisites: true },
+            vehicleRentals: { enabled: true, emailConfirmations: true },
+            petBoarding: { enabled: true, emailConfirmations: false },
+            repairOrders: { enabled: true, emailConfirmations: true },
+        } }, { partial: true })).not.toThrow();
     });
 });
 

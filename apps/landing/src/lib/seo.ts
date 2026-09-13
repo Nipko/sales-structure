@@ -4,8 +4,29 @@ const SITE_URL = "https://parallly-chat.cloud";
 const SITE_NAME = "Parallly";
 const DEFAULT_OG_IMAGE = `${SITE_URL}/og/parallly-social.png`;
 
-const LOCALES = ["es", "en", "pt", "fr"] as const;
-type SupportedLocale = (typeof LOCALES)[number];
+export const LOCALES = ["es", "en", "pt", "fr"] as const;
+export type SupportedLocale = (typeof LOCALES)[number];
+
+export function isSupportedLocale(value: string): value is SupportedLocale {
+  return (LOCALES as readonly string[]).includes(value);
+}
+
+export function localizedPath(path: string, locale: SupportedLocale): string {
+  const normalized = path === "/" ? "" : path.startsWith("/") ? path : `/${path}`;
+  return `/${locale}${normalized}`;
+}
+
+export function localizeInternalHref(href: string, locale: SupportedLocale): string {
+  if (!href.startsWith("/") || href.startsWith("//")) return href;
+  const match = href.match(/^([^?#]*)(.*)$/);
+  const pathname = match?.[1] || "/";
+  const suffix = match?.[2] || "";
+  const first = pathname.split("/").filter(Boolean)[0];
+  if (first && isSupportedLocale(first)) {
+    return `/${[locale, ...pathname.split("/").filter(Boolean).slice(1)].join("/")}${suffix}`;
+  }
+  return `${localizedPath(pathname, locale)}${suffix}`;
+}
 
 interface SEOInput {
   title: string;
@@ -26,7 +47,8 @@ export function buildMetadata({
   type = "website",
   locale = "es",
 }: SEOInput): Metadata {
-  const url = `${SITE_URL}${path}`;
+  const routePath = localizedPath(path, locale);
+  const url = `${SITE_URL}${routePath}`;
   const fullTitle = path === "/" ? title : `${title} | ${SITE_NAME}`;
   const openGraphLocale: Record<SupportedLocale, string> = {
     es: "es_CO",
@@ -41,6 +63,10 @@ export function buildMetadata({
     metadataBase: new URL(SITE_URL),
     alternates: {
       canonical: url,
+      languages: Object.fromEntries([
+        ...LOCALES.map(language => [language, `${SITE_URL}${localizedPath(path, language)}`]),
+        ["x-default", `${SITE_URL}${localizedPath(path, "es")}`],
+      ]),
     },
     openGraph: {
       title: fullTitle,

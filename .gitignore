@@ -67,3 +67,10 @@ scratch-*.ts
 
 # Claude Code agent worktrees
 .claude/worktrees/
+
+# Census probes. Two tests in outbound-gate-census.spec.ts must write a real
+# file because `--check` runs in another process and cannot see the in-memory
+# source overlay the rest of that suite uses. They delete what they write; if a
+# SIGKILL stops them, this line is what keeps the survivor out of a commit.
+apps/api/src/modules/channels/gate-census-*.generated.ts
+apps/api/src/modules/recall/lane-entrance.generated.ts

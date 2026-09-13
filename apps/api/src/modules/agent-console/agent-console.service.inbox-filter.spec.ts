@@ -34,7 +34,7 @@ describe('AgentConsoleService.getInbox — assigned_to is VARCHAR, not UUID', ()
         };
         const redis = { get: jest.fn().mockResolvedValue(schemaName) };
         const service = new AgentConsoleService(
-            prisma, redis as any, {} as any, {} as any,
+            prisma, redis as any, {} as any,
             {} as any, {} as any, { emit: jest.fn() } as any, {} as any,
         );
         return { service, sqls };
@@ -123,7 +123,7 @@ describe('AgentConsoleService.getConversation — exposes who holds the conversa
         };
         const redis = { get: jest.fn().mockResolvedValue('tenant_acme') };
         return new AgentConsoleService(
-            prisma, redis as any, {} as any, {} as any,
+            prisma, redis as any, {} as any,
             {} as any, {} as any, { emit: jest.fn() } as any, {} as any,
         );
     }

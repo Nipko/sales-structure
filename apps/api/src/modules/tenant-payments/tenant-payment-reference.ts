@@ -1,3 +1,8 @@
+import { enrollmentPriceSql, enrollmentCurrencySql } from '../education/enrollment-terms';
+import { appointmentAgreedPriceSql, appointmentAgreedCurrencySql } from '../appointments/appointment-service-terms';
+import { catalogAgreedAmountSql, catalogAgreedCurrencySql } from '../orders/catalog-order-contract';
+import { commitmentAgreedAmountSql, commitmentAgreedCurrencySql } from '../conversations/commitment-proposal';
+
 export type TenantPaymentProvider = 'mercadopago' | 'wompi';
 
 export type TenantPaymentStatus =
@@ -21,18 +26,26 @@ export interface PaymentReferenceTarget {
 export const PAYMENT_REFERENCE_TARGETS: Record<string, PaymentReferenceTarget> = {
     order: {
         table: 'orders',
-        amountExpression: 'target.total_amount',
-        currencyExpression: 'target.currency',
+        // The AGREED total, from the snapshot the writer already stored, not
+        // `total_amount`. The two agree for every order the canonical writer
+        // created — and where they do not, the difference is precisely a row
+        // whose amount nobody agreed to, which is the row that must not be
+        // charged rather than the one that must.
+        amountExpression: catalogAgreedAmountSql(),
+        currencyExpression: catalogAgreedCurrencySql(),
         rejectedStatuses: ['cancelled', 'refunded', 'paid'],
         description: entityId => `Pago de pedido ${entityId.slice(0, 8)}`,
     },
     tour: {
         table: 'tour_bookings',
-        // `amount_due` es lo que vuelve REAL al anticipo: sin el COALESCE, un
-        // "anticipo del 30%" habria cobrado el 100% — el mismo defecto que ya
-        // se corrigio en alojamiento y citas.
-        amountExpression: 'COALESCE(target.amount_due, target.total_price)',
-        currencyExpression: 'target.currency',
+        // El total sale de la propuesta ACEPTADA, no de la columna de la fila.
+        // `amount_due` sigue delante porque es lo que vuelve real al anticipo:
+        // sin ese COALESCE un "anticipo del 30%" cobraria el 100%. Lo que
+        // cambio es el respaldo: antes era `total_price`, un numero que alguien
+        // calculo; ahora es el numero que el viajero aceptó, y una fila sin
+        // aceptacion deja de ser cobrable en vez de cobrarse igual.
+        amountExpression: `COALESCE(target.amount_due, ${commitmentAgreedAmountSql()})`,
+        currencyExpression: commitmentAgreedCurrencySql(),
         // `expired` rechaza el cobro: la retencion vencio y el asiento volvio al
         // inventario, asi que aceptar la plata seria vender algo que ya no esta.
         rejectedStatuses: ['cancelled', 'refunded', 'expired'],
@@ -44,11 +57,12 @@ export const PAYMENT_REFERENCE_TARGETS: Record<string, PaymentReferenceTarget> =
     property: {
         table: 'property_bookings',
         // `amount_due` es lo que hay que pagar PARA CONFIRMAR, que no siempre es
-        // el total: cuando el dueño configuró un anticipo, cobrar `total_price`
-        // le sacaría al huésped el 100% de algo que se le ofreció al 30%.
-        // NULL cuando se cobra todo, y ahí manda el total de siempre.
-        amountExpression: 'COALESCE(target.amount_due, target.total_price)',
-        currencyExpression: 'target.currency',
+        // el total: cuando el dueño configuró un anticipo, cobrar el total le
+        // sacaría al huésped el 100% de algo que se le ofreció al 30%. Detrás
+        // ya no está `total_price` sino la propuesta que el huésped aceptó, así
+        // que una reserva sin acuerdo probado no es cobrable.
+        amountExpression: `COALESCE(target.amount_due, ${commitmentAgreedAmountSql()})`,
+        currencyExpression: commitmentAgreedCurrencySql(),
         // `expired` rechaza el cobro. Es sutil y es caro: el listener del pago
         // sólo confirma filas en `pending_payment`, así que aceptar plata sobre
         // una retención vencida cobraría sin confirmar nada — y sin ruido.
@@ -60,25 +74,33 @@ export const PAYMENT_REFERENCE_TARGETS: Record<string, PaymentReferenceTarget> =
     // salvo que la cita lleve una seña fijada en `amount_due`.
     appointment: {
         table: 'appointments',
-        amountExpression: 'COALESCE(target.amount_due, service.price)',
-        currencyExpression: 'service.currency',
+        // The AGREED price, not the catalogue's. A legacy appointment with no
+        // `serviceTerms` yields NULL and stops being payable — the same refusal
+        // enrollments already make — instead of being charged whatever the
+        // service costs today, which is a number the customer never saw.
+        amountExpression: `COALESCE(target.amount_due, ${appointmentAgreedPriceSql()})`,
+        currencyExpression: appointmentAgreedCurrencySql(),
         join: 'LEFT JOIN services service ON service.id = target.service_id',
         rejectedStatuses: ['cancelled', 'no_show', 'completed', 'expired'],
         description: entityId => `Pago de cita ${entityId.slice(0, 8)}`,
     },
     food: {
         table: 'food_orders',
-        amountExpression: 'target.total',
-        currencyExpression: 'target.currency',
+        // El writer ya recalculaba el total desde el menú en vez de confiar en
+        // el modelo, lo que protegía la aritmética y no el acuerdo: un precio
+        // editado entre el menú que leyó el cliente y el pedido movía la cifra
+        // en silencio. Ahora la caja lee lo aceptado.
+        amountExpression: commitmentAgreedAmountSql(),
+        currencyExpression: commitmentAgreedCurrencySql(),
         rejectedStatuses: ['cancelled', 'refunded'],
         description: entityId => `Pago de pedido de restaurante ${entityId.slice(0, 8)}`,
     },
     enrollment: {
         table: 'enrollments',
-        amountExpression: 'course.price',
-        currencyExpression: 'course.currency',
+        amountExpression: enrollmentPriceSql(),
+        currencyExpression: enrollmentCurrencySql(),
         join: 'JOIN courses course ON course.id = target.course_id',
-        rejectedStatuses: ['dropped', 'refunded', 'cancelled'],
+        rejectedStatuses: ['dropped', 'refunded', 'cancelled', 'waitlisted', 'waitlist_review'],
         description: entityId => `Pago de matrícula ${entityId.slice(0, 8)}`,
     },
 };
@@ -99,4 +121,3 @@ export function parsePaymentReference(reference: string): {
     if (!target) return null;
     return { kind, entityId, canonicalReference: `${kind}:${entityId}`, target };
 }
-

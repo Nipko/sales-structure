@@ -13,10 +13,12 @@ import {
   Clock, Shield, Wrench, BookmarkPlus, CheckCircle, AlertTriangle, X, Sparkles,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
+import { LoadFailureNotice } from "@/components/ui/load-failure";
 import { HelpPanel } from "@/components/ui/help-panel";
 import { SetupBanner } from "@/components/SetupBanner";
 import { guidedTourAnchorId } from "@/lib/guided-tours";
 import { Badge } from "@/components/ui/badge";
+import { channelOverviewIsAuthoritative } from "@/lib/agent-channel-assignment";
 
 // ── Channel metadata ────────────────────────────────────────
 
@@ -37,6 +39,7 @@ interface Agent {
   role?: string;
   is_active: boolean;
   is_default: boolean;
+  version: number;
   channels: string[];
   schedule_mode?: string;
   config_json?: any;
@@ -74,6 +77,7 @@ export default function AgentListPage() {
   const router = useRouter();
 
   const [agents, setAgents] = useState<Agent[]>([]);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [planFeatures, setPlanFeatures] = useState<PlanFeatures>(STARTER_LIMITS);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
@@ -84,6 +88,7 @@ export default function AgentListPage() {
   const [templatesLoading, setTemplatesLoading] = useState(false);
   const [connectedChannels, setConnectedChannels] = useState<any[]>([]);
   const [unassignedChannels, setUnassignedChannels] = useState<any[]>([]);
+  const [channelLoadFailed, setChannelLoadFailed] = useState(false);
 
   // ── Load agents + plan + channels ──────────────────────────
 
@@ -94,19 +99,30 @@ export default function AgentListPage() {
       const [agentsRes, planRes, channelsRes] = await Promise.all([
         api.listAgents(activeTenantId),
         api.getPlanFeatures(activeTenantId).catch(() => null),
-        api.fetch('/channels/overview').catch(() => ({ data: [] })),
+        api.fetch('/channels/overview').catch(() => null),
       ]);
-      if (agentsRes?.success && Array.isArray(agentsRes.data)) {
-        setAgents(agentsRes.data);
+      if (!agentsRes?.success || !Array.isArray(agentsRes.data)) throw new Error("agents_unavailable");
+      setAgents(agentsRes.data);
+      setLoadFailed(false);
+      if (channelOverviewIsAuthoritative(channelsRes)) {
+        const chList = channelsRes.data;
+        setConnectedChannels(chList.map((c: any) => c.channelType));
+        setUnassignedChannels(chList.filter((c: any) => c.needsAssignment));
+        setChannelLoadFailed(false);
+      } else {
+        setConnectedChannels([]);
+        setUnassignedChannels([]);
+        setChannelLoadFailed(true);
       }
-      const chList = channelsRes?.data || [];
-      setConnectedChannels(chList.map((c: any) => c.channelType));
-      setUnassignedChannels(chList.filter((c: any) => c.needsAssignment));
       if (planRes?.success && planRes.data) {
         setPlanFeatures(planRes.data);
       }
     } catch {
-      // fallback: empty state
+      // "No tienes agentes" is a statement about the tenant's own account, and
+      // the empty state offers to create one — so a dropped request could talk
+      // somebody into building a duplicate of the agent they already have.
+      setAgents([]);
+      setLoadFailed(true);
     } finally {
       setLoading(false);
     }
@@ -159,8 +175,11 @@ export default function AgentListPage() {
         name: template.name,
         templateId: template.id,
         configJson: template.config_json || {},
-        channels: agents.length === 0 ? ['whatsapp', 'instagram', 'messenger', 'telegram'] : [],
-        isDefault: agents.length === 0,
+        // Creation prepares an agent to review. Connections and default routing
+        // become operational only through the draft/release/publication flow.
+        channels: [],
+        channelBindings: [],
+        isDefault: false,
       });
       if (res?.success && res.data) {
         const newId = res.data.id || res.data[0]?.id;
@@ -204,15 +223,7 @@ export default function AgentListPage() {
 
   async function handleSetDefault(agentId: string) {
     if (!activeTenantId) return;
-    try {
-      const res = await api.updateAgent(activeTenantId, agentId, { isDefault: true });
-      if (res?.success) {
-        setToast({ message: t("defaultUpdated"), type: "success" });
-        loadData();
-      }
-    } catch {
-      setToast({ message: t("errorUpdatingAgent"), type: "error" });
-    }
+    router.push(`/admin/agent/${agentId}?draftDefault=1`);
     setMenuOpen(null);
   }
 
@@ -221,6 +232,10 @@ export default function AgentListPage() {
     const agent = agents.find(a => a.id === agentId);
     if (agent?.is_default) {
       setToast({ message: t("cannotDeleteDefault"), type: "error" });
+      setMenuOpen(null);
+      return;
+    }
+    if (!window.confirm(t("retireAgentConfirm", { name: agent?.name || t("unnamedAgent") }))) {
       setMenuOpen(null);
       return;
     }
@@ -333,6 +348,19 @@ export default function AgentListPage() {
 
   // ── Empty state ────────────────────────────────────────────
 
+  if (loadFailed) {
+    return (
+      <div>
+        <PageHeader
+          icon={Bot}
+          title={t("listTitle")}
+          subtitle={t("listSubtitle")}
+        />
+        <LoadFailureNotice onRetry={() => { void loadData(); }} />
+      </div>
+    );
+  }
+
   if (agents.length === 0) {
     return (
       <div>
@@ -411,6 +439,15 @@ export default function AgentListPage() {
         if (first) router.push(`/admin/agent/${first.id}`);
         else handleNewAgent();
       }} />
+
+      {channelLoadFailed && (
+        <LoadFailureNotice
+          className="mb-4"
+          title={t('channelOverviewUnavailable')}
+          hint={t('channelOverviewUnavailableHint')}
+          onRetry={() => { void loadData(); }}
+        />
+      )}
 
       {/* Unassigned channels banner */}
       {unassignedChannels.length > 0 && agents.length > 0 && (

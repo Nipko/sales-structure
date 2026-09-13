@@ -3,12 +3,14 @@ id: modulos-industria
 title: "Tools and modules for your industry"
 routes: ["/admin/appointments", "/admin/properties", "/admin/tours", "/admin/listings", "/admin/vehicles", "/admin/resource-rentals", "/admin/menu", "/admin/food-orders", "/admin/memberships", "/admin/classes", "/admin/courses", "/admin/insurance", "/admin/service-requests", "/admin/treatment-plans", "/admin/pets", "/admin/photo-sessions", "/admin/inventory", "/admin/orders"]
 roles: ["tenant_admin", "tenant_supervisor", "tenant_agent"]
-keywords: ["industry", "vertical", "modules", "properties", "tours", "vehicles", "rentals", "menu", "orders", "memberships", "classes", "courses", "insurance", "treatments", "pets", "photography", "inventory"]
+keywords: ["industry", "vertical", "business profile", "waitlist", "event planning", "construction", "modules", "properties", "tours", "vehicles", "rentals", "menu", "orders", "memberships", "classes", "courses", "insurance", "treatments", "pets", "photography", "inventory"]
 ---
 
 # Tools and modules for your industry
 
-The **Operations** section is resolved from capabilities and subtype, not only the industry name. Parallly recognizes these profiles: healthcare, fashion and beauty, real estate, restaurants, automotive, tourism, education, finance, professional services, retail, technology, veterinary, fitness, insurance, home services, pet services, photography, and other.
+The **Operations** section is resolved from capabilities and subtype, not only the industry name. The contract contains 20 industries and 76 canonical business profiles; 18 industries currently have at least one selectable profile. Event planning and construction remain registered to preserve their identity and product evolution, but their current profiles are waitlisted and are not offered during new-account setup.
+
+Industries with a current offer are healthcare, fashion and beauty, real estate, restaurants, automotive, tourism, education, finance, professional services, retail, technology, veterinary, fitness, insurance, home services, pet services, photography, and other.
 
 - Healthcare can use **Appointments** and **Treatment plans**; a pharmacy can use **Inventory and orders**. Fashion and beauty mainly uses appointments; the legacy boutique subtype can use **Catalog and inventory**.
 - Real estate uses **Listings** and appointments. **Properties** belongs to hotel or vacation-rental subtypes, while **Tours** belongs to travel-agency or tour subtypes within tourism.

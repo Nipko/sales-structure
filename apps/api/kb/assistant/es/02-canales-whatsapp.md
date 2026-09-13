@@ -3,7 +3,7 @@ id: canales-whatsapp
 title: "Conectar WhatsApp"
 routes: ["/admin/channels", "/admin/channels/whatsapp", "/admin/channels/whatsapp/templates"]
 roles: ["tenant_admin"]
-keywords: ["whatsapp", "conectar whatsapp", "numero de whatsapp", "whatsapp business", "coexistencia", "app de whatsapp", "migrar numero", "plantillas", "templates", "plantilla whatsapp", "sincronizar chats", "historial de chats", "codigo qr", "verificacion", "meta", "facebook", "desconectar whatsapp", "ventana de 24 horas", "varias cuentas", "segundo numero", "requiere reautorizar", "ventana emergente bloqueada", "conexion con advertencias", "negocio no verificado"]
+keywords: ["whatsapp", "conectar whatsapp", "numero de whatsapp", "whatsapp business", "coexistencia", "app de whatsapp", "migrar numero", "plantillas", "templates", "plantilla whatsapp", "sincronizar chats", "historial de chats", "codigo qr", "verificacion", "meta", "facebook", "desconectar whatsapp", "ventana de 24 horas", "varias cuentas", "segundo numero", "requiere reautorizar", "ventana emergente bloqueada", "conexion con advertencias", "negocio no verificado", "cobro de meta", "meta cobra", "cuanto cuesta whatsapp", "medio de pago", "tarjeta en meta", "mensajes de servicio", "mil mensajes gratis", "tope de gasto", "envio pausado", "dejo de responder", "1 de octubre", "factura de meta"]
 ---
 
 # Conectar WhatsApp
@@ -112,6 +112,75 @@ En **Canales**, cada tarjeta muestra el estado de la conexión:
 
 Al entrar a **WhatsApp** con un número conectado verás la tarjeta **Canal Activo** con el **Número**, el **Nombre verificado** y la **Calidad** (la calificación que Meta le da a tu número según cómo reciben tus mensajes los clientes; mantenerla "alta" te da mejores límites de envío). También encontrarás la tarjeta **Perfil de negocio** con el botón **Gestionar perfil** para editar la información que tus clientes ven en WhatsApp.
 
+## Lo que Meta le cobra a tu cuenta de WhatsApp
+
+Desde el **1 de octubre de 2026**, Meta le cobra a **tu propia cuenta de WhatsApp Business** cada **mensaje de servicio entregado**: las respuestas del agente y las de tu equipo dentro de la ventana de 24 horas. Lo que te escriben tus clientes sigue sin costo.
+
+Ese cobro **no es de Parallly**. Ante Meta, Parallly es proveedor de tecnología: no te factura los mensajes, no se los paga a Meta por vos y no los incluye en tu suscripción. Son dos pagos distintos y ninguno reemplaza al otro:
+
+- **Tu suscripción a Parallly** — el software. Se gestiona en **Administración → Plan y facturación**.
+- **Los mensajes que WhatsApp entrega** — se los paga tu negocio a Meta, con el medio de pago cargado en **tu** cuenta de WhatsApp Business.
+
+Cambiar de plan en Parallly no cambia lo que Meta cobra.
+
+### El medio de pago se carga en Meta, no en Parallly
+
+Se agrega desde las herramientas de Meta (WhatsApp Manager → configuración de la cuenta → **Facturación y pagos**), con un usuario que administre esa cuenta de WhatsApp Business. Si tu portafolio de Meta ya tiene un medio de pago cargado —por ejemplo para anuncios—, puedes elegirlo para esta cuenta sin volver a cargarlo.
+
+**Parallly nunca te pide el número de una tarjeta por chat**: ni el agente, ni Parallly Assist, ni soporte. Si alguien te lo pide dentro de una conversación, no somos nosotros.
+
+### Sin medio de pago, el número deja de entregar
+
+No es que funcione peor: desde el 1 de octubre de 2026, una cuenta de WhatsApp Business sin medio de pago **deja de entregar los mensajes de servicio**, aunque no hayas gastado nada ese mes. Visto desde afuera es un agente que dejó de responder.
+
+Lo que sigue funcionando: los mensajes que entran se reciben, se guardan y aparecen en el **Inbox**. La conversación no se pierde; lo que no sale es la respuesta.
+
+### Cómo saber si tu número está listo
+
+1. Entra a **Canales → WhatsApp** y mira la tarjeta **Cobro de WhatsApp (Meta)**: ahí aparece si algún número quedó con el envío pausado.
+2. Confirma en las herramientas de Meta que **esa** cuenta de WhatsApp Business tiene medio de pago, moneda y zona horaria definidas. Las tres hacen falta: si falta una, el cobro no se puede hacer.
+3. **Una tarjeta cargada no garantiza que el cobro se apruebe.** Meta puede decir que hay medio de pago y el banco rechazarlo igual: tarjeta vencida, sin compras internacionales habilitadas, sin cupo o con datos fiscales incompletos. "Cargada" sólo significa que eso no es lo que falta.
+
+### Los 1.000 mensajes de servicio gratis
+
+Cada **número** recibe **1.000 mensajes de servicio gratis por mes calendario**. Meta cobra a partir del mensaje 1.001.
+
+Lo que la cuota **no** es:
+
+- **No es por país.** Un número que atiende nueve países tiene mil gratis en total, no mil por país.
+- **No es por contacto ni por conversación.** Se cuentan mensajes entregados, no personas.
+- **No cubre plantillas.** Las plantillas de marketing, utilidad y autenticación se cobran aparte y no consumen la cuota.
+- **No se acumula.** Lo que no uses este mes no pasa al siguiente.
+- **No es por cuenta ni por plan.** Es por número: si tienes dos números conectados, cada uno trae su propia cuota.
+
+El mes se cierra en la **zona horaria de tu cuenta de WhatsApp Business**, que puede no ser la tuya. Si en Parallly ves un período de 30 días y en Meta un mes calendario, están midiendo cosas distintas.
+
+### Qué ves en Parallly, y qué no
+
+En **Canales → WhatsApp**, la tarjeta **Cobro de WhatsApp (Meta)** muestra cuánto llevas de la cuota gratis, el gasto del período separado por moneda, a dónde se fue y qué números están pausados. La lee sólo el **administrador**: **Canales** es una pantalla de administración, no aparece en el menú de supervisores ni de agentes y, si escriben la dirección, el panel los redirige. Quien no sea administrador y necesite el dato tiene que pedírselo. Reanudar un número también es del administrador.
+
+Es la medición de **lo que Parallly envió** por esa conexión, no una copia de la factura de Meta. La factura la emite Meta y se consulta en las herramientas de Meta.
+
+### Qué puede y qué no puede un tope de gasto
+
+Un tope de gasto acota **lo que Parallly envía** por esa conexión durante el período. El medidor empieza en **Sólo observar**: cuenta, avisa y **no frena ningún envío**. Parallly crea valores iniciales de **2.000 entregas por número** y **60 por contacto** cada mes. Un administrador puede activar **Protección de gasto** en **Canales → WhatsApp** después de revisar la medición; desde ese momento se pausa lo proactivo cerca del tope y se detiene el alcance que lo agote.
+
+Y aun activo, hay tres cosas que un tope **no** puede prometer:
+
+- **No limita lo que otra herramienta le cobra a la misma cuenta.** Si otro sistema —o tu equipo desde la app de WhatsApp Business— envía por esa misma cuenta de WhatsApp Business, ese consumo va a la misma factura de Meta y Parallly no lo ve ni lo puede frenar.
+- **No es un límite que Meta aplique.** Meta no conoce tu tope: sigue entregando y cobrando lo que le llegue, venga de donde venga.
+- **No baja la tarifa.** Corta volumen, no el precio por mensaje.
+
+### Si un número queda con el envío pausado
+
+Cuando Meta responde que esa cuenta **no puede facturarse**, Parallly pausa los envíos cobrables **de ese número** —sólo de ese, no del resto— y no reintenta: cada intento sería idéntico y fallaría igual hasta que alguien haga algo del lado de Meta.
+
+1. En **Canales → WhatsApp** vas a ver **Envío pausado**, con el motivo y desde cuándo.
+2. Arregla el medio de pago en las herramientas de Meta.
+3. Vuelve a Parallly y toca **Reanudar envíos** (sólo administrador). Es tu declaración de que lo arreglaste, no una comprobación: si Meta vuelve a rechazar el cobro, el número se pausa solo en el siguiente intento y el motivo aparece otra vez ahí.
+
+Mientras dura la pausa, los mensajes que entran se siguen recibiendo.
+
 ## Plantillas de WhatsApp
 
 WhatsApp permite responder libremente durante las **24 horas** siguientes al último mensaje del cliente. Para escribirle **fuera** de esa ventana — por ejemplo un recordatorio de cita o una campaña — necesitas una **plantilla aprobada por Meta**.
@@ -153,9 +222,21 @@ No. El agente responde libremente dentro de la ventana de 24 horas tras el últi
 Meta revisa el contenido. En la página de plantillas verás el **motivo del rechazo**; corrige el texto (evita lenguaje promocional agresivo en plantillas de utilidad) y vuelve a enviarla.
 
 **¿Quién puede conectar o desconectar WhatsApp?**
-Solo el **administrador** de la cuenta. Supervisores y agentes pueden ver el estado, pero no modificarlo.
+Solo el **administrador** de la cuenta. Supervisores y agentes no entran a **Canales**: ahí no ven el estado de la conexión ni pueden cambiarlo. Lo que sí ve un supervisor es si un canal asignado al agente quedó sin conectar, en **Salud de agentes**.
 
 **¿Puedo tener un agente distinto en cada número?**
 Sí. La regla es un agente de IA por conexión: por ejemplo, un agente de ventas en un número y uno de soporte en otro. Se asigna en el editor del agente.
+
+**¿Parallly me cobra los mensajes de WhatsApp?**
+No. Desde el 1 de octubre de 2026 Meta le cobra a tu cuenta de WhatsApp Business cada mensaje de servicio entregado, con el medio de pago que cargaste en Meta. Tu suscripción a Parallly es un pago aparte y no cambia por esto.
+
+**¿Le doy mi tarjeta a Parallly para pagar WhatsApp?**
+No, y nadie de Parallly te la va a pedir por chat. El medio de pago de WhatsApp se carga en las herramientas de Meta, sobre tu propia cuenta de WhatsApp Business.
+
+**¿Los 1.000 mensajes gratis son por cuenta o por número?**
+Por número y por mes calendario, sin acumulación. No son por país, no son por contacto y no cubren plantillas.
+
+**¿Instagram y Messenger también se cobran por mensaje?**
+Hoy no. El cobro por mensaje de servicio que empieza el 1 de octubre de 2026 es de WhatsApp; Instagram, Messenger y Telegram no tienen un cobro por mensaje de servicio de su proveedor.
 
 ¿Te quedó alguna duda? Escríbenos en [soporte](https://parallly-chat.cloud/support).

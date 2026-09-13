@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
@@ -7,6 +7,9 @@ import { DashboardAnalyticsService } from './dashboard-analytics.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { CronLockService } from '../redis/cron-lock.service';
 import { resolveTenantSubscriptionAccess } from '../../common/utils/subscription-entitlement.util';
+import { createHash } from 'crypto';
+import { OperationalNoticeService } from '../operational-notices/operational-notice.service';
+import { enqueueOperationalNotice, ensureOperationalNoticeOutbox } from '../operational-notices/operational-notice-outbox';
 
 @Injectable()
 export class ScheduledReportsService {
@@ -16,10 +19,11 @@ export class ScheduledReportsService {
     constructor(
         private prisma: PrismaService,
         private redis: RedisService,
-        private email: EmailService,
+        private _email: EmailService,
         private dashboardAnalytics: DashboardAnalyticsService,
         private throttle: TenantThrottleService,
         private readonly cronLock: CronLockService,
+        @Optional() private readonly notices?: OperationalNoticeService,
     ) { }
 
     private async ensureTable(schemaName: string): Promise<void> {
@@ -35,9 +39,14 @@ export class ScheduledReportsService {
                 recipients TEXT[] DEFAULT '{}',
                 is_active BOOLEAN DEFAULT true,
                 last_sent_at TIMESTAMPTZ,
+                last_enqueued_at TIMESTAMPTZ,
                 created_at TIMESTAMPTZ DEFAULT NOW(),
                 updated_at TIMESTAMPTZ DEFAULT NOW()
             )`,
+        );
+
+        await this.prisma.$queryRawUnsafe(
+            `ALTER TABLE "${schemaName}".scheduled_reports ADD COLUMN IF NOT EXISTS last_enqueued_at TIMESTAMPTZ`,
         );
 
         try {
@@ -253,26 +262,32 @@ export class ScheduledReportsService {
             </div>
         </div>`;
 
-        // Send to all recipients
         // Metrics generation can take long enough to cross a billing boundary;
-        // revalidate immediately before exposing customer data by email.
+        // revalidate immediately before admitting any customer data for email.
         if (!await this.canDeliverCustomerOutput(tenant.id)) return;
-        for (const recipient of config.recipients) {
-            await this.email.send({
-                to: recipient,
-                subject: `[Parallly] Reporte ${periodLabel} — ${tenant.name} (${start} → ${end})`,
-                html,
-            });
-        }
-
-        // Update last_sent_at
-        await this.prisma.$queryRawUnsafe(
-            `UPDATE "${tenant.schemaName}".scheduled_reports
-             SET last_sent_at = NOW() WHERE id = $1::uuid`,
-            config.id,
-        );
-
-        this.logger.log(`Report sent to ${config.recipients.length} recipients for tenant ${tenant.name}`);
+        if(!this.notices)throw new Error('scheduled_report_notice_lane_unavailable');
+        await ensureOperationalNoticeOutbox(this.prisma,tenant.schemaName);
+        const periodKey=`${config.frequency}:${start}:${end}`;
+        const subject=`[Parallly] Reporte ${periodLabel} — ${tenant.name} (${start} → ${end})`.replace(/[\r\n]+/g,' ').slice(0,300);
+        const admitted=await this.prisma.transactionInTenantSchema(tenant.schemaName,async query=>{
+            const [current]=await query<any[]>(`SELECT * FROM scheduled_reports
+                WHERE id=$1::uuid AND tenant_id::text=$2 FOR UPDATE`,[config.id,tenant.id]);
+            if(!current?.is_active||current.frequency!==config.frequency)return 0;
+            const recipients:string[]=[...new Set<string>((current.recipients||[]).map((value:unknown)=>String(value).trim().toLowerCase())
+                .filter((value:string)=>/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)))];
+            let inserted=0;
+            for(const recipientEmail of recipients){
+                const digest=createHash('sha256').update(recipientEmail).digest('hex').slice(0,24);
+                if(await enqueueOperationalNotice(query,tenant.schemaName,{kind:'analytics.scheduled_report',entityId:current.id,
+                    revision:`${periodKey}:${digest}`,recipientEmail,payload:{subject,html,periodKey,frequency:current.frequency}}))inserted++;
+            }
+            await query('UPDATE scheduled_reports SET last_enqueued_at=clock_timestamp(),updated_at=clock_timestamp() WHERE id=$1::uuid',[current.id]);
+            return inserted;
+        });
+        if(admitted)await this.notices.recoverTenant(tenant.id).catch(error=>{
+            this.logger.warn(`Report notice enqueue deferred for tenant ${tenant.id}: ${error?.message || error}`);
+        });
+        this.logger.log(`Report admitted for ${admitted} recipient(s) for tenant ${tenant.name}`);
     }
 
     private async canDeliverCustomerOutput(tenantId: string): Promise<boolean> {

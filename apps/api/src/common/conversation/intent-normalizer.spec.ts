@@ -195,3 +195,32 @@ describe('un mensaje largo es una conversación, no un sí', () => {
         expect(classifyConfirmation(42 as any)).toBe('unclear');
     });
 });
+
+describe('whole-message consent evidence', () => {
+    it.each([
+        'Gracias, quiero saber primero el precio', 'Gracias, pero qué incluye',
+        'Thanks, I want to know the price first', 'Obrigado, quero saber o preço primeiro',
+        'Merci, je voudrais savoir le prix', 'sí, quiero cambiar la cita al viernes',
+        'confirmo si hay disponibilidad', 'confirmo la reserva a las 5',
+        'yes tomorrow instead', 'oui une autre date', 'sim outro horario',
+        'si me puedes confirmar el precio', 'ok cuánto cuesta', '¿confirmo?',
+        'gracias', 'thanks', 'thank you', 'obrigado', 'obrigada', 'merci',
+    ])('does not let a courtesy, question or changed term authorize: %s', text => {
+        const intent = normalizeCustomerIntent(text);
+        for (const effect of ['parameter', 'transactional', 'high_impact'] as const) {
+            expect(authorizesEffect(intent, effect, { answeringExplicitQuestion: true })).toBe(false);
+        }
+    });
+
+    it.each(['¿Qué servicios no ofrecen?', 'How do I cancel?', 'Como cancelar?', 'Comment annuler ?', 'No ofrecen servicio a domicilio?'])('does not turn an informational negation/cancellation question into withdrawal: %s', text => {
+        expect(['cancel', 'reject']).not.toContain(normalizeCustomerIntent(text).intent);
+    });
+
+    it.each(['No quiero cancelar', "I don't want to cancel", 'Não quero cancelar', 'Je ne veux pas annuler'])('preserves the operation when cancellation itself is negated: %s', text => {
+        expect(normalizeCustomerIntent(text).intent).toBe('unclear');
+    });
+
+    it.each(['¡Sí!', 'sí por favor', 'confirmo la reserva', 'gracias confirmo la cita', 'yes please', 'i confirm the booking', 'sim obrigado', 'je confirme la reservation'])('retains natural unqualified confirmation: %s', text => {
+        expect(classifyConfirmation(text, { effect: 'transactional', answeringExplicitQuestion: true })).toBe('confirmed');
+    });
+});

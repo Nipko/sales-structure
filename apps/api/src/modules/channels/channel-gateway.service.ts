@@ -1,7 +1,73 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { NormalizedMessage, ChannelType, OutboundMessage } from '@parallext/shared';
+import { NormalizedMessage, ChannelType, OutboundMessage, isScopedAddressKey } from '@parallext/shared';
 import { WebhookTapService } from './webhook-tap.service';
 import { channelSafeImageUrl } from '../../common/utils/media-url.util';
+import type { StrictDispatchTransport } from './strict-dispatch-transport';
+import { classifyFlowFailure } from './flow-fallback';
+
+/**
+ * A recipient the selected channel endpoint cannot address.
+ *
+ * Thrown rather than returned as `null`, and the asymmetry is the point.
+ * This gateway turns every transport failure into `null`, and a `null`
+ * means "no answer came back": the legacy processor records the
+ * reservation as a TIMEOUT, which RETAINS the money for a message provably
+ * never posted, and then throws — burning the job's attempts. Neither is
+ * true here. Nothing was sent, nothing can be, and waiting does not make a
+ * WhatsApp-specific identity valid on another channel.
+ *
+ * Every caller of `sendMessage` asks the spend authority first, and that
+ * authority refuses this by name (`recipient_not_addressable`), so this
+ * should never fire. It remains a transport-boundary invariant because a
+ * future caller must not send a WhatsApp-specific identity to another
+ * provider merely by omitting admission.
+ */
+export class UnaddressableRecipient extends Error {
+    constructor(readonly channelType: string) {
+        super('recipient_not_addressable');
+        this.name = 'UnaddressableRecipient';
+    }
+}
+
+/**
+ * What the gateway must ask its caller before doing something the caller did
+ * not authorise.
+ *
+ * There is exactly one such thing today: a text message sent because a Flow was
+ * conclusively refused. That is a second remote effect with its own charge, and
+ * the reservation the caller holds covers the first one.
+ */
+export interface GatewaySendHooks {
+    /**
+     * May a text fallback be sent as a NEW effect? Returning false sends
+     * nothing, which is the safe answer when the money authority cannot be
+     * reached.
+     *
+     * NOT optional, and the hooks argument is not optional either. A caller
+     * that omits it is a caller whose Flow can quietly become a second POST
+     * with a second charge under a reservation that can only settle once — and
+     * "every caller remembers" is a list somebody maintains, while a required
+     * parameter is a property of the code. A caller that genuinely never sends
+     * a Flow still has to say what it would do, which takes one line and is the
+     * line that documents the decision.
+     */
+    readonly admitFallback: (errorCode: string) => Promise<boolean>;
+    /**
+     * What the provider said when it refused, handed to whoever can act on it.
+     *
+     * This gateway returns `string | null` and swallows the error — which is
+     * right for transport, and wrong for one specific refusal: Meta's 131042
+     * means the business has no usable payment method, so every subsequent
+     * message from that number will fail the same way until a person adds a
+     * card. Without this hook the loose lane learned that only from a status
+     * webhook minutes later, and spent the interval retrying into a wall.
+     *
+     * Deliberately a hook rather than a changed return type: the gateway has no
+     * business knowing about money, and the caller is the one that knows which
+     * tenant and which number this was.
+     */
+    readonly observeFailure?: (error: unknown) => Promise<void> | void;
+}
 
 /**
  * Abstract interface that all channel adapters must implement.
@@ -9,6 +75,8 @@ import { channelSafeImageUrl } from '../../common/utils/media-url.util';
  */
 export interface IChannelAdapter {
     readonly channelType: ChannelType;
+    /** Local persisted transports retain tenant/conversation scope from the full envelope. */
+    sendOutbound?(outbound: OutboundMessage): Promise<string>;
     handleWebhook(payload: any, accountId: string): Promise<NormalizedMessage | null>;
     sendTextMessage(to: string, text: string, accountId: string, accessToken: string): Promise<string>;
     sendMediaMessage(to: string, mediaUrl: string, caption: string | undefined, accountId: string, accessToken: string, mediaType?: 'image' | 'document' | 'audio' | 'video', filename?: string): Promise<string>;
@@ -57,6 +125,17 @@ export class ChannelGatewayService {
     }
 
     /**
+     * The strict transport for a channel, or undefined when its adapter has not
+     * been migrated. Undefined is a refusal, never an invitation to fall back to
+     * `sendMessage`: that method turns every failure into null, which is exactly
+     * what the durable dispatch states exist to distinguish.
+     */
+    getStrictTransport(channelType: ChannelType): StrictDispatchTransport | undefined {
+        const adapter = this.adapters.get(channelType) as Partial<StrictDispatchTransport> | undefined;
+        return typeof adapter?.sendStrict === 'function' ? adapter as StrictDispatchTransport : undefined;
+    }
+
+    /**
      * Process an incoming webhook from any channel
      */
     async processIncomingWebhook(channelType: ChannelType, payload: any, accountId: string): Promise<NormalizedMessage | null> {
@@ -95,14 +174,31 @@ export class ChannelGatewayService {
     /**
      * Send an outbound message to any channel
      */
-    async sendMessage(outbound: OutboundMessage, accessToken: string): Promise<string | null> {
+    async sendMessage(outbound: OutboundMessage, accessToken: string,
+        hooks: GatewaySendHooks): Promise<string | null> {
         const adapter = this.adapters.get(outbound.channelType);
         if (!adapter) {
             this.logger.warn(`No adapter for channel: ${outbound.channelType}`);
             return null;
         }
 
+        // ── A DESTINATION THIS CHANNEL DOES NOT UNDERSTAND ─────────────
+        //
+        // WhatsApp mints and can address the raw BSUID carried inside this
+        // storage key. Telegram, Instagram, Messenger and the widget cannot.
+        //
+        // Deliberately BEFORE `sendOutbound` and the five legacy senders,
+        // and deliberately OUTSIDE the try below: that catch turns every
+        // exception into `null`, which is the one answer this refusal must
+        // never be confused with.
+        if (outbound.channelType !== 'whatsapp' && isScopedAddressKey(outbound.to)) {
+            this.logger.error(`[Gateway] refusing ${outbound.channelType}: the recipient is a `
+                + 'WhatsApp business-scoped id, which this channel cannot address');
+            throw new UnaddressableRecipient(outbound.channelType);
+        }
+
         try {
+            if (adapter.sendOutbound) return await adapter.sendOutbound(outbound);
             // Opt-in WhatsApp Flow: routed by metadata.flowId. If the adapter can't send
             // it (non-WhatsApp), fall through to the text body so the booking never stalls.
             const meta = outbound.metadata as any;
@@ -125,9 +221,36 @@ export class ChannelGatewayService {
                         },
                     );
                 } catch (e: any) {
-                    // Flow rejected by Meta (draft/unpublished/bad id) — don't leave the
-                    // customer with nothing: fall through to the text body below.
-                    this.logger.warn(`Flow send failed (${e?.message}); falling back to text`);
+                    // ── A SECOND POST NEEDS PROOF AND PERMISSION ───────────
+                    //
+                    // This used to catch everything and send text. A 400 for an
+                    // unpublished flow and a ten-second timeout took the same
+                    // branch — and on a timeout the Flow may well have been
+                    // delivered, so the customer got two messages and the
+                    // business two charges, under one reservation that can only
+                    // settle once.
+                    const verdict = classifyFlowFailure(e);
+                    // Before deciding about the fallback: a Flow refused for
+                    // want of a payment method is the same signal as a text
+                    // refused for it, and the account has to be paused either
+                    // way — otherwise the very next message tries again.
+                    await this.observeFailure(hooks, e);
+                    if (!verdict.mayFallBack) {
+                        this.logger.warn(`Flow send is ${verdict.kind} (${verdict.errorCode}); `
+                            + `NOT falling back — a second message would be a guess`);
+                        return null;
+                    }
+                    // Conclusively refused: nothing was delivered, so a text is
+                    // honest. It is a NEW remote effect, so it needs its own
+                    // authorisation — and if the caller cannot give one, it does
+                    // not happen.
+                    if (!(await hooks.admitFallback(verdict.errorCode))) {
+                        this.logger.warn(`Flow rejected (${verdict.errorCode}) and the text fallback `
+                            + `was not authorised; sending nothing`);
+                        return null;
+                    }
+                    this.logger.warn(`Flow conclusively rejected (${verdict.errorCode}); `
+                        + `falling back to text as a separate effect`);
                 }
             }
 
@@ -166,7 +289,22 @@ export class ChannelGatewayService {
             return null;
         } catch (error) {
             this.logger.error(`Error sending ${outbound.channelType} message: ${error}`);
+            // The caller gets `null` as before — nothing about transport
+            // changes — but it also gets a chance to read WHY, which is the
+            // difference between pausing a number once and retrying into a
+            // wall for as long as the queue has work.
+            await this.observeFailure(hooks, error);
             return null;
+        }
+    }
+
+    /** Never lets the observer's own failure become the send's failure. */
+    private async observeFailure(hooks: GatewaySendHooks, error: unknown): Promise<void> {
+        if (!hooks.observeFailure) return;
+        try {
+            await hooks.observeFailure(error);
+        } catch (observerError: any) {
+            this.logger.warn(`[Gateway] failure observer raised: ${observerError?.message}`);
         }
     }
 

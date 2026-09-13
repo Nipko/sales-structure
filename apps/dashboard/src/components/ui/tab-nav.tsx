@@ -40,6 +40,8 @@ export function TabNav({ tabs, activeTab, onTabChange, className }: TabNavProps)
             <button
               key={tab.id}
               role="tab"
+              type="button"
+              data-tab-id={tab.id}
               aria-selected={isActive}
               onClick={() => onTabChange(tab.id)}
               className={cn(

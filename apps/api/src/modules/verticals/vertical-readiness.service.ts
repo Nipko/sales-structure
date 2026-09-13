@@ -1,7 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import type { VerticalReadinessKey } from '@parallext/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
+import { persistenceDisabled, type ServiceExecutionContext } from '../../common/types/execution-context';
+import { tenantActorDirectory } from '../appointments/tenant-user-scope.util';
+import type { EvalNamespaceLease } from '../simulation/isolated-eval-namespace';
 
 /**
  * Does this tenant actually have the data its capabilities promise?
@@ -40,11 +44,22 @@ export interface ReadinessReport {
     degraded: boolean;
 }
 
-interface ReadinessDefinition {
+interface ReadinessQueryContext {
+    schemaName: string;
+    actors?: { users: string; tenants: string };
+}
+
+export interface ReadinessDefinition {
     /** Tenant table the capability reads. */
     table: string;
+    /** Exact source when the capability spans more than one table. */
+    from?: string | ((context: ReadinessQueryContext) => string);
     /** Extra predicate — an inactive row cannot answer a customer. */
     where?: string;
+    /** Values owned by the server for predicates that cross the tenant boundary. */
+    params?: (context: ReadinessQueryContext) => unknown[];
+    /** Resolve the production/evaluation user directory before building SQL. */
+    actorScoped?: boolean;
     repair: string;
     repairRoute?: string;
 }
@@ -64,20 +79,41 @@ interface ReadinessDefinition {
 export const READINESS: Readonly<Partial<Record<VerticalReadinessKey, ReadinessDefinition>>> = Object.freeze({
     business_identity: {
         table: 'companies',
-        where: `name IS NOT NULL AND name <> ''`,
+        where: `is_primary = true AND name IS NOT NULL AND name <> ''`,
         repair: 'Completá los datos del negocio para que el agente sepa a quién representa.',
         repairRoute: '/admin/settings/business-info',
     },
     faq_content: {
         table: 'faqs',
-        where: 'is_active = true',
+        where: 'is_published = true',
         repair: 'Cargá al menos una pregunta frecuente.',
-        repairRoute: '/admin/knowledge',
+        repairRoute: '/admin/knowledge/faqs',
     },
     appointment_services: {
-        table: 'services',
-        where: 'is_active = true',
-        repair: 'Creá al menos un servicio agendable con su duración y precio.',
+        table: 'availability_slots',
+        actorScoped: true,
+        from: ({ actors }) => `availability_slots availability
+            JOIN ${actors!.users} staff_user
+              ON staff_user.id = availability.user_id AND staff_user.is_active = true
+            JOIN ${actors!.tenants} tenant_owner
+              ON tenant_owner.id = staff_user.tenant_id
+             AND tenant_owner.schema_name = $1
+             AND tenant_owner.is_active = true`,
+        where: `availability.is_active = true
+            AND availability.day_of_week BETWEEN 0 AND 6
+            AND availability.start_time < availability.end_time
+            AND EXISTS (
+                SELECT 1 FROM services service
+                WHERE service.is_active = true
+                  AND COALESCE(service.duration_type, 'fixed') IN ('fixed', 'flexible')
+                  AND CASE
+                      WHEN service.duration_type = 'flexible'
+                        THEN COALESCE(service.duration_minutes_max, service.duration_minutes)
+                      ELSE service.duration_minutes
+                  END BETWEEN 1 AND 1440
+            )`,
+        params: ({ schemaName }) => [schemaName],
+        repair: 'Creá un servicio agendable válido y al menos un horario para un colaborador activo.',
         repairRoute: '/admin/appointments/config',
     },
     catalog_items: {
@@ -86,20 +122,15 @@ export const READINESS: Readonly<Partial<Record<VerticalReadinessKey, ReadinessD
         repair: 'Cargá al menos un producto disponible en el catálogo.',
         repairRoute: '/admin/inventory',
     },
-    treatment_catalog: {
-        table: 'treatment_plans',
-        repair: 'Definí al menos un plan de tratamiento.',
-        repairRoute: '/admin/treatment-plans',
-    },
     listings: {
         table: 'real_estate_listings',
-        where: `status = 'available'`,
+        where: `is_active = true AND status = 'available'`,
         repair: 'Publicá al menos un inmueble disponible.',
         repairRoute: '/admin/listings',
     },
     menu_items: {
         table: 'menu_items',
-        where: 'is_available = true',
+        where: 'is_active = true AND is_available = true',
         repair: 'Cargá el menú: sin platos disponibles el agente no puede tomar pedidos.',
         repairRoute: '/admin/menu',
     },
@@ -117,14 +148,20 @@ export const READINESS: Readonly<Partial<Record<VerticalReadinessKey, ReadinessD
     },
     properties: {
         table: 'properties',
-        where: 'is_active = true',
+        where: 'is_active = true AND night_price IS NOT NULL AND night_price > 0',
         repair: 'Cargá al menos un alojamiento activo con su tarifa.',
         repairRoute: '/admin/properties',
     },
     courses: {
-        table: 'courses',
-        where: 'is_active = true',
-        repair: 'Creá al menos un curso activo.',
+        table: 'course_cohorts',
+        from: 'course_cohorts cohort JOIN courses course ON course.id = cohort.course_id',
+        where: `course.is_active = true
+            AND cohort.status IN ('open', 'full')
+            AND cohort.starts_at >= CURRENT_DATE
+            AND cohort.starts_at <= CURRENT_DATE + INTERVAL '180 days'
+            AND cohort.max_capacity >= 1
+            AND cohort.available_seats BETWEEN 0 AND cohort.max_capacity`,
+        repair: 'Publicá un curso con un cohorte abierto o con lista de espera dentro de los próximos 180 días.',
         repairRoute: '/admin/courses',
     },
     pets: {
@@ -141,7 +178,8 @@ export const READINESS: Readonly<Partial<Record<VerticalReadinessKey, ReadinessD
     },
     insurance_plans: {
         table: 'insurance_plans',
-        where: 'is_active = true',
+        where: `is_active = true AND monthly_premium_min IS NOT NULL
+            AND monthly_premium_min > 0 AND currency IS NOT NULL AND currency <> ''`,
         repair: 'Cargá al menos un plan de seguro cotizable.',
         repairRoute: '/admin/insurance',
     },
@@ -150,12 +188,6 @@ export const READINESS: Readonly<Partial<Record<VerticalReadinessKey, ReadinessD
         where: 'is_active = true',
         repair: 'Definí los servicios que despachás, con su duración y precio.',
         repairRoute: '/admin/service-catalog',
-    },
-    professional_cases: {
-        table: 'opportunities',
-        where: 'won_at IS NULL AND lost_at IS NULL',
-        repair: 'Creá al menos un caso activo para poder consultar su estado.',
-        repairRoute: '/admin/cases',
     },
     photo_sessions: {
         table: 'services',
@@ -171,7 +203,9 @@ export const READINESS: Readonly<Partial<Record<VerticalReadinessKey, ReadinessD
     // agent quote capacity it cannot honour.
     boarding_capacity: {
         table: 'services',
-        where: `is_active = true AND category IN ('guarderia', 'hotel') AND COALESCE(max_concurrent, 0) >= 1`,
+        where: `is_active = true
+            AND translate(lower(category), 'áéíóúü', 'aeiouu') IN ('guarderia', 'hotel')
+            AND COALESCE(max_concurrent, 0) >= 1`,
         repair: 'Configurá el servicio de guardería u hotel con su capacidad simultánea.',
         repairRoute: '/admin/service-catalog',
     },
@@ -192,22 +226,38 @@ export class VerticalReadinessService {
      * Evaluate the readiness keys a subtype declares.
      *
      * Cached briefly because this runs on every turn that resolves the
-     * capability contract; two minutes is short enough that a tenant who just
-     * loaded their catalogue sees the agent come alive while they are still
-     * looking at the screen.
+     * capability contract. Owner assessments explicitly refresh so completing
+     * configuration is visible immediately, including to the next live turn.
      */
     async evaluate(
         tenantId: string,
         schemaName: string,
         keys: readonly VerticalReadinessKey[],
+        executionContext?: ServiceExecutionContext,
+        options?: { refresh?: boolean; sandboxNamespace?: EvalNamespaceLease },
     ): Promise<ReadinessReport> {
         if (!keys.length) {
             return { checks: [], unmet: [], evaluatedAt: new Date().toISOString(), degraded: false };
         }
 
-        const cacheKey = `readiness:${tenantId}:${[...keys].sort().join(',')}`;
+        // Read-only previews must see the selected schema, never a production
+        // cache entry. A namespace remains isolated even if an older caller
+        // omitted executionContext. No test result may populate live Redis.
+        let useCache = !persistenceDisabled(executionContext) && !schemaName.startsWith('tenant_eval_');
+        let generation = 'initial';
+        if (useCache) {
+            try {
+                if (options?.refresh) await this.invalidate(tenantId);
+                generation = await this.redis.get(`readiness-generation:${tenantId}`) ?? 'initial';
+            } catch {
+                // An unreadable generation cannot authorize reusing an old
+                // report. The database remains usable even when Redis is not.
+                useCache = false;
+            }
+        }
+        const cacheKey = `readiness:${tenantId}:${schemaName}:${[...keys].sort().join(',')}:${generation}`;
         try {
-            const cached = await this.redis.getJson<ReadinessReport>(cacheKey);
+            const cached = useCache && !options?.refresh ? await this.redis.getJson<ReadinessReport>(cacheKey) : null;
             if (cached) return cached;
         } catch { /* A cache miss is not a failure. */ }
 
@@ -221,7 +271,7 @@ export class VerticalReadinessService {
             // it would punish the tenant for our gap.
             if (!definition) continue;
 
-            const count = await this.countRows(schemaName, definition);
+            const count = await this.countRows(schemaName, definition, options?.sandboxNamespace);
             if (count === null) {
                 degraded = true;
                 // Unknown is not unmet. A failed lookup must not switch off a
@@ -250,33 +300,48 @@ export class VerticalReadinessService {
             degraded,
         };
         try {
-            await this.redis.setJson(cacheKey, report, CACHE_TTL_SECONDS);
+            if (useCache) await this.redis.setJson(cacheKey, report, CACHE_TTL_SECONDS);
         } catch { /* Correct but uncached. */ }
         return report;
     }
 
     async invalidate(tenantId: string): Promise<void> {
-        // Keys are per-subtype combination; the short TTL bounds staleness.
-        await this.redis.del(`readiness:${tenantId}`).catch(() => undefined);
+        // Every schema/key combination shares a generation. Old reports expire
+        // by TTL; an in-flight old evaluation can only repopulate its old key.
+        // A failed invalidation is observable so a refresh falls back to SQL.
+        await this.redis.set(`readiness-generation:${tenantId}`, randomUUID());
     }
 
     /** Row count, or null when the lookup itself failed. */
-    private async countRows(schemaName: string, definition: ReadinessDefinition): Promise<number | null> {
+    private async countRows(
+        schemaName: string,
+        definition: ReadinessDefinition,
+        sandboxNamespace?: EvalNamespaceLease,
+    ): Promise<number | null> {
         const where = definition.where ? ` WHERE ${definition.where}` : '';
         try {
+            const context: ReadinessQueryContext = { schemaName };
+            if (definition.actorScoped) {
+                context.actors = await tenantActorDirectory(this.prisma, schemaName, sandboxNamespace);
+            }
+            const from = typeof definition.from === 'function'
+                ? definition.from(context)
+                : definition.from || definition.table;
+            const params = definition.params?.(context) ?? [];
             // Bounded so a tenant with a million rows does not pay for a full
             // count to answer "is there at least one".
             const rows = await this.prisma.executeInTenantSchema<any[]>(
                 schemaName,
                 `SELECT COUNT(*)::int AS total FROM (
-                     SELECT 1 FROM ${definition.table}${where} LIMIT 50
+                     SELECT 1 FROM ${from}${where} LIMIT 50
                  ) sample`,
+                params,
             );
             return Number(rows?.[0]?.total ?? 0);
         } catch (error: any) {
             // A table this tenant never provisioned means zero rows, which is a
             // real answer. Anything else is a degraded lookup.
-            if (/does not exist|undefined table|42P01/i.test(String(error?.message || ''))) return 0;
+            if (String(error?.code || '') === '42P01') return 0;
             this.logger.warn(`[Readiness] ${definition.table} lookup failed: ${error?.message}`);
             return null;
         }

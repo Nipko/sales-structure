@@ -1,0 +1,824 @@
+{
+  "version": 1,
+  "revision": "b06784792548fbdfc7117ad39bb78f957187460f",
+  "generatedAt": "2026-09-13T21:22:59.991Z",
+  "finished": false,
+  "counts": {
+    "aceptada": 26,
+    "bloqueada": 27,
+    "abierta": 0,
+    "diferida": 1
+  },
+  "provenance": {
+    "derived": 37,
+    "executed_evidence": 3,
+    "declared": 14
+  },
+  "contradictions": [],
+  "gates": {
+    "1": "credenciales y cuentas de canal para pilotos reales (WhatsApp, Instagram, Messenger, Telegram)",
+    "2": "credenciales de proveedor LLM, modelo, techo de gasto y autorización de ejecución",
+    "3": "personas nuevas reclutadas para sesiones moderadas",
+    "4": "cuentas autorizadas de alternativas y revisores ciegos",
+    "5": "autorización posterior para push, despliegue, migración y activación",
+    "6": "cuenta WABA, número, moneda, tarjeta, financiación, permisos y plantillas reales",
+    "7": "destinatario consentido, presupuesto y autorización de llamadas a Meta",
+    "8": "aprobación de responsables legal y financiero sobre contratos y copy comercial"
+  },
+  "authorities": {
+    "profiles": 76,
+    "tasks": 420,
+    "certifiedProfiles": 0,
+    "termsFamilies": 18,
+    "unboundCommand": [],
+    "unboundCharge": [],
+    "blockedWriterFamilies": [],
+    "outputStores": 20,
+    "openOutputStores": [],
+    "channelsSelfService": 5,
+    "channelsCertified": 0,
+    "routedOperations": 8,
+    "resolutionDefects": [],
+    "egressCallSites": 32,
+    "chargeableCallSites": 29,
+    "chargeableOutsideGate": 0,
+    "chargeableOffDurableLane": 0,
+    "chargeableOffDurableByLane": {},
+    "censusArtefactStale": false,
+    "proactivePolicies": [
+      "appointment_reminder",
+      "attendance_check",
+      "appointment_notification",
+      "appointment_cancellation",
+      "drip_step",
+      "nurturing_followup",
+      "broadcast_message",
+      "automation_rule_action",
+      "recall_reminder"
+    ],
+    "dispatchItemKinds": [
+      "text",
+      "media",
+      "payment_link",
+      "flow",
+      "template",
+      "interactive",
+      "location"
+    ],
+    "spendScopes": [
+      "number_month",
+      "account",
+      "business",
+      "contact",
+      "task"
+    ],
+    "restShapesWithoutDurableItem": [],
+    "landing": {
+      "claimGaps": [],
+      "offerGaps": [],
+      "paymentGaps": [],
+      "demonstrationGaps": [],
+      "seoGaps": [],
+      "legalGaps": [],
+      "validationGaps": [],
+      "locales": 4,
+      "comparisonTasks": 13
+    }
+  },
+  "rows": [
+    {
+      "id": "A1",
+      "open": 0,
+      "openLabel": "0 familias sin comando ligado y 0 sin cobro ligado",
+      "gates": [],
+      "status": "aceptada",
+      "provenance": "derived",
+      "artefact": null,
+      "evidence": "Inventario calculado de 18 familias (`terms-binding-inventory.ts`). Cita y matrícula ligan comando y cobro; el pedido de catálogo pasó a cobrar desde `orders.catalog_terms` y a rechazar la fila que no acordó nada. Sin comando ligado: ninguna. Sin cobro ligado: ninguna.",
+      "commits": [
+        "a806ef62",
+        "f121dc5f"
+      ],
+      "deferral": null
+    },
+    {
+      "id": "A2",
+      "open": 0,
+      "openLabel": "",
+      "gates": [
+        1
+      ],
+      "status": "bloqueada",
+      "provenance": "declared",
+      "artefact": null,
+      "evidence": "Comando, retención, settlement, avisos durables y revisión sin reenvío implementados y probados con PostgreSQL. La conciliación contra un proveedor real no puede correrse sin su cuenta.",
+      "commits": [],
+      "deferral": null
+    },
+    {
+      "id": "A3",
+      "open": 0,
+      "openLabel": "",
+      "gates": [
+        1
+      ],
+      "status": "bloqueada",
+      "provenance": "declared",
+      "artefact": null,
+      "evidence": "Propuesta, consentimiento, aprobación humana y entrega durable probados con PostgreSQL y Socket.IO. La entrega real necesita un canal conectado.",
+      "commits": [],
+      "deferral": null
+    },
+    {
+      "id": "A4",
+      "open": 0,
+      "openLabel": "",
+      "gates": [
+        1
+      ],
+      "status": "bloqueada",
+      "provenance": "declared",
+      "artefact": null,
+      "evidence": "Transacciones, lectores, promoción y restauración única comprobadas contra PostgreSQL.",
+      "commits": [],
+      "deferral": null
+    },
+    {
+      "id": "B1",
+      "open": 0,
+      "openLabel": "0 canales de autoservicio con capacidades locales pendientes",
+      "gates": [
+        1
+      ],
+      "status": "bloqueada",
+      "provenance": "executed_evidence",
+      "artefact": "docs/audits/2026-09-09/order-sensitivity-runs.md",
+      "evidence": "El turno completo corre de punta a punta sobre PostgreSQL, Valkey, BullMQ y Socket.IO reales, con crash en cada frontera, una erasure en vuelo y los primitivos a través de un PgBouncer real en modo transacción. La matriz registra 5 de 5 canales de autoservicio sin capacidad local pendiente; los límites que el proveedor no ofrece quedan fuera de alcance en vez de convertirse en estados inventados.",
+      "commits": [],
+      "deferral": null
+    },
+    {
+      "id": "B2",
+      "open": 0,
+      "openLabel": "0 familias bloqueadas",
+      "gates": [],
+      "status": "aceptada",
+      "provenance": "derived",
+      "artefact": null,
+      "evidence": "Las 18 familias del registro tienen writer canónico auditado, con id de inbound compartido con el runtime y el ledger. Cero bloqueadas.",
+      "commits": [],
+      "deferral": null
+    },
+    {
+      "id": "C1",
+      "open": 0,
+      "openLabel": "",
+      "gates": [
+        1
+      ],
+      "status": "bloqueada",
+      "provenance": "declared",
+      "artefact": null,
+      "evidence": "Árbitro, dueño por puerto, consentimiento por misión, corrección y reanudación probados en los cuatro idiomas del contrato (es/en/pt/fr).",
+      "commits": [],
+      "deferral": null
+    },
+    {
+      "id": "C2",
+      "open": 0,
+      "openLabel": "0 familias cuyo writer ejecuta sin que le muestren lo acordado",
+      "gates": [],
+      "status": "aceptada",
+      "provenance": "derived",
+      "artefact": null,
+      "evidence": "Ciclos de agenda y de mascotas con recibos atómicos comprobados. El cierre de esta fila es el mismo que el de A1.",
+      "commits": [],
+      "deferral": null
+    },
+    {
+      "id": "C3",
+      "open": 0,
+      "openLabel": "el ejecutor de certificación no está cableado a ningún entrypoint",
+      "gates": [
+        2
+      ],
+      "status": "bloqueada",
+      "provenance": "derived",
+      "artefact": null,
+      "evidence": "Contratos MCP y dependencias base implementados. El ejecutor está cableado a servicio, cola y endpoint, y se ensaya sin proveedor; la cobertura por tarea la decide una corrida real: 0 perfiles certificados de 76.",
+      "commits": [],
+      "deferral": null
+    },
+    {
+      "id": "D1",
+      "open": 0,
+      "openLabel": "",
+      "gates": [
+        3
+      ],
+      "status": "bloqueada",
+      "provenance": "declared",
+      "artefact": null,
+      "evidence": "Muestreo, revisión humana con CAS y anotaciones RAG implementados. No se certifica veracidad global y el propio informe lo dice; una revisión de muestra necesita personas.",
+      "commits": [],
+      "deferral": null
+    },
+    {
+      "id": "D2",
+      "open": 0,
+      "openLabel": "0 huecos en el dataset de recuperación o en sus números publicados",
+      "gates": [
+        2
+      ],
+      "status": "bloqueada",
+      "provenance": "derived",
+      "artefact": null,
+      "evidence": "17 casos etiquetados que cubren los 4 idiomas y los 7 desafíos declarados, con umbrales barridos y números publicados en `docs/runbooks/rag-quality-and-slo.md`. Lo que queda no es local: el entailment semántico necesita el modelo real, así que la fila pasa de abierta a bloqueada por el gate de LLM en vez de aceptarse con la mitad medida.",
+      "commits": [
+        "f2a6a2e8",
+        "7a9e7c18",
+        "71387107"
+      ],
+      "deferral": null
+    },
+    {
+      "id": "D3",
+      "open": 0,
+      "openLabel": "",
+      "gates": [
+        3
+      ],
+      "status": "bloqueada",
+      "provenance": "declared",
+      "artefact": null,
+      "evidence": "Atribución observable y diagnóstico técnico probados. No equivalen a veracidad ni a entailment, y el informe lo dice.",
+      "commits": [],
+      "deferral": null
+    },
+    {
+      "id": "E1",
+      "open": 0,
+      "openLabel": "0 tareas sin caso positivo propio o sin verificador de efecto",
+      "gates": [],
+      "status": "aceptada",
+      "provenance": "derived",
+      "artefact": null,
+      "evidence": "76 perfiles, 420 tareas, 146 que comprometen al negocio, y cero tareas sin caso positivo propio o sin verificador fuera de las 5 declaradas: `file_claim` en las cinco subtipos de seguros existe para probar que el escalón de identidad la rechaza, así que no hay efecto que verificar y un \"positivo\" sería el agente haciendo lo que no debe. Certificar estas tareas es H1.",
+      "commits": [],
+      "deferral": null
+    },
+    {
+      "id": "E2",
+      "open": 0,
+      "openLabel": "0 lecturas comerciales que descansan en algo sin congelar y sin motivo escrito",
+      "gates": [],
+      "status": "aceptada",
+      "provenance": "derived",
+      "artefact": null,
+      "evidence": "30 de 34 grupos son comerciales y 19 tienen su autoridad congelada entera. Las 11 restantes descansan únicamente en los 3 relojes aceptados con motivo escrito (wall_clock, CURRENT_DATE, readonly_channel_manager_ownership_projection), ninguno de los cuales se puede capturar: lo que los cierra es que el resultado viaje con el instante en que se tomó. La mitad concurrente la prueba `commercial-authority.postgres.spec.ts` contra PostgreSQL real, con dos tenants y dos workers.",
+      "commits": [
+        "33dd2487"
+      ],
+      "deferral": null
+    },
+    {
+      "id": "E3",
+      "open": 0,
+      "openLabel": "",
+      "gates": [
+        5,
+        1
+      ],
+      "status": "bloqueada",
+      "provenance": "declared",
+      "artefact": null,
+      "evidence": "Outbox durable obligatorio, transporte estricto, recuperación, reconciliación con actor y evidencia, pantalla de operador y alerta real. El ajuste heredado dispatch.normalOutbox sólo delimita la evidencia del canario; no puede devolver una respuesta al carril eliminado.",
+      "commits": [],
+      "deferral": null
+    },
+    {
+      "id": "F1",
+      "open": 0,
+      "openLabel": "el ejecutor de certificación no está cableado a ningún entrypoint",
+      "gates": [
+        2
+      ],
+      "status": "bloqueada",
+      "provenance": "derived",
+      "artefact": null,
+      "evidence": "Assessment común implementado y probado; su cierre es una corrida real de certificación, cuyo ejecutor ya existe y se ensaya sin proveedor.",
+      "commits": [],
+      "deferral": null
+    },
+    {
+      "id": "F2",
+      "open": 0,
+      "openLabel": "0 defectos en la tabla de resolución y 0 derivaciones sin traspaso declarado",
+      "gates": [],
+      "status": "aceptada",
+      "provenance": "derived",
+      "artefact": null,
+      "evidence": "Cada blocker y cada recomendación del assessment tiene resolución declarada, con prueba de cobertura que falla al aparecer un código sin ella; el universo lo produce el código que emite los códigos, no un barrido de texto. Las 8 operaciones que Assist no ejecuta declaran requisitos no secretos, preparación, pantalla exacta y qué releer al volver.",
+      "commits": [
+        "37411849",
+        "f2a976d6"
+      ],
+      "deferral": null
+    },
+    {
+      "id": "F3",
+      "open": 0,
+      "openLabel": "",
+      "gates": [
+        3
+      ],
+      "status": "bloqueada",
+      "provenance": "declared",
+      "artefact": null,
+      "evidence": "Recorridos por tareas verificadas implementados y con pruebas de accesibilidad automáticas. Las sesiones moderadas necesitan personas.",
+      "commits": [],
+      "deferral": null
+    },
+    {
+      "id": "F4",
+      "open": 0,
+      "openLabel": "",
+      "gates": [
+        3
+      ],
+      "status": "bloqueada",
+      "provenance": "declared",
+      "artefact": null,
+      "evidence": "Un solo vocabulario de seis estados proyectado y mostrado en el tablero. La validación visual necesita personas.",
+      "commits": [],
+      "deferral": null
+    },
+    {
+      "id": "G1",
+      "open": 0,
+      "openLabel": "0 lugares donde las palabras del agente descansan sin alcance completo",
+      "gates": [],
+      "status": "aceptada",
+      "provenance": "derived",
+      "artefact": null,
+      "evidence": "20 lugares inventariados con barrido del árbol de fuentes, cada uno diciendo qué lo alcanza y por qué. Abiertos: ninguno.",
+      "commits": [
+        "d366baf3"
+      ],
+      "deferral": null
+    },
+    {
+      "id": "G2",
+      "open": 0,
+      "openLabel": "",
+      "gates": [
+        3
+      ],
+      "status": "bloqueada",
+      "provenance": "declared",
+      "artefact": null,
+      "evidence": "Curación y revisión en cuatro idiomas implementadas. La revisión humana de muestra necesita personas.",
+      "commits": [],
+      "deferral": null
+    },
+    {
+      "id": "G3",
+      "open": 0,
+      "openLabel": "",
+      "gates": [
+        1
+      ],
+      "status": "bloqueada",
+      "provenance": "declared",
+      "artefact": null,
+      "evidence": "Comparación por runtime y evidencia en seis familias; publicación gradual y retiro implementados.",
+      "commits": [],
+      "deferral": null
+    },
+    {
+      "id": "H1",
+      "open": 0,
+      "openLabel": "",
+      "gates": [
+        2
+      ],
+      "status": "bloqueada",
+      "provenance": "executed_evidence",
+      "artefact": "docs/audits/2026-09-09/certification-manifest.md",
+      "evidence": "Ejecutor durable construido: 3 tablas, arriendo con `clock_timestamp()`, resultado escrito una sola vez, reintento como intento nuevo, presupuesto y deadline verificados antes de entregar trabajo, invalidación por definición de escenario y por autoridad del agente, y el reporte alimentado desde esas filas. El manifiesto de costo por modelo está calculado. Ejecutarlo necesita una credencial y un techo de gasto autorizado.",
+      "commits": [
+        "e1ac3943",
+        "4ec45699"
+      ],
+      "deferral": null
+    },
+    {
+      "id": "H2",
+      "open": 0,
+      "openLabel": "",
+      "gates": [
+        2
+      ],
+      "status": "bloqueada",
+      "provenance": "declared",
+      "artefact": null,
+      "evidence": "Regresiones desde QA y ledger, linaje, identidad de misión y denominadores implementados; un resultado desconocido conserva ese estado y no se inventa tasa. Sus denominadores se llenan con la corrida de H1.",
+      "commits": [],
+      "deferral": null
+    },
+    {
+      "id": "H3",
+      "open": 0,
+      "openLabel": "",
+      "gates": [
+        4,
+        1,
+        3
+      ],
+      "status": "bloqueada",
+      "provenance": "executed_evidence",
+      "artefact": "docs/audits/2026-09-09/adversarial-validation.md",
+      "evidence": "Harness local construido: corpus generado y estratificado desde el catálogo con verificadores de resultado, sujetos sintéticos ejecutados, 3 tablas de intentos y revisión ciega, y una negativa a enunciar comparación cuando falta el otro sujeto. Correr una alternativa necesita su cuenta.",
+      "commits": [
+        "aaf41d62"
+      ],
+      "deferral": null
+    },
+    {
+      "id": "M0",
+      "open": 0,
+      "openLabel": "",
+      "gates": [],
+      "status": "aceptada",
+      "provenance": "derived",
+      "artefact": null,
+      "evidence": "Censo derivado del árbol: 32 call sites, 29 cobrables, 0 fuera de la autoridad económica. El inventario de efectos declara 68 productores y 16 con al menos una propiedad en `none`. La condición es que el artefacto versionado se regenere desde el mismo HEAD, no que alguien lo haya leído.",
+      "commits": [],
+      "deferral": null
+    },
+    {
+      "id": "M1",
+      "open": 0,
+      "openLabel": "0 productores de mensaje al cliente cobrables por Meta sin autoridad y 0 sin idempotencia, sobre 16 productores de esa clase",
+      "gates": [
+        1,
+        4
+      ],
+      "status": "bloqueada",
+      "provenance": "derived",
+      "artefact": null,
+      "evidence": "Remitente, pagador y credencial salen del resolver único; la unión de autoridades cubre agente servido, 9 políticas proactivas (appointment_reminder, attendance_check, appointment_notification, appointment_cancellation, drip_step, nurturing_followup, broadcast_message, automation_rule_action, recall_reminder) y operador humano con 4 roles. BSUID, la procedencia del token BISU y el control del hilo frente al agente de Meta ya están en el código y probados: un remitente sin teléfono se contesta en vez de descartarse, un token del portafolio del proveedor se rechaza en vez de firmar el envío de un tenant, y el control del hilo es durable y se recupera solo. Lo que falta es una cuenta real: ninguna de esas transiciones vio todavía un traspaso de verdad, y por eso la coexistencia va detrás de un interruptor apagado. El contador de esta fila mide otra cosa —productores de mensajería sin autoridad o sin idempotencia— y sigue siendo lo que la mantiene abierta.",
+      "commits": [],
+      "deferral": null
+    },
+    {
+      "id": "M2",
+      "open": 0,
+      "openLabel": "la tarjeta de tarifas versionada no está cargada",
+      "gates": [
+        4
+      ],
+      "status": "bloqueada",
+      "provenance": "derived",
+      "artefact": null,
+      "evidence": "Tarifas versionadas `meta-ratecards-2026@ddb62cc8458b94a3` con 4 tarjetas, 5 categorías que Meta cobra por separado y 1000 entregas de servicio gratuitas por número y mes calendario. La categoría aprobada y la ventana de servicio se leen de la base del tenant antes de admitir. Lo que falta es una cuenta real: tarifa aplicada por Meta al entregar y conciliación contra factura.",
+      "commits": [],
+      "deferral": null
+    },
+    {
+      "id": "M3",
+      "open": 0,
+      "openLabel": "0 productores cobrables fuera del gate económico",
+      "gates": [],
+      "status": "aceptada",
+      "provenance": "derived",
+      "artefact": null,
+      "evidence": "Autoridad económica transaccional con 5 alcances (number_month, account, business, contact, task), reserva antes del efecto y liquidación contra el recibo. Cero productores cobrables fuera del gate en este HEAD: lo verifica el censo, no esta frase.",
+      "commits": [],
+      "deferral": null
+    },
+    {
+      "id": "M4",
+      "open": 0,
+      "openLabel": "faltan campos de la decisión comercial ejecutable de octubre",
+      "gates": [
+        5
+      ],
+      "status": "bloqueada",
+      "provenance": "declared",
+      "artefact": null,
+      "evidence": "La decisión de producto está aplicada por la autoridad `WHATSAPP_OCTOBER_COMMERCIAL_POLICY`: precios y capacidad de los cinco planes sin cambio; techo observable por número de 2000 entregas/mes y por contacto de 60; aviso desde 2026-09-15 y fecha límite 2026-09-30. El ledger importa esa misma autoridad al crear contadores, por lo que el reporte no puede separarse del runtime. El análisis que sustenta la decisión queda en `docs/audits/2026-09-12/m4-pricing-proposal.md`: tarifas de servicio y marketing de seis mercados derivadas de la tarjeta de octubre, los cinco planes vigentes, el gasto real del cliente en dos extremos geográficos, un escenario elegido y cuatro alternativas descartadas. Falta publicar la versión desplegada, que pertenece al gate de release.",
+      "commits": [],
+      "deferral": null
+    },
+    {
+      "id": "M5",
+      "open": 0,
+      "openLabel": "0 productores de mensaje al cliente cobrables por Meta sin borrado alcanzable, sobre 16 de esa clase",
+      "gates": [
+        1,
+        6
+      ],
+      "status": "bloqueada",
+      "provenance": "derived",
+      "artefact": null,
+      "evidence": "Aprendizaje conserva origen y finalidad; publicación y rollback llegan a los derivados. El agente de negocio de Meta sigue apagado. El piloto real necesita cuenta, destinatario consentido y presupuesto autorizado, que son gates, no código.",
+      "commits": [],
+      "deferral": null
+    },
+    {
+      "id": "M6",
+      "open": 0,
+      "openLabel": "marketing avanzado, Direct Send, llamadas/grupos y wallet de reventa no están construidos y quedan fuera del alcance de octubre por decisión explícita; no bloquean este release",
+      "gates": [],
+      "status": "diferida",
+      "provenance": "declared",
+      "artefact": null,
+      "evidence": "Se registra DIFERIDA y no abierta: mantener abierto un release por alcance que alguien quitó a propósito es tenerlo abierto para siempre. Y no aceptada: nada de esto está construido, y una fila aceptada sobre funcionalidad inexistente es la única lectura peor. Tampoco se omite: esta tabla ya aprendió que una fila que no se imprime se lee como cerrada.",
+      "commits": [],
+      "deferral": {
+        "decision": "Fuera del alcance de octubre. No se construye marketing avanzado, Direct Send, llamadas/grupos ni wallet de reventa para este release; M5 los separó a propósito, con flags y elegibilidad propias, para que la continuidad básica no dependa de ellos.",
+        "owner": "dueño del producto (la decisión de alcance es comercial, no técnica)",
+        "reopenWhen": "se autorice el alcance para un release posterior, o Meta cambie la elegibilidad de alguna de esas superficies de modo que la continuidad básica dependa de una de ellas. Reabrir significa volver a `abierta` con trabajo local, no declararla aceptada."
+      }
+    },
+    {
+      "id": "R0",
+      "open": 0,
+      "openLabel": "0 productores cobrables fuera del carril durable ()",
+      "gates": [],
+      "status": "aceptada",
+      "provenance": "derived",
+      "artefact": null,
+      "evidence": "De 29 call sites cobrables, 0 usan un carril que no escribe fila antes del POST — Redis es el registro, o no hay registro. Un productor ahí no puede contestar \"¿esto salió?\" después de un reinicio. **Este número no es el criterio de R6**, que pregunta por la autorización aplicable y la mide con los productores fuera del gate económico. Lo que esta fila mide es la fila durable antes del POST; desde este HEAD todo productor cobrable la crea y ningún interruptor puede devolverlo al carril anterior.",
+      "commits": [],
+      "deferral": null
+    },
+    {
+      "id": "R1",
+      "open": 0,
+      "openLabel": "",
+      "gates": [],
+      "status": "aceptada",
+      "provenance": "derived",
+      "artefact": null,
+      "evidence": "El carril transporta 7 tipos de item (text, media, payment_link, flow, template, interactive, location), incluidos los menús y las ubicaciones que el carril REST manda todos los días. Los efectos se cuentan DESPUÉS de formarlos: un caption nativo viaja dentro del item donde el proveedor lo cobra como un mensaje, y como item propio donde no.",
+      "commits": [],
+      "deferral": null
+    },
+    {
+      "id": "R2",
+      "open": 0,
+      "openLabel": "la política de repetición no está cargada",
+      "gates": [],
+      "status": "aceptada",
+      "provenance": "derived",
+      "artefact": null,
+      "evidence": "Esperar y suprimir son resultados durables y distintos de error, resolución y handoff, así que ningún catch los convierte en un texto cobrable. La política por defecto admite 1 mensaje(s) idéntico(s) en 10 minutos, con un enfriamiento de 10 minutos, y es revisable por tarea e idioma.",
+      "commits": [],
+      "deferral": null
+    },
+    {
+      "id": "R3",
+      "open": 0,
+      "openLabel": "faltan alcances de gasto: ",
+      "gates": [
+        4
+      ],
+      "status": "bloqueada",
+      "provenance": "derived",
+      "artefact": null,
+      "evidence": "Los 5 alcances se reservan en orden fijo dentro de una transacción, así que dos workers peleando por el último importe no pueden asignarlo dos veces. El mercado sale de la dirección del destinatario, nunca del país de la empresa, y un destino desconocido no tiene tarifa cero.",
+      "commits": [],
+      "deferral": null
+    },
+    {
+      "id": "R4",
+      "open": 0,
+      "openLabel": "0 productores todavía pueden emitir sin fila durable ()",
+      "gates": [],
+      "status": "aceptada",
+      "provenance": "derived",
+      "artefact": null,
+      "evidence": "La consola humana, la API REST y las campañas necesitan la misma admisión que el agente: un handoff detiene la IA, pero las respuestas humanas siguen generando cargos. Desde este HEAD cada productor usa una fila durable y la autoridad correspondiente; cualquier ruta nueva vuelve a abrir este contador.",
+      "commits": [],
+      "deferral": null
+    },
+    {
+      "id": "R5",
+      "open": 0,
+      "openLabel": "0 de 18 escenarios de la matriz de aceptación sin prueba que los conteste: ",
+      "gates": [],
+      "status": "aceptada",
+      "provenance": "derived",
+      "artefact": null,
+      "evidence": "La matriz dejó de ser una tabla en un documento: sus 18 filas son datos, cada una nombra el archivo y UN TÍTULO POR MITAD del escenario, y una comprobación verifica que cada título sea el de un `it()` que de verdad corre — ni prosa, ni un `describe`, ni un `skip`. Una fila vale lo que su mitad más delgada: si una de ellas no está probada, la fila entera figura con `null` y dice qué haría falta, en vez de quedar fuera de la tabla para que la columna parezca llena — que es exactamente cómo un contador llega a cero sin que nadie cierre nada.",
+      "commits": [],
+      "deferral": null
+    },
+    {
+      "id": "R6",
+      "open": 0,
+      "openLabel": "0 productores de WhatsApp pueden entregar fuera de la autorización aplicable",
+      "gates": [
+        1,
+        5,
+        7
+      ],
+      "status": "bloqueada",
+      "provenance": "derived",
+      "artefact": null,
+      "evidence": "El criterio principal de R6, textual: **ningún productor de WhatsApp puede generar una entrega fuera de la autorización aplicable**. Esa autorización es la autoridad económica transaccional, y el censo derivado del árbol cuenta 0 productores cobrables que llegan a un POST sin pasarla. Lo verifica una mutación que borra el gate del sink real, no esta frase. **Este contador sumó hasta este HEAD los 0 productores fuera del carril durable (), que es otra propiedad**: no hay fila antes del POST, así que nadie puede contestar \"¿esto salió?\" tras un reinicio. Esa propiedad se mide en R0 y R4 y también está en cero. Con la condición local cumplida esta fila queda bloqueada por el modo observación, el canario con techo explícito y la autorización de activar `enforce`.",
+      "commits": [],
+      "deferral": null
+    },
+    {
+      "id": "T1",
+      "open": 0,
+      "openLabel": "0 controles configurables (familia.bandera) sin consumidor productivo",
+      "gates": [],
+      "status": "aceptada",
+      "provenance": "derived",
+      "artefact": null,
+      "evidence": "Derivado del contrato de perfil de negocio contra los módulos que pueden actuar sobre cada bandera, excluyendo el propio contrato, el editor y las pruebas. Una bandera que sólo su esquema y su formulario mencionan es un control que el dueño puede mover sin consecuencia, y la pantalla dice que hizo algo.",
+      "commits": [],
+      "deferral": null
+    },
+    {
+      "id": "T2",
+      "open": 0,
+      "openLabel": "0 predicados de preparación aún divergen de su herramienta",
+      "gates": [],
+      "status": "aceptada",
+      "provenance": "derived",
+      "artefact": null,
+      "evidence": "Derivado de cada entrada no nula de `READINESS_PREDICATE_AUTHORITY`. Cada readiness cita el predicado que su herramienta evalúa y el registro se reduce únicamente cuando la corrección aterriza junto con su prueba.",
+      "commits": [],
+      "deferral": null
+    },
+    {
+      "id": "T3",
+      "open": 0,
+      "openLabel": "",
+      "gates": [],
+      "status": "aceptada",
+      "provenance": "derived",
+      "artefact": null,
+      "evidence": "Leído de la llamada, no de un comentario: the assessment passes a scope to intentEvidence. Sin scope el lector no puede reconocer evidencia producida bajo la configuración actual, y un agente probado se ve igual que uno que nadie probó.",
+      "commits": [],
+      "deferral": null
+    },
+    {
+      "id": "T4",
+      "open": 0,
+      "openLabel": "0 de 23 elementos de descubrimiento sin recorrido",
+      "gates": [],
+      "status": "aceptada",
+      "provenance": "derived",
+      "artefact": null,
+      "evidence": "Derivado de `DISCOVERY_ORDER` contra la tabla por elemento del tour. Un elemento que aparece en el panel y no en el recorrido es una pantalla a la que se manda al dueño sin decirle para qué sirve, qué datos necesita, qué puede confirmar ni qué cuesta.",
+      "commits": [],
+      "deferral": null
+    },
+    {
+      "id": "T5",
+      "open": 0,
+      "openLabel": "0 tareas sin verificador sobre 420 (5 son negativos de step-up `file_claim`, que no llevan positivo por diseño)",
+      "gates": [
+        1,
+        4
+      ],
+      "status": "bloqueada",
+      "provenance": "derived",
+      "artefact": null,
+      "evidence": "Universo canónico conservado: 76 perfiles, 420 tareas, 146 que comprometen al negocio. La verificación determinista local es lo que esta fila mide; la certificación por canal y modelo real sigue en cero (0/76) y es gate externo, no trabajo local.",
+      "commits": [],
+      "deferral": null
+    },
+    {
+      "id": "T6",
+      "open": 0,
+      "openLabel": "",
+      "gates": [],
+      "status": "aceptada",
+      "provenance": "derived",
+      "artefact": null,
+      "evidence": "Derivado del AST de `copilot.service.ts`: Assist inyecta `AgentContentProposalService`, consulta `listOperations`, deriva de sus veredictos la lista ejecutable y no vuelve a leer `effectiveCapabilities` como una autoridad paralela.",
+      "commits": [],
+      "deferral": null
+    },
+    {
+      "id": "T8",
+      "open": 0,
+      "openLabel": "0 perfiles o gates internos del backlog nativo abiertos",
+      "gates": [],
+      "status": "aceptada",
+      "provenance": "derived",
+      "artefact": null,
+      "evidence": "Derivado de `native-backlog.ts`: 54 perfiles build/hybrid comercializables y 260 alertas comprueban writers, capacidad atómica, lecturas vivas, superficies y CTA, seguridad, SOR, pagos y evaluaciones. Una alerta interna reabre esta fila aunque el inventario estático de tools siga completo.",
+      "commits": [],
+      "deferral": null
+    },
+    {
+      "id": "T7",
+      "open": 0,
+      "openLabel": "",
+      "gates": [],
+      "status": "aceptada",
+      "provenance": "derived",
+      "artefact": null,
+      "evidence": "El programa de herramientas entra al gate oficial por UNA autoridad compartida: `verify-artifacts.cjs` ejecuta `generate-tool-profile-audit --check` junto con los otros generadores, y `candidate`, `deploy` y `vertical-quality` llaman a ese verificador en vez de llevar cada uno su propia lista. El artefacto de herramientas quedó stale sin impedir un cierre precisamente porque no estaba ahí. Que el gate se pone rojo ante una fuente modificada lo demuestra una prueba que cambia una fuente auditada y captura la transición, no la afirmación de que el árbol está al día. Las seis filas T1–T6 y T8 se derivan de lecturas del código, nunca de prosa ni de la existencia de un test.",
+      "commits": [],
+      "deferral": null
+    },
+    {
+      "id": "L0",
+      "open": 0,
+      "openLabel": "0 verificadores comerciales ausentes del build",
+      "gates": [],
+      "status": "aceptada",
+      "provenance": "derived",
+      "artefact": null,
+      "evidence": "La autoridad comercial está en registros versionados y seis verificadores independientes; el build público ejecuta el conjunto completo.",
+      "commits": [],
+      "deferral": null
+    },
+    {
+      "id": "L1",
+      "open": 0,
+      "openLabel": "0 proyecciones de oferta sin autoridad",
+      "gates": [],
+      "status": "aceptada",
+      "provenance": "derived",
+      "artefact": null,
+      "evidence": "Planes, capacidades, tarifas de WhatsApp y decisiones pendientes salen de fuentes versionadas; no se completan con cifras de diseño.",
+      "commits": [],
+      "deferral": null
+    },
+    {
+      "id": "L2",
+      "open": 0,
+      "openLabel": "0 relaciones de pago sin separar",
+      "gates": [],
+      "status": "aceptada",
+      "provenance": "derived",
+      "artefact": null,
+      "evidence": "La web distingue suscripción a Parallly, entregas que Meta cobra a la WABA y pagos que el cliente final hace directamente al negocio.",
+      "commits": [],
+      "deferral": null
+    },
+    {
+      "id": "L3",
+      "open": 0,
+      "openLabel": "0 demostraciones o comparaciones sin contrato",
+      "gates": [],
+      "status": "aceptada",
+      "provenance": "derived",
+      "artefact": null,
+      "evidence": "Cuatro demos ilustrativas declaran su naturaleza y evidencia; la comparación con Meta tiene superficie, fecha, fuente y límites.",
+      "commits": [],
+      "deferral": null
+    },
+    {
+      "id": "L4",
+      "open": 0,
+      "openLabel": "0 brechas de rutas localizadas, metadata o sitemap",
+      "gates": [],
+      "status": "aceptada",
+      "provenance": "derived",
+      "artefact": null,
+      "evidence": "La paridad cubre 4 idiomas. Las URLs indexables, el HTML inicial, canonical, hreflang y sitemap se miden por estructura, no por una cookie de navegador.",
+      "commits": [],
+      "deferral": null
+    },
+    {
+      "id": "L5",
+      "open": 0,
+      "openLabel": "0 variantes legales ausentes",
+      "gates": [
+        8
+      ],
+      "status": "bloqueada",
+      "provenance": "derived",
+      "artefact": null,
+      "evidence": "Términos, privacidad y tratamiento tienen contenido en cuatro idiomas y un borrador coordinado. La aprobación de responsables legal y financiero sigue siendo externa.",
+      "commits": [],
+      "deferral": null
+    },
+    {
+      "id": "L6",
+      "open": 0,
+      "openLabel": "0 gates locales de validación ausentes",
+      "gates": [
+        3,
+        5
+      ],
+      "status": "bloqueada",
+      "provenance": "derived",
+      "artefact": null,
+      "evidence": "El build ejecuta paridad, claims, regresiones adversarias, costos y evidencia competitiva. La comprensión con usuarios nuevos y el ensayo del candidato pertenecen a sus gates externos.",
+      "commits": [],
+      "deferral": null
+    }
+  ]
+}

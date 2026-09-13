@@ -319,6 +319,14 @@ jobs:
           apps/api/src/modules/whatsapp/services/whatsapp-business-profile-multinumber.spec.ts
           apps/api/src/modules/whatsapp/services/whatsapp-token-coverage.spec.ts
 
+      # The artefact gate, from the SAME shared list `candidate` and
+      # `vertical-quality` use. Deploy ran none of it: a closure report or a
+      # tool-profile audit could describe a tree two commits behind the one
+      # being shipped, and the artefacts are what the programme is read from.
+      # `--check` regenerates in memory and compares; it writes nothing.
+      - name: Generated artefacts match their sources
+        run: node docs/audits/2026-09-09/verify-artifacts.cjs
+
       - name: TypeScript check (all apps)
         run: |
           (cd apps/api && npx tsc --noEmit)
@@ -730,6 +738,7 @@ jobs:
           PROD_META_VERIFY_TOKEN: ${{ secrets.META_VERIFY_TOKEN }}
           PROD_META_CONFIG_ID: ${{ secrets.META_CONFIG_ID }}
           PROD_SYSTEM_USER_ID: ${{ secrets.SYSTEM_USER_ID }}
+          PROD_META_BUSINESS_ID: ${{ secrets.META_BUSINESS_ID }}
           PROD_MESSENGER_FB_LOGIN_CONFIG_ID: ${{ secrets.MESSENGER_FB_LOGIN_CONFIG_ID }}
           PROD_INSTAGRAM_APP_SECRET: ${{ secrets.INSTAGRAM_APP_SECRET }}
           PROD_INTERNAL_API_KEY: ${{ secrets.INTERNAL_API_KEY }}
@@ -824,6 +833,7 @@ jobs:
             PROD_TENANT_SECRET_KEY,PROD_TENANT_SECRET_KEY_ID,PROD_TENANT_SECRET_PREVIOUS_KEYS,PROD_TENANT_SECRET_PLAINTEXT,
             PROD_VERTICAL_INTEGRATIONS_TOAST_ALLOWED_HOSTS,PROD_VERTICAL_INTEGRATIONS_CLINIKO_ALLOWED_HOSTS,PROD_INTEGRATION_WRITE_PROVIDERS,
             PROD_META_APP_ID,PROD_META_APP_SECRET,PROD_META_VERIFY_TOKEN,PROD_META_CONFIG_ID,PROD_SYSTEM_USER_ID,
+            PROD_META_BUSINESS_ID,
             PROD_MESSENGER_FB_LOGIN_CONFIG_ID,PROD_INSTAGRAM_APP_SECRET,
             PROD_INTERNAL_API_KEY,
             PROD_TUNNEL_TOKEN,PROD_GOOGLE_OAUTH_CLIENT_ID,PROD_GOOGLE_OAUTH_CLIENT_SECRET,
@@ -995,6 +1005,7 @@ jobs:
             echo "META_VERIFY_TOKEN=${PROD_META_VERIFY_TOKEN}" >> .env
             echo "META_CONFIG_ID=${PROD_META_CONFIG_ID}" >> .env
             echo "SYSTEM_USER_ID=${PROD_SYSTEM_USER_ID}" >> .env
+            echo "META_BUSINESS_ID=${PROD_META_BUSINESS_ID}" >> .env
             echo "INTERNAL_API_KEY=${PROD_INTERNAL_API_KEY}" >> .env
             echo "WHATSAPP_VERIFY_TOKEN=${PROD_META_VERIFY_TOKEN}" >> .env
             echo "# Messenger OAuth" >> .env
@@ -1170,6 +1181,53 @@ jobs:
               exit 1
             fi
             echo "  [OK] no live Mercado Pago platform mandates"
+
+            echo "===> Pre-flight: rows this release would stop being able to charge..."
+            # WHY THIS RUNS HERE, between the backup and the migrations.
+            #
+            # A1/C2 change what a charge may take: three families stop reading a
+            # live column and start reading what the customer accepted, and a row
+            # created before that binding becomes unpayable the moment the new
+            # runtime loads — outbox flag or not. The runbook already said to ask
+            # `GET /tenant-payments/:tenantId/agreed-terms/orphans` first, which
+            # is a sentence applied per tenant by whoever remembers. This asks
+            # every tenant, from the pipeline, and refuses.
+            #
+            # BEFORE the migrations on purpose. A control placed after the change
+            # it protects is not a control, and this one has to hold on the OLD
+            # schema — where `commitment_proposals` does not exist yet, which the
+            # command reports as "every live row of those families is at risk"
+            # rather than as zero.
+            #
+            # AFTER the backup on purpose too: the dump is the rollback point,
+            # and there is no reason to spend a query before there is one.
+            #
+            # Runs in the CANDIDATE image ($DC picks up IMAGE_TAG=${GIT_SHA}),
+            # so the rules applied are the ones the new runtime will apply, over
+            # DIRECT_DATABASE_URL, which bypasses PgBouncer — this reads across
+            # every tenant schema and transaction pooling would hand each
+            # statement whichever server connection happened to be free.
+            #
+            # Read-only: it issues SELECTs and cannot fix what it finds. An
+            # acceptance nobody gave is not something a deploy may invent, so
+            # every finding goes to a person. Exit 1 = rows at risk or an
+            # inspection failed; exit 2 = the gate could not run at all. Both
+            # abort, because "we do not know" is not permission to proceed.
+            if PREFLIGHT_OUT="$($DC run --rm api node scripts/preflight-agreed-terms.cjs 2>&1)"; then
+              PREFLIGHT_RC=0
+            else
+              PREFLIGHT_RC=$?
+            fi
+            printf '%s\n' "$PREFLIGHT_OUT"
+            if [ "$PREFLIGHT_RC" -ne 0 ]; then
+              echo "::error::Deploy blocked by the agreed-terms pre-flight (exit $PREFLIGHT_RC). Containers were NOT recreated and no migration ran. Resolve each row with a human decision, or accept the refusal deliberately, before retrying."
+              exit 1
+            fi
+            if ! printf '%s\n' "$PREFLIGHT_OUT" | grep -q 'AGREED_TERMS_PREFLIGHT .*blocks=0'; then
+              echo "::error::The agreed-terms pre-flight did not report a clean summary line; refusing to migrate on an answer nobody can read"
+              exit 1
+            fi
+            echo "  [OK] agreed-terms pre-flight clean"
 
             echo "===> Running Prisma public schema migrations..."
             # No "|| true": a failed public-schema migration MUST abort the deploy.

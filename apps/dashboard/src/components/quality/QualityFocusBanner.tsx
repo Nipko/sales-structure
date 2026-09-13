@@ -21,7 +21,7 @@ import { useTenant } from "@/contexts/TenantContext";
 import { useRole } from "@/hooks/useRole";
 import { api } from "@/lib/api";
 import { canRunProductTourAtWidth } from "@/lib/product-tour-contract";
-import { askAssistAboutQuality } from "@/lib/quality-health-events";
+import { askAssistAboutQuality, QUALITY_HEALTH_REFRESH_EVENT } from "@/lib/quality-health-events";
 import {
   QUALITY_HEALTH_CACHE_MS,
   readQualityFocus,
@@ -31,6 +31,7 @@ import {
 } from "@/lib/quality-health";
 import { qualityCheckCodeFor, useRecommendationLabel } from "@/lib/quality-labels";
 import { cn } from "@/lib/utils";
+import { resolveQualityFocusResponse } from "@/lib/quality-focus";
 
 /**
  * The context bar that makes "Revisar" consequent.
@@ -112,7 +113,16 @@ export default function QualityFocusBanner() {
 
   const focus = useMemo(() => readQualityFocus(searchParams), [searchParams]);
   const [payload, setPayload] = useState<FocusPayload | null>(null);
-  const [state, setState] = useState<"idle" | "loading" | "ready" | "gone">("idle");
+  const [state, setState] = useState<"idle" | "loading" | "ready" | "gone" | "unavailable">("idle");
+  const [revision, setRevision] = useState(0);
+  const refresh = useCallback(() => {
+    if (activeTenantId && focus) focusCache.delete(cacheKey(activeTenantId, focus.signalId, focus.agentId));
+    setRevision(value => value + 1);
+  }, [activeTenantId, focus]);
+  useEffect(() => {
+    window.addEventListener(QUALITY_HEALTH_REFRESH_EVENT, refresh);
+    return () => window.removeEventListener(QUALITY_HEALTH_REFRESH_EVENT, refresh);
+  }, [refresh]);
   const [snoozing, setSnoozing] = useState(false);
   const [wideEnoughForTour, setWideEnoughForTour] = useState(false);
 
@@ -150,27 +160,25 @@ export default function QualityFocusBanner() {
       ]);
       if (cancelled) return;
 
-      if (!signalResponse?.success || !signalResponse.data) {
-        focusCache.set(key, { data: null, fetchedAt: Date.now() });
+      const resolved = resolveQualityFocusResponse(signalResponse, overviewResponse, focus.agentId);
+      if (resolved.state !== "ready") {
         setPayload(null);
-        setState("gone");
+        setState(resolved.state);
         return;
       }
 
-      const overview = overviewResponse?.success && overviewResponse.data
-        && overviewResponse.data.agent.id === focus.agentId
-        ? overviewResponse.data
-        : null;
-      const next: FocusPayload = { signal: signalResponse.data, overview };
+      const next: FocusPayload = resolved.payload;
       focusCache.set(key, { data: next, fetchedAt: Date.now() });
       setPayload(next);
       setState("ready");
-    })();
+    })().catch(() => {
+      if (!cancelled) { setPayload(null); setState("unavailable"); }
+    });
 
     return () => { cancelled = true; };
-  }, [activeTenantId, eligible, focus]);
+  }, [activeTenantId, eligible, focus, revision]);
 
-  const visible = Boolean(focus) && (state === "ready" || state === "gone");
+  const visible = Boolean(focus) && ["ready", "gone", "unavailable"].includes(state);
 
   // Tell QualityAttentionBanner to stand down while this bar owns the signal.
   useEffect(() => {
@@ -194,7 +202,9 @@ export default function QualityFocusBanner() {
 
   if (!visible || !focus) return null;
 
-  if (state === "gone" || !payload) {
+  const verifiedCheck = payload ? findCheck(payload.overview, payload.signal.code) : null;
+  const verifiedResolved = verifiedCheck?.status === "pass" || verifiedCheck?.status === "not_applicable";
+  if (state === "gone" || !payload || verifiedResolved) {
     return (
       <div
         role="region"
@@ -203,7 +213,8 @@ export default function QualityFocusBanner() {
         className="shrink-0 border-b border-neutral-200 bg-neutral-50 px-4 py-2.5 text-neutral-700 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-200"
       >
         <div className="flex items-center gap-2">
-          <p className="min-w-0 flex-1 text-sm">{t("focus.signalGone")}</p>
+          <p className="min-w-0 flex-1 text-sm">{t(verifiedResolved ? "focus.verifiedResolved" : state === "unavailable" ? "focus.verificationUnavailable" : "focus.signalGone")}</p>
+          {state === "unavailable" && <button type="button" onClick={refresh} className="rounded-md px-2.5 py-2 text-xs font-semibold focus-visible:ring-2">{t("setup.retry")}</button>}
           <button
             type="button"
             onClick={dismiss}
@@ -220,7 +231,9 @@ export default function QualityFocusBanner() {
   const check = findCheck(overview, signal.code);
   const evidence = check?.evidence ?? {};
   const explanationCode = `focus.explanations.${signal.code}`;
-  const explanation = t(t.has(explanationCode) ? explanationCode : "focus.explanations.generic", {
+  const explanation = !check || check.status === "unknown"
+    ? t("focus.verificationUnavailable")
+    : t(t.has(explanationCode) ? explanationCode : "focus.explanations.generic", {
     agent: signal.agent.name,
     assigned: scalar(evidence.assigned ?? evidence.assignedChannels ?? evidence.assignedCount, "0"),
     connected: scalar(evidence.connected ?? evidence.connectedAssignments, "0"),

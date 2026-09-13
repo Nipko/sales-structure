@@ -1,9 +1,10 @@
-import { Body, Controller, Delete, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { EvalService, EvalScenarioInput } from './eval.service';
+import { buildTaskCompetenceMatrix } from './task-competence-matrix';
 
 /**
  * Eval gate (#2) — a curated golden set run through the agent + LLM-judge, used
@@ -13,6 +14,13 @@ import { EvalService, EvalScenarioInput } from './eval.service';
 @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
 export class EvalController {
     constructor(private readonly evals: EvalService) {}
+
+    @Get(':tenantId/competence-matrix')
+    @Roles('super_admin', 'tenant_admin', 'tenant_supervisor')
+    competenceMatrix(@Query('profileId') profileId?: string) {
+        try { return { success: true, data: buildTaskCompetenceMatrix(profileId) }; }
+        catch { throw new BadRequestException({ error: 'canonical_profile_required' }); }
+    }
 
     @Get(':tenantId/scenarios')
     @Roles('super_admin', 'tenant_admin', 'tenant_supervisor')
@@ -45,9 +53,9 @@ export class EvalController {
     @Roles('super_admin', 'tenant_admin')
     async runActions(
         @Param('tenantId') tenantId: string,
-        @Body() body: { agentId: string; threshold?: number; k?: number; passPolicy?: 'all' | 'majority'; activationThreshold?: number },
+        @Body() body: { agentId: string; threshold?: number; k?: number; passPolicy?: 'all' | 'majority'; activationThreshold?: number; channelType?: string },
     ) {
-        return { success: true, data: await this.evals.runGateV2(tenantId, body.agentId, body) };
+        return { success: true, data: await this.evals.runGateV2(tenantId, body.agentId, { threshold: body.threshold, k: body.k, passPolicy: body.passPolicy, activationThreshold: body.activationThreshold, channelType: body.channelType }) };
     }
 
     @Get(':tenantId/runs')

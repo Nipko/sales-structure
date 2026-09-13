@@ -107,7 +107,7 @@ const APPOINTMENT_WRITERS = Object.freeze([
     'create_appointment', 'cancel_appointment', 'send_booking_link', 'reschedule_appointment',
 ]);
 const CATALOG_READS = Object.freeze([
-    'search_products', 'get_product', 'check_stock', 'send_product_image',
+    'search_products', 'get_product', 'check_stock', 'send_product_image','list_my_catalog_orders','get_catalog_order',
 ]);
 
 export const PROFILE_SYSTEM_OF_RECORD_POLICIES: Readonly<Record<string, ProfileSystemOfRecordPolicy>> =
@@ -115,7 +115,7 @@ export const PROFILE_SYSTEM_OF_RECORD_POLICIES: Readonly<Record<string, ProfileS
         // Native by default. A certified tenant/resource binding may displace
         // only the reads/writers covered by that external system of record.
         'salud/farmacia': conditionalProvider(
-            'salud/farmacia', ['pharmacy_management_system'], CATALOG_READS, ['place_catalog_order'],
+            'salud/farmacia', ['pharmacy_management_system'], CATALOG_READS, ['place_catalog_order','cancel_catalog_order'],
         ),
         'inmobiliaria/venta': conditionalProvider(
             'inmobiliaria/venta', ['real_estate_crm'],
@@ -133,7 +133,7 @@ export const PROFILE_SYSTEM_OF_RECORD_POLICIES: Readonly<Record<string, ProfileS
             [...APPOINTMENT_WRITERS, 'schedule_test_drive'],
         ),
         'automotriz/repuestos': conditionalProvider(
-            'automotriz/repuestos', ['parts_management_system'], CATALOG_READS, ['place_catalog_order'],
+            'automotriz/repuestos', ['parts_management_system'], CATALOG_READS, ['place_catalog_order','cancel_catalog_order'],
         ),
         'turismo/agencia_viajes': conditionalProvider(
             'turismo/agencia_viajes', ['travel_reservation_system'],

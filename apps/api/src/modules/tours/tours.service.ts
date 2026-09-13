@@ -11,11 +11,13 @@ import {
     requireTenantContact,
 } from '../../common/utils/tenant-contact.util';
 import { resolveNativeEvidenceOpportunity } from '../../common/utils/native-evidence-opportunity.util';
+import type { EvalNamespaceLease } from '../simulation/isolated-eval-namespace';
 import {
     PAYMENT_HOLD_MS,
     PENDING_PAYMENT_STATUS,
     resolvePaymentPolicy,
 } from '../../common/utils/payment-policy.util';
+import { enqueueOperationalNotice } from '../operational-notices/operational-notice-outbox';
 
 /**
  * Tours / travel packages module — supports both same-day experiences
@@ -33,7 +35,7 @@ export class ToursService {
     constructor(
         private readonly prisma: PrismaService,
         private readonly throttle: TenantThrottleService,
-        private readonly emailTemplates: EmailTemplatesService,
+        private readonly _emailTemplates: EmailTemplatesService,
     ) {}
 
     // ── Packages CRUD ──────────────────────────────────────────────
@@ -287,7 +289,15 @@ export class ToursService {
         opportunityId?: string;
         language?: string;
         specialRequests?: string;
-    }): Promise<any> {
+    },
+    /**
+     * `execution.sandboxNamespace` es el arriendo de una evaluación aislada. La
+     * reserva se escribe y el asiento se descuenta del cupo real del namespace
+     * —eso es lo que se mide— pero el correo de confirmación al viajero no se
+     * manda: el modelo puede pasar cualquier `guestEmail`, y una casilla de
+     * verdad no recibe la confirmación de un viaje que nadie hizo.
+     */
+    execution: { sandboxNamespace?: EvalNamespaceLease } = {}): Promise<any> {
         const partySize = requirePositiveIntegerUnit(data.partySize, 'partySize');
         const suppliedAdults = data.adults === undefined
             ? null
@@ -428,54 +438,13 @@ export class ToursService {
                 ],
             );
             if (!rows?.[0]) throw new Error('Tour booking was not created');
+            if (!execution.sandboxNamespace) await enqueueOperationalNotice(query,schemaName,{
+                kind:'tour.booking_confirmed',entityId:rows[0].id,
+                contactId:rows[0].contact_id,conversationId:rows[0].conversation_id,
+                notBefore:status===PENDING_PAYMENT_STATUS?holdExpiresAt:null});
             return { booking: rows[0], pkg, totalPrice, policy };
         });
-        const { booking, pkg, totalPrice, policy } = created;
-
-        // Try to send confirmation email (fire-and-forget)
-        try {
-            const guestEmail = data.guestEmail;
-            if (guestEmail) {
-                // Check if confirmation emails are enabled for tours
-                let emailConfirmationsEnabled = true;
-                try {
-                    const personaRows = await this.prisma.executeInTenantSchema<any[]>(
-                        schemaName,
-                        `SELECT config_json FROM agent_personas WHERE is_active = true LIMIT 1`,
-                        []
-                    );
-                    if (personaRows && personaRows.length > 0) {
-                        const config = personaRows[0].config_json || {};
-                        const toursTool = config.tools?.tours;
-                        if (toursTool && toursTool.emailConfirmations === false) {
-                            emailConfirmationsEnabled = false;
-                        }
-                    }
-                } catch (err) {
-                    this.logger.error(`Error checking persona settings for tours: ${err.message}`);
-                }
-
-                if (emailConfirmationsEnabled) {
-                    // TODO(i18n): this is a guest-facing email — pass the guest's
-                    // detected/preferred language as the trailing `lang` arg once
-                    // it's captured. Defaults to 'es' (unchanged behaviour).
-                    await this.emailTemplates.renderAndSend(schemaName, 'tour_booking_confirmation', guestEmail, {
-                        guest_name: data.guestName || 'Huésped',
-                        package_name: pkg.name,
-                        departure_date: data.departureDate,
-                        departure_time: data.departureTime || '',
-                        party_size: String(partySize),
-                        adults: String(adults),
-                        children: String(children),
-                        total_price: String(totalPrice),
-                        currency: pkg.currency || 'COP',
-                        departure_location: pkg.departure_location || '',
-                    });
-                }
-            }
-        } catch (e: any) {
-            this.logger.warn(`Tour confirmation email failed: ${e.message}`);
-        }
+        const { booking } = created;
 
         return booking;
     }

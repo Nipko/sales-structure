@@ -1,3 +1,4 @@
+import { whatsAppSenderIdentity, whatsAppStatusIdentity } from '@parallext/shared';
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
@@ -53,7 +54,8 @@ export class WebhookProcessor extends WorkerHost {
    * 3. Reenvía al ConversationsService de la API para procesamiento por IA
    */
   private async processMessage(data: any) {
-    const { tenantId, schemaName, phoneNumberId, message, contacts, channelAccountId } = data;
+    const { tenantId, schemaName, phoneNumberId, message, contacts, channelAccountId,
+      wabaId } = data;
     this.logger.log(`Processing message ${message.id} for tenant ${tenantId}`);
 
     try {
@@ -69,9 +71,46 @@ export class WebhookProcessor extends WorkerHost {
         ['message', JSON.stringify({ phoneNumberId, message, contacts }), `msg:${message.id}`],
       );
 
-      // 2. Extraer y upsert contacto
-      const contact = contacts?.[0] || {};
-      const fromPhone = message.from;
+      // ── 2. QUIÉN ESCRIBIÓ, QUE PUEDE NO TENER TELÉFONO ────────────────────
+      //
+      // `message.from` es un teléfono, y con los identificadores de usuario por
+      // portafolio de Meta puede no venir: el webhook trae `from_user_id` y la
+      // persona escribió sin que el negocio vea ningún número.
+      //
+      // Acá eso fallaba distinto del otro ingreso, y no como decía este
+      // comentario. `fromPhone` quedaba `undefined` y el INSERT mandaba NULL
+      // a `contacts.external_id`, que es `VARCHAR(255) NOT NULL` con índice
+      // único común sobre `(channel_type, external_id)` — ver
+      // `apps/api/prisma/tenant-schema.sql`. Así que no nacía un contacto por
+      // mensaje: nacía un 23502, la excepción subía, BullMQ reintentaba ocho
+      // veces el mismo cuerpo roto y el job terminaba en el failed set. El
+      // turno de IA nunca corría y el cliente nunca recibía respuesta.
+      //
+      // La identidad sale del mismo módulo que usa el ingreso de la API — los
+      // dos caminos tienen que llegar al mismo registro — y un identificador
+      // opaco se clava con su portafolio, nunca pelado y nunca por la
+      // normalización de teléfonos.
+      // El portafolio primero y el número sólo como respaldo: Meta acota el
+      // identificador de usuario al NEGOCIO, así que dos números del mismo
+      // negocio tienen que darle a la misma persona la misma clave. `wabaId`
+      // viene en el job desde `webhooks.service.ts`; un comentario anterior
+      // decía que no venía, y por eso esto acotaba por número.
+      const identity = whatsAppSenderIdentity(message, contacts ?? [], {
+        wabaId: wabaId ?? null, phoneNumberId,
+      });
+      if (!identity) {
+        // Ni teléfono ni identificador: no hay a quién contestarle ni a quién
+        // atribuirlo. Se descarta acá en vez de romper el INSERT, y el cuerpo
+        // crudo ya quedó guardado arriba en `whatsapp_webhook_events`.
+        this.logger.error(`[WhatsApp] mensaje SIN REMITENTE descartado — wamid=${message?.id} `
+          + `phone_number_id=${phoneNumberId}`);
+        return;
+      }
+      const contact = identity.kind === 'phone'
+        ? (contacts ?? []).find((row: any) => row?.wa_id === identity.identifier)
+          ?? ((contacts ?? []).length === 1 ? contacts[0] : {})
+        : (contacts ?? []).find((row: any) => row?.user_id === identity.identifier) ?? {};
+      const fromPhone = identity.addressKey;
 
       await this.prisma.executeInTenantSchema(
         schemaName,
@@ -79,7 +118,9 @@ export class WebhookProcessor extends WorkerHost {
          VALUES ($1, 'whatsapp', $2, $3, NOW(), NOW(), NOW())
          ON CONFLICT (channel_type, external_id)
          DO UPDATE SET name = COALESCE(EXCLUDED.name, contacts.name), last_contact_at = NOW(), updated_at = NOW()`,
-        [fromPhone, contact.profile?.name || null, fromPhone],
+        // `phone` es el teléfono de verdad o NULL. Guardar la clave opaca ahí
+        // pondría un identificador donde toda pantalla espera un número.
+        [fromPhone, contact.profile?.name || null, identity.phone],
       );
 
       // 3. Construir NormalizedMessage y enviar a la API interna para procesamiento por IA
@@ -98,6 +139,11 @@ export class WebhookProcessor extends WorkerHost {
           waMessageId: message.id,
           contactName: contact.profile?.name,
           phoneNumberId,
+          // Lo mismo que manda el ingreso de la API, para que lo que haya río
+          // abajo no tenga que adivinarlo por la forma de la clave.
+          senderKind: identity.kind,
+          senderPhone: identity.phone,
+          senderPhoneProvenance: identity.phoneProvenance,
         },
       });
 
@@ -162,65 +208,221 @@ export class WebhookProcessor extends WorkerHost {
 
   /**
    * Procesar status update (sent, delivered, read, failed)
+   *
+   * This worker decided the status with its own SQL and never applied a single
+   * one: it looked the wamid up in `messages.external_id` — which holds OUR
+   * deduplication identity, not the provider's — and it set `updated_at`, a
+   * column `messages` has never had, so every UPDATE raised 42703 inside a
+   * catch that only warned. It also ranked `failed` above `delivered`/`read`,
+   * so it could have told a customer's history that a message never arrived
+   * after Meta confirmed it did. The rule now lives in the API, next to the
+   * outbox that owns the receipt; what is left here is the forward.
    */
   private async processStatus(data: any) {
-    const { schemaName, status } = data;
+    const { tenantId, schemaName, wabaId, phoneNumberId, status } = data;
     this.logger.debug(`Processing status update: ${status.status} for message ${status.id}`);
 
-    try {
-      // Apply status only if it advances the lifecycle (sent<delivered<read<failed).
-      // Webhooks can arrive out of order, so a late 'delivered' must not overwrite
-      // an already-recorded 'read'.
-      await this.prisma.executeInTenantSchema(
-        schemaName,
-        `UPDATE messages SET status = $1, updated_at = NOW()
-         WHERE external_id = $2
-           AND (CASE COALESCE(status,'') WHEN 'sent' THEN 1 WHEN 'delivered' THEN 2 WHEN 'read' THEN 3 WHEN 'failed' THEN 4 ELSE 0 END)
-             < (CASE $1 WHEN 'sent' THEN 1 WHEN 'delivered' THEN 2 WHEN 'read' THEN 3 WHEN 'failed' THEN 4 ELSE 0 END)`,
-        [status.status, status.id],
-      );
+    const dedupeKey = `status:${status.id}:${status.status}`;
+    // What Meta said is on record BEFORE we try to apply it, so an event stays
+    // auditable through an API outage. It becomes 'processed' only once the
+    // status was really delivered, the same way processMessage does it.
+    await this.prisma.executeInTenantSchema(
+      schemaName,
+      `INSERT INTO whatsapp_webhook_events (event_type, payload_json, dedupe_key, processing_status)
+       VALUES ($1, $2, $3, 'received')
+       ON CONFLICT (dedupe_key) DO NOTHING`,
+      ['status_update', JSON.stringify(status), dedupeKey],
+    );
 
-      await this.prisma.executeInTenantSchema(
-        schemaName,
-        `INSERT INTO whatsapp_webhook_events (event_type, payload_json, dedupe_key, processing_status, processed_at)
-         VALUES ($1, $2, $3, 'processed', NOW())
-         ON CONFLICT (dedupe_key) DO NOTHING`,
-        ['status_update', JSON.stringify(status), `status:${status.id}:${status.status}`],
+    const error = status.errors?.[0] ?? null;
+    const statusIdentity = whatsAppStatusIdentity(status, { wabaId, phoneNumberId });
+    await this.forwardDeliveryStatus({
+      tenantId,
+      channelType: 'whatsapp',
+      channelAccountId: phoneNumberId,
+      providerMessageId: status.id,
+      status: status.status,
+      errorCode: error?.code ?? null,
+      recipient: statusIdentity?.addressKey ?? null,
+      // ── THE TWO FIELDS THAT DECIDE MONEY ──────────────────────────────────
+      //
+      // This worker is the road Meta's receipts actually travel, and for months
+      // it forwarded a receipt with the money stripped out of it:
+      //
+      //   · `pricing` is Meta's own block, and `billable:false` in it is the
+      //     ONE authority that can settle a delivered message at zero. Dropped
+      //     here, every free delivery was billed at the reserved amount;
+      //   · `errorDetail` is where Meta explains in words what the numeric code
+      //     leaves generic — including the payment problem that must pause the
+      //     number instead of retrying it forever.
+      //
+      // Forwarded verbatim and unjudged: this service keeps no opinion about a
+      // receipt, and deciding what `pricing` means here would be a second copy
+      // of a rule that already has an owner.
+      pricing: status.pricing ?? null,
+      errorDetail: error
+        ? `title="${error.title ?? ''}" details="${error.error_data?.details ?? error.message ?? ''}"`
+        : null,
+    });
+
+    await this.prisma.executeInTenantSchema(
+      schemaName,
+      `UPDATE whatsapp_webhook_events
+          SET processing_status = 'processed', processed_at = NOW()
+        WHERE dedupe_key = $1`,
+      [dedupeKey],
+    ).catch(() => { /* best-effort: no reprocesar un forward exitoso por el stamp */ });
+  }
+
+  /**
+   * Hand the status to the API, which resolves it by
+   * `(tenant, channel, account, receipt)` against the outbox.
+   *
+   * Same contract as `forwardToConversationsService`: with no internal key, or
+   * with the API down, the job FAILS instead of completing green. A status lost
+   * in silence is exactly how the "Sent" lie held up for months.
+   */
+  private async forwardDeliveryStatus(payload: Record<string, unknown>): Promise<void> {
+    const apiUrl = this.configService.get<string>('API_INTERNAL_URL') || 'http://api:3000/api/v1';
+    const internalKey = this.configService.get<string>('INTERNAL_API_KEY')
+      || this.configService.get<string>('INTERNAL_JWT_SECRET');
+
+    if (!internalKey) {
+      throw new Error('INTERNAL_API_KEY/INTERNAL_JWT_SECRET not configured — cannot apply delivery status');
+    }
+
+    try {
+      const response = await firstValueFrom(
+        this.httpService.post(
+          `${apiUrl}/internal/channel-delivery-status`,
+          payload,
+          {
+            headers: { 'Content-Type': 'application/json', 'x-internal-key': internalKey },
+            timeout: 5000,
+          },
+        ),
       );
-    } catch (error: any) {
-      this.logger.warn(`Status update failed for message ${status.id}: ${error.message}`);
+      this.logger.debug(
+        `Delivery status ${payload.status} for ${payload.providerMessageId}: ${response.data?.reason}`,
+      );
+    } catch (err: any) {
+      // Meta also emits statuses the history does not model (`deleted`). A 400
+      // is a definitive refusal of the body: retrying it only burns the three
+      // attempts and litters the failed set. Everything else — including a 401
+      // from a misconfigured key — is retried: applying a status is idempotent
+      // by rank (it only moves forward) and cannot corrupt the history.
+      if (err.response?.status === 400) {
+        this.logger.warn(
+          `Delivery status ${payload.status} for ${payload.providerMessageId} refused by the API — not retrying`,
+        );
+        return;
+      }
+      this.logger.error(`Failed to apply delivery status via API: ${err.message} — will retry`);
+      throw err;
     }
   }
 
   /**
-   * Template status update — actualiza el estado en todos los tenants afectados
+   * ═══ A TEMPLATE BELONGS TO ONE WABA, AND ONLY ONE ═══
+   *
+   * Meta approves or rejects a template FOR a WhatsApp Business Account. This
+   * used to take the name out of the webhook, walk EVERY tenant schema on the
+   * platform, and stamp the new status on every row with that name.
+   *
+   * Template names are ordinary words — `recordatorio_cita`, `confirmacion`,
+   * `bienvenida` — so collisions across unrelated businesses are the norm, not
+   * the exception. The consequences run both ways and both are silent:
+   *
+   *   · a rejection on one business's WABA marked another business's approved
+   *     template REJECTED, so their reminders stopped going out and their panel
+   *     said Meta had refused something Meta had never seen;
+   *   · an approval elsewhere marked a REJECTED template APPROVED, so the
+   *     business kept sending a template Meta refuses at the door — each
+   *     attempt a failure, and after October each failure a number closer to
+   *     whatever Meta does about it.
+   *
+   * The webhook already carries the WABA id. It was simply not used. Now the
+   * update is scoped by it, through the channel the template belongs to, and a
+   * WABA that matches no channel changes nothing rather than everything.
    */
   private async processTemplateUpdate(data: any) {
-    this.logger.log(`Template status update: ${data.messageTemplateName} → ${data.newStatus}`);
+    const wabaId = String(data?.wabaId ?? '').trim();
+    this.logger.log(`Template status update for WABA ${wabaId || '(none)'}: `
+      + `${data.messageTemplateName} → ${data.newStatus}`);
+
+    if (!wabaId) {
+      // Without it there is no way to know whose template this is, and
+      // guessing is what the whole fix is about. Meta always sends it; a
+      // payload without one is a shape we do not model.
+      this.logger.warn(`Template status update with no WABA id — ignored `
+        + `(${data.messageTemplateName} → ${data.newStatus})`);
+      return;
+    }
 
     try {
-      // Buscar todos los tenants que tienen este template y actualizar su estado
+      // Only the tenants that actually hold this WABA. The scan is over
+      // `channel_accounts`, which is global and indexed, rather than over every
+      // schema in the platform.
       const tenants = await this.prisma.$queryRaw<{ schema_name: string }[]>`
-        SELECT schema_name FROM public.tenants WHERE schema_name IS NOT NULL
+        SELECT DISTINCT t.schema_name
+          FROM public.tenants t
+         WHERE t.schema_name IS NOT NULL
       `;
 
+      let updated = 0;
+      const unreachable: string[] = [];
       for (const tenant of tenants) {
         try {
-          await this.prisma.executeInTenantSchema(
+          const rows = await this.prisma.executeInTenantSchema<any[]>(
             tenant.schema_name,
-            `UPDATE whatsapp_templates
-             SET approval_status = $1, last_sync_at = NOW()
-             WHERE name = $2`,
-            [data.newStatus, data.messageTemplateName],
+            // The join is the fix. A template is reachable only through the
+            // channel that owns it, and that channel names exactly one WABA.
+            `UPDATE whatsapp_templates t
+                SET approval_status = $1, last_sync_at = NOW()
+               FROM whatsapp_channels c
+              WHERE t.channel_id = c.id
+                AND c.meta_waba_id = $3
+                AND t.name = $2
+            RETURNING t.id`,
+            [data.newStatus, data.messageTemplateName, wabaId],
           );
-        } catch {
-          // Tenant may not have this template, ignore
+          updated += rows?.length ?? 0;
+        } catch (error: any) {
+          // ── A MISSING TABLE AND A BROKEN DATABASE ARE NOT THE SAME ──────
+          //
+          // This used to swallow everything with "tenant may not have this
+          // template". Most tenants genuinely do not — the loop visits every
+          // schema — but the same catch hid a PgBouncer timeout, and the job
+          // then COMPLETED. Meta does not redeliver a template status, so the
+          // catalogue kept saying PENDING for a template that had been
+          // approved, or APPROVED for one Meta had rejected — and every send
+          // of it failed at the door until somebody resynced by hand.
+          //
+          // `42P01` is "relation does not exist": that schema has no template
+          // table, which is the ordinary case and really is nothing. Anything
+          // else is ours, and the job must fail so BullMQ tries again.
+          const code = String(error?.code ?? error?.meta?.code ?? '');
+          if (code !== '42P01' && !/does not exist/i.test(String(error?.message ?? ''))) {
+            unreachable.push(`${tenant.schema_name}:${error?.message}`);
+          }
         }
       }
 
-      this.logger.log(`Updated template ${data.messageTemplateName} to ${data.newStatus} across tenants`);
+      if (unreachable.length) {
+        // Thrown AFTER the loop, so one unreachable tenant does not stop the
+        // other ninety-nine from being corrected. The retry re-runs all of
+        // them, which is safe: the statement is idempotent by value.
+        throw new Error(`template status not applied in ${unreachable.length} schema(s): `
+          + unreachable.slice(0, 3).join('; '));
+      }
+      this.logger.log(`Updated ${updated} row(s) of template ${data.messageTemplateName} `
+        + `to ${data.newStatus} on WABA ${wabaId}`);
     } catch (error: any) {
-      this.logger.warn(`Template update processing failed: ${error.message}`);
+      // Re-raised, not logged away. A status update that silently did not
+      // happen leaves the catalogue disagreeing with Meta, and every send of
+      // that template fails at the door until somebody notices.
+      this.logger.error(`Template update processing failed: ${error.message} — will retry`);
+      throw error;
     }
   }
 

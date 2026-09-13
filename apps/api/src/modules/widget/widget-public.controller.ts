@@ -115,6 +115,7 @@ export class WidgetPublicController {
 
         const session = await this.widgetService.createSession(config, {
             visitorId: body.visitorId,
+            resumeToken: body.resumeToken,
             name: body.name,
             email: body.email,
             phone: body.phone,

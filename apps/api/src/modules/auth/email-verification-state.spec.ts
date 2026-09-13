@@ -9,6 +9,7 @@ describe('P25 persisted email-verification lifecycle', () => {
                 update: jest.fn().mockResolvedValue({}),
             },
         };
+        (prisma as any).$transaction = jest.fn(async (callback: any) => callback(prisma));
         (service as any).prisma = prisma;
         (service as any).logger = { log: jest.fn(), error: jest.fn() };
         return { service, prisma };

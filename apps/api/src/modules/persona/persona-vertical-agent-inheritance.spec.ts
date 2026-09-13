@@ -81,6 +81,7 @@ describe('PersonaService vertical inheritance for newly-created agents', () => {
         expect(created.config_json).toBe(config);
         expect(config.capabilities).toEqual(petServicesSettings().verticalConfig.effectiveCapabilities);
         expect(config.tools).toEqual(expect.objectContaining({
+            crm: { enabled: true },
             faqs: { enabled: true },
             appointments: { enabled: true, canBook: true, canCancel: true },
             pets: { enabled: false },

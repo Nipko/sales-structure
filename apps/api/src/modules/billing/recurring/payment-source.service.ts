@@ -9,7 +9,11 @@ import { RedisService } from '../../redis/redis.service';
 import { PaymentProviderFactory } from '../payment-provider.factory';
 import { PaymentRoutingService } from '../payment-routing.service';
 import { PaymentSourceKind } from '../adapters/provider-capabilities';
-import { AcceptanceContract, AcceptanceContracts } from '../adapters/charging-provider.interface';
+import {
+    AcceptanceContract,
+    AcceptanceContracts,
+    ProviderPaymentSource,
+} from '../adapters/charging-provider.interface';
 import { NormalizedBillingEvent, PaymentProviderName, isPaymentProviderName } from '../types/provider-types';
 import { BillingEventType } from '../types/billing-event.enum';
 import { SubscriptionStatus } from '../types/subscription-status.enum';
@@ -42,6 +46,14 @@ type AcceptanceChallenge = {
     endUserPolicy: ContractEvidence;
     personalDataAuth: ContractEvidence;
     issuedAt: string;
+};
+
+type BillingProviderEffectRow = {
+    id: string;
+    state: 'sending' | 'accepted' | 'rejected' | 'unknown';
+    requestFingerprint: string;
+    providerResourceId: string | null;
+    localResourceId: string | null;
 };
 
 /**
@@ -166,6 +178,40 @@ export class PaymentSourceService {
                 message: 'Both Wompi contracts must be explicitly accepted.',
             });
         }
+
+        const effectKey = `payment_source.create:${provider}:${input.tenantId}:${input.consentId}`;
+        const requestFingerprint = this.providerEffectFingerprint([
+            provider,
+            input.tenantId,
+            input.kind,
+            input.token,
+            input.customerEmail.trim().toLowerCase(),
+            input.consentId,
+        ]);
+        const priorEffect = await this.readProviderEffect(effectKey);
+        if (priorEffect) {
+            this.assertMatchingProviderEffect(priorEffect, requestFingerprint);
+            if (priorEffect.state === 'accepted' && priorEffect.localResourceId) {
+                const recovered = await this.requireSource(input.tenantId, priorEffect.localResourceId);
+                if (recovered.status === 'available') {
+                    if (input.makeDefault ?? true) await this.setDefault(input.tenantId, recovered.id);
+                    await this.armEngineForNewSource(input.tenantId, recovered.id);
+                }
+                return {
+                    id: recovered.id,
+                    status: recovered.status,
+                    requiresAuthorization: recovered.status === 'pending_auth',
+                    authorizationUrl: recovered.authUrl ?? undefined,
+                };
+            }
+            throw new ConflictException({
+                error: priorEffect.state === 'unknown'
+                    ? 'payment_source_creation_indeterminate'
+                    : 'payment_source_creation_already_started',
+                state: priorEffect.state,
+                message: 'This payment-source request cannot be sent to the provider again safely.',
+            });
+        }
         const challengeRaw = await this.redis.getDel(this.acceptanceKey(input.tenantId, input.consentId));
         if (!challengeRaw) {
             throw new BadRequestException({
@@ -190,14 +236,31 @@ export class PaymentSourceService {
         const acceptance = challenge.acceptance;
         const paymentDescription = DEFAULT_PAYMENT_DESCRIPTION;
 
-        const source = await charging.startPaymentSource({
+        const effectLease = await this.beginCreateProviderEffect({
             tenantId: input.tenantId,
-            kind: input.kind,
-            token: input.token,
-            customerEmail: input.customerEmail,
-            acceptance,
-            paymentDescription,
+            provider,
+            effectKey,
+            requestFingerprint,
         });
+        let source: ProviderPaymentSource;
+        try {
+            source = await charging.startPaymentSource({
+                tenantId: input.tenantId,
+                kind: input.kind,
+                token: input.token,
+                customerEmail: input.customerEmail,
+                acceptance,
+                paymentDescription,
+            });
+        } catch (error) {
+            await this.finishProviderEffect({
+                effectKey,
+                leaseToken: effectLease,
+                state: this.providerFailureState(error),
+                error,
+            });
+            throw error;
+        }
 
         const acceptedAt = new Date();
         const consentMetadata = {
@@ -257,30 +320,57 @@ export class PaymentSourceService {
         // Never use a global upsert here: its UPDATE branch is selected by the
         // provider id alone and previously let tenant B overwrite tenant A's
         // status/consent metadata before the later setDefault ownership check.
-        let existing = await this.prisma.billingPaymentSource.findUnique({ where: uniqueWhere });
-        this.assertSourceOwner(existing, input.tenantId);
         let stored;
-        if (existing) {
-            stored = await this.prisma.billingPaymentSource.update({
-                where: { id: existing.id },
-                data: updateData,
-            });
-        } else {
-            try {
-                stored = await this.prisma.billingPaymentSource.create({ data: createData });
-            } catch (err: any) {
-                // Close the concurrent-create race. Whoever won the unique
-                // (provider,source) key is re-read and ownership is checked
-                // before any update is attempted.
-                if (err?.code !== 'P2002') throw err;
-                existing = await this.prisma.billingPaymentSource.findUnique({ where: uniqueWhere });
-                if (!existing) throw err;
+        try {
+            stored = await this.prisma.$transaction(async (tx) => {
+                let existing = await tx.billingPaymentSource.findUnique({ where: uniqueWhere });
                 this.assertSourceOwner(existing, input.tenantId);
-                stored = await this.prisma.billingPaymentSource.update({
-                    where: { id: existing.id },
-                    data: updateData,
-                });
-            }
+                let persisted;
+                if (existing) {
+                    persisted = await tx.billingPaymentSource.update({
+                        where: { id: existing.id },
+                        data: updateData,
+                    });
+                } else {
+                    try {
+                        persisted = await tx.billingPaymentSource.create({ data: createData });
+                    } catch (err: any) {
+                        // Close the concurrent-create race. Whoever won the unique
+                        // (provider,source) key is re-read and ownership is checked
+                        // before any update is attempted.
+                        if (err?.code !== 'P2002') throw err;
+                        existing = await tx.billingPaymentSource.findUnique({ where: uniqueWhere });
+                        if (!existing) throw err;
+                        this.assertSourceOwner(existing, input.tenantId);
+                        persisted = await tx.billingPaymentSource.update({
+                            where: { id: existing.id },
+                            data: updateData,
+                        });
+                    }
+                }
+                const accepted = await tx.$executeRawUnsafe(
+                    `UPDATE billing_provider_effects
+                     SET state = 'accepted', provider_resource_id = $3,
+                         local_resource_id = $4::uuid, lease_token = NULL,
+                         lease_expires_at = NULL, completed_at = NOW(), updated_at = NOW(), error = NULL
+                     WHERE effect_key = $1 AND state = 'sending' AND lease_token = $2::uuid`,
+                    effectKey,
+                    effectLease,
+                    source.providerSourceId,
+                    persisted.id,
+                );
+                if (Number(accepted) !== 1) throw new Error('billing_provider_effect_lease_lost');
+                return persisted;
+            });
+        } catch (error) {
+            await this.finishProviderEffect({
+                effectKey,
+                leaseToken: effectLease,
+                state: 'unknown',
+                providerResourceId: source.providerSourceId,
+                error,
+            });
+            throw error;
         }
 
         // Only a source that can actually be charged becomes the default.
@@ -728,14 +818,16 @@ export class PaymentSourceService {
         const lockToken = await this.redis.acquireLockToken(lockKey, PAYMENT_SOURCE_SWEEP_LOCK_SECONDS);
         if (!lockToken) return;
         try {
-            const [result, activations] = await Promise.all([
+            const [result, activations, expiredEffects] = await Promise.all([
                 this.reconcilePendingAuthorizations(),
                 this.reconcilePendingActivations(),
+                this.markExpiredProviderEffectsUnknown(),
             ]);
-            if (result.completed || result.failed || activations.armed || activations.failed) {
+            if (result.completed || result.failed || activations.armed || activations.failed || expiredEffects) {
                 this.logger.log(
                     `[PaymentSource] Pending auth sweep scanned=${result.scanned} completed=${result.completed} failed=${result.failed}; `
-                    + `activation sweep scanned=${activations.scanned} armed=${activations.armed} failed=${activations.failed}`,
+                    + `activation sweep scanned=${activations.scanned} armed=${activations.armed} failed=${activations.failed}; `
+                    + `provider effects made unknown=${expiredEffects}`,
                 );
             }
         } finally {
@@ -1022,38 +1114,96 @@ export class PaymentSourceService {
                 reference: liveAttempt.reference,
             });
         }
-        const charging = this.providerFactory.getCharging(source.provider as PaymentProviderName);
-        // Fail closed: reporting success while Wompi still holds an active debit
-        // mandate is both a privacy and a money-movement bug. The local source is
-        // only marked voided after the provider confirms PUT /void.
-        await charging.voidPaymentSource(source.providerSourceId);
+        const provider = source.provider as PaymentProviderName;
+        const effectKey = `payment_source.void:${provider}:${tenantId}:${sourceId}`;
+        const requestFingerprint = this.providerEffectFingerprint([
+            provider,
+            tenantId,
+            sourceId,
+            source.providerSourceId,
+        ]);
+        const priorEffect = await this.readProviderEffect(effectKey);
+        if (priorEffect) this.assertMatchingProviderEffect(priorEffect, requestFingerprint);
+
+        let effectLease: string | null = null;
+        if (priorEffect?.state !== 'accepted') {
+            effectLease = await this.beginRetryableProviderEffect({
+                tenantId,
+                provider,
+                effectKey,
+                effectType: 'payment_source_void',
+                requestFingerprint,
+            });
+            const charging = this.providerFactory.getCharging(provider);
+            // A source void is an idempotent provider operation. Unknown and
+            // conclusively rejected attempts may be reclaimed, but one live
+            // lease still permits only one PUT at a time.
+            try {
+                await charging.voidPaymentSource(source.providerSourceId);
+            } catch (error) {
+                await this.finishProviderEffect({
+                    effectKey,
+                    leaseToken: effectLease,
+                    state: this.providerFailureState(error),
+                    error,
+                });
+                throw error;
+            }
+        }
         const replacement = await this.prisma.billingPaymentSource.findFirst({
             where: { tenantId, provider: source.provider, id: { not: sourceId }, status: 'available' },
             orderBy: [{ isDefault: 'desc' }, { createdAt: 'desc' }],
         });
-        await this.prisma.$transaction([
-            this.prisma.billingPaymentSource.update({
-                where: { id: sourceId },
-                data: { status: 'voided', isDefault: false, voidedAt: new Date() },
-            }),
-            ...(replacement
-                ? [this.prisma.billingPaymentSource.update({
-                    where: { id: replacement.id },
-                    data: { isDefault: true },
-                })]
-                : []),
-            this.prisma.billingSubscription.updateMany({
-                where: { tenantId, provider: source.provider, defaultPaymentSourceId: sourceId },
-                data: {
-                    defaultPaymentSourceId: replacement?.id ?? null,
-                    unattendedCapable: replacement?.supportsUnattended ?? false,
-                },
-            }),
-            this.prisma.billingChargeAttempt.updateMany({
-                where: { tenantId, provider: source.provider, paymentSourceId: sourceId, status: 'scheduled' },
-                data: { paymentSourceId: replacement?.id ?? null },
-            }),
-        ]);
+        try {
+            await this.prisma.$transaction(async (tx) => {
+                await tx.billingPaymentSource.update({
+                    where: { id: sourceId },
+                    data: { status: 'voided', isDefault: false, voidedAt: new Date() },
+                });
+                if (replacement) {
+                    await tx.billingPaymentSource.update({
+                        where: { id: replacement.id },
+                        data: { isDefault: true },
+                    });
+                }
+                await tx.billingSubscription.updateMany({
+                    where: { tenantId, provider: source.provider, defaultPaymentSourceId: sourceId },
+                    data: {
+                        defaultPaymentSourceId: replacement?.id ?? null,
+                        unattendedCapable: replacement?.supportsUnattended ?? false,
+                    },
+                });
+                await tx.billingChargeAttempt.updateMany({
+                    where: { tenantId, provider: source.provider, paymentSourceId: sourceId, status: 'scheduled' },
+                    data: { paymentSourceId: replacement?.id ?? null },
+                });
+                if (effectLease) {
+                    const accepted = await tx.$executeRawUnsafe(
+                        `UPDATE billing_provider_effects
+                         SET state = 'accepted', provider_resource_id = $3,
+                             local_resource_id = $4::uuid, lease_token = NULL,
+                             lease_expires_at = NULL, completed_at = NOW(), updated_at = NOW(), error = NULL
+                         WHERE effect_key = $1 AND state = 'sending' AND lease_token = $2::uuid`,
+                        effectKey,
+                        effectLease,
+                        source.providerSourceId,
+                        sourceId,
+                    );
+                    if (Number(accepted) !== 1) throw new Error('billing_provider_effect_lease_lost');
+                }
+            });
+        } catch (error) {
+            if (effectLease) {
+                await this.finishProviderEffect({
+                    effectKey,
+                    leaseToken: effectLease,
+                    state: 'unknown',
+                    providerResourceId: source.providerSourceId,
+                    error,
+                });
+            }
+            throw error;
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -1140,6 +1290,159 @@ export class PaymentSourceService {
     }
 
     // -------------------------------------------------------------------------
+
+    private providerEffectFingerprint(parts: string[]): string {
+        return createHash('sha256').update(JSON.stringify(parts)).digest('hex');
+    }
+
+    private async readProviderEffect(effectKey: string): Promise<BillingProviderEffectRow | null> {
+        const rows = await this.prisma.$queryRawUnsafe(
+            `SELECT id, state, request_fingerprint AS "requestFingerprint",
+                    provider_resource_id AS "providerResourceId",
+                    local_resource_id AS "localResourceId"
+             FROM billing_provider_effects
+             WHERE effect_key = $1`,
+            effectKey,
+        ) as BillingProviderEffectRow[];
+        return rows[0] ?? null;
+    }
+
+    private assertMatchingProviderEffect(
+        effect: BillingProviderEffectRow,
+        requestFingerprint: string,
+    ): void {
+        if (effect.requestFingerprint !== requestFingerprint) {
+            throw new ConflictException({
+                error: 'billing_provider_effect_key_reused',
+                message: 'The same operation key was reused with different payment-source data.',
+            });
+        }
+    }
+
+    private async beginCreateProviderEffect(input: {
+        tenantId: string;
+        provider: PaymentProviderName;
+        effectKey: string;
+        requestFingerprint: string;
+    }): Promise<string> {
+        const leaseToken = randomUUID();
+        const inserted = await this.prisma.$queryRawUnsafe(
+            `INSERT INTO billing_provider_effects(
+                tenant_id, effect_key, effect_type, provider, state, request_fingerprint,
+                lease_token, lease_expires_at)
+             VALUES($1::uuid, $2, 'payment_source_create', $3, 'sending', $4,
+                $5::uuid, NOW() + INTERVAL '90 seconds')
+             ON CONFLICT (effect_key) DO NOTHING
+             RETURNING lease_token AS "leaseToken"`,
+            input.tenantId,
+            input.effectKey,
+            input.provider,
+            input.requestFingerprint,
+            leaseToken,
+        ) as Array<{ leaseToken: string }>;
+        if (inserted[0]?.leaseToken === leaseToken) return leaseToken;
+
+        const existing = await this.readProviderEffect(input.effectKey);
+        if (existing) this.assertMatchingProviderEffect(existing, input.requestFingerprint);
+        throw new ConflictException({
+            error: 'payment_source_creation_already_started',
+            state: existing?.state ?? 'unknown',
+        });
+    }
+
+    private async beginRetryableProviderEffect(input: {
+        tenantId: string;
+        provider: PaymentProviderName;
+        effectKey: string;
+        effectType: 'payment_source_void';
+        requestFingerprint: string;
+    }): Promise<string> {
+        const leaseToken = randomUUID();
+        const claimed = await this.prisma.$queryRawUnsafe(
+            `INSERT INTO billing_provider_effects(
+                tenant_id, effect_key, effect_type, provider, state, request_fingerprint,
+                lease_token, lease_expires_at)
+             VALUES($1::uuid, $2, $3, $4, 'sending', $5,
+                $6::uuid, NOW() + INTERVAL '90 seconds')
+             ON CONFLICT (effect_key) DO UPDATE
+             SET state = 'sending', attempts = billing_provider_effects.attempts + 1,
+                 lease_token = EXCLUDED.lease_token,
+                 lease_expires_at = EXCLUDED.lease_expires_at,
+                 started_at = NOW(), completed_at = NULL, updated_at = NOW(), error = NULL
+             WHERE billing_provider_effects.effect_type = EXCLUDED.effect_type
+               AND billing_provider_effects.request_fingerprint = EXCLUDED.request_fingerprint
+               AND (billing_provider_effects.state IN ('rejected', 'unknown')
+                 OR (billing_provider_effects.state = 'sending'
+                   AND billing_provider_effects.lease_expires_at <= NOW()))
+             RETURNING lease_token AS "leaseToken"`,
+            input.tenantId,
+            input.effectKey,
+            input.effectType,
+            input.provider,
+            input.requestFingerprint,
+            leaseToken,
+        ) as Array<{ leaseToken: string }>;
+        if (claimed[0]?.leaseToken === leaseToken) return leaseToken;
+
+        const existing = await this.readProviderEffect(input.effectKey);
+        if (existing) this.assertMatchingProviderEffect(existing, input.requestFingerprint);
+        throw new ConflictException({
+            error: 'payment_source_void_in_progress',
+            state: existing?.state ?? 'unknown',
+        });
+    }
+
+    private providerFailureState(error: unknown): 'rejected' | 'unknown' {
+        if (error instanceof BadRequestException) return 'rejected';
+        const response = typeof (error as any)?.getResponse === 'function'
+            ? (error as any).getResponse()
+            : undefined;
+        const providerStatus = Number(response?.providerStatus ?? 0);
+        // Any HTTP refusal is conclusive. A 2xx body that could not be parsed is
+        // ambiguous because the provider may already have created the source.
+        return providerStatus >= 400 ? 'rejected' : 'unknown';
+    }
+
+    private async finishProviderEffect(input: {
+        effectKey: string;
+        leaseToken: string;
+        state: 'rejected' | 'unknown';
+        providerResourceId?: string;
+        error: unknown;
+    }): Promise<void> {
+        const response = typeof (input.error as any)?.getResponse === 'function'
+            ? (input.error as any).getResponse()
+            : undefined;
+        const detail = String(
+            response?.error
+            ?? response?.message
+            ?? (input.error as any)?.message
+            ?? 'billing_provider_write_failed',
+        ).slice(0, 300);
+        const changed = await this.prisma.$executeRawUnsafe(
+            `UPDATE billing_provider_effects
+             SET state = $3, provider_resource_id = COALESCE($4, provider_resource_id),
+                 lease_token = NULL, lease_expires_at = NULL,
+                 completed_at = NOW(), updated_at = NOW(), error = $5
+             WHERE effect_key = $1 AND state = 'sending' AND lease_token = $2::uuid`,
+            input.effectKey,
+            input.leaseToken,
+            input.state,
+            input.providerResourceId ?? null,
+            detail,
+        );
+        if (Number(changed) !== 1) throw new Error('billing_provider_effect_lease_lost');
+    }
+
+    private async markExpiredProviderEffectsUnknown(): Promise<number> {
+        const changed = await this.prisma.$executeRawUnsafe(
+            `UPDATE billing_provider_effects
+             SET state = 'unknown', lease_token = NULL, lease_expires_at = NULL,
+                 completed_at = NOW(), updated_at = NOW(), error = 'provider_effect_lease_expired'
+             WHERE state = 'sending' AND lease_expires_at <= NOW()`,
+        );
+        return Number(changed);
+    }
 
     private async resolveProvider(tenantId: string): Promise<PaymentProviderName> {
         const sub = await this.subscriptionOf(tenantId);

@@ -6,6 +6,7 @@ import {
     IsIn,
     IsObject,
     IsString,
+    IsUUID,
     Matches,
     MaxLength,
     Validate,
@@ -61,6 +62,14 @@ export class AgentTestRequestOptionsDto {
  * (evalMode and sandboxContactId) deliberately do not exist in this DTO.
  */
 export class AgentTestRequestDto implements TestAgentRequest {
+    @ValidateIf((_object, value) => value !== undefined)
+    @IsUUID()
+    configurationRevisionId?: string;
+
+    @ValidateIf((_object, value) => value !== undefined)
+    @IsUUID()
+    runtimeSessionId?: string;
+
     @IsString()
     @Matches(/\S/u, { message: 'message no puede estar vacío' })
     @MaxLength(AGENT_TEST_MESSAGE_MAX_CHARS)

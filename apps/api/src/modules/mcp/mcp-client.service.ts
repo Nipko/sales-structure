@@ -9,9 +9,14 @@ import {
     findMcpApproval,
     McpToolApproval,
     readMcpApprovals,
+    hasExecutableMcpReview,
+    mcpRegisteredName,
+    mcpDefinitionHash,
+    mcpApprovalRevision,
 } from './mcp-tool-approval';
 import { MCP_EFFECTS_REQUIRING_CONFIRMATION, ToolEffectDeclaration } from './mcp-approval.types';
 import { mutateTenantSettingsBranchAtomic } from '../../common/utils/tenant-settings-branch.util';
+import { persistenceDisabled, type ServiceExecutionContext } from '../../common/types/execution-context';
 import {
     isMaskedSecret,
     TENANT_SECRET_MASK,
@@ -74,7 +79,7 @@ export class McpClientService {
     ) {}
 
     // ── Config (tenant.settings.mcpServers) ──────────────────
-    async listServers(tenantId: string): Promise<McpServerConfig[]> {
+    async listServers(tenantId: string, executionContext?: ServiceExecutionContext): Promise<McpServerConfig[]> {
         const stored = await this.listStoredServers(tenantId);
         const runtime: McpServerConfig[] = [];
         const rewrap = new Map<string, { expected: string; envelope: string }>();
@@ -107,7 +112,7 @@ export class McpClientService {
             runtime.push(server);
         }
 
-        if (rewrap.size) {
+        if (rewrap.size && !persistenceDisabled(executionContext)) {
             await this.persistRewrappedHeaders(tenantId, rewrap).catch((error: any) => {
                 this.logger.warn(`[MCP] no se pudieron re-cifrar credenciales: ${error?.message}`);
             });
@@ -195,12 +200,12 @@ export class McpClientService {
 
     // ── Discovery + invocation ───────────────────────────────
     /** Aggregate tools across enabled servers (cached). Returns ToolDefinitions + resolution map. */
-    async listRemoteTools(tenantId: string): Promise<DiscoveredTools> {
+    async listRemoteTools(tenantId: string, executionContext?: ServiceExecutionContext, options?: { strict?: boolean }): Promise<DiscoveredTools> {
         const cacheKey = `mcp:tools:${tenantId}`;
-        const cached = await this.redis.getJson<DiscoveredTools>(cacheKey);
+        const cached = persistenceDisabled(executionContext) || options?.strict ? null : await this.redis.getJson<DiscoveredTools>(cacheKey);
         if (cached) return cached;
 
-        const servers = (await this.listServers(tenantId)).filter((s) => s.enabled);
+        const servers = (await this.listServers(tenantId, executionContext)).filter((s) => s.enabled);
         const tools: ToolDefinition[] = [];
         const map: DiscoveredTools['map'] = {};
 
@@ -213,12 +218,13 @@ export class McpClientService {
                     map[registered] = { serverId: server.id, realName: rt.name };
                 }
             } catch (e: any) {
+                if (options?.strict) throw new Error('evaluation_mcp_discovery_unavailable');
                 this.logger.warn(`[MCP] tools/list failed for ${server.name}: ${e.message}`);
             }
         }
 
         const result = { tools, map };
-        await this.redis.setJson(cacheKey, result, DISCOVERY_TTL);
+        if (!persistenceDisabled(executionContext)) await this.redis.setJson(cacheKey, result, DISCOVERY_TTL);
         return result;
     }
 
@@ -231,16 +237,17 @@ export class McpClientService {
      * an explicit, reviewed approval are published — which for a tenant that has
      * approved nothing means an empty list, and the agent never mentions them.
      */
-    async listPublishableTools(tenantId: string): Promise<PublishableMcpTools> {
-        const { tools } = await this.listRemoteTools(tenantId);
+    async listPublishableTools(tenantId: string, executionContext?: ServiceExecutionContext, options?: { strict?: boolean }): Promise<PublishableMcpTools> {
+        const { tools, map } = await this.listRemoteTools(tenantId, executionContext, options);
         const tenant = await this.prisma.tenant.findUnique({
             where: { id: tenantId },
             select: { settings: true },
         });
         const approved = approvedMcpToolNames(tenant?.settings);
+        const servers = await this.listServers(tenantId, executionContext);
         const approvals = readMcpApprovals(tenant?.settings);
         const effectByName = new Map(approvals.map(a => [
-            `mcp__${a.serverId}__${a.toolName}`,
+            mcpRegisteredName(a.serverId, a.toolName),
             a.effect,
         ]));
         // El efecto REVISADO viaja con la tool publicada.
@@ -250,7 +257,12 @@ export class McpClientService {
         // también sus consultas remotas. Lo único que sabe qué hace es lo que
         // una persona firmó al aprobarla, y eso es lo que se adjunta acá.
         const publishable = tools
-            .filter(tool => approved.has(String(tool.name)))
+            .filter(tool => {
+                if (!approved.has(String(tool.name))) return false;
+                const server = servers.find(s => s.enabled && !s._authUnavailable && s.id === map[tool.name]?.serverId);
+                const review = findMcpApproval(tenant?.settings, tool.name);
+                return server && review?.definitionHash === mcpDefinitionHash(tool, server.url, server.authHeader);
+            })
             .map(tool => ({
                 ...tool,
                 reviewedEffect: effectByName.get(String(tool.name)) ?? null,
@@ -263,12 +275,17 @@ export class McpClientService {
     }
 
     /** The approval record backing one registered tool name, if any. */
-    async getApproval(tenantId: string, registeredName: string): Promise<McpToolApproval | null> {
+    async getApproval(tenantId: string, registeredName: string, executionContext?: ServiceExecutionContext): Promise<McpToolApproval | null> {
         const tenant = await this.prisma.tenant.findUnique({
             where: { id: tenantId },
             select: { settings: true },
         });
-        return findMcpApproval(tenant?.settings, registeredName);
+        const approval = findMcpApproval(tenant?.settings, registeredName);
+        if (!hasExecutableMcpReview(approval)) return null;
+        const [{ tools }, servers] = await Promise.all([this.listRemoteTools(tenantId, executionContext), this.listServers(tenantId, executionContext)]);
+        const tool = tools.find(t => t.name === registeredName);
+        const server = servers.find(s => s.id === approval.serverId && s.enabled && !s._authUnavailable);
+        return tool && server && approval.definitionHash === mcpDefinitionHash(tool, server.url, server.authHeader) ? approval : null;
     }
 
     /** Approvals as stored, for the dashboard's review screen. */
@@ -298,6 +315,9 @@ export class McpClientService {
             approvedBy: string;
             notes?: string;
             revoke?: boolean;
+            dataClassification?: McpToolApproval['dataClassification'];
+            contactIdArgument?: string;
+            tenantIdArgument?: string;
         },
     ): Promise<McpToolApproval[]> {
         const serverId = String(input?.serverId || '').trim();
@@ -327,7 +347,9 @@ export class McpClientService {
             throw new NotFoundException('Servidor MCP no encontrado');
         }
         const effect = input.effect;
-        if (!effect) throw new BadRequestException('effect es obligatorio');
+        if (!['read', 'write', 'payment', 'notification', 'irreversible'].includes(effect)) {
+            throw new BadRequestException('Efecto de herramienta no válido');
+        }
         if (MCP_EFFECTS_REQUIRING_CONFIRMATION.includes(effect) && input.requiresConfirmation !== true) {
             throw new BadRequestException(
                 'Una herramienta que escribe, cobra, notifica o es irreversible necesita confirmación del cliente.',
@@ -337,6 +359,21 @@ export class McpClientService {
             throw new BadRequestException('approvedBy es obligatorio para auditar la aprobación');
         }
 
+        // Approve the definition fetched now, never a stale discovery cache.
+        const server = servers.find(s => s.id === serverId && s.enabled && !s._authUnavailable);
+        if (!server) throw new BadRequestException('La conexión debe estar activa para revisar sus herramientas.');
+        const remote = (await this.fetchServerTools(server)).find(t => t.name === toolName);
+        if (!remote) throw new NotFoundException('Herramienta MCP no encontrada');
+        const definition: ToolDefinition = {
+            name: mcpRegisteredName(serverId, toolName),
+            description: `[${server.name}] ${remote.description || remote.name}`.slice(0, 1024),
+            parameters: remote.inputSchema || { type: 'object', properties: {} },
+        };
+        for (const argument of [input.contactIdArgument, input.tenantIdArgument].filter(Boolean)) {
+            if (!Object.prototype.hasOwnProperty.call(definition.parameters?.properties || {}, argument!)) {
+                throw new BadRequestException('El argumento de identidad debe existir en el contrato de la herramienta.');
+            }
+        }
         const approval: McpToolApproval = {
             serverId,
             toolName,
@@ -346,7 +383,14 @@ export class McpClientService {
             approvedBy: String(input.approvedBy).slice(0, 200),
             approvedAt: new Date().toISOString(),
             notes: input.notes ? String(input.notes).slice(0, 1000) : undefined,
+            definitionHash: mcpDefinitionHash(definition, server.url, server.authHeader),
+            dataClassification: input.dataClassification,
+            contactIdArgument: input.contactIdArgument || undefined,
+            tenantIdArgument: input.tenantIdArgument || undefined,
         };
+        if (!hasExecutableMcpReview(approval)) {
+            throw new BadRequestException('Revisa los datos accesibles, el argumento de contacto y las confirmaciones requeridas.');
+        }
         const next = await mutateTenantSettingsBranchAtomic(
             this.prisma,
             tenantId,
@@ -366,20 +410,40 @@ export class McpClientService {
         const entry = map[registeredName];
         if (!entry) return { error: 'Herramienta MCP no encontrada' };
         const server = (await this.listServers(tenantId)).find((s) => s.id === entry.serverId);
-        if (!server) return { error: 'Servidor MCP no encontrado' };
+        if (!server?.enabled) return { error: 'mcp_server_unavailable' };
+        const review = await this.getApproval(tenantId, registeredName);
+        if (!review || args._mcpReview !== mcpApprovalRevision(review)) return { error: 'mcp_review_changed' };
+        // Revalidate the remote input contract immediately before invoking it.
+        const current = (await this.fetchServerTools(server)).find(t => t.name === entry.realName);
+        const currentHash = current && mcpDefinitionHash({
+            name: registeredName, description: `[${server.name}] ${current.description || current.name}`.slice(0, 1024),
+            parameters: current.inputSchema || { type: 'object', properties: {} },
+        }, server.url, server.authHeader);
+        if (currentHash !== review.definitionHash) {
+            await this.invalidateTools(tenantId);
+            return { error: 'mcp_contract_changed', shouldHandoff: false };
+        }
+        const remoteArgs = { ...args };
+        delete remoteArgs._mcpReview;
         try {
             const res = await this.withSession(server, (sessionId) =>
-                this.rpc(server, 'tools/call', { name: entry.realName, arguments: args || {} }, sessionId),
+                this.rpc(server, 'tools/call', { name: entry.realName, arguments: remoteArgs }, sessionId),
             );
             const content = res?.content;
             if (Array.isArray(content)) {
                 const text = content.filter((c: any) => c.type === 'text').map((c: any) => c.text).join('\n');
-                return { result: text || content, isError: !!res.isError };
+                if (res.isError && review.effect !== 'read') throw new Error('mcp_execution_outcome_unknown');
+                if (res.isError) return { error: 'mcp_remote_rejected', isError: true };
+                return { result: text || content, isError: false };
             }
-            return res;
+            if ((!res || res.isError) && review.effect !== 'read') throw new Error('mcp_execution_outcome_unknown');
+            if (!res || res.isError) return { error: 'mcp_remote_rejected', isError: true };
+            return { result: res, isError: false };
         } catch (e: any) {
             this.logger.warn(`[MCP] tools/call ${registeredName} failed: ${e.message}`);
-            return { error: 'La herramienta MCP falló' };
+            // A provider may have committed before timing out. The executor
+            // records reconciliation_required instead of a retryable failure.
+            throw new Error('mcp_execution_outcome_unknown');
         }
     }
 
@@ -428,6 +492,9 @@ export class McpClientService {
     private async rpc(server: McpServerConfig, method: string, params: any, sessionId?: string): Promise<any> {
         const res = await this.postServer(server, this.envelope(method, params), this.headers(server, sessionId));
         const data = this.parseResponse(res.data);
+        if ((res.status && (res.status < 200 || res.status >= 300)) || !data || !Object.prototype.hasOwnProperty.call(data, 'result')) {
+            throw new Error('mcp_invalid_rpc_response');
+        }
         if (data?.error) throw new Error(data.error.message || 'JSON-RPC error');
         return data?.result;
     }
@@ -473,7 +540,7 @@ export class McpClientService {
     }
 
     private registeredName(serverId: string, tool: string): string {
-        return `mcp__${serverId}__${tool}`.slice(0, 64);
+        return mcpRegisteredName(serverId, tool);
     }
 
     private slug(name: string, taken: string[]): string {

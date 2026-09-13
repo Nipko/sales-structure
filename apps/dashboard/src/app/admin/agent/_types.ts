@@ -62,10 +62,10 @@ export interface PersonaConfig {
     education?: { enabled: boolean; emailConfirmations?: boolean };
     insurance?: { enabled: boolean; emailConfirmations?: boolean };
     homeServices?: { enabled: boolean; emailConfirmations?: boolean };
-    petServices?: { enabled: boolean; emailConfirmations?: boolean };
+    petServices?: { enabled: boolean };
     photography?: { enabled: boolean; emailConfirmations?: boolean };
     professionalServices?: { enabled: boolean };
-    vehicles?: { enabled: boolean };
+    vehicles?: { enabled: boolean; emailConfirmations?: boolean };
     vehicleRentals?: { enabled: boolean; emailConfirmations?: boolean };
     petBoarding?: { enabled: boolean; emailConfirmations?: boolean };
     repairOrders?: { enabled: boolean; emailConfirmations?: boolean };

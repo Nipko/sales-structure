@@ -1,7 +1,4 @@
 {
-  "hero": {
-    "subtitle": "Parallly responde en WhatsApp, Instagram y otros canales con la información de tu negocio; actualiza el CRM y la agenda, y pasa la conversación a tu equipo cuando hace falta. Tu equipo trabaja desde la web y la app Android en acceso privado."
-  },
   "problem": {
     "title": "¿Cuántas ventas perdés por no responder a tiempo?",
     "card1": "Tus clientes escriben por WhatsApp, Instagram y Messenger... y respondés horas después.",
@@ -16,11 +13,10 @@
     }
   },
   "tools": {
-    "title": "Mirá todo lo que podés hacer",
-    "subtitle": "Estas son algunas herramientas disponibles. Cada una requiere la configuración, permisos y plan correspondientes."
+    "title": "Mirá todo lo que podés hacer"
   },
   "solutions": {
-    "heroSubtitle": "18 configuraciones verticales con modo de producto visible. Elegí tu industria y completá la configuración guiada; las capacidades especializadas requieren validación.",
+    "heroSubtitle": "Elegí tu industria y completá la configuración guiada. Cada una muestra su modo de producto y su estado de certificación; las capacidades especializadas requieren validación.",
     "ctaTitle": "¿No encontrás tu industria?"
   },
   "industryPage": {
@@ -44,7 +40,7 @@
     "enterpriseCtaTitle": "¿Necesitás más? Hablemos",
     "faqA1": "Podés solicitar cambios cuando quieras. Las mejoras se aplican al confirmarse el nuevo cobro, con prorrateo del tiempo ya pagado; las reducciones se programan para el siguiente período.",
     "faqA2": "Cuando termine la prueba, revisá en el panel las opciones de activación y los planes disponibles.",
-    "faqA3": "Los límites de IA no generan cobros automáticos: al alcanzarlos se pausa esa automatización y te mostramos opciones de ampliación. Los servicios de terceros o paquetes opcionales se informan por separado.",
+    "faqA9": "No: son dos pagos distintos. El plan paga el software de Parallly. Desde el 1 de octubre de 2026, Meta le cobra a tu propia cuenta de WhatsApp Business los mensajes que entrega por ese número: los de servicio —tus respuestas dentro de la ventana de 24 horas— y también las plantillas de marketing, utilidad y autenticación, como una campaña, un recordatorio de cita o un código de verificación. Esa plata no pasa por Parallly: se paga con el medio de pago que cargues en las herramientas de Meta. Cada número recibe 1.000 mensajes de servicio gratis por mes calendario, y esa cuota no cubre las plantillas. La tarifa la publica Meta y cambia según el país de quien recibe y la categoría del mensaje: una plantilla de marketing cuesta bastante más que un mensaje de servicio. Si esa cuenta se queda sin medio de pago válido, WhatsApp deja de entregar los mensajes de servicio. Instagram, Messenger y Telegram no tienen hoy un cobro por mensaje de servicio de su proveedor.",
     "faqA6": "Los cambios de plan y la cancelación se gestionan desde las opciones disponibles en el panel de facturación.",
     "faqA7": "Facturación muestra el historial y el estado de cada pago. Cualquier devolución se rige por los términos vigentes."
   },
@@ -66,11 +62,9 @@
     "f7Desc": "Cargá tu catálogo, FAQs, políticas y documentos. Tu agente busca con IA y responde con info real."
   },
   "faq": {
-    "a1": "Para nada. El onboarding guía la conexión de canales, la elección de industria y la configuración del agente sin necesidad de programar.",
     "a2": "Subís tu información (catálogo, FAQs, reglas) y elegís tu industria. La IA aprende y responde con tu tono. Usamos modelos avanzados (Claude, GPT-4, Gemini) entrenados con la info de tu negocio.",
     "a5": "La configuración es guiada: conectás un canal, elegís tu industria, revisás la información del negocio y probás el agente antes de activarlo. El tiempo depende de las conexiones y el contenido.",
     "a7": "Podés gestionar las opciones disponibles desde facturación. La fecha efectiva y las condiciones aparecen antes de confirmar el cambio.",
-    "a8": "Parallly incluye CRM, API de BI y webhooks salientes según el plan. Otras integraciones requieren configuración específica.",
     "ctaText": "¿Tenés otra pregunta? Escribinos por WhatsApp.",
     "ctaLink": "Escribinos por WhatsApp"
   },
@@ -91,15 +85,53 @@
     "demoTitle": "Mirá cómo funciona"
   },
   "verticals": {
-    "salud": { "demo4": "Perfecto ✅ Tu cita queda confirmada para jueves 9:00 AM. Te enviaré un recordatorio el miércoles. ¿Necesitás algo más?" },
-    "restaurantes": { "demo2": "¡Hola! Soy Luca 🍽️ Te paso el menú del día. ¿Querés ver el menú completo o las promociones?" },
-    "inmobiliaria": { "demo4": "Perfecto. Buscaré coincidencias en el inventario del negocio y te compartiré las fichas disponibles. ¿Querés revisar horarios de visita?" },
-    "belleza": { "demo4": "Sábado tenemos 10am y 2pm con Camila (especialista en color). ¿Cuál preferís?" },
-    "gimnasios": { "demo2": "¡Hola! Soy Coach 💪 Tenemos mensual $89k, trimestral $240k (ahorrás $27k). ¿Te agendo una visita?" },
-    "educacion": { "demo2": "¡Hola! Soy Ana 📚 Tenemos cursos A1-C2, presencial y virtual. ¿Sabés tu nivel actual?" },
-    "automotriz": { "demo2": "¡Hola! Soy Mech 🚗 La revisión de frenos cuesta $85k (incluye diagnóstico). ¿Qué vehículo tenés?" },
-    "servicios-profesionales": { "demo2": "¡Hola! ¿En qué área necesitás apoyo: laboral, societario, tributario?" },
-    "tecnologia": { "demo2": "¡Hola! ¿Es un problema técnico o querés info sobre planes y servicios?" },
-    "otro": { "demo4": "Perfecto. Te paso las opciones disponibles. ¿Preferís que te agende una llamada?" }
+    "salud": {
+      "demo4": "Perfecto ✅ Tu cita queda confirmada para jueves 9:00 AM. Te enviaré un recordatorio el miércoles. ¿Necesitás algo más?"
+    },
+    "restaurantes": {
+      "demo2": "¡Hola! Soy Luca 🍽️ Te paso el menú del día. ¿Querés ver el menú completo o las promociones?"
+    },
+    "inmobiliaria": {
+      "demo4": "Perfecto. Buscaré coincidencias en el inventario del negocio y te compartiré las fichas disponibles. ¿Querés revisar horarios de visita?"
+    },
+    "belleza": {
+      "demo4": "Sábado tenemos 10am y 2pm con Camila (especialista en color). ¿Cuál preferís?"
+    },
+    "gimnasios": {
+      "demo2": "¡Hola! Soy Coach 💪 Tenemos mensual $89k, trimestral $240k (ahorrás $27k). ¿Te agendo una visita?"
+    },
+    "educacion": {
+      "demo2": "¡Hola! Soy Ana 📚 Tenemos cursos A1-C2, presencial y virtual. ¿Sabés tu nivel actual?"
+    },
+    "automotriz": {
+      "demo2": "¡Hola! Soy Mech 🚗 La revisión de frenos cuesta $85k (incluye diagnóstico). ¿Qué vehículo tenés?"
+    },
+    "servicios-profesionales": {
+      "demo2": "¡Hola! ¿En qué área necesitás apoyo: laboral, societario, tributario?"
+    },
+    "tecnologia": {
+      "demo2": "¡Hola! ¿Es un problema técnico o querés info sobre planes y servicios?"
+    },
+    "otro": {
+      "demo4": "Perfecto. Te paso las opciones disponibles. ¿Preferís que te agende una llamada?"
+    }
+  },
+  "whatsappCosts": {
+    "heroTitle": "Quién te cobra qué cuando vendés por WhatsApp",
+    "setupStep1Body": "Completás la ventana oficial de Meta que abre Parallly y volvés. Eso conecta el número: no configura el pago.",
+    "setupStep3Body": "Se abre la administración de WhatsApp de Meta en otra pestaña. Ahí elegís la cuenta, entrás a la configuración de pago y añadís el método. Quien lo haga necesita permisos de administración de esa cuenta en Meta: un rol de Parallly no los otorga.",
+    "faqA1": "Tu negocio. El cargo lo emite Meta contra tu propia cuenta de WhatsApp Business, con el medio de pago que cargués ahí. Ese dinero no pasa por Parallly y no forma parte de tu plan.",
+    "ctaTitle": "Ya sabés quién cobra qué",
+    "estimateNotInvoiceBody": "El total sale de los volúmenes que escribas y de la tarjeta vigente para el mercado que elijas. Tu consumo real lo mide y lo cobra Meta en tu propia cuenta, con los mensajes que se entreguen de verdad y hacia los países a los que le escribas. Te sirve para presupuestar un orden de magnitud, no para esperar ese monto exacto.",
+    "estimatorTitle": "Calculá lo que te cobraría Meta",
+    "estimatorIntro": "Elegí el país de quien recibe tus mensajes, cuántos entregás por mes y cuántos números tenés. El estimador te descuenta la cuota gratuita y aplica la tarjeta de tarifas que corresponde. Nada sale de tu navegador: no te pedimos datos personales y no se hace ninguna consulta real.",
+    "estimatorMarketHint": "Meta cobra según el país del destinatario, no según el de tu empresa. Los nombres son los de su propia tarjeta. Las regiones agrupan países que Meta no lista uno por uno, y asigna cada país a una región por su código telefónico en una página que no forma parte de estas tarjetas: por eso elegís el mercado en vez de deducirlo de un número."
+  },
+  "compareMeta": {
+    "nativeEnoughNoOperation": "No necesitás que la conversación deje rastro en un CRM, en una agenda con varios recursos o en un cobro."
+  },
+  "labelledDemos": {
+    "subtitle": "Cada panel de este sitio dice qué es antes de mostrar un resultado. Ninguno de estos cuatro es una grabación de un cliente ni de una prueba: son ejemplos dibujados, y lo que hay detrás de cada uno lo podés ir a leer en el código.",
+    "closingNote": "Nada de esto certifica un canal ni un rubro: el reporte de cierre auditado no certifica ninguno todavía. Lo que sí te conviene revisar antes de contratar es quién te cobra qué."
   }
 }

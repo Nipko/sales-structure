@@ -39,6 +39,7 @@ import { AppointmentsScreen } from './AppointmentsScreen';
 import { ReservationsScreen } from './ReservationsScreen';
 import { OperationCreateModal } from './OperationCreateModal';
 import { buildScheduledTransition, validScheduleInput } from '../lib/operationScheduling';
+import { catalogMoney,catalogPaymentKey } from '../lib/catalogOrderReview';
 
 interface OperationItem {
     id: string;
@@ -57,6 +58,8 @@ interface OperationItem {
     primaryReferenceId?: string;
     /** Raw tenant-local timestamp used by scheduling transitions. */
     scheduledAt?: string;
+    orderVersion?:number;
+    paymentStatus?:string;
 }
 
 interface OperationSection {
@@ -268,18 +271,20 @@ async function loadOperationSections(
         return [{
             key: 'ops.section.orders',
             data: list(overview.orders)
-                .filter((row) => activeStatus(row.status, ['paid', 'cancelled']))
+                .filter((row) => activeStatus(row.status, ['cancelled']))
                 .map((row) => ({
                     id: 'order:' + row.id,
                     entityType: 'order' as const,
                     icon: 'bag-handle-outline',
                     title: row.contactName || '',
                     subtitle: list(row.items).map((item: any) => item.productName).filter(Boolean).slice(0, 2).join(', '),
-                    status: row.status || 'pending',
+                    status: row.status || 'unknown',
+                    orderVersion:row.version,
+                    paymentStatus:row.paymentStatus || 'unknown',
                     when: row.createdAt,
                     metaKey: list(row.items).length ? 'ops.itemsCount' : undefined,
                     metaParams: list(row.items).length ? { count: list(row.items).length } : undefined,
-                    amount: formatMoney(row.totalAmount, row.currency, locale),
+                    amount: catalogMoney(row.totalAmount, row.currency, locale),
                 })),
         }];
     }
@@ -609,6 +614,7 @@ export function VerticalOperationsScreen({ kind }: { kind: VerticalWorkspaceKind
     };
 
     const entityId = (item: OperationItem) => item.id.slice(item.id.indexOf(':') + 1);
+    const displayStatus=(item:OperationItem,status=item.status)=>item.entityType==='order'&&status==='paid'?t('ops.catalog.markedPaid'):statusLabel(t,status);
 
     const openComposer = (intent: { mode?: string; primaryId?: string; secondaryId?: string; quoteId?: string } = {}) => {
         haptic.tap();
@@ -621,7 +627,10 @@ export function VerticalOperationsScreen({ kind }: { kind: VerticalWorkspaceKind
         if (!tenantId) return null;
         const id = entityId(item);
         if (kind === 'restaurant' && item.entityType === 'restaurant_order') return api.updateRestaurantOrderStatus(tenantId, id, status);
-        if (kind === 'orders' && item.entityType === 'order') return api.updateOrderStatus(tenantId, id, status);
+        if (kind === 'orders' && item.entityType === 'order') {
+            if(!Number.isInteger(item.orderVersion)||item.orderVersion!<1)throw new Error('catalog_version_required');
+            return api.updateOrderStatus(tenantId, id, status,item.orderVersion!);
+        }
         if (kind === 'service_requests' && item.entityType === 'service_request') return api.updateServiceRequest(tenantId, id, { status });
         if (kind === 'education' && item.entityType === 'enrollment') return api.updateEducationEnrollment(tenantId, id, { status });
         if (kind === 'photo_sessions' && item.entityType === 'photo_session') return api.updatePhotoSession(tenantId, id, { status });
@@ -653,7 +662,8 @@ export function VerticalOperationsScreen({ kind }: { kind: VerticalWorkspaceKind
             setSelected(null);
             await query.refetch();
         } catch {
-            toast.error(t('ops.updateError'));
+            toast.error(t(kind==='orders'?'ops.catalog.statusError':'ops.updateError'));
+            if(kind==='orders'){setSelected(null);await query.refetch();}
         } finally {
             setBusyId('');
         }
@@ -661,6 +671,14 @@ export function VerticalOperationsScreen({ kind }: { kind: VerticalWorkspaceKind
 
     const performAction = (action: VerticalOperationActionId, item: OperationItem) => {
         if (!tenantId || busyId) return;
+        if(kind==='orders'&&item.entityType==='order'&&['advance','cancel'].includes(action)){
+            const next=action==='cancel'?'cancelled':getSafeNextStatus(kind,item.entityType,item.status);
+            if(!next)return;
+            Alert.alert(t('ops.catalog.statusReview'),t('ops.catalog.statusBody',{customer:item.title,amount:item.amount||'—',before:displayStatus(item),after:displayStatus(item,next)}),[
+                {text:t('citas.no'),style:'cancel'},
+                {text:t('ops.catalog.confirmChange'),style:action==='cancel'?'destructive':'default',onPress:()=>void finishAction(item,()=>callStatusUpdate(item,next))},
+            ]);return;
+        }
         if (action === 'book_member') {
             openComposer({ mode: 'book', primaryId: entityId(item) });
             return;
@@ -818,7 +836,7 @@ export function VerticalOperationsScreen({ kind }: { kind: VerticalWorkspaceKind
                                 setSelected(item);
                             }}
                             accessibilityRole="button"
-                            accessibilityLabel={[item.title, statusLabel(t, item.status)].filter(Boolean).join(', ')}
+                            accessibilityLabel={[item.title, displayStatus(item)].filter(Boolean).join(', ')}
                         >
                             <View style={[styles.iconCircle, { backgroundColor: color + '1c' }]}>
                                 <Ionicons name={item.icon as any} size={21} color={color} />
@@ -826,10 +844,11 @@ export function VerticalOperationsScreen({ kind }: { kind: VerticalWorkspaceKind
                             <View style={styles.cardBody}>
                                 <Text style={styles.cardTitle} numberOfLines={1}>{item.title || t('ops.untitled')}</Text>
                                 {!!(item.subtitle || item.subtitleKey) && <Text style={styles.cardSubtitle} numberOfLines={2}>{itemSubtitle(t, item)}</Text>}
+                                {item.entityType==='order'&&<Text style={styles.cardSubtitle}>{t('ops.catalog.provider')}: {t(catalogPaymentKey(item.paymentStatus))}</Text>}
                                 <View style={styles.metaRow}>
                                     {!!item.status && (
                                         <View style={[styles.badge, { backgroundColor: color + '1c' }]}>
-                                            <Text style={[styles.badgeText, { color }]}>{statusLabel(t, item.status)}</Text>
+                                            <Text style={[styles.badgeText, { color }]}>{displayStatus(item)}</Text>
                                         </View>
                                     )}
                                     {!!item.when && <Text style={styles.metaText}>{formatWhen(item.when, locale, item.dateOnly)}</Text>}
@@ -876,10 +895,11 @@ export function VerticalOperationsScreen({ kind }: { kind: VerticalWorkspaceKind
                         {!!(selected?.subtitle || selected?.subtitleKey) && <Text style={styles.sheetSubtitle}>{itemSubtitle(t, selected)}</Text>}
                         {!!selected?.status && (
                             <View style={styles.detailRow}>
-                                <Text style={styles.detailLabel}>{t('ops.detail.status')}</Text>
-                                <Text style={styles.detailValue}>{statusLabel(t, selected.status)}</Text>
+                                <Text style={styles.detailLabel}>{t(selected.entityType==='order'?'ops.catalog.commercial':'ops.detail.status')}</Text>
+                                <Text style={styles.detailValue}>{displayStatus(selected)}</Text>
                             </View>
                         )}
+                        {selected?.entityType==='order'&&<><View style={styles.detailRow}><Text style={styles.detailLabel}>{t('ops.catalog.provider')}</Text><Text style={styles.detailValue}>{t(catalogPaymentKey(selected.paymentStatus))}</Text></View><Text style={styles.sheetSubtitle}>{t('ops.catalog.separation')}</Text></>}
                         {!!selected?.when && (
                             <View style={styles.detailRow}>
                                 <Text style={styles.detailLabel}>{t('ops.detail.when')}</Text>

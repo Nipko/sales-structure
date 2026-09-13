@@ -9,6 +9,11 @@ import {
 } from '../../common/contracts/tool-read-result.util';
 import { sanitizeToolResultForModel } from '../../common/utils/tool-error-sanitizer.util';
 import { authorityFor } from './__fixtures__/tool-authority.fixture';
+import { sessionToolExecutor } from './agent-turn-adapters';
+import { AgentTurnTrace } from './agent-turn-session';
+import { AGENT_TEST_EXECUTION_CONTEXT } from '../../common/types/execution-context';
+import { LLMSourceAuthorityUnavailable } from '../ai/interfaces/llm-source-authority';
+import { evaluationKnowledgeFixture } from './__fixtures__/evaluation-knowledge.fixture';
 
 /**
  * "No pude leer" no puede sonar igual que "no hay nada".
@@ -29,8 +34,8 @@ const conversationId = '33333333-3333-4333-8333-333333333333';
 function createExecutor(queryRawUnsafe: jest.Mock, extras: Record<string, any> = {}) {
     const control = {
         preflight: jest.fn().mockResolvedValue({ allowed: true }),
-        complete: jest.fn(),
-        fail: jest.fn(),
+        complete: jest.fn().mockResolvedValue(undefined),
+        fail: jest.fn().mockResolvedValue(undefined),
     };
     const stub = () => ({}) as any;
     const executor = new AIToolExecutorService(
@@ -51,6 +56,26 @@ function createExecutor(queryRawUnsafe: jest.Mock, extras: Record<string, any> =
 const DB_DOWN = new Error('relation "tenant_reads.orders" does not exist');
 
 describe('un fallo de lectura nunca se presenta como cero resultados', () => {
+    it('passes the session source authority through the real knowledge executor and retains revocation as an evaluation failure',async()=>{
+        const authority=async()=>{throw new LLMSourceAuthorityUnavailable();};
+        const search=jest.fn(async(_tenant,_query,_limit,options)=>options.withDataSourceAuthority(async()=>[]));
+        const executor=createExecutor(jest.fn(),{knowledgeService:{tenantHasKnowledge:jest.fn().mockResolvedValue(true),searchRelevant:search}});
+        // Una sesión de evaluación no puede buscar en la base de conocimiento
+        // sin la réplica sellada que congela lo que va a leer: sin ella la
+        // corrida leería el conocimiento vivo y no sería reproducible, así que
+        // el adaptador falla cerrado ANTES de llegar al ejecutor. Este caso es
+        // sobre lo que pasa DESPUÉS, así que la sesión trae la réplica como
+        // cualquier sesión real, y el agente es un UUID porque la réplica se
+        // valida contra él.
+        const agentId='55555555-5555-4555-8555-555555555555';
+        const session={tenantId,agentId,contactId,conversationId,schemaName,mode:'preview',trace:new AgentTurnTrace(),
+            snapshot:{knowledgeInputs:evaluationKnowledgeFixture(tenantId,agentId)},
+            executionContext:AGENT_TEST_EXECUTION_CONTEXT,learningEvaluationSource:{releaseId:'candidate'},evaluationDataSourceAuthority:authority};
+        await expect(sessionToolExecutor(executor,session as any).execute(schemaName,tenantId,contactId,'search_knowledge_base',
+            {query:'Historical question'},conversationId,{authority:authorityFor('search_knowledge_base')})).rejects.toBeInstanceOf(LLMSourceAuthorityUnavailable);
+        expect(search.mock.calls[0][3].withDataSourceAuthority).toBe(authority);
+        expect(session.trace.error).toBe('llm_source_authority_unavailable');
+    });
     it('list_customer_orders distingue vacío real de consulta rota', async () => {
         const empty = createExecutor(jest.fn().mockResolvedValue([]));
         const emptyResult: any = await empty.execute(
@@ -107,6 +132,68 @@ describe('un fallo de lectura nunca se presenta como cero resultados', () => {
         );
         expect(missingResult.status).toBe('empty');
         expect(missingResult.product).toBeNull();
+    });
+
+    it.each(['11111111-1111-4111-8111-111111111111', 'Synthetic product'])(
+        'get_product distinguishes an unavailable database from an absent product (%s)', async productId => {
+            const broken = createExecutor(jest.fn().mockRejectedValue(DB_DOWN));
+            const failed = await broken.execute(schemaName, tenantId, contactId, 'get_product', { productId }, conversationId,
+                { authority: authorityFor('get_product') });
+            expect(failed).toMatchObject({ status: 'error', error: 'read_failed', retryable: true });
+            expect(failed.product).toBeUndefined();
+            expect(JSON.stringify(sanitizeToolResultForModel(failed, 'es'))).not.toMatch(/tenant_reads|relation|not found/i);
+
+            const empty = createExecutor(jest.fn().mockResolvedValue([]));
+            const missing = await empty.execute(schemaName, tenantId, contactId, 'get_product', { productId }, conversationId,
+                { authority: authorityFor('get_product') });
+            expect(missing).toMatchObject({ status: 'empty', product: null, source: 'tenant_db' });
+            expect(missing.error).toBeUndefined();
+        },
+    );
+
+    it('get_product preserves catalog facts and exposes read freshness without private metadata', async () => {
+        const executor = createExecutor(jest.fn().mockResolvedValue([{ id: tenantId, name: 'Synthetic product',
+            price: '12500.50', currency: 'COP', stock: null, is_available: false, requires_prescription: true,
+            images: ['https://media.example.test/product.png'], metadata: { internal: 'private supplier' } }]));
+        const result = await executor.execute(schemaName, tenantId, contactId, 'get_product', { productId: tenantId }, conversationId,
+            { authority: authorityFor('get_product') });
+        expect(result).toMatchObject({ status: 'ok', source: 'tenant_db', id: tenantId, price: 12500.5,
+            stock: null, isAvailable: false, requiresPrescription: true, images: ['https://media.example.test/product.png'] });
+        expect(Date.parse(result.asOf)).not.toBeNaN();
+        expect(result.metadata).toBeUndefined();
+    });
+
+    it('send_product_image preserves a failed catalog read and produces no media effect', async () => {
+        const executor = createExecutor(jest.fn().mockRejectedValue(DB_DOWN));
+        const result = await executor.execute(schemaName, tenantId, contactId, 'send_product_image', { productId: tenantId }, conversationId,
+            { authority: authorityFor('send_product_image') });
+        expect(result).toMatchObject({ status: 'error', error: 'read_failed', source: 'tenant_db', retryable: true });
+        expect(result._mediaToSend).toBeUndefined();
+        expect(result.success).not.toBe(true);
+    });
+
+    it('send_product_image distinguishes an absent product from a product with no images', async () => {
+        const empty = createExecutor(jest.fn().mockResolvedValue([]));
+        const absent = await empty.execute(schemaName, tenantId, contactId, 'send_product_image', { productId: tenantId }, conversationId,
+            { authority: authorityFor('send_product_image') });
+        expect(absent).toMatchObject({ error: 'product_not_found', retryable: false });
+        expect(absent._mediaToSend).toBeUndefined();
+
+        const existing = createExecutor(jest.fn().mockResolvedValue([{ id: tenantId, name: 'Synthetic product', images: [] }]));
+        const noImage = await existing.execute(schemaName, tenantId, contactId, 'send_product_image', { productId: tenantId }, conversationId,
+            { authority: authorityFor('send_product_image') });
+        expect(noImage.error).toBeTruthy();
+        expect(noImage.error).not.toBe(absent.error);
+        expect(noImage._mediaToSend).toBeUndefined();
+    });
+
+    it('send_product_image uses the product image after a successful catalog read', async () => {
+        const executor = createExecutor(jest.fn().mockResolvedValue([{ id: tenantId, name: 'Synthetic product',
+            images: ['https://media.example.test/product.png'] }]));
+        const result = await executor.execute(schemaName, tenantId, contactId, 'send_product_image', { productId: tenantId }, conversationId,
+            { authority: authorityFor('send_product_image') });
+        expect(result).toMatchObject({ success: true, count: 1,
+            _mediaToSend: [{ url: 'https://media.example.test/product.png' }] });
     });
 
     it('get_customer_context no degrada una base caída a "cliente nuevo"', async () => {

@@ -8,7 +8,7 @@ describe('AgentAvailabilityService tenant-scoped status updates', () => {
     function makeService(count: number) {
         const prisma = { user: { updateMany: jest.fn().mockResolvedValue({ count }) } };
         const service = new AgentAvailabilityService(
-            prisma as any, {} as any, {} as any, {} as any,
+            prisma as any, {} as any, {} as any,
         );
         return { service, prisma };
     }

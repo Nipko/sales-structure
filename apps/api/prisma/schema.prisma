@@ -156,6 +156,13 @@ model User {
   emailVerificationState String  @default("unverified") @map("email_verification_state")
   emailVerifyCode     String?   @map("email_verify_code")
   emailVerifyExpires  DateTime? @map("email_verify_expires")
+  emailChallengeRevision Int    @default(0) @map("email_challenge_revision")
+  twoFactorEmailCode String?    @map("two_factor_email_code")
+  twoFactorEmailExpires DateTime? @map("two_factor_email_expires")
+  twoFactorEmailRevision Int    @default(0) @map("two_factor_email_revision")
+  twoFactorSmsCode   String?    @map("two_factor_sms_code") @db.VarChar(6)
+  twoFactorSmsExpires DateTime? @map("two_factor_sms_expires") @db.Timestamptz(6)
+  twoFactorSmsRevision Int      @default(0) @map("two_factor_sms_revision")
   twoFactorEnabled    Boolean   @default(false) @map("two_factor_enabled")
   twoFactorSecret     String?   @map("two_factor_secret")
   twoFactorMethod     String?   @map("two_factor_method")
@@ -171,6 +178,7 @@ model User {
   availabilityStatus  String    @default("offline") @map("availability_status")
   maxCapacity         Int       @default(5) @map("max_capacity")
   skillTags           String[]  @default([]) @map("skill_tags")
+  notificationPreferences Json  @default("{\"version\":1,\"soundEnabled\":true,\"categories\":{\"chat\":true,\"handoff\":true,\"compliance\":true,\"appointments\":true,\"automation\":false,\"orders\":false,\"system\":true}}") @map("notification_preferences")
   lastActiveAt        DateTime? @map("last_active_at")
   lastLoginAt         DateTime? @map("last_login_at")
   createdAt           DateTime  @default(now()) @map("created_at")
@@ -178,6 +186,7 @@ model User {
 
   tenant         Tenant?         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   trustedDevices TrustedDevice[]
+  platformNotifications PlatformNotificationOutbox[]
 
   @@index([tenantId])
   @@index([isSelfServeSignup, createdAt(sort: Desc)], map: "idx_users_self_serve_signup_created")
@@ -214,7 +223,29 @@ model ChannelAccount {
   webhookSecret String?  @map("webhook_secret")
   isActive      Boolean  @default(true) @map("is_active")
   metadata      Json     @default("{}")
-  createdAt     DateTime @default(now()) @map("created_at")
+  /// IANA zone of the WhatsApp Business Account Meta bills (`America/Bogota`).
+  ///
+  /// From 1 October 2026 Meta charges per delivered service message, the rate
+  /// depends on the effective date, and the free thousand resets per number per
+  /// calendar month. Both questions are "what day, and what month, is it for
+  /// THIS account?" and only the WABA's own zone answers them: a tenant can
+  /// hold numbers in two countries, and 23:30 on 30 September in Bogota is
+  /// already October in UTC. Distinct from `Tenant.operatingTimezone` (where
+  /// the business operates) and `BillingSubscription.billingTimezone` (when WE
+  /// charge them) — three questions that today happen to share an answer.
+  ///
+  /// NULL means unknown, and the rate resolver refuses to price rather than
+  /// defaulting. Never Meta's `timezone_id`, which is a numeric Facebook id;
+  /// a CHECK constraint refuses one.
+  wabaTimezone              String?   @map("waba_timezone") @db.VarChar(64)
+  tokenRefreshState         String    @default("idle") @map("token_refresh_state") @db.VarChar(16)
+  tokenRefreshAttempts      Int       @default(0) @map("token_refresh_attempts")
+  tokenRefreshLeaseToken    String?   @map("token_refresh_lease_token") @db.Uuid
+  tokenRefreshLeaseExpiresAt DateTime? @map("token_refresh_lease_expires_at") @db.Timestamptz(6)
+  tokenRefreshStartedAt     DateTime?  @map("token_refresh_started_at") @db.Timestamptz(6)
+  tokenRefreshCompletedAt   DateTime?  @map("token_refresh_completed_at") @db.Timestamptz(6)
+  tokenRefreshError         String?   @map("token_refresh_error")
+  createdAt                 DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime @default(now()) @map("updated_at")
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -289,6 +320,7 @@ model TenantInvitation {
   acceptedUserId  String?   @map("accepted_user_id")
   revokedAt       DateTime? @map("revoked_at")
   resentAt        DateTime? @map("resent_at")
+  notificationRevision Int  @default(0) @map("notification_revision")
   createdAt       DateTime  @default(now()) @map("created_at")
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -370,6 +402,22 @@ model WhatsappCredential {
   encryptedValue String    @map("encrypted_value") // AES-256-GCM encrypted
   rotationState  String    @default("active") @map("rotation_state") // active, rotating, revoked
   expiresAt      DateTime? @map("expires_at")
+
+  /// Lo que el token ES, no como se llama la fila.
+  ///
+  /// `credential_type` dice `system_user_token` y ahi conviven dos cosas que no
+  /// son intercambiables: un BISU acunado para UN cliente, y el System User
+  /// propio del proveedor. Firmar el envio de un tenant con el segundo atribuye
+  /// el mensaje al proveedor y lo cobra a otro portafolio.
+  ///
+  /// NULL = nadie lo establecio. Es un tercer estado, no un sinonimo de
+  /// ninguna de las dos respuestas: la credencial se sigue usando y se dice que
+  /// no fue comprobada.
+  credentialKind       String?   @map("credential_kind")
+  metaAppId            String?   @map("meta_app_id")
+  ownerBusinessId      String?   @map("owner_business_id")
+  grantedScopes        String?   @map("granted_scopes")
+  provenanceVerifiedAt DateTime? @map("provenance_verified_at")
   createdAt      DateTime  @default(now()) @map("created_at")
   updatedAt      DateTime  @updatedAt @map("updated_at")
 
@@ -537,6 +585,34 @@ model BillingPaymentSource {
   @@index([tenantId, status])
   @@index([status, expYear, expMonth])
   @@map("billing_payment_sources")
+  @@schema("public")
+}
+
+// Admission and outcome ledger for provider-side billing writes that happen
+// outside the recurring charge engine. It stores identifiers and fingerprints,
+// never card tokens or acceptance JWTs.
+model BillingProviderEffect {
+  id                 String    @id @default(uuid())
+  tenantId           String    @map("tenant_id")
+  effectKey          String    @unique @map("effect_key")
+  effectType         String    @map("effect_type")
+  provider           String
+  state              String
+  requestFingerprint String    @map("request_fingerprint") @db.Char(64)
+  providerResourceId String?   @map("provider_resource_id")
+  localResourceId    String?   @map("local_resource_id") @db.Uuid
+  attempts           Int       @default(1)
+  leaseToken         String?   @map("lease_token") @db.Uuid
+  leaseExpiresAt     DateTime? @map("lease_expires_at") @db.Timestamptz(6)
+  startedAt          DateTime  @default(now()) @map("started_at") @db.Timestamptz(6)
+  completedAt        DateTime? @map("completed_at") @db.Timestamptz(6)
+  error              String?
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@index([tenantId, state])
+  @@index([state, leaseExpiresAt])
+  @@map("billing_provider_effects")
   @@schema("public")
 }
 
@@ -720,6 +796,15 @@ model FiscalInvoice {
   acquirerSnapshot Json?     @map("acquirer_snapshot") // immutable copy of acquirer fiscal data at issue time
   issuedAt         DateTime? @map("issued_at")
   createdAt        DateTime  @default(now()) @map("created_at")
+  emailDeliveryState     String    @default("pending") @map("email_delivery_state") @db.VarChar(32)
+  emailDeliveryAttempts  Int       @default(0) @map("email_delivery_attempts")
+  emailLeaseToken        String?   @map("email_lease_token") @db.Uuid
+  emailLeaseExpiresAt    DateTime? @map("email_lease_expires_at") @db.Timestamptz(6)
+  emailProviderReference String?   @map("email_provider_reference")
+  emailErrorCode         String?   @map("email_error_code")
+  emailNextAttemptAt     DateTime  @default(now()) @map("email_next_attempt_at") @db.Timestamptz(6)
+  emailStartedAt         DateTime? @map("email_started_at") @db.Timestamptz(6)
+  emailCompletedAt       DateTime? @map("email_completed_at") @db.Timestamptz(6)
 
   @@index([tenantId, createdAt])
   @@index([status])
@@ -1000,6 +1085,7 @@ model FeatureRequest {
   mergedIntoId   String?                      @map("merged_into_id") // when admin merges duplicates
   shippedAt      DateTime?                    @map("shipped_at")
   declinedReason String?                      @map("declined_reason")
+  statusRevision Int                          @default(0) @map("status_revision")
   createdAt      DateTime                     @default(now()) @map("created_at")
   updatedAt      DateTime                     @updatedAt @map("updated_at")
 
@@ -1012,6 +1098,118 @@ model FeatureRequest {
   @@index([authorTenantId])
   @@index([category])
   @@map("feature_requests")
+  @@schema("public")
+}
+
+model PlatformNotificationOutbox {
+  id                String   @id @default(uuid()) @db.Uuid
+  eventKey          String   @unique @map("event_key")
+  kind              String   @db.VarChar(60)
+  entityId          String   @map("entity_id") @db.Uuid
+  recipientUserId   String?  @map("recipient_user_id") @db.Uuid
+  tenantId          String?  @map("tenant_id") @db.Uuid
+  recipientEmail    String?  @map("recipient_email")
+  recipientPhone    String?  @map("recipient_phone")
+  payload           Json     @default("{}")
+  state             String   @default("pending") @db.VarChar(32)
+  attempts          Int      @default(0)
+  leaseToken        String?  @map("lease_token") @db.Uuid
+  leaseExpiresAt    DateTime? @map("lease_expires_at") @db.Timestamptz(6)
+  providerReference String?  @map("provider_reference")
+  errorCode         String?  @map("error_code")
+  nextAttemptAt     DateTime @default(now()) @map("next_attempt_at") @db.Timestamptz(6)
+  startedAt         DateTime? @map("started_at") @db.Timestamptz(6)
+  completedAt       DateTime? @map("completed_at") @db.Timestamptz(6)
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  recipient User? @relation(fields: [recipientUserId], references: [id], onDelete: Cascade)
+
+  @@index([recipientUserId, createdAt(sort: Desc)], map: "idx_platform_notification_recipient")
+  @@map("platform_notification_outbox")
+  @@schema("public")
+}
+
+model MetaComplianceRequest {
+  code           String    @id @default(uuid()) @db.Uuid
+  requestKey     String    @unique @map("request_key") @db.VarChar(160)
+  source         String    @db.VarChar(24)
+  fbUserId       String?   @map("fb_user_id")
+  email          String?
+  requestedAt    DateTime  @default(now()) @map("requested_at") @db.Timestamptz(6)
+  processedAt    DateTime? @map("processed_at") @db.Timestamptz(6)
+  status         String    @default("received") @db.VarChar(16)
+  notes          String?
+  retentionUntil DateTime  @default(dbgenerated("NOW() + INTERVAL '90 days'")) @map("retention_until") @db.Timestamptz(6)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([retentionUntil], map: "meta_compliance_retention_idx")
+  @@map("meta_compliance_requests")
+  @@schema("public")
+}
+
+model CustomerPortalAccessChallenge {
+  id                String    @id @default(uuid()) @db.Uuid
+  tenantId          String    @map("tenant_id") @db.Uuid
+  contactId         String    @map("contact_id") @db.Uuid
+  channel           String    @db.VarChar(8)
+  recipient         String
+  recipientDigest   String    @map("recipient_digest") @db.VarChar(64)
+  code              String    @db.VarChar(6)
+  language          String    @default("es") @db.VarChar(16)
+  state             String    @default("pending") @db.VarChar(32)
+  deliveryAttempts  Int       @default(0) @map("delivery_attempts")
+  verifyAttempts    Int       @default(0) @map("verify_attempts")
+  leaseToken        String?   @map("lease_token") @db.Uuid
+  leaseExpiresAt    DateTime? @map("lease_expires_at") @db.Timestamptz(6)
+  providerReference String?   @map("provider_reference")
+  errorCode         String?   @map("error_code")
+  nextAttemptAt     DateTime  @default(now()) @map("next_attempt_at") @db.Timestamptz(6)
+  startedAt         DateTime? @map("started_at") @db.Timestamptz(6)
+  sentAt            DateTime? @map("sent_at") @db.Timestamptz(6)
+  consumedAt        DateTime? @map("consumed_at") @db.Timestamptz(6)
+  supersededAt      DateTime? @map("superseded_at") @db.Timestamptz(6)
+  expiresAt         DateTime  @map("expires_at") @db.Timestamptz(6)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([tenantId, contactId, createdAt(sort: Desc)], map: "customer_portal_access_contact_idx")
+  @@map("customer_portal_access_challenges")
+  @@schema("public")
+}
+
+model ChatIdentityChallenge {
+  id                String    @id @default(uuid()) @db.Uuid
+  tenantId          String    @map("tenant_id") @db.Uuid
+  contactId         String    @map("contact_id") @db.Uuid
+  conversationId    String    @map("conversation_id") @db.Uuid
+  channel           String    @db.VarChar(8)
+  recipient         String
+  recipientDigest   String    @map("recipient_digest") @db.VarChar(64)
+  hint              String
+  code              String?   @db.VarChar(6)
+  state             String    @default("pending") @db.VarChar(32)
+  deliveryAttempts  Int       @default(0) @map("delivery_attempts")
+  verifyAttempts    Int       @default(0) @map("verify_attempts")
+  leaseToken        String?   @map("lease_token") @db.Uuid
+  leaseExpiresAt    DateTime? @map("lease_expires_at") @db.Timestamptz(6)
+  providerReference String?   @map("provider_reference")
+  errorCode         String?   @map("error_code")
+  nextAttemptAt     DateTime  @default(now()) @map("next_attempt_at") @db.Timestamptz(6)
+  startedAt         DateTime? @map("started_at") @db.Timestamptz(6)
+  sentAt            DateTime? @map("sent_at") @db.Timestamptz(6)
+  consumedAt        DateTime? @map("consumed_at") @db.Timestamptz(6)
+  supersededAt      DateTime? @map("superseded_at") @db.Timestamptz(6)
+  verifiedAt        DateTime? @map("verified_at") @db.Timestamptz(6)
+  verifiedExpiresAt DateTime? @map("verified_expires_at") @db.Timestamptz(6)
+  expiresAt         DateTime  @map("expires_at") @db.Timestamptz(6)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([conversationId, createdAt(sort: Desc)], map: "chat_identity_conversation_idx")
+  @@index([tenantId, contactId], map: "chat_identity_contact_idx")
+  @@map("chat_identity_challenges")
   @@schema("public")
 }
 
@@ -1159,4 +1357,3 @@ model AutomationTemplate {
   @@map("automation_templates")
   @@schema("public")
 }
-

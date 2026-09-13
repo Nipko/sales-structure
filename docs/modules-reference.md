@@ -1,9 +1,9 @@
 # Modules Reference
 
-Technical inventory for 88 API module declaration files, 144 dashboard pages
-(131 admin + 13 non-admin), 11 BullMQ queues, and the documented cron jobs.
+Technical inventory for 99 API module declaration files, 160 dashboard pages
+(147 admin + 13 non-admin), 11 BullMQ queues, and the documented cron jobs.
 
-**Last updated:** 13 ago 2026 — Salud proactiva de agentes, Parallly Assist contextual, navegación IA y alineación de roles
+**Last updated:** 13 sep 2026 — Runtime único del agente y retiro de la superficie Carla heredada
 
 > Counts are a filesystem snapshot, not a product contract. Recalculate with
 > `rg --files apps/api/src/modules -g '*.module.ts'` and
@@ -11,7 +11,7 @@ Technical inventory for 88 API module declaration files, 144 dashboard pages
 
 ---
 
-## API Modules (88 module declaration files)
+## API Modules (99 module declaration files)
 
 ### Infrastructure (6 modules)
 
@@ -418,9 +418,7 @@ Technical inventory for 88 API module declaration files, 144 dashboard pages
   - `POST /persona/:tenantId/setup-wizard/skip` — Skip wizard
   - `GET /persona/:tenantId/setup-status` — Wizard status
   - `GET /persona/:tenantId/plan-features` — Plan feature flags
-  - `GET /persona/:tenantId/active` — Active persona config
-  - `GET /persona/:tenantId/versions` — Config version history
-  - `PUT /persona/:tenantId` — Update persona
+  - Agent configuration reads and writes use the per-agent draft, publication, history and rollback routes; the tenant-wide legacy persona HTTP routes are retired
   - `GET /persona/:tenantId/agents` — List all agents
   - `GET /persona/:tenantId/agents/:agentId` — Agent detail
   - `POST /persona/:tenantId/agents` — Create agent
@@ -842,7 +840,6 @@ Technical inventory for 88 API module declaration files, 144 dashboard pages
   - `3,18,33,48 * * * *` — send1hReminders
   - `5,35 * * * *` — markNoShows
   - `20 * * * *` — autoCompleteAppointments (ended 2+h ago)
-  - `0 */12 * * *` — renewWatchChannels: renew Google Calendar push channels
 
 ---
 
@@ -1435,19 +1432,10 @@ Technical inventory for 88 API module declaration files, 144 dashboard pages
   - `GET /meta/data-deletion/status` — Status
   - `PATCH /meta/data-deletion/status/:code` — Advance request status (super_admin)
 
-#### 65. carla
-- **Purpose:** AI profile management (legacy/internal)
-- **Services:** `carla.service.ts`
-- **Controller:** `carla.controller.ts`
-- **Endpoints:**
-  - `GET /carla/profiles/:tenantId` — List profiles
-  - `POST /carla/profiles/:tenantId` — Create
-  - `PUT /carla/profiles/:tenantId/:id` — Update
-  - `GET /carla/prompts/:tenantId` — Prompts
-  - `POST /carla/prompts/:tenantId` — Create prompt
-  - `PUT /carla/prompts/:tenantId/:id` — Update prompt
-  - `GET /carla/context/:tenantId` — Context data
-  - `GET /carla/context/:tenantId/build/:conversationId` — Build context for conversation
+#### 65. carla (retired)
+- **Status:** The unused `/carla/*` HTTP surface and Nest module were removed.
+- **Authority:** Agent configuration is owned by `persona`; each turn is assembled by `PromptAssemblerService` from the published agent release.
+- **Data:** Historical `carla_*` tables remain in tenant schemas for non-destructive compatibility. They have no mounted reader or writer.
 
 #### 66. public-api
 - **Purpose:** Tenant-facing REST API with key-based auth, scoped access, rate limiting, and outbound webhooks
@@ -1540,10 +1528,10 @@ Technical inventory for 88 API module declaration files, 144 dashboard pages
 - **Endpoints:** `GET /sms-notifications/:tenantId/config` permite soporte legacy; `PUT` solo conserva/edita una activación heredada o la apaga y responde `sms_product_retired` al intentar habilitar una nueva. La ruta dashboard redirige a Configuración
 
 #### 71. push
-- **Purpose:** Notificaciones push a agentes/admins — **Web Push** (navegador) y **Expo** (app móvil `@parallext/mobile`). Escucha eventos de handoff/escalación y entrega push
+- **Purpose:** Notificaciones a agentes/admins — **Web Push** (navegador), **Expo** (app móvil `@parallext/mobile`) y preferencias por usuario que también filtran los avisos en vivo del dashboard
 - **Services:** `push.service.ts` (suscripciones + envío), `push-listener.service.ts` (@OnEvent), `push-i18n.ts`
 - **Controller:** `push.controller.ts` (`/push`)
-- **Endpoints:** `POST /push/subscribe` (Web Push), `POST /push/unsubscribe`, `POST /push/expo-subscribe` (token Expo de la app móvil)
+- **Endpoints:** `POST /push/subscribe` (Web Push), `POST /push/unsubscribe`, `POST /push/expo-subscribe` (token Expo de la app móvil), `GET|PUT /push/preferences` (sonido + siete categorías, siempre acotadas al usuario autenticado y su tenant)
 
 #### 72. slack
 - **Purpose:** Notificaciones a Slack en eventos de negocio clave (T2.16) vía webhook de Slack por-tenant. Mismo patrón listener que push
@@ -1667,7 +1655,6 @@ Technical inventory for 88 API module declaration files, 144 dashboard pages
 | `17 */6 * * *` | quality | reconcileAgentAttention | Conciliar snapshots y señales de calidad en lotes acotados |
 | `0 */6 * * *` | crm-b2b | detectRotting | Flag stale open opportunities (per-tenant rottingDays) |
 | `30 */6 * * *` | reviews | syncAll | Sync GBP reviews + auto-reply |
-| `0 */12 * * *` | appointments | renewWatchChannels | Renew Google Calendar push channels |
 | `0 1 1 * *` | financials | generateMonthlySnapshot | Monthly SaaS financial snapshot |
 | `0 2 * * *` | analytics | aggregateYesterday | Nightly metrics aggregation |
 | `30 2 * * *` | billing | applyPendingDowngrades | Apply scheduled plan downgrades |
@@ -1780,7 +1767,7 @@ Technical inventory for 88 API module declaration files, 144 dashboard pages
 | `/admin/settings` | Settings hub (card grid) | Super Admin/Admin/Supervisor/Agent/Viewer | ✅ |
 | `/admin/settings/profile` | User profile | Super Admin/Admin/Supervisor/Agent/Viewer | ✅ |
 | `/admin/settings/security` | 2FA management | Super Admin/Admin/Supervisor/Agent/Viewer | ✅ |
-| `/admin/settings/notifications` | Notification preferences | Super Admin/Admin/Supervisor/Agent/Viewer | ⚠️ Hardcoded EN |
+| `/admin/settings/notifications` | Preferencias por usuario para panel y push | Super Admin/Admin/Supervisor/Agent/Viewer | ✅ |
 | `/admin/settings/appearance` | Theme switcher | Super Admin/Admin/Supervisor/Agent/Viewer | ✅ |
 | `/admin/settings/change-password` | Change password | Super Admin/Admin/Supervisor/Agent/Viewer | ✅ |
 | `/admin/settings/business-info` | Company identity | Admin | ✅ |

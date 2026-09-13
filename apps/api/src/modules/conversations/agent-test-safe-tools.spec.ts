@@ -120,6 +120,34 @@ describe('Agent Test complete safe-tool allowlist', () => {
             checkClinikoAvailability: blockedTrap('verticalIntegrations.checkClinikoAvailability'),
         };
         const mcp = { callRemoteTool: blockedTrap('mcp.callRemoteTool') };
+        // Las familias opcionales también están anunciadas como seguras, así
+        // que el barrido tiene que llegar a su camino de lectura. Sin ellas los
+        // ocho tools de catálogo, taller y alquileres se iban por la guarda de
+        // "servicio no cableado" y el barrido no probaba nada de ellos.
+        const catalogCommands = {
+            listOwned: read([]),
+            getOwned: read(null),
+            quote: blockedTrap('catalog.quote'),
+            create: blockedTrap('catalog.create'),
+            cancel: blockedTrap('catalog.cancel'),
+            cancellationTerms: blockedTrap('catalog.cancellationTerms'),
+        };
+        const ordersService = { catalogCommands: () => catalogCommands };
+        const repairOrders = {
+            list: read({ items: [] }),
+            get: read({ id: ENTITY_ID, status: 'received', version: 1, approval_status: 'pending' }),
+            create: blockedTrap('repairOrders.create'),
+            decideEstimate: blockedTrap('repairOrders.decideEstimate'),
+            cancelOwned: blockedTrap('repairOrders.cancelOwned'),
+            getActionTerms: blockedTrap('repairOrders.getActionTerms'),
+        };
+        const resourceRentals = {
+            checkAvailability: read({ available: true, startDate: '2026-08-10', endDate: '2026-08-12' }),
+            list: read([]),
+            getById: read(null),
+            create: blockedTrap('resourceRentals.create'),
+            cancelForContact: blockedTrap('resourceRentals.cancelForContact'),
+        };
 
         const executor = new AIToolExecutorService(
             prisma as any,
@@ -145,11 +173,22 @@ describe('Agent Test complete safe-tool allowlist', () => {
             mcp as any,
             {
                 preflight: jest.fn().mockResolvedValue({ allowed: true, policy: { externalEffect: 'none' } }),
-                complete: jest.fn(),
-                fail: jest.fn(),
+                // El ejecutor cierra el asiento con `.complete(...)`/`.fail(...)`
+                // y encadena `.catch` sobre el segundo: un doble que devuelve
+                // undefined explota DENTRO del manejador de errores y esconde el
+                // fallo original.
+                complete: jest.fn().mockResolvedValue(undefined),
+                fail: jest.fn().mockResolvedValue(undefined),
             } as any,
             {} as any,
             {} as any,
+            ordersService as any,
+            undefined,
+            resourceRentals as any,
+            undefined,
+            undefined,
+            undefined,
+            repairOrders as any,
         );
         jest.spyOn((executor as any).logger, 'log').mockImplementation(() => undefined);
         jest.spyOn((executor as any).logger, 'warn').mockImplementation(() => undefined);
@@ -177,22 +216,46 @@ describe('Agent Test complete safe-tool allowlist', () => {
         };
 
         for (const toolName of AGENT_TEST_SAFE_TOOL_NAMES) {
-            const result = await executor.execute(
-                SCHEMA,
-                TENANT_ID,
-                AGENT_TEST_SANDBOX_CONTACT_ID,
-                toolName,
-                args,
-                undefined,
-                // Deliberately omit readOnly: persistence:disabled alone must
-                // be sufficient to suppress lazy DDL in recommend_products.
-                {
-                    authority: authorityFor(toolName),
-                    executionContext: AGENT_TEST_EXECUTION_CONTEXT,
-                },
-            );
-            expect(result).not.toMatchObject({ error: 'agent_test_read_only' });
-            expect(result).not.toMatchObject({ error: 'tool_failed' });
+            // Sin este envoltorio el barrido muere con un TypeError anónimo y
+            // no dice cuál de las ~cien tools lo produjo, que es justo el dato
+            // que hace falta para arreglarlo.
+            let result: any;
+            try {
+                result = await executor.execute(
+                    SCHEMA,
+                    TENANT_ID,
+                    AGENT_TEST_SANDBOX_CONTACT_ID,
+                    toolName,
+                    args,
+                    undefined,
+                    // Deliberately omit readOnly: persistence:disabled alone must
+                    // be sufficient to suppress lazy DDL in recommend_products.
+                    {
+                        authority: authorityFor(toolName),
+                        executionContext: AGENT_TEST_EXECUTION_CONTEXT,
+                    },
+                );
+            } catch (error: any) {
+                throw new Error(`${toolName}: ${error?.stack || error?.message || error}`);
+            }
+            expect({ toolName, result }).not.toMatchObject({ result: { error: 'agent_test_read_only' } });
+            expect({ toolName, result }).not.toMatchObject({ result: { error: 'tool_failed' } });
+        }
+
+        // El barrido sólo vale si las familias opcionales fueron REALMENTE
+        // recorridas. Sin esto, desconectar un servicio las devolvería a la
+        // guarda de "no cableado" y el barrido seguiría en verde sin haber
+        // ejercitado ni una de sus lecturas.
+        for (const reached of [
+            catalogCommands.listOwned,
+            catalogCommands.getOwned,
+            repairOrders.list,
+            repairOrders.get,
+            resourceRentals.checkAvailability,
+            resourceRentals.list,
+            resourceRentals.getById,
+        ]) {
+            expect(reached).toHaveBeenCalled();
         }
 
         const writeSql = prisma.$queryRawUnsafe.mock.calls

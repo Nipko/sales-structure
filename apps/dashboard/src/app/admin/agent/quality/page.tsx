@@ -31,10 +31,12 @@ import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
+import { AgentAssessmentPanel } from "@/components/quality/AgentAssessmentPanel";
+import { AgentOperationalStateSummary } from "@/components/quality/OperationalState";
+import type { AgentAssessment } from "@parallext/shared";
 import { HelpPanel } from "@/components/ui/help-panel";
 import { guidedTourAnchorId } from "@/lib/guided-tours";
-import { canRunProductTourAtWidth } from "@/lib/product-tour-contract";
-import { requestQualityHealthRefresh } from "@/lib/quality-health-events";
+import { QUALITY_HEALTH_REFRESH_EVENT, requestQualityHealthRefresh } from "@/lib/quality-health-events";
 import { safeQualityHref } from "@/lib/quality-health";
 import { useQualityCodeLabel } from "@/lib/quality-labels";
 
@@ -73,6 +75,7 @@ export default function AgentQualityPage() {
   const [agents, setAgents] = useState<AgentOption[]>([]);
   const [agentId, setAgentId] = useState("");
   const [overview, setOverview] = useState<AgentQualityOverview | null>(null);
+  const [assessment, setAssessment] = useState<AgentAssessment | null>(null);
   const [loadingAgents, setLoadingAgents] = useState(true);
   const [loadingOverview, setLoadingOverview] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -122,16 +125,18 @@ export default function AgentQualityPage() {
 
   const loadOverview = useCallback(async () => {
     const requestId = ++overviewRequest.current;
+    setAssessment(null);
     if (!activeTenantId || !agentId) { setOverview(null); setLoadingOverview(false); return; }
     const requestedAgentId = agentId;
     setOverview(null);
     setLoadingOverview(true); setError(null);
     try {
-      const response = await api.getAgentQualityOverview(activeTenantId, requestedAgentId);
+      const response = await api.getAgentAssessment(activeTenantId, requestedAgentId);
       if (requestId !== overviewRequest.current) return;
-      if (!response?.success || !response.data) throw new Error("unavailable");
-      if (response.data.agent.id !== requestedAgentId) throw new Error("stale-response");
-      setOverview(response.data);
+      if (!response?.success || !response.data?.overview) throw new Error("unavailable");
+      if (response.data.agent?.id !== requestedAgentId) throw new Error("stale-response");
+      setOverview(response.data.overview);
+      setAssessment(response.data);
     } catch {
       if (requestId === overviewRequest.current) {
         setOverview(null);
@@ -143,22 +148,16 @@ export default function AgentQualityPage() {
 
   useEffect(() => { void loadAgents(); }, [loadAgents]);
   useEffect(() => { void loadOverview(); }, [loadOverview]);
-
-  // "Mostrarme dónde": el overlay se ancla al sidebar de escritorio, así que
-  // por debajo de 768 px la acción ni se ofrece desde esta lista.
-  const [wideEnoughForTour, setWideEnoughForTour] = useState(false);
   useEffect(() => {
-    const media = window.matchMedia("(min-width: 768px)");
-    const sync = () => setWideEnoughForTour(canRunProductTourAtWidth(window.innerWidth));
-    sync();
-    media.addEventListener("change", sync);
-    return () => media.removeEventListener("change", sync);
-  }, []);
+    const refresh = () => { void loadOverview(); };
+    window.addEventListener(QUALITY_HEALTH_REFRESH_EVENT, refresh);
+    return () => window.removeEventListener(QUALITY_HEALTH_REFRESH_EVENT, refresh);
+  }, [loadOverview]);
+
   const guidedTourFor = useCallback((code: string): GuidedTourId | null => {
-    if (!wideEnoughForTour) return null;
     const tour = findGuidedTourForQualityCode(code);
     return tour && canRoleRunGuidedTour(tour, role) ? tour.id : null;
-  }, [role, wideEnoughForTour]);
+  }, [role]);
   const startGuidedTour = useCallback((tourId: GuidedTourId) => {
     const detail: GuidedTourStartDetail = { tourId, agentId: agentId || undefined };
     window.dispatchEvent(new CustomEvent<GuidedTourStartDetail>(GUIDED_TOUR_START_EVENT, { detail }));
@@ -176,6 +175,7 @@ export default function AgentQualityPage() {
   }, [overview]);
 
   return <div className="space-y-6 pb-8">
+    {assessment?.agent?.id === agentId && <AgentAssessmentPanel assessment={assessment} />}
     <PageHeader icon={Gauge} title={t("title")} subtitle={t("subtitle")} action={overview ? <button type="button" onClick={() => void refreshOverviewAndAttention()} disabled={loadingOverview} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 disabled:opacity-60 dark:border-white/10 dark:bg-white/[0.04] dark:text-neutral-200"><RefreshCw size={15} className={cn(loadingOverview && "animate-spin")} aria-hidden="true" />{t("actions.refresh")}</button> : undefined} />
 
     <HelpPanel
@@ -192,7 +192,13 @@ export default function AgentQualityPage() {
     {error && !loadingOverview && <div role="alert" className="flex flex-col gap-3 rounded-xl border border-red-200 bg-red-50 p-5 text-red-800 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200 sm:flex-row sm:items-center sm:justify-between"><div className="flex items-start gap-3"><AlertCircle className="mt-0.5 shrink-0" size={18} aria-hidden="true" /><div><p className="text-sm font-semibold">{t("errors.title")}</p><p className="mt-0.5 text-sm">{error}</p></div></div><button type="button" onClick={() => void (agentId ? loadOverview() : loadAgents())} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-red-300 px-3 py-2 text-sm font-semibold"><RefreshCw size={15} aria-hidden="true" />{t("actions.retry")}</button></div>}
 
     {overview && <>
-      <section className={cn("rounded-2xl border p-5 sm:p-6", STATUS_TONE[overview.status])} aria-labelledby="quality-current-status" aria-live="polite"><div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between"><div className="max-w-3xl"><div className="mb-3 flex flex-wrap items-center gap-2"><span className="inline-flex items-center gap-1.5 rounded-full border border-current/20 bg-white/60 px-2.5 py-1 text-xs font-semibold dark:bg-black/10"><ShieldCheck size={14} aria-hidden="true" />{t("statusLabel")}</span>{!overview.agent.isActive && <span className="rounded-full bg-neutral-900/10 px-2.5 py-1 text-xs font-semibold dark:bg-white/10">{t("agentInactive")}</span>}</div><h2 id="quality-current-status" className="text-xl font-semibold sm:text-2xl">{t(`statuses.${overview.status}.title`)}</h2><p className="mt-2 text-sm leading-6 opacity-90">{t(`statuses.${overview.status}.description`)}</p><p className="mt-4 text-sm font-medium">{t("nextMilestone.label")}: {t(`nextMilestone.${overview.nextMilestone}`)}</p></div><dl className="grid shrink-0 grid-cols-2 gap-x-6 gap-y-3 text-sm lg:min-w-72"><EvidenceDatum term={t("evidence.generatedAt")} value={formatDate(overview.generatedAt)} /><EvidenceDatum term={t("evidence.agentVersion")} value={`v${overview.agent.version}`} /><EvidenceDatum term={t("evidence.agentUpdatedAt")} value={formatDate(overview.agent.updatedAt)} /><EvidenceDatum term={t("evidence.latestEvidence")} value={formatDate(lastEvidenceDate)} /></dl></div></section>
+      {/* The hero states Salud's own status ("Listo para piloto controlado") and,
+          under it, the same agent in the word every other surface uses. The panel
+          above shows that word too, and deliberately: both read
+          `assessment.state`, so the page cannot say two things about one agent.
+          Neither recomputes it — the server rolled it up over the quality status,
+          the tasks and the connections. */}
+      <section className={cn("rounded-2xl border p-5 sm:p-6", STATUS_TONE[overview.status])} aria-labelledby="quality-current-status" aria-live="polite"><div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between"><div className="max-w-3xl"><div className="mb-3 flex flex-wrap items-center gap-2"><span className="inline-flex items-center gap-1.5 rounded-full border border-current/20 bg-white/60 px-2.5 py-1 text-xs font-semibold dark:bg-black/10"><ShieldCheck size={14} aria-hidden="true" />{t("statusLabel")}</span>{!overview.agent.isActive && <span className="rounded-full bg-neutral-900/10 px-2.5 py-1 text-xs font-semibold dark:bg-white/10">{t("agentInactive")}</span>}</div><h2 id="quality-current-status" className="text-xl font-semibold sm:text-2xl">{t(`statuses.${overview.status}.title`)}</h2><p className="mt-2 text-sm leading-6 opacity-90">{t(`statuses.${overview.status}.description`)}</p><p className="mt-4 text-sm font-medium">{t("nextMilestone.label")}: {t(`nextMilestone.${overview.nextMilestone}`)}</p>{assessment && <AgentOperationalStateSummary state={assessment.state} className="mt-4" />}</div><dl className="grid shrink-0 grid-cols-2 gap-x-6 gap-y-3 text-sm lg:min-w-72"><EvidenceDatum term={t("evidence.generatedAt")} value={formatDate(overview.generatedAt)} /><EvidenceDatum term={t("evidence.agentVersion")} value={`v${overview.agent.version}`} /><EvidenceDatum term={t("evidence.agentUpdatedAt")} value={formatDate(overview.agent.updatedAt)} /><EvidenceDatum term={t("evidence.latestEvidence")} value={formatDate(lastEvidenceDate)} /></dl></div></section>
 
       <section aria-labelledby="quality-layers"><div className="mb-3"><h2 id="quality-layers" className="text-base font-semibold text-foreground">{t("layers.title")}</h2><p className="mt-1 text-sm text-muted-foreground">{t("layers.description")}</p></div><div className="grid gap-4 lg:grid-cols-3">
         <PillarCard icon={ClipboardCheck} title={t("pillars.preparation.title")} description={t("pillars.preparation.description")} status={overview.preparation.status} statusLabel={t(`pillarStatuses.${overview.preparation.status}`)}><p className="text-2xl font-semibold text-foreground">{overview.preparation.passed}/{overview.preparation.applicable}</p><p className="text-xs text-muted-foreground">{t("pillars.preparation.passedChecks")}</p>{overview.preparation.criticalBlockers.length > 0 && <p className="mt-3 flex items-start gap-1.5 text-xs font-medium text-red-600 dark:text-red-400"><AlertTriangle size={14} className="mt-0.5 shrink-0" aria-hidden="true" />{t("pillars.preparation.blockers", { count: overview.preparation.criticalBlockers.length })}</p>}</PillarCard>

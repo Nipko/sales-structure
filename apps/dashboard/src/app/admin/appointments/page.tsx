@@ -61,6 +61,9 @@ interface BlockedDate {
   userId?: string;
 }
 
+/** What a screen knows about one of its reads. `unavailable` is not `ready`. */
+type ReadState = "loading" | "ready" | "unavailable";
+
 interface CalendarIntegration {
   id: string;
   provider: "google" | "microsoft";
@@ -182,6 +185,21 @@ export default function AppointmentsPage() {
   const [syncing, setSyncing] = useState(false);
   const [lastSyncAt, setLastSyncAt] = useState<Date | null>(null);
 
+  /**
+   * Whether each editor in the Configuración tab is showing something we read.
+   *
+   * All three start from convenient defaults — a Mon-Fri week, four reminders
+   * switched on, Flows off with an empty ID — and all three used to swallow a
+   * failed read and leave those defaults on screen as if they were the tenant's
+   * saved configuration. Availability is the one that destroys data (its Save
+   * sends all seven days), but "los recordatorios están activos" is a false
+   * statement about the account on its own. Tracked separately so one dropped
+   * request does not blank the two cards that did load.
+   */
+  const [availabilityState, setAvailabilityState] = useState<ReadState>("loading");
+  const [remindersState, setRemindersState] = useState<ReadState>("loading");
+  const [flowsState, setFlowsState] = useState<ReadState>("loading");
+
   // ---- Reminder settings ----
   const [reminderSettings, setReminderSettings] = useState<{
     reminder24h: boolean; reminder2h: boolean; attendanceCheck: boolean; autoComplete: boolean;
@@ -242,8 +260,15 @@ export default function AppointmentsPage() {
 
   const loadAvailability = useCallback(async () => {
     if (!activeTenantId) return;
+    setAvailabilityState("loading");
     try {
       const res = await api.getAvailability(activeTenantId);
+      // A rejection is not "this tenant has no schedule". The distinction is
+      // load-bearing here: `availabilitySlots` starts as Mon-Fri 09:00-18:00
+      // and `hasSavedAvailability` starts `true`, so an ignored failure drew a
+      // stock week with no warning on it, and the Save button below sends all
+      // seven days — writing those defaults over the tenant's real hours.
+      if (!res?.success) throw new Error("availability_read_failed");
       const trimTime = (t: string) => (t || "").slice(0, 5);
       if (res?.success && res.data?.length) {
         // res.data is the array directly (not res.data.slots)
@@ -269,8 +294,9 @@ export default function AppointmentsPage() {
       } else {
         setHasSavedAvailability(false);
       }
+      setAvailabilityState("ready");
     } catch {
-      /* ignore */
+      setAvailabilityState("unavailable");
     }
   }, [activeTenantId]);
 
@@ -395,31 +421,44 @@ export default function AppointmentsPage() {
 
   const loadReminderSettings = useCallback(async () => {
     if (!activeTenantId) return;
+    setRemindersState("loading");
     try {
       const res = await api.getReminderSettings(activeTenantId);
-      if (res?.success && res.data) setReminderSettings(res.data);
-    } catch { /* ignore */ }
+      if (!res?.success || !res.data) throw new Error("reminder_settings_read_failed");
+      setReminderSettings(res.data);
+      setRemindersState("ready");
+    } catch {
+      setRemindersState("unavailable");
+    }
   }, [activeTenantId]);
 
   const handleUpdateReminderSettings = useCallback(async (update: Record<string, boolean>) => {
-    if (!activeTenantId) return;
+    if (!activeTenantId || remindersState !== "ready") return;
     setReminderSettings(prev => ({ ...prev, ...update }));
     try {
       const res = await api.updateReminderSettings(activeTenantId, update);
       if (res?.success && res.data) setReminderSettings(res.data);
     } catch { /* revert on error */ }
-  }, [activeTenantId]);
+  }, [activeTenantId, remindersState]);
 
   const loadBookingFlowsConfig = useCallback(async () => {
     if (!activeTenantId) return;
+    setFlowsState("loading");
     try {
       const res = await api.getBookingFlowsConfig(activeTenantId);
-      if (res?.success && res.data) setBookingFlowsConfig(res.data);
-    } catch { /* ignore */ }
+      if (!res?.success || !res.data) throw new Error("booking_flows_read_failed");
+      setBookingFlowsConfig(res.data);
+      setFlowsState("ready");
+    } catch {
+      setFlowsState("unavailable");
+    }
   }, [activeTenantId]);
 
   const handleUpdateBookingFlows = useCallback(async (update: Record<string, unknown>) => {
-    if (!activeTenantId) return;
+    // This write carries `flowId` alongside `enabled`, and the draft ID is
+    // seeded from the config: from an unread state it would post an empty
+    // string over the tenant's real Flow.
+    if (!activeTenantId || flowsState !== "ready") return;
     try {
       const res = await api.updateBookingFlowsConfig(activeTenantId, update);
       if (res?.success && res.data) {
@@ -431,7 +470,7 @@ export default function AppointmentsPage() {
       showToast(t("configSection.flowSaveError"));
       loadBookingFlowsConfig();
     }
-  }, [activeTenantId, showToast, loadBookingFlowsConfig, t]);
+  }, [activeTenantId, flowsState, showToast, loadBookingFlowsConfig, t]);
 
   // Tab-dependent loads
   useEffect(() => {
@@ -650,6 +689,10 @@ export default function AppointmentsPage() {
 
   const handleSaveAvailability = async () => {
     if (!activeTenantId) return;
+    // The editor is not rendered from an unread state, but the write refuses
+    // too: this call replaces all seven days at once, so it must never run on
+    // slots that came from the component's defaults rather than the database.
+    if (availabilityState !== "ready") return;
     setSavingAvailability(true);
     try {
       // Send ALL 7 days with isActive flag so the backend knows which are enabled
@@ -999,6 +1042,12 @@ export default function AppointmentsPage() {
             onUpdateReminderSettings={handleUpdateReminderSettings}
             bookingFlowsConfig={bookingFlowsConfig}
             onUpdateBookingFlows={handleUpdateBookingFlows}
+            availabilityUnavailable={availabilityState === "unavailable"}
+            remindersUnavailable={remindersState === "unavailable"}
+            flowsUnavailable={flowsState === "unavailable"}
+            onRetryAvailability={loadAvailability}
+            onRetryReminders={loadReminderSettings}
+            onRetryFlows={loadBookingFlowsConfig}
           />
         )}
 

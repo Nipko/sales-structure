@@ -17,12 +17,11 @@
  * "{{ guest_name }}".
  */
 
-export type ProcedureSlotType = 'string' | 'number' | 'integer' | 'boolean' | 'date' | 'uuid';
+import type { ProcedureFieldType, ProcedureFieldSpec } from '@parallext/shared';
 
-export interface ProcedureSlotSpec {
-    type?: ProcedureSlotType;
-    required?: boolean;
-}
+export type ProcedureSlotType = ProcedureFieldType;
+
+export type ProcedureSlotSpec = ProcedureFieldSpec;
 
 export interface InterpolationResult {
     ok: boolean;
@@ -56,10 +55,28 @@ function isMissing(value: unknown): boolean {
  * optional. It is deliberately strict: `"tres"` is not `3`, and letting it
  * through as `NaN` would reach the tool as a silently wrong argument.
  */
-function coerce(value: unknown, type: ProcedureSlotType): { ok: boolean; value?: unknown } {
+export function coerceProcedureSlot(value: unknown, type: ProcedureSlotType): { ok: boolean; value?: unknown } {
     switch (type) {
         case 'string':
-            return { ok: true, value: String(value) };
+            return { ok: true, value: String(value).trim() };
+        case 'email': {
+            const text = String(value).trim();
+            return text.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@.]+$/.test(text)
+                ? { ok: true, value: text } : { ok: false };
+        }
+        case 'phone': {
+            const text = String(value).trim();
+            // Preserve the country code rather than guessing a tenant country.
+            if (!/^\+?[\d\s().-]+$/.test(text)) return { ok: false };
+            const digits = text.replace(/\D/g, '');
+            return digits.length >= 7 && digits.length <= 15
+                ? { ok: true, value: `${text.startsWith('+') ? '+' : ''}${digits}` } : { ok: false };
+        }
+        case 'name': {
+            const text = String(value).trim();
+            return text.length >= 2 && text.length <= 120 && /^[\p{L}\p{M}][\p{L}\p{M}'’ .-]*$/u.test(text)
+                && text.split(/\s+/).length <= 8 ? { ok: true, value: text } : { ok: false };
+        }
         case 'number':
         case 'integer': {
             const raw = typeof value === 'number' ? value : Number(String(value).trim().replace(',', '.'));
@@ -140,12 +157,16 @@ export function interpolateProcedureArgs(
         }
 
         if (spec?.type) {
-            const coerced = coerce(value, spec.type);
+            const coerced = coerceProcedureSlot(value, spec.type);
             if (!coerced.ok) {
                 invalid.push({ arg: key, expected: spec.type, received: String(value) });
                 continue;
             }
             value = coerced.value;
+        }
+        if (spec?.choices?.length && !spec.choices.includes(String(value))) {
+            invalid.push({ arg: key, expected: spec.type ?? 'string', received: String(value) });
+            continue;
         }
         out[key] = value;
     }

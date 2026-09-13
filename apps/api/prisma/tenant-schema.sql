@@ -389,6 +389,9 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."knowledge_document_versions" (
     "created_at" TIMESTAMP DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_kdv_doc_{{SCHEMA_NAME}} ON "{{SCHEMA_NAME}}"."knowledge_document_versions" ("document_id", "version" DESC);
+ALTER TABLE "{{SCHEMA_NAME}}"."knowledge_documents"
+    ADD COLUMN IF NOT EXISTS "audience" VARCHAR(16) NOT NULL DEFAULT 'customer',
+    ADD COLUMN IF NOT EXISTS "agent_ids" UUID[] NOT NULL DEFAULT '{}'::uuid[];
 
 -- ---- KB Retrieval Analytics ----
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."kb_retrieval_log" (
@@ -404,6 +407,22 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."kb_retrieval_log" (
 CREATE INDEX IF NOT EXISTS idx_krl_doc_{{SCHEMA_NAME}} ON "{{SCHEMA_NAME}}"."kb_retrieval_log" ("document_id", "created_at" DESC);
 CREATE INDEX IF NOT EXISTS idx_krl_created_{{SCHEMA_NAME}} ON "{{SCHEMA_NAME}}"."kb_retrieval_log" ("created_at" DESC);
 CREATE INDEX IF NOT EXISTS idx_krl_conversation_created_{{SCHEMA_NAME}} ON "{{SCHEMA_NAME}}"."kb_retrieval_log" ("conversation_id", "created_at" DESC) WHERE "conversation_id" IS NOT NULL;
+
+-- Version 0 rows only measured retrieval relevance. Never reinterpret them as response attribution.
+ALTER TABLE "{{SCHEMA_NAME}}"."kb_retrieval_log"
+    ADD COLUMN IF NOT EXISTS "retrieval_batch_id" UUID,
+    ADD COLUMN IF NOT EXISTS "relevance_passed" BOOLEAN,
+    ADD COLUMN IF NOT EXISTS "attribution_version" SMALLINT NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS "source_version" INTEGER,
+    ADD COLUMN IF NOT EXISTS "source_title" TEXT,
+    ADD COLUMN IF NOT EXISTS "presented" BOOLEAN NOT NULL DEFAULT false,
+    ADD COLUMN IF NOT EXISTS "response_signal" VARCHAR(40) NOT NULL DEFAULT 'unobserved',
+    ADD COLUMN IF NOT EXISTS "attribution_granularity" VARCHAR(10) NOT NULL DEFAULT 'none',
+    ADD COLUMN IF NOT EXISTS "response_id" UUID,
+    ADD COLUMN IF NOT EXISTS "response_hash" CHAR(64),
+    ADD COLUMN IF NOT EXISTS "evidence_hash" CHAR(64),
+    ADD COLUMN IF NOT EXISTS "attributed_at" TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS idx_krl_attribution_batch ON "{{SCHEMA_NAME}}"."kb_retrieval_log" ("retrieval_batch_id") WHERE "retrieval_batch_id" IS NOT NULL;
 
 -- ---- KB Unanswered Queries ----
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."kb_unanswered_queries" (
@@ -764,6 +783,11 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."consent_records" (
     "conversation_id" UUID,
     "execution_ledger_id" UUID,
     "capture_mode"    VARCHAR(50),
+    "contact_id"      UUID,
+    "expires_at"      TIMESTAMPTZ,
+    "revoked_at"      TIMESTAMPTZ,
+    "consent_request_id" UUID,
+    "confirmation_message_id" VARCHAR(512),
     "ip_address"      VARCHAR(45),
     "user_agent"      TEXT,
     "origin_url"      TEXT,
@@ -777,7 +801,43 @@ ALTER TABLE "{{SCHEMA_NAME}}"."consent_records" ADD COLUMN IF NOT EXISTS "consen
 ALTER TABLE "{{SCHEMA_NAME}}"."consent_records" ADD COLUMN IF NOT EXISTS "conversation_id" UUID;
 ALTER TABLE "{{SCHEMA_NAME}}"."consent_records" ADD COLUMN IF NOT EXISTS "execution_ledger_id" UUID;
 ALTER TABLE "{{SCHEMA_NAME}}"."consent_records" ADD COLUMN IF NOT EXISTS "capture_mode" VARCHAR(50);
+ALTER TABLE "{{SCHEMA_NAME}}"."consent_records" ADD COLUMN IF NOT EXISTS "contact_id" UUID;
+ALTER TABLE "{{SCHEMA_NAME}}"."consent_records" ADD COLUMN IF NOT EXISTS "expires_at" TIMESTAMPTZ;
+ALTER TABLE "{{SCHEMA_NAME}}"."consent_records" ADD COLUMN IF NOT EXISTS "revoked_at" TIMESTAMPTZ;
+ALTER TABLE "{{SCHEMA_NAME}}"."consent_records" ADD COLUMN IF NOT EXISTS "consent_request_id" UUID;
+ALTER TABLE "{{SCHEMA_NAME}}"."consent_records" ADD COLUMN IF NOT EXISTS "confirmation_message_id" VARCHAR(512);
 CREATE UNIQUE INDEX IF NOT EXISTS "uidx_consent_execution_ledger" ON "{{SCHEMA_NAME}}"."consent_records" ("execution_ledger_id") WHERE "execution_ledger_id" IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS "uidx_consent_request" ON "{{SCHEMA_NAME}}"."consent_records" ("consent_request_id") WHERE "consent_request_id" IS NOT NULL;
+CREATE INDEX IF NOT EXISTS "idx_consent_contact_scope_active" ON "{{SCHEMA_NAME}}"."consent_records" ("contact_id", "consent_scope", "created_at" DESC) WHERE "revoked_at" IS NULL;
+
+-- Durable challenge shown before an inbound audio/image may be sent to an AI
+-- provider. One unresolved challenge per conversation prevents two workers
+-- from asking/recording two different grants for the same customer reply.
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."media_ai_consent_challenges" (
+    "request_id"       UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    "contact_id"       UUID NOT NULL,
+    "conversation_id"  UUID NOT NULL,
+    "channel"          VARCHAR(50) NOT NULL,
+    "purposes"         TEXT[] NOT NULL,
+    "policy_id"        UUID NOT NULL,
+    "policy_title"     VARCHAR(500) NOT NULL,
+    "policy_version"   INTEGER NOT NULL,
+    "legal_text_hash"  VARCHAR(64) NOT NULL,
+    "issued_at"        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    "expires_at"       TIMESTAMPTZ NOT NULL,
+    "resolved_at"      TIMESTAMPTZ,
+    "resolution"       VARCHAR(20),
+    "confirmation_message_id" VARCHAR(512),
+    CONSTRAINT "media_ai_consent_challenges_resolution" CHECK (
+        ("resolved_at" IS NULL AND "resolution" IS NULL)
+        OR ("resolved_at" IS NOT NULL AND "resolution" IN ('granted','declined','expired','superseded'))
+    )
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "uidx_media_ai_consent_challenge_pending"
+    ON "{{SCHEMA_NAME}}"."media_ai_consent_challenges" ("conversation_id")
+    WHERE "resolved_at" IS NULL;
+CREATE INDEX IF NOT EXISTS "idx_media_ai_consent_challenge_contact"
+    ON "{{SCHEMA_NAME}}"."media_ai_consent_challenges" ("contact_id", "issued_at" DESC);
 
 -- ---- Opt-Out Records ----
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."opt_out_records" (
@@ -793,14 +853,46 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."opt_out_records" (
     "review_notes" TEXT,
     "created_at"  TIMESTAMP DEFAULT NOW()
 );
-CREATE INDEX IF NOT EXISTS "idx_opt_out_records_phone" ON "{{SCHEMA_NAME}}"."opt_out_records" ("phone");
-CREATE INDEX IF NOT EXISTS "idx_opt_out_records_lead_id" ON "{{SCHEMA_NAME}}"."opt_out_records" ("lead_id");
-CREATE INDEX IF NOT EXISTS "idx_opt_out_records_status" ON "{{SCHEMA_NAME}}"."opt_out_records" ("status");
 ALTER TABLE "{{SCHEMA_NAME}}"."opt_out_records" ADD COLUMN IF NOT EXISTS "detected_from" VARCHAR(20) DEFAULT 'keyword';
 ALTER TABLE "{{SCHEMA_NAME}}"."opt_out_records" ADD COLUMN IF NOT EXISTS "status" VARCHAR(20) DEFAULT 'pending';
 ALTER TABLE "{{SCHEMA_NAME}}"."opt_out_records" ADD COLUMN IF NOT EXISTS "reviewed_by" UUID;
 ALTER TABLE "{{SCHEMA_NAME}}"."opt_out_records" ADD COLUMN IF NOT EXISTS "reviewed_at" TIMESTAMP;
 ALTER TABLE "{{SCHEMA_NAME}}"."opt_out_records" ADD COLUMN IF NOT EXISTS "review_notes" TEXT;
+CREATE INDEX IF NOT EXISTS "idx_opt_out_records_phone" ON "{{SCHEMA_NAME}}"."opt_out_records" ("phone");
+CREATE INDEX IF NOT EXISTS "idx_opt_out_records_lead_id" ON "{{SCHEMA_NAME}}"."opt_out_records" ("lead_id");
+CREATE INDEX IF NOT EXISTS "idx_opt_out_records_status" ON "{{SCHEMA_NAME}}"."opt_out_records" ("status");
+WITH ranked AS (
+    SELECT "id", ROW_NUMBER() OVER (
+        PARTITION BY "phone", "channel"
+        ORDER BY ("status" = 'confirmed') DESC, "created_at", "id"
+    ) AS position
+    FROM "{{SCHEMA_NAME}}"."opt_out_records"
+    WHERE "phone" IS NOT NULL AND "status" IN ('pending', 'confirmed')
+)
+UPDATE "{{SCHEMA_NAME}}"."opt_out_records" AS record
+SET "status" = 'superseded',
+    "review_notes" = COALESCE("review_notes", 'Duplicate request consolidated during migration')
+FROM ranked
+WHERE record."id" = ranked."id" AND ranked.position > 1;
+WITH ranked AS (
+    SELECT "id", ROW_NUMBER() OVER (
+        PARTITION BY "lead_id", "channel"
+        ORDER BY ("status" = 'confirmed') DESC, "created_at", "id"
+    ) AS position
+    FROM "{{SCHEMA_NAME}}"."opt_out_records"
+    WHERE "lead_id" IS NOT NULL AND "status" IN ('pending', 'confirmed')
+)
+UPDATE "{{SCHEMA_NAME}}"."opt_out_records" AS record
+SET "status" = 'superseded',
+    "review_notes" = COALESCE("review_notes", 'Duplicate request consolidated during migration')
+FROM ranked
+WHERE record."id" = ranked."id" AND ranked.position > 1;
+CREATE UNIQUE INDEX IF NOT EXISTS "uidx_opt_out_records_active_phone"
+    ON "{{SCHEMA_NAME}}"."opt_out_records" ("phone", "channel")
+    WHERE "phone" IS NOT NULL AND "status" IN ('pending', 'confirmed');
+CREATE UNIQUE INDEX IF NOT EXISTS "uidx_opt_out_records_active_lead"
+    ON "{{SCHEMA_NAME}}"."opt_out_records" ("lead_id", "channel")
+    WHERE "lead_id" IS NOT NULL AND "status" IN ('pending', 'confirmed');
 
 -- ---- Tags (controlled catalog per tenant) ----
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."tags" (
@@ -1216,10 +1308,13 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."automation_executions" (
     "status" VARCHAR(50) DEFAULT 'pending', -- pending, success, failed
     "started_at" TIMESTAMP DEFAULT NOW(),
     "finished_at" TIMESTAMP,
-    "result_json" JSONB DEFAULT '{}'
+    "result_json" JSONB DEFAULT '{}',
+    "event_key" TEXT
 );
+ALTER TABLE "{{SCHEMA_NAME}}"."automation_executions" ADD COLUMN IF NOT EXISTS "event_key" TEXT;
 CREATE INDEX IF NOT EXISTS "idx_automation_executions_rule_id" ON "{{SCHEMA_NAME}}"."automation_executions" ("rule_id");
 CREATE INDEX IF NOT EXISTS "idx_automation_executions_entity_type_entity_id" ON "{{SCHEMA_NAME}}"."automation_executions" ("entity_type", "entity_id");
+CREATE UNIQUE INDEX IF NOT EXISTS "uidx_automation_executions_event_key" ON "{{SCHEMA_NAME}}"."automation_executions" ("event_key") WHERE "event_key" IS NOT NULL;
 
 -- ---- Wait Jobs ----
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."wait_jobs" (
@@ -1771,6 +1866,10 @@ ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "cancellat
 ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "no_show_followed_up" BOOLEAN DEFAULT false;
 ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "completed_at" TIMESTAMP;
 ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "completed_by" VARCHAR(50) DEFAULT NULL;
+ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "completion_event_at" TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS "idx_appointments_completion_event_due"
+    ON "{{SCHEMA_NAME}}"."appointments" ("completed_at", "id")
+    WHERE "status" = 'completed' AND "completed_by" = 'auto' AND "completion_event_at" IS NULL;
 ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "rating" INTEGER;
 ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "rating_feedback" TEXT;
 ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "recurring_group_id" UUID;
@@ -1840,6 +1939,7 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."scheduled_reports" (
     "recipients" TEXT[] NOT NULL,
     "is_active" BOOLEAN DEFAULT true,
     "last_sent_at" TIMESTAMP,
+    "last_enqueued_at" TIMESTAMP,
     "created_at" TIMESTAMP DEFAULT NOW(),
     "updated_at" TIMESTAMP DEFAULT NOW()
 );
@@ -2137,6 +2237,7 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."property_bookings" (
     "cleaning_fee" DECIMAL(15,2) DEFAULT 0,
     "total_price" DECIMAL(15,2),
     "currency" VARCHAR(10) DEFAULT 'COP',
+    "language" VARCHAR(10) DEFAULT 'es',
     "status" VARCHAR(50) DEFAULT 'pending',
     "notes" TEXT,
     "metadata" JSONB DEFAULT '{}',
@@ -2428,6 +2529,16 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."pets" (
 );
 CREATE INDEX IF NOT EXISTS "idx_pets_contact" ON "{{SCHEMA_NAME}}"."pets" ("contact_id") WHERE "is_active" = true;
 CREATE INDEX IF NOT EXISTS "idx_pets_microchip" ON "{{SCHEMA_NAME}}"."pets" ("microchip_id") WHERE "microchip_id" IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."pet_command_receipts" (
+    command_key TEXT PRIMARY KEY,
+    contact_id UUID NOT NULL,
+    pet_id UUID NOT NULL,
+    command_kind TEXT NOT NULL CHECK(command_kind IN ('create','update')),
+    request_hash TEXT NOT NULL,
+    response_row JSONB NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."pet_vaccinations" (
     "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
@@ -3530,6 +3641,19 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."customer_memory_facts" (
     "last_seen_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS "idx_cmf_owner" ON "{{SCHEMA_NAME}}"."customer_memory_facts" ("owner_kind", "owner_id");
+ALTER TABLE "{{SCHEMA_NAME}}"."customer_memory_facts"
+    ADD COLUMN IF NOT EXISTS "fact_key" TEXT,
+    ADD COLUMN IF NOT EXISTS "fact_kind" VARCHAR(16) NOT NULL DEFAULT 'context',
+    ADD COLUMN IF NOT EXISTS "status" VARCHAR(16) NOT NULL DEFAULT 'active',
+    ADD COLUMN IF NOT EXISTS "source_contact_id" UUID,
+    ADD COLUMN IF NOT EXISTS "source_conversation_id" UUID,
+    ADD COLUMN IF NOT EXISTS "evidence_text" TEXT,
+    ADD COLUMN IF NOT EXISTS "valid_until" TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS "superseded_at" TIMESTAMPTZ;
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."customer_memory_erasure" (
+    "contact_id" UUID PRIMARY KEY,
+    "erased_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 
 -- ---- Saved reports (analytics) ----
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."saved_reports" (
@@ -3598,6 +3722,51 @@ CREATE INDEX IF NOT EXISTS idx_cqs_created ON "{{SCHEMA_NAME}}"."conversation_qu
 CREATE INDEX IF NOT EXISTS idx_cqs_agent_created ON "{{SCHEMA_NAME}}"."conversation_quality_scores"(agent_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_cqs_agent_version_conversation_created ON "{{SCHEMA_NAME}}"."conversation_quality_scores"(agent_id, agent_config_version, conversation_id, created_at DESC) WHERE agent_id IS NOT NULL;
 
+-- ---- Production QA revision, privacy and provenance ----
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."customer_memory_erasure" (contact_id UUID PRIMARY KEY, erased_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
+ALTER TABLE "{{SCHEMA_NAME}}"."conversations" ADD COLUMN IF NOT EXISTS resolution_type VARCHAR(50);
+ALTER TABLE "{{SCHEMA_NAME}}"."conversations" ADD COLUMN IF NOT EXISTS was_handed_off BOOLEAN DEFAULT false;
+ALTER TABLE "{{SCHEMA_NAME}}"."conversations" ADD COLUMN IF NOT EXISTS agent_persona_id UUID;
+ALTER TABLE "{{SCHEMA_NAME}}"."conversations" ADD COLUMN IF NOT EXISTS agent_config_version INTEGER;
+ALTER TABLE "{{SCHEMA_NAME}}"."conversations" ADD COLUMN IF NOT EXISTS agent_attribution_conflicted BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "{{SCHEMA_NAME}}"."conversations" ADD COLUMN IF NOT EXISTS qa_revision BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE "{{SCHEMA_NAME}}"."conversations" ADD COLUMN IF NOT EXISTS resolution_verification_source TEXT;
+ALTER TABLE "{{SCHEMA_NAME}}"."conversation_quality_scores" ADD COLUMN IF NOT EXISTS source_revision BIGINT;
+ALTER TABLE "{{SCHEMA_NAME}}"."conversation_quality_scores" ADD COLUMN IF NOT EXISTS source_message_ids UUID[];
+ALTER TABLE "{{SCHEMA_NAME}}"."conversation_quality_scores" ADD COLUMN IF NOT EXISTS transcript_hash TEXT;
+ALTER TABLE "{{SCHEMA_NAME}}"."conversation_quality_scores" ADD COLUMN IF NOT EXISTS coverage JSONB;
+ALTER TABLE "{{SCHEMA_NAME}}"."conversation_quality_scores" ADD COLUMN IF NOT EXISTS rubric_hash TEXT;
+ALTER TABLE "{{SCHEMA_NAME}}"."conversation_quality_scores" ADD COLUMN IF NOT EXISTS configuration_snapshot JSONB;
+ALTER TABLE "{{SCHEMA_NAME}}"."conversation_quality_scores" ADD COLUMN IF NOT EXISTS conversational_resolved BOOLEAN;
+ALTER TABLE "{{SCHEMA_NAME}}"."conversation_quality_scores" ADD COLUMN IF NOT EXISTS conversational_resolution_reason TEXT;
+ALTER TABLE "{{SCHEMA_NAME}}"."conversation_quality_scores" ADD COLUMN IF NOT EXISTS operational_outcome TEXT NOT NULL DEFAULT 'unknown';
+CREATE UNIQUE INDEX IF NOT EXISTS idx_cqs_revision_rubric ON "{{SCHEMA_NAME}}"."conversation_quality_scores"(conversation_id,source_revision,rubric_hash);
+CREATE OR REPLACE FUNCTION "{{SCHEMA_NAME}}".qa_conversation_revision() RETURNS trigger LANGUAGE plpgsql AS $qa$
+    BEGIN
+      IF ROW(NEW.status,NEW.resolution_type,NEW.was_handed_off,NEW.contact_id,NEW.agent_persona_id,
+             NEW.agent_config_version,NEW.agent_attribution_conflicted,NEW.metadata)
+         IS DISTINCT FROM ROW(OLD.status,OLD.resolution_type,OLD.was_handed_off,OLD.contact_id,OLD.agent_persona_id,
+             OLD.agent_config_version,OLD.agent_attribution_conflicted,OLD.metadata) THEN
+        NEW.qa_revision := OLD.qa_revision + 1;
+      END IF;
+      RETURN NEW;
+    END $qa$;
+CREATE OR REPLACE FUNCTION "{{SCHEMA_NAME}}".qa_message_revision() RETURNS trigger LANGUAGE plpgsql AS $qa$
+    BEGIN
+      IF TG_OP <> 'INSERT' AND OLD.direction IN ('inbound','outbound') THEN
+        EXECUTE format('UPDATE %I.conversations SET qa_revision=qa_revision+1 WHERE id=$1::uuid',TG_TABLE_SCHEMA) USING OLD.conversation_id;
+      END IF;
+      IF TG_OP <> 'DELETE' AND NEW.direction IN ('inbound','outbound')
+         AND (TG_OP='INSERT' OR COALESCE(OLD.direction,'') NOT IN ('inbound','outbound') OR NEW.conversation_id IS DISTINCT FROM OLD.conversation_id) THEN
+        EXECUTE format('UPDATE %I.conversations SET qa_revision=qa_revision+1 WHERE id=$1::uuid',TG_TABLE_SCHEMA) USING NEW.conversation_id;
+      END IF;
+      RETURN NULL;
+    END $qa$;
+CREATE OR REPLACE TRIGGER qa_conversation_revision BEFORE UPDATE ON "{{SCHEMA_NAME}}"."conversations"
+       FOR EACH ROW EXECUTE FUNCTION "{{SCHEMA_NAME}}".qa_conversation_revision();
+CREATE OR REPLACE TRIGGER qa_message_revision AFTER INSERT OR UPDATE OR DELETE ON "{{SCHEMA_NAME}}"."messages"
+       FOR EACH ROW EXECUTE FUNCTION "{{SCHEMA_NAME}}".qa_message_revision();
+
 -- ---- Durable proactive Agent Quality attention ----
 -- Snapshots contain fixed numeric/coded fields only. Signals never persist
 -- transcripts, prompts, judge prose, KB queries or conversation identifiers.
@@ -3623,6 +3792,9 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_quality_snapshots" (
 );
 CREATE INDEX IF NOT EXISTS idx_agent_quality_snapshots_latest
     ON "{{SCHEMA_NAME}}"."agent_quality_snapshots"(agent_id, agent_config_version, calculated_at DESC);
+
+ALTER TABLE "{{SCHEMA_NAME}}"."agent_quality_snapshots"
+    ADD COLUMN IF NOT EXISTS evidence_policy_version INTEGER NOT NULL DEFAULT 1;
 
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_quality_signals" (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -3674,6 +3846,8 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."simulation_runs" (
 );
 CREATE INDEX IF NOT EXISTS idx_simruns_created ON "{{SCHEMA_NAME}}"."simulation_runs"(created_at);
 CREATE INDEX IF NOT EXISTS idx_simruns_agent ON "{{SCHEMA_NAME}}"."simulation_runs"(agent_id);
+ALTER TABLE "{{SCHEMA_NAME}}"."simulation_runs" ADD COLUMN IF NOT EXISTS scenario_definitions JSONB;
+ALTER TABLE "{{SCHEMA_NAME}}"."simulation_runs" ADD COLUMN IF NOT EXISTS evaluation_snapshot JSONB;
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."eval_scenarios" (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     key TEXT UNIQUE NOT NULL,
@@ -3708,6 +3882,19 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."eval_runs" (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_eval_runs_agent ON "{{SCHEMA_NAME}}"."eval_runs" (agent_id);
+ALTER TABLE "{{SCHEMA_NAME}}"."eval_runs" ADD COLUMN IF NOT EXISTS agent_snapshot JSONB;
+ALTER TABLE "{{SCHEMA_NAME}}"."eval_runs" ADD COLUMN IF NOT EXISTS channel_type TEXT NOT NULL DEFAULT 'web_widget';
+ALTER TABLE "{{SCHEMA_NAME}}"."eval_runs" ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'completed';
+ALTER TABLE "{{SCHEMA_NAME}}"."eval_runs" ADD COLUMN IF NOT EXISTS error TEXT;
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."eval_autorun_requests" (
+    agent_id UUID PRIMARY KEY, revision UUID NOT NULL, agent_snapshot JSONB NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending', error TEXT, scenarios JSONB,
+    results JSONB NOT NULL DEFAULT '[]'::jsonb, requested_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."eval_autorun_budget" (
+    budget_day DATE PRIMARY KEY, units_used INTEGER NOT NULL DEFAULT 0
+);
 
 -- ---- Google Business Profile reviews ----
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."gbp_reviews" (
@@ -3724,6 +3911,30 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."gbp_reviews" (
     synced_at TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_gbp_created ON "{{SCHEMA_NAME}}"."gbp_reviews"(create_time);
+
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."gbp_reply_effects" (
+    "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "event_key" TEXT UNIQUE NOT NULL,
+    "review_id" UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."gbp_reviews"("id") ON DELETE CASCADE,
+    "desired_comment" TEXT NOT NULL,
+    "request_fingerprint" VARCHAR(64) NOT NULL,
+    "state" VARCHAR(24) NOT NULL DEFAULT 'pending'
+        CHECK ("state" IN ('pending','sending','accepted','rejected','unknown','failed')),
+    "attempts" INTEGER NOT NULL DEFAULT 0 CHECK ("attempts" >= 0),
+    "lease_token" UUID,
+    "lease_expires_at" TIMESTAMPTZ,
+    "provider_reference" TEXT,
+    "error_code" TEXT,
+    "started_at" TIMESTAMPTZ,
+    "completed_at" TIMESTAMPTZ,
+    "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    "updated_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CHECK (("state"='sending' AND "lease_token" IS NOT NULL AND "lease_expires_at" IS NOT NULL)
+        OR ("state"<>'sending' AND "lease_token" IS NULL AND "lease_expires_at" IS NULL))
+);
+CREATE INDEX IF NOT EXISTS "idx_gbp_reply_effects_due"
+    ON "{{SCHEMA_NAME}}"."gbp_reply_effects"("state", "created_at")
+    WHERE "state" IN ('pending','unknown','failed');
 
 -- ---- Vertical integrations cache ----
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."vi_items" (
@@ -4560,3 +4771,1286 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."integration_reconciliations" (
 );
 CREATE INDEX IF NOT EXISTS "idx_integration_reconciliations_provider"
     ON "{{SCHEMA_NAME}}"."integration_reconciliations" ("provider", "checked_at" DESC);
+
+-- Reviewed configuration commands: immutable diff and audit share the agent commit.
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_config_proposals" (
+    "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "agent_id" UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."agent_personas"("id"),
+    "agent_name" TEXT NOT NULL,
+    "requested_by" UUID NOT NULL,
+    "request_key" VARCHAR(80) NOT NULL,
+    "expected_version" INTEGER NOT NULL,
+    "before_hash" VARCHAR(64) NOT NULL,
+    "target_scope" TEXT NOT NULL DEFAULT 'legacy_operational',
+    "expected_draft_revision" UUID,
+    "base_operational_hash" TEXT,
+    "applied_draft_revision" UUID,
+    "digest" VARCHAR(64) NOT NULL,
+    "changes" JSONB NOT NULL,
+    "status" VARCHAR(20) NOT NULL DEFAULT 'proposed' CHECK ("status" IN ('proposed', 'applied', 'expired')),
+    "expires_at" TIMESTAMPTZ NOT NULL,
+    "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    "applied_at" TIMESTAMPTZ,
+    "applied_by" UUID,
+    "applied_version" INTEGER,
+    UNIQUE ("requested_by", "request_key")
+);
+
+-- Reviewed content commands: Assist may create objects the tenant owns (a FAQ,
+-- a legal text, a course, a bookable service) under the same review ledger as a
+-- configuration change. Separate from `agent_config_proposals` because that
+-- table's `agent_id` is NOT NULL and references an agent persona, and none of
+-- these objects belongs to an agent.
+-- `created_object_id` is stamped AFTER the claim: the create runs through the
+-- module that owns the table and cannot join this ledger's transaction, so a
+-- row claimed with no object id means the effect never completed — never that a
+-- second one is waiting to be created.
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_content_proposals" (
+    "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "operation" TEXT NOT NULL,
+    "requested_by" UUID NOT NULL,
+    "request_key" VARCHAR(80) NOT NULL,
+    "digest" VARCHAR(64) NOT NULL,
+    "input" JSONB NOT NULL,
+    "status" VARCHAR(20) NOT NULL DEFAULT 'proposed' CHECK ("status" IN ('proposed', 'applied', 'expired')),
+    "expires_at" TIMESTAMPTZ NOT NULL,
+    "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    "applied_at" TIMESTAMPTZ,
+    "applied_by" UUID,
+    "created_object_id" UUID,
+    UNIQUE ("requested_by", "request_key")
+);
+CREATE INDEX IF NOT EXISTS "idx_agent_content_proposals_status"
+    ON "{{SCHEMA_NAME}}"."agent_content_proposals" ("status", "expires_at");
+-- BEGIN LEARNING TABLES
+-- Curated learning is opt-in. Sources are split before excerpts; published
+-- snapshots contain only approved examples and an independent frozen holdout.
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."learning_sources" (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(), agent_id UUID NOT NULL,
+        source_kind VARCHAR(16) NOT NULL CHECK (source_kind IN ('inbox','file')),
+        source_key CHAR(64) NOT NULL, group_key CHAR(64) NOT NULL,
+        source_contact_id UUID, source_conversation_id UUID,
+        split VARCHAR(12) NOT NULL CHECK (split IN ('train','holdout')),
+        channel VARCHAR(40) NOT NULL, language VARCHAR(2) NOT NULL,
+        transcript JSONB NOT NULL, content_hash CHAR(64) NOT NULL,
+        status VARCHAR(16) NOT NULL DEFAULT 'active' CHECK (status IN ('active','withdrawn')),
+        created_by VARCHAR(100) NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (agent_id, source_kind, source_key));
+
+CREATE INDEX IF NOT EXISTS idx_learning_sources_group ON "{{SCHEMA_NAME}}"."learning_sources"(group_key, split);
+
+CREATE INDEX IF NOT EXISTS idx_learning_sources_contact ON "{{SCHEMA_NAME}}"."learning_sources"(source_contact_id);
+ALTER TABLE "{{SCHEMA_NAME}}"."learning_sources" ADD COLUMN IF NOT EXISTS source_evidence JSONB;
+
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."learning_examples" (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(), source_id UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."learning_sources"(id) ON DELETE CASCADE,
+        agent_id UUID NOT NULL, kind VARCHAR(24) NOT NULL DEFAULT 'brand_style'
+            CHECK (kind IN ('brand_style','operational_pattern','business_fact','customer_memory','regression')),
+        intent VARCHAR(40) NOT NULL, episode JSONB NOT NULL, content_hash CHAR(64) NOT NULL,
+        response_pattern TEXT, rationale TEXT, facts_required JSONB NOT NULL DEFAULT '[]'::jsonb,
+        analysis JSONB, embedding vector(1536), evidence_refs UUID[] NOT NULL DEFAULT '{}'::uuid[],
+        dedup_status VARCHAR(16) NOT NULL DEFAULT 'pending' CHECK (dedup_status IN ('pending','clear','conflict')),
+        status VARCHAR(16) NOT NULL DEFAULT 'pending'
+            CHECK (status IN ('pending','analyzing','analyzed','failed','flagged','approved','rejected','retired')),
+        revision INTEGER NOT NULL DEFAULT 1, reviewed_by VARCHAR(100), reviewed_at TIMESTAMPTZ, review_note TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(source_id, content_hash));
+
+CREATE INDEX IF NOT EXISTS idx_learning_examples_agent ON "{{SCHEMA_NAME}}"."learning_examples"(agent_id, status, intent);
+
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."learning_reviews" (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(), example_id UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."learning_examples"(id) ON DELETE CASCADE,
+        revision INTEGER NOT NULL, decision VARCHAR(16) NOT NULL, snapshot JSONB NOT NULL,
+        reviewer_id VARCHAR(100) NOT NULL, note TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
+
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."learning_releases" (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(), agent_id UUID NOT NULL,
+        status VARCHAR(16) NOT NULL DEFAULT 'candidate' CHECK (status IN ('candidate','published','retired')),
+        example_ids UUID[] NOT NULL, snapshot JSONB NOT NULL, snapshot_hash CHAR(64) NOT NULL,
+        baseline_release_id UUID, traffic_percent INTEGER NOT NULL DEFAULT 100 CHECK (traffic_percent BETWEEN 0 AND 100),
+        evaluation_status VARCHAR(16) NOT NULL DEFAULT 'pending' CHECK (evaluation_status IN ('pending','running','passed','failed')),
+        evaluation JSONB, created_by VARCHAR(100) NOT NULL, published_by VARCHAR(100), published_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
+
+CREATE INDEX IF NOT EXISTS idx_learning_releases_active ON "{{SCHEMA_NAME}}"."learning_releases"(agent_id, status, created_at DESC);
+ALTER TABLE "{{SCHEMA_NAME}}"."learning_releases" ADD COLUMN IF NOT EXISTS evaluation_namespaces JSONB;
+-- Fuera del CREATE porque es el tenant cuya tabla YA existe el que las
+-- necesita: sin ellas el rollback falla con 42703.
+ALTER TABLE "{{SCHEMA_NAME}}"."learning_releases" ADD COLUMN IF NOT EXISTS retired_by VARCHAR(100);
+ALTER TABLE "{{SCHEMA_NAME}}"."learning_releases" ADD COLUMN IF NOT EXISTS retired_at TIMESTAMPTZ;
+-- Cota de reloj del intento en curso: la sella la base al reclamar el intento y
+-- no se renueva. Vive en la fila de la release porque es la fila que toda
+-- escritura ya bloquea, así que el vencimiento lo decide la misma autoridad y
+-- la misma transacción que decide si este worker sigue siendo el dueño.
+ALTER TABLE "{{SCHEMA_NAME}}"."learning_releases" ADD COLUMN IF NOT EXISTS evaluation_deadline_at TIMESTAMPTZ;
+
+-- Lo que un intento puede gastar y lo que gastó. A propósito NO es un contador
+-- dentro de `learning_releases.evaluation`: ese blob se reemplaza entero al
+-- finalizar, así que las corridas más caras —las que se abandonan a mitad— son
+-- justo las que un blob perdería. `units_max` queda congelado por intento para
+-- que subir el techo del entorno no agrande una corrida ya en vuelo, y
+-- `outcome` es el estado que lee un operador para saber por qué una release
+-- sigue siendo candidata: NULL mientras corre, después una sola palabra.
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."learning_evaluation_budget" (
+        attempt_id UUID PRIMARY KEY, release_id UUID NOT NULL, agent_id UUID NOT NULL,
+        budget_day DATE NOT NULL DEFAULT CURRENT_DATE,
+        units_used INTEGER NOT NULL DEFAULT 0 CHECK (units_used >= 0),
+        units_max INTEGER NOT NULL CHECK (units_max > 0),
+        outcome VARCHAR(40) CHECK (outcome IN ('evaluated','failed','budget_exhausted','deadline_exceeded')),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
+
+CREATE INDEX IF NOT EXISTS idx_learning_evaluation_budget_release ON "{{SCHEMA_NAME}}"."learning_evaluation_budget"(release_id, created_at DESC);
+-- END LEARNING TABLES
+
+-- Durable approved-command delivery stores references and outcomes only.
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."tool_approval_effects" (
+    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    ticket_id UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."tool_approval_tickets"(id) ON DELETE CASCADE,
+    kind VARCHAR(30) NOT NULL CHECK (kind IN ('media', 'handoff', 'payment_link')),
+    item_index INTEGER NOT NULL CHECK (item_index >= 0),
+    state VARCHAR(40) NOT NULL DEFAULT 'pending' CHECK (state IN ('pending', 'queued', 'processing', 'sent', 'stored', 'completed', 'failed', 'suppressed', 'reconciliation_required')),
+    attempts INTEGER NOT NULL DEFAULT 0,
+    lease_token UUID,
+    lease_expires_at TIMESTAMPTZ,
+    next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    error_code VARCHAR(100),
+    completed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(ticket_id, kind, item_index)
+);
+
+-- BEGIN KNOWLEDGE CONFLICT REVIEW
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."knowledge_conflict_cases" (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(), pair_key VARCHAR(64) NOT NULL UNIQUE,
+        source_a JSONB NOT NULL, source_b JSONB NOT NULL,
+        quote_a TEXT NOT NULL, quote_b TEXT NOT NULL, detail TEXT NOT NULL, suggestion TEXT,
+        status VARCHAR(20) NOT NULL DEFAULT 'open', revision INTEGER NOT NULL DEFAULT 1,
+        document_a UUID REFERENCES "{{SCHEMA_NAME}}"."knowledge_documents"(id) ON DELETE CASCADE,
+        document_b UUID REFERENCES "{{SCHEMA_NAME}}"."knowledge_documents"(id) ON DELETE CASCADE,
+        faq_a UUID REFERENCES "{{SCHEMA_NAME}}"."faqs"(id) ON DELETE CASCADE, faq_b UUID REFERENCES "{{SCHEMA_NAME}}"."faqs"(id) ON DELETE CASCADE,
+        policy_a UUID REFERENCES "{{SCHEMA_NAME}}"."policies"(id) ON DELETE CASCADE, policy_b UUID REFERENCES "{{SCHEMA_NAME}}"."policies"(id) ON DELETE CASCADE,
+        business_a UUID REFERENCES "{{SCHEMA_NAME}}"."companies"(id) ON DELETE CASCADE, business_b UUID REFERENCES "{{SCHEMA_NAME}}"."companies"(id) ON DELETE CASCADE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
+
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."knowledge_conflict_decisions" (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(), case_id UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."knowledge_conflict_cases"(id) ON DELETE CASCADE,
+        revision INTEGER NOT NULL, decision VARCHAR(30) NOT NULL, reason TEXT NOT NULL, actor_id UUID NOT NULL,
+        source_a_hash VARCHAR(64) NOT NULL, source_b_hash VARCHAR(64) NOT NULL, scope JSONB NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), UNIQUE(case_id,revision));
+
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."knowledge_conflict_scans" (
+        id UUID PRIMARY KEY, report JSONB NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
+
+CREATE INDEX IF NOT EXISTS idx_knowledge_conflict_status ON "{{SCHEMA_NAME}}"."knowledge_conflict_cases"(status,created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_knowledge_conflict_decisions ON "{{SCHEMA_NAME}}"."knowledge_conflict_decisions"(case_id,revision DESC);
+-- END KNOWLEDGE CONFLICT REVIEW
+
+DO $widget_state$ BEGIN
+    PERFORM pg_advisory_xact_lock(hashtextextended('{{SCHEMA_NAME}}:approval-effect-state-migration',0));
+    IF NOT EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid='"{{SCHEMA_NAME}}".tool_approval_effects'::regclass
+        AND conname='tool_approval_effects_state_check' AND pg_get_constraintdef(oid) LIKE '%stored%') THEN
+        ALTER TABLE "{{SCHEMA_NAME}}".tool_approval_effects DROP CONSTRAINT IF EXISTS tool_approval_effects_state_check;
+        ALTER TABLE "{{SCHEMA_NAME}}".tool_approval_effects ADD CONSTRAINT tool_approval_effects_state_check
+            CHECK(state IN ('pending','queued','processing','sent','stored','completed','failed','suppressed','reconciliation_required'));
+    END IF;
+END $widget_state$;
+
+-- BEGIN QUALITY SAMPLING
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."quality_sampling_runs" (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(), sample_day DATE NOT NULL UNIQUE,
+        window_start TIMESTAMPTZ NOT NULL, window_end TIMESTAMPTZ NOT NULL,
+        eligible_count BIGINT NOT NULL CHECK (eligible_count >= 0),
+        selected_count INTEGER NOT NULL CHECK (selected_count >= 0),
+        requested_fraction NUMERIC NOT NULL, sample_cap INTEGER NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."quality_sampling_items" (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(), run_id UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."quality_sampling_runs"(id) ON DELETE CASCADE,
+        conversation_id UUID REFERENCES "{{SCHEMA_NAME}}"."conversations"(id) ON DELETE SET NULL,
+        contact_id UUID REFERENCES "{{SCHEMA_NAME}}"."contacts"(id) ON DELETE SET NULL,
+        state VARCHAR(20) NOT NULL DEFAULT 'selected' CHECK (state IN ('selected','queued','failed','erased')),
+        attempts INTEGER NOT NULL DEFAULT 0, next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        lease_token UUID, lease_expires_at TIMESTAMPTZ, last_error_code VARCHAR(60),
+        queued_at TIMESTAMPTZ, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(run_id,conversation_id));
+CREATE INDEX IF NOT EXISTS idx_quality_sampling_pending ON "{{SCHEMA_NAME}}"."quality_sampling_items"(state,next_attempt_at);
+-- END QUALITY SAMPLING
+
+-- Operational notification intent and delivery evidence
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."operational_notice_outbox" (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    event_key VARCHAR(200) NOT NULL UNIQUE,
+    kind VARCHAR(60) NOT NULL CHECK(kind IN ('appointment.payment_confirmed','appointment.payment_review','appointment.operator_slack','analytics.threshold_alert','analytics.scheduled_report','gym.waitlist_promoted','education.waitlist_promoted','education.waitlist_review','home_service.emergency','tour.booking_confirmed','property.booking_confirmed','order.confirmed','handoff.sla_escalated','push.domain_event')),
+    entity_id UUID NOT NULL,
+    contact_id UUID,
+    conversation_id UUID,
+    recipient_user_id UUID,
+    recipient_email TEXT,
+    payload JSONB,
+    state VARCHAR(40) NOT NULL DEFAULT 'pending' CHECK(state IN ('pending','queued','processing','sent','stored','failed','suppressed','reconciliation_required')),
+    route VARCHAR(30),
+    provider_reference VARCHAR(512),
+    attempts INTEGER NOT NULL DEFAULT 0,
+    lease_token UUID,
+    lease_expires_at TIMESTAMPTZ,
+    started_at TIMESTAMPTZ,
+    next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    error_code VARCHAR(100),
+    completed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_operational_notice_due ON "{{SCHEMA_NAME}}"."operational_notice_outbox"(state,next_attempt_at) WHERE state IN ('pending','queued','failed');
+
+-- BEGIN AGENT CONFIGURATION REVISIONS
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_configuration_revisions" (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    agent_id UUID NOT NULL,
+    base_operational_version INTEGER NOT NULL CHECK(base_operational_version >= 0),
+    base_operational_hash VARCHAR(64) NOT NULL,
+    body JSONB NOT NULL,
+    body_hash VARCHAR(64) NOT NULL,
+    created_by UUID NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(agent_id,id)
+);
+CREATE INDEX IF NOT EXISTS idx_agent_configuration_revision_history
+    ON "{{SCHEMA_NAME}}"."agent_configuration_revisions"(agent_id,created_at DESC,id);
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_configuration_drafts" (
+    agent_id UUID PRIMARY KEY,
+    revision_id UUID NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    FOREIGN KEY(agent_id,revision_id) REFERENCES "{{SCHEMA_NAME}}"."agent_configuration_revisions"(agent_id,id)
+);
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_configuration_commands" (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    requested_by UUID NOT NULL,
+    request_key VARCHAR(100) NOT NULL,
+    request_hash VARCHAR(64) NOT NULL,
+    revision_id UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."agent_configuration_revisions"(id),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(requested_by,request_key)
+);
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_configuration_draft_discards" (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    agent_id UUID NOT NULL,revision_id UUID NOT NULL,requested_by UUID NOT NULL,
+    request_key VARCHAR(100) NOT NULL,request_hash VARCHAR(64) NOT NULL,
+    operational_version INTEGER NOT NULL,operational_hash VARCHAR(64) NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),UNIQUE(requested_by,request_key)
+);
+-- END AGENT CONFIGURATION REVISIONS
+
+-- BEGIN QUALITY REGRESSION AND MISSION EVIDENCE
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."quality_regression_cases" (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(), agent_id UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."agent_personas"(id) ON DELETE CASCADE,
+        source_contact_id UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."contacts"(id) ON DELETE CASCADE,
+        source_conversation_id UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."conversations"(id) ON DELETE CASCADE,
+        source_kind TEXT NOT NULL CHECK(source_kind IN ('quality_score','tool_ledger')),
+        source_evidence_id UUID NOT NULL, source_message_ids UUID[] NOT NULL,
+        source_revision BIGINT NOT NULL, source_hash TEXT NOT NULL,
+        source_agent_version INTEGER, source_configuration_hash TEXT,
+        state TEXT NOT NULL DEFAULT 'proposed' CHECK(state IN ('proposed','approved','rejected','retired')),
+        revision INTEGER NOT NULL DEFAULT 1, scope JSONB NOT NULL,
+        proposal JSONB NOT NULL, approved_scenario JSONB, approved_hash TEXT,
+        created_by UUID NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(agent_id,source_kind,source_evidence_id,source_hash));
+
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."quality_regression_revisions" (
+        case_id UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."quality_regression_cases"(id) ON DELETE CASCADE,
+        revision INTEGER NOT NULL, proposal JSONB NOT NULL, scope JSONB NOT NULL,
+        created_by UUID NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),PRIMARY KEY(case_id,revision));
+
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."quality_regression_reviews" (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),case_id UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."quality_regression_cases"(id) ON DELETE CASCADE,
+        revision INTEGER NOT NULL,decision TEXT NOT NULL CHECK(decision IN ('approved','rejected','retired')),
+        checks JSONB NOT NULL,note TEXT NOT NULL,reviewed_by UUID NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
+
+CREATE INDEX IF NOT EXISTS idx_quality_regression_source ON "{{SCHEMA_NAME}}"."quality_regression_cases"(source_conversation_id,source_revision);
+
+CREATE INDEX IF NOT EXISTS idx_quality_regression_agent ON "{{SCHEMA_NAME}}"."quality_regression_cases"(agent_id,state,updated_at);
+
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."customer_memory_erasure"(contact_id UUID PRIMARY KEY,erased_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
+
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_mission_turns" (
+        message_id UUID PRIMARY KEY REFERENCES "{{SCHEMA_NAME}}"."messages"(id) ON DELETE CASCADE,
+        conversation_id UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."conversations"(id) ON DELETE CASCADE,
+        contact_id UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."contacts"(id) ON DELETE CASCADE,agent_id UUID REFERENCES "{{SCHEMA_NAME}}"."agent_personas"(id) ON DELETE SET NULL,
+        agent_version INTEGER,config_hash TEXT NOT NULL,profile_id TEXT,contract_version INTEGER,language TEXT,channel_type TEXT NOT NULL,
+        execution_mode TEXT NOT NULL,transcript_revision BIGINT NOT NULL,source_message_hash TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'started',created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
+
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_mission_instances" (
+        id UUID PRIMARY KEY,conversation_id UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."conversations"(id) ON DELETE CASCADE,
+        agent_id UUID REFERENCES "{{SCHEMA_NAME}}"."agent_personas"(id) ON DELETE SET NULL,engine TEXT NOT NULL,mission_key TEXT,attempt_key TEXT NOT NULL,
+        definition_id UUID,definition_version INTEGER,workflow_state TEXT NOT NULL DEFAULT 'active',
+        operational_outcome TEXT NOT NULL DEFAULT 'unknown',created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(conversation_id,engine,attempt_key));
+
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_mission_steps" (
+        message_id UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."agent_mission_turns"(message_id) ON DELETE CASCADE,ordinal INTEGER NOT NULL,
+        instance_id UUID REFERENCES "{{SCHEMA_NAME}}"."agent_mission_instances"(id) ON DELETE CASCADE,kind TEXT NOT NULL,mission_key TEXT,
+        basis TEXT NOT NULL,state TEXT,tool_name TEXT,tool_status TEXT,definition_id UUID,definition_version INTEGER,
+        difficulty TEXT NOT NULL DEFAULT 'unknown',difficulty_rubric TEXT NOT NULL DEFAULT 'observed_trajectory_v1',
+        operational_outcome TEXT NOT NULL DEFAULT 'unknown',created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),PRIMARY KEY(message_id,ordinal));
+
+CREATE INDEX IF NOT EXISTS idx_agent_mission_turn_agent ON "{{SCHEMA_NAME}}"."agent_mission_turns"(agent_id,created_at);
+
+CREATE INDEX IF NOT EXISTS idx_agent_mission_instances_conversation ON "{{SCHEMA_NAME}}"."agent_mission_instances"(conversation_id,engine,workflow_state);
+
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."eval_runs" (
+ id UUID PRIMARY KEY DEFAULT gen_random_uuid(),agent_id UUID,k INTEGER NOT NULL DEFAULT 1,threshold NUMERIC,passed BOOLEAN,avg_score NUMERIC,
+ eval_activable BOOLEAN NOT NULL DEFAULT false,results JSONB NOT NULL DEFAULT '[]'::jsonb,trigger TEXT,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
+ALTER TABLE "{{SCHEMA_NAME}}"."eval_runs" ADD COLUMN IF NOT EXISTS agent_snapshot JSONB;
+ALTER TABLE "{{SCHEMA_NAME}}"."eval_runs" ADD COLUMN IF NOT EXISTS channel_type TEXT NOT NULL DEFAULT 'web_widget';
+ALTER TABLE "{{SCHEMA_NAME}}"."eval_runs" ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'completed';
+ALTER TABLE "{{SCHEMA_NAME}}"."eval_runs" ADD COLUMN IF NOT EXISTS error TEXT;
+ALTER TABLE "{{SCHEMA_NAME}}"."eval_runs" ADD COLUMN IF NOT EXISTS regression_case_ids UUID[] NOT NULL DEFAULT '{}'::uuid[];
+ALTER TABLE "{{SCHEMA_NAME}}"."eval_runs" ADD COLUMN IF NOT EXISTS release_evidence JSONB;
+ALTER TABLE "{{SCHEMA_NAME}}"."eval_runs" ADD COLUMN IF NOT EXISTS release_readiness JSONB;
+ALTER TABLE "{{SCHEMA_NAME}}"."eval_autorun_requests" ADD COLUMN IF NOT EXISTS regression_case_ids UUID[] NOT NULL DEFAULT '{}'::uuid[];
+-- END QUALITY REGRESSION AND MISSION EVIDENCE
+
+-- BEGIN CATALOG ORDER INTEGRITY
+ALTER TABLE "{{SCHEMA_NAME}}"."orders"
+    ADD COLUMN IF NOT EXISTS "version" INTEGER NOT NULL DEFAULT 1,
+    ADD COLUMN IF NOT EXISTS "idempotency_key" VARCHAR(200),
+    ADD COLUMN IF NOT EXISTS "request_hash" CHAR(64),
+    ADD COLUMN IF NOT EXISTS "catalog_terms" JSONB;
+CREATE UNIQUE INDEX IF NOT EXISTS uidx_catalog_order_request ON "{{SCHEMA_NAME}}"."orders"("idempotency_key") WHERE "idempotency_key" IS NOT NULL;
+-- NULL is legacy/unknown; zero proves that this line did not deduct inventory.
+ALTER TABLE "{{SCHEMA_NAME}}"."order_items" ADD COLUMN IF NOT EXISTS "stock_deducted" INTEGER;
+ALTER TABLE "{{SCHEMA_NAME}}"."stock_movements"
+    ADD COLUMN IF NOT EXISTS "order_id" UUID,
+    ADD COLUMN IF NOT EXISTS "order_item_id" UUID;
+CREATE UNIQUE INDEX IF NOT EXISTS uidx_catalog_stock_movement ON "{{SCHEMA_NAME}}"."stock_movements"("order_item_id","type") WHERE "order_item_id" IS NOT NULL;
+-- END CATALOG ORDER INTEGRITY
+
+-- BEGIN AGENT RELEASE CANDIDATES
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_release_candidates" (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),agent_id UUID NOT NULL,configuration_revision_id UUID NOT NULL,
+    agent_snapshot JSONB,scenarios JSONB NOT NULL DEFAULT '[]'::jsonb,scenario_hash VARCHAR(64) NOT NULL,
+    channels TEXT[] NOT NULL,regression_case_ids UUID[] NOT NULL DEFAULT '{}'::uuid[],
+    status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','evaluating','evaluated','approved','rejected','invalidated')),
+    version INTEGER NOT NULL DEFAULT 1,requested_by UUID NOT NULL,request_key VARCHAR(100) NOT NULL,request_hash VARCHAR(64) NOT NULL,
+    error TEXT,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(requested_by,request_key),UNIQUE(id,agent_id)
+);
+CREATE INDEX IF NOT EXISTS idx_agent_release_candidates_agent ON "{{SCHEMA_NAME}}"."agent_release_candidates"(agent_id,created_at DESC);
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_release_evaluations" (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),candidate_id UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."agent_release_candidates"(id) ON DELETE CASCADE,
+    channel_type TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending'
+        CHECK(status IN ('pending','running','completed','failed','budget_deferred','invalidated')),
+    results JSONB NOT NULL DEFAULT '[]'::jsonb,evidence JSONB,run_id UUID,error TEXT,
+    lease_token UUID,lease_until TIMESTAMPTZ,attempts INTEGER NOT NULL DEFAULT 0,
+    next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),UNIQUE(candidate_id,channel_type)
+);
+CREATE INDEX IF NOT EXISTS idx_agent_release_evaluations_pending ON "{{SCHEMA_NAME}}"."agent_release_evaluations"(status,next_attempt_at);
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_release_reviews" (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),candidate_id UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."agent_release_candidates"(id) ON DELETE CASCADE,
+    reviewer_id UUID NOT NULL,request_key VARCHAR(100) NOT NULL,request_hash VARCHAR(64) NOT NULL,
+    evidence_hash VARCHAR(64) NOT NULL,decision TEXT NOT NULL CHECK(decision IN ('approve','reject')),
+    checks JSONB NOT NULL,sample_hashes TEXT[] NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),UNIQUE(reviewer_id,request_key)
+);
+-- END AGENT RELEASE CANDIDATES
+
+-- BEGIN AGENT PUBLICATION HISTORY
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_publication_events" (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),agent_id UUID NOT NULL,
+    kind TEXT NOT NULL CHECK(kind IN ('publish','rollback')),candidate_id UUID,
+    rollback_of UUID REFERENCES "{{SCHEMA_NAME}}"."agent_publication_events"(id),
+    base_version INTEGER NOT NULL CHECK(base_version>0),published_version INTEGER NOT NULL,
+    before_body JSONB NOT NULL,after_body JSONB NOT NULL,before_hash TEXT NOT NULL,after_hash TEXT NOT NULL,evidence_hash TEXT,
+    requested_by UUID NOT NULL,request_key TEXT NOT NULL,request_hash TEXT NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(requested_by,request_key),UNIQUE(agent_id,published_version),UNIQUE(agent_id,id),
+    CHECK(published_version=base_version+1),
+    CHECK((kind='publish' AND candidate_id IS NOT NULL AND evidence_hash IS NOT NULL AND rollback_of IS NULL)
+        OR (kind='rollback' AND candidate_id IS NULL AND evidence_hash IS NULL AND rollback_of IS NOT NULL))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_publication_candidate ON "{{SCHEMA_NAME}}"."agent_publication_events"(candidate_id) WHERE candidate_id IS NOT NULL;
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_publication_heads" (
+    agent_id UUID PRIMARY KEY,event_id UUID NOT NULL,
+    FOREIGN KEY(agent_id,event_id) REFERENCES "{{SCHEMA_NAME}}"."agent_publication_events"(agent_id,id)
+);
+-- END AGENT PUBLICATION HISTORY
+
+-- BEGIN OPERATIONAL NOTICE REVIEW
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."operational_notice_outbox" (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    event_key VARCHAR(200) NOT NULL UNIQUE,
+    kind VARCHAR(60) NOT NULL CHECK(kind IN ('appointment.payment_confirmed','appointment.payment_review','appointment.operator_slack','analytics.threshold_alert','analytics.scheduled_report','gym.waitlist_promoted','education.waitlist_promoted','education.waitlist_review','home_service.emergency','tour.booking_confirmed','property.booking_confirmed','order.confirmed','handoff.sla_escalated','push.domain_event')),
+    entity_id UUID NOT NULL,
+    contact_id UUID,
+    conversation_id UUID,
+    recipient_user_id UUID,
+    recipient_email TEXT,
+    payload JSONB,
+    state VARCHAR(40) NOT NULL DEFAULT 'pending' CHECK(state IN ('pending','queued','processing','sent','stored','failed','suppressed','reconciliation_required')),
+    route VARCHAR(30),
+    provider_reference VARCHAR(512),
+    attempts INTEGER NOT NULL DEFAULT 0,
+    lease_token UUID,
+    lease_expires_at TIMESTAMPTZ,
+    started_at TIMESTAMPTZ,
+    next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    error_code VARCHAR(100),
+    completed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+ALTER TABLE "{{SCHEMA_NAME}}"."operational_notice_outbox" ADD COLUMN IF NOT EXISTS review_revision INTEGER NOT NULL DEFAULT 0;
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."operational_notice_reviews" (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(), notice_id UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."operational_notice_outbox"(id) ON DELETE CASCADE,
+    actor_id UUID NOT NULL, actor_role VARCHAR(40) NOT NULL,
+    action VARCHAR(20) NOT NULL CHECK(action IN ('observe','verify','suppress')),
+    idempotency_key UUID NOT NULL, request_hash CHAR(64) NOT NULL, expected_revision CHAR(32) NOT NULL,
+    reason TEXT NOT NULL, human_reference TEXT, prior_state VARCHAR(40) NOT NULL, resulting_state VARCHAR(40) NOT NULL,
+    evidence JSONB NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(notice_id,idempotency_key)
+);
+-- END OPERATIONAL NOTICE REVIEW
+
+-- BEGIN WIDGET AGENT REPLY PROVENANCE
+-- No cascading contact/message FK: redaction preserves the inbound dedup receipt.
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."widget_agent_replies" (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    conversation_id UUID, contact_id UUID, inbound_message_id UUID NOT NULL UNIQUE,
+    channel_account_id TEXT, operational_scope JSONB NOT NULL DEFAULT '{}'::jsonb,
+    learning_footprint JSONB, message_id UUID NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('stored','redacted')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CHECK(status='redacted' OR (conversation_id IS NOT NULL AND contact_id IS NOT NULL AND channel_account_id IS NOT NULL))
+);
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."widget_agent_reply_sources" (
+    reply_id UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."widget_agent_replies"(id) ON DELETE CASCADE,
+    source_id UUID NOT NULL, source_contact_id UUID,
+    PRIMARY KEY(reply_id,source_id)
+);
+CREATE INDEX IF NOT EXISTS idx_widget_agent_replies_contact ON "{{SCHEMA_NAME}}"."widget_agent_replies"(contact_id) WHERE status='stored';
+CREATE INDEX IF NOT EXISTS idx_widget_agent_replies_conversation ON "{{SCHEMA_NAME}}"."widget_agent_replies"(conversation_id) WHERE status='stored';
+CREATE INDEX IF NOT EXISTS idx_widget_agent_reply_sources_source ON "{{SCHEMA_NAME}}"."widget_agent_reply_sources"(source_id,reply_id);
+CREATE INDEX IF NOT EXISTS idx_widget_agent_reply_sources_contact ON "{{SCHEMA_NAME}}"."widget_agent_reply_sources"(source_contact_id,reply_id);
+-- END WIDGET AGENT REPLY PROVENANCE
+
+-- BEGIN CANONICAL HANDOFF RECEIPT
+-- One inbound transfers a conversation at most once. The UNIQUE inbound makes
+-- recovering the customer notice free of a repeated transfer, and the from_status
+-- CHECK keeps a receipt an attestation that the agent still owned the
+-- conversation when the turn started. No cascading FK: erasure removes the words
+-- and this row must survive as the deduplication fact.
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_handoff_receipts" (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    conversation_id UUID NOT NULL,
+    contact_id UUID NOT NULL,
+    inbound_message_id UUID NOT NULL UNIQUE,
+    channel_type TEXT NOT NULL,
+    channel_account_id TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    from_status TEXT NOT NULL,
+    to_status TEXT NOT NULL,
+    notice_kind TEXT NOT NULL,
+    notice_language TEXT NOT NULL,
+    trace_id TEXT,
+    effects JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT agent_handoff_receipts_to_status
+        CHECK (to_status IN ('waiting_human','with_human')),
+    CONSTRAINT agent_handoff_receipts_from_status
+        CHECK (from_status NOT IN ('waiting_human','with_human','resolved','archived','closed')),
+    CONSTRAINT agent_handoff_receipts_notice_kind
+        CHECK (notice_kind IN ('queue_head','transferring','inbox_notice','none')),
+    CONSTRAINT agent_handoff_receipts_notice_language
+        CHECK (notice_language IN ('es','en','pt','fr'))
+);
+CREATE INDEX IF NOT EXISTS idx_agent_handoff_receipts_conversation
+    ON "{{SCHEMA_NAME}}"."agent_handoff_receipts"(conversation_id, created_at DESC);
+-- END CANONICAL HANDOFF RECEIPT
+
+-- BEGIN AGENT TURN LEDGER
+-- One row per inbound message: the whole result of the turn it produced.
+-- Redis held only the words, so a crash between generating and dispatching
+-- replayed the text and lost the payment link, the pictures, the learned
+-- sources and the identity of the writers that had already run -- and the
+-- answer that finally arrived was a different answer. No cascading foreign key:
+-- erasure clears the envelope and the row survives as the fact that stops a
+-- replay from running the turn again.
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_turn_ledger" (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    inbound_message_id UUID NOT NULL UNIQUE,
+    conversation_id UUID NOT NULL,
+    contact_id UUID NOT NULL,
+    channel_type TEXT NOT NULL,
+    channel_account_id TEXT,
+    recipient TEXT,
+    provider_message_id TEXT,
+    state TEXT NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 1,
+    agent_id UUID,
+    agent_version INTEGER,
+    operational_scope JSONB NOT NULL DEFAULT '{}'::jsonb,
+    envelope JSONB,
+    writers JSONB NOT NULL DEFAULT '[]'::jsonb,
+    handoff JSONB,
+    -- Lo que el turno decidio, incluido decidir no responder. Ver el ALTER de
+    -- mas abajo: la columna llego despues, asi que un tenant viejo la recibe por
+    -- ahi y uno nuevo por aca, y las dos formas terminan iguales.
+    outcome JSONB,
+    delivery_route TEXT NOT NULL DEFAULT 'unknown',
+    redacted_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT agent_turn_ledger_state
+        CHECK (state IN ('open','result_recorded','dispatch_owned','settled')),
+    CONSTRAINT agent_turn_ledger_route
+        CHECK (delivery_route IN ('unknown','durable','legacy','draft','none')),
+    CONSTRAINT agent_turn_ledger_attempts CHECK (attempts >= 1),
+    CONSTRAINT agent_turn_ledger_result
+        CHECK (state = 'open' OR envelope IS NOT NULL OR outcome IS NOT NULL
+                   OR redacted_at IS NOT NULL)
+);
+-- El resultado del turno, agregado despues de que la tabla existia, asi que
+-- llega como sentencia aditiva propia: el deploy migra ANTES de recrear los
+-- contenedores y el binario anterior sigue corriendo contra este schema.
+-- Un turno que no produjo efecto (wait / suppress) se registra aca en vez de
+-- quedar como una linea de log.
+-- Generado desde TURN_LEDGER_DDL (modules/conversations/agent-turn-ledger.ts).
+ALTER TABLE "{{SCHEMA_NAME}}"."agent_turn_ledger"
+    ADD COLUMN IF NOT EXISTS outcome JSONB;
+CREATE INDEX IF NOT EXISTS idx_agent_turn_ledger_conversation
+    ON "{{SCHEMA_NAME}}"."agent_turn_ledger"(conversation_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_agent_turn_ledger_contact
+    ON "{{SCHEMA_NAME}}"."agent_turn_ledger"(contact_id) WHERE redacted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_agent_turn_ledger_unsettled
+    ON "{{SCHEMA_NAME}}"."agent_turn_ledger"(updated_at) WHERE state <> 'settled';
+-- END AGENT TURN LEDGER
+
+-- BEGIN AGENT HANDOFF EFFECTS
+-- One row per handoff effect and destination. The receipt carried a single
+-- `effects` object whose `announced` key was one boolean covering a fan-out to
+-- six consumers, so a single failing consumer re-announced the transfer to the
+-- five that had already succeeded. `admitted` is permission for exactly ONE
+-- attempt and commits before the external call; an admitted lease that runs out
+-- does not become available again, because the effect may have happened.
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_handoff_effects" (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    receipt_id UUID NOT NULL,
+    destination TEXT NOT NULL,
+    state TEXT NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    lease_token UUID,
+    lease_expires_at TIMESTAMPTZ,
+    receipt TEXT,
+    error_code TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT agent_handoff_effects_identity UNIQUE (receipt_id, destination),
+    CONSTRAINT agent_handoff_effects_state
+        CHECK (state IN ('prepared','admitted','accepted','rejected','unknown')),
+    CONSTRAINT agent_handoff_effects_destination
+        CHECK (destination IN ('assignment','cache','inbox','crm','webhooks','push','slack','sms','email')),
+    CONSTRAINT agent_handoff_effects_attempts CHECK (attempts >= 0),
+    CONSTRAINT agent_handoff_effects_lease
+        CHECK ((state = 'admitted') = (lease_token IS NOT NULL AND lease_expires_at IS NOT NULL))
+);
+CREATE INDEX IF NOT EXISTS idx_agent_handoff_effects_receipt
+    ON "{{SCHEMA_NAME}}"."agent_handoff_effects"(receipt_id, destination);
+CREATE INDEX IF NOT EXISTS idx_agent_handoff_effects_unsettled
+    ON "{{SCHEMA_NAME}}"."agent_handoff_effects"(updated_at) WHERE state NOT IN ('accepted','unknown');
+-- END AGENT HANDOFF EFFECTS
+
+-- BEGIN NORMAL DISPATCH OUTBOX
+-- One row per remote effect, never per call: a Messenger image and its caption
+-- are two POSTs and one receipt cannot describe both. The row is the only thing
+-- that authorizes an attempt. An 'admitted' lease that runs out does NOT become
+-- available again — the attempt may have reached the provider — so recovery goes
+-- through reconciliation. attempts is raised in the admission transaction, which
+-- commits before the external call, so a rolled-back send cannot loop forever.
+-- No cascading FK: erasure clears the payload and the row survives as the fact
+-- that stops a recovered job from delivering the same effect twice.
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_dispatch_outbox" (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    batch_id UUID NOT NULL,
+    conversation_id UUID,
+    contact_id UUID,
+    -- EL ORIGEN: la cosa durable que causo este lote. Para una respuesta es
+    -- el mensaje entrante. Para un efecto proactivo es un UUID derivado de la
+    -- identidad durable del productor (id del recordatorio, paso del goteo,
+    -- destinatario de la campana), asi que dos intentos del mismo efecto
+    -- producen el mismo origen y la unicidad de abajo hace lo correcto sin una
+    -- linea nueva de logica. El nombre quedo impreciso; renombrarlo es un
+    -- expand-contract de dos deploys.
+    inbound_message_id UUID NOT NULL,
+    origin_kind TEXT NOT NULL DEFAULT 'inbound_reply',
+    -- Separados de la identidad: una confirmacion de pago tiene su propia
+    -- clave durable y a la vez responde al ultimo mensaje del cliente.
+    reply_to_message_id UUID,
+    disposition TEXT,
+    channel_type TEXT NOT NULL,
+    channel_account_id TEXT NOT NULL,
+    recipient TEXT,
+    item_index INTEGER NOT NULL,
+    item_kind TEXT NOT NULL,
+    payload JSONB,
+    operational_scope JSONB NOT NULL DEFAULT '{}'::jsonb,
+    learning_footprint JSONB,
+    state TEXT NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    lease_token UUID,
+    lease_expires_at TIMESTAMPTZ,
+    available_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    error_code TEXT,
+    receipt TEXT,
+    settled_lease_token UUID,
+    message_id UUID,
+    redacted_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT agent_dispatch_outbox_identity UNIQUE (inbound_message_id, item_index),
+    CONSTRAINT agent_dispatch_outbox_origin
+        CHECK (origin_kind IN ('inbound_reply','proactive')),
+    CONSTRAINT agent_dispatch_outbox_disposition
+        CHECK (disposition IS NULL OR disposition IN ('reactive','proactive')),
+    CONSTRAINT agent_dispatch_outbox_state
+        CHECK (state IN ('prepared','queued','admitted','sent','stored','suppressed','failed','reconciliation_required')),
+    CONSTRAINT agent_dispatch_outbox_kind
+        CHECK (item_kind IN ('text','media','payment_link','flow','template',
+                             'interactive','location')),
+    CONSTRAINT agent_dispatch_outbox_item_index CHECK (item_index >= 0),
+    CONSTRAINT agent_dispatch_outbox_lease
+        CHECK ((state = 'admitted') = (lease_token IS NOT NULL AND lease_expires_at IS NOT NULL)),
+    CONSTRAINT agent_dispatch_outbox_redaction
+        CHECK (redacted_at IS NOT NULL OR (conversation_id IS NOT NULL AND contact_id IS NOT NULL
+            AND recipient IS NOT NULL AND payload IS NOT NULL))
+);
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_dispatch_outbox_sources" (
+    dispatch_id UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."agent_dispatch_outbox"(id) ON DELETE CASCADE,
+    source_id UUID NOT NULL, source_contact_id UUID,
+    PRIMARY KEY (dispatch_id, source_id)
+);
+CREATE INDEX IF NOT EXISTS idx_agent_dispatch_outbox_pending ON "{{SCHEMA_NAME}}"."agent_dispatch_outbox"(available_at, id) WHERE state IN ('prepared','queued','failed');
+CREATE INDEX IF NOT EXISTS idx_agent_dispatch_outbox_lease ON "{{SCHEMA_NAME}}"."agent_dispatch_outbox"(lease_expires_at) WHERE state = 'admitted';
+CREATE INDEX IF NOT EXISTS idx_agent_dispatch_outbox_batch ON "{{SCHEMA_NAME}}"."agent_dispatch_outbox"(batch_id, item_index);
+-- Un efecto proactivo no tiene conversacion del cliente ni mensaje entrante que
+-- mirar, asi que el barrido que los busca necesita su propio indice. Parcial:
+-- son pocas filas frente al total.
+CREATE INDEX IF NOT EXISTS idx_agent_dispatch_outbox_proactive ON "{{SCHEMA_NAME}}"."agent_dispatch_outbox"(state, available_at) WHERE origin_kind = 'proactive';
+-- Provider id -> conversation record. The webhook resolves a wamid here because
+-- messages.external_id holds our own deduplication identity, not the provider's.
+CREATE INDEX IF NOT EXISTS idx_agent_dispatch_outbox_receipt ON "{{SCHEMA_NAME}}"."agent_dispatch_outbox"(receipt) WHERE receipt IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_agent_dispatch_outbox_contact ON "{{SCHEMA_NAME}}"."agent_dispatch_outbox"(contact_id) WHERE redacted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_agent_dispatch_outbox_sources_source ON "{{SCHEMA_NAME}}"."agent_dispatch_outbox_sources"(source_id, dispatch_id);
+CREATE INDEX IF NOT EXISTS idx_agent_dispatch_outbox_sources_contact ON "{{SCHEMA_NAME}}"."agent_dispatch_outbox_sources"(source_contact_id, dispatch_id);
+
+-- La decision de una persona sobre un efecto incierto, escrita en la MISMA
+-- transaccion que el cambio de estado que autoriza. El actor se descartaba y la
+-- evidencia se truncaba dentro de `error_code`, lo que ademas borraba el fallo
+-- del proveedor que justificaba la reconciliacion: una decision irreversible
+-- podia quedar sin autor ni motivo. `exported_at` es lo que permite que el log
+-- global de auditoria sea una COPIA de esta fila y no un segundo original.
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_dispatch_resolutions" (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    dispatch_id UUID NOT NULL,
+    resolution TEXT NOT NULL,
+    evidence TEXT NOT NULL,
+    actor_id TEXT NOT NULL,
+    actor_role TEXT,
+    receipt TEXT,
+    previous_state TEXT NOT NULL,
+    previous_error_code TEXT,
+    new_state TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    exported_at TIMESTAMPTZ,
+    CONSTRAINT agent_dispatch_resolutions_kind
+        CHECK (resolution IN ('delivered','not_delivered','retry')),
+    CONSTRAINT agent_dispatch_resolutions_evidence
+        CHECK (char_length(evidence) BETWEEN 1 AND 500),
+    CONSTRAINT agent_dispatch_resolutions_actor CHECK (char_length(actor_id) BETWEEN 1 AND 200)
+);
+CREATE INDEX IF NOT EXISTS idx_agent_dispatch_resolutions_dispatch
+    ON "{{SCHEMA_NAME}}"."agent_dispatch_resolutions"(dispatch_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_agent_dispatch_resolutions_unexported
+    ON "{{SCHEMA_NAME}}"."agent_dispatch_resolutions"(created_at) WHERE exported_at IS NULL;
+-- END NORMAL DISPATCH OUTBOX
+
+-- BEGIN AGENT CERTIFICATION LEDGER
+-- El ejecutor de certificación y el arnés de benchmark guardan aquí lo que
+-- ejecutan: un run, un sujeto por perfil, un caso por escenario, y los
+-- intentos y revisiones ciegas del benchmark, y la propuesta que el cliente
+-- aceptó antes de que el negocio se comprometiera. Generado desde las constantes
+-- DDL que ejecuta el runtime (prisma/generate-certification-schema.cjs), para que
+-- el bootstrap perezoso, este archivo y la migración no puedan divergir.
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_certification_runs" (
+        id UUID PRIMARY KEY,
+        plan_hash TEXT NOT NULL,
+        request_key TEXT UNIQUE,
+        agent_id UUID NOT NULL,
+        config_hash TEXT NOT NULL,
+        dependency_revision TEXT NOT NULL,
+        k INTEGER NOT NULL,
+        threshold NUMERIC NOT NULL,
+        state TEXT NOT NULL,
+        mode TEXT NOT NULL DEFAULT 'live',
+        stop_reason TEXT,
+        budget_usd_cents INTEGER,
+        deadline_at TIMESTAMPTZ,
+        planned_cases INTEGER NOT NULL DEFAULT 0,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CONSTRAINT agent_certification_runs_state
+            CHECK (state IN ('planned','running','paused','finished','cancelled')),
+        CONSTRAINT agent_certification_runs_mode CHECK (mode IN ('dry_run','live')),
+        CONSTRAINT agent_certification_runs_k CHECK (k >= 1 AND k <= 5),
+        CONSTRAINT agent_certification_runs_threshold CHECK (threshold >= 7 AND threshold <= 10)
+    );
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_certification_subjects" (
+        run_id UUID NOT NULL,
+        profile_id TEXT NOT NULL,
+        agent_id UUID NOT NULL,
+        config_hash TEXT NOT NULL,
+        dependency_revision TEXT NOT NULL,
+        mission JSONB,
+        tool_grants JSONB,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (run_id, profile_id)
+    );
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_certification_cases" (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        run_id UUID NOT NULL,
+        case_key TEXT NOT NULL,
+        attempt INTEGER NOT NULL DEFAULT 1,
+        profile_id TEXT NOT NULL,
+        scenario_key TEXT NOT NULL,
+        language TEXT NOT NULL,
+        channel_type TEXT NOT NULL,
+        model TEXT NOT NULL,
+        definition_hash TEXT NOT NULL,
+        reserve_usd_cents INTEGER NOT NULL DEFAULT 0,
+        state TEXT NOT NULL DEFAULT 'pending',
+        lease_token UUID,
+        lease_expires_at TIMESTAMPTZ,
+        served_model TEXT,
+        cost_usd_cents INTEGER,
+        latency_ms INTEGER,
+        transcript JSONB,
+        tools JSONB,
+        verification JSONB,
+        scenario JSONB,
+        error_code TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CONSTRAINT agent_certification_cases_state
+            CHECK (state IN ('pending','leased','passed','failed','error')),
+        CONSTRAINT agent_certification_cases_attempt CHECK (attempt >= 1)
+    );
+CREATE UNIQUE INDEX IF NOT EXISTS uidx_certification_case_attempt
+        ON "{{SCHEMA_NAME}}"."agent_certification_cases" (run_id, case_key, attempt);
+CREATE INDEX IF NOT EXISTS idx_certification_case_claimable
+        ON "{{SCHEMA_NAME}}"."agent_certification_cases" (run_id, state, lease_expires_at);
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."benchmark_runs" (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        corpus_id TEXT NOT NULL,
+        corpus_hash TEXT NOT NULL,
+        run_index INTEGER NOT NULL DEFAULT 1,
+        request_key TEXT NOT NULL,
+        state TEXT NOT NULL DEFAULT 'running',
+        stop_reason TEXT,
+        budget_usd_cents INTEGER,
+        spent_usd_cents INTEGER NOT NULL DEFAULT 0,
+        deadline_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CONSTRAINT benchmark_runs_state
+            CHECK (state IN ('running','paused','cancelled','finished')),
+        CONSTRAINT benchmark_runs_spent CHECK (spent_usd_cents >= 0)
+    );
+CREATE UNIQUE INDEX IF NOT EXISTS uidx_benchmark_run_request
+        ON "{{SCHEMA_NAME}}"."benchmark_runs" (request_key);
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."benchmark_attempts" (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        corpus_id TEXT NOT NULL,
+        corpus_hash TEXT NOT NULL,
+        subject_id TEXT NOT NULL,
+        task_key TEXT NOT NULL,
+        run_index INTEGER NOT NULL DEFAULT 1,
+        run_id UUID,
+        state TEXT NOT NULL DEFAULT 'recorded',
+        lease_expires_at TIMESTAMPTZ,
+        confirmed BOOLEAN,
+        cost_usd_cents INTEGER,
+        latency_ms INTEGER,
+        transcript JSONB NOT NULL DEFAULT '[]'::jsonb,
+        error TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CONSTRAINT benchmark_attempts_run CHECK (run_index >= 1)
+    );
+CREATE UNIQUE INDEX IF NOT EXISTS uidx_benchmark_attempt
+        ON "{{SCHEMA_NAME}}"."benchmark_attempts" (corpus_hash, subject_id, task_key, run_index);
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."benchmark_reviews" (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        corpus_hash TEXT NOT NULL,
+        task_key TEXT NOT NULL,
+        blind_label TEXT NOT NULL,
+        reviewer_id TEXT NOT NULL,
+        score NUMERIC NOT NULL,
+        notes TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CONSTRAINT benchmark_reviews_score CHECK (score >= 0 AND score <= 10)
+    );
+CREATE UNIQUE INDEX IF NOT EXISTS uidx_benchmark_review
+        ON "{{SCHEMA_NAME}}"."benchmark_reviews" (corpus_hash, task_key, blind_label, reviewer_id);
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."commitment_proposals" (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        proposal_hash TEXT NOT NULL,
+        family TEXT NOT NULL,
+        action TEXT NOT NULL,
+        contact_id UUID NOT NULL,
+        conversation_id UUID,
+        inbound_message_id UUID,
+        idempotency_key TEXT,
+        proposal JSONB NOT NULL,
+        amount_cents NUMERIC,
+        currency TEXT,
+        accepted_at TIMESTAMPTZ,
+        consumed_entity_id UUID,
+        consumed_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CONSTRAINT commitment_proposals_action
+            CHECK (action IN ('create','cancel','reschedule','quote','approve','update'))
+    );
+CREATE UNIQUE INDEX IF NOT EXISTS uidx_commitment_proposal_key
+        ON "{{SCHEMA_NAME}}"."commitment_proposals" (idempotency_key) WHERE idempotency_key IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_commitment_proposal_entity
+        ON "{{SCHEMA_NAME}}"."commitment_proposals" (consumed_entity_id) WHERE consumed_entity_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_commitment_proposal_contact
+        ON "{{SCHEMA_NAME}}"."commitment_proposals" (contact_id);
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."outbound_payloads" (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id UUID NOT NULL,
+        channel_type TEXT NOT NULL,
+        contact_id UUID,
+        conversation_id UUID,
+        release_ids TEXT[] NOT NULL DEFAULT '{}',
+        dedupe_id TEXT,
+        payload JSONB,
+        redacted_at TIMESTAMPTZ,
+        redacted_reason TEXT,
+        sent_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CONSTRAINT outbound_payloads_reason
+            CHECK (redacted_reason IS NULL OR redacted_reason IN ('retraction','erasure','delivered'))
+    );
+CREATE UNIQUE INDEX IF NOT EXISTS uidx_outbound_payload_dedupe
+        ON "{{SCHEMA_NAME}}"."outbound_payloads" (tenant_id, dedupe_id) WHERE dedupe_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_outbound_payload_contact
+        ON "{{SCHEMA_NAME}}"."outbound_payloads" (contact_id) WHERE payload IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_outbound_payload_release
+        ON "{{SCHEMA_NAME}}"."outbound_payloads" USING GIN (release_ids) WHERE payload IS NOT NULL;
+-- END AGENT CERTIFICATION LEDGER
+
+-- BEGIN AGENT EVIDENCE PROVENANCE
+-- Una retractación retira un RELEASE; no deshace la evaluación que ocurrió.
+-- Por eso la fila sobrevive con su transcripción intacta y se la marca inválida:
+-- la marca es lo que impide que siga certificando a un agente cuyo aprendizaje
+-- ya nadie puede usar. Los dos stores que no tenían ninguna clave reciben una,
+-- y es un conjunto: una conversación juzgada pudo cruzar dos releases, y elegir
+-- uno solo sería desconocer al otro en silencio.
+-- Generado desde el registro que ejecuta el runtime (prisma/generate-evidence-provenance.cjs).
+ALTER TABLE "{{SCHEMA_NAME}}"."eval_runs"
+    ADD COLUMN IF NOT EXISTS invalidated_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS invalidated_reason TEXT;
+ALTER TABLE "{{SCHEMA_NAME}}"."simulation_runs"
+    ADD COLUMN IF NOT EXISTS invalidated_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS invalidated_reason TEXT;
+ALTER TABLE "{{SCHEMA_NAME}}"."agent_release_evaluations"
+    ADD COLUMN IF NOT EXISTS invalidated_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS invalidated_reason TEXT;
+ALTER TABLE "{{SCHEMA_NAME}}"."quality_regression_cases"
+    ADD COLUMN IF NOT EXISTS invalidated_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS invalidated_reason TEXT,
+    ADD COLUMN IF NOT EXISTS source_release_ids TEXT[];
+ALTER TABLE "{{SCHEMA_NAME}}"."conversation_quality_scores"
+    ADD COLUMN IF NOT EXISTS invalidated_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS invalidated_reason TEXT,
+    ADD COLUMN IF NOT EXISTS source_release_ids TEXT[];
+-- END AGENT EVIDENCE PROVENANCE
+
+-- BEGIN CRM NOTE RECEIPTS
+-- Adónde fue a parar el resumen del traspaso cuando salió de la plataforma.
+-- El adapter devolvía el id de la nota y `runJob` lo tiraba, así que la copia
+-- afuera no tenía dirección: un borrado podía limpiar `handoff_summary` y las
+-- notas internas y dejar el mismo párrafo en el HubSpot del tenant. Esta fila
+-- es esa dirección, y el estado de recuperarla — aceptado, rechazado o
+-- desconocido, nunca "se intentó".
+-- Generado desde la constante DDL que ejecuta el runtime
+-- (prisma/generate-crm-note-receipts.cjs).
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."crm_note_receipts" (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        connection_id TEXT NOT NULL,
+        provider TEXT NOT NULL,
+        source_kind TEXT NOT NULL,
+        source_id TEXT NOT NULL,
+        conversation_id UUID,
+        contact_id UUID,
+        external_id TEXT NOT NULL,
+        external_url TEXT,
+        state TEXT NOT NULL DEFAULT 'recorded',
+        attempts INTEGER NOT NULL DEFAULT 0,
+        retract_reason TEXT,
+        last_error TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CONSTRAINT crm_note_receipts_state CHECK (state IN
+            ('recorded','retract_pending','retracted','rejected','unknown')),
+        CONSTRAINT crm_note_receipts_attempts CHECK (attempts >= 0)
+    );
+CREATE UNIQUE INDEX IF NOT EXISTS uidx_crm_note_receipt_source
+        ON "{{SCHEMA_NAME}}"."crm_note_receipts" (connection_id, source_kind, source_id);
+CREATE INDEX IF NOT EXISTS idx_crm_note_receipt_contact
+        ON "{{SCHEMA_NAME}}"."crm_note_receipts" (contact_id) WHERE state <> 'retracted';
+CREATE INDEX IF NOT EXISTS idx_crm_note_receipt_pending
+        ON "{{SCHEMA_NAME}}"."crm_note_receipts" (updated_at) WHERE state = 'retract_pending';
+-- END CRM NOTE RECEIPTS
+
+-- BEGIN BENCHMARK ATTEMPT CLAIM
+-- Un intento se RESERVA antes de llamar al modelo, no se escribe después.
+-- El bucle anterior corría el runner y recién entonces insertaba con ON
+-- CONFLICT DO NOTHING: en un job reintentado eso volvía a contestar cada
+-- tarea —con un modelo real, a precio real— y tiraba la respuesta por el
+-- conflicto. El camino más caro del programa pagaba dos veces por trabajo
+-- que ya tenía. La fila reservada además le da al presupuesto algo que
+-- cobrar y al lease algo que vencer.
+-- Generado desde la constante DDL que ejecuta el runtime
+-- (prisma/generate-benchmark-attempt-upgrade.cjs).
+ALTER TABLE "{{SCHEMA_NAME}}"."benchmark_attempts"
+        ADD COLUMN IF NOT EXISTS run_id UUID,
+        ADD COLUMN IF NOT EXISTS state TEXT NOT NULL DEFAULT 'recorded',
+        ADD COLUMN IF NOT EXISTS lease_expires_at TIMESTAMPTZ;
+-- END BENCHMARK ATTEMPT CLAIM
+
+-- ── DE QUIÉN ES EL HILO, CUANDO META TIENE SU PROPIO AGENTE ADENTRO ─────────
+--
+-- El agente de negocio de Meta puede contestar en la MISMA conversación en la
+-- que contesta esta plataforma, y si contestan los dos el cliente recibe DOS
+-- respuestas distintas al mismo mensaje —posiblemente contradictorias— y las
+-- dos se cobran. No es el duplicado que evita el outbox: son dos agentes.
+--
+-- Durable porque el control se mueve en un webhook y se lee en un envío:
+-- procesos distintos, reinicios distintos. En memoria, un deploy entre medio
+-- deja todos los hilos en `unknown`, que bajo coexistencia es una plataforma
+-- muda.
+--
+-- `unknown` es un estado, no un default: asumir que el hilo es nuestro
+-- mientras nadie diga lo contrario es exactamente lo que produce la doble
+-- respuesta el día que un portafolio enciende el agente de Meta.
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."meta_agent_thread_control" (
+    "conversation_id" UUID PRIMARY KEY,
+    "state"           TEXT NOT NULL DEFAULT 'unknown',
+    "since"           TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+    "reason"          TEXT,
+    "updated_at"      TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+    CONSTRAINT "meta_agent_thread_control_state"
+        CHECK ("state" IN ('ours', 'meta_agent', 'human_operator', 'standby', 'unknown'))
+);
+CREATE INDEX IF NOT EXISTS "idx_meta_agent_thread_control_standby"
+    ON "{{SCHEMA_NAME}}"."meta_agent_thread_control" ("since")
+    WHERE "state" = 'standby';
+
+-- BEGIN WHATSAPP SPEND LEDGER
+-- Reserva monetaria, contadores por alcance y la asignacion entre los dos.
+-- Desde el 1-oct-2026 Meta cobra el mensaje de servicio entregado, asi que la
+-- autorizacion tiene que existir ANTES del efecto y sobrevivir a un COMMIT
+-- incierto. Razones en modules/billing/whatsapp-rates/RESERVATION-DESIGN.md.
+--
+-- cap_kind dice que limita esta fila: dinero, mensajes, o nada mas que observar.
+-- "10 dolares" y "1.000 mensajes" son techos distintos y una fila que llevara
+-- los dos haria ambiguo cual se agoto; una fila `observe` existe para contar sin
+-- frenar, que es el estado en el que empieza un tenant que todavia no configuro
+-- ningun tope.
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."whatsapp_spend_counters" (
+        scope_kind TEXT NOT NULL,
+        scope_key TEXT NOT NULL,
+        period_key TEXT NOT NULL,
+        cap_kind TEXT NOT NULL,
+        cap_minor BIGINT,
+        cap_deliveries INTEGER,
+        currency TEXT,
+        reserved_minor BIGINT NOT NULL DEFAULT 0,
+        settled_minor BIGINT NOT NULL DEFAULT 0,
+        released_minor BIGINT NOT NULL DEFAULT 0,
+        -- RETENIDO: lo comprometido, se haya entregado o no. Es lo correcto
+        -- para decidir un tope, porque un intento en vuelo es exposicion.
+        used_deliveries INTEGER NOT NULL DEFAULT 0,
+        free_deliveries INTEGER NOT NULL DEFAULT 0,
+        -- ENTREGADO de verdad. La diferencia con `used_deliveries` es
+        -- exactamente el trabajo sin resolver. La franquicia de Meta se gasta
+        -- al entregar, no al intentar: mil intentos fallidos no pueden agotar
+        -- las mil entregas gratuitas del mes.
+        confirmed_deliveries INTEGER NOT NULL DEFAULT 0,
+        -- Las tres alturas del mismo techo, como fraccion de el: avisar,
+        -- detener lo proactivo, detener todo. Ver la migracion
+        -- 20260910160000_add_whatsapp_spend_thresholds para el porque.
+        warn_permille SMALLINT NOT NULL DEFAULT 800,
+        soft_permille SMALLINT NOT NULL DEFAULT 950,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+        PRIMARY KEY (scope_kind, scope_key, period_key),
+        CONSTRAINT whatsapp_spend_counters_scope CHECK (scope_kind IN
+            ('account','business','contact','number_month','task')),
+        -- `both` lleva las dos columnas a la vez, y la presion es la PEOR de
+        -- las dos. Las 1.000 entregas gratuitas son una cuota de MENSAJES que no
+        -- cuesta dinero: un techo de dinero no la limita en absoluto.
+        CONSTRAINT whatsapp_spend_counters_cap_kind CHECK (cap_kind IN
+            ('money','deliveries','observe','both')),
+        CONSTRAINT whatsapp_spend_counters_money
+            CHECK ((cap_kind IN ('money','both')) = (cap_minor IS NOT NULL)),
+        CONSTRAINT whatsapp_spend_counters_deliveries
+            CHECK ((cap_kind IN ('deliveries','both')) = (cap_deliveries IS NOT NULL)),
+        CONSTRAINT whatsapp_spend_counters_currency
+            CHECK (cap_kind NOT IN ('money','both') OR currency IS NOT NULL),
+        CONSTRAINT whatsapp_spend_counters_thresholds
+            CHECK (warn_permille > 0 AND warn_permille <= soft_permille
+                   AND soft_permille <= 1000),
+        -- Lo entregado es un subconjunto de lo comprometido. Si esta
+        -- desigualdad se rompe, el numero que la pantalla llama "entregas
+        -- gratis usadas" dejo de significar algo.
+        CONSTRAINT whatsapp_spend_counters_confirmed
+            CHECK (confirmed_deliveries >= 0 AND confirmed_deliveries <= used_deliveries),
+        CONSTRAINT whatsapp_spend_counters_non_negative CHECK (
+            reserved_minor >= 0 AND settled_minor >= 0 AND released_minor >= 0
+            AND used_deliveries >= 0 AND free_deliveries >= 0
+            AND (cap_minor IS NULL OR cap_minor >= 0)
+            AND (cap_deliveries IS NULL OR cap_deliveries >= 0))
+    );
+-- effect_key es unico y DERIVABLE del efecto: es lo que hace que un reintento
+-- encuentre su propia reserva en vez de tomar una segunda, que seria cobrar dos
+-- veces por un mensaje que quiza ya salio.
+--
+-- La identidad va congelada en la fila, no por punteros. Un reintento que
+-- resuelve de nuevo puede elegir otro numero cuando el primero esta caido: eso
+-- se lee como resiliencia y es cobrarle a otra cuenta un mensaje que el cliente
+-- ve llegar de un numero que no reconoce.
+--
+-- lease_expires_at es NOT NULL a proposito. Una fila 'held' sin lease seria
+-- invisible para el barredor (lease < clock_timestamp() da NULL, no true) y
+-- dejaria presupuesto tomado para siempre. El barredor la mueve a
+-- 'indeterminate', nunca a 'released': la exposicion queda visible.
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."whatsapp_spend_reservations" (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        effect_key TEXT NOT NULL,
+        inbound_message_id UUID,
+        batch_id UUID,
+        dispatch_item_id UUID,
+        item_index INTEGER,
+        tenant_id UUID NOT NULL,
+        channel_type TEXT NOT NULL,
+        channel_account_id TEXT NOT NULL,
+        channel_address TEXT,
+        payer_kind TEXT NOT NULL,
+        payer_waba_id TEXT,
+        payer_business_id TEXT,
+        credential_id TEXT NOT NULL,
+        credential_source TEXT NOT NULL,
+        recipient_scope TEXT NOT NULL,
+        recipient_ref TEXT NOT NULL,
+        category TEXT NOT NULL,
+        market TEXT,
+        currency TEXT NOT NULL,
+        rate_version TEXT,
+        applied_local_date DATE,
+        admission_reason TEXT NOT NULL,
+        -- Lo que se dijo, como digest. Existe aparte de `effect_key` porque esa
+        -- clave mezcla productor y ordinal: sirve para que un reintento
+        -- encuentre su propia reserva, no para preguntar si ya le dijimos esto
+        -- mismo a esta persona hace un rato. Nullable: una fila anterior a la
+        -- migracion no tiene digest y no puede inventarse uno.
+        content_digest TEXT,
+        -- Lo empezamos nosotros, o contesto a alguien que escribio. Lo lee el
+        -- soft stop, y guardado permite separar "a quien le escribimos sin que
+        -- nos escriba" de "a quien le contestamos". Nullable: una fila anterior
+        -- a la migracion no tiene disposicion y no puede inventarse una.
+        disposition TEXT,
+        basis TEXT NOT NULL,
+        decision TEXT NOT NULL,
+        reserved_minor BIGINT NOT NULL,
+        unit_ceiling_minor BIGINT NOT NULL,
+        exact_micros BIGINT NOT NULL DEFAULT 0,
+        charged_minor BIGINT,
+        free_deliveries INTEGER NOT NULL DEFAULT 0,
+        charged_deliveries INTEGER NOT NULL DEFAULT 0,
+        state TEXT NOT NULL DEFAULT 'held',
+        provider_message_id TEXT,
+        remote_state TEXT,
+        evidence TEXT,
+        reason TEXT,
+        lease_expires_at TIMESTAMPTZ NOT NULL,
+        -- El derecho EXCLUSIVO a hacer el POST, aparte de tener presupuesto.
+        -- Dos autorizaciones del mismo efecto dejan una sola reserva y las dos
+        -- la encuentran `held`; sin esto las dos transmitian. Ver la migracion
+        -- 20260911120000_add_whatsapp_spend_transmission para por que
+        -- `claimed` e `in_flight` son dos estados y no uno.
+        transmit_token UUID,
+        transmit_state TEXT NOT NULL DEFAULT 'idle',
+        transmit_expires_at TIMESTAMPTZ,
+        attempts INTEGER NOT NULL DEFAULT 1,
+        adopted INTEGER NOT NULL DEFAULT 0,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+        CONSTRAINT whatsapp_spend_reservations_state CHECK (state IN
+            ('held','accepted','settled','released',
+             'pending_reconciliation','estimated','indeterminate')),
+        -- Una fila `estimated` conserva una COTA, no un cargo. El CHECK de
+        -- `charged` ya lo implica; queda dicho acá porque es la diferencia
+        -- entera entre "gastamos esto" y "no sabemos, como mucho esto".
+        CONSTRAINT whatsapp_spend_reservations_estimate
+            CHECK (state <> 'estimated' OR charged_minor IS NULL),
+        CONSTRAINT whatsapp_spend_reservations_decision
+            CHECK (decision IN ('accepted','unknown')),
+        CONSTRAINT whatsapp_spend_reservations_payer
+            CHECK (payer_kind IN ('business_direct','partner','unknown')),
+        CONSTRAINT whatsapp_spend_reservations_credential
+            CHECK (credential_source IN ('channel_account','tenant_credential','system_user')),
+        CONSTRAINT whatsapp_spend_reservations_recipient
+            CHECK (recipient_scope IN ('customer','test_recipient','internal','synthetic')),
+        CONSTRAINT whatsapp_spend_reservations_basis CHECK (basis IN
+            ('priced','free_allowance','free_entry_point','unknown')),
+        CONSTRAINT whatsapp_spend_reservations_disposition
+            CHECK (disposition IS NULL OR disposition IN ('reactive','proactive')),
+        CONSTRAINT whatsapp_spend_reservations_transmit
+            CHECK (transmit_state IN ('idle','claimed','in_flight','resolved')),
+        CONSTRAINT whatsapp_spend_reservations_transmit_lease
+            CHECK ((transmit_state IN ('claimed','in_flight'))
+                = (transmit_token IS NOT NULL AND transmit_expires_at IS NOT NULL)),
+        CONSTRAINT whatsapp_spend_reservations_remote CHECK (remote_state IS NULL
+            OR remote_state IN ('accepted','rejected','unknown','delivered','read','failed')),
+        CONSTRAINT whatsapp_spend_reservations_charged
+            CHECK ((state = 'settled') = (charged_minor IS NOT NULL)),
+        CONSTRAINT whatsapp_spend_reservations_evidence
+            CHECK (state NOT IN ('settled','released') OR evidence IS NOT NULL),
+        CONSTRAINT whatsapp_spend_reservations_non_negative CHECK (
+            reserved_minor >= 0 AND unit_ceiling_minor >= 0 AND exact_micros >= 0
+            AND free_deliveries >= 0 AND charged_deliveries >= 0
+            AND attempts >= 1 AND adopted >= 0
+            AND (charged_minor IS NULL OR charged_minor >= 0))
+    );
+-- Una reserva toca VARIOS techos a la vez: la cuenta, el negocio, el contacto,
+-- la franquicia del numero en el mes y la tarea que la disparo. La clave
+-- primaria compuesta impide tocar dos veces el mismo contador, por reintento o
+-- por carrera; la foranea impide asignar contra un contador que no existe.
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."whatsapp_spend_allocations" (
+        reservation_id UUID NOT NULL
+            REFERENCES "{{SCHEMA_NAME}}"."whatsapp_spend_reservations"(id) ON DELETE CASCADE,
+        scope_kind TEXT NOT NULL,
+        scope_key TEXT NOT NULL,
+        period_key TEXT NOT NULL,
+        amount_minor BIGINT NOT NULL DEFAULT 0,
+        deliveries INTEGER NOT NULL DEFAULT 0,
+        currency TEXT,
+        state TEXT NOT NULL DEFAULT 'reserved',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+        PRIMARY KEY (reservation_id, scope_kind, scope_key, period_key),
+        FOREIGN KEY (scope_kind, scope_key, period_key)
+            REFERENCES "{{SCHEMA_NAME}}"."whatsapp_spend_counters"(scope_kind, scope_key, period_key),
+        CONSTRAINT whatsapp_spend_allocations_state
+            CHECK (state IN ('reserved','settled','released')),
+        CONSTRAINT whatsapp_spend_allocations_non_negative
+            CHECK (amount_minor >= 0 AND deliveries >= 0)
+    );
+CREATE UNIQUE INDEX IF NOT EXISTS uidx_whatsapp_spend_effect
+        ON "{{SCHEMA_NAME}}"."whatsapp_spend_reservations" (effect_key);
+CREATE INDEX IF NOT EXISTS idx_whatsapp_spend_open
+        ON "{{SCHEMA_NAME}}"."whatsapp_spend_reservations" (lease_expires_at)
+        WHERE state IN ('held','accepted','pending_reconciliation','estimated','indeterminate');
+-- El reconciliador pregunta por estado y antigüedad, no por lease: `accepted`
+-- viejo ("¿llegó?") y `pending_reconciliation` viejo ("¿cuánto costó?") son dos
+-- preguntas distintas y ambas se hacen por `updated_at`.
+CREATE INDEX IF NOT EXISTS idx_whatsapp_spend_unresolved
+        ON "{{SCHEMA_NAME}}"."whatsapp_spend_reservations" (state, updated_at)
+        WHERE state IN ('accepted','pending_reconciliation','estimated','indeterminate');
+CREATE INDEX IF NOT EXISTS idx_whatsapp_spend_receipt
+        ON "{{SCHEMA_NAME}}"."whatsapp_spend_reservations" (provider_message_id)
+        WHERE provider_message_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_whatsapp_spend_dispatch
+        ON "{{SCHEMA_NAME}}"."whatsapp_spend_reservations" (dispatch_item_id)
+        WHERE dispatch_item_id IS NOT NULL;
+-- El indice de la pregunta "ya le mandamos exactamente esto, hace un rato".
+-- Parcial sobre los estados que prueban que el mensaje existio: una reserva
+-- `released` es un rechazo probado, el cliente no recibio nada, y volver a
+-- intentarlo no es repetir.
+CREATE INDEX IF NOT EXISTS idx_whatsapp_spend_recent_identical
+        ON "{{SCHEMA_NAME}}"."whatsapp_spend_reservations"
+        (channel_account_id, recipient_ref, content_digest, created_at DESC)
+        WHERE content_digest IS NOT NULL
+          AND state IN ('held','accepted','settled',
+                        'pending_reconciliation','estimated','indeterminate');
+-- El indice de "a quien le escribimos sin que nos escriba": por cuenta y
+-- destinatario, solo sobre lo que nosotros iniciamos.
+CREATE INDEX IF NOT EXISTS idx_whatsapp_spend_transmit_lease
+        ON "{{SCHEMA_NAME}}"."whatsapp_spend_reservations" (transmit_expires_at)
+        WHERE transmit_state IN ('claimed','in_flight');
+CREATE INDEX IF NOT EXISTS idx_whatsapp_spend_proactive_recipient
+        ON "{{SCHEMA_NAME}}"."whatsapp_spend_reservations"
+        (channel_account_id, recipient_ref, created_at DESC)
+        WHERE disposition = 'proactive';
+CREATE INDEX IF NOT EXISTS idx_whatsapp_spend_alloc_counter
+        ON "{{SCHEMA_NAME}}"."whatsapp_spend_allocations" (scope_kind, scope_key, period_key);
+-- El buzon durable de recibos de entrega.
+--
+-- Un recibo cambia dos registros que viven en transacciones distintas: la
+-- historia del cliente y el dinero. Si el segundo fallaba, el evento quedaba
+-- solo en un log, el webhook se confirmaba y Meta no lo reenviaba nunca mas:
+-- la reserva quedaba contada para siempre. El hecho se hace durable ACA antes
+-- de intentar sus consecuencias, y solo pasa a `applied` cuando ambas salieron.
+-- Clave por (recibo, estado) porque Meta manda varios eventos del mismo
+-- mensaje y reenvia cada uno: una clave por recibo colapsaria los tres.
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."whatsapp_receipt_inbox" (
+        provider_message_id TEXT NOT NULL,
+        status TEXT NOT NULL,
+        tenant_id UUID,
+        channel_account_id TEXT,
+        error_code TEXT,
+        error_detail TEXT,
+        pricing JSONB,
+        state TEXT NOT NULL DEFAULT 'pending',
+        outcome TEXT,
+        attempts INTEGER NOT NULL DEFAULT 0,
+        last_error TEXT,
+        first_seen_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+        next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+        PRIMARY KEY (provider_message_id, status),
+        CONSTRAINT whatsapp_receipt_inbox_state
+            CHECK (state IN ('pending','applied','abandoned')),
+        CONSTRAINT whatsapp_receipt_inbox_status
+            CHECK (status IN ('sent','delivered','read','failed')),
+        CONSTRAINT whatsapp_receipt_inbox_attempts CHECK (attempts >= 0)
+    );
+CREATE INDEX IF NOT EXISTS idx_whatsapp_receipt_inbox_pending
+        ON "{{SCHEMA_NAME}}"."whatsapp_receipt_inbox" (next_attempt_at)
+        WHERE state = 'pending';
+-- END WHATSAPP SPEND LEDGER
+
+-- BEGIN OPERATION ORIGIN THREAD
+-- `tools.<familia>.emailConfirmations` es un interruptor POR AGENTE, y el
+-- agente correcto es el que atendió la conexión donde nació la operación. Esa
+-- conexión se lee del hilo, así que una operación que no guarda su
+-- `conversation_id` no puede decir de quién es el interruptor.
+--
+-- Estas cuatro tablas de operación no lo guardaban. Aditivo y nulable: `NULL`
+-- es la respuesta real de toda fila sin hilo (alta desde el panel), y el
+-- resolutor la trata como "el dueño no apagó nada" en vez de adivinar un
+-- agente. Sin FK, igual que los demás `conversation_id` agregados tarde acá.
+-- La migración 20260912100000_operation_origin_thread hace lo mismo con los
+-- tenants que ya existen.
+ALTER TABLE "{{SCHEMA_NAME}}"."class_bookings" ADD COLUMN IF NOT EXISTS "conversation_id" UUID;
+ALTER TABLE "{{SCHEMA_NAME}}"."enrollments" ADD COLUMN IF NOT EXISTS "conversation_id" UUID;
+ALTER TABLE "{{SCHEMA_NAME}}"."insurance_quotes" ADD COLUMN IF NOT EXISTS "conversation_id" UUID;
+ALTER TABLE "{{SCHEMA_NAME}}"."resource_rentals" ADD COLUMN IF NOT EXISTS "conversation_id" UUID;
+CREATE INDEX IF NOT EXISTS "idx_class_bookings_conversation"
+    ON "{{SCHEMA_NAME}}"."class_bookings" ("conversation_id") WHERE "conversation_id" IS NOT NULL;
+CREATE INDEX IF NOT EXISTS "idx_enrollments_conversation"
+    ON "{{SCHEMA_NAME}}"."enrollments" ("conversation_id") WHERE "conversation_id" IS NOT NULL;
+CREATE INDEX IF NOT EXISTS "idx_insurance_quotes_conversation"
+    ON "{{SCHEMA_NAME}}"."insurance_quotes" ("conversation_id") WHERE "conversation_id" IS NOT NULL;
+CREATE INDEX IF NOT EXISTS "idx_resource_rentals_conversation"
+    ON "{{SCHEMA_NAME}}"."resource_rentals" ("conversation_id") WHERE "conversation_id" IS NOT NULL;
+-- END OPERATION ORIGIN THREAD

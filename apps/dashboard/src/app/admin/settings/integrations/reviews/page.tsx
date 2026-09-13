@@ -6,6 +6,7 @@ import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/page-header";
+import { LoadFailureNotice } from "@/components/ui/load-failure";
 import { HelpPanel } from "@/components/ui/help-panel";
 import { Star, Loader2, RefreshCw, Sparkles, Send, Link2, CheckCircle2, MessageSquare } from "lucide-react";
 
@@ -29,6 +30,11 @@ export default function ReviewsSettingsPage() {
     const { activeTenantId } = useTenant();
 
     const [cfg, setCfg] = useState<Cfg | null>(null);
+    // A `null` cfg renders the "connect Google Business Profile" call to
+    // action, which is a statement that this tenant has no profile linked. A
+    // dropped request produced exactly that, and re-running the OAuth consent
+    // is not a harmless thing to invite somebody to do.
+    const [unavailable, setUnavailable] = useState(false);
     const [stats, setStats] = useState<Stats | null>(null);
     const [reviews, setReviews] = useState<Review[]>([]);
     const [loading, setLoading] = useState(true);
@@ -41,16 +47,19 @@ export default function ReviewsSettingsPage() {
         setLoading(true);
         try {
             const c: any = await api.getReviewsConfig(activeTenantId);
-            if (c?.success) {
-                setCfg(c.data);
-                setForm({ accountId: c.data.accountId || "", locationId: c.data.locationId || "", locationName: c.data.locationName || "" });
-                if (c.data.connected) {
-                    const [s, r]: any[] = await Promise.all([api.getReviewsStats(activeTenantId), api.listReviews(activeTenantId)]);
-                    if (s?.success) setStats(s.data);
-                    if (r?.success) setReviews(r.data || []);
-                }
+            if (!c?.success || !c.data) throw new Error("reviews_config_read_failed");
+            setCfg(c.data);
+            setForm({ accountId: c.data.accountId || "", locationId: c.data.locationId || "", locationName: c.data.locationName || "" });
+            if (c.data.connected) {
+                const [s, r]: any[] = await Promise.all([api.getReviewsStats(activeTenantId), api.listReviews(activeTenantId)]);
+                if (s?.success) setStats(s.data);
+                if (r?.success) setReviews(r.data || []);
             }
-        } catch { /* noop */ }
+            setUnavailable(false);
+        } catch {
+            setCfg(null);
+            setUnavailable(true);
+        }
         setLoading(false);
     }, [activeTenantId]);
 
@@ -109,6 +118,8 @@ export default function ReviewsSettingsPage() {
 
             {loading && !cfg ? (
                 <div className="flex justify-center py-16"><Loader2 className="animate-spin text-muted-foreground" /></div>
+            ) : unavailable ? (
+                <LoadFailureNotice onRetry={() => { void load(); }} />
             ) : !cfg?.connected ? (
                 <div className={cn(CARD, "text-center py-10")}>
                     <Star size={32} className="text-yellow-500 mx-auto mb-3" />

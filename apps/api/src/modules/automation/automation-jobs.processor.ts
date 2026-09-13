@@ -3,13 +3,14 @@ import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
 import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../prisma/prisma.service';
-import { WhatsappMessagingService } from '../whatsapp/services/whatsapp-messaging.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { AUTOMATION_JOBS_QUEUE } from './automation-listener.service';
 import { HttpRequestHandler } from './handlers/http-request.handler';
 import { LeadCapturedEvent } from './events/lead-captured.event';
+import { senderOriginProblem, whatsappSenderFrom } from '../channels/whatsapp-sender-origin';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { resolveTenantSubscriptionAccess } from '../../common/utils/subscription-entitlement.util';
+import { ProactiveDispatchService, producerMayAdvance } from '../channels/proactive-dispatch.service';
 
 export interface AutomationJobData {
     tenantId: string;
@@ -17,6 +18,8 @@ export interface AutomationJobData {
     executionId: string;
     ruleId: string;
     ruleName: string;
+    /** Position in the rule snapshot. It binds delayed work to that exact action. */
+    actionIndex?: number;
     action: {
         type: string;
         delay_seconds?: number;
@@ -50,10 +53,20 @@ export class AutomationJobsProcessor extends WorkerHost {
 
     constructor(
         private readonly prisma: PrismaService,
-        private readonly whatsappMessaging: WhatsappMessagingService,
         private readonly throttle: TenantThrottleService,
         private readonly httpRequestHandler: HttpRequestHandler,
         private readonly pipelineService: PipelineService,
+        /**
+         * The durable lane, which this rule action could not use before.
+         *
+         * `send_template` went straight to `WhatsappMessagingService.sendTemplate`
+         * on this worker's stack: no row, no lease, no receipt of its own. A
+         * restart between "the trigger matched" and the POST either lost the
+         * message — the customer simply never heard — or, because the queue add
+         * carries no `jobId`, sent it again on the retry. From October each
+         * repeat is a charge on the tenant's own WABA.
+         */
+        private readonly proactive: ProactiveDispatchService,
     ) {
         super();
     }
@@ -61,6 +74,10 @@ export class AutomationJobsProcessor extends WorkerHost {
     async process(job: Job<AutomationJobData>): Promise<any> {
         const { tenantId, schemaName, executionId, ruleName, action, event } = job.data;
         const startTime = Date.now();
+        const actionIndex = job.data.actionIndex;
+        if (!executionId || !job.data.ruleId || !Number.isInteger(actionIndex) || actionIndex! < 0) {
+            throw new Error('automation_job_missing_rule_authority');
+        }
 
         const entitlement = await resolveTenantSubscriptionAccess(this.prisma, tenantId, 'write');
         if (!entitlement.allowed) {
@@ -68,25 +85,78 @@ export class AutomationJobsProcessor extends WorkerHost {
                 throw new Error(`subscription_entitlement_unavailable:${entitlement.error ?? 'unknown'}`);
             }
             const reason = entitlement.error ?? 'subscription_restricted';
-            if (executionId) {
-                await this.prisma.executeInTenantSchema(
-                    schemaName,
-                    `UPDATE automation_executions
-                     SET status = 'failed', finished_at = CURRENT_TIMESTAMP, result_json = $2
-                     WHERE id = $1::uuid`,
-                    [executionId, JSON.stringify({ error: reason, skipped: true })],
-                );
-            }
+            await this.recordActionOutcome(schemaName, executionId, actionIndex!, 'failed', {
+                error: reason,
+                skipped: true,
+            });
             this.logger.warn(
                 `[AutomationJobs] Omitido '${action.type}' para tenant=${tenantId}: ${reason}`,
             );
             return { skipped: true, reason };
         }
 
-        // Per-tenant rate limit check — if exceeded, throw to trigger BullMQ retry
-        if (await this.throttle.isLimited(tenantId, 'automation')) {
+        // A delayed job is authority carried through time. Re-read the exact
+        // rule action before consuming quota or producing any effect: disabling
+        // the rule, deleting it, or editing this position revokes old jobs.
+        // `send_template` also has a transactional check at outbox admission,
+        // but the other five action families previously had no check at all.
+        const authority = await this.prisma.executeInTenantSchema<Array<{ authorised: boolean }>>(
+            schemaName,
+            `SELECT EXISTS (
+                 SELECT 1
+                   FROM automation_executions ae
+                   JOIN automation_rules ar ON ar.id = ae.rule_id
+                  WHERE ae.id = $1::uuid
+                    AND ae.rule_id = $2::uuid
+                    AND ar.active = TRUE
+                    AND ar.actions_json -> $3::int = $4::jsonb
+             ) AS authorised`,
+            [executionId, job.data.ruleId, actionIndex, JSON.stringify(action)],
+        );
+        if (authority?.[0]?.authorised !== true) {
+            const result = {
+                action: action.type,
+                suppressed: 'rule_no_longer_authorises',
+                actionIndex,
+            };
+            await this.recordActionOutcome(
+                schemaName, executionId, actionIndex!, 'suppressed', result,
+            );
+            this.logger.log(
+                `[AutomationJobs] Regla ${job.data.ruleId} ya no autoriza la accion ${actionIndex}; suprimida`,
+            );
+            return result;
+        }
+
+        // One quota unit belongs to one logical BullMQ action, not to every
+        // execution attempt. BullMQ preserves job.id across retries and the
+        // listener assigns deterministic ids to durable rule actions. Without
+        // that identity a retry could consume another unit, so fail closed.
+        const jobId = String(job.id ?? '').trim();
+        if (!jobId) {
+            throw new Error('automation_job_missing_stable_id');
+        }
+        const quotaEffectId = `automation-job:${jobId}`;
+        const reservation = await this.throttle.reserveActionUsage(
+            tenantId,
+            'automation',
+            quotaEffectId,
+        );
+        if (!reservation.allowed) {
             throw new Error(`Tenant ${tenantId} rate limited for automation — will retry`);
         }
+        // Automation quota measures admitted logical work. Commit before the
+        // handler because an HTTP request or provider hand-off may have taken
+        // effect even when its response is lost. A retry adopts this marker.
+        await this.throttle.commitActionUsage(tenantId, 'automation', quotaEffectId);
+        await this.recordActionOutcome(
+            schemaName,
+            executionId,
+            actionIndex!,
+            'in_progress',
+            { attempt: job.attemptsMade + 1 },
+            false,
+        );
 
         this.logger.log(
             `[AutomationJobs] Procesando job '${action.type}' para regla '${ruleName}' tenant=${tenantId} (intento ${job.attemptsMade + 1})`,
@@ -97,7 +167,8 @@ export class AutomationJobsProcessor extends WorkerHost {
 
             switch (action.type) {
                 case 'send_template':
-                    result = await this.handleSendTemplate(schemaName, action, event);
+                    result = await this.handleSendTemplate(
+                        tenantId, schemaName, job.data.executionId, job.data.ruleId, action, event);
                     break;
 
                 case 'create_task':
@@ -122,7 +193,12 @@ export class AutomationJobsProcessor extends WorkerHost {
                     break;
 
                 case 'http_request':
-                    result = await this.httpRequestHandler.execute(schemaName, action.config || action, event);
+                    result = await this.httpRequestHandler.execute(
+                        schemaName,
+                        action.config || action,
+                        event,
+                        { idempotencyKey: quotaEffectId },
+                    );
                     break;
 
                 default:
@@ -134,16 +210,18 @@ export class AutomationJobsProcessor extends WorkerHost {
                     throw new Error(`Tipo de accion desconocido: ${action.type}`);
             }
 
-            // Actualizar registro de ejecucion como exitoso
-            if (executionId) {
-                await this.prisma.executeInTenantSchema(
-                    schemaName,
-                    `UPDATE automation_executions
-                     SET status = 'success', finished_at = CURRENT_TIMESTAMP, result_json = $2
-                     WHERE id = $1::uuid`,
-                    [executionId, JSON.stringify(result || {})],
-                );
-            }
+            // A provider response is a receipt. A missing response is not a
+            // failure and never authorises another mutating HTTP request: it
+            // remains visible for reconciliation. A conclusive non-2xx answer
+            // is recorded as failed and likewise completes this BullMQ job.
+            const terminalStatus = result?.outcome === 'unknown'
+                ? 'reconciliation_required'
+                : result?.outcome === 'rejected' ? 'failed' : 'success';
+
+            // Actualizar registro de ejecucion con el resultado conocido
+            await this.recordActionOutcome(
+                schemaName, executionId, actionIndex!, terminalStatus, result || {},
+            );
 
             const durationMs = Date.now() - startTime;
             this.logger.log(`[AutomationJobs] Job '${action.type}' completado para '${ruleName}' tenant=${tenantId} (${durationMs}ms)`);
@@ -157,15 +235,13 @@ export class AutomationJobsProcessor extends WorkerHost {
 
             // Si es el ultimo intento, marcar ejecucion como fallida
             if (job.attemptsMade + 1 >= (job.opts?.attempts || 3)) {
-                if (executionId) {
-                    await this.prisma.executeInTenantSchema(
-                        schemaName,
-                        `UPDATE automation_executions
-                         SET status = 'failed', finished_at = CURRENT_TIMESTAMP, result_json = $2
-                         WHERE id = $1::uuid`,
-                        [executionId, JSON.stringify({ error: error.message })],
-                    ).catch(e => this.logger.warn(`No se pudo actualizar ejecucion fallida: ${e.message}`));
-                }
+                await this.recordActionOutcome(
+                    schemaName,
+                    executionId,
+                    actionIndex!,
+                    'failed',
+                    { error: error.message },
+                ).catch(e => this.logger.warn(`No se pudo actualizar ejecucion fallida: ${e.message}`));
             }
 
             throw error; // Re-throw para que BullMQ maneje el retry
@@ -173,10 +249,90 @@ export class AutomationJobsProcessor extends WorkerHost {
     }
 
     /**
+     * Merge one action into the firing's JSON ledger, then derive the parent
+     * status from every slot. PostgreSQL serialises concurrent UPDATEs on the
+     * same row, so two workers preserve both outcomes instead of last-writer
+     * winning over `result_json`.
+     */
+    private async recordActionOutcome(
+        schemaName: string,
+        executionId: string,
+        actionIndex: number,
+        status: string,
+        result: Record<string, unknown>,
+        terminal = true,
+    ): Promise<void> {
+        await this.prisma.executeInTenantSchema(
+            schemaName,
+            `UPDATE automation_executions
+                SET result_json = jsonb_set(
+                        jsonb_set(COALESCE(result_json, '{}'::jsonb),
+                            ARRAY['actions', $2::text, 'status'], to_jsonb($3::text), false),
+                        ARRAY['actions', $2::text, 'result'], $4::jsonb, true)
+              WHERE id = $1::uuid
+                AND jsonb_typeof(result_json->'actions') = 'array'
+                AND jsonb_array_length(result_json->'actions') > $2`,
+            [executionId, actionIndex, status, JSON.stringify(result)],
+        );
+        await this.prisma.executeInTenantSchema(
+            schemaName,
+            `UPDATE automation_executions ae
+                SET status = summary.status,
+                    finished_at = CASE WHEN summary.terminal THEN CURRENT_TIMESTAMP ELSE NULL END
+               FROM (
+                    SELECT
+                        CASE
+                            WHEN bool_or(item->>'status' = 'reconciliation_required')
+                                THEN 'reconciliation_required'
+                            WHEN bool_or(item->>'status' IN ('queued', 'in_progress'))
+                                THEN 'in_progress'
+                            WHEN bool_or(item->>'status' = 'failed') THEN 'failed'
+                            WHEN bool_and(item->>'status' = 'suppressed') THEN 'suppressed'
+                            ELSE 'success'
+                        END AS status,
+                        NOT bool_or(item->>'status' IN ('queued', 'in_progress')) AS terminal
+                      FROM automation_executions source
+                      CROSS JOIN LATERAL jsonb_array_elements(
+                          COALESCE(source.result_json->'actions', '[]'::jsonb)
+                      ) item
+                     WHERE source.id = $1::uuid
+               ) summary
+              WHERE ae.id = $1::uuid`,
+            [executionId],
+        );
+        // `terminal` documents the caller's intent and guards future refactors:
+        // an in-progress write must never leave a finished timestamp behind.
+        if (!terminal) return;
+    }
+
+    /**
      * Envia una plantilla WhatsApp pre-aprobada al lead capturado.
+     *
+     * ═══ IT COMMITS A ROW NOW, AND THE ROW IS THE RECORD ═══
+     *
+     * This used to call `sendTemplate` on this worker's own stack. Three things
+     * followed from that and none of them were visible from outside:
+     *
+     *   · a restart between the decision and the POST lost the message, and the
+     *     execution row said `queued` for ever;
+     *   · the queue add carries no `jobId`, so a retry after an ambiguous
+     *     timeout sent the same template a second time — from October, a second
+     *     charge on the tenant's own WABA;
+     *   · nothing re-checked the rule. An operator who switched the rule off
+     *     while the action sat in its delay (up to three days, for the seeded
+     *     templates) still got the message, which is the one case they
+     *     explicitly tried to prevent.
+     *
+     * The durable lane answers all three: the row commits before anything is
+     * published, its origin is derived from the execution so two attempts
+     * collide on one row, and the authority is revalidated against the rule
+     * inside the transaction that grants the lease.
      */
     private async handleSendTemplate(
+        tenantId: string,
         schemaName: string,
+        executionId: string | undefined,
+        ruleId: string,
         action: AutomationJobData['action'],
         event: LeadCapturedEvent,
     ) {
@@ -197,20 +353,108 @@ export class AutomationJobsProcessor extends WorkerHost {
             `[AutomationJobs] Enviando plantilla '${templateName}' (${language}) a ${phone}`,
         );
 
-        const result = await this.whatsappMessaging.sendTemplate(
-            schemaName,
-            phone,
-            templateName,
-            language,
-            components,
-        );
+        // WHICH of the tenant's numbers pays for this template.
+        //
+        // The rule wins over the event: a rule that names a connection is an
+        // explicit decision by the business, and the one thing that can answer a
+        // form lead, which arrived through no connection at all. Otherwise it is
+        // the connection the customer actually wrote to.
+        //
+        // Both absent is left absent on purpose rather than defaulted: the
+        // resolver serves it when the tenant has exactly one number and refuses
+        // `connection_ambiguous` when it has several. Meta charges the business
+        // per delivered service message from 1 October 2026, so guessing here
+        // spends somebody's money on a decision nobody made.
+        const fromPhoneNumberId = typeof action.channel_account_id === 'string'
+            && action.channel_account_id.trim()
+            ? action.channel_account_id.trim()
+            // Only a WhatsApp conversation may lend its connection. An
+            // Instagram lead carries an Instagram id, and handing that to the
+            // WhatsApp resolver is how a send gets attributed to an account
+            // that is not a WhatsApp account at all.
+            : whatsappSenderFrom({
+                channelType: event.channelAccountType ?? event.channel,
+                channelAccountId: event.channelAccountId,
+            });
+        if (!fromPhoneNumberId) {
+            const problem = senderOriginProblem({
+                channelType: event.channelAccountType ?? event.channel,
+                channelAccountId: event.channelAccountId,
+            });
+            // Actionable, not silent: an operator has to be able to tell
+            // "the rule has no number" from "the rule sent from the wrong
+            // number", and from outside those look identical.
+            //
+            // And it REFUSES now rather than sending unnamed. A durable row has
+            // to name the account it will be billed to before the processor
+            // picks it up; letting the resolver choose would put the oldest
+            // connection on the row, which is a property of row order and not of
+            // any decision anybody made.
+            throw new Error(`automation_rule_action_sin_conexion:${problem ?? 'unknown'}`);
+        }
+        // The execution row is the rule firing's own durable identity, and the
+        // origin is derived from it together with what this action sends. Two
+        // attempts at the same action collide on one outbox row; two DIFFERENT
+        // template actions in one rule stay two effects.
+        if (!executionId) throw new Error('automation_rule_action_sin_ejecucion');
+        const contactId = String(event.contactId ?? '').trim();
+        if (!contactId) throw new Error('automation_rule_action_sin_contacto');
+
+        const channelType = 'whatsapp';
+        // Resolved against the SENDER, never taken from the event: the outbox
+        // refuses a binding whose conversation belongs to another connection,
+        // and a rule that overrides the number is precisely the case where the
+        // event's own thread is the wrong one.
+        const conversationId = await this.proactive.conversationFor(schemaName, {
+            contactId, channelType, channelAccountId: fromPhoneNumberId,
+        });
+        if (!conversationId) throw new Error('automation_rule_action_sin_conversacion');
+
+        // ── THE AUTHORITY, READ FROM THE RULE ───────────────────────────────
+        //
+        // Built by reading `automation_rules`, so the revision describes the
+        // rule as it IS — active, with these actions. The store revalidates it
+        // inside the transaction that grants the lease, which is what makes a
+        // rule switched off during the action's delay a suppression instead of
+        // a message nobody currently authorises.
+        const operationalScope = await this.proactive.policyAuthority(schemaName, {
+            tenantId, producer: 'automation_rule_action', channelType,
+            channelAccountId: fromPhoneNumberId, entityId: ruleId,
+        });
+        if (!operationalScope) {
+            // Switched off, edited, or gone. Nothing is owed, so the execution
+            // is closed rather than retried every five seconds for three tries.
+            this.logger.log(`[AutomationJobs] la regla ${ruleId} ya no autoriza `
+                + `'${templateName}' — suprimido`);
+            return { action: 'send_template', templateName, phone, suppressed: 'rule_no_longer_authorises' };
+        }
+
+        const result = await this.proactive.send(tenantId, {
+            originKey: `automation_rule_action:${executionId}:${templateName}`
+                + `:${JSON.stringify(components)}`,
+            conversationId: String(conversationId),
+            contactId,
+            channelType,
+            channelAccountId: fromPhoneNumberId,
+            recipient: phone,
+            items: [{ kind: 'template', payload: { templateName, language, components } }],
+            operationalScope,
+        });
+        // Thrown, not returned. `process` writes `automation_executions.status =
+        // 'success'` on whatever this returns, and an execution marked
+        // successful for a message that was never committed is the same lie the
+        // reminders used to tell about an appointment.
+        if (!producerMayAdvance(result)) {
+            throw new Error(`automation_rule_action_no_despachada:${result.kind}`
+                + `:${'reason' in result ? result.reason : ''}`);
+        }
 
         return {
             action: 'send_template',
             templateName,
             phone,
-            messageId: result.messageId,
-            success: result.success,
+            dispatch: result.kind,
+            originId: 'originId' in result ? result.originId : null,
         };
     }
 

@@ -18,6 +18,7 @@ import {
   Calendar,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
+import { LoadFailureNotice } from "@/components/ui/load-failure";
 import { HelpPanel } from "@/components/ui/help-panel";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
@@ -71,6 +72,7 @@ export default function ApiKeysPage() {
 
   // Modal states
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [unavailable, setUnavailable] = useState(false);
   const [showKeyModal, setShowKeyModal] = useState<{ key: string; name: string } | null>(null);
   const [confirmRevoke, setConfirmRevoke] = useState<string | null>(null);
   const [confirmRotate, setConfirmRotate] = useState<string | null>(null);
@@ -86,11 +88,15 @@ export default function ApiKeysPage() {
     setLoading(true);
     try {
       const res = await api.listPublicApiKeys(activeTenantId);
-      if (res.success && res.data) {
-        setKeys(res.data);
-      }
+      if (!res.success || !res.data) throw new Error("api_keys_read_failed");
+      setKeys(res.data);
+      setUnavailable(false);
     } catch {
-      // keep empty
+      // "No tienes claves creadas" is a security conclusion — that nothing out
+      // there is currently authorised against this tenant's BI API. It must
+      // never be drawn from a request that failed.
+      setKeys([]);
+      setUnavailable(true);
     }
     setLoading(false);
   }, [activeTenantId]);
@@ -268,6 +274,8 @@ export default function ApiKeysPage() {
           <Loader2 size={16} className="animate-spin text-neutral-400" />
           <span className="text-sm text-neutral-500">{tc("loading")}</span>
         </div>
+      ) : unavailable ? (
+        <LoadFailureNotice onRetry={() => { void loadKeys(); }} />
       ) : keys.length === 0 ? (
         <div className="flex flex-col items-center gap-3 py-12 text-center">
           <div className="w-12 h-12 rounded-xl bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center">

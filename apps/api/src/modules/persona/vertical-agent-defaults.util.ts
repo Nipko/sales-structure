@@ -36,7 +36,7 @@ export interface ResolvedVerticalAgentDefaults {
     industry: VerticalManifestIndustry;
     subType: string | null;
     effectiveCapabilities: VerticalCapability[];
-    toolDefaults: Partial<Record<VerticalToolGroup, Record<string, boolean>>>;
+    toolDefaults: Partial<Record<VerticalToolGroup | 'crm', Record<string, boolean>>>;
 }
 
 function isRecord(value: unknown): value is Record<string, any> {
@@ -167,6 +167,10 @@ export function resolveVerticalAgentDefaults(settings: unknown): ResolvedVertica
     const effectiveCapabilities = resolveEffectiveCapabilities(capabilitySource, manifest);
     const effectiveSet = new Set(effectiveCapabilities);
     const toolDefaults: ResolvedVerticalAgentDefaults['toolDefaults'] = {};
+    // CRM is the horizontal runtime for the base `crm_pipeline` capability. It
+    // is not subtype-scoped, so it cannot live in manifest.toolGroups, but a
+    // newly-created agent must still inherit the capability the tenant owns.
+    if (effectiveSet.has('crm_pipeline')) toolDefaults.crm = { enabled: true };
     for (const tool of manifest.toolGroups) {
         if (effectiveSet.has(VERTICAL_TOOL_CAPABILITY[tool])) {
             toolDefaults[tool] = toolDefault(tool);

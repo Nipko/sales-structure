@@ -18,7 +18,52 @@ describe('TemporalCapacityContractService', () => {
             durationMinutes: 90,
             bufferMinutes: 15,
             endsAtLocal: '2026-08-09T01:00:00',
+            startsAtUtc: '2026-08-09T04:30:00.000Z',
+            endsAtUtc: '2026-08-09T06:00:00.000Z',
         });
+    });
+
+    it.each([
+        ['Europe/Paris', '2026-03-29T02:15', 'nonexistent_local_time'],
+        ['America/New_York', '2026-03-08T02:15', 'nonexistent_local_time'],
+        ['Australia/Lord_Howe', '2026-10-04T02:15', 'nonexistent_local_time'],
+        ['Pacific/Apia', '2011-12-30T12:00', 'nonexistent_local_time'],
+        ['Europe/Paris', '2026-10-25T02:15', 'ambiguous_local_time'],
+        ['America/New_York', '2026-11-01T01:15', 'ambiguous_local_time'],
+        ['Australia/Lord_Howe', '2026-04-05T01:45', 'ambiguous_local_time'],
+    ])('requires clarification for %s %s without inventing a replacement', (timezone, startsAtLocal, error) => {
+        try { service.normalize({ kind: 'appointment', startsAtLocal, timezone, durationMinutes: 10 }); throw new Error('unexpected_success'); }
+        catch (failure) { expect((failure as BadRequestException).getResponse()).toMatchObject({ error, requiresClarification: true, timezone, field: 'startsAtLocal' }); }
+    });
+
+    it.each([
+        ['2026-11-01T01:15:00-04:00', '2026-11-01T05:15:00.000Z'],
+        ['2026-11-01T01:15:00-05:00', '2026-11-01T06:15:00.000Z'],
+    ])('preserves the explicit choice of an ambiguous time %s', (startsAtLocal, startsAtUtc) => {
+        expect(service.normalize({ kind: 'appointment', startsAtLocal, timezone: 'America/New_York', durationMinutes: 10 })).toMatchObject({ startsAtLocal: '2026-11-01T01:15:00', endsAtLocal: '2026-11-01T01:25:00', startsAtUtc });
+    });
+
+    it.each(['2026-11-01T01:15:00-03:00', '2026-03-08T02:15:00-05:00'])('rejects an explicit offset that does not represent that local time %s', startsAtLocal => {
+        try { service.normalize({ kind: 'appointment', startsAtLocal, timezone: 'America/New_York', durationMinutes: 10 }); throw new Error('unexpected_success'); }
+        catch (failure) { expect((failure as BadRequestException).getResponse()).toMatchObject({ error: 'local_time_offset_mismatch', requiresClarification: true }); }
+    });
+
+    it('never changes the duration silently across a clock transition or a buffered ambiguous boundary', () => {
+        for (const input of [
+            { startsAtLocal: '2026-03-29T01:30', durationMinutes: 60, bufferMinutes: 0 },
+            { startsAtLocal: '2026-10-25T01:30', durationMinutes: 120, bufferMinutes: 0 },
+            { startsAtLocal: '2026-10-25T01:30', durationMinutes: 15, bufferMinutes: 30 },
+        ]) expect(() => service.normalize({ kind: 'appointment', timezone: 'Europe/Paris', ...input })).toThrow(BadRequestException);
+    });
+
+    it.each(['UTC', 'America/Bogota', 'Asia/Kathmandu', 'Pacific/Chatham'])('accepts valid dates without machine timezone drift in %s', timezone => {
+        const normalized: any = service.normalize({ kind: 'appointment', timezone, startsAtLocal: '2026-07-15T12:45', durationMinutes: 30 });
+        expect(normalized.endsAtLocal).toBe('2026-07-15T13:15:00');
+        expect(Date.parse(normalized.endsAtUtc) - Date.parse(normalized.startsAtUtc)).toBe(30 * 60_000);
+    });
+
+    it.each(['2026-02-30T10:00:00Z', '2026-01-01T24:00:00Z', '2026-01-01T10:00:00+24:00'])('rejects malformed explicit instants instead of Date.parse normalization: %s', startsAt => {
+        expect(() => service.normalize({ kind: 'session', startsAt, endsAt: '2026-03-03T12:00:00Z', capacity: 1, booked: 0 })).toThrow(BadRequestException);
     });
 
     it('derives nights from a half-open date range instead of minutes', () => {

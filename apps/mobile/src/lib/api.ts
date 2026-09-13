@@ -294,9 +294,9 @@ export const api = {
         const qs = params.toString();
         return json(`/agent-console/conversation/${tenantId}/${id}${qs ? `?${qs}` : ''}`);
     },
-    sendMessage: (tenantId: string, id: string, content: string) =>
+    sendMessage: (tenantId: string, id: string, content: string, idempotencyKey?: string) =>
         json(`/agent-console/conversation/${tenantId}/${id}/message`, {
-            method: 'POST', body: JSON.stringify({ content }),
+            method: 'POST', body: JSON.stringify({ content, ...(idempotencyKey ? { idempotencyKey } : {}) }),
         }),
     // Outbound media: upload the file, then send a message carrying its URL.
     uploadMedia: async (tenantId: string, asset: { uri: string; fileName?: string; mimeType?: string }) => {
@@ -309,9 +309,11 @@ export const api = {
             return { success: false, error: e?.message || 'upload_error' };
         }
     },
-    sendMediaMessage: (tenantId: string, id: string, mediaUrl: string, caption: string, type: string = 'image', filename?: string) =>
+    sendMediaMessage: (tenantId: string, id: string, mediaUrl: string, caption: string,
+        type: string = 'image', filename?: string, idempotencyKey?: string) =>
         json(`/agent-console/conversation/${tenantId}/${id}/message`, {
-            method: 'POST', body: JSON.stringify({ content: caption || '', type, mediaUrl, caption, filename }),
+            method: 'POST', body: JSON.stringify({ content: caption || '', type, mediaUrl, caption, filename,
+                ...(idempotencyKey ? { idempotencyKey } : {}) }),
         }),
     assignConversation: (tenantId: string, id: string, agentId: string) =>
         json(`/agent-console/conversation/${tenantId}/${id}/assign`, {
@@ -394,8 +396,9 @@ export const api = {
     },
     createOrder: (tenantId: string, data: Record<string, any>) =>
         json(`/orders/${tenantId}`, { method: 'POST', body: JSON.stringify(data) }),
-    updateOrderStatus: (tenantId: string, orderId: string, status: string) =>
-        json(`/orders/${tenantId}/${orderId}/status`, { method: 'PUT', body: JSON.stringify({ status }) }),
+    quoteOrder: (tenantId:string,data:Record<string,any>)=>json(`/orders/quote/${tenantId}`,{method:'POST',body:JSON.stringify(data)}),
+    updateOrderStatus: (tenantId: string, orderId: string, status: string,expectedVersion:number) =>
+        json(`/orders/${tenantId}/${orderId}/status`, { method: 'PUT', body: JSON.stringify({ status,expectedVersion }) }),
     getFitnessClasses: (tenantId: string, from: string, to: string) =>
         json(`/gyms/${tenantId}/classes?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&limit=200`),
     getGymMembers: (tenantId: string, search?: string) =>

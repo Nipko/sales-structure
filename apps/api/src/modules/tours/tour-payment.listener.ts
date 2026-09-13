@@ -72,7 +72,7 @@ export class TourPaymentListener {
                     body: `Se acreditó un pago para la salida del ${booking.departure_date} `
                         + 'pero la retención ya había vencido y el cupo volvió al inventario.',
                     tag: `paid-late-tour-${booking.id}`,
-                }).catch(() => { /* best-effort: el log ya quedó */ });
+                }, 'orders').catch(() => { /* best-effort: el log ya quedó */ });
                 this.events.emit('tour_booking.paid_but_expired', {
                     tenantId: event.tenantId,
                     bookingId: booking.id,
@@ -89,6 +89,13 @@ export class TourPaymentListener {
                 [booking.id, PENDING_PAYMENT_STATUS],
             );
             if (!updated?.[0]) return;
+
+            // New bookings already own this durable notice. Wake it now; if
+            // this nudge is lost, its hold deadline remains a bounded fallback.
+            await this.prisma.executeInTenantSchema(schemaName,
+                `UPDATE operational_notice_outbox SET next_attempt_at=NOW(),updated_at=NOW()
+                  WHERE kind='tour.booking_confirmed' AND entity_id=$1::uuid AND state='pending'`,
+                [booking.id]).catch(() => undefined);
 
             this.logger.log(`[Pago] reserva de tour ${booking.id} confirmada tras acreditarse el pago`);
             await this.notifier?.notifyCustomer({

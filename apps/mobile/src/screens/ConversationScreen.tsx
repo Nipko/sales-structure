@@ -23,7 +23,15 @@ import { haptic } from '../lib/haptics';
 import { theme, channelColor, channelLabel, channelIcon } from '../theme';
 import { SOCKET_URL } from '../lib/config';
 
-interface Msg { id: string; content: string; sender: string; senderName?: string; timestamp?: string; type?: string; metadata?: any; pending?: boolean; failed?: boolean }
+interface Msg { id: string; content: string; sender: string; senderName?: string; timestamp?: string; type?: string; metadata?: any;
+    /** Still in this phone's outbox: never sent, and safe to retry. */
+    pending?: boolean; failed?: boolean;
+    /** The row's own state. `failed` means a provider refused it; `pending` that no send was attempted. */
+    status?: string;
+    /** Derived from `status`: the server sent it and the customer does not have it.
+     *  Deliberately not `failed` — that one invites a tap-retry, and a human
+     *  reply carries no idempotency key, so retrying it can duplicate. */
+    notDelivered?: boolean }
 interface Note { id: string; content: string; agentName?: string; createdAt?: string }
 type TimelineItem = (Msg & { kind: 'msg' }) | (Note & { kind: 'note'; timestamp?: string });
 
@@ -187,7 +195,12 @@ export function ConversationScreen() {
     useEffect(() => subscribeOutbox(() => { setOutboxTick((x) => x + 1); load(); }), [load]);
 
     const timeline = useMemo<TimelineItem[]>(() => {
-        const msgs: TimelineItem[] = messages.map((m) => ({ ...m, kind: 'msg' }));
+        // `notDelivered` is the server's word, not the offline queue's: a reply
+        // the provider refused is a different thing from one this phone never
+        // managed to send, and only the second is safe to retry — a human reply
+        // carries no idempotency key, so a retry of the first can duplicate it.
+        const msgs: TimelineItem[] = messages.map((m) => ({ ...m, kind: 'msg',
+            notDelivered: m.sender !== 'inbound' && (m.status === 'failed' || m.status === 'pending') }));
         const nts: TimelineItem[] = notes.map((n) => ({ ...n, kind: 'note', timestamp: n.createdAt }));
         // Pending outbound messages waiting to be sent (offline queue).
         const queued: TimelineItem[] = pendingFor(conversationId).map((q) => ({
@@ -397,10 +410,14 @@ export function ConversationScreen() {
             : text.trim();
         setReplyTo(null);
         setText(''); setSending(true);
-        const tmpId = `tmp-${Date.now()}`;
+        // One opaque key per press, reused by the offline outbox. A timeout can
+        // mean the server committed the message and only the response was
+        // lost; retrying under a new key would put a second billed message on
+        // the customer's phone.
+        const tmpId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
         setMessages((prev) => [...prev, { id: tmpId, sender: 'outbound', content: body, timestamp: new Date().toISOString() }]);
         try {
-            const result = await api.sendMessage(tenantId, conversationId, body);
+            const result = await api.sendMessage(tenantId, conversationId, body, tmpId);
             if (!result?.success) throw new Error(result?.error || 'send_failed');
             haptic.success();
             load();
@@ -729,6 +746,8 @@ export function ConversationScreen() {
                                 <View style={styles.bubbleMeta}>
                                     {item.failed
                                         ? <Text style={styles.retryHint}><Ionicons name="alert-circle" size={11} color={theme.danger} /> {t('conv.tapRetry')}</Text>
+                                        : item.notDelivered
+                                        ? <Text style={styles.retryHint}><Ionicons name="alert-circle" size={11} color={theme.danger} /> {t('conv.notDelivered')}</Text>
                                         : item.pending
                                             ? <Ionicons name="time-outline" size={11} color="rgba(255,255,255,0.7)" />
                                             : <Text style={styles.bubbleTime}>{fmtTime(item.timestamp)}</Text>}

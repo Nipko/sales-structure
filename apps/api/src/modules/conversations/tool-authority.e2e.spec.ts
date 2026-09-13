@@ -8,6 +8,7 @@ import {
     deniedOperationalIntent,
     engineAuthorityFor,
 } from './turn-authority';
+import { runtimeStateTransactions } from './__fixtures__/runtime-state.fixture';
 
 /**
  * ═══ LA CADENA COMPLETA, SIN MOCKS ENTRE LAS PIEZAS QUE DECIDEN ═══
@@ -390,12 +391,16 @@ describe('el "sí" del cliente se ejecuta contra el contrato de hoy', () => {
 
 describe('Procedures se detiene con el motivo exacto', () => {
     function buildProcedureEngine(executor: AIToolExecutorService, procedure: any, state: any) {
+        const enginePrisma: any = {
+            executeInTenantSchema: jest.fn(async (_s: string, sql: string) => (
+                sql.includes('to_regclass') ? [{ reg: 'procedures' }] : [procedure]
+            )),
+        };
+        // El motor pasó a guardar su estado en la base además de Redis, así que
+        // necesita la misma frontera de transacción que sus hermanos.
+        runtimeStateTransactions(enginePrisma);
         const engine = new ProcedureEngineService(
-            {
-                executeInTenantSchema: jest.fn(async (_s: string, sql: string) => (
-                    sql.includes('to_regclass') ? [{ reg: 'procedures' }] : [procedure]
-                )),
-            } as any,
+            enginePrisma as any,
             {
                 getJson: jest.fn().mockResolvedValue(state),
                 setJson: jest.fn().mockResolvedValue(undefined),

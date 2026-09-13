@@ -1,8 +1,11 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
-import { ChannelType } from '@parallext/shared';
 import { PrismaService } from '../prisma/prisma.service';
-import { OutboundQueueService } from '../channels/outbound-queue.service';
 import { EmailService } from '../email/email.service';
+import { ProactiveDispatchService, effectIsDurable } from '../channels/proactive-dispatch.service';
+import { PersonaService } from '../persona/persona.service';
+import { servedAgentAuthority } from '../persona/served-agent-authority';
+
+const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 
 /**
  * Cerrar el lazo del pago: contarle al cliente cómo terminó.
@@ -34,7 +37,8 @@ export class PaymentOutcomeNotifierService {
 
     constructor(
         private readonly prisma: PrismaService,
-        @Optional() private readonly outbound?: OutboundQueueService,
+        @Optional() private readonly dispatch?: ProactiveDispatchService,
+        @Optional() private readonly persona?: PersonaService,
         @Optional() private readonly email?: EmailService,
     ) {}
 
@@ -53,7 +57,7 @@ export class PaymentOutcomeNotifierService {
         text: string;
         dedupeId: string;
     }): Promise<boolean> {
-        if (!this.outbound || !input.text?.trim()) return false;
+        if (!this.dispatch || !this.persona || !input.text?.trim()) return false;
         if (!input.conversationId && !input.contactId) return false;
 
         try {
@@ -68,17 +72,25 @@ export class PaymentOutcomeNotifierService {
                 schemaName,
                 input.conversationId
                     ? `SELECT c.id AS conversation_id, c.channel_type, c.channel_account_id,
-                              ct.external_id, ct.email, ct.name,
-                              (SELECT MAX(m.created_at) FROM messages m
-                                WHERE m.conversation_id = c.id AND m.direction = 'inbound') AS last_inbound_at
+                              ct.id AS contact_id, ct.external_id, ct.email, ct.name,
+                              (SELECT m.id FROM messages m
+                                WHERE m.conversation_id = c.id AND m.direction = 'inbound'
+                                ORDER BY m.created_at DESC, m.id DESC LIMIT 1) AS last_inbound_message_id,
+                              (SELECT m.created_at FROM messages m
+                                WHERE m.conversation_id = c.id AND m.direction = 'inbound'
+                                ORDER BY m.created_at DESC, m.id DESC LIMIT 1) AS last_inbound_at
                          FROM conversations c
                          JOIN contacts ct ON ct.id = c.contact_id
                         WHERE c.id = $1::uuid
                         LIMIT 1`
                     : `SELECT c.id AS conversation_id, c.channel_type, c.channel_account_id,
-                              ct.external_id, ct.email, ct.name,
-                              (SELECT MAX(m.created_at) FROM messages m
-                                WHERE m.conversation_id = c.id AND m.direction = 'inbound') AS last_inbound_at
+                              ct.id AS contact_id, ct.external_id, ct.email, ct.name,
+                              (SELECT m.id FROM messages m
+                                WHERE m.conversation_id = c.id AND m.direction = 'inbound'
+                                ORDER BY m.created_at DESC, m.id DESC LIMIT 1) AS last_inbound_message_id,
+                              (SELECT m.created_at FROM messages m
+                                WHERE m.conversation_id = c.id AND m.direction = 'inbound'
+                                ORDER BY m.created_at DESC, m.id DESC LIMIT 1) AS last_inbound_at
                          FROM conversations c
                          JOIN contacts ct ON ct.id = c.contact_id
                         WHERE c.contact_id = $1::uuid
@@ -106,14 +118,54 @@ export class PaymentOutcomeNotifierService {
                 return this.notifyByEmail(target, input.text);
             }
 
-            await this.outbound.enqueue({
-                tenantId: input.tenantId,
-                to: String(target.external_id),
-                channelType: String(target.channel_type) as ChannelType,
-                channelAccountId: String(target.channel_account_id || ''),
-                content: { type: 'text', text: input.text },
-                dedupeId: input.dedupeId,
-            } as any);
+            const conversationId = String(target.conversation_id ?? '');
+            const contactId = String(target.contact_id ?? '');
+            const channelType = String(target.channel_type ?? '');
+            const channelAccountId = String(target.channel_account_id ?? '').trim();
+            if (!UUID.test(conversationId) || !UUID.test(contactId) || !channelAccountId) {
+                this.logger.warn(`[Pago] el aviso no tiene un vínculo durable completo `
+                    + `(tenant ${input.tenantId})`);
+                return false;
+            }
+
+            // A payment outcome is spoken by the agent assigned to the exact
+            // connection the customer used. Re-resolve that assignment now and
+            // store its revision in the row; if the agent or assignment changes
+            // before the POST, admission suppresses the stale effect.
+            const resolution = await this.persona.resolvePersonaForChannel(
+                input.tenantId, channelType, channelAccountId,
+            );
+            const operationalScope = servedAgentAuthority(input.tenantId, schemaName, resolution);
+            if (!operationalScope) {
+                this.logger.warn(`[Pago] no hay agente operativo para avisar por ${channelType} `
+                    + `(tenant ${input.tenantId})`);
+                return false;
+            }
+
+            const inboundMessageId = String(target.last_inbound_message_id ?? '');
+            const answersInbound = UUID.test(inboundMessageId);
+            const result = await this.dispatch.send(input.tenantId, {
+                originKey: `payment_outcome:${input.dedupeId}`,
+                conversationId,
+                contactId,
+                channelType,
+                channelAccountId,
+                recipient: String(target.external_id),
+                items: [{ kind: 'text', payload: { text: input.text } }],
+                operationalScope,
+                // The payment operation is this effect's durable identity; the
+                // customer message is why it is reactive. Keeping those facts
+                // separate prevents collision with the agent's earlier answer
+                // to the same inbound while still bypassing campaign soft-stop.
+                originKind: 'proactive',
+                disposition: answersInbound ? 'reactive' : 'proactive',
+                ...(answersInbound ? { replyToMessageId: inboundMessageId } : {}),
+            });
+            if (!effectIsDurable(result)) {
+                this.logger.warn(`[Pago] el aviso no quedó registrado (${result.kind}: `
+                    + `${(result as any).reason})`);
+                return false;
+            }
             return true;
         } catch (e: any) {
             // Nunca hace fallar al emisor: el pago YA está acreditado y tirar

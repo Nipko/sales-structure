@@ -9,8 +9,21 @@ import { resolve } from 'path';
  * realidad eran de Airbnb. Cada OTA tiene que ver sólo lo que no sabe.
  */
 
-const SERVICE = readFileSync(resolve(__dirname, 'ical-sync.service.ts'), 'utf8');
-const CONTROLLER = readFileSync(resolve(__dirname, 'ical-export-public.controller.ts'), 'utf8');
+/**
+ * Read with newlines NORMALISED.
+ *
+ * These are source-text assertions, and one of them looks for a name at the
+ * end of a line. `core.autocrlf` writes CRLF on a Windows checkout, so the
+ * same unchanged file satisfies that on Linux and not here — a test that
+ * reports a defect in code nobody touched, about a machine rather than about
+ * the product.
+ */
+const readSource = (name: string): string => readFileSync(
+    resolve(__dirname, name), 'utf8',
+).split(String.fromCharCode(13, 10)).join(String.fromCharCode(10));
+
+const SERVICE = readSource('ical-sync.service.ts');
+const CONTROLLER = readSource('ical-export-public.controller.ts');
 
 describe('el feed por consumidor', () => {
     it('excluye los bloqueos que vinieron de esa misma OTA', () => {

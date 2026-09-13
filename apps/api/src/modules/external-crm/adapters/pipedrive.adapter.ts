@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { ICrmAdapter } from './crm-adapter.interface';
+import { ICrmAdapter, type CrmRetraction } from './crm-adapter.interface';
 import type {
     CanonicalActivity,
     CanonicalContact,
@@ -199,6 +199,33 @@ export class PipedriveAdapter implements ICrmAdapter {
         if (activity.dealId && /^\d+$/.test(activity.dealId)) payload.deal_id = Number(activity.dealId);
         const r = await this.req(ctx, `/api/v1/notes`, { method: 'POST', body: JSON.stringify(payload) });
         return { externalId: String(r.data.id), operation: 'create' };
+    }
+
+    /**
+     * Deletes one note, and says which of the three things happened.
+     *
+     * Raw `fetch` for the same reason as HubSpot: `req` throws on any non-2xx,
+     * and "already gone" must not be indistinguishable from "Pipedrive is
+     * down". Pipedrive also answers 200 with `success:false` for some refusals,
+     * so the body is read rather than trusted from the status alone.
+     */
+    async retractActivity(ctx: CrmAdapterContext, externalId: string): Promise<CrmRetraction> {
+        if (!/^\d+$/.test(externalId)) return { outcome: 'rejected', detail: 'note_id_unrecognised' };
+        let res: Response;
+        let body: any = null;
+        try {
+            res = await fetch(`${this.apiBase(ctx)}/api/v1/notes/${externalId}`, {
+                method: 'DELETE',
+                headers: { Authorization: `Bearer ${ctx.accessToken}` },
+            });
+            body = await res.json().catch(() => null);
+        } catch (error: any) {
+            return { outcome: 'unknown', detail: `transport:${error?.message ?? 'unavailable'}` };
+        }
+        if (res.status === 404 || res.status === 410) return { outcome: 'accepted', detail: `http_${res.status}` };
+        if (res.ok && body?.success !== false) return { outcome: 'accepted', detail: `http_${res.status}` };
+        if (res.status === 429 || res.status >= 500) return { outcome: 'unknown', detail: `http_${res.status}` };
+        return { outcome: 'rejected', detail: `http_${res.status}:${body?.error ?? 'refused'}` };
     }
 
     async pullContacts(ctx: CrmAdapterContext, cursor?: string): Promise<PullPage<CanonicalContact>> {

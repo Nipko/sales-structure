@@ -43,7 +43,8 @@ describe('canonical AI tool policy registry', () => {
     // generic appointments because the committed record is service_requests.
     // + five workshop tools over the canonical repair_order object: intake,
     // owned list/detail, exact estimate decision and owner-scoped cancellation.
-    const STATIC_TOOL_COUNT = 119;
+    // + owned class-booking reader for cross-conversation cancellation.
+    const STATIC_TOOL_COUNT = 123;
 
     it('covers exactly the definitions, executor branches and policies with no drift', () => {
         const expected = [...new Set(definitionNames)].sort();

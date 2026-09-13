@@ -82,8 +82,9 @@ export class ReviewsController {
 
     @Post(':tenantId/reviews/:reviewId/reply')
     @Roles('super_admin', 'tenant_admin', 'tenant_supervisor', 'tenant_agent')
-    async reply(@Param('tenantId') tenantId: string, @Param('reviewId') reviewId: string, @Body() body: { comment: string }) {
-        await this.reviews.postReply(tenantId, reviewId, body.comment);
+    async reply(@Param('tenantId') tenantId: string, @Param('reviewId') reviewId: string,
+        @Body() body: { comment: string; requestKey?: string }) {
+        await this.reviews.postReply(tenantId, reviewId, body.comment, body.requestKey);
         return { success: true };
     }
 }

@@ -24,6 +24,7 @@ import { BillingModule } from '../billing/billing.module';
             { name: 'quality-scoring' },
             { name: 'agent-simulation' },
             { name: 'eval-gate' },
+            { name: 'agent-release-evaluation' },
         ),
     ],
     providers: [OffboardingService, OffboardingCronService, ArchiveMaintenanceService],

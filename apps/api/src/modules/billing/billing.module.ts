@@ -14,7 +14,7 @@ import { DunningService } from './recurring/dunning.service';
 import { PaymentSourceService } from './recurring/payment-source.service';
 import { ProrationService } from './recurring/proration.service';
 import { PaymentSourceController } from './recurring/payment-source.controller';
-import { EmailModule } from '../email/email.module';
+import { PlatformNotificationModule } from '../platform-notifications/platform-notification.module';
 import { BillingService } from './billing.service';
 import { BillingController } from './billing.controller';
 import { BillingAdminController } from './billing-admin.controller';
@@ -57,7 +57,7 @@ import { BillingPlanCatalogService } from './billing-plan-catalog.service';
     imports: [
         PrismaModule,
         RedisModule,
-        EmailModule,
+        PlatformNotificationModule,
         MediaProcessingModule,
         FiscalModule,
         SmsCreditsModule,

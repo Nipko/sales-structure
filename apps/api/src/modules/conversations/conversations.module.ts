@@ -1,3 +1,10 @@
+import { WidgetDeliveryModule } from '../widget/widget-delivery.module';
+import { APPROVED_EFFECT_DELIVERY } from '../channels/approved-effect-delivery.port';
+import { ToolApprovalEffectsService } from './tool-approval-effects.service';
+import { PrismaService } from '../prisma/prisma.service';
+import { IsolatedEvalNamespace, isolatedEvalNamespaceForPrisma } from '../simulation/isolated-eval-namespace';
+import { LearningModule } from '../learning/learning.module';
+import { EvaluationRevisionModule } from '../evaluation-revision/evaluation-revision.module';
 import { Module, forwardRef } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
@@ -52,6 +59,7 @@ import { McpModule } from '../mcp/mcp.module';
 import { AttributionModule } from '../attribution/attribution.module';
 import { EmailModule } from '../email/email.module';
 import { SmsCreditsModule } from '../sms-credits/sms-credits.module';
+import { AgentTurnLedgerStore } from './agent-turn-ledger.store';
 import { ChatIdentityService } from './chat-identity.service';
 import { AgentTestRateLimitGuard } from './agent-test-rate-limit.guard';
 import { AgentTestRequestGuard } from './agent-test-request.guard';
@@ -71,7 +79,10 @@ import { TurnCapabilityComposerService } from './turn-capability-composer.servic
 
 @Module({
     imports: [
+        WidgetDeliveryModule,
         PersonaModule,
+        LearningModule,
+        EvaluationRevisionModule,
         AIModule,
         forwardRef(() => ChannelsModule),
         HandoffModule,
@@ -118,6 +129,7 @@ import { TurnCapabilityComposerService } from './turn-capability-composer.servic
         }),
     ],
     providers: [
+        { provide: IsolatedEvalNamespace, useFactory: isolatedEvalNamespaceForPrisma, inject: [PrismaService] },
         ExpiredHoldSweeperService,
         ConversationsService,
         ConversationsGateway,
@@ -127,6 +139,8 @@ import { TurnCapabilityComposerService } from './turn-capability-composer.servic
         VerticalTurnContextService,
         TurnCapabilityComposerService,
         ToolApprovalWorkflowService,
+        ToolApprovalEffectsService,
+        { provide: APPROVED_EFFECT_DELIVERY, useExisting: ToolApprovalEffectsService },
         PaymentOperationService,
         {
             provide: PAYMENT_OPERATION_PROVIDER,
@@ -147,8 +161,9 @@ import { TurnCapabilityComposerService } from './turn-capability-composer.servic
         AgentTestRequestGuard,
         PreChatService,
         ChatIdentityService,
+        AgentTurnLedgerStore,
     ],
     controllers: [ConversationsController, AgentTestController, ToolApprovalController],
-    exports: [ConversationsService, ConversationsGateway, PromptAssemblerService, LanguageDetectorService, ActiveOperationsContextService, AgentTestService, AIToolExecutorService, ToolApprovalWorkflowService, EffectiveCapabilityService, VerticalTurnContextService, TurnCapabilityComposerService],
+    exports: [APPROVED_EFFECT_DELIVERY,IsolatedEvalNamespace, ConversationsService, ConversationsGateway, PromptAssemblerService, LanguageDetectorService, ActiveOperationsContextService, AgentTestService, AIToolExecutorService, ToolApprovalWorkflowService, EffectiveCapabilityService, VerticalTurnContextService, TurnCapabilityComposerService, AgentTurnLedgerStore],
 })
 export class ConversationsModule {}

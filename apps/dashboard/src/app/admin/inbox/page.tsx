@@ -5,9 +5,14 @@ import { HelpPanel } from "@/components/ui/help-panel";
 import { guidedTourAnchorId } from "@/lib/guided-tours";
 import { api } from "@/lib/api";
 import { ActiveObjectsCard } from "@/components/inbox/ActiveObjectsCard";
+import { ToolApprovalsPanel } from "@/components/inbox/ToolApprovalsPanel";
+import Link from 'next/link';
+import { canReviewNotices } from '@/lib/operational-notices';
+import { approvalEventMatches } from "@/lib/tool-approvals";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
 import { useTranslations } from "next-intl";
+import { agentReplyDeliveryNotice } from "@/lib/agent-reply-delivery";
 import { DataSourceBadge } from "@/hooks/useApiData";
 import { cn } from "@/lib/utils";
 import { isSupervisor } from "@/lib/roles";
@@ -256,7 +261,11 @@ export default function InboxPage() {
     const { activeTenantId } = useTenant();
     const t = useTranslations("inbox");
     const tEmpty = useTranslations("verticalEmptyStates");
+    const tNotices = useTranslations('operationalNotices');
     const tHelp = useTranslations("help");
+    // The same vocabulary the channel's own spend panel uses, rather than a
+    // second wording of the same fact that can drift from it.
+    const tSpend = useTranslations("whatsappSpend");
     const vt = useVerticalTerms();
     const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
     const [filter, setFilter] = useState<InboxFilter>("all");
@@ -289,6 +298,13 @@ export default function InboxPage() {
     const selectedConvIdRef = useRef<string | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const messagesContainerRef = useRef<HTMLDivElement>(null);
+    /**
+     * The press of Send whose answer never arrived, kept so its retry carries
+     * the same identity. A failed request may well have reached the server;
+     * re-sending under a new key is how one press becomes two messages on the
+     * customer's phone. Cleared on success and whenever the words change.
+     */
+    const failedSendRef = useRef<{ content: string; key: string } | null>(null);
 
     // Keep ref in sync with selected conversation ID (for WebSocket handler)
     useEffect(() => {
@@ -300,6 +316,7 @@ export default function InboxPage() {
     const [aiSuggestionLoading, setAiSuggestionLoading] = useState(false);
     // Draft-for-approval (WS3 #6): AI-generated replies awaiting a human send, keyed by conversation.
     const [draftsByConv, setDraftsByConv] = useState<Record<string, string>>({});
+    const [toolApprovalRefresh, setToolApprovalRefresh] = useState(0);
 
     // --- Copilot Rewrite / Summarize State ---
     const [rewriting, setRewriting] = useState(false);
@@ -639,6 +656,9 @@ export default function InboxPage() {
                             id: m.id,
                             content: m.content_text || m.content || '',
                             direction: isInbound ? 'inbound' : 'outbound',
+                            // From the row, so the warning survives a reload. Only
+                            // an outbound message has a delivery state at all.
+                            deliveryState: isInbound ? undefined : agentReplyDeliveryNotice(m.status).state,
                             senderLabel: isInbound ? t('client') : (isHumanAgent ? t('agent') : 'IA'),
                             senderName: isInbound ? selectedConv.contactName : (isHumanAgent ? t('agent') : 'IA'),
                             timestamp: (m.timestamp || m.created_at) ? formatTime(m.timestamp || m.created_at) : '',
@@ -712,6 +732,7 @@ export default function InboxPage() {
         // are per socket, so re-join after every automatic reconnect.
         agentSocket.on('connect', () => {
             agentSocket.emit('agent:join', { agentId: actorId, tenantId: activeTenantId });
+            setToolApprovalRefresh(value => value + 1);
         });
 
         inboxSocket.on('newMessage', (payload: any) => {
@@ -724,6 +745,7 @@ export default function InboxPage() {
                 id: message.id,
                 content: message.content_text || message.content || '',
                 direction: isInbound ? 'inbound' : 'outbound',
+                deliveryState: isInbound ? undefined : agentReplyDeliveryNotice(message.status).state,
                 senderLabel: isInbound ? t('client') : (isHumanAgent ? t('agent') : 'IA'),
                 senderName: isInbound ? t('client') : (isHumanAgent ? t('agent') : 'IA'),
                 timestamp: (message.timestamp || message.created_at) ? formatTime(message.timestamp || message.created_at) : new Date().toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }),
@@ -878,6 +900,12 @@ export default function InboxPage() {
         agentSocket.on('inbox:escalation', (payload: any) => {
             console.log('Received inbox:escalation', payload);
             loadInbox({ silent: true });
+        });
+
+        agentSocket.on('inbox:tool_approval', (payload: unknown) => {
+            if (approvalEventMatches(payload, activeTenantId, selectedConvIdRef.current || '')) {
+                setToolApprovalRefresh(value => value + 1);
+            }
         });
 
         // --- Collision Detection: listen for viewers updates ---
@@ -1155,6 +1183,21 @@ export default function InboxPage() {
         if (!messageInput.trim() || sending) return;
         const content = messageInput.trim();
         const optimisticId = `msg_${Date.now()}`;
+        // ── WHAT MAKES THIS PRESS OF SEND *THIS* PRESS ──────────────────────
+        //
+        // A send whose answer never arrives leaves the agent with the text back
+        // in the box and no way to know whether the customer got it. They press
+        // Send again — and without a key naming the press, the server has no
+        // way to tell that retry from a deliberate second message, so it sends
+        // one. Reusing the key of the failed press lets the outbox collide the
+        // two onto one row.
+        //
+        // It is kept only while the words are unchanged: editing the text makes
+        // it a different message, which deserves its own identity.
+        const retrying = failedSendRef.current?.content === content
+            ? failedSendRef.current.key : null;
+        const pressKey = retrying ?? (globalThis.crypto?.randomUUID?.() ?? `p${Date.now()}`)
+            .replace(/-/g, '');
         const previousLastMessage = selectedConv?.lastMessage;
         setSending(true);
         setMessageInput("");
@@ -1164,6 +1207,10 @@ export default function InboxPage() {
         setMessages(prev => [...prev, {
             id: optimisticId,
             direction: 'outbound',
+            // Until the API answers, this bubble is a hope, not a fact. The
+            // server writes the row `pending` and settles it on what the
+            // provider actually did.
+            deliveryState: 'pending' as const,
             content,
             senderLabel: t('agent'),
             senderName: user?.firstName || t('agent'),
@@ -1175,13 +1222,29 @@ export default function InboxPage() {
         // API call
         try {
             if (activeTenantId && selectedConv?.id) {
-                await api.sendMessage(activeTenantId, selectedConv.id, content);
+                const result = await api.sendMessage(
+                    activeTenantId, selectedConv.id, content, pressKey);
+                failedSendRef.current = null;
+                // A 200 means the reply was SAVED, not that it left. The send
+                // runs inline after the row is written and its failure used to
+                // reach only the server log, so an expired token or a provider
+                // 500 left the agent looking at an ordinary bubble while the
+                // customer waited. The row now says what happened; this is where
+                // the person who typed it gets told.
+                const delivery = agentReplyDeliveryNotice((result as any)?.data?.status);
+                setMessages(prev => prev.map(message => message.id === optimisticId
+                    ? { ...message, deliveryState: delivery.state } : message));
+                if (delivery.noticeKey) showInboxError(t(delivery.noticeKey));
                 // Draft-for-approval (#6): the agent replied — clear any pending AI draft.
                 const convId = selectedConv.id;
                 setDraftsByConv(prev => { const n = { ...prev }; delete n[convId]; return n; });
             }
         } catch (err) {
             console.error("Send message failed:", err);
+            // Remembered so the retry of THIS press carries the same key. The
+            // request may well have reached the server, and re-sending under a
+            // new identity is how one press becomes two messages.
+            failedSendRef.current = { content, key: pressKey };
             // Rollback optimistic message
             setMessages(prev => prev.filter(m => m.id !== optimisticId));
             setSelectedConv((prev: any) => prev ? { ...prev, lastMessage: previousLastMessage } : prev);
@@ -1285,6 +1348,7 @@ export default function InboxPage() {
             )}>
                 {/* Header */}
                 <div className="px-4 pt-4 pb-3 border-b border-border">
+                    {activeTenantId&&canReviewNotices(user?.role)&&<Link href="/admin/operational-notices" className="block text-sm underline mb-3">{tNotices('openWorkspace')}</Link>}
                     <div className="flex justify-between items-center mb-3">
                         <div className="flex items-center gap-2.5">
                             <h2 className="text-lg font-semibold m-0">{t("heading")}</h2>
@@ -1305,7 +1369,7 @@ export default function InboxPage() {
                                     </span>
                                 )}
                             </div>
-                            <DataSourceBadge isLive={isLive} />
+                            <DataSourceBadge state={isLive ? "live" : "unverified"} />
                         </div>
                     </div>
 
@@ -1875,6 +1939,9 @@ export default function InboxPage() {
                         )}
 
                         {/* Messages Area */}
+                        {activeTenantId && <ToolApprovalsPanel key={`${activeTenantId}:${selectedConv.id}`}
+                            tenantId={activeTenantId} conversationId={selectedConv.id} role={user?.role} refreshVersion={toolApprovalRefresh} />}
+                        {activeTenantId&&canReviewNotices(user?.role)&&<Link className="block px-4 py-2 text-sm underline" href={`/admin/operational-notices?conversationId=${encodeURIComponent(selectedConv.id)}`}>{tNotices('openConversation')}</Link>}
                         <div
                             ref={messagesContainerRef}
                             className="inbox-scrollbar flex-1 overflow-auto px-4 md:px-8 py-5 flex flex-col gap-1"
@@ -1953,6 +2020,18 @@ export default function InboxPage() {
                                                 <ChannelIcon channel={selectedConv.channel} size={14} />
                                                 <span className="opacity-50">{safeDate(msg.timestamp)}</span>
                                             </div>
+                                            {/* Said in words, not in a colour: a reply the
+                                                provider refused looks exactly like one it took
+                                                unless somebody writes it down. */}
+                                            {!isInbound && (msg.deliveryState === 'failed' || msg.deliveryState === 'pending') && (
+                                                <div role="status" className={cn(
+                                                    "text-[10px] mb-1 flex gap-1 items-center pr-1 justify-end",
+                                                    msg.deliveryState === 'failed' ? "text-red-500" : "text-amber-500",
+                                                )}>
+                                                    <AlertCircle size={10} aria-hidden="true" />
+                                                    {t(msg.deliveryState === 'failed' ? 'notDelivered' : 'notConfirmed')}
+                                                </div>
+                                            )}
 
                                             {/* Bubble */}
                                             <div className={cn(
@@ -2231,6 +2310,29 @@ export default function InboxPage() {
                                 {sending ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
                             </button>
                             </div>
+                            {/* ═══ THIS REPLY MAY BE CHARGED ═══════════════════════
+                                Since 1 October 2026 Meta bills the business's own
+                                WhatsApp account per delivered message. An agent
+                                typing in this box is spending the tenant's money,
+                                and until now nothing on the screen said so.
+
+                                One quiet line, not a banner and not an alert: an
+                                inbox where every reply raises a warning is an
+                                inbox where the warning that matters is ignored.
+                                WhatsApp only — Instagram, Messenger and Telegram
+                                are not charged this way, and saying they might be
+                                would be a different untruth. */}
+                            {selectedConv.channel === 'whatsapp' && (
+                                <p className="px-4 md:px-5 pb-2 text-[11px] leading-relaxed text-muted-foreground">
+                                    {t("whatsappMayBeCharged")}{" "}
+                                    <a
+                                        href="/admin/channels/whatsapp"
+                                        className="underline underline-offset-2 hover:text-foreground"
+                                    >
+                                        {tSpend("seeSpendPanel")}
+                                    </a>
+                                </p>
+                            )}
                         </div>
                         )}
                     </>

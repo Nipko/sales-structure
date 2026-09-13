@@ -29,7 +29,7 @@ export class MediaDownloadService {
     ): Promise<DownloadedMedia> {
         switch (channelType) {
             case 'whatsapp':
-                return this.downloadWhatsApp(tenantId, mediaUrl, mimeType);
+                return this.downloadWhatsApp(tenantId, mediaUrl, mimeType, accountId);
             case 'instagram':
             case 'messenger':
                 return this.downloadDirectUrl(mediaUrl, mimeType);
@@ -46,8 +46,16 @@ export class MediaDownloadService {
      * Step 2: GET the download URL → binary data
      * URLs expire in 5 minutes.
      */
-    private async downloadWhatsApp(tenantId: string, mediaId: string, mimeType?: string): Promise<DownloadedMedia> {
-        const creds = await this.channelToken.getChannelToken(tenantId, 'whatsapp');
+    private async downloadWhatsApp(
+        tenantId: string, mediaId: string, mimeType?: string,
+        // The caller has had this since multi-account shipped, and Telegram
+        // already forwards it. WhatsApp did not, and got away with it only
+        // because the system-user token is tenant-wide — so the moment a named
+        // connection stops resolving to "any of the tenant's", a two-number
+        // tenant loses inbound voice notes and images with no obvious cause.
+        accountId?: string,
+    ): Promise<DownloadedMedia> {
+        const creds = await this.channelToken.getChannelToken(tenantId, 'whatsapp', accountId);
         if (!creds.accessToken) throw new Error('WhatsApp access token not available');
 
         // Step 1: Resolve media ID to download URL

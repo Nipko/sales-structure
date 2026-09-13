@@ -2,7 +2,7 @@
 
 import { motion } from "motion/react";
 import { useTranslations } from "next-intl";
-import Link from "next/link";
+import Link from "@/components/LocalizedLink";
 import { Section } from "../../../../components/ui/Section";
 import { Icon } from "../../../../components/ui/Icon";
 import { CTABanner } from "../../../../components/layout/CTABanner";
@@ -10,6 +10,8 @@ import { JsonLd } from "../../../../components/ui/JsonLd";
 import { breadcrumbJsonLd } from "../../../../lib/seo";
 import { SIGNUP_URL } from "../../../../lib/constants";
 import { AgentConfigDemo } from "../../../../components/demos/AgentConfigDemo";
+import { DemoFrame } from "../../../../components/demos/DemoFrame";
+import { demoContract } from "../../../../data/demo-catalog";
 
 const FEATURES = [
   { key: "agentFeature1", icon: () => Icon.layers("w-6 h-6") },
@@ -123,7 +125,9 @@ export default function AgentProductPage() {
         </div>
         <div className="max-w-2xl mx-auto">
           <div className="bg-surface border border-border rounded-2xl p-4 sm:p-6">
-            <AgentConfigDemo />
+            <DemoFrame contract={demoContract("configuration")}>
+              <AgentConfigDemo />
+            </DemoFrame>
           </div>
         </div>
       </Section>

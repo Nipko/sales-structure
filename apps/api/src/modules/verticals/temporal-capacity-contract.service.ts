@@ -9,7 +9,7 @@ export type TemporalCapacityContract =
 
 export interface AppointmentTemporalContract {
     kind: 'appointment';
-    /** Tenant-local wall clock, deliberately separate from an instant. */
+    /** Tenant-local wall clock. An explicit ISO offset must match this timezone. */
     startsAtLocal: string;
     timezone: string;
     durationMinutes: number;
@@ -52,6 +52,9 @@ export interface ResourceTemporalContract {
 export interface NormalizedAppointmentTemporal extends AppointmentTemporalContract {
     bufferMinutes: number;
     endsAtLocal: string;
+    /** Preserve explicit offset selection; consumers must not infer it again from naive timestamps. */
+    startsAtUtc: string;
+    endsAtUtc: string;
 }
 
 export interface NormalizedNightlyTemporal extends NightlyTemporalContract {
@@ -67,7 +70,7 @@ export type NormalizedTemporalCapacityContract =
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const LOCAL_DATE_TIME_PATTERN = /^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/;
-const INSTANT_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:\d{2})$/;
+const INSTANT_PATTERN = /^(\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?)(\.\d{1,3})?(Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/;
 const TIMEZONE_PATTERN = /^(?:UTC|[A-Za-z_]+\/[A-Za-z0-9_+.-]+(?:\/[A-Za-z0-9_+.-]+)?)$/;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_APPOINTMENT_MINUTES = 24 * 60;
@@ -138,7 +141,6 @@ export class TemporalCapacityContractService {
     }
 
     private normalizeAppointment(input: AppointmentTemporalContract): NormalizedAppointmentTemporal {
-        this.assertLocalDateTime(input.startsAtLocal, 'startsAtLocal');
         if (!TIMEZONE_PATTERN.test(input.timezone || '')) {
             throw new BadRequestException('timezone must be an IANA timezone');
         }
@@ -151,16 +153,51 @@ export class TemporalCapacityContractService {
         const buffer = input.bufferMinutes ?? 0;
         this.assertIntegerRange(buffer, 'bufferMinutes', 0, MAX_APPOINTMENT_MINUTES);
 
-        const startsAtLocal = input.startsAtLocal.length === 16
-            ? `${input.startsAtLocal}:00`
-            : input.startsAtLocal;
+        const explicitInstant = INSTANT_PATTERN.exec(input.startsAtLocal || '');
+        const localInput = explicitInstant?.[1] ?? input.startsAtLocal;
+        this.assertLocalDateTime(localInput, 'startsAtLocal');
+        if (explicitInstant?.[2] && Number(explicitInstant[2]) !== 0) {
+            throw new BadRequestException('Appointments require whole-second precision');
+        }
+        const startsAtLocal = localInput.length === 16 ? `${localInput}:00` : localInput;
+        const formatter = this.zonedFormatter(input.timezone);
+        const startCandidates = this.localInstants(startsAtLocal, formatter);
+        let startsAt: number;
+        if (explicitInstant) {
+            startsAt = this.parseInstant(input.startsAtLocal, 'startsAtLocal').getTime();
+            if (!startCandidates.includes(startsAt)) this.temporalClarification('local_time_offset_mismatch', 'startsAtLocal', input.timezone);
+        } else {
+            if (!startCandidates.length) this.temporalClarification('nonexistent_local_time', 'startsAtLocal', input.timezone);
+            if (startCandidates.length > 1) this.temporalClarification('ambiguous_local_time', 'startsAtLocal', input.timezone);
+            startsAt = startCandidates[0];
+        }
         const parsed = this.parseLocalAsUtc(startsAtLocal);
         parsed.setUTCMinutes(parsed.getUTCMinutes() + input.durationMinutes);
+        const endsAtLocal = this.formatLocal(parsed);
+        const endsAt = startsAt + input.durationMinutes * 60_000;
+        // Persistence and capacity currently use naive intervals. Do not silently
+        // change their elapsed duration while crossing an offset transition.
+        if (this.formatZoned(endsAt, formatter) !== endsAtLocal) {
+            this.temporalClarification('appointment_crosses_timezone_transition', 'endsAtLocal', input.timezone);
+        }
+        const endCandidates = this.localInstants(endsAtLocal, formatter);
+        if (!explicitInstant && endCandidates.length !== 1) {
+            this.temporalClarification(endCandidates.length ? 'ambiguous_local_time' : 'nonexistent_local_time', 'endsAtLocal', input.timezone);
+        }
+        if (buffer) {
+            const bufferedLocal = this.formatLocal(new Date(parsed.getTime() + buffer * 60_000));
+            if (this.formatZoned(endsAt + buffer * 60_000, formatter) !== bufferedLocal
+                || (!explicitInstant && this.localInstants(bufferedLocal, formatter).length !== 1)) {
+                this.temporalClarification('appointment_crosses_timezone_transition', 'bufferMinutes', input.timezone);
+            }
+        }
         return {
             ...input,
             startsAtLocal,
             bufferMinutes: buffer,
-            endsAtLocal: this.formatLocal(parsed),
+            endsAtLocal,
+            startsAtUtc: new Date(startsAt).toISOString(),
+            endsAtUtc: new Date(endsAt).toISOString(),
         };
     }
 
@@ -246,12 +283,44 @@ export class TemporalCapacityContractService {
     }
 
     private parseInstant(value: string, field: string): Date {
-        if (!INSTANT_PATTERN.test(value || '')) {
+        const parts = INSTANT_PATTERN.exec(value || '');
+        if (!parts) {
             throw new BadRequestException(`${field} must include Z or an explicit UTC offset`);
         }
+        // Date.parse rolls February 30 into March. The wall-clock part must also
+        // be valid before applying its explicit offset.
+        this.assertLocalDateTime(parts[1], field);
         const parsed = new Date(value);
         if (Number.isNaN(parsed.getTime())) throw new BadRequestException(`${field} is invalid`);
         return parsed;
+    }
+
+    private temporalClarification(error: string, field: string, timezone: string): never {
+        throw new BadRequestException({ error, field, timezone, requiresClarification: true,
+            message: 'Choose an unambiguous local time or provide its valid timezone offset; do not guess a replacement time.' });
+    }
+
+    private zonedFormatter(timezone: string): Intl.DateTimeFormat {
+        return new Intl.DateTimeFormat('en-CA', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit',
+            hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' });
+    }
+
+    private formatZoned(instant: number, formatter: Intl.DateTimeFormat): string {
+        const parts = Object.fromEntries(formatter.formatToParts(new Date(instant)).map(part => [part.type, part.value]));
+        return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}`;
+    }
+
+    private localInstants(local: string, formatter: Intl.DateTimeFormat): number[] {
+        const wall = this.parseLocalAsUtc(local).getTime();
+        const offsets = new Set<number>();
+        // Read both sides of a transition, including 30-minute and whole-day
+        // changes. The host timezone is never consulted.
+        for (let hours = -48; hours <= 48; hours += 6) {
+            const sample = wall + hours * 3600_000;
+            offsets.add(this.parseLocalAsUtc(this.formatZoned(sample, formatter)).getTime() - sample);
+        }
+        return [...offsets].map(offset => wall - offset)
+            .filter(instant => this.formatZoned(instant, formatter) === local).sort((a, b) => a - b);
     }
 
     private assertIntegerRange(value: number, field: string, min: number, max: number): void {

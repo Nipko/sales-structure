@@ -37,6 +37,7 @@ import {
     type ResolvedVerticalCapabilityManifest,
 } from './vertical-capability-manifest';
 import type { EvalScenarioSeed } from './subtype-eval-pack';
+import { canonicalTaskEvalScenarios } from './canonical-task-eval-pack';
 
 export type EvalLanguage = 'es' | 'en' | 'pt' | 'fr';
 
@@ -81,7 +82,7 @@ const INTENT_PROBES: readonly {
 }[] = Object.freeze([
     {
         key: 'happy_path',
-        title: phrase('Camino feliz', 'Happy path', 'Caminho feliz', 'Chemin nominal'),
+        title: phrase('Solicitud inicial incompleta', 'Incomplete initial request', 'Solicitação inicial incompleta', 'Demande initiale incomplète'),
         opener: phrase(
             'Hola, quiero avanzar con esto',
             'Hi, I want to go ahead with this',
@@ -537,6 +538,8 @@ const EVAL_WRITER_EFFECTS: Readonly<Record<string, {
     table?: string;
 }>> = Object.freeze({
     create_appointment: { family: 'appointments', table: 'appointments' },
+    cancel_appointment: { family: 'appointments', table: 'appointments' },
+    reschedule_appointment: { family: 'appointments', table: 'appointments' },
     create_property_booking: { family: 'property_bookings', table: 'property_bookings' },
     create_tour_booking: { family: 'tour_bookings', table: 'tour_bookings' },
     place_order: { family: 'restaurant_orders', table: 'food_orders' },
@@ -550,6 +553,7 @@ const EVAL_WRITER_EFFECTS: Readonly<Record<string, {
     approve_repair: { family: 'repair_orders', table: 'repair_orders' },
     cancel_repair_order: { family: 'repair_orders', table: 'repair_orders' },
     place_catalog_order: { family: 'catalog_orders', table: 'orders' },
+    cancel_catalog_order: { family: 'catalog_orders', table: 'orders' },
     // A claim has no contact_id column and identity step-up must never be
     // bypassed by the sandbox. Its executable eval contract is the negative
     // tool assertion.
@@ -565,11 +569,14 @@ function writerAssertions(intent: IntentContract): EvalScenarioSeed['expectedAct
             type: 'not_called',
             tool,
         }];
-        if (effect.table) assertions.push({
+        // Catalog fixtures include existing owned orders. Complete task cases below
+        // assert their exact state; a generic missing-data probe forbids the writer.
+        if (effect.table && effect.family !== 'catalog_orders') assertions.push({
             kind: 'db_effect',
             type: 'no_row',
             family: effect.family,
             table: effect.table,
+            ...(effect.family === 'repair_orders' ? { where: { external_id: null } } : {}),
         });
         return assertions;
     });
@@ -651,6 +658,7 @@ export function deriveSubtypeScenarios(
 
     for (const intent of contract.intents) {
         scenarios.push(...intentScenarios(intent, language, addressForm));
+        scenarios.push(...canonicalTaskEvalScenarios(intent, language));
     }
 
     for (const probe of PROFILE_PROBES) {

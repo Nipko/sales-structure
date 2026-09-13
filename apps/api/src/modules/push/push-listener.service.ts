@@ -1,8 +1,20 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
+import { createHash } from 'crypto';
 import { PushService } from './push.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { pushI18n } from './push-i18n';
+import { enqueueOperationalPushNotices, ensureOperationalNoticeOutbox } from '../operational-notices/operational-notice-outbox';
+
+const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+function effectUuid(value: string): string {
+    if (UUID.test(value)) return value;
+    const hex = createHash('sha256').update(value).digest('hex').slice(0, 32).split('');
+    hex[12] = '4'; hex[16] = '8';
+    return `${hex.slice(0, 8).join('')}-${hex.slice(8, 12).join('')}-${hex.slice(12, 16).join('')}-${hex.slice(16, 20).join('')}-${hex.slice(20).join('')}`;
+}
 
 @Injectable()
 export class PushListenerService {
@@ -11,6 +23,7 @@ export class PushListenerService {
     constructor(
         private readonly pushService: PushService,
         private readonly prisma: PrismaService,
+        @Optional() @InjectQueue('outbound-messages') private readonly queue?: Queue<any>,
     ) {}
 
     /**
@@ -32,10 +45,37 @@ export class PushListenerService {
         }
     }
 
+    private async enqueuePush(tenantId: string, schema: string, input: {
+        eventType: string; entityId: string; eventKey: string; contactId?: string | null;
+        conversationId?: string | null; recipientUserId?: string | null;
+        roles?: Array<'tenant_admin' | 'tenant_supervisor'>;
+        payload: { title: string; body: string; url: string; tag: string };
+    }): Promise<void> {
+        await ensureOperationalNoticeOutbox(this.prisma, schema);
+        const ids = await this.prisma.transactionInTenantSchema(schema, query => enqueueOperationalPushNotices(query, schema, {
+            entityId: effectUuid(input.entityId), eventKey: input.eventKey, contactId: input.contactId,
+            conversationId: input.conversationId, recipientUserId: input.recipientUserId, roles: input.roles,
+            payload: { ...input.payload, eventType: input.eventType },
+        }));
+        for (const noticeId of ids) {
+            try {
+                if (!this.queue) throw new Error('operational_notice_queue_unavailable');
+                await this.queue.add('operational-notice', { operationalNotice: { tenantId, noticeId } }, {
+                    jobId: `operational-notice-${tenantId}-${noticeId}`, attempts: 3,
+                    backoff: { type: 'exponential', delay: 5000 }, removeOnComplete: { age: 86400 }, removeOnFail: { age: 86400 },
+                });
+            } catch (error: any) {
+                this.logger.warn(`Durable push ${noticeId} remains pending: ${error.message}`);
+            }
+        }
+    }
+
     /** Push al dueño y a los supervisores: nadie tiene asignado un pedido todavia. */
-    private async notifyOwners(tenantId: string, payload: { title: string; body: string; url: string; tag: string }) {
-        await this.pushService.sendToTenantRole(tenantId, 'tenant_admin', payload).catch(() => {});
-        await this.pushService.sendToTenantRole(tenantId, 'tenant_supervisor', payload).catch(() => {});
+    private async notifyOwners(tenantId: string, schema: string, input: {
+        eventType: string; entityId: string; eventKey: string; contactId?: string | null;
+        conversationId?: string | null; payload: { title: string; body: string; url: string; tag: string };
+    }) {
+        await this.enqueuePush(tenantId, schema, { ...input, roles: ['tenant_admin', 'tenant_supervisor'] });
     }
 
     /** Resolve tenant language (2-char, fallback 'es'). */
@@ -51,7 +91,10 @@ export class PushListenerService {
         }
     }
 
-    @OnEvent('handoff.escalated')
+    // One destination, one event. A transfer used to announce itself once to
+    // all six consumers, so a single failure among them re-announced it to
+    // the five that had already succeeded.
+    @OnEvent('handoff.escalated.push')
     async onHandoff(event: {
         tenantId: string;
         conversationId: string;
@@ -71,10 +114,14 @@ export class PushListenerService {
         };
 
         if (event.assignedTo) {
-            await this.pushService.sendToUser(event.assignedTo, payload).catch(() => {});
+            const sent=await this.pushService.sendToUser(event.assignedTo,payload,'handoff');
+            return `push:${sent}`;
         } else {
-            await this.pushService.sendToTenantRole(event.tenantId, 'tenant_admin', payload).catch(() => {});
-            await this.pushService.sendToTenantRole(event.tenantId, 'tenant_supervisor', payload).catch(() => {});
+            const [admins,supervisors]=await Promise.all([
+                this.pushService.sendToTenantRole(event.tenantId,'tenant_admin',payload,'handoff'),
+                this.pushService.sendToTenantRole(event.tenantId,'tenant_supervisor',payload,'handoff'),
+            ]);
+            return `push:${admins+supervisors}`;
         }
     }
 
@@ -82,6 +129,7 @@ export class PushListenerService {
     async onInboundMessage(event: {
         tenantId: string;
         conversationId: string;
+        messageId?: string;
         contactId?: string;
         channel?: string;
         messageType?: string;
@@ -96,7 +144,7 @@ export class PushListenerService {
             // is handling it and the agent shouldn't be pinged for every message.
             const rows = await this.prisma.executeInTenantSchema<any[]>(
                 schemaName,
-                `SELECT assigned_to FROM conversations WHERE id = $1::uuid`,
+                `SELECT assigned_to,contact_id FROM conversations WHERE id = $1::uuid`,
                 [event.conversationId],
             );
             const assignedTo = rows?.[0]?.assigned_to;
@@ -106,12 +154,13 @@ export class PushListenerService {
             const t = pushI18n(lang);
 
             const preview = (event.text || '').trim().slice(0, 120) || t.newMessageFallback;
-            await this.pushService.sendToUser(assignedTo, {
-                title: t.newMessageTitle,
-                body: preview,
-                url: '/admin/inbox',
-                tag: `msg-${event.conversationId}`, // replaces prior notification for this chat
-            }).catch(() => {});
+            await this.enqueuePush(event.tenantId, schemaName, {
+                eventType: 'message.inbound', entityId: event.conversationId,
+                eventKey: `push:message.inbound:${event.messageId || effectUuid(`${event.conversationId}:${event.text || ''}`)}`,
+                contactId: rows[0]?.contact_id || event.contactId || null, conversationId: event.conversationId,
+                recipientUserId: assignedTo, payload: { title: t.newMessageTitle, body: preview,
+                    url: '/admin/inbox', tag: `msg-${event.conversationId}` },
+            });
         } catch (err: any) {
             this.logger.warn(`Inbound-message push failed: ${err.message}`);
         }
@@ -121,17 +170,21 @@ export class PushListenerService {
     async onSupervisorEscalation(event: {
         tenantId: string;
         conversationId: string;
+        contactId?: string;
         contactName?: string;
     }) {
         const lang = await this.getTenantLanguage(event.tenantId);
         const t = pushI18n(lang);
 
-        await this.pushService.sendToTenantRole(event.tenantId, 'tenant_supervisor', {
-            title: t.slaEscalationTitle,
-            body: t.slaEscalationBody(event.contactName || t.conversationFallback),
-            url: '/admin/inbox',
-            tag: `sla-${event.conversationId}`,
-        }).catch(() => {});
+        const schema = await this.prisma.getTenantSchemaName(event.tenantId);
+        await this.enqueuePush(event.tenantId, schema, {
+            eventType: 'handoff.escalated_supervisor', entityId: event.conversationId,
+            eventKey: `push:handoff.sla:${event.conversationId}`, contactId: event.contactId || null,
+            conversationId: event.conversationId, roles: ['tenant_supervisor'],
+            payload: { title: t.slaEscalationTitle,
+                body: t.slaEscalationBody(event.contactName || t.conversationFallback),
+                url: '/admin/inbox', tag: `sla-${event.conversationId}` },
+        });
     }
 
     @OnEvent('appointment.created')
@@ -166,12 +219,17 @@ export class PushListenerService {
         const customerName = event.customerName || event.appointment?.customerName || event.appointment?.customer_name || event.appointment?.contactName || event.appointment?.contact_name || t.contactFallback;
         const serviceName = event.serviceName || event.appointment?.serviceName || event.appointment?.service_name || t.serviceFallback;
 
-        await this.pushService.sendToTenantRole(tenantId, 'tenant_admin', {
-            title: t.newAppointmentTitle,
-            body: `${customerName} — ${serviceName}`,
-            url: '/admin/appointments',
-            tag: 'appointment-new',
-        }).catch(() => {});
+        const schema = event.schemaName || await this.prisma.getTenantSchemaName(tenantId);
+        const appointmentId = String(event.appointment?.id || '');
+        if (!appointmentId) return;
+        await this.enqueuePush(tenantId, schema, {
+            eventType: 'appointment.created', entityId: appointmentId,
+            eventKey: `push:appointment.created:${appointmentId}`,
+            contactId: event.appointment?.contactId || event.appointment?.contact_id || null,
+            conversationId: event.appointment?.conversationId || event.appointment?.conversation_id || null,
+            roles: ['tenant_admin'], payload: { title: t.newAppointmentTitle,
+                body: `${customerName} — ${serviceName}`, url: '/admin/appointments', tag: 'appointment-new' },
+        });
     }
 
     /**
@@ -192,6 +250,7 @@ export class PushListenerService {
         tenantSchemaName?: string;
         schemaName?: string;
         customerName?: string;
+        contactId?: string;
         orderType?: string;
         total?: number;
         currency?: string;
@@ -208,11 +267,13 @@ export class PushListenerService {
                 : t.orderTypeDelivery;
         const total = `${Number(event.total || 0).toLocaleString()} ${event.currency || ''}`.trim();
 
-        await this.notifyOwners(tenantId, {
-            title: t.newOrderTitle,
-            body: t.newOrderBody(event.customerName || t.contactFallback, typeLabel, total),
-            url: '/admin/food-orders',
-            tag: `food-order-${event.orderId}`,
+        const schema = event.schemaName || event.tenantSchemaName!;
+        await this.notifyOwners(tenantId, schema, {
+            eventType: 'food_order.created', entityId: event.orderId,
+            eventKey: `push:food_order.created:${event.orderId}`, contactId: event.contactId || null,
+            payload: { title: t.newOrderTitle,
+                body: t.newOrderBody(event.customerName || t.contactFallback, typeLabel, total),
+                url: '/admin/food-orders', tag: `food-order-${event.orderId}` },
         });
     }
 
@@ -232,6 +293,8 @@ export class PushListenerService {
         tenantSchemaName?: string;
         schemaName?: string;
         customerName?: string;
+        contactId?: string;
+        conversationId?: string;
         packageName?: string;
         sessionType?: string;
         date?: string;
@@ -244,11 +307,15 @@ export class PushListenerService {
 
         const what = event.packageName || event.sessionType || '';
         const when = event.date ? ` · ${event.date}` : '';
-        await this.notifyOwners(tenantId, {
-            title: t.newPhotoRequestTitle,
-            body: `${event.customerName || t.contactFallback}${what ? ` · ${what}` : ''}${when}`,
-            url: '/admin/photo-sessions',
-            tag: `photo-session-${event.sessionId || 'new'}`,
+        if (!event.sessionId) return;
+        const schema = event.schemaName || event.tenantSchemaName!;
+        await this.notifyOwners(tenantId, schema, {
+            eventType: 'photo_session.requested', entityId: event.sessionId,
+            eventKey: `push:photo_session.requested:${event.sessionId}`, contactId: event.contactId || null,
+            conversationId: event.conversationId || null,
+            payload: { title: t.newPhotoRequestTitle,
+                body: `${event.customerName || t.contactFallback}${what ? ` · ${what}` : ''}${when}`,
+                url: '/admin/photo-sessions', tag: `photo-session-${event.sessionId}` },
         });
     }
 
@@ -275,7 +342,7 @@ export class PushListenerService {
         try {
             const rows = await this.prisma.executeInTenantSchema<any[]>(
                 schema,
-                `SELECT customer_name FROM food_orders WHERE id = $1::uuid`,
+                `SELECT customer_name,contact_id FROM food_orders WHERE id = $1::uuid`,
                 [event.orderId],
             );
             if (rows[0]?.customer_name) customerName = rows[0].customer_name;
@@ -283,11 +350,14 @@ export class PushListenerService {
             // Un nombre que no se pudo leer no debe silenciar la alerta.
         }
 
-        await this.notifyOwners(tenantId, {
-            title: t.orderCancelledTitle,
-            body: t.orderCancelledBody(customerName),
-            url: '/admin/food-orders',
-            tag: `food-order-cancel-${event.orderId}`,
+        const contactId = await this.prisma.executeInTenantSchema<any[]>(schema,
+            `SELECT contact_id FROM food_orders WHERE id=$1::uuid`, [event.orderId])
+            .then(rows => rows[0]?.contact_id || null).catch(() => null);
+        await this.notifyOwners(tenantId, schema, {
+            eventType: 'food_order.cancelled', entityId: event.orderId,
+            eventKey: `push:food_order.cancelled:${event.orderId}`, contactId,
+            payload: { title: t.orderCancelledTitle, body: t.orderCancelledBody(customerName),
+                url: '/admin/food-orders', tag: `food-order-cancel-${event.orderId}` },
         });
     }
 }

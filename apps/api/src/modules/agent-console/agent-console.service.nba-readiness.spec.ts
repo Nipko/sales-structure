@@ -22,7 +22,7 @@ describe('AgentConsoleService NBA readiness', () => {
         const redis = { get: jest.fn().mockResolvedValue('tenant_test') };
         const llm = { execute: jest.fn().mockResolvedValue({ content: 'Agenda la demo.' }) };
         const service = new AgentConsoleService(
-            prisma as any, redis as any, {} as any, {} as any, {} as any,
+            prisma as any, redis as any, {} as any, {} as any,
             llm as any, {} as any, {} as any,
         );
         return { service, prisma, llm };

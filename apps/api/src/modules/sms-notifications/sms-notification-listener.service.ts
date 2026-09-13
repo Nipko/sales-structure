@@ -28,34 +28,40 @@ export class SmsNotificationListenerService {
         private readonly config: SmsNotificationsService,
     ) {}
 
-    @OnEvent('handoff.escalated')
-    async onHandoff(event: HandoffEscalatedEvent): Promise<void> {
-        try {
-            if (!event?.tenantId) return;
+    // One destination, one event. A transfer used to announce itself once to
+    // all six consumers, so a single failure among them re-announced it to
+    // the five that had already succeeded.
+    @OnEvent('handoff.escalated.sms')
+    async onHandoff(event: HandoffEscalatedEvent): Promise<string> {
+            if (!event?.tenantId) return 'sms:no_tenant';
 
             // 1. Plan gate — transactional SMS is a paid feature.
             const allowed = await this.throttle.isFeatureEnabled(event.tenantId, 'smsNotifications');
-            if (!allowed) return;
+            if (!allowed) return 'sms:disabled';
 
             // 2. Tenant opt-in.
             const cfg = await this.config.getConfig(event.tenantId);
-            if (!cfg.enabled || !cfg.events.handoff) return;
+            if (!cfg.enabled || !cfg.events.handoff) return 'sms:disabled';
 
             // 3. Recipient phone(s): the assigned agent, else tenant admins/supervisors.
             const phones = await this.resolvePhones(event.tenantId, event.assignedTo);
-            if (!phones.length) return;
+            if (!phones.length) return 'sms:no_recipient';
 
             // 4. Compose in the tenant's language.
             const lang = await this.getTenantLanguage(event.tenantId);
             const text = smsHandoffText(lang, event.contactName, event.reason);
 
-            // 5. Best-effort send (SmsSenderService never throws).
+            const receipts:string[]=[];
             for (const phone of phones) {
-                await this.sender.sendToNumber(event.tenantId, phone, text);
+                try {
+                    const receipt=await this.sender.sendToNumberStrict(event.tenantId,phone,text);
+                    if(receipt)receipts.push(receipt);
+                } catch(error) {
+                    if(receipts.length)throw new Error('handoff_sms_partial_outcome_unknown');
+                    throw error;
+                }
             }
-        } catch (e: any) {
-            this.logger.warn(`Handoff SMS notification failed: ${e.message}`);
-        }
+            return receipts.length?`twilio:${receipts.join(',')}`:'sms:disabled';
     }
 
     /** Assigned agent's phone, or all tenant admins'/supervisors' phones as fallback. */

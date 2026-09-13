@@ -10,9 +10,10 @@ import type { NormalizedMessage, MediaProcessingResult } from '@parallext/shared
 import {
     evaluateMediaAiGovernance,
 } from './media-ai-governance.policy';
+import { MediaConsentService } from './media-consent.service';
 
-// Agent-facing annotation injected into the conversation (and saved to history)
-// when a customer sends voice/image. i18n'd by the tenant's language so agents read
+// Agent-facing annotation injected into this turn when a customer sends voice/image.
+// Ephemeral governance deliberately keeps it out of durable history. i18n'd so agents read
 // it in their language; the transcription/description is the customer's own words.
 // (Runs before per-turn language detection, so we key off tenant.language.)
 const MEDIA_ANNOT: Record<string, { audio: (cap: string, txt: string) => string; image: (cap: string, txt: string) => string }> = {
@@ -35,6 +36,7 @@ export class MediaProcessingService {
         private readonly redis: RedisService,
         private readonly media: MediaService,
         private readonly prisma: PrismaService,
+        private readonly consent: MediaConsentService,
     ) {}
 
     /** Tenant's UI language (2-char), cached 10min — for agent-facing media annotations. */
@@ -190,7 +192,7 @@ export class MediaProcessingService {
         text: string;
         result: MediaProcessingResult;
         governance: { allowDurablePersistence: boolean };
-    } | null> {
+    } | { blockedMessage: string; blockedReason: string } | null> {
         const { tenantId, channelType, content } = msg;
         const mediaType = content.type === 'audio' ? 'audio' : 'image';
 
@@ -203,36 +205,40 @@ export class MediaProcessingService {
             return null;
         }
 
+        const operation = mediaType === 'audio' ? 'audio_transcription' : 'image_analysis';
+        const authority = await this.consent.resolve(tenantId, contactDbId, operation);
         const governance = evaluateMediaAiGovernance({
-            operation: mediaType === 'audio' ? 'audio_transcription' : 'image_analysis',
-            subjectId: msg.contactId,
-            // Message metadata is adapter/payload-adjacent and is not an
-            // authoritative consent registry. Never accept inline attestations,
-            // even when they self-label as "verified". Until a server-side
-            // contact consent + deletion registry exists, multimodal stays off.
-            consent: undefined,
-            retention: undefined,
-            // There is no verified source+derived cleanup adapter yet. Bounded
-            // retention therefore remains disabled; ephemeral processing is the
-            // only legal mode and creates no Parallly media copy/transcript row.
+            operation,
+            subjectId: contactDbId,
+            // Only the server-side registry can construct this attestation.
+            // Adapter metadata remains untrusted and is never consulted.
+            consent: authority?.consent,
+            retention: authority?.retention,
             boundedDeletionVerified: false,
         });
         if (!governance.allowed) {
             this.logger.warn(`[MediaProcessing] Governance blocked ${mediaType}: ${governance.reasons.join(',')}`);
-            return null;
+            const lang = await this.getTenantLang(tenantId);
+            const request = await this.consent.request(
+                tenantId, contactDbId, conversationId, channelType, [operation], lang,
+            );
+            return { blockedMessage: request.message, blockedReason: request.reason };
         }
 
         this.logger.log(`[MediaProcessing] Processing ${content.type} from ${msg.channelType}, mime=${content.mimeType || 'unknown'}`);
 
-        // 1. Check all quotas
-        const throttleResult = await this.mediaThrottle.checkQuota(
-            tenantId, mediaType, contactDbId, conversationId,
+        // 1. Reserve every quota and worst-case cost before a provider can be
+        // paid. The media/provider id makes webhook retries adopt one effect.
+        const effectId = `${msg.id}:${String(content.mediaUrl)}:${mediaType}`;
+        const throttleResult = await this.mediaThrottle.reserveQuota(
+            tenantId, mediaType, contactDbId, conversationId, effectId,
         );
 
-        if (!throttleResult.allowed) {
+        if (!throttleResult.allowed || !throttleResult.mayProcess || !throttleResult.reservationId) {
             this.logger.warn(`[MediaProcessing] Throttled: ${throttleResult.reason} for tenant ${tenantId}`);
             return null;
         }
+        const reservationId = throttleResult.reservationId;
 
         let downloadedBuffer: Buffer | undefined;
         try {
@@ -265,10 +271,8 @@ export class MediaProcessingService {
                 }
             }
 
-            // 3. Record usage
-            await this.mediaThrottle.recordUsage(
-                tenantId, mediaType, contactDbId, conversationId, result.costCentsUsd,
-            );
+            // 3. Settle the reservation with the provider-reported amount.
+            await this.mediaThrottle.settleQuota(reservationId, result.costCentsUsd);
 
             // 4. Track stats for observability
             await this.trackMediaStats(tenantId, mediaType, result).catch(() => {});
@@ -289,6 +293,7 @@ export class MediaProcessingService {
             };
 
         } catch (error: any) {
+            await this.mediaThrottle.releaseQuota(reservationId).catch(() => undefined);
             this.logger.error(`[MediaProcessing] Failed to process ${mediaType}: ${error.message}`, error.stack);
             return null;
         } finally {
@@ -296,6 +301,19 @@ export class MediaProcessingService {
             // retention mode. The provider call has completed before this point.
             downloadedBuffer?.fill(0);
         }
+    }
+
+    async handlePendingConsentReply(
+        tenantId: string,
+        contactId: string,
+        conversationId: string,
+        confirmationMessageId: string,
+        text: string,
+        language?: string,
+    ) {
+        return this.consent.handlePendingReply(
+            tenantId, contactId, conversationId, confirmationMessageId, text, language,
+        );
     }
 
     private async processAudio(
@@ -342,19 +360,22 @@ export class MediaProcessingService {
         const baseKey = `media:stats:${tenantId}:${date}`;
         const ttl = 90 * 86400;
 
-        await Promise.allSettled([
-            this.redis.incrBy(`${baseKey}:${mediaType}:count`, 1),
-            this.redis.incrBy(`${baseKey}:${mediaType}:cost_cents`, result.costCentsUsd),
-            this.redis.incrBy(`${baseKey}:${result.provider}:count`, 1),
-            // Track tenants with media usage so the unified usage report includes
-            // tenants that used ONLY media that day (the LLM tenant set misses them).
-            this.redis.sadd(`media:stats:tenants:${date}`, tenantId),
-        ]);
-        await Promise.allSettled([
-            this.redis.expire(`${baseKey}:${mediaType}:count`, ttl),
-            this.redis.expire(`${baseKey}:${mediaType}:cost_cents`, ttl),
-            this.redis.expire(`${baseKey}:${result.provider}:count`, ttl),
-        ]);
+        const tenantSet = `media:stats:tenants:${date}`;
+        const transaction = this.redis.getClient().multi();
+        transaction.incrby(`${baseKey}:${mediaType}:count`, 1);
+        transaction.incrby(`${baseKey}:${mediaType}:cost_cents`, result.costCentsUsd);
+        transaction.incrby(`${baseKey}:${result.provider}:count`, 1);
+        // Track tenants with media usage so the unified usage report includes
+        // tenants that used ONLY media that day (the LLM tenant set misses them).
+        transaction.sadd(tenantSet, tenantId);
+        for (const key of [
+            `${baseKey}:${mediaType}:count`, `${baseKey}:${mediaType}:cost_cents`,
+            `${baseKey}:${result.provider}:count`, tenantSet,
+        ]) transaction.expire(key, ttl);
+        const resultSet = await transaction.exec();
+        if (!resultSet || resultSet.some(([error]) => !!error)) {
+            throw new Error('media_stats_transaction_failed');
+        }
     }
 
     /**

@@ -31,16 +31,10 @@ describe('PersonaController customer payment entitlement', () => {
     }
 
     it.each([
-        ['legacy save', async (controller: PersonaController) => controller.save(tenantId, paymentConfig, { user: {} })],
         ['agent create', async (controller: PersonaController) => controller.createAgent(
             tenantId,
             { name: 'Ventas', configJson: paymentConfig },
             { user: {} },
-        )],
-        ['agent update', async (controller: PersonaController) => controller.updateAgent(
-            tenantId,
-            agentId,
-            { configJson: paymentConfig },
         )],
         ['agent duplicate', async (controller: PersonaController) => controller.duplicateAgent(
             tenantId,
@@ -77,22 +71,28 @@ describe('PersonaController customer payment entitlement', () => {
 
         await expect(controller.createAgent(
             tenantId,
-            { name: 'Ventas', configJson: paymentConfig },
+            {
+                name: 'Ventas', configJson: paymentConfig,
+                channels: ['whatsapp'], channelBindings: ['whatsapp:phone-1'], isDefault: true,
+            },
             { user: { email: 'admin@example.com' } },
         )).resolves.toMatchObject({ success: true });
         expect(personaService.createAgent).toHaveBeenCalledWith(
             tenantId,
-            expect.objectContaining({ configJson: paymentConfig }),
+            expect.objectContaining({
+                configJson: paymentConfig,
+                channels: [], channelBindings: [], isDefault: false,
+            }),
         );
     });
 
-    it('does not query the entitlement when payment tools are not being enabled', async () => {
+    it('direct agent updates cannot bypass the draft boundary even with payments disabled', async () => {
         const { controller, throttleService, personaService } = makeController(false);
         const config = { tools: { payments: { enabled: false } } };
 
-        await controller.updateAgent(tenantId, agentId, { configJson: config });
+        await expect(controller.updateAgent(tenantId, agentId, { configJson: config, expectedVersion: 1 })).rejects.toMatchObject({ response: { error: 'agent_draft_contract_required' } });
 
         expect(throttleService.isFeatureEnabled).not.toHaveBeenCalled();
-        expect(personaService.updateAgent).toHaveBeenCalled();
+        expect(personaService.updateAgent).not.toHaveBeenCalled();
     });
 });

@@ -3,7 +3,7 @@ id: agentes-ia
 title: "AI Agents: create and configure"
 routes: ["/admin/agent", "/admin/agent/simulation"]
 roles: ["tenant_admin"]
-keywords: ["agent", "ai agents", "bot", "chatbot", "virtual assistant", "create agent", "template", "personality", "instructions", "tone", "agent schedule", "assign channel", "connection", "duplicate agent", "default agent", "agent limit", "channels without agent", "test agent", "rules", "forbidden topics", "required fields", "when to hand off to a human", "fallback message", "active inactive", "advanced"]
+keywords: ["agent", "ai agents", "bot", "chatbot", "virtual assistant", "create agent", "template", "personality", "instructions", "tone", "agent schedule", "assign channel", "connection", "duplicate agent", "default agent", "agent limit", "channels without agent", "test agent", "rules", "forbidden topics", "required fields", "when to hand off to a human", "fallback message", "active inactive", "advanced", "assist", "main instructions", "sales and support", "agent draft"]
 ---
 
 # AI Agents: create and configure
@@ -27,7 +27,7 @@ Your AI agent is the "virtual salesperson" that replies to your customers on Wha
 4. Click **Use this** on the template you chose.
 5. Type an **Agent name** if you want a custom one (for example, Sofia or Max); if you leave it blank, the template's name is used.
 
-The agent is created and its editor opens so you can customize it.
+The agent is created for review and its editor opens. A self-service creation is not yet the default and handles no connections: customize it, save the draft, test it, and publish it first.
 
 ## What the editor requires before saving
 
@@ -48,11 +48,11 @@ If you clear one of those fields to rewrite it, save only once it is complete ag
 Inside **AI Agent**, click **Edit** on the agent. The editor is organized into tabs and cards:
 
 - **Identity** — name, role or title (for example, "Sales advisor") and language.
-- **Personality** — the **Communication style** (Friendly, Professional, Formal, Casual or Empathetic), the **Response length** (Concise, Standard or Detailed) and the opening greeting.
+- **Personality** — communication style, emoji and humor use, **Response length** (Concise, Standard or Detailed), and the opening greeting.
 - **Message for when it cannot answer** — the fallback text, required.
-- **Instructions** — your own free-text rules (for example, "always offer the family combo before closing"), the forbidden topics the agent must never touch, and the response mode (always AI, always human or hybrid).
+- **Instructions** — one main guide, concrete rules, forbidden topics, and the information to ask for in each context. The main guide is part of the effective prompt in guided mode.
 - **When to hand off to a human** — the list of reasons that make the agent stop replying and alert your team: the customer asks for it, complains, asks about a discount, or the agent fails several times in a row. Without at least one reason, the conversation never reaches a person.
-- **AI Model** — which engine the agent uses. The editor shows the models enabled for your account.
+- **Sales and support** — choose whether the agent sells, supports, or does both; sales agents can also set recommendation intensity and the maximum allowed discount.
 - **Schedule** — when the agent is active (see below).
 - **Capabilities** — what the agent can do, with switches to turn each one on or off:
   - Search for answers in your knowledge base
@@ -61,6 +61,8 @@ Inside **AI Agent**, click **Edit** on the agent. The editor is organized into t
   - Create orders or reservations
   - Hand the conversation over to a person on your team when needed
 
+Specialized capabilities depend on the tenant's **business type**. The editor only offers families that belong to that profile and explains when missing data, plan access, or a provider prevents activation.
+
 **Advanced** is not one card: it is two collapsible sections in two different tabs, which is why you never find them together:
 
 - **Advanced: fine-tune the search** — inside **Capabilities**, under the knowledge-search switch (it only appears when that switch is on). That is where how many passages to use and how closely they must match live.
@@ -68,19 +70,23 @@ Inside **AI Agent**, click **Edit** on the agent. The editor is organized into t
 
 Both ship with sensible values; change them only if you know what you are tuning.
 
-When you're done, click **Save changes** — the button is always visible in the bottom bar, so you won't lose edits while scrolling.
+## Configure with Parallly Assist
+
+You can ask Assist to review the agent and prepare changes to identity, language, instructions, rules, required information, after-hours behavior, sales/support mode, recommendations, response length, knowledge, and permissions. Assist presents a proposal for review; accepting it saves a **draft** and does not publish or activate the agent. In custom-prompt mode, Assist withholds personality, main-guide, rules, and required-field edits because the custom prompt replaces them. Never send credentials or connection details through chat.
+
+When you're done, click **Save draft**. Saving preserves your edits for review but does not change the version serving customers. Use **Test agent** on the draft, then open **Review a release**, prepare and approve the candidate, and use **Publish and view history** to publish it. Only publication makes the draft configuration, connections, and default-agent status operational.
 
 ## Active or inactive
 
-The editor header has an **Active / Inactive** switch. An **inactive** agent replies on none of its connections, even when the channel is connected and the schedule says it should. Use it to prepare an agent without exposing it to customers, or to turn it off for a while without deleting anything. **Agent health** flags any inactive agent as a critical blocker, with or without assigned connections.
+The editor header has an **Active / Inactive** switch. An **inactive** agent replies on none of its connections, even when the channel is connected and the schedule says it should. You can deactivate it immediately after confirming. Reactivation requires reviewing and publishing a version; the switch points you to that review and does not turn it on by itself. **Agent health** flags any inactive agent as a critical blocker, with or without assigned connections.
 
 ## How to set the agent's schedule
 
-1. In the agent editor, open the **Schedule** card.
-2. Select the days and time slots when the agent responds (for example, "Daily 9:00–18:00" or only 5 days a week).
-3. Save with **Save changes**.
+1. Configure the account-wide days, time ranges, and time zone under **Settings → Business hours**.
+2. Open **Schedule** in the agent editor to review that calendar and choose whether AI keeps replying outside it.
+3. If you turn after-hours AI off, write this agent's specific fallback and save the draft.
 
-Outside those hours the agent doesn't reply automatically; combine this with the response mode if you'd rather have your team take over at certain times.
+Business hours belong to the tenant and are shared by its agents; each agent only chooses its own behavior outside them.
 
 ## How to assign the agent to each connection
 
@@ -89,13 +95,13 @@ The rule is simple: **one AI agent per connection**. A connection is each accoun
 1. In the agent editor, go to **Channel Assignment**.
 2. Select the connections this agent will handle. You'll see each account with its name and number, not the generic channel.
 3. If the connection was already assigned to another agent, the editor warns you that it **will be reassigned** from the previous agent.
-4. Click **Save changes**.
+4. Click **Save draft**, test that revision, and publish it. Reassignment happens on publication, not on save.
 
 The available connection types and capacity appear under **Channels** and **Plan & Billing**.
 
 ## What the "channels without an assigned agent" notice means
 
-If **AI Agent** shows **Channels without an assigned agent**, you have active connections that no agent handles specifically. In the meantime, those messages are answered by your **default agent** with a generic configuration.
+If **AI Agent** shows **Channels without an assigned agent**, you have active connections that no agent handles specifically. While an active default agent exists, those messages are answered by its operational version.
 
 Click **Assign agent now** to choose which agent handles each connection and deliver a personalized experience.
 
@@ -104,13 +110,13 @@ Click **Assign agent now** to choose which agent handles each connection and del
 In the **AI Agent** list, each agent has an actions menu:
 
 - **Duplicate** — creates an exact copy, ideal for experimenting without touching the agent that's already working.
-- **Save as template** — turns the configuration into a reusable template when the feature is enabled (it appears under **My templates**).
-- **Set as default** — defines which agent replies on connections that don't have one assigned.
-- **Delete** — removes the agent (you'll be asked to confirm). The default agent can't be deleted.
+- **Save as template** — copies the operational version into a reusable template when the feature is enabled. If a draft exists, publish it first if you want it included.
+- **Set as default** — proposes that status in the draft; it handles unassigned connections only after the reviewed revision is published.
+- **Delete** — retires the agent from use by deactivating it and releasing its connections while retaining its record. The default agent cannot be retired until another default is published.
 
 ## Test your agent before going live
 
-From the **AI Agent → Test agent** menu you can chat with your agent in simulation mode, without affecting real customers. Use it every time you change the personality or the rules, before it talks to your customers.
+From **AI Agent → Test agent** you can chat with either the operational version or the saved draft without affecting real customers. Test the draft whenever you change personality, rules, tools, or connections, then prepare, approve, and publish that revision.
 
 ## Frequently asked questions
 
@@ -124,7 +130,7 @@ Your default agent replies. You'll see the unassigned-channels notice in **AI Ag
 No. SMS in Parallly is not a conversation channel: it's used only for outbound notifications with credits (1 credit = 1 segment). The self-service conversational surfaces are WhatsApp, Instagram, Messenger, Telegram and web chat. Email retains an internal inbound adapter, but not certified self-service configuration.
 
 **I changed the instructions and the agent behaves the same — what should I check?**
-Make sure you clicked **Save changes** in the editor's bottom bar and that you edited the agent assigned to that connection (not a different one). Then verify it in **Test agent**.
+Make sure you saved and tested the draft and published its approved candidate. Then verify that the operational version assigns that connection to the same agent; saving a draft alone does not change customer replies.
 
 **How do I add more agents or more numbers?**
 The screen shows the available capacity for agents and connections. Review current options under **Administration → Plan & Billing**, or write to us at https://parallly-chat.cloud/support if you need different capacity.

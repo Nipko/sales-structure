@@ -5,6 +5,7 @@ import { CustomerPortalService } from './customer-portal.service';
 import { CustomerPortalController } from './customer-portal.controller';
 import { EmailModule } from '../email/email.module';
 import { SmsNotificationsModule } from '../sms-notifications/sms-notifications.module';
+import { CustomerPortalAccessService } from './customer-portal-access.service';
 
 @Module({
     imports: [
@@ -20,7 +21,7 @@ import { SmsNotificationsModule } from '../sms-notifications/sms-notifications.m
         SmsNotificationsModule,
     ],
     controllers: [CustomerPortalController],
-    providers: [CustomerPortalService],
+    providers: [CustomerPortalService, CustomerPortalAccessService],
     exports: [CustomerPortalService],
 })
 export class CustomerPortalModule {}

@@ -6,7 +6,9 @@ import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/page-header";
+import { LoadFailureNotice } from "@/components/ui/load-failure";
 import { HelpPanel } from "@/components/ui/help-panel";
+import { McpToolReviewPanel } from "@/components/McpToolReviewPanel";
 import { Plug2, Loader2, Plus, Trash2, CheckCircle2, Server, Copy, Power } from "lucide-react";
 
 interface McpServer { id: string; name: string; url: string; authHeader?: string; enabled: boolean }
@@ -20,6 +22,9 @@ export default function McpSettingsPage() {
     const { activeTenantId } = useTenant();
 
     const [servers, setServers] = useState<McpServer[]>([]);
+    // An empty list used to mean both "no external MCP server connected" and
+    // "we could not ask" — and only the first is an answer.
+    const [unavailable, setUnavailable] = useState(false);
     const [loading, setLoading] = useState(true);
     const [busy, setBusy] = useState("");
     const [toast, setToast] = useState<{ ok: boolean; msg: string } | null>(null);
@@ -30,8 +35,13 @@ export default function McpSettingsPage() {
         setLoading(true);
         try {
             const res: any = await api.listMcpServers(activeTenantId);
-            if (res?.success) setServers(res.data || []);
-        } catch { /* noop */ }
+            if (!res?.success) throw new Error("mcp_servers_read_failed");
+            setServers(res.data || []);
+            setUnavailable(false);
+        } catch {
+            setServers([]);
+            setUnavailable(true);
+        }
         setLoading(false);
     }, [activeTenantId]);
 
@@ -120,6 +130,12 @@ export default function McpSettingsPage() {
                     <div className="flex justify-center py-8"><Loader2 className="animate-spin text-muted-foreground" /></div>
                 ) : (
                     <>
+                        {/* Above the add form, not instead of it: connecting a
+                            new server is still a deliberate act with values the
+                            operator typed. What we must not do is imply the
+                            list below is the whole truth. */}
+                        {unavailable && <LoadFailureNotice className="mb-5" onRetry={() => { void load(); }} />}
+
                         {servers.length > 0 && (
                             <div className="space-y-2 mb-5">
                                 {servers.map((s) => (
@@ -154,6 +170,7 @@ export default function McpSettingsPage() {
                     </>
                 )}
             </div>
+            {activeTenantId && <McpToolReviewPanel key={activeTenantId} tenantId={activeTenantId} />}
         </div>
     );
 }

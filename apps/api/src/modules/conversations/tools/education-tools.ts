@@ -23,7 +23,7 @@ export const EDUCATION_TOOLS: ToolDefinition[] = [
     },
     {
         name: 'get_course_schedule',
-        description: 'List upcoming open cohorts (specific scheduled groups) the student can enroll in. Returns cohort_id, start date, schedule string, available seats, instructor and price. Use BEFORE enroll_student to pick a cohort.',
+        description: 'List upcoming open or full cohorts (specific scheduled groups). Full cohorts accept an explicit waitlist request. Returns cohort_id, start date, schedule string, available seats, instructor and price. Use BEFORE enroll_student to pick a cohort.',
         parameters: {
             type: 'object',
             properties: {
@@ -36,11 +36,12 @@ export const EDUCATION_TOOLS: ToolDefinition[] = [
     },
     {
         name: 'enroll_student',
-        description: 'Enroll a student in a specific cohort. Decrements available seats atomically. Always confirm name + email + phone with the student before calling. Use cohort_id from get_course_schedule. Returns paymentStatus and a payableReference when the full balance is chargeable; pass it unchanged to payment tools and never derive one yourself.',
+        description: 'Enroll a student in a specific cohort. Allocates a seat atomically, or joins the waitlist only when allowWaitlist=true and the student explicitly agreed to automatic promotion under unchanged terms. Waiting does not allocate a seat or create a payable reference. Always confirm name + email + phone with the student before calling. Use cohort_id from get_course_schedule. Returns paymentStatus and a payableReference when the full balance is chargeable; pass it unchanged to payment tools and never derive one yourself.',
         parameters: {
             type: 'object',
             properties: {
                 cohortId: { type: 'string', description: 'Cohort UUID from get_course_schedule' },
+                allowWaitlist: { type: 'boolean', description: 'True only after explicit consent to the waitlist and automatic seat assignment if the accepted price, dates and conditions remain unchanged. No automatic payment is made.' },
                 studentName: { type: 'string', description: 'Full name of the student' },
                 studentEmail: { type: 'string', description: 'Email for course communications' },
                 studentPhone: { type: 'string', description: 'Phone in international format' },
@@ -60,7 +61,7 @@ export const EDUCATION_TOOLS: ToolDefinition[] = [
     },
     {
         name: 'cancel_enrollment',
-        description: 'Cancel a student enrollment. Seat is restored to the cohort. Only enrollments in "pending" or "enrolled" status can be cancelled. Use when the student wants to withdraw from a course.',
+        description: 'Cancel a student enrollment. An allocated seat is restored and the next eligible waiter may be promoted. Waiting entries can be cancelled without inventing a released seat. Allowed statuses: enrolled, active, waitlisted, waitlist_review. Use when the student wants to withdraw from a course.',
         parameters: {
             type: 'object',
             properties: {

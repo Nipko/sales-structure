@@ -43,7 +43,7 @@ You can reopen the wizard whenever you want from **Settings → Setup assistant*
 
 ## How to connect your first channel
 
-Without a connected channel, your agent is ready but **receives no messages**. We recommend starting with **WhatsApp**, the most widely used channel in Latin America.
+Without a connected channel, the business **receives no messages through that channel**. Connecting it does not publish the agent draft: you must then review its assignment, test the draft, and publish the approved version. We recommend starting with **WhatsApp**, the most widely used channel in Latin America.
 
 Before connecting WhatsApp, have on hand:
 
@@ -61,16 +61,9 @@ Later on, you can manage everything from **Channels**, in the **Administration**
 
 ## The product tour and "Show me where"
 
-If you finish the wizard **with a channel already connected**, the last step adds a button that **offers** a short **guided tour** (it does not start by itself) highlighting the essentials:
+When the wizard has an agent draft, the last step offers **Review and publish my agent**. That path does not publish by itself: it takes you through the editor, testing, candidate preparation and review, and ends at the publication confirmation. Connecting a channel and publishing the agent are independent states; the path asks you to check the assignment before confirming.
 
-- **Your AI agent** — where its personality, knowledge, and procedures live.
-- **Your channels** — where you connect and manage WhatsApp and the other channels.
-- **Conversations** — where you watch live chats and take over whenever you want.
-- **Analytics** — where you measure your agent's performance.
-
-Move forward with **Next** and close it with **Done**. If your business belongs to a vertical industry, the tour also shows you the tool specific to your sector.
-
-If you left with **Connect later**, that button does not appear: the tour would start on a still-empty channels screen. Connect first, then ask for the tour from that screen's help panel or from Parallly Assist.
+The general product tour remains available from **Home**. It highlights the agent, channels, conversations, analytics and, when applicable, the tool specific to your industry.
 
 Besides that general tour, when that screen or that step has a tour, the pending card, the screen's **Help** panel, and Parallly Assist show a **Show me where** (or **Show me how**) button: it opens the right screen and highlights, step by step, where the change is made. The tour **does not change** anything by itself; it only takes you to the exact place.
 
@@ -93,11 +86,12 @@ their own modules and do not inflate this essential progress.
 
 ## What to do first: recommended order
 
-1. **Connect WhatsApp** (or your main channel) — without this, nothing reaches your agent.
-2. **Send it a test message** from your own phone and watch the conversation in **Conversations**.
-3. **Feed the knowledge base** from the **Knowledge Base** menu: upload your website, documents, or FAQs. The more context it has, the better its answers.
-4. **Fine-tune your agent** in the **AI Agent** menu: tone, rules, greeting, and tools.
-5. **Invite your team** from the **Users** menu and assign roles: administrator, supervisor, or agent.
+1. **Complete the business information and knowledge**: website, documents, policies, FAQs, and the relevant catalog.
+2. **Connect WhatsApp** (or your main channel). Connecting it does not put a draft in front of customers.
+3. **Adjust the agent draft**: tone, rules, greeting, tools, and channel assignment; test it in the internal chat.
+4. **Prepare, review, and publish** the approved version. Publication makes the draft content and assignments operational.
+5. **Send a message from your phone** and confirm both the reply and conversation in **Conversations**.
+6. **Invite your team** from **Users** and assign roles: administrator, supervisor, or agent.
 
 ## Frequently asked questions
 

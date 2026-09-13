@@ -19,7 +19,10 @@ export function AgentConfigDemo() {
     },
     {
       label: L("agentConfig.sliderModelLabel", "Modelo IA"),
-      value: "Claude Opus",
+      // Naming the top-tier model here implied every tenant gets it. Model tier
+      // is plan-gated by the LLM router, so the panel says where the answer
+      // comes from instead of picking the flattering one.
+      value: L("agentConfig.sliderModelValue", "Según tu plan"),
       color: "#a855f7",
       width: "100%",
     },
@@ -82,7 +85,10 @@ export function AgentConfigDemo() {
       <div className="mt-3 flex items-center gap-2">
         <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
         <span className="text-[10px] text-emerald-400 font-semibold">
-          {L("agentConfig.statusActive", "Activa · 24/7")}
+          {/* The fallback matters as much as the key: "Activa · 24/7" is an
+              availability claim on a platform that publishes no uptime, and it
+              renders whenever the locale string is missing. */}
+          {L("agentConfig.statusActive", "Asignada a una conexión")}
         </span>
       </div>
     </div>

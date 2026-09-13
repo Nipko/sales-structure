@@ -2,6 +2,7 @@
 
 import { PageHeader } from "@/components/ui/page-header";
 import { HelpPanel } from "@/components/ui/help-panel";
+import { LoadFailureNotice } from "@/components/ui/load-failure";
 import { UpgradeBanner, UpgradeModal } from "@/components/ui/upgrade-banner";
 import { usePlanLimits } from "@/hooks/usePlanLimits";
 import { useState, useEffect } from "react";
@@ -103,6 +104,7 @@ export default function AutomationPage() {
 
     // -- State --
     const [rules, setRules] = useState<any[]>([]);
+    const [unavailable, setUnavailable] = useState(false);
     const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
     const [loading, setLoading] = useState(true);
     const [toast, setToast] = useState<string | null>(null);
@@ -131,11 +133,15 @@ export default function AutomationPage() {
         setLoading(true);
         try {
             const res = await api.getAutomationRules(activeTenantId);
-            if (res.success && Array.isArray(res.data)) {
-                setRules(res.data);
-            }
+            if (!res.success || !Array.isArray(res.data)) throw new Error("automation_rules_read_failed");
+            setRules(res.data);
+            setUnavailable(false);
         } catch (err) {
             console.error("Error loading rules", err);
+            // "Todavía no tienes reglas" invites the owner to build automation
+            // they may already have running. An unread list is not an empty one.
+            setRules([]);
+            setUnavailable(true);
         } finally {
             setLoading(false);
         }
@@ -434,6 +440,8 @@ export default function AutomationPage() {
                 {/* Rules list */}
                 {loading ? (
                     <div className="text-center p-10 text-muted-foreground">{t("loadingRules")}</div>
+                ) : unavailable ? (
+                    <LoadFailureNotice onRetry={() => { void loadRules(); }} />
                 ) : rules.length === 0 ? (
                     <div className="text-center py-[60px] px-4 rounded-[14px] border border-dashed border-border bg-card text-muted-foreground">
                         <Workflow size={40} className="mb-3 opacity-40 mx-auto" />

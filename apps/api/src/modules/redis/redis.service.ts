@@ -12,6 +12,13 @@ export class RedisService implements OnModuleDestroy {
             host: this.configService.get<string>('redis.host', 'localhost'),
             port: this.configService.get<number>('redis.port', 6379),
             password: this.configService.get<string>('redis.password') || undefined,
+            // Which logical database. Nothing in production sets it, so it is
+            // 0 — exactly where every key has always lived. It exists so the
+            // test suites can have one keyspace per Jest worker: there is a
+            // single Valkey behind all of them, and a PLATFORM-wide cache key
+            // (`dispatch:rollout`) has no tenant in its name, so two suites
+            // that write it turn each other's rollout off.
+            db: this.configService.get<number>('redis.db', 0),
             maxRetriesPerRequest: null, // Required for BullMQ
         });
     }
@@ -148,6 +155,18 @@ export class RedisService implements OnModuleDestroy {
 
     async expire(key: string, seconds: number): Promise<void> {
         await this.client.expire(key, seconds);
+    }
+
+    // ---- Hash operations ----
+    // One key per counter set instead of one key per counter: a bucketed
+    // histogram written per minute is a hash of ten fields, not ten keys.
+
+    async hincrBy(key: string, field: string, by: number): Promise<number> {
+        return this.client.hincrby(key, field, by);
+    }
+
+    async hgetall(key: string): Promise<Record<string, string>> {
+        return this.client.hgetall(key);
     }
 
     // ---- List operations ----

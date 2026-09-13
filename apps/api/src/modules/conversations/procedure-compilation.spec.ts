@@ -1,3 +1,4 @@
+import { runtimeStateTransactions } from './__fixtures__/runtime-state.fixture';
 import type { ProcedureDefinition, ProcedureRunState } from '@parallext/shared';
 import { ProcedureEngineService } from './procedure-engine.service';
 import { interpolateProcedureArgs } from './procedure-slot-interpolation';
@@ -81,6 +82,7 @@ function createHarness(options: {
         }),
     };
     const toolExecutor = { execute: jest.fn().mockResolvedValue(options.toolResult ?? { ok: true }) };
+    runtimeStateTransactions(prisma);
     const service = new ProcedureEngineService(prisma as any, redis as any, toolExecutor as any);
     jest.spyOn((service as any).logger, 'warn').mockImplementation(() => undefined);
     jest.spyOn((service as any).logger, 'log').mockImplementation(() => undefined);

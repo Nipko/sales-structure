@@ -1,0 +1,108 @@
+{
+  "scope": "Current source contracts; isolated dependency stubs; no DB, Redis or LLM calls",
+  "profileCount": 81,
+  "languages": [
+    "es",
+    "en",
+    "pt",
+    "fr"
+  ],
+  "totalSeededScenarios": 13388,
+  "totalScenariosWithPositiveActions": 0,
+  "minScenariosPerProfileAndLanguage": 31,
+  "maxScenariosPerProfileAndLanguage": 60,
+  "missingVerifierProfiles": [
+    {
+      "profileId": "automotriz/taller",
+      "language": "es",
+      "scenarios": 60,
+      "customerTurns": 95,
+      "scenariosWithActions": 20,
+      "scenariosWithPositiveActions": 0,
+      "scenariosWithMissingEffectVerifier": 15
+    },
+    {
+      "profileId": "automotriz/taller",
+      "language": "en",
+      "scenarios": 60,
+      "customerTurns": 95,
+      "scenariosWithActions": 20,
+      "scenariosWithPositiveActions": 0,
+      "scenariosWithMissingEffectVerifier": 15
+    },
+    {
+      "profileId": "automotriz/taller",
+      "language": "pt",
+      "scenarios": 60,
+      "customerTurns": 95,
+      "scenariosWithActions": 20,
+      "scenariosWithPositiveActions": 0,
+      "scenariosWithMissingEffectVerifier": 15
+    },
+    {
+      "profileId": "automotriz/taller",
+      "language": "fr",
+      "scenarios": 60,
+      "customerTurns": 95,
+      "scenariosWithActions": 20,
+      "scenariosWithPositiveActions": 0,
+      "scenariosWithMissingEffectVerifier": 15
+    }
+  ],
+  "exampleProfiles": [
+    {
+      "profileId": "salud/dental",
+      "language": "es",
+      "scenarios": 44,
+      "customerTurns": 64,
+      "scenariosWithActions": 5,
+      "scenariosWithPositiveActions": 0,
+      "scenariosWithMissingEffectVerifier": 0
+    },
+    {
+      "profileId": "restaurantes/comida_rapida",
+      "language": "es",
+      "scenarios": 39,
+      "customerTurns": 54,
+      "scenariosWithActions": 5,
+      "scenariosWithPositiveActions": 0,
+      "scenariosWithMissingEffectVerifier": 0
+    }
+  ],
+  "evalSandbox": {
+    "auditedFamilies": 10,
+    "auditedWriters": 11,
+    "repairOrdersVerifierPresent": false
+  },
+  "workshopGate": {
+    "language": "es",
+    "simulatedJudgeScore": 10,
+    "simulatedToolCalls": 0,
+    "simulatedDatabaseRows": 0,
+    "total": 60,
+    "avgScore": 10,
+    "passed": false,
+    "evalActivable": false,
+    "failedScenarios": 15,
+    "firstFailure": {
+      "key": "intent_open_repair_order_happy_path",
+      "title": "Camino feliz — open_repair_order",
+      "k": 1,
+      "passes": 0,
+      "passed": false,
+      "score": 10,
+      "actionChecks": [
+        {
+          "ok": true,
+          "description": "not_called create_repair_order",
+          "detail": "calls=0"
+        },
+        {
+          "ok": false,
+          "description": "repair_orders",
+          "detail": "verificador no auditado para familia=repair_orders tabla=repair_orders"
+        }
+      ]
+    }
+  }
+}

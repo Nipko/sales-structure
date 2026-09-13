@@ -22,6 +22,7 @@ export function PushNotificationToggle() {
     const [subscribed, setSubscribed] = useState(false);
     const [loading, setLoading] = useState(false);
     const [supported, setSupported] = useState(false);
+    const [error, setError] = useState(false);
 
     useEffect(() => {
         const hasSW = "serviceWorker" in navigator;
@@ -42,6 +43,7 @@ export function PushNotificationToggle() {
 
     const subscribe = useCallback(async () => {
         setLoading(true);
+        setError(false);
         try {
             const perm = await Notification.requestPermission();
             setPermission(perm);
@@ -56,7 +58,7 @@ export function PushNotificationToggle() {
             // "accessToken" es la clave real; "token" no existe y mandaba Bearer null,
             // asi que la suscripcion push del dashboard fallaba siempre en silencio.
             const token = localStorage.getItem("accessToken");
-            await fetch(`${API_URL}/push/subscribe`, {
+            const response = await fetch(`${API_URL}/push/subscribe`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -65,10 +67,11 @@ export function PushNotificationToggle() {
                 },
                 body: JSON.stringify({ subscription: sub.toJSON() }),
             });
+            if (!response.ok) throw new Error(`push_subscribe_${response.status}`);
 
             setSubscribed(true);
         } catch {
-            // Permission denied or push registration failed
+            setError(true);
         } finally {
             setLoading(false);
         }
@@ -76,6 +79,7 @@ export function PushNotificationToggle() {
 
     const unsubscribe = useCallback(async () => {
         setLoading(true);
+        setError(false);
         try {
             const reg = await navigator.serviceWorker.ready;
             const sub = await reg.pushManager.getSubscription();
@@ -83,7 +87,7 @@ export function PushNotificationToggle() {
                 // "accessToken" es la clave real; "token" no existe y mandaba Bearer null,
             // asi que la suscripcion push del dashboard fallaba siempre en silencio.
             const token = localStorage.getItem("accessToken");
-                await fetch(`${API_URL}/push/unsubscribe`, {
+                const response = await fetch(`${API_URL}/push/unsubscribe`, {
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json",
@@ -92,11 +96,12 @@ export function PushNotificationToggle() {
                     },
                     body: JSON.stringify({ endpoint: sub.endpoint }),
                 });
+                if (!response.ok) throw new Error(`push_unsubscribe_${response.status}`);
                 await sub.unsubscribe();
             }
             setSubscribed(false);
         } catch {
-            // Unsubscribe failed
+            setError(true);
         } finally {
             setLoading(false);
         }
@@ -123,12 +128,14 @@ export function PushNotificationToggle() {
                     <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: "var(--text-primary, #e8e8f0)" }}>
                         {t("pushTitle")}
                     </p>
-                    <p style={{ margin: "2px 0 0", fontSize: 12, color: "var(--text-secondary, #9898b0)" }}>
-                        {permission === "denied" ? t("pushBlocked") : t("pushSubtitle")}
+                    <p role={error ? "alert" : undefined} style={{ margin: "2px 0 0", fontSize: 12, color: "var(--text-secondary, #9898b0)" }}>
+                        {error ? t("pushError") : permission === "denied" ? t("pushBlocked") : t("pushSubtitle")}
                     </p>
                 </div>
             </div>
             <button
+                type="button"
+                aria-pressed={subscribed}
                 onClick={subscribed ? unsubscribe : subscribe}
                 disabled={loading || permission === "denied"}
                 style={{

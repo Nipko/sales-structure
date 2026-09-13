@@ -87,6 +87,14 @@ const CAPABILITY_ITEMS: Readonly<Partial<Record<VerticalCapability, readonly Ver
   professional_case_lookup: ["cases"],
 };
 
+/** Configuration pages require both a live capability and its published route. */
+const CAPABILITY_CONFIGURATION_ITEMS: Readonly<Partial<Record<VerticalCapability, readonly VerticalDashboardItem[]>>> = {
+  appointment_booking: ["serviceCatalog"],
+  service_requests: ["serviceCatalog"],
+  pet_boarding: ["serviceCatalog"],
+  photo_sessions: ["serviceCatalog"],
+};
+
 const ROUTE_ITEMS: Readonly<Partial<Record<VerticalRoutePath, VerticalDashboardItem>>> = {
   "/admin/appointments": "appointments",
   "/admin/cases": "cases",
@@ -152,10 +160,22 @@ export function isVerticalDashboardPathVisible(
   return !item || resolution.visibleItems.includes(item);
 }
 
-/** Domain-first ordering shared by setup discovery and the product tour. */
-const DISCOVERY_ORDER: readonly VerticalDashboardItem[] = [
+/**
+ * Domain-first ordering shared by setup discovery and the product tour.
+ *
+ * Exported because the tour is the only consumer that can be wrong about it:
+ * an item reachable here with no card in `ToolsTour` disappears from discovery
+ * without anything failing, which is exactly how `serviceCatalog` sat in this
+ * list while the tour silently dropped it.
+ */
+export const DISCOVERY_ORDER: readonly VerticalDashboardItem[] = [
   "properties",
+  // El registro operativo va junto a su catálogo, e inmediatamente después:
+  // el catálogo es lo que hay que cargar para que exista una reserva, pero la
+  // reserva es lo que se trabaja todos los días.
+  "stays",
   "tours",
+  "tourBookings",
   "listings",
   "resourceRentals",
   "repairOrders",
@@ -173,6 +193,11 @@ const DISCOVERY_ORDER: readonly VerticalDashboardItem[] = [
   "pets",
   "photoSessions",
   "serviceCatalog",
+  // Antes de la agenda a propósito: el manifiesto declara `professional_case`
+  // como objeto PRIMARIO de `servicios_profesionales` y publica `/admin/cases`
+  // antes que `/admin/appointments`. Con los casos después, el estudio abría el
+  // tour y lo primero que le presentábamos era la agenda.
+  "cases",
   "appointments",
 ];
 
@@ -297,6 +322,14 @@ export function resolveVerticalDashboard(
       ? routeItems(manifest)
       : null;
     if (allowedRoutes) {
+      // The operational register and its configuration can be separate pages.
+      // Intersecting only the register projection discarded serviceCatalog
+      // even when the subtype explicitly published it as the setup surface.
+      for (const capability of capabilities) {
+        for (const item of CAPABILITY_CONFIGURATION_ITEMS[capability] || []) {
+          if (allowedRoutes.has(item)) items.add(item);
+        }
+      }
       for (const item of [...items]) {
         if (!allowedRoutes.has(item)) items.delete(item);
       }

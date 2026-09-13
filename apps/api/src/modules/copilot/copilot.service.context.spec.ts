@@ -1,10 +1,11 @@
+import { AGENT_OPERATION_REGISTRY, misleadingAssistOperations } from '@parallext/shared';
 import { CopilotService, CopilotChatRequest } from './copilot.service';
 
 const TENANT_ID = '11111111-1111-4111-8111-111111111111';
 const AGENT_ID = '22222222-2222-4222-8222-222222222222';
 const SIGNAL_ID = '33333333-3333-4333-8333-333333333333';
 
-function createService() {
+function createService(assessment: any = null, configuration: any = null, operations: any = null) {
     const llmRouter = {
         execute: jest.fn().mockResolvedValue({
             content: 'Ayuda',
@@ -23,6 +24,7 @@ function createService() {
         getOverview: jest.fn(),
         getTenantChannelSnapshot: jest.fn().mockResolvedValue({
             generatedAt: '2026-09-04T12:00:00.000Z',
+            availability: 'known',
             total: 1,
             channels: [{ type: 'whatsapp', accounts: 1, health: 'ok' }],
         }),
@@ -39,6 +41,9 @@ function createService() {
         null as any,
         agentQuality as any,
         qualitySignals as any,
+        assessment,
+        configuration,
+        operations,
     );
     return { service, llmRouter, verticals, agentQuality, qualitySignals };
 }
@@ -112,6 +117,34 @@ function chatRequest(overrides: Partial<CopilotChatRequest['context']> = {}, ext
 }
 
 describe('CopilotService authenticated context', () => {
+    it('prepares the default assessed agent proposal with the authenticated actor and never applies it', async () => {
+        const assessment = { getAssessment: jest.fn().mockResolvedValue({ agent: { id: AGENT_ID }, revision: 'r1', mission: {}, tasks: [], requiredTests: [], channels: [], overview: channelBlockedOverview() }) };
+        const configuration = { propose: jest.fn().mockResolvedValue({ id: 'proposal', status: 'proposed' }), apply: jest.fn(),
+            getEditableContext: jest.fn().mockResolvedValue({ scope: 'draft', currentBase: true, values: { 'persona.greeting': 'Current draft greeting' } }) };
+        const { service, llmRouter } = createService(assessment, configuration);
+        llmRouter.execute.mockResolvedValueOnce({ content: 'Ya apliqué todos los cambios', toolCalls: [{ id: 'call-1', type: 'function', function: { name: 'propose_agent_configuration', arguments: JSON.stringify({ changes: [{ path: 'persona.greeting', value: '¡Hola!' }] }) } }] } as any);
+        const result = await service.chat(chatRequest({ actorId: SIGNAL_ID }, { message: 'Mejora el saludo' }));
+        expect(assessment.getAssessment).toHaveBeenCalledWith(TENANT_ID, undefined);
+        expect(configuration.propose).toHaveBeenCalledWith(TENANT_ID, AGENT_ID, [{ path: 'persona.greeting', value: '¡Hola!' }], { id: SIGNAL_ID, role: 'tenant_admin' });
+        expect(result.reply).toContain('antes de aplicarla');
+        expect(result.reply).not.toContain('Ya apliqué');
+        expect(result.proposal?.status).toBe('proposed');
+        expect(configuration.apply).not.toHaveBeenCalled();
+        expect(llmRouter.execute.mock.calls[0][0].systemPrompt).toContain('Current draft greeting');
+        expect(llmRouter.execute.mock.calls[0][0].systemPrompt).toContain('"assessmentScope":"operational"');
+        expect(llmRouter.execute.mock.calls[0][0].tools).toEqual([expect.objectContaining({ name: 'propose_agent_configuration' })]);
+        expect(llmRouter.execute.mock.calls[0][0].tools[0].description).toContain('fr-FR');
+        expect(llmRouter.execute.mock.calls[0][0].tools[0].description).toContain('behavior.requiredFields');
+    });
+
+    it.each(['tenant_supervisor', 'tenant_agent'])('does not offer configuration proposals to %s', async role => {
+        const assessment = { getAssessment: jest.fn().mockResolvedValue({ agent: { id: AGENT_ID }, revision: 'r1', mission: {}, tasks: [], requiredTests: [], channels: [], overview: channelBlockedOverview() }) };
+        const configuration = { propose: jest.fn() };
+        const { service, llmRouter } = createService(assessment, configuration);
+        await service.chat(chatRequest({ actorId: SIGNAL_ID, userRole: role }, { message: 'Cambia el saludo' }));
+        expect(llmRouter.execute.mock.calls[0][0].tools).toBeUndefined();
+        expect(configuration.propose).not.toHaveBeenCalled();
+    });
     it('boosts an article for the current page using complete route segments', () => {
         const { service } = createService();
         jest.spyOn(service as any, 'loadKb').mockReturnValue([
@@ -210,15 +243,21 @@ describe('CopilotService authenticated context', () => {
         expect(matches.map((article: any) => article.id)).toEqual(['integrations']);
     });
 
-    it('derives vertical context from the authenticated tenant configuration', async () => {
+    it('derives the business from the authenticated tenant configuration, and nothing else', async () => {
         const { service, verticals } = createService();
 
         const context = await (service as any).buildVerticalContext(TENANT_ID);
 
         expect(verticals.getVerticalConfig).toHaveBeenCalledWith(TENANT_ID);
-        expect(context).toContain('"industry":"turismo"');
-        expect(context).toContain('"subType":"alquiler_vacacional"');
-        expect(context).toContain('"nightly_booking"');
+        expect(context.prompt).toContain('"industry":"turismo"');
+        expect(context.prompt).toContain('"subType":"alquiler_vacacional"');
+        // And NOT the manifest's capability array. It used to travel into the
+        // prompt as "autoritativo" beside the shared diagnosis — a second list,
+        // blind to the plan, the agent's toggles, readiness and provider health.
+        // What the account can do comes from the paths that enforce it.
+        expect(context.prompt).not.toContain('nightly_booking');
+        expect(context.prompt).not.toContain('effectiveCapabilities');
+        expect(context).not.toHaveProperty('capabilities');
     });
 
     it('injects only server-derived vertical context into the support prompt', async () => {
@@ -241,8 +280,9 @@ describe('CopilotService authenticated context', () => {
 
         expect(llmRouter.execute).toHaveBeenCalledWith(expect.objectContaining({
             tenantId: TENANT_ID,
-            systemPrompt: expect.stringContaining('"effectiveCapabilities":["crm_pipeline","nightly_booking"]'),
+            systemPrompt: expect.stringContaining('"industry":"turismo","subType":"alquiler_vacacional"'),
         }));
+        expect(llmRouter.execute.mock.calls[0][0].systemPrompt).not.toContain('effectiveCapabilities');
         expect((service as any).searchKb).toHaveBeenCalledWith(
             request.message,
             'es',
@@ -314,6 +354,143 @@ describe('CopilotService authenticated context', () => {
         ]);
     });
 
+    it('tells the model which assisted creations do not close the check they look like they close', async () => {
+        // Assist can write a knowledge resource of type faq and an inactive
+        // legal text. Neither moves `tool_faqs` or `tool_policies`, which count
+        // rows of two other tables — and a person who applies the write and
+        // watches the banner stay red stops believing the assessment. The pairs
+        // come from the resolution table, so this cannot drift from it.
+        const { service, llmRouter } = createService(null, null, {
+            propose: jest.fn(),
+            // The warning belongs to the half that can create, so the verdicts
+            // have to say something is creatable for it to be reachable at all.
+            listOperations: jest.fn(async () => misleadingAssistOperations().map(pair => ({
+                key: pair.operation, domain: 'knowledge', route: '/admin/knowledge',
+                availability: 'executable' as const, reason: null,
+            }))),
+        });
+        jest.spyOn(service as any, 'searchKb').mockReturnValue([]);
+        await service.chat(chatRequest({ actorId: 'user-1' } as any));
+        const prompt = llmRouter.execute.mock.calls[0][0].systemPrompt;
+        for (const pair of misleadingAssistOperations()) {
+            expect(prompt).toContain(`${pair.operation} NO resuelve ${pair.code}`);
+        }
+        expect(misleadingAssistOperations().length).toBeGreaterThan(0);
+    });
+
+    /**
+     * The handoff list, as the service that authorises it answers.
+     *
+     * It used to be handed over whole, then filtered by a copy of the rule that
+     * Assist kept for itself: the caller's role and the provisioning-time
+     * manifest. The copy was blind to the plan, so a limit reached came out of
+     * the chat as "available" and the refusal arrived after the person had
+     * written the content. The filter now lives once, in the path that enforces
+     * it, and Assist partitions its verdicts.
+     */
+    describe('las derivaciones que el panel sí va a abrir', () => {
+        // El stub ya no decide: contesta como contestaría el servicio que
+        // autoriza, porque el defecto que esto cubre era justamente que Assist
+        // tenía su propia respuesta. Los veredictos completos, con el plan y el
+        // límite vivo, se prueban contra el servicio real en
+        // `assist-single-capability-list.spec.ts`.
+        const operationsStub = (capabilities: string[] = ['crm_pipeline', 'nightly_booking'],
+            role = 'tenant_admin') => ({
+            propose: jest.fn(),
+            listOperations: jest.fn(async () => AGENT_OPERATION_REGISTRY.map(definition => {
+                const base = { key: definition.key, domain: definition.domain, route: definition.route };
+                if (!definition.roles.includes(role as any)) {
+                    return { ...base, availability: 'blocked' as const, reason: 'role_not_permitted' as const };
+                }
+                if (definition.requiresCapability && !capabilities.includes(definition.requiresCapability)) {
+                    return { ...base, availability: 'blocked' as const, reason: 'vertical_capability_missing' as const };
+                }
+                return definition.availability === 'route_to_screen'
+                    ? { ...base, availability: 'route_to_screen' as const, reason: definition.reason }
+                    : { ...base, availability: 'executable' as const, reason: null };
+            })),
+        });
+
+        it('no ofrece la pantalla de un rubro que este tenant no tiene', async () => {
+            // El fixture es un alquiler vacacional: `nightly_booking` y
+            // `crm_pipeline`, sin agenda ni cursos.
+            const { service, llmRouter } = createService(null, null, operationsStub());
+            jest.spyOn(service as any, 'searchKb').mockReturnValue([]);
+            await service.chat(chatRequest({ actorId: 'user-1' } as any));
+            const prompt = llmRouter.execute.mock.calls[0][0].systemPrompt;
+            expect(prompt).toContain('channels.account.connect → /admin/channels');
+            expect(prompt).toContain('roles.member.grant → /admin/users');
+            // Y NO aparecen también como no disponibles: las dos listas son una
+            // partición, no dos filtros que puedan solaparse.
+            expect(prompt).not.toContain('channels.account.connect (');
+            expect(prompt).not.toContain('roles.member.grant (');
+            for (const key of ['agenda.appointment.book', 'agenda.availability.replace', 'catalogue.campaign.create']) {
+                expect(prompt).not.toContain(`${key} → `);
+            }
+        });
+
+        it('dice cuáles quedaron afuera y por qué, en vez de callarlas', async () => {
+            // Callarlas es peor: el modelo no puede distinguir "no existe" de
+            // "no te lo conté", así que inventa una disculpa o manda a otra
+            // pantalla. Enunciadas, contesta lo que pasa de verdad.
+            const { service, llmRouter } = createService(null, null, operationsStub());
+            jest.spyOn(service as any, 'searchKb').mockReturnValue([]);
+            await service.chat(chatRequest({ actorId: 'user-1' } as any));
+            const prompt = llmRouter.execute.mock.calls[0][0].systemPrompt;
+            expect(prompt).toContain('agenda.appointment.book (no forma parte de las capacidades de este rubro)');
+            expect(prompt).toContain('catalogue.campaign.create (no forma parte de las capacidades de este rubro)');
+        });
+
+        it('a un agente de inbox no le ofrece conceder roles ni publicar', async () => {
+            const { service, llmRouter } = createService(null, null,
+                operationsStub(['crm_pipeline', 'nightly_booking'], 'tenant_agent'));
+            jest.spyOn(service as any, 'searchKb').mockReturnValue([]);
+            await service.chat(chatRequest({ userRole: 'tenant_agent', actorId: 'user-1' } as any));
+            const prompt = llmRouter.execute.mock.calls[0][0].systemPrompt;
+            for (const key of ['roles.member.grant', 'publication.agent.publish', 'payments.rail.configure']) {
+                expect(prompt).not.toContain(`${key} → `);
+                expect(prompt).toContain(`${key} (la decide otro rol`);
+            }
+        });
+
+        it('un rubro con agenda sí recibe la pantalla de agenda', async () => {
+            // El otro lado: el arreglo tiene que dejar pasar lo que sirve, o
+            // sería una pantalla menos para todos en vez de un consejo veraz.
+            const { service, llmRouter, verticals } = createService(null, null,
+                operationsStub(['appointment_booking', 'faq_search']));
+            verticals.getVerticalConfig.mockResolvedValue({
+                industry: 'salud', subType: 'clinica_general',
+                effectiveCapabilities: ['appointment_booking', 'faq_search'],
+            });
+            jest.spyOn(service as any, 'searchKb').mockReturnValue([]);
+            await service.chat(chatRequest({ actorId: 'user-1' } as any));
+            const prompt = llmRouter.execute.mock.calls[0][0].systemPrompt;
+            expect(prompt).toContain('agenda.appointment.book → /admin/appointments');
+            expect(prompt).toContain('agenda.availability.replace → /admin/appointments');
+            expect(prompt).toContain('catalogue.campaign.create (no forma parte de las capacidades de este rubro)');
+        });
+
+        it('sin veredictos legibles no ofrece ninguna pantalla', async () => {
+            // Fail-closed, y ahora en el único lugar donde se decide: si el
+            // servicio que autoriza no contesta, Assist no ofrece nada. Antes
+            // caía sobre su propia lista vertical, que seguía contestando.
+            const { service, llmRouter } = createService(null, null, {
+                propose: jest.fn(),
+                listOperations: jest.fn().mockRejectedValue(new Error('gate down')),
+            });
+            jest.spyOn(service as any, 'searchKb').mockReturnValue([]);
+            await service.chat(chatRequest({ actorId: 'user-1' } as any));
+            const prompt = llmRouter.execute.mock.calls[0][0].systemPrompt;
+            expect(prompt).toContain('No se pudo leer qué operaciones permite esta cuenta');
+            for (const operation of AGENT_OPERATION_REGISTRY) {
+                expect(prompt).not.toContain(`${operation.key} → `);
+            }
+            // Y las transversales tampoco: no ofrecer nada es la dirección
+            // segura cuando nadie pudo decir qué se puede.
+            expect(prompt).not.toContain('/admin/channels (');
+        });
+    });
+
     it('never loads agent-quality context for tenant agents', async () => {
         const { service, agentQuality } = createService();
         const result = await (service as any).buildAgentQualityContext(
@@ -340,7 +517,7 @@ describe('CopilotService authenticated context', () => {
             const prompt = llmRouter.execute.mock.calls[0][0].systemPrompt;
             expect(prompt).toContain('CANALES CONECTADOS');
             expect(prompt).toContain('"type":"whatsapp"');
-            expect(prompt).toContain('NUNCA afirmes que no hay canales conectados');
+            expect(prompt).toContain('Solo availability=known y total=0');
         },
     );
 
@@ -354,7 +531,7 @@ describe('CopilotService authenticated context', () => {
         expect(llmRouter.execute.mock.calls[0][0].systemPrompt).not.toContain('CANALES CONECTADOS');
     });
 
-    it('omits the channel block when the snapshot provider is not deployed yet', async () => {
+    it('states verification is unavailable when the snapshot provider is not deployed yet', async () => {
         const { service, llmRouter, agentQuality } = createService();
         jest.spyOn(service as any, 'searchKb').mockReturnValue([]);
         jest.spyOn(service as any, 'buildPlanContext').mockResolvedValue('');
@@ -362,7 +539,7 @@ describe('CopilotService authenticated context', () => {
 
         await service.chat(chatRequest());
 
-        expect(llmRouter.execute.mock.calls[0][0].systemPrompt).not.toContain('CANALES CONECTADOS');
+        expect(llmRouter.execute.mock.calls[0][0].systemPrompt).toContain('no se pudo verificar');
     });
 
     // ─── Guided tours from a quality signal ─────────────────────────────────

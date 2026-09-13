@@ -7,9 +7,12 @@ import type {
     ProcedureStep,
     ProcedureStepType,
     ProcedureStatus,
+    ProcedureFieldType,
+    ProcedureFieldSpec,
 } from '@parallext/shared';
 
 const VALID_STEP_TYPES: ProcedureStepType[] = ['message', 'ask', 'tool', 'condition', 'handoff'];
+const VALID_FIELD_TYPES: ProcedureFieldType[] = ['string', 'number', 'integer', 'boolean', 'date', 'uuid', 'email', 'phone', 'name'];
 
 const COMPILER_PROMPT = `Eres un compilador de procedimientos (SOP) para un agente conversacional de ventas y soporte en Latinoamérica.
 El usuario te da un procedimiento escrito en lenguaje natural (en español). Debes convertirlo en un GRAFO DE PASOS determinístico que un motor ejecutará paso a paso. El agente de IA solo expresa los pasos con naturalidad; NUNCA decide el flujo.
@@ -31,6 +34,8 @@ Devuelve ÚNICAMENTE un JSON con este formato exacto (sin texto adicional):
 
 Reglas:
 - Tipos de paso válidos: "message" (comunica algo), "ask" (pide un dato al cliente y lo guarda en config.field), "tool" (ejecuta una herramienta y guarda el resultado en config.saveAs), "condition" (evalúa config.conditionField con operator eq/neq/contains/exists/not_exists y salta a config.then o config.else), "handoff" (escala a un humano con config.reason).
+- Cada paso "ask" debe declarar "fieldType": string, number, integer, boolean, date (YYYY-MM-DD), uuid, email, phone o name. Puede declarar "choices" con valores permitidos. Si el SOP explica por qué se pide el dato, conserva ese motivo en "explanation"; nunca lo inventes.
+- En los pasos "tool", referencia datos recogidos con "{{ campo }}" dentro de args y declara sus tipos en "slots": { "argumento": { "type": "uuid", "required": true } }. No dejes args vacío cuando la herramienta necesita el dato solicitado.
 - Los pasos se ejecutan en orden salvo que un "condition" salte con then/else, o un paso tenga "next" explícito (id de otro paso).
 - Usa ids cortos y únicos (s1, s2, ...). then/else/next deben referenciar ids existentes.
 - Herramientas disponibles típicas: get_order_status, list_customer_orders, recommend_products, search_products, get_customer_context, list_active_offers, check_availability, apply_discount. Usa solo las que tengan sentido.
@@ -307,9 +312,14 @@ export class ProceduresService {
                     text: cfg.text != null ? String(cfg.text) : undefined,
                     field: cfg.field != null ? String(cfg.field) : undefined,
                     question: cfg.question != null ? String(cfg.question) : undefined,
+                    fieldType: VALID_FIELD_TYPES.includes(cfg.fieldType) ? cfg.fieldType : undefined,
+                    required: typeof cfg.required === 'boolean' ? cfg.required : undefined,
+                    choices: this.validateChoices(cfg.choices),
+                    explanation: cfg.explanation != null ? String(cfg.explanation).slice(0, 2000) : undefined,
                     tool: cfg.tool != null ? String(cfg.tool) : undefined,
                     args: cfg.args && typeof cfg.args === 'object' ? cfg.args : undefined,
                     saveAs: cfg.saveAs != null ? String(cfg.saveAs) : undefined,
+                    slots: this.validateSlots(cfg.slots),
                     conditionField: cfg.conditionField != null ? String(cfg.conditionField) : undefined,
                     operator: ['eq', 'neq', 'contains', 'exists', 'not_exists'].includes(cfg.operator) ? cfg.operator : undefined,
                     value: cfg.value != null ? String(cfg.value) : undefined,
@@ -321,6 +331,26 @@ export class ProceduresService {
             });
         });
         return out;
+    }
+
+    private validateChoices(raw: unknown): string[] | undefined {
+        if (!Array.isArray(raw)) return undefined;
+        return [...new Set(raw.filter(v => typeof v === 'string').map(v => v.trim()).filter(Boolean))].slice(0, 100);
+    }
+
+    private validateSlots(raw: unknown): Record<string, ProcedureFieldSpec> | undefined {
+        if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+        const result: Record<string, ProcedureFieldSpec> = {};
+        for (const [key, value] of Object.entries(raw).slice(0, 100)) {
+            if (['__proto__', 'prototype', 'constructor'].includes(key) || !value || typeof value !== 'object') continue;
+            const spec = value as Record<string, unknown>;
+            result[key] = {
+                type: VALID_FIELD_TYPES.includes(spec.type as ProcedureFieldType) ? spec.type as ProcedureFieldType : undefined,
+                required: typeof spec.required === 'boolean' ? spec.required : undefined,
+                choices: this.validateChoices(spec.choices),
+            };
+        }
+        return result;
     }
 
     private safeJsonObject(raw: string): any {

@@ -1,13 +1,14 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import { useState, useEffect, FormEvent } from "react";
+import { useState, useEffect, useCallback, FormEvent } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 import { Lock, Eye, EyeOff, Check, X, AlertCircle, Shield, CheckCircle, ShieldCheck, ShieldOff, Key, Copy, Loader2, Globe, Download, ExternalLink, Monitor, Trash2, RefreshCw } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { HelpPanel } from "@/components/ui/help-panel";
+import { LoadFailureNotice } from "@/components/ui/load-failure";
 
 export default function SecurityPage() {
     const t = useTranslations("settings.securityPage");
@@ -184,15 +185,26 @@ function TwoFactorSettings() {
     const [is2FAEnabled, setIs2FAEnabled] = useState(false);
     const [copied, setCopied] = useState(false);
     const [checkingStatus, setCheckingStatus] = useState(true);
+    const [statusUnavailable, setStatusUnavailable] = useState(false);
 
-    useEffect(() => {
+    const loadStatus = useCallback(() => {
+        setCheckingStatus(true);
+        setStatusUnavailable(false);
         api.get2FAStatus().then((res: any) => {
-            if (res.success && res.data) {
-                setIs2FAEnabled(res.data.enabled);
-            }
+            if (!res.success || !res.data) throw new Error("two_factor_status_unavailable");
+            setIs2FAEnabled(res.data.enabled);
             setCheckingStatus(false);
-        }).catch(() => setCheckingStatus(false));
+        }).catch(() => {
+            // "2FA is off" is a claim about the security of this account. It was
+            // being made from a failed request, and `checkingStatus` was written
+            // but never read, so the disabled card rendered while the answer was
+            // still in flight too.
+            setStatusUnavailable(true);
+            setCheckingStatus(false);
+        });
     }, []);
+
+    useEffect(() => { loadStatus(); }, [loadStatus]);
 
     const handleSetup = async () => {
         setLoading(true);
@@ -309,8 +321,20 @@ function TwoFactorSettings() {
                 </div>
             )}
 
+            {/* We do not know yet, or we could not find out. Either way the
+                "enable 2FA" button below would be asserting that it is off. */}
+            {step === 'idle' && checkingStatus && (
+                <div className="flex items-center gap-2 py-2 text-sm text-neutral-500 dark:text-neutral-400">
+                    <Loader2 size={16} className="animate-spin" aria-hidden="true" /> {tc("loading")}
+                </div>
+            )}
+
+            {step === 'idle' && !checkingStatus && statusUnavailable && (
+                <LoadFailureNotice onRetry={loadStatus} />
+            )}
+
             {/* Idle — not enabled */}
-            {step === 'idle' && !is2FAEnabled && (
+            {step === 'idle' && !checkingStatus && !statusUnavailable && !is2FAEnabled && (
                 <button onClick={handleSetup} disabled={loading}
                     className="flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-medium text-white bg-neutral-900 dark:bg-white dark:text-neutral-900 hover:opacity-90 transition-all press-effect">
                     {loading ? <Loader2 size={16} className="animate-spin" /> : <ShieldCheck size={16} />}
@@ -319,7 +343,7 @@ function TwoFactorSettings() {
             )}
 
             {/* Idle — enabled */}
-            {step === 'idle' && is2FAEnabled && (
+            {step === 'idle' && !checkingStatus && !statusUnavailable && is2FAEnabled && (
                 <div className="flex gap-3">
                     <button onClick={() => setStep('disable')}
                         className="flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-red-600 border border-red-200 dark:border-red-500/20 bg-red-50 dark:bg-red-500/10 hover:bg-red-100 dark:hover:bg-red-500/20 transition-colors">
@@ -446,6 +470,7 @@ function TrustedDevicesSettings() {
     const tc = useTranslations("common");
 
     const [devices, setDevices] = useState<any[]>([]);
+    const [unavailable, setUnavailable] = useState(false);
     const [loading, setLoading] = useState(true);
     const [revoking, setRevoking] = useState<string | null>(null);
     const [revokingAll, setRevokingAll] = useState(false);
@@ -456,10 +481,15 @@ function TrustedDevicesSettings() {
         setLoading(true);
         try {
             const res = await api.listTrustedDevices();
-            if (res.success && res.data) {
-                setDevices(res.data);
-            }
-        } catch { /* noop */ }
+            if (!res.success || !res.data) throw new Error("trusted_devices_unavailable");
+            setDevices(res.data);
+            setUnavailable(false);
+        } catch {
+            // "No device has persistent access to your account" is a security
+            // conclusion. It must come from an answer, not from a dropped request.
+            setDevices([]);
+            setUnavailable(true);
+        }
         setLoading(false);
     };
 
@@ -524,6 +554,8 @@ function TrustedDevicesSettings() {
                     <Loader2 size={16} className="animate-spin text-neutral-400" />
                     <span className="text-sm text-neutral-500">{tc("loading")}</span>
                 </div>
+            ) : unavailable ? (
+                <LoadFailureNotice onRetry={() => { void loadDevices(); }} />
             ) : devices.length === 0 ? (
                 <div className="flex flex-col items-center gap-2 py-6 text-center">
                     <Monitor size={24} className="text-neutral-300 dark:text-neutral-600" />

@@ -77,6 +77,24 @@ export class ComplianceController {
         return this.complianceService.createConsent(await this.schemaFor(tenantId), { ...payload, tenant_id: tenantId });
     }
 
+    @Put('consents/:tenantId/:consentId/revoke')
+    @Roles('tenant_admin')
+    @ApiOperation({ summary: 'Revoke a contact consent grant' })
+    async revokeConsent(
+        @Param('tenantId') tenantId: string,
+        @Param('consentId') consentId: string,
+        @CurrentUser() user: any,
+    ) {
+        const result = await this.complianceService.revokeConsent(
+            await this.schemaFor(tenantId), consentId,
+        );
+        await this.complianceService.logComplianceAction(
+            tenantId, 'consent.revoked', 'consent_records',
+            { consentId, userId: user?.id || user?.sub },
+        );
+        return { success: !!result, data: result };
+    }
+
     // ─── Opt-Outs (with review workflow) ────────────────────────────────────
 
     @Get('opt-outs/:tenantId')
@@ -130,7 +148,13 @@ export class ComplianceController {
     @Roles('tenant_admin')
     @ApiOperation({ summary: 'Register a manual opt-out' })
     async createOptOut(@Param('tenantId') tenantId: string, @Body() payload: any) {
-        return this.complianceService.createOptOut(await this.schemaFor(tenantId), { ...payload, tenant_id: tenantId });
+        return this.analyticsCompliance.processOptOut(tenantId, {
+            leadId: payload.lead_id,
+            phone: payload.phone,
+            channel: payload.channel || 'whatsapp',
+            triggerMessage: payload.reason || payload.trigger_msg || 'manual',
+            detectedFrom: 'manual',
+        });
     }
 
     // ─── Deletion Requests ────────────────────────────────────────────────────
@@ -197,6 +221,6 @@ export class ComplianceController {
     ) {
         const schema = await this.schemaFor(tenantId);
         const result = await this.complianceService.eraseContactData(schema, tenantId, contactId, user.id || user.sub);
-        return { success: true, data: result };
+        return { success: result.completed, data: result };
     }
 }

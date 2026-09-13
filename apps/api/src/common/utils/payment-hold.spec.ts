@@ -76,10 +76,23 @@ describe('ningún predicado de ocupación quedó atrás', () => {
         // Eran 13 predicados repartidos en 7 archivos. Si uno se queda con la
         // lista de estados, ese camino ignora la retención y vende dos veces la
         // misma fecha.
+        //
+        // Un archivo puede cumplirlo de dos maneras: armando el predicado él
+        // mismo, o delegando en el único gate de capacidad que lo arma. El
+        // listener del pago dejó de escribir SQL de ocupación y ahora delega,
+        // que es más seguro, no menos — pero la delegación sólo vale mientras
+        // el delegado siga siendo consciente de la retención, y eso se afirma
+        // aparte para que la indirección no pueda esconder una regresión.
+        const gate = readFileSync(
+            resolve(__dirname, '../../..', 'src/modules/appointments/appointment-capacity.util.ts'), 'utf8');
+        expect(gate).toContain('holdStillAliveSql');
+
         for (const f of files) {
             const src = readFileSync(resolve(__dirname, '../../..', f), 'utf8');
             expect(src).not.toContain('OCCUPANCY_EXCLUDED_SQL');
-            expect(src).toContain('holdStillAliveSql');
+            expect(
+                src.includes('holdStillAliveSql') || src.includes('lockAndAssertAppointmentCapacity'),
+            ).toBe(true);
         }
     });
 });

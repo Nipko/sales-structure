@@ -42,7 +42,7 @@ import {
     type TerminologyLanguage,
 } from './subtype-terminology';
 
-export const VERTICAL_DOMAIN_CONTRACT_VERSION = 2 as const;
+export const VERTICAL_DOMAIN_CONTRACT_VERSION = 3 as const;
 
 // ── SlotSchema ───────────────────────────────────────────────────────────
 
@@ -229,6 +229,53 @@ const DATETIME_SLOT: SlotSchema = Object.freeze({
  * el runtime no puede hacer — el defecto que este contrato viene a cerrar.
  */
 const INTENTS_BY_TOOL_GROUP: Readonly<Record<string, readonly IntentContract[]>> = Object.freeze({
+    /**
+     * CRM is a horizontal capability rather than a subtype-scoped tool group.
+     * Every profile declares `crm_pipeline`, exposes Contacts/Pipeline and emits
+     * lead events, but until v3 that capability produced no task at all. A
+     * business whose primary object was a lead therefore promised only FAQ
+     * answers despite having the safe CRM writers in production.
+     */
+    crm: Object.freeze([
+        Object.freeze<IntentContract>({
+            key: 'capture_interest',
+            description: 'El cliente manifiesta un interés comercial concreto y el equipo necesita conservarlo sin inventar una calificación.',
+            slots: Object.freeze([Object.freeze<SlotSchema>({
+                key: 'interest', type: 'text', required: true,
+                sensitivity: 'personal', source: 'customer', persistence: 'record',
+                validator: { min: 3, max: 500 },
+            })]),
+            toolPlan: Object.freeze([
+                'get_customer_context', 'ensure_crm_lead', 'record_contact_interest', 'create_crm_opportunity',
+            ]),
+            confirmation: 'none',
+            fallback: 'handoff',
+            states: Object.freeze(['identified', 'captured', 'handed_off']),
+            // These are additive internal CRM records. They do not promise a
+            // price, booking, approval, payment or external action to the customer.
+            commits: false,
+        }),
+        Object.freeze<IntentContract>({
+            key: 'request_follow_up',
+            description: 'El cliente pide que el equipo lo contacte después para una acción concreta.',
+            slots: Object.freeze([
+                Object.freeze<SlotSchema>({
+                    key: 'follow_up_request', type: 'text', required: true,
+                    sensitivity: 'personal', source: 'customer', persistence: 'record',
+                    validator: { min: 3, max: 500 },
+                }),
+                Object.freeze<SlotSchema>({
+                    key: 'due_at', type: 'datetime', required: false,
+                    sensitivity: 'personal', source: 'customer', persistence: 'record',
+                }),
+            ]),
+            toolPlan: Object.freeze(['get_customer_context', 'ensure_crm_lead', 'create_follow_up_task']),
+            confirmation: 'none',
+            fallback: 'handoff',
+            states: Object.freeze(['identified', 'scheduled', 'handed_off']),
+            commits: false,
+        }),
+    ]),
     faqs: Object.freeze([Object.freeze<IntentContract>({
         key: 'ask_question',
         description: 'El cliente pregunta algo que el negocio ya respondió antes.',
@@ -329,6 +376,17 @@ const INTENTS_BY_TOOL_GROUP: Readonly<Record<string, readonly IntentContract[]>>
             fallback: 'handoff',
             states: Object.freeze(['collecting', 'confirming', 'ordered', 'handed_off']),
             commits: true,
+        }),
+        Object.freeze<IntentContract>({
+            key:'track_catalog_order',description:'El cliente consulta sus pedidos y su estado real de pago.',slots:Object.freeze([]),
+            toolPlan:Object.freeze(['list_my_catalog_orders','get_catalog_order']),confirmation:'none',fallback:'handoff',
+            states:Object.freeze(['listed','empty','handed_off']),commits:false,
+        }),
+        Object.freeze<IntentContract>({
+            key:'cancel_catalog_order',description:'El cliente solicita cancelar su pedido impago con revisión del estado vigente.',
+            slots:Object.freeze([Object.freeze<SlotSchema>({key:'orderId',type:'reference',required:true,sensitivity:'personal',source:'tool',persistence:'turn'})]),
+            toolPlan:Object.freeze(['list_my_catalog_orders','get_catalog_order','cancel_catalog_order']),confirmation:'explicit',fallback:'handoff',
+            states:Object.freeze(['reviewing','confirming','cancelled','handed_off']),commits:true,
         }),
     ]),
     // ═══ LOS QUINCE GRUPOS QUE NO DECLARABAN NINGUNA INTENCIÓN ═══
@@ -519,15 +577,17 @@ const INTENTS_BY_TOOL_GROUP: Readonly<Record<string, readonly IntentContract[]>>
                 key: 'vehicle_id', type: 'reference', required: true,
                 sensitivity: 'public', source: 'tool', persistence: 'record',
             }),
+            Object.freeze<SlotSchema>({key:'service_id',type:'reference',required:true,sensitivity:'public',source:'tool',persistence:'record'}),
+            Object.freeze<SlotSchema>({key:'staff_id',type:'reference',required:true,sensitivity:'public',source:'tool',persistence:'record'}),
             DATETIME_SLOT,
             ...CONTACT_SLOTS,
         ]),
         toolPlan: Object.freeze([
-            'search_vehicles', 'get_vehicle_details', 'schedule_test_drive',
+            'search_vehicles', 'get_vehicle_details', 'list_services', 'check_availability', 'schedule_test_drive',
         ]),
         confirmation: 'explicit',
         fallback: 'handoff',
-        states: Object.freeze(['collecting', 'confirming', 'scheduled', 'handed_off']),
+        states: Object.freeze(['collecting', 'confirming', 'pending', 'awaiting_payment', 'confirmed', 'handed_off']),
         commits: true,
     })]),
 
@@ -926,16 +986,19 @@ function claimsFor(profile: ResolvedSubtypeExperienceProfile): readonly string[]
             'puede tomar el interés y pasarlo a una persona',
             'puede informar precios que el negocio cargó',
         ],
-        reserva: [
+        coordinacion: [
             'puede tomar el interés y pasarlo a una persona',
-            'puede informar precios que el negocio cargó',
-            'puede reservar cuando el motor confirma disponibilidad',
+            'puede coordinar el siguiente paso usando los registros que el negocio conectó',
         ],
-        operacion: [
+        operacion_ligera: [
             'puede tomar el interés y pasarlo a una persona',
             'puede informar precios que el negocio cargó',
-            'puede reservar cuando el motor confirma disponibilidad',
-            'puede ejecutar operaciones que el contrato efectivo autorizó',
+            'puede ejecutar operaciones nativas que el contrato efectivo autorizó',
+        ],
+        operacion_integrada: [
+            'puede tomar el interés y pasarlo a una persona',
+            'puede informar precios que el negocio cargó',
+            'puede ejecutar operaciones que el sistema conectado confirmó y el contrato efectivo autorizó',
         ],
     };
     return byScope[profile.scope] ?? byScope.captacion;
@@ -983,6 +1046,9 @@ export function intentToolGroup(intentKey: string): string | undefined {
 
 function intentsFor(manifest: ResolvedVerticalCapabilityManifest): readonly IntentContract[] {
     const intents: IntentContract[] = [];
+    if (manifest.capabilities.includes('crm_pipeline')) {
+        intents.push(...(INTENTS_BY_TOOL_GROUP.crm ?? []));
+    }
     for (const group of manifest.toolGroups as readonly VerticalToolGroup[]) {
         for (const intent of INTENTS_BY_TOOL_GROUP[group] ?? []) intents.push(intent);
     }

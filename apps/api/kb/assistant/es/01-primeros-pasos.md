@@ -43,7 +43,7 @@ Puedes reabrir el asistente cuando quieras desde **Configuración → Asistente 
 
 ## Cómo conectar tu primer canal
 
-Sin un canal conectado, tu agente está listo pero **no recibe mensajes**. Te recomendamos empezar por **WhatsApp**, el canal más usado en Latinoamérica.
+Sin un canal conectado, el negocio **no recibe mensajes por ese medio**. Conectar el canal no publica el borrador del agente: después debes revisar su asignación, probar el borrador y publicar la versión aprobada. Te recomendamos empezar por **WhatsApp**, el canal más usado en Latinoamérica.
 
 Antes de conectar WhatsApp ten a mano:
 
@@ -61,16 +61,9 @@ Más adelante puedes administrar todo desde **Canales**, en la sección **Admini
 
 ## El tour del producto y "Mostrarme dónde"
 
-Si terminas el asistente **con un canal ya conectado**, el último paso suma un botón que te **ofrece** un breve **tour guiado** (no se dispara solo) y señala lo esencial:
+Si el asistente tiene un borrador de agente, el último paso ofrece **Revisar y publicar mi agente**. Ese recorrido no publica por sí solo: te lleva por el editor, la prueba, la preparación y revisión del candidato, y termina en la confirmación de publicación. Conectar un canal y publicar el agente son estados independientes; el recorrido te pide comprobar la asignación antes de confirmar.
 
-- **Tu agente de IA** — donde viven su personalidad, conocimiento y procedimientos.
-- **Tus canales** — donde conectas y gestionas WhatsApp y los demás canales.
-- **Conversaciones** — donde ves los chats en vivo y tomas el control cuando quieras.
-- **Analítica** — donde mides el rendimiento del agente.
-
-Avanza con **Siguiente** y ciérralo con **Listo**. Si tu negocio es de una industria vertical, el tour también te muestra la herramienta específica de tu rubro.
-
-Si saliste con **Conectar después**, ese botón no aparece: el tour empieza por una pantalla de canales todavía vacía. Conecta primero y pide el recorrido desde la ayuda de esa pantalla o desde Parallly Assist.
+El tour general del producto sigue disponible desde **Inicio**. Señala el agente, los canales, las conversaciones, la analítica y, cuando corresponde, la herramienta específica de tu industria.
 
 Además del tour general, cuando esa pantalla o ese paso tienen un recorrido, la tarjeta pendiente, el panel de **Ayuda** de la pantalla y Parallly Assist muestran el botón **Mostrarme dónde** (o **Mostrarme cómo**): abre la pantalla correcta y resalta paso a paso dónde se hace el cambio. El recorrido **no modifica** nada por sí mismo; solo te lleva al lugar exacto.
 
@@ -93,11 +86,12 @@ avanzadas se realizan desde su módulo y no inflan este progreso esencial.
 
 ## Qué hacer primero: orden recomendado
 
-1. **Conecta WhatsApp** (o tu canal principal) — sin esto, nada llega a tu agente.
-2. **Envíale un mensaje de prueba** desde tu propio celular y mira la conversación en **Conversaciones**.
-3. **Alimenta la base de conocimiento** desde el menú **Base de Conocimiento**: sube tu sitio web, documentos o preguntas frecuentes. Mientras más contexto tenga, mejores respuestas da.
-4. **Ajusta tu agente** en el menú **Agente IA**: tono, reglas, saludo y herramientas.
-5. **Invita a tu equipo** desde el menú **Usuarios** y asigna roles: administrador, supervisor o agente.
+1. **Completa la información y el conocimiento del negocio**: sitio web, documentos, políticas, preguntas frecuentes y el catálogo que corresponda.
+2. **Conecta WhatsApp** (o tu canal principal). La conexión todavía no pone un borrador a atender clientes.
+3. **Ajusta el borrador del agente**: tono, reglas, saludo, herramientas y asignación del canal; pruébalo en el chat interno.
+4. **Prepara, revisa y publica** la versión aprobada. La publicación es la que vuelve operativos el contenido y las asignaciones del borrador.
+5. **Envía un mensaje desde tu celular** y confirma la respuesta y la conversación en **Conversaciones**.
+6. **Invita a tu equipo** desde **Usuarios** y asigna roles: administrador, supervisor o agente.
 
 ## Preguntas frecuentes
 

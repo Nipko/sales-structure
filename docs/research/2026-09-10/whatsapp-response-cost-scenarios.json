@@ -1,0 +1,965 @@
+{
+  "status": "research_scenarios_not_runtime_policy",
+  "as_of": "2026-09-10",
+  "effective_from": "2026-10-01",
+  "source_page": "https://developers.facebook.com/documentation/business-messaging/whatsapp/pricing",
+  "source_file": "meta-ratecards-2026.json",
+  "source_sha256": "cdc5b132567ab1e70014928ba513386aee61b787c0206630aca9f2e0c78a946d",
+  "assumptions": [
+    "Service messages delivered outside an evidenced free-entry-point exemption.",
+    "Free service allowance already exhausted, except in the explicitly labelled remaining-allowance example.",
+    "Official account currency is used directly; COP is not converted from USD.",
+    "Taxes, partner charges, AI, advertising, human labor and other categories are excluded.",
+    "Example COP 1000 is arbitrary for illustrating destination impact, not a recommended customer limit.",
+    "No service volume discounts are applied. No calls, contacts or production costs were measured."
+  ],
+  "selected_markets": [
+    {
+      "market": "Colombia",
+      "usd_per_reply": "0.00080",
+      "usd_per_20": "0.01600",
+      "cop_per_reply": "2.9455",
+      "cop_per_20": "58.9100",
+      "relative_to_colombia_usd": "1"
+    },
+    {
+      "market": "North America",
+      "usd_per_reply": "0.0034",
+      "usd_per_20": "0.0680",
+      "cop_per_reply": "12.5182",
+      "cop_per_20": "250.3640",
+      "relative_to_colombia_usd": "4.25"
+    },
+    {
+      "market": "Brazil",
+      "usd_per_reply": "0.0068",
+      "usd_per_20": "0.1360",
+      "cop_per_reply": "25.0363",
+      "cop_per_20": "500.7260",
+      "relative_to_colombia_usd": "8.5"
+    },
+    {
+      "market": "Mexico",
+      "usd_per_reply": "0.0085",
+      "usd_per_20": "0.1700",
+      "cop_per_reply": "31.2954",
+      "cop_per_20": "625.9080",
+      "relative_to_colombia_usd": "10.625"
+    },
+    {
+      "market": "Rest of Latin America",
+      "usd_per_reply": "0.0113",
+      "usd_per_20": "0.2260",
+      "cop_per_reply": "41.6045",
+      "cop_per_20": "832.0900",
+      "relative_to_colombia_usd": "14.125"
+    },
+    {
+      "market": "Spain",
+      "usd_per_reply": "0.02",
+      "usd_per_20": "0.40",
+      "cop_per_reply": "73.6363",
+      "cop_per_20": "1472.7260",
+      "relative_to_colombia_usd": "25"
+    },
+    {
+      "market": "Argentina",
+      "usd_per_reply": "0.026",
+      "usd_per_20": "0.520",
+      "cop_per_reply": "95.7271",
+      "cop_per_20": "1914.5420",
+      "relative_to_colombia_usd": "32.5"
+    },
+    {
+      "market": "Peru",
+      "usd_per_reply": "0.03",
+      "usd_per_20": "0.60",
+      "cop_per_reply": "110.4545",
+      "cop_per_20": "2209.0900",
+      "relative_to_colombia_usd": "37.5"
+    },
+    {
+      "market": "Netherlands",
+      "usd_per_reply": "0.05",
+      "usd_per_20": "1.00",
+      "cop_per_reply": "184.0907",
+      "cop_per_20": "3681.8140",
+      "relative_to_colombia_usd": "62.5"
+    },
+    {
+      "market": "Germany",
+      "usd_per_reply": "0.055",
+      "usd_per_20": "1.100",
+      "cop_per_reply": "202.4997",
+      "cop_per_20": "4049.9940",
+      "relative_to_colombia_usd": "68.75"
+    }
+  ],
+  "all_markets": [
+    {
+      "market": "Germany",
+      "currency": "COP",
+      "service_rate": "202.4997",
+      "twenty_billable_replies": "4049.9940",
+      "thousand_billable_replies": "202499.7000",
+      "card_file": "meta-cop-rates-2026-10-01.xlsx",
+      "card_sha256": "cd9fe8d22a7a9d0ca7cfeffb333df4863faf18a46625c36503be530df58b3c7c"
+    },
+    {
+      "market": "Netherlands",
+      "currency": "COP",
+      "service_rate": "184.0907",
+      "twenty_billable_replies": "3681.8140",
+      "thousand_billable_replies": "184090.7000",
+      "card_file": "meta-cop-rates-2026-10-01.xlsx",
+      "card_sha256": "cd9fe8d22a7a9d0ca7cfeffb333df4863faf18a46625c36503be530df58b3c7c"
+    },
+    {
+      "market": "Kuwait",
+      "currency": "COP",
+      "service_rate": "161.9998",
+      "twenty_billable_replies": "3239.9960",
+      "thousand_billable_replies": "161999.8000",
+      "card_file": "meta-cop-rates-2026-10-01.xlsx",
+      "card_sha256": "cd9fe8d22a7a9d0ca7cfeffb333df4863faf18a46625c36503be530df58b3c7c"
+    },
+    {
+      "market": "Russia",
+      "currency": "COP",
+      "service_rate": "147.2725",
+      "twenty_billable_replies": "2945.4500",
+      "thousand_billable_replies": "147272.5000",
+      "card_file": "meta-cop-rates-2026-10-01.xlsx",
+      "card_sha256": "cd9fe8d22a7a9d0ca7cfeffb333df4863faf18a46625c36503be530df58b3c7c"
+    },
+    {
+      "market": "Hungary",
+      "currency": "COP",
+      "service_rate": "128.8634",
+      "twenty_billable_replies": "2577.2680",
+      "thousand_billable_replies": "128863.4000",
+      "card_file": "meta-cop-rates-2026-10-01.xlsx",
+      "card_sha256": "cd9fe8d22a7a9d0ca7cfeffb333df4863faf18a46625c36503be530df58b3c7c"
+    },
+    {
+      "market": "Peru",
+      "currency": "COP",
+      "service_rate": "110.4545",
+      "twenty_billable_replies": "2209.0900",
+      "thousand_billable_replies": "110454.5000",
+      "card_file": "meta-cop-rates-2026-10-01.xlsx",
+      "card_sha256": "cd9fe8d22a7a9d0ca7cfeffb333df4863faf18a46625c36503be530df58b3c7c"
+    },
+    {
+      "market": "France",
+      "currency": "COP",
+      "service_rate": "110.4544",
+      "twenty_billable_replies": "2209.0880",
+      "thousand_billable_replies": "110454.4000",
+      "card_file": "meta-cop-rates-2026-10-01.xlsx",
+      "card_sha256": "cd9fe8d22a7a9d0ca7cfeffb333df4863faf18a46625c36503be530df58b3c7c"
+    },
+    {
+      "market": "Italy",
+      "currency": "COP",
+      "service_rate": "110.4544",
+      "twenty_billable_replies": "2209.0880",
+      "thousand_billable_replies": "110454.4000",
+      "card_file": "meta-cop-rates-2026-10-01.xlsx",
+      "card_sha256": "cd9fe8d22a7a9d0ca7cfeffb333df4863faf18a46625c36503be530df58b3c7c"
+    },
+    {
+      "market": "Ukraine",
+      "currency": "COP",
+      "service_rate": "109.718",
+      "twenty_billable_replies": "2194.360",
+      "thousand_billable_replies": "109718.000",
+      "card_file": "meta-cop-rates-2026-10-01.xlsx",
+      "card_sha256": "cd9fe8d22a7a9d0ca7cfeffb333df4863faf18a46625c36503be530df58b3c7c"
+    },
+    {
+      "market": "Romania",
+      "currency": "COP",
+      "service_rate": "106.7725",
+      "twenty_billable_replies": "2135.4500",
+      "thousand_billable_replies": "106772.5000",
+      "card_file": "meta-cop-rates-2026-10-01.xlsx",
+      "card_sha256": "cd9fe8d22a7a9d0ca7cfeffb333df4863faf18a46625c36503be530df58b3c7c"
+    },
+    {
+      "market": "Hong Kong",
+      "currency": "COP",
+      "service_rate": "95.7272",
+      "twenty_billable_replies": "1914.5440",
+      "thousand_billable_replies": "95727.2000",
+      "card_file": "meta-cop-rates-2026-10-01.xlsx",
+      "card_sha256": "cd9fe8d22a7a9d0ca7cfeffb333df4863faf18a46625c36503be530df58b3c7c"
+    },
+    {
+      "market": "Argentina",
+      "currency": "COP",
+      "service_rate": "95.7271",
+      "twenty_billable_replies": "1914.5420",
+      "thousand_billable_replies": "95727.1000",
+      "card_file": "meta-cop-rates-2026-10-01.xlsx",
+      "card_sha256": "cd9fe8d22a7a9d0ca7cfeffb333df4863faf18a46625c36503be530df58b3c7c"
+    },
+    {
+      "market": "Indonesia",
+      "currency": "COP",
+      "service_rate": "92.0453",
+      "twenty_billable_replies": "1840.9060",
+      "thousand_billable_replies": "92045.3000",
+      "card_file": "meta-cop-rates-2026-10-01.xlsx",
+      "card_sha256": "cd9fe8d22a7a9d0ca7cfeffb333df4863faf18a46625c36503be530df58b3c7c"
+    },
+    {
+      "market": "Oman",
+      "currency": "COP",
+      "service_rate": "90.9408",
+      "twenty_billable_replies": "1818.8160",
+      "thousand_billable_replies": "90940.8000",
+      "card_file": "meta-cop-rates-2026-10-01.xlsx",
+      "card_sha256": "cd9fe8d22a7a9d0ca7cfeffb333df4863faf18a46625c36503be530df58b3c7c"
+    },
+    {
+      "market": "Morocco",
+      "currency": "COP",
+      "service_rate": "84.682",
+      "twenty_billable_replies": "1693.640",
+      "thousand_billable_replies": "84682.000",
+      "card_file": "meta-cop-rates-2026-10-01.xlsx",
+      "card_sha256": "cd9fe8d22a7a9d0ca7cfeffb333df4863faf18a46625c36503be530df58b3c7c"
+    },
+    {
+      "market": "United Kingdom",
+      "currency": "COP",
+      "service_rate": "80.9999",
+      "twenty_billable_replies": "1619.9980",
+      "thousand_billable_replies": "80999.9000",
+      "card_file": "meta-cop-rates-2026-10-01.xlsx",
+      "card_sha256": "cd9fe8d22a7a9d0ca7cfeffb333df4863faf18a46625c36503be530df58b3c7c"
+    },
+    {
+      "market": "Rest of Central & Eastern Europe",
+      "currency": "COP",
+      "service_rate": "78.0544",
+      "twenty_billable_replies": "1561.0880",
+      "thousand_billable_replies": "78054.4000",
+      "card_file": "meta-cop-rates-2026-10-01.xlsx",
+      "card_sha256": "cd9fe8d22a7a9d0ca7cfeffb333df4863faf18a46625c36503be530df58b3c7c"
+    },
+    {
+      "market": "Chile",
+      "currency": "COP",
+      "service_rate": "73.6363",
+      "twenty_billable_replies": "1472.7260",
+      "thousand_billable_replies": "73636.3000",
+      "card_file": "meta-cop-rates-2026-10-01.xlsx",
+      "card_sha256": "cd9fe8d22a7a9d0ca7cfeffb333df4863faf18a46625c36503be530df58b3c7c"
+    },
+    {
+      "market": "Spain",
+      "currency": "COP",
+      "service_rate": "73.6363",
+      "twenty_billable_replies": "1472.7260",
+      "thousand_billable_replies": "73636.3000",
+      "card_file": "meta-cop-rates-2026-10-01.xlsx",
+      "card_sha256": "cd9fe8d22a7a9d0ca7cfeffb333df4863faf18a46625c36503be530df58b3c7c"
+    },
+    {
+      "market": "Kazakhstan",
+      "currency": "COP",
+      "service_rate": "66.2727",
+      "twenty_billable_replies": "1325.4540",
+      "thousand_billable_replies": "66272.7000",
+      "card_file": "meta-cop-rates-2026-10-01.xlsx",
+      "card_sha256": "cd9fe8d22a7a9d0ca7cfeffb333df4863faf18a46625c36503be530df58b3c7c"
+    },
+    {
+      "market": "Rest of Western Europe",
+      "currency": "COP",
+      "service_rate": "62.959",
+      "twenty_billable_replies": "1259.180",
+      "thousand_billable_replies": "62959.000",
+      "card_file": "meta-cop-rates-2026-10-01.xlsx",
+      "card_sha256": "cd9fe8d22a7a9d0ca7cfeffb333df4863faf18a46625c36503be530df58b3c7c"
+    },
+    {
+      "market": "Singapore",
+      "currency": "COP",
+      "service_rate": "58.909",
+      "twenty_billable_replies": "1178.180",
+      "thousand_billable_replies": "58909.000",
+      "card_file": "meta-cop-rates-2026-10-01.xlsx",
+      "card_sha256": "cd9fe8d22a7a9d0ca7cfeffb333df4863faf18a46625c36503be530df58b3c7c"
+    },
+    {
+      "market": "United Arab Emirates",
+      "currency": "COP",
+      "service_rate": "57.8045",
+      "twenty_billable_replies": "1156.0900",
+      "thousand_billable_replies": "57804.5000",
+      "card_file": "meta-cop-rates-2026-10-01.xlsx",
+      "card_sha256": "cd9fe8d22a7a9d0ca7cfeffb333df4863faf18a46625c36503be530df58b3c7c"
+    },
+    {
+      "market": "Pakistan",
+      "currency": "COP",
+      "service_rate": "55.2272",
+      "twenty_billable_replies": "1104.5440",
+      "thousand_billable_replies": "55227.2000",
+      "card_file": "meta-cop-rates-2026-10-01.xlsx",
+      "card_sha256": "cd9fe8d22a7a9d0ca7cfeffb333df4863faf18a46625c36503be530df58b3c7c"
+    },
+    {
+      "market": "Malaysia",
+      "currency": "COP",
+      "service_rate": "51.5454",
+      "twenty_billable_replies": "1030.9080",
+      "thousand_billable_replies": "51545.4000",
+      "card_file": "meta-cop-rates-2026-10-01.xlsx",
+      "card_sha256": "cd9fe8d22a7a9d0ca7cfeffb333df4863faf18a46625c36503be530df58b3c7c"
+    },
+    {
+      "market": "Poland",
+      "currency": "COP",
+      "service_rate": "44.9181",
+      "twenty_billable_replies": "898.3620",
+      "thousand_billable_replies": "44918.1000",
+      "card_file": "meta-cop-rates-2026-10-01.xlsx",
+      "card_sha256": "cd9fe8d22a7a9d0ca7cfeffb333df4863faf18a46625c36503be530df58b3c7c"
+    },
+    {
+      "market": "Qatar",
+      "currency": "COP",
+      "service_rate": "44.1818",
+      "twenty_billable_replies": "883.6360",
+      "thousand_billable_replies": "44181.8000",
+      "card_file": "meta-cop-rates-2026-10-01.xlsx",
+      "card_sha256": "cd9fe8d22a7a9d0ca7cfeffb333df4863faf18a46625c36503be530df58b3c7c"
+    },
+    {
+      "market": "Rest of Asia Pacific",
+      "currency": "COP",
+      "service_rate": "41.6045",
+      "twenty_billable_replies": "832.0900",
+      "thousand_billable_replies": "41604.5000",
+      "card_file": "meta-cop-rates-2026-10-01.xlsx",
+      "card_sha256": "cd9fe8d22a7a9d0ca7cfeffb333df4863faf18a46625c36503be530df58b3c7c"
+    },
+    {
+      "market": "Rest of Latin America",
+      "currency": "COP",
+      "service_rate": "41.6045",
+      "twenty_billable_replies": "832.0900",
+      "thousand_billable_replies": "41604.5000",
+      "card_file": "meta-cop-rates-2026-10-01.xlsx",
+      "card_sha256": "cd9fe8d22a7a9d0ca7cfeffb333df4863faf18a46625c36503be530df58b3c7c"
+    },
+    {
+      "market": "Saudi Arabia",
+      "currency": "COP",
+      "service_rate": "39.3954",
+      "twenty_billable_replies": "787.9080",
+      "thousand_billable_replies": "39395.4000",
+      "card_file": "meta-cop-rates-2026-10-01.xlsx",
+      "card_sha256": "cd9fe8d22a7a9d0ca7cfeffb333df4863faf18a46625c36503be530df58b3c7c"
+    },
+    {
+      "market": "South Africa",
+      "currency": "COP",
+      "service_rate": "34.9773",
+      "twenty_billable_replies": "699.5460",
+      "thousand_billable_replies": "34977.3000",
+      "card_file": "meta-cop-rates-2026-10-01.xlsx",
+      "card_sha256": "cd9fe8d22a7a9d0ca7cfeffb333df4863faf18a46625c36503be530df58b3c7c"
+    },
+    {
+      "market": "Rest of Middle East",
+      "currency": "COP",
+      "service_rate": "33.5045",
+      "twenty_billable_replies": "670.0900",
+      "thousand_billable_replies": "33504.5000",
+      "card_file": "meta-cop-rates-2026-10-01.xlsx",
+      "card_sha256": "cd9fe8d22a7a9d0ca7cfeffb333df4863faf18a46625c36503be530df58b3c7c"
+    },
+    {
+      "market": "Mexico",
+      "currency": "COP",
+      "service_rate": "31.2954",
+      "twenty_billable_replies": "625.9080",
+      "thousand_billable_replies": "31295.4000",
+      "card_file": "meta-cop-rates-2026-10-01.xlsx",
+      "card_sha256": "cd9fe8d22a7a9d0ca7cfeffb333df4863faf18a46625c36503be530df58b3c7c"
+    },
+    {
+      "market": "Iraq",
+      "currency": "COP",
+      "service_rate": "29.0863",
+      "twenty_billable_replies": "581.7260",
+      "thousand_billable_replies": "29086.3000",
+      "card_file": "meta-cop-rates-2026-10-01.xlsx",
+      "card_sha256": "cd9fe8d22a7a9d0ca7cfeffb333df4863faf18a46625c36503be530df58b3c7c"
+    },
+    {
+      "market": "Other",
+      "currency": "COP",
+      "service_rate": "28.35",
+      "twenty_billable_replies": "567.00",
+      "thousand_billable_replies": "28350.00",
+      "card_file": "meta-cop-rates-2026-10-01.xlsx",
+      "card_sha256": "cd9fe8d22a7a9d0ca7cfeffb333df4863faf18a46625c36503be530df58b3c7c"
+    },
+    {
+      "market": "Brazil",
+      "currency": "COP",
+      "service_rate": "25.0363",
+      "twenty_billable_replies": "500.7260",
+      "thousand_billable_replies": "25036.3000",
+      "card_file": "meta-cop-rates-2026-10-01.xlsx",
+      "card_sha256": "cd9fe8d22a7a9d0ca7cfeffb333df4863faf18a46625c36503be530df58b3c7c"
+    },
+    {
+      "market": "Nigeria",
+      "currency": "COP",
+      "service_rate": "24.6681",
+      "twenty_billable_replies": "493.3620",
+      "thousand_billable_replies": "24668.1000",
+      "card_file": "meta-cop-rates-2026-10-01.xlsx",
+      "card_sha256": "cd9fe8d22a7a9d0ca7cfeffb333df4863faf18a46625c36503be530df58b3c7c"
+    },
+    {
+      "market": "Israel",
+      "currency": "COP",
+      "service_rate": "19.5136",
+      "twenty_billable_replies": "390.2720",
+      "thousand_billable_replies": "19513.6000",
+      "card_file": "meta-cop-rates-2026-10-01.xlsx",
+      "card_sha256": "cd9fe8d22a7a9d0ca7cfeffb333df4863faf18a46625c36503be530df58b3c7c"
+    },
+    {
+      "market": "Rest of Africa",
+      "currency": "COP",
+      "service_rate": "14.7273",
+      "twenty_billable_replies": "294.5460",
+      "thousand_billable_replies": "14727.3000",
+      "card_file": "meta-cop-rates-2026-10-01.xlsx",
+      "card_sha256": "cd9fe8d22a7a9d0ca7cfeffb333df4863faf18a46625c36503be530df58b3c7c"
+    },
+    {
+      "market": "Bangladesh",
+      "currency": "COP",
+      "service_rate": "13.6227",
+      "twenty_billable_replies": "272.4540",
+      "thousand_billable_replies": "13622.7000",
+      "card_file": "meta-cop-rates-2026-10-01.xlsx",
+      "card_sha256": "cd9fe8d22a7a9d0ca7cfeffb333df4863faf18a46625c36503be530df58b3c7c"
+    },
+    {
+      "market": "Egypt",
+      "currency": "COP",
+      "service_rate": "13.2545",
+      "twenty_billable_replies": "265.0900",
+      "thousand_billable_replies": "13254.5000",
+      "card_file": "meta-cop-rates-2026-10-01.xlsx",
+      "card_sha256": "cd9fe8d22a7a9d0ca7cfeffb333df4863faf18a46625c36503be530df58b3c7c"
+    },
+    {
+      "market": "Nepal",
+      "currency": "COP",
+      "service_rate": "12.5182",
+      "twenty_billable_replies": "250.3640",
+      "thousand_billable_replies": "12518.2000",
+      "card_file": "meta-cop-rates-2026-10-01.xlsx",
+      "card_sha256": "cd9fe8d22a7a9d0ca7cfeffb333df4863faf18a46625c36503be530df58b3c7c"
+    },
+    {
+      "market": "North America",
+      "currency": "COP",
+      "service_rate": "12.5182",
+      "twenty_billable_replies": "250.3640",
+      "thousand_billable_replies": "12518.2000",
+      "card_file": "meta-cop-rates-2026-10-01.xlsx",
+      "card_sha256": "cd9fe8d22a7a9d0ca7cfeffb333df4863faf18a46625c36503be530df58b3c7c"
+    },
+    {
+      "market": "Sri Lanka",
+      "currency": "COP",
+      "service_rate": "7.3636",
+      "twenty_billable_replies": "147.2720",
+      "thousand_billable_replies": "7363.6000",
+      "card_file": "meta-cop-rates-2026-10-01.xlsx",
+      "card_sha256": "cd9fe8d22a7a9d0ca7cfeffb333df4863faf18a46625c36503be530df58b3c7c"
+    },
+    {
+      "market": "India",
+      "currency": "COP",
+      "service_rate": "5.1545",
+      "twenty_billable_replies": "103.0900",
+      "thousand_billable_replies": "5154.5000",
+      "card_file": "meta-cop-rates-2026-10-01.xlsx",
+      "card_sha256": "cd9fe8d22a7a9d0ca7cfeffb333df4863faf18a46625c36503be530df58b3c7c"
+    },
+    {
+      "market": "Turkey",
+      "currency": "COP",
+      "service_rate": "3.3136",
+      "twenty_billable_replies": "66.2720",
+      "thousand_billable_replies": "3313.6000",
+      "card_file": "meta-cop-rates-2026-10-01.xlsx",
+      "card_sha256": "cd9fe8d22a7a9d0ca7cfeffb333df4863faf18a46625c36503be530df58b3c7c"
+    },
+    {
+      "market": "Colombia",
+      "currency": "COP",
+      "service_rate": "2.9455",
+      "twenty_billable_replies": "58.9100",
+      "thousand_billable_replies": "2945.5000",
+      "card_file": "meta-cop-rates-2026-10-01.xlsx",
+      "card_sha256": "cd9fe8d22a7a9d0ca7cfeffb333df4863faf18a46625c36503be530df58b3c7c"
+    },
+    {
+      "market": "Germany",
+      "currency": "USD",
+      "service_rate": "0.055",
+      "twenty_billable_replies": "1.100",
+      "thousand_billable_replies": "55.000",
+      "card_file": "meta-usd-rates-2026-10-01.xlsx",
+      "card_sha256": "94913fa225da00935cd50a69a317373302d90afd47b57eeabb5e7cd64e78d867"
+    },
+    {
+      "market": "Netherlands",
+      "currency": "USD",
+      "service_rate": "0.05",
+      "twenty_billable_replies": "1.00",
+      "thousand_billable_replies": "50.00",
+      "card_file": "meta-usd-rates-2026-10-01.xlsx",
+      "card_sha256": "94913fa225da00935cd50a69a317373302d90afd47b57eeabb5e7cd64e78d867"
+    },
+    {
+      "market": "Kuwait",
+      "currency": "USD",
+      "service_rate": "0.044",
+      "twenty_billable_replies": "0.880",
+      "thousand_billable_replies": "44.000",
+      "card_file": "meta-usd-rates-2026-10-01.xlsx",
+      "card_sha256": "94913fa225da00935cd50a69a317373302d90afd47b57eeabb5e7cd64e78d867"
+    },
+    {
+      "market": "Russia",
+      "currency": "USD",
+      "service_rate": "0.04",
+      "twenty_billable_replies": "0.80",
+      "thousand_billable_replies": "40.00",
+      "card_file": "meta-usd-rates-2026-10-01.xlsx",
+      "card_sha256": "94913fa225da00935cd50a69a317373302d90afd47b57eeabb5e7cd64e78d867"
+    },
+    {
+      "market": "Hungary",
+      "currency": "USD",
+      "service_rate": "0.035",
+      "twenty_billable_replies": "0.700",
+      "thousand_billable_replies": "35.000",
+      "card_file": "meta-usd-rates-2026-10-01.xlsx",
+      "card_sha256": "94913fa225da00935cd50a69a317373302d90afd47b57eeabb5e7cd64e78d867"
+    },
+    {
+      "market": "France",
+      "currency": "USD",
+      "service_rate": "0.03",
+      "twenty_billable_replies": "0.60",
+      "thousand_billable_replies": "30.00",
+      "card_file": "meta-usd-rates-2026-10-01.xlsx",
+      "card_sha256": "94913fa225da00935cd50a69a317373302d90afd47b57eeabb5e7cd64e78d867"
+    },
+    {
+      "market": "Italy",
+      "currency": "USD",
+      "service_rate": "0.03",
+      "twenty_billable_replies": "0.60",
+      "thousand_billable_replies": "30.00",
+      "card_file": "meta-usd-rates-2026-10-01.xlsx",
+      "card_sha256": "94913fa225da00935cd50a69a317373302d90afd47b57eeabb5e7cd64e78d867"
+    },
+    {
+      "market": "Peru",
+      "currency": "USD",
+      "service_rate": "0.03",
+      "twenty_billable_replies": "0.60",
+      "thousand_billable_replies": "30.00",
+      "card_file": "meta-usd-rates-2026-10-01.xlsx",
+      "card_sha256": "94913fa225da00935cd50a69a317373302d90afd47b57eeabb5e7cd64e78d867"
+    },
+    {
+      "market": "Ukraine",
+      "currency": "USD",
+      "service_rate": "0.0298",
+      "twenty_billable_replies": "0.5960",
+      "thousand_billable_replies": "29.8000",
+      "card_file": "meta-usd-rates-2026-10-01.xlsx",
+      "card_sha256": "94913fa225da00935cd50a69a317373302d90afd47b57eeabb5e7cd64e78d867"
+    },
+    {
+      "market": "Romania",
+      "currency": "USD",
+      "service_rate": "0.029",
+      "twenty_billable_replies": "0.580",
+      "thousand_billable_replies": "29.000",
+      "card_file": "meta-usd-rates-2026-10-01.xlsx",
+      "card_sha256": "94913fa225da00935cd50a69a317373302d90afd47b57eeabb5e7cd64e78d867"
+    },
+    {
+      "market": "Argentina",
+      "currency": "USD",
+      "service_rate": "0.026",
+      "twenty_billable_replies": "0.520",
+      "thousand_billable_replies": "26.000",
+      "card_file": "meta-usd-rates-2026-10-01.xlsx",
+      "card_sha256": "94913fa225da00935cd50a69a317373302d90afd47b57eeabb5e7cd64e78d867"
+    },
+    {
+      "market": "Hong Kong",
+      "currency": "USD",
+      "service_rate": "0.026",
+      "twenty_billable_replies": "0.520",
+      "thousand_billable_replies": "26.000",
+      "card_file": "meta-usd-rates-2026-10-01.xlsx",
+      "card_sha256": "94913fa225da00935cd50a69a317373302d90afd47b57eeabb5e7cd64e78d867"
+    },
+    {
+      "market": "Indonesia",
+      "currency": "USD",
+      "service_rate": "0.025",
+      "twenty_billable_replies": "0.500",
+      "thousand_billable_replies": "25.000",
+      "card_file": "meta-usd-rates-2026-10-01.xlsx",
+      "card_sha256": "94913fa225da00935cd50a69a317373302d90afd47b57eeabb5e7cd64e78d867"
+    },
+    {
+      "market": "Oman",
+      "currency": "USD",
+      "service_rate": "0.0247",
+      "twenty_billable_replies": "0.4940",
+      "thousand_billable_replies": "24.7000",
+      "card_file": "meta-usd-rates-2026-10-01.xlsx",
+      "card_sha256": "94913fa225da00935cd50a69a317373302d90afd47b57eeabb5e7cd64e78d867"
+    },
+    {
+      "market": "Morocco",
+      "currency": "USD",
+      "service_rate": "0.023",
+      "twenty_billable_replies": "0.460",
+      "thousand_billable_replies": "23.000",
+      "card_file": "meta-usd-rates-2026-10-01.xlsx",
+      "card_sha256": "94913fa225da00935cd50a69a317373302d90afd47b57eeabb5e7cd64e78d867"
+    },
+    {
+      "market": "United Kingdom",
+      "currency": "USD",
+      "service_rate": "0.022",
+      "twenty_billable_replies": "0.440",
+      "thousand_billable_replies": "22.000",
+      "card_file": "meta-usd-rates-2026-10-01.xlsx",
+      "card_sha256": "94913fa225da00935cd50a69a317373302d90afd47b57eeabb5e7cd64e78d867"
+    },
+    {
+      "market": "Rest of Central & Eastern Europe",
+      "currency": "USD",
+      "service_rate": "0.0212",
+      "twenty_billable_replies": "0.4240",
+      "thousand_billable_replies": "21.2000",
+      "card_file": "meta-usd-rates-2026-10-01.xlsx",
+      "card_sha256": "94913fa225da00935cd50a69a317373302d90afd47b57eeabb5e7cd64e78d867"
+    },
+    {
+      "market": "Chile",
+      "currency": "USD",
+      "service_rate": "0.02",
+      "twenty_billable_replies": "0.40",
+      "thousand_billable_replies": "20.00",
+      "card_file": "meta-usd-rates-2026-10-01.xlsx",
+      "card_sha256": "94913fa225da00935cd50a69a317373302d90afd47b57eeabb5e7cd64e78d867"
+    },
+    {
+      "market": "Spain",
+      "currency": "USD",
+      "service_rate": "0.02",
+      "twenty_billable_replies": "0.40",
+      "thousand_billable_replies": "20.00",
+      "card_file": "meta-usd-rates-2026-10-01.xlsx",
+      "card_sha256": "94913fa225da00935cd50a69a317373302d90afd47b57eeabb5e7cd64e78d867"
+    },
+    {
+      "market": "Kazakhstan",
+      "currency": "USD",
+      "service_rate": "0.018",
+      "twenty_billable_replies": "0.360",
+      "thousand_billable_replies": "18.000",
+      "card_file": "meta-usd-rates-2026-10-01.xlsx",
+      "card_sha256": "94913fa225da00935cd50a69a317373302d90afd47b57eeabb5e7cd64e78d867"
+    },
+    {
+      "market": "Rest of Western Europe",
+      "currency": "USD",
+      "service_rate": "0.0171",
+      "twenty_billable_replies": "0.3420",
+      "thousand_billable_replies": "17.1000",
+      "card_file": "meta-usd-rates-2026-10-01.xlsx",
+      "card_sha256": "94913fa225da00935cd50a69a317373302d90afd47b57eeabb5e7cd64e78d867"
+    },
+    {
+      "market": "Singapore",
+      "currency": "USD",
+      "service_rate": "0.016",
+      "twenty_billable_replies": "0.320",
+      "thousand_billable_replies": "16.000",
+      "card_file": "meta-usd-rates-2026-10-01.xlsx",
+      "card_sha256": "94913fa225da00935cd50a69a317373302d90afd47b57eeabb5e7cd64e78d867"
+    },
+    {
+      "market": "United Arab Emirates",
+      "currency": "USD",
+      "service_rate": "0.0157",
+      "twenty_billable_replies": "0.3140",
+      "thousand_billable_replies": "15.7000",
+      "card_file": "meta-usd-rates-2026-10-01.xlsx",
+      "card_sha256": "94913fa225da00935cd50a69a317373302d90afd47b57eeabb5e7cd64e78d867"
+    },
+    {
+      "market": "Pakistan",
+      "currency": "USD",
+      "service_rate": "0.015",
+      "twenty_billable_replies": "0.300",
+      "thousand_billable_replies": "15.000",
+      "card_file": "meta-usd-rates-2026-10-01.xlsx",
+      "card_sha256": "94913fa225da00935cd50a69a317373302d90afd47b57eeabb5e7cd64e78d867"
+    },
+    {
+      "market": "Malaysia",
+      "currency": "USD",
+      "service_rate": "0.014",
+      "twenty_billable_replies": "0.280",
+      "thousand_billable_replies": "14.000",
+      "card_file": "meta-usd-rates-2026-10-01.xlsx",
+      "card_sha256": "94913fa225da00935cd50a69a317373302d90afd47b57eeabb5e7cd64e78d867"
+    },
+    {
+      "market": "Poland",
+      "currency": "USD",
+      "service_rate": "0.0122",
+      "twenty_billable_replies": "0.2440",
+      "thousand_billable_replies": "12.2000",
+      "card_file": "meta-usd-rates-2026-10-01.xlsx",
+      "card_sha256": "94913fa225da00935cd50a69a317373302d90afd47b57eeabb5e7cd64e78d867"
+    },
+    {
+      "market": "Qatar",
+      "currency": "USD",
+      "service_rate": "0.012",
+      "twenty_billable_replies": "0.240",
+      "thousand_billable_replies": "12.000",
+      "card_file": "meta-usd-rates-2026-10-01.xlsx",
+      "card_sha256": "94913fa225da00935cd50a69a317373302d90afd47b57eeabb5e7cd64e78d867"
+    },
+    {
+      "market": "Rest of Asia Pacific",
+      "currency": "USD",
+      "service_rate": "0.0113",
+      "twenty_billable_replies": "0.2260",
+      "thousand_billable_replies": "11.3000",
+      "card_file": "meta-usd-rates-2026-10-01.xlsx",
+      "card_sha256": "94913fa225da00935cd50a69a317373302d90afd47b57eeabb5e7cd64e78d867"
+    },
+    {
+      "market": "Rest of Latin America",
+      "currency": "USD",
+      "service_rate": "0.0113",
+      "twenty_billable_replies": "0.2260",
+      "thousand_billable_replies": "11.3000",
+      "card_file": "meta-usd-rates-2026-10-01.xlsx",
+      "card_sha256": "94913fa225da00935cd50a69a317373302d90afd47b57eeabb5e7cd64e78d867"
+    },
+    {
+      "market": "Saudi Arabia",
+      "currency": "USD",
+      "service_rate": "0.0107",
+      "twenty_billable_replies": "0.2140",
+      "thousand_billable_replies": "10.7000",
+      "card_file": "meta-usd-rates-2026-10-01.xlsx",
+      "card_sha256": "94913fa225da00935cd50a69a317373302d90afd47b57eeabb5e7cd64e78d867"
+    },
+    {
+      "market": "South Africa",
+      "currency": "USD",
+      "service_rate": "0.0095",
+      "twenty_billable_replies": "0.1900",
+      "thousand_billable_replies": "9.5000",
+      "card_file": "meta-usd-rates-2026-10-01.xlsx",
+      "card_sha256": "94913fa225da00935cd50a69a317373302d90afd47b57eeabb5e7cd64e78d867"
+    },
+    {
+      "market": "Rest of Middle East",
+      "currency": "USD",
+      "service_rate": "0.0091",
+      "twenty_billable_replies": "0.1820",
+      "thousand_billable_replies": "9.1000",
+      "card_file": "meta-usd-rates-2026-10-01.xlsx",
+      "card_sha256": "94913fa225da00935cd50a69a317373302d90afd47b57eeabb5e7cd64e78d867"
+    },
+    {
+      "market": "Mexico",
+      "currency": "USD",
+      "service_rate": "0.0085",
+      "twenty_billable_replies": "0.1700",
+      "thousand_billable_replies": "8.5000",
+      "card_file": "meta-usd-rates-2026-10-01.xlsx",
+      "card_sha256": "94913fa225da00935cd50a69a317373302d90afd47b57eeabb5e7cd64e78d867"
+    },
+    {
+      "market": "Iraq",
+      "currency": "USD",
+      "service_rate": "0.0079",
+      "twenty_billable_replies": "0.1580",
+      "thousand_billable_replies": "7.9000",
+      "card_file": "meta-usd-rates-2026-10-01.xlsx",
+      "card_sha256": "94913fa225da00935cd50a69a317373302d90afd47b57eeabb5e7cd64e78d867"
+    },
+    {
+      "market": "Other",
+      "currency": "USD",
+      "service_rate": "0.0077",
+      "twenty_billable_replies": "0.1540",
+      "thousand_billable_replies": "7.7000",
+      "card_file": "meta-usd-rates-2026-10-01.xlsx",
+      "card_sha256": "94913fa225da00935cd50a69a317373302d90afd47b57eeabb5e7cd64e78d867"
+    },
+    {
+      "market": "Brazil",
+      "currency": "USD",
+      "service_rate": "0.0068",
+      "twenty_billable_replies": "0.1360",
+      "thousand_billable_replies": "6.8000",
+      "card_file": "meta-usd-rates-2026-10-01.xlsx",
+      "card_sha256": "94913fa225da00935cd50a69a317373302d90afd47b57eeabb5e7cd64e78d867"
+    },
+    {
+      "market": "Nigeria",
+      "currency": "USD",
+      "service_rate": "0.0067",
+      "twenty_billable_replies": "0.1340",
+      "thousand_billable_replies": "6.7000",
+      "card_file": "meta-usd-rates-2026-10-01.xlsx",
+      "card_sha256": "94913fa225da00935cd50a69a317373302d90afd47b57eeabb5e7cd64e78d867"
+    },
+    {
+      "market": "Israel",
+      "currency": "USD",
+      "service_rate": "0.0053",
+      "twenty_billable_replies": "0.1060",
+      "thousand_billable_replies": "5.3000",
+      "card_file": "meta-usd-rates-2026-10-01.xlsx",
+      "card_sha256": "94913fa225da00935cd50a69a317373302d90afd47b57eeabb5e7cd64e78d867"
+    },
+    {
+      "market": "Rest of Africa",
+      "currency": "USD",
+      "service_rate": "0.004",
+      "twenty_billable_replies": "0.080",
+      "thousand_billable_replies": "4.000",
+      "card_file": "meta-usd-rates-2026-10-01.xlsx",
+      "card_sha256": "94913fa225da00935cd50a69a317373302d90afd47b57eeabb5e7cd64e78d867"
+    },
+    {
+      "market": "Bangladesh",
+      "currency": "USD",
+      "service_rate": "0.0037",
+      "twenty_billable_replies": "0.0740",
+      "thousand_billable_replies": "3.7000",
+      "card_file": "meta-usd-rates-2026-10-01.xlsx",
+      "card_sha256": "94913fa225da00935cd50a69a317373302d90afd47b57eeabb5e7cd64e78d867"
+    },
+    {
+      "market": "Egypt",
+      "currency": "USD",
+      "service_rate": "0.0036",
+      "twenty_billable_replies": "0.0720",
+      "thousand_billable_replies": "3.6000",
+      "card_file": "meta-usd-rates-2026-10-01.xlsx",
+      "card_sha256": "94913fa225da00935cd50a69a317373302d90afd47b57eeabb5e7cd64e78d867"
+    },
+    {
+      "market": "Nepal",
+      "currency": "USD",
+      "service_rate": "0.0034",
+      "twenty_billable_replies": "0.0680",
+      "thousand_billable_replies": "3.4000",
+      "card_file": "meta-usd-rates-2026-10-01.xlsx",
+      "card_sha256": "94913fa225da00935cd50a69a317373302d90afd47b57eeabb5e7cd64e78d867"
+    },
+    {
+      "market": "North America",
+      "currency": "USD",
+      "service_rate": "0.0034",
+      "twenty_billable_replies": "0.0680",
+      "thousand_billable_replies": "3.4000",
+      "card_file": "meta-usd-rates-2026-10-01.xlsx",
+      "card_sha256": "94913fa225da00935cd50a69a317373302d90afd47b57eeabb5e7cd64e78d867"
+    },
+    {
+      "market": "Sri Lanka",
+      "currency": "USD",
+      "service_rate": "0.002",
+      "twenty_billable_replies": "0.040",
+      "thousand_billable_replies": "2.000",
+      "card_file": "meta-usd-rates-2026-10-01.xlsx",
+      "card_sha256": "94913fa225da00935cd50a69a317373302d90afd47b57eeabb5e7cd64e78d867"
+    },
+    {
+      "market": "India",
+      "currency": "USD",
+      "service_rate": "0.0014",
+      "twenty_billable_replies": "0.0280",
+      "thousand_billable_replies": "1.4000",
+      "card_file": "meta-usd-rates-2026-10-01.xlsx",
+      "card_sha256": "94913fa225da00935cd50a69a317373302d90afd47b57eeabb5e7cd64e78d867"
+    },
+    {
+      "market": "Turkey",
+      "currency": "USD",
+      "service_rate": "0.00090",
+      "twenty_billable_replies": "0.01800",
+      "thousand_billable_replies": "0.90000",
+      "card_file": "meta-usd-rates-2026-10-01.xlsx",
+      "card_sha256": "94913fa225da00935cd50a69a317373302d90afd47b57eeabb5e7cd64e78d867"
+    },
+    {
+      "market": "Colombia",
+      "currency": "USD",
+      "service_rate": "0.00080",
+      "twenty_billable_replies": "0.01600",
+      "thousand_billable_replies": "0.80000",
+      "card_file": "meta-usd-rates-2026-10-01.xlsx",
+      "card_sha256": "94913fa225da00935cd50a69a317373302d90afd47b57eeabb5e7cd64e78d867"
+    }
+  ],
+  "examples": {
+    "country_ratio_germany_colombia_usd": "68.75",
+    "same_budget_cop_1000_max_billable_replies": {
+      "Colombia": 339,
+      "Peru": 9,
+      "Germany": 4
+    },
+    "germany_cop_one_reply_one_link_three_images_three_captions": {
+      "effects_before": 8,
+      "cost_before": "1619.9976",
+      "effects_after_if_link_in_text_and_native_captions_fit": 4,
+      "cost_after": "809.9988",
+      "qualification": "Illustrative transport optimization; not a measured saving or proof of deployment."
+    },
+    "colombia_cop_2000_service_deliveries_one_number": {
+      "free_allowance_remaining_1000": "2945.5000",
+      "free_allowance_remaining_0": "5891.0000"
+    }
+  }
+}

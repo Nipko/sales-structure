@@ -20,7 +20,15 @@ describe('el cobro de un tour', () => {
     it('cobra el anticipo, no el total', () => {
         // Sin el COALESCE, un "anticipo del 30%" cobraba el 100%. Es el mismo
         // defecto que ya se corrigió en alojamiento y citas.
-        expect(tour.amountExpression).toBe('COALESCE(target.amount_due, target.total_price)');
+        // `amount_due` sigue delante, que es lo que vuelve real al anticipo: sin
+        // ese COALESCE un "anticipo del 30%" cobraría el 100%. Lo que cambió es
+        // el respaldo. Antes era `total_price`, un número que alguien calculó;
+        // ahora es la propuesta que el viajero aceptó, así que una reserva sin
+        // acuerdo probado deja de ser cobrable en lugar de cobrarse igual.
+        expect(tour.amountExpression).toContain('COALESCE(target.amount_due,');
+        expect(tour.amountExpression).toContain('commitment_proposals');
+        expect(tour.amountExpression).toContain('accepted_at IS NOT NULL');
+        expect(tour.amountExpression).not.toContain('total_price');
     });
 
     it('rechaza pagar una retención vencida', () => {

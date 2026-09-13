@@ -213,7 +213,7 @@ describe('el CRM mínimo crea registros sin duplicarlos ni inventar autoridad', 
             phone: '+573001234567',
             first_name: 'Ana',
             last_name: 'Torres',
-        }));
+        }), { sandboxNamespace: undefined });
     });
 
     it('create_crm_opportunity reutiliza la misma oportunidad de la conversación', async () => {

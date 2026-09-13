@@ -3,7 +3,7 @@ id: agentes-ia
 title: "Agentes de IA: crear y configurar"
 routes: ["/admin/agent", "/admin/agent/simulation"]
 roles: ["tenant_admin"]
-keywords: ["agente", "agentes de ia", "bot", "chatbot", "asistente virtual", "crear agente", "plantilla", "personalidad", "instrucciones", "tono", "horario del agente", "asignar canal", "conexion", "duplicar agente", "agente predeterminado", "limite de agentes", "canales sin agente", "probar agente", "reglas", "temas prohibidos", "campos obligatorios", "cuando pasar a un humano", "mensaje cuando no puede responder", "activo inactivo", "avanzado"]
+keywords: ["agente", "agentes de ia", "bot", "chatbot", "asistente virtual", "crear agente", "plantilla", "personalidad", "instrucciones", "tono", "horario del agente", "asignar canal", "conexion", "duplicar agente", "agente predeterminado", "limite de agentes", "canales sin agente", "probar agente", "reglas", "temas prohibidos", "campos obligatorios", "cuando pasar a un humano", "mensaje cuando no puede responder", "activo inactivo", "avanzado", "assist", "instrucciones principales", "ventas y soporte", "borrador del agente"]
 ---
 
 # Agentes de IA: crear y configurar
@@ -27,7 +27,7 @@ Tu agente de IA es el "vendedor virtual" que responde a tus clientes en WhatsApp
 4. Haz clic en **Usar esta** sobre la plantilla elegida.
 5. Escribe el **Nombre del agente** si quieres uno propio (por ejemplo, Sofía o Max); si lo dejas vacío, se usa el de la plantilla.
 
-El agente queda creado y se abre su editor para que lo personalices.
+El agente queda creado para revisión y se abre su editor. Al crearlo desde esta pantalla todavía no es predeterminado ni atiende conexiones: primero personalízalo, guarda el borrador, pruébalo y publícalo.
 
 ## Lo que el editor exige para guardar
 
@@ -48,11 +48,11 @@ Si vacías uno de esos campos para reescribirlo, guarda recién cuando esté com
 Dentro de **Agente IA**, haz clic en **Editar** sobre el agente. El editor está organizado en pestañas y tarjetas:
 
 - **Identidad** — nombre, rol o título (por ejemplo, "Asesora de ventas") e idioma.
-- **Personalidad** — el **Estilo de comunicación** (Amigable, Profesional, Formal, Casual o Empático), la **Extensión de respuestas** (Conciso, Estándar o Detallado) y el saludo inicial.
+- **Personalidad** — el **Estilo de comunicación**, el uso de emojis y humor, la **Extensión de respuestas** (Conciso, Estándar o Detallado) y el saludo inicial.
 - **Mensaje cuando no puede responder** — el texto de respaldo, obligatorio.
-- **Instrucciones** — tus reglas propias en texto libre (por ejemplo, "siempre ofrece el combo familiar antes de cerrar"), los temas prohibidos que el agente nunca debe tocar y el modo de respuesta (siempre IA, siempre humano o híbrido).
+- **Instrucciones** — una guía principal, reglas concretas, temas prohibidos y los datos que debe pedir en cada contexto. La guía principal sí forma parte del prompt en modo guiado.
 - **Cuándo pasar a un humano** — la lista de motivos por los que el agente deja de responder y avisa a tu equipo: el cliente lo pide, se queja, pregunta por un descuento, o el agente falla varias veces seguidas. Sin al menos un motivo, la conversación nunca llega a una persona.
-- **Modelo IA** — qué motor usa el agente. El editor muestra los modelos habilitados para tu cuenta.
+- **Ventas y soporte** — define si el agente vende, atiende o hace ambas cosas; para ventas puedes ajustar la intensidad de recomendaciones y el descuento máximo permitido.
 - **Horario** — cuándo está activo (ver más abajo).
 - **Capacidades** — qué puede hacer el agente, con interruptores para activar o desactivar cada una:
   - Buscar respuestas en tu base de conocimiento
@@ -61,6 +61,8 @@ Dentro de **Agente IA**, haz clic en **Editar** sobre el agente. El editor está
   - Crear pedidos o reservas
   - Pasar la conversación a una persona de tu equipo cuando haga falta
 
+Las capacidades especializadas cambian según el **tipo de negocio**. El editor sólo ofrece las familias que corresponden al perfil del tenant y muestra por qué una capacidad no puede activarse cuando faltan datos, plan o proveedor.
+
 **Avanzado** no es una tarjeta: son dos secciones plegadas, en dos pestañas distintas, y por eso no las encuentras juntas:
 
 - **Avanzado: afinar la búsqueda** — dentro de **Capacidades**, debajo del interruptor de la búsqueda en tu conocimiento (solo aparece si ese interruptor está encendido). Ahí viven cuántos fragmentos usar y qué tan parecido tiene que ser el contenido.
@@ -68,19 +70,23 @@ Dentro de **Agente IA**, haz clic en **Editar** sobre el agente. El editor está
 
 Ambas vienen con valores razonables; cámbialas solo si sabes qué estás ajustando.
 
-Cuando termines, haz clic en **Guardar cambios** — el botón siempre está visible en la barra inferior, así no pierdes ediciones al desplazarte.
+## Configurar con Parallly Assist
+
+Puedes pedirle a Assist que revise el agente y prepare cambios de identidad, idioma, instrucciones, reglas, campos requeridos, horario fuera de atención, ventas/soporte, recomendaciones, longitud de respuesta, conocimiento y permisos. Assist muestra una propuesta para revisar; al aceptarla guarda un **borrador**, no publica ni activa el agente. Con prompt personalizado, Assist no ofrece cambios de personalidad, guía principal, reglas ni campos requeridos porque ese prompt los reemplaza. Nunca uses el chat para enviar credenciales o conexiones.
+
+Cuando termines, haz clic en **Guardar borrador**. Guardar conserva lo que editaste para revisión, pero no cambia la versión que atiende a clientes. Usa **Probar agente** sobre el borrador; luego abre **Revisar una versión**, prepara y aprueba el candidato, y entra en **Publicar y ver historial** para publicarlo. Sólo esa publicación vuelve operativos la configuración, las conexiones y la condición de agente predeterminado del borrador.
 
 ## Activo o inactivo
 
-En la cabecera del editor hay un interruptor **Activo / Inactivo**. Un agente **inactivo** no responde en ninguna de sus conexiones, aunque el canal esté conectado y el horario diga que sí. Úsalo para preparar un agente sin exponerlo a clientes, o para apagarlo un rato sin borrar nada. **Salud de agentes** marca como bloqueo crítico todo agente inactivo, tenga o no conexiones asignadas.
+En la cabecera del editor hay un interruptor **Activo / Inactivo**. Un agente **inactivo** no responde en ninguna de sus conexiones, aunque el canal esté conectado y el horario diga que sí. Puedes desactivarlo de inmediato después de confirmar. Reactivarlo requiere revisar y publicar una versión; el interruptor te lleva a esa revisión y no lo enciende por sí solo. **Salud de agentes** marca como bloqueo crítico todo agente inactivo, tenga o no conexiones asignadas.
 
 ## Cómo definir el horario del agente
 
-1. En el editor del agente, abre la tarjeta **Horario**.
-2. Marca los días y las franjas en que el agente responde (por ejemplo, "Diario 9:00–18:00" o solo 5 días a la semana).
-3. Guarda con **Guardar cambios**.
+1. Configura los días, franjas y zona horaria de toda la cuenta en **Configuración → Horario comercial**.
+2. En el editor del agente, abre **Horario** para ver ese calendario y decidir si la IA sigue respondiendo fuera de él.
+3. Si desactivas la IA fuera de horario, escribe el mensaje específico de ese agente y guarda el borrador.
 
-Fuera de ese horario el agente no atiende de forma automática; combina esto con el modo de respuesta si prefieres que tu equipo tome el control en ciertos momentos.
+El horario comercial pertenece al negocio y se comparte entre sus agentes; cada agente sólo decide su comportamiento fuera de ese horario.
 
 ## Cómo asignar el agente a cada conexión
 
@@ -89,13 +95,13 @@ La regla es simple: **un agente de IA por conexión**. Una conexión es cada cue
 1. En el editor del agente, ve a **Asignación de canales**.
 2. Marca las conexiones que este agente va a atender. Verás cada cuenta con su nombre y número, no el canal genérico.
 3. Si la conexión ya estaba asignada a otro agente, el editor te avisa que **se reasignará** desde el agente anterior.
-4. Haz clic en **Guardar cambios**.
+4. Haz clic en **Guardar borrador**, prueba esa revisión y publícala. La reasignación ocurre al publicar, no al guardar.
 
 La cantidad y el tipo de conexiones disponibles se muestran en **Canales** y **Plan y facturación**.
 
 ## Qué significa el aviso "canales sin agente asignado"
 
-Si en **Agente IA** ves el aviso **Canales sin agente asignado**, tienes conexiones activas que ningún agente atiende de forma específica. Mientras tanto, esos mensajes los responde tu **agente predeterminado**, con una configuración genérica.
+Si en **Agente IA** ves el aviso **Canales sin agente asignado**, tienes conexiones activas que ningún agente atiende de forma específica. Mientras exista un agente predeterminado activo, esos mensajes los responde su versión operativa.
 
 Haz clic en **Asignar agente ahora** para elegir qué agente atiende cada conexión y dar una experiencia personalizada.
 
@@ -104,13 +110,13 @@ Haz clic en **Asignar agente ahora** para elegir qué agente atiende cada conexi
 En la lista de **Agente IA**, cada agente tiene un menú de acciones:
 
 - **Duplicar** — crea una copia exacta, ideal para experimentar sin tocar el agente que ya funciona.
-- **Guardar como plantilla** — convierte la configuración en una plantilla reutilizable cuando la función está habilitada (aparece en **Mis plantillas**).
-- **Establecer como predeterminado** — define qué agente responde en las conexiones que no tienen uno asignado.
-- **Eliminar** — borra el agente (te pide confirmación). El agente predeterminado no se puede eliminar.
+- **Guardar como plantilla** — copia la versión operativa en una plantilla reutilizable cuando la función está habilitada. Si hay un borrador, publícalo primero si quieres que forme parte de la plantilla.
+- **Establecer como predeterminado** — propone esa condición en el borrador; empieza a responder conexiones sin asignación sólo después de publicar la revisión.
+- **Eliminar** — retira el agente de uso: lo desactiva y libera sus conexiones, pero conserva su registro. El agente predeterminado no se puede retirar hasta publicar otro como predeterminado.
 
 ## Prueba tu agente antes de activarlo
 
-Desde el menú **Agente IA → Probar agente** puedes chatear con tu agente en modo simulación, sin afectar clientes reales. Úsalo cada vez que cambies la personalidad o las reglas, antes de que hable con tus clientes.
+Desde el menú **Agente IA → Probar agente** puedes chatear con la versión operativa o con el borrador guardado, sin afectar clientes reales. Prueba el borrador cada vez que cambies personalidad, reglas, herramientas o conexiones; después prepara, aprueba y publica esa revisión.
 
 ## Preguntas frecuentes
 
@@ -124,7 +130,7 @@ Responde tu agente predeterminado. Verás el aviso de canales sin asignar en **A
 No. El SMS en Parallly no es un canal de conversación: se usa solo para notificaciones salientes con créditos (1 crédito = 1 segmento). Las superficies conversacionales autoservicio son WhatsApp, Instagram, Messenger, Telegram y el chat web. Email conserva un adaptador inbound interno, pero no una configuración autoservicio certificada.
 
 **Cambié las instrucciones y el agente sigue igual, ¿qué reviso?**
-Confirma que hiciste clic en **Guardar cambios** en la barra inferior del editor y que editaste el agente asignado a esa conexión (no otro). Luego verifícalo en **Probar agente**.
+Confirma que guardaste el borrador, que lo probaste y que publicaste el candidato aprobado. Después verifica que esa conexión quedó asignada al mismo agente en la versión operativa; un borrador guardado por sí solo no cambia las respuestas a clientes.
 
 **¿Cómo agrego más agentes o más números?**
 La pantalla muestra la capacidad disponible para agentes y conexiones. Consulta las opciones vigentes en **Administración → Plan y facturación**, o escríbenos en https://parallly-chat.cloud/support si necesitas otra capacidad.

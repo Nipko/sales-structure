@@ -2,6 +2,7 @@ import { BadRequestException } from '@nestjs/common';
 import { promises as dns } from 'node:dns';
 import { McpClientService } from './mcp-client.service';
 import { TenantSecretCryptoService } from '../../common/crypto/tenant-secret-crypto.service';
+import { AGENT_TEST_EXECUTION_CONTEXT } from '../../common/types/execution-context';
 
 describe('McpClientService outbound URL security', () => {
     let lookupSpy: jest.SpyInstance;
@@ -70,5 +71,13 @@ describe('McpClientService outbound URL security', () => {
                 httpsAgent: expect.any(Object),
             }));
         }
+    });
+    it('bypasses stale discovery caches and reports a failed server as unknown during snapshot capture',async()=>{
+        prisma.tenant.findUnique.mockResolvedValue({settings:{mcpServers:[{id:'remote',name:'Remote',url:'https://mcp.example.com/rpc',enabled:true}]}});
+        redis.getJson=jest.fn().mockResolvedValue({tools:[{name:'stale-tool'}],map:{}});
+        redis.setJson=jest.fn();
+        http.axiosRef.post.mockReset().mockRejectedValue(new Error('provider unavailable with secret'));
+        await expect(service.listPublishableTools('tenant-1',AGENT_TEST_EXECUTION_CONTEXT,{strict:true})).rejects.toThrow('evaluation_mcp_discovery_unavailable');
+        expect(redis.getJson).not.toHaveBeenCalled();expect(redis.setJson).not.toHaveBeenCalled();
     });
 });

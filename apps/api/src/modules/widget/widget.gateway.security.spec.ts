@@ -38,11 +38,16 @@ describe('WidgetGateway security containment', () => {
             releaseLock: jest.fn().mockResolvedValue(undefined),
         };
         const conversations = { streamWidgetMessage: jest.fn() };
+        const messages = { withSessionMessages: jest.fn(async (_credentials, selection, consume) => {
+            const session = await widgetService.getSessionByToken(_credentials.token);
+            const rows = await prisma.executeInTenantSchema();
+            return consume(session, selection.history ? [...rows].reverse() : rows);
+        }) };
         const rateLimit = { consumeMessage: jest.fn().mockResolvedValue({ allowed: true, retryAfterSeconds: 0 }) };
         return {
             gateway: new WidgetGateway(
                 widgetService as any, prisma as any, redis as any,
-                conversations as any, rateLimit as any,
+                conversations as any, rateLimit as any, messages as any,
             ),
             widgetService, prisma, redis, conversations, rateLimit,
         };
@@ -111,8 +116,8 @@ describe('WidgetGateway security containment', () => {
 
         expect(client.emit).toHaveBeenCalledWith('widget:history', {
             messages: [
-                { id: 'inbound-old', direction: 'inbound', content_text: 'question' },
-                { id: 'outbound-new', direction: 'outbound', content_text: 'reply' },
+                expect.objectContaining({ id: 'inbound-old', direction: 'inbound', content_text: 'question' }),
+                expect.objectContaining({ id: 'outbound-new', direction: 'outbound', content_text: 'reply' }),
             ],
         });
         expect(redis.acquireLock).not.toHaveBeenCalled();

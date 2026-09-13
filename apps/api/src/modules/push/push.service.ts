@@ -11,6 +11,13 @@ import {
     readBoundedPushJsonResponse,
     withPushAbsoluteDeadline,
 } from './web-push-isolation';
+import {
+    NotificationCategory,
+    NotificationPreferences,
+    DEFAULT_NOTIFICATION_PREFERENCES,
+    normalizeNotificationPreferences,
+    validateNotificationPreferences,
+} from './notification-preferences';
 
 /**
  * A PushSubscription endpoint is supplied by an authenticated browser, but its
@@ -167,18 +174,45 @@ export class PushService implements OnModuleInit {
         );
     }
 
-    async sendToUser(userId: string, payload: { title: string; body: string; url?: string; tag?: string }): Promise<number> {
+    async getPreferences(userId: string, tenantId?: string | null): Promise<NotificationPreferences> {
+        const rows = await this.prisma.$queryRawUnsafe(
+            `SELECT notification_preferences FROM public.users
+              WHERE id = $1::uuid AND ($2::uuid IS NULL OR tenant_id = $2::uuid) LIMIT 1`,
+            userId, tenantId || null,
+        ) as any[];
+        if (!rows?.length) throw new BadRequestException('notification_preferences_user_unavailable');
+        return normalizeNotificationPreferences(rows[0].notification_preferences);
+    }
+
+    async updatePreferences(userId: string, tenantId: string | null | undefined, value: unknown): Promise<NotificationPreferences> {
+        const preferences = validateNotificationPreferences(value);
+        const rows = await this.prisma.$queryRawUnsafe(
+            `UPDATE public.users SET notification_preferences = $3::jsonb, updated_at = NOW()
+              WHERE id = $1::uuid AND ($2::uuid IS NULL OR tenant_id = $2::uuid)
+              RETURNING notification_preferences`,
+            userId, tenantId || null, JSON.stringify(preferences),
+        ) as any[];
+        if (!rows?.length) throw new BadRequestException('notification_preferences_user_unavailable');
+        return normalizeNotificationPreferences(rows[0].notification_preferences);
+    }
+
+    async sendToUser(userId: string, payload: { title: string; body: string; url?: string; tag?: string },
+        category: NotificationCategory = 'system'): Promise<number> {
         let cursor: string | null = null;
         let sent = 0;
         do {
             const subs: any[] = await this.prisma.$queryRawUnsafe(
-                `SELECT id, endpoint, keys, user_id, tenant_id, COALESCE(provider, 'webpush') AS provider
-                 FROM public.push_subscriptions
-                 WHERE user_id = $1::uuid
-                   AND ($2::uuid IS NULL OR id > $2::uuid)
-                 ORDER BY id
+                `SELECT ps.id, ps.endpoint, ps.keys, ps.user_id, ps.tenant_id,
+                        COALESCE(ps.provider, 'webpush') AS provider
+                 FROM public.push_subscriptions ps
+                 JOIN public.users u ON u.id = ps.user_id
+                 WHERE ps.user_id = $1::uuid
+                   AND ($2::uuid IS NULL OR ps.id > $2::uuid)
+                   AND LOWER(COALESCE(u.notification_preferences->'categories'->>$4, $5)) = 'true'
+                 ORDER BY ps.id
                  LIMIT $3`,
-                userId, cursor, WEB_PUSH_MAX_SUBSCRIPTIONS_PER_DISPATCH,
+                userId, cursor, WEB_PUSH_MAX_SUBSCRIPTIONS_PER_DISPATCH, category,
+                String(DEFAULT_NOTIFICATION_PREFERENCES.categories[category]),
             );
             if (!subs?.length) break;
             sent += await this.dispatch(subs, payload);
@@ -188,7 +222,9 @@ export class PushService implements OnModuleInit {
         return sent;
     }
 
-    async sendToTenantRole(tenantId: string, role: string, payload: { title: string; body: string; url?: string; tag?: string }): Promise<number> {
+    async sendToTenantRole(tenantId: string, role: string,
+        payload: { title: string; body: string; url?: string; tag?: string },
+        category: NotificationCategory = 'system'): Promise<number> {
         let cursor: string | null = null;
         let sent = 0;
         do {
@@ -199,9 +235,11 @@ export class PushService implements OnModuleInit {
                  JOIN public.users u ON u.id = ps.user_id
                  WHERE ps.tenant_id = $1::uuid AND u.role = $2 AND u.is_active = true
                    AND ($3::uuid IS NULL OR ps.id > $3::uuid)
+                   AND LOWER(COALESCE(u.notification_preferences->'categories'->>$5, $6)) = 'true'
                  ORDER BY ps.id
                  LIMIT $4`,
-                tenantId, role, cursor, WEB_PUSH_MAX_SUBSCRIPTIONS_PER_DISPATCH,
+                tenantId, role, cursor, WEB_PUSH_MAX_SUBSCRIPTIONS_PER_DISPATCH, category,
+                String(DEFAULT_NOTIFICATION_PREFERENCES.categories[category]),
             );
             if (!subs?.length) break;
             sent += await this.dispatch(subs, payload);

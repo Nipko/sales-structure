@@ -240,53 +240,46 @@ export class IdentityService {
     async approveMerge(tenantId: string, suggestionId: string, userId: string): Promise<void> {
         const schemaName = await this.getSchema(tenantId);
 
-        // Get the suggestion
-        const suggestions = await this.prisma.executeInTenantSchema<any[]>(
-            schemaName,
-            `SELECT * FROM merge_suggestions WHERE id = $1::uuid AND status = 'pending' LIMIT 1`,
-            [suggestionId],
-        );
-        if (!suggestions?.length) throw new Error('Merge suggestion not found or already processed');
-
-        const suggestion = suggestions[0];
-        const keepProfileId = suggestion.customer_profile_id_a;
-        const removeProfileId = suggestion.customer_profile_id_b;
-
-        // Move all contact_identities from B to A
-        await this.prisma.executeInTenantSchema(
-            schemaName,
-            `UPDATE contact_identities SET customer_profile_id = $1::uuid, is_primary = false
-             WHERE customer_profile_id = $2::uuid`,
-            [keepProfileId, removeProfileId],
-        );
-
-        // Merge metadata: update profile A with phone/email from B if missing
-        await this.prisma.executeInTenantSchema(
-            schemaName,
-            `UPDATE customer_profiles SET
-                 phone = COALESCE(phone, (SELECT phone FROM customer_profiles WHERE id = $2::uuid)),
-                 email = COALESCE(email, (SELECT email FROM customer_profiles WHERE id = $2::uuid)),
-                 updated_at = NOW()
-             WHERE id = $1::uuid`,
-            [keepProfileId, removeProfileId],
-        );
-
-        // Delete orphan profile B
-        await this.prisma.executeInTenantSchema(
-            schemaName,
-            `DELETE FROM customer_profiles WHERE id = $1::uuid`,
-            [removeProfileId],
-        );
-
-        // Mark suggestion as approved
-        await this.prisma.executeInTenantSchema(
-            schemaName,
-            `UPDATE merge_suggestions SET status = 'approved', reviewed_by = $2::uuid, reviewed_at = NOW()
-             WHERE id = $1::uuid`,
-            [suggestionId, userId],
-        );
-
-        this.logger.log(`[Identity] Merge approved: kept profile ${keepProfileId}, removed ${removeProfileId}`);
+        await this.prisma.transactionInTenantSchema(schemaName,async query=>{
+            // Match privacy and memory lock order. Serialize identity writers
+            // before computing the family whose facts will be migrated.
+            await query(`SELECT pg_advisory_xact_lock_shared(hashtextextended($1,0))::text`,[`agent-privacy:${schemaName}`]);
+            await query('LOCK TABLE contact_identities IN SHARE ROW EXCLUSIVE MODE');
+            const suggestions=await query<any[]>(`SELECT * FROM merge_suggestions WHERE id=$1::uuid AND status='pending' FOR UPDATE`,[suggestionId]);
+            if(!suggestions.length)throw new Error('Merge suggestion not found or already processed');
+            const keepProfileId=suggestions[0].customer_profile_id_a,removeProfileId=suggestions[0].customer_profile_id_b;
+            if(!keepProfileId||!removeProfileId||keepProfileId===removeProfileId)throw new Error('Merge profile changed');
+            const profileIds=[keepProfileId,removeProfileId].sort();
+            const contacts=await query<any[]>('SELECT DISTINCT contact_id FROM contact_identities WHERE customer_profile_id=ANY($1::uuid[])',[profileIds]);
+            const contactIds=contacts.map(row=>row.contact_id).sort();
+            const locks=[...profileIds.map(id=>`customer-memory:${schemaName}:profile:${id}`),...contactIds.map(id=>`customer-memory:${schemaName}:contact:${id}`)].sort();
+            for(const lock of locks)await query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))::text',[lock]);
+            const tables=await query<any[]>(`SELECT to_regclass('customer_memory_facts')::text AS facts,to_regclass('customer_memory_erasure')::text AS erasure`);
+            if(tables[0]?.erasure&&(await query('SELECT contact_id FROM customer_memory_erasure WHERE contact_id=ANY($1::uuid[])',[contactIds])).length)throw new Error('Cannot merge an erased contact');
+            const profiles=await query<any[]>('SELECT id FROM customer_profiles WHERE id=ANY($1::uuid[]) ORDER BY id FOR UPDATE',[profileIds]);
+            if(profiles.length!==2)throw new Error('Merge profile changed');
+            if(tables[0]?.facts){
+                await query(`ALTER TABLE customer_memory_facts ADD COLUMN IF NOT EXISTS fact_key TEXT,
+                    ADD COLUMN IF NOT EXISTS status VARCHAR(16) NOT NULL DEFAULT 'active',ADD COLUMN IF NOT EXISTS valid_until TIMESTAMPTZ`);
+                // Preserve fact IDs, evidence and historical statuses, including
+                // legacy facts that have no source_contact_id to find them later.
+                await query(`UPDATE customer_memory_facts SET owner_id=$1::uuid WHERE owner_kind='profile' AND owner_id=$2::uuid`,[keepProfileId,removeProfileId]);
+                await query(`WITH disputed AS (
+                    SELECT fact_key FROM customer_memory_facts
+                    WHERE ((owner_kind='profile' AND owner_id=$1::uuid) OR (owner_kind='contact' AND owner_id=ANY($2::uuid[])))
+                        AND status IN ('active','conflicted') AND fact_key IS NOT NULL
+                        AND (valid_until IS NULL OR valid_until>NOW()) GROUP BY fact_key HAVING COUNT(DISTINCT fact_text)>1)
+                    UPDATE customer_memory_facts SET status='conflicted',last_seen_at=NOW()
+                    WHERE ((owner_kind='profile' AND owner_id=$1::uuid) OR (owner_kind='contact' AND owner_id=ANY($2::uuid[])))
+                        AND status IN ('active','conflicted') AND fact_key IN (SELECT fact_key FROM disputed)`,[keepProfileId,contactIds]);
+            }
+            await query(`UPDATE contact_identities SET customer_profile_id=$1::uuid,is_primary=false WHERE customer_profile_id=$2::uuid`,[keepProfileId,removeProfileId]);
+            await query(`UPDATE customer_profiles SET phone=COALESCE(phone,(SELECT phone FROM customer_profiles WHERE id=$2::uuid)),
+                email=COALESCE(email,(SELECT email FROM customer_profiles WHERE id=$2::uuid)),updated_at=NOW() WHERE id=$1::uuid`,[keepProfileId,removeProfileId]);
+            await query('DELETE FROM customer_profiles WHERE id=$1::uuid',[removeProfileId]);
+            await query(`UPDATE merge_suggestions SET status='approved',reviewed_by=$2::uuid,reviewed_at=NOW() WHERE id=$1::uuid`,[suggestionId,userId]);
+        });
+        this.logger.log(`[Identity] Merge approved: ${suggestionId}`);
     }
 
     /**

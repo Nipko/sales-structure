@@ -3,6 +3,15 @@ import { HttpRequestService } from '../../../common/services/http-request.servic
 import { interpolate } from '../utils/variable-interpolator';
 import { extractFromResponse } from '../utils/response-extractor';
 
+export type AutomationHttpOutcome = 'accepted' | 'rejected' | 'unknown';
+
+export interface AutomationHttpResult extends Record<string, any> {
+    outcome: AutomationHttpOutcome;
+    statusCode: number | null;
+    idempotencyKey: string;
+    error?: string;
+}
+
 @Injectable()
 export class HttpRequestHandler {
     private readonly logger = new Logger(HttpRequestHandler.name);
@@ -13,23 +22,39 @@ export class HttpRequestHandler {
         schemaName: string,
         config: any,
         eventPayload: any,
-    ): Promise<Record<string, any>> {
+        execution: { idempotencyKey: string },
+    ): Promise<AutomationHttpResult> {
         const context = this.buildContext(eventPayload);
 
         const url = interpolate(config.url, context) as string;
-        const headers = config.headers
+        const configuredHeaders = config.headers
             ? (interpolate(config.headers, context) as Record<string, string>)
             : {};
+        // The job identity is owned by the platform. Header names are case
+        // insensitive, so remove every tenant-supplied spelling before adding
+        // the stable value that survives BullMQ retries.
+        const headers = Object.fromEntries(Object.entries(configuredHeaders)
+            .filter(([name]) => name.toLowerCase() !== 'idempotency-key'));
+        headers['Idempotency-Key'] = execution.idempotencyKey;
         const body = config.body ? interpolate(config.body, context) : undefined;
 
         const method = (config.method || 'POST').toUpperCase();
         const timeoutMs = Math.min(config.timeout_ms || 10_000, 10_000);
-        const retryCount = Math.min(config.retry_count || 0, 3);
+        const safeToRepeat = ['GET', 'HEAD', 'OPTIONS'].includes(method);
+        // A remote service is not required to honour Idempotency-Key. Retrying
+        // a mutating request after losing its answer can therefore create a
+        // second order, payment or CRM record. Reads may keep the configured
+        // retry policy; writes get one attempt and an explicit unknown state.
+        const retryCount = safeToRepeat ? Math.min(config.retry_count || 0, 3) : 0;
+
+        // Invalid/unsafe destinations fail before the attempt begins and stay
+        // ordinary errors. Once execute() starts, lack of an answer is an
+        // uncertain external outcome and must not be retried as a refusal.
+        this.httpRequestService.validateUrl(url);
 
         let lastError: Error | null = null;
         for (let attempt = 0; attempt <= retryCount; attempt++) {
             try {
-                this.httpRequestService.validateUrl(url);
                 const result = await this.httpRequestService.execute({
                     method: method as any,
                     url,
@@ -48,8 +73,12 @@ export class HttpRequestHandler {
                 }
 
                 return {
-                    statusCode: result.statusCode,
                     ...extracted,
+                    outcome: result.statusCode >= 200 && result.statusCode < 300
+                        ? 'accepted'
+                        : 'rejected',
+                    statusCode: result.statusCode,
+                    idempotencyKey: execution.idempotencyKey,
                 };
             } catch (err: any) {
                 lastError = err;
@@ -62,7 +91,12 @@ export class HttpRequestHandler {
             }
         }
 
-        throw lastError || new Error('HTTP request failed');
+        return {
+            outcome: 'unknown',
+            statusCode: null,
+            idempotencyKey: execution.idempotencyKey,
+            error: lastError?.message || 'HTTP request failed',
+        };
     }
 
     private buildContext(payload: any): Record<string, any> {

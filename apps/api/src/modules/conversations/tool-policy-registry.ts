@@ -173,7 +173,10 @@ const TOOL_POLICY_ENTRIES = [
     entry('send_product_image', mediaWrite()),
     // Retail's closing step: the catalog could be searched and priced but never
     // sold from, so the agent announced orders that did not exist.
-    entry('place_catalog_order', contactWrite({ downstreamEffects: ['notification'] })),
+    entry('place_catalog_order', contactWrite()),
+    entry('list_my_catalog_orders', contactRead({ agentTestAllowed: true })),
+    entry('get_catalog_order', contactRead({ agentTestAllowed: true, ownership:'resource_owner' })),
+    entry('cancel_catalog_order', contactWrite({ ownership:'resource_owner', idempotency:'state_guarded' })),
     entry('list_active_offers', publicRead({ agentTestAllowed: true })),
     entry('search_faqs', publicRead({
         effect: 'conditional_write',
@@ -360,10 +363,10 @@ const TOOL_POLICY_ENTRIES = [
 
     // Pets and veterinary
     entry('list_pets_for_contact', sensitiveRead({ agentTestAllowed: true })),
-    // Registering a pet commits nothing and costs nothing: asking "¿confirmas que
-    // registre a tu perro?" is friction the customer reads as the agent stalling,
-    // and if the model then fails to re-issue the call the record is never
-    // created at all. The ledger still makes it idempotent.
+    // Registration persists a contact-owned record. The current policy accepts
+    // the customer's registration request without a second confirmation; it
+    // does not book a service or authorize a charge. The canonical command
+    // commits its retry receipt with the pet.
     entry('register_pet', contactWrite({ dataClassification: 'sensitive', confirmation: 'not_required' })),
     entry('get_vaccination_status', stepUpSensitiveRead({ ownership: 'resource_owner', agentTestAllowed: true })),
     entry('triage_pet_emergency', publicRead({
@@ -388,6 +391,7 @@ const TOOL_POLICY_ENTRIES = [
     entry('get_membership_plans', publicRead({ agentTestAllowed: true })),
     entry('get_class_schedule', publicRead({ agentTestAllowed: true })),
     entry('get_my_membership', sensitiveRead({ agentTestAllowed: true })),
+    entry('get_my_class_bookings', sensitiveRead({ agentTestAllowed: true })),
     entry('book_class', contactWrite({ idempotency: 'state_guarded' })),
     entry('freeze_membership', contactWrite({ ownership: 'resource_owner', idempotency: 'state_guarded' })),
     entry('cancel_class_booking', contactWrite({ ownership: 'resource_owner', idempotency: 'state_guarded' })),
@@ -574,7 +578,7 @@ const VERTICAL_ORIGIN_TOOLS: ReadonlySet<string> = new Set([
     'get_menu', 'get_promotions', 'place_order', 'cancel_order',
     'check_order_status', 'list_my_orders',
     // gyms
-    'get_membership_plans', 'get_class_schedule', 'get_my_membership',
+    'get_membership_plans', 'get_class_schedule', 'get_my_membership', 'get_my_class_bookings',
     'book_class', 'freeze_membership', 'cancel_class_booking',
     // education
     'get_courses', 'get_course_schedule', 'enroll_student',
@@ -771,6 +775,15 @@ export function toolRequiresSequentialExecution(name: unknown): boolean {
 /** A mixed batch is serialized whenever any tool can mutate or emit effects. */
 export function toolBatchRequiresSequentialExecution(names: readonly unknown[]): boolean {
     return names.some(toolRequiresSequentialExecution);
+}
+
+/** Writes can be described in a draft only through the separate review ledger. */
+export function isDraftProposableToolName(name: unknown): boolean {
+    if (typeof name === 'string' && name.startsWith('mcp__')) return true;
+    const policy = getToolPolicy(name);
+    return !!policy && policy.effect === 'write' && policy.assuranceEnforcement !== 'missing'
+        && policy.idempotency !== 'missing' && policy.confirmation !== 'required_missing'
+        && policy.humanApproval !== 'required_missing';
 }
 
 export function getMissingToolControls(): Array<{

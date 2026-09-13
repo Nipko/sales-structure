@@ -1,7 +1,7 @@
 ---
 id: inbox
 title: "Bandeja de entrada y atención humana"
-routes: ["/admin/inbox", "/admin/settings/macros", "/admin/settings/integrations/sms-notifications"]
+routes: ["/admin/inbox", "/admin/settings/macros", "/admin/settings/notifications"]
 roles: ["tenant_admin", "tenant_supervisor", "tenant_agent"]
 keywords: ["inbox", "bandeja de entrada", "handoff", "tomar conversacion", "atender cliente", "agente humano", "devolver al bot", "notas internas", "macros", "respuestas rapidas", "posponer", "snooze", "asignar conversacion", "resolver conversacion", "copiloto", "resumen IA", "reescribir mensaje", "sugerencia IA", "notificaciones", "campana", "escalacion", "sin atender", "180 minutos", "vuelve a la ia"]
 ---
@@ -84,9 +84,9 @@ La cantidad de personas que pueden usar Parallly depende de la capacidad de tu c
 
 ## Notificaciones
 
-La **campana** en la barra superior concentra los avisos y los agrupa por categoría: **Mensajes**, **Transferencias** (escalamientos a humano), **Privacidad**, **Citas**, **Automatización**, **Órdenes** y **Sistema**. Los escalamientos directos (el cliente pidió un humano) se destacan en rojo; los escalamientos por baja confianza de la IA, en amarillo; y las alertas de supervisor llegan con sonido.
+La **campana** en la barra superior concentra los avisos y los agrupa por categoría: **Mensajes**, **Transferencias** (escalamientos a humano), **Cumplimiento**, **Citas**, **Automatización**, **Pedidos** y **Sistema**. Los escalamientos directos (el cliente pidió un humano) se destacan en rojo y los escalamientos por baja confianza de la IA, en amarillo.
 
-Si los avisos por SMS están habilitados para tu cuenta, actívalos en **Configuración → Canales e integraciones → Avisos por SMS**.
+En **Configuración → Notificaciones** puedes desactivar categorías y el sonido. La selección se guarda en tu cuenta y se aplica tanto a la campana como a los push enviados por el servidor. El permiso push del navegador se activa por separado en cada dispositivo. Esta pantalla no programa resúmenes por correo.
 
 ## Trabajo en equipo sin pisarse
 

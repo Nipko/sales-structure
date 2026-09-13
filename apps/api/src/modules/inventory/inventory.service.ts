@@ -1,9 +1,10 @@
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { normalizeCurrencyCode } from '../../common/utils/commercial-units.util';
 import { AGENT_QUALITY_DEPENDENCIES_UPDATED } from '../quality/agent-quality-events';
+import { catalogCents, CATALOG_UUID } from '../orders/catalog-order-contract';
 
 // ============================================
 // Types (exported for controller return type visibility)
@@ -18,7 +19,7 @@ export interface Product {
     price: number;
     cost: number;
     currency: string;
-    stock: number;
+    stock: number | null;
     minStock: number;
     maxStock: number;
     unit: string;
@@ -87,7 +88,7 @@ export class InventoryService {
     async getOverview(tenantId: string): Promise<InventoryOverview> {
         const schema = await this.getTenantSchema(tenantId);
         if (!schema) {
-            return this.buildEmptyOverview();
+            throw new NotFoundException('inventory_tenant_unavailable');
         }
 
         try {
@@ -119,8 +120,8 @@ export class InventoryService {
             );
 
             const mappedProducts = (products || []).map((p: any) => this.mapProduct(p));
-            const totalValue = mappedProducts.reduce((sum, p) => sum + (p.price * p.stock), 0);
-            const lowStock = mappedProducts.filter(p => p.stock > 0 && p.stock <= p.minStock).length;
+            const totalValue = mappedProducts.reduce((sum, p) => sum + (p.price * (p.stock??0)), 0);
+            const lowStock = mappedProducts.filter(p => p.stock !== null && p.stock > 0 && p.stock <= p.minStock).length;
             const outOfStock = mappedProducts.filter(p => p.stock === 0).length;
 
             return {
@@ -137,7 +138,7 @@ export class InventoryService {
             };
         } catch (error) {
             this.logger.error(`Error getting inventory overview: ${error}`);
-            return this.buildEmptyOverview();
+            throw error;
         }
     }
 
@@ -154,10 +155,14 @@ export class InventoryService {
      */
     async createProduct(tenantId: string, data: {
         name: string; sku: string; description?: string; categoryId?: string;
-        price: number; cost?: number; stock: number; minStock?: number; maxStock?: number;
+        price: number; cost?: number; stock: number|null; minStock?: number; maxStock?: number;
         currency?: string; unit?: string; imageUrl?: string; tags?: string[];
         requiresPrescription?: boolean;
     }): Promise<{ id: string }> {
+        if(!data||typeof data.name!=='string'||!data.name.trim()||data.name.length>500||typeof data.price!=='number'
+            ||(data.stock!==null&&(!Number.isInteger(data.stock)||data.stock<0||data.stock>2147483647))
+            ||(data.requiresPrescription!==undefined&&typeof data.requiresPrescription!=='boolean'))throw new BadRequestException('inventory_product_invalid');
+        catalogCents(data.price);
         const schema = await this.getTenantSchema(tenantId);
         if (!schema) throw new Error('Tenant schema not found');
 
@@ -190,6 +195,11 @@ export class InventoryService {
         currency: string; unit: string; imageUrl: string; isActive: boolean; tags: string[];
         requiresPrescription: boolean;
     }>): Promise<void> {
+        if(!CATALOG_UUID.test(productId)||!data||typeof data!=='object'
+            ||(data.price!==undefined&&typeof data.price!=='number')
+            ||(data.name!==undefined&&(typeof data.name!=='string'||!data.name.trim()||data.name.length>500))
+            ||(data.requiresPrescription!==undefined&&typeof data.requiresPrescription!=='boolean'))throw new BadRequestException('inventory_product_invalid');
+        if(data.price!==undefined)catalogCents(data.price);
         const schema = await this.getTenantSchema(tenantId);
         if (!schema) throw new Error('Tenant schema not found');
 
@@ -235,37 +245,22 @@ export class InventoryService {
 
         await this.ensureInventoryTables(schema);
 
-        // Get current stock
-        const current = await this.prisma.executeInTenantSchema<any[]>(
-            schema, `SELECT stock FROM products WHERE id = $1::uuid`, [productId],
-        );
-
-        const currentStock = parseInt(current?.[0]?.stock) || 0;
-        let newStock: number;
-
-        if (data.type === 'in') {
-            newStock = currentStock + data.quantity;
-        } else if (data.type === 'out') {
-            newStock = Math.max(0, currentStock - data.quantity);
-        } else {
-            newStock = data.quantity; // Direct adjustment
+        if (!CATALOG_UUID.test(productId) || !data || !['in','out','adjustment'].includes(data.type) || !Number.isInteger(data.quantity)
+            || data.quantity < (data.type === 'adjustment' ? 0 : 1) || data.quantity > 2147483647
+            || typeof data.reason !== 'string' || !data.reason.trim() || data.reason.length > 1000) {
+            throw new BadRequestException('inventory_adjustment_invalid');
         }
-
-        // Update product stock
-        await this.prisma.executeInTenantSchema(
-            schema, `UPDATE products SET stock = $1, updated_at = NOW() WHERE id = $2::uuid`,
-            [newStock, productId],
-        );
-
-        // Record the movement
-        await this.prisma.executeInTenantSchema(
-            schema,
-            `INSERT INTO stock_movements (id, product_id, type, quantity, previous_stock, new_stock, reason, created_at)
-       VALUES (gen_random_uuid(), $1::uuid, $2, $3, $4, $5, $6, NOW())`,
-            [productId, data.type, data.quantity, currentStock, newStock, data.reason],
-        );
-
-        this.logger.log(`Stock adjusted for product ${productId}: ${currentStock} → ${newStock} (${data.type})`);
+        await this.prisma.transactionInTenantSchema(schema, async query => {
+            const rows = await query<any[]>('SELECT stock FROM products WHERE id=$1::uuid FOR UPDATE',[productId]);
+            if (!rows[0]) throw new NotFoundException('inventory_product_not_found');
+            const current = rows[0].stock === null ? null : Number(rows[0].stock);
+            if (current === null && data.type !== 'adjustment') throw new ConflictException('inventory_stock_untracked');
+            const next = data.type === 'adjustment' ? data.quantity : (current as number) + (data.type === 'in' ? data.quantity : -data.quantity);
+            if (!Number.isInteger(next) || next < 0 || next > 2147483647) throw new ConflictException('inventory_stock_insufficient');
+            await query('UPDATE products SET stock=$1,updated_at=NOW() WHERE id=$2::uuid',[next,productId]);
+            await query(`INSERT INTO stock_movements(id,product_id,type,quantity,previous_stock,new_stock,reason)
+                VALUES(gen_random_uuid(),$1::uuid,$2,$3,$4,$5,$6)`,[productId,data.type,data.quantity,current,next,data.reason.trim()]);
+        });
     }
 
     /**
@@ -328,13 +323,13 @@ export class InventoryService {
             category: p.category_name || p.category || 'Sin categoría',
             price: parseFloat(p.price) || 0,
             cost: parseFloat(meta.cost) || 0,
-            currency: p.currency || 'COP',
-            stock: parseInt(p.stock) || 0,
+            currency: p.currency || '',
+            stock: p.stock === null || p.stock === undefined ? null : Number(p.stock),
             minStock: parseInt(meta.min_stock) || 5,
             maxStock: parseInt(meta.max_stock) || 1000,
             unit: meta.unit || 'unidad',
             imageUrl: Array.isArray(p.images) && p.images.length > 0 ? p.images[0] : null,
-            isActive: p.is_available !== false,
+            isActive: p.is_available === true,
             requiresPrescription: p.requires_prescription === true,
             tags: Array.isArray(meta.tags) ? meta.tags : [],
             metadata: meta,

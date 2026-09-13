@@ -3,7 +3,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateLeadDto } from './dto/create-lead.dto';
 import { createHash } from 'crypto';
-import { imsg, isOptOutMessage } from './intake-i18n';
+import { imsg } from './intake-i18n';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { isUUID } from 'class-validator';
 import {
@@ -291,7 +291,13 @@ export class IntakeService {
             campaignId: dto.campaignId,
             courseId: dto.courseId,
             isNew,
-            phone
+            phone,
+            // A form lead arrived through no connection at all, so there is no
+            // `channelAccountId` to give and none is invented. A rule that
+            // answers one with a WhatsApp template has to name the connection
+            // itself; if it does not and the tenant has more than one number,
+            // the send is refused rather than billed to whichever came first.
+            source: 'intake_form',
         });
 
         return { leadId, opportunityId, isNew, phone };
@@ -405,56 +411,4 @@ export class IntakeService {
         );
     }
 
-    // ─── Opt-out detection (used by channels service) ─────────────────────────
-
-    /**
-     * Detect and record an opt-out from any inbound message.
-     *
-     * The `lang` parameter is optional and kept for signature compatibility.
-     * Detection is intentionally language-agnostic — OPT_OUT_INTAKE_PATTERNS
-     * in intake-i18n.ts covers ES/EN/PT/FR in a single flat list so that
-     * customers can opt out regardless of the language they write in.
-     *
-     * @param schemaName  Tenant PostgreSQL schema
-     * @param phone       Normalised phone number of the sender
-     * @param message     Raw inbound message text
-     * @param lang        (optional) Detected or configured language — reserved for future use
-     */
-    async checkAndRecordOptOut(
-        schemaName: string,
-        phone: string,
-        message: string,
-        lang?: string,
-    ): Promise<boolean> {
-        const isOptOut = isOptOutMessage(message);
-        if (!isOptOut) return false;
-
-        // Find lead by phone
-        const leads = await this.prisma.executeInTenantSchema<Array<{ id: string }>>(
-            schemaName,
-            `SELECT id FROM leads WHERE phone = $1 LIMIT 1`,
-            [phone]
-        );
-        const leadId = leads[0]?.id ?? null;
-
-        // Record opt-out
-        await this.prisma.executeInTenantSchema(
-            schemaName,
-            `INSERT INTO opt_out_records (lead_id, phone, channel, trigger_msg)
-             VALUES ($1::uuid, $2, 'whatsapp', $3)`,
-            [leadId, phone, message]
-        );
-
-        // Flag lead as opted out
-        if (leadId) {
-            await this.prisma.executeInTenantSchema(
-                schemaName,
-                `UPDATE leads SET opted_out = true, opted_out_at = NOW(), updated_at = NOW() WHERE id = $1::uuid`,
-                [leadId]
-            );
-        }
-
-        this.logger.log(`[Intake] Opt-out recorded for phone ${phone}`);
-        return true;
-    }
 }

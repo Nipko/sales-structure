@@ -96,7 +96,7 @@ export class BookingPaymentListener {
                     body: `Se acreditó un pago para el ${booking.check_in} al ${booking.check_out} `
                         + 'pero las fechas ya se ocuparon. Hay que reubicar o devolver.',
                     tag: `paid-no-room-${booking.id}`,
-                }).catch(() => { /* el aviso es best-effort; el log ya quedó */ });
+                }, 'orders').catch(() => { /* el aviso es best-effort; el log ya quedó */ });
                 this.events.emit('property_booking.paid_but_unavailable', {
                     tenantId: event.tenantId,
                     bookingId: booking.id,
@@ -116,6 +116,11 @@ export class BookingPaymentListener {
                 [booking.id, PENDING_PAYMENT_STATUS],
             );
             if (!updated?.[0]) return;
+
+            await this.prisma.executeInTenantSchema(schemaName,
+                `UPDATE operational_notice_outbox SET next_attempt_at=NOW(),updated_at=NOW()
+                  WHERE kind='property.booking_confirmed' AND entity_id=$1::uuid AND state='pending'`,
+                [booking.id]).catch(() => undefined);
 
             this.logger.log(`[Pago] reserva ${booking.id} confirmada tras acreditarse el pago`);
             // Confirmar en la base no es confirmarle al huésped. Sin este aviso

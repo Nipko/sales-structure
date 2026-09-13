@@ -228,24 +228,23 @@ export class WidgetService implements OnModuleInit {
         email?: string;
         phone?: string;
         page?: string;
+        resumeToken?: string;
     }): Promise<{ sessionId: string; token: string }> {
         if (!await this.isTenantWidgetRuntimeAvailable(widgetConfig?.tenant_id, 'write')) {
             throw new ForbiddenException({ error: 'subscription_unavailable' });
         }
-        const existing: any[] = await this.prisma.$queryRawUnsafe(
-            `SELECT id, conversation_id, token FROM public.widget_sessions
-             WHERE visitor_id = $1 AND widget_config_id = $2::uuid AND last_seen_at > NOW() - interval '90 days'
-             ORDER BY last_seen_at DESC LIMIT 1`,
-            data.visitorId, widgetConfig.id,
-        );
-
-        if (existing?.length) {
-            const token = this.generateToken(existing[0].id, widgetConfig.tenant_id, widgetConfig.widget_id);
-            await this.prisma.$queryRawUnsafe(
-                `UPDATE public.widget_sessions SET last_seen_at = NOW(), token = $2 WHERE id = $1::uuid`,
-                existing[0].id, token,
-            );
-            return { sessionId: existing[0].id, token };
+        if (data.resumeToken) {
+            const existing = await this.getSessionByToken(data.resumeToken);
+            if (existing && existing.widget_config_id === widgetConfig.id && existing.tenant_id === widgetConfig.tenant_id
+                && existing.visitor_id === data.visitorId) {
+                const token = this.generateToken(existing.id, widgetConfig.tenant_id, widgetConfig.widget_id);
+                const rotated: any[] = await this.prisma.$queryRawUnsafe(
+                    'UPDATE public.widget_sessions SET last_seen_at=NOW(),token=$2 WHERE id=$1::uuid AND token=$3 RETURNING id',
+                    existing.id,token,data.resumeToken);
+                if (rotated[0]) return {sessionId:existing.id,token};
+                throw new ForbiddenException({error:'widget_session_rotated'});
+            }
+            // An expired or revoked credential starts a fresh session; its visitor ID cannot recover history.
         }
 
         // The JWT sessionId must be the exact primary key persisted below. Signing a
@@ -266,7 +265,7 @@ export class WidgetService implements OnModuleInit {
 
     async getSessionByToken(token: string): Promise<any> {
         try {
-            const decoded = jwt.verify(token, this.jwtSecret) as any;
+            const decoded = jwt.verify(token, this.jwtSecret, { algorithms: ['HS256'] }) as any;
             if (!decoded || typeof decoded.sessionId !== 'string' ||
                 typeof decoded.tenantId !== 'string' || typeof decoded.widgetId !== 'string') {
                 return null;
@@ -275,7 +274,7 @@ export class WidgetService implements OnModuleInit {
                 `SELECT ws.*, wc.tenant_id, wc.widget_id, wc.allowed_domains,
                         wc.is_active AS widget_is_active
                  FROM public.widget_sessions ws
-                 JOIN public.widget_configs wc ON wc.id = ws.widget_config_id
+                 JOIN public.widget_configs wc ON wc.id = ws.widget_config_id AND wc.tenant_id = ws.tenant_id
                  WHERE ws.id = $1::uuid
                    AND ws.token = $2
                    AND wc.is_active = true`,
@@ -335,7 +334,7 @@ export class WidgetService implements OnModuleInit {
 
     private generateToken(sessionId: string, tenantId: string, widgetId: string): string {
         return jwt.sign(
-            { sessionId, tenantId, widgetId },
+            { sessionId, tenantId, widgetId, jti: crypto.randomUUID() },
             this.jwtSecret,
             { expiresIn: '7d' },
         );

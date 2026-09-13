@@ -1,12 +1,69 @@
-import { Injectable, Logger, BadRequestException, NotFoundException, Optional, UnauthorizedException } from '@nestjs/common';
+import { Inject, Injectable, Logger, BadRequestException, NotFoundException, Optional, UnauthorizedException, forwardRef } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ConfigService } from '@nestjs/config';
+import { OUTBOUND_CONTRACT_VERSION, type OutboundCredentialRef } from '@parallext/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { WhatsappCryptoService } from './whatsapp-crypto.service';
 import { TenantThrottleService } from '../../throttle/tenant-throttle.service';
 import { AGENT_QUALITY_DEPENDENCIES_UPDATED } from '../../quality/agent-quality-events';
+import { ConnectionRefusedError } from '../../channels/connection-refusal';
+// One place decides whether a connection may send and whether its credential
+// may sign, so this resolver and `ChannelTokenService` cannot drift apart
+// again — which is exactly how one of them started answering with a revoked
+// token for a number the tenant had disconnected.
+import { assertUsable, assessConnection, assessCredential, sendableChannelSql }
+    from '../../channels/connection-usability';
+import { ChannelTokenService, type ResolvedConnection, type SendContextRequest }
+    from '../../channels/channel-token.service';
+// Validated by the very function that will price with it: a zone this cannot
+// format is a zone every later charge would refuse, so accepting one here would
+// only move the failure to the first message somebody tries to send.
+import { wabaLocalDate } from '../../billing/whatsapp-rates';
+import {
+    contradictoryWabas, describeResolution, resolveZone,
+    type NumberZone, type ZoneEvidence, type ZoneResolution,
+} from '../waba-timezone-authority';
+import {
+    currencyFromMeta, describeCurrency, resolveCurrency,
+} from '../waba-currency-authority';
 
 const META_GRAPH = 'https://graph.facebook.com/v21.0';
+
+/**
+ * One WhatsApp connection, with the credential that belongs to IT.
+ *
+ * The pairing is the point. The previous shape returned four loose fields, and
+ * three of them came from the row the caller asked for while the fourth — the
+ * token — was fetched by a separate query that ordered by `connected_at` and
+ * took the first. Nothing in the type could notice.
+ */
+interface ResolvedWhatsappConnection {
+  readonly tenantId: string;
+  readonly channelId: string;
+  readonly phoneNumberId: string;
+  readonly wabaId: string;
+  readonly businessId: string | null;
+  readonly displayPhoneNumber: string | null;
+  readonly accessToken: string;
+  readonly credentialId: string;
+  readonly credentialSource: OutboundCredentialRef['source'];
+}
+
+/**
+ * A phone number id, or nothing.
+ *
+ * `''` reaches this resolver from producers that build an outbound message with
+ * no connection bound — the field is typed as a required `string`, so `tsc`
+ * never saw it. An empty string is not a connection and it is not a request for
+ * a particular one either, so it is treated exactly like an omission: resolved
+ * on a single-number tenant, refused as ambiguous on any other. The old code
+ * agreed by accident for `''` (falsy) and disagreed for `'  '` (truthy), which
+ * it then looked up as a phone number id and refused as not found.
+ */
+function normalizePhoneNumberId(phoneNumberId?: string | null): string | null {
+  const trimmed = typeof phoneNumberId === 'string' ? phoneNumberId.trim() : '';
+  return trimmed.length ? trimmed : null;
+}
 
 const VALID_VERTICALS = [
   'UNDEFINED', 'OTHER', 'AUTO', 'BEAUTY', 'APPAREL', 'EDU', 'ENTERTAIN',
@@ -23,6 +80,12 @@ export class WhatsappConnectionService {
     private readonly cryptoService: WhatsappCryptoService,
     private readonly configService: ConfigService,
     private readonly throttle: TenantThrottleService,
+    // Optional and injected late on purpose:  and this one
+    // are a forwardRef pair, and a required dependency here would make the
+    // graph resolution order matter. What it buys is that a connect or a
+    // rotation can clear the cached secret it just replaced.
+    @Optional() @Inject(forwardRef(() => ChannelTokenService))
+    private readonly channelToken?: ChannelTokenService,
     @Optional() private readonly events?: EventEmitter2,
   ) {}
 
@@ -167,6 +230,25 @@ export class WhatsappConnectionService {
             wabaId,
             phoneNumberId,
             source: 'manual_connect',
+            // Meta's own timezone id, kept as EVIDENCE and never as a zone: it is
+            // a numeric Facebook id (`12`), not IANA, and the CHECK on
+            // `waba_timezone` refuses one. Storing it means the mapping can be
+            // done later without asking Meta again for every connection.
+            ...(data.timezoneId ? { metaTimezoneId: String(data.timezoneId) } : {}),
+            // Meta's own billing currency for this WABA, with provenance.
+            // A bare code with no source and no date cannot be used to price:
+            // it is indistinguishable from something somebody typed, and a
+            // confident amount in the wrong money is worse than no amount.
+            ...(currencyFromMeta(data.currency, wabaId)
+                ? { billingCurrencyEvidence: { ...currencyFromMeta(data.currency, wabaId)! } }
+                : {}),
+            // Meta's own billing currency for this WABA, with provenance.
+            // A bare code with no source and no date cannot be used to price:
+            // it is indistinguishable from something somebody typed, and a
+            // confident amount in the wrong money is worse than no amount.
+            ...(currencyFromMeta(data.currency, wabaId)
+                ? { billingCurrencyEvidence: { ...currencyFromMeta(data.currency, wabaId)! } }
+                : {}),
           },
         },
       });
@@ -183,6 +265,11 @@ export class WhatsappConnectionService {
             wabaId,
             phoneNumberId,
             source: 'manual_connect',
+            // Meta's own timezone id, kept as EVIDENCE and never as a zone: it is
+            // a numeric Facebook id (`12`), not IANA, and the CHECK on
+            // `waba_timezone` refuses one. Storing it means the mapping can be
+            // done later without asking Meta again for every connection.
+            ...(data.timezoneId ? { metaTimezoneId: String(data.timezoneId) } : {}),
           },
         },
       });
@@ -197,7 +284,28 @@ export class WhatsappConnectionService {
       if (replaceCredential) {
         await this.prisma.whatsappCredential.update({
           where: { id: existingCredential.id },
-          data: { encryptedValue: encryptedToken, expiresAt: credentialExpiresAt, rotationState: 'active' },
+          data: {
+            encryptedValue: encryptedToken, expiresAt: credentialExpiresAt, rotationState: 'active',
+            // ── PROVENANCE DESCRIBES A SECRET, NOT A ROW ──────────────────
+            //
+            // These four columns say what the STORED TOKEN is: a Business
+            // Integration System User minted for one client, or the provider's
+            // own System User. Replacing the secret and leaving them behind
+            // makes them describe a token that is no longer there — and the
+            // reader treats them as established, so a pasted credential
+            // inherits the last one's verification and `maySignForClient`
+            // answers `usable, established` about something nobody checked.
+            //
+            // Cleared rather than guessed. An operator pasting a token here
+            // supplies no portfolio, so `not_established` is the truth: the
+            // credential still sends, and it is honestly marked unverified
+            // until Embedded Signup establishes whose it is.
+            credentialKind: null,
+            ownerBusinessId: null,
+            metaAppId: null,
+            grantedScopes: null,
+            provenanceVerifiedAt: null,
+          },
         });
       }
     } else {
@@ -211,6 +319,23 @@ export class WhatsappConnectionService {
         },
       });
     }
+
+    // Connect, reconnect and rotation all land here, and all three replace a
+    // secret that is TENANT-WIDE: under the Tech Provider model one System User
+    // token signs for every number the tenant has. Clearing only this number's
+    // key left the siblings holding the outgoing half of a rotation for five
+    // more minutes — sending with a credential that had just been replaced.
+    //
+    // `invalidateCache` now bumps the tenant's revocation epoch as well as
+    // deleting this key, so the siblings re-resolve once from the database
+    // instead. That is three queries each, not an outage: the connection they
+    // read is perfectly good, it simply has to be read again.
+    //
+    // After the writes, never before: an invalidation that runs first races the
+    // entry it is removing.
+    await this.channelToken?.invalidateCache('whatsapp', tenantId, String(phoneNumberId))
+      .catch((e: any) => this.logger.error(
+        `Connection saved but the token cache for ${phoneNumberId} was not cleared: ${e?.message}`));
 
     this.logger.log(`WhatsApp channel connected for schema ${schemaName}`);
     this.events?.emit(AGENT_QUALITY_DEPENDENCIES_UPDATED, {
@@ -239,77 +364,402 @@ export class WhatsappConnectionService {
   }
 
   /**
-   * Obtiene el token real desencriptado y los identificadores de Meta.
+   * El token real desencriptado y los identificadores de Meta del número emisor.
+   *
+   * ── THE ONE RULE, THE SECOND TIME ─────────────────────────────────────────
+   *
+   * `ChannelTokenService` resolves this same question for every channel and was
+   * fixed first: a named connection resolves to itself or to a refusal, an
+   * unnamed one only while the tenant has exactly one, and the credential has to
+   * belong to the account it comes back for. This method is a SECOND, older
+   * implementation of the same question, reached by a different route — the
+   * WhatsApp service's messaging and template surfaces — and it still had the
+   * rule broken in two places. The vocabulary is `connection-refusal.ts`, the
+   * same one; there is no second set of reasons for the same refusals.
+   *
+   * 1 · The explicit path already refused correctly. The UNNAMED one ran
+   *     `ORDER BY connected_at ASC NULLS LAST LIMIT 1` and answered with the
+   *     tenant's oldest connection. Four billable template senders reach this
+   *     without naming a number — appointment reminders, attendance checks,
+   *     lead-capture automations and drip sequences — so on a two-number tenant
+   *     every one of those went out on, and from 1 October is billed to, whichever
+   *     number happened to connect first. Now: `connection_ambiguous`, because
+   *     there is no defensible way to pick which of a business's WhatsApp
+   *     Business Accounts pays.
+   *
+   * 2 · The credential fallback read `access_token_ref` with its OWN query,
+   *     ordered the same way, and returned that token together with the
+   *     REQUESTED row's `phone_number_id`, `meta_waba_id` and `channelId`. Number
+   *     B's identity travelled with number A's token: a message that claims to
+   *     be from B, presented to Meta with A's credential, billed to A's account.
+   *     Now the token comes off the row that was resolved, or it is
+   *     `credential_missing` — never off a sibling.
+   *
+   * The tenant-wide `system_user_token` stays the deliberate exception and is
+   * still preferred: under the Tech Provider model it really does cover every
+   * WABA of the tenant, so presenting it for any of that tenant's numbers is not
+   * a substitution. WHICH number sends — the thing Meta bills — is still exact.
    */
   async getValidAccessToken(schemaName: string, phoneNumberId?: string): Promise<{ accessToken: string, phoneNumberId: string, wabaId: string, channelId: string }> {
-    // 1. Info del canal — el número específico si se pide (multi-número), si no el
-    //    más antiguo (determinístico). El system_user_token es tenant-wide; solo
-    //    cambia el phone_number_id de origen.
-    let channels: any[] = [];
-    if (phoneNumberId) {
-      channels = await this.prisma.executeInTenantSchema<any[]>(
-        schemaName,
-        `SELECT id, phone_number_id, meta_waba_id FROM whatsapp_channels WHERE phone_number_id = $1 LIMIT 1`,
-        [phoneNumberId],
-      );
-      // Elección EXPLÍCITA del emisor: si ese número ya no está conectado, error
-      // claro — caer al más antiguo mandaría el mensaje desde OTRO número de
-      // negocio distinto al que el agente eligió, en silencio.
-      if (!channels || channels.length === 0) {
-        throw new NotFoundException('El número seleccionado ya no está conectado');
-      }
-    }
-    if (!channels || channels.length === 0) {
-      channels = await this.prisma.executeInTenantSchema<any[]>(
-        schemaName,
-        `SELECT id, phone_number_id, meta_waba_id FROM whatsapp_channels ORDER BY connected_at ASC NULLS LAST LIMIT 1`
-      );
-    }
+    const resolved = await this.resolveConnection(schemaName, phoneNumberId);
+    return {
+      accessToken: resolved.accessToken,
+      phoneNumberId: resolved.phoneNumberId,
+      wabaId: resolved.wabaId,
+      channelId: resolved.channelId,
+    };
+  }
 
-    if (!channels || channels.length === 0) {
-      throw new NotFoundException('No hay canal de WhatsApp configurado');
-    }
+  // ══ THE SECOND `resolveSendContext` IS GONE, AND ITS ABSENCE IS THE POINT ══
+  //
+  // This file used to carry its own copy. It had the same name, the same
+  // request type and the same contract version as
+  // `ChannelTokenService.resolveSendContext`, and it disagreed about the one
+  // field that decides who is billed: it answered `payer.kind: 'unknown'` even
+  // when the WABA id was right there in the row.
+  //
+  // Under `enforce` that is a refusal — `payer_unknown` — so any sink that had
+  // ever been pointed at this copy would have gone silent while the queue lane,
+  // which asks the other resolver, kept working. It had no production callers,
+  // which is exactly what made it dangerous: a second implementation nobody
+  // exercises is a trap for the next person who needs one and finds this file
+  // first.
+  //
+  // There is one resolver. `channel-token.service.ts` owns it, and
+  // `one-send-context-resolver.spec.ts` fails if a second one appears.
 
-    const channel = channels[0];
-
-    // 2. Mapear schemaName -> tenantId
+  /** The connection and its own credential, or a refusal. Never another number. */
+  private async resolveConnection(
+    schemaName: string, phoneNumberId?: string | null,
+  ): Promise<ResolvedWhatsappConnection> {
+    // The tenant is resolved FIRST so a refusal can name it. Only its id is
+    // read: selecting the whole model to use one column is a read of every
+    // column of a table this method has no other business in.
     const tenant = await this.prisma.tenant.findUnique({
-      where: { schemaName }
+      where: { schemaName },
+      select: { id: true },
     });
-
     if (!tenant) throw new NotFoundException('Tenant no válido');
 
-    // 3. Buscar credencial cifrada
+    const channel = await this.findChannel(schemaName, tenant.id, normalizePhoneNumberId(phoneNumberId));
+    return this.credentialFor(tenant.id, channel);
+  }
+
+  /** The channel row, or a refusal. Never another number of the same tenant. */
+  private async findChannel(schemaName: string, tenantId: string, phoneNumberId: string | null): Promise<any> {
+    // `access_token_ref` is selected HERE, with the row's identity, so the
+    // credential fallback below cannot read it from a different row.
+    const columns = `id, phone_number_id, meta_waba_id, meta_business_id,
+        display_phone_number, access_token_ref, channel_status`;
+
+    if (phoneNumberId) {
+      const rows = await this.prisma.executeInTenantSchema<any[]>(
+        schemaName,
+        `SELECT ${columns} FROM whatsapp_channels WHERE phone_number_id = $1 LIMIT 1`,
+        [phoneNumberId],
+      );
+      if (!rows?.length) {
+        // An explicit choice of sender. The tenant's other numbers are not an
+        // answer to this question, and answering with one would send the message
+        // from a different business number than the one that was chosen.
+        throw new ConnectionRefusedError('connection_not_found',
+          { tenantId, channelType: 'whatsapp', requestedAccountId: phoneNumberId });
+      }
+      // Exists is not the same as may send. A named number that is
+      // disconnected is told so, rather than reported missing.
+      assertUsable(await this.connectionUsable(tenantId, rows[0]),
+        { tenantId, channelType: 'whatsapp', requestedAccountId: phoneNumberId });
+      return rows[0];
+    }
+
+    // Nothing named. Two rows are enough to know the question has no answer, so
+    // `LIMIT 2` — counting every number of a large tenant buys nothing. Rows with
+    // no phone_number_id cannot send at all (onboarding leaves them while Meta
+    // has not issued one), so they neither answer this request nor make it
+    // ambiguous.
+    // Only rows that may send are candidates, so a disconnected sibling
+    // neither answers this request nor makes it ambiguous.
+    const rows = await this.prisma.executeInTenantSchema<any[]>(
+      schemaName,
+      `SELECT ${columns} FROM whatsapp_channels
+        WHERE phone_number_id IS NOT NULL AND phone_number_id <> ''
+          AND ${sendableChannelSql()}
+        ORDER BY connected_at ASC NULLS LAST LIMIT 2`,
+    );
+    if (!rows?.length) {
+      const [existing] = await this.prisma.executeInTenantSchema<any[]>(
+        schemaName,
+        `SELECT channel_status FROM whatsapp_channels
+          WHERE phone_number_id IS NOT NULL AND phone_number_id <> '' LIMIT 1`,
+      );
+      // Nothing connected, versus something present and not connected. The
+      // fix is different for each, so the code has to be different too.
+      if (existing) {
+        throw new ConnectionRefusedError('connection_disconnected', {
+          tenantId, channelType: 'whatsapp',
+          detail: `channel_status=${existing.channel_status ?? 'unset'}`,
+        });
+      }
+      throw new ConnectionRefusedError('connection_absent', { tenantId, channelType: 'whatsapp' });
+    }
+    if (rows.length > 1) {
+      this.logger.warn(`WhatsApp number not named for tenant ${tenantId}, which has more than one; `
+        + 'refusing rather than choosing which account pays');
+      throw new ConnectionRefusedError('connection_ambiguous', { tenantId, channelType: 'whatsapp' });
+    }
+    assertUsable(await this.connectionUsable(tenantId, rows[0]),
+      { tenantId, channelType: 'whatsapp', requestedAccountId: String(rows[0].phone_number_id) });
+    return rows[0];
+  }
+
+  /**
+   * The tenant's channel row AND the global account row, asked together.
+   *
+   * Disconnect writes `channel_accounts.is_active = false` and, since this
+   * batch, `whatsapp_channels.channel_status = 'disconnected'`. Asking only
+   * one of them is how a disconnected number kept sending.
+   */
+  private async connectionUsable(tenantId: string, channel: any) {
+    const phoneNumberId = String(channel?.phone_number_id ?? '');
+    let accountActive: boolean | undefined;
+    try {
+      const account = await this.prisma.channelAccount.findFirst({
+        where: { tenantId, channelType: 'whatsapp', accountId: phoneNumberId },
+        select: { isActive: true },
+      });
+      // Absent is not inactive: a tenant provisioned before that table was
+      // populated has no row, and reading absence as `false` would
+      // disconnect every one of them at once.
+      accountActive = account ? account.isActive !== false : undefined;
+    } catch (error: any) {
+      this.logger.warn(`channel_accounts unreadable for ${tenantId}/${phoneNumberId}: ${error?.message}`);
+    }
+    return assessConnection({ channelStatus: channel?.channel_status, accountActive });
+  }
+
+  /** The credential of THIS connection, or a refusal. Never a sibling's. */
+  private async credentialFor(tenantId: string, channel: any): Promise<ResolvedWhatsappConnection> {
+    const base = {
+      tenantId,
+      channelId: String(channel.id),
+      phoneNumberId: String(channel.phone_number_id),
+      wabaId: channel.meta_waba_id,
+      businessId: channel.meta_business_id ?? null,
+      displayPhoneNumber: channel.display_phone_number ?? null,
+    };
+
     const cred = await this.prisma.whatsappCredential.findFirst({
-      where: { tenantId: tenant.id, credentialType: 'system_user_token' },
+      where: { tenantId, credentialType: 'system_user_token' },
       orderBy: { createdAt: 'desc' },
     });
 
-    if (!cred || !cred.encryptedValue) {
-      // Fallback temporal si guardaron el token direcamente en el channel en una prueba previa
-      const fallbackChannels = await this.prisma.executeInTenantSchema<any[]>(
-        schemaName,
-        `SELECT access_token_ref FROM whatsapp_channels ORDER BY connected_at ASC NULLS LAST LIMIT 1`
-      );
-      if (fallbackChannels?.[0]?.access_token_ref && fallbackChannels[0].access_token_ref !== 'credential_ref') {
-         return {
-           accessToken: fallbackChannels[0].access_token_ref,
-           phoneNumberId: channel.phone_number_id,
-           wabaId: channel.meta_waba_id,
-           channelId: channel.id
-         };
+    if (cred?.encryptedValue) {
+      // Revoked on disconnect, mid-rotation, or past its own expiry. None of
+      // those may sign a request, and falling through to the channel row
+      // would present a different secret than the one last authorised.
+      assertUsable(assessCredential(cred), {
+        tenantId, channelType: 'whatsapp', requestedAccountId: base.phoneNumberId,
+      });
+      let accessToken: string;
+      try {
+        accessToken = this.cryptoService.decryptToken(cred.encryptedValue);
+      } catch (e: any) {
+        // A credential that cannot be decrypted is not an absent credential:
+        // falling through to the channel row would present a DIFFERENT secret
+        // than the one the tenant last authorised, and hide a rotation failure.
+        throw new ConnectionRefusedError('credential_undecryptable', {
+          tenantId, channelType: 'whatsapp',
+          requestedAccountId: base.phoneNumberId, detail: e?.message,
+        });
       }
-      throw new NotFoundException('Credenciales de WhatsApp no encontradas para este tenant');
+      return { ...base, accessToken, credentialId: String(cred.id), credentialSource: 'system_user' };
     }
 
-    // 4. Descifrar
-    const accessToken = this.cryptoService.decryptToken(cred.encryptedValue);
+    // A token stored on the channel row itself — legacy connections, and what
+    // survives from before the credential table. `credential_ref` is the
+    // placeholder `saveConnection` writes, and it is not a token. The row is the
+    // one that was resolved, so the credential's identity is that row and a swap
+    // between numbers is visible in the record instead of silently survived.
+    if (channel.access_token_ref && channel.access_token_ref !== 'credential_ref') {
+      return {
+        ...base, accessToken: String(channel.access_token_ref),
+        credentialId: base.channelId, credentialSource: 'channel_account',
+      };
+    }
 
+    throw new ConnectionRefusedError('credential_missing',
+      { tenantId, channelType: 'whatsapp', requestedAccountId: base.phoneNumberId });
+  }
+
+  // ======================== BILLING TIME ZONE ========================
+
+  /**
+   * The IANA zone Meta's charges for this number are dated in.
+   *
+   * From 1 October 2026 the rate depends on the effective date and the free
+   * thousand resets per number per calendar month. Both questions are "what day,
+   * and what month, is it for THIS account?" and only the WABA's own zone
+   * answers them: a tenant can hold numbers in two countries, and 23:30 on
+   * 30 September in Bogotá is already October in UTC.
+   *
+   * It is set by hand on purpose. Meta returns `timezone_id`, which is a NUMERIC
+   * Facebook id and not a zone; mapping it would mean shipping Facebook's table
+   * from memory, and a wrong entry silently dates charges in the wrong month —
+   * exactly the kind of thing that must not be guessed. The number Meta gave is
+   * kept in `metadata.metaTimezoneId` so the mapping can be done later against
+   * the real table, without asking Meta again for every connection.
+   *
+   * Until a zone is set the resolver refuses to price rather than defaulting.
+   */
+  async setBillingTimeZone(tenantId: string, phoneNumberId: string, timeZone: string): Promise<{
+    phoneNumberId: string; timeZone: string; alsoApplied: readonly string[];
+  }> {
+    const zone = String(timeZone ?? '').trim();
+    // Validated against the runtime that will USE it, not against a list of
+    // shapes: a zone this rejects is one every price would then refuse.
+    if (!zone || wabaLocalDate(new Date(), zone) === null) {
+      throw new BadRequestException(
+        `"${zone}" no es una zona horaria IANA (ej. America/Bogota). Meta devuelve un id numérico, que no sirve acá.`);
+    }
+    const account = await this.prisma.channelAccount.findFirst({
+      where: { tenantId, channelType: 'whatsapp', accountId: phoneNumberId },
+      select: { id: true, metadata: true },
+    });
+    // The same refusal vocabulary as every other "that connection is not this
+    // tenant's" answer, so a caller reads one set of codes.
+    if (!account) {
+      throw new ConnectionRefusedError('connection_not_found',
+        { tenantId, channelType: 'whatsapp', requestedAccountId: phoneNumberId });
+    }
+    await this.prisma.channelAccount.update({
+      where: { id: account.id },
+      data: {
+        wabaTimezone: zone,
+        metadata: {
+          ...((account.metadata ?? {}) as object),
+          // The evidence, beside the answer. Without it the platform can say
+          // WHAT the zone is and not WHY, and "why" is the difference between a
+          // fact somebody confirmed and a value that appeared.
+          wabaTimezoneEvidence: {
+            source: 'human_confirmed', at: new Date().toISOString(),
+            timezoneId: Number((account.metadata as any)?.metaTimezoneId) || null,
+            wabaId: (account.metadata as any)?.wabaId ?? null,
+          },
+        } as any,
+      },
+    });
+    this.logger.log(`WhatsApp ${phoneNumberId} of tenant ${tenantId} is now billed in ${zone}`);
+
+    // One confirmation answers for every number that reports the SAME numeric
+    // id on the SAME business account. Meta's zone belongs to the WABA, so this
+    // reads one fact twice rather than guessing a second one — and it is what
+    // turns "six numbers, six forms" into "six numbers, one form".
+    const alsoApplied = await this.propagateZone(tenantId, account, zone);
+    return { phoneNumberId, timeZone: zone, alsoApplied };
+  }
+
+  /**
+   * Carry a just-confirmed zone to its siblings, and to nobody else.
+   *
+   * Same business account, same numeric id, and no zone of their own. A number
+   * that already has one is left alone: overwriting somebody's explicit choice
+   * because a sibling was set later would be the platform deciding it knows
+   * better, silently, about money.
+   *
+   * Best-effort. A propagation that fails leaves the other numbers exactly as
+   * they were — unmapped, blocked with a named diagnosis, and fixable by the
+   * same one-field form.
+   */
+  private async propagateZone(tenantId: string, source: { id: string; metadata: unknown },
+    zone: string): Promise<readonly string[]> {
+    const wabaId = (source.metadata as any)?.wabaId ?? null;
+    const timezoneId = (source.metadata as any)?.metaTimezoneId ?? null;
+    if (!wabaId || !timezoneId) return [];
+    try {
+      const siblings = await this.prisma.channelAccount.findMany({
+        where: { tenantId, channelType: 'whatsapp', wabaTimezone: null },
+        select: { id: true, accountId: true, metadata: true },
+      });
+      const applied: string[] = [];
+      for (const sibling of siblings) {
+        if (sibling.id === source.id) continue;
+        const metadata = (sibling.metadata ?? {}) as Record<string, unknown>;
+        if (metadata.wabaId !== wabaId || String(metadata.metaTimezoneId ?? '') !== String(timezoneId)) {
+          continue;
+        }
+        await this.prisma.channelAccount.update({
+          where: { id: sibling.id },
+          data: {
+            wabaTimezone: zone,
+            metadata: {
+              ...metadata,
+              wabaTimezoneEvidence: {
+                source: 'same_waba_same_id', at: new Date().toISOString(),
+                timezoneId: Number(timezoneId) || null, wabaId,
+                from: String((source.metadata as any)?.phoneNumberId ?? ''),
+              },
+            } as any,
+          },
+        });
+        applied.push(sibling.accountId);
+      }
+      if (applied.length) {
+        this.logger.log(`The same zone ${zone} now applies to ${applied.length} more number(s) `
+          + `on WABA ${wabaId}, which report the same Meta time zone`);
+      }
+      return applied;
+    } catch (error: any) {
+      this.logger.warn(`Could not carry the zone to the rest of WABA ${wabaId}: ${error?.message}`);
+      return [];
+    }
+  }
+
+  /**
+   * What every WhatsApp number of this tenant knows about its own billing zone.
+   *
+   * The readiness answer, in one read: the zone, where it came from, and — the
+   * question no single number can answer — whether two numbers on one business
+   * account disagree about what month it is.
+   */
+  async billingZoneReadiness(tenantId: string): Promise<{
+    numbers: readonly {
+      channelAccountId: string; wabaId: string | null; timezoneId: number | null;
+      zone: string | null; evidence: ZoneEvidence | null; resolution: ZoneResolution;
+      guidance: string; currency: string | null; currencyStale: boolean;
+      currencyGuidance: string;
+    }[];
+    contradictions: ReturnType<typeof contradictoryWabas>;
+  }> {
+    const accounts = await this.prisma.channelAccount.findMany({
+      where: { tenantId, channelType: 'whatsapp' },
+      select: { accountId: true, wabaTimezone: true, metadata: true },
+    });
+    const numbers: (NumberZone & { metadata: Record<string, any> })[] = accounts.map(account => {
+      const metadata = (account.metadata ?? {}) as Record<string, any>;
+      return {
+        channelAccountId: account.accountId,
+        wabaId: metadata.wabaId ?? null,
+        timezoneId: Number(metadata.metaTimezoneId) || null,
+        zone: account.wabaTimezone ?? null,
+        evidence: (metadata.wabaTimezoneEvidence ?? null) as ZoneEvidence | null,
+        metadata,
+      };
+    });
     return {
-      accessToken,
-      phoneNumberId: channel.phone_number_id,
-      wabaId: channel.meta_waba_id,
-      channelId: channel.id
+      numbers: numbers.map(number => {
+        const resolution = resolveZone(number, numbers);
+        const currency = resolveCurrency(number.metadata);
+        return {
+          ...number, resolution, guidance: describeResolution(number, resolution),
+          // Both halves of "can this number price anything": the zone dates the
+          // rate, and the currency chooses the card. A screen that showed one
+          // would send somebody to fix a field that was not the problem.
+          currency: currency.kind === 'established' ? currency.currency : null,
+          currencyStale: currency.kind === 'established' ? currency.stale : false,
+          currencyGuidance: describeCurrency(currency),
+        };
+      }),
+      contradictions: contradictoryWabas(numbers),
     };
   }
 

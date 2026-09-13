@@ -180,12 +180,14 @@ export default function RepairOrdersPage() {
     const response = await api.recordRepairEstimateDecision(activeTenantId, selected.id, {
       accepted,
       evidence: evidence.trim(),
+      expectedVersion: selected.version,
     });
     if (response.success) {
       await load();
       await openOrder({ ...selected, ...response.data } as RepairOrder);
     } else {
-      setError(response.error || t("decisionError"));
+      await openOrder(selected);
+      setError(t("decisionReviewRequired"));
     }
     setBusy(false);
   }

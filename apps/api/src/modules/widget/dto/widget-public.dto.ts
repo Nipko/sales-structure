@@ -24,6 +24,11 @@ export class WidgetIdParamDto {
 }
 
 export class CreateWidgetSessionDto {
+    @IsOptional()
+    @IsString()
+    @MaxLength(WIDGET_TOKEN_MAX_CHARS)
+    resumeToken?: string;
+
     @Transform(trim)
     @IsString()
     @MinLength(1)

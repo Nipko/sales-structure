@@ -8,6 +8,22 @@ describe('HomeServicesService scheduled request invariant', () => {
     const serviceId = '33333333-3333-4333-8333-333333333333';
     const scheduledAt = '2030-08-10T09:00:00';
 
+    it('keeps open-duration work visible without claiming it can be auto-scheduled', async () => {
+        const prisma = { executeInTenantSchema: jest.fn().mockResolvedValue([
+            { id: 'open', name: 'Diagnóstico', category: 'plomeria', duration_minutes: 0,
+                duration_type: 'open', max_concurrent: 1 },
+            { id: 'fixed', name: 'Mantenimiento', category: 'plomeria', duration_minutes: 60,
+                duration_type: 'fixed', max_concurrent: 2 },
+        ]) };
+        const service = new HomeServicesService(prisma as any, { emit: jest.fn() } as any);
+
+        await expect(service.listCapacityServices(schemaName)).resolves.toEqual([
+            expect.objectContaining({ id: 'open', durationType: 'open', automaticScheduling: false }),
+            expect.objectContaining({ id: 'fixed', durationType: 'fixed', automaticScheduling: true }),
+        ]);
+        expect(prisma.executeInTenantSchema.mock.calls[0][1]).not.toContain('duration_minutes > 0');
+    });
+
     describe('createRequest', () => {
         it('creates a scheduled request only when a valid scheduledAt is persisted with it', async () => {
             const query = jest.fn(async (sql: string, _params: any[] = []) => {
@@ -125,6 +141,43 @@ describe('HomeServicesService scheduled request invariant', () => {
             expect(eventEmitter.emit).toHaveBeenCalledTimes(1);
         });
 
+        it('commits one durable emergency notice per active dispatcher in the request transaction', async () => {
+            const query = jest.fn(async (sql: string, params: any[] = []) => {
+                if (sql.includes('pg_advisory_xact_lock')) return [{ lock_acquired: '1' }];
+                if (sql.startsWith('CREATE ') || sql.startsWith('ALTER TABLE') || sql.startsWith('CREATE INDEX')) return [];
+                if (sql.includes('pg_get_constraintdef')) return [{ definition: "CHECK (kind = ANY (ARRAY['home_service.emergency']))" }];
+                if (sql.includes('INSERT INTO service_requests')) return [{
+                    id: requestId, contact_id: null, conversation_id: null,
+                    service_type: 'gas', urgency: 'emergencia', status: 'pending',
+                }];
+                if (sql.includes('INSERT INTO operational_notice_outbox')) {
+                    expect(params).toEqual([
+                        'home_service.emergency', 'home_service.emergency', requestId,
+                        null, null, schemaName, '1', ['tenant_admin', 'tenant_supervisor'],
+                    ]);
+                    return [{ id: 'notice-admin' }, { id: 'notice-supervisor' }];
+                }
+                throw new Error(`Unexpected SQL: ${sql}`);
+            });
+            const prisma = {
+                transactionInTenantSchema: jest.fn(async (_schema: string, callback: any) => callback(query)),
+                executeInTenantSchema: jest.fn(),
+            };
+            const eventEmitter = { emit: jest.fn() };
+            const service = new HomeServicesService(prisma as any, eventEmitter as any);
+
+            await expect(service.createRequest(schemaName, {
+                serviceType: 'gas', urgency: 'emergencia',
+            })).resolves.toMatchObject({ id: requestId, urgency: 'emergencia' });
+
+            expect(prisma.transactionInTenantSchema).toHaveBeenCalledTimes(2);
+            const domainTransactionCalls = query.mock.calls
+                .map(([sql]) => String(sql))
+                .filter(sql => sql.includes('INSERT INTO service_requests') || sql.includes('INSERT INTO operational_notice_outbox'));
+            expect(domainTransactionCalls).toHaveLength(2);
+            expect(eventEmitter.emit).toHaveBeenCalledWith('service_request.created', expect.objectContaining({ requestId }));
+        });
+
         it('rejects malformed and foreign contacts without inserting', async () => {
             const query = jest.fn().mockResolvedValue([]);
             const prisma = {
@@ -178,10 +231,12 @@ describe('HomeServicesService scheduled request invariant', () => {
                 transactionInTenantSchema: jest.fn(async (_schema: string, callback: any) => callback(query)),
                 executeInTenantSchema: jest.fn(),
             };
+            const eventEmitter = { emit: jest.fn() };
             return {
-                service: new HomeServicesService(prisma as any, { emit: jest.fn() } as any),
+                service: new HomeServicesService(prisma as any, eventEmitter as any),
                 prisma,
                 query,
+                eventEmitter,
             };
         }
 
@@ -212,6 +267,10 @@ describe('HomeServicesService scheduled request invariant', () => {
                 'scheduled',
                 requestId,
             ]);
+            expect(harness.eventEmitter.emit).toHaveBeenCalledWith(
+                'service_request.scheduled',
+                expect.objectContaining({ requestId, tenantSchemaName: schemaName }),
+            );
         });
 
         it('rejects scheduled status when neither the row nor the update has a date', async () => {
@@ -247,6 +306,10 @@ describe('HomeServicesService scheduled request invariant', () => {
                 'scheduled',
                 requestId,
             ]);
+            expect(harness.eventEmitter.emit).toHaveBeenCalledWith(
+                'service_request.scheduled',
+                expect.objectContaining({ requestId, tenantSchemaName: schemaName }),
+            );
         });
 
         it('does not allow clearing the date while the final status remains scheduled', async () => {

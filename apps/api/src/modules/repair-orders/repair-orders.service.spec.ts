@@ -3,6 +3,7 @@ import {
     isRepairOrderTransitionAllowed,
     RepairOrdersService,
 } from './repair-orders.service';
+import { repairOrderTerms, repairRequestHash } from './repair-order-terms';
 
 describe('RepairOrdersService', () => {
     const schemaName = 'tenant_workshop';
@@ -13,7 +14,13 @@ describe('RepairOrdersService', () => {
     const actorId = '55555555-5555-4555-8555-555555555555';
 
     function transaction(query: jest.Mock) {
-        return jest.fn(async (_schema: string, callback: any) => callback(query));
+        return jest.fn(async (_schema: string, callback: any) => callback(async (sql: string, params?: any[]) => {
+            // Lock ordering and serializer behavior are covered by the real
+            // PostgreSQL suite; these unit fixtures model domain rows only.
+            if (sql.startsWith('SELECT pg_advisory') || sql.startsWith('SELECT to_regclass')) return [];
+            if (sql.startsWith('SELECT make,model,vin,license_plate')) return [{ make:'Mazda',model:'3',vin:null,license_plate:'ABC123' }];
+            return query(sql,params);
+        }));
     }
 
     function build(query = jest.fn()) {
@@ -124,6 +131,8 @@ describe('RepairOrdersService', () => {
             make: 'Mazda',
             model: '3',
             idempotency_key: 'turn-ledger-1',
+            metadata: { intakeRequestHash: repairRequestHash({ contactId,customerConcern:'Hace un ruido cuando giro',reportedSymptoms:[],
+                appointmentId:null,opportunityId:null,conversationId:null,vehicle:{id:null,make:'Mazda',model:'3',vin:null,licensePlate:'ABC123',year:null,color:null,mileageKm:99999} }) },
         };
         const query = jest.fn().mockResolvedValueOnce([replay]);
         const { service } = build(query);
@@ -198,6 +207,7 @@ describe('RepairOrdersService', () => {
     it('accepts an estimate decision only for the owning contact and exact pending order', async () => {
         const current = {
             id: orderId,
+            version: 1, vehicle_id: vehicleId,
             contact_id: contactId,
             status: 'awaiting_approval',
             approval_status: 'pending',
@@ -214,9 +224,11 @@ describe('RepairOrdersService', () => {
         });
         const { service } = build(query);
 
-        await expect(service.decideEstimate(schemaName, orderId, otherContactId, true))
+        const terms = repairOrderTerms({...current,make:'Mazda',model:'3',vin:null,license_plate:'ABC123'},'estimate_decision');
+        const decisionOptions = {expectedVersion:1,expectedTermsHash:repairRequestHash(terms)};
+        await expect(service.decideEstimate(schemaName, orderId, otherContactId, true, 'agent',null,undefined,decisionOptions))
             .rejects.toBeInstanceOf(NotFoundException);
-        await expect(service.decideEstimate(schemaName, orderId, contactId, true))
+        await expect(service.decideEstimate(schemaName, orderId, contactId, true, 'agent',null,undefined,decisionOptions))
             .resolves.toMatchObject({ status: 'approved', approval_status: 'approved', idempotentReplay: false });
         const ownerQuery = query.mock.calls.find(([, params]) => params?.[1] === contactId);
         expect(String(ownerQuery?.[0])).toContain('contact_id = $2::uuid');
@@ -241,6 +253,7 @@ describe('RepairOrdersService', () => {
     it('stores the staff actor and evidence for an offline customer approval', async () => {
         const current = {
             id: orderId, status: 'awaiting_approval', approval_status: 'pending',
+            version:1,vehicle_id:vehicleId,
             estimate_amount_cents: 125000, currency: 'COP',
         };
         const query = jest.fn(async (sql: string, _params?: any[]) => {
@@ -254,6 +267,7 @@ describe('RepairOrdersService', () => {
         await expect(service.decideEstimate(
             schemaName, orderId, null, true, 'tenant_user', actorId,
             'Cliente aprobó por llamada el 25/08 a las 10:30',
+            {expectedVersion:1},
         )).resolves.toMatchObject({ status: 'approved' });
 
         const event = query.mock.calls.find(([sql]) => String(sql).includes('INSERT INTO repair_order_events'))!;

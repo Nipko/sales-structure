@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService, EmailAttachment } from '../email/email.service';
 import { TEMPLATE_TRANSLATIONS } from './email-template-translations';
@@ -10,8 +10,18 @@ import {
     appointmentEmailVariables,
     buildAppointmentEmail,
 } from './appointment-email-layout';
+import {
+    OPERATION_RECEIPT_KINDS,
+    OPERATION_RECEIPT_SLUGS,
+    buildOperationReceipt,
+    operationReceiptName,
+    operationReceiptSubject,
+    operationReceiptVariables,
+} from './operation-receipt-layout';
 import { LEGACY_STOCK_BODIES } from './email-template-legacy-bodies';
+import { normalizeEmailTemplateLanguage } from './email-template-language';
 import { randomUUID } from 'crypto';
+import { PlatformNotificationOutboxService } from '../platform-notifications/platform-notification-outbox.service';
 
 export interface EmailTemplate {
     id: string;
@@ -971,6 +981,26 @@ const DEFAULT_TEMPLATES: Omit<EmailTemplate, 'id' | 'language' | 'createdAt' | '
         variables: ['customer_name', 'company_name', 'company_logo', 'service_name', 'appointment_date', 'appointment_time', 'location', 'agent_name'],
         isActive: true,
     },
+
+    // -----------------------------------------------------------------------
+    // Operation receipts for the four families whose `emailConfirmations`
+    // control named an operation no template in this catalogue described: a
+    // FOOD ORDER (not a table reservation), a workshop INTAKE (not an
+    // appointment), a vehicle RENTAL and a pet BOARDING (both date ranges, and
+    // neither had a template at all). Markup and copy are generated from the
+    // shared layout so the four receipts and the four languages can never
+    // drift — see operation-receipt-layout.ts.
+    // -----------------------------------------------------------------------
+
+    ...OPERATION_RECEIPT_KINDS.map((kind) => ({
+        name: operationReceiptName(kind, 'es'),
+        slug: OPERATION_RECEIPT_SLUGS[kind],
+        subject: operationReceiptSubject(kind, 'es'),
+        bodyHtml: buildOperationReceipt(kind, 'es'),
+        bodyJson: {},
+        variables: operationReceiptVariables(kind),
+        isActive: true,
+    })),
 ];
 
 @Injectable()
@@ -980,6 +1010,7 @@ export class EmailTemplatesService {
     constructor(
         private prisma: PrismaService,
         private emailService: EmailService,
+        @Optional() private notifications?: PlatformNotificationOutboxService,
     ) {}
 
     /**
@@ -1106,18 +1137,62 @@ export class EmailTemplatesService {
         to: string,
         variables: Record<string, string>,
         lang: string = 'es',
-        options: { attachments?: EmailAttachment[] } = {},
+        options: { attachments?: EmailAttachment[]; beforeSend?: () => Promise<void> } = {},
     ): Promise<boolean> {
+        const attempt = await this.renderAndPrepare(schemaName, slug, to, variables, lang, options)
+            .catch((error: any) => {
+                this.logger.error(`Cannot prepare "${slug}" for ${to}: ${error?.message}`);
+                return null;
+            });
+        if (!attempt) return false;
+        // Outside the catch below on purpose. A caller's fence check refusing is
+        // not a transport failure: the send must not happen AND the caller has
+        // to hear about it, which reporting `false` would hide.
+        await options.beforeSend?.();
+        try {
+            await attempt();
+            return true;
+        } catch (error: any) {
+            // The boolean contract every existing caller depends on: an
+            // unconfigured transport and a socket that died after acceptance
+            // both read as false here. Callers that cannot afford to confuse
+            // the two ask for the attempt itself.
+            this.logger.error(`Failed to send "${slug}" to ${to}: ${error?.message}`);
+            return false;
+        }
+    }
+
+    /**
+     * Everything `renderAndSend` does except the send, handed back as the
+     * bounded attempt itself.
+     *
+     * A boolean cannot tell "SMTP is not configured", which is safe to try
+     * again, from "the server accepted the message and then the socket died",
+     * which is not — and a handoff notification that resends on the second
+     * reading is a second email to a person. The attempt returns the SMTP
+     * message id on acceptance and throws discriminated codes otherwise, so the
+     * caller can record an uncertain outcome as uncertain. Null means the
+     * template does not exist, which is not an outcome the transport can have.
+     */
+    async renderAndPrepare(
+        schemaName: string,
+        slug: string,
+        to: string,
+        variables: Record<string, string>,
+        lang: string = 'es',
+        options: { attachments?: EmailAttachment[] } = {},
+    ): Promise<(() => Promise<string>) | null> {
         await this.refreshManagedDefaults(schemaName, slug);
 
-        let template = await this.getBySlug(schemaName, slug, lang);
+        const templateLanguage = normalizeEmailTemplateLanguage(lang);
+        let template = await this.getBySlug(schemaName, slug, templateLanguage);
         if (!template) {
             await this.seedDefaults(schemaName);
-            template = await this.getBySlug(schemaName, slug, lang);
+            template = await this.getBySlug(schemaName, slug, templateLanguage);
         }
         if (!template) {
             this.logger.warn(`Template "${slug}" not found after seeding — email not sent`);
-            return false;
+            return null;
         }
 
         // Resolve dynamic branding variables from the companies table
@@ -1184,7 +1259,7 @@ export class EmailTemplatesService {
         const subject = this.renderVariables(template.subject, mergedVars);
         const html = this.renderVariables(template.bodyHtml, mergedVars);
 
-        return this.emailService.send({
+        return this.emailService.prepareBoundedSend({
             to,
             subject,
             html,
@@ -1266,7 +1341,7 @@ export class EmailTemplatesService {
     /**
      * Send a test email with sample data
      */
-    async sendTest(schemaName: string, templateId: string, to: string): Promise<boolean> {
+    async sendTest(schemaName: string, tenantId: string, templateId: string, to: string, requestKey: string): Promise<boolean> {
         const template = await this.getById(schemaName, templateId);
 
         // Resolve dynamic branding variables from the companies table
@@ -1315,7 +1390,11 @@ export class EmailTemplatesService {
         const subject = `[TEST] ${this.renderVariables(template.subject, mergedVars)}`;
         const html = this.renderVariables(template.bodyHtml, mergedVars);
 
-        return this.emailService.send({ to, subject, html });
+        if (!this.notifications) throw new Error('platform_notification_outbox_unavailable');
+        const result = await this.notifications.sendEmailTemplateTest({
+            tenantId, templateId, requestKey, to, subject, html,
+        });
+        return result === 'notification:sent';
     }
 
     // ── Private ───────────────────────────────────────────────

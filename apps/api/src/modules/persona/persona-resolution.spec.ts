@@ -1,4 +1,6 @@
 import { PersonaService, type PersonaResolution } from './persona.service';
+import { operationalConfigurationHash } from './agent-configuration-revision';
+import { revisionHash } from '../evaluation-revision/evaluation-revision';
 
 const TENANT_ID = '11111111-1111-4111-8111-111111111111';
 const AGENT_ID = '22222222-2222-4222-8222-222222222222';
@@ -7,13 +9,20 @@ const SCHEMA = 'tenant_resolution_test';
 function buildHarness(options: {
     cached?: PersonaResolution | null;
     rows?: any[];
+    hasAgents?:boolean;
+    legacy?:any;
+    queryFailure?:Error;
     ddlFailure?: Error;
 } = {}) {
     let ddlFailure = options.ddlFailure;
     const prisma: any = {
         $queryRawUnsafe: jest.fn(async () => options.rows ?? []),
         $executeRawUnsafe: jest.fn(async () => 0),
-        executeInTenantSchema: jest.fn(async () => {
+        executeInTenantSchema: jest.fn(async (_schema:string,sql:string) => {
+            if(sql.startsWith('WITH ranked')){
+                if(options.queryFailure)throw options.queryFailure;
+                return [{matches:options.rows||[],has_agents:options.hasAgents??false,legacy_config:options.legacy||null}];
+            }
             if (ddlFailure) {
                 const error = ddlFailure;
                 ddlFailure = undefined;
@@ -42,52 +51,56 @@ function buildHarness(options: {
 }
 
 describe('PersonaService production resolution', () => {
-    it('returns and caches exact agent/config version for an account binding', async () => {
+    it('returns the current database agent/config version for an account binding', async () => {
         const config = { language: 'es', persona: { name: 'Maya' } } as any;
-        const ctx = buildHarness({ rows: [{ id: AGENT_ID, version: 7, config_json: config }] });
+        const row = { id: AGENT_ID, version: 7, config_json: config };
+        const ctx = buildHarness({ rows: [row] });
 
+        // La resolución rinde además la huella operativa de la revisión servida.
+        // No es decorativa: `assertServedAgentConnectionAuthority` la compara
+        // para rechazar un efecto decidido con una configuración que ya cambió,
+        // así que se afirma que es la del renglón servido y no cualquiera.
         await expect(ctx.service.resolvePersonaForChannel(
             TENANT_ID, 'whatsapp', 'phone-1',
-        )).resolves.toEqual({ config, agentId: AGENT_ID, version: 7 });
+        )).resolves.toEqual({
+            config, agentId: AGENT_ID, version: 7,
+            operationalHash: operationalConfigurationHash(row as any),
+        });
 
-        expect(ctx.prisma.$queryRawUnsafe).toHaveBeenCalledWith(
-            expect.stringContaining('SELECT id, config_json, version'),
-            'whatsapp:phone-1',
+        expect(ctx.prisma.executeInTenantSchema).toHaveBeenCalledWith(
+            SCHEMA,expect.stringContaining('WITH ranked'),['whatsapp:phone-1','whatsapp'],
         );
-        expect(ctx.redis.setJson).toHaveBeenCalledWith(
-            `persona-resolution:${TENANT_ID}:channel:whatsapp:acct:phone-1`,
-            { config, agentId: AGENT_ID, version: 7 },
-            600,
-        );
+        expect(ctx.redis.setJson).not.toHaveBeenCalled();
     });
 
-    it('keeps the config-only wrapper compatible and cache contracts separate', async () => {
+    it('keeps the config wrapper while ignoring stale instructions from Redis', async () => {
         const config = { language: 'en', persona: { name: 'Ari' } } as any;
-        const ctx = buildHarness({ cached: { config, agentId: AGENT_ID, version: 2 } });
+        const ctx = buildHarness({ cached: { config:{...config,language:'es'}, agentId: AGENT_ID, version: 1 },
+            rows:[{id:AGENT_ID,version:2,config_json:config}] });
 
         await expect(ctx.service.getPersonaForChannel(TENANT_ID, 'telegram')).resolves.toBe(config);
-        expect(ctx.redis.getJson).toHaveBeenCalledWith(
-            `persona-resolution:${TENANT_ID}:channel:telegram`,
-        );
-        expect(ctx.prisma.$queryRawUnsafe).not.toHaveBeenCalled();
+        expect(ctx.redis.getJson).not.toHaveBeenCalled();
     });
 
     it('uses null attribution for legacy fallback instead of inventing an agent', async () => {
         const config = { language: 'pt', persona: { name: 'Padrão' } } as any;
-        const ctx = buildHarness();
-        jest.spyOn(ctx.service, 'getActivePersona').mockResolvedValue(config);
+        const ctx = buildHarness({legacy:config});
 
+        // Sin agente durable la atribución es nula, pero la configuración
+        // servida sigue teniendo procedencia: la huella del renglón legacy.
         await expect(ctx.service.resolvePersonaForChannel(TENANT_ID, 'messenger')).resolves.toEqual({
             config,
             agentId: null,
             version: null,
+            legacyConfigHash: revisionHash(config),
         });
     });
 
     it('does not block live resolution on DDL failure and retries next turn', async () => {
         const config = { language: 'fr', persona: { name: 'Camille' } } as any;
+        const row = { id: AGENT_ID, version: 1, config_json: config };
         const ctx = buildHarness({
-            rows: [{ id: AGENT_ID, version: 1, config_json: config }],
+            rows: [row],
             ddlFailure: new Error('lock timeout'),
         });
 
@@ -95,9 +108,24 @@ describe('PersonaService production resolution', () => {
             config,
             agentId: AGENT_ID,
             version: 1,
+            operationalHash: operationalConfigurationHash(row as any),
         });
         await ctx.service.resolvePersonaForChannel(TENANT_ID, 'instagram');
-        expect(ctx.prisma.executeInTenantSchema).toHaveBeenCalledTimes(4);
+        expect(ctx.prisma.executeInTenantSchema.mock.calls.filter((call:any[])=>!call[1].startsWith('WITH ranked'))).toHaveLength(4);
+    });
+    it('does not resurrect an inactive durable agent through legacy or default fallback',async()=>{
+        const config={persona:{name:'Old cached agent'}} as any;
+        const ctx=buildHarness({cached:{config,agentId:AGENT_ID,version:1},hasAgents:true,legacy:config});
+        await expect(ctx.service.resolvePersonaForChannel(TENANT_ID,'telegram')).resolves.toEqual({config:null,agentId:null,version:null});
+        expect(ctx.redis.getJson).not.toHaveBeenCalled();
+    });
+    it('does not invent configuration for a tenant with no configured agent',async()=>{
+        const ctx=buildHarness();await expect(ctx.service.getPersonaForChannel(TENANT_ID,'telegram')).resolves.toBeNull();
+    });
+    it('does not convert a failed authoritative read into a fallback agent',async()=>{
+        const ctx=buildHarness({queryFailure:new Error('synthetic_db_unavailable'),legacy:{persona:{name:'Legacy'}}});
+        await expect(ctx.service.resolvePersonaForChannel(TENANT_ID,'telegram')).rejects.toThrow('synthetic_db_unavailable');
+        expect(ctx.redis.getJson).not.toHaveBeenCalled();
     });
 
     it('offers bounded invalidation for one account', async () => {

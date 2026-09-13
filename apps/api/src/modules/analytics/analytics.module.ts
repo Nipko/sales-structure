@@ -17,9 +17,10 @@ import { AiResolutionService } from './ai-resolution.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { RedisModule } from '../redis/redis.module';
 import { PublicApiKeyModule } from '../public-api/public-api-key.module';
+import { OperationalNoticeModule } from '../operational-notices/operational-notice.module';
 
 @Module({
-    imports: [PrismaModule, RedisModule, PublicApiKeyModule],
+    imports: [PrismaModule, RedisModule, PublicApiKeyModule, OperationalNoticeModule],
     providers: [
         AnalyticsService, DashboardAnalyticsService, MetricsAggregationService,
         AlertsService, ScheduledReportsService, SavedReportsService,

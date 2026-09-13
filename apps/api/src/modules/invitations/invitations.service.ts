@@ -1,14 +1,12 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { randomBytes } from 'crypto';
+import { randomBytes, randomUUID } from 'crypto';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
-import { EmailService } from '../email/email.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
-import { invitationEmail, welcomeTeamMemberEmail } from '../email/email-layouts';
-import { emsg } from '../email/email-i18n';
 import { validateEmailDomain } from '../../common/utils/email.util';
 import { AGENT_QUALITY_DEPENDENCIES_UPDATED } from '../quality/agent-quality-events';
+import { PlatformNotificationOutboxService } from '../platform-notifications/platform-notification-outbox.service';
 
 const TOKEN_BYTES = 32;
 const DEFAULT_TTL_DAYS = 14;
@@ -20,7 +18,7 @@ export class InvitationsService {
 
     constructor(
         private readonly prisma: PrismaService,
-        private readonly email: EmailService,
+        private readonly notifications: PlatformNotificationOutboxService,
         private readonly throttle: TenantThrottleService,
         @Optional() private readonly events?: EventEmitter2,
     ) {}
@@ -100,95 +98,63 @@ export class InvitationsService {
         const token = randomBytes(TOKEN_BYTES).toString('base64url');
         const expiresAt = new Date(Date.now() + DEFAULT_TTL_DAYS * 86_400_000);
 
-        const invitation = await this.prisma.tenantInvitation.create({
-            data: {
-                tenantId: input.tenantId,
-                email,
-                role: input.role,
-                skillTags: input.skillTags ?? [],
-                token,
-                invitedByUserId: input.invitedByUserId ?? null,
-                expiresAt,
-            },
+        const invitationId = randomUUID();
+        const result = await this.prisma.$transaction(async (tx: any) => {
+            const invitation = await tx.tenantInvitation.create({
+                data: {
+                    id: invitationId,
+                    tenantId: input.tenantId,
+                    email,
+                    role: input.role,
+                    skillTags: input.skillTags ?? [],
+                    token,
+                    invitedByUserId: input.invitedByUserId ?? null,
+                    expiresAt,
+                    notificationRevision: 1,
+                },
+            });
+            const noticeId = await this.enqueueNotification(tx, {
+                eventKey: `invitation:${invitationId}:invite:1`, kind: 'invitation.invite_email',
+                entityId: invitationId, tenantId: input.tenantId, email, payload: { revision: 1 },
+            });
+            await tx.auditLog.create({
+                data: {
+                    tenantId: input.tenantId,
+                    userId: input.invitedByUserId,
+                    action: 'invitation_created',
+                    resource: `tenant_invitations/${invitation.id}`,
+                    details: { email, role: input.role },
+                },
+            });
+            return { invitation, noticeId };
         });
+        await this.deliverNow(result.noticeId);
 
-        // Send the email but don't block on failure — admin can always resend.
-        const tenant = await this.prisma.tenant.findUnique({
-            where: { id: input.tenantId },
-            select: { name: true, slug: true, settings: true, language: true },
-        });
-        const tenantLogoUrl = (tenant?.settings as any)?.logoUrl ?? null;
-        const inviter = input.invitedByUserId
-            ? await this.prisma.user.findUnique({
-                where: { id: input.invitedByUserId },
-                select: { firstName: true, lastName: true, email: true },
-            })
-            : null;
-
-        await this.sendInvitationEmail({
-            email,
-            token,
-            tenantName: tenant?.name || 'Parallly',
-            tenantLogoUrl,
-            inviterName: inviter
-                ? `${inviter.firstName ?? ''} ${inviter.lastName ?? ''}`.trim() || inviter.email
-                : null,
-            role: input.role,
-            expiresAt,
-            lang: tenant?.language || 'es',
-        }).catch((err) => {
-            this.logger.error(`[Invitations] Failed to send invitation email to ${email}: ${err.message}`);
-        });
-
-        await this.prisma.auditLog.create({
-            data: {
-                tenantId: input.tenantId,
-                userId: input.invitedByUserId,
-                action: 'invitation_created',
-                resource: `tenant_invitations/${invitation.id}`,
-                details: { email, role: input.role },
-            },
-        });
-
-        return invitation;
+        return result.invitation;
     }
 
     async resend(tenantId: string, invitationId: string) {
-        const invitation = await this.prisma.tenantInvitation.findUnique({ where: { id: invitationId } });
-        if (!invitation || invitation.tenantId !== tenantId) {
-            throw new NotFoundException({ error: 'invitation_not_found' });
-        }
-        if (invitation.acceptedAt) {
-            throw new BadRequestException({ error: 'already_accepted' });
-        }
-        if (invitation.revokedAt) {
-            throw new BadRequestException({ error: 'revoked' });
-        }
-
-        // Bump expiration so the new email link is fresh
         const newExpires = new Date(Date.now() + DEFAULT_TTL_DAYS * 86_400_000);
-        const updated = await this.prisma.tenantInvitation.update({
-            where: { id: invitationId },
-            data: { expiresAt: newExpires, resentAt: new Date() },
-        });
-
-        const tenant = await this.prisma.tenant.findUnique({
-            where: { id: tenantId },
-            select: { name: true, settings: true, language: true },
-        });
-
-        await this.sendInvitationEmail({
-            email: invitation.email,
-            token: invitation.token,
-            tenantName: tenant?.name || 'Parallly',
-            tenantLogoUrl: (tenant?.settings as any)?.logoUrl ?? null,
-            inviterName: null,
-            role: invitation.role,
-            expiresAt: newExpires,
-            lang: tenant?.language || 'es',
-        });
-
-        return updated;
+        const result = await this.prisma.$transaction(async (tx: any) => {
+            const invitation = await tx.tenantInvitation.findUnique({ where: { id: invitationId } });
+            if (!invitation || invitation.tenantId !== tenantId) {
+                throw new NotFoundException({ error: 'invitation_not_found' });
+            }
+            if (invitation.acceptedAt) throw new BadRequestException({ error: 'already_accepted' });
+            if (invitation.revokedAt) throw new BadRequestException({ error: 'revoked' });
+            const revision = Number(invitation.notificationRevision || 0) + 1;
+            const updated = await tx.tenantInvitation.update({
+                where: { id: invitationId },
+                data: { expiresAt: newExpires, resentAt: new Date(), notificationRevision: revision },
+            });
+            const noticeId = await this.enqueueNotification(tx, {
+                eventKey: `invitation:${invitationId}:invite:${revision}`, kind: 'invitation.invite_email',
+                entityId: invitationId, tenantId, email: invitation.email, payload: { revision },
+            });
+            return { updated, noticeId };
+        }, { isolationLevel: 'Serializable' });
+        await this.deliverNow(result.noticeId);
+        return result.updated;
     }
 
     async revoke(tenantId: string, invitationId: string) {
@@ -277,23 +243,7 @@ export class InvitationsService {
         }
 
         const password = await bcrypt.hash(input.password, 12);
-        let user;
-        if (claimableProvisionedOwner) {
-            user = await this.prisma.user.update({
-                where: { id: existingUser!.id },
-                data: {
-                    firstName: input.firstName,
-                    lastName: input.lastName || '',
-                    password,
-                    skillTags: invitation.skillTags,
-                    isActive: true,
-                    emailVerified: true,
-                    emailVerificationState: 'verified',
-                    authProvider: 'email',
-                    onboardingCompleted: true,
-                },
-            });
-        } else {
+        if (!claimableProvisionedOwner) {
             // Backstop seat enforcement at the moment a new seat is consumed
             // (the invite may have been created before a plan downgrade).
             const activeUsers = await this.prisma.user.count({
@@ -301,95 +251,75 @@ export class InvitationsService {
             });
             await this.throttle.enforcePlanLimit(invitation.tenantId, 'seats', activeUsers, 'usuarios');
 
-            user = await this.prisma.user.create({
-                data: {
-                    email: invitation.email,
-                    firstName: input.firstName,
-                    lastName: input.lastName || '',
-                    password,
-                    role: invitation.role,
-                    tenantId: invitation.tenantId,
-                    skillTags: invitation.skillTags,
-                    isActive: true,
-                    emailVerified: true,  // verified via invitation link possession
-                    emailVerificationState: 'verified',
-                    authProvider: 'email',
-                    onboardingCompleted: true,
-                },
-            });
         }
-
-        await this.prisma.tenantInvitation.update({
-            where: { id: invitation.id },
-            data: { acceptedAt: new Date(), acceptedUserId: user.id },
-        });
-
-        await this.prisma.auditLog.create({
-            data: {
-                tenantId: invitation.tenantId,
-                userId: user.id,
-                action: 'invitation_accepted',
-                resource: `tenant_invitations/${invitation.id}`,
-                details: { email: invitation.email, role: invitation.role },
-            },
-        });
-
-        const tenant = await this.prisma.tenant.findUnique({
-            where: { id: invitation.tenantId },
-            select: { name: true, language: true },
-        });
-        const lang = tenant?.language || 'es';
-        this.email.send({
-            to: invitation.email,
-            subject: emsg(lang, 'teamWelcome.subject', { tenant: tenant?.name || 'Parallly' }),
-            html: welcomeTeamMemberEmail(input.firstName, tenant?.name || 'Parallly', this.roleLabel(invitation.role), lang),
-        }).catch((err) => {
-            this.logger.error(`[Invitations] Failed to send welcome email to ${invitation.email}: ${err.message}`);
-        });
+        const accepted = await this.prisma.$transaction(async (tx: any) => {
+            const current = await tx.tenantInvitation.findUnique({ where: { id: invitation.id } });
+            if (!current) throw new NotFoundException({ error: 'not_found' });
+            if (current.acceptedAt) throw new BadRequestException({ error: 'already_accepted' });
+            if (current.revokedAt) throw new BadRequestException({ error: 'revoked' });
+            if (current.expiresAt < new Date()) throw new BadRequestException({ error: 'expired' });
+            const currentUser = await tx.user.findUnique({ where: { email: current.email } });
+            const claimable = this.isClaimableOwner(currentUser, current);
+            if (currentUser && !claimable) throw new ConflictException({
+                error: 'user_exists', message: 'An account already exists for this email. Sign in to your existing account.',
+            });
+            const user = claimable
+                ? await tx.user.update({ where: { id: currentUser.id }, data: {
+                    firstName: input.firstName, lastName: input.lastName || '', password,
+                    skillTags: current.skillTags, isActive: true, emailVerified: true,
+                    emailVerificationState: 'verified', authProvider: 'email', onboardingCompleted: true,
+                } })
+                : await tx.user.create({ data: {
+                    email: current.email, firstName: input.firstName, lastName: input.lastName || '', password,
+                    role: current.role, tenantId: current.tenantId, skillTags: current.skillTags, isActive: true,
+                    emailVerified: true, emailVerificationState: 'verified', authProvider: 'email', onboardingCompleted: true,
+                } });
+            await tx.tenantInvitation.update({
+                where: { id: current.id }, data: { acceptedAt: new Date(), acceptedUserId: user.id },
+            });
+            await tx.auditLog.create({ data: {
+                tenantId: current.tenantId, userId: user.id, action: 'invitation_accepted',
+                resource: `tenant_invitations/${current.id}`, details: { email: current.email, role: current.role },
+            } });
+            const noticeId = await this.enqueueNotification(tx, {
+                eventKey: `invitation:${current.id}:welcome`, kind: 'invitation.welcome_email',
+                entityId: current.id, tenantId: current.tenantId, email: current.email,
+                payload: { acceptedUserId: user.id },
+            });
+            return { user, invitation: current, noticeId };
+        }, { isolationLevel: 'Serializable' });
+        void this.deliverNow(accepted.noticeId);
 
         this.events?.emit(AGENT_QUALITY_DEPENDENCIES_UPDATED, {
-            tenantId: invitation.tenantId,
+            tenantId: accepted.invitation.tenantId,
             source: 'tenant_users',
         });
 
-        return { userId: user.id, tenantId: invitation.tenantId, role: invitation.role };
+        return { userId: accepted.user.id, tenantId: accepted.invitation.tenantId, role: accepted.invitation.role };
     }
 
-    // ── Email rendering ────────────────────────────────────────────
+    private async enqueueNotification(tx: any, input: {
+        eventKey: string; kind: 'invitation.invite_email' | 'invitation.welcome_email';
+        entityId: string; tenantId: string; email: string; payload: Record<string, unknown>;
+    }): Promise<string> {
+        const rows = await tx.$queryRawUnsafe(`INSERT INTO platform_notification_outbox(
+                id,event_key,kind,entity_id,tenant_id,recipient_email,payload,state)
+            VALUES($1::uuid,$2,$3,$4::uuid,$5::uuid,$6,$7::jsonb,'pending')
+            ON CONFLICT(event_key) DO UPDATE SET updated_at=platform_notification_outbox.updated_at
+            RETURNING id`, randomUUID(), input.eventKey, input.kind, input.entityId, input.tenantId,
+        input.email, JSON.stringify(input.payload));
+        return rows[0].id;
+    }
 
-    private async sendInvitationEmail(input: {
-        email: string;
-        token: string;
-        tenantName: string;
-        tenantLogoUrl: string | null;
-        inviterName: string | null;
-        role: string;
-        expiresAt: Date;
-        lang?: string;
-    }) {
-        const lang = input.lang || 'es';
-        const dashboardUrl = process.env.DASHBOARD_URL || 'https://admin.parallly-chat.cloud';
-        const acceptUrl = `${dashboardUrl}/accept-invite/${input.token}`;
-        const roleLabel = this.roleLabel(input.role);
-        const localeTag = lang.length >= 5 ? lang : `${lang.substring(0, 2)}-CO`;
-        const expiresText = input.expiresAt.toLocaleDateString(localeTag, {
-            day: 'numeric', month: 'long', year: 'numeric',
+    private async deliverNow(noticeId: string): Promise<void> {
+        await this.notifications.deliver(noticeId).catch((error: any) => {
+            this.logger.warn(`[Invitations] Durable notification ${noticeId} deferred: ${error?.message || error}`);
         });
+    }
 
-        const html = invitationEmail({
-            inviterName: input.inviterName,
-            tenantName: input.tenantName,
-            tenantLogoUrl: input.tenantLogoUrl,
-            roleLabel,
-            acceptUrl,
-            expiresText,
-        }, lang);
-
-        await this.email.send({
-            to: input.email,
-            subject: emsg(lang, 'invitation.subject', { tenant: input.tenantName }),
-            html,
-        });
+    private isClaimableOwner(user: any, invitation: any): boolean {
+        return !!user && user.tenantId === invitation.tenantId && user.role === invitation.role
+            && user.authProvider === 'invitation' && !user.password && user.emailVerified !== true;
     }
 
     private validatePasswordStrength(password: string): void {
@@ -404,12 +334,4 @@ export class InvitationsService {
         }
     }
 
-    private roleLabel(role: string): string {
-        switch (role) {
-            case 'tenant_admin': return 'Administrador';
-            case 'tenant_supervisor': return 'Supervisor';
-            case 'tenant_agent': return 'Agente';
-            default: return role;
-        }
-    }
 }

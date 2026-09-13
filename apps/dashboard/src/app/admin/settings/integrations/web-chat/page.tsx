@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { HelpPanel } from "@/components/ui/help-panel";
 import Link from "next/link";
+import { guidedTourAnchorId } from "@/lib/guided-tours";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
 
@@ -130,6 +131,7 @@ export default function WebChatWidgetPage() {
                     </Link>
                     <button
                         onClick={createWidget}
+                        id={guidedTourAnchorId("web-chat-setup")}
                         disabled={creating}
                         className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50"
                     >

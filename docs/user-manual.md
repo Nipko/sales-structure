@@ -86,7 +86,7 @@ Parallly es una plataforma SaaS que permite a negocios automatizar y centralizar
   permanece deshabilitado por procedimiento hasta cerrar los controles descritos en
   la sección 12
 - Analizar métricas de rendimiento
-- Adaptar la experiencia a 18 industrias verticales con capacidades disponibles según el negocio
+- Adaptar la experiencia a 18 industrias seleccionables y a su perfil de negocio dentro del contrato técnico de 20 industrias y 76 perfiles
 
 ---
 
@@ -170,6 +170,13 @@ El panel abre un segundo asistente de **3 pasos**, reabrible desde
    nuevo o migración; **no** hay ruta de número de prueba) y el botón que abre la ventana
    de Meta. **Conectar después** persiste el estado y se recuerda desde Inicio.
 3. **Listo** — los mismos esenciales de la tarjeta **Puesta en marcha**.
+
+El asistente prepara un **borrador**. Conectar WhatsApp no lo publica ni asigna por sí
+solo. Si existe el workspace del agente, el cierre ofrece **Revisar y publicar mi
+agente**: el recorrido abre el editor, la prueba del borrador, la preparación y
+revisión del candidato, y finalmente la confirmación de publicación. Los clientes
+reciben esa configuración y esas asignaciones únicamente después de publicar la
+versión aprobada.
 
 La tarjeta **Puesta en marcha** de Inicio es la única fuente de progreso: sus ítems se
 derivan de los checks críticos de preparación más el canal, y cada ítem ofrece
@@ -309,7 +316,8 @@ Solo un **Tenant Admin** puede cambiar roles:
 # 4. Dashboard
 
 **Ruta:** Menú → Dashboard
-**Roles:** Admin/Supervisor. Agent inicia en Conversaciones; Viewer, en su Perfil.
+**Roles:** Admin/Supervisor. Agent inicia en Conversaciones. Una cuenta heredada
+`tenant_viewer` sólo puede abrir sus ajustes personales.
 
 El dashboard es tu vista general al iniciar sesión y se adapta a tu industria.
 
@@ -467,15 +475,19 @@ Pills arriba de la lista:
 
 Filtros por canal: WhatsApp, Instagram, Messenger y Telegram. Email puede aparecer en datos históricos o integraciones administradas, pero no implica que exista configuración autoservicio certificada.
 
-## 6.3 Notificaciones de handoff
+## 6.3 Notificaciones
 
-La campana en TopBar muestra 7 categorías:
-- **handoff_direct** — el cliente pidió hablar con humano (rojo)
-- **handoff_normal** — IA escaló por baja confianza (amarillo)
-- **escalation** — supervisor: alguien lleva >5min sin responder (rojo + sonido)
-- **system** — alertas de plataforma
-- **billing** — pagos, trials terminando
-- **mention** — alguien te etiquetó
+La campana de la barra superior reúne los avisos en siete categorías visibles:
+**Mensajes, Transferencias, Cumplimiento, Citas, Automatización, Pedidos y Sistema**.
+Los avisos directos de transferencia se resaltan en rojo y los originados por baja
+confianza de la IA, en amarillo.
+
+Cada usuario puede abrir **Configuración → Notificaciones** para apagar categorías o
+el sonido. La selección se guarda en su cuenta, se conserva al cambiar de dispositivo
+y filtra tanto la campana en vivo como las notificaciones push que el servidor envía a
+ese usuario. Activar push en el navegador es un permiso adicional por dispositivo: una
+categoría habilitada no sustituye ese permiso, y quitarlo no cambia las preferencias de
+la cuenta. Esta pantalla no programa resúmenes por correo.
 
 ## 6.4 Acciones de conversación
 
@@ -519,7 +531,7 @@ Cuando varios agentes humanos abren la misma conversación al mismo tiempo, Para
 - Reduce confusión en equipos grandes con inbox compartido
 - No requiere configuración — funciona de forma automática para todas las conversaciones
 
-> **Tip:** Si ves la pill de otro agente, coordina por chat interno antes de responder. La pill solo indica que la conversación está abierta, no que alguien esté escribiendo.
+> **Tip:** Si ves la pill de otro agente, deja una nota interna o coordina con tu equipo antes de responder. La pill solo indica que la conversación está abierta, no que alguien esté escribiendo.
 
 ---
 
@@ -721,11 +733,15 @@ Si tienes canales conectados sin agente asignado, aparece banner rojo: "Tienes X
 
 ### Acciones
 
-- **Crear agente** — desde plantilla o blank
+- **Crear agente** — desde una plantilla recomendada, general, propia o en blanco; se
+  crea sin conexiones operativas y abre el editor para revisión
 - **Duplicar** — copia exacta para experimentar
 - **Editar** — abre el editor
-- **Eliminar** — con confirmación
-- **Guardar como plantilla** — para reusar
+- **Retirar de uso** — con confirmación; desactiva el agente, libera sus conexiones y
+  conserva el registro
+- **Guardar como plantilla** — copia la versión operativa para reusar
+- **Establecer como predeterminado** — se propone en el borrador y sólo toma efecto al
+  publicar la revisión
 
 ### Capacidad del plan
 
@@ -744,42 +760,54 @@ Hub con cards organizadas:
 - Avatar
 
 ### Personalidad
-- Tono (formal, amigable, técnico, empático)
 - Estilo de comunicación
+- Uso de emojis y humor
+- Extensión de respuesta: concisa, estándar o detallada
 - Saludo inicial
 
-### Modelo IA
-- Proveedor (OpenAI, Anthropic, Google, xAI, DeepSeek)
-- Modelo específico
-- Tier (basic, pro, premium)
-- Temperatura
-- **Monitoreo de salud**: indicador en tiempo real del estado de cada proveedor LLM. Si un proveedor falla repetidamente, un **circuit breaker** lo desactiva temporalmente y el sistema hace fallback automático al siguiente proveedor configurado en la cadena
-- **Ruteo por tarea**: las tareas de conversación (`conversation`) y las de uso de herramientas (`tool_calling`) pueden usar cadenas de modelos diferentes, optimizando costo y rendimiento según el tipo de operación
-
 ### Comportamiento
-- Reglas custom (free text)
+- Instrucción principal y reglas concretas
 - Temas prohibidos
-- Modo respuesta (siempre IA, siempre humano, híbrido)
-- Activación / horario
+- Datos que debe pedir en cada contexto
+- Mensaje cuando no puede responder
+- Motivos para pasar a una persona
+- Ventas, soporte o ambos; intensidad de recomendaciones y techo de descuento cuando
+  corresponda
+- Comportamiento fuera del horario comercial compartido por la cuenta
 
 ### Asignación de conexiones
 
-Selector de **conexiones** que este agente atiende. La regla es **un agente por conexión** (`agent_personas.channel_bindings`): cada agente se enlaza a cuentas concretas (por ejemplo, "WhatsApp — Ventas +57 300…" y "WhatsApp — Soporte +57 301…"), no a un canal genérico. Así podés tener un agente distinto por cada número o cuenta conectada. Cuántas conexiones del mismo tipo podés tener lo define tu plan (ver 9.8).
+Selector de **conexiones** que este agente debe atender. La regla es **un agente por
+conexión** (`agent_personas.channel_bindings`): cada agente se enlaza a cuentas
+concretas, no a un canal genérico. La selección se guarda en el borrador; la
+reasignación ocurre al publicar la revisión aprobada. Cuántas conexiones del mismo
+tipo podés tener lo define tu plan (ver 9.8).
 
 ### Herramientas
 
-Toggles para tools que el agente puede usar:
+Interruptores para las capacidades que el agente puede usar:
 - Buscar en la base de conocimiento (RAG)
 - Verificar disponibilidad de citas
 - Crear citas
 - Listar productos / servicios / propiedades
 - Crear órdenes / reservas
 - Solicitar handoff a humano
-- Tools verticales según industria
+- Herramientas especializadas según el **tipo de negocio** efectivo
 
-### Sticky save bar
+El editor sólo ofrece las familias compatibles con el perfil del tenant y explica si
+falta un dato, plan o proveedor. Guardar un interruptor prepara el permiso en el
+borrador; no cambia por sí solo la versión operativa.
 
-Barra inferior siempre visible con "Guardar cambios" — no perdés ediciones al hacer scroll.
+### Guardado y publicación
+
+La barra inferior **Guardar borrador** conserva la revisión sin cambiar el agente que
+atiende clientes. Después debes probar ese borrador, abrir **Revisar una versión**,
+preparar y aprobar el candidato, y usar **Publicar y ver historial**. La publicación
+vuelve operativos la configuración, las conexiones y la condición de predeterminado.
+
+Parallly Assist puede revisar los controles guiados y proponer cambios seguros. Al
+aceptarlos también guarda un borrador: nunca publica, activa ni cambia conexiones por
+su cuenta y no recibe credenciales o secretos.
 
 ## 8.3 Plantillas verticales
 
@@ -807,7 +835,8 @@ Al crear un agente nuevo, "Recomendados para tu negocio" aparece destacado segú
 
 ## 8.4 Test del agente
 
-Modo simulador: chateá con tu agente sin afectar contactos reales. Útil antes de activarlo en producción.
+Modo simulador: chateá con la versión operativa o con el borrador guardado sin afectar
+contactos reales. Úsalo antes de preparar, aprobar y publicar una revisión.
 
 Una conversación manual sirve para depurar, pero no demuestra calidad general. El
 Centro de calidad usa por separado pruebas repetibles y evidencia real atribuida a la
@@ -922,6 +951,62 @@ Para enviar fuera de la ventana de 24h, necesitas plantillas aprobadas por Meta:
 1. Configuración → Empresa → Templates
 2. Crear plantilla → categoría (transactional/marketing) + idioma + variables
 3. Enviar a Meta para aprobación (24-72h típicamente)
+
+### Costo de entrega: Meta le cobra a la cuenta del tenant
+
+Desde el **1 de octubre de 2026**, Meta cobra **cada mensaje de servicio entregado**
+contra la **cuenta de WhatsApp Business del propio tenant**. Parallly es proveedor de
+tecnología ante Meta: **no paga ese consumo, no lo factura y no lo incluye en el plan**.
+El tenant carga su medio de pago en las herramientas de Meta (WhatsApp Manager →
+Facturación y pagos) y Meta le cobra ahí.
+
+Consecuencia operativa: **una cuenta sin medio de pago válido deja de entregar los
+mensajes de servicio**. No degrada, corta. Para el negocio eso se ve como un agente que
+dejó de responder, aunque su suscripción a Parallly esté al día; los mensajes entrantes
+se siguen recibiendo y guardando.
+
+**Cuota gratis**: **1.000 mensajes de servicio por número y por mes calendario**, sin
+acumulación, en la zona horaria de la cuenta de WhatsApp Business. No es por país, ni por
+contacto, ni cubre plantillas (marketing, utilidad y autenticación se cobran aparte y no
+consumen la cuota). La cifra y la fecha viven en
+`apps/api/src/modules/billing/whatsapp-rates/whatsapp-rate-table.generated.ts`
+(`WHATSAPP_FREE_SERVICE_ALLOWANCE`), derivadas de tarjetas de tarifas preservadas; no se
+copian a mano en ningún otro lado.
+
+**Tarifas**: este manual no las transcribe. Meta revisa sus tarjetas por trimestre y cobra
+según el país de **quien recibe**, así que cualquier número escrito acá queda viejo en la
+próxima revisión. La fuente vigente es la tabla generada citada arriba y
+`docs/whatsapp-meta-pricing-2026-10.md`.
+
+**Qué ve el tenant.** En **Canales → WhatsApp**, la tarjeta **Cobro de WhatsApp (Meta)**
+muestra el avance de la cuota gratis, el gasto del período separado por moneda, los
+contactos más costosos, los envíos sin confirmar y los números con envío pausado. La leen
+Tenant Admin y Tenant Supervisor; **Reanudar envíos** es sólo de Tenant Admin. Endpoints:
+`GET /whatsapp/spend/summary`, `/consumption`, `/awaiting-resolution`, `/pauses`, `/policy`,
+`POST /whatsapp/spend/resolve` y `/pauses/:channelAccountId/resume`.
+
+**Pausa por cobro y regreso.** Cuando Meta responde que la cuenta no puede facturarse
+(clase de error `131042`), Parallly pausa los envíos cobrables **de ese número**, no del
+tenant ni de los demás números, y no reintenta. La pausa se levanta sola cuando Meta
+acepta un envío; como un número pausado no envía, el Tenant Admin puede declarar que
+arregló el medio de pago con **Reanudar envíos**. Es una declaración registrada, no una
+comprobación: si Meta vuelve a rechazar, el número se pausa de nuevo en el siguiente
+intento.
+
+**Construido vs detrás de un interruptor.**
+
+| Pieza | Estado |
+|-------|--------|
+| Tarifas, cuota gratis y clasificación de categoría | Construido (tabla generada + resolutor puro) |
+| Medición del gasto, reserva por envío y conciliación | Construido (`whatsapp-spend`, ledger transaccional) |
+| Autorización en los tres puntos de salida | Construido (`WhatsappSendAdmissionService`) |
+| Lectura de gasto, cuota, pausas y reanudación en el panel | Construido (`/admin/channels/whatsapp`) |
+| **Frenar envíos al llegar a un tope** | **Apagado por defecto**: `observe` mide y deja pasar. Un Tenant Admin puede activar **Protección de gasto** en Canales → WhatsApp; el cambio a `enforce` se guarda con auditoría y toma efecto antes del siguiente envío |
+| Fijar un tope de gasto desde el producto | Cada mes se crean valores iniciales de 2.000 entregas por número y 60 por contacto. La API autenticada `GET/POST /whatsapp/spend/ceilings` permite leer y ajustar cada alcance; el panel muestra los valores y controla si se aplican |
+
+Un tope, cuando se habilite, acota **lo que Parallly envía** por esa conexión. No limita
+lo que otra herramienta conectada a la misma cuenta de WhatsApp Business le cobre a Meta,
+no es un límite que Meta aplique y no cambia la tarifa.
 
 ## 9.2 Instagram
 
@@ -1489,6 +1574,8 @@ Si un cliente escribe "BAJA" o sinónimos → automáticamente:
 - Marca el contacto como `opted_out`
 - Detiene cualquier secuencia de nurturing
 - No se le pueden enviar más broadcasts
+- Detiene el turno actual antes de consultar al modelo o responder
+- Crea una revisión pendiente; si era un falso positivo, rechazarla vuelve a habilitar los envíos
 - Queda registrado en audit_log
 
 ---
@@ -1497,10 +1584,11 @@ Si un cliente escribe "BAJA" o sinónimos → automáticamente:
 
 **Ruta:** Configuración
 
-## 18.1 Cuenta (Admin, Supervisor, Agent, Viewer y Super Admin)
+## 18.1 Cuenta (Admin, Supervisor, Agent y Super Admin)
 - Perfil personal
 - Seguridad y cambio de contraseña
-- Preferencias de notificaciones
+- Preferencias de notificaciones por usuario: siete categorías para campana y push,
+  sonido del panel y activación push separada por dispositivo
 - Apariencia
 
 ## 18.2 Empresa (Admin)
@@ -1528,7 +1616,7 @@ consola de plataforma. Un Tenant Admin configura el comportamiento de sus agente
 desde **IA y crecimiento → Agente IA**, pero no administra credenciales ni cadenas
 globales de proveedores.
 
-## 18.5 Seguridad (Admin, Supervisor, Agent, Viewer y Super Admin)
+## 18.5 Seguridad (Admin, Supervisor, Agent y Super Admin)
 
 ### Autenticación de dos factores (2FA)
 
@@ -1564,8 +1652,9 @@ Cuando inicias sesión con 2FA, podés marcar **"Confiar en este dispositivo"**.
 
 - **Admin:** canales e integraciones, políticas, compliance, webhooks, MCP y API keys.
 - **Admin/Supervisor:** alertas y reportes.
-- **Admin/Supervisor/Agent/Viewer y Super Admin:** solo los ajustes personales
-  descritos en 18.1; este acceso no concede permisos de configuración del tenant.
+- **Admin/Supervisor/Agent y Super Admin:** solo los ajustes personales descritos
+  en 18.1; este acceso no concede permisos de configuración del tenant. Una cuenta
+  heredada `tenant_viewer` conserva exclusivamente este mismo acceso personal.
 
 ## 18.7 Claves de API pública
 
@@ -1748,6 +1837,12 @@ prueba, límites y funciones incluidos para esa cuenta.
 No uses precios o cuotas copiados de un documento antiguo: el catálogo activo y los
 overrides del tenant son la fuente contractual vigente.
 
+**La suscripción no cubre la entrega por WhatsApp.** Desde el 1 de octubre de 2026, Meta
+cobra los mensajes de servicio entregados contra la cuenta de WhatsApp Business del propio
+tenant, con el medio de pago que él carga en Meta; ese dinero no pasa por Parallly y esa
+factura no aparece en Facturación. Son dos pagos separados y cambiar de plan no cambia lo
+que Meta cobra. Detalle, cuota gratis y qué se ve en el panel: **§9.1, "Costo de entrega"**.
+
 ## 20.2 Precio, moneda y ciclo
 
 El importe se presenta con la moneda y el periodo que devuelve la API para el país de
@@ -1913,12 +2008,17 @@ documento debe quedar bloqueado y visible para reintento; no se considera emitid
 
 # 21. Adaptación por Industria — Verticales
 
-Parallly reconoce **18 industrias verticales**. El onboarding configura terminología,
-pipeline, FAQs, servicios y módulos a partir de la industria y el subtipo; la pantalla
-final también depende del rol, plan y capacidades publicadas para el tenant.
+Parallly mantiene un contrato técnico de **20 industrias y 76 perfiles canónicos de
+negocio**. Una vertical agrupa capacidades; el perfil combina industria y subtipo y
+determina las herramientas, rutas, términos y requisitos efectivos. Hoy el onboarding
+ofrece **18 industrias con al menos un perfil seleccionable**. Planeación de eventos y
+construcción están presentes en el manifiesto para conservar identidad y evolución del
+producto, pero sus perfiles actuales permanecen en lista de espera. Algunos subtipos de
+las otras industrias también pueden estar en espera y por eso no aparecen en un alta
+nueva.
 
-> **Alcance honesto:** las 18 verticales tienen comportamiento implementado, pero a
-> agosto de 2026 ninguna cuenta todavía con certificación E2E completa. Usa estas
+> **Alcance honesto:** los perfiles ofrecidos tienen comportamiento implementado, pero
+> a septiembre de 2026 ninguno cuenta todavía con certificación E2E completa. Usa estas
 > secciones para operar lo que aparece habilitado en tu cuenta, no como garantía de
 > cobertura total del sector. En actividades reguladas, decisiones sensibles y
 > excepciones, interviene una persona autorizada.
@@ -2502,8 +2602,11 @@ Ese contexto contiene solo códigos y agregados necesarios —estado, versión, 
 bloqueadores, vigencia de pruebas, tamaño de muestra, gravedad, pilar, dimensión y
 conteo—. No entrega al modelo transcripciones, texto de clientes, IDs de conversación,
 prompts, consultas de recuperación, texto libre del evaluador ni secretos. Parallly
-Assist no edita prompts, políticas o conocimiento, no confirma cambios que no hizo y
-no envía comunicaciones externas.
+Assist puede proponer cambios en los controles guiados autorizados del agente y, tras
+la confirmación del Admin, guardarlos como borrador. No cambia el prompt personalizado,
+el contenido de políticas o documentos, credenciales, conexiones, activación ni
+publicación; tampoco
+confirma cambios que no hizo ni envía comunicaciones externas.
 
 > La fuente runtime de Parallly Assist es
 > `apps/api/kb/assistant/{es,en,pt,fr}`. Este manual no se carga automáticamente en

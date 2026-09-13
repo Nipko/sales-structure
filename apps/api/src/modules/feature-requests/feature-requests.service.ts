@@ -2,7 +2,6 @@ import { Injectable, BadRequestException, NotFoundException, Logger } from '@nes
 import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
-import { EmailService } from '../email/email.service';
 import OpenAI from 'openai';
 import { CronLockService } from '../redis/cron-lock.service';
 import { LlmKeyService } from '../settings/llm-key.service';
@@ -48,7 +47,6 @@ export class FeatureRequestsService {
     constructor(
         private readonly prisma: PrismaService,
         private readonly config: ConfigService,
-        private readonly email: EmailService,
         private readonly cronLock: CronLockService,
         private readonly llmKeys: LlmKeyService,
     ) {}
@@ -273,70 +271,33 @@ export class FeatureRequestsService {
     async updateStatus(requestId: string, status: string, declinedReason?: string) {
         if (!STATUSES.includes(status as Status)) throw new BadRequestException('Invalid status');
         const shippedAt = status === 'shipped' ? new Date() : null;
-        await this.prisma.$queryRawUnsafe(
-            `UPDATE feature_requests
-             SET status = $1, shipped_at = COALESCE($2::timestamp, shipped_at),
-                 declined_reason = $3, updated_at = NOW()
-             WHERE id = $4::uuid`,
-            status,
-            shippedAt,
-            declinedReason ?? null,
-            requestId,
-        );
-        // Fire-and-forget: notify subscribers of status change.
-        this.notifySubscribersStatus(requestId, status, declinedReason).catch((e) =>
-            this.logger.warn(`notifySubscribersStatus failed: ${e.message}`),
-        );
-        return { ok: true };
-    }
-
-    private async notifySubscribersStatus(requestId: string, status: string, declinedReason?: string) {
-        const reqRows = (await this.prisma.$queryRawUnsafe(
-            `SELECT id, title FROM feature_requests WHERE id = $1::uuid LIMIT 1`,
-            requestId,
-        )) as any[];
-        if (reqRows.length === 0) return;
-        const req = reqRows[0];
-
-        const subscribers = (await this.prisma.$queryRawUnsafe(
-            `SELECT u.email, u.first_name
-             FROM feature_request_subscribers s
-             INNER JOIN users u ON u.id = s.user_id
-             WHERE s.request_id = $1::uuid AND u.email IS NOT NULL AND u.is_active = true`,
-            requestId,
-        )) as any[];
-
-        if (subscribers.length === 0) return;
-
-        const url = `${this.config.get<string>('DASHBOARD_URL', 'https://admin.parallly-chat.cloud')}/admin/feature-requests`;
-        const statusLabel: Record<string, string> = {
-            under_review: 'En revisión',
-            planned: 'Planeada',
-            in_progress: 'En desarrollo',
-            shipped: 'Lanzada',
-            declined: 'Rechazada',
-            open: 'Abierta',
-        };
-        const subject = `[Parallly] "${req.title}" — ${statusLabel[status] ?? status}`;
-        const declined =
-            status === 'declined' && declinedReason
-                ? `<p style="margin:16px 0;color:#666">${declinedReason}</p>`
-                : '';
-        const html = `
-            <div style="font-family:system-ui,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#222">
-                <h2 style="font-size:18px;margin:0 0 8px">Tu sugerencia cambió de estado</h2>
-                <p style="margin:0 0 16px">"<strong>${req.title}</strong>" ahora está marcada como <strong>${statusLabel[status] ?? status}</strong>.</p>
-                ${declined}
-                <a href="${url}" style="display:inline-block;background:#6366f1;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-size:14px">Ver sugerencia</a>
-                <p style="font-size:12px;color:#999;margin-top:24px">Recibes este email porque votaste o comentaste esta sugerencia.</p>
-            </div>
-        `;
-
-        // Send sequentially to avoid SMTP rate-limits — small lists in practice.
-        for (const sub of subscribers) {
-            await this.email.send({ to: sub.email, subject, html });
-        }
-        this.logger.log(`Notified ${subscribers.length} subscribers of "${req.title}" → ${status}`);
+        const result = await this.prisma.$transaction(async (tx: any) => {
+            const rows = await tx.$queryRawUnsafe(`SELECT id,title,status,declined_reason,status_revision
+                FROM feature_requests WHERE id=$1::uuid FOR UPDATE`, requestId);
+            const request = rows[0];
+            if (!request) throw new NotFoundException('Feature request not found');
+            const reason = declinedReason ?? null;
+            if (request.status === status && (request.declined_reason ?? null) === reason) {
+                return { changed: false, enqueued: 0 };
+            }
+            const revision = Number(request.status_revision || 0) + 1;
+            await tx.$executeRawUnsafe(`UPDATE feature_requests
+                SET status=$1,shipped_at=COALESCE($2::timestamp,shipped_at),declined_reason=$3,
+                    status_revision=$5,updated_at=NOW() WHERE id=$4::uuid`,
+            status, shippedAt, reason, requestId, revision);
+            const inserted = await tx.$queryRawUnsafe(`INSERT INTO platform_notification_outbox(
+                    event_key,kind,entity_id,recipient_user_id,payload,state)
+                SELECT 'feature_request.status_changed:' || $1::text || ':' || $2::text || ':' || u.id::text,
+                       'feature_request.status_changed',$1::uuid,u.id,
+                       jsonb_build_object('title',$3::text,'status',$4::text,'declinedReason',$5::text),'pending'
+                  FROM feature_request_subscribers s
+                  JOIN users u ON u.id=s.user_id
+                 WHERE s.request_id=$1::uuid AND u.is_active=true AND u.email IS NOT NULL
+                ON CONFLICT(event_key) DO NOTHING RETURNING id`,
+            requestId, revision, request.title, status, reason);
+            return { changed: true, enqueued: inserted.length };
+        });
+        return { ok: true, ...result };
     }
 
     async merge(sourceId: string, targetId: string) {

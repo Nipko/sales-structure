@@ -38,7 +38,6 @@ describe('AgentConsoleService canonical manual-assignment event', () => {
             {} as any,
             {} as any,
             {} as any,
-            {} as any,
             events as any,
             {} as any,
         );

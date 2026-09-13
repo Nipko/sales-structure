@@ -80,12 +80,14 @@ describe("canonical navigation registry", () => {
   it("keeps callback, unfinished and legacy alias routes out of discovery", () => {
     const hiddenRouteIds = [
       "channelInstagramCallback",
+      "channelEmail",
       "channelSms",
       "conversations",
       "catalog",
       "catalogCourses",
       "settingsCompany",
       "settingsIntegrations",
+      "settingsSmsNotifications",
     ];
 
     for (const routeId of hiddenRouteIds) {

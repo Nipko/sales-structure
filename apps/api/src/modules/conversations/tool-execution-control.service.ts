@@ -1,5 +1,9 @@
+import { missionToolAllowed } from './mission-focus';
+import { sameServedAgentAuthority, type ServedAgentAuthority } from '../persona/served-agent-authority';
+import { APPROVAL_EFFECTS_DDL, APPROVAL_EFFECTS_STATE_MIGRATION, APPROVAL_EFFECTS_EVENT, approvedEffectDescriptors, approvalDeliveryState, type ApprovalEffectSummary, type ApprovalDeliveryState } from './tool-approval-effects.contracts';
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { AsyncLocalStorage } from 'async_hooks';
 import { createHash, createHmac, randomUUID, timingSafeEqual } from 'crypto';
 import {
     ASSURANCE_LEVEL_MATRIX,
@@ -14,7 +18,15 @@ import {
     confirmationEffectForPolicy,
 } from '../../common/conversation/intent-normalizer';
 import { RegionalProfileService } from '../tenants/regional-profile.service';
+import { appointmentServiceTermsHash, appointmentTermsReviewResult } from '../appointments/appointment-service-terms';
+import { commitmentFamilyForTool } from './commitment-families';
+import {
+    commitmentProposalHash, commitmentReviewResult, ensureCommitmentProposals,
+    type CommitmentProposal,
+} from './commitment-proposal';
 import { getToolPolicy, type ToolPolicy } from './tool-policy-registry';
+import { reviewedMcpPolicy } from '../mcp/mcp-execution-policy';
+import type { McpToolApproval } from '../mcp/mcp-tool-approval';
 
 /**
  * A pending confirmation lives as long as the conversation session does.
@@ -85,7 +97,16 @@ export interface ToolApprovalListItem {
     resumedAt: string | null;
     resumeResult: Record<string, unknown> | null;
     resumeError: string | null;
+    deliveryState?: ApprovalDeliveryState;
+    deliveryEffects?: ApprovalEffectSummary[];
+    executionStatus?: string;
+    executionErrorCode?: string | null;
+    kind?: 'draft_action' | 'policy';
+    agentId?: string;
+    agentVersion?: number;
 }
+
+export interface DraftActionScope { agentId: string; agentVersion: number; }
 
 export interface ToolApprovalResumeClaim {
     tenantId: string;
@@ -97,6 +118,8 @@ export interface ToolApprovalResumeClaim {
     conversationId: string;
     channelType?: string;
     args: Record<string, unknown>;
+    draftReview?: DraftActionScope;
+    operationalScope?: ServedAgentAuthority;
 }
 
 export type ToolApprovalResumeClaimResult =
@@ -124,20 +147,27 @@ export interface ToolExecutionControlRequest {
     args: Record<string, unknown>;
     idempotencyKey?: string;
     readOnlyExecution?: boolean;
+    /** Trusted execution mode, never a model-supplied argument. */
+    draftMode?: boolean;
+    /** Only the operational runtime can supply this reviewed agent revision. */
+    draftScope?: DraftActionScope;
+    operationalScope?: ServedAgentAuthority;
+    /** Internal fixture lease only; never accepted from tool arguments. */
+    sandboxNamespace?: import('../simulation/isolated-eval-namespace').EvalNamespaceLease;
+    /** Server-owned sandbox state; never deserialized from a customer/model argument. */
+    executionState?: { get(key: string): Promise<string | null> };
+    missionScope?: import('@parallext/shared').MissionExecutionScopeV1;
     authorityEvidence?: {
         kind: 'booking_engine_confirmation';
         source: 'confirm_yes' | 'flow_response' | 'text_confirmation';
+        flowToken?: string;
     };
     /**
      * Reviewed approval for an external MCP tool, resolved by the caller. When
      * absent the guard resolves it itself; either way an unapproved remote tool
      * is refused.
      */
-    mcpApproval?: {
-        effect: string;
-        requiresConfirmation: boolean;
-        requiresHumanApproval: boolean;
-    } | null;
+    mcpApproval?: McpToolApproval | null;
 }
 
 export type ToolExecutionControlDecision =
@@ -161,6 +191,9 @@ interface ConfirmationClaims {
     sourceMessageId: string;
     issuedAt: string;
     expiresAt: string;
+    /** Names/ids frozen when the proposal was issued, covered by the signature. */
+    acceptedReferents?: string[];
+    mission?: { id: string; revision: number };
 }
 
 /**
@@ -181,12 +214,13 @@ interface ConfirmationClaims {
  */
 export function classifyExplicitToolConfirmation(
     value: unknown,
-    options: { effect?: ConfirmationEffect; country?: string | null } = {},
+    options: { effect?: ConfirmationEffect; country?: string | null; acceptedReferents?: readonly string[] } = {},
 ): ConfirmationDisposition {
     if (typeof value !== 'string') return 'unclear';
     return classifyConfirmation(value, {
         effect: options.effect ?? 'high_impact',
         country: options.country,
+        acceptedReferents: options.acceptedReferents,
         // Every call site reads the message that answers a pending challenge.
         answeringExplicitQuestion: true,
     });
@@ -346,6 +380,7 @@ function fromCanonicalBase64Url(value: string): Buffer | null {
 export class ToolExecutionControlService {
     private readonly logger = new Logger(ToolExecutionControlService.name);
     private readonly initializedSchemas = new Map<string, Promise<void>>();
+    private readonly privacyTransaction = new AsyncLocalStorage<{schemaName:string;query:TenantQuery}>();
 
     constructor(
         private readonly prisma: PrismaService,
@@ -381,7 +416,7 @@ export class ToolExecutionControlService {
         await this.ensureControlTables(schemaName);
 
         const reason = typeof input.reason === 'string' ? input.reason.trim().slice(0, 1000) : null;
-        const decision: any = await this.prisma.transactionInTenantSchema(schemaName, async (query) => {
+        const decision: any = await this.transaction(schemaName, async (query) => {
             const existing = await query<Array<{
                 id: string;
                 execution_ledger_id: string;
@@ -405,6 +440,7 @@ export class ToolExecutionControlService {
             );
             const ticket = existing[0];
             if (!ticket) throw new NotFoundException('Approval ticket not found');
+            await this.assertContactActive(query,schemaName,ticket.contact_id);
 
             const decisionCanStillTriggerExecution = ticket.status === 'pending'
                 || (ticket.status === 'approved'
@@ -458,10 +494,10 @@ export class ToolExecutionControlService {
                 decided_at: Date | string;
             }>>(
                 `UPDATE tool_approval_tickets
-                    SET status = $2, decided_by = $3::uuid, decided_at = NOW(),
+                    SET status = $2::text, decided_by = $3::uuid, decided_at = NOW(),
                         decision_reason = $4,
-                        resume_state = CASE WHEN $2 = 'approved' THEN 'pending' ELSE 'not_requested' END,
-                        next_resume_at = CASE WHEN $2 = 'approved' THEN NOW() ELSE next_resume_at END,
+                        resume_state = CASE WHEN $2::text = 'approved' THEN 'pending' ELSE 'not_requested' END,
+                        next_resume_at = CASE WHEN $2::text = 'approved' THEN NOW() ELSE next_resume_at END,
                         updated_at = NOW()
                   WHERE id = $1::uuid AND status = 'pending'
                   RETURNING id, status, decided_by, decided_at`,
@@ -515,6 +551,7 @@ export class ToolExecutionControlService {
         tenantId: string;
         status?: ToolApprovalStatus;
         limit?: number;
+        conversationId?: string;
     }): Promise<ToolApprovalListItem[]> {
         if (!UUID_RE.test(input.tenantId)) throw new NotFoundException('Tenant not found');
         const schemaName = await this.prisma.getTenantSchemaName(input.tenantId);
@@ -526,11 +563,17 @@ export class ToolExecutionControlService {
         }
         const limit = Math.max(1, Math.min(100, Number.isInteger(input.limit) ? Number(input.limit) : 50));
         const params: any[] = [];
-        let where = '';
+        const predicates: string[] = [];
         if (input.status) {
             params.push(input.status);
-            where = `WHERE t.status = $1`;
+            predicates.push(`t.status = $${params.length}`);
         }
+        if (input.conversationId) {
+            if (!UUID_RE.test(input.conversationId)) throw new BadRequestException('Invalid conversation scope');
+            params.push(input.conversationId);
+            predicates.push(`t.conversation_id = $${params.length}::uuid`);
+        }
+        const where = predicates.length ? `WHERE ${predicates.join(' AND ')}` : '';
         params.push(limit);
         const rows = await this.query<any[]>(
             schemaName,
@@ -538,7 +581,9 @@ export class ToolExecutionControlService {
                     t.requested_at, t.expires_at, t.decided_at, t.decided_by,
                     t.decision_reason, t.resume_state, t.resume_attempts,
                     t.resumed_at, t.resume_result, t.resume_error,
-                    l.request_payload
+                    l.request_payload, l.status AS execution_status, l.last_error_code,
+                    COALESCE((SELECT jsonb_agg(jsonb_build_object('id',e.id,'kind',e.kind,'state',e.state,'errorCode',e.error_code) ORDER BY e.kind,e.item_index)
+                        FROM tool_approval_effects e WHERE e.ticket_id=t.id),'[]'::jsonb) AS delivery_effects
                FROM tool_approval_tickets t
                JOIN tool_execution_ledger l ON l.id = t.execution_ledger_id
                ${where}
@@ -564,6 +609,15 @@ export class ToolExecutionControlService {
             resumedAt: row.resumed_at ? new Date(row.resumed_at).toISOString() : null,
             resumeResult: row.resume_result && typeof row.resume_result === 'object' ? row.resume_result : null,
             resumeError: row.resume_error || null,
+            deliveryEffects: row.delivery_effects || [],
+            deliveryState: approvalDeliveryState(row.delivery_effects || []),
+            executionStatus: row.execution_status,
+            executionErrorCode: row.last_error_code || null,
+            kind: row.request_payload?.draftReview ? 'draft_action' : 'policy',
+            ...(row.request_payload?.draftReview ? {
+                agentId: row.request_payload.draftReview.agentId,
+                agentVersion: row.request_payload.draftReview.agentVersion,
+            } : {}),
         }));
     }
 
@@ -579,7 +633,7 @@ export class ToolExecutionControlService {
         await this.ensureControlTables(schemaName);
         const leaseToken = randomUUID();
 
-        return this.prisma.transactionInTenantSchema(schemaName, async (query) => {
+        return this.transaction(schemaName, async (query) => {
             const params: any[] = [];
             let predicate = `t.status = 'approved'
                 AND (
@@ -630,6 +684,8 @@ export class ToolExecutionControlService {
                 return { state: 'none' as const };
             }
 
+            try { await this.assertContactActive(query,schemaName,row.contact_id); }
+            catch(error:any){if(error.message==='contact_erased')return {state:'completed' as const,result:{error:'contact_erased'}};throw error;}
             if (row.ticket_status !== 'approved') {
                 if (input.ticketId) throw new ConflictException('Approval ticket is not approved');
                 return { state: 'none' as const };
@@ -764,6 +820,8 @@ export class ToolExecutionControlService {
                     conversationId: row.conversation_id,
                     channelType: row.channel_type || undefined,
                     args,
+                    ...(row.request_payload?.draftReview ? { draftReview: row.request_payload.draftReview } : {}),
+                    ...(row.request_payload?.operationalScope ? { operationalScope: row.request_payload.operationalScope } : {}),
                 },
             };
         });
@@ -774,10 +832,20 @@ export class ToolExecutionControlService {
         resultInput: Record<string, unknown>,
     ): Promise<{ state: 'completed' | 'pending' | 'in_progress'; result: Record<string, unknown> }> {
         const result = this.recordPayload(resultInput);
-        return this.prisma.transactionInTenantSchema(claim.schemaName, async (query) => {
+        return this.transaction(claim.schemaName, async (query) => {
+            // The workflow's lookup is only a precheck. Bind this finalization
+            // to the same tenant/schema until COMMIT, before any tenant-table
+            // read or write. Inactive owners may still clean up their leases.
+            const owners = await query<any[]>(
+                'SELECT id FROM public.tenants WHERE id=$1::uuid AND schema_name=$2 FOR SHARE',
+                [claim.tenantId, claim.schemaName]);
+            if (!owners[0]) return { state: 'in_progress' as const,
+                result: { error: 'approval_tenant_unavailable', persisted: false, controlBlocked: true } };
+            try { await this.assertContactActive(query,claim.schemaName,claim.contactId); }
+            catch(error:any){if(error.message==='contact_erased')return {state:'completed' as const,result:{error:'contact_erased'}};throw error;}
             const rows = await query<any[]>(
                 `SELECT t.resume_attempts, t.resume_state, t.resume_lease_token,
-                        l.status AS ledger_status, l.response_payload
+                        l.status AS ledger_status, l.response_payload, l.tool_name
                    FROM tool_approval_tickets t
                    JOIN tool_execution_ledger l ON l.id = t.execution_ledger_id
                   WHERE t.id = $1::uuid
@@ -809,6 +877,12 @@ export class ToolExecutionControlService {
                     conversationId: claim.conversationId,
                     ledgerStatus: row.ledger_status,
                 });
+                const effects = approvedEffectDescriptors(row.tool_name, row.ledger_status, this.recordPayload(row.response_payload));
+                for (const effect of effects) {
+                    await query(`INSERT INTO tool_approval_effects(ticket_id,kind,item_index) VALUES($1::uuid,$2,$3)
+                        ON CONFLICT(ticket_id,kind,item_index) DO NOTHING`, [claim.ticketId,effect.kind,effect.itemIndex]);
+                }
+                if (effects.length) await this.insertApprovalOutboxWithQuery(query, claim.ticketId, APPROVAL_EFFECTS_EVENT, { ticketId: claim.ticketId });
                 return { state: 'completed' as const, result: committedResult };
             }
 
@@ -845,13 +919,15 @@ export class ToolExecutionControlService {
         await this.ensureControlTables(schemaName);
         const leaseToken = randomUUID();
         const boundedLimit = Math.max(1, Math.min(100, Math.floor(limit)));
-        const rows = await this.prisma.transactionInTenantSchema(schemaName, async (query) => query<any[]>(
+        const rows = await this.transaction(schemaName, async (query) => query<any[]>(
             `WITH due AS (
                 SELECT id
                   FROM tool_approval_outbox
-                 WHERE (status IN ('pending', 'failed') AND next_attempt_at <= NOW())
+                 WHERE ((status IN ('pending', 'failed') AND next_attempt_at <= NOW())
                     OR (status = 'processing'
-                        AND (lease_expires_at IS NULL OR lease_expires_at <= NOW()))
+                        AND (lease_expires_at IS NULL OR lease_expires_at <= NOW())))
+                   AND NOT EXISTS(SELECT 1 FROM tool_approval_tickets ticket JOIN customer_memory_erasure erased
+                       ON erased.contact_id=ticket.contact_id WHERE ticket.id=tool_approval_outbox.ticket_id)
                  ORDER BY created_at
                  FOR UPDATE SKIP LOCKED
                  LIMIT $1
@@ -878,6 +954,32 @@ export class ToolExecutionControlService {
         event: ToolApprovalOutboxEvent,
         error?: unknown,
     ): Promise<void> {
+        await this.transaction(schemaName,async query=>{
+            const contacts=await query<any[]>(`SELECT ticket.contact_id FROM tool_approval_outbox o
+                JOIN tool_approval_tickets ticket ON ticket.id=o.ticket_id WHERE o.id=$1::uuid`,[event.id]);
+            if(contacts[0]){
+                try{await this.assertContactActive(query,schemaName,contacts[0].contact_id);}
+                catch(failure:any){if(failure.message==='contact_erased')return;throw failure;}
+            }
+            await this.finishApprovalOutboxEventInternal(schemaName,event,error);
+        });
+    }
+
+    /** Do not deliver an event leased before erasure with its old in-memory payload. */
+    async publishApprovalOutboxEvent(schemaName:string,event:ToolApprovalOutboxEvent,publish:(payload:Record<string,unknown>)=>Promise<void>):Promise<boolean>{
+        return this.transaction(schemaName,async query=>{
+            const rows=await query<any[]>(`SELECT o.payload,ticket.contact_id FROM tool_approval_outbox o
+                JOIN tool_approval_tickets ticket ON ticket.id=o.ticket_id WHERE o.id=$1::uuid
+                AND o.lease_token=$2::uuid AND o.status='processing' FOR UPDATE OF o`,[event.id,event.leaseToken]);
+            if(!rows[0])return false;
+            try{await this.assertContactActive(query,schemaName,rows[0].contact_id);}
+            catch(failure:any){if(failure.message==='contact_erased')return false;throw failure;}
+            await publish(this.recordPayload(rows[0].payload));
+            return true;
+        });
+    }
+
+    private async finishApprovalOutboxEventInternal(schemaName:string,event:ToolApprovalOutboxEvent,error?:unknown):Promise<void>{
         if (!error) {
             await this.query(
                 schemaName,
@@ -902,9 +1004,102 @@ export class ToolExecutionControlService {
         );
     }
 
+    /** Persist only a review proposal. No identity challenge, domain command or transport runs here. */
+    async proposeDraftAction(request: ToolExecutionControlRequest): Promise<ToolExecutionControlDecision> {
+        const scope = request.draftScope;
+        let policy = getToolPolicy(request.toolName);
+        if (!request.draftMode || !scope || !UUID_RE.test(scope.agentId)
+            || !Number.isInteger(scope.agentVersion) || scope.agentVersion < 1
+            || !UUID_RE.test(request.contactId) || !UUID_RE.test(request.conversationId ?? '')) {
+            return this.block('draft_action_requires_approval', 'La acción requiere una revisión vigente antes de ejecutarse.');
+        }
+        if (request.toolName.startsWith('mcp__')) policy = reviewedMcpPolicy(request.mcpApproval) ?? undefined;
+        if (!policy || policy.effect !== 'write' || policy.assuranceEnforcement === 'missing' || policy.idempotency === 'missing'
+            || policy.confirmation === 'required_missing' || policy.humanApproval === 'required_missing') {
+            return this.block('tool_controls_incomplete', 'Los controles de esta acción no están disponibles.');
+        }
+        await this.ensureControlTables(request.schemaName);
+        try {
+            return await this.transaction(request.schemaName, async query => {
+                await this.assertContactActive(query, request.schemaName, request.contactId);
+                const conversations = await query<any[]>('SELECT contact_id FROM conversations WHERE id=$1::uuid', [request.conversationId]);
+                if (conversations[0]?.contact_id !== request.contactId || !await this.draftRevisionIsCurrent(request.schemaName, scope, true)) {
+                    return this.block('draft_revision_changed', 'La conversación o el agente cambió. Prepara una nueva propuesta.');
+                }
+                const latest = await this.latestInboundMessage(request.schemaName, request.conversationId!);
+                if (!latest) return this.block('idempotency_source_missing', 'No hay un mensaje de origen para esta propuesta.');
+                const canonicalArgs = JSON.stringify(stableValue(request.args));
+                const argsHash = sha256(canonicalArgs);
+                const scopedRequest = { ...request, idempotencyKey: `draft:${scope.agentId}:${scope.agentVersion}:${latest.id}` };
+                let ledger = await this.findContinuableLedger({ ...scopedRequest, idempotencyKey: undefined }, argsHash, latest);
+                if (ledger && (!ledger.request_payload?.draftReview
+                    || ledger.request_payload.draftReview.agentId !== scope.agentId
+                    || ledger.request_payload.draftReview.agentVersion !== scope.agentVersion)) ledger = null;
+                if (!ledger) ledger = await this.createOrLoadLedger(scopedRequest, 'A4',
+                    this.buildIdempotencyKey(scopedRequest, argsHash, latest.id), argsHash, canonicalArgs, latest.id,
+                    policy!.confirmation === 'runtime_enforced');
+                if (!ledger || ledger.args_hash !== argsHash || ledger.contact_id !== request.contactId
+                    || ledger.conversation_id !== request.conversationId || ledger.tool_name !== request.toolName) {
+                    return this.block('idempotency_conflict', 'La propuesta no coincide con la operación registrada.');
+                }
+                const terminal = this.terminalLedgerResult(ledger);
+                if (terminal) return terminal;
+                if ((request.operationalScope || ledger.request_payload?.operationalScope)
+                    && !sameServedAgentAuthority(request.operationalScope, ledger.request_payload?.operationalScope)) {
+                    return this.block('agent_operational_revision_changed', 'La versión de origen de la propuesta cambió. Prepara una propuesta nueva.');
+                }
+                if (policy!.confirmation === 'runtime_enforced' && !ledger.confirmed_at) {
+                    const confirmation = await this.resolveConfirmation(scopedRequest, ledger, argsHash);
+                    if (!confirmation.allowed) return confirmation;
+                    ledger = confirmation.ledger;
+                }
+                const approval = await this.resolveApproval(scopedRequest, ledger);
+                if (!approval.allowed && approval.result.error !== 'approval_required') return approval;
+                // Even an approved/replayed ticket cannot run from a draft turn.
+                // Only the durable human resume workflow crosses the effect boundary.
+                return this.block('draft_action_requires_approval', 'La acción está pendiente de revisión humana. Todavía no se ha ejecutado.');
+            });
+        } catch (error: any) {
+            if (error.message === 'contact_erased') return this.block('contact_erased', 'Los datos del contacto fueron eliminados.');
+            throw error;
+        }
+    }
+
+    private async draftRevisionIsCurrent(schemaName: string, scope: DraftActionScope, requireDraft = false): Promise<boolean> {
+        if (!scope || !UUID_RE.test(scope.agentId) || !Number.isInteger(scope.agentVersion)) return false;
+        const rows = await this.query<any[]>(schemaName,
+            'SELECT version, is_active, config_json FROM agent_personas WHERE id=$1::uuid', [scope.agentId]);
+        const agent = rows[0];
+        return !!agent && agent.is_active === true && Number(agent.version) === scope.agentVersion
+            && (!requireDraft || agent.config_json?.behavior?.draftMode === true);
+    }
+
     async preflight(request: ToolExecutionControlRequest): Promise<ToolExecutionControlDecision> {
-        const policy = getToolPolicy(request.toolName);
+        const policy=getToolPolicy(request.toolName);
+        if(!policy||policy.effect==='read'||request.draftMode||request.readOnlyExecution||!UUID_RE.test(request.contactId))
+            return this.preflightInternal(request);
+        await this.ensureControlTables(request.schemaName);
+        try {
+            return await this.transaction(request.schemaName,async query=>{
+                await this.assertContactActive(query,request.schemaName,request.contactId);
+                return this.preflightInternal(request);
+            });
+        } catch(error:any) {
+            if(error.message==='contact_erased')return this.block('contact_erased','Los datos del contacto fueron eliminados.');
+            throw error;
+        }
+    }
+
+    private async preflightInternal(request: ToolExecutionControlRequest): Promise<ToolExecutionControlDecision> {
+        let policy = getToolPolicy(request.toolName);
         if (!policy) return this.block('unknown_tool', 'La herramienta no está registrada.');
+        // This must precede identity challenges, lazy tables and the ledger:
+        // preparing a human-reviewed answer cannot itself send an OTP or act.
+        if (request.draftMode) {
+            return policy.agentTestAllowed
+                ? { allowed: true, policy }
+                : this.block('draft_action_requires_approval', 'La acción requiere revisión humana antes de ejecutarse.');
+        }
         if (request.toolName.startsWith('mcp__')) {
             // The publication side (`conversations.service`) and this guard must
             // read the SAME approval, or one of them is lying: publishing what
@@ -912,21 +1107,18 @@ export class ToolExecutionControlService {
             // published would let a Procedure or a stale prompt smuggle a remote
             // call past review. Absent an approval, this stays blocked.
             // Fail closed: no approval resolved by the caller means no approval.
-            const approval = request.mcpApproval ?? null;
-            if (!approval) {
+            const reviewed = reviewedMcpPolicy(request.mcpApproval);
+            if (!reviewed) {
                 return this.block(
                     'opaque_tool_not_approved',
                     'La herramienta externa no tiene controles revisados y no puede ejecutarse.',
                     true,
                 );
             }
-            if (approval.effect !== 'read' && !approval.requiresConfirmation) {
-                return this.block(
-                    'opaque_tool_not_approved',
-                    'La herramienta externa no tiene política de confirmación y no puede ejecutarse.',
-                    true,
-                );
-            }
+            policy = reviewed;
+        }
+        if (policy.commitsBusiness && request.missionScope && !missionToolAllowed(request.missionScope, request.toolName)) {
+            return this.block('mission_selection_required', 'La acción pertenece a otra gestión. Selecciona la gestión y revisa su propuesta actual.');
         }
         if (policy.assuranceEnforcement === 'missing'
             || policy.idempotency === 'missing'
@@ -990,6 +1182,7 @@ export class ToolExecutionControlService {
                 canonicalArgs,
                 latestInbound.id,
                 needsConfirmation,
+                await this.buildCommitment(request, latestInbound.id),
             );
         }
         if (!ledger
@@ -1004,11 +1197,15 @@ export class ToolExecutionControlService {
             );
         }
 
+        // A recorded result remains evidence of that operation after publication.
+        // Returning it never admits another writer or reauthorizes an old proposal.
         ledger = await this.failClosedExpiredExecution(request.schemaName, ledger);
-
         const terminal = this.terminalLedgerResult(ledger);
         if (terminal) return terminal;
-
+        if ((request.operationalScope || ledger.request_payload?.operationalScope)
+            && !sameServedAgentAuthority(request.operationalScope, ledger.request_payload?.operationalScope)) {
+            return this.block('agent_operational_revision_changed', 'El agente cambió después de proponer esta acción. Prepara una propuesta nueva.');
+        }
         if (needsConfirmation && !ledger.confirmed_at) {
             const bookingConfirmation = request.authorityEvidence
                 ? await this.resolveBookingAuthorityEvidence(request, ledger, argsHash, latestInbound)
@@ -1019,13 +1216,38 @@ export class ToolExecutionControlService {
             ledger = confirmation.ledger;
         }
 
-        const needsApproval = policy.humanApproval === 'runtime_enforced'
+        const draftReview = ledger.request_payload?.draftReview;
+        if (draftReview && !await this.draftRevisionIsCurrent(request.schemaName, draftReview)) {
+            return this.block('draft_revision_changed', 'El agente cambió después de revisar esta propuesta. La acción no fue ejecutada.');
+        }
+        const needsApproval = !!draftReview || policy.humanApproval === 'runtime_enforced'
             || (ASSURANCE_LEVEL_MATRIX[policy.assurance].humanApproval === 'writes');
         if (needsApproval) {
             const approval = await this.resolveApproval(request, ledger);
             if (!approval.allowed) return approval;
             ledger = approval.ledger;
         }
+
+        // ── The terms the customer agreed to ────────────────────────────────
+        //
+        // The ledger already refuses when the ARGUMENTS change, when the agent's
+        // revision changes and when the confirmation does not answer this
+        // challenge. None of that covers the catalogue: the model can send the
+        // same propertyId and the same dates while the nightly rate, the
+        // cancellation rule or the deposit moved underneath, and the customer
+        // said yes to the old ones.
+        //
+        // So the proposal is rebuilt here, from the same catalogue, and compared
+        // with the one recorded when the challenge was issued. One gate for
+        // every family: eleven bespoke terms modules would have been eleven
+        // different ideas of what "changed" means.
+        // The message the LEDGER was opened for, not the latest one. The
+        // customer answering "sí" is itself a new inbound message, so rebuilding
+        // the proposal against the latest one changed the authority and made
+        // every confirmed booking look like terms that had moved.
+        const commitment = await this.resolveCommitment(
+            request, ledger, String(ledger.request_source_message_id ?? latestInbound.id));
+        if (commitment.blocked) return commitment.blocked;
 
         const executionLeaseToken = randomUUID();
         const acquired = await this.query<ExecutionLedgerRow[]>(
@@ -1048,6 +1270,7 @@ export class ToolExecutionControlService {
                            AND source.direction = 'inbound'
                          WHERE ticket.id = tool_execution_ledger.approval_ticket_id
                            AND ticket.status = 'approved'
+                           AND ticket.expires_at > NOW()
                            AND NOT EXISTS (
                                SELECT 1
                                  FROM messages newer
@@ -1058,6 +1281,12 @@ export class ToolExecutionControlService {
                            )
                     )
                 )
+                AND (NOT (request_payload ? 'draftReview') OR EXISTS (
+                    SELECT 1 FROM agent_personas agent
+                    WHERE agent.id::text = request_payload->'draftReview'->>'agentId'
+                      AND agent.version::text = request_payload->'draftReview'->>'agentVersion'
+                      AND agent.is_active = true
+                ))
               RETURNING *`,
             [ledger.id, executionLeaseToken, EXECUTION_LEASE_SECONDS],
         );
@@ -1081,7 +1310,16 @@ export class ToolExecutionControlService {
         };
     }
 
-    async complete(
+    async complete(schemaName:string,decision:ToolExecutionControlDecision,result:Record<string,unknown>):Promise<void>{
+        if(!decision.allowed||!decision.ledgerId)return;
+        await this.transaction(schemaName,async query=>{
+            const ledger=await this.loadLedger(schemaName,decision.ledgerId!);
+            await this.assertContactActive(query,schemaName,ledger.contact_id);
+            await this.completeInternal(schemaName,decision,result);
+        });
+    }
+
+    private async completeInternal(
         schemaName: string,
         decision: ToolExecutionControlDecision,
         result: Record<string, unknown>,
@@ -1105,7 +1343,12 @@ export class ToolExecutionControlService {
               RETURNING id`,
             [decision.ledgerId, status, JSON.stringify(result ?? {}), decision.executionLeaseToken],
         );
-        if (updated[0]) return;
+        if (updated[0]) {
+            if (status === 'succeeded') {
+                await this.linkCommitment(schemaName, await this.loadLedger(schemaName, decision.ledgerId), result);
+            }
+            return;
+        }
 
         const current = await this.loadLedger(schemaName, decision.ledgerId);
         const reconciled = await this.failClosedExpiredExecution(schemaName, current);
@@ -1118,7 +1361,18 @@ export class ToolExecutionControlService {
         throw new Error('tool_execution_lease_expired_or_lost');
     }
 
-    async fail(
+    async fail(schemaName:string,decision:ToolExecutionControlDecision|undefined,errorCode:string):Promise<void>{
+        if(!decision?.allowed||!decision.ledgerId)return;
+        try {
+            await this.transaction(schemaName,async query=>{
+                const ledger=await this.loadLedger(schemaName,decision.ledgerId!);
+                await this.assertContactActive(query,schemaName,ledger.contact_id);
+                await this.failInternal(schemaName,decision,errorCode);
+            });
+        } catch(error:any) { if(error.message!=='contact_erased')throw error; }
+    }
+
+    private async failInternal(
         schemaName: string,
         decision: ToolExecutionControlDecision | undefined,
         errorCode: string,
@@ -1197,7 +1451,7 @@ export class ToolExecutionControlService {
      */
     async expirePendingApprovalTickets(schemaName: string): Promise<number> {
         await this.ensureControlTables(schemaName);
-        return this.prisma.transactionInTenantSchema(schemaName, async (query) => {
+        return this.transaction(schemaName, async (query) => {
             const expired = await query<Array<{
                 ticket_id: string;
                 ledger_id: string;
@@ -1267,6 +1521,13 @@ export class ToolExecutionControlService {
                 error: 'identity_context_required',
                 message: 'Esta gestión sensible requiere una conversación vinculada y verificación de identidad.',
             };
+        }
+        if (request.sandboxNamespace) {
+            const { hasEvalIdentityFixture } = await import('../simulation/eval-identity-fixture');
+            const verified = await hasEvalIdentityFixture(this.prisma, { ...request, conversationId: request.conversationId,
+                sandboxNamespace: request.sandboxNamespace });
+            return verified ? null : { error: 'eval_identity_fixture_required', persisted: false, needsVerification: true,
+                message: 'La evaluación no dispone de una identidad sintética verificada para esta consulta. No se envió ningún código.' };
         }
         if (await this.chatIdentity.isVerified(request.conversationId, request.contactId)) return null;
 
@@ -1381,6 +1642,147 @@ export class ToolExecutionControlService {
         return sameTurn[0] || null;
     }
 
+    /**
+     * Builds the proposal for this call, or `null` when the tool commits nothing.
+     *
+     * A family with no builder is not gated, which is why the spec requires one
+     * for every committing family in the registry: a vertical added without one
+     * would silently opt out of the whole contract.
+     */
+    private async buildCommitment(
+        request: ToolExecutionControlRequest, inboundMessageId: string,
+    ): Promise<CommitmentProposal | null> {
+        const family = commitmentFamilyForTool(request.toolName);
+        if (!family) return null;
+        // Ask whether the tables exist before reading them. This runs inside the
+        // transaction the write is using, where a query against a missing table
+        // aborts every statement after it — and catching the error does not
+        // help, because the COMMIT fails anyway. `to_regclass` returns NULL
+        // instead of failing, which is the whole reason it is the first thing
+        // asked.
+        const present = await this.query<any[]>(request.schemaName,
+            `SELECT ${family.reads.map((_, index) => `to_regclass($${index + 1})::text AS t${index}`).join(', ')}`,
+            family.reads.map(table => `${request.schemaName}.${table}`));
+        if (!present?.[0] || family.reads.some((_, index) => !present[0][`t${index}`])) return null;
+        const parts = await family.build(
+            ((sql: string, params: any[] = []) => this.query(request.schemaName, sql, params)) as any,
+            (request.args ?? {}) as Record<string, any>, request.contactId);
+        if (!parts) return null;
+        return {
+            version: 1, family: family.family, action: family.action,
+            resources: parts.resources, window: parts.window, price: parts.price,
+            conditions: parts.conditions, contactId: request.contactId,
+            authority: {
+                agentId: (request.operationalScope as any)?.agentId ?? null,
+                agentRevision: (request.operationalScope as any)?.revision
+                    ?? (request.operationalScope as any)?.configHash ?? null,
+                inboundMessageId,
+            },
+        };
+    }
+
+    /**
+     * Compares the terms now against the terms the customer was shown, and
+     * records the acceptance when they match.
+     *
+     * The recorded row is what a charge reads later, which is why it is written
+     * here rather than by each writer: eleven writers writing their own snapshot
+     * is eleven chances for one of them to forget.
+     */
+    private async resolveCommitment(
+        request: ToolExecutionControlRequest, ledger: ExecutionLedgerRow, inboundMessageId: string,
+    ): Promise<{ blocked?: ToolExecutionControlDecision }> {
+        const family = commitmentFamilyForTool(request.toolName);
+        if (!family) return {};
+        const shown = ledger.request_payload?.commitmentProposal as CommitmentProposal | undefined;
+        const current = await this.buildCommitment(request, inboundMessageId);
+        const shownHash = commitmentProposalHash(shown);
+        const currentHash = commitmentProposalHash(current);
+
+        // A ledger with no recorded proposal was opened before this gate
+        // existed. Refusing it would break every conversation already in flight
+        // at the moment of a rolling restart, which is precisely what
+        // expand-contract forbids — so it is allowed through, and NO acceptance
+        // is recorded. That is the whole point: the row it creates has no proof
+        // that anybody agreed to a price, so it stays unpayable and shows up in
+        // the orphan report for a person to reconfirm. Inventing an acceptance
+        // here to make the number look clean would be inventing consent.
+        if (!shownHash) return {};
+
+        if (!currentHash || shownHash !== currentHash) {
+            return {
+                blocked: {
+                    allowed: false,
+                    result: current
+                        ? commitmentReviewResult(family.family, current)
+                        : {
+                            error: 'commitment_terms_unavailable', family: family.family,
+                            persisted: false, retryable: false, requiresConfirmation: true,
+                            message: 'No pude releer los términos exactos de lo que se te ofreció. '
+                                + 'Volvé a pedirlos antes de confirmar. No se creó ni se cobró nada.',
+                        },
+                },
+            };
+        }
+        await ensureCommitmentProposals(
+            ((sql: string, params: any[] = []) => this.query(request.schemaName, sql, params)) as any);
+        await this.query(request.schemaName,
+            `INSERT INTO commitment_proposals
+                (proposal_hash, family, action, contact_id, conversation_id, inbound_message_id,
+                 idempotency_key, proposal, amount_cents, currency, accepted_at)
+             VALUES ($1,$2,$3,$4::uuid,$5::uuid,$6::uuid,$7,$8::jsonb,$9,$10,NOW())
+             -- The unique index is partial, and PostgreSQL will not infer a
+             -- partial index unless the statement repeats its predicate.
+             -- Without this the insert fails with "no unique or exclusion
+             -- constraint matching the ON CONFLICT specification" and takes the
+             -- whole write down with it.
+             ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING`,
+            [currentHash, family.family, family.action, request.contactId, request.conversationId,
+                inboundMessageId, ledger.idempotency_key, JSON.stringify(current),
+                current!.price ? current!.price.amountCents : null,
+                current!.price ? current!.price.currency : null]);
+        return {};
+    }
+
+    /**
+     * Links the accepted proposal to the row the writer produced.
+     *
+     * Until this runs the proposal is an acceptance with nothing behind it, and
+     * a charge cannot find it — which is the correct state for a write that
+     * failed.
+     */
+    private async linkCommitment(
+        schemaName: string, ledger: ExecutionLedgerRow, result: Record<string, unknown>,
+    ): Promise<void> {
+        if (!ledger?.idempotency_key) return;
+        // No recorded proposal means there is nothing to link, and — more
+        // importantly — nothing to ask the database. This runs inside the
+        // completion transaction, where a failed statement poisons everything
+        // after it: catching the error is not enough, because the COMMIT fails
+        // anyway. So a tenant without the table is never queried at all.
+        if (!ledger.request_payload?.commitmentProposal) return;
+        const entityId = this.commitmentEntityId(result);
+        if (!entityId) return;
+        await this.query(schemaName,
+            `UPDATE commitment_proposals SET consumed_entity_id = $2::uuid, consumed_at = NOW()
+              WHERE idempotency_key = $1 AND consumed_entity_id IS NULL`,
+            [ledger.idempotency_key, entityId]);
+    }
+
+    /** The id of the row a writer produced, wherever it put it. */
+    private commitmentEntityId(result: Record<string, unknown>): string | null {
+        const candidates = [
+            (result as any)?.id, (result as any)?.booking?.id, (result as any)?.order?.id,
+            (result as any)?.appointment?.id, (result as any)?.request?.id, (result as any)?.quote?.id,
+            (result as any)?.rental?.id, (result as any)?.session?.id, (result as any)?.bookingId,
+        ];
+        for (const candidate of candidates) {
+            const text = String(candidate ?? '').toLowerCase();
+            if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(text)) return text;
+        }
+        return null;
+    }
+
     private async createOrLoadLedger(
         request: ToolExecutionControlRequest,
         assurance: VerticalAssuranceLevel,
@@ -1389,6 +1791,7 @@ export class ToolExecutionControlService {
         canonicalArgs: string,
         sourceMessageId: string,
         needsConfirmation: boolean,
+        commitmentProposal?: CommitmentProposal | null,
     ): Promise<ExecutionLedgerRow | null> {
         const inserted = await this.query<ExecutionLedgerRow[]>(
             request.schemaName,
@@ -1407,7 +1810,13 @@ export class ToolExecutionControlService {
                 assurance,
                 needsConfirmation ? 'awaiting_confirmation' : 'ready',
                 sourceMessageId,
-                JSON.stringify({ args: JSON.parse(canonicalArgs) }),
+                JSON.stringify({ args: JSON.parse(canonicalArgs), ...(request.draftScope ? { draftReview: request.draftScope } : {}),
+                    ...(request.operationalScope ? { operationalScope: request.operationalScope } : {}),
+                    // The terms as they stood when the customer was challenged.
+                    // Recorded with the ledger row so the comparison later is
+                    // against what was SHOWN, not against a second read of the
+                    // catalogue that may already have moved.
+                    ...(commitmentProposal ? { commitmentProposal } : {}) }),
                 request.channelType || null,
             ],
         );
@@ -1459,23 +1868,35 @@ export class ToolExecutionControlService {
         // `ya po` and `hágale` are just unknown words, and the customer who
         // answered clearly gets asked again.
         const operatingCountry = await this.resolveOperatingCountry(request.tenantId);
+        const boundClaims = ledger.confirmation_token ? this.verifyConfirmationToken(ledger.confirmation_token) : null;
+        if (request.missionScope || boundClaims?.mission) {
+            const scope = request.missionScope;
+            const expected = scope?.expectedReply;
+            const sameMission = scope?.version === 1 && boundClaims?.mission?.id === scope.missionId
+                && boundClaims.mission.revision === scope.revision;
+            const answersThisProposal = expected?.kind === 'confirmation' && expected.missionId === scope?.missionId
+                && expected.ledgerId === ledger.id && expected.sourceMessageId !== latest.id
+                && scope?.inboundMessageId === latest.id;
+            if (!sameMission || !answersThisProposal) {
+                // Focus changes cannot resurrect an older yes. A new challenge
+                // is issued from THIS inbound, which cannot answer itself.
+                if (!scope) return this.block('confirmation_mission_missing', 'Retoma esta gestión y revisa su propuesta antes de confirmar.');
+                const reissued = await this.issueConfirmationToken({ ...request, conversationId }, ledger, argsHash, latest.id);
+                return this.confirmationRequired((reissued || ledger).id);
+            }
+        }
+        const acceptedReferents = boundClaims?.ledgerId === ledger.id && boundClaims.argsHash === argsHash
+            && boundClaims.tenantId === request.tenantId && boundClaims.contactId === request.contactId
+            && boundClaims.conversationId === conversationId && boundClaims.toolName === request.toolName
+            ? boundClaims.acceptedReferents : undefined;
         const disposition = classifyExplicitToolConfirmation(latest.content_text, {
             effect: confirmationEffectForPolicy(getToolPolicy(request.toolName)),
             country: operatingCountry,
+            acceptedReferents,
         });
         if (latest.id === ledger.confirmation_source_message_id) {
-            if (disposition === 'confirmed') {
-                const updated = await this.query<ExecutionLedgerRow[]>(
-                    request.schemaName,
-                    `UPDATE tool_execution_ledger
-                        SET confirmed_at = NOW(), confirmed_by_message_id = $2::uuid,
-                            status = 'ready', updated_at = NOW()
-                      WHERE id = $1::uuid AND confirmed_at IS NULL
-                      RETURNING *`,
-                    [ledger.id, latest.id],
-                );
-                return { allowed: true, ledger: updated[0] || ledger };
-            }
+            // A retry in the inbound turn that CAUSED the challenge cannot
+            // answer it, even when that message starts with an explicit yes.
             return this.confirmationRequired(ledger.id);
         }
 
@@ -1595,27 +2016,37 @@ export class ToolExecutionControlService {
         // held to the same evidence: the engine must be parked on `confirm`, the
         // message must classify as an unambiguous confirmation, and every bound
         // field below must still match what the customer was shown.
-        if (evidence.source === 'text_confirmation') {
-            if (classifyExplicitToolConfirmation(latest.content_text, {
-                effect: confirmationEffectForPolicy(getToolPolicy(request.toolName)),
-                country: await this.resolveOperatingCountry(request.tenantId),
-            }) !== 'confirmed') {
-                return this.block('authority_evidence_invalid', 'El mensaje de origen no confirma esta reserva.', true);
-            }
-        } else {
-            const expectedInbound = evidence.source === 'confirm_yes' ? 'confirm_yes' : '__flow_response__';
-            if (String(latest.content_text || '').trim().toLowerCase() !== expectedInbound) {
+        if (evidence.source === 'flow_response') {
+            if (String(latest.content_text || '').trim().toLowerCase() !== '__flow_response__') {
                 return this.block('authority_evidence_invalid', 'El mensaje de origen no confirma esta reserva.', true);
             }
         }
 
-        const rawState = await this.redis.get(`booking:${conversationId}`).catch(() => null);
+        const rawState = await (request.executionState ?? this.redis).get(`booking:${conversationId}`).catch(() => null);
         if (!rawState) {
             return this.block('booking_confirmation_state_missing', 'La confirmación de reserva ya no está vigente.', true);
         }
         let state: Record<string, any>;
         try { state = JSON.parse(String(rawState)); } catch {
             return this.block('booking_confirmation_state_invalid', 'El estado de confirmación no es válido.', true);
+        }
+        if (request.missionScope) {
+            const scope = request.missionScope;
+            const expected = scope.expectedReply;
+            if (scope.version !== 1 || scope.inboundMessageId !== latest.id || state.missionId !== scope.missionId
+                || expected?.missionId !== scope.missionId || expected.sourceMessageId === latest.id
+                || (evidence.source === 'flow_response' ? expected.kind !== 'flow' || expected.proposalId !== state.flowToken
+                    : expected.kind !== 'confirmation' || expected.proposalId !== state.confirmationId)) {
+                return this.block('booking_confirmation_mission_mismatch', 'Retoma esta gestión y revisa la propuesta actual antes de confirmar.');
+            }
+        }
+        if (evidence.source === 'confirm_yes'
+            && (!state.confirmationId || String(latest.content_text || '').trim() !== `confirm_yes:${state.confirmationId}`)) {
+            return this.block('booking_confirmation_proposal_mismatch', 'El botón corresponde a una propuesta anterior. Revisa la reserva actual antes de confirmar.');
+        }
+        if (state.confirmationIssuedAt && (Date.now() - Date.parse(state.confirmationIssuedAt) > CONFIRMATION_TTL_MS
+            || !Number.isFinite(Date.parse(state.confirmationIssuedAt)))) {
+            return this.block('booking_confirmation_expired', 'La propuesta debe revisarse de nuevo antes de confirmar.');
         }
 
         // Both the button and the typed yes answer the same rendered summary, so
@@ -1638,12 +2069,29 @@ export class ToolExecutionControlService {
             if (boundFields.some(([stored, requested]) => String(stored ?? '') !== String(requested ?? ''))) {
                 return this.block('booking_confirmation_args_mismatch', 'La reserva cambió después de ser confirmada.', true);
             }
+            if (evidence.source === 'text_confirmation' && classifyExplicitToolConfirmation(latest.content_text, {
+                effect: confirmationEffectForPolicy(getToolPolicy(request.toolName)),
+                country: await this.resolveOperatingCountry(request.tenantId),
+                acceptedReferents: typeof state.serviceName === 'string' ? [state.serviceName] : [],
+            }) !== 'confirmed') {
+                return this.block('authority_evidence_invalid', 'El mensaje de origen no confirma esta reserva.', true);
+            }
         } else {
             const startedAt = Date.parse(String(state.flowStartedAt || ''));
             const serviceKnown = Array.isArray(state.services)
                 && state.services.some((service: any) => service?.id === request.args.serviceId);
-            if (!serviceKnown || !Number.isFinite(startedAt) || Date.now() - startedAt > 3_600_000) {
+            if (!serviceKnown || !Number.isFinite(startedAt) || Date.now() - startedAt > 3_600_000
+                || !state.flowToken || evidence.flowToken !== state.flowToken
+                || request.missionScope && state.flowRevision !== request.missionScope.revision) {
                 return this.block('booking_flow_evidence_expired', 'La respuesta del formulario no está vigente.', true);
+            }
+        }
+
+        if (request.args.appointmentTerms) {
+            const proposed = state.services?.find((service: any) => service?.id === request.args.serviceId)?.appointmentTerms;
+            if (!appointmentServiceTermsHash(proposed)
+                || appointmentServiceTermsHash(proposed) !== appointmentServiceTermsHash(request.args.appointmentTerms)) {
+                return { allowed: false, result: appointmentTermsReviewResult(request.args.appointmentTerms as any) };
             }
         }
 
@@ -1687,6 +2135,15 @@ export class ToolExecutionControlService {
             sourceMessageId,
             issuedAt: now.toISOString(),
             expiresAt: expiresAt.toISOString(),
+            acceptedReferents: [
+                ...await this.resolveProposalReferents(request.schemaName, request.args),
+                // These words name the already-bound pet update; they supply no
+                // new values and only exist inside this signed proposal scope.
+                ...(request.toolName === 'update_pet' ? ['la corrección', 'el cambio', 'la actualización',
+                    'the correction', 'the change', 'the update', 'a correção', 'a alteração', 'a atualização',
+                    'la correction', 'la modification', 'la mise à jour'] : []),
+            ],
+            ...(request.missionScope ? { mission: { id: request.missionScope.missionId, revision: request.missionScope.revision } } : {}),
         };
         const token = this.signConfirmationToken(claims);
         if (!token) return null;
@@ -1704,6 +2161,38 @@ export class ToolExecutionControlService {
             [ledger.id, token, sourceMessageId, expiresAt.toISOString()],
         );
         return updated[0] || null;
+    }
+
+    /** Resolve once at proposal issuance; later names cannot change consent. */
+    private async resolveProposalReferents(schemaName: string, args: Record<string, unknown>): Promise<string[]> {
+        const references = new Set<string>();
+        const canonicalTables: Record<string, string> = {
+            serviceId: 'services', propertyId: 'properties', productId: 'products',
+        };
+        for (const [key, value] of Object.entries(args)) {
+            if (typeof value !== 'string' || !value.trim() || value.length > 160) continue;
+            // Only identity fields; a price, date or free-form instruction is
+            // never a permitted tail merely because it appears in the payload.
+            const named = /^(service|property|product|room|resource|class|course|plan|vehicle|tour|item|event)(?:Name|Title|Code|Reference)$/.exec(key);
+            const canonicalIdKey = named ? `${named[1]}Id` : '';
+            // When the command names a canonical id, an extra model-supplied
+            // display name cannot introduce a second, mismatching referent.
+            if (named && !(canonicalTables[canonicalIdKey] && args[canonicalIdKey])) {
+                references.add(value.trim());
+            }
+            if (/Id$/.test(key) && UUID_RE.test(value)) references.add(value);
+            const table = canonicalTables[key];
+            if (!table || !UUID_RE.test(value)) continue;
+            try {
+                // `table` is selected exclusively from the fixed allowlist above.
+                const rows = await this.query<Array<{ name: string }>>(schemaName, `SELECT name FROM ${table} WHERE id = $1::uuid LIMIT 1`, [value]);
+                if (typeof rows[0]?.name === 'string' && rows[0].name.trim()) references.add(rows[0].name.trim());
+            } catch {
+                // A name lookup failure cannot grant consent for an unknown
+                // name. The existing concise confirmation remains available.
+            }
+        }
+        return [...references].slice(0, 30);
     }
 
     private async resolveApproval(
@@ -1724,8 +2213,12 @@ export class ToolExecutionControlService {
             ticket = rows[0] || null;
         }
         if (!ticket) {
-            const expiresAt = new Date(Date.now() + APPROVAL_TTL_MS).toISOString();
-            const created = await this.prisma.transactionInTenantSchema(
+            const deadline = ledger.request_payload?.draftReview
+                ? Math.min(Date.now() + CONFIRMATION_TTL_MS, ledger.confirmation_expires_at
+                    ? new Date(ledger.confirmation_expires_at).getTime() : Infinity)
+                : Date.now() + APPROVAL_TTL_MS;
+            const expiresAt = new Date(deadline).toISOString();
+            const created = await this.transaction(
                 request.schemaName,
                 async (query) => {
                     const locked = await query<ExecutionLedgerRow[]>(
@@ -1793,27 +2286,16 @@ export class ToolExecutionControlService {
         if (ticket.status === 'rejected') {
             return this.block('approval_rejected', 'Una persona autorizada rechazó la acción.');
         }
-        if (ticket.status === 'approved') {
-            const updated = await this.query<ExecutionLedgerRow[]>(
-                request.schemaName,
-                `UPDATE tool_execution_ledger
-                    SET status = 'ready', updated_at = NOW()
-                  WHERE id = $1::uuid AND status = 'awaiting_approval'
-                  RETURNING *`,
-                [ledger.id],
-            );
-            return { allowed: true, ledger: updated[0] || ledger };
-        }
         if (new Date(ticket.expires_at).getTime() <= Date.now() || ticket.status === 'expired') {
             const expiredResult = {
                 error: 'approval_expired',
                 message: 'La aprobación humana venció. Solicita una nueva revisión.',
             };
-            await this.prisma.transactionInTenantSchema(request.schemaName, async (query) => {
+            await this.transaction(request.schemaName, async (query) => {
                 await query(
                     `UPDATE tool_approval_tickets
                         SET status = 'expired', resume_state = 'not_requested', updated_at = NOW()
-                      WHERE id = $1::uuid AND status = 'pending'`,
+                      WHERE id = $1::uuid AND status IN ('pending', 'approved')`,
                     [ticket!.id],
                 );
                 await query(
@@ -1831,6 +2313,17 @@ export class ToolExecutionControlService {
                 });
             });
             return this.block('approval_expired', expiredResult.message, true);
+        }
+        if (ticket.status === 'approved') {
+            const updated = await this.query<ExecutionLedgerRow[]>(
+                request.schemaName,
+                `UPDATE tool_execution_ledger
+                    SET status = 'ready', updated_at = NOW()
+                  WHERE id = $1::uuid AND status = 'awaiting_approval'
+                  RETURNING *`,
+                [ledger.id],
+            );
+            return { allowed: true, ledger: updated[0] || ledger };
         }
         return this.block('approval_required', 'La acción requiere aprobación humana antes de ejecutarse.', true);
     }
@@ -1975,6 +2468,7 @@ export class ToolExecutionControlService {
         const pending = this.initializedSchemas.get(schemaName);
         if (pending) return pending;
         const initialization = (async () => {
+            await this.query(schemaName,`CREATE TABLE IF NOT EXISTS customer_memory_erasure (contact_id UUID PRIMARY KEY, erased_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
             await this.query(
                 schemaName,
                 `CREATE TABLE IF NOT EXISTS tool_execution_ledger (
@@ -2061,6 +2555,8 @@ export class ToolExecutionControlService {
                     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
                 )`,
             );
+            await this.query(schemaName, APPROVAL_EFFECTS_DDL);
+            for (const statement of APPROVAL_EFFECTS_STATE_MIGRATION) await this.query(schemaName, statement);
             await this.query(
                 schemaName,
                 `ALTER TABLE tool_execution_ledger
@@ -2257,7 +2753,7 @@ export class ToolExecutionControlService {
     }
 
     private async expireApprovalIfStale(schemaName: string, ticketId: string): Promise<boolean> {
-        return this.prisma.transactionInTenantSchema(schemaName, async (query) => {
+        return this.transaction(schemaName, async (query) => {
             const rows = await query<Array<{
                 id: string;
                 execution_ledger_id: string;
@@ -2292,6 +2788,14 @@ export class ToolExecutionControlService {
         eventType: string,
         payload: Record<string, unknown>,
     ): Promise<void> {
+        const context=this.privacyTransaction.getStore();
+        if(context){
+            const contacts=await query<any[]>(`SELECT contact_id FROM tool_approval_tickets WHERE id=$1::uuid`,[ticketId]);
+            if(contacts[0]){
+                try{await this.assertContactActive(query,context.schemaName,contacts[0].contact_id);}
+                catch(error:any){if(error.message==='contact_erased')return;throw error;}
+            }
+        }
         const eventKey = `${eventType}:${ticketId}`;
         await query(
             `INSERT INTO tool_approval_outbox
@@ -2341,10 +2845,22 @@ export class ToolExecutionControlService {
         }
     }
 
+    /** Named resume displays a fresh proposal; it never confirms the old one. */
+    async pendingMissionForReview(schemaName: string, conversationId: string, contactId: string, ledgerId: string): Promise<{ ledgerId: string; toolName: string; args: Record<string, unknown> } | null> {
+        if (![conversationId, contactId, ledgerId].every(id => UUID_RE.test(id))) return null;
+        const rows = await this.query<ExecutionLedgerRow[]>(schemaName,
+            `SELECT * FROM tool_execution_ledger WHERE id=$3::uuid AND conversation_id=$1::uuid AND contact_id=$2::uuid
+              AND status='awaiting_confirmation' LIMIT 1`, [conversationId, contactId, ledgerId]);
+        const row = rows[0]; const args = row?.request_payload?.args;
+        return args && typeof args === 'object' && !Array.isArray(args) ? { ledgerId: row.id, toolName: row.tool_name, args: args as Record<string, unknown> } : null;
+    }
+
     async findPendingConfirmation(
         schemaName: string,
         conversationId: string,
         contactId: string,
+        customerReply?: string,
+        missionScope?: import('@parallext/shared').MissionExecutionScopeV1,
     ): Promise<{ ledgerId: string; toolName: string; args: Record<string, unknown> } | null> {
         if (!UUID_RE.test(conversationId) || !UUID_RE.test(contactId)) return null;
         try {
@@ -2364,6 +2880,23 @@ export class ToolExecutionControlService {
             if (!row) return null;
             const args = row.request_payload?.args;
             if (!args || typeof args !== 'object' || Array.isArray(args)) return null;
+            if (customerReply !== undefined) {
+                const claims = row.confirmation_token ? this.verifyConfirmationToken(row.confirmation_token) : null;
+                if (missionScope || claims?.mission) {
+                    if (!missionScope || claims?.mission?.id !== missionScope.missionId || claims.mission.revision !== missionScope.revision
+                        || missionScope.expectedReply?.kind !== 'confirmation' || missionScope.expectedReply.ledgerId !== row.id
+                        || missionScope.expectedReply.missionId !== missionScope.missionId) return null;
+                }
+                if (!claims || claims.ledgerId !== row.id || claims.toolName !== row.tool_name
+                    || claims.conversationId !== conversationId || claims.contactId !== contactId
+                    || claims.argsHash !== sha256(JSON.stringify(stableValue(args)))
+                    || Date.parse(claims.expiresAt) <= Date.now()) return null;
+                if (classifyExplicitToolConfirmation(customerReply, {
+                    effect: confirmationEffectForPolicy(getToolPolicy(row.tool_name)),
+                    country: await this.resolveOperatingCountry(claims.tenantId),
+                    acceptedReferents: claims.acceptedReferents,
+                }) !== 'confirmed') return null;
+            }
             return { ledgerId: row.id, toolName: row.tool_name, args: args as Record<string, unknown> };
         } catch (error: any) {
             // A missing control table (tenant that never ran a writer) is normal.
@@ -2372,7 +2905,28 @@ export class ToolExecutionControlService {
         }
     }
 
+    /** Nested control work shares the transaction that serializes with erasure. */
+    private transaction<T>(schemaName:string,callback:(query:TenantQuery)=>Promise<T>):Promise<T>{
+        const active=this.privacyTransaction.getStore();
+        if(active?.schemaName===schemaName)return callback(active.query);
+        return this.prisma.transactionInTenantSchema(schemaName,async query=>{
+            await query(`SELECT pg_advisory_xact_lock_shared(hashtextextended($1,0))::text`,[`agent-privacy:${schemaName}`]);
+            return this.privacyTransaction.run({schemaName,query},()=>callback(query));
+        });
+    }
+
+    private async assertContactActive(query:TenantQuery,schemaName:string,contactId:string|null){
+        if(!contactId)throw new Error('contact_erased');
+        // The enclosing shared privacy lock excludes the eraser's exclusive
+        // transaction without serializing unrelated customer operations.
+        const erased=await query<any[]>(`SELECT contact_id FROM customer_memory_erasure WHERE contact_id=$1::uuid`,[contactId]);
+        if(erased.length)throw new Error('contact_erased');
+    }
+
     private query<T = any[]>(schemaName: string, sql: string, params: any[] = []): Promise<T> {
+        const active=this.privacyTransaction.getStore();
+        if(active?.schemaName===schemaName)return active.query<T>(sql,params);
+        if(/^\s*(INSERT|UPDATE|DELETE|WITH)\b/i.test(sql))return this.transaction(schemaName,q=>q<T>(sql,params));
         return this.prisma.executeInTenantSchema<T>(schemaName, sql, params);
     }
 

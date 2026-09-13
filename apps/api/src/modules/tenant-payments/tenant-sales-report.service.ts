@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { appointmentPriceSql, appointmentCurrencySql } from '../appointments/appointment-service-terms';
 import { PrismaService } from '../prisma/prisma.service';
 import { EXPIRED_HOLD_STATUS, PENDING_PAYMENT_STATUS } from '../../common/utils/payment-policy.util';
 
@@ -74,8 +75,8 @@ const VENTAS_SQL = `
            status, hold_expires_at, created_at
       FROM tour_bookings
     UNION ALL
-    SELECT 'appointment' AS kind, a.id, COALESCE(s.currency, 'COP') AS currency,
-           ROUND(COALESCE(s.price, 0) * 100)::bigint AS total_cents,
+    SELECT 'appointment' AS kind, a.id, COALESCE(${appointmentCurrencySql('a', 's')}, 'COP') AS currency,
+           ROUND(COALESCE(${appointmentPriceSql('a', 's')}, 0) * 100)::bigint AS total_cents,
            CASE WHEN a.amount_due IS NULL THEN NULL ELSE ROUND(a.amount_due * 100)::bigint END AS due_cents,
            a.status, a.hold_expires_at, a.created_at
       FROM appointments a

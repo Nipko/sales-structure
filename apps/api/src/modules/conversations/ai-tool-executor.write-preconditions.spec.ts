@@ -1,5 +1,6 @@
 import { AIToolExecutorService } from './ai-tool-executor.service';
 import { authorityFor } from './__fixtures__/tool-authority.fixture';
+import { BadRequestException } from '@nestjs/common';
 
 /**
  * El "sÃ­" del huÃ©sped autorizÃ³ una escritura imposible.
@@ -87,7 +88,7 @@ describe('una reserva sobre un alojamiento inexistente no llega a la confirmaciÃ
 
     it('tampoco cuando el modelo manda el nombre en lugar del id', async () => {
         // getById valida el formato y tira; para este guard es el mismo caso.
-        const getById = jest.fn().mockRejectedValue(new Error('propertyId must be a valid UUID'));
+        const getById = jest.fn().mockRejectedValue(new BadRequestException('propertyId must be a valid UUID'));
         const { executor, control } = createExecutor(getById);
 
         const result = await executor.execute(
@@ -114,7 +115,7 @@ describe('una reserva sobre un alojamiento inexistente no llega a la confirmaciÃ
     });
 
     it('con la propiedad existente sigue de largo hasta el control', async () => {
-        const getById = jest.fn().mockResolvedValue({ id: PROPERTY_ID, is_active: true });
+        const getById = jest.fn().mockResolvedValue({ id: PROPERTY_ID, is_active: true, night_price: 180000 });
         const { executor, control } = createExecutor(getById);
 
         await executor.execute(
@@ -124,6 +125,37 @@ describe('una reserva sobre un alojamiento inexistente no llega a la confirmaciÃ
 
         expect(getById).toHaveBeenCalledWith(schemaName, PROPERTY_ID);
         expect(control.preflight).toHaveBeenCalled();
+    });
+
+    it('no pide confirmaciÃ³n para una propiedad activa sin tarifa', async () => {
+        const getById = jest.fn().mockResolvedValue({ id: PROPERTY_ID, is_active: true, night_price: 0 });
+        const { executor, control } = createExecutor(getById);
+
+        const result = await executor.execute(
+            schemaName, tenantId, contactId, 'create_property_booking', BOOKING_ARGS, conversationId,
+            { authority: authorityFor('create_property_booking') },
+        );
+
+        expect(result).toMatchObject({ error: 'property_rate_not_configured' });
+        expect(control.preflight).not.toHaveBeenCalled();
+    });
+
+    it('no presenta una caÃ­da del registro como si el alojamiento no existiera', async () => {
+        const getById = jest.fn().mockRejectedValue(new Error('SELECT night_price FROM tenant_secret.properties'));
+        const { executor, control } = createExecutor(getById);
+
+        const result: any = await executor.execute(
+            schemaName, tenantId, contactId, 'create_property_booking', BOOKING_ARGS, conversationId,
+            { authority: authorityFor('create_property_booking') },
+        );
+
+        expect(result).toMatchObject({
+            error: 'property_lookup_unavailable',
+            retryable: true,
+            shouldHandoff: true,
+        });
+        expect(JSON.stringify(result)).not.toContain('tenant_secret');
+        expect(control.preflight).not.toHaveBeenCalled();
     });
 
     it('no se mete con herramientas que no son esta', async () => {

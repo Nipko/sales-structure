@@ -21,6 +21,14 @@ export class ExternalCrmProcessor extends WorkerHost {
     }
 
     async process(job: Job<CrmSyncJob>): Promise<any> {
+        // Taking a note back is not a feature a tenant can lose by not paying.
+        // Every other job here is a push and is correctly gated; an erasure that
+        // stalled because a subscription lapsed would leave a person's summary
+        // in a third party's CRM for exactly as long as the invoice went unpaid.
+        if (job.data.operation === 'retractActivity') {
+            await this.service.runJob(job.data);
+            return { ok: true };
+        }
         const access = await resolveTenantSubscriptionAccess(this.prisma, job.data.tenantId, 'write');
         if (!access.allowed) {
             if (access.restrictionLevel === 'unavailable') throw new Error('subscription_entitlement_unavailable');

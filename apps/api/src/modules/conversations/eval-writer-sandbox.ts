@@ -264,6 +264,12 @@ export async function executeEvalSandboxMutation(
         case 'create_vehicle_rental':
         case 'create_pet_boarding': {
             const pet = toolName === 'create_pet_boarding';
+            // The same split production makes, and it is not cosmetic: the whole
+            // contract of `create_vehicle_rental` is "request received", never
+            // reserved or approved. Writing 'reserved' here made the sandbox
+            // certify the opposite of what the product does, so a positive case
+            // asserting that row would have proved the wrong thing.
+            const status = pet ? 'reserved' : 'pending_review';
             const span = dateSpan(args.startDate, args.endDate);
             const resourceId = pet
                 ? uuid(args.petId, EVAL_SANDBOX_FIXTURE_IDS.pet)
@@ -273,36 +279,18 @@ export async function executeEvalSandboxMutation(
                     (rental_type, resource_id, service_id, contact_id, customer_name, customer_phone,
                      start_date, end_date, status, notes, metadata)
                  VALUES ($1, $2::uuid, $3::uuid, $4::uuid, $5, $6, $7::date, $8::date,
-                         'reserved', $9, $10::jsonb)
+                         $11, $9, $10::jsonb)
                  RETURNING id::text`,
                 pet ? 'pet_boarding' : 'vehicle_rental', resourceId,
                 pet ? uuid(args.serviceId, EVAL_SANDBOX_FIXTURE_IDS.boardingService) : null,
                 contactId, pet ? 'Eval Pet Tutor' : text(args.driverName, 'Eval Driver', 255),
                 pet ? null : (args.driverPhone ? text(args.driverPhone, '', 50) : null),
-                span.start, span.end, args.notes ? text(args.notes, '', 1000) : null, metadata,
+                span.start, span.end, args.notes ? text(args.notes, '', 1000) : null, metadata, status,
             );
             const id = firstRowId(rows);
             return pet
-                ? { success: true, boarding: { id, status: 'reserved' }, evalSandbox: true }
-                : { success: true, rental: { id, status: 'reserved' }, evalSandbox: true };
-        }
-        case 'place_catalog_order': {
-            const items = Array.isArray(args.items) && args.items.length
-                ? args.items.slice(0, 50).map((item: any) => ({
-                    productId: uuid(item?.productId, EVAL_SANDBOX_FIXTURE_IDS.product),
-                    quantity: positiveInt(item?.quantity),
-                }))
-                : [{ productId: EVAL_SANDBOX_FIXTURE_IDS.product, quantity: 1 }];
-            rows = await db.$queryRawUnsafe(
-                `INSERT INTO "${schema}".orders
-                    (contact_id, conversation_id, items, total_amount, currency, status,
-                     payment_status, notes, metadata)
-                 VALUES ($1::uuid, $2::uuid, $3::jsonb, 0, 'COP', 'pending', 'pending', $4, $5::jsonb)
-                 RETURNING id::text`,
-                contactId, conversation, JSON.stringify(items),
-                args.notes ? text(args.notes, '', 1000) : null, metadata,
-            );
-            return { success: true, orderId: firstRowId(rows), status: 'pending', evalSandbox: true };
+                ? { success: true, boarding: { id, status }, evalSandbox: true }
+                : { success: true, rental: { id, status }, evalSandbox: true };
         }
         default:
             return { error: 'eval_writer_not_audited', tool: toolName, persisted: false };

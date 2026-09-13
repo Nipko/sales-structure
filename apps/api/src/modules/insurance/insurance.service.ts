@@ -1,5 +1,6 @@
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { OperationConfirmationService } from '../email-templates/operation-confirmation.service';
 import {
     assertOptionalContactId,
     requireTenantContact,
@@ -20,15 +21,39 @@ import {
 export class InsuranceService {
     private readonly logger = new Logger(InsuranceService.name);
 
-    constructor(private readonly prisma: PrismaService) {}
+    constructor(
+        private readonly prisma: PrismaService,
+        /**
+         * ═══ THE QUOTE RECEIPT `insurance.emailConfirmations` PROMISED ═══
+         *
+         * Declared by the contract, drawn as a switch by the editor — which
+         * names `insurance_quote_confirmation` — and read by NOTHING.
+         *
+         * The event is the quote being ISSUED, and the template says exactly
+         * that and no more: a premium was calculated and a formal proposal is
+         * coming. It does not say a policy is bound, because none is — the row
+         * is written `sent`, not `accepted`.
+         */
+        private readonly confirmations?: OperationConfirmationService,
+    ) {}
 
     // ── Plans ─────────────────────────────────────────────────────
 
-    async listPlans(schemaName: string, opts: { type?: string; coverageLevel?: string; includeInactive?: boolean } = {}): Promise<any[]> {
+    async listPlans(schemaName: string, opts: {
+        type?: string;
+        coverageLevel?: string;
+        includeInactive?: boolean;
+        /** Customer-facing catalogue: every returned plan can produce a non-zero quote. */
+        quotableOnly?: boolean;
+    } = {}): Promise<any[]> {
         const where: string[] = [];
         const params: any[] = [];
         let i = 1;
         if (!opts.includeInactive) where.push('is_active = true');
+        if (opts.quotableOnly) {
+            where.push('monthly_premium_min IS NOT NULL AND monthly_premium_min > 0');
+            where.push("currency IS NOT NULL AND currency <> ''");
+        }
         if (opts.type) { where.push(`insurance_type = $${i++}`); params.push(opts.type); }
         if (opts.coverageLevel) { where.push(`coverage_level = $${i++}`); params.push(opts.coverageLevel); }
         const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
@@ -146,11 +171,27 @@ export class InsuranceService {
         applicantPhone?: string;
         applicantData?: any;
         validDays?: number;
+        /**
+         * The thread the quote was asked for in, when there is one. It names
+         * the connection and therefore the agent whose switch decides the
+         * receipt; a quote typed by a broker at their desk has none.
+         */
+        conversationId?: string | null;
     }): Promise<any> {
         if (!data.planId) throw new BadRequestException('planId is required');
         const contactId = assertOptionalContactId(data.contactId);
         const plan = await this.getPlanById(schemaName, data.planId);
         if (!plan) throw new BadRequestException('Plan not found');
+        if (plan.is_active !== true
+            || !Number.isFinite(Number(plan.monthly_premium_min))
+            || Number(plan.monthly_premium_min) <= 0
+            || typeof plan.currency !== 'string'
+            || !plan.currency.trim()) {
+            throw new BadRequestException({
+                error: 'insurance_plan_not_quotable',
+                message: 'The insurance plan needs an active positive premium and currency before quoting.',
+            });
+        }
 
         const premium = this.calculatePremium(plan, data.applicantAge);
         const validUntil = new Date();
@@ -161,10 +202,11 @@ export class InsuranceService {
             return query<any[]>(`INSERT INTO insurance_quotes (
                 contact_id, plan_id, applicant_name, applicant_age,
                 applicant_email, applicant_phone, applicant_data,
-                monthly_premium, annual_premium, currency, valid_until, status
+                monthly_premium, annual_premium, currency, valid_until, status,
+                conversation_id
              ) VALUES (
                 $1::uuid, $2::uuid, $3, $4, $5, $6, $7::jsonb,
-                $8, $9, $10, $11::date, 'sent'
+                $8, $9, $10, $11::date, 'sent', $12::uuid
              ) RETURNING *`,
             [
                 contactId, data.planId,
@@ -173,9 +215,45 @@ export class InsuranceService {
                 JSON.stringify(data.applicantData || {}),
                 premium.monthly, premium.annual, plan.currency,
                 validUntil.toISOString().slice(0, 10),
+                data.conversationId || null,
             ]);
         });
-        return { ...rows[0], plan_name: plan.name, plan_type: plan.insurance_type };
+        const quote = rows[0];
+        // After the commit: an unreachable mail server must not turn an issued
+        // quote into a failed tool call.
+        await this.confirmQuote(schemaName, quote, plan);
+        return { ...quote, plan_name: plan.name, plan_type: plan.insurance_type };
+    }
+
+    /**
+     * The receipt for one issued quote.
+     *
+     * The address the applicant dictated counts as much as the contact's, and
+     * for somebody quoting for a relative it is often the only one given. The
+     * template's date/time rows are labelled "Fecha de solicitud" / "Hora de
+     * radicación", which is what they are: when the quote was raised, not an
+     * appointment.
+     */
+    private async confirmQuote(schemaName: string, quote: any, plan: any): Promise<void> {
+        if (!quote) return;
+        const raised = quote.created_at instanceof Date
+            ? quote.created_at.toISOString().slice(0, 19)
+            : String(quote.created_at ?? '').replace(' ', 'T').slice(0, 19);
+        await this.confirmations?.send({
+            schemaName,
+            families: ['insurance'],
+            slug: 'insurance_quote_confirmation',
+            conversationId: quote.conversation_id ?? null,
+            contactId: quote.contact_id ?? null,
+            email: quote.applicant_email ?? null,
+            operation: `insurance quote ${quote.id}`,
+            variables: {
+                service_name: String(plan?.name || plan?.insurance_type || ''),
+                appointment_date: raised.slice(0, 10),
+                appointment_time: raised.slice(11, 16),
+                agent_name: '',
+            },
+        });
     }
 
     async listQuotes(schemaName: string, opts: { contactId?: string; status?: string } = {}): Promise<any[]> {

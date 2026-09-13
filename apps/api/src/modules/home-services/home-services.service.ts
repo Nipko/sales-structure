@@ -20,12 +20,18 @@ import {
     serializeLocalTimestampRows,
 } from '../../common/utils/local-timestamp.util';
 import { resolveNativeEvidenceOpportunity } from '../../common/utils/native-evidence-opportunity.util';
+import type { EvalNamespaceLease } from '../simulation/isolated-eval-namespace';
 import {
     HomeServiceCatalogUnavailableError,
     HomeServiceSlotUnavailableError,
     inspectHomeServiceCapacity,
     lockAndAssertHomeServiceCapacity,
 } from './home-service-capacity';
+import {
+    enqueueOperationalNoticesForTenantRoles,
+    ensureOperationalNoticeOutbox,
+    operationalNoticesAllowed,
+} from '../operational-notices/operational-notice-outbox';
 
 const HOME_SERVICE_LOCAL_TIMESTAMPS = ['scheduled_at', 'completed_at'] as const;
 
@@ -54,15 +60,16 @@ export class HomeServicesService {
         category: string;
         durationMinutes: number;
         maxConcurrent: number;
+        durationType: string;
+        automaticScheduling: boolean;
     }>> {
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
             `SELECT id, name, COALESCE(category, 'otro') AS category,
-                    duration_minutes::int,
+                    duration_minutes::int, COALESCE(duration_type, 'fixed') AS duration_type,
                     COALESCE(max_concurrent, 1)::int AS max_concurrent
                FROM services
               WHERE is_active = true
-                AND duration_minutes > 0
               ORDER BY sort_order, name`,
             [],
         );
@@ -72,6 +79,10 @@ export class HomeServicesService {
             category: row.category,
             durationMinutes: Number(row.duration_minutes),
             maxConcurrent: Math.max(1, Number(row.max_concurrent) || 1),
+            durationType: row.duration_type,
+            // Open-duration work can be captured and quoted, but no automatic
+            // slot may be promised until a human supplies a time contract.
+            automaticScheduling: row.duration_type !== 'open' && Number(row.duration_minutes) > 0,
         }));
     }
 
@@ -128,7 +139,19 @@ export class HomeServicesService {
         return serializeLocalTimestampFields(rows[0], HOME_SERVICE_LOCAL_TIMESTAMPS);
     }
 
-    async createRequest(schemaName: string, data: any): Promise<any> {
+    /**
+     * `execution.sandboxNamespace` es el arriendo de una evaluación aislada.
+     *
+     * Presente, la solicitud se escribe igual —es lo que la evaluación mide—
+     * pero no crea avisos operativos. Se apaga por el arriendo y no por el
+     * nombre del schema, para que un llamador de producción no pueda quedarse
+     * sin aviso por parecerse a una prueba.
+     */
+    async createRequest(
+        schemaName: string,
+        data: any,
+        execution: { sandboxNamespace?: EvalNamespaceLease } = {},
+    ): Promise<any> {
         if (!data.serviceType) throw new BadRequestException('serviceType is required');
         const scheduledAt = data.scheduledAt === undefined || data.scheduledAt === null
             ? null
@@ -146,6 +169,10 @@ export class HomeServicesService {
         );
         const currency = normalizeCurrencyCode(data.currency);
         const contactId = assertOptionalContactId(data.contactId);
+        const durableEmergency = !execution.sandboxNamespace
+            && data.urgency === 'emergencia'
+            && operationalNoticesAllowed(schemaName);
+        if (durableEmergency) await ensureOperationalNoticeOutbox(this.prisma, schemaName);
         const sql = `INSERT INTO service_requests (
                 contact_id, opportunity_id, conversation_id, service_id, service_type, urgency,
                 customer_name, customer_phone, address, address_notes, city,
@@ -176,7 +203,7 @@ export class HomeServicesService {
 
         let rows: any[];
         try {
-            rows = contactId || data.opportunityId || status === 'scheduled'
+            rows = contactId || data.opportunityId || status === 'scheduled' || durableEmergency
                 ? await this.prisma.transactionInTenantSchema(schemaName, async (query) => {
                 const canonicalContactId = await requireTenantContact(query, contactId);
                 const opportunityId = await resolveNativeEvidenceOpportunity(query, {
@@ -194,7 +221,18 @@ export class HomeServicesService {
                     estimatedDurationMinutes = capacity.service.durationMinutes;
                     effectiveServiceType = capacity.service.category;
                 }
-                return query<any[]>(sql, buildParams(canonicalContactId, opportunityId));
+                const inserted = await query<any[]>(sql, buildParams(canonicalContactId, opportunityId));
+                const request = inserted[0];
+                if (durableEmergency && request) {
+                    await enqueueOperationalNoticesForTenantRoles(query, schemaName, {
+                        kind: 'home_service.emergency',
+                        entityId: request.id,
+                        contactId: request.contact_id,
+                        conversationId: request.conversation_id,
+                        roles: ['tenant_admin', 'tenant_supervisor'],
+                    });
+                }
+                return inserted;
             })
                 : await this.prisma.executeInTenantSchema<any[]>(
                     schemaName,
@@ -207,7 +245,7 @@ export class HomeServicesService {
         const request = rows[0];
         if (!request) throw new Error('Service request was not created');
         try {
-            this.eventEmitter.emit('service_request.created', {
+            if (!execution.sandboxNamespace) this.eventEmitter.emit('service_request.created', {
                 requestId: request.id,
                 tenantSchemaName: schemaName,
                 schemaName,
@@ -255,6 +293,7 @@ export class HomeServicesService {
         if (!Object.keys(map).some(key => key in data)) return this.getRequestById(schemaName, id);
 
         let request: any;
+        let becameScheduled = false;
         try {
             request = await this.prisma.transactionInTenantSchema(schemaName, async (query) => {
             const existing = await query<Array<{
@@ -276,6 +315,7 @@ export class HomeServicesService {
             if (!existing.length) throw new NotFoundException('Request not found');
 
             const finalStatus = data.status !== undefined ? data.status : existing[0].status;
+            becameScheduled = existing[0].status !== 'scheduled' && finalStatus === 'scheduled';
             const finalScheduledAt = data.scheduledAt !== undefined
                 ? data.scheduledAt
                 : existing[0].scheduled_at_text || existing[0].scheduled_at;
@@ -331,6 +371,17 @@ export class HomeServicesService {
         });
         } catch (error) {
             this.rethrowCapacityError(error);
+        }
+        if (becameScheduled && request) {
+            try {
+                this.eventEmitter.emit('service_request.scheduled', {
+                    requestId: request.id,
+                    tenantSchemaName: schemaName,
+                    schemaName,
+                });
+            } catch (error: any) {
+                this.logger.error(`service_request.scheduled listener failed after commit: ${error.message}`);
+            }
         }
         return serializeLocalTimestampFields(request, HOME_SERVICE_LOCAL_TIMESTAMPS);
     }

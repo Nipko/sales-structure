@@ -3,7 +3,7 @@
 import { useLang } from "./LangProvider";
 
 export default function LegalLangSwitcher() {
-    const { locale, setLocale, localeNames } = useLang();
+    const { locale, setLocale, localeNames, hydrated } = useLang();
     const label = locale === "es" ? "Idioma" :
         locale === "en" ? "Language" :
         locale === "pt" ? "Idioma" :
@@ -18,6 +18,7 @@ export default function LegalLangSwitcher() {
                 id="legal-language"
                 value={locale}
                 onChange={(e) => setLocale(e.target.value)}
+                disabled={!hydrated}
                 className="bg-surface text-sm text-text-primary border border-border rounded-lg px-3 py-1.5 outline-none cursor-pointer hover:border-accent transition-colors"
             >
                 {Object.entries(localeNames).map(([code, name]) => (

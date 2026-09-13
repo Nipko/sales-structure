@@ -19,7 +19,6 @@ describe('AgentConsoleService conversation ownership', () => {
             {} as any,
             {} as any,
             {} as any,
-            {} as any,
             { emit: jest.fn() } as any,
             {} as any,
         );

@@ -57,7 +57,7 @@ export const CATALOG_TOOLS: ToolDefinition[] = [
     // quedó registrado" and no order ever existed.
     {
         name: 'place_catalog_order',
-        description: 'Create a real order for catalog products. This is the only way an order actually gets recorded — never tell the customer their order is placed unless this succeeded. Call it after the customer confirmed WHAT they want and HOW MANY. Prices come from the catalog, never from you: pass the productId and quantity and the server prices it.',
+        description: 'Propose a real catalog order. The server returns current products, quantities, unit prices, total and currency for explicit customer confirmation before writing. A changed quote requires new confirmation. Success records a pending order only, never payment, shipment or delivery. Prescription products require human review.',
         parameters: {
             type: 'object',
             properties: {
@@ -77,6 +77,18 @@ export const CATALOG_TOOLS: ToolDefinition[] = [
             },
             required: ['items'],
         },
+    },
+    {
+        name:'list_my_catalog_orders', description:'List this customer’s own catalog orders to find an existing purchase before retrying or cancelling. Order status is separate from provider payment status; shipment is not tracked here.',
+        parameters:{type:'object',properties:{limit:{type:'integer',minimum:1,maximum:50}},required:[]},
+    },
+    {
+        name:'get_catalog_order', description:'Read one catalog order owned by the current customer, including its real lines, total, currency, order status and payment status. Never interpret operator status paid as provider settlement or claim delivery.',
+        parameters:{type:'object',properties:{orderId:{type:'string',description:'UUID from this customer’s listed orders'}},required:['orderId']},
+    },
+    {
+        name:'cancel_catalog_order', description:'Propose cancellation of an owned pending or confirmed unpaid catalog order. Requires explicit customer confirmation of the current version. Restores only inventory previously deducted by this order. Active payments, paid orders or missing stock evidence require human review. No refund, payment reversal or shipping cancellation is performed.',
+        parameters:{type:'object',properties:{orderId:{type:'string'},reason:{type:'string',maxLength:1000}},required:['orderId']},
     },
 ];
 

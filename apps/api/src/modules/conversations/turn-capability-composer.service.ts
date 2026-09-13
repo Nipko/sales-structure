@@ -1,3 +1,4 @@
+import type { ServiceExecutionContext } from '../../common/types/execution-context';
 import { Injectable, Logger } from '@nestjs/common';
 import {
     CAPABILITY_EXCLUSION_TEXT,
@@ -25,6 +26,7 @@ import {
 } from './tools/vertical-integration-tools';
 import { isNonCommittalTool, toolOrigin } from './tool-policy-registry';
 import { buildTurnAuthority, type TurnAuthorityInput } from './turn-authority';
+import type { EvalNamespaceLease } from '../simulation/isolated-eval-namespace';
 
 export interface ComposedTurnCapability {
     contract: EffectiveCapabilityContract | null;
@@ -38,6 +40,11 @@ export interface ComposedTurnCapability {
 }
 
 export interface ComposeTurnCapabilityInput {
+    /** Server-only evaluation adapter: already captured and integrity-checked, never a public DTO field. */
+    evaluationInputs?: { providerHealth: Record<string, any>; mcp: { tools: ToolDefinition[]; discoveredCount: number; approvedCount: number } };
+    executionContext?: ServiceExecutionContext;
+    /** Diagnostics request a fresh operational-data check after setup changes. */
+    refreshReadiness?: boolean;
     tenantId: string;
     schemaName: string;
     config: TenantConfig;
@@ -48,6 +55,8 @@ export interface ComposeTurnCapabilityInput {
     channelType?: string;
     operatingCountry?: string;
     jurisdiction?: string;
+    /** Server-owned lease; never accepted from an API payload. */
+    sandboxNamespace?: EvalNamespaceLease;
 }
 
 const PROVIDER_DEFINITIONS: Readonly<Record<string, ToolDefinition>> = Object.freeze({
@@ -119,9 +128,10 @@ export class TurnCapabilityComposerService {
         const cfgTools = input.config.tools ?? {};
         const deniedTools = [...subpermissionDeniedToolNames(cfgTools)];
         let providers: Readonly<Record<string, ProviderHealthInput>> | undefined;
+        let providerOwnershipUnavailable = false;
 
         try {
-            const health = await this.verticalIntegrations.getAllHealth(input.tenantId);
+            const health = input.evaluationInputs?.providerHealth ?? await this.verticalIntegrations.getAllHealth(input.tenantId);
             providers = Object.fromEntries(Object.entries(health).map(([name, value]: [string, any]) => [
                 name,
                 {
@@ -159,6 +169,7 @@ export class TurnCapabilityComposerService {
                     },
                 ]));
             } catch (bindingError: any) {
+                providerOwnershipUnavailable = true;
                 this.logger.debug(
                     `Provider ownership unavailable for ${input.tenantId}: ${bindingError?.message}`,
                 );
@@ -179,6 +190,10 @@ export class TurnCapabilityComposerService {
                 operatingCountry: input.operatingCountry,
                 jurisdiction: input.jurisdiction,
                 providers,
+                providerOwnershipUnavailable,
+                executionContext: input.executionContext,
+                refreshReadiness: input.refreshReadiness,
+                sandboxNamespace: input.sandboxNamespace,
             });
         } catch (error: any) {
             this.logger.warn(`Capability contract unresolved for ${input.tenantId}: ${error?.message}`);
@@ -219,7 +234,7 @@ export class TurnCapabilityComposerService {
             || (cfgTools as any)?.ecommerce?.canApplyDiscount === true;
         if (needsMoney) {
             try {
-                const paymentCapability = await this.paymentOperations.getRuntimeCapability(input.tenantId);
+                const paymentCapability = await this.paymentOperations.getRuntimeCapability(input.tenantId, input.executionContext);
                 const paymentTools = paymentToolsForRuntime((cfgTools as any).payments, paymentCapability);
                 const discountTools = discountToolsForRuntime({
                     canApplyDiscount: (cfgTools as any)?.ecommerce?.canApplyDiscount,
@@ -237,7 +252,7 @@ export class TurnCapabilityComposerService {
                             ? CAPABILITY_EXCLUSION_TEXT.provider_unavailable
                             : CAPABILITY_EXCLUSION_TEXT.plan_missing_feature,
                         repairRoute: paymentCapability.planEnabled
-                            ? '/admin/settings/integrations/vertical'
+                            ? '/admin/settings/integrations/payments'
                             : '/admin/settings/billing',
                     });
                 }
@@ -247,7 +262,7 @@ export class TurnCapabilityComposerService {
                     subject: 'payments',
                     reason: 'provider_unavailable',
                     detail: CAPABILITY_EXCLUSION_TEXT.provider_unavailable,
-                    repairRoute: '/admin/settings/integrations/vertical',
+                    repairRoute: '/admin/settings/integrations/payments',
                 });
                 this.logger.warn(`Payment capability unavailable for ${input.tenantId}: ${error?.message}`);
             }
@@ -256,7 +271,7 @@ export class TurnCapabilityComposerService {
         // MCP discovery is not authority. `listPublishableTools` already keeps
         // only tools whose effect/confirmation policy a person reviewed.
         try {
-            const mcp = await this.mcpClient.listPublishableTools(input.tenantId);
+            const mcp = input.evaluationInputs?.mcp ?? await this.mcpClient.listPublishableTools(input.tenantId, input.executionContext);
             tools = uniqueTools([...tools, ...mcp.tools]);
             if (mcp.discoveredCount > mcp.approvedCount) {
                 exclusions.push({

@@ -44,6 +44,53 @@ indicados abajo.
 | Email | Adaptador e ingreso técnico interno para integraciones administradas; `/admin/channels/email` redirige al inventario certificado y **no es una configuración autoservicio** |
 | SMS | Producto retirado para altas, configuración, compras y campañas nuevas; solo conserva saldo/historial/callbacks/cierre y administración necesarios para obligaciones legacy |
 
+Conectar una superficie crea la conexión técnica, pero no publica un agente. La
+configuración del agente se guarda como borrador, se prueba, se prepara y aprueba como
+candidato, y sólo entonces se publica. Las asignaciones de conexión y la condición de
+agente predeterminado del borrador toman efecto en esa publicación.
+
+## Costo de entrega de WhatsApp: quién le paga a Meta
+
+Desde el **1 de octubre de 2026**, Meta cobra cada **mensaje de servicio entregado** a la
+**cuenta de WhatsApp Business del tenant**. Parallly es proveedor de tecnología ante Meta:
+no paga ese consumo, no lo refactura y no lo incluye en ningún plan. El medio de pago vive
+en las herramientas de Meta, sobre la cuenta del tenant, y **una cuenta sin medio de pago
+válido deja de entregar los mensajes de servicio** — corta, no degrada. Instagram,
+Messenger, Telegram y el widget no tienen hoy un cobro por mensaje de servicio de su
+proveedor.
+
+La cuota gratis es de **1.000 mensajes de servicio por número y por mes calendario**, sin
+acumulación, cerrada en la zona horaria de la cuenta de WhatsApp Business; no cubre
+plantillas. Esa cifra y su fecha de vigencia no se transcriben a mano en ninguna
+superficie: salen de `WHATSAPP_FREE_SERVICE_ALLOWANCE`. Las tarifas tampoco se copian —
+Meta revisa sus tarjetas por trimestre y cobra según el país del destinatario.
+
+| Tema | Autoridad vigente |
+|------|-------------------|
+| Tarifas, cuota gratis y fecha de vigencia | `apps/api/src/modules/billing/whatsapp-rates/whatsapp-rate-table.generated.ts` |
+| Medición, reserva y conciliación del gasto | `apps/api/src/modules/billing/whatsapp-spend/` |
+| Autorización de cada envío cobrable | `whatsapp-send-admission.service.ts` |
+| Estado de cobro de un número y su pausa | `whatsapp-funding-readiness.ts`, `account-send-pause.ts` |
+| Superficie del tenant | `/admin/channels/whatsapp` → `WhatsappSpendPanel`, rutas `/whatsapp/spend/*` |
+| Reglas de Meta y tarjetas de tarifas | `docs/whatsapp-meta-pricing-2026-10.md` |
+
+Qué está construido y qué no, sin redondear:
+
+| Capacidad | Estado verificable |
+|-----------|--------------------|
+| Precio por mercado y categoría, cuota gratis por número y mes | Construido; funciones puras sobre tarjetas preservadas |
+| Reserva, liquidación y conciliación del gasto por envío | Construido; ledger transaccional por tenant |
+| Autorización en los tres puntos de salida de WhatsApp | Construido |
+| Lectura de gasto, cuota, pausas y reanudación por el tenant | Construido; Admin y Supervisor leen, sólo Admin reanuda |
+| Pausa de un número cuando Meta no puede facturarlo | Construido; por conexión, sin reintentos, entrante intacto |
+| **Frenar envíos al alcanzar un tope** | **Configurable por Tenant Admin** en Canales → WhatsApp. Empieza en `observe`; al activar la protección, `enforce` toma efecto inmediatamente y el cambio queda auditado |
+| Configurar un tope de gasto desde el producto | Se siembran 2.000 entregas por número y 60 por contacto cada mes, visibles en la tarjeta. La API autenticada permite leer y ajustar topes por alcance; el panel activa o desactiva su aplicación |
+
+Un tope acota lo que **Parallly** envía por esa conexión. No acota lo que otra herramienta
+conectada a la misma cuenta de WhatsApp Business le cobre a Meta, no es un límite que Meta
+aplique y no cambia la tarifa. Y un medio de pago "cargado" no garantiza que el cobro se
+apruebe: sólo dice que no es eso lo que falta.
+
 ## Cobros del tenant a sus clientes
 
 **Integraciones → Pagos** admite cuentas propias Wompi y Mercado Pago. El tenant
@@ -145,12 +192,23 @@ valores mostrados en **Configuración → Facturación** son los aplicables a la
 Las tablas de seeds o documentos fechados son referencias de fábrica, no una fuente
 contractual de límites vigentes.
 
-## Matriz de las 18 verticales
+## Matriz de verticales y perfiles de negocio
 
-Las 18 verticales están implementadas en el manifiesto v2, pero su estado de producto
-es **`implemented_not_certified`**: existe comportamiento respaldado por código, sin
+El contrato técnico contiene **20 industrias y 76 perfiles canónicos de negocio**. No
+son dos nombres para lo mismo: una vertical agrupa capacidades compartidas; cada perfil
+combina esa industria con un subtipo y decide qué herramientas, términos, rutas,
+readiness y límites corresponden. Hoy **18 industrias tienen al menos un perfil
+seleccionable**. `event_planning/weddings` y
+`construccion/contratista_general` permanecen en lista de espera y no se ofrecen en el
+alta. Además, cinco de las 18 industrias seleccionables contienen algún subtipo puntual
+en espera. El API entrega el catálogo completo con su disponibilidad para conservar a
+cuentas existentes; onboarding y creación administrativa filtran esa disponibilidad y
+el servidor vuelve a validarla al guardar.
+
+El estado de producto de los perfiles implementados sigue siendo
+**`implemented_not_certified`**: existe comportamiento respaldado por código, sin
 certificación E2E completa ni autorización para prometer paridad total con referentes
-del sector. La pantalla exacta depende del subtipo, capacidades publicadas, rol y plan.
+del sector. La pantalla exacta depende del perfil, capacidades publicadas, rol y plan.
 
 | ID canónico | Nombre | Base funcional / operación principal |
 |-------------|--------|--------------------------------------|
@@ -172,6 +230,10 @@ del sector. La pantalla exacta depende del subtipo, capacidades publicadas, rol 
 | `pet_services` | Servicios para mascotas | Agenda o hospedaje según subtipo |
 | `fotografia` | Fotografía | Sesiones fotográficas y seguimiento de entrega |
 | `otro` | Otro | Fallback genérico de CRM, catálogo y pedidos |
+
+Las otras dos entradas del manifiesto son `event_planning` y `construccion`. Sus
+perfiles actuales son de lista de espera y publican únicamente el alcance horizontal
+seguro; no se cuentan entre las 18 opciones que una cuenta nueva puede elegir.
 
 Para `turismo/hotel` y `turismo/alquiler_vacacional`, **Reservas** abre el registro
 directo `/admin/stays`; **Propiedades** es su catálogo. Si una unidad está vinculada

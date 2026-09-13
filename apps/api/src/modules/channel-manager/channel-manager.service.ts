@@ -189,6 +189,17 @@ export class ChannelManagerService {
         for (const statement of statements) await this.prisma.$queryRawUnsafe(statement);
     }
 
+    /** Read-only ownership evidence; evaluation never needs decrypted credentials. */
+    async getOwnershipConfig(tenantId: string): Promise<Pick<ChannelManagerConfig, 'provider' | 'syncInterval'> | null> {
+        const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true } });
+        if (!tenant) throw new NotFoundException('tenant_not_found');
+        const stored = (tenant.settings as any)?.channelManager;
+        if (!stored) return null;
+        if (!['hostaway', 'guesty', 'ical', 'direct'].includes(stored.provider))
+            throw new BadRequestException('channel_manager_provider_invalid');
+        return { provider: stored.provider, syncInterval: Number(stored.syncInterval) || 60 };
+    }
+
     async getConfig(tenantId: string): Promise<ChannelManagerConfig | null> {
         const tenant = await this.prisma.tenant.findUnique({
             where: { id: tenantId },

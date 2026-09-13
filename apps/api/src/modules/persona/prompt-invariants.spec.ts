@@ -23,6 +23,7 @@ describe('persona prompt invariants', () => {
     const baseConfig = (overrides: Record<string, any> = {}) => ({
         persona: { name: 'Sofía', role: 'Asistente', personality: {} },
         behavior: {
+            mainInstructions: 'Resuelve con claridad',
             rules: ['Sé breve'],
             forbiddenTopics: ['Diagnósticos médicos'],
             handoffTriggers: ['urgencia medica'],
@@ -55,6 +56,7 @@ describe('persona prompt invariants', () => {
             expect(prompt).not.toContain('<identity>');
             expect(prompt).not.toContain('<rules>');
             expect(prompt).not.toContain('Sé breve');
+            expect(prompt).not.toContain('Resuelve con claridad');
         });
 
         it('carries the no-pitch invariant into free-prompt mode too', () => {
@@ -167,6 +169,11 @@ describe('persona prompt invariants', () => {
             }) as any);
             expect(prompt).toContain('<required_information>');
             expect(prompt).toContain('name="name"');
+        });
+
+        it('places the structured editor main instructions inside the guided persona', () => {
+            const prompt = service.buildSystemPrompt(baseConfig() as any);
+            expect(prompt).toContain('<main_instructions>Resuelve con claridad</main_instructions>');
         });
     });
 });

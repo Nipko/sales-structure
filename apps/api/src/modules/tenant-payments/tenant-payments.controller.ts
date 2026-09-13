@@ -62,6 +62,33 @@ export class TenantPaymentsController {
         }
     }
 
+    /**
+     * Ensayo previo al despliegue: qué filas dejarían de poder cobrarse.
+     *
+     * Dos familias se niegan a cobrar cuando nadie registró lo que el cliente
+     * aceptó. Es la negativa correcta —cobrar una cifra que el cliente nunca vio
+     * es peor que no cobrar— y tiene una consecuencia que alguien tiene que ver
+     * ANTES: un pedido o una cita creados antes de que existiera el snapshot
+     * dejan de ser cobrables en cuanto corre el código nuevo, y su cliente se
+     * encuentra con un enlace que no funciona.
+     *
+     * Devuelve conteo, estados, fechas e IDs. **Ningún dato personal**: ni
+     * nombre, ni teléfono, ni monto. Un informe de operaciones no es motivo para
+     * copiar la lista de clientes a un log.
+     */
+    @Get(':tenantId/agreed-terms/orphans')
+    @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
+    @Roles('tenant_admin')
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Filas sin términos acordados que dejarían de ser cobrables' })
+    async getAgreedTermsOrphans(@Param('tenantId') tenantId: string) {
+        const [orphans, refusals] = await Promise.all([
+            this.service.agreedTermsOrphans(tenantId),
+            this.service.agreedTermsRefusals(tenantId),
+        ]);
+        return { success: true, data: { ...(orphans ?? {}), refusals } };
+    }
+
     /*
      * Las credenciales de cobro son dinero del negocio: sólo el dueño.
      * tenant_admin, igual que el resto de billing.

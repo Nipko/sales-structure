@@ -16,6 +16,7 @@ import {
     User,
     LogOut,
     Loader2,
+    HelpCircle,
     RefreshCw,
     Clock,
     Trash2,
@@ -23,6 +24,7 @@ import {
 } from "lucide-react";
 import { DisconnectChannelModal } from "@/components/ui/disconnect-channel-modal";
 import { HelpPanel } from "@/components/ui/help-panel";
+import { LoadFailureNotice } from "@/components/ui/load-failure";
 
 const BRAND_COLOR = "#E4405F";
 const INSTAGRAM_APP_ID = process.env.NEXT_PUBLIC_INSTAGRAM_APP_ID || "1472258884595741";
@@ -62,6 +64,7 @@ export default function InstagramSetupPage() {
     const { canAddChannelAccount } = usePlanLimits();
 
     const [status, setStatus] = useState<any>(null);
+    const [statusUnavailable, setStatusUnavailable] = useState(false);
     const [config, setConfig] = useState<{ webhookUrl?: string; verifyToken?: string } | null>(null);
 
     const [loading, setLoading] = useState(true);
@@ -76,8 +79,15 @@ export default function InstagramSetupPage() {
         try {
             const statusRes = await api.fetch("/channels/instagram/status");
             setStatus(statusRes);
+            setStatusUnavailable(false);
         } catch (e) {
+            // This page already separates "connected" from "token expired", so
+            // it clearly cares which failure a person is looking at. A failed
+            // status read deserves the same treatment instead of borrowing the
+            // word for the one state we can be sure about.
             console.error("Failed to load Instagram status", e);
+            setStatus(null);
+            setStatusUnavailable(true);
         }
         try {
             const configRes = await api.fetch("/channels/instagram/config");
@@ -229,13 +239,19 @@ export default function InstagramSetupPage() {
                 <div
                     className={cn(
                         "flex items-center gap-2 px-4 py-2 rounded-full text-[13px] font-semibold border",
-                        isConnected && !hasTokenError
-                            ? "bg-[rgba(0,214,143,0.1)] text-[var(--success)] border-[rgba(0,214,143,0.2)]"
-                            : "bg-[rgba(255,71,87,0.1)] text-[var(--danger)] border-[rgba(255,71,87,0.2)]"
+                        statusUnavailable
+                            ? "bg-[rgba(255,170,0,0.12)] text-[var(--warning)] border-[rgba(255,170,0,0.25)]"
+                            : isConnected && !hasTokenError
+                                ? "bg-[rgba(0,214,143,0.1)] text-[var(--success)] border-[rgba(0,214,143,0.2)]"
+                                : "bg-[rgba(255,71,87,0.1)] text-[var(--danger)] border-[rgba(255,71,87,0.2)]"
                     )}
                 >
-                    {isConnected && !hasTokenError ? <CheckCircle size={16} /> : <AlertCircle size={16} />}
-                    {isConnected && !hasTokenError ? t("connected") : t("disconnected")}
+                    {statusUnavailable
+                        ? <HelpCircle size={16} aria-hidden="true" />
+                        : isConnected && !hasTokenError
+                            ? <CheckCircle size={16} aria-hidden="true" />
+                            : <AlertCircle size={16} aria-hidden="true" />}
+                    {statusUnavailable ? t("statusUnknown") : isConnected && !hasTokenError ? t("connected") : t("disconnected")}
                 </div>
             </div>
 
@@ -245,6 +261,10 @@ export default function InstagramSetupPage() {
                 tips={tHelp.raw("channelsInstagram.tips") as string[]}
                 mediaKey="channelsInstagram"
             />
+
+            {statusUnavailable && (
+                <LoadFailureNotice className="mb-6" onRetry={() => { void loadData(); }} />
+            )}
 
             {/* Alert Message */}
             {message.text && (

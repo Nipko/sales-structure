@@ -63,6 +63,27 @@ describe('conteos canónicos', () => {
         }
     });
 
+    it('distingue las 20 industrias del contrato de las 18 que tienen una oferta seleccionable', () => {
+        const canonicalProfiles = listCanonicalSubtypeExperienceProfileIds().map((id) => {
+            const [industry, subtype] = id.split('/');
+            return resolveSubtypeExperienceProfile(
+                industry,
+                subtype === '__none__' ? null : subtype,
+            );
+        });
+        const offeredIndustries = new Set(
+            canonicalProfiles
+                .filter((profile) => profile.commercialisable)
+                .map((profile) => profile.industry),
+        );
+        const whollyWaitlisted = VERTICAL_MANIFEST_INDUSTRIES.filter(
+            (industry) => !offeredIndustries.has(industry),
+        );
+
+        expect([...offeredIndustries]).toHaveLength(18);
+        expect(whollyWaitlisted).toEqual(['event_planning', 'construccion']);
+    });
+
     it('los subtipos declarados por el manifiesto coinciden con los del registro', () => {
         for (const industry of VERTICAL_MANIFEST_INDUSTRIES) {
             const entry = VERTICAL_CAPABILITY_MANIFEST[industry];

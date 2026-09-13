@@ -265,6 +265,9 @@ describe('TenantPaymentStoreService creation recovery', () => {
         };
         const query = jest.fn()
             .mockResolvedValueOnce([])
+            .mockResolvedValueOnce([])
+            .mockResolvedValueOnce([{contact_id:CONTACT,status:'pending',payment_status:'pending',total_amount:'2500',currency:'COP'}])
+            .mockResolvedValueOnce([])
             .mockResolvedValueOnce([failed])
             .mockResolvedValueOnce([reopened]);
         const prisma = {
@@ -288,7 +291,7 @@ describe('TenantPaymentStoreService creation recovery', () => {
 
         expect(result).toMatchObject({ created: true, intent: { status: 'pending' } });
         expect(query).toHaveBeenNthCalledWith(
-            3,
+            6,
             expect.stringContaining("AND status = 'failed'"),
             [
                 INTENT_ID,
@@ -304,6 +307,9 @@ describe('TenantPaymentStoreService creation recovery', () => {
             provider_link_id: 'provider-link-present',
         });
         const query = jest.fn()
+            .mockResolvedValueOnce([])
+            .mockResolvedValueOnce([])
+            .mockResolvedValueOnce([{contact_id:CONTACT,status:'pending',payment_status:'pending',total_amount:'2500',currency:'COP'}])
             .mockResolvedValueOnce([])
             .mockResolvedValueOnce([failedWithSideEffect]);
         const prisma = {
@@ -325,6 +331,6 @@ describe('TenantPaymentStoreService creation recovery', () => {
         });
 
         expect(result).toMatchObject({ created: false, intent: { status: 'failed' } });
-        expect(query).toHaveBeenCalledTimes(2);
+        expect(query).toHaveBeenCalledTimes(5);
     });
 });

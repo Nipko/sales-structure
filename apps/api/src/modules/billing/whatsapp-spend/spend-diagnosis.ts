@@ -1,0 +1,388 @@
+import { formatMinorUnits } from '../whatsapp-rates';
+
+/**
+ * Why an effect may not be authorised, in terms somebody can act on.
+ *
+ * Each of these is a distinct human task. Collapsing them into "could not send"
+ * is how an operator ends up reading logs for an hour to discover that a tenant
+ * never set a time zone — so the code names the missing thing, and `resolution`
+ * says who fixes it and how.
+ *
+ * These are refusals to AUTHORISE, not transport failures: nothing has been sent
+ * and nothing has been charged when one of them is returned.
+ */
+
+export const SPEND_BLOCK_CODES = [
+    'connection_unusable',
+    'timezone_missing',
+    'payer_unknown',
+    'funding_not_ready',
+    'rate_unknown',
+    'currency_unknown',
+    'category_unknown',
+    'market_unknown',
+    'cap_exhausted',
+    'cap_soft_stop',
+    'duplicate_recent_send',
+    'effect_already_resolved',
+    'transmission_held_elsewhere',
+    'transmission_outcome_unknown',
+    'counter_currency_mismatch',
+    'task_budget_exhausted',
+    'account_paused',
+    'account_pause_unknown',
+    'effect_identity_missing',
+    'recipient_not_addressable',
+] as const;
+
+export type SpendBlockCode = (typeof SPEND_BLOCK_CODES)[number];
+
+/**
+ * ═══ A CONDITION THAT CLEARS IS NOT A DECISION THAT STANDS ═══
+ *
+ * The dispatch lane settles every refused admission as `suppressed`, on the
+ * reasoning that a ceiling does not become permissive by asking again. That is
+ * right about a ceiling and wrong about the codes below, and the difference is
+ * the difference between delaying a message and deleting one.
+ *
+ * A funding pause clears the moment somebody adds a card. A connection that
+ * cannot be read clears when the credential is repaired. Suppressing a
+ * committed effect for either means the confirmation of an order the customer
+ * already placed is thrown away — and R4 is explicit that a budget pause
+ * cancels no orders and erases no replies.
+ *
+ * So these settle as `failed`, which is retryable and keeps the payload, and
+ * the durable backoff is what stops them spinning. Everything else stays
+ * `suppressed`: a ceiling, a duplicate, an effect already resolved.
+ *
+ * `cap_soft_stop` is deliberately NOT here. It is a real decision — campaigns
+ * stand down so replies keep working — and a proactive effect that waits for
+ * the ceiling to reset is a campaign message arriving a month late.
+ *
+ * ── THE MISSING FIELDS BELONGED HERE ALL ALONG ──────────────────────────────
+ *
+ * The first version of this list held only the five funding and transport
+ * conditions, and everything else was suppressed by omission — including the
+ * codes that mean "a field this tenant has not filled in yet". The source says
+ * what it intended in as many words: the admission service refuses an
+ * unpriceable effect with *"the effect is DEFERRED rather than sent unpriced"*
+ * and *"Deferred, not sent unpriced"*. The lane then deleted it. A comment
+ * saying "deferred" over a mechanism that discards is the worst kind of wrong,
+ * because it reads as though somebody thought about it.
+ *
+ * These are not decisions anybody made. `waba_timezone` is a nullable column
+ * with a best-effort backfill, so `timezone_missing` can be the standing state
+ * of a real, working account — and under enforcement every durable message
+ * from that number was being destroyed rather than held. A rate card that does
+ * not yet cover a currency, a template whose Meta approval has not synced, a
+ * connection whose payer Meta has not told us: each clears without the customer
+ * ever knowing, provided the message is still there when it does.
+ *
+ * ── HOW LONG "KEPT" ACTUALLY IS, AND ON WHICH LANE ─────────────────────────
+ *
+ * This paragraph used to end at the sentence above, and an independent
+ * review measured what the sentence was worth: four retries thirty seconds
+ * apart, about two minutes, and then `suppressed`. No administrator attaches
+ * a card or sets a timezone inside two minutes, so "kept until the condition
+ * clears" described nothing that happens.
+ *
+ * The budget is now stated here in numbers, beside the list it is about, and
+ * `spendRetryDelaySeconds` below is what produces it. Two things bound it and
+ * both are elsewhere, so they are named rather than assumed:
+ * `DISPATCH_MAX_ATTEMPTS` is 5, and the outbox caps any single delay at an
+ * hour.
+ *
+ * ── AND WHERE IT DOES NOT APPLY AT ALL ──────────────────────────────────────
+ *
+ * `refusalMayClear` has ONE caller: the durable dispatch lane. The legacy
+ * `outbound_queue` sink, the operational-notice sink and the approved-effect
+ * sink all pass through a gate that collapses every code to the bare word
+ * `refused`, and drop the message with no retry whatsoever — which is the
+ * lane that carries every AI reply today, because the durable rollout is off
+ * by default.
+ *
+ * That is not fixed here, and saying so is the point: giving those three
+ * sinks a retry is a behaviour change on the busiest path in the platform,
+ * and it is not a change to make in the same breath as correcting a comment.
+ * What this list can honestly claim today is a durable-lane property. The
+ * three other sinks now at least name the code they dropped on, so an
+ * operator reading a job result is not sent to look at a ceiling.
+ */
+export const TRANSIENT_SPEND_BLOCKS: readonly SpendBlockCode[] = Object.freeze([
+    /** Meta refused to bill this business. Clears when funding is fixed. */
+    'account_paused',
+    /** We could not read the pause state. Clears when the store answers. */
+    'account_pause_unknown',
+    /** Funding was established as missing. Clears when a card is attached. */
+    'funding_not_ready',
+    /** The credential or the connection is unreadable. Clears when repaired. */
+    'connection_unusable',
+    /** The transmission right is held elsewhere right now. */
+    'transmission_held_elsewhere',
+    /** A nullable column an administrator can set at any moment. */
+    'timezone_missing',
+    /** Clears on a reconnect through Embedded Signup. */
+    'payer_unknown',
+    /** Clears when a published rate card covers that billing currency. */
+    'currency_unknown',
+    /** Clears when the template's Meta approval syncs into the catalogue. */
+    'category_unknown',
+    /** Clears when the rate card covers the market and category. */
+    'rate_unknown',
+    /**
+     * Clears when somebody settles which currency the period is kept in. It
+     * needs a person, which is not the same as needing a new decision about
+     * THIS message — and until they act, the effect is owed, not cancelled.
+     */
+    'counter_currency_mismatch',
+]);
+
+/**
+ * How long to wait before asking again, given the attempt just consumed.
+ *
+ * A ladder rather than a constant, because the conditions in this list are
+ * not all the same shape. A funding pause can clear in a minute — somebody
+ * is probably already looking at it — while a missing timezone or an
+ * unsynced template category needs a person who does not yet know they are
+ * needed. Thirty seconds flat served neither.
+ *
+ * With `DISPATCH_MAX_ATTEMPTS = 5` the row is admitted five times, so four
+ * of these delays are spent before it is suppressed:
+ *
+ *     60 + 300 + 900 + 1800  =  3060 seconds, about 51 minutes
+ *
+ * That is the number this list is entitled to claim, and it is bounded: an
+ * effect held longer than that is no longer an answer to anything, and the
+ * diagnosis that outlives it is what an operator reads.
+ *
+ * The wait costs nothing while it happens. The lane moves the job to a
+ * delayed date rather than sleeping on a worker, so an hour of backoff holds
+ * no slot.
+ */
+export function spendRetryDelaySeconds(attempt: number): number {
+    const ladder = [60, 300, 900, 1800];
+    const index = Math.min(Math.max(Math.trunc(attempt), 1), ladder.length) - 1;
+    return ladder[index];
+}
+
+/** Does this refusal describe a condition that can clear on its own? */
+export function refusalMayClear(code: string | null | undefined): boolean {
+    return !!code && (TRANSIENT_SPEND_BLOCKS as readonly string[]).includes(code);
+}
+
+export interface SpendBlock {
+    readonly code: SpendBlockCode;
+    /** Machine-readable context. Never a credential, never a phone number. */
+    readonly detail: string;
+    /** What was prevented, in minor units, when that is known. */
+    readonly avoidedMinor?: number | null;
+    readonly currency?: string | null;
+    /** The exact next action, in the operator's own terms. */
+    readonly resolution: string;
+    /** Narrowest thing that had to stop: one account, or one task. */
+    readonly scope: 'account' | 'task' | 'contact' | 'tenant';
+}
+
+const RESOLUTION: Readonly<Record<SpendBlockCode, { scope: SpendBlock['scope']; resolution: string }>> =
+Object.freeze({
+    connection_unusable: {
+        scope: 'account',
+        resolution: 'Reconnect this WhatsApp number in Channels; its connection or credential is not usable.',
+    },
+    timezone_missing: {
+        scope: 'account',
+        // Named specifically because the fix is one field and nobody guesses it
+        // from a generic failure: the rate and the free month are both dated in
+        // the WABA's own zone, and there is no safe default.
+        resolution: 'Set the billing time zone for this number: the rate date and the free monthly '
+            + 'allowance are both counted in the WhatsApp account\'s own zone.',
+    },
+    payer_unknown: {
+        scope: 'account',
+        resolution: 'Reconnect through Embedded Signup so Meta tells us which Business Account pays.',
+    },
+    funding_not_ready: {
+        scope: 'account',
+        resolution: 'Add a payment method to this WhatsApp Business Account in Meta. Meta charges the '
+            + 'business directly; the Parallly subscription is a separate payment.',
+    },
+    rate_unknown: {
+        scope: 'account',
+        resolution: 'No published rate covers this market and category yet. Allow sending at the declared '
+            + 'ceiling, or wait for the rate card.',
+    },
+    currency_unknown: {
+        scope: 'account',
+        resolution: 'The WhatsApp account\'s billing currency is not one we hold a rate card for.',
+    },
+    market_unknown: {
+        scope: 'contact',
+        // The tariff follows the destination country, and some destinations
+        // cannot be identified from the number alone: +1 is twenty countries
+        // and +7 is two that Meta prices differently. Guessing is a wrong
+        // invoice line, so the effect is counted and left unpriced.
+        resolution: 'The country of this recipient could not be identified from the number, so '
+            + 'no rate line applies. The message is still counted; its exact cost comes from '
+            + 'reconciliation against what Meta bills.',
+    },
+    category_unknown: {
+        scope: 'account',
+        // Named because the fix is concrete and nobody guesses it from a
+        // generic failure: a template whose Meta approval never synced has no
+        // category, and pricing it as a service reply understates a marketing
+        // send several times over.
+        resolution: 'This message could not be classified as one of the five billable '
+            + 'WhatsApp categories. Sync the templates for this number so the approved '
+            + 'category from Meta is known, or state the category on the producer.',
+    },
+    cap_exhausted: {
+        scope: 'account',
+        // ── AND WHAT A CEILING CANNOT PROMISE ───────────────────────────────
+        //
+        // It bounds what PARALLLY sends. The same WhatsApp account can be
+        // charged by another app on the same WABA, by somebody using Meta's own
+        // inbox, or by an obligation from before the limit existed — and the
+        // invoice will show all of it.
+        //
+        // Said here rather than only on a screen, because this sentence is what
+        // a person reads when the bill is larger than the ceiling they set. A
+        // limit that quietly implies it governs the whole account is a promise
+        // the product cannot keep, and the moment it is broken is the moment
+        // somebody stops believing every other number we show them.
+        resolution: 'Raise the spending limit for this scope, or wait for the period to roll over. '
+            + 'This limit covers what Parallly sends from this number; charges another app or '
+            + 'by the Meta inbox on the same WhatsApp account are outside it.',
+    },
+    transmission_held_elsewhere: {
+        scope: 'contact',
+        // Not an error and not a limit: the message IS being sent, by the
+        // attempt that got there first. This caller standing down is the
+        // mechanism working.
+        resolution: 'Another attempt already holds the right to send this message, so this one '
+            + 'stood down. Nothing is lost: the message goes out once, from whichever attempt '
+            + 'claimed it.',
+    },
+    counter_currency_mismatch: {
+        scope: 'account',
+        // Not a limit and not a fault of this message. The period's counter is
+        // keeping its numbers in one currency and this effect is priced in
+        // another; adding them would be arithmetic on two different things.
+        resolution: 'El contador de este período lleva sus cifras en una moneda y este mensaje '
+            + 'está tarifado en otra. Sumarlas daría un número sin sentido, así que se rechaza. '
+            + 'Hay que decidir en qué moneda va el período —normalmente la de la WABA que paga— '
+            + 'y migrar el contador explícitamente.',
+    },
+    transmission_outcome_unknown: {
+        scope: 'contact',
+        // The one refusal that is a DECISION not to retry. A previous attempt
+        // died with the request already started; whether Meta processed it
+        // cannot be established from here, and sending again would be the
+        // duplicate delivery the whole transmission right exists to prevent.
+        resolution: 'Un intento anterior ya había empezado la petición cuando se cayó. Nadie '
+            + 'puede saber si Meta la procesó, así que este mensaje NO se vuelve a enviar: el '
+            + 'efecto queda en conciliación y una persona decide si llegó.',
+    },
+    effect_already_resolved: {
+        scope: 'contact',
+        // Not a fault, and not a limit: the message this attempt is for has
+        // already had its outcome. Sending again would be a second copy of
+        // something the customer already received, or a guess about something
+        // nobody knows the result of yet.
+        resolution: 'This message already has an outcome — delivered, refused, or waiting on '
+            + 'reconciliation — so no further attempt is authorised for it. If it needs to be sent '
+            + 'again, that is a new message rather than a retry of this one.',
+    },
+    duplicate_recent_send: {
+        scope: 'contact',
+        // Named for what it is, so nobody reads it as a fault. The message was
+        // not lost and nothing is broken: this exact sentence was already
+        // delivered to this person a moment ago, by this producer or another
+        // one, and sending it again would buy a second charge and a second
+        // buzz on their phone for no new information.
+        resolution: 'This exact message was already delivered to this contact moments ago. '
+            + 'Check whether two automations cover the same event, or whether the agent is '
+            + 'repeating itself because a step cannot complete. An identical message is '
+            + 'allowed again once the repeat window passes.',
+    },
+    cap_soft_stop: {
+        scope: 'account',
+        // Deliberately a different sentence from cap_exhausted. This one is not
+        // an outage: replies to customers are still going out, and what stopped
+        // is what the business itself started. Reading them as the same thing is
+        // how somebody raises a ceiling in a panic that did not need raising.
+        resolution: 'The spending limit is nearly reached, so campaigns, reminders and follow-ups '
+            + 'are paused. Replies to customers who write in are still being sent. Raise the limit, '
+            + 'raise its soft-stop threshold, or wait for the period to roll over.',
+    },
+    task_budget_exhausted: {
+        scope: 'task',
+        resolution: 'This campaign or automation reached its own budget. Raise it to continue. '
+            + 'The budget covers what Parallly sends; it does not govern charges another app '
+            + 'makes on the same WhatsApp account.',
+    },
+    account_paused: {
+        scope: 'account',
+        resolution: 'This number is paused. Resolve the reason shown beside it and resume sending.',
+    },
+    account_pause_unknown: {
+        scope: 'account',
+        // Deliberately separate from `account_paused`. One says Meta refused to
+        // bill this account; the other says we could not find out. They need
+        // different words because they need different actions: the first is a
+        // card, the second is us.
+        resolution: 'No se pudo leer si este número está pausado por un problema de cobro en '
+            + 'Meta, así que no se envía. No es una pausa: es que no pudimos comprobarlo. Se '
+            + 'reintenta solo en cuanto la base responda; si persiste, es un incidente nuestro.',
+    },
+    recipient_not_addressable: {
+        scope: 'contact',
+        // Not a fault of the tenant's and not a limit: this customer wrote
+        // without a phone number, and the outbound half for a business-scoped
+        // destination is not built. Refusing HERE rather than at the transport
+        // is the whole point — by the time the adapter sees it, a reservation
+        // has been taken and a durable row committed for an effect that cannot
+        // land, and both have to be unwound.
+        resolution: 'Esta persona escribió sin número de teléfono, y todavía no sabemos '
+            + 'entregarle: el destino con identificador de usuario de Meta no está '
+            + 'implementado. El mensaje queda guardado y visible en el inbox; para '
+            + 'contestarle hace falta pedirle el teléfono, o esperar a que se implemente '
+            + 'ese destino.',
+    },
+    effect_identity_missing: {
+        scope: 'account',
+        // A producer defect, not a tenant one, so the sentence is written for
+        // whoever is looking at the log rather than for a business owner. The
+        // condition it prevents: an effect keyed only by its own content, where
+        // a retry that re-renders the body — a timestamp, a name, a price —
+        // mints a SECOND effect and pays for the same message twice.
+        resolution: 'This send carries no durable identity, so a retry could not be told from a '
+            + 'second message. The producer must bind it to something that survives a restart: '
+            + 'a dispatch item, a batch position, a persisted message row, a campaign and '
+            + 'recipient, the inbound message being answered, or its own queue job.',
+    },
+});
+
+export function spendBlock(code: SpendBlockCode, detail: string, money?: {
+    avoidedMinor?: number | null; currency?: string | null;
+}): SpendBlock {
+    return Object.freeze({
+        code, detail,
+        avoidedMinor: money?.avoidedMinor ?? null,
+        currency: money?.currency ?? null,
+        ...RESOLUTION[code],
+    });
+}
+
+/**
+ * One line an operator can read without opening the code.
+ *
+ * Says what was blocked, what it would have cost, and what to do — the three
+ * things a limit has to explain, in that order.
+ */
+export function describeBlock(block: SpendBlock): string {
+    const cost = block.avoidedMinor && block.currency
+        ? ` Avoided ${formatMinorUnits(block.avoidedMinor, block.currency)
+            ?? `${block.avoidedMinor} minor units of`} ${block.currency}.`
+        : '';
+    return `${block.code} (${block.scope}): ${block.detail}.${cost} ${block.resolution}`;
+}

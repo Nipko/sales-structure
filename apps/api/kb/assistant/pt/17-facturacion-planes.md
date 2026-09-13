@@ -3,7 +3,7 @@ id: facturacion-planes
 title: "Planos, faturamento e dados fiscais"
 routes: ["/admin/settings/billing", "/admin/settings/fiscal"]
 roles: ["tenant_admin"]
-keywords: ["planos", "precos", "faturamento", "pagamento", "metodo de pagamento", "mudar de plano", "teste", "ciclo", "fatura", "historico de pagamentos", "dados fiscais", "limite do plano", "creditos sms", "cupom", "cancelar assinatura"]
+keywords: ["planos", "precos", "faturamento", "pagamento", "metodo de pagamento", "mudar de plano", "teste", "ciclo", "fatura", "historico de pagamentos", "dados fiscais", "limite do plano", "creditos sms", "cupom", "cancelar assinatura", "meta cobra a parte", "o plano inclui whatsapp", "cobranca do whatsapp", "dois pagamentos", "fatura da meta"]
 ---
 
 # Planos, faturamento e dados fiscais
@@ -40,6 +40,16 @@ Essas ações só estão disponíveis quando aparecem na página. Antes de pausa
 
 As barras de uso indicam o período e a capacidade vigente. Ao atingir um limite, o comportamento depende do recurso: a página explica se é preciso liberar espaço, aguardar o próximo período ou escolher outra opção. Não use cotas copiadas de outra conta.
 
+## O que a Meta cobra à parte pelo WhatsApp
+
+Sua assinatura da Parallly paga o software. **Ela não paga as mensagens que o WhatsApp entrega.**
+
+A partir de **1º de outubro de 2026**, a Meta cobra da **sua própria conta do WhatsApp Business** cada mensagem de serviço entregue, com a forma de pagamento que você cadastrou **na Meta**. A Parallly não fatura isso, não paga por você e não inclui no plano; mudar de plano aqui não muda o que a Meta cobra. Cada número tem **1.000 mensagens de serviço grátis por mês civil**.
+
+Essa fatura não aparece em **Plano e faturamento**: quem a emite é a Meta e ela se consulta nas ferramentas da Meta. O que você vê na Parallly, em **Canais → WhatsApp**, é quanto já foi da cota grátis e quais números ficaram com o envio pausado. Os detalhes estão no artigo **Conectar o WhatsApp**.
+
+Se uma conta do WhatsApp Business ficar sem forma de pagamento válida, ela deixa de entregar as mensagens de serviço: o agente para de responder mesmo com a sua assinatura da Parallly em dia.
+
 ## Perguntas frequentes
 
 **Posso mudar de plano ou cancelar?**
@@ -47,6 +57,9 @@ Somente quando a ação estiver habilitada. Leia o resumo de confirmação para 
 
 **O teste exige um meio de pagamento?**
 Depende da opção disponível. O cadastro e **Plano e faturamento** mostram o requisito e qualquer data antes da confirmação.
+
+**Meu plano da Parallly inclui o que a Meta cobra pelo WhatsApp?**
+Não. São dois pagamentos separados: o plano é o software, e as mensagens entregues pelo WhatsApp são pagas pelo seu negócio à Meta com a forma de pagamento cadastrada na sua conta do WhatsApp Business.
 
 **Como obtenho uma fatura?**
 Confira o histórico e **Dados fiscais**. Se não aparecer download ou status de emissão, procure o suporte; não presuma que uma integração fiscal está ativa.

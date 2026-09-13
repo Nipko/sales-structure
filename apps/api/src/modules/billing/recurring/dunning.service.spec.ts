@@ -37,6 +37,7 @@ describe('DunningService', () => {
                 count: jest.fn().mockResolvedValue(0),
             },
             billingPaymentSource: { update: jest.fn().mockResolvedValue({}) },
+            billingEvent: { create: jest.fn().mockResolvedValue({ id: 'billing-event-1' }) },
             tenant: { update: jest.fn().mockResolvedValue({}) },
             $queryRaw: jest.fn().mockResolvedValue([]),
         };
@@ -178,8 +179,13 @@ describe('DunningService', () => {
             const patch = prisma.billingSubscription.updateMany.mock.calls[0][0].data;
             expect(patch.status).toBe(SubscriptionStatus.PAST_DUE);
             expect(patch.dunningState).toBe('soft_lock');
+            expect(prisma.billingEvent.create).toHaveBeenCalledWith(expect.objectContaining({
+                data: expect.objectContaining({ eventType: 'billing.subscription.soft_locked' }),
+            }));
             expect(emitter.emit).toHaveBeenCalledWith(
-                'billing.subscription.soft_locked', expect.objectContaining({ tenantId: 't1' }),
+                'billing.subscription.soft_locked', expect.objectContaining({
+                    tenantId: 't1', billingEventId: 'billing-event-1',
+                }),
             );
         });
 
@@ -193,8 +199,13 @@ describe('DunningService', () => {
 
             const patch = prisma.billingSubscription.updateMany.mock.calls[0][0].data;
             expect(patch.status).toBe(SubscriptionStatus.EXPIRED);
+            expect(prisma.billingEvent.create).toHaveBeenCalledWith(expect.objectContaining({
+                data: expect.objectContaining({ eventType: BillingEventType.SUBSCRIPTION_EXPIRED }),
+            }));
             expect(emitter.emit).toHaveBeenCalledWith(
-                BillingEventType.SUBSCRIPTION_EXPIRED, expect.objectContaining({ subscriptionId: 'sub-1' }),
+                BillingEventType.SUBSCRIPTION_EXPIRED, expect.objectContaining({
+                    subscriptionId: 'sub-1', billingEventId: 'billing-event-1',
+                }),
             );
             expect(queue.add).not.toHaveBeenCalled();
         });

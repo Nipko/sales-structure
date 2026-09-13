@@ -26,19 +26,29 @@ export class SmsSenderService {
 
     /** Send a transactional SMS from the tenant's Twilio number. Returns true if sent. */
     async sendToNumber(tenantId: string, to: string, body: string): Promise<boolean> {
-        if (!to || !body) return false;
-        // Interruptor maestro: apaga tambien el SMS que sale por el Twilio
-        // PROPIO del tenant. El costo no es nuestro, pero la decision fue no
-        // tener SMS en la plataforma, ni propio ni de tenants.
-        if (!(await this.killSwitch.isEnabled())) return false;
         try {
-            const creds = await this.channelToken.getChannelToken(tenantId, 'sms');
-            // accountId = tenant's Twilio "from" number; accessToken = "accountSid:authToken"
-            await this.smsAdapter.sendTextMessage(to, body, creds.accountId, creds.accessToken);
-            return true;
+            return !!await this.sendToNumberStrict(tenantId,to,body);
         } catch (e: any) {
             this.logger.warn(`Tenant ${tenantId} SMS to ${to} not sent: ${e.message}`);
             return false;
         }
+    }
+
+    /** Durable callers need the Twilio SID or the thrown provider outcome. */
+    async sendToNumberStrict(tenantId:string,to:string,body:string):Promise<string|null> {
+        const send=await this.prepareBoundedSend(tenantId,to,body);
+        return send();
+    }
+
+    /** Resolve every local precondition before a durable caller marks a POST started. */
+    async prepareBoundedSend(tenantId:string,to:string,body:string):Promise<()=>Promise<string>> {
+        if(!to||!body)throw new Error('sms_payload_invalid');
+        if(!(await this.killSwitch.isEnabled()))throw new Error('sms_kill_switch_disabled');
+        const creds=await this.channelToken.getChannelToken(tenantId,'sms');
+        return async()=>{
+            const sid=await this.smsAdapter.sendTextMessage(to,body,creds.accountId,creds.accessToken);
+            if(!sid)throw new Error('twilio_missing_message_sid');
+            return sid;
+        };
     }
 }

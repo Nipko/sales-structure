@@ -29,13 +29,19 @@ export interface LLMRequestOptions {
     jsonMode?: boolean;
 }
 
+/** Internal transport settings, separate from model input and tenant JSON. */
+export interface LLMTransportOptions {
+    /** The router revalidates source authority before each retry. */
+    maxRetries: 0;
+}
+
 export interface ILLMProvider {
     readonly providerName: string;
     
     /**
      * Generate text or tool calls from the model
      */
-    generate(options: LLMRequestOptions): Promise<LLMResponse>;
+    generate(options: LLMRequestOptions, transport?: LLMTransportOptions): Promise<LLMResponse>;
     
     /**
      * Generate a stream of text from the model

@@ -1,9 +1,16 @@
+import { whatsAppProviderRecipient } from '@parallext/shared';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { IChannelAdapter } from '../channel-gateway.service';
 import { NormalizedMessage, ChannelType } from '@parallext/shared';
 import { v4 as uuid } from 'uuid';
 import { toWhatsAppFormatting } from '../../../common/utils/channel-text-format.util';
+import { FlowSendFailed } from '../flow-fallback';
+import {
+    classifyTransportFailure, metaGraphAnswer, metaGraphClassifier,
+    type StrictDispatchOutcome, type StrictDispatchRequest, type StrictDispatchTransport,
+} from '../strict-dispatch-transport';
+import { foldableCaption } from '../native-caption';
 
 /**
  * WhatsApp Cloud API adapter
@@ -20,12 +27,177 @@ import { toWhatsAppFormatting } from '../../../common/utils/channel-text-format.
  * with their own placeholder format.
  */
 @Injectable()
-export class WhatsAppAdapter implements IChannelAdapter {
+export class WhatsAppAdapter implements IChannelAdapter, StrictDispatchTransport {
     readonly channelType: ChannelType = 'whatsapp';
     private readonly logger = new Logger(WhatsAppAdapter.name);
     private readonly apiUrl = 'https://graph.facebook.com/v25.0';
 
     constructor(private configService: ConfigService) {}
+
+    /**
+     * One remote effect, one classified outcome.
+     *
+     * Deliberately separate from the methods above: those throw a bare Error and
+     * the gateway turns every one of them into null, so a rejected number and a
+     * lost connection become the same thing. Here a Flow that timed out is never
+     * quietly replaced by a text message either — any fallback has to be its own
+     * admitted item, after a rejection somebody actually observed.
+     */
+    async sendStrict(request: StrictDispatchRequest, accessToken: string): Promise<StrictDispatchOutcome> {
+        // Meta accepts both a phone and a raw BSUID in `to`. The stored contact
+        // key carries `bsuid:<portfolio>:` to prevent cross-business identity
+        // collisions; strip only that verified envelope at the provider edge.
+        const recipient = whatsAppProviderRecipient(request.to);
+        if (!recipient) {
+            return {
+                kind: 'rejected',
+                errorCode: 'recipient_not_addressable',
+                retryable: false,
+            };
+        }
+        let body: Record<string, any>;
+        try { body = this.strictBody(request); }
+        catch (error: any) {
+            // A payload this adapter cannot express is a definite refusal, and
+            // retrying an unchangeable payload would only burn the budget.
+            return { kind: 'rejected', errorCode: String(error?.message || 'unsupported_payload'), retryable: false };
+        }
+        let response: Response;
+        try {
+            response = await fetch(`${this.apiUrl}/${request.channelAccountId}/messages`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ messaging_product: 'whatsapp', recipient_type: 'individual',
+                    to: recipient, ...body }),
+                signal: AbortSignal.timeout(10_000),
+            });
+        } catch (error) {
+            // No answer at all. The request may still have been processed.
+            return classifyTransportFailure(error);
+        }
+        let data: any = null;
+        try { data = await response.json(); } catch { data = null; }
+        // The Graph contract: an id or an error object, never both, never neither.
+        return metaGraphClassifier(metaGraphAnswer(response.status, data, 'messages'));
+    }
+
+    /** Build the body for exactly one effect. No caption riding on an image. */
+    private strictBody(request: StrictDispatchRequest): Record<string, any> {
+        const payload = request.payload || {};
+        if (request.itemKind === 'text' || request.itemKind === 'payment_link') {
+            const text = String(payload.text ?? '');
+            if (!text.trim()) throw new Error('empty_text_payload');
+            return { type: 'text', text: { body: toWhatsAppFormatting(text) } };
+        }
+        if (request.itemKind === 'media') {
+            const mediaUrl = String(payload.mediaUrl ?? '');
+            if (!mediaUrl.trim()) throw new Error('empty_media_payload');
+            const requested = String(payload.mediaType ?? 'image');
+            const type = ['image', 'document', 'audio', 'video'].includes(requested) ? requested : 'image';
+            const media: Record<string, any> = { link: mediaUrl };
+            // A caption attaches here ONLY when Meta treats the result as one
+            // message — image, video, document, within 1,024 characters. That is
+            // one charge, one acceptance and one receipt, so the outbox's rule
+            // holds. Audio has no caption field at Meta and anything longer is a
+            // rejected payload, so `foldableCaption` answers null and the caption
+            // arrives as its own item, exactly as before. `builDispatchItems`
+            // consults the same function, so the item it built and the body sent
+            // here can never disagree about whether a caption was folded.
+            const caption = foldableCaption('whatsapp', type, payload.caption as string | undefined);
+            if (caption) media.caption = toWhatsAppFormatting(caption);
+            if (type === 'document' && payload.filename) media.filename = String(payload.filename);
+            return { type, [type]: media };
+        }
+        if (request.itemKind === 'template') {
+            // An APPROVED template: Meta renders the words from its own
+            // catalogue, and this call supplies only which template, in which
+            // language, with which values. Refused rather than guessed when
+            // either identifier is missing — a template send with no name is a
+            // 400, and a 400 after the reservation is a charge for nothing.
+            const templateName = String(payload.templateName ?? '');
+            const language = String(payload.language ?? '');
+            if (!templateName.trim() || !language.trim()) {
+                throw new Error('incomplete_template_payload');
+            }
+            return {
+                type: 'template',
+                template: {
+                    name: templateName,
+                    language: { code: language },
+                    ...(Array.isArray(payload.components) && payload.components.length
+                        ? { components: payload.components } : {}),
+                },
+            };
+        }
+        if (request.itemKind === 'interactive') {
+            // Buttons and lists. The shape Meta accepts is `{type, body,
+            // action}` with an optional header and footer, and the caller hands
+            // it over already shaped — this method does not invent options.
+            //
+            // Refused rather than downgraded when the shape is wrong: a menu
+            // flattened into a text message loses the tap, and the tap is the
+            // whole point. The customer would be asked to type an answer the
+            // agent then has to guess at.
+            const type = String(payload.type ?? '');
+            if (!['button', 'list'].includes(type)) throw new Error('unsupported_interactive_type');
+            const body = String(payload.body ?? payload.text ?? '');
+            if (!body.trim()) throw new Error('empty_interactive_payload');
+            const action = payload.action;
+            if (!action || typeof action !== 'object' || Array.isArray(action)) {
+                throw new Error('empty_interactive_payload');
+            }
+            const interactiveMenu: Record<string, any> = {
+                type,
+                body: { text: toWhatsAppFormatting(body).slice(0, 1024) },
+                action,
+            };
+            if (payload.headerText) {
+                interactiveMenu.header = { type: 'text', text: String(payload.headerText).slice(0, 60) };
+            }
+            if (payload.footerText) {
+                interactiveMenu.footer = { text: String(payload.footerText).slice(0, 60) };
+            }
+            return { type: 'interactive', interactive: interactiveMenu };
+        }
+        if (request.itemKind === 'location') {
+            // A pin the customer opens in their own maps app. Coordinates are
+            // the message: without both there is nothing to send, and sending
+            // the address as text instead is a different message that the
+            // customer has to copy out by hand.
+            const latitude = Number(payload.latitude);
+            const longitude = Number(payload.longitude);
+            if (!Number.isFinite(latitude) || !Number.isFinite(longitude)
+                || Math.abs(latitude) > 90 || Math.abs(longitude) > 180) {
+                throw new Error('invalid_location_payload');
+            }
+            return { type: 'location', location: {
+                latitude, longitude,
+                ...(payload.name ? { name: String(payload.name).slice(0, 1000) } : {}),
+                ...(payload.address ? { address: String(payload.address).slice(0, 1000) } : {}),
+            } };
+        }
+        const flowId = String(payload.flowId ?? '');
+        const flowToken = String(payload.flowToken ?? '');
+        if (!flowId.trim() || !flowToken.trim()) throw new Error('incomplete_flow_payload');
+        const interactive: Record<string, any> = {
+            type: 'flow',
+            body: { text: toWhatsAppFormatting(String(payload.text ?? '')).slice(0, 1024) },
+            action: { name: 'flow', parameters: {
+                flow_message_version: '3', flow_token: flowToken, flow_id: flowId,
+                flow_cta: String(payload.flowCta || 'Agendar').slice(0, 20),
+                mode: payload.flowMode === 'draft' ? 'draft' : 'published',
+                flow_action: 'navigate',
+                flow_action_payload: {
+                    screen: String(payload.initialScreen || 'SERVICE_SELECTION'),
+                    ...(payload.initialData && Object.keys(payload.initialData).length
+                        ? { data: payload.initialData } : {}),
+                },
+            } },
+        };
+        if (payload.headerText) interactive.header = { type: 'text', text: String(payload.headerText).slice(0, 60) };
+        if (payload.footerText) interactive.footer = { text: String(payload.footerText).slice(0, 60) };
+        return { type: 'interactive', interactive };
+    }
 
     /**
      * Mark a message as read (blue checks) via Meta API.
@@ -66,6 +238,8 @@ export class WhatsAppAdapter implements IChannelAdapter {
      */
     async sendTypingIndicator(phoneNumberId: string, to: string, accessToken: string): Promise<void> {
         if (!phoneNumberId || !to) return;
+        const recipient = whatsAppProviderRecipient(to);
+        if (!recipient) return;
 
         try {
             const url = `${this.apiUrl}/${phoneNumberId}/messages`;
@@ -78,7 +252,7 @@ export class WhatsAppAdapter implements IChannelAdapter {
                 body: JSON.stringify({
                     messaging_product: 'whatsapp',
                     recipient_type: 'individual',
-                    to,
+                    to: recipient,
                     type: 'typing_indicator',
                     typing_indicator: {
                         type: 'text',
@@ -164,6 +338,7 @@ export class WhatsAppAdapter implements IChannelAdapter {
      */
     async sendTextMessage(to: string, text: string, phoneNumberId: string, accessToken: string): Promise<string> {
         const url = `${this.apiUrl}/${phoneNumberId}/messages`;
+        const recipient = this.requireRecipient(to);
 
         const response = await fetch(url, {
             method: 'POST',
@@ -174,7 +349,7 @@ export class WhatsAppAdapter implements IChannelAdapter {
             body: JSON.stringify({
                 messaging_product: 'whatsapp',
                 recipient_type: 'individual',
-                to,
+                to: recipient,
                 type: 'text',
                 text: { body: toWhatsAppFormatting(text) },
             }),
@@ -204,6 +379,7 @@ export class WhatsAppAdapter implements IChannelAdapter {
         filename?: string,
     ): Promise<string> {
         const url = `${this.apiUrl}/${phoneNumberId}/messages`;
+        const recipient = this.requireRecipient(to);
 
         // Build the per-type media object. Documents carry a filename; audio has no caption.
         const type = ['image', 'document', 'audio', 'video'].includes(mediaType) ? mediaType : 'image';
@@ -220,7 +396,7 @@ export class WhatsAppAdapter implements IChannelAdapter {
             body: JSON.stringify({
                 messaging_product: 'whatsapp',
                 recipient_type: 'individual',
-                to,
+                to: recipient,
                 type,
                 [type]: mediaObj,
             }),
@@ -349,10 +525,11 @@ export class WhatsAppAdapter implements IChannelAdapter {
         sections: Array<{ title: string; rows: Array<{ id: string; title: string; description?: string }> }>,
     ): Promise<string> {
         const url = `${this.apiUrl}/${phoneNumberId}/messages`;
+        const recipient = this.requireRecipient(to);
         const payload = {
             messaging_product: 'whatsapp',
             recipient_type: 'individual',
-            to,
+            to: recipient,
             type: 'interactive',
             interactive: {
                 type: 'list',
@@ -401,6 +578,7 @@ export class WhatsAppAdapter implements IChannelAdapter {
         buttons: Array<{ id: string; title: string }>,
     ): Promise<string> {
         const url = `${this.apiUrl}/${phoneNumberId}/messages`;
+        const recipient = this.requireRecipient(to);
         this.logger.log(`[WhatsApp] Sending button message with ${buttons.length} buttons`);
         const response = await fetch(url, {
             method: 'POST',
@@ -408,7 +586,7 @@ export class WhatsAppAdapter implements IChannelAdapter {
             body: JSON.stringify({
                 messaging_product: 'whatsapp',
                 recipient_type: 'individual',
-                to,
+                to: recipient,
                 type: 'interactive',
                 interactive: {
                     type: 'button',
@@ -458,6 +636,7 @@ export class WhatsAppAdapter implements IChannelAdapter {
         },
     ): Promise<string> {
         const url = `${this.apiUrl}/${phoneNumberId}/messages`;
+        const recipient = this.requireRecipient(to);
         const interactive: any = {
             type: 'flow',
             body: { text: toWhatsAppFormatting(body || '').slice(0, 1024) },
@@ -485,23 +664,40 @@ export class WhatsAppAdapter implements IChannelAdapter {
         if (opts?.footerText) interactive.footer = { text: opts.footerText.slice(0, 60) };
 
         this.logger.log(`[WhatsApp] Sending Flow message (flow_id=${flowId})`);
-        const response = await fetch(url, {
+        // Every failure below carries what it knows. A bare `Error(message)` is
+        // what made a ten-second timeout indistinguishable from a 400 for an
+        // unpublished flow — and the caller then sent a second message on both.
+        let response: Response;
+        try {
+            response = await fetch(url, {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 messaging_product: 'whatsapp',
                 recipient_type: 'individual',
-                to,
+                to: recipient,
                 type: 'interactive',
                 interactive,
             }),
             signal: AbortSignal.timeout(10_000),
-        });
-        const data = await response.json() as any;
+            });
+        } catch (error: any) {
+            // No answer at all. The request may have been processed.
+            throw new FlowSendFailed(String(error?.message || error), { cause: error });
+        }
+        let data: any = null;
+        try { data = await response.json(); } catch { data = null; }
         if (!response.ok) {
             this.logger.error(`WhatsApp Flow message failed: ${JSON.stringify(data)}`);
-            throw new Error(data.error?.message || 'Flow message failed');
+            throw new FlowSendFailed(data?.error?.message || 'Flow message failed',
+                { status: response.status, body: data });
         }
-        return data.messages?.[0]?.id || '';
+        return data?.messages?.[0]?.id || '';
+    }
+
+    private requireRecipient(address: string): string {
+        const recipient = whatsAppProviderRecipient(address);
+        if (!recipient) throw new Error('recipient_not_addressable');
+        return recipient;
     }
 }

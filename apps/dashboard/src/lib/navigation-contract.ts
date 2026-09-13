@@ -55,6 +55,7 @@ const NAVIGATION_ROUTE_DEFINITIONS = [
   // Shared / tenant home and daily work
   { id: "tenantHome", pattern: "/admin", titleKey: "nav.items.home", scope: "shared" },
   { id: "inbox", pattern: "/admin/inbox", titleKey: "nav.items.conversations", scope: "tenant" },
+  { id: "operationalNotices", pattern: "/admin/operational-notices", titleKey: "operationalNotices.title", scope: "tenant", parentId: "inbox" },
   { id: "conversations", pattern: "/admin/conversations", titleKey: "nav.items.conversations", scope: "tenant", discoverable: false },
   { id: "contacts", pattern: "/admin/contacts", titleKey: "nav.items.crm", scope: "tenant" },
   { id: "contactDetail", pattern: "/admin/contacts/:leadId", titleKey: "navigation.routes.contactDetail", scope: "tenant", parentId: "contacts", dynamicTitleParam: "leadId" },
@@ -67,6 +68,13 @@ const NAVIGATION_ROUTE_DEFINITIONS = [
   { id: "agents", pattern: "/admin/agent", titleKey: "nav.items.aiAgent", scope: "tenant" },
   { id: "agentDetail", pattern: "/admin/agent/:agentId", titleKey: "navigation.routes.agentDetail", scope: "tenant", parentId: "agents", dynamicTitleParam: "agentId" },
   { id: "agentTest", pattern: "/admin/agent/:agentId/test", titleKey: "nav.items.agentSimulation", scope: "tenant", parentId: "agentDetail" },
+  { id: "agentLearning", pattern: "/admin/agent/:agentId/learning", titleKey: "agentLearning.openWorkspace", scope: "tenant", parentId: "agentDetail" },
+  { id: "agentRegressions", pattern: "/admin/agent/:agentId/regressions", titleKey: "qualityRegressions.openWorkspace", scope: "tenant", parentId: "agentDetail" },
+  { id: "agentReleases", pattern: "/admin/agent/:agentId/releases", titleKey: "agentReleases.openWorkspace", scope: "tenant", parentId: "agentDetail" },
+  // Publication is the step after an approved candidate, so it sits beside the
+  // review workspace rather than inside the editor: the editor reads a
+  // configuration, this decides which one customers get.
+  { id: "agentPublications", pattern: "/admin/agent/:agentId/publications", titleKey: "agentPublications.openWorkspace", scope: "tenant", parentId: "agentDetail" },
   { id: "agentQuality", pattern: "/admin/agent/quality", titleKey: "nav.items.agentQuality", scope: "tenant" },
   { id: "agentSimulation", pattern: "/admin/agent/simulation", titleKey: "nav.items.agentSimulation", scope: "tenant", parentId: "agents" },
   { id: "procedures", pattern: "/admin/procedures", titleKey: "nav.items.procedures", scope: "tenant" },
@@ -92,6 +100,16 @@ const NAVIGATION_ROUTE_DEFINITIONS = [
 
   // Channels
   { id: "channels", pattern: "/admin/channels", titleKey: "nav.items.channels", scope: "tenant" },
+  // Platform-scoped, not tenant-scoped: it says what the PRODUCT can do on each
+  // channel, which is the same answer for every tenant.
+  // `shared`, not `platform`. The API serves this matrix to super_admin,
+  // tenant_admin and tenant_supervisor alike — it answers what the PRODUCT
+  // certified, which is the same for every tenant — and `roles.ts` reaches it
+  // through the `/admin/channels` rule, which admits a tenant admin and admits
+  // a super_admin only while impersonating. Declaring it platform therefore
+  // named the one role that cannot open it, and pointed the return target of
+  // everyone who can at the platform tenant hub.
+  { id: "channelCertification", pattern: "/admin/channels/certification", titleKey: "navigation.routes.channelCertification", scope: "shared", parentId: "channels", discoverable: false },
   { id: "channelEmail", pattern: "/admin/channels/email", titleKey: "navigation.routes.channelEmail", scope: "tenant", parentId: "channels", discoverable: false },
   { id: "channelInstagram", pattern: "/admin/channels/instagram", titleKey: "navigation.routes.channelInstagram", scope: "tenant", parentId: "channels" },
   { id: "channelInstagramCallback", pattern: "/admin/channels/instagram/callback", titleKey: "navigation.routes.channelInstagramCallback", scope: "tenant", parentId: "channelInstagram", discoverable: false },
@@ -187,6 +205,9 @@ const NAVIGATION_ROUTE_DEFINITIONS = [
   { id: "platformTenants", pattern: "/admin/tenants", titleKey: "nav.items.tenants", scope: "platform" },
   { id: "platformTenantDetail", pattern: "/admin/tenants/:tenantId", titleKey: "navigation.routes.platformTenantDetail", scope: "platform", parentId: "platformTenants", dynamicTitleParam: "tenantId" },
   { id: "platformOps", pattern: "/admin/ops", titleKey: "nav.items.ops", scope: "platform" },
+  // How replies leave the system is a platform decision, never a tenant's own
+  // setting, so this lives outside any tenant scope and picks its tenant.
+  { id: "platformDispatch", pattern: "/admin/dispatch", titleKey: "nav.items.dispatchOperations", scope: "platform" },
   { id: "platformIntegrationOutbox", pattern: "/admin/ops/integrations", titleKey: "nav.items.integrationOutbox", scope: "platform", parentId: "platformOps" },
   { id: "platformOpsAlerts", pattern: "/admin/ops/alerts", titleKey: "topbar.breadcrumbs.alerts", scope: "platform", parentId: "platformOps" },
   { id: "platformIncidents", pattern: "/admin/incidents", titleKey: "nav.items.incidents", scope: "platform" },

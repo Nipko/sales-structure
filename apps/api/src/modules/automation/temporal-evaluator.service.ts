@@ -104,7 +104,9 @@ export class TemporalEvaluatorService {
         ).catch(() => [] as any[]);
         if (!rules.length) return 0;
 
-        if (await this.throttle.isLimited(tenantId, 'automation')) {
+        // Merely scanning due work cannot consume quota. Each queued action
+        // reserves its own stable slot inside AutomationJobsProcessor.
+        if (await this.throttle.isOverLimit(tenantId, 'automation')) {
             this.logger.warn(`[Temporal] tenant ${tenantId} rate limited — se omite la corrida`);
             return 0;
         }
@@ -249,7 +251,8 @@ export class TemporalEvaluatorService {
             `SELECT DISTINCT l.contact_id
              FROM opt_out_records o
              JOIN leads l ON l.id = o.lead_id
-             WHERE l.contact_id = ANY($1::uuid[]) AND o.status <> 'rejected'`,
+             WHERE l.contact_id = ANY($1::uuid[])
+               AND o.status IN ('pending', 'confirmed')`,
             [ids],
         ).catch(() => [] as any[]);
         return new Set(rows.map(r => r.contact_id));

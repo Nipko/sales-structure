@@ -59,8 +59,10 @@ export class AutomationListenerService {
                 return;
             }
 
-            // 3. Check tenant rate limit before queueing any jobs
-            if (await this.throttle.isLimited(event.tenantId, 'automation')) {
+            // 3. Read the tenant limit before discovering work. This must not
+            // consume a slot: the processor atomically reserves one slot for
+            // each stable BullMQ job after subscription admission succeeds.
+            if (await this.throttle.isOverLimit(event.tenantId, 'automation')) {
                 this.logger.warn(
                     `[AutomationListener] Tenant ${event.tenantId} rate limited — skipping ${activeRules.length} rules`,
                 );
@@ -110,13 +112,17 @@ export class AutomationListenerService {
         phone?: string;
         leadId?: string | null;
     }) {
-        await this.runRulesForTrigger(
+        // This event is produced from a durable appointment marker. Its caller
+        // uses emitAsync and may only mark the event delivered after every rule
+        // has been admitted to BullMQ, so this handler must propagate failures.
+        await this.runRulesForTriggerOrThrow(
             'appointment.completed',
             event.tenantId,
             event.schemaName,
             'appointment',
             event.appointmentId,
             event,
+            `appointment.completed:${event.appointmentId}`,
         );
     }
 
@@ -288,24 +294,54 @@ export class AutomationListenerService {
         payload: any,
     ): Promise<void> {
         try {
-            const rules = await this.prisma.executeInTenantSchema<any[]>(
-                schemaName,
-                `SELECT * FROM automation_rules WHERE trigger_type = $1 AND active = true`,
-                [triggerType],
+            await this.runRulesForTriggerOrThrow(
+                triggerType, tenantId, schemaName, entityType, entityId, payload,
             );
-            if (!rules?.length) return;
-
-            if (await this.throttle.isLimited(tenantId, 'automation')) {
-                this.logger.warn(`[AutomationListener] Tenant ${tenantId} rate limited — se omiten ${rules.length} reglas de ${triggerType}`);
-                return;
-            }
-            const priority = await this.throttle.getPriority(tenantId);
-
-            for (const rule of rules) {
-                await this.dispatchRule({ tenantId, schemaName, rule, entityType, entityId, payload, priority });
-            }
         } catch (error: any) {
             this.logger.error(`[AutomationListener] Error procesando ${triggerType}: ${error.message}`);
+        }
+    }
+
+    /**
+     * Strict trigger admission used by durable domain-event producers.
+     *
+     * The ordinary event bridges retain their historical log-and-return
+     * behaviour. A producer that owns a durable retry marker calls this method
+     * so an unreadable rules table, a rate limit, or a failed queue admission
+     * leaves that marker pending instead of being reported as delivered.
+     */
+    async runRulesForTriggerOrThrow(
+        triggerType: string,
+        tenantId: string,
+        schemaName: string,
+        entityType: string,
+        entityId: string,
+        payload: any,
+        durableEventKeyPrefix?: string,
+    ): Promise<void> {
+        const rules = await this.prisma.executeInTenantSchema<any[]>(
+            schemaName,
+            `SELECT * FROM automation_rules WHERE trigger_type = $1 AND active = true`,
+            [triggerType],
+        );
+        if (!rules?.length) return;
+
+        // Discovery is read-only. The processor owns the one atomic quota
+        // reservation for every logical action, including all of its retries.
+        if (await this.throttle.isOverLimit(tenantId, 'automation')) {
+            throw new Error(`automation_trigger_rate_limited:${triggerType}:${tenantId}`);
+        }
+        const priority = await this.throttle.getPriority(tenantId);
+
+        for (const rule of rules) {
+            await this.dispatchRule({
+                tenantId, schemaName, rule, entityType, entityId, payload, priority,
+                // One completed appointment owes each matching rule once. The
+                // key survives a crash after INSERT or after any Queue.add.
+                eventKey: durableEventKeyPrefix
+                    ? `${durableEventKeyPrefix}:${rule.id}`
+                    : undefined,
+            });
         }
     }
 
@@ -329,8 +365,10 @@ export class AutomationListenerService {
         entityId: string;
         payload: any;
         priority: number;
+        /** Stable identity supplied by a durable event producer. */
+        eventKey?: string;
     }): Promise<void> {
-        const { tenantId, schemaName, rule, entityType, entityId, payload, priority } = params;
+        const { tenantId, schemaName, rule, entityType, entityId, payload, priority, eventKey } = params;
 
         if (!this.evaluateConditions(rule.conditions_json, payload)) {
             this.logger.debug(`[AutomationListener] Regla '${rule.name}' no cumple condiciones. Omitiendo.`);
@@ -344,17 +382,65 @@ export class AutomationListenerService {
             actions = rule.actions_json;
         }
 
+        // One rule firing owns several independently completing actions. Seed
+        // their slots before publishing any job so concurrent workers can merge
+        // outcomes without overwriting one another.
+        const initialResult = JSON.stringify({
+            version: 1,
+            actions: actions.map((action, index) => ({
+                index,
+                type: action?.type ?? 'unknown',
+                status: 'queued',
+                action,
+            })),
+        });
+
         // Crear registro de ejecucion (audit trail)
         const execution = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
-            `INSERT INTO automation_executions (rule_id, entity_type, entity_id, status)
-             VALUES ($1, $2, $3, 'queued') RETURNING *`,
-            [rule.id, entityType, entityId],
+            eventKey
+                ? `INSERT INTO automation_executions
+                       (rule_id, entity_type, entity_id, status, event_key, result_json)
+                   VALUES ($1::uuid, $2, $3::uuid, 'queued', $4, $5::jsonb)
+                   ON CONFLICT (event_key) WHERE event_key IS NOT NULL
+                   DO UPDATE SET event_key = EXCLUDED.event_key
+                   RETURNING *`
+                : `INSERT INTO automation_executions
+                       (rule_id, entity_type, entity_id, status, result_json)
+                   VALUES ($1::uuid, $2, $3::uuid, 'queued', $4::jsonb)
+                   RETURNING *`,
+            eventKey
+                ? [rule.id, entityType, entityId, eventKey, initialResult]
+                : [rule.id, entityType, entityId, initialResult],
         );
         const executionId = execution?.[0]?.id;
+        if (!executionId) {
+            throw new Error(`automation_execution_not_persisted:${rule.id}`);
+        }
+
+        // Event replay must refill a missing queue publication from the firing's
+        // original snapshot. Re-reading the rule here would let a later edit add
+        // a new side effect to an event that happened before that edit.
+        const storedSlots = execution?.[0]?.result_json?.actions;
+        const admittedActions = Array.isArray(storedSlots)
+            && storedSlots.every((slot: any) => Number.isInteger(slot?.index) && slot?.action)
+            ? [...storedSlots]
+                .sort((left: any, right: any) => left.index - right.index)
+                .map((slot: any) => slot.action)
+            : actions;
+        if (admittedActions.length === 0) {
+            await this.prisma.executeInTenantSchema(
+                schemaName,
+                `UPDATE automation_executions
+                    SET status = 'success', finished_at = CURRENT_TIMESTAMP
+                  WHERE id = $1::uuid`,
+                [executionId],
+            );
+            return;
+        }
 
         // Programar cada accion como un job con delay en BullMQ
-        for (const action of actions) {
+        for (const [actionIndex, action] of admittedActions.entries()) {
             // `delay` y `delay_seconds` son el MISMO campo con dos nombres. Las
             // plantillas sembradas escriben `delay` (seed-templates.ts) y esto
             // leia solo `delay_seconds`, asi que las 10 acciones sembradas con
@@ -372,6 +458,7 @@ export class AutomationListenerService {
                     executionId,
                     ruleId: rule.id,
                     ruleName: rule.name,
+                    actionIndex,
                     action,
                     event: payload,
                 },
@@ -382,6 +469,12 @@ export class AutomationListenerService {
                     backoff: { type: 'exponential', delay: 5000 },
                     removeOnComplete: { age: 3600 * 24 },
                     removeOnFail: { age: 3600 * 24 * 7 },
+                    // Re-admitting a durable event after a crash adopts every
+                    // action already accepted by BullMQ and fills only the gap.
+                    // Every queued action has a stable identity, including
+                    // events without a caller-supplied replay key. BullMQ uses
+                    // it across retries and the quota ledger adopts it.
+                    jobId: `automation-${executionId}-${actionIndex}`,
                 },
             );
 

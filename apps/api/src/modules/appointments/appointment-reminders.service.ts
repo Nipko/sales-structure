@@ -11,7 +11,28 @@ import { resolveTenantSubscriptionAccess } from '../../common/utils/subscription
 import { EmailTemplatesService } from '../email-templates/email-templates.service';
 import { APPOINTMENT_EMAIL_SLUGS } from '../email-templates/appointment-email-layout';
 import { formatDuration, normaliseLang, LANG_LOCALE } from './appointment-notifications-i18n';
+import { servedEmailConfirmationsEnabled } from '../../common/utils/served-confirmation-policy.util';
+import { appointmentConfirmationFamilies } from './appointment-confirmation-subject';
+import {
+    ProactiveDispatchService, producerMayAdvance, type ProactiveSendResult,
+} from '../channels/proactive-dispatch.service';
+
+/**
+ * Nothing durable was written, so the appointment must stay unflagged.
+ *
+ * An exception rather than a return value because the flag is written by the
+ * CALLER, after this. A quiet `return` leaves that write happening for a
+ * message that was refused — which is precisely the defect: the customer never
+ * hears, and the record says they were told.
+ */
+class ReminderNotDispatched extends Error {
+    constructor(readonly appointmentId: string, readonly result: ProactiveSendResult) {
+        super(`reminder_not_dispatched:${result.kind}:${appointmentId}`);
+        this.name = 'ReminderNotDispatched';
+    }
+}
 import { RegionalProfileService } from '../tenants/regional-profile.service';
+import { whatsappSenderFrom } from '../channels/whatsapp-sender-origin';
 import {
     buildAppointmentIcs,
     durationMinutes,
@@ -19,6 +40,31 @@ import {
     formatWallClockTime,
     timezoneLabel,
 } from './appointment-ics.util';
+
+/**
+ * Which of the tenant's WhatsApp numbers sends — and therefore pays.
+ *
+ * Both reminder queries carry `conversation_account_id`, LEFT-joined from the
+ * conversation the appointment was booked in. `undefined` when the appointment
+ * has no conversation (created by hand, or through the public booking page):
+ * that is a real absence, and it is passed on as one rather than filled in. The
+ * resolver serves an unnamed request on a single-number tenant and refuses
+ * `connection_ambiguous` on a multi-number one, which is the only honest answer
+ * when nobody said whose account pays Meta for the delivery.
+ */
+function senderOf(appointment: {
+    conversation_account_id?: string | null;
+    conversation_channel?: string | null;
+}): string | undefined {
+    // Only a WhatsApp conversation lends its connection. An appointment
+    // booked over Instagram carries an Instagram id in the same column, and
+    // handing that to the WhatsApp resolver attributes the reminder to an
+    // account that is not a WhatsApp account at all.
+    return whatsappSenderFrom({
+        channelType: appointment.conversation_channel,
+        channelAccountId: appointment.conversation_account_id,
+    });
+}
 
 @Injectable()
 export class AppointmentRemindersService {
@@ -33,7 +79,104 @@ export class AppointmentRemindersService {
         private readonly eventEmitter: EventEmitter2,
         private readonly emailTemplates: EmailTemplatesService,
         private readonly regionalProfile: RegionalProfileService,
+        /**
+         * The durable lane, which a reminder could not use until it learned to
+         * carry an effect nobody asked for.
+         *
+         * Before this, both reminders went straight to `sendTemplate`: no row,
+         * no lease, no receipt of their own. A restart between "this
+         * appointment needs a reminder" and the POST either lost it — the
+         * customer simply never heard — or, if the flag had not been written
+         * yet, sent it again on the next pass. From October each repeat is a
+         * charge.
+         */
+        private readonly proactive: ProactiveDispatchService,
     ) {}
+
+    /**
+     * Hand one reminder to the durable lane.
+     *
+     * ═══ THE FLAG FOLLOWS THE EFFECT, NEVER THE ATTEMPT ═══
+     *
+     * `reminder_24h_sent` means "the customer was told". Writing it for a
+     * message that never left is how a reminder disappears with the record
+     * saying it happened — and this method used to return a boolean the caller
+     * then ignored, so an appointment with no sender was marked reminded.
+     *
+     * It returns the lane's own five-way answer now, and the caller advances
+     * only on the three that mean "nothing further is owed":
+     *
+     *   · prepared / already_present — the durable effect exists;
+     *   · suppressed — the policy says it must NOT be sent, so nothing is owed.
+     *     Leaving the flag unset there would retry every fifteen minutes for
+     *     ever against an appointment that was cancelled;
+     *   · deferred / refused — nothing was written. The flag stays false.
+     */
+    private async dispatchTemplate(tenantId: string, schemaName: string, appt: any, input: {
+        readonly originKey: string;
+        readonly producer: string;
+        readonly sender: string | undefined;
+        readonly templateName: string;
+        readonly language: string;
+        readonly components: any[];
+    }): Promise<ProactiveSendResult> {
+        const channelType = (appt.contact_channel || 'whatsapp') as string;
+        // ONLY what `senderOf` allowed. Falling back to the raw column would
+        // undo the check it exists to make: that column holds whichever account
+        // the customer wrote to, and an Instagram id is a perfectly well-formed
+        // string to bill a WhatsApp reminder to.
+        const sender = String(input.sender ?? '').trim();
+        if (!sender) {
+            // Without a sender there is no account to bill and no number to send
+            // from. Refused rather than deferred: nobody is going to pick a
+            // number on the platform's behalf, and retrying every fifteen
+            // minutes would only repeat the same refusal. The configuration
+            // task `ProactiveSendConnection` raises is what moves this.
+            this.logger.warn(`[Reminders] appointment ${appt.id} has no sender — nothing dispatched`);
+            return { kind: 'refused', reason: 'no_sender' };
+        }
+        const conversationId = appt.conversation_id
+            ?? await this.proactive.conversationFor(schemaName, {
+                contactId: String(appt.contact_id ?? ''),
+                channelType, channelAccountId: sender,
+            });
+        if (!conversationId || !appt.contact_id) {
+            this.logger.warn(`[Reminders] appointment ${appt.id} has no thread to write into `
+                + '— nothing dispatched');
+            return { kind: 'refused', reason: 'no_conversation' };
+        }
+        // ── THE AUTHORITY, READ FROM THE ROW RATHER THAN ASSERTED ───────────
+        //
+        // Built by reading the appointment, so the revision it carries
+        // describes the appointment as it IS. The store revalidates it inside
+        // the transaction that grants the lease, which is what makes a
+        // cancellation between preparing and sending a suppression rather than
+        // a message about a turn that no longer exists.
+        const operationalScope = await this.proactive.policyAuthority(schemaName, {
+            tenantId, producer: input.producer, channelType,
+            channelAccountId: sender, entityId: String(appt.id),
+        });
+        if (!operationalScope) {
+            // The appointment no longer justifies this message — cancelled,
+            // completed, gone. Nothing is owed, so the caller advances.
+            this.logger.log(`[Reminders] appointment ${appt.id} no longer justifies `
+                + `${input.producer} — suppressed`);
+            return { kind: 'suppressed', reason: 'entity_no_longer_eligible' };
+        }
+        return this.proactive.send(tenantId, {
+            originKey: input.originKey,
+            conversationId: String(conversationId),
+            contactId: String(appt.contact_id),
+            channelType, channelAccountId: sender,
+            recipient: String(appt.contact_phone ?? ''),
+            items: [{ kind: 'template', payload: {
+                templateName: input.templateName,
+                language: input.language,
+                components: input.components,
+            } }],
+            operationalScope,
+        });
+    }
 
     /**
      * Every 15 minutes: find appointments needing 24h reminders.
@@ -56,10 +199,14 @@ export class AppointmentRemindersService {
             if (!tenants?.length) return;
 
             for (const tenant of tenants) {
-                if (!await this.canSendTenantWork(tenant.id)) continue;
-                const settings = await this.appointmentsService.getReminderSettings(tenant.id);
-                if (!settings.reminder24h) continue;
-                await this.processReminders(tenant.id, tenant.schema_name, '24h');
+                try {
+                    if (!await this.canSendTenantWork(tenant.id)) continue;
+                    const settings = await this.appointmentsService.getReminderSettings(tenant.id);
+                    if (!settings.reminder24h) continue;
+                    await this.processReminders(tenant.id, tenant.schema_name, '24h');
+                } catch (error: any) {
+                    this.logger.error(`[AppointmentReminders] 24h pass failed for tenant=${tenant.id}: ${error?.message}`);
+                }
             }
         } catch (err) {
             this.logger.error('Error in 24h reminder cron', err);
@@ -87,10 +234,14 @@ export class AppointmentRemindersService {
             if (!tenants?.length) return;
 
             for (const tenant of tenants) {
-                if (!await this.canSendTenantWork(tenant.id)) continue;
-                const settings = await this.appointmentsService.getReminderSettings(tenant.id);
-                if (!settings.reminder2h) continue;
-                await this.processReminders(tenant.id, tenant.schema_name, '2h');
+                try {
+                    if (!await this.canSendTenantWork(tenant.id)) continue;
+                    const settings = await this.appointmentsService.getReminderSettings(tenant.id);
+                    if (!settings.reminder2h) continue;
+                    await this.processReminders(tenant.id, tenant.schema_name, '2h');
+                } catch (error: any) {
+                    this.logger.error(`[AppointmentReminders] 2h pass failed for tenant=${tenant.id}: ${error?.message}`);
+                }
             }
         } catch (err) {
             this.logger.error('Error in 2h reminder cron', err);
@@ -117,10 +268,14 @@ export class AppointmentRemindersService {
             if (!tenants?.length) return;
 
             for (const tenant of tenants) {
-                if (!await this.canSendTenantWork(tenant.id)) continue;
-                const settings = await this.appointmentsService.getReminderSettings(tenant.id);
-                if (!settings.attendanceCheck) continue;
-                await this.processAttendanceChecks(tenant.id, tenant.schema_name);
+                try {
+                    if (!await this.canSendTenantWork(tenant.id)) continue;
+                    const settings = await this.appointmentsService.getReminderSettings(tenant.id);
+                    if (!settings.attendanceCheck) continue;
+                    await this.processAttendanceChecks(tenant.id, tenant.schema_name);
+                } catch (error: any) {
+                    this.logger.error(`[AppointmentReminders] attendance pass failed for tenant=${tenant.id}: ${error?.message}`);
+                }
             }
         } catch (err) {
             this.logger.error('Error in attendance check cron', err);
@@ -140,9 +295,13 @@ export class AppointmentRemindersService {
             if (!tenants?.length) return;
 
             for (const tenant of tenants) {
-                const settings = await this.appointmentsService.getReminderSettings(tenant.id);
-                if (!settings.autoComplete) continue;
-                await this.processAutoComplete(tenant.id, tenant.schema_name);
+                try {
+                    const settings = await this.appointmentsService.getReminderSettings(tenant.id);
+                    if (!settings.autoComplete) continue;
+                    await this.processAutoComplete(tenant.id, tenant.schema_name);
+                } catch (error: any) {
+                    this.logger.error(`[AppointmentReminders] auto-complete pass failed for tenant=${tenant.id}: ${error?.message}`);
+                }
             }
         } catch (err) {
             this.logger.error('Error in auto-complete cron', err);
@@ -162,9 +321,19 @@ export class AppointmentRemindersService {
                     a.contact_id, a.assigned_to, a.customer_name, a.customer_email,
                     c.name as contact_name, c.phone as contact_phone, c.email as contact_email,
                     c.channel_type as contact_channel,
+                    cv.channel_account_id AS conversation_account_id,
+                    cv.channel_type AS conversation_channel,
                     u.first_name || ' ' || u.last_name AS staff_name
              FROM appointments a
              LEFT JOIN contacts c ON c.id = a.contact_id
+             -- Which of the tenant's numbers this appointment was booked
+             -- through. Meta bills the business per delivered service message
+             -- from 1 October 2026, so a reminder has to name its sender or the
+             -- resolver picks the oldest connection and that account pays.
+             -- LEFT, because an appointment created by hand or through the
+             -- public booking page has no conversation and therefore no sender
+             -- identity; that stays NULL rather than becoming a guess.
+             LEFT JOIN conversations cv ON cv.id = a.conversation_id
              LEFT JOIN public.tenants tenant_owner
                ON tenant_owner.schema_name = $1
               AND tenant_owner.is_active = true
@@ -219,7 +388,7 @@ export class AppointmentRemindersService {
             await this.assertTenantCanSend(tenantId);
             // Same switch the confirmation honours: a tenant who turned appointment
             // emails off must not keep getting reminders through the back door.
-            if (!await this.appointmentEmailsEnabled(schemaName)) return;
+            if (!await this.appointmentEmailsEnabled(schemaName, appt)) return;
             // getTenantLanguage returns the full locale ('es-CO'); template lookup
             // and the i18n maps are keyed by the 2-char code.
             const lang = normaliseLang(await this.getTenantLanguage(tenantId));
@@ -286,17 +455,39 @@ export class AppointmentRemindersService {
         }
     }
 
-    /** `agent_personas.config_json.tools.appointments.emailConfirmations` — opt-out only. */
-    private async appointmentEmailsEnabled(schemaName: string): Promise<boolean> {
-        try {
-            const rows = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-                `SELECT config_json FROM agent_personas WHERE is_active = true LIMIT 1`,
-                [],
-            );
-            return rows?.[0]?.config_json?.tools?.appointments?.emailConfirmations !== false;
-        } catch {
-            return true;
-        }
+    /**
+     * `agent_personas.config_json.tools.<family>.emailConfirmations` — opt-out
+     * only, read from the agent that served the connection the appointment was
+     * BOOKED on, under the family whose operation the appointment IS.
+     *
+     * The sweep already joins that connection in — `conversation_channel` and
+     * `conversation_account_id` are how the WhatsApp reminder names its sender
+     * — so the same origin decides the email, and no second read is needed.
+     * It used to be `is_active = true LIMIT 1`: an unordered pick among the
+     * tenant's agents, which is not the agent that took the booking.
+     */
+    private appointmentEmailsEnabled(schemaName: string, appt: any): Promise<boolean> {
+        const channelType = String(appt?.conversation_channel ?? '').trim();
+        return servedEmailConfirmationsEnabled(
+            <T>(sql: string, params: any[] = []) =>
+                this.prisma.executeInTenantSchema<T>(schemaName, sql, params),
+            // A test-drive reminder is a `vehicles` operation, a property-visit
+            // reminder a `realEstate` one and a veterinary reminder a `pets`
+            // one: that family's own switch decides them when the owner set
+            // one, and the reminder must read the SAME switch the confirmation
+            // of the same booking read. `a.metadata` is already in the sweep's
+            // SELECT list, so the subject costs no extra query.
+            appointmentConfirmationFamilies(appt?.metadata),
+            // No conversation means no serving agent to ask — booked by hand or
+            // through the public page. The helper reads that as "not switched
+            // off" rather than guessing at an agent.
+            channelType
+                ? {
+                    channelType,
+                    channelAccountId: String(appt?.conversation_account_id ?? '').trim() || null,
+                }
+                : null,
+        );
     }
 
     /** start_at/end_at are naive wall clocks — see appointment-ics.util.ts. */
@@ -313,9 +504,16 @@ export class AppointmentRemindersService {
             return;
         }
 
-        const template = await this.getApprovedTemplate(schemaName, 'appointment_reminder');
+        // The catalogue belongs to the SENDER's WABA, so the sender is resolved
+        // before the template rather than after: a template approved on a
+        // sibling WABA is not a template this number may send. An appointment
+        // that arrived through no conversation lends no sender, and the lookup
+        // then answers only while the tenant has one WABA.
+        const sender = senderOf(appt);
+        const template = await this.getApprovedTemplate(schemaName, 'appointment_reminder', sender);
         if (!template) {
-            this.logger.warn(`No approved appointment_reminder template for tenant ${tenantId} — skipping`);
+            this.logger.warn(`No approved appointment_reminder template on the WABA of `
+                + `${sender ?? 'this tenant'} (${tenantId}) — skipping`);
             return;
         }
 
@@ -349,14 +547,28 @@ export class AppointmentRemindersService {
             },
         ];
 
-        await this.whatsappMessaging.sendTemplate(
-            schemaName,
-            appt.contact_phone,
-            'appointment_reminder',
-            normalizeMetaLanguage(lang),
-            components,
-        );
-        this.logger.log(`Sent ${type} template reminder to ${appt.contact_phone} for appointment ${appt.id}`);
+        // ── THE DURABLE LANE, WHICH THIS COULD NOT USE BEFORE ───────────────
+        //
+        // The origin is the appointment and WHICH reminder, so the 24h and the
+        // 2h are two different effects of one appointment and a retry of either
+        // finds its own row.
+        // The origin is the appointment and WHICH reminder, so the 24h and the
+        // 2h are two different effects of one appointment and a retry of either
+        // finds its own row.
+        const result = await this.dispatchTemplate(tenantId, schemaName, appt, {
+            originKey: `appointment_reminder:${appt.id}:${type}`,
+            producer: 'appointment_reminder',
+            sender, templateName: 'appointment_reminder',
+            language: normalizeMetaLanguage(lang), components,
+        });
+        // Thrown, not returned: the caller writes the flag after this call, and
+        // an exception is the only thing that reliably stops it. A `return` here
+        // would leave the flag being written for a message that was refused,
+        // which is the defect this whole change is about.
+        if (!producerMayAdvance(result)) {
+            throw new ReminderNotDispatched(String(appt.id), result);
+        }
+        this.logger.log(`${result.kind} the ${type} reminder for appointment ${appt.id}`);
     }
 
     private async processAttendanceChecks(tenantId: string, schemaName: string) {
@@ -364,9 +576,12 @@ export class AppointmentRemindersService {
         const appointments = await this.prisma.executeInTenantSchema<any[]>(schemaName,
             `SELECT a.id, a.service_name, a.contact_id, a.start_at,
                     c.name as contact_name, c.phone as contact_phone,
-                    c.channel_type as contact_channel
+                    c.channel_type as contact_channel,
+                    cv.channel_account_id AS conversation_account_id,
+                    cv.channel_type AS conversation_channel
              FROM appointments a
              LEFT JOIN contacts c ON c.id = a.contact_id
+             LEFT JOIN conversations cv ON cv.id = a.conversation_id
              WHERE a.status IN ('pending', 'confirmed')
                AND a.no_show_followed_up = false
                AND a.end_at < (NOW() AT TIME ZONE '${tz}') - interval '30 minutes'
@@ -396,9 +611,11 @@ export class AppointmentRemindersService {
             return;
         }
 
-        const template = await this.getApprovedTemplate(schemaName, 'attendance_check');
+        const sender = senderOf(appt);
+        const template = await this.getApprovedTemplate(schemaName, 'attendance_check', sender);
         if (!template) {
-            this.logger.warn(`No approved attendance_check template for tenant ${tenantId} — skipping`);
+            this.logger.warn(`No approved attendance_check template on the WABA of `
+                + `${sender ?? 'this tenant'} (${tenantId}) — skipping`);
             return;
         }
 
@@ -426,14 +643,16 @@ export class AppointmentRemindersService {
             },
         ];
 
-        await this.whatsappMessaging.sendTemplate(
-            schemaName,
-            appt.contact_phone,
-            'attendance_check',
-            normalizeMetaLanguage(lang),
-            components,
-        );
-        this.logger.log(`Sent attendance check template to ${appt.contact_phone} for appointment ${appt.id}`);
+        const result = await this.dispatchTemplate(tenantId, schemaName, appt, {
+            originKey: `attendance_check:${appt.id}`,
+            producer: 'attendance_check',
+            sender, templateName: 'attendance_check',
+            language: normalizeMetaLanguage(lang), components,
+        });
+        if (!producerMayAdvance(result)) {
+            throw new ReminderNotDispatched(String(appt.id), result);
+        }
+        this.logger.log(`${result.kind} the attendance check for appointment ${appt.id}`);
     }
 
     private async canSendTenantWork(tenantId: string): Promise<boolean> {
@@ -458,7 +677,7 @@ export class AppointmentRemindersService {
 
     private async processAutoComplete(tenantId: string, schemaName: string) {
         const tz = await this.getTenantTimezone(tenantId);
-        const completed = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+        const newlyCompleted = await this.prisma.executeInTenantSchema<any[]>(schemaName,
             `UPDATE appointments
              SET status = 'completed', completed_at = NOW(), completed_by = 'auto', updated_at = NOW()
              WHERE status = 'confirmed'
@@ -467,9 +686,25 @@ export class AppointmentRemindersService {
             [],
         );
 
-        const count = completed?.length || 0;
-        if (count > 0) {
-            this.logger.log(`[AutoComplete] Marked ${count} appointment(s) as completed for tenant ${tenantId}`);
+        const newCount = newlyCompleted?.length || 0;
+        if (newCount > 0) {
+            this.logger.log(`[AutoComplete] Marked ${newCount} appointment(s) as completed for tenant ${tenantId}`);
+        }
+
+        // Status and event delivery are separate facts. A previous pass may
+        // have committed `completed` and then lost PostgreSQL/BullMQ while
+        // admitting its automations; those rows must remain visible here.
+        const completed = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+            `SELECT id, contact_id, service_name
+               FROM appointments
+              WHERE status = 'completed'
+                AND completed_by = 'auto'
+                AND completion_event_at IS NULL
+              ORDER BY completed_at, id`,
+            [],
+        );
+
+        if (completed?.length > 0) {
             const contactIds = completed.map(c => c.contact_id).filter(Boolean);
 
             // `appointment.completed` — el momento post-visita.
@@ -483,9 +718,7 @@ export class AppointmentRemindersService {
             // Va con telefono y lead porque es lo que necesitan las acciones
             // (send_template lee event.phone; add_tag/assign_agent/update_stage
             // leen event.leadId). Se resuelve de una sola vez para toda la tanda.
-            await this.emitAppointmentsCompleted(tenantId, schemaName, completed).catch((e: any) =>
-                this.logger.warn(`[AutoComplete] No se pudo emitir appointment.completed: ${e.message}`),
-            );
+            await this.emitAppointmentsCompleted(tenantId, schemaName, completed);
             if (contactIds.length > 0) {
                 try {
                     await this.prisma.executeInTenantSchema(schemaName,
@@ -510,48 +743,94 @@ export class AppointmentRemindersService {
         completed: Array<{ id: string; contact_id?: string; service_name?: string }>,
     ): Promise<void> {
         const ids = [...new Set(completed.map(c => c.contact_id).filter(Boolean))] as string[];
-        if (!ids.length) return;
 
         // El lead vigente es el más reciente no archivado: un contacto puede
         // tener varios a lo largo del tiempo.
-        const rows = await this.prisma.executeInTenantSchema<any[]>(
-            schemaName,
-            `SELECT DISTINCT ON (c.id) c.id AS contact_id, c.phone, c.name, l.id AS lead_id
-             FROM contacts c
-             LEFT JOIN leads l ON l.contact_id = c.id AND l.archived_at IS NULL
-             WHERE c.id = ANY($1::uuid[])
-             ORDER BY c.id, l.created_at DESC NULLS LAST`,
-            [ids],
-        ).catch(() => [] as any[]);
+        const rows = ids.length
+            ? await this.prisma.executeInTenantSchema<any[]>(
+                schemaName,
+                `SELECT DISTINCT ON (c.id) c.id AS contact_id, c.phone, c.name, l.id AS lead_id
+                 FROM contacts c
+                 LEFT JOIN leads l ON l.contact_id = c.id AND l.archived_at IS NULL
+                 WHERE c.id = ANY($1::uuid[])
+                 ORDER BY c.id, l.created_at DESC NULLS LAST`,
+                [ids],
+            )
+            : [];
 
         const reach = new Map(rows.map(r => [r.contact_id, r]));
 
         for (const appt of completed) {
             const c = appt.contact_id ? reach.get(appt.contact_id) : null;
-            // Sin teléfono no hay a quién escribirle; las acciones fallarían en
-            // la cola y ensuciarían el registro de ejecuciones con reintentos.
-            if (!c?.phone) continue;
-            this.eventEmitter.emit('appointment.completed', {
+            // Not every rule sends WhatsApp. A task, tag, stage update or HTTP
+            // action still belongs to an appointment whose contact has no
+            // phone, so the event is emitted with an optional destination.
+            await this.eventEmitter.emitAsync('appointment.completed', {
                 tenantId,
                 schemaName,
                 appointmentId: appt.id,
                 serviceName: appt.service_name ?? null,
                 contactId: appt.contact_id,
-                phone: c.phone,
-                name: c.name ?? null,
-                leadId: c.lead_id ?? null,
+                phone: c?.phone ?? undefined,
+                name: c?.name ?? null,
+                leadId: c?.lead_id ?? null,
             });
+            // Only an awaited listener admission closes the durable marker.
+            // A replay before this UPDATE uses the listener's stable event key
+            // and BullMQ job ids, so it cannot create a second execution.
+            await this.prisma.executeInTenantSchema(
+                schemaName,
+                `UPDATE appointments
+                    SET completion_event_at = NOW(), updated_at = NOW()
+                  WHERE id = $1::uuid AND completion_event_at IS NULL`,
+                [appt.id],
+            );
         }
     }
 
     // ── Utility methods ─────────────────────────────────────────────
 
-    private async getApprovedTemplate(schemaName: string, templateName: string): Promise<any | null> {
+    /**
+     * ═══ AN APPROVED TEMPLATE, ON THE CATALOGUE THAT WILL SEND IT ═══
+     *
+     * Approval belongs to a WhatsApp Business Account. A tenant with two WABAs
+     * — a second brand, a migration in progress — can have
+     * `appointment_reminder` approved on one and rejected on the other, and
+     * this returned whichever row came back first. The reminder then went out
+     * from a number whose WABA had never had that template approved, Meta
+     * refused it at the door, and the failure looked like a transport problem
+     * rather than the wrong catalogue.
+     *
+     * ── AND WHEN NOBODY NAMED A SENDER ──────────────────────────────────────
+     *
+     * A booking made by hand or through the public page arrived through no
+     * conversation, so there is no connection to inherit. That is not a reason
+     * to refuse: it is the same question the connection resolver answers, and
+     * it has an answer exactly when the tenant has ONE WABA. With one, "the
+     * catalogue" is unambiguous. With two, it is not, and returning a row from
+     * either is picking which brand's template a customer receives.
+     */
+    private async getApprovedTemplate(schemaName: string, templateName: string,
+        phoneNumberId?: string | null): Promise<any | null> {
+        const sender = String(phoneNumberId ?? '').trim();
         const rows = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-            `SELECT id, name, language, approval_status FROM whatsapp_templates
-             WHERE name = $1 AND approval_status = 'APPROVED'
-             LIMIT 1`,
-            [templateName],
+            `SELECT t.id, t.name, t.language, t.approval_status
+               FROM whatsapp_templates t
+               JOIN whatsapp_channels c ON c.id = t.channel_id
+              WHERE t.name = $1 AND t.approval_status = 'APPROVED'
+                AND c.meta_waba_id IS NOT NULL
+                AND c.meta_waba_id = CASE
+                    WHEN $2 <> '' THEN (
+                        SELECT meta_waba_id FROM whatsapp_channels
+                         WHERE phone_number_id = $2 LIMIT 1)
+                    -- Unnamed: only while "the tenant's WABA" has one referent.
+                    ELSE (
+                        SELECT MIN(meta_waba_id) FROM whatsapp_channels
+                         WHERE meta_waba_id IS NOT NULL
+                        HAVING COUNT(DISTINCT meta_waba_id) = 1)
+                    END
+              LIMIT 1`,
+            [templateName, sender],
         );
         return rows?.[0] || null;
     }
@@ -564,15 +843,12 @@ export class AppointmentRemindersService {
     }
 
     private async getTenantLanguage(tenantId: string): Promise<string> {
-        try {
-            const tenant = await this.prisma.tenant.findUnique({
-                where: { id: tenantId },
-                select: { language: true },
-            });
-            return tenant?.language || 'es';
-        } catch {
-            return 'es';
-        }
+        const tenant = await this.prisma.tenant.findUnique({
+            where: { id: tenantId },
+            select: { language: true },
+        });
+        if (!tenant) throw new Error('tenant_language_authority_unavailable');
+        return tenant.language || 'es';
     }
 
     private async getStaffName(schemaName: string, userId: string): Promise<string> {

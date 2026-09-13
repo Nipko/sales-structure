@@ -1,3 +1,4 @@
+import { WidgetDeliveryModule } from './widget-delivery.module';
 import { Module } from '@nestjs/common';
 import { WidgetService } from './widget.service';
 import { WidgetTriggersService } from './widget-triggers.service';
@@ -9,7 +10,7 @@ import { ConversationsModule } from '../conversations/conversations.module';
 import { WidgetRateLimitService } from './widget-rate-limit.service';
 
 @Module({
-    imports: [ConversationsModule],
+    imports: [ConversationsModule, WidgetDeliveryModule],
     providers: [WidgetService, WidgetTriggersService, WidgetRateLimitService, WidgetGateway],
     controllers: [WidgetController, WidgetTriggersController, WidgetPublicController],
     exports: [WidgetService, WidgetTriggersService],

@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 import { api } from "@/lib/api";
 import { Scale, Save, CheckCircle, AlertCircle, History, Info } from "lucide-react";
 import { HelpPanel } from "@/components/ui/help-panel";
+import { guidedTourAnchorId } from "@/lib/guided-tours";
 
 const POLICY_TYPES = ["shipping", "return", "warranty", "cancellation", "terms", "privacy"] as const;
 type PolicyType = typeof POLICY_TYPES[number];
@@ -51,6 +52,11 @@ export default function PoliciesPage() {
     };
 
     useEffect(() => { load(); }, [activeTenantId]);
+
+    useEffect(() => {
+        const requested = new URLSearchParams(window.location.search).get("type");
+        if (POLICY_TYPES.includes(requested as PolicyType)) setSelectedType(requested as PolicyType);
+    }, []);
 
     useEffect(() => {
         const current = policies[selectedType];
@@ -113,6 +119,7 @@ export default function PoliciesPage() {
                 description={tHelp("settingsPolicies.description")}
                 tips={tHelp.raw("settingsPolicies.tips") as string[]}
                 mediaKey="settingsPolicies"
+                tourId="privacy_policy"
             />
 
             <div className="rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-700 dark:border-indigo-500/20 dark:bg-indigo-500/10 dark:text-indigo-300 flex gap-2">
@@ -129,6 +136,7 @@ export default function PoliciesPage() {
                         return (
                             <button
                                 key={type}
+                                id={type === "privacy" ? guidedTourAnchorId("privacy-policy-type") : undefined}
                                 onClick={() => setSelectedType(type)}
                                 className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors flex items-center justify-between gap-2 ${
                                     isActive
@@ -164,7 +172,7 @@ export default function PoliciesPage() {
                                 </div>
                             )}
 
-                            <div className="rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 p-5 space-y-4">
+                            <div id={selectedType === "privacy" ? guidedTourAnchorId("privacy-policy-fields") : undefined} className="rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 p-5 space-y-4">
                                 <div className="flex items-center justify-between">
                                     <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">{t(`types.${selectedType}`)}</h2>
                                     {currentPolicy && (
@@ -200,6 +208,7 @@ export default function PoliciesPage() {
 
                                 <div className="flex justify-end">
                                     <button
+                                        id={selectedType === "privacy" ? guidedTourAnchorId("privacy-policy-save") : undefined}
                                         onClick={save}
                                         disabled={saving}
                                         className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 px-4 py-2 text-sm font-medium text-white"

@@ -179,7 +179,6 @@ export const TOOL_GROUP_READINESS: Readonly<Partial<Record<VerticalToolGroup, Ve
     appointments: 'appointment_services',
     catalog: 'catalog_items',
     faqs: 'faq_content',
-    treatments: 'treatment_catalog',
     realEstate: 'listings',
     restaurants: 'menu_items',
     vehicles: 'vehicle_inventory',
@@ -193,6 +192,19 @@ export const TOOL_GROUP_READINESS: Readonly<Partial<Record<VerticalToolGroup, Ve
     photography: 'photo_sessions',
     petBoarding: 'boarding_capacity',
     vehicleRentals: 'vehicle_inventory',
+});
+
+/**
+ * Readiness that applies to one tool rather than its whole family.
+ *
+ * A pet-services tenant can truthfully list grooming or walking services with
+ * no boarding capacity.  Only the availability reader needs a configured
+ * daycare/hotel capacity model, so applying that requirement to the family
+ * would hide valid services while applying only `pets` would publish a reader
+ * that cannot answer.  Tool-level gates keep those two facts separate.
+ */
+export const TOOL_READINESS: Readonly<Partial<Record<string, VerticalReadinessKey>>> = Object.freeze({
+    check_daycare_availability: 'boarding_capacity',
 });
 
 function exclusionText(es: string, en: string, pt: string, fr: string): LocalizedCapabilityText {

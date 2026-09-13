@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { ChannelManagerService } from './channel-manager.service';
+import { persistenceDisabled, type ServiceExecutionContext } from '../../common/types/execution-context';
 import {
     lodgingSorCacheValueKey,
     lodgingSorCacheVersionKey,
@@ -125,8 +126,10 @@ export class LodgingSourceOfTruthService {
         tenantId: string,
         schemaName: string,
         propertyId: string,
+        executionContext?: ServiceExecutionContext,
     ): Promise<LodgingSorResolution> {
-        const cacheVersion = await this.readCacheVersion(tenantId);
+        const readOnly = persistenceDisabled(executionContext) || schemaName.startsWith('tenant_eval_');
+        const cacheVersion = readOnly ? null : await this.readCacheVersion(tenantId);
         const cacheKey = cacheVersion === null
             ? null
             : lodgingSorCacheValueKey(tenantId, cacheVersion, propertyId);
@@ -139,7 +142,7 @@ export class LodgingSourceOfTruthService {
             }
         }
 
-        const resolution = await this.readResolution(tenantId, schemaName, propertyId);
+        const resolution = await this.readResolution(tenantId, schemaName, propertyId, readOnly);
         // `unknown` NO se cachea. Es un "no pude averiguarlo", y guardarlo
         // convertiría un tropiezo de una consulta en un minuto entero de
         // reservas directas bloqueadas para ese alojamiento. La próxima llamada
@@ -186,6 +189,7 @@ export class LodgingSourceOfTruthService {
         tenantId: string,
         schemaName: string,
         propertyId: string,
+        readOnly = false,
     ): Promise<LodgingSorResolution> {
         const notBridged: LodgingSorResolution = {
             sor: 'local',
@@ -216,7 +220,7 @@ export class LodgingSourceOfTruthService {
             if (tableIsAbsent(error)) {
                 // Definitivo: este tenant nunca puenteó nada.
                 this.logger.debug?.(`[LodgingSoR] sin cm_listings en ${schemaName}`);
-                return this.withConnectionInfo(tenantId, notBridged);
+                return this.withConnectionInfo(tenantId, notBridged, readOnly);
             }
             // Cualquier otra cosa —permisos, timeout, la conexión caída— es no
             // saber. Y no saber quién administra el calendario no autoriza a
@@ -234,7 +238,7 @@ export class LodgingSourceOfTruthService {
             };
         }
 
-        if (!listing) return this.withConnectionInfo(tenantId, notBridged);
+        if (!listing) return this.withConnectionInfo(tenantId, notBridged, readOnly);
 
         // ── (2) Mapeada. La config sólo enriquece ─────────────────────────
         //
@@ -244,7 +248,7 @@ export class LodgingSourceOfTruthService {
         const lastSyncedAt = listing.last_synced_at
             ? new Date(listing.last_synced_at).toISOString()
             : undefined;
-        const config = await this.safeConfig(tenantId);
+        const config = await this.safeConfig(tenantId, readOnly);
         const intervalMinutes = Number(config?.syncInterval) > 0
             ? Number(config?.syncInterval)
             : DEFAULT_SYNC_INTERVAL_MINUTES;
@@ -274,8 +278,9 @@ export class LodgingSourceOfTruthService {
     private async withConnectionInfo(
         tenantId: string,
         base: LodgingSorResolution,
+        readOnly = false,
     ): Promise<LodgingSorResolution> {
-        const config = await this.safeConfig(tenantId);
+        const config = await this.safeConfig(tenantId, readOnly);
         // `undefined` means the config lookup itself failed; `null` is the
         // definitive answer "this tenant has no connection". Conflating both
         // reopened local writes during a settings/decryption outage.
@@ -302,9 +307,10 @@ export class LodgingSourceOfTruthService {
 
     private async safeConfig(
         tenantId: string,
-    ): Promise<Awaited<ReturnType<ChannelManagerService['getConfig']>> | undefined> {
+        readOnly = false,
+    ): Promise<Awaited<ReturnType<ChannelManagerService['getOwnershipConfig']>> | undefined> {
         try {
-            return await this.channelManager.getConfig(tenantId);
+            return readOnly ? await this.channelManager.getOwnershipConfig(tenantId) : await this.channelManager.getConfig(tenantId);
         } catch (error: any) {
             this.logger.warn(`[LodgingSoR] config read failed for ${tenantId}: ${error?.message}`);
             return undefined;

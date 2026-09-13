@@ -308,7 +308,11 @@ export default function LoginPage() {
                     <form onSubmit={handleSubmit}>
                         {/* Email */}
                         <div className="mb-4">
-                            <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">
+                            {/* `htmlFor` and not only text: the label was rendered
+                                beside the field but never associated with it, so a
+                                screen reader announced "edit text" and nothing else.
+                                A browser test found it; nothing else could. */}
+                            <label htmlFor="login-email" className="block text-[13px] text-muted-foreground mb-1.5 font-medium">
                                 {t('email')}
                             </label>
                             {/* El ejemplo del campo es genérico a propósito: el
@@ -318,6 +322,7 @@ export default function LoginPage() {
                             <div className="relative">
                                 <Mail size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground/50" />
                                 <input
+                                    id="login-email"
                                     type="email"
                                     value={email}
                                     onChange={e => setEmail(e.target.value)}
@@ -331,7 +336,7 @@ export default function LoginPage() {
                         {/* Password */}
                         <div className="mb-4">
                             <div className="flex items-center justify-between mb-1.5">
-                                <label className="text-[13px] text-muted-foreground font-medium">
+                                <label htmlFor="login-password" className="text-[13px] text-muted-foreground font-medium">
                                     {t('password')}
                                 </label>
                                 <Link href="/forgot-password" className="text-[12px] text-indigo-500 hover:text-indigo-400 no-underline">
@@ -341,6 +346,7 @@ export default function LoginPage() {
                             <div className="relative">
                                 <Lock size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground/50" />
                                 <input
+                                    id="login-password"
                                     type={showPassword ? "text" : "password"}
                                     value={password}
                                     onChange={e => setPassword(e.target.value)}
@@ -351,6 +357,8 @@ export default function LoginPage() {
                                 <button
                                     type="button"
                                     onClick={() => setShowPassword(!showPassword)}
+                                    aria-label={showPassword ? t('hidePassword') : t('showPassword')}
+                                    aria-pressed={showPassword}
                                     className="absolute right-3.5 top-1/2 -translate-y-1/2 bg-transparent border-none cursor-pointer text-muted-foreground/50 p-0 hover:text-muted-foreground"
                                 >
                                     {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
@@ -401,8 +409,8 @@ export default function LoginPage() {
                 </div>
 
                 {/* Footer */}
-                <p className="text-center text-xs text-neutral-400 mt-6">
-                    {t('poweredBy')} <a href="https://parallext.com" target="_blank" className="text-indigo-500 hover:text-indigo-400">Parallext.com</a>
+                <p className="text-center text-xs text-neutral-500 dark:text-neutral-400 mt-6">
+                    {t('poweredBy')} <a href="https://parallext.com" target="_blank" className="text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300">Parallext.com</a>
                     {/* Versión del producto, no el commit. El SHA no le dice nada
                         a un cliente y a un atacante le regala la revisión exacta
                         que corre, que es media pista para buscar un fallo

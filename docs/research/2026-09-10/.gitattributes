@@ -1,0 +1,3 @@
+# Preserve the downloaded rate cards byte-for-byte for their recorded SHA-256.
+meta-*.csv -text whitespace=cr-at-eol
+meta-*.xlsx -text

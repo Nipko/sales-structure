@@ -41,6 +41,8 @@ export interface NormalizedIntent {
     normalized: string;
     /** Pack that contributed the match, when a country overlay did. */
     packId?: string;
+    /** True only when the whole utterance expresses acceptance, without a second task. */
+    consentEligible?: boolean;
 }
 
 export interface NormalizeOptions {
@@ -59,6 +61,8 @@ export interface NormalizeOptions {
      * customer who already answered — both wrong, in opposite directions.
      */
     answeringExplicitQuestion?: boolean;
+    /** Exact object names/identifiers from the authenticated pending proposal. */
+    acceptedReferents?: readonly string[];
 }
 
 const DEFAULT_MAX_LENGTH = 120;
@@ -74,9 +78,64 @@ const QUALIFIER_ANYWHERE = /\b(pero|mas que|porem|but|mais|aunque|salvo|excepto|
 const NEGATION_ANYWHERE = /\b(no|nao|non|not|nunca|never|jamais|rechazo|espera|aun|ainda|todavia)\b/;
 
 /** Cancellation is separated from plain negation: they resolve differently. */
-const CANCEL_ANYWHERE = /\b(cancela|cancelar|cancelalo|cancel|annuler|olvidalo|olvidate|dejemoslo|deja de|deixa pra la|ya no quiero|mejor nada|nada de eso)\b/;
+const CANCEL_ANYWHERE = /\b(cancela|cancelar|cancelalo|cancel|annuler|arretez|olvidalo|olvidate|dejemoslo|deja de|deixa pra la|ya no quiero|no quiero continuar|nao quero continuar|i don't want to continue|i do not want to continue|je ne veux plus continuer|mejor nada|nada de eso)\b/;
+const NEGATED_CANCELLATION = /\b(?:no (?:quiero |deseo |puedo |vayas a )?(?:cancelar|cancela|canceles)|nao (?:quero |desejo |posso )?cancelar|(?:don't|do not|not) (?:want to )?cancel|ne (?:veux |souhaite )?pas annuler)\b/;
 
 const CORRECTION_ANYWHERE = /\b(quise decir|quería decir|me equivoque|corrijo|corrigiendo|mas bien|en realidad|na verdade|quis dizer|corrigindo|actually|i meant|je voulais dire)\b/;
+
+const COURTESY = /^(?:muchas gracias|gracias|thank you|thanks|obrigado|obrigada|merci|por favor|please|s il vous plait|s'il vous plait)(?:\s+|$)/;
+const INFORMATION_REQUEST = /\b(?:quiero saber|necesito saber|quisiera saber|saber primero|me explicas|explicame|me puedes explicar|quero saber|gostaria de saber|i want to know|i need to know|tell me|explain|je voudrais savoir|je veux savoir|expliquez)\b/;
+
+/** Questions and qualifications are dialogue, never authorization evidence. */
+export function isInformationSeekingMessage(raw: unknown): boolean {
+    const text = normalizeForIntent(raw).replace(/^[¿¡\s]+/, '');
+    const withoutCourtesy = text.replace(COURTESY, '').replace(/^(?:pero|but|mais|porem)\s+/, '');
+    return /[?¿]/.test(String(raw ?? ''))
+        || /^(?:que|como|cuando|donde|cuanto|cual|por que|para que|what|why|how|when|where|which|quanto|qual|por que|comment|pourquoi|quand|combien|quel|quelle)\b/.test(withoutCourtesy)
+        || INFORMATION_REQUEST.test(text);
+}
+
+export function isPauseMessage(raw: unknown): boolean {
+    const text = normalizeForIntent(raw);
+    return /\b(?:prefiero hacerlo despues|lo hago despues|continuamos despues|mas tarde|en otro momento|por ahora no|espera|esperar|pause|wait|do this later|continue later|not now|mais tarde|prefiro depois|depois eu|agora nao|plus tard|pas maintenant|attendez)\b/.test(text);
+}
+
+export function isResumeMessage(raw: unknown): boolean {
+    return /^(?:continuemos|continuar|continua|sigamos|retomemos|reanudar|resume|continue|let s continue|let's continue|vamos continuar|continuons|reprendre|reprenons)[.!\s]*$/.test(normalizeForIntent(String(raw || '')));
+}
+
+/**
+ * Consume the entire acceptance, not just its first word. Courtesy may surround
+ * acceptance, but gratitude by itself and a new date/price/task are not consent
+ * to the currently displayed proposal. Explicit referents are allowed; new
+ * terms require a new proposal and challenge from the domain workflow.
+ */
+function isWholeConsentExpression(text: string, aliases: IntentAlias[], acceptedReferents: readonly string[] = []): boolean {
+    const choices = aliases.filter(a => a.intent === 'affirm' || a.intent === 'acknowledge')
+        .filter(a => !COURTESY.test(a.value)).sort((a, b) => b.value.length - a.value.length);
+    let rest = text;
+    let accepted = false;
+    const references = acceptedReferents.map(value => normalizeForIntent(value)).filter(Boolean).sort((a, b) => b.length - a.length);
+    for (let guard = 0; rest && guard < 12; guard++) {
+        const courtesy = COURTESY.exec(rest);
+        if (courtesy) { rest = rest.slice(courtesy[0].length).trim(); continue; }
+        const alias = choices.find(a => rest === a.value || rest.startsWith(`${a.value} `));
+        if (alias) {
+            accepted = true;
+            rest = rest.slice(alias.value.length).trim();
+            continue;
+        }
+        const referent = /^(?:(?:la|el|mi|esta|este|esa|ese|a|o|minha|meu|the|my|this|that|le|mon|ma|cette|ce)\s+)?(?:cita|reserva|operacion|pago|compra|pedido|appointment|booking|reservation|operation|payment|order|rendez-vous|paiement|commande|agendamento|pagamento|compra)(?:\s+|$)/.exec(rest);
+        if (accepted && referent) { rest = rest.slice(referent[0].length).trim(); continue; }
+        if (accepted) {
+            const referenceText = rest.replace(/^(?:de la|de|del|para|for|of|du|do|da)\s+/, '');
+            const reference = references.find(value => referenceText === value || referenceText.startsWith(`${value} `));
+            if (reference) { rest = referenceText.slice(reference.length).trim(); continue; }
+        }
+        return false;
+    }
+    return accepted && !rest;
+}
 
 const CONFIDENCE_RANK: Record<IntentConfidence, number> = { low: 0, medium: 1, high: 2 };
 
@@ -131,7 +190,7 @@ export function normalizeCustomerIntent(
     options: NormalizeOptions = {},
 ): NormalizedIntent {
     const rawLower = String(raw ?? '').trim().toLowerCase();
-    const normalized = normalizeForIntent(raw);
+    const normalized = normalizeForIntent(raw).replace(/^¡+/, '').trim();
     const base: NormalizedIntent = { intent: 'unclear', confidence: 'low', normalized };
     if (!normalized) return base;
 
@@ -156,6 +215,9 @@ export function normalizeCustomerIntent(
         };
     }
 
+    if (isInformationSeekingMessage(raw)) return base;
+    if (NEGATED_CANCELLATION.test(normalized) && !/\bno\s*,\s*cancela/i.test(rawLower)) return base;
+
     if (CANCEL_ANYWHERE.test(normalized)) {
         return { ...base, intent: 'cancel', confidence: 'high' };
     }
@@ -169,10 +231,7 @@ export function normalizeCustomerIntent(
 
     const alias = matchAlias(normalized, aliases);
     if (!alias) {
-        // No alias, but an unambiguous "no" somewhere: still a rejection.
-        return NEGATION_ANYWHERE.test(normalized)
-            ? { ...base, intent: 'reject', confidence: 'medium' }
-            : base;
+        return base;
     }
 
     const packId = pack?.aliases.includes(alias) ? pack.id : undefined;
@@ -208,11 +267,19 @@ export function normalizeCustomerIntent(
         if (withoutAlias && /^si\b/.test(withoutAlias)) {
             return { ...matched, intent: 'unclear', confidence: 'low' };
         }
+        const consentEligible = isWholeConsentExpression(normalized, aliases, options.acceptedReferents);
+        if (!consentEligible) {
+            // Preserve a bare thanks as acknowledgement for dialogue, while
+            // recording that it cannot answer an operational challenge.
+            return normalized === alias.value && alias.intent === 'acknowledge'
+                ? { ...matched, intent: 'acknowledge', confidence: alias.confidence, consentEligible: false }
+                : { ...matched, intent: 'unclear', confidence: 'low', consentEligible: false };
+        }
         // The customer said the explicit thing after a contextual opener.
         if (EXPLICIT_CONSENT_VERB.test(normalized)) {
-            return { ...matched, intent: 'affirm', confidence: 'high' };
+            return { ...matched, intent: 'affirm', confidence: 'high', consentEligible };
         }
-        return { ...matched, intent: alias.intent, confidence: alias.confidence };
+        return { ...matched, intent: alias.intent, confidence: alias.confidence, consentEligible };
     }
 
     return { ...matched, intent: alias.intent, confidence: alias.confidence };
@@ -230,6 +297,7 @@ export function authorizesEffect(
     effect: ConfirmationEffect,
     options: { answeringExplicitQuestion?: boolean } = {},
 ): boolean {
+    if (intent.consentEligible !== true) return false;
     const required = MIN_CONFIDENCE_BY_EFFECT[effect];
 
     if (intent.intent === 'acknowledge') {

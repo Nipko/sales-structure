@@ -3,7 +3,7 @@ import { BroadcastService } from './broadcast.service';
 
 describe('Broadcast self-service channel boundary', () => {
     const service = new BroadcastService(
-        {} as any, {} as any, {} as any, {} as any, {} as any, {} as any,
+        {} as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any,
     );
 
     it.each(['email', 'sms', 'instagram'])('rejects unsupported new %s campaigns before touching storage', async (channel) => {
@@ -20,7 +20,7 @@ describe('Broadcast self-service channel boundary', () => {
     it('rechecks verified-email authorization inside the service for scheduled workers', async () => {
         const verified = new BroadcastService(
             { user: { findFirst: jest.fn().mockResolvedValue({ id: 'ok' }) } } as any,
-            {} as any, {} as any, {} as any, {} as any, {} as any,
+            {} as any, {} as any, {} as any, {} as any, {} as any, {} as any,
         );
         await expect((verified as any).assertLaunchEmailAuthorization(
             '11111111-1111-4111-8111-111111111111',
@@ -29,7 +29,7 @@ describe('Broadcast self-service channel boundary', () => {
 
         const unverified = new BroadcastService(
             { user: { findFirst: jest.fn().mockResolvedValue(null) } } as any,
-            {} as any, {} as any, {} as any, {} as any, {} as any,
+            {} as any, {} as any, {} as any, {} as any, {} as any, {} as any,
         );
         await expect((unverified as any).assertLaunchEmailAuthorization(
             '11111111-1111-4111-8111-111111111111',

@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import OpenAI from 'openai';
-import { ILLMProvider, LLMRequestOptions, LLMResponse } from '../interfaces/illm-provider.interface';
+import { ILLMProvider, LLMRequestOptions, LLMResponse, LLMTransportOptions } from '../interfaces/illm-provider.interface';
 import { LlmKeyService } from '../../settings/llm-key.service';
 
 @Injectable()
@@ -23,7 +23,7 @@ export class DeepSeekProvider implements ILLMProvider {
         return this.client;
     }
 
-    async generate(options: LLMRequestOptions): Promise<LLMResponse> {
+    async generate(options: LLMRequestOptions, transport?: LLMTransportOptions): Promise<LLMResponse> {
         try {
             const openai = await this.ensureClient();
             const formattedMessages = this.formatMessages(options);
@@ -50,7 +50,7 @@ export class DeepSeekProvider implements ILLMProvider {
                 req.response_format = { type: 'json_object' };
             }
 
-            const response = await openai.chat.completions.create(req);
+            const response = await openai.chat.completions.create(req, transport);
             const choice = response.choices[0];
 
             return {

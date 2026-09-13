@@ -47,9 +47,7 @@ describe('isolated eval writer adapter', () => {
             serviceId: EVAL_SANDBOX_FIXTURE_IDS.boardingService,
             startDate: '2099-06-01', endDate: '2099-06-02',
         }],
-        ['place_catalog_order', 'orders', {
-            items: [{ productId: EVAL_SANDBOX_FIXTURE_IDS.product, quantity: 1 }],
-        }],
+
     ];
 
     it.each(cases)('%s persists only its local %s evidence row', async (toolName, table, args) => {
@@ -90,6 +88,13 @@ describe('isolated eval writer adapter', () => {
                 .map(match => match[1]),
         );
         expect(insertColumns.filter(column => !declaredColumns.has(column))).toEqual([]);
+    });
+
+    it.each(['place_catalog_order','cancel_catalog_order'])('never substitutes a fake catalog writer for canonical %s', async toolName => {
+        const db={$queryRawUnsafe:jest.fn()};
+        await expect(executeEvalSandboxMutation(db as any,'tenant_schema',EVAL_SANDBOX_CONTACT_ID,conversationId,toolName,{}))
+            .resolves.toMatchObject({error:'eval_writer_not_audited',persisted:false});
+        expect(db.$queryRawUnsafe).not.toHaveBeenCalled();
     });
 
     it('normalizes an inconsistent tour party breakdown to the declared party size', async () => {

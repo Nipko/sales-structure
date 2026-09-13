@@ -1,6 +1,7 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, Query, Req, UseGuards, ForbiddenException } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Headers, Param, Query, Req, UseGuards, ForbiddenException } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { AgentConsoleService } from './agent-console.service';
+import { pressKey } from './press-key';
 import { CannedResponsesService } from './canned-responses.service';
 import { AgentAvailabilityService } from './agent-availability.service';
 import { MacrosService } from './macros.service';
@@ -97,7 +98,25 @@ export class AgentConsoleController {
         @Param('tenantId') tenantId: string,
         @Param('conversationId') conversationId: string,
         @Req() req: any,
-        @Body() body: { content: string; type?: string; mediaUrl?: string; caption?: string; filename?: string },
+        @Body() body: {
+            content: string; type?: string; mediaUrl?: string; caption?: string; filename?: string;
+            /**
+             * What makes this press of Send *this* press.
+             *
+             * Optional, and supplied by the console client. Without it the
+             * durable row gets a fresh identity per call, so an HTTP retry of
+             * the same press — a timeout the server actually received, a
+             * reconnecting socket — is a second message on the customer's
+             * phone. With it, the outbox collides the retry onto the row that
+             * already exists.
+             *
+             * Deliberately NOT derived from the words: two presses of the same
+             * "ok" are two messages an agent meant to send, and a key computed
+             * from the content would swallow the second one.
+             */
+            idempotencyKey?: string;
+        },
+        @Headers('idempotency-key') headerKey?: string,
     ) {
         await this.agentConsoleService.assertCanActOnConversation(
             tenantId, conversationId, req.user.id, req.user.role,
@@ -111,6 +130,7 @@ export class AgentConsoleController {
             body.mediaUrl,
             body.caption,
             body.filename,
+            pressKey(body.idempotencyKey ?? headerKey),
         );
         return { success: true, data: message };
     }

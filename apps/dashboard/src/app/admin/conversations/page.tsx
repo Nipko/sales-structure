@@ -73,7 +73,7 @@ export default function ConversationsPage() {
                 <div>
                     <h1 className="text-[28px] font-semibold m-0 flex items-center gap-2.5">
                         <MessageSquare size={28} className="text-primary" /> {t("title")}
-                        <DataSourceBadge isLive={isLive} />
+                        <DataSourceBadge state={isLive ? "live" : "unverified"} />
                     </h1>
                     <p className="text-muted-foreground mt-1">{t("subtitle", { count: stats.total, messages: stats.totalMessages })}</p>
                 </div>

@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException, Inject, forwardRef } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException, Inject, Optional, forwardRef } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Cron } from '@nestjs/schedule';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -7,6 +7,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { AbTestService } from './ab-test.service';
 import { CronLockService } from '../redis/cron-lock.service';
+import { WhatsappSpendService } from '../billing/whatsapp-spend/whatsapp-spend.service';
+import { wabaCalendarMonth } from '../billing/whatsapp-rates';
 
 export const BROADCAST_QUEUE = 'broadcast-messages';
 
@@ -40,6 +42,10 @@ export interface BroadcastJobData {
     schemaName: string;
     campaignId: string;
     recipientId: string;
+    // The contact behind this recipient row. Carried so the per-contact spending
+    // limit can see the message: a ceiling that cannot identify who a message is
+    // for cannot stop one contact consuming a whole month.
+    contactId?: string | null;
     channel: string;
     phone: string;
     email?: string;
@@ -85,6 +91,12 @@ export class BroadcastService {
         @Inject(forwardRef(() => AbTestService))
         private readonly abTestService: AbTestService,
         private readonly cronLock: CronLockService,
+        // NOT optional any more. A fanout is the one producer that can turn a
+        // single click into five thousand charges, and the whole purpose of
+        // declaring its ceiling first is that nothing starts without one. An
+        // optional gate made "no ceiling" the quiet default in exactly the
+        // deployment least likely to notice.
+        private readonly spendGate: WhatsappSpendService,
     ) {}
 
     // ================================================================
@@ -325,6 +337,7 @@ export class BroadcastService {
                     schemaName: schema,
                     campaignId,
                     recipientId: r.id,
+                    contactId: r.contact_id || null,
                     channel: ch,
                     phone: r.phone || '',
                     email: r.email || '',
@@ -348,6 +361,24 @@ export class BroadcastService {
             };
         });
 
+        // ── The batch's own ceiling, COMMITTED BEFORE THE FANOUT ────────────
+        //
+        // Order is the whole point. Once `addBulk` returns, ten workers are
+        // running against this campaign at once; a budget declared after that —
+        // or checked in application code rather than in the reserving statement
+        // — leaves a window in which the batch is unbounded, and a window in a
+        // spending limit is the same as no limit.
+        //
+        // The ceiling is the batch's own size in DELIVERED MESSAGES. It needs no
+        // rate card, no currency and no market, so it exists even for an account
+        // whose price cannot be resolved — and "at most this many messages" is
+        // exactly what launching a campaign for this many people authorises. It
+        // is what stops a re-enqueue, a retry storm or a bug from turning five
+        // hundred recipients into five thousand charges.
+        await this.declareCampaignBudget(schema, tenantId,
+            metadata.channelAccountId || null, campaignId,
+            jobs.filter(job => (job.data as BroadcastJobData).channel === 'whatsapp').length);
+
         await this.broadcastQueue.addBulk(jobs);
 
         await this.prisma.executeInTenantSchema(
@@ -359,6 +390,72 @@ export class BroadcastService {
 
         this.logger.log(`Campaign ${campaignId} launched: ${recipients.length} messages queued`);
         return { queued: recipients.length };
+    }
+
+    /**
+     * Tell the money authority what this launch is allowed to cost — or refuse
+     * to launch it.
+     *
+     * ═══ FAIL-CLOSED, AND IN THE WABA'S OWN MONTH ═══
+     *
+     * This used to swallow its own failure: a budget that could not be written
+     * was logged and the fanout went ahead anyway. That is the one place where
+     * "degrade rather than stop" is wrong, because the thing being degraded IS
+     * the limit. A campaign with five thousand recipients and no ceiling is
+     * precisely the event this call exists to prevent, and it would have been
+     * invisible — one error line, then five thousand successful sends.
+     *
+     * ── AND THE MONTH HAS TO BE THE SAME ONE THE WORKERS USE ────────────────
+     *
+     * The period used to be `new Date().toISOString().slice(0, 7)` — the UTC
+     * month. Every worker counts its effect against `wabaCalendarMonth(at,
+     * zone)`, the calendar month of the WhatsApp account's own time zone, and
+     * for a WABA in Bogotá those disagree for five hours at every month
+     * boundary. A campaign launched at 00:30 UTC on 1 October declared a
+     * ceiling for `2026-10` while its workers counted against `2026-09`: the
+     * ceiling existed, was correct, and applied to nothing.
+     *
+     * So the zone is read from the number this campaign sends from, and a zone
+     * that cannot be read is a refusal rather than a guess — `America/Bogota`
+     * assumed for a WABA in Manila is the same defect with a different sign.
+     */
+    private async declareCampaignBudget(schema: string, tenantId: string,
+        channelAccountId: string | null, campaignId: string, deliveries: number) {
+        if (deliveries <= 0) return;
+        const period = await this.wabaMonthFor(tenantId, channelAccountId);
+        const budget = await this.spendGate.budgetTask(schema, {
+            taskId: campaignId, period, deliveries,
+        });
+        this.logger.log(`Campaign ${campaignId} budget: at most ${budget.capDeliveries} `
+            + `delivered WhatsApp messages in ${period} (${budget.usedDeliveries} already sent)`);
+    }
+
+    /**
+     * The calendar month of the sending WhatsApp account's own time zone.
+     *
+     * The same function every worker calls, on the same field, so producer and
+     * consumer cannot disagree about which month a message belongs to.
+     */
+    private async wabaMonthFor(tenantId: string, channelAccountId: string | null): Promise<string> {
+        const account = await this.prisma.channelAccount.findFirst({
+            where: {
+                tenantId, channelType: 'whatsapp',
+                ...(channelAccountId ? { accountId: channelAccountId } : {}),
+            },
+            select: { accountId: true, wabaTimezone: true },
+        });
+        const zone = String(account?.wabaTimezone ?? '').trim();
+        const month = zone ? wabaCalendarMonth(new Date(), zone) : null;
+        if (!month) {
+            // A campaign that cannot name its own month cannot be given a
+            // ceiling that means anything. Refusing costs one launch; guessing
+            // costs a month of unbounded sending nobody notices.
+            throw new BadRequestException(
+                'Este número de WhatsApp no tiene zona horaria de facturación configurada, '
+                + 'así que no se puede fijar el tope de gasto de la campaña. Configurala en '
+                + 'Canales y volvé a lanzarla.');
+        }
+        return month;
     }
 
     // ================================================================

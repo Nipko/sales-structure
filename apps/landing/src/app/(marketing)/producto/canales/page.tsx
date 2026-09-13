@@ -2,14 +2,17 @@
 
 import { motion } from "motion/react";
 import { useTranslations } from "next-intl";
-import Link from "next/link";
+import Link from "@/components/LocalizedLink";
 import { Section } from "../../../../components/ui/Section";
 import { Icon } from "../../../../components/ui/Icon";
 import { CTABanner } from "../../../../components/layout/CTABanner";
+import { ThreePaymentsNotice } from "../../../../components/sections/ThreePaymentsNotice";
 import { JsonLd } from "../../../../components/ui/JsonLd";
 import { breadcrumbJsonLd } from "../../../../lib/seo";
 import { SIGNUP_URL } from "../../../../lib/constants";
 import { InboxDemo } from "../../../../components/demos/InboxDemo";
+import { DemoFrame } from "../../../../components/demos/DemoFrame";
+import { demoContract } from "../../../../data/demo-catalog";
 
 const FEATURES = [
   { key: "channelsFeature1", icon: () => Icon.check("w-6 h-6") },
@@ -74,6 +77,11 @@ export default function ChannelsProductPage() {
             >
               {t("channelsCta")} {Icon.arrow()}
             </a>
+
+            {/* The page where somebody connects WhatsApp is the page where the
+                Meta charge has to be stated. Leaving it to /precios means the
+                reader who arrives here from an ad never meets it. */}
+            <ThreePaymentsNotice className="mt-8 sm:mx-0" />
           </motion.div>
         </div>
       </section>
@@ -123,7 +131,9 @@ export default function ChannelsProductPage() {
         </div>
         <div className="max-w-4xl mx-auto">
           <div className="bg-surface border border-border rounded-2xl p-4 sm:p-6">
-            <InboxDemo />
+            <DemoFrame contract={demoContract("handoff")}>
+              <InboxDemo />
+            </DemoFrame>
           </div>
         </div>
       </Section>

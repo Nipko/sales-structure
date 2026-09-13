@@ -1,0 +1,12 @@
+{
+  "reproduction": "unavailable channel lookup becomes authoritative empty channel context",
+  "externalServicesUsed": false,
+  "sourceAvailable": false,
+  "snapshot": {
+    "generatedAt": "2026-09-06T03:08:54.531Z",
+    "total": 0,
+    "channels": []
+  },
+  "prompt": "## CANALES CONECTADOS (autoritativo, derivado del tenant autenticado)\n{\"total\":0,\"channels\":[]}\nREGLA DE CANALES: esta lista es la ÚNICA fuente sobre qué canales están conectados. Si no está vacía, NUNCA afirmes que no hay canales conectados; nombra los tipos conectados. Una señal de calidad sobre canales significa que UNA asignación del agente no está conectada, que un vínculo por cuenta quedó obsoleto o que una credencial requiere reautorizar; no significa que el negocio no tenga canales. Si la lista está vacía, indícalo y guía a Administración → Canales.",
+  "defectReproduced": true
+}

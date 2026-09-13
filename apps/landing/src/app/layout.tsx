@@ -1,14 +1,6 @@
 import type { Metadata } from "next";
-import { Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 import LangProvider from "@/components/LangProvider";
-
-const jakarta = Plus_Jakarta_Sans({
-  subsets: ["latin"],
-  display: "swap",
-  variable: "--font-jakarta",
-  weight: ["300", "400", "500", "600", "700", "800"],
-});
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://parallly-chat.cloud"),
@@ -44,7 +36,7 @@ export const metadata: Metadata = {
     type: "website",
     locale: "es_CO",
     siteName: "Parallly",
-    url: "https://parallly-chat.cloud",
+    url: "https://parallly-chat.cloud/es",
     images: [
       {
         url: "/og/parallly-social.png",
@@ -69,7 +61,7 @@ export const metadata: Metadata = {
     "max-video-preview": -1,
   },
   alternates: {
-    canonical: "https://parallly-chat.cloud",
+    canonical: "https://parallly-chat.cloud/es",
   },
 };
 
@@ -79,14 +71,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="es" className={jakarta.variable}>
+    <html lang="es">
       <head>
+        <script dangerouslySetInnerHTML={{ __html: `(function(){var m=location.pathname.match(/^\\/(es|en|pt|fr)(?:\\/|$)/);document.documentElement.lang=m?m[1]:'es';})();` }} />
         <link rel="icon" href="/favicon.ico" />
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
         <link rel="dns-prefetch" href="https://admin.parallly-chat.cloud" />
         <meta name="theme-color" content="#09090b" />
       </head>
-      <body className={`${jakarta.className} antialiased`}>
+      <body className="antialiased">
         <LangProvider>{children}</LangProvider>
       </body>
     </html>

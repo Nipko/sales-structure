@@ -6,6 +6,7 @@ import {
     NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import type { ServiceExecutionContext } from '../../common/types/execution-context';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { EmailTemplatesService } from '../email-templates/email-templates.service';
 import {
@@ -13,6 +14,7 @@ import {
     requireTenantContact,
 } from '../../common/utils/tenant-contact.util';
 import { resolveNativeEvidenceOpportunity } from '../../common/utils/native-evidence-opportunity.util';
+import type { EvalNamespaceLease } from '../simulation/isolated-eval-namespace';
 import {
     LodgingSorResolution,
     LodgingSourceOfTruthService,
@@ -26,6 +28,7 @@ import {
     PENDING_PAYMENT_STATUS,
     resolvePaymentPolicy,
 } from '../../common/utils/payment-policy.util';
+import { enqueueOperationalNotice } from '../operational-notices/operational-notice-outbox';
 
 const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -56,7 +59,7 @@ export class PropertiesService {
     constructor(
         private readonly prisma: PrismaService,
         private readonly throttle: TenantThrottleService,
-        private readonly emailTemplates: EmailTemplatesService,
+        private readonly _emailTemplates: EmailTemplatesService,
         // Optional so the many specs that build this service by hand keep
         // working. When absent the tenant behaves as Channel-Manager-free,
         // which is what a tenant without the integration is.
@@ -79,6 +82,7 @@ export class PropertiesService {
         tenantId: string | undefined,
         schemaName: string,
         propertyId: string,
+        executionContext?: ServiceExecutionContext,
     ): Promise<LodgingSorResolution> {
         // Sin resolutor no hay integración en este despliegue, y sin tenantId
         // no hay a quién preguntarle: las dos son ausencias, no fallas.
@@ -86,7 +90,9 @@ export class PropertiesService {
             return { sor: 'local', connected: false, stale: false, health: 'unknown' };
         }
         try {
-            return await this.lodgingSor.resolveForProperty(tenantId, schemaName, propertyId);
+            return executionContext
+                ? await this.lodgingSor.resolveForProperty(tenantId, schemaName, propertyId, executionContext)
+                : await this.lodgingSor.resolveForProperty(tenantId, schemaName, propertyId);
         } catch (error: any) {
             this.logger.error(`[Lodging] SoR resolution failed: ${error?.message}`);
             return {
@@ -316,12 +322,13 @@ export class PropertiesService {
         checkIn: string,
         checkOut: string,
         tenantId?: string,
+        executionContext?: ServiceExecutionContext,
     ): Promise<any> {
         this.assertUuid(propertyId, 'propertyId');
         const stay = this.validateStayRange(checkIn, checkOut);
         const property = await this.getById(schemaName, propertyId);
         this.assertPropertyBookable(property);
-        const sor = await this.resolveSor(tenantId, schemaName, propertyId);
+        const sor = await this.resolveSor(tenantId, schemaName, propertyId, executionContext);
 
         // Hotel semantics: both persisted and requested ranges are half-open.
         // A departure on D therefore does not conflict with a new arrival on D.
@@ -544,7 +551,20 @@ export class PropertiesService {
     /**
      * Create a direct booking.
      */
-    async createBooking(schemaName: string, propertyId: string, data: any): Promise<any> {
+    /**
+     * `execution.sandboxNamespace` es el arriendo de una evaluación aislada. La
+     * estadía se escribe con su precio y su política reales —eso es lo que se
+     * mide— pero el correo de confirmación al huésped queda apagado. Hoy la
+     * herramienta no pasa `guestEmail`, así que ese camino no se alcanza desde
+     * el chat; el arriendo lo cierra igual para que agregarlo mañana (como ya
+     * lo hace tours) no empiece a mandar correos desde una prueba.
+     */
+    async createBooking(
+        schemaName: string,
+        propertyId: string,
+        data: any,
+        execution: { sandboxNamespace?: EvalNamespaceLease } = {},
+    ): Promise<any> {
         this.assertUuid(propertyId, 'propertyId');
         if (!data || typeof data !== 'object') {
             throw new BadRequestException('Booking payload is required');
@@ -686,69 +706,29 @@ export class PropertiesService {
             const rows = await query<any[]>(
                 `INSERT INTO property_bookings
                  (property_id, contact_id, opportunity_id, conversation_id, guest_name, guest_email, guest_phone,
-                  guests_count, check_in, check_out, nights, night_price, cleaning_fee, total_price, currency, status,
+                  guests_count, check_in, check_out, nights, night_price, cleaning_fee, total_price, currency, language, status,
                   amount_due, hold_expires_at)
-                 VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, $6, $7, $8, $9::date, $10::date, $11, $12, $13, $14, $15, $16, $17, $18)
+                 VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, $6, $7, $8, $9::date, $10::date, $11, $12, $13, $14, $15, $16, $17, $18, $19)
                  RETURNING *`,
                 [
                     propertyId,
                     canonicalContactId, opportunityId, data.conversationId || null,
                     data.guestName, data.guestEmail || null, data.guestPhone || null,
                     guestsCount, stay.checkIn, stay.checkOut,
-                    stay.nights, nightPrice, cleaningFee, totalPrice, property.currency, status,
+                    stay.nights, nightPrice, cleaningFee, totalPrice, property.currency, data.language || 'es', status,
                     amountDue, holdExpiresAt,
                 ],
             );
             if (!rows?.[0]) throw new Error('Property booking was not created');
+            if (!execution.sandboxNamespace) await enqueueOperationalNotice(query,schemaName,{
+                kind:'property.booking_confirmed',entityId:rows[0].id,
+                contactId:rows[0].contact_id,conversationId:rows[0].conversation_id,
+                notBefore:status===PENDING_PAYMENT_STATUS?holdExpiresAt:null});
             return { booking: rows[0], property, policy };
         });
 
         const booking = created.booking;
-        const property = created.property;
-        const totalPrice = Number(booking.total_price ?? 0);
         this.logger.log(`Direct booking created for property ${propertyId}: ${stay.checkIn} to ${stay.checkOut}`);
-
-        // After successful booking insert, try to send confirmation email (fire-and-forget)
-        try {
-            if (data.guestEmail) {
-                // Check if confirmation emails are enabled for properties
-                let emailConfirmationsEnabled = true;
-                try {
-                    const personaRows = await this.prisma.executeInTenantSchema<any[]>(
-                        schemaName,
-                        `SELECT config_json FROM agent_personas WHERE is_active = true LIMIT 1`,
-                        []
-                    );
-                    if (personaRows && personaRows.length > 0) {
-                        const config = personaRows[0].config_json || {};
-                        const propertiesTool = config.tools?.properties;
-                        if (propertiesTool && propertiesTool.emailConfirmations === false) {
-                            emailConfirmationsEnabled = false;
-                        }
-                    }
-                } catch (err) {
-                    this.logger.error(`Error checking persona settings for properties: ${err.message}`);
-                }
-
-                if (emailConfirmationsEnabled) {
-                    // TODO(i18n): this is a guest-facing email — pass the guest's
-                    // detected/preferred language as the trailing `lang` arg once
-                    // it's captured. Defaults to 'es' (unchanged behaviour).
-                    await this.emailTemplates.renderAndSend(schemaName, 'property_booking_confirmation', data.guestEmail, {
-                        guest_name: data.guestName || 'Huésped',
-                        property_name: property?.name || '',
-                        check_in: stay.checkIn,
-                        check_out: stay.checkOut,
-                        nights: String(stay.nights),
-                        total_price: String(totalPrice),
-                        currency: booking.currency,
-                        check_in_instructions: property?.check_in_instructions || '',
-                    });
-                }
-            }
-        } catch (e: any) {
-            this.logger.warn(`Booking confirmation email failed: ${e.message}`);
-        }
 
         // La política viaja con la reserva porque quien la lee —la herramienta,
         // y a través de ella el agente— tiene que saber que esto NO está

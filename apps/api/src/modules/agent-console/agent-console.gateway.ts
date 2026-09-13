@@ -13,6 +13,7 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { OnEvent } from '@nestjs/event-emitter';
 import { AgentConsoleService } from './agent-console.service';
+import { pressKey } from './press-key';
 import { CopilotService } from '../copilot/copilot.service';
 import { CollisionDetectionService } from './collision-detection.service';
 import { HandoffEscalatedEvent } from '../handoff/handoff.service';
@@ -461,6 +462,14 @@ export class AgentConsoleGateway implements OnGatewayInit, OnGatewayConnection, 
             meta.agentId,
             data.content,
             data.type || 'text',
+            undefined,
+            undefined,
+            undefined,
+            // A reconnecting socket re-emitting the same press is precisely the
+            // duplicate this exists to stop, so the key matters more here than
+            // over HTTP. Clients that do not send one keep today's behaviour:
+            // one press, one message, no protection against a repeat.
+            pressKey((data as any)?.idempotencyKey),
         );
 
         // Broadcast to all agents watching this conversation
@@ -610,7 +619,10 @@ export class AgentConsoleGateway implements OnGatewayInit, OnGatewayConnection, 
      * Listen for handoff escalation events from HandoffService.
      * Notifies all agents in the tenant via WebSocket.
      */
-    @OnEvent('handoff.escalated')
+    // One destination, one event. A transfer used to announce itself once to
+    // all six consumers, so a single failure among them re-announced it to
+    // the five that had already succeeded.
+    @OnEvent('handoff.escalated.inbox')
     handleHandoffEscalated(event: HandoffEscalatedEvent) {
         this.logger.log(`Handoff event received for conversation ${event.conversationId} in tenant ${event.tenantId}`);
         this.fanoutHandoffEscalated(event);

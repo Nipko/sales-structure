@@ -585,37 +585,22 @@ export class MetaGraphService {
   }
 
   /**
-   * Envía un mensaje de prueba para verificar que el canal está operativo
+   * ── RETIRADO: `sendTestMessage` ─────────────────────────────────────────
+   *
+   * Posteaba un mensaje de texto al numero del dueno recien conectado para
+   * confirmar que el canal quedaba operativo. Tenia CERO llamadores: se
+   * escribio, se dejo de usar y quedo ahi.
+   *
+   * Desde el 1 de octubre de 2026 Meta cobra cada mensaje de servicio
+   * entregado, asi que ese metodo era un envio cobrable fuera de toda
+   * frontera economica: sin reserva, sin recibo, sin consentimiento y sin
+   * nadie que lo contara. Se elimina en vez de conectarlo a la admision
+   * porque no habia nada que conectar — no lo llamaba nadie.
+   *
+   * Si alguna vez hace falta una prueba de conexion, el camino es el mismo
+   * que el de cualquier otro saliente: pasar por la admision economica y
+   * dejar recibo. Ver `WhatsappSendAdmissionService` en la API.
    */
-  async sendTestMessage(phoneNumberId: string, accessToken: string, toPhone: string): Promise<string | null> {
-    this.logger.log(`Sending test message from phoneNumberId: ${phoneNumberId} to: ${toPhone}`);
-
-    try {
-      const response = await firstValueFrom(
-        this.httpService.post(
-          `${this.baseUrl}/${phoneNumberId}/messages`,
-          {
-            messaging_product: 'whatsapp',
-            to: toPhone,
-            type: 'text',
-            text: { body: '✅ Tu cuenta de WhatsApp Business fue conectada exitosamente a Parallext.' },
-          },
-          {
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-              'Content-Type': 'application/json',
-            },
-            timeout: 15000,
-          },
-        ),
-      );
-
-      return response.data?.messages?.[0]?.id || null;
-    } catch (error: any) {
-      this.logger.warn(`Test message failed (non-critical): ${error.message}`);
-      return null; // No lanzamos error — el test message es opcional
-    }
-  }
 
   /**
    * Retry con exponential backoff

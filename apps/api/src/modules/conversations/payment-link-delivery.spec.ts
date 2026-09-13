@@ -63,12 +63,17 @@ describe('el envío', () => {
     });
 
     it('deduplica: dos herramientas pueden devolver el mismo enlace', () => {
-        expect(SRC).toContain('for (const url of new Set(paymentLinks))');
+        // La cabecera del bucle ganó guardas (`draftMode`, `session`) que no
+        // tocan la deduplicación, así que se afirma lo que importa —que lo
+        // recorrido es un Set de los enlaces— y no el texto exacto de la línea.
+        expect(SRC).toMatch(/for \(const url of .*new Set\(paymentLinks\)\)/);
     });
 
-    it('el dedupeId va atado al enlace, no al turno', () => {
-        // Si el turno se reprocesa tras un reinicio, el cliente no puede recibir
-        // el mismo enlace dos veces.
-        expect(SRC).toContain('dedupeId: `paylink-${url.slice(-64)}`');
+    it('el enlace queda dentro del lote durable del inbound', () => {
+        // El lote es la autoridad de identidad del turno: un reintento encuentra
+        // el mismo batch antes de volver a ejecutar o enviar sus efectos.
+        expect(SRC).toContain('effectSink.paymentLinks.push(url)');
+        expect(SRC).toContain('paymentLinks: [...new Set(output.paymentLinks)]');
+        expect(SRC).toContain('findBatchForInbound(tenantId, input.schemaName, binding)');
     });
 });

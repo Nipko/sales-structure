@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
 import { fallbackMessageEmail, agentAssignmentEmail } from './email-layouts';
+import { sendBoundedSmtp } from './bounded-smtp';
 
 export interface EmailAttachment {
     filename: string;
@@ -154,6 +155,17 @@ export class EmailService implements OnModuleInit {
             this.logger.error(`Failed to send email to ${payload.to}: ${error.message}`, error.stack);
             return false;
         }
+    }
+
+    /** Validate before an audited send is marked started. The returned attempt
+     * has a private socket and a 25-second deadline, below its database fence. */
+    prepareBoundedSend(payload:EmailPayload):()=>Promise<string> {
+        const host=this.config.get<string>('SMTP_HOST')?.trim(),user=this.config.get<string>('SMTP_USER')?.trim();
+        const rawPass=this.config.get<string>('SMTP_PASS'),port=Number(this.config.get<number>('SMTP_PORT',587));
+        if(!host||!user||!rawPass||!Number.isInteger(port)||port<1||port>65535)throw new Error('smtp_not_configured');
+        const options={host,port,secure:port===465,auth:{user,pass:this.normalizeSmtpPass(rawPass)}};
+        const from=payload.from||this.config.get<string>('SMTP_FROM')||`Parallly <${user}>`;
+        return ()=>sendBoundedSmtp(options,{...payload,from});
     }
 
     async sendFallbackMessage(to: string, leadName: string, message: string): Promise<boolean> {

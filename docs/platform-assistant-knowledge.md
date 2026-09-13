@@ -35,6 +35,7 @@ del dashboard por sí solo no lo publica.
 | Etapa de onboarding y tarjeta de puesta en marcha | `packages/shared/src/onboarding-stage-contract.ts` (`OnboardingStage` + `resolveOnboardingGuide`), `tenant.settings.onboardingStage` y `components/InitialSetupCard.tsx` |
 | Manual narrativo tenant | `docs/user-manual.md` como apoyo editorial, no como fuente runtime |
 | App móvil | `docs/mobile-user-manual.md` contrastado con `apps/mobile/src` |
+| Cobro de Meta por mensaje de WhatsApp | `whatsapp-rate-table.generated.ts` (`WHATSAPP_FREE_SERVICE_ALLOWANCE` para la cuota y la fecha de vigencia), `apps/api/src/modules/billing/whatsapp-spend/` para lo que se mide, `whatsapp-funding-readiness.ts` y `account-send-pause.ts` para el estado de un número, y `dashboard/messages/*.json` (`whatsappSpend`) para los nombres de la tarjeta y sus botones. Reglas de Meta: `docs/whatsapp-meta-pricing-2026-10.md` |
 
 El contexto dinámico de plan prevalece sobre cualquier ejemplo estático incluido en
 un artículo. Los artículos no deben duplicar precios o cuotas que puedan cambiar en
@@ -91,7 +92,8 @@ La colección localizada debe cubrir, además de los artículos funcionales actu
    breadcrumbs y retorno desde Configuración.
 2. Matriz real de roles y diferencia entre leer y editar.
 3. Cinco planes sin fijar valores runtime en el texto.
-4. Las 18 verticales, diferenciando con claridad las que aún no tienen certificación
+4. Las 20 industrias y 76 perfiles del contrato, distinguiendo las 18 industrias con
+   oferta seleccionable, los perfiles en lista de espera y la ausencia de certificación
    funcional integral.
 5. App móvil y límites frente a la web.
 6. Tour de configuración y la tarjeta Puesta en marcha esencial que reemplaza la
@@ -106,13 +108,22 @@ La colección localizada debe cubrir, además de los artículos funcionales actu
    "Conocé a tu agente" de 3 pasos (el paso 1 confirma el agente ya derivado de la
    industria, no elige plantilla) → verificación de correo no bloqueante; "Conectar
    después" queda registrado y se recuerda desde Inicio; el asistente se reabre desde
-   **Configuración → Asistente de configuración**.
+   **Configuración → Asistente de configuración**. El resultado es un borrador:
+   conectar el canal no lo publica. El siguiente recorrido revisa asignación, prueba,
+   candidato, aprobación y publicación.
 10. Recorridos guiados: qué hace **Mostrarme dónde/cómo**, que es de solo lectura, que
     corre en escritorio y que Admin ve los de edición mientras Supervisor ve los de
     revisión; y la barra de contexto que muestra la pantalla destino tras **Revisar**.
 11. Diferencia entre asignación, conexión y credencial de un canal: qué bloquea al
     agente (`channel_connection`) y qué solo advierte (`channel_coverage`), más el
     estado "Conectado, pero requiere reautorizar".
+12. El cobro de Meta por mensaje de WhatsApp desde el 1 de octubre de 2026: quién
+    cobra y a quién, que la suscripción de Parallly es un pago aparte, dónde se carga
+    el medio de pago, que sin él el número **deja de entregar** (no degrada), qué son
+    y qué no son los 1.000 mensajes de servicio gratis por número y mes calendario,
+    qué mide la tarjeta del panel, qué puede y qué no puede un tope de gasto, y cómo
+    vuelve un número pausado. Debe aparecer también donde se pregunta: el artículo de
+    facturación y el de solución de problemas.
 
 ## Reglas editoriales
 
@@ -133,6 +144,9 @@ La colección localizada debe cubrir, además de los artículos funcionales actu
   interna del dashboard.
 - No prometer que un recorrido guiado cambia configuración. Abre la pantalla y resalta
   dónde se hace el cambio; la persona lo hace y lo guarda.
+- No decir que guardar el editor o conectar un canal deja al agente atendiendo. Guardar
+  conserva un borrador y sólo una publicación aprobada vuelve operativos sus cambios y
+  asignaciones.
 - No describir la barra de contexto como una notificación: es parte de la pantalla
   destino, derivada de los parámetros `qa`/`qagent` que agrega **Revisar**.
 - No describir un número de prueba o sandbox de WhatsApp como ruta de conexión. Las
@@ -143,6 +157,22 @@ La colección localizada debe cubrir, además de los artículos funcionales actu
 - No prometer como operativo un control que la KB marca `no certificado`; las
   limitaciones de pipeline, campañas, calendario, drip, CSAT, Email y triggers deben
   mantenerse coherentes en todos los artículos que las mencionen.
+- No pedir nunca el número de una tarjeta dentro de una conversación, ni sugerir que
+  el medio de pago de WhatsApp se carga en Parallly: vive en las herramientas de Meta,
+  sobre la cuenta de WhatsApp Business del tenant. Los artículos deben decirlo de
+  forma explícita, porque es la frase que distingue a Parallly de una estafa que
+  imite este aviso en octubre.
+- No afirmar que Parallly paga, absorbe o refactura el cobro de Meta, ni describir los
+  mensajes de WhatsApp como incluidos en el plan.
+- No transcribir tarifas por mensaje: Meta las revisa por trimestre y cobra según el
+  país del destinatario. La cuota gratis y su fecha de vigencia sí se escriben, y
+  deben coincidir con `WHATSAPP_FREE_SERVICE_ALLOWANCE`.
+- No presentar un tope de gasto como un freno vigente sin leer el estado de la
+  tarjeta: empieza en `observe` y un Tenant Admin puede activar **Protección de
+  gasto** en Canales → WhatsApp. Los valores iniciales son 2.000 entregas por
+  número y 60 por contacto al mes. Un tope sólo acota lo que Parallly envía y no
+  es un límite que Meta aplique.
+- No describir un medio de pago "cargado" como garantía de cobro aprobado.
 - Para datos regulados o decisiones sensibles, describir límites y handoff humano.
 
 ## Flujo de actualización y publicación
@@ -164,7 +194,16 @@ El repositorio debe mantener una prueba que falle si:
 - una ruta no pertenece al contrato de navegación;
 - reaparecen etiquetas históricas;
 - falta un tema obligatorio;
-- un artículo contradice el bloque dinámico de plan.
+- un artículo contradice el bloque dinámico de plan;
+- un artículo contradice la tabla de tarifas de WhatsApp, pierde una de las cláusulas
+  del cobro de Meta en alguno de los cuatro idiomas, o nombra la tarjeta del panel con
+  una etiqueta que el dashboard ya no renderiza.
+
+Las dos primeras familias viven en
+`apps/api/src/modules/copilot/assistant-kb-contract.spec.ts` (forma de la colección) y
+la última en `assistant-whatsapp-cost-kb.spec.ts` (las cláusulas del cobro, la cuota y
+la fecha leídas desde la tabla generada, y el nombre de la tarjeta leído desde los
+mensajes del dashboard).
 
 Esta política documenta el mecanismo y debe revisarse junto con los artículos runtime
 en cada cambio de navegación, roles, planes, verticales o alcance móvil.

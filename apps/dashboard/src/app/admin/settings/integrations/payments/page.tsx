@@ -8,6 +8,7 @@ import {
     KeyRound, Loader2, Save, ShieldCheck, Unplug,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
+import { LoadFailureNotice } from "@/components/ui/load-failure";
 import { useTenant } from "@/contexts/TenantContext";
 import { usePlanLimits } from "@/hooks/usePlanLimits";
 import {
@@ -87,6 +88,11 @@ export default function TenantPaymentsPage() {
 
     const [cfg, setCfg] = useState<TenantPaymentsConfig>(EMPTY_CONFIG);
     const [provider, setProvider] = useState<TenantPaymentProvider>("wompi");
+    // A failed read used to land on `EMPTY_CONFIG`, which is the exact shape of
+    // "this tenant has never connected a payment provider". Both provider cards
+    // then went blank and the credential form invited the owner to set up a rail
+    // that may already be live.
+    const [unavailable, setUnavailable] = useState(false);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [activating, setActivating] = useState(false);
@@ -121,8 +127,10 @@ export default function TenantPaymentsPage() {
                 setProvider(next.activeProvider || (wompi.connected ? "wompi" : (mp.connected ? "mercadopago" : "wompi")));
                 initialProviderSelected.current = true;
             }
+            setUnavailable(false);
         } else {
             setCfg(EMPTY_CONFIG);
+            setUnavailable(true);
         }
         setLoading(false);
     }, [activeTenantId]);
@@ -143,7 +151,10 @@ export default function TenantPaymentsPage() {
     const activationPending = state.connected && state.activationReady === true && !state.ready;
 
     async function handleSave() {
-        if (!activeTenantId || !planAllowsPayments) return;
+        // With the config unread, `activeProvider` is undefined, so the
+        // MercadoPago branch below would compute `activate: true` and switch
+        // the tenant's live rail as a side effect of saving credentials.
+        if (!activeTenantId || !planAllowsPayments || unavailable) return;
         setSaving(true);
         setFeedback(null);
         let res;
@@ -188,7 +199,7 @@ export default function TenantPaymentsPage() {
 
     async function handleActivate() {
         const canActivate = state.activationReady ?? state.ready;
-        if (!activeTenantId || !planAllowsPayments || !canActivate) return;
+        if (!activeTenantId || !planAllowsPayments || !canActivate || unavailable) return;
         if (provider === "wompi" && !window.confirm(t("wompiActivationConfirm"))) return;
         setActivating(true);
         setFeedback(null);
@@ -204,7 +215,7 @@ export default function TenantPaymentsPage() {
     }
 
     async function handleDisconnect() {
-        if (!activeTenantId || !state.connected) return;
+        if (!activeTenantId || !state.connected || unavailable) return;
         if (!window.confirm(t("disconnectConfirm", { provider: t(`providers.${provider}.name`) }))) return;
         setDisconnecting(true);
         setFeedback(null);
@@ -246,6 +257,19 @@ export default function TenantPaymentsPage() {
                 {t("directNotice")}
             </Notice>
 
+            {/* Everything below is drawn from `cfg`. With no `cfg` the two
+                provider cards go blank and the form invites the owner to set up
+                a rail that may already be charging their customers — and saving
+                MercadoPago credentials from here would activate it, because an
+                unread `activeProvider` reads as "none". */}
+            {unavailable && (
+                <LoadFailureNotice
+                    title={t("configUnavailable")}
+                    hint={t("configUnavailableHint")}
+                    onRetry={() => { void load(); }}
+                />
+            )}
+
             {!planLoading && !planAllowsPayments && (
                 <div className="flex items-start justify-between gap-4 rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-800 dark:text-amber-200">
                     <div className="flex items-start gap-2">
@@ -267,6 +291,7 @@ export default function TenantPaymentsPage() {
                 </Notice>
             )}
 
+            {!unavailable && (<>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {(["wompi", "mercadopago"] as const).map((item) => {
                     const itemState = projectedProvider(cfg, item);
@@ -430,6 +455,7 @@ export default function TenantPaymentsPage() {
                     </button>
                 </div>
             </section>
+            </>)}
 
             <section className="rounded-xl border border-border bg-card p-5">
                 <div className="flex items-start justify-between gap-4">

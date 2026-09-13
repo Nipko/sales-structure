@@ -3,7 +3,7 @@ id: solucion-problemas
 title: "Solución de problemas frecuentes"
 routes: ["/admin/channels", "/admin/agent", "/admin/inbox", "/admin/broadcast", "/admin/appointments", "/admin/settings/billing"]
 roles: ["tenant_admin", "tenant_supervisor", "tenant_agent"]
-keywords: ["problemas", "no funciona", "no llegan mensajes", "no responde", "el bot no responde", "canal desconectado", "token expirado", "reconectar", "campaña no envia", "plantilla rechazada", "limite del plan", "limite alcanzado", "cita no aparece", "calendario no sincroniza", "correo de verificacion", "no llega el codigo", "error", "ayuda", "soporte", "contactar soporte"]
+keywords: ["problemas", "no funciona", "no llegan mensajes", "no responde", "el bot no responde", "canal desconectado", "token expirado", "reconectar", "campaña no envia", "plantilla rechazada", "limite del plan", "limite alcanzado", "cita no aparece", "calendario no sincroniza", "correo de verificacion", "no llega el codigo", "error", "ayuda", "soporte", "contactar soporte", "envio pausado", "meta no puede cobrar", "el agente dejo de responder en whatsapp", "medio de pago de whatsapp", "reanudar envios"]
 ---
 
 # Solución de problemas frecuentes
@@ -38,7 +38,7 @@ Detalles útiles:
 
 ## El agente de IA no responde (o responde mal)
 
-Revisa esta lista en orden; casi siempre la causa es una de estas:
+Revisa esta lista en orden; casi siempre la causa es una de estas. Antes, un aviso de permisos: **Agente IA**, **Canales** y **Plan y facturación** son pantallas de administración: si eres supervisor o agente no puedes abrirlas —no están en tu menú y, si escribes la dirección, el panel te redirige—, así que esos pasos los hace el administrador de la cuenta y lo tuyo es reconocer el síntoma desde el **Inbox** y avisarle. **Campañas** es distinto: lo abren el administrador y el supervisor, pero no el agente. Y el supervisor no se queda sin nada que mirar: **Salud de agentes** sí está en su menú, y ahí ve si el agente viene contestando peor de lo normal antes de pedirle a nadie que abra una pantalla de administración.
 
 1. **¿La conexión tiene agente asignado?** Entra a **Agente IA**. Si ves un aviso tipo "canales sin agente asignado", esas conexiones las atiende tu agente predeterminado con una configuración genérica. Abre el agente correcto y, en **Asignación de conexiones**, marca la cuenta exacta que debe atender. Recuerda: hay **un agente de IA por conexión**.
 2. **¿El agente está activo?** En la lista de agentes, verifica que no esté **pausado**.
@@ -46,6 +46,7 @@ Revisa esta lista en orden; casi siempre la causa es una de estas:
 4. **¿El modo de respuesta es el correcto?** En **Comportamiento**, si el modo está en "siempre humano", la IA nunca contesta sola. Cámbialo a "siempre IA" o "híbrido" según lo que necesites.
 5. **¿La conversación está con un humano?** Si tú o alguien del equipo tomó la conversación en el **Inbox** (o el cliente pidió hablar con una persona), la IA queda pausada en esa conversación hasta que se pulse **Resolver**. Es el comportamiento esperado, no una falla.
 6. **¿Se agotó la capacidad de mensajes IA?** Entra a **Plan y facturación** y revisa la barra de uso y las opciones vigentes.
+7. **¿Es WhatsApp y el envío quedó pausado?** Desde el **1 de octubre de 2026** Meta cobra a tu cuenta de WhatsApp Business cada mensaje de servicio entregado; si Meta no puede cobrarle a esa cuenta, deja de entregar y Parallly pausa los envíos de ese número. **Si eres administrador**, entra a **Canales → WhatsApp** y mira la tarjeta **Cobro de WhatsApp (Meta)**: si dice **Envío pausado**, arregla el medio de pago en las herramientas de Meta y luego toca **Reanudar envíos**. **Si eres supervisor o agente**, esa pantalla no se te abre: el síntoma se reconoce desde el **Inbox** —WhatsApp deja de salir mientras Instagram, Messenger o Telegram siguen contestando— y lo que te toca es avisarle al administrador, porque el medio de pago vive en Meta y reanudar es sólo suyo. Los mensajes que entran se siguen recibiendo mientras tanto.
 
 Si el agente **responde, pero responde mal** (inventa datos, no conoce tus precios o se sale del tema):
 

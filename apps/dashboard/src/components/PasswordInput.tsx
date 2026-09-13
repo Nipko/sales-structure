@@ -43,10 +43,21 @@ interface PasswordInputProps {
     showValidation?: boolean;
     showGenerator?: boolean;
     className?: string;
+    /**
+     * The id the surrounding form's `<label htmlFor>` points at.
+     *
+     * Optional only because two callers predate it. Without one, the field has
+     * no accessible name at all: the label beside it is not associated with
+     * anything, so a screen reader reads "edit text" and clicking the label
+     * focuses nothing.
+     */
+    id?: string;
+    autoComplete?: string;
 }
 
 export default function PasswordInput({
-    value, onChange, placeholder, showValidation = true, showGenerator = true, className,
+    value, onChange, placeholder, showValidation = true, showGenerator = true, className, id,
+    autoComplete = "new-password",
 }: PasswordInputProps) {
     const t = useTranslations("auth");
     const tc = useTranslations("common");
@@ -74,7 +85,9 @@ export default function PasswordInput({
             <div className="relative">
                 <Lock size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground/50" />
                 <input
+                    id={id}
                     type={show ? "text" : "password"}
+                    autoComplete={autoComplete}
                     value={value}
                     onChange={(e) => onChange(e.target.value)}
                     placeholder={placeholder || t("passwordRequirements.minLength")}
@@ -87,6 +100,7 @@ export default function PasswordInput({
                             type="button"
                             onClick={handleGenerate}
                             title={copied ? tc("copied") : t("generatePassword")}
+                            aria-label={copied ? tc("copied") : t("generatePassword")}
                             className="p-1.5 rounded-lg bg-transparent text-muted-foreground/50 hover:text-indigo-500 hover:bg-indigo-500/10 transition-colors"
                         >
                             {copied ? <Copy size={16} className="text-emerald-500" /> : <RefreshCw size={16} />}
@@ -95,6 +109,8 @@ export default function PasswordInput({
                     <button
                         type="button"
                         onClick={() => setShow(!show)}
+                        aria-label={show ? t("hidePassword") : t("showPassword")}
+                        aria-pressed={show}
                         className="p-1.5 bg-transparent border-none cursor-pointer text-muted-foreground/50 hover:text-muted-foreground"
                     >
                         {show ? <EyeOff size={16} /> : <Eye size={16} />}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
+import Link from "@/components/LocalizedLink";
 import { useLang } from "@/components/LangProvider";
 import LegalLangSwitcher from "@/components/LegalLangSwitcher";
 
@@ -124,7 +124,7 @@ const STRINGS = {
 } as const;
 
 export default function DataDeletionPage() {
-    const { locale } = useLang();
+    const { locale, hydrated } = useLang();
     const t = STRINGS[(locale as keyof typeof STRINGS) || "es"] || STRINGS.es;
 
     const [email, setEmail] = useState("");
@@ -231,7 +231,7 @@ export default function DataDeletionPage() {
                                 onChange={(e) => setEmail(e.target.value)}
                                 placeholder={t.emailPlaceholder}
                                 required
-                                disabled={submitting}
+                                disabled={!hydrated || submitting}
                                 className="w-full px-4 py-3 rounded-lg border border-border bg-bg text-text-primary placeholder:text-text-muted outline-none focus:border-accent transition-colors disabled:opacity-60"
                             />
                         </div>
@@ -245,7 +245,7 @@ export default function DataDeletionPage() {
                                 onChange={(e) => setDescription(e.target.value)}
                                 placeholder={t.descPlaceholder}
                                 rows={4}
-                                disabled={submitting}
+                                disabled={!hydrated || submitting}
                                 className="w-full px-4 py-3 rounded-lg border border-border bg-bg text-text-primary placeholder:text-text-muted outline-none focus:border-accent transition-colors disabled:opacity-60 resize-none"
                             />
                         </div>
@@ -256,7 +256,7 @@ export default function DataDeletionPage() {
                         )}
                         <button
                             type="submit"
-                            disabled={submitting}
+                            disabled={!hydrated || submitting}
                             className="w-full bg-accent text-white py-3 rounded-lg font-medium hover:bg-accent/90 transition-colors disabled:opacity-60"
                         >
                             {submitting ? t.submitting : t.submit}

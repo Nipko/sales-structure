@@ -7,7 +7,7 @@ describe('AutomationListenerService event bridges', () => {
             executeInTenantSchema: jest.fn(),
         };
         const persona = { getActivePersona: jest.fn().mockResolvedValue({ hours: { schedule: {} } }) };
-        const throttle = { isLimited: jest.fn(), getPriority: jest.fn() };
+        const throttle = { isOverLimit: jest.fn(), getPriority: jest.fn() };
         const queue = { add: jest.fn() };
         const service = new AutomationListenerService(prisma as any, persona as any, throttle as any, queue as any,
         { timezoneFor: jest.fn().mockResolvedValue('America/Bogota'), timezoneForSchema: jest.fn().mockResolvedValue('America/Bogota') } as any,
@@ -127,5 +127,90 @@ describe('AutomationListenerService event bridges', () => {
                 eventType: 'conversation_assigned',
             }),
         );
+    });
+
+    it('propagates appointment completion admission failures to its durable producer', async () => {
+        const { service } = build();
+        jest.spyOn(service, 'runRulesForTriggerOrThrow')
+            .mockRejectedValue(new Error('queue unavailable'));
+
+        await expect(service.handleAppointmentCompleted({
+            tenantId: 'tenant-1',
+            schemaName: 'tenant_schema',
+            appointmentId: '11111111-1111-4111-8111-111111111111',
+        })).rejects.toThrow('queue unavailable');
+
+        expect(service.runRulesForTriggerOrThrow).toHaveBeenCalledWith(
+            'appointment.completed',
+            'tenant-1',
+            'tenant_schema',
+            'appointment',
+            '11111111-1111-4111-8111-111111111111',
+            expect.any(Object),
+            'appointment.completed:11111111-1111-4111-8111-111111111111',
+        );
+    });
+
+    it('reuses one execution and deterministic action identities on event replay', async () => {
+        const executionId = '22222222-2222-4222-8222-222222222222';
+        const prisma = { executeInTenantSchema: jest.fn().mockResolvedValue([{ id: executionId }]) };
+        const queue = { add: jest.fn().mockResolvedValue({}) };
+        const service = new AutomationListenerService(
+            prisma as any, {} as any, {} as any, queue as any, {} as any,
+        );
+        const input = {
+            tenantId: 'tenant-1', schemaName: 'tenant_schema',
+            rule: {
+                id: '33333333-3333-4333-8333-333333333333', name: 'Post visita',
+                conditions_json: [],
+                actions_json: [{ type: 'create_task' }, { type: 'add_tag' }],
+            },
+            entityType: 'appointment',
+            entityId: '11111111-1111-4111-8111-111111111111',
+            payload: {}, priority: 1,
+            eventKey: 'appointment.completed:11111111-1111-4111-8111-111111111111:rule',
+        };
+
+        await service.dispatchRule(input);
+        await service.dispatchRule(input);
+
+        expect(prisma.executeInTenantSchema.mock.calls[0][1]).toContain('ON CONFLICT (event_key)');
+        expect(queue.add).toHaveBeenCalledTimes(4);
+        expect(queue.add.mock.calls.map(call => call[2].jobId)).toEqual([
+            `automation-${executionId}-0`, `automation-${executionId}-1`,
+            `automation-${executionId}-0`, `automation-${executionId}-1`,
+        ]);
+    });
+
+    it('replays the action snapshot admitted with the original event', async () => {
+        const executionId = '22222222-2222-4222-8222-222222222222';
+        const oldAction = { type: 'create_task', task_description: 'Original' };
+        const prisma = { executeInTenantSchema: jest.fn().mockResolvedValue([{
+            id: executionId,
+            result_json: {
+                version: 1,
+                actions: [{ index: 0, type: 'create_task', status: 'queued', action: oldAction }],
+            },
+        }]) };
+        const queue = { add: jest.fn().mockResolvedValue({}) };
+        const service = new AutomationListenerService(
+            prisma as any, {} as any, {} as any, queue as any, {} as any,
+        );
+
+        await service.dispatchRule({
+            tenantId: 'tenant-1', schemaName: 'tenant_schema',
+            rule: {
+                id: '33333333-3333-4333-8333-333333333333', name: 'Edited',
+                conditions_json: [],
+                actions_json: [{ type: 'http_request', config: { url: 'https://new.invalid' } }],
+            },
+            entityType: 'appointment',
+            entityId: '11111111-1111-4111-8111-111111111111',
+            payload: {}, priority: 1, eventKey: 'appointment.completed:event:rule',
+        });
+
+        expect(queue.add).toHaveBeenCalledTimes(1);
+        expect(queue.add.mock.calls[0][1]).toMatchObject({ action: oldAction, actionIndex: 0 });
+        expect(queue.add.mock.calls[0][2].jobId).toBe(`automation-${executionId}-0`);
     });
 });

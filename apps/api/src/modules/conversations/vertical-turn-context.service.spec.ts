@@ -2,6 +2,7 @@ import {
     projectVerticalIntentAvailability,
     VerticalTurnContextService,
 } from './vertical-turn-context.service';
+import { VERTICAL_DOMAIN_CONTRACT_VERSION } from '@parallext/shared';
 
 describe('VerticalTurnContextService', () => {
     const verticals = {
@@ -34,7 +35,7 @@ describe('VerticalTurnContextService', () => {
             businessGoals: ['ventas', 'confirmar pedidos'],
             targetAudiences: ['consumidor_final'],
             domainContract: {
-                contractVersion: 2,
+                contractVersion: VERTICAL_DOMAIN_CONTRACT_VERSION,
                 profileId: 'restaurantes/dark_kitchen',
             },
         });
@@ -42,18 +43,24 @@ describe('VerticalTurnContextService', () => {
         expect(context?.industryGuidance).toContain('place_order');
     });
 
-    it.each(['en', 'pt', 'fr'])('does not inject Spanish source prose into %s', async language => {
+    it.each([
+        ['en', 'For an order'],
+        ['pt', 'Para um pedido'],
+        ['fr', 'Pour une commande'],
+    ])('uses reviewed business boundaries and tool-flow guidance in %s', async (language, expectedGuidance) => {
         const context = await service.resolve({
             tenantId: 'tenant-id', language,
             toolsConfig: { restaurants: { enabled: true } },
         });
-        expect(context?.notOffered).toBeUndefined();
-        expect(context?.avoidTerms).toBeUndefined();
-        expect(context?.industryGuidance).toBeUndefined();
-        expect(context?.domainReviewRequired).toEqual(expect.arrayContaining([
-            `prompt.notOffered.${language}`,
-            `flowGuidance.${language}`,
-        ]));
+        expect(context?.notOffered?.length).toBeGreaterThan(0);
+        expect(context?.avoidTerms?.length).toBeGreaterThan(0);
+        expect(context?.domainContract?.claims.length).toBeGreaterThan(0);
+        expect(context?.industryGuidance).toContain(expectedGuidance);
+        expect(context?.industryGuidance).toContain('place_order');
+        expect(context?.domainReviewRequired).not.toContain(`prompt.notOffered.${language}`);
+        expect(context?.domainReviewRequired).not.toContain(`prompt.claims.${language}`);
+        expect(context?.domainReviewRequired).not.toContain(`terminology.avoid.${language}`);
+        expect(context?.domainReviewRequired).not.toContain(`flowGuidance.${language}`);
         expect(context?.domainContract?.intents.length).toBeGreaterThan(0);
     });
 

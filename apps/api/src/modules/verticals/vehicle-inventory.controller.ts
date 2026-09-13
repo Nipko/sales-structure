@@ -8,6 +8,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { RequireFeature } from '../../common/decorators/require-feature.decorator';
 import { CurrentTenant } from '../../common/decorators/tenant.decorator';
 import { VehicleInventoryService } from './vehicle-inventory.service';
+import { ScheduleTestDriveDto } from './schedule-test-drive.dto';
 import { bulkImportRows } from '../../common/utils/bulk-import.util';
 
 @ApiTags('vehicles')
@@ -132,7 +133,7 @@ export class VehicleInventoryController {
     @Post(':tenantId/test-drives')
     @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     @ApiOperation({ summary: 'Schedule a test drive' })
-    async scheduleTestDrive(@CurrentTenant() tenantId: string, @Body() body: any) {
+    async scheduleTestDrive(@CurrentTenant() tenantId: string, @Body() body: ScheduleTestDriveDto) {
         const td = await this.vehicleService.scheduleTestDrive(tenantId, body);
         return { success: true, data: td };
     }

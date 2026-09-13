@@ -1,0 +1,58 @@
+import { OutboundQueueService } from './outbound-queue.service';
+import { OutboundQueueProcessor } from './outbound-queue.processor';
+import { ApprovalEffectDeferred, ApprovalEffectSuppressed } from './approved-effect-delivery.port';
+import { resolveTenantSubscriptionAccess } from '../../common/utils/subscription-entitlement.util';
+import { permissiveSpendGate, resolvingChannelToken, schemaNamingPrisma, openPauseStore } from './__fixtures__/spend-gate-double';
+jest.mock('../../common/utils/subscription-entitlement.util',()=>({resolveTenantSubscriptionAccess:jest.fn()}));
+const reference={tenantId:'11111111-1111-4111-8111-111111111111',ticketId:'22222222-2222-4222-8222-222222222222',effectId:'33333333-3333-4333-8333-333333333333'};
+describe('approved delivery queue boundary',()=>{
+    it('keeps only IDs in Redis and never retries enqueue without its deterministic identity',async()=>{
+        const queue={getJob:jest.fn(async()=>null),add:jest.fn(async()=>{throw new Error('queue unavailable');})};
+        const service=new OutboundQueueService(queue as any,{getPriority:async()=>1} as any,{} as any);
+        await expect(service.enqueueApprovedEffect({...reference,caption:'private',to:'private'} as any)).rejects.toThrow('queue unavailable');
+        expect(queue.add).toHaveBeenCalledTimes(1);
+        expect((queue.add.mock.calls as any)[0][1]).toEqual({approvalEffect:reference});
+        expect((queue.add.mock.calls as any)[0][2]).toHaveProperty('jobId',`approval-effect-${reference.ticketId}-${reference.effectId}`);
+    });
+    it('retries an existing failed job under the same key instead of adding another job',async()=>{
+        const job={getState:async()=> 'failed',retry:jest.fn()};const queue={getJob:async()=>job,add:jest.fn()};
+        await new OutboundQueueService(queue as any,{} as any,{} as any).enqueueApprovedEffect(reference);
+        expect(job.retry).toHaveBeenCalledTimes(1);expect(queue.add).not.toHaveBeenCalled();
+    });
+    it('resolves fresh entitlement and credentials through the hydration port, never from a queue payload',async()=>{
+        (resolveTenantSubscriptionAccess as jest.Mock).mockResolvedValue({allowed:true});
+        const outbound:any={tenantId:reference.tenantId,to:'private',channelType:'whatsapp',channelAccountId:'bound',content:{type:'image',mediaUrl:'https://example.test'}};
+        const gateway={sendMessage:jest.fn(async()=> 'ack')},token=resolvingChannelToken({getChannelToken:jest.fn(async()=>({accessToken:'fresh'}))});
+        const deliver=jest.fn(async(ref,transport)=>{expect(ref).toEqual(reference);return (await transport.prepare(outbound))();});
+        const processor=new OutboundQueueProcessor(gateway as any,{isOverLimit:async()=>false,recordUsage:async()=>{},
+            reserveActionUsage:async()=>({allowed:true,count:1,adopted:false}),commitActionUsage:async()=>{},releaseActionUsage:async()=>{}} as any,token as any,{} as any,{} as any,schemaNamingPrisma(),permissiveSpendGate(),openPauseStore(),{deliver});
+        expect(await processor.process({data:{approvalEffect:reference}} as any)).toBe('ack');
+        expect(token.getChannelToken).toHaveBeenCalledWith(reference.tenantId,'whatsapp','bound');
+        // The third argument is the hook that authorises a text fallback as its own
+        // effect; a Flow that Meta conclusively refuses may not become a second
+        // charge without one.
+        expect(gateway.sendMessage).toHaveBeenCalledWith(outbound,'fresh',
+            expect.objectContaining({admitFallback:expect.any(Function)}));
+        (resolveTenantSubscriptionAccess as jest.Mock).mockResolvedValue({allowed:false,restrictionLevel:'suspended'});
+        await expect(processor.process({data:{approvalEffect:reference}} as any)).rejects.toBeInstanceOf(ApprovalEffectSuppressed);
+        expect(gateway.sendMessage).toHaveBeenCalledTimes(1);
+    });
+    it('delays without spending an effect attempt when the provider quota has no slot',async()=>{
+        const reserveActionUsage=jest.fn(async()=>({allowed:false,count:3,adopted:false}));
+        const deliver=jest.fn(async(_ref,transport)=>{
+            if (!(await transport.reserve({kind:'media',channelType:'whatsapp'}))) {
+                throw new ApprovalEffectDeferred('plan_outbound_rate_limited');
+            }
+            throw new Error('unreachable');
+        });
+        const processor=new OutboundQueueProcessor({} as any,{isOverLimit:async()=>true,recordUsage:async()=>{},
+            reserveActionUsage,commitActionUsage:async()=>{},releaseActionUsage:async()=>{}} as any,
+        {} as any,{} as any,{} as any,schemaNamingPrisma(),permissiveSpendGate(),openPauseStore(),{deliver});
+        const job={data:{approvalEffect:reference},moveToDelayed:jest.fn()};
+
+        await expect(processor.process(job as any,'worker-token')).rejects.toMatchObject({name:'DelayedError'});
+        expect(job.moveToDelayed).toHaveBeenCalledWith(expect.any(Number),'worker-token');
+        expect(reserveActionUsage).toHaveBeenCalledWith(reference.tenantId,'outbound',
+            `approval:${reference.ticketId}:${reference.effectId}`);
+    });
+});

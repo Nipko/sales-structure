@@ -1,6 +1,12 @@
+import { MetaAgentThreadControlStore } from './meta-agent-thread-control.store';
+import { OperationalNoticeModule } from '../operational-notices/operational-notice.module';
+import { WidgetDeliveryModule } from '../widget/widget-delivery.module';
+import { WidgetChannelAdapter } from './widget.adapter';
 import { Module, OnModuleInit, forwardRef } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { ChannelGatewayService } from './channel-gateway.service';
+import { ProactiveSendConnection } from './proactive-connection';
+import { ProactiveDispatchService } from './proactive-dispatch.service';
 import { ChannelsController } from './channels.controller';
 import { WhatsAppAdapter } from './whatsapp/whatsapp.adapter';
 import { InstagramAdapter } from './instagram/instagram.adapter';
@@ -13,6 +19,10 @@ import { EmailWebhookController } from './email/email-webhook.controller';
 import { EmailWebhookSecurityService } from './email/email-webhook-security.service';
 import { OutboundQueueProcessor, OUTBOUND_QUEUE } from './outbound-queue.processor';
 import { OutboundQueueService } from './outbound-queue.service';
+import { AgentDispatchOutboxStore } from './agent-dispatch-outbox.store';
+import { DispatchRecoveryService } from './dispatch-recovery.service';
+import { DispatchRolloutService } from './dispatch-rollout.service';
+import { DispatchRolloutController } from './dispatch-rollout.controller';
 import { ChannelTokenService } from './channel-token.service';
 import { ChannelManagementController } from './channel-management.controller';
 import { InstagramTokenRefreshService } from './instagram-token-refresh.service';
@@ -23,27 +33,35 @@ import { InboundQueueModule } from '../inbound/inbound-queue.module';
 import { ConversationsModule } from '../conversations/conversations.module';
 import { WhatsappModule } from '../whatsapp/whatsapp.module';
 import { SmsCreditsModule } from '../sms-credits/sms-credits.module';
+import { WhatsappSpendModule } from '../billing/whatsapp-spend/whatsapp-spend.module';
 // AnalyticsModule removed — compliance check moved to ConversationsService to avoid DI issues in processor
 
 @Module({
     imports: [
+        WidgetDeliveryModule,
+        OperationalNoticeModule,
         BullModule.registerQueue({ name: OUTBOUND_QUEUE }),
         // Plain import: InboundQueueModule is a dependency leaf (queue + a
         // service injecting only globals), so it cannot close a cycle.
         InboundQueueModule,
-        // No provider here injects from ConversationsModule any more (webhooks
-        // hand off via InboundQueueModule). The edge stays because removing it
-        // reorders module resolution and leaves an AppointmentsModule import
-        // undefined at boot — a latent CJS circular-import that this forwardRef
-        // masks. Verified with `npm run test:bootstrap`, which is the only thing
-        // that catches it; tsc passes either way.
+        // The outbound worker resolves approved effect references through a leaf
+        // delivery port exported by ConversationsModule. Keep this cycle deferred.
         forwardRef(() => ConversationsModule),
         forwardRef(() => WhatsappModule),
         SmsCreditsModule,
+        // The money authority. A leaf (Prisma only), so it closes no cycle,
+        // and it is imported here rather than injected globally so that the
+        // dependency is visible in the module that actually sends.
+        WhatsappSpendModule,
     ],
-    controllers: [ChannelsController, ChannelManagementController, WebhookTapController, EmailWebhookController],
+    controllers: [ChannelsController, ChannelManagementController, WebhookTapController, EmailWebhookController,
+        DispatchRolloutController],
     providers: [
         ChannelGatewayService,
+        ProactiveSendConnection,
+        ProactiveDispatchService,
+        MetaAgentThreadControlStore,
+        WidgetChannelAdapter,
         WhatsAppAdapter,
         InstagramAdapter,
         MessengerAdapter,
@@ -54,12 +72,15 @@ import { SmsCreditsModule } from '../sms-credits/sms-credits.module';
         EmailWebhookSecurityService,
         OutboundQueueProcessor,
         OutboundQueueService,
+        AgentDispatchOutboxStore,
+        DispatchRecoveryService,
+        DispatchRolloutService,
         ChannelTokenService,
         InstagramTokenRefreshService,
         WhatsappTokenHealthService,
         WebhookTapService,
     ],
-    exports: [ChannelGatewayService, WhatsAppAdapter, SmsAdapter, EmailAdapter, EmailChannelService, OutboundQueueService, ChannelTokenService, WebhookTapService],
+    exports: [ChannelGatewayService, ProactiveSendConnection, ProactiveDispatchService, WhatsAppAdapter, SmsAdapter, EmailAdapter, EmailChannelService, OutboundQueueService, ChannelTokenService, WebhookTapService, AgentDispatchOutboxStore, DispatchRolloutService],
 })
 export class ChannelsModule implements OnModuleInit {
     constructor(
@@ -70,14 +91,22 @@ export class ChannelsModule implements OnModuleInit {
         private telegramAdapter: TelegramAdapter,
         private smsAdapter: SmsAdapter,
         private emailAdapter: EmailAdapter,
+        private widgetAdapter: WidgetChannelAdapter,
+        private outboundProcessor: OutboundQueueProcessor,
+        private outboundQueueService: OutboundQueueService,
     ) {}
 
     onModuleInit() {
+        // The worker chains the next effect of a batch through the queue service.
+        // Wired here, not injected: another constructor dependency on the
+        // WorkerHost closes a cycle through @nestjs/bullmq and never resolves.
+        this.outboundProcessor.attachQueue(this.outboundQueueService);
         this.gateway.registerAdapter(this.whatsappAdapter);
         this.gateway.registerAdapter(this.instagramAdapter);
         this.gateway.registerAdapter(this.messengerAdapter);
         this.gateway.registerAdapter(this.telegramAdapter);
         this.gateway.registerAdapter(this.smsAdapter);
         this.gateway.registerAdapter(this.emailAdapter);
+        this.gateway.registerAdapter(this.widgetAdapter);
     }
 }

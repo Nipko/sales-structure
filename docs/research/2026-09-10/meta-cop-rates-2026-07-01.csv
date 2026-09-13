@@ -1,0 +1,45 @@
+"Cost per message in COP on the WhatsApp Business Platform, effective July 1, 2026",,,,,,
+We charge on a per-message basis on the WhatsApp Business Platform. Learn more here:,,,,https://developers.facebook.com/docs/whatsapp/pricing,,
+Marketing rates apply across Cloud API and Marketing Messages Lite API. Learn more here:,,,,https://developers.facebook.com/docs/whatsapp/pricing,,
+"Some markets are mapped to a ""Rest of"" region or ""Other."" Learn more here:",,,,https://developers.facebook.com/docs/whatsapp/pricing#country-calling-codes,,
+"In some markets, we have authentication-international rates. Learn more here:",,,,https://developers.facebook.com/docs/whatsapp/pricing/authentication-international-rates,,
+Market,Currency,Marketing,Utility,Authentication,"Authentication-
+International",Service
+Argentina,COP,227.5361,95.7271,95.7271,n/a,n/a
+Brazil,COP,230.1133,25.0363,25.0363,n/a,n/a
+Chile,COP,327.3132,73.6363,73.6363,n/a,n/a
+Colombia,COP,46.0227,2.9455,2.9455,n/a,n/a
+Egypt,COP,237.1088,13.2545,13.2545,239.3179,n/a
+France,COP,316.2678,110.4544,110.4544,n/a,n/a
+Germany,COP,502.5675,202.4997,202.4997,n/a,n/a
+Hong Kong,COP,269.5087,95.7272,95.7272,n/a,n/a
+Hungary,COP,316.6360,128.8634,128.8634,n/a,n/a
+India,COP,43.4454,5.1545,5.1545,111.9271,n/a
+Indonesia,COP,151.3225,92.0453,92.0453,500.7266,n/a
+Israel,COP,129.9680,19.5136,19.5136,n/a,n/a
+Italy,COP,292.5753,110.4544,110.4544,n/a,n/a
+Malaysia,COP,316.6360,51.5454,51.5454,153.8998,n/a
+Mexico,COP,112.2953,31.2954,31.2954,n/a,n/a
+Netherlands,COP,587.9856,184.0907,184.0907,n/a,n/a
+Nigeria,COP,189.9816,24.6681,24.6681,276.1360,n/a
+Pakistan,COP,174.1498,36.8181,36.8181,276.1360,n/a
+Peru,COP,258.8315,73.6363,73.6363,n/a,n/a
+Poland,COP,134.7543,44.9181,44.9181,n/a,n/a
+Qatar,COP,125.5498,44.1818,44.1818,n/a,n/a
+Romania,COP,316.6360,106.7725,106.7725,n/a,n/a
+Russia,COP,295.2814,147.2725,147.2725,n/a,n/a
+Saudi Arabia,COP,184.4589,39.3954,39.3954,220.1724,n/a
+Singapore,COP,269.5087,58.9090,58.9090,n/a,n/a
+South Africa,COP,139.5407,27.9818,27.9818,73.6363,n/a
+Spain,COP,260.3962,73.6363,73.6363,n/a,n/a
+Turkey,COP,40.1318,3.3136,3.3136,n/a,n/a
+United Arab Emirates,COP,183.7225,57.8045,57.8045,187.7725,n/a
+United Kingdom,COP,233.7215,80.9999,80.9999,n/a,n/a
+North America,COP,92.0453,12.5182,12.5182,n/a,n/a
+Rest of Africa,COP,82.8408,14.7273,14.7273,n/a,n/a
+Rest of Asia Pacific,COP,269.5087,41.6045,41.6045,n/a,n/a
+Rest of Central & Eastern Europe,COP,316.6360,78.0544,78.0544,n/a,n/a
+Rest of Latin America,COP,272.4542,41.6045,41.6045,n/a,n/a
+Rest of Middle East,COP,125.5498,33.5045,33.5045,n/a,n/a
+Rest of Western Europe,COP,217.9634,62.9590,62.9590,n/a,n/a
+Other,COP,222.3815,28.3500,28.3500,n/a,n/a

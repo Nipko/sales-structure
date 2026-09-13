@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "motion/react";
 import { useLocale, useTranslations } from "next-intl";
-import Link from "next/link";
+import Link from "../LocalizedLink";
 import { Section } from "../ui/Section";
 import { Icon } from "../ui/Icon";
 import { planContactUrl, planSignupUrl } from "../../lib/constants";

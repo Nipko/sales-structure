@@ -79,6 +79,22 @@ jobs:
           (cd apps/api && npx eslint "src/**/*.ts" --quiet)
           (cd apps/dashboard && npx eslint . --quiet)
           (cd apps/whatsapp && npx eslint "src/**/*.ts" --quiet)
+      # ── Generated artefacts must still reflect the code ───────────────────
+      #
+      # Every one of these is checked in AND produced by a script, and the only
+      # thing keeping the two equal is somebody remembering to run the
+      # generator. That already failed once: the closure artefacts each
+      # described a revision one or two commits behind the one they claimed,
+      # and nothing noticed. A rate table that drifts from its sources is the
+      # same failure with money attached — it prices a delivery Meta bills at
+      # a number nobody authorised.
+      #
+      # `--check` regenerates in memory and compares; it writes nothing.
+      - name: Generated artefacts match their sources
+        run: |
+          node apps/api/scripts/generate-whatsapp-rates.cjs --check
+          node docs/audits/2026-09-09/verify-artifacts.cjs
+          node apps/api/scripts/outbound-producer-inventory.cjs --check
       - name: Vertical focal suites
         run: >-
           npx jest --config apps/api/jest.config.js --runInBand

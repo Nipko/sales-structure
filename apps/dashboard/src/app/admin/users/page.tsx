@@ -9,6 +9,7 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
 import { DataSourceBadge } from "@/hooks/useApiData";
+import { LoadFailureNotice } from "@/components/ui/load-failure";
 import { cn } from "@/lib/utils";
 import {
     Users, UserPlus, Shield, Search, MoreVertical, Plus, X, Tag,
@@ -186,6 +187,10 @@ export default function UsersPage() {
     const [tab, setTab] = useState<"members" | "invitations">("members");
     const [users, setUsers] = useState<any[]>([]);
     const [invitations, setInvitations] = useState<Invitation[]>([]);
+    // An empty roster is a claim about who can reach this tenant's inbox, and
+    // the four counters above the table restate it as numbers. A dropped
+    // request used to produce exactly that: "0 usuarios, 0 administradores".
+    const [unavailable, setUnavailable] = useState(false);
     const [isLive, setIsLive] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
     const [roleFilter, setRoleFilter] = useState<string>("all");
@@ -289,23 +294,27 @@ export default function UsersPage() {
     async function loadUsers() {
         try {
             const result = await api.getUsers();
-            if (result.success && Array.isArray(result.data)) {
-                setUsers(result.data.map((u: any) => ({
-                    id: u.id,
-                    email: u.email || '',
-                    firstName: u.firstName || u.first_name || '',
-                    lastName: u.lastName || u.last_name || '',
-                    role: u.role || 'tenant_agent',
-                    tenantName: u.tenantName || u.tenant_name || '—',
-                    isActive: u.isActive ?? u.is_active ?? true,
-                    createdAt: u.createdAt?.split('T')[0] || u.created_at?.split('T')[0] || '—',
-                    skillTags: u.skillTags || u.skill_tags || [],
-                    phone: u.phone || '',
-                    jobTitle: u.jobTitle || u.job_title || '',
-                })));
-                setIsLive(true);
-            }
-        } catch (err) { console.error('Failed to load users:', err); }
+            if (!result.success || !Array.isArray(result.data)) throw new Error("users_read_failed");
+            setUsers(result.data.map((u: any) => ({
+                id: u.id,
+                email: u.email || '',
+                firstName: u.firstName || u.first_name || '',
+                lastName: u.lastName || u.last_name || '',
+                role: u.role || 'tenant_agent',
+                tenantName: u.tenantName || u.tenant_name || '—',
+                isActive: u.isActive ?? u.is_active ?? true,
+                createdAt: u.createdAt?.split('T')[0] || u.created_at?.split('T')[0] || '—',
+                skillTags: u.skillTags || u.skill_tags || [],
+                phone: u.phone || '',
+                jobTitle: u.jobTitle || u.job_title || '',
+            })));
+            setIsLive(true);
+            setUnavailable(false);
+        } catch (err) {
+            console.error('Failed to load users:', err);
+            setUsers([]);
+            setUnavailable(true);
+        }
     }
 
     async function loadInvitations() {
@@ -434,7 +443,7 @@ export default function UsersPage() {
                     title={t('title')}
                     subtitle={t('subtitleStats', { total: stats.total, active: stats.active, agents: stats.agents })}
                     icon={Users}
-                    badge={<DataSourceBadge isLive={isLive} />}
+                    badge={<DataSourceBadge state={unavailable ? "unavailable" : isLive ? "live" : "unverified"} />}
                     action={isAdmin ? (
                         <button id={guidedTourAnchorId("users-invite")} onClick={() => setShowInvite(true)} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 font-medium text-sm cursor-pointer hover:opacity-90 press-effect">
                             <UserPlus size={16} /> {t("modal.inviteButton")}
@@ -473,6 +482,11 @@ export default function UsersPage() {
                     </div>
                 )}
 
+                {/* The counters are `users.length` in four flavours; with no
+                    roster they state "0 usuarios" about an account nobody read. */}
+                {unavailable && <LoadFailureNotice className="mb-6" onRetry={() => { void loadUsers(); }} />}
+
+                {!unavailable && (
                 <div className="grid grid-cols-4 gap-4 mb-6">
                     {([
                         { key: "total", value: stats.total, color: "#6c5ce7", icon: Users },
@@ -493,6 +507,7 @@ export default function UsersPage() {
                         </div>
                     ))}
                 </div>
+                )}
 
                 {/* Tabs */}
                 <div className="flex border-b border-border mb-5" role="tablist">
@@ -532,7 +547,9 @@ export default function UsersPage() {
                                 <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                                 <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder={tc("search") + "..."} className="w-full py-2.5 pl-9 pr-2.5 rounded-[10px] border border-border bg-card text-foreground text-sm outline-none box-border" />
                             </div>
-                            <select value={roleFilter} onChange={e => setRoleFilter(e.target.value)} className="px-3.5 py-2.5 rounded-[10px] border border-border bg-card text-foreground text-sm outline-none">
+                            {/* The only visible text was its own options, which a screen reader
+                                reads after the control it cannot name. */}
+                            <select aria-label={t("headers.role")} value={roleFilter} onChange={e => setRoleFilter(e.target.value)} className="px-3.5 py-2.5 rounded-[10px] border border-border bg-card text-foreground text-sm outline-none">
                                 <option value="all">{t("filter.allRoles")}</option>
                                 <option value="super_admin">{tRoles("superAdmin")}</option>
                                 <option value="tenant_admin">{tRoles("admin")}</option>
@@ -727,7 +744,7 @@ export default function UsersPage() {
 
             {/* Invite modal */}
             {showInvite && (
-                <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowInvite(false)}>
+                <div data-tour-form="user-invite" className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowInvite(false)}>
                     <div onClick={e => e.stopPropagation()} className="w-[480px] p-7 rounded-[18px] bg-card border border-border shadow-2xl">
                         <div className="flex justify-between items-start mb-5">
                             <div>

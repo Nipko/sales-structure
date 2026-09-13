@@ -93,12 +93,26 @@ export function localizedPhrase(
 export const RIOPLATENSE_MARKERS: readonly string[] = Object.freeze([
     'podés', 'querés', 'tenés', 'necesitás', 'sabés', 'hacés', 'venís',
     'decime', 'contame', 'mandame', 'fijate', 'mirá', 'dale que',
-    'resolvelo', 'ayudás', 'opinás', 'pedíselo', 'revisá', 'che,', 'che ',
+    'resolvelo', 'ayudás', 'opinás', 'pedíselo', 'revisá', 'che',
 ]);
 
-/** Las marcas encontradas en un texto, en minúsculas. Vacío = limpio. */
+/**
+ * Palabras completas, no subcadenas.
+ *
+ * `che` se listaba como `'che,'` y `'che '` para evitar los falsos positivos, y
+ * no alcanzaba: **noche**, coche, leche y derecho lo contienen igual, así que
+ * cualquier pack que hablara del precio por noche quedaba marcado como
+ * rioplatense. Eso es exactamente lo que este módulo advierte de sí mismo —un
+ * detector que marca de más termina desactivado— y le había pasado.
+ *
+ * El límite es por letra Unicode y no ``, porque `` en JavaScript trata a
+ * la `é` de `podés` como frontera y partiría cada marca acentuada por la mitad.
+ */
 export function rioplatenseMarkersIn(text: unknown): string[] {
     if (typeof text !== 'string') return [];
     const normalized = text.toLowerCase();
-    return RIOPLATENSE_MARKERS.filter(marker => normalized.includes(marker));
+    return RIOPLATENSE_MARKERS.filter(marker => {
+        const escaped = marker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        return new RegExp(`(?<![\\p{L}\\p{M}])${escaped}(?![\\p{L}\\p{M}])`, 'u').test(normalized);
+    });
 }

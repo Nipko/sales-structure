@@ -9,13 +9,20 @@
  * operational usage accounting without re-enabling business persistence.
  */
 export interface ServiceExecutionContext {
-    readonly mode: 'live' | 'agent_test' | 'evaluation';
+    readonly mode: 'live' | 'agent_test' | 'evaluation' | 'draft';
     readonly persistence: 'enabled' | 'disabled';
     readonly operationalUsageAccounting?: 'enabled' | 'disabled';
 }
 
 export const AGENT_TEST_EXECUTION_CONTEXT: Readonly<ServiceExecutionContext> = Object.freeze({
     mode: 'agent_test',
+    persistence: 'disabled',
+    operationalUsageAccounting: 'enabled',
+});
+
+/** Drafts may consult audited readers, but approval precedes every business effect. */
+export const DRAFT_EXECUTION_CONTEXT: Readonly<ServiceExecutionContext> = Object.freeze({
+    mode: 'draft',
     persistence: 'disabled',
     operationalUsageAccounting: 'enabled',
 });

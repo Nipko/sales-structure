@@ -102,9 +102,15 @@ export class BusinessInfoService {
      * both ensureSchema (DDL) and Redis (cache population). The legacy projection
      * keeps older tenant schemas readable without repairing them from a GET.
      */
+    async captureForEvaluation(tenantId: string, executionContext: ServiceExecutionContext): Promise<BusinessIdentity | null> {
+        if (!persistenceDisabled(executionContext)) throw new Error('evaluation_readonly_context_required');
+        return this.getPrimaryWithoutWrites(tenantId, executionContext, true);
+    }
+
     private async getPrimaryWithoutWrites(
         tenantId: string,
         executionContext?: ServiceExecutionContext,
+        strict = false,
     ): Promise<BusinessIdentity | null> {
         const schemaName = await this.tenantsService.getSchemaName(tenantId, executionContext);
         const modernSelect = `SELECT id, name, industry, city, country, website, phone, email, about, address,
@@ -115,7 +121,10 @@ export class BusinessInfoService {
         let rows: any[];
         try {
             rows = await this.prisma.$queryRawUnsafe(modernSelect) as any[];
-        } catch {
+        } catch (error: any) {
+            // Only a missing legacy column justifies the smaller projection.
+            // Permission/transport/SQL failures must remain failed captures.
+            if (strict && (error?.meta?.code || error?.code) !== '42703') throw new Error('evaluation_business_source_unavailable');
             rows = await this.prisma.$queryRawUnsafe(
                 `SELECT id, name, industry, city, country, website,
                         NULL::varchar AS phone, NULL::varchar AS email,

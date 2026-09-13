@@ -13,12 +13,27 @@ import { EvalService } from './eval.service';
 import { EvalController } from './eval.controller';
 import { EvalAutorunListener, EVAL_GATE_QUEUE } from './eval-autorun.listener';
 import { EvalGateProcessor } from './eval-gate.processor';
+import { EvalAutorunStateService } from './eval-autorun-state.service';
 import { WatchtowerService } from './watchtower.service';
+import { WatchtowerController } from './watchtower.controller';
+import { QUALITY_QUEUE } from '../quality/quality.service';
+import { AGENT_RELEASE_QUEUE } from './agent-release-contract';
+import { AgentReleaseService } from './agent-release.service';
+import { AgentReleaseController } from './agent-release.controller';
+import { AgentReleaseProcessor } from './agent-release.processor';
+import { CERTIFICATION_QUEUE } from './certification-contract';
+import { CertificationService } from './certification.service';
+import { CertificationController } from './certification.controller';
+import { CertificationProcessor } from './certification.processor';
+import { BENCHMARK_QUEUE, BenchmarkService } from './benchmark.service';
+import { BenchmarkController } from './benchmark.controller';
+import { BenchmarkProcessor } from './benchmark.processor';
 
 /**
  * Agent Simulation pre-deploy (T2.13). Reuses:
  *  - AgentTestService (ConversationsModule) to run the full prompt pipeline per
- *    turn without persisting anything, with tools disabled for safety.
+ *    turn against a frozen configuration and audited sandbox tools. External
+ *    effects stay disabled; sandbox fixtures are cleaned under an ownership lease.
  *  - QualityService.judgeTranscript (QualityModule) as the shared LLM-as-judge.
  */
 @Module({
@@ -31,9 +46,13 @@ import { WatchtowerService } from './watchtower.service';
         ConversationsModule,
         BullModule.registerQueue({ name: SIMULATION_QUEUE }),
         BullModule.registerQueue({ name: EVAL_GATE_QUEUE }),
+        BullModule.registerQueue({ name: QUALITY_QUEUE }),
+        BullModule.registerQueue({ name: AGENT_RELEASE_QUEUE }),
+        BullModule.registerQueue({ name: CERTIFICATION_QUEUE }),
+        BullModule.registerQueue({ name: BENCHMARK_QUEUE }),
     ],
-    providers: [SimulationService, SimulationProcessor, EvalService, EvalAutorunListener, EvalGateProcessor, WatchtowerService],
-    controllers: [SimulationController, EvalController],
-    exports: [SimulationService, EvalService],
+    providers: [SimulationService, SimulationProcessor, EvalService, EvalAutorunListener, EvalAutorunStateService, EvalGateProcessor, WatchtowerService,AgentReleaseService,AgentReleaseProcessor,CertificationService,CertificationProcessor,BenchmarkService,BenchmarkProcessor],
+    controllers: [SimulationController, EvalController, WatchtowerController,AgentReleaseController,CertificationController,BenchmarkController],
+    exports: [SimulationService, EvalService, CertificationService, BenchmarkService],
 })
 export class SimulationModule {}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
 import { useTranslations } from "next-intl";
@@ -9,7 +10,8 @@ import {
     Car, Plus, X, Gauge, Fuel, Pencil, BadgeDollarSign, CalendarClock, Star,
     FileSpreadsheet,
 } from "lucide-react";
-import { SkeletonCards, SkeletonTable } from "@/components/ui/skeleton-loader";
+import { SkeletonCards } from "@/components/ui/skeleton-loader";
+import { TestDriveAvailability, requestTestDrives, type TestDriveLoadState } from "@/components/vehicles/TestDriveAvailability";
 import { BulkImportModal } from "@/components/BulkImportModal";
 import { useOperatingCurrency } from "@/hooks/useOperatingCurrency";
 
@@ -55,6 +57,8 @@ interface TestDrive {
     model: string;
     year: number;
     color?: string | null;
+    source?: "appointment" | "legacy";
+    appointment_id?: string | null;
 }
 
 interface InventoryStats {
@@ -99,6 +103,10 @@ const STATUS_BADGE: Record<string, string> = {
 };
 
 const TD_STATUS_BADGE: Record<string, string> = {
+    pending: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
+    pending_payment: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
+    expired: "bg-neutral-200 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400",
+    unknown: "bg-neutral-200 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400",
     scheduled: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400",
     confirmed: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400",
     completed: "bg-neutral-200 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400",
@@ -108,6 +116,11 @@ const TD_STATUS_BADGE: Record<string, string> = {
 
 export default function VehiclesPage() {
     const { activeTenantId } = useTenant();
+    return <VehiclesWorkspace key={activeTenantId || "no-tenant"} />;
+}
+
+function VehiclesWorkspace() {
+    const { activeTenantId } = useTenant();
     const t = useTranslations("vehicles");
     const tc = useTranslations("common");
     const tImport = useTranslations("bulkImport");
@@ -115,10 +128,9 @@ export default function VehiclesPage() {
     const [tab, setTab] = useState<"inventory" | "testDrives">("inventory");
     const [vehicles, setVehicles] = useState<Vehicle[]>([]);
     const [stats, setStats] = useState<InventoryStats | null>(null);
-    const [testDrives, setTestDrives] = useState<TestDrive[]>([]);
+    const [testDriveState, setTestDriveState] = useState<TestDriveLoadState<TestDrive>>({ status: "idle" });
+    const testDrives = testDriveState.status === "ready" ? testDriveState.items : [];
     const [loading, setLoading] = useState(true);
-    const [tdLoading, setTdLoading] = useState(false);
-    const [tdLoaded, setTdLoaded] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [filter, setFilter] = useState<"all" | "available" | "reserved" | "sold">("all");
     const [showCreate, setShowCreate] = useState(false);
@@ -139,7 +151,7 @@ export default function VehiclesPage() {
     }, [activeTenantId, filter]);
 
     useEffect(() => {
-        if (!activeTenantId || tab !== "testDrives" || tdLoaded) return;
+        if (!activeTenantId || tab !== "testDrives" || testDriveState.status !== "idle") return;
         loadTestDrives();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeTenantId, tab]);
@@ -164,11 +176,7 @@ export default function VehiclesPage() {
 
     async function loadTestDrives() {
         if (!activeTenantId) return;
-        setTdLoading(true);
-        const res = await api.listVehicleTestDrives(activeTenantId);
-        if (res.success && Array.isArray(res.data)) setTestDrives(res.data);
-        setTdLoading(false);
-        setTdLoaded(true);
+        await requestTestDrives<TestDrive>(() => api.listVehicleTestDrives(activeTenantId), setTestDriveState);
     }
 
     if (loading && vehicles.length === 0 && !error) {
@@ -360,15 +368,12 @@ export default function VehiclesPage() {
                 </>
             )}
 
+            {tab === "testDrives" && <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-4">
+                {t("testDrives.agendaHint")}{" "}
+                <Link className="underline" href="/admin/appointments">{t("testDrives.openAgenda")}</Link>
+            </p>}
             {tab === "testDrives" && (
-                tdLoading ? (
-                    <SkeletonTable rows={5} cols={5} />
-                ) : testDrives.length === 0 ? (
-                    <div className="rounded-xl border border-dashed border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900 p-12 text-center">
-                        <CalendarClock size={40} className="mx-auto text-neutral-400 dark:text-neutral-600 mb-3" />
-                        <p className="text-sm text-neutral-500 dark:text-neutral-400">{t("testDrives.empty")}</p>
-                    </div>
-                ) : (
+                <TestDriveAvailability state={testDriveState} retry={loadTestDrives}>
                     <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 overflow-hidden">
                         <div className="overflow-x-auto">
                             <table className="w-full text-sm">
@@ -394,9 +399,10 @@ export default function VehiclesPage() {
                                             <td className="px-4 py-3 text-neutral-700 dark:text-neutral-300">{formatDate(td.scheduled_date)}</td>
                                             <td className="px-4 py-3 text-neutral-700 dark:text-neutral-300">{formatTime(td.scheduled_time)}</td>
                                             <td className="px-4 py-3">
-                                                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${TD_STATUS_BADGE[td.status] || TD_STATUS_BADGE.scheduled}`}>
-                                                    {t(`testDrives.status.${TD_STATUS_BADGE[td.status] ? td.status : "scheduled"}`)}
+                                                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${TD_STATUS_BADGE[td.status] || TD_STATUS_BADGE.unknown}`}>
+                                                    {t(`testDrives.status.${Object.hasOwn(TD_STATUS_BADGE, td.status) ? td.status : "unknown"}`)}
                                                 </span>
+                                                {td.source !== "appointment" && <p className="text-xs text-neutral-500 mt-1">{t("testDrives.legacyRecord")}</p>}
                                             </td>
                                         </tr>
                                     ))}
@@ -404,7 +410,7 @@ export default function VehiclesPage() {
                             </table>
                         </div>
                     </div>
-                )
+                </TestDriveAvailability>
             )}
 
             {(showCreate || editVehicle) && (

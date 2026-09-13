@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useTranslations } from "next-intl";
 import { useTenant } from "@/contexts/TenantContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
@@ -12,6 +13,7 @@ import {
 import { PageHeader } from "@/components/ui/page-header";
 import { HelpPanel } from "@/components/ui/help-panel";
 import { guidedTourAnchorId } from "@/lib/guided-tours";
+import { SimulationEvidenceBoundary, SimulationRetirement, type SimulationStatus } from "@/components/quality/SimulationEvidenceBoundary";
 
 // ── Types ───────────────────────────────────────────────────
 interface Agent { id: string; name: string; is_default?: boolean; is_active?: boolean; }
@@ -22,7 +24,7 @@ interface RunSummary {
     channelType: string;
     scenarioSource: "synthetic" | "replay";
     vertical: string | null;
-    status: "pending" | "running" | "completed" | "failed";
+    status: SimulationStatus;
     scenarioCount: number;
     avgScore: number | null;
     resolvedRate: number | null;
@@ -61,6 +63,7 @@ const STATUS_COLORS: Record<string, string> = {
     running: "text-amber-500",
     completed: "text-emerald-500",
     failed: "text-red-400",
+    retired: "text-muted-foreground",
 };
 
 function scoreColor(n: number): string {
@@ -70,9 +73,14 @@ function scoreColor(n: number): string {
 const CARD = "p-6 rounded-xl bg-white dark:bg-white/[0.04] border border-neutral-200 dark:border-white/[0.08]";
 
 export default function AgentSimulationPage() {
+    const { activeTenantId } = useTenant();
+    return <SimulationWorkspace key={activeTenantId || 'none'} activeTenantId={activeTenantId} />;
+}
+
+function SimulationWorkspace({ activeTenantId }: { activeTenantId: string | null }) {
     const t = useTranslations("simulation");
     const tHelp = useTranslations("help");
-    const { activeTenantId } = useTenant();
+    const { user } = useAuth();
 
     const [agents, setAgents] = useState<Agent[]>([]);
     const [runs, setRuns] = useState<RunSummary[]>([]);
@@ -80,6 +88,15 @@ export default function AgentSimulationPage() {
     const [openScenario, setOpenScenario] = useState<ScenarioResult | null>(null);
     const [launching, setLaunching] = useState(false);
     const [loadingRun, setLoadingRun] = useState(false);
+    const [detailError, setDetailError] = useState(false);
+    const [historyError, setHistoryError] = useState(false);
+    const [historyLoading, setHistoryLoading] = useState(true);
+    const [launchError, setLaunchError] = useState(false);
+    const [retiring, setRetiring] = useState(false);
+    const [retireError, setRetireError] = useState(false);
+    const selectedId = useRef<string | null>(null);
+    const detailRequest = useRef(0);
+    const historyRequest = useRef(0);
 
     // Form state
     const [agentId, setAgentId] = useState<string>("");
@@ -101,37 +118,53 @@ export default function AgentSimulationPage() {
     }, [activeTenantId, agentId]);
 
     const loadRuns = useCallback(async () => {
-        if (!activeTenantId) return;
-        const res: any = await api.listAgentSimulations(activeTenantId, 20);
-        if (res?.success) setRuns(res.data as RunSummary[]);
+        if (!activeTenantId) { setHistoryLoading(false); return; }
+        const request = ++historyRequest.current;
+        setHistoryLoading(true);
+        try {
+            const res: any = await api.listAgentSimulations(activeTenantId, 20);
+            if (request !== historyRequest.current) return;
+            if (!res?.success || !Array.isArray(res.data)) throw new Error('simulation_list_unavailable');
+            setRuns(res.data as RunSummary[]); setHistoryError(false);
+            setBaselineRunId(id => res.data.some((run: RunSummary) => run.id === id && run.status === 'completed') ? id : '');
+            const retired = res.data.find((run: RunSummary) => run.id === selectedId.current && run.status === 'retired');
+            if (retired) { ++detailRequest.current; setSelectedRun({...retired,results:[]}); setOpenScenario(null); setLoadingRun(false); }
+        } catch { if (request === historyRequest.current) { setRuns([]); setBaselineRunId(''); setHistoryError(true); } }
+        finally { if (request === historyRequest.current) setHistoryLoading(false); }
     }, [activeTenantId]);
 
-    const loadRunDetail = useCallback(async (runId: string) => {
+    const loadRunDetail = useCallback(async (runId: string, background = false) => {
         if (!activeTenantId) return;
-        setLoadingRun(true);
-        const res: any = await api.getAgentSimulation(activeTenantId, runId);
-        if (res?.success && res.data) setSelectedRun(res.data as RunDetail);
-        setLoadingRun(false);
+        const request = ++detailRequest.current;
+        selectedId.current = runId;
+        if (!background) { setLoadingRun(true); setOpenScenario(null); }
+        setDetailError(false);
+        try {
+            const res: any = await api.getAgentSimulation(activeTenantId, runId);
+            if (request !== detailRequest.current) return;
+            if (!res?.success || !res.data || res.data.id !== runId) throw new Error('simulation_detail_unavailable');
+            setSelectedRun(current => current?.id === runId && current.status === 'retired' ? current : res.data as RunDetail);
+            setOpenScenario(current => res.data.status === 'retired' ? null : current
+                ? res.data.results?.find((scenario: ScenarioResult) => scenario.key === current.key) || null : null);
+        } catch { if (request === detailRequest.current) { setSelectedRun(null); setOpenScenario(null); setDetailError(true); } }
+        finally { if (request === detailRequest.current) setLoadingRun(false); }
     }, [activeTenantId]);
 
     useEffect(() => { loadAgents(); loadRuns(); }, [loadAgents, loadRuns]);
 
-    // ── Poll while a run is pending/running ──────────────────
+    // Revalidate completed evidence too, including when returning to this tab.
     useEffect(() => {
-        const active = selectedRun && (selectedRun.status === "pending" || selectedRun.status === "running");
-        if (active) {
-            pollRef.current = setInterval(() => {
-                loadRunDetail(selectedRun!.id);
-                loadRuns();
-            }, 4000);
-        }
-        return () => { if (pollRef.current) clearInterval(pollRef.current); };
-    }, [selectedRun?.id, selectedRun?.status, loadRunDetail, loadRuns]);
+        if (!selectedRun || selectedRun.status === 'retired' || retiring) return;
+        const refresh = () => { loadRunDetail(selectedRun.id, true); loadRuns(); };
+        pollRef.current = setInterval(refresh, ['pending','running'].includes(selectedRun.status) ? 4000 : 15000);
+        window.addEventListener('focus', refresh);
+        return () => { if (pollRef.current) clearInterval(pollRef.current); window.removeEventListener('focus', refresh); };
+    }, [selectedRun?.id, selectedRun?.status, retiring, loadRunDetail, loadRuns]);
 
     // ── Actions ──────────────────────────────────────────────
     const launch = async () => {
         if (!activeTenantId || !agentId) return;
-        setLaunching(true);
+        setLaunching(true); setLaunchError(false);
         try {
             const res: any = await api.runAgentSimulation(activeTenantId, {
                 agentId,
@@ -142,9 +175,25 @@ export default function AgentSimulationPage() {
             if (res?.success && res.data?.runId) {
                 await loadRuns();
                 await loadRunDetail(res.data.runId);
-            }
-        } finally {
+            } else setLaunchError(true);
+        } catch { setLaunchError(true); } finally {
             setLaunching(false);
+        }
+    };
+
+    const retire = async () => {
+        if (!activeTenantId || !selectedRun || retiring) return;
+        const runId = selectedRun.id;
+        ++detailRequest.current; ++historyRequest.current;
+        setRetiring(true); setRetireError(false); setOpenScenario(null); setLoadingRun(true);
+        try {
+            const result: any = await api.retireAgentSimulation(activeTenantId, runId);
+            if (!result?.success || !result.data?.retired) setRetireError(true);
+        } catch { setRetireError(true); }
+        finally {
+            // Re-read after both success and a lost response; never infer retirement from a click.
+            await Promise.all([loadRuns(), loadRunDetail(runId)]);
+            setRetiring(false);
         }
     };
 
@@ -237,16 +286,19 @@ export default function AgentSimulationPage() {
                     <button
                         id={guidedTourAnchorId("simulation-launch")}
                         onClick={launch}
-                        disabled={launching || !agentId}
+                        disabled={launching || retiring || !agentId}
                         className="w-full flex items-center justify-center gap-2 rounded-lg bg-accent text-white px-4 py-2.5 text-sm font-medium hover:opacity-90 disabled:opacity-50"
                     >
                         {launching ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />}
                         {t("runButton")}
                     </button>
+                    {launchError && <p role="alert" className="text-sm text-red-500">{t('launchError')}</p>}
                 </div>
 
                 {/* Results + history */}
                 <div className="lg:col-span-2 space-y-6">
+                    <SimulationEvidenceBoundary status={selectedRun?.status} loading={loadingRun} error={detailError}
+                        retry={() => { if (selectedId.current) loadRunDetail(selectedId.current); }}>
                     {selectedRun ? (
                         <RunResults run={selectedRun} loading={loadingRun} onOpenScenario={setOpenScenario} t={t} />
                     ) : (
@@ -255,6 +307,9 @@ export default function AgentSimulationPage() {
                             <p className="text-text-secondary text-sm">{t("emptyState")}</p>
                         </div>
                     )}
+                    </SimulationEvidenceBoundary>
+                    {selectedRun && !loadingRun && !detailError && <SimulationRetirement key={selectedRun.id} status={selectedRun.status}
+                        role={user?.role} busy={retiring} error={retireError} retire={retire} />}
 
                     {/* History */}
                     <div id={guidedTourAnchorId("simulation-history")} className={CARD}>
@@ -262,7 +317,9 @@ export default function AgentSimulationPage() {
                             <HistoryIcon size={16} className="text-muted-foreground" />
                             {t("history")}
                         </h3>
-                        {runs.length === 0 ? (
+                        {historyLoading ? <p role="status" className="text-sm">{t('loadingHistory')}</p> : historyError ? (
+                            <div role="alert" className="space-y-2"><p className="text-sm">{t('loadHistoryError')}</p><button onClick={loadRuns} className="text-sm underline">{t('retry')}</button></div>
+                        ) : runs.length === 0 ? (
                             <p className="text-muted-foreground text-sm py-4 text-center">{t("noRuns")}</p>
                         ) : (
                             <div className="space-y-1.5">
@@ -271,6 +328,7 @@ export default function AgentSimulationPage() {
                                     return (
                                         <button
                                             key={r.id}
+                                            disabled={retiring}
                                             onClick={() => loadRunDetail(r.id)}
                                             className={cn(
                                                 "w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-neutral-50 dark:hover:bg-white/[0.04]",
@@ -285,8 +343,8 @@ export default function AgentSimulationPage() {
                                             <span className="text-xs text-text-secondary flex-1 truncate">
                                                 {t(`source_${r.scenarioSource}`)} · {r.scenarioCount} · {new Date(r.createdAt).toLocaleString()}
                                             </span>
-                                            {reg && <AlertTriangle size={13} className="text-red-400" />}
-                                            {r.avgScore != null && (
+                                            {r.status !== 'retired' && reg && <AlertTriangle size={13} className="text-red-400" />}
+                                            {r.status !== 'retired' && r.avgScore != null && (
                                                 <span className={cn("text-sm font-semibold", scoreColor(r.avgScore))}>{r.avgScore}/10</span>
                                             )}
                                             <ChevronRight size={14} className="text-muted-foreground" />
@@ -299,7 +357,7 @@ export default function AgentSimulationPage() {
                 </div>
             </div>
 
-            {openScenario && (
+            {openScenario && selectedRun?.status !== 'retired' && !loadingRun && !detailError && (
                 <ScenarioDrawer scenario={openScenario} onClose={() => setOpenScenario(null)} t={t} />
             )}
         </div>

@@ -25,7 +25,7 @@ describe('paid background processors subscription boundary', () => {
             { tenantId, conversationId: 'conversation-1' }, 'scoreConversation'],
         ['simulation', (service: any, prisma: any) => new SimulationProcessor(service, prisma),
             { tenantId, runId: 'run-1' }, 'executeRun'],
-        ['eval gate', (service: any, prisma: any) => new EvalGateProcessor(service, prisma),
+        ['eval gate', (service: any, prisma: any) => new EvalGateProcessor(service, prisma, {} as any),
             { tenantId, agentId: 'agent-1', trigger: 'persona_edit' }, 'runGateV2'],
         ['CRM sync', (service: any, prisma: any) => new ExternalCrmProcessor(service, prisma),
             { tenantId, provider: 'hubspot', entity: 'contact', connectionId: 'connection-1' }, 'runJob'],

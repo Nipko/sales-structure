@@ -20,6 +20,8 @@ import {
     serializeLocalTimestampRows,
 } from '../../common/utils/local-timestamp.util';
 import { resolveNativeEvidenceOpportunity } from '../../common/utils/native-evidence-opportunity.util';
+import type { EvalNamespaceLease } from '../simulation/isolated-eval-namespace';
+import { OperationConfirmationService } from '../email-templates/operation-confirmation.service';
 import {
     PHOTO_QUOTE_HOLD_MS,
     InvalidPhotoDateError,
@@ -58,7 +60,61 @@ export class PhotographyService {
     constructor(
         private readonly prisma: PrismaService,
         private readonly eventEmitter: EventEmitter2,
+        /**
+         * ═══ THE SESSION CONFIRMATION, AND THE TRANSITION THAT EARNS IT ═══
+         *
+         * `tools.photography.emailConfirmations` was declared by the contract,
+         * drawn as a switch by the editor — which names
+         * `photography_session_confirmation` as the template it governs — and
+         * read by NOTHING.
+         *
+         * The obvious wiring was the wrong one. `photo_session.requested` fires
+         * at status `requested`, which is a QUOTE REQUEST holding a date, and
+         * the template says the session is confirmed. Sending there would tell
+         * a couple their wedding photographer was booked while the studio had
+         * not accepted anything.
+         *
+         * The confirming transition is `→ scheduled`, and it already exists:
+         * `create` writes it when a person books directly, and `update` moves a
+         * `requested` quote into it when the studio accepts. Those two, and
+         * nothing else, produce this email.
+         */
+        private readonly confirmations?: OperationConfirmationService,
     ) {}
+
+    /**
+     * The receipt for a session that is actually scheduled.
+     *
+     * `agent_name` stays empty: `photo_sessions` records no photographer, and
+     * the template hides the row when the value is blank rather than printing a
+     * label with nothing after it.
+     */
+    private async confirmScheduled(schemaName: string, session: any): Promise<void> {
+        if (String(session?.status ?? '') !== 'scheduled') return;
+        const at = String(session.scheduled_at_text ?? this.naive(session.scheduled_at) ?? '');
+        await this.confirmations?.send({
+            schemaName,
+            families: ['photography'],
+            slug: 'photography_session_confirmation',
+            conversationId: session.conversation_id ?? null,
+            contactId: session.contact_id ?? null,
+            operation: `photo session ${session.id}`,
+            variables: {
+                service_name: String(session.package_name || session.session_type || ''),
+                appointment_date: at.slice(0, 10),
+                appointment_time: at.slice(11, 16),
+                location: String(session.location ?? ''),
+                agent_name: '',
+            },
+        });
+    }
+
+    /** `scheduled_at` is a naive wall clock; the driver may hand back a Date. */
+    private naive(value: unknown): string {
+        if (!value) return '';
+        if (value instanceof Date) return value.toISOString().slice(0, 19);
+        return String(value).replace(' ', 'T').slice(0, 19);
+    }
 
     async listSessions(schemaName: string, opts: { status?: string; sessionType?: string; search?: string; limit?: number } = {}): Promise<any[]> {
         const where: string[] = ['1=1'];
@@ -149,7 +205,18 @@ export class PhotographyService {
         }
     }
 
-    async create(schemaName: string, data: any): Promise<any> {
+    /**
+     * `execution.sandboxNamespace` es el arriendo de una evaluación aislada: la
+     * sesión se registra y retiene su fecha dentro del namespace, pero
+     * `photo_session.requested` no se emite — ese evento termina en una
+     * notificación push al fotógrafo, y una cotización simulada no puede
+     * hacerle sonar el teléfono en medio de una boda real.
+     */
+    async create(
+        schemaName: string,
+        data: any,
+        execution: { sandboxNamespace?: EvalNamespaceLease } = {},
+    ): Promise<any> {
         if (!data.sessionType) throw new BadRequestException('sessionType is required');
         const durationMinutes = optionalPositiveIntegerUnit(data.durationMinutes, 'durationMinutes');
         const currency = normalizeCurrencyCode(data.currency);
@@ -233,7 +300,7 @@ export class PhotographyService {
         }
         const session = rows[0];
         if (!session) throw new Error('Photo session was not created');
-        if (status === 'requested') {
+        if (status === 'requested' && !execution.sandboxNamespace) {
             try {
                 this.eventEmitter.emit('photo_session.requested', {
                     tenantSchemaName: schemaName,
@@ -254,6 +321,10 @@ export class PhotographyService {
                 this.logger.error(`photo_session.requested listener failed after commit: ${error.message}`);
             }
         }
+        // A session booked straight into `scheduled` — a person in the
+        // dashboard, or the public page — is confirmed on the spot. A
+        // `requested` quote is not, and falls through.
+        if (!execution.sandboxNamespace) await this.confirmScheduled(schemaName, session);
         return serializeLocalTimestampFields(session, PHOTO_LOCAL_TIMESTAMPS);
     }
 
@@ -302,6 +373,7 @@ export class PhotographyService {
         }
         if (!fields.length) return this.getById(schemaName, id);
         fields.push(`updated_at = NOW()`);
+        let previousStatus = '';
         const session = await this.prisma.transactionInTenantSchema(schemaName, async (query) => {
             const existing = await query<Array<{
                 status: string;
@@ -316,6 +388,11 @@ export class PhotographyService {
                 [id],
             );
             if (!existing.length) throw new NotFoundException('Session not found');
+            // What it WAS, for the confirmation below: `requested → scheduled`
+            // is the studio accepting, and that is the email. `scheduled →
+            // scheduled` (a location edit, a price fix) is not, and must not
+            // send a second one.
+            previousStatus = String(existing[0].status ?? '');
 
             const finalStatus = data.status !== undefined ? data.status : existing[0].status;
             const finalScheduledAt = data.scheduledAt !== undefined
@@ -371,6 +448,10 @@ export class PhotographyService {
             }
             throw error;
         });
+        // Only the transition INTO `scheduled` confirms. `update` has no
+        // sandbox lease of its own; a cloned evaluation schema is refused by
+        // the ownership guard inside the confirmation service.
+        if (previousStatus !== 'scheduled') await this.confirmScheduled(schemaName, session);
         return serializeLocalTimestampFields(session, PHOTO_LOCAL_TIMESTAMPS);
     }
 

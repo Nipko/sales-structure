@@ -7,9 +7,10 @@
  * active incidents that block functionality.
  */
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { api } from "@/lib/api";
+import { LoadFailureNotice } from "@/components/ui/load-failure";
 import { cn } from "@/lib/utils";
 import {
     AlertTriangle, Save, Loader2, CheckCircle, Megaphone, X, Eye,
@@ -32,31 +33,56 @@ export default function MaintenanceModeCard() {
     const [expiresAt, setExpiresAt] = useState("");
     const [setBy, setSetBy] = useState<string | null>(null);
     const [setAt, setSetAt] = useState<string | null>(null);
-    const [loading, setLoading] = useState(true);
+    /**
+     * Whether we actually know what is published.
+     *
+     * The load used to swallow every rejection and fall through with the
+     * initial state, which is `enabled = false` and an empty message. So a
+     * dropped request drew this card exactly like a platform with no banner
+     * up — an operator checking during an incident reads "no banner" and
+     * concludes the announcement never went out, or that the platform is
+     * serving normally. Worse, the Save button below writes what is on screen:
+     * one click on a card that never loaded silently clears a live incident
+     * notice for every tenant.
+     *
+     * `unavailable` is therefore not cosmetic. Nothing here may be published
+     * from a state we did not read.
+     */
+    const [status, setStatus] = useState<"loading" | "ready" | "unavailable">("loading");
     const [saving, setSaving] = useState(false);
     const [feedback, setFeedback] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
-    useEffect(() => {
-        async function load() {
-            try {
-                const res = await api.getPlatformMaintenance();
-                if (res.success && res.data) {
-                    setEnabled(!!res.data.enabled);
-                    setMessage(res.data.message || "");
-                    setSeverity(res.data.severity || "info");
-                    setExpiresAt(res.data.expiresAt
-                        ? new Date(res.data.expiresAt).toISOString().slice(0, 16)
-                        : "");
-                    setSetBy(res.data.setBy || null);
-                    setSetAt(res.data.setAt || null);
-                }
-            } catch { /* ignore */ }
-            setLoading(false);
+    const load = useCallback(async () => {
+        setStatus("loading");
+        try {
+            const res = await api.getPlatformMaintenance();
+            // `success: false` is a failed read too. It used to fall through
+            // the same `if` and leave the defaults standing.
+            if (!res.success || !res.data) throw new Error("maintenance_read_failed");
+            setEnabled(!!res.data.enabled);
+            setMessage(res.data.message || "");
+            setSeverity(res.data.severity || "info");
+            setExpiresAt(res.data.expiresAt
+                ? new Date(res.data.expiresAt).toISOString().slice(0, 16)
+                : "");
+            setSetBy(res.data.setBy || null);
+            setSetAt(res.data.setAt || null);
+            setStatus("ready");
+        } catch {
+            setStatus("unavailable");
         }
-        load();
     }, []);
 
+    useEffect(() => { void load(); }, [load]);
+
+    const unavailable = status === "unavailable";
+    const loading = status === "loading";
+
     async function handleSave() {
+        // The editor is not rendered while the state is unknown, but the
+        // handler refuses too: a Save that writes fields nobody read is the
+        // failure this card was found in, not a rendering detail.
+        if (status !== "ready") return;
         if (enabled && !message.trim()) {
             setFeedback({ type: "error", text: t("messageRequired") });
             return;
@@ -85,6 +111,7 @@ export default function MaintenanceModeCard() {
     }
 
     async function handleClear() {
+        if (status !== "ready") return;
         setEnabled(false);
         setMessage("");
         setExpiresAt("");
@@ -122,6 +149,19 @@ export default function MaintenanceModeCard() {
             </div>
 
             <div className="p-5 space-y-5">
+                {/* Not "no banner is published": we do not know what is
+                    published. The editor stays out of the way entirely, so
+                    there is nothing here to press that could overwrite a live
+                    announcement with the state of a request that failed. */}
+                {unavailable && (
+                    <LoadFailureNotice
+                        title={t("stateUnknown")}
+                        hint={t("stateUnknownHint")}
+                        onRetry={() => { void load(); }}
+                    />
+                )}
+
+                {!unavailable && (<>
                 {/* Enable toggle */}
                 <div className="flex items-start justify-between gap-4">
                     <div>
@@ -255,6 +295,7 @@ export default function MaintenanceModeCard() {
                         {enabled ? t("publish") : t("save")}
                     </button>
                 </div>
+                </>)}
             </div>
         </div>
     );

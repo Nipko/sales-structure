@@ -46,7 +46,30 @@ describe('WebhooksService outbound URL security', () => {
                 maxBodyLength: 1024 * 1024,
                 proxy: false,
                 httpsAgent: expect.any(Object),
+                headers: expect.objectContaining({
+                    'X-Webhook-Delivery': expect.stringMatching(/^[0-9a-f-]{36}$/),
+                }),
             }),
         );
+    });
+
+    it('reuses one delivery identity on every retry', async () => {
+        http.axiosRef.post
+            .mockResolvedValueOnce({ status: 503, data: 'retry' })
+            .mockResolvedValueOnce({ status: 204, data: '' });
+        const timer = jest.spyOn(global, 'setTimeout').mockImplementation(((callback: any) => {
+            callback();
+            return 0 as any;
+        }) as any);
+
+        await (service as any).deliverWithRetry('tenant_schema', {
+            id: 'hook-1', url: 'https://hooks.example.com/events', secret: 'secret',
+        }, 'lead.created', '{}', 2, 'delivery-fixed');
+
+        expect(http.axiosRef.post).toHaveBeenCalledTimes(2);
+        expect(http.axiosRef.post.mock.calls.map((call: any[]) =>
+            call[2].headers['X-Webhook-Delivery']))
+            .toEqual(['delivery-fixed', 'delivery-fixed']);
+        timer.mockRestore();
     });
 });

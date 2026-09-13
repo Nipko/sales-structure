@@ -87,6 +87,7 @@ import {
   Radio,
   Receipt,
   Scale,
+  Send,
   Settings,
   Shield,
   ShieldCheck,
@@ -380,6 +381,7 @@ const platformSections: NavSectionDef[] = [
     items: [
       { labelKey: "ops", href: "/admin/ops", icon: Gauge, accent: "text-indigo-500 dark:text-indigo-400" },
       { labelKey: "integrationOutbox", href: "/admin/ops/integrations", icon: Waypoints, accent: "text-indigo-500 dark:text-indigo-400" },
+      { labelKey: "dispatchOperations", href: "/admin/dispatch", icon: Send, accent: "text-amber-500 dark:text-amber-400" },
       { labelKey: "managed", href: "/admin/managed", icon: ShieldCheck, accent: "text-indigo-500 dark:text-indigo-400" },
       { labelKey: "platformHealth", href: "/admin/health", icon: Activity, accent: "text-rose-500 dark:text-rose-400" },
       { labelKey: "storage", href: "/admin/storage", icon: HardDrive, accent: "text-cyan-500 dark:text-cyan-400" },
@@ -1197,7 +1199,7 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
                   {expanded && (
                     <p
                       id={`sidebar-${mode}-favorites-label`}
-                      className="mb-1 px-2 text-[10px] font-bold uppercase tracking-wider text-neutral-400 dark:text-neutral-500"
+                      className="mb-1 px-2 text-[10px] font-bold uppercase tracking-wider text-neutral-500 dark:text-neutral-400"
                     >
                       {tCommand("favorites")}
                     </p>
@@ -1227,7 +1229,7 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
                         onClick={() => toggleSection(section.titleKey)}
                         aria-expanded={sectionExpanded}
                         aria-controls={sectionContentId}
-                        className="mb-1 flex min-h-7 w-full items-center justify-between rounded-md px-2 text-left text-[10px] font-bold uppercase tracking-wider text-neutral-400 transition-colors hover:bg-neutral-50 hover:text-neutral-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:text-neutral-500 dark:hover:bg-neutral-900 dark:hover:text-neutral-300"
+                        className="mb-1 flex min-h-7 w-full items-center justify-between rounded-md px-2 text-left text-[10px] font-bold uppercase tracking-wider text-neutral-500 transition-colors hover:bg-neutral-50 hover:text-neutral-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:text-neutral-400 dark:hover:bg-neutral-900 dark:hover:text-neutral-200"
                       >
                         <span className="min-w-0 flex-1 truncate">{sectionLabel}</span>
                         {sectionQualityBadge > 0 && (
@@ -1246,7 +1248,7 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
                           : <ChevronRight size={13} className="shrink-0" aria-hidden="true" />}
                       </button>
                     ) : (
-                      <p id={`${sectionContentId}-label`} className="mb-1 px-2 text-[10px] font-bold uppercase tracking-wider text-neutral-400 dark:text-neutral-500">
+                      <p id={`${sectionContentId}-label`} className="mb-1 px-2 text-[10px] font-bold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
                         {sectionLabel}
                       </p>
                     ))}

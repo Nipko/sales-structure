@@ -69,12 +69,14 @@ interface LangContextValue {
     locale: string;
     setLocale: (lang: string) => void;
     localeNames: Record<string, string>;
+    hydrated: boolean;
 }
 
 const LangContext = createContext<LangContextValue>({
     locale: "es",
     setLocale: () => {},
     localeNames,
+    hydrated: false,
 });
 
 export function useLang() {
@@ -86,8 +88,11 @@ export default function LangProvider({ children, initialLocale }: {
     initialLocale?: SupportedLocale;
 }) {
     const [locale, setLocaleState] = useState<SupportedLocale>(initialLocale ?? "es");
+    const [hydrated, setHydrated] = useState(false);
     // Spanish dialect: neutral tuteo (false) or voseo (true). Only matters for "es".
     const [voseo, setVoseo] = useState(false);
+
+    useEffect(() => setHydrated(true), []);
 
     useEffect(() => {
         if (initialLocale) return;
@@ -152,7 +157,7 @@ export default function LangProvider({ children, initialLocale }: {
     const messages = locale === "es" && voseo ? esVoseo : (allMessages[locale] || allMessages.es);
 
     return (
-        <LangContext.Provider value={{ locale, setLocale, localeNames }}>
+        <LangContext.Provider value={{ locale, setLocale, localeNames, hydrated }}>
             <NextIntlClientProvider
                 locale={locale}
                 messages={messages}

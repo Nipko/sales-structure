@@ -14,7 +14,7 @@ interface MobileMenuProps {
 
 export function MobileMenu({ open, onClose }: MobileMenuProps) {
   const t = useTranslations("nav");
-  const { locale, setLocale, localeNames } = useLang();
+  const { locale, setLocale, localeNames, hydrated } = useLang();
 
   return (
     <AnimatePresence>
@@ -58,6 +58,7 @@ export function MobileMenu({ open, onClose }: MobileMenuProps) {
             <select
               value={locale}
               onChange={(e) => setLocale(e.target.value)}
+              disabled={!hydrated}
               aria-label={t("languageAriaLabel")}
               className="bg-transparent text-sm border border-border rounded-lg px-2 py-1 outline-none cursor-pointer"
             >

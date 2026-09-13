@@ -2,7 +2,7 @@
   "version": 1,
   "evidenceKind": "structural_only",
   "sourceHashEncoding": "utf8-lf",
-  "sourceRevision": "886b8d533d3e1946d97eaef2bf983d5f2ee5382c",
+  "sourceRevision": "1112a93f300c831b5ea4355241f4b81899a39cce",
   "summary": {
     "verticals": 20,
     "profiles": 76,
@@ -72,7 +72,7 @@
     "docs/audits/2026-09-11/generate-tool-profile-audit.cjs": "45e67a69d88105c3a06d371f12e867f855ad0114024d659e6366dafe76f8a9da",
     "packages/shared/src/active-object-deep-link.ts": "738a7f5f1180bcfec4e8d9dc1cb424515419e4001dfbf1e82bd6a4802fd7003b",
     "packages/shared/src/agent-assessment-contract.ts": "470941ff699aab0849159b4e287064bf9e90dba4d193671013a18ee98be0186f",
-    "packages/shared/src/agent-configuration-contract.ts": "89f5e0ae33b0ee660a3ea5f2465e441253f63aeb879d81f232335d26754c282e",
+    "packages/shared/src/agent-configuration-contract.ts": "7c86f4a7417ce0ae530d04e7731eb29e558f8b0ddbf6016713947912d1ae1007",
     "packages/shared/src/agent-draft-contract.ts": "4586a4d8e67644786682c9288151e4c231ad22c1a40874ed4c64f732688266da",
     "packages/shared/src/agent-issue-resolution.ts": "0a7044d2398e83b564d1ed3fc3f81fedf96f215bcc5af8c82cac8a6103b565c5",
     "packages/shared/src/agent-operation-contract.ts": "bda213ef6091b3f380535091eead6d1387b8faee03a6e9977178c83aae05773e",

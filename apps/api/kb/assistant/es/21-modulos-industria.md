@@ -3,12 +3,14 @@ id: modulos-industria
 title: "Herramientas y módulos según tu industria"
 routes: ["/admin/appointments", "/admin/properties", "/admin/tours", "/admin/listings", "/admin/vehicles", "/admin/resource-rentals", "/admin/menu", "/admin/food-orders", "/admin/memberships", "/admin/classes", "/admin/courses", "/admin/insurance", "/admin/service-requests", "/admin/treatment-plans", "/admin/pets", "/admin/photo-sessions", "/admin/inventory", "/admin/orders"]
 roles: ["tenant_admin", "tenant_supervisor", "tenant_agent"]
-keywords: ["industria", "vertical", "modulos", "propiedades", "tours", "vehiculos", "alquiler", "menu", "pedidos", "membresias", "clases", "cursos", "seguros", "tratamientos", "mascotas", "fotografia", "inventario", "ordenes"]
+keywords: ["industria", "vertical", "perfil de negocio", "lista de espera", "planeacion de eventos", "construccion", "modulos", "propiedades", "tours", "vehiculos", "alquiler", "menu", "pedidos", "membresias", "clases", "cursos", "seguros", "tratamientos", "mascotas", "fotografia", "inventario", "ordenes"]
 ---
 
 # Herramientas y módulos según tu industria
 
-La sección **Operación** se resuelve por capacidades y subtipo, no solo por el nombre de la industria. Parallly contempla estos perfiles: salud, moda y belleza, inmobiliaria, restaurantes, automotriz, turismo, educación, finanzas, servicios profesionales, retail, tecnología, veterinaria, gimnasios, seguros, servicios del hogar, servicios para mascotas, fotografía y otros.
+La sección **Operación** se resuelve por capacidades y subtipo, no solo por el nombre de la industria. El contrato contiene 20 industrias y 76 perfiles canónicos de negocio; hoy 18 industrias tienen al menos un perfil seleccionable. Planeación de eventos y construcción están registradas para conservar su identidad y evolución, pero sus perfiles actuales permanecen en lista de espera y no se ofrecen en un alta nueva.
+
+Las industrias con oferta actual son: salud, moda y belleza, inmobiliaria, restaurantes, automotriz, turismo, educación, finanzas, servicios profesionales, retail, tecnología, veterinaria, gimnasios, seguros, servicios del hogar, servicios para mascotas, fotografía y otros.
 
 - Salud puede usar **Citas** y **Planes de tratamiento**; una farmacia puede usar **Inventario y órdenes**. Moda y belleza usa principalmente **Citas**; el subtipo heredado de boutique puede usar **Catálogo e inventario**.
 - Inmobiliaria usa **Listados** y **Citas**. **Propiedades** corresponde a hoteles o alquiler vacacional, y **Tours** a agencias o tours dentro de turismo.

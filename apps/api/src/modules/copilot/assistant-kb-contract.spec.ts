@@ -1,5 +1,11 @@
 import * as fs from 'fs';
-import { DASHBOARD_PAGE_RULES, dashboardRoleCanOpen } from '@parallext/shared';
+import {
+  DASHBOARD_PAGE_RULES,
+  VERTICAL_MANIFEST_INDUSTRIES,
+  dashboardRoleCanOpen,
+  listCanonicalSubtypeExperienceProfileIds,
+  resolveSubtypeExperienceProfile,
+} from '@parallext/shared';
 import * as path from 'path';
 
 const LOCALES = ['es', 'en', 'pt', 'fr'] as const;
@@ -40,16 +46,16 @@ const EXPECTED_IDS = [
 ].sort();
 const VERTICAL_LABELS: Record<(typeof LOCALES)[number], Record<string, string>> = {
   es: {
-    salud: 'salud', moda_belleza: 'moda y belleza', inmobiliaria: 'inmobiliaria', restaurantes: 'restaurantes', automotriz: 'automotriz', turismo: 'turismo', education: 'educación', finanzas: 'finanzas', servicios_profesionales: 'servicios profesionales', retail: 'retail', technology: 'tecnología', veterinaria: 'veterinaria', gimnasios: 'gimnasios', seguros: 'seguros', servicios_hogar: 'servicios del hogar', pet_services: 'servicios para mascotas', fotografia: 'fotografía', otro: 'otros',
+    salud: 'salud', moda_belleza: 'moda y belleza', inmobiliaria: 'inmobiliaria', restaurantes: 'restaurantes', automotriz: 'automotriz', turismo: 'turismo', education: 'educación', finanzas: 'finanzas', servicios_profesionales: 'servicios profesionales', retail: 'retail', technology: 'tecnología', veterinaria: 'veterinaria', gimnasios: 'gimnasios', seguros: 'seguros', servicios_hogar: 'servicios del hogar', pet_services: 'servicios para mascotas', fotografia: 'fotografía', event_planning: 'planeación de eventos', construccion: 'construcción', otro: 'otros',
   },
   en: {
-    salud: 'healthcare', moda_belleza: 'fashion and beauty', inmobiliaria: 'real estate', restaurantes: 'restaurants', automotriz: 'automotive', turismo: 'tourism', education: 'education', finanzas: 'finance', servicios_profesionales: 'professional services', retail: 'retail', technology: 'technology', veterinaria: 'veterinary', gimnasios: 'fitness', seguros: 'insurance', servicios_hogar: 'home services', pet_services: 'pet services', fotografia: 'photography', otro: 'other',
+    salud: 'healthcare', moda_belleza: 'fashion and beauty', inmobiliaria: 'real estate', restaurantes: 'restaurants', automotriz: 'automotive', turismo: 'tourism', education: 'education', finanzas: 'finance', servicios_profesionales: 'professional services', retail: 'retail', technology: 'technology', veterinaria: 'veterinary', gimnasios: 'fitness', seguros: 'insurance', servicios_hogar: 'home services', pet_services: 'pet services', fotografia: 'photography', event_planning: 'event planning', construccion: 'construction', otro: 'other',
   },
   pt: {
-    salud: 'saúde', moda_belleza: 'moda e beleza', inmobiliaria: 'imobiliário', restaurantes: 'restaurantes', automotriz: 'automotivo', turismo: 'turismo', education: 'educação', finanzas: 'finanças', servicios_profesionales: 'serviços profissionais', retail: 'varejo', technology: 'tecnologia', veterinaria: 'veterinária', gimnasios: 'academias', seguros: 'seguros', servicios_hogar: 'serviços domésticos', pet_services: 'serviços para pets', fotografia: 'fotografia', otro: 'outros',
+    salud: 'saúde', moda_belleza: 'moda e beleza', inmobiliaria: 'imobiliário', restaurantes: 'restaurantes', automotriz: 'automotivo', turismo: 'turismo', education: 'educação', finanzas: 'finanças', servicios_profesionales: 'serviços profissionais', retail: 'varejo', technology: 'tecnologia', veterinaria: 'veterinária', gimnasios: 'academias', seguros: 'seguros', servicios_hogar: 'serviços domésticos', pet_services: 'serviços para pets', fotografia: 'fotografia', event_planning: 'planejamento de eventos', construccion: 'construção', otro: 'outros',
   },
   fr: {
-    salud: 'santé', moda_belleza: 'mode et beauté', inmobiliaria: 'immobilier', restaurantes: 'restaurants', automotriz: 'automobile', turismo: 'tourisme', education: 'éducation', finanzas: 'finance', servicios_profesionales: 'services professionnels', retail: 'commerce de détail', technology: 'technologie', veterinaria: 'vétérinaire', gimnasios: 'fitness', seguros: 'assurances', servicios_hogar: 'services à domicile', pet_services: 'services animaliers', fotografia: 'photographie', otro: 'autre',
+    salud: 'santé', moda_belleza: 'mode et beauté', inmobiliaria: 'immobilier', restaurantes: 'restaurants', automotriz: 'automobile', turismo: 'tourisme', education: 'éducation', finanzas: 'finance', servicios_profesionales: 'services professionnels', retail: 'commerce de détail', technology: 'technologie', veterinaria: 'vétérinaire', gimnasios: 'fitness', seguros: 'assurances', servicios_hogar: 'services à domicile', pet_services: 'services animaliers', fotografia: 'photographie', event_planning: "organisation d'événements", construccion: 'construction', otro: 'autre',
   },
 };
 
@@ -74,10 +80,6 @@ const dashboardRolesPath = path.resolve(
   '../../../../dashboard/src/lib/roles.ts',
 );
 const dashboardMessagesRoot = path.resolve(__dirname, '../../../../dashboard/messages');
-const verticalManifestPath = path.resolve(
-  __dirname,
-  '../../../../../packages/shared/src/vertical-capability-manifest.ts',
-);
 const whatsappSeedTemplatesPath = path.resolve(
   __dirname,
   '../whatsapp/seed-templates.config.ts',
@@ -217,17 +219,11 @@ describe('Parallly Assist knowledge-base contract', () => {
     LOCALES.map((locale) => [locale, loadLocale(locale)]),
   ) as Record<(typeof LOCALES)[number], Article[]>;
   const navigationSource = fs.readFileSync(navigationContractPath, 'utf8');
-  const verticalManifestSource = fs.readFileSync(verticalManifestPath, 'utf8');
   const whatsappSeedTemplatesSource = fs.readFileSync(whatsappSeedTemplatesPath, 'utf8');
   const canonicalRoutes = new Set(
     [...navigationSource.matchAll(/pattern:\s*"([^"]+)"/g)].map((match) => match[1]),
   );
-  const canonicalVerticalBlock = verticalManifestSource.match(
-    /VERTICAL_MANIFEST_INDUSTRIES\s*=\s*\[([\s\S]*?)\]\s*as const/,
-  )?.[1] ?? '';
-  const canonicalVerticalIds = [
-    ...canonicalVerticalBlock.matchAll(/'([^']+)'/g),
-  ].map((match) => match[1]);
+  const canonicalVerticalIds = [...VERTICAL_MANIFEST_INDUSTRIES];
 
   it.each(LOCALES)('%s has the complete, unique article set', (locale) => {
     const articles = byLocale[locale];
@@ -505,12 +501,22 @@ describe('Parallly Assist knowledge-base contract', () => {
     }
   });
 
-  it.each(LOCALES)('%s documents every currently public vertical profile', (locale) => {
+  it.each(LOCALES)('%s distinguishes the full profile contract from the selectable offer', (locale) => {
     const labels = VERTICAL_LABELS[locale];
     expect(canonicalVerticalIds).toHaveLength(20);
-    expect(canonicalVerticalIds.filter((id) => !Object.hasOwn(labels, id)))
+    expect(Object.keys(labels)).toEqual(expect.arrayContaining(canonicalVerticalIds));
+
+    const profiles = listCanonicalSubtypeExperienceProfileIds().map((id) => {
+      const [industry, subtype] = id.split('/');
+      return resolveSubtypeExperienceProfile(industry, subtype === '__none__' ? null : subtype);
+    });
+    const offeredIndustries = new Set(
+      profiles.filter((profile) => profile.commercialisable).map((profile) => profile.industry),
+    );
+    expect(profiles).toHaveLength(76);
+    expect(offeredIndustries.size).toBe(18);
+    expect(canonicalVerticalIds.filter((industry) => !offeredIndustries.has(industry)))
       .toEqual(['event_planning', 'construccion']);
-    expect(canonicalVerticalIds).toEqual(expect.arrayContaining(Object.keys(labels)));
 
     const article = byLocale[locale].find(
       (candidate) => candidate.id === 'modulos-industria',
@@ -520,6 +526,9 @@ describe('Parallly Assist knowledge-base contract', () => {
     for (const label of Object.values(labels)) {
       expect(normalizedBody).toContain(label.toLocaleLowerCase(locale));
     }
+    expect(normalizedBody).toMatch(/\b20\b/);
+    expect(normalizedBody).toMatch(/\b76\b/);
+    expect(normalizedBody).toMatch(/\b18\b/);
   });
 
   it.each(LOCALES)('%s keeps sensitive and shared workflows scoped to the right roles', (locale) => {

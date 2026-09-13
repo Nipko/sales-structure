@@ -3,12 +3,14 @@ id: modulos-industria
 title: "Outils et modules selon votre secteur"
 routes: ["/admin/appointments", "/admin/properties", "/admin/tours", "/admin/listings", "/admin/vehicles", "/admin/resource-rentals", "/admin/menu", "/admin/food-orders", "/admin/memberships", "/admin/classes", "/admin/courses", "/admin/insurance", "/admin/service-requests", "/admin/treatment-plans", "/admin/pets", "/admin/photo-sessions", "/admin/inventory", "/admin/orders"]
 roles: ["tenant_admin", "tenant_supervisor", "tenant_agent"]
-keywords: ["secteur", "vertical", "modules", "proprietes", "visites", "vehicules", "location", "menu", "commandes", "adhesions", "cours", "assurance", "traitements", "animaux", "photographie", "stock"]
+keywords: ["secteur", "vertical", "profil d'entreprise", "liste d'attente", "organisation d'evenements", "construction", "modules", "proprietes", "visites", "vehicules", "location", "menu", "commandes", "adhesions", "cours", "assurance", "traitements", "animaux", "photographie", "stock"]
 ---
 
 # Outils et modules selon votre secteur
 
-La section **Opérations** est déterminée par les capacités et le sous-type, pas uniquement par le nom du secteur. Parallly couvre ces profils : santé, mode et beauté, immobilier, restaurants, automobile, tourisme, éducation, finance, services professionnels, commerce de détail, technologie, vétérinaire, fitness, assurances, services à domicile, services animaliers, photographie et autre.
+La section **Opérations** est déterminée par les capacités et le sous-type, pas uniquement par le nom du secteur. Le contrat contient 20 secteurs et 76 profils d'entreprise canoniques ; 18 secteurs disposent actuellement d'au moins un profil sélectionnable. L'organisation d'événements et la construction restent enregistrées pour préserver leur identité et l'évolution du produit, mais leurs profils actuels sont sur liste d'attente et ne sont pas proposés lors de la création d'un compte.
+
+Les secteurs actuellement proposés sont la santé, la mode et beauté, l'immobilier, les restaurants, l'automobile, le tourisme, l'éducation, la finance, les services professionnels, le commerce de détail, la technologie, le vétérinaire, le fitness, les assurances, les services à domicile, les services animaliers, la photographie et autre.
 
 - Santé peut utiliser **Rendez-vous** et **Plans de traitement** ; une pharmacie peut utiliser **Stock et ordres**. Mode et beauté utilise surtout les rendez-vous ; l'ancien sous-type boutique peut utiliser **Catalogue et stock**.
 - L'immobilier utilise **Annonces** et rendez-vous. **Propriétés** correspond aux hôtels ou locations saisonnières, et **Tours** aux agences ou visites dans le tourisme.

@@ -98,7 +98,9 @@ export class AgentPublicationService {
                 // appointment rows. A cached feature answer or a second Prisma
                 // connection would leave a race beside the publication lock.
                 await assertPublicationPrerequisites(query, input,
-                    config => this.persona.assertAgentConfigValid(config, { partial: true }));
+                    // Drafts may be incomplete while Assist guides the owner;
+                    // the revision that starts serving customers may not.
+                    config => this.persona.assertAgentConfigValid(config));
             },
         };
     }

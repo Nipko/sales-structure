@@ -152,7 +152,7 @@ describe('AgentPublicationService', () => {
             await checks.assertCurrentPrerequisites(h.query, prerequisiteInput);
             expect(h.query.mock.calls.some(([sql]) => String(sql).includes('FROM public.tenants') && String(sql).includes('FOR SHARE'))).toBe(true);
             expect(h.query.mock.calls.some(([sql]) => String(sql).includes('FROM public.billing_plans') && String(sql).includes('FOR SHARE'))).toBe(true);
-            expect(h.persona.assertAgentConfigValid).toHaveBeenCalledWith(prerequisiteInput.body.configJson, { partial: true });
+            expect(h.persona.assertAgentConfigValid).toHaveBeenCalledWith(prerequisiteInput.body.configJson);
         });
 
         it('detiene la publicación cuando la suscripción ya no permite escribir', async () => {

@@ -101,27 +101,17 @@ export default defineConfig({
       },
     },
   ],
-  webServer: [
-    {
-      command: "npm run dev --workspace=landing",
-      cwd: repositoryRoot,
-      env: safeBrowserEnvironment,
-      url: landingUrl,
-      reuseExistingServer: false,
-      timeout: 180_000,
-      stdout: "pipe",
-      stderr: "pipe",
-    },
-    {
-      command:
-        "npm run build --workspace=@parallext/shared && npm run dev --workspace=@parallext/dashboard",
-      cwd: repositoryRoot,
-      env: safeBrowserEnvironment,
-      url: `${dashboardUrl}/login`,
-      reuseExistingServer: false,
-      timeout: 180_000,
-      stdout: "pipe",
-      stderr: "pipe",
-    },
-  ],
+  // One process builds and serves both production artefacts. Keeping both
+  // listeners in the Playwright-owned process prevents Next's dev compiler
+  // descendants from surviving teardown on Windows.
+  webServer: {
+    command: "node start-servers.cjs",
+    cwd: resolve(repositoryRoot, "apps", "e2e"),
+    env: safeBrowserEnvironment,
+    url: `${dashboardUrl}/login`,
+    reuseExistingServer: false,
+    timeout: 300_000,
+    stdout: "pipe",
+    stderr: "pipe",
+  },
 });

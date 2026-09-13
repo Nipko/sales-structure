@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'crypto';
+import { randomUUID } from 'crypto';
 import { WidgetMessageStore } from '../widget/widget-message-store.service';
 import {
     BadRequestException,
@@ -14,17 +14,9 @@ import { isUUID } from 'class-validator';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { ChannelGatewayService } from '../channels/channel-gateway.service';
-import { ChannelTokenService } from '../channels/channel-token.service';
 import { ProactiveDispatchService, effectIsDurable } from '../channels/proactive-dispatch.service';
 import type { DispatchItem } from '../channels/agent-dispatch-outbox';
 import type { ChannelType } from '@parallext/shared';
-import {
-    WhatsappSendAdmissionService, fromSendContext, type Admission,
-} from '../billing/whatsapp-spend/whatsapp-send-admission.service';
-import { AccountPauseStore } from '../channels/account-pause-store';
-import { readProviderRefusal } from '../channels/funding-failure';
-import { metaBillsChannel } from '../channels/external-effect-inventory';
-import type { StrictDispatchOutcome } from '../channels/strict-dispatch-transport';
 import { WhatsappConnectionService } from '../whatsapp/services/whatsapp-connection.service';
 import { LLMRouterService } from '../ai/router/llm-router.service';
 import { AiResolutionService } from '../analytics/ai-resolution.service';
@@ -124,21 +116,6 @@ export interface InternalNote {
     createdAt: string;
 }
 
-/**
- * A reply the platform refused to send, and WHY.
- *
- * The reason used to be thrown away: every non-permitted verdict AND every
- * refused connection collapsed to the bare word `refused`, and the row an
- * agent reads was stamped `spend_refused` for all of them. A disconnected
- * number, an ambiguous account and an undecryptable credential are not
- * spending limits, and sending somebody to look at a ceiling that is not the
- * problem is how a diagnosis becomes noise.
- */
-interface AgentSendRefusal { readonly refused: true; readonly reason: string }
-
-const isRefusal = (admission: unknown): admission is AgentSendRefusal =>
-    !!admission && typeof admission === 'object' && (admission as any).refused === true;
-
 @Injectable()
 export class AgentConsoleService {
     private readonly logger = new Logger(AgentConsoleService.name);
@@ -147,25 +124,10 @@ export class AgentConsoleService {
         private prisma: PrismaService,
         private redis: RedisService,
         private channelGateway: ChannelGatewayService,
-        private channelToken: ChannelTokenService,
         private whatsappConnection: WhatsappConnectionService,
         private llmRouter: LLMRouterService,
         private eventEmitter: EventEmitter2,
         private aiResolutionService: AiResolutionService,
-        // A human agent's reply is billed by Meta exactly like the agent's.
-        // Leaving this lane ungated would mean a tenant at its ceiling keeps
-        // spending as long as a person is the one typing.
-        //
-        // NOT optional, and placed before the optional store for that reason:
-        // a required parameter cannot follow an optional one, so the position
-        // is part of the statement. Nest refuses to build the module when no
-        // authority is wired, at boot, where a person is watching.
-        private spendGate: WhatsappSendAdmissionService,
-        // The fourth sink, and the one with a person waiting. Meta's 131042
-        // means this number cannot be billed at all, so the agent's next six
-        // replies will fail the same way — and they need to be told that once,
-        // not watch each reply disappear.
-        private pauses: AccountPauseStore,
         @Optional() private widgetMessages?: WidgetMessageStore,
         /**
          * The durable lane, for the one send in this file that reaches a
@@ -174,9 +136,7 @@ export class AgentConsoleService {
          * Declared after the optional store because a required parameter cannot
          * follow an optional one, and moving `widgetMessages` would change the
          * position of every existing construction site. It is provided by the
-         * module; when it is absent the reply keeps the inline path it has
-         * always had, which is what the suites that build this service by hand
-         * exercise.
+         * module; when it is absent a reply is refused before persistence.
          */
         @Optional() private dispatch?: ProactiveDispatchService,
     ) { }
@@ -542,299 +502,14 @@ export class AgentConsoleService {
             presentation: isMedia ? JSON.parse(metadataJson!) : null,
         });
         if (durable) return durable;
-
-        // Every certified conversational channel has a strict durable
-        // transport in production. Falling through here for one of them means
-        // its binding or lane is unavailable; an inline POST would discard the
-        // recovery record and could duplicate a billed reply. Email is still
-        // an internal inbound adapter and SMS is a one-way legacy product, so
-        // their historical console path remains isolated below without being
-        // advertised as a certified channel.
-        const inlineChannel = String(deliveryBinding[0]?.channel_type ?? '');
-        if (inlineChannel !== 'email' && inlineChannel !== 'sms') {
-            throw new BadRequestException(
-                'La respuesta no puede enviarse sin un transporte durable para este canal.');
-        }
-
-        // 'pending', not 'delivered'. This row was written as delivered BEFORE
-        // anything was sent, and the send below is inline in a catch that only
-        // warns — so a reply that never left the building read as delivered in
-        // the inbox, the agent moved on, and the customer was still waiting.
-        // The durable dispatch path already learned this rule: history says
-        // pending until a provider accepts the effect it describes.
-        const result = await this.prisma.executeInTenantSchema<any[]>(
-            schemaName,
-            `INSERT INTO messages (conversation_id, content_text, content_type, direction, status, metadata, created_at)
-       VALUES ($1::uuid, $2, $3, 'outbound', 'pending', $4::jsonb, NOW())
-       RETURNING id, content_text, content_type, direction, status, created_at, metadata`,
-            [conversationId, contentText, contentType, metadataJson],
-        );
-
-        const msg = result[0];
-
-        // Draft-for-approval (WS3 #6): the agent just replied, so any pending AI
-        // draft for this conversation is resolved — clear it (fire-and-forget).
-        this.prisma.executeInTenantSchema(schemaName,
-            `UPDATE conversations SET metadata = metadata - 'pendingDraft' WHERE id = $1::uuid AND metadata ? 'pendingDraft'`,
-            [conversationId],
-        ).catch(() => { /* non-blocking */ });
-
-        // Track first response time in conversation_assignments (only if not yet set)
-        try {
-            await this.prisma.executeInTenantSchema(
-                schemaName,
-                `UPDATE conversation_assignments
-                 SET first_response_at = NOW()
-                 WHERE conversation_id = $1::uuid AND agent_id = $2::uuid
-                   AND first_response_at IS NULL AND resolved_at IS NULL`,
-                [conversationId, agentId],
-            );
-        } catch (e: any) {
-            this.logger.warn(`Could not update first_response_at: ${e.message}`);
-        }
-
-        /**
-         * What the row is allowed to say about a send that already happened.
-         *
-         * Never downgrades a status a provider webhook may have written first:
-         * a `delivered` or `read` that arrived while this was still settling is
-         * newer evidence than anything this code knows, and `redacted` outranks
-         * everything. Same rule the outbox applies, for the same reason.
-         */
-        const settle = async (
-            status: 'sent' | 'failed' | 'reconciliation_required', detail?: string,
-        ) => {
-            try {
-                await this.prisma.executeInTenantSchema(schemaName,
-                    `UPDATE messages SET status=$2,
-                        metadata = COALESCE(metadata,'{}'::jsonb) || $3::jsonb
-                     WHERE id=$1::uuid AND status NOT IN ('redacted','delivered','read')`,
-                    [msg.id, status, JSON.stringify(detail ? { sendError: detail.slice(0, 200) } : {})]);
-                msg.status = status;
-            } catch (error: any) {
-                // The send outcome could not be recorded. Leaving the row
-                // `pending` is the honest state: nothing here may claim it left.
-                this.logger.error(`Agent message ${msg.id} outcome not recorded (${status}): ${error?.message}`);
-            }
-        };
-        // Obtener token real y enviar via el canal (WhatsApp, etc.)
-        let sendAttempted = false;
-        try {
-            // Buscar el canal activo de la conversación para saber a qué número enviar
-            const convRows = await this.prisma.executeInTenantSchema<any[]>(
-                schemaName,
-                `SELECT c.channel_type, COALESCE(ct.phone, ct.external_id) as phone,
-                        c.channel_account_id, c.contact_id
-                 FROM conversations c
-                 LEFT JOIN contacts ct ON c.contact_id = ct.id
-                 WHERE c.id = $1::uuid LIMIT 1`,
-                [conversationId],
-            );
-            if (convRows?.[0]) {
-                const conv = convRows[0];
-                // Resolve the token PER-CONNECTION for the conversation's channel + account
-                // (multi-account aware, and works for non-WhatsApp channels — the old
-                // getValidAccessToken always returned a WhatsApp token).
-                const channelType = conv.channel_type || 'whatsapp';
-                // ── THE TRANSPORT THAT SAYS WHAT HAPPENED ──────────────────
-                //
-                // The durable lane above declined — not wired, or a binding
-                // this conversation cannot make — and its own docblock says
-                // this inline path exists "only for a channel with no strict
-                // transport". The code did not enforce that: it used
-                // `sendMessage` for every channel, and that call reports
-                // EVERY failure as `null`.
-                //
-                // One `null`, two contradictory stories. `recordAgentSend`
-                // filed a TIMEOUT — money retained, the effect indeterminate,
-                // "somebody may have sent this" — while the message row was
-                // stamped `failed`, which reads as "it did not leave" and is
-                // an invitation to retype. On WhatsApp that retype is a
-                // second charge for a message the customer may already have.
-                //
-                // The strict transport answers three ways, so both records
-                // come from ONE answer.
-                const strict = this.channelGateway.getStrictTransport(channelType as any);
-                if (!strict && metaBillsChannel(channelType)) {
-                    // A chargeable channel with no transport that can report
-                    // an outcome. Refused BEFORE the admission, so there is
-                    // no reservation and no intent to leave indeterminate:
-                    // nothing was spent and nothing was addressed.
-                    this.logger.error(`Agent reply ${msg.id}: ${channelType} bills per delivery `
-                        + 'and has no strict transport here; refused before admitting');
-                    await settle('failed', 'strict_transport_unavailable');
-                    return {
-                        id: msg.id, status: msg.status, content: msg.content_text,
-                        type: msg.content_type, sender: 'agent', timestamp: msg.created_at,
-                    } as any;
-                }
-                const creds = await this.channelToken.getChannelToken(tenantId, channelType, conv.channel_account_id || undefined);
-                const outContent: any = isMedia
-                    ? { type: contentType, mediaUrl: this.absoluteMediaUrl(mediaUrl), caption: caption || content || undefined, ...(filename ? { filename } : {}) }
-                    : { type: 'text', text: content };
-                // Reserved before the request, like every other lane.
-                const admission = await this.admitAgentSend(tenantId, schemaName, channelType,
-                    conv.channel_account_id || creds.accountId, conv.phone, outContent,
-                    conv.contact_id ?? null,
-                    // The row was inserted `pending` before any of this. It is
-                    // the durable identity of this reply: a retry reads the same
-                    // id even if the agent's text were re-rendered, and two
-                    // agents typing the same sentence are two effects.
-                    String(msg.id));
-                if (isRefusal(admission)) {
-                    // The agent has to SEE this. A reply that silently did not
-                    // leave is worse than one that visibly did not: they would
-                    // go on believing the customer was answered.
-                    //
-                    // And it has to say WHICH. `admitAgentSend` collapses to
-                    // `'refused'` for every non-permitted spend verdict AND for
-                    // a refused connection — a disconnected number, an
-                    // ambiguous account, an undecryptable credential. Stamping
-                    // all of them `spend_refused` sends the one human being who
-                    // reads this row to look at a spending limit that is not
-                    // the problem. This is the fifth sink to carry that wrong
-                    // signpost, and the only one a person reads directly.
-                    await settle('failed', admission.reason ?? 'send_refused');
-                    return {
-                        id: msg.id, status: 'failed', content: msg.content_text, type: msg.content_type,
-                        sender: 'agent', timestamp: msg.created_at,
-                    } as any;
-                }
-                // The intent to send, written before the request — so a crash
-                // here is provably "sent nothing" rather than "nobody knows".
-                if (admission
-                    && !(await this.spendGate.beginTransmission(schemaName, admission as Admission))) {
-                    await settle('failed', 'transmission_not_owned');
-                    return {
-                        id: msg.id, status: 'failed', content: msg.content_text,
-                        type: msg.content_type, sender: 'agent', timestamp: msg.created_at,
-                    } as any;
-                }
-                sendAttempted = true;
-                if (strict) {
-                    // The same item shape the durable lane builds for this
-                    // reply, so the two paths cannot disagree about what one
-                    // effect is.
-                    const outcome = await strict.sendStrict({
-                        itemKind: isMedia ? 'media' : 'text',
-                        to: conv.phone,
-                        channelAccountId: String(conv.channel_account_id || creds.accountId),
-                        payload: isMedia
-                            ? {
-                                mediaType: ['image', 'document', 'audio', 'video'].includes(contentType)
-                                    ? contentType : 'image',
-                                mediaUrl: this.absoluteMediaUrl(mediaUrl),
-                                ...(caption || content ? { caption: caption || content } : {}),
-                                ...(filename ? { filename } : {}),
-                            }
-                            : { text: content },
-                    }, creds.accessToken);
-                    await this.recordStrictAgentSend(schemaName, admission, outcome);
-                    if (outcome.kind === 'accepted') {
-                        await this.pauses.clear(tenantId,
-                            String(conv.channel_account_id || creds.accountId),
-                            { by: 'provider_accepted' }).catch(() => undefined);
-                        await settle('sent');
-                    } else if (outcome.kind === 'rejected') {
-                        // The provider ANSWERED and did not act. Nothing
-                        // reached the customer, so `failed` is the truth and
-                        // retyping is safe.
-                        await this.observeFunding(tenantId, channelType,
-                            String(conv.channel_account_id || creds.accountId),
-                            { error: { code: String(outcome.errorCode).replace(/^\D*/, '') } });
-                        await settle('failed', outcome.errorCode);
-                    } else {
-                        // NO answer arrived. The request may have been
-                        // processed, so this must not read as "it did not
-                        // leave": the money stays retained and the row says
-                        // the same thing the durable lane says, which is the
-                        // one state that does not invite a second send.
-                        this.logger.error(`Agent reply ${msg.id} outcome unknown `
-                            + `(${outcome.errorCode}) — reconciliation required`);
-                        await settle('reconciliation_required', outcome.errorCode);
-                    }
-                    return {
-                        id: msg.id, status: msg.status, content: msg.content_text,
-                        type: msg.content_type, sender: 'agent', timestamp: msg.created_at,
-                    } as any;
-                }
-                const sent = await this.sendUnmeteredLegacyMessage(
-                    {
-                        tenantId,
-                        channelType,
-                        channelAccountId: conv.channel_account_id || creds.accountId,
-                        to: conv.phone,
-                        content: outContent,
-                    },
-                    creds.accessToken,
-                    {
-                        // A human's Flow that Meta conclusively refuses may
-                        // become a text — as its OWN effect, with its own
-                        // reservation. The gateway cannot know that, so it
-                        // asks, and a caller that could not answer would be a
-                        // second POST under a reservation that settles once.
-                        admitFallback: (code: string) => this.admitFlowFallback(
-                            tenantId, schemaName, channelType,
-                            conv.channel_account_id || creds.accountId,
-                            conv.phone, outContent, conv.contact_id ?? null,
-                            String(msg.id), code),
-                        observeFailure: (error: unknown) => this.observeFunding(
-                            tenantId, channelType, conv.channel_account_id || creds.accountId, error),
-                    },
-                );
-                await this.recordAgentSend(schemaName, admission, sent);
-                if (sent && channelType === 'whatsapp') {
-                    // Meta took a message from this account, which is the only
-                    // proof billing works again — produced by the platform
-                    // rather than claimed by anybody.
-                    await this.pauses.clear(tenantId,
-                        String(conv.channel_account_id || creds.accountId),
-                        { by: 'provider_accepted' }).catch(() => undefined);
-                }
-                // ── THE ANSWER HAS TO BE READ ───────────────────────────
-                //
-                // `settle('sent')` used to run unconditionally, on a value
-                // nobody tested. `ChannelGatewayService.sendMessage` reports
-                // EVERY transport failure as `null` rather than by throwing —
-                // no registered adapter, an unsupported content type, a Flow
-                // refusal with no authorised fallback, and any exception from
-                // the adapter, including a non-ok Graph response. So the catch
-                // below never ran and the row was stamped `sent` for a reply
-                // the provider had positively refused.
-                //
-                // That is the exact defect the row's own comment above and
-                // `settle`'s docblock say they prevent: the status was moved
-                // off `delivered` and then written from a value that was not
-                // looked at. An agent reads `sent`, closes the conversation,
-                // and the customer has nothing.
-                //
-                // On WhatsApp the two records disagreed from the same `null`:
-                // `recordAgentSend` files the spend outcome as a TIMEOUT —
-                // money retained as indeterminate — while the message row said
-                // the reply left. One `null`, two contradictory stories.
-                if (sent) {
-                    await settle('sent');
-                } else {
-                    await settle('failed', 'provider_no_receipt');
-                }
-            }
-        } catch (e: any) {
-            this.logger.warn(`Could not send agent message via channel: ${e.message}`);
-            // The agent has to be told. A failure that only reaches the server
-            // log leaves them believing the customer was answered.
-            if (sendAttempted) await settle('failed', e?.message);
-        }
-
-        return {
-            id: msg.id,
-            // What actually happened to it, so the console can show a reply that
-            // did not leave instead of one more line that looks sent.
-            status: msg.status,
-            content: msg.content_text,
-            type: msg.content_type,
-            sender: 'agent',
-            timestamp: msg.created_at,
-        };
+        // A console reply is a conversational effect. Every supported
+        // conversational channel has a strict durable transport; Email is an
+        // inbound-only adapter and SMS is a one-way notification product. If
+        // the lane cannot bind this conversation, sending inline would either
+        // create an unsupported product surface or lose the recovery record.
+        // Refuse before writing history or contacting a provider.
+        throw new BadRequestException(
+            'La respuesta no puede enviarse sin un transporte durable para este canal.');
     }
 
     /**
@@ -1025,179 +700,8 @@ export class AgentConsoleService {
      * render them, but Meta/WhatsApp requires an ABSOLUTE https URL for image/audio/
      * document links. Prepend the public API origin for the outbound send.
      */
-    /**
-     * Ask the money gate for one human-agent reply.
-     *
-     * `'refused'` means the reply must not be sent — a ceiling said no, the
-     * connection could not be named, or the meter could not answer. `null`
-     * means the authority itself says this send is unmetered: a channel whose
-     * provider does not bill per message. It never means "no gate wired".
-     */
-    private async admitAgentSend(tenantId: string, schemaName: string, channelType: string,
-        channelAccountId: string, recipient: string, content: any, contactId: string | null,
-        messageId: string, producer = 'agent_console_reply') {
-        try {
-            // ── THE IDENTITY COMES FROM THE RESOLVER, NEVER FROM THIS SCOPE ──
-            //
-            // A channel type and an account id are not a connection: they say
-            // nothing about which WABA Meta bills or which credential carries
-            // the message. Assembling one here is what made every human reply
-            // arrive with `payerKind` undefined and come back `payer_unknown`.
-            const resolved = await this.channelToken.resolveSendContext({
-                tenantId, channelType: channelType as any,
-                channelAccountId: String(channelAccountId ?? ''),
-                recipient: { scope: 'customer', address: String(recipient ?? ''), contactId },
-            });
-            const admission = await this.spendGate.admit({
-                schema: schemaName,
-                connection: fromSendContext(resolved.context),
-                contactId,
-                // Hashed before it travels: this reaches an effect key and log lines.
-                recipientRef: createHash('sha256').update(String(recipient ?? '')).digest('hex').slice(0, 32),
-                producer,
-                // The destination, read to derive the tariff country — Meta
-                // charges by the recipient's country, not the sender's — and
-                // then dropped in favour of the hash above.
-                recipientAddress: String(recipient ?? ''),
-                // A human answering a live conversation is inside the window by
-                // construction: Meta would refuse a free-form message otherwise.
-                insideServiceWindow: true,
-                // A human agent is answering a live conversation. If a soft stop
-                // silenced this, the platform would be telling a person at a
-                // keyboard that the customer in front of them cannot be
-                // answered — while the budget it is protecting was spent by
-                // automation.
-                disposition: 'reactive',
-                contentDigest: createHash('sha256').update(JSON.stringify(content ?? null)).digest('hex').slice(0, 32),
-                admissionReason: producer,
-                binding: { messageId },
-            });
-            if (admission && !admission.permitted) {
-                return { refused: true as const, reason: admission.block?.code ?? 'spend_refused' };
-            }
-            return admission;
-        } catch (error: any) {
-            // An unavailable meter defers, and the agent is TOLD. A reply that
-            // silently did not leave is worse than one that visibly did not:
-            // they would go on believing the customer was answered.
-            //
-            // A refused connection lands here too, and belongs here: a number
-            // that is disconnected, ambiguous or has no usable credential
-            // cannot carry this reply either, and the agent needs to see that
-            // rather than watch it disappear.
-            this.logger.error(`[Spend] agent reply not authorised: ${error?.message}`);
-            // A ConnectionRefusedError carries its own code; a meter outage does
-            // not, and `spend_meter_unavailable` is the honest name for that.
-            return {
-                refused: true as const,
-                reason: typeof error?.code === 'string' && error.code
-                    ? error.code : 'spend_meter_unavailable',
-            };
-        }
-    }
-
-    /**
-     * Authorise the text a conclusively-refused Flow becomes.
-     *
-     * A SECOND remote effect: its own POST, its own charge, its own receipt. It
-     * reuses the message row's identity — the producer differs, and the
-     * producer is part of the key, so it is its own effect while still being
-     * recognisably that reply's fallback.
-     *
-     * Returns false when the authority refuses or cannot be reached. Sending
-     * nothing is the honest answer: the customer is no worse off than if the
-     * Flow had simply failed, and the agent sees the reply did not leave.
-     */
-    private async admitFlowFallback(tenantId: string, schemaName: string, channelType: string,
-        channelAccountId: string, recipient: string, content: any, contactId: string | null,
-        messageId: string, errorCode: string): Promise<boolean> {
-        const admission = await this.admitAgentSend(tenantId, schemaName, channelType,
-            channelAccountId, recipient, { fallbackOf: content, errorCode }, contactId,
-            messageId, 'agent_console_reply_flow_fallback');
-        if (isRefusal(admission)) {
-            this.logger.warn('[Spend] the text fallback for a refused Flow was not authorised: '
-                + admission.reason);
-            return false;
-        }
-        return true;
-    }
-
-    /**
-     * Notice the refusal that means the business has no usable payment method.
-     *
-     * Never throws: it runs where a reply has just failed, and a failure while
-     * recording why must not become a second failure that hides the first.
-     */
-    private async observeFunding(tenantId: string, channelType: string,
-        channelAccountId: string, error: unknown): Promise<void> {
-        if (channelType !== 'whatsapp') return;
-        const refusal = readProviderRefusal(error);
-        await this.pauses.observeFunding(tenantId, String(channelAccountId ?? ''),
-            { source: 'http_response', code: refusal.code, detail: refusal.detail })
-            .catch(() => undefined);
-    }
-
-    /**
-     * The spend outcome of a reply sent through the STRICT transport.
-     *
-     * Three answers, recorded as three things, from the one answer the
-     * transport gave. `recordAgentSend` below takes a `string | null` and can
-     * therefore only file `accepted` or `timeout` — so a provider that
-     * positively refused had its money retained as indeterminate, and a
-     * genuine timeout was indistinguishable from it.
-     *
-     *   · `accepted`  the receipt settles the reservation.
-     *   · `rejected`  the provider acted on nothing, so the money is
-     *                 released — `rejected_retryable` when its own contract
-     *                 invites the identical request again, which keeps the
-     *                 reservation held for that retry instead of orphaning it.
-     *   · `unknown`   retained. Nobody may say what the customer got.
-     */
-    private async recordStrictAgentSend(
-        schemaName: string, admission: unknown, outcome: StrictDispatchOutcome,
-    ) {
-        if (!admission || isRefusal(admission)) return;
-        try {
-            await this.spendGate.record(schemaName, admission as Admission,
-                outcome.kind === 'accepted'
-                    ? { kind: 'accepted', providerMessageId: outcome.receipt }
-                    : outcome.kind === 'unknown'
-                        ? { kind: 'timeout', errorCode: outcome.errorCode }
-                        : outcome.retryable
-                            ? { kind: 'rejected_retryable', errorCode: outcome.errorCode }
-                            : { kind: 'rejected', errorCode: outcome.errorCode });
-        } catch (error: any) {
-            this.logger.error(`[Spend] outcome not recorded for agent reply: ${error?.message}`);
-        }
-    }
-
-    private async recordAgentSend(schemaName: string, admission: unknown, result: string | null) {
-        if (!admission || isRefusal(admission)) return;
-        try {
-            await this.spendGate.record(schemaName, admission as Admission, result
-                ? { kind: 'accepted', providerMessageId: result }
-                : { kind: 'timeout' });
-        } catch (error: any) {
-            this.logger.error(`[Spend] outcome not recorded for agent reply: ${error?.message}`);
-        }
-    }
-
     private absoluteMediaUrl(url?: string): string | undefined {
         return absoluteMediaUrl(url);
-    }
-
-    /**
-     * The only inline console path left. Keep the runtime guard beside the
-     * actual gateway call so a future caller cannot turn this helper into a
-     * bypass for a provider-billed or certified conversational channel.
-     */
-    private async sendUnmeteredLegacyMessage(message: any, accessToken: string,
-        options: any): Promise<string | null> {
-        const channelType = String(message?.channelType ?? '');
-        if (channelType !== 'email' && channelType !== 'sms') {
-            throw new Error('durable_dispatch_required');
-        }
-        return this.channelGateway.sendMessage(message, accessToken, options);
     }
 
     /**

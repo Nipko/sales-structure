@@ -5,9 +5,7 @@ import { AgentDispatchOutboxStore } from '../channels/agent-dispatch-outbox.stor
 import { ProactiveDispatchService } from '../channels/proactive-dispatch.service';
 import { DISPATCH_OUTBOX_DDL } from '../channels/agent-dispatch-outbox';
 import { ensureSyntheticGlobalTables } from '../../common/__fixtures__/synthetic-global-tables';
-import {
-    permissiveSpendGate, resolvingChannelToken, openPauseStore,
-} from '../channels/__fixtures__/spend-gate-double';
+import { permissiveSpendGate } from '../channels/__fixtures__/spend-gate-double';
 import { AgentConsoleService } from './agent-console.service';
 import { WhatsAppAdapter } from '../channels/whatsapp/whatsapp.adapter';
 
@@ -69,9 +67,7 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
                 conversation_id, contact_id, inbound_message_id, message_id, operational_scope
            FROM agent_dispatch_outbox ORDER BY item_index`);
 
-    const service = (over: {
-        strict?: boolean; lane?: any; outcome?: any; spend?: any;
-    } = {}) => {
+    const service = (over: { strict?: boolean; lane?: any; outcome?: any } = {}) => {
         // The inline path uses the STRICT transport on a channel Meta bills,
         // so the double has to be able to answer rather than only to exist:
         // `getStrictTransport` used to return a `channelType` and nothing
@@ -88,12 +84,8 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
         return new AgentConsoleService(
             prisma, { get: async () => null, set: async () => undefined, del: async () => undefined } as any,
             gateway,
-            resolvingChannelToken({
-                getChannelToken: jest.fn(async () => ({ accessToken: 'tok', accountId: NUMBER })) }),
             {} as any, {} as any, { emit: jest.fn() } as any,
             { ensureResolutionColumns: async () => undefined } as any,
-            over.spend ?? permissiveSpendGate(),
-            openPauseStore(),
             undefined,
             'lane' in over ? over.lane : lane);
     };
@@ -437,7 +429,7 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
             // intent, nothing addressed, and the agent is told why. The case
             // below shows this branch cannot be reached in production.
             const spend = permissiveSpendGate();
-            await expect(service({ strict: false, spend })
+            await expect(service({ strict: false })
                 .sendAgentMessage(tenantId, conversationId, await agent(), 'hola'))
                 .rejects.toThrow(/transporte durable/);
             expect(await rows()).toHaveLength(0);
@@ -465,28 +457,18 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
             expect(gateway.sendMessage).not.toHaveBeenCalled();
         });
 
-        it('keeps the internal email adapter outside certified channel delivery', async () => {
-            const order: string[] = [];
+        it('keeps the inbound-only email adapter outside console delivery', async () => {
             const spend = permissiveSpendGate();
-            const originalAdmission = spend.admit.getMockImplementation()!;
-            spend.admit.mockImplementation(async (...args: any[]) => {
-                order.push('shared_spend_admission');
-                return originalAdmission(...args);
-            });
-            const consoleService = service({ lane: undefined, spend, strict: false });
-            gateway.sendMessage.mockImplementation(async () => {
-                order.push('internal_adapter');
-                return 'mail.receipt';
-            });
+            const consoleService = service({ lane: undefined, strict: false });
             await sql(`UPDATE conversations SET channel_type = 'email' WHERE id = $1::uuid`,
                 [conversationId]);
 
-            await consoleService.sendAgentMessage(
+            await expect(consoleService.sendAgentMessage(
                 tenantId, conversationId, await agent(), 'respuesta humana',
-            );
-
-            expect(order).toEqual(['shared_spend_admission', 'internal_adapter']);
-            expect(spend.admit).toHaveBeenCalledTimes(1);
+            )).rejects.toThrow(/transporte durable/);
+            expect(await rows()).toHaveLength(0);
+            expect(spend.admit).not.toHaveBeenCalled();
+            expect(gateway.sendMessage).not.toHaveBeenCalled();
         });
 
         it('refuses a certified thread that does not name its connection', async () => {

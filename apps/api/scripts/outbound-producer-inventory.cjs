@@ -1456,8 +1456,9 @@ function main() {
     fs.mkdirSync(path.dirname(out), { recursive: true });
     fs.writeFileSync(out, markdown, 'utf8');
     process.stdout.write(`outbound-producer-inventory: ${rows.length} call sites in `
-        + `${new Set(rows.map(row => row.file)).size} files, ${census.bypasses.length} outside `
-        + `the economic boundary → ${out}\n`);
+        + `${new Set(rows.map(row => row.file)).size} files, ${census.bypasses.length} chargeable `
+        + `outside the economic boundary, ${census.ungatedEgress.length} provider egress without `
+        + `admission or a declared road → ${out}\n`);
 }
 
 if (require.main === module) main();

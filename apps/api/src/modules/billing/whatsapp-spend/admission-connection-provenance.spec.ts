@@ -2,10 +2,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { of } from 'rxjs';
 import { WhatsappMessagingService } from '../../whatsapp/services/whatsapp-messaging.service';
-import { AgentConsoleService } from '../../agent-console/agent-console.service';
-import {
-    openPauseStore, permissiveSpendGate, resolvingChannelToken,
-} from '../../channels/__fixtures__/spend-gate-double';
+import { permissiveSpendGate, resolvingChannelToken }
+    from '../../channels/__fixtures__/spend-gate-double';
 
 /**
  * ═══ THERE IS ONE WAY TO SAY WHO PAYS ═══
@@ -23,8 +21,8 @@ import {
  *
  * These tests pin the correction from both sides: structurally, that no
  * production file can assemble a connection any other way; and functionally,
- * that each of the two repaired sinks carries a real payer and a real
- * credential into the verdict.
+ * that the direct REST sink carries a real payer and credential. Console
+ * replies now enter the same durable sink exercised by the outbox suites.
  */
 describe('who pays is resolved, never assembled', () => {
     const tenantId = '11111111-1111-4111-8111-111111111111';
@@ -59,9 +57,10 @@ describe('who pays is resolved, never assembled', () => {
         walk(root);
         expect(offenders).toEqual([]);
         // An empty list is not proof on its own: a sink that stopped naming
-        // `connection:` on one line would vanish from both counts. Three is
-        // the number of sinks that ask the authority — queue, REST, console.
-        expect(resolved).toBeGreaterThanOrEqual(3);
+        // `connection:` on one line would vanish from both counts. The two
+        // direct authorities are the durable processor and the REST sender;
+        // console replies enter that same durable processor.
+        expect(resolved).toBeGreaterThanOrEqual(2);
     });
 
     it('no longer offers a schema-only admission for a caller to reach for', () => {
@@ -97,65 +96,4 @@ describe('who pays is resolved, never assembled', () => {
         });
     });
 
-    it('carries the resolved payer and credential from the agent console', async () => {
-        const spendGate = permissiveSpendGate();
-        const executeInTenantSchema = jest.fn(async (_schema: string, sql: string) => {
-            if (sql.includes('INSERT INTO messages')) {
-                return [{ id: '44444444-4444-4444-8444-444444444444', content_text: 'Ya lo reviso',
-                    content_type: 'text', direction: 'outbound', status: 'pending',
-                    created_at: new Date(), metadata: {} }];
-            }
-            if (sql.includes('FROM conversations c')) {
-                return [{ channel_type: 'whatsapp', phone: '+573101234567',
-                    channel_account_id: 'phone-1',
-                    contact_id: '55555555-5555-4555-8555-555555555555' }];
-            }
-            return [];
-        });
-        const prisma: any = {
-            $queryRaw: jest.fn(async () => [{ schema_name: 'tenant_acme' }]),
-            getTenantSchemaName: jest.fn(async () => 'tenant_acme'),
-            executeInTenantSchema,
-            transactionInTenantSchema: jest.fn(
-                async (_s: string, work: any) => work(executeInTenantSchema)),
-        };
-        const service = new AgentConsoleService(
-            prisma, { get: jest.fn(), set: jest.fn(), del: jest.fn() } as any,
-            // The console's inline path takes the STRICT transport on a
-            // channel Meta bills, so a gateway double with only
-            // `sendMessage` no longer stands in for one: the lookup happens
-            // BEFORE the admission — deliberately, so a billed channel with
-            // no transport that can report an outcome is refused before a
-            // reservation exists — and an incomplete double therefore
-            // prevented the very call this case is about.
-            {
-                sendMessage: jest.fn(async () => ({ messageId: 'wamid.AGENT' })),
-                getStrictTransport: jest.fn(() => ({
-                    channelType: 'whatsapp',
-                    sendStrict: jest.fn(async () => ({ kind: 'accepted', receipt: 'wamid.AGENT' })),
-                })),
-            } as any,
-            resolvingChannelToken({
-                getChannelToken: jest.fn(async () => ({ accessToken: 'token', accountId: 'phone-1' })),
-            }),
-            {} as any, {} as any, { emit: jest.fn() } as any, {} as any, spendGate,
-            openPauseStore(),
-        );
-        jest.spyOn((service as any).logger, 'warn').mockImplementation(() => undefined);
-        jest.spyOn((service as any).logger, 'error').mockImplementation(() => undefined);
-
-        await service.sendAgentMessage(tenantId, '22222222-2222-4222-8222-222222222222',
-            '33333333-3333-4333-8333-333333333333', 'Ya lo reviso');
-
-        expect(spendGate.admit).toHaveBeenCalledTimes(1);
-        const request = spendGate.admit.mock.calls[0][0];
-        expect(request.connection).toMatchObject({
-            tenantId, channelType: 'whatsapp', channelAccountId: 'phone-1',
-            payerKind: 'business_direct', payerWabaId: 'waba-1',
-            credentialId: 'cred-1', credentialSource: 'channel_account',
-        });
-        // The contact travels too. Without it the effect can only be counted
-        // against the account, never against the person it was sent to.
-        expect(request.contactId).toBe('55555555-5555-4555-8555-555555555555');
-    });
 });

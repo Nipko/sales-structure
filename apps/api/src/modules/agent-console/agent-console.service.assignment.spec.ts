@@ -1,5 +1,4 @@
 import { AgentConsoleService } from './agent-console.service';
-import { permissiveSpendGate, openPauseStore } from '../channels/__fixtures__/spend-gate-double';
 
 describe('AgentConsoleService canonical manual-assignment event', () => {
     const tenantId = '11111111-1111-4111-8111-111111111111';
@@ -39,11 +38,8 @@ describe('AgentConsoleService canonical manual-assignment event', () => {
             {} as any,
             {} as any,
             {} as any,
-            {} as any,
             events as any,
             {} as any,
-            permissiveSpendGate(),
-            openPauseStore(),
         );
         return { service, prisma, redis, events, query, order };
     }

@@ -76,7 +76,7 @@ reparto**, que es donde una sola respuesta lógica se multiplica.
 | Archivo:línea | Método | Carril | Efectos por respuesta | Por qué |
 |---|---|---|---|---|
 | `modules/analytics/alerts.service.ts:294` | `fireAlert` | `operational_notice` | **n(recipients)** | one effect per recipient — a campaign, not one answer (loop at the send) |
-| `modules/analytics/scheduled-reports.service.ts:280` | `generateAndSendReport` | `operational_notice` | **n(recipients)** | one effect per recipient — a campaign, not one answer (loop at the send) |
+| `modules/analytics/scheduled-reports.service.ts:281` | `generateAndSendReport` | `operational_notice` | **n(recipients)** | one effect per recipient — a campaign, not one answer (loop at the send) |
 | `modules/appointments/appointment-payment.listener.ts:89` | `onPaid` | `operational_notice` | **n** | one effect per entry of `rows` (fan-out at line 51) |
 | `modules/appointments/appointment-payment.listener.ts:107` | `onPaid` | `operational_notice` | **n** | one effect per entry of `rows` (fan-out at line 51) |
 | `modules/appointments/appointment-payment.listener.ts:115` | `onPaid` | `operational_notice` | **n** | one effect per entry of `rows` (fan-out at line 51) |
@@ -114,7 +114,7 @@ mensajes entregados, y un indicador de "escribiendo" no lo es.
 
 | Línea | Método | Primitiva | Carril | Disparador | Canales | Efectos por respuesta | Base |
 |---:|---|---|---|---|---|---|---|
-| 280 | `generateAndSendReport` | `enqueueOperationalNotice` | `operational_notice` | called by another service | dynamic | n(recipients) | one effect per recipient — a campaign, not one answer (loop at the send) |
+| 281 | `generateAndSendReport` | `enqueueOperationalNotice` | `operational_notice` | called by another service | dynamic | n(recipients) | one effect per recipient — a campaign, not one answer (loop at the send) |
 
 ### `apps/api/src/modules/appointments/appointment-notifications.service.ts`
 
@@ -304,7 +304,7 @@ buscar una llamada a la autoridad economica en el codigo del archivo.
 |---|---|---|---|---|
 | `modules/agent-console/agent-console.service.ts:568` | `replyThroughOutbox` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/analytics/alerts.service.ts:294` | `fireAlert` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
-| `modules/analytics/scheduled-reports.service.ts:280` | `generateAndSendReport` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
+| `modules/analytics/scheduled-reports.service.ts:281` | `generateAndSendReport` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/appointments/appointment-notifications.service.ts:667` | `dispatchNotice` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/appointments/appointment-payment.listener.ts:89` | `onPaid` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/appointments/appointment-payment.listener.ts:107` | `onPaid` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |

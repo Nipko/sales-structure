@@ -39,6 +39,7 @@ export class ScheduledReportsService {
                 recipients TEXT[] DEFAULT '{}',
                 is_active BOOLEAN DEFAULT true,
                 last_sent_at TIMESTAMPTZ,
+                last_enqueued_at TIMESTAMPTZ,
                 created_at TIMESTAMPTZ DEFAULT NOW(),
                 updated_at TIMESTAMPTZ DEFAULT NOW()
             )`,

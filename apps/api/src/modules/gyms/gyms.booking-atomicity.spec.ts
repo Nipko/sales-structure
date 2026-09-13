@@ -5,11 +5,17 @@ function harness(spots = 1) {
         klass: { id: 'class', available_spots: spots, is_cancelled: false, scheduled_at: '2099-01-01', credits_required: 1 },
         members: { a: { id: 'a', contact_id: 'contact-a', status: 'active', class_credits_remaining: 3 }, b: { id: 'b', contact_id: 'contact-b', status: 'active', class_credits_remaining: 2 } },
         bookings: [],
+        notices: [],
     };
     let failure = '';
     const query = jest.fn(async (sql: string, p: any[] = []) => {
         if (failure && sql.includes(failure)) throw new Error('write_failed');
-        if(sql.includes('pg_advisory_xact_lock')||sql.includes('to_regclass')||sql.startsWith('CREATE ')||sql.startsWith('INSERT INTO operational_notice_outbox'))return [];
+        if(sql.includes('pg_advisory_xact_lock')||sql.includes('to_regclass')||sql.startsWith('CREATE ')||sql.startsWith('ALTER TABLE operational_notice_outbox')||sql.startsWith('CREATE INDEX IF NOT EXISTS idx_operational_notice_due'))return [];
+        if(sql.includes('SELECT pg_get_constraintdef'))return [{definition:"CHECK (kind IN ('analytics.scheduled_report'))"}];
+        if(sql.startsWith('INSERT INTO operational_notice_outbox')) {
+            state.notices.push({ event_key: p[0], kind: p[1], entity_id: p[2], contact_id: p[3] });
+            return [{ id: `notice-${state.notices.length}` }];
+        }
         if (sql.startsWith('SELECT * FROM fitness_classes')) return [{ ...state.klass }];
         if (sql.startsWith('SELECT * FROM members')) return state.members[p[0]] ? [{ ...state.members[p[0]] }] : [];
         if (sql.startsWith('SELECT class_id')) return state.bookings.filter((b: any) => b.id === p[0]);
@@ -80,6 +86,7 @@ describe('gym booking domain transactions', () => {
         const h = harness(); const a = await h.service.bookClass('tenant_test', 'class', 'a'); const b = await h.service.bookClass('tenant_test', 'class', 'b');
         await h.service.cancelBooking('tenant_test', a.id, 'contact-a');
         expect(h.state().bookings.find((entry: any) => entry.id === b.id).status).toBe('confirmed');
+        expect(h.state().notices).toEqual([{event_key:`gym.waitlist_promoted:${b.id}:1`,kind:'gym.waitlist_promoted',entity_id:b.id,contact_id:'contact-b'}]);
         expect(h.state().members).toMatchObject({ a: { class_credits_remaining: 3 }, b: { class_credits_remaining: 1 } });
         expect(h.state().klass.available_spots).toBe(0);
         expect(await h.service.cancelBooking('tenant_test', a.id, 'contact-a')).toMatchObject({ alreadyCancelled: true, creditsRestored: 0 });
@@ -90,6 +97,7 @@ describe('gym booking domain transactions', () => {
         h.fail("UPDATE class_bookings SET status = 'confirmed'");
         await expect(h.service.cancelBooking('tenant_test', a.id, 'contact-a')).rejects.toThrow('write_failed');
         expect(h.state().bookings.map((b: any) => b.status)).toEqual(['confirmed', 'waitlist']);
+        expect(h.state().notices).toEqual([]);
         expect(h.state().klass.available_spots).toBe(0);
         expect(h.state().members.a.class_credits_remaining).toBe(2);
     });

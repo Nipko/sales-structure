@@ -4,7 +4,8 @@ function harness() {
     let state = { enrollment: { id: 'enrollment', contact_id: 'contact', status: 'enrolled', cohort_id: 'cohort' }, seats: 0, cohortStatus: 'full' };
     let failCapacity = false;
     const query = jest.fn(async (sql: string) => {
-        if(sql.includes('pg_advisory_xact_lock')||sql.includes('to_regclass')||sql.startsWith('CREATE ')||sql.includes('FROM courses'))return [];
+        if(sql.includes('pg_advisory_xact_lock')||sql.includes('to_regclass')||sql.startsWith('CREATE ')||sql.startsWith('ALTER TABLE operational_notice_outbox')||sql.startsWith('CREATE INDEX IF NOT EXISTS idx_operational_notice_due')||sql.includes('FROM courses'))return [];
+        if(sql.includes('SELECT pg_get_constraintdef'))return [{definition:"CHECK (kind IN ('analytics.scheduled_report'))"}];
         if(sql.includes('SELECT * FROM course_cohorts'))return [{id:'cohort',available_seats:state.seats,status:state.cohortStatus,starts_at:'2099-01-01'}];
         if (sql.includes('SELECT')) return [{ ...state.enrollment }];
         if (sql.includes('UPDATE enrollments')) { state.enrollment.status = 'dropped'; return []; }

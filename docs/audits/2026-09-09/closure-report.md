@@ -5,7 +5,7 @@ el estado sale de ella: con una condición local sin cumplir la fila está `abie
 cumplida y un gate externo nombrado está `bloqueada`; sólo sin condición y sin gate está `aceptada`.
 Cerrar un hueco cambia esta tabla cambiando el código, y reabrirlo la cambia de vuelta.
 
-Revisión: `6605f04d837a5e945d6d4ec670d91dac13f86ac0`.
+Revisión: `d9d0acade83d482df2b014e6d8632bbbdccb1e57`.
 
 **El programa no está terminado.** 25 filas aceptadas, 27 bloqueadas por un
 gate externo concreto, 0 abiertas y 1 diferidas por decisión

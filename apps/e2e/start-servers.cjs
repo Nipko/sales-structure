@@ -28,6 +28,10 @@ execFileSync(
   [
     resolve(repositoryRoot, "node_modules", "turbo", "bin", "turbo"),
     "build",
+    // An E2E run is evidence about the environment declared in
+    // playwright.config.ts. Never serve a bundle cached for production or a
+    // previous candidate, even though Turbo also hashes every public input.
+    "--force",
     "--filter=landing",
     "--filter=@parallext/dashboard",
   ],

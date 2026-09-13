@@ -757,10 +757,10 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
                 + 'that an attempt was permitted or made'),
             idempotency: partial('each call carries X-Hook-Delivery and dispatch waits for its fan-out; '
                 + 'the public hook still has no durable domain-event key across process replay'),
-            receipt: partial('only `last_triggered_at` on the subscription is updated; the response '
-                + 'status and body are discarded'),
-            uncertainOutcome: none('a timeout and a refusal are the same to the caller, and neither is '
-                + 'written down anywhere the tenant can see'),
+            receipt: partial('an awaited `last_triggered_at` follows only a conclusive 2xx; the response '
+                + 'status is classified in memory but no per-delivery receipt row exists'),
+            uncertainOutcome: partial('the transport distinguishes a 2xx acceptance, an answered '
+                + 'rejection and no response; only the acceptance survives in PostgreSQL'),
             erasure: none('the payload can name a contact and is not recorded, so erasure has nothing '
                 + 'to reach and no way to show that it did not'),
             recovery: none('a single attempt with no retry: an event lost to a restart is lost for good'),

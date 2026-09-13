@@ -174,7 +174,7 @@ export class WebhookSubscriptionService {
         event: string,
         payload: Record<string, any>,
         deliveryId = crypto.randomUUID(),
-    ): Promise<void> {
+    ): Promise<{ outcome: 'accepted' | 'rejected' | 'unknown'; statusCode: number | null }> {
         // Defense-in-depth: validate URL at delivery time
         let target: PinnedHttpsTarget;
         try {
@@ -183,7 +183,7 @@ export class WebhookSubscriptionService {
             this.logger.warn(
                 `Skipping hook delivery to blocked URL: hook=${sub.id} url=${sub.target_url.substring(0, 80)}`,
             );
-            return;
+            return { outcome: 'rejected', statusCode: null };
         }
 
         const body = JSON.stringify(payload);
@@ -193,7 +193,7 @@ export class WebhookSubscriptionService {
             .digest('hex');
 
         try {
-            await this.httpService.axiosRef.post(target.url.toString(), body, {
+            const response = await this.httpService.axiosRef.post(target.url.toString(), body, {
                 ...safeAxiosOptions(target, 10_000),
                 headers: {
                     'Content-Type': 'application/json',
@@ -203,18 +203,26 @@ export class WebhookSubscriptionService {
                 },
                 validateStatus: () => true,
             });
+            const statusCode = Number(response.status);
+            if (statusCode < 200 || statusCode >= 300) {
+                this.logger.warn(
+                    `Hook rejected: hook=${sub.id} event=${event} status=${statusCode}`,
+                );
+                return { outcome: 'rejected', statusCode };
+            }
 
-            // Update last_triggered_at (fire-and-forget)
-            this.prisma
-                .$queryRawUnsafe(
-                    `UPDATE public.webhook_subscriptions SET last_triggered_at = NOW() WHERE id = $1::uuid`,
-                    sub.id,
-                )
-                .catch(() => {});
+            // This timestamp is a receipt projection, so it is awaited and only
+            // follows a conclusive 2xx response.
+            await this.prisma.$queryRawUnsafe(
+                `UPDATE public.webhook_subscriptions SET last_triggered_at = NOW() WHERE id = $1::uuid`,
+                sub.id,
+            );
+            return { outcome: 'accepted', statusCode };
         } catch (err: any) {
             this.logger.warn(
                 `Hook delivery error: hook=${sub.id} event=${event} error=${err.message}`,
             );
+            return { outcome: 'unknown', statusCode: null };
         }
     }
 }

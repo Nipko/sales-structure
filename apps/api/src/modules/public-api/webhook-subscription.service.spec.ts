@@ -31,7 +31,7 @@ describe('WebhookSubscriptionService outbound URL security', () => {
     });
 
     it('uses a pinned, bounded request for public subscriptions', async () => {
-        await (service as any).deliver({
+        const result = await (service as any).deliver({
             id: 'hook-1',
             target_url: 'https://zap.example.com/catch',
             secret: 'secret',
@@ -51,5 +51,32 @@ describe('WebhookSubscriptionService outbound URL security', () => {
                 }),
             }),
         );
+        expect(result).toEqual({ outcome: 'accepted', statusCode: 204 });
+        expect(prisma.$queryRawUnsafe).toHaveBeenCalledWith(
+            expect.stringContaining('SET last_triggered_at = NOW()'),
+            'hook-1',
+        );
+    });
+
+    it('does not project a non-2xx refusal as a successful trigger', async () => {
+        http.axiosRef.post.mockResolvedValue({ status: 503 });
+
+        const result = await (service as any).deliver({
+            id: 'hook-1', target_url: 'https://zap.example.com/catch', secret: 'secret',
+        }, 'lead.created', { id: 'lead-1' }, 'delivery-fixed');
+
+        expect(result).toEqual({ outcome: 'rejected', statusCode: 503 });
+        expect(prisma.$queryRawUnsafe).not.toHaveBeenCalled();
+    });
+
+    it('keeps a request with no response distinct from a refusal', async () => {
+        http.axiosRef.post.mockRejectedValue(new Error('socket closed'));
+
+        const result = await (service as any).deliver({
+            id: 'hook-1', target_url: 'https://zap.example.com/catch', secret: 'secret',
+        }, 'lead.created', { id: 'lead-1' }, 'delivery-fixed');
+
+        expect(result).toEqual({ outcome: 'unknown', statusCode: null });
+        expect(prisma.$queryRawUnsafe).not.toHaveBeenCalled();
     });
 });

@@ -227,6 +227,10 @@ export class ConversationsGateway implements OnGatewayInit, OnGatewayConnection,
         this.relayEmit(tenantId, 'appointmentUpdated', appointment);
     }
 
+    emitAppointmentCancelled(tenantId: string, appointment: any) {
+        this.relayEmit(tenantId, 'appointmentCancelled', appointment);
+    }
+
     emitCalendarSynced(tenantId: string) {
         this.relayEmit(tenantId, 'calendarSynced', {});
     }
@@ -238,7 +242,14 @@ export class ConversationsGateway implements OnGatewayInit, OnGatewayConnection,
             this.emitAppointmentCreated(payload.tenantId, payload.appointment);
         } else if (payload.type === 'updated') {
             this.emitAppointmentUpdated(payload.tenantId, payload.appointment);
+        } else if (payload.type === 'cancelled') {
+            this.emitAppointmentCancelled(payload.tenantId, payload.appointment);
         }
+    }
+
+    @OnEvent('lead.captured')
+    onLeadCaptured(payload: { tenantId: string; [key: string]: any }) {
+        if (payload?.tenantId) this.relayEmit(payload.tenantId, 'lead.captured', payload);
     }
 
     @OnEvent('calendar.synced')

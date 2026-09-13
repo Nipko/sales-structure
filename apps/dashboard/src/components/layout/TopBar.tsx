@@ -228,11 +228,6 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
     });
 
     // ── Handoff ──
-    socket.on("handoff.escalated", (payload: any) => {
-      const contactName = payload.contactName || t("notifications.unknownClient");
-      const lastMsg = payload.lastMessage ? `: "${payload.lastMessage.slice(0, 60)}"` : "";
-      addNotif("handoff", `🔴 ${contactName}`, `${payload.reason || t("notifications.transfer")}${lastMsg}`);
-    });
     socket.on("inbox:handoff", (payload: any) => {
       if (payload.urgent) {
         const contactName = payload.contactName || t("notifications.unknownClient");
@@ -281,24 +276,16 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
     });
 
     // ── Appointments ──
-    socket.on("appointment.created", (payload: any) => {
+    socket.on("appointmentCreated", (payload: any) => {
       addNotif("appointment", t("notifTitles.newAppointment"), `${payload.serviceName || t("notifTitles.appointment")} — ${payload.startAt ? new Date(payload.startAt).toLocaleDateString() : ""}`);
     });
-    socket.on("appointment.cancelled", (payload: any) => {
+    socket.on("appointmentCancelled", (payload: any) => {
       addNotif("appointment", t("notifTitles.appointmentCancelled"), payload.serviceName || t("notifTitles.appointmentCancelledDefault"));
     });
 
     // ── Automation ──
-    socket.on("automation.triggered", (payload: any) => {
-      addNotif("automation", t("notifTitles.ruleExecuted"), payload.ruleName || t("notifTitles.ruleExecutedDefault"));
-    });
     socket.on("lead.captured", (payload: any) => {
       addNotif("automation", t("notifTitles.newLead"), `${payload.name || payload.phone || t("notifTitles.newContact")} via ${payload.channel || "whatsapp"}`);
-    });
-
-    // ── Orders ──
-    socket.on("order.created", (payload: any) => {
-      addNotif("order", t("notifTitles.newOrder"), `${t("notifTitles.orderFor")} $${payload.totalAmount || 0} — ${payload.status || t("notifTitles.pending")}`);
     });
 
     // ── System ──

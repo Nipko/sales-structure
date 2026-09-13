@@ -121,6 +121,11 @@ export class AppointmentNotificationsService {
             const tenantId = await this.getTenantId(schemaName);
             if (!tenantId) return;
 
+            // The dashboard refresh is independent from customer delivery. A
+            // broken email address or channel credential must not hide a
+            // committed appointment from operators watching the calendar.
+            this.eventEmitter.emit('appointment.ws', { tenantId, type: 'created', appointment });
+
             const contact = await this.getContactInfo(schemaName, appointment.contactId);
             const facts = await this.getAppointmentFacts(schemaName, appointment);
             const lang = await this.getContactLanguage(schemaName, appointment.contactId, tenantId);
@@ -169,9 +174,6 @@ export class AppointmentNotificationsService {
                 dateStr, timeStr,
             });
 
-            // Emit event for WebSocket relay to dashboard (handled by ConversationsGateway)
-            this.eventEmitter.emit('appointment.ws', { tenantId, type: 'created', appointment });
-
             // Deliberately not "Sent". Nothing here observed a delivery: the
             // lane's own answer is logged by `dispatchConfirmation`, and saying
             // "sent" beside a refusal is the same class of lie as a flag written
@@ -189,6 +191,8 @@ export class AppointmentNotificationsService {
         try {
             const tenantId = await this.getTenantId(schemaName);
             if (!tenantId) return;
+
+            this.eventEmitter.emit('appointment.ws', { tenantId, type: 'cancelled', appointment });
 
             const contact = await this.getContactInfo(schemaName, appointment.contactId);
             const facts = await this.getAppointmentFacts(schemaName, appointment);

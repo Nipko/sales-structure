@@ -52,7 +52,7 @@ export type EffectProperty = (typeof EFFECT_PROPERTIES)[number];
  * of two transports, a recovery that republishes but cannot tell a lost attempt
  * from a completed one. The note has to say which case.
  */
-export const COVERAGE_LEVELS = ['durable', 'partial', 'none', 'not_applicable'] as const;
+export const COVERAGE_LEVELS = ['durable', 'partial', 'none', 'not_applicable', 'retained'] as const;
 export type CoverageLevel = (typeof COVERAGE_LEVELS)[number];
 
 /**
@@ -68,6 +68,10 @@ export type CoverageLevel = (typeof COVERAGE_LEVELS)[number];
  * A producer may only claim `not_applicable` when its `reach.personalData` is
  * false, and the spec enforces that pairing. It is a statement about the
  * effect's content, not about the effort anybody has spent on it.
+ *
+ * `retained` is narrower: personal data exists, but a legal record must survive
+ * ordinary erasure.  It is valid only for the erasure property and only when
+ * the runtime actually preserves that record at tenant purge.
  */
 export const isGap = (coverage: EffectCoverage): boolean =>
     coverage.level === 'none' || coverage.level === 'partial';
@@ -273,6 +277,7 @@ const partial = (note: string) => cover('partial', note);
 const none = (note: string) => cover('none', note);
 /** Only legitimate where `reach.personalData` is false. The spec enforces it. */
 const notApplicable = (note: string) => cover('not_applicable', note);
+const retained = (note: string) => cover('retained', note);
 
 function producer(entry: Omit<ExternalEffectProducer, 'properties'> & {
     properties: Record<EffectProperty, EffectCoverage>;
@@ -1385,7 +1390,8 @@ producer({
             idempotency: durable('the invoice id owns one delivery state and a sent or unknown attempt cannot be resent'),
             receipt: durable('the bounded SMTP message id is required and stored on the fiscal invoice'),
             uncertainOutcome: durable('claimed and sending are distinct; an unanswered SMTP attempt freezes for reconciliation'),
-            erasure: notApplicable('the invoice and its delivery evidence follow mandatory fiscal retention'),
+            erasure: retained('the invoice and its delivery evidence follow mandatory fiscal retention; '
+                + 'tenant purge stamps an immutable tenant snapshot and deliberately preserves the fiscal row'),
             recovery: durable('the database sweep recovers only claims that did not cross SMTP'),
         },
     }),
@@ -1684,8 +1690,8 @@ producer({
             receipt: durable('`providerTxnId` on the charge attempt row'),
             uncertainOutcome: durable('`markIndeterminate` freezes an ambiguous charge instead of '
                 + 'retrying it; a 4xx is never retried'),
-            erasure: notApplicable('subscription charge records follow mandatory accounting retention; '
-                + 'contact erasure is not allowed to delete the tenant payer ledger'),
+            erasure: durable('irreversible tenant purge deletes billing charge attempts, payments and events '
+                + 'before deleting the subscription and tenant'),
             recovery: durable('the scheduler and the polling pass re-evaluate frozen attempts against '
                 + 'the provider'),
         },
@@ -1711,8 +1717,8 @@ producer({
             receipt: durable('provider and local source ids commit with the accepted effect in one transaction'),
             uncertainOutcome: durable('a lost answer is frozen as `unknown`; it cannot become another '
                 + 'non-idempotent source creation'),
-            erasure: notApplicable('payment-method and consent evidence follows mandatory billing retention; '
-                + 'card tokens and acceptance JWTs are never stored'),
+            erasure: durable('irreversible tenant purge deletes the provider-effect ledger and payment-source '
+                + 'rows before deleting the tenant; card tokens and acceptance JWTs are never stored'),
             recovery: partial('accepted creates replay their local receipt and unknown voids can retry safely; '
                 + 'Wompi exposes no key or lookup that can reconcile an unknown source creation automatically'),
         },
@@ -1737,7 +1743,8 @@ producer({
             receipt: durable('canonical VOIDED confirmation promotes the reserved amount into the payment ledger'),
             uncertainOutcome: durable('an accepted command without confirmation preserves the reservation '
                 + 'and a due reconciliation time'),
-            erasure: notApplicable('refund evidence follows mandatory accounting retention'),
+            erasure: durable('irreversible tenant purge deletes the payment and its refund evidence before '
+                + 'deleting the subscription and tenant'),
             recovery: durable('the pending-refund reconciler reads the canonical charge until VOIDED is confirmed'),
         },
     }),
@@ -1801,8 +1808,8 @@ producer({
             receipt: durable('`providerRef`, `invoiceNumber` and the CUFE are all persisted'),
             uncertainOutcome: durable('a collision is resolved by asking DIAN what exists; an '
                 + 'unvalidated bill is deleted and re-posted, and a validated one is adopted'),
-            erasure: notApplicable('a DIAN invoice is a mandatory legal record; the classified tenant '
-                + 'purge deliberately retains fiscal rows instead of claiming contact erasure'),
+            erasure: retained('a DIAN invoice is a mandatory legal record; the classified tenant '
+                + 'purge stamps its tenant snapshot and deliberately retains the fiscal row'),
             recovery: durable('`fiscal-invoice` queue retries plus a `17,47 * * * *` poller'),
         },
     }),
@@ -1925,8 +1932,8 @@ producer({
             idempotency: durable('the event key is unique and Google PUT replaces the one fixed reply'),
             receipt: durable('the review name, accepted state and local posted mirror commit under the same lease'),
             uncertainOutcome: durable('a request without an answer becomes unknown, distinct from a conclusive rejection'),
-            erasure: notApplicable('the Google reviewer is not a Parallly contact identity; the effect contains tenant-authored public copy '
-                + 'and is destroyed with the tenant schema'),
+            erasure: durable('the Google reviewer is not a Parallly contact identity; the local effect contains '
+                + 'tenant-authored public copy and is destroyed with the tenant schema'),
             recovery: durable('the six-hour cron reclaims pending, preflight-failed, unknown and expired safe PUT effects'),
         },
     }),

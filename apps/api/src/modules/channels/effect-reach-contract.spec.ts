@@ -77,6 +77,19 @@ describe('every producer says what kind of effect it is', () => {
         }
     });
 
+    it('reserves retained for a real legal-retention erasure boundary', () => {
+        for (const producer of EXTERNAL_EFFECT_PRODUCERS) {
+            for (const property of EFFECT_PROPERTIES.filter(property => property !== 'erasure')) {
+                expect({ id: producer.id, property, level: producer.properties[property].level })
+                    .not.toEqual({ id: producer.id, property, level: 'retained' });
+            }
+            if (producer.properties.erasure.level !== 'retained') continue;
+            expect({ id: producer.id, personalData: producer.reach.personalData })
+                .toEqual({ id: producer.id, personalData: true });
+            expect(producer.properties.erasure.note).toMatch(/fiscal|legal|regulator/i);
+        }
+    });
+
     it('keeps every property on a known level', () => {
         for (const producer of EXTERNAL_EFFECT_PRODUCERS) {
             for (const property of EFFECT_PROPERTIES) {

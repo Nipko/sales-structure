@@ -61,7 +61,7 @@ integration('a tenant in observe still has a complete ledger', () => {
     /** Shut the account's ceiling completely. */
     const closeTheCeiling = async () => {
         await q(`UPDATE "${schema}".whatsapp_spend_counters
-                    SET cap_kind = 'money', cap_minor = 0, currency = 'USD'
+                    SET cap_kind = 'money', cap_minor = 0, cap_deliveries = NULL, currency = 'USD'
                   WHERE scope_kind = 'account'`);
     };
 
@@ -211,7 +211,7 @@ integration('a tenant in observe still has a complete ledger', () => {
         // comparable to 8 cents.
         await authorize(`warm-${randomUUID()}`);
         await q(`UPDATE "${schema}".whatsapp_spend_counters
-                    SET cap_kind = 'money', cap_minor = 100000, currency = 'USD'
+                    SET cap_kind = 'money', cap_minor = 100000, cap_deliveries = NULL, currency = 'USD'
                   WHERE scope_kind = 'account'`);
         const result: any = await authorize(`cop-${randomUUID()}`, {
             caps: 'observe',

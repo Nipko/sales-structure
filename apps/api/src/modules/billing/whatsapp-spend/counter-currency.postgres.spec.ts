@@ -78,7 +78,7 @@ integration('a counter keeps its numbers in one currency', () => {
         const key = `same-${randomUUID()}`;
         await ensureCounters(query, schema, [account(key)], 'USD');
         await q(`UPDATE "${schema}".whatsapp_spend_counters
-                    SET cap_kind='money', cap_minor=100000, currency='USD'
+                    SET cap_kind='money', cap_minor=100000, cap_deliveries=NULL, currency='USD'
                   WHERE scope_key=$1`, [key]);
 
         expect(await reserveAgainstCounter(query, schema, {
@@ -91,7 +91,7 @@ integration('a counter keeps its numbers in one currency', () => {
         const key = `mixed-${randomUUID()}`;
         await ensureCounters(query, schema, [account(key)], 'USD');
         await q(`UPDATE "${schema}".whatsapp_spend_counters
-                    SET cap_kind='money', cap_minor=100000, currency='USD'
+                    SET cap_kind='money', cap_minor=100000, cap_deliveries=NULL, currency='USD'
                   WHERE scope_key=$1`, [key]);
         await reserveAgainstCounter(query, schema, {
             scope: account(key), amountMinor: 8, deliveries: 1, currency: 'USD',
@@ -113,7 +113,7 @@ integration('a counter keeps its numbers in one currency', () => {
         const key = `named-${randomUUID()}`;
         await ensureCounters(query, schema, [account(key)], 'USD');
         await q(`UPDATE "${schema}".whatsapp_spend_counters
-                    SET cap_kind='money', cap_minor=100000, currency='USD'
+                    SET cap_kind='money', cap_minor=100000, cap_deliveries=NULL, currency='USD'
                   WHERE scope_key=$1`, [key]);
         const cop = await reserveAgainstCounter(query, schema, {
             scope: account(key), amountMinor: 1, deliveries: 1, currency: 'COP',
@@ -136,7 +136,7 @@ integration('a counter keeps its numbers in one currency', () => {
         const key = `empty-${randomUUID()}`;
         await ensureCounters(query, schema, [account(key)], 'USD');
         await q(`UPDATE "${schema}".whatsapp_spend_counters
-                    SET cap_kind='money', cap_minor=999999999, currency='USD'
+                    SET cap_kind='money', cap_minor=999999999, cap_deliveries=NULL, currency='USD'
                   WHERE scope_key=$1`, [key]);
         expect(await reserveAgainstCounter(query, schema, {
             scope: account(key), amountMinor: 1, deliveries: 1, currency: 'COP',
@@ -179,7 +179,7 @@ integration('a counter keeps its numbers in one currency', () => {
         const key = `race-${randomUUID()}`;
         await ensureCounters(query, schema, [account(key)], 'USD');
         await q(`UPDATE "${schema}".whatsapp_spend_counters
-                    SET cap_kind='money', cap_minor=100000, currency='USD'
+                    SET cap_kind='money', cap_minor=100000, cap_deliveries=NULL, currency='USD'
                   WHERE scope_key=$1`, [key]);
 
         const other = new Client({ connectionString: connection });

@@ -62,7 +62,7 @@ integration('the WhatsApp spend engine', () => {
             (scope_kind, scope_key, period_key, cap_kind, cap_minor, currency)
             VALUES ('account',$1,'2026-10','money',$2,'USD')
             ON CONFLICT (scope_kind, scope_key, period_key)
-            DO UPDATE SET cap_kind='money', cap_minor=$2, currency='USD',
+            DO UPDATE SET cap_kind='money', cap_minor=$2, cap_deliveries=NULL, currency='USD',
                 reserved_minor=0, settled_minor=0, released_minor=0, used_deliveries=0`,
             [scopeKey, capMinor]);
     };
@@ -424,7 +424,7 @@ integration('the WhatsApp spend engine', () => {
             for (const scope of scopes) {
                 if (scope.kind === 'number_month') continue;
                 await query(`UPDATE "${schema}".whatsapp_spend_counters
-                    SET cap_kind='money', cap_minor=100, currency='USD'
+                    SET cap_kind='money', cap_minor=100, cap_deliveries=NULL, currency='USD'
                     WHERE scope_kind=$1 AND scope_key=$2 AND period_key=$3`,
                     [scope.kind, scope.key, scope.period]);
             }
@@ -470,10 +470,10 @@ integration('the WhatsApp spend engine', () => {
             const tight = { kind: 'contact' as const, key: `tight-${run}`, period: '2026-10' };
             await ensureCounters(query, schema, [generous, tight], 'USD');
             await query(`UPDATE "${schema}".whatsapp_spend_counters
-                SET cap_kind='money', cap_minor=10000, currency='USD'
+                SET cap_kind='money', cap_minor=10000, cap_deliveries=NULL, currency='USD'
                 WHERE scope_kind='account' AND scope_key=$1`, [generous.key]);
             await query(`UPDATE "${schema}".whatsapp_spend_counters
-                SET cap_kind='money', cap_minor=0, currency='USD'
+                SET cap_kind='money', cap_minor=0, cap_deliveries=NULL, currency='USD'
                 WHERE scope_kind='contact' AND scope_key=$1`, [tight.key]);
 
             expect(await reserveAgainstCounter(query, schema,
@@ -513,7 +513,7 @@ integration('the WhatsApp spend engine', () => {
                  warn_permille, soft_permille)
                 VALUES ('account',$1,'2026-10','money',$2,'USD',$3,$4)
                 ON CONFLICT (scope_kind, scope_key, period_key)
-                DO UPDATE SET cap_kind='money', cap_minor=$2, currency='USD',
+                DO UPDATE SET cap_kind='money', cap_minor=$2, cap_deliveries=NULL, currency='USD',
                     warn_permille=$3, soft_permille=$4,
                     reserved_minor=0, settled_minor=0, released_minor=0, used_deliveries=0`,
                 [scopeKey, capMinor, warn, soft]);
@@ -938,7 +938,7 @@ integration('the WhatsApp spend engine', () => {
                  warn_permille, soft_permille)
                 VALUES ('account',$1,'2026-10','money',$2,'USD',1000,1000)
                 ON CONFLICT (scope_kind, scope_key, period_key) DO UPDATE
-                    SET cap_kind='money', cap_minor=$2, currency='USD',
+                    SET cap_kind='money', cap_minor=$2, cap_deliveries=NULL, currency='USD',
                         warn_permille=1000, soft_permille=1000,
                         reserved_minor=0, settled_minor=0, released_minor=0, used_deliveries=0`,
                 [scopeKey, capMinor]);

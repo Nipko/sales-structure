@@ -540,6 +540,10 @@ export function CapabilitiesSection({ config, onChange, apptReadiness }: Capabil
           </div>
           <button
             type="button"
+            role="switch"
+            aria-label={t("ecommerceTitle")}
+            aria-checked={tools.ecommerce?.enabled === true}
+            data-tool-family="ecommerce"
             onClick={() => onChange({ tools: { ...tools, ecommerce: { ...(tools.ecommerce ?? { enabled: false }), enabled: !(tools.ecommerce?.enabled) } } })}
             className={cn("relative w-11 h-6 rounded-full transition-colors shrink-0 ml-3", tools.ecommerce?.enabled ? "bg-indigo-500" : "bg-neutral-300 dark:bg-neutral-600")}
           >
@@ -548,7 +552,19 @@ export function CapabilitiesSection({ config, onChange, apptReadiness }: Capabil
         </div>
 
         {tools.ecommerce?.enabled && (
-          <div className="mt-3 pt-3 border-t border-neutral-100 dark:border-neutral-800">
+          <div className="mt-3 pt-3 border-t border-neutral-100 dark:border-neutral-800 space-y-3">
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={tools.ecommerce?.canRecommend !== false}
+                onChange={(e) => onChange({ tools: { ...tools, ecommerce: { ...(tools.ecommerce ?? { enabled: true }), canRecommend: e.target.checked } } })}
+                className="w-4 h-4 rounded border-neutral-300 dark:border-neutral-600 text-indigo-500 accent-indigo-500"
+              />
+              <div>
+                <span className="text-sm font-medium text-neutral-800 dark:text-neutral-200">{t("ecommerceRecommendations")}</span>
+                <p className="text-xs text-neutral-500 dark:text-neutral-400">{t("ecommerceRecommendationsDesc")}</p>
+              </div>
+            </label>
             <label className="flex items-center gap-3 cursor-pointer">
               <input
                 type="checkbox"

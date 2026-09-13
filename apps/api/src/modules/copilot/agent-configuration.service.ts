@@ -9,6 +9,7 @@ import { AgentTestService } from '../conversations/agent-test.service';
 import { TurnCapabilityComposerService } from '../conversations/turn-capability-composer.service';
 import { staticToolsForAgentConfig, TOOL_SUBPERMISSION_RULES } from '../conversations/agent-tool-registry';
 import { PAYMENT_CREATE_TOOLS, PAYMENT_STATUS_TOOLS } from '../conversations/tools/payment-tools';
+import { APPLY_DISCOUNT_TOOL } from '../conversations/tools/ecommerce-tools';
 import { TenantsService } from '../tenants/tenants.service';
 import { AgentDraftService } from '../persona/agent-draft.service';
 import { AgentConfigurationRevisionStore } from '../persona/agent-configuration-revision';
@@ -116,6 +117,8 @@ export class AgentConfigurationService {
                 if (config.tools?.[family]?.enabled !== true) throw new BadRequestException({ error: 'configuration_capability_blocked', reasons: ['agent_disabled'] });
                 const names = family === 'payments'
                     ? (flag === 'canCreateLinks' ? PAYMENT_CREATE_TOOLS : [...PAYMENT_STATUS_TOOLS, ...(config.tools.payments.canCreateLinks === false ? [] : PAYMENT_CREATE_TOOLS)]).map(tool => tool.name)
+                    : family === 'ecommerce' && flag === 'canApplyDiscount'
+                        ? [String(APPLY_DISCOUNT_TOOL.name)]
                     : flag === 'enabled' ? staticToolsForAgentConfig({ [family]: config.tools[family] }).map(tool => tool.name)
                     : [...(TOOL_SUBPERMISSION_RULES.find(rule => rule.family === family && rule.flag === flag)?.tools ?? [])];
                 if (!names.length || names.some(name => !contract.publishedTools.includes(name))) {

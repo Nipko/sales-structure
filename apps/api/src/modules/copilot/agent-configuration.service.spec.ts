@@ -105,6 +105,17 @@ describe('reviewed agent configuration', () => {
         expect(h.draft().body.configJson.tools.faqs.enabled).toBe(true);
         expect(h.agent().config_json.tools.faqs).toBeUndefined();
     });
+    it('reviews the two ecommerce subpermissions through their real runtime tools', async () => {
+        const h = harness();
+        h.capabilities.resolve.mockResolvedValue({ contract: {
+            publishedTools: ['recommend_products', 'get_order_status', 'apply_discount'], degraded: false, excluded: [],
+        } } as any);
+        await expect(h.service.propose(TENANT, AGENT, [
+            { path: 'tools.ecommerce.enabled', value: true },
+            { path: 'tools.ecommerce.canRecommend', value: true },
+            { path: 'tools.ecommerce.canApplyDiscount', value: true },
+        ], ACTOR)).resolves.toMatchObject({ status: 'proposed' });
+    });
     it.each(['not_in_subtype', 'plan_missing_feature', 'readiness_unmet', 'external_system_of_record', 'provider_unavailable'])('refuses capability activation excluded by %s', async reason => {
         const h = harness();
         h.capabilities.resolve.mockResolvedValue({ contract: { degraded: false, publishedTools: [], excluded: [{ subject: 'faqs', reason }] } } as any);

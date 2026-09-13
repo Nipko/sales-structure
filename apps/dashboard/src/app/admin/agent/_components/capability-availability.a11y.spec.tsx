@@ -103,6 +103,23 @@ describe("rendered tools match the business subtype", () => {
     } finally { screen.unmount(); }
   });
 
+  it("shows and persists both ecommerce owner controls", async () => {
+    context.verticalConfig = { industry: "retail", subType: "moda" };
+    const screen = await renderScreen(<Editor tools={{ ecommerce: { enabled: true } }} />);
+    try {
+      const inputFor = (title: string) => Array.from(screen.container.querySelectorAll("label"))
+        .find(label => label.textContent?.startsWith(title))?.querySelector<HTMLInputElement>('input[type="checkbox"]');
+      const recommend = inputFor("Permitir recomendaciones")!;
+      const discount = inputFor("Permitir descuentos")!;
+      expect(recommend.checked).toBe(true);
+      expect(discount.checked).toBe(false);
+      await interact(() => recommend.click());
+      await interact(() => discount.click());
+      expect(recommend.checked).toBe(false);
+      expect(discount.checked).toBe(true);
+    } finally { screen.unmount(); }
+  });
+
   it("loads a fresh plan on mount after an upgrade instead of trusting the session snapshot", async () => {
     context.verticalConfig = { industry: "turismo", subType: "hotel" };
     context.planFeatures = { customerPayments: false };

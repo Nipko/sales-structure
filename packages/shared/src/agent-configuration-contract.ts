@@ -35,7 +35,8 @@ export const AGENT_CONFIGURATION_PATHS = [
     'behavior.rules', 'behavior.forbiddenTopics', 'behavior.handoffTriggers', 'mission',
     'account.businessHours',
     ...AGENT_CONFIG_TOOL_FAMILIES.map(family => `tools.${family}.enabled` as const),
-    'tools.appointments.canBook', 'tools.appointments.canCancel', 'tools.catalog.canCheckStock', 'tools.ecommerce.canRecommend', 'tools.payments.canCreateLinks',
+    'tools.appointments.canBook', 'tools.appointments.canCancel', 'tools.catalog.canCheckStock',
+    'tools.ecommerce.canRecommend', 'tools.ecommerce.canApplyDiscount', 'tools.payments.canCreateLinks',
 ] as const;
 export type AgentConfigurationPath = typeof AGENT_CONFIGURATION_PATHS[number];
 export interface AgentConfigurationChange { path: AgentConfigurationPath; value: string | string[] | boolean | AgentMissionV1 | AgentAccountBusinessHours }

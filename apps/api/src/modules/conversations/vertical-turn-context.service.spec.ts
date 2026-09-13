@@ -2,6 +2,7 @@ import {
     projectVerticalIntentAvailability,
     VerticalTurnContextService,
 } from './vertical-turn-context.service';
+import { VERTICAL_DOMAIN_CONTRACT_VERSION } from '@parallext/shared';
 
 describe('VerticalTurnContextService', () => {
     const verticals = {
@@ -34,7 +35,7 @@ describe('VerticalTurnContextService', () => {
             businessGoals: ['ventas', 'confirmar pedidos'],
             targetAudiences: ['consumidor_final'],
             domainContract: {
-                contractVersion: 2,
+                contractVersion: VERTICAL_DOMAIN_CONTRACT_VERSION,
                 profileId: 'restaurantes/dark_kitchen',
             },
         });

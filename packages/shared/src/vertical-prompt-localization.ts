@@ -15,6 +15,24 @@ export const VERTICAL_PROMPT_PHRASES: Readonly<Record<string, LocalizedPhrase>> 
     'puede tomar el interés y pasarlo a una persona': phrase('puede tomar el interés y pasarlo a una persona', 'can capture the customer’s interest and hand it to a person', 'pode registrar o interesse do cliente e encaminhá-lo a uma pessoa', 'peut recueillir l’intérêt du client et le transmettre à une personne'),
     'puede preguntar lo que el negocio declaró como criterio': phrase('puede preguntar lo que el negocio declaró como criterio', 'can ask for the criteria declared by the business', 'pode perguntar os critérios declarados pela empresa', 'peut demander les critères déclarés par l’entreprise'),
     'puede informar precios que el negocio cargó': phrase('puede informar precios que el negocio cargó', 'can provide prices entered by the business', 'pode informar os preços cadastrados pela empresa', 'peut communiquer les prix saisis par l’entreprise'),
+    'puede coordinar el siguiente paso usando los registros que el negocio conectó': phrase(
+        'puede coordinar el siguiente paso usando los registros que el negocio conectó',
+        'can coordinate the next step using records from systems connected by the business',
+        'pode coordenar a próxima etapa usando registros dos sistemas conectados pela empresa',
+        'peut coordonner l’étape suivante à partir des données des systèmes connectés par l’entreprise',
+    ),
+    'puede ejecutar operaciones nativas que el contrato efectivo autorizó': phrase(
+        'puede ejecutar operaciones nativas que el contrato efectivo autorizó',
+        'can perform native operations authorised by the effective contract',
+        'pode executar operações nativas autorizadas pelo contrato efetivo',
+        'peut exécuter les opérations natives autorisées par le contrat effectif',
+    ),
+    'puede ejecutar operaciones que el sistema conectado confirmó y el contrato efectivo autorizó': phrase(
+        'puede ejecutar operaciones que el sistema conectado confirmó y el contrato efectivo autorizó',
+        'can perform operations confirmed by the connected system and authorised by the effective contract',
+        'pode executar operações confirmadas pelo sistema conectado e autorizadas pelo contrato efetivo',
+        'peut exécuter les opérations confirmées par le système connecté et autorisées par le contrat effectif',
+    ),
 
     'expediente clinico': phrase('expediente clinico', 'medical record', 'prontuário clínico', 'dossier médical'),
     'diagnostico': phrase('diagnostico', 'diagnosis', 'diagnóstico', 'diagnostic'),

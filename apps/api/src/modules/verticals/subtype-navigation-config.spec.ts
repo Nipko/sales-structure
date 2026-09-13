@@ -1,5 +1,6 @@
 import { VerticalsService } from './verticals.service';
 import { getVerticalDefinition } from './vertical-definitions';
+import { VERTICAL_DOMAIN_CONTRACT_VERSION } from '@parallext/shared';
 
 function service() {
     return new VerticalsService({} as any, {} as any, {} as any);
@@ -82,7 +83,7 @@ describe('subtype-aware navigation config', () => {
         );
         const profile = await subject.getEffectiveProfile('tenant-id') as any;
         expect(profile.domainContract).toMatchObject({
-            contractVersion: 2,
+            contractVersion: VERTICAL_DOMAIN_CONTRACT_VERSION,
             profileId: 'turismo/hotel',
         });
         expect(profile.navigation.sidebar.itemOrder.slice(0, 2)).toEqual(['stays', 'properties']);

@@ -34,7 +34,9 @@ describe('EducationService enrollment contact integrity', () => {
     it('validates the contact, claims capacity and inserts in one transaction', async () => {
         const stored = { id: enrollmentId, cohort_id: cohortId, contact_id: contactId };
         const query = jest.fn(async (sql: string, params?: any[]) => {
-            if(sql.includes('pg_advisory_xact_lock')||sql.includes('to_regclass')||sql.startsWith('CREATE ')||sql.includes('FROM enrollments'))return [];
+            if(sql.includes('pg_advisory_xact_lock')||sql.includes('to_regclass')||sql.startsWith('CREATE ')
+                ||sql.startsWith('ALTER TABLE')||sql.startsWith('CREATE INDEX')
+                ||sql.includes('FROM pg_constraint')||sql.includes('FROM enrollments'))return [];
             if (sql.includes('FROM contacts')) return [{ id: contactId }];
             if (sql.includes('SELECT * FROM course_cohorts')) {
                 return [{ id: cohortId, course_id: courseId, status: 'open', available_seats: 2,starts_at:'2099-01-01' }];

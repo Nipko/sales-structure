@@ -193,9 +193,9 @@ describe('service, lodging and food operation competence pack', () => {
         expect(source('../restaurants/restaurants.service.ts'))
             .toContain("if (!execution.sandboxNamespace) this.eventEmitter.emit('food_order.created'");
         expect(source('../tours/tours.service.ts'))
-            .toContain('const guestEmail = execution.sandboxNamespace ? null : data.guestEmail;');
+            .toContain('if (!execution.sandboxNamespace) await enqueueOperationalNotice(query,schemaName,{');
         expect(source('../vacation-rental/properties.service.ts'))
-            .toContain('if (data.guestEmail && !execution.sandboxNamespace) {');
+            .toContain('if (!execution.sandboxNamespace) await enqueueOperationalNotice(query,schemaName,{');
         // El arriendo, no el nombre del schema: un llamador de producción no
         // puede quedarse sin aviso por parecerse a una prueba.
         for (const file of ['../home-services/home-services.service.ts', '../photography/photography.service.ts',

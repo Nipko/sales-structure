@@ -677,7 +677,7 @@ export class AppointmentRemindersService {
 
     private async processAutoComplete(tenantId: string, schemaName: string) {
         const tz = await this.getTenantTimezone(tenantId);
-        const completed = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+        const newlyCompleted = await this.prisma.executeInTenantSchema<any[]>(schemaName,
             `UPDATE appointments
              SET status = 'completed', completed_at = NOW(), completed_by = 'auto', updated_at = NOW()
              WHERE status = 'confirmed'
@@ -686,9 +686,25 @@ export class AppointmentRemindersService {
             [],
         );
 
-        const count = completed?.length || 0;
-        if (count > 0) {
-            this.logger.log(`[AutoComplete] Marked ${count} appointment(s) as completed for tenant ${tenantId}`);
+        const newCount = newlyCompleted?.length || 0;
+        if (newCount > 0) {
+            this.logger.log(`[AutoComplete] Marked ${newCount} appointment(s) as completed for tenant ${tenantId}`);
+        }
+
+        // Status and event delivery are separate facts. A previous pass may
+        // have committed `completed` and then lost PostgreSQL/BullMQ while
+        // admitting its automations; those rows must remain visible here.
+        const completed = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+            `SELECT id, contact_id, service_name
+               FROM appointments
+              WHERE status = 'completed'
+                AND completed_by = 'auto'
+                AND completion_event_at IS NULL
+              ORDER BY completed_at, id`,
+            [],
+        );
+
+        if (completed?.length > 0) {
             const contactIds = completed.map(c => c.contact_id).filter(Boolean);
 
             // `appointment.completed` — el momento post-visita.
@@ -702,9 +718,7 @@ export class AppointmentRemindersService {
             // Va con telefono y lead porque es lo que necesitan las acciones
             // (send_template lee event.phone; add_tag/assign_agent/update_stage
             // leen event.leadId). Se resuelve de una sola vez para toda la tanda.
-            await this.emitAppointmentsCompleted(tenantId, schemaName, completed).catch((e: any) =>
-                this.logger.warn(`[AutoComplete] No se pudo emitir appointment.completed: ${e.message}`),
-            );
+            await this.emitAppointmentsCompleted(tenantId, schemaName, completed);
             if (contactIds.length > 0) {
                 try {
                     await this.prisma.executeInTenantSchema(schemaName,
@@ -729,37 +743,48 @@ export class AppointmentRemindersService {
         completed: Array<{ id: string; contact_id?: string; service_name?: string }>,
     ): Promise<void> {
         const ids = [...new Set(completed.map(c => c.contact_id).filter(Boolean))] as string[];
-        if (!ids.length) return;
 
         // El lead vigente es el más reciente no archivado: un contacto puede
         // tener varios a lo largo del tiempo.
-        const rows = await this.prisma.executeInTenantSchema<any[]>(
-            schemaName,
-            `SELECT DISTINCT ON (c.id) c.id AS contact_id, c.phone, c.name, l.id AS lead_id
-             FROM contacts c
-             LEFT JOIN leads l ON l.contact_id = c.id AND l.archived_at IS NULL
-             WHERE c.id = ANY($1::uuid[])
-             ORDER BY c.id, l.created_at DESC NULLS LAST`,
-            [ids],
-        ).catch(() => [] as any[]);
+        const rows = ids.length
+            ? await this.prisma.executeInTenantSchema<any[]>(
+                schemaName,
+                `SELECT DISTINCT ON (c.id) c.id AS contact_id, c.phone, c.name, l.id AS lead_id
+                 FROM contacts c
+                 LEFT JOIN leads l ON l.contact_id = c.id AND l.archived_at IS NULL
+                 WHERE c.id = ANY($1::uuid[])
+                 ORDER BY c.id, l.created_at DESC NULLS LAST`,
+                [ids],
+            )
+            : [];
 
         const reach = new Map(rows.map(r => [r.contact_id, r]));
 
         for (const appt of completed) {
             const c = appt.contact_id ? reach.get(appt.contact_id) : null;
-            // Sin teléfono no hay a quién escribirle; las acciones fallarían en
-            // la cola y ensuciarían el registro de ejecuciones con reintentos.
-            if (!c?.phone) continue;
-            this.eventEmitter.emit('appointment.completed', {
+            // Not every rule sends WhatsApp. A task, tag, stage update or HTTP
+            // action still belongs to an appointment whose contact has no
+            // phone, so the event is emitted with an optional destination.
+            await this.eventEmitter.emitAsync('appointment.completed', {
                 tenantId,
                 schemaName,
                 appointmentId: appt.id,
                 serviceName: appt.service_name ?? null,
                 contactId: appt.contact_id,
-                phone: c.phone,
-                name: c.name ?? null,
-                leadId: c.lead_id ?? null,
+                phone: c?.phone ?? undefined,
+                name: c?.name ?? null,
+                leadId: c?.lead_id ?? null,
             });
+            // Only an awaited listener admission closes the durable marker.
+            // A replay before this UPDATE uses the listener's stable event key
+            // and BullMQ job ids, so it cannot create a second execution.
+            await this.prisma.executeInTenantSchema(
+                schemaName,
+                `UPDATE appointments
+                    SET completion_event_at = NOW(), updated_at = NOW()
+                  WHERE id = $1::uuid AND completion_event_at IS NULL`,
+                [appt.id],
+            );
         }
     }
 

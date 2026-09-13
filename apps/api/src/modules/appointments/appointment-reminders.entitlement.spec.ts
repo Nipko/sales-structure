@@ -85,4 +85,57 @@ describe('AppointmentRemindersService subscription boundary', () => {
 
         await expect(service.getTenantLanguage('tenant-1')).rejects.toThrow('database unavailable');
     });
+
+    it('retries an auto-completion event until every asynchronous listener admits it', async () => {
+        const appointment = {
+            id: '11111111-1111-4111-8111-111111111111',
+            contact_id: '22222222-2222-4222-8222-222222222222',
+            service_name: 'Consulta',
+        };
+        let acknowledged = false;
+        const prisma = {
+            executeInTenantSchema: jest.fn(async (_schema: string, sql: string) => {
+                if (sql.includes("SET status = 'completed'")) return [];
+                if (sql.includes('SET completion_event_at = NOW()')) {
+                    acknowledged = true;
+                    return [];
+                }
+                if (sql.includes('completion_event_at IS NULL')) return acknowledged ? [] : [appointment];
+                if (sql.includes('FROM contacts c')) return [{
+                    contact_id: appointment.contact_id,
+                    phone: '+573001112233',
+                    name: 'Ana',
+                    lead_id: '33333333-3333-4333-8333-333333333333',
+                }];
+                return [];
+            }),
+        };
+        const events = {
+            emitAsync: jest.fn()
+                .mockRejectedValueOnce(new Error('automation queue unavailable'))
+                .mockResolvedValueOnce([undefined]),
+        };
+        const service: any = new AppointmentRemindersService(
+            prisma as any, {} as any, {} as any, {} as any, {} as any,
+            events as any, {} as any,
+            { timezoneFor: jest.fn().mockResolvedValue('America/Bogota') } as any,
+            {} as any,
+        );
+
+        await expect(service.processAutoComplete('tenant-1', 'tenant_schema'))
+            .rejects.toThrow('automation queue unavailable');
+        expect(acknowledged).toBe(false);
+
+        await service.processAutoComplete('tenant-1', 'tenant_schema');
+
+        expect(events.emitAsync).toHaveBeenCalledTimes(2);
+        expect(events.emitAsync).toHaveBeenLastCalledWith(
+            'appointment.completed',
+            expect.objectContaining({
+                appointmentId: appointment.id,
+                phone: '+573001112233',
+            }),
+        );
+        expect(acknowledged).toBe(true);
+    });
 });

@@ -1235,10 +1235,13 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."automation_executions" (
     "status" VARCHAR(50) DEFAULT 'pending', -- pending, success, failed
     "started_at" TIMESTAMP DEFAULT NOW(),
     "finished_at" TIMESTAMP,
-    "result_json" JSONB DEFAULT '{}'
+    "result_json" JSONB DEFAULT '{}',
+    "event_key" TEXT
 );
+ALTER TABLE "{{SCHEMA_NAME}}"."automation_executions" ADD COLUMN IF NOT EXISTS "event_key" TEXT;
 CREATE INDEX IF NOT EXISTS "idx_automation_executions_rule_id" ON "{{SCHEMA_NAME}}"."automation_executions" ("rule_id");
 CREATE INDEX IF NOT EXISTS "idx_automation_executions_entity_type_entity_id" ON "{{SCHEMA_NAME}}"."automation_executions" ("entity_type", "entity_id");
+CREATE UNIQUE INDEX IF NOT EXISTS "uidx_automation_executions_event_key" ON "{{SCHEMA_NAME}}"."automation_executions" ("event_key") WHERE "event_key" IS NOT NULL;
 
 -- ---- Wait Jobs ----
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."wait_jobs" (
@@ -1790,6 +1793,10 @@ ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "cancellat
 ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "no_show_followed_up" BOOLEAN DEFAULT false;
 ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "completed_at" TIMESTAMP;
 ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "completed_by" VARCHAR(50) DEFAULT NULL;
+ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "completion_event_at" TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS "idx_appointments_completion_event_due"
+    ON "{{SCHEMA_NAME}}"."appointments" ("completed_at", "id")
+    WHERE "status" = 'completed' AND "completed_by" = 'auto' AND "completion_event_at" IS NULL;
 ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "rating" INTEGER;
 ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "rating_feedback" TEXT;
 ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "recurring_group_id" UUID;

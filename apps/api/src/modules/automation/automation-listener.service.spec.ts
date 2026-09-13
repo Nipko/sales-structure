@@ -128,4 +128,57 @@ describe('AutomationListenerService event bridges', () => {
             }),
         );
     });
+
+    it('propagates appointment completion admission failures to its durable producer', async () => {
+        const { service } = build();
+        jest.spyOn(service, 'runRulesForTriggerOrThrow')
+            .mockRejectedValue(new Error('queue unavailable'));
+
+        await expect(service.handleAppointmentCompleted({
+            tenantId: 'tenant-1',
+            schemaName: 'tenant_schema',
+            appointmentId: '11111111-1111-4111-8111-111111111111',
+        })).rejects.toThrow('queue unavailable');
+
+        expect(service.runRulesForTriggerOrThrow).toHaveBeenCalledWith(
+            'appointment.completed',
+            'tenant-1',
+            'tenant_schema',
+            'appointment',
+            '11111111-1111-4111-8111-111111111111',
+            expect.any(Object),
+            'appointment.completed:11111111-1111-4111-8111-111111111111',
+        );
+    });
+
+    it('reuses one execution and deterministic action identities on event replay', async () => {
+        const executionId = '22222222-2222-4222-8222-222222222222';
+        const prisma = { executeInTenantSchema: jest.fn().mockResolvedValue([{ id: executionId }]) };
+        const queue = { add: jest.fn().mockResolvedValue({}) };
+        const service = new AutomationListenerService(
+            prisma as any, {} as any, {} as any, queue as any, {} as any,
+        );
+        const input = {
+            tenantId: 'tenant-1', schemaName: 'tenant_schema',
+            rule: {
+                id: '33333333-3333-4333-8333-333333333333', name: 'Post visita',
+                conditions_json: [],
+                actions_json: [{ type: 'create_task' }, { type: 'add_tag' }],
+            },
+            entityType: 'appointment',
+            entityId: '11111111-1111-4111-8111-111111111111',
+            payload: {}, priority: 1,
+            eventKey: 'appointment.completed:11111111-1111-4111-8111-111111111111:rule',
+        };
+
+        await service.dispatchRule(input);
+        await service.dispatchRule(input);
+
+        expect(prisma.executeInTenantSchema.mock.calls[0][1]).toContain('ON CONFLICT (event_key)');
+        expect(queue.add).toHaveBeenCalledTimes(4);
+        expect(queue.add.mock.calls.map(call => call[2].jobId)).toEqual([
+            `automation-${executionId}-0`, `automation-${executionId}-1`,
+            `automation-${executionId}-0`, `automation-${executionId}-1`,
+        ]);
+    });
 });

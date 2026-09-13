@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import {
-    AGENT_ISSUE_RESOLUTIONS, AGENT_OPERATION_REGISTRY, AGENT_QUALITY_ISSUE_CODES,
+    AGENT_CONFIG_TOOL_FAMILIES, AGENT_ISSUE_RESOLUTIONS, AGENT_OPERATION_REGISTRY, AGENT_QUALITY_ISSUE_CODES,
     agentIssueResolutionDefects, getAgentOperation, misleadingAssistOperations, resolutionForIssueCode,
 } from '@parallext/shared';
 import { AgentQualityService } from './agent-quality.service';
@@ -38,11 +38,7 @@ const AGENT = {
         language: 'es',
         // Every optional tool switched on, so no check can leave through the
         // `not_applicable` door and skip being counted here.
-        tools: Object.fromEntries(['appointments', 'catalog', 'ecommerce', 'orders', 'offers', 'crm', 'faqs',
-            'policies', 'vehicles', 'properties', 'tours', 'treatments', 'realEstate', 'pets', 'restaurants',
-            'gyms', 'education', 'insurance', 'homeServices', 'petServices', 'photography', 'professionalServices',
-            'vehicleRentals', 'petBoarding', 'repairOrders', 'payments',
-        ].map(tool => [tool, { enabled: true }])),
+        tools: Object.fromEntries(AGENT_CONFIG_TOOL_FAMILIES.map(tool => [tool, { enabled: true }])),
         rag: { enabled: true, chunkSize: 500, topK: 5, similarityThreshold: 0.65 },
         hours: { schedule: { mon: [] } },
         llm: { maxTokens: 800, temperature: 0.2 },

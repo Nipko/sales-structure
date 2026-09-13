@@ -1,5 +1,5 @@
 import { NotFoundException } from '@nestjs/common';
-import { AGENT_QUALITY_DIMENSIONS, AgentQualityOverview } from '@parallext/shared';
+import { AGENT_CONFIG_TOOL_FAMILIES, AGENT_QUALITY_DIMENSIONS, AgentQualityOverview } from '@parallext/shared';
 import { AgentQualityService } from './agent-quality.service';
 
 const TENANT_ID = '11111111-1111-4111-8111-111111111111';
@@ -220,12 +220,7 @@ function check(overview: AgentQualityOverview, code: string) {
 
 describe('AgentQualityService', () => {
     it('diagnoses every configurable tool family, including the latest native operations', async () => {
-        const tools = Object.fromEntries([
-            'faqs', 'appointments', 'catalog', 'treatments', 'realEstate', 'restaurants', 'vehicles', 'tours',
-            'properties', 'education', 'professionalServices', 'pets', 'gyms', 'insurance', 'homeServices',
-            'petServices', 'vehicleRentals', 'petBoarding', 'photography', 'repairOrders', 'knowledge', 'policies',
-            'orders', 'crm', 'offers', 'ecommerce', 'payments',
-        ].map(family => [family, { enabled: true }]));
+        const tools = Object.fromEntries(AGENT_CONFIG_TOOL_FAMILIES.map(family => [family, { enabled: true }]));
         const result = await createHarness({
             config: { ...completeConfig, tools }, vehicles: 0, boardingServices: 0,
             paymentConfig: { ready: false, activeProvider: null },

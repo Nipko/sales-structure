@@ -5,11 +5,40 @@ import { InventoryService } from '../inventory/inventory.service';
 import { InternalController } from '../internal/internal.controller';
 import { AGENT_QUALITY_DEPENDENCIES_UPDATED } from './agent-quality-events';
 import { receiptLedgerDouble } from '../channels/__fixtures__/spend-gate-double';
+import { TenantPaymentsService } from '../tenant-payments/tenant-payments.service';
 
 const TENANT_ID = '11111111-1111-4111-8111-111111111111';
 const SCHEMA = 'tenant_quality_dependencies';
 
 describe('Agent Quality dependency mutation events', () => {
+    it('reconciles payment readiness only after the provider configuration commits', async () => {
+        const events = { emit: jest.fn() };
+        const transaction = {
+            $queryRawUnsafe: jest.fn(async (sql: string) => {
+                if (sql.includes('SELECT settings FROM tenants')) return [{ settings: {} }];
+                if (sql.includes('FROM tenant_payment_provider_configs')) return [];
+                return [];
+            }),
+            $executeRawUnsafe: jest.fn().mockResolvedValue(undefined),
+        };
+        const prisma: any = { $transaction: jest.fn(async (work: any) => work(transaction)) };
+        const redis: any = { del: jest.fn().mockResolvedValue(undefined) };
+        const service = new TenantPaymentsService(
+            prisma, redis, {} as any, undefined, undefined, undefined, undefined, events as any,
+        );
+
+        await (service as any).mutateStoredConfigLocked(TENANT_ID, (stored: any) => stored);
+        expect(events.emit).toHaveBeenCalledWith(AGENT_QUALITY_DEPENDENCIES_UPDATED, {
+            tenantId: TENANT_ID,
+            source: 'payments',
+        });
+
+        events.emit.mockClear();
+        prisma.$transaction.mockRejectedValueOnce(new Error('commit failed'));
+        await expect((service as any).mutateStoredConfigLocked(TENANT_ID, (stored: any) => stored))
+            .rejects.toThrow('commit failed');
+        expect(events.emit).not.toHaveBeenCalled();
+    });
     it('emits business identity only after a successful durable upsert', async () => {
         const row = {
             id: '22222222-2222-4222-8222-222222222222',

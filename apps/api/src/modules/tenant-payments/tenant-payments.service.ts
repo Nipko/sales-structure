@@ -9,12 +9,14 @@ import {
     Optional,
     ServiceUnavailableException,
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { createHash, randomBytes, timingSafeEqual } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { agreedTermsRefusalKey, countAgreedTermsOrphans, isMissingAgreedTermsRefusal } from './agreed-terms-orphans';
 import { RedisService } from '../redis/redis.service';
 import { WhatsappCryptoService } from '../whatsapp/services/whatsapp-crypto.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
+import { AGENT_QUALITY_DEPENDENCIES_UPDATED } from '../quality/agent-quality-events';
 import { resolveTenantSubscriptionAccess } from '../../common/utils/subscription-entitlement.util';
 import {
     TenantPaymentCredentialCryptoService,
@@ -243,6 +245,7 @@ export class TenantPaymentsService {
         @Optional() private readonly wompi?: TenantWompiClient,
         @Optional() private readonly throttle?: TenantThrottleService,
         @Optional() private readonly credentialCrypto?: TenantPaymentCredentialCryptoService,
+        @Optional() private readonly events?: EventEmitter2,
     ) {}
 
     private cacheKey(tenantId: string) { return `tenant_payments:${tenantId}`; }
@@ -2161,6 +2164,7 @@ export class TenantPaymentsService {
             );
         });
         await this.redis.del(this.cacheKey(tenantId)).catch(() => undefined);
+        this.events?.emit(AGENT_QUALITY_DEPENDENCIES_UPDATED, { tenantId, source: 'payments' });
     }
 
     private providerConfigHash(config: StoredMercadoPagoConfig | StoredWompiConfig | undefined): string {

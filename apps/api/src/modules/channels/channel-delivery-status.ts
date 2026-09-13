@@ -4,6 +4,7 @@ import {
     DISPATCH_PROVIDER_STATUSES,
     type DispatchProviderStatus,
 } from './agent-dispatch-outbox';
+import { whatsAppStatusIdentity, type PortfolioScope } from '@parallext/shared';
 
 /**
  * What a provider says happened to an outbound message, applied once.
@@ -192,7 +193,7 @@ export function parseProviderPricing(pricing: unknown): ProviderPricingSignal | 
 }
 
 export function parseMetaDeliveryStatuses(
-    statuses: unknown, channelType = 'whatsapp',
+    statuses: unknown, channelType = 'whatsapp', scope: PortfolioScope = {},
 ): ChannelDeliveryStatusEvent[] {
     if (!Array.isArray(statuses)) return [];
     const events: ChannelDeliveryStatusEvent[] = [];
@@ -201,10 +202,14 @@ export function parseMetaDeliveryStatuses(
         const status = String(entry?.status || '').toLowerCase();
         if (!providerMessageId || !isDeliveryStatus(status)) continue;
         const error = entry?.errors?.[0] || null;
+        const identity = channelType === 'whatsapp'
+            ? whatsAppStatusIdentity(entry, scope)
+            : null;
         events.push({
             providerMessageId,
             status,
-            recipient: entry?.recipient_id ? String(entry.recipient_id) : null,
+            recipient: identity?.addressKey
+                ?? (entry?.recipient_id ? String(entry.recipient_id) : null),
             errorCode: namespaceProviderErrorCode(channelType, error?.code),
             errorDetail: error
                 ? `title="${error.title ?? ''}" details="${error.error_data?.details ?? error.message ?? ''}"`

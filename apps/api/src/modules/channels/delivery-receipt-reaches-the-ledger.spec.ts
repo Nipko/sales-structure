@@ -137,6 +137,15 @@ describe('a delivery receipt reaches the money as well as the history', () => {
         expect(parsed.pricing).toEqual({ billable: false, category: 'utility', model: 'PMP' });
     });
 
+    it('keeps a scoped receipt recipient distinct across business portfolios', () => {
+        const status = { id: 'wamid.B', status: 'delivered', recipient_id: '',
+            recipient_user_id: 'BSU_abc123XYZ' };
+        const [first] = parseMetaDeliveryStatuses([status], 'whatsapp', { wabaId: 'waba-one' });
+        const [second] = parseMetaDeliveryStatuses([status], 'whatsapp', { wabaId: 'waba-two' });
+        expect(first.recipient).toBe('bsuid:waba-one:BSU_abc123XYZ');
+        expect(second.recipient).toBe('bsuid:waba-two:BSU_abc123XYZ');
+    });
+
     it('never reads a missing field as "free"', () => {
         // The failure that would be invisible: Meta renames or drops `billable`,
         // every delivery settles at zero, and a month of spending disappears

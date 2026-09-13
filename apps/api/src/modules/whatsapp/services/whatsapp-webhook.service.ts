@@ -241,8 +241,12 @@ export class WhatsappWebhookService {
    * fallback now live in `channel-delivery-status`, shared with the internal
    * endpoint the deployed WhatsApp worker calls: one rule, one place.
    */
-  private async recordDeliveryStatuses(phoneNumberId: string, statuses: any[] | undefined): Promise<void> {
-    const events = parseMetaDeliveryStatuses(statuses);
+  private async recordDeliveryStatuses(
+    phoneNumberId: string, statuses: any[] | undefined, wabaId: string | null,
+  ): Promise<void> {
+    const events = parseMetaDeliveryStatuses(statuses, 'whatsapp', {
+      wabaId, phoneNumberId,
+    });
     // The tenant is resolved ONCE and carried, because both halves of a receipt
     // need it: the schema the conversation record lives in, and the (tenant,
     // account) pair a funding pause is written against.
@@ -274,7 +278,7 @@ export class WhatsappWebhookService {
      // where the payload carried no `messages`, so a batch that mixed customer
      // messages with delivery receipts — which Meta is free to send — silently
      // dropped every receipt in it.
-     await this.recordDeliveryStatuses(phoneNumberId, value?.statuses);
+     await this.recordDeliveryStatuses(phoneNumberId, value?.statuses, wabaId);
 
      // Say WHY we stop. A status/read receipt carries no `messages`, and this
      // early return used to be silent — indistinguishable in the logs from a

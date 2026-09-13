@@ -7,13 +7,10 @@
  * `from_user_id` where it used to carry `from`. That half this repository
  * genuinely RECEIVES: both ingress roads read it.
  *
- * The status half is a claim, not an observation. Meta's business-scoped id
- * page — summarised in `docs/research/2026-09-10/` — says statuses carry
- * `recipient_user_id` and that some failed statuses carry no contact
- * identifier at all. Nothing in this codebase has ever received that field:
- * both surviving status readers take `recipient_id` only. So this module is
- * wired for the INBOUND side, and `whatsAppStatusIdentity` below has no
- * production caller.
+ * Statuses can carry the same identity in `recipient_user_id`. Both status
+ * readers use `whatsAppStatusIdentity` so an empty `recipient_id` does not turn
+ * a known scoped recipient into "unknown". Some failed statuses carry no
+ * contact identifier at all; those remain attributable only to their `wamid`.
  *
  * That message USED TO BE discarded. Both ingresses required `msg.from` to be
  * a non-empty string and logged "Mensaje SIN REMITENTE descartado" otherwise —
@@ -180,22 +177,11 @@ export function whatsAppSenderIdentity(
 }
 
 /**
- * Who a delivery status is about. NOT WIRED — no production caller.
+ * Who a delivery status is about.
  *
- * Kept because the shape is right and the wiring would be one line, not
- * because anything uses it: both status readers take `recipient_id`, and
- * neither imports this. `recipient_user_id` appears nowhere in this codebase
- * outside this function and its unit spec — it is Meta's DOCUMENTED field,
- * not one we have observed arriving, and the difference is the whole reason
- * this sentence is here. The raw status bodies are already stored verbatim
- * in `whatsapp_webhook_events`, which is where that evidence will come from.
- *
- * When a real status with a scoped recipient turns up there, wire this and
- * delete the "not wired" sentence in the SAME commit: the claim and the
- * caller move together, or this docblock becomes the next defect.
- *
- * Until then the only branch that runs is the fallback: a `recipient_id` is
- * a phone byte for byte, and a status naming nobody answers `null` — it is
+ * A `recipient_id` is a phone byte for byte. A `recipient_user_id` is scoped
+ * to the portfolio before it leaves this function. A status naming nobody
+ * answers `null` — it is
  * still about a message we sent, identified by its `wamid`, and inventing a
  * recipient to attach it to would be worse than recording it against the
  * message alone.

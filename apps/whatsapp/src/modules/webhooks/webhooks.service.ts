@@ -131,6 +131,7 @@ export class WebhooksService implements OnModuleDestroy {
       await this.webhookQueue.add('process-status', {
         tenantId: tenantInfo.tenantId,
         schemaName: tenantInfo.schemaName,
+        wabaId,
         phoneNumberId,
         status,
         timestamp: new Date().toISOString(),

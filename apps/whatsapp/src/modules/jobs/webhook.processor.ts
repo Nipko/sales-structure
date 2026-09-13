@@ -1,4 +1,4 @@
-import { whatsAppSenderIdentity } from '@parallext/shared';
+import { whatsAppSenderIdentity, whatsAppStatusIdentity } from '@parallext/shared';
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
@@ -219,7 +219,7 @@ export class WebhookProcessor extends WorkerHost {
    * outbox that owns the receipt; what is left here is the forward.
    */
   private async processStatus(data: any) {
-    const { tenantId, schemaName, phoneNumberId, status } = data;
+    const { tenantId, schemaName, wabaId, phoneNumberId, status } = data;
     this.logger.debug(`Processing status update: ${status.status} for message ${status.id}`);
 
     const dedupeKey = `status:${status.id}:${status.status}`;
@@ -235,6 +235,7 @@ export class WebhookProcessor extends WorkerHost {
     );
 
     const error = status.errors?.[0] ?? null;
+    const statusIdentity = whatsAppStatusIdentity(status, { wabaId, phoneNumberId });
     await this.forwardDeliveryStatus({
       tenantId,
       channelType: 'whatsapp',
@@ -242,7 +243,7 @@ export class WebhookProcessor extends WorkerHost {
       providerMessageId: status.id,
       status: status.status,
       errorCode: error?.code ?? null,
-      recipient: status.recipient_id ?? null,
+      recipient: statusIdentity?.addressKey ?? null,
       // ── THE TWO FIELDS THAT DECIDE MONEY ──────────────────────────────────
       //
       // This worker is the road Meta's receipts actually travel, and for months

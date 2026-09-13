@@ -6,6 +6,7 @@ import { WebhookProcessor } from './webhook.processor';
 const tenantId = '11111111-1111-4111-8111-111111111111';
 const schemaName = 'tenant_wa_worker';
 const phoneNumberId = '15550001111';
+const wabaId = 'waba-one';
 
 /**
  * The delivery-status path of the WORKER THAT IS ACTUALLY DEPLOYED.
@@ -59,7 +60,7 @@ describe('WhatsApp worker delivery status', () => {
         return { processor, statements, posts, prisma, httpService };
     }
 
-    const job = (status: any) => ({ tenantId, schemaName, phoneNumberId, status });
+    const job = (status: any) => ({ tenantId, schemaName, wabaId, phoneNumberId, status });
     const run = (h: ReturnType<typeof harness>, status: any) => h.processor.processStatus(job(status));
     const audit = (h: ReturnType<typeof harness>) =>
         h.statements.filter(entry => /whatsapp_webhook_events/.test(entry.sql));
@@ -81,6 +82,13 @@ describe('WhatsApp worker delivery status', () => {
             pricing: null,
             errorDetail: null,
         });
+    });
+
+    it('forwards a scoped recipient with its portfolio fence', async () => {
+        const h = harness();
+        await run(h, { id: 'wamid.B', status: 'delivered', recipient_id: '',
+            recipient_user_id: 'BSU_abc123XYZ' });
+        expect(h.posts[0].body.recipient).toBe('bsuid:waba-one:BSU_abc123XYZ');
     });
 
     // ── THE MONEY HALF OF A RECEIPT ─────────────────────────────────────────

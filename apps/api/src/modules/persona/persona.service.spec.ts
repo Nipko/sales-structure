@@ -38,6 +38,25 @@ describe('Canonical persona validation for editable revisions', () => {
             { tools: { appointments: { enabled: 'yes' } } },
         ]) expect(() => service.assertAgentConfigValid(config, { partial: true })).toThrow();
     });
+    it('rejects unknown tool families and family-specific permission typos', () => {
+        const cases: Array<[any, string]> = [
+            [{ tools: { paymnts: { enabled: true } } }, 'tools.paymnts'],
+            [{ tools: { payments: { enabled: true, canCreateLink: true } } }, 'tools.payments.canCreateLink'],
+            [{ tools: { offers: { enabled: true, canBook: true } } }, 'tools.offers.canBook'],
+            [{ tools: [] }, 'tools'],
+        ];
+        for (const [config, field] of cases) {
+            try {
+                service.assertAgentConfigValid(config, { partial: true });
+                throw new Error('expected_invalid_tool_configuration');
+            } catch (error: any) {
+                expect(error.response?.fields).toContain(field);
+            }
+        }
+        expect(() => service.assertAgentConfigValid({ tools: {
+            appointments: { enabled: false, pendingPrerequisites: true },
+        } }, { partial: true })).not.toThrow();
+    });
 });
 
 describe('PersonaService — plantilla de preguntas frecuentes', () => {

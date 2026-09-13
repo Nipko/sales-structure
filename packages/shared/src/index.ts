@@ -344,6 +344,8 @@ export interface ToolsConfig {
         canBook?: boolean;
         canCancel?: boolean;
         emailConfirmations?: boolean;
+        /** Internal onboarding marker; never exposed as an editable permission. */
+        pendingPrerequisites?: boolean;
     };
     catalog?: {
         enabled: boolean;

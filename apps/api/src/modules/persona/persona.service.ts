@@ -8,6 +8,8 @@ import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import * as yaml from 'js-yaml';
 import {
+    AGENT_CONFIGURATION_PATHS,
+    AGENT_CONFIG_TOOL_FAMILIES,
     CERTIFIED_SELF_SERVICE_CHANNELS,
     isAgentMissionV1,
     TenantConfig,
@@ -29,6 +31,16 @@ import {
 } from './vertical-agent-defaults.util';
 import type { ResolvedVerticalAgentDefaults } from './vertical-agent-defaults.util';
 import { resolveOnboardingPersonaTemplate } from './onboarding-persona-resolver';
+
+const AGENT_TOOL_FLAGS = new Map<string, Set<string>>(
+    AGENT_CONFIG_TOOL_FAMILIES.map(family => [family, new Set(['enabled'])]),
+);
+for (const path of AGENT_CONFIGURATION_PATHS) {
+    const match = /^tools\.([^.]+)\.([^.]+)$/.exec(path);
+    if (match) AGENT_TOOL_FLAGS.get(match[1])?.add(match[2]);
+}
+// Written and consumed only while a new tenant's appointment data is seeded.
+AGENT_TOOL_FLAGS.get('appointments')?.add('pendingPrerequisites');
 
 /** Exact durable agent/configuration selected for one live channel turn. */
 export interface PersonaResolution {
@@ -610,10 +622,15 @@ export class PersonaService {
         if (config.rag?.enabled !== undefined && typeof config.rag.enabled !== 'boolean') invalid.push('rag.enabled');
         if (config.rag?.topK !== undefined && !finite(config.rag.topK, 1, 10, true)) invalid.push('rag.topK');
         if (config.rag?.similarityThreshold !== undefined && !finite(config.rag.similarityThreshold, 0, 1)) invalid.push('rag.similarityThreshold');
-        for (const [family, settings] of Object.entries(config.tools ?? {})) {
+        const toolEntries = config.tools === undefined
+            ? [] : config.tools && typeof config.tools === 'object' && !Array.isArray(config.tools)
+                ? Object.entries(config.tools) : (invalid.push('tools'), []);
+        for (const [family, settings] of toolEntries) {
+            const allowed = AGENT_TOOL_FLAGS.get(family);
+            if (!allowed) { invalid.push(`tools.${family}`); continue; }
             if (!settings || typeof settings !== 'object' || Array.isArray(settings)) { invalid.push(`tools.${family}`); continue; }
-            for (const flag of ['enabled', 'canBook', 'canCancel', 'canCheckStock', 'canRecommend', 'canApplyDiscount', 'canCreateLinks', 'emailConfirmations']) {
-                if ((settings as any)[flag] !== undefined && typeof (settings as any)[flag] !== 'boolean') invalid.push(`tools.${family}.${flag}`);
+            for (const flag of Object.keys(settings)) {
+                if (!allowed.has(flag) || typeof (settings as any)[flag] !== 'boolean') invalid.push(`tools.${family}.${flag}`);
             }
         }
 

@@ -162,7 +162,7 @@ Em **Canais → WhatsApp**, o cartão **Cobrança do WhatsApp (Meta)** mostra qu
 
 ### O que um teto de gasto pode e o que não pode prometer
 
-Um teto de gasto limita **o que a Parallly envia** por aquela conexão durante o período. Hoje o medidor **registra**: conta, avisa e por padrão **não freia nenhum envio**. Não há uma tela para definir um teto; a contenção é habilitada conta a conta, depois de olhar o que o medidor registrou.
+Um teto de gasto limita **o que a Parallly envia** por aquela conexão durante o período. O medidor começa em **Somente observar**: conta, avisa e **não freia nenhum envio**. A Parallly cria valores iniciais de **2.000 entregas por número** e **60 por contato** a cada mês. Um administrador pode ativar a **Proteção de gastos** em **Canais → WhatsApp** depois de revisar a medição; a partir daí, os envios proativos pausam perto do teto e o alcance que o esgotar para.
 
 E mesmo ativo, há três coisas que um teto **não** pode prometer:
 

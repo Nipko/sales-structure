@@ -78,8 +78,8 @@ Qué está construido y qué no, sin redondear:
 | Autorización en los tres puntos de salida de WhatsApp | Construido |
 | Lectura de gasto, cuota, pausas y reanudación por el tenant | Construido; Admin y Supervisor leen, sólo Admin reanuda |
 | Pausa de un número cuando Meta no puede facturarlo | Construido; por conexión, sin reintentos, entrante intacto |
-| **Frenar envíos al alcanzar un tope** | **Apagado**: la autorización corre en `observe` por defecto — mide, diagnostica y deja pasar. `enforce` se lee de `tenants.settings.whatsappSpend.enforcement` y **ninguna pantalla ni endpoint lo escribe** |
-| Configurar un tope de gasto desde el producto | **No existe** en autoservicio: el ledger admite topes, ningún controlador los expone |
+| **Frenar envíos al alcanzar un tope** | **Configurable por Tenant Admin** en Canales → WhatsApp. Empieza en `observe`; al activar la protección, `enforce` toma efecto inmediatamente y el cambio queda auditado |
+| Configurar un tope de gasto desde el producto | Se siembran 2.000 entregas por número y 60 por contacto cada mes, visibles en la tarjeta. La API autenticada permite leer y ajustar topes por alcance; el panel activa o desactiva su aplicación |
 
 Un tope acota lo que **Parallly** envía por esa conexión. No acota lo que otra herramienta
 conectada a la misma cuenta de WhatsApp Business le cobre a Meta, no es un límite que Meta

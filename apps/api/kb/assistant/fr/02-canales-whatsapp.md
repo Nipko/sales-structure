@@ -165,7 +165,7 @@ C'est la mesure de **ce que Parallly a envoyé** sur cette connexion, pas une co
 
 ### Ce qu'un plafond de dépense peut et ne peut pas promettre
 
-Un plafond de dépense borne **ce que Parallly envoie** sur cette connexion pendant la période. Aujourd'hui le compteur **enregistre** : il compte, il alerte et, par défaut, il **n'arrête aucun envoi**. Il n'existe pas d'écran pour fixer un plafond ; le blocage s'active compte par compte, après avoir regardé ce que le compteur a enregistré.
+Un plafond de dépense borne **ce que Parallly envoie** sur cette connexion pendant la période. Le compteur démarre en **Observation seulement** : il compte, il alerte et **n'arrête aucun envoi**. Parallly crée chaque mois des valeurs initiales de **2 000 livraisons par numéro** et **60 par contact**. Un administrateur peut activer la **Protection des dépenses** dans **Canaux → WhatsApp** après avoir examiné la mesure ; les envois proactifs sont alors suspendus près du plafond et la portée qui l'épuise s'arrête.
 
 Et même actif, il y a trois choses qu'un plafond **ne peut pas** promettre :
 

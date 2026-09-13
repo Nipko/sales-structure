@@ -161,7 +161,8 @@ describe('which scopes a tenant may declare a ceiling on', () => {
         const controller = new WhatsappSpendController(
             { getTenantSchemaName: async () => schema } as any,
             { setCeiling: async () => { throw new Error('must not reach the ledger'); } } as any,
-            { current: async () => null } as any);
+            { current: async () => null } as any,
+            {} as any);
         await expect(controller.setCeiling({ user: { tenantId: TENANT, role: 'tenant_admin' } },
             { scopeKind: 'number_month', scopeKey: ACCOUNT, period: '2026-10', capDeliveries: 5000 }))
             .rejects.toBeInstanceOf(BadRequestException);

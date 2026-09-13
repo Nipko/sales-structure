@@ -75,6 +75,16 @@ const consumption = (over: Partial<WhatsappConsumption> = {}): WhatsappConsumpti
 const render = (props: Parameters<typeof WhatsappSpendPanel>[0]) =>
     renderToStaticMarkup(createElement(WhatsappSpendPanel, props));
 
+const policy = (enforcement: 'observe' | 'enforce' = 'observe') => ({
+    enforcement,
+    defaults: {
+        numberDeliveriesPerCalendarMonth: 2_000,
+        contactDeliveriesPerCalendarMonth: 60,
+        warnPermille: 800,
+        softPermille: 950,
+    },
+});
+
 describe('the WhatsApp spend panel', () => {
     beforeEach(() => { mockLocale = 'es'; });
 
@@ -153,6 +163,21 @@ describe('the WhatsApp spend panel', () => {
             .toContain('cuentan solo lo que envió Parallly');
     });
 
+    it('shows whether protection can stop sends and exposes the admin control', () => {
+        const observing = render({
+            summary: null, policy: policy(), onSetEnforcement: async () => undefined,
+        });
+        expect(observing).toContain('Sólo observar');
+        expect(observing).toContain('2000 entregas por número y 60 por contacto');
+        expect(observing).toContain('Activar protección');
+
+        const enforcing = render({
+            summary: null, policy: policy('enforce'), onSetEnforcement: async () => undefined,
+        });
+        expect(enforcing).toContain('Protección activa');
+        expect(enforcing).toContain('Volver a sólo observar');
+    });
+
     it('says how many sends nobody can confirm, and why the money is still counted', () => {
         const markup = render({
             summary: null,
@@ -180,7 +205,9 @@ describe('the WhatsApp spend panel', () => {
                 summary: null,
                 pauses: [paused()],
                 awaiting: { graceHours: 72, effects: [{ effectKey: 'a' }] },
+                policy: policy(),
                 onResume: async () => undefined,
+                onSetEnforcement: async () => undefined,
             });
             expect(markup.length).toBeGreaterThan(0);
         }

@@ -105,7 +105,7 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
                     declareSpendCeiling(q, schema, input)),
         };
         const pauses: any = { current: async () => null };
-        controller = new WhatsappSpendController(prisma, spend, pauses);
+        controller = new WhatsappSpendController(prisma, spend, pauses, {} as any);
     });
 
     afterAll(async () => {

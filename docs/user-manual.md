@@ -953,7 +953,7 @@ próxima revisión. La fuente vigente es la tabla generada citada arriba y
 muestra el avance de la cuota gratis, el gasto del período separado por moneda, los
 contactos más costosos, los envíos sin confirmar y los números con envío pausado. La leen
 Tenant Admin y Tenant Supervisor; **Reanudar envíos** es sólo de Tenant Admin. Endpoints:
-`GET /whatsapp/spend/summary`, `/consumption`, `/awaiting-resolution`, `/pauses`,
+`GET /whatsapp/spend/summary`, `/consumption`, `/awaiting-resolution`, `/pauses`, `/policy`,
 `POST /whatsapp/spend/resolve` y `/pauses/:channelAccountId/resume`.
 
 **Pausa por cobro y regreso.** Cuando Meta responde que la cuenta no puede facturarse
@@ -972,8 +972,8 @@ intento.
 | Medición del gasto, reserva por envío y conciliación | Construido (`whatsapp-spend`, ledger transaccional) |
 | Autorización en los tres puntos de salida | Construido (`WhatsappSendAdmissionService`) |
 | Lectura de gasto, cuota, pausas y reanudación en el panel | Construido (`/admin/channels/whatsapp`) |
-| **Frenar envíos al llegar a un tope** | **Apagado por defecto**: la autorización corre en modo `observe` — mide, diagnostica y deja pasar. `enforce` es por tenant (`tenants.settings.whatsappSpend.enforcement`) y **hoy no hay pantalla ni endpoint que lo active**; se decide caso por caso mirando lo que `observe` registró |
-| Fijar un tope de gasto desde el producto | **No existe** como autoservicio: el ledger admite topes, pero ningún controlador los expone |
+| **Frenar envíos al llegar a un tope** | **Apagado por defecto**: `observe` mide y deja pasar. Un Tenant Admin puede activar **Protección de gasto** en Canales → WhatsApp; el cambio a `enforce` se guarda con auditoría y toma efecto antes del siguiente envío |
+| Fijar un tope de gasto desde el producto | Cada mes se crean valores iniciales de 2.000 entregas por número y 60 por contacto. La API autenticada `GET/POST /whatsapp/spend/ceilings` permite leer y ajustar cada alcance; el panel muestra los valores y controla si se aplican |
 
 Un tope, cuando se habilite, acota **lo que Parallly envía** por esa conexión. No limita
 lo que otra herramienta conectada a la misma cuenta de WhatsApp Business le cobre a Meta,

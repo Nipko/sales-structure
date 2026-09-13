@@ -162,7 +162,7 @@ It measures **what Parallly sent** over that connection. It is not a copy of Met
 
 ### What a spend ceiling can and cannot promise
 
-A spend ceiling bounds **what Parallly sends** over that connection during the period. Today the meter **records**: it counts, it warns, and by default it **stops no message**. There is no screen for setting a ceiling; containment is enabled account by account, after looking at what the meter recorded.
+A spend ceiling bounds **what Parallly sends** over that connection during the period. The meter starts in **Observe only**: it counts, it warns, and **stops no message**. Parallly creates initial values of **2,000 deliveries per number** and **60 per contact** each month. An admin can enable **Spend protection** in **Channels → WhatsApp** after reviewing the measurement; from then on proactive sends pause near the ceiling and the scope that exhausts it stops.
 
 And even when active, there are three things a ceiling **cannot** promise:
 

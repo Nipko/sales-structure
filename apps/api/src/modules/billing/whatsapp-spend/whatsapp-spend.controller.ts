@@ -21,6 +21,8 @@ import {
     deliveryReadiness, neverAsked, readFundingFromRefusal, FUNDING_READINESS_STATES,
     type FundingReadiness,
 } from '../../channels/whatsapp-funding-readiness';
+import { WhatsappSendAdmissionService } from './whatsapp-send-admission.service';
+import { WHATSAPP_OCTOBER_COMMERCIAL_POLICY } from './whatsapp-commercial-policy';
 
 /**
  * ═══ WHAT META IS CHARGING THIS BUSINESS, AND WHY ═══
@@ -52,7 +54,93 @@ export class WhatsappSpendController {
         private readonly prisma: PrismaService,
         private readonly spend: WhatsappSpendService,
         private readonly pauses: AccountPauseStore,
+        private readonly admission: WhatsappSendAdmissionService,
     ) {}
+
+    /** The effective guardrail mode and the defaults this build will seed. */
+    @Get('policy')
+    @UseGuards(AuthGuard('jwt'), RolesGuard)
+    @Roles('super_admin', 'tenant_admin', 'tenant_supervisor')
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Effective WhatsApp spend protection policy' })
+    async policy(@Request() req: any) {
+        const tenantId = this.tenantIdFor(req);
+        return {
+            success: true,
+            data: {
+                enforcement: await this.admission.enforcementMode(tenantId),
+                defaults: WHATSAPP_OCTOBER_COMMERCIAL_POLICY.defaults,
+                communication: {
+                    startsOn: WHATSAPP_OCTOBER_COMMERCIAL_POLICY.communication.startsOn,
+                    paymentMethodDeadline:
+                        WHATSAPP_OCTOBER_COMMERCIAL_POLICY.communication.paymentMethodDeadline,
+                    effectiveOn: WHATSAPP_OCTOBER_COMMERCIAL_POLICY.communication.effectiveOn,
+                },
+            },
+        };
+    }
+
+    /**
+     * Enable or disable refusal at the measured ceilings.
+     *
+     * The settings branch and audit row commit together. A successful response
+     * therefore always has an actor, and invalidating the local cache after the
+     * commit makes the next send observe the new choice immediately.
+     */
+    @Post('policy/enforcement')
+    @UseGuards(AuthGuard('jwt'), RolesGuard)
+    @Roles('super_admin', 'tenant_admin')
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Set WhatsApp spend protection to observe or enforce' })
+    async setPolicyEnforcement(@Request() req: any, @Body() body: { enforcement?: string }) {
+        const tenantId = this.tenantIdFor(req);
+        const mode = String(body?.enforcement ?? '').trim();
+        if (mode !== 'observe' && mode !== 'enforce') {
+            throw new BadRequestException('enforcement must be observe or enforce');
+        }
+        const transition = await this.prisma.$transaction(async (tx: any) => {
+            const rows = await tx.$queryRawUnsafe(
+                `SELECT settings #> '{whatsappSpend}'::text[] AS value
+                   FROM public.tenants
+                  WHERE id = $1::uuid
+                  FOR UPDATE`,
+                tenantId,
+            ) as Array<{ value: any }>;
+            if (!rows.length) throw new BadRequestException('Tenant not found');
+            const current = rows[0].value && typeof rows[0].value === 'object'
+                ? rows[0].value : {};
+            const before = current.enforcement === 'enforce' ? 'enforce' : 'observe';
+            await tx.$executeRawUnsafe(
+                `UPDATE public.tenants
+                    SET settings = jsonb_set(
+                        COALESCE(settings, '{}'::jsonb),
+                        '{whatsappSpend}'::text[],
+                        COALESCE(settings #> '{whatsappSpend}'::text[], '{}'::jsonb)
+                            || $2::jsonb,
+                        true
+                    ), updated_at = NOW()
+                  WHERE id = $1::uuid`,
+                tenantId, JSON.stringify({ enforcement: mode }),
+            );
+            await tx.auditLog.create({ data: {
+                tenantId,
+                userId: req.user?.id ?? null,
+                action: 'whatsapp.spend.enforcement_changed',
+                resource: tenantId,
+                details: { before, after: mode },
+                ip: req.ip ?? null,
+            } });
+            return { before, after: mode };
+        });
+        this.admission.invalidateEnforcement(tenantId);
+        return { success: true, data: transition };
+    }
+
+    private tenantIdFor(req: any): string {
+        const tenantId = String(req.user?.tenantId ?? '').trim();
+        if (!tenantId) throw new BadRequestException('User does not belong to a tenant');
+        return tenantId;
+    }
 
     /**
      * This period's exposure and where it went.

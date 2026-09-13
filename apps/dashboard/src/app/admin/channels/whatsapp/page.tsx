@@ -6,6 +6,7 @@ import {
     WhatsappSpendPanel,
     type WhatsappAwaitingResolution,
     type WhatsappReadinessNumber,
+    type WhatsappSpendPolicy,
 } from "@/components/channels/WhatsappSpendPanel";
 import type {
     WhatsappConsumption, WhatsappNumberPause, WhatsappSpendSummary,
@@ -96,6 +97,8 @@ export default function WhatsAppSetupPage() {
     // the period the free allowance resets in. The rolling summary above
     // answers a different question and cannot answer this one.
     const [consumption, setConsumption] = useState<WhatsappConsumption | null>(null);
+    const [spendPolicy, setSpendPolicy] = useState<WhatsappSpendPolicy | null>(null);
+    const [changingEnforcement, setChangingEnforcement] = useState(false);
 
     const loadData = async () => {
         setLoading(true);
@@ -137,7 +140,7 @@ export default function WhatsAppSetupPage() {
      * that is not connected yet has no spend to show, which is not an error.
      */
     const loadSpend = async () => {
-        const [summaryRes, readinessRes, awaitingRes, pausesRes, consumptionRes] = await Promise.all([
+        const [summaryRes, readinessRes, awaitingRes, pausesRes, consumptionRes, policyRes] = await Promise.all([
             api.fetch("/whatsapp/spend/summary?days=30").catch(() => null),
             api.fetch("/whatsapp/connection/billing-readiness").catch(() => null),
             // Effects whose delivery nobody can confirm. Read separately and
@@ -152,12 +155,31 @@ export default function WhatsAppSetupPage() {
             // The calendar month Meta invoices, per number. Twelve so a tenant
             // comparing a bill from a few months ago still finds the month.
             api.fetch("/whatsapp/spend/consumption?months=12").catch(() => null),
+            api.fetch("/whatsapp/spend/policy").catch(() => null),
         ]);
         setSpend((summaryRes as any)?.data ?? null);
         setReadiness(((readinessRes as any)?.data?.numbers ?? []) as WhatsappReadinessNumber[]);
         setAwaiting(((awaitingRes as any)?.data ?? null) as WhatsappAwaitingResolution | null);
         setPauses(((pausesRes as any)?.data?.numbers ?? []) as WhatsappNumberPause[]);
         setConsumption(((consumptionRes as any)?.data ?? null) as WhatsappConsumption | null);
+        setSpendPolicy(((policyRes as any)?.data ?? null) as WhatsappSpendPolicy | null);
+    };
+
+    const handleSetEnforcement = async (enforcement: "observe" | "enforce") => {
+        setChangingEnforcement(true);
+        setMessage({ type: "", text: "" });
+        try {
+            const result = await api.fetch("/whatsapp/spend/policy/enforcement", {
+                method: "POST", body: JSON.stringify({ enforcement }),
+            });
+            if (!(result as any)?.success) throw new Error((result as any)?.error || tc("connectionError"));
+            setSpendPolicy(current => current ? { ...current, enforcement } : current);
+            setMessage({ type: "success", text: tSpend("protectionSaved") });
+        } catch (error: any) {
+            setMessage({ type: "error", text: error?.message || tSpend("protectionSaveFailed") });
+        } finally {
+            setChangingEnforcement(false);
+        }
     };
 
     /**
@@ -547,6 +569,9 @@ export default function WhatsAppSetupPage() {
                         pauses={pauses}
                         readiness={readiness}
                         awaiting={awaiting}
+                        policy={spendPolicy}
+                        changingEnforcement={changingEnforcement}
+                        onSetEnforcement={canResumeSending ? handleSetEnforcement : undefined}
                         // Resuming is a decision about the business's own
                         // billing, so a supervisor reads the pause and an admin
                         // lifts it. Absent means no button, rather than a button

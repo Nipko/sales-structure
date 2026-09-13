@@ -163,7 +163,7 @@ Es la medición de **lo que Parallly envió** por esa conexión, no una copia de
 
 ### Qué puede y qué no puede un tope de gasto
 
-Un tope de gasto acota **lo que Parallly envía** por esa conexión durante el período. Hoy el medidor **registra**: cuenta, avisa y por defecto **no frena ningún envío**. No hay una pantalla para fijar un tope; la contención se habilita cuenta por cuenta, después de mirar lo que el medidor registró.
+Un tope de gasto acota **lo que Parallly envía** por esa conexión durante el período. El medidor empieza en **Sólo observar**: cuenta, avisa y **no frena ningún envío**. Parallly crea valores iniciales de **2.000 entregas por número** y **60 por contacto** cada mes. Un administrador puede activar **Protección de gasto** en **Canales → WhatsApp** después de revisar la medición; desde ese momento se pausa lo proactivo cerca del tope y se detiene el alcance que lo agote.
 
 Y aun activo, hay tres cosas que un tope **no** puede prometer:
 

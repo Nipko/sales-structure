@@ -58,7 +58,20 @@ export interface WhatsappAwaitingResolution {
     effects: ReadonlyArray<{ effectKey: string }>;
 }
 
-export function WhatsappSpendPanel({ summary, consumption, pauses, readiness, awaiting, onResume }: {
+export interface WhatsappSpendPolicy {
+    enforcement: "observe" | "enforce";
+    defaults: {
+        numberDeliveriesPerCalendarMonth: number;
+        contactDeliveriesPerCalendarMonth: number;
+        warnPermille: number;
+        softPermille: number;
+    };
+}
+
+export function WhatsappSpendPanel({
+    summary, consumption, pauses, readiness, awaiting, policy,
+    onResume, onSetEnforcement, changingEnforcement = false,
+}: {
     summary: WhatsappSpendSummary | null;
     /** Per number per WABA-local calendar month: the period the invoice uses. */
     consumption?: WhatsappConsumption | null;
@@ -66,6 +79,7 @@ export function WhatsappSpendPanel({ summary, consumption, pauses, readiness, aw
     pauses?: readonly WhatsappNumberPause[];
     readiness?: readonly WhatsappReadinessNumber[];
     awaiting?: WhatsappAwaitingResolution | null;
+    policy?: WhatsappSpendPolicy | null;
     /**
      * Let an admin say they fixed the payment method.
      *
@@ -76,6 +90,8 @@ export function WhatsappSpendPanel({ summary, consumption, pauses, readiness, aw
      * the screen is broken.
      */
     onResume?: (channelAccountId: string) => Promise<void> | void;
+    onSetEnforcement?: (mode: "observe" | "enforce") => Promise<void> | void;
+    changingEnforcement?: boolean;
 }) {
     const t = useTranslations("whatsappSpend");
     const locale = useLocale();
@@ -130,6 +146,52 @@ export function WhatsappSpendPanel({ summary, consumption, pauses, readiness, aw
                 <p className="text-sm text-[var(--text-secondary)]">{t("paymentDeadlineBody")}</p>
                 <p className="text-xs text-[var(--text-secondary)]">{t("defaultProtection")}</p>
             </div>
+
+            {policy && (
+                <div className="rounded-lg border border-[var(--border)] p-4 space-y-3">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="space-y-1">
+                            <p className="text-sm text-[var(--text-primary)]">{t("protectionTitle")}</p>
+                            <p className="text-xs text-[var(--text-secondary)]">
+                                {policy.enforcement === "enforce"
+                                    ? t("protectionEnforceDescription")
+                                    : t("protectionObserveDescription")}
+                            </p>
+                        </div>
+                        <span className={policy.enforcement === "enforce"
+                            ? "rounded-full bg-emerald-500/15 px-2.5 py-1 text-xs text-emerald-700 dark:text-emerald-300"
+                            : "rounded-full bg-amber-500/15 px-2.5 py-1 text-xs text-amber-700 dark:text-amber-300"}>
+                            {t(policy.enforcement === "enforce" ? "protectionEnforce" : "protectionObserve")}
+                        </span>
+                    </div>
+                    <p className="text-xs text-[var(--text-secondary)]">
+                        {t("protectionValues", {
+                            number: policy.defaults.numberDeliveriesPerCalendarMonth,
+                            contact: policy.defaults.contactDeliveriesPerCalendarMonth,
+                        })}
+                    </p>
+                    {onSetEnforcement && (
+                        <button
+                            type="button"
+                            disabled={changingEnforcement}
+                            onClick={() => {
+                                const next = policy.enforcement === "enforce" ? "observe" : "enforce";
+                                if (next === "enforce" && !window.confirm(t("protectionEnableConfirm"))) return;
+                                void onSetEnforcement(next);
+                            }}
+                            className="rounded-md border border-[var(--border)] px-3 py-2 text-sm
+                                       text-[var(--text-primary)] hover:bg-[var(--bg-secondary)]
+                                       disabled:cursor-not-allowed disabled:opacity-50
+                                       focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+                        >
+                            {changingEnforcement
+                                ? t("protectionSaving")
+                                : t(policy.enforcement === "enforce"
+                                    ? "protectionSwitchObserve" : "protectionSwitchEnforce")}
+                        </button>
+                    )}
+                </div>
+            )}
 
             {/* ── Anything stopping a send comes first ─────────────────────── */}
             {stopped.length > 0 && (

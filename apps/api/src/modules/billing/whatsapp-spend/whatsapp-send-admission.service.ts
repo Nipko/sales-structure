@@ -831,4 +831,14 @@ export class WhatsappSendAdmissionService {
         this.modeCache.set(tenantId, { mode, until: Date.now() + this.MODE_TTL_MS });
         return mode;
     }
+
+    /** Current tenant mode for the control plane and its dashboard projection. */
+    async enforcementMode(tenantId: string): Promise<SpendEnforcement> {
+        return this.enforcementFor(tenantId);
+    }
+
+    /** A committed settings change must take effect before this process sends again. */
+    invalidateEnforcement(tenantId: string): void {
+        this.modeCache.delete(tenantId);
+    }
 }

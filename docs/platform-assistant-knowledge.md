@@ -161,9 +161,11 @@ La colección localizada debe cubrir, además de los artículos funcionales actu
 - No transcribir tarifas por mensaje: Meta las revisa por trimestre y cobra según el
   país del destinatario. La cuota gratis y su fecha de vigencia sí se escriben, y
   deben coincidir con `WHATSAPP_FREE_SERVICE_ALLOWANCE`.
-- No presentar un tope de gasto como un freno vigente ni como un límite que Meta
-  respete: la autorización corre en modo `observe` por defecto, no hay pantalla que
-  fije un tope, y un tope sólo acota lo que Parallly envía.
+- No presentar un tope de gasto como un freno vigente sin leer el estado de la
+  tarjeta: empieza en `observe` y un Tenant Admin puede activar **Protección de
+  gasto** en Canales → WhatsApp. Los valores iniciales son 2.000 entregas por
+  número y 60 por contacto al mes. Un tope sólo acota lo que Parallly envía y no
+  es un límite que Meta aplique.
 - No describir un medio de pago "cargado" como garantía de cobro aprobado.
 - Para datos regulados o decisiones sensibles, describir límites y handoff humano.
 

@@ -11,7 +11,7 @@ const TENANT_PUBLIC_PURGE_ORDER = [
     'billing_payments', 'billing_coupon_redemptions',
     // Recurring engine. Attempts and ledger hang off billing_subscriptions, so
     // they are deleted before it; payment sources only reference the tenant.
-    'billing_charge_attempts', 'billing_credit_ledger', 'billing_payment_sources',
+    'billing_provider_effects', 'billing_charge_attempts', 'billing_credit_ledger', 'billing_payment_sources',
     'billing_subscriptions',
     // Tenant-owned customer payment credentials. These are encrypted provider
     // secrets (Wompi private/events keys, MercadoPago access tokens): the purge

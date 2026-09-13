@@ -120,6 +120,67 @@ const FISCAL_INVOICE_COLUMNS: ReadonlyArray<[string, string]> = [
     ['created_at', 'TIMESTAMPTZ NOT NULL DEFAULT NOW()'],
 ];
 
+/**
+ * Global authentication challenges that Compliance erases with the tenant
+ * contact.  They used to be created only by their own focused specs.  A full
+ * run therefore depended on whether that spec happened to execute before any
+ * erasure spec, and a clean per-worker database consistently exposed the
+ * missing relation.  Keep the synthetic shape additive here; each canonical
+ * migration still installs its indexes and checks when the owning spec runs.
+ */
+const CUSTOMER_PORTAL_ACCESS_CHALLENGE_COLUMNS: ReadonlyArray<[string, string]> = [
+    ['tenant_id', 'UUID'],
+    ['contact_id', 'UUID'],
+    ['channel', 'VARCHAR(8)'],
+    ['recipient', 'TEXT'],
+    ['recipient_digest', 'VARCHAR(64)'],
+    ['code', 'VARCHAR(6)'],
+    ['language', "VARCHAR(16) DEFAULT 'es'"],
+    ['state', "VARCHAR(32) DEFAULT 'pending'"],
+    ['delivery_attempts', 'INTEGER DEFAULT 0'],
+    ['verify_attempts', 'INTEGER DEFAULT 0'],
+    ['lease_token', 'UUID'],
+    ['lease_expires_at', 'TIMESTAMPTZ'],
+    ['provider_reference', 'TEXT'],
+    ['error_code', 'TEXT'],
+    ['next_attempt_at', 'TIMESTAMPTZ DEFAULT NOW()'],
+    ['started_at', 'TIMESTAMPTZ'],
+    ['sent_at', 'TIMESTAMPTZ'],
+    ['consumed_at', 'TIMESTAMPTZ'],
+    ['superseded_at', 'TIMESTAMPTZ'],
+    ['expires_at', 'TIMESTAMPTZ'],
+    ['created_at', 'TIMESTAMPTZ DEFAULT NOW()'],
+    ['updated_at', 'TIMESTAMPTZ DEFAULT NOW()'],
+];
+
+const CHAT_IDENTITY_CHALLENGE_COLUMNS: ReadonlyArray<[string, string]> = [
+    ['tenant_id', 'UUID'],
+    ['contact_id', 'UUID'],
+    ['conversation_id', 'UUID'],
+    ['channel', 'VARCHAR(8)'],
+    ['recipient', 'TEXT'],
+    ['recipient_digest', 'VARCHAR(64)'],
+    ['hint', 'TEXT'],
+    ['code', 'VARCHAR(6)'],
+    ['state', "VARCHAR(32) DEFAULT 'pending'"],
+    ['delivery_attempts', 'INTEGER DEFAULT 0'],
+    ['verify_attempts', 'INTEGER DEFAULT 0'],
+    ['lease_token', 'UUID'],
+    ['lease_expires_at', 'TIMESTAMPTZ'],
+    ['provider_reference', 'TEXT'],
+    ['error_code', 'TEXT'],
+    ['next_attempt_at', 'TIMESTAMPTZ DEFAULT NOW()'],
+    ['started_at', 'TIMESTAMPTZ'],
+    ['sent_at', 'TIMESTAMPTZ'],
+    ['consumed_at', 'TIMESTAMPTZ'],
+    ['superseded_at', 'TIMESTAMPTZ'],
+    ['verified_at', 'TIMESTAMPTZ'],
+    ['verified_expires_at', 'TIMESTAMPTZ'],
+    ['expires_at', 'TIMESTAMPTZ'],
+    ['created_at', 'TIMESTAMPTZ DEFAULT NOW()'],
+    ['updated_at', 'TIMESTAMPTZ DEFAULT NOW()'],
+];
+
 async function ensure(exec: Exec, table: string, columns: ReadonlyArray<[string, string]>): Promise<void> {
     await exec(`CREATE TABLE IF NOT EXISTS public.${table}(id UUID PRIMARY KEY)`);
     for (const [name, type] of columns) {
@@ -140,4 +201,6 @@ export async function ensureSyntheticGlobalTables(exec: Exec): Promise<void> {
     await ensure(exec, 'channel_accounts', CHANNEL_ACCOUNT_COLUMNS);
     await ensure(exec, 'whatsapp_credentials', WHATSAPP_CREDENTIAL_COLUMNS);
     await ensure(exec, 'fiscal_invoices', FISCAL_INVOICE_COLUMNS);
+    await ensure(exec, 'customer_portal_access_challenges', CUSTOMER_PORTAL_ACCESS_CHALLENGE_COLUMNS);
+    await ensure(exec, 'chat_identity_challenges', CHAT_IDENTITY_CHALLENGE_COLUMNS);
 }

@@ -472,6 +472,11 @@ export class ComplianceService {
             const publicWebhookDeliveries = await erasePublicWebhookDeliveries(
                 query, tenantId, contactIds,
             );
+            // Portal OTP rows contain both the destination and the live code.
+            // They are global because the public portal authenticates before a
+            // tenant session exists, but participate in this same transaction.
+            const portalChallenges = await query<any[]>(`DELETE FROM public.customer_portal_access_challenges
+                WHERE tenant_id=$1::uuid AND contact_id=ANY($2::uuid[]) RETURNING id`, [tenantId, contactIds]);
             await eraseContactMissionEvidence(query,contactIds);
             const [petReceipts] = await query<any[]>('SELECT to_regclass($1)::text AS name', [`${schema}.pet_command_receipts`]);
             if (petReceipts?.name) await query('DELETE FROM pet_command_receipts WHERE contact_id=ANY($1::uuid[])', [contactIds]);
@@ -518,7 +523,7 @@ export class ComplianceService {
                 `DELETE FROM customer_memories WHERE contact_id = ANY($1::uuid[]) RETURNING contact_id`, [contactIds]);
             return facts.length + merged.length + widgetSessions + widgetReplies + dispatchItems
                 + regressionCases + simulationReplays + operationalNotices + publicWebhookDeliveries
-                + crmNotes;
+                + (portalChallenges?.length || 0) + crmNotes;
         });
     }
 

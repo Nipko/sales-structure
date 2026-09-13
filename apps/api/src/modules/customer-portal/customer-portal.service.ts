@@ -1,13 +1,9 @@
 import { Injectable, Logger, UnauthorizedException, NotFoundException, BadRequestException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { cpmsg } from './customer-portal-i18n';
-import { SmsSenderService } from '../sms-notifications/sms-sender.service';
-import { EmailService } from '../email/email.service';
-import { normalizePhoneE164 } from '../../common/utils/phone.util';
-import { RegionalProfileService } from '../tenants/regional-profile.service';
+import { CustomerPortalAccessService } from './customer-portal-access.service';
 
 @Injectable()
 export class CustomerPortalService {
@@ -17,10 +13,7 @@ export class CustomerPortalService {
         private readonly prisma: PrismaService,
         private readonly redis: RedisService,
         private readonly jwt: JwtService,
-        private readonly config: ConfigService,
-        private readonly smsSender: SmsSenderService,
-        private readonly emailService: EmailService,
-        private readonly regionalProfile: RegionalProfileService,
+        private readonly portalAccess: CustomerPortalAccessService,
     ) {}
 
     // ---- Helpers ----
@@ -62,20 +55,6 @@ export class CustomerPortalService {
         const lang = tenant?.language ?? 'es';
         await this.redis.set(`tenant:${tenantId}:lang`, lang, 600);
         return lang;
-    }
-
-    /**
-     * Generate a 6-digit numeric verification code.
-     */
-    private generateCode(): string {
-        return Math.floor(100000 + Math.random() * 900000).toString();
-    }
-
-    /**
-     * Build the Redis key for a portal verification code.
-     */
-    private codeKey(tenantId: string, identifier: string): string {
-        return `portal:code:${tenantId}:${identifier}`;
     }
 
     /**
@@ -126,72 +105,21 @@ export class CustomerPortalService {
             if (ipCount > 10) throw new BadRequestException(cpmsg(lang, 'auth.tooManyRequests'));
         }
 
-        // Verify the contact exists in the tenant schema
-        const whereClause = body.phone
-            ? `phone = $1`
-            : `email = $1`;
-
-        const contacts = await this.prisma.executeInTenantSchema<any[]>(
-            schema,
-            `SELECT id FROM contacts WHERE ${whereClause} AND is_active = true LIMIT 1`,
-            [identifier],
-        );
-
-        // Generate+store the code ONLY when the contact exists, but ALWAYS return
-        // the same generic response so callers can't tell whether a phone/email is
-        // a registered contact (enumeration). Delivery is handled by the caller.
-        if (contacts && contacts.length > 0) {
-            const code = this.generateCode();
-            const redisKey = this.codeKey(tenantId, identifier);
-            await this.redis.set(redisKey, JSON.stringify({
-                code,
-                contactId: contacts[0].id,
-                attempts: 0,
-            }), 600); // 10 minutes
+        // The authority performs the contact lookup and admission in the same
+        // transaction. Known and unknown destinations therefore cross the same
+        // database boundary and always receive the same public response.
+        const challengeId = await this.portalAccess.issue(tenantId, schema, channel, identifier, lang);
+        if (challengeId) {
             this.logger.log(`Portal access code generated for ${channel}:${identifier} in tenant ${tenantId}`);
-            // Fire-and-forget: do NOT await. The response must take the same time
-            // whether or not the contact exists, or the latency difference becomes
-            // an enumeration oracle (defeating the generic-response guarantee above).
-            // dispatchCode swallows its own errors, so it never rejects.
-            void this.dispatchCode(tenantId, channel, identifier, code, lang);
+            // Admission is already durable. An interrupted immediate attempt is
+            // recovered by CustomerPortalAccessService's database-backed sweep.
+            void this.portalAccess.deliver(challengeId).catch(error =>
+                this.logger.warn(`Portal code dispatch deferred for tenant ${tenantId}: ${error?.message}`));
         } else {
             this.logger.warn(`Portal access requested for unknown ${channel} in tenant ${tenantId} — generic response`);
         }
 
         return { identifier, channel };
-    }
-
-    /**
-     * Deliver the portal verification code to the customer. SMS goes through the
-     * tenant's own Twilio number (SmsSenderService); email through EmailService.
-     * Best-effort and swallowed — the caller always returns a generic response so
-     * a delivery failure can't be used to probe which contacts exist.
-     *
-     * NOTE: WhatsApp-first OTP is intentionally not wired here. Proactively sending
-     * a code over WhatsApp requires a Meta-approved Authentication message template
-     * per tenant; until that exists, phone codes go over SMS. The hook lives here.
-     */
-    private async dispatchCode(tenantId: string, channel: 'sms' | 'email', identifier: string, code: string, lang: string): Promise<void> {
-        const message = cpmsg(lang, 'auth.codeMessage').replace('{code}', code);
-        try {
-            if (channel === 'sms') {
-                // Sin país del tenant no se reescribe el número: se manda tal
-                // como lo escribió el cliente. Un `+57` inventado manda el
-                // código a un teléfono que no es suyo.
-                const region = await this.regionalProfile.phoneRegionFor(tenantId);
-                const to = normalizePhoneE164(identifier, region) || identifier;
-                const sent = await this.smsSender.sendToNumber(tenantId, to, message);
-                if (!sent) this.logger.warn(`Portal SMS code not delivered for tenant ${tenantId} (SMS channel connected?)`);
-            } else {
-                await this.emailService.send({
-                    to: identifier,
-                    subject: cpmsg(lang, 'auth.codeSubject'),
-                    html: `<p style="font-size:16px;font-family:sans-serif">${message}</p>`,
-                });
-            }
-        } catch (e: any) {
-            this.logger.warn(`Portal code dispatch failed for tenant ${tenantId}: ${e.message}`);
-        }
     }
 
     // ---- Verify Code & Issue JWT ----
@@ -211,48 +139,32 @@ export class CustomerPortalService {
             throw new BadRequestException('A valid 6-digit code is required');
         }
 
-        const [redisKey, lang] = [
-            this.codeKey(tenantId, identifier),
-            await this.getTenantLanguage(tenantId),
-        ];
-        const stored = await this.redis.get(redisKey);
-
-        if (!stored) {
+        const lang = await this.getTenantLanguage(tenantId);
+        const channel: 'sms' | 'email' = body.phone ? 'sms' : 'email';
+        let contactId: string;
+        try {
+            contactId = await this.portalAccess.verify(tenantId, channel, identifier, body.code);
+        } catch (error: any) {
+            const reason = String(error?.message || 'portal_code_expired');
+            if (reason.includes('too_many')) throw new UnauthorizedException(cpmsg(lang, 'auth.tooManyAttempts'));
+            if (reason.includes('invalid')) throw new UnauthorizedException(cpmsg(lang, 'auth.invalidCode'));
             throw new UnauthorizedException(cpmsg(lang, 'auth.codeExpired'));
         }
-
-        const data = JSON.parse(stored) as { code: string; contactId: string; attempts: number };
-
-        // Rate-limit brute force: max 5 attempts
-        if (data.attempts >= 5) {
-            await this.redis.del(redisKey);
-            throw new UnauthorizedException(cpmsg(lang, 'auth.tooManyAttempts'));
-        }
-
-        if (data.code !== body.code) {
-            // Increment attempt counter
-            data.attempts += 1;
-            await this.redis.set(redisKey, JSON.stringify(data), 600);
-            throw new UnauthorizedException(cpmsg(lang, 'auth.invalidCode'));
-        }
-
-        // Code is valid — delete it so it can't be reused
-        await this.redis.del(redisKey);
 
         // Issue customer JWT
         const expiresIn = '1h';
         const token = this.jwt.sign(
             {
-                sub: data.contactId,
+                sub: contactId,
                 tenantId,
                 type: 'customer',
             },
             { expiresIn },
         );
 
-        this.logger.log(`Portal token issued for contact ${data.contactId} in tenant ${tenantId}`);
+        this.logger.log(`Portal token issued for contact ${contactId} in tenant ${tenantId}`);
 
-        return { token, expiresIn, contactId: data.contactId };
+        return { token, expiresIn, contactId };
     }
 
     // ---- Profile ----

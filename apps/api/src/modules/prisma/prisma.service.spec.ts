@@ -180,6 +180,21 @@ describe('PrismaService tenant schema lifecycle', () => {
             expect(registryDeleteOrder).toBeLessThan(h.tenantDelete.mock.invocationCallOrder[0]);
         });
 
+        it('classifies and deletes portal access challenges before the tenant row', async () => {
+            const h = makePublicPurgeService(['customer_portal_access_challenges', 'users']);
+            const deleted = await h.service.purgeTenantPublicDataAtomic(
+                tenantIdA, { name: 'Acme', schemaName: 'tenant_acme' },
+            );
+            expect(deleted.customer_portal_access_challenges).toBe(1);
+            expect(h.executeRaw).toHaveBeenCalledWith(
+                'DELETE FROM public."customer_portal_access_challenges" WHERE tenant_id::text = $1::uuid::text',
+                tenantIdA,
+            );
+            const portalDelete = h.executeRaw.mock.invocationCallOrder.find((_, index) =>
+                String(h.executeRaw.mock.calls[index][0]).includes('customer_portal_access_challenges'))!;
+            expect(portalDelete).toBeLessThan(h.tenantDelete.mock.invocationCallOrder[0]);
+        });
+
         it('takes the tenant row lock before the retention scan and fiscal stamp', async () => {
             const h = makePublicPurgeService(['fiscal_invoices', 'users']);
 

@@ -4,7 +4,8 @@ import { resolveMirroredDealStatus } from '../pipeline/pipeline-outcome.util';
 import { ensurePrimaryPipeline } from '../../common/utils/primary-pipeline.util';
 
 const TENANT_PUBLIC_PURGE_ORDER = [
-    'platform_notification_outbox', 'push_subscriptions', 'feature_request_subscribers', 'feature_request_comments',
+    'customer_portal_access_challenges', 'platform_notification_outbox', 'push_subscriptions',
+    'feature_request_subscribers', 'feature_request_comments',
     'feature_request_votes', 'feature_requests', 'webhook_delivery_outbox', 'webhook_subscriptions',
     'email_channel_configs', 'widget_sessions', 'widget_configs', 'billing_events',
     'billing_payments', 'billing_coupon_redemptions',

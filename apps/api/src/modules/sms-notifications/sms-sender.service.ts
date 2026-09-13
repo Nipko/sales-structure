@@ -36,11 +36,19 @@ export class SmsSenderService {
 
     /** Durable callers need the Twilio SID or the thrown provider outcome. */
     async sendToNumberStrict(tenantId:string,to:string,body:string):Promise<string|null> {
-        if(!to||!body)return null;
-        if(!(await this.killSwitch.isEnabled()))return null;
+        const send=await this.prepareBoundedSend(tenantId,to,body);
+        return send();
+    }
+
+    /** Resolve every local precondition before a durable caller marks a POST started. */
+    async prepareBoundedSend(tenantId:string,to:string,body:string):Promise<()=>Promise<string>> {
+        if(!to||!body)throw new Error('sms_payload_invalid');
+        if(!(await this.killSwitch.isEnabled()))throw new Error('sms_kill_switch_disabled');
         const creds=await this.channelToken.getChannelToken(tenantId,'sms');
-        const sid=await this.smsAdapter.sendTextMessage(to,body,creds.accountId,creds.accessToken);
-        if(!sid)throw new Error('twilio_missing_message_sid');
-        return sid;
+        return async()=>{
+            const sid=await this.smsAdapter.sendTextMessage(to,body,creds.accountId,creds.accessToken);
+            if(!sid)throw new Error('twilio_missing_message_sid');
+            return sid;
+        };
     }
 }

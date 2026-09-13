@@ -238,4 +238,15 @@ describe('Contact erasure reaches memory derivatives', () => {
         expect(challenge).toContain("resolution = COALESCE(resolution, 'superseded')");
         expect(challenge).toContain('confirmation_message_id = NULL');
     });
+
+    it('deletes every portal access code for the unified contact family', async () => {
+        const { service, query } = build();
+        await service.eraseContactData('tenant_memory', profileId, contactId, 'admin');
+        const deletion = query.mock.calls.find(([sql]) =>
+            sql.includes('DELETE FROM public.customer_portal_access_challenges'))!;
+        expect(deletion).toBeDefined();
+        expect(deletion[0]).toContain('tenant_id=$1::uuid');
+        expect(deletion[0]).toContain('contact_id=ANY($2::uuid[])');
+        expect(deletion[1]).toEqual([profileId, [contactId, siblingId]]);
+    });
 });

@@ -1079,6 +1079,36 @@ model PlatformNotificationOutbox {
   @@schema("public")
 }
 
+model CustomerPortalAccessChallenge {
+  id                String    @id @default(uuid()) @db.Uuid
+  tenantId          String    @map("tenant_id") @db.Uuid
+  contactId         String    @map("contact_id") @db.Uuid
+  channel           String    @db.VarChar(8)
+  recipient         String
+  recipientDigest   String    @map("recipient_digest") @db.VarChar(64)
+  code              String    @db.VarChar(6)
+  language          String    @default("es") @db.VarChar(16)
+  state             String    @default("pending") @db.VarChar(32)
+  deliveryAttempts  Int       @default(0) @map("delivery_attempts")
+  verifyAttempts    Int       @default(0) @map("verify_attempts")
+  leaseToken        String?   @map("lease_token") @db.Uuid
+  leaseExpiresAt    DateTime? @map("lease_expires_at") @db.Timestamptz(6)
+  providerReference String?   @map("provider_reference")
+  errorCode         String?   @map("error_code")
+  nextAttemptAt     DateTime  @default(now()) @map("next_attempt_at") @db.Timestamptz(6)
+  startedAt         DateTime? @map("started_at") @db.Timestamptz(6)
+  sentAt            DateTime? @map("sent_at") @db.Timestamptz(6)
+  consumedAt        DateTime? @map("consumed_at") @db.Timestamptz(6)
+  supersededAt      DateTime? @map("superseded_at") @db.Timestamptz(6)
+  expiresAt         DateTime  @map("expires_at") @db.Timestamptz(6)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([tenantId, contactId, createdAt(sort: Desc)], map: "customer_portal_access_contact_idx")
+  @@map("customer_portal_access_challenges")
+  @@schema("public")
+}
+
 model FeatureRequestVote {
   id        String   @id @default(uuid())
   requestId String   @map("request_id")

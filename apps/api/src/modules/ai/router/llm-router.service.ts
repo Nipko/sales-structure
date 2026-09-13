@@ -673,30 +673,39 @@ export class LLMRouterService {
         const costCentiUsd = Math.round(costUsd * 10000);
 
         const ttl = 90 * 24 * 3600;
-        const incrs: Promise<any>[] = [
-            this.redis.incrBy(`${baseKey}:calls`, 1),
-            this.redis.incrBy(`${baseKey}:tokens_in`, tokensIn),
-            this.redis.incrBy(`${baseKey}:tokens_out`, tokensOut),
-            this.redis.incrBy(`${baseKey}:cost_centi_usd`, costCentiUsd),
-            // Monthly per-tenant LLM spend accumulator (centi-USD = USD*10000),
-            // consumed by the cost circuit breaker (TenantThrottleService.getLlmSpendUsdCents).
-            this.redis.incrBy(`llm:cost:${tenantId}:${monthKey}`, costCentiUsd),
-            this.redis.incrBy(`${baseKey}:latency_sum_ms`, latencyMs),
-            this.redis.sadd('llm:stats:dates', date),
-            this.redis.sadd(`llm:stats:tenants:${date}`, tenantId),
-            this.redis.sadd(`llm:stats:providers:${date}`, modelConfig.provider),
-        ];
-        if (errored) incrs.push(this.redis.incrBy(`${baseKey}:errors`, 1));
-        await Promise.allSettled(incrs);
-        // TTL on the day-scoped keys
-        await Promise.allSettled([
-            this.redis.expire(`${baseKey}:calls`, ttl),
-            this.redis.expire(`${baseKey}:tokens_in`, ttl),
-            this.redis.expire(`${baseKey}:tokens_out`, ttl),
-            this.redis.expire(`${baseKey}:cost_centi_usd`, ttl),
-            this.redis.expire(`${baseKey}:latency_sum_ms`, ttl),
-            this.redis.expire(`llm:cost:${tenantId}:${monthKey}`, 40 * 24 * 3600),
-        ]);
+        const monthlyCostKey = `llm:cost:${tenantId}:${monthKey}`;
+        const tenantsForDateKey = `llm:stats:tenants:${date}`;
+        const providersForDateKey = `llm:stats:providers:${date}`;
+
+        // One provider call is one accounting fact. Previously every counter
+        // was an independent promise hidden behind allSettled: Redis could
+        // accept the provider/day cost and lose only the monthly accumulator,
+        // leaving the margin guard and the analytics with different totals.
+        // MULTI makes all counters and their retention one atomic write. Redis
+        // command errors are returned inside exec(), so inspect every result.
+        const transaction = this.redis.getClient().multi()
+            .incrby(`${baseKey}:calls`, 1)
+            .incrby(`${baseKey}:tokens_in`, tokensIn)
+            .incrby(`${baseKey}:tokens_out`, tokensOut)
+            .incrby(`${baseKey}:cost_centi_usd`, costCentiUsd)
+            .incrby(monthlyCostKey, costCentiUsd)
+            .incrby(`${baseKey}:latency_sum_ms`, latencyMs)
+            .sadd('llm:stats:dates', date)
+            .sadd(tenantsForDateKey, tenantId)
+            .sadd(providersForDateKey, modelConfig.provider);
+        if (errored) transaction.incrby(`${baseKey}:errors`, 1);
+
+        const dayKeys = ['calls', 'tokens_in', 'tokens_out', 'cost_centi_usd', 'latency_sum_ms'];
+        if (errored) dayKeys.push('errors');
+        for (const suffix of dayKeys) transaction.expire(`${baseKey}:${suffix}`, ttl);
+        transaction.expire(tenantsForDateKey, ttl);
+        transaction.expire(providersForDateKey, ttl);
+        transaction.expire(monthlyCostKey, 40 * 24 * 3600);
+
+        const results = await transaction.exec();
+        if (!results) throw new Error('Redis discarded the LLM accounting transaction');
+        const failed = results.find(([error]) => error);
+        if (failed?.[0]) throw failed[0];
     }
 
     /**

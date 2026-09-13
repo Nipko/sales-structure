@@ -7,7 +7,7 @@ import { EducationEnrollmentCommands } from '../education/education-enrollment-c
 import { GymsService } from '../gyms/gyms.service';
 import { AppointmentPaymentListener } from '../appointments/appointment-payment.listener';
 import { OperationalNoticeService } from './operational-notice.service';
-import { ensureOperationalNoticeOutbox, enqueueOperationalNotice } from './operational-notice-outbox';
+import { ensureOperationalNoticeOutbox, enqueueOperationalNotice, enqueueOperationalPushNotices } from './operational-notice-outbox';
 import { PAYMENT_REFERENCE_TARGETS } from '../tenant-payments/tenant-payment-reference';
 import { WidgetService } from '../widget/widget.service';
 import { WidgetMessageStore } from '../widget/widget-message-store.service';
@@ -20,7 +20,7 @@ import { ScheduledReportsService } from '../analytics/scheduled-reports.service'
 const connection=process.env.PARALLLY_ISOLATION_TEST_URL;
 (connection?describe:describe.skip)('operational notices and canonical waitlists on disposable PostgreSQL',()=>{
     const tenantId=randomUUID(),schema=`tenant_notice_${randomUUID().replace(/-/g,'')}`;
-    const contacts=[randomUUID(),randomUUID(),randomUUID()],members=[randomUUID(),randomUUID(),randomUUID()];
+    const contacts=[randomUUID(),randomUUID(),randomUUID()],members=[randomUUID(),randomUUID(),randomUUID()],pushUser=randomUUID();
     const courseId=randomUUID(),cohortId=randomUUID(),classId=randomUUID(),serviceId=randomUUID();
     const date=new Date(Date.now()+7*86400000).toISOString().slice(0,10);
     let pool:any,prisma:any,education:EducationEnrollmentCommands,gym:GymsService,notices:OperationalNoticeService,queue:any,send:any,transport:any;
@@ -35,6 +35,8 @@ const connection=process.env.PARALLLY_ISOLATION_TEST_URL;
         pool=new Pool({connectionString:connection});
         await raw(`CREATE SCHEMA "${schema}"`);
         await raw('INSERT INTO public.tenants(id,schema_name,is_active) VALUES($1::uuid,$2,true)',[tenantId,schema]);
+        await raw(`INSERT INTO public.users(id,tenant_id,email,is_active,role)
+            VALUES($1::uuid,$2::uuid,'push@example.invalid',true,'tenant_agent')`,[pushUser,tenantId]);
         prisma={
             transactionInTenantSchema:async(s:string,work:any)=>{
                 if(s!==schema)throw new Error('foreign_schema');
@@ -340,6 +342,23 @@ const connection=process.env.PARALLLY_ISOLATION_TEST_URL;
         expect((await noticeRows())[0]).toMatchObject({state:'suppressed',contact_id:null,conversation_id:null,provider_reference:null});
         await notices.recoverTenant(tenantId);expect(queue.add).not.toHaveBeenCalled();
         expect(await deliver(row.id)).toBe('notice:suppressed');expect(send).not.toHaveBeenCalled();
+    });
+    it('delivers one durable domain push and redacts its snapshot on contact erasure',async()=>{
+        const [conversation]=await q(`SELECT id FROM conversations WHERE contact_id=$1::uuid`,[contacts[0]]);
+        await q(`UPDATE conversations SET status='with_human',assigned_to=$2::uuid WHERE id=$1::uuid`,[conversation.id,pushUser]);
+        const ids=await prisma.transactionInTenantSchema(schema,(query:any)=>enqueueOperationalPushNotices(query,schema,{
+            entityId:conversation.id,eventKey:`push:message.inbound:${conversation.id}:1`,contactId:contacts[0],
+            conversationId:conversation.id,recipientUserId:pushUser,payload:{eventType:'message.inbound',
+                title:'New message',body:'Ada: private words',url:'/admin/inbox',tag:`msg-${conversation.id}`},
+        }));
+        expect(ids).toHaveLength(1);
+        const push={sendToUser:jest.fn().mockResolvedValue(2),sendToTenantRole:jest.fn()};
+        const delivery=new OperationalNoticeService(prisma,{get:async()=>null} as any,{} as any,{} as any,{} as any,push as any,{} as any,queue);
+        expect(await delivery.deliver({tenantId,noticeId:ids[0]},transport)).toBe('notice:sent');
+        expect(push.sendToUser).toHaveBeenCalledTimes(1);
+        expect((await noticeRows())[0]).toMatchObject({provider_reference:'push:2',attempts:1});
+        await prisma.transactionInTenantSchema(schema,(query:any)=>eraseOperationalContactNotices(query,schema,[contacts[0]]));
+        expect((await noticeRows())[0]).toMatchObject({payload:{},contact_id:null,provider_reference:null});
     });
     it.each(['web_widget','telegram'])('recovers an expired %s lease according to whether an external effect was possible',async route=>{
         const first=await enroll(0);await enroll(1,true);await education.cancel(schema,first.id);const [row]=await noticeRows();

@@ -14,6 +14,7 @@ const TEXT: Record<string, Record<OperationalNoticeKind, string>> = {
         'property.booking_confirmed': 'Tu reserva de alojamiento quedó confirmada.',
         'order.confirmed': 'Tu pedido quedó confirmado.',
         'handoff.sla_escalated': 'Conversación fuera del SLA de atención.',
+        'push.domain_event': 'Nueva actividad operativa.',
     },
     en: {
         'appointment.payment_confirmed': 'We received your payment and your appointment is confirmed.',
@@ -29,6 +30,7 @@ const TEXT: Record<string, Record<OperationalNoticeKind, string>> = {
         'property.booking_confirmed': 'Your accommodation booking is confirmed.',
         'order.confirmed': 'Your order is confirmed.',
         'handoff.sla_escalated': 'Conversation outside the response SLA.',
+        'push.domain_event': 'New operational activity.',
     },
     pt: {
         'appointment.payment_confirmed': 'Recebemos seu pagamento e seu agendamento está confirmado.',
@@ -44,6 +46,7 @@ const TEXT: Record<string, Record<OperationalNoticeKind, string>> = {
         'property.booking_confirmed': 'Sua reserva de hospedagem está confirmada.',
         'order.confirmed': 'Seu pedido está confirmado.',
         'handoff.sla_escalated': 'Conversa fora do SLA de atendimento.',
+        'push.domain_event': 'Nova atividade operacional.',
     },
     fr: {
         'appointment.payment_confirmed': 'Nous avons reçu votre paiement et votre rendez-vous est confirmé.',
@@ -59,6 +62,7 @@ const TEXT: Record<string, Record<OperationalNoticeKind, string>> = {
         'property.booking_confirmed': 'Votre réservation d’hébergement est confirmée.',
         'order.confirmed': 'Votre commande est confirmée.',
         'handoff.sla_escalated': 'Conversation hors du délai de prise en charge.',
+        'push.domain_event': 'Nouvelle activité opérationnelle.',
     },
 };
 export function operationalNoticeText(kind: OperationalNoticeKind, lang: string | undefined, facts: {

@@ -15,7 +15,7 @@ import { resolveReadyTenantContext } from '../../common/utils/tenant-lifecycle.u
 import { resolveTenantSubscriptionAccess } from '../../common/utils/subscription-entitlement.util';
 import { NoticeSuppressed, type NoticeQuery, type OperationalNoticeReference, type OperationalNoticeTransport } from './operational-notice.contracts';
 import { deliveryOutcome } from '../channels/delivery-outcome';
-import { ensureOperationalNoticeOutbox } from './operational-notice-outbox';
+import { ensureOperationalNoticeOutbox, operationalContactWasErased } from './operational-notice-outbox';
 import { operationalNoticeText } from './operational-notice-text';
 import { EmailTemplatesService } from '../email-templates/email-templates.service';
 import { emailConfirmationsForOperation } from '../../common/utils/served-confirmation-policy.util';
@@ -151,9 +151,13 @@ export class OperationalNoticeService {
                             text:hydrated.text,html:hydrated.html});
                     }
                 } else if (hydrated.route === 'operator') {
-                    send=()=>this.push.sendToTenantRole(reference.tenantId,hydrated.role || 'tenant_admin', {
+                    send=async()=>`push:${await this.push.sendToTenantRole(reference.tenantId,hydrated.role || 'tenant_admin', {
                         title:hydrated.text.split('\n')[0],body:hydrated.text,tag:`operational-${row.id}`,
-                    });
+                    })}`;
+                } else if (hydrated.route === 'operator_user') {
+                    send=async()=>`push:${await this.push.sendToUser(hydrated.userId, {
+                        title: hydrated.title, body: hydrated.text, url: hydrated.url, tag: hydrated.tag,
+                    })}`;
                 } else if (hydrated.route === 'slack') {
                     const slack=this.slack;
                     if (!slack) throw new Error('notice_slack_unavailable');
@@ -220,6 +224,62 @@ export class OperationalNoticeService {
                     FOR SHARE`,[notice.entity_id,recipient,String(payload.frequency || '')]);
             if (!active.length) throw new NoticeSuppressed('notice_domain_state_changed');
             return {route:'email',email:recipient,subject,html,text:subject,conversationId:null};
+        }
+        if (notice.kind === 'push.domain_event') {
+            const payload = notice.payload && typeof notice.payload === 'object' ? notice.payload : {};
+            const title = String(payload.title || '').trim().slice(0, 160);
+            const body = String(payload.body || '').trim().slice(0, 500);
+            const url = String(payload.url || '').trim();
+            const tag = String(payload.tag || '').trim().slice(0, 180);
+            const eventType = String(payload.eventType || '');
+            if (!notice.recipient_user_id || !title || !body || !url.startsWith('/') || !tag
+                || !['message.inbound','appointment.created','food_order.created','food_order.cancelled',
+                    'photo_session.requested','handoff.escalated_supervisor'].includes(eventType)) {
+                throw new NoticeSuppressed('notice_payload_invalid');
+            }
+            const [operator] = await query<any[]>(`SELECT id FROM public.users
+                WHERE id=$1::uuid AND tenant_id=$2::uuid AND is_active=true FOR SHARE`,
+            [notice.recipient_user_id, tenantId]);
+            if (!operator) throw new NoticeSuppressed('notice_operator_unavailable');
+            let facts: any;
+            if (eventType === 'message.inbound') {
+                facts = (await query<any[]>(`SELECT contact_id,assigned_to,status FROM conversations
+                    WHERE id=$1::uuid FOR SHARE`, [notice.entity_id]))[0];
+                if (!facts || facts.assigned_to !== notice.recipient_user_id
+                    || !['waiting_human','with_human'].includes(facts.status)) {
+                    throw new NoticeSuppressed('notice_domain_state_changed');
+                }
+            } else if (eventType === 'appointment.created') {
+                facts = (await query<any[]>(`SELECT contact_id,status FROM appointments
+                    WHERE id=$1::uuid FOR SHARE`, [notice.entity_id]))[0];
+                if (!facts || facts.status === 'cancelled') throw new NoticeSuppressed('notice_domain_state_changed');
+            } else if (eventType === 'food_order.created' || eventType === 'food_order.cancelled') {
+                facts = (await query<any[]>(`SELECT contact_id,status FROM food_orders
+                    WHERE id=$1::uuid FOR SHARE`, [notice.entity_id]))[0];
+                const cancelled = String(facts?.status || '').toLowerCase() === 'cancelled';
+                if (!facts || (eventType === 'food_order.created' ? cancelled : !cancelled)) {
+                    throw new NoticeSuppressed('notice_domain_state_changed');
+                }
+            } else if (eventType === 'photo_session.requested') {
+                facts = (await query<any[]>(`SELECT contact_id,status FROM photo_sessions
+                    WHERE id=$1::uuid FOR SHARE`, [notice.entity_id]))[0];
+                if (!facts || facts.status !== 'requested') throw new NoticeSuppressed('notice_domain_state_changed');
+            } else {
+                facts = (await query<any[]>(`SELECT contact_id,status,metadata FROM conversations
+                    WHERE id=$1::uuid FOR SHARE`, [notice.entity_id]))[0];
+                if (!facts || !['waiting_human','with_human'].includes(facts.status)
+                    || String(facts.metadata?.handoff?.escalated) !== 'true') {
+                    throw new NoticeSuppressed('notice_domain_state_changed');
+                }
+            }
+            if ((facts.contact_id || null) !== (notice.contact_id || null)) {
+                throw new NoticeSuppressed('notice_contact_changed');
+            }
+            if (await operationalContactWasErased(query, notice.contact_id)) {
+                throw new NoticeSuppressed('notice_contact_erased');
+            }
+            return { route: 'operator_user', userId: notice.recipient_user_id,
+                conversationId: notice.conversation_id || null, title, text: body, url, tag };
         }
         let facts: any;
         if (notice.kind === 'appointment.operator_slack') {

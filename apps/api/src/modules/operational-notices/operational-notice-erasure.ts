@@ -8,7 +8,7 @@ export async function eraseOperationalContactNotices(query:NoticeQuery,schemaNam
     const [table]=await query<any[]>('SELECT to_regclass($1)::text AS name',[`${schemaName}.operational_notice_outbox`]);
     if(!table?.name)return 0;
     const rows=await query<any[]>(`UPDATE "${schemaName}".operational_notice_outbox
-        SET contact_id=NULL,conversation_id=NULL,provider_reference=NULL,
+        SET contact_id=NULL,conversation_id=NULL,provider_reference=NULL,payload='{}'::jsonb,
             state=CASE WHEN state IN ('sent','stored') THEN state ELSE 'suppressed' END,
             lease_token=NULL,lease_expires_at=NULL,error_code='notice_contact_erased',updated_at=NOW()
         WHERE contact_id=ANY($1::uuid[]) RETURNING id`,[contactIds]);

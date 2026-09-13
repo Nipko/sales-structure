@@ -185,11 +185,11 @@ export class AgentAvailabilityService {
                             AND m.direction='outbound' AND m.metadata->>'source'='agent'
                             AND m.created_at>(conversations.metadata->'handoff'->>'startedAt')::timestamptz)
                         RETURNING id,contact_id`,[conv.id]);
-                    if(!updated[0])return false;
+                    if(!updated[0])return null;
                     await enqueueOperationalNoticesForTenantRoles(query,schemaName,{kind:'handoff.sla_escalated',
                         entityId:conv.id,contactId:updated[0].contact_id,conversationId:conv.id,
                         roles:['tenant_admin','tenant_supervisor']});
-                    return true;
+                    return updated[0].contact_id as string;
                 });
                 if(!committed)continue;
 
@@ -197,6 +197,7 @@ export class AgentAvailabilityService {
                 this.eventEmitter.emit('handoff.escalated_supervisor', {
                     tenantId,
                     conversationId: conv.id,
+                    contactId: committed,
                     contactName,
                     reason,
                     waitMinutes,

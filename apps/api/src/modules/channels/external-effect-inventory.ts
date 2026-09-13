@@ -679,15 +679,15 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
 
     producer({
         id:'push.operational_events',effect:'Push for assigned inbound messages, SLA, appointments, food orders and photo requests',
-        lane:'inline',status:'live',derivation:'declared',source:'modules/push/push-listener.service.ts',symbol:'PushListenerService',
-        egress:'event listeners call PushService directly; an OS tag only collapses display',
+        lane:'operational_notice',status:'live',derivation:'declared',source:'modules/push/push-listener.service.ts',symbol:'enqueuePush',
+        egress:'one push.domain_event row per active operator followed by PushService.sendToUser',
         reach:{class:'operator_notification',audience:'tenant_operator',personalData:true,channels:['push']},
-        properties:{authority:none('these domain events have no external-effect admission row'),
-            idempotency:partial('OS tags collapse display but do not prevent remote sends'),
-            receipt:none('provider tickets are not retained per domain event'),
-            uncertainOutcome:none('best-effort listeners swallow per-subscription failures'),
-            erasure:none('the payload may name a contact and has no erasure-addressable effect row'),
-            recovery:none('there is no durable intent to recover')},
+        properties:{authority:durable('one row per domain event and current active operator is committed before queue publication'),
+            idempotency:durable('the domain event key plus user id is unique; an inbound message uses its stored message id'),
+            receipt:durable('the number of accepted native/web subscriptions is stored on the exact operator row'),
+            uncertainOutcome:durable('a push request without an answer becomes reconciliation_required and is never replayed'),
+            erasure:durable('each personal event carries its contact id; erasure suppresses pending delivery and clears the payload'),
+            recovery:durable('the shared operational-notice cron republishes pending and preflight-failed rows')},
     }),
 
     producer({

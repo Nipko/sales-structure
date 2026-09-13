@@ -659,15 +659,11 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
     }),
 
     producer({
-        id:'appointments.slack',effect:'A Slack post when a new appointment is created',lane:'inline',status:'live',
-        derivation:'declared',source:'modules/slack/slack-listener.service.ts',symbol:'onAppointment',
-        egress:'SlackService.notify uses best-effort axios POST to the pinned hooks.slack.com target',
+        id:'appointments.slack',effect:'A Slack post when a new appointment is created',lane:'operational_notice',status:'live',
+        derivation:'declared',source:'modules/appointments/appointments.service.ts',symbol:'enqueueOperationalNotice',
+        egress:'an appointment.operator_slack row commits with the appointment; the recovered notice calls notifyStrict',
         reach:{class:'operator_notification',audience:'tenant_operator',personalData:true,channels:['slack']},
-        properties:{authority:none('the appointment event has no external-effect row'),
-            idempotency:none('an event replay posts the same appointment again'),receipt:none('Slack returns no message id'),
-            uncertainOutcome:none('best-effort notify catches the provider error'),
-            erasure:none('the post names the customer and no retained effect row is reachable by erasure'),
-            recovery:none('there is no attempt row to recover')},
+        properties:OPERATIONAL_NOTICE_PROPERTIES,
     }),
 
     producer({

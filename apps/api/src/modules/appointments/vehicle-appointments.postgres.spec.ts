@@ -191,7 +191,7 @@ const url = process.env.PARALLLY_ISOLATION_TEST_URL;
         await listener.onPaid({ tenantId, kind: 'appointment', entityId: item.id });
         await listener.onPaid({ tenantId, kind: 'appointment', entityId: item.id });
         expect((await appointments.getById(schema, item.id)).status).toBe('confirmed');
-        expect(await q('SELECT kind,state FROM operational_notice_outbox')).toEqual([{ kind: 'appointment.payment_confirmed', state: 'pending' }]);
+        expect(await q("SELECT kind,state FROM operational_notice_outbox WHERE kind='appointment.payment_confirmed'")).toEqual([{ kind: 'appointment.payment_confirmed', state: 'pending' }]);
     });
     it.each(['vehicle_taken', 'vehicle_changed', 'staff_inactive'])('routes a paid test drive to review when %s', async reason => {
         await q("UPDATE services SET payment_policy='full' WHERE id=$1::uuid", [serviceId]);
@@ -205,6 +205,6 @@ const url = process.env.PARALLLY_ISOLATION_TEST_URL;
         const listener = new AppointmentPaymentListener(prisma, events as any, { recoverTenant: async () => undefined } as any);
         await listener.onPaid({ tenantId, kind: 'appointment', entityId: item.id });
         expect((await appointments.getById(schema, item.id)).status).toBe('pending_payment');
-        expect(await q('SELECT kind FROM operational_notice_outbox')).toEqual([{ kind: 'appointment.payment_review' }]);
+        expect(await q("SELECT kind FROM operational_notice_outbox WHERE kind='appointment.payment_review'")).toEqual([{ kind: 'appointment.payment_review' }]);
     });
 });

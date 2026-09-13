@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { SlackService } from './slack.service';
-import { PrismaService } from '../prisma/prisma.service';
 
 /**
  * Posts Slack notifications on key business events (T2.16).
@@ -9,10 +8,7 @@ import { PrismaService } from '../prisma/prisma.service';
  */
 @Injectable()
 export class SlackListenerService {
-    constructor(
-        private readonly slack: SlackService,
-        private readonly prisma: PrismaService,
-    ) {}
+    constructor(private readonly slack: SlackService) {}
 
     // One destination, one event. A transfer used to announce itself once to
     // all six consumers, so a single failure among them re-announced it to
@@ -23,35 +19,5 @@ export class SlackListenerService {
         const who = event.contactName || 'Un cliente';
         const reason = event.reason ? ` — ${event.reason}` : '';
         return this.slack.notifyStrict(event.tenantId, 'handoff', `🙋 *Conversación escalada*: ${who}${reason}`);
-    }
-
-    @OnEvent('appointment.created')
-    async onAppointment(event: {
-        tenantId?: string;
-        schemaName?: string;
-        customerName?: string;
-        serviceName?: string;
-        appointment?: any;
-    }) {
-        let tenantId = event.tenantId;
-        if (!tenantId && event.schemaName) {
-            try {
-                const tenant = await this.prisma.tenant.findFirst({
-                    where: { schemaName: event.schemaName },
-                    select: { id: true },
-                });
-                tenantId = tenant?.id || undefined;
-            } catch {
-                return;
-            }
-        }
-        if (!tenantId) return;
-
-        const customer = event.customerName || event.appointment?.customerName
-            || event.appointment?.customer_name || event.appointment?.contact_name || 'Cliente';
-        const service = event.serviceName || event.appointment?.serviceName
-            || event.appointment?.service_name || 'Servicio';
-
-        await this.slack.notify(tenantId, 'appointment', `📅 *Nueva cita*: ${customer} — ${service}`);
     }
 }

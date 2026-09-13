@@ -21,6 +21,7 @@ import { EmailTemplatesService } from '../email-templates/email-templates.servic
 import { emailConfirmationsForOperation } from '../../common/utils/served-confirmation-policy.util';
 import { escapeReceiptHtml, receiptMoney } from '../email-templates/receipt-format.util';
 import { agentAvailI18n } from '../agent-console/agent-availability-i18n';
+import { SlackService } from '../slack/slack.service';
 
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 
@@ -32,7 +33,8 @@ export class OperationalNoticeService {
         private readonly throttle: TenantThrottleService, private readonly widget: WidgetMessageStore,
         private readonly email: EmailService, private readonly push: PushService, private readonly cronLock: CronLockService,
         @InjectQueue('outbound-messages') private readonly queue: Queue<any>,
-        @Optional() private readonly emailTemplates?: EmailTemplatesService) {}
+        @Optional() private readonly emailTemplates?: EmailTemplatesService,
+        @Optional() private readonly slack?: SlackService) {}
 
     @Cron('21 * * * * *')
     async recoverCron(): Promise<void> {
@@ -152,6 +154,10 @@ export class OperationalNoticeService {
                     send=()=>this.push.sendToTenantRole(reference.tenantId,hydrated.role || 'tenant_admin', {
                         title:hydrated.text.split('\n')[0],body:hydrated.text,tag:`operational-${row.id}`,
                     });
+                } else if (hydrated.route === 'slack') {
+                    const slack=this.slack;
+                    if (!slack) throw new Error('notice_slack_unavailable');
+                    send=()=>slack.notifyStrict(reference.tenantId,'appointment',hydrated.text);
                 } else {
                     send=await transport.prepare(hydrated.outbound);
                 }
@@ -193,7 +199,13 @@ export class OperationalNoticeService {
 
     private async hydrate(query: NoticeQuery, schema: string, tenantId: string, notice: any): Promise<any> {
         let facts: any;
-        if (notice.kind.startsWith('appointment.')) {
+        if (notice.kind === 'appointment.operator_slack') {
+            facts=(await query<any[]>(`SELECT a.*,a.service_name AS name
+                FROM appointments a WHERE a.id=$1::uuid FOR SHARE`,[notice.entity_id]))[0];
+            if (!facts || facts.status==='cancelled' || new Date(facts.end_at).getTime()<=Date.now()) {
+                throw new NoticeSuppressed('notice_domain_state_changed');
+            }
+        } else if (notice.kind.startsWith('appointment.')) {
             facts=(await query<any[]>(`SELECT a.*,to_char(a.start_at,'YYYY-MM-DD HH24:MI') AS when_text,a.service_name AS name
                 FROM appointments a WHERE a.id=$1::uuid FOR SHARE`,[notice.entity_id]))[0];
             const required=notice.kind==='appointment.payment_review'?'review':'confirmed';
@@ -251,6 +263,15 @@ export class OperationalNoticeService {
         const erased=await query<any[]>("SELECT to_regclass('customer_memory_erasure')::text AS name");
         if (notice.contact_id && erased[0]?.name && (await query<any[]>('SELECT contact_id FROM customer_memory_erasure WHERE contact_id=$1::uuid',[notice.contact_id])).length) throw new NoticeSuppressed('notice_contact_erased');
         const tenant=await this.prisma.tenant.findUnique({where:{id:tenantId},select:{language:true}});
+        if (notice.kind==='appointment.operator_slack') {
+            if (!this.slack) throw new NoticeSuppressed('notice_slack_unavailable');
+            const config=await this.slack.getConfig(tenantId);
+            if (!config.enabled || !config.webhookUrl || !config.events.appointment) {
+                throw new NoticeSuppressed('notice_channel_unavailable');
+            }
+            return {route:'slack',conversationId:facts.conversation_id||null,
+                text:`📅 *Nueva cita*: ${facts.customer_name || 'Cliente'} — ${facts.service_name || 'Servicio'}`};
+        }
         if (notice.kind==='appointment.payment_review') return {route:'operator',conversationId:notice.conversation_id||null,text:operationalNoticeText(notice.kind,tenant?.language,{})};
         if (notice.kind==='home_service.emergency' || notice.kind==='handoff.sla_escalated') {
             if (!notice.recipient_user_id) throw new NoticeSuppressed('notice_operator_missing');

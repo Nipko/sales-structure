@@ -8,7 +8,10 @@ import { randomUUID } from 'crypto';
 import { appointmentVehicleId, VehicleAppointmentError, type VehicleAppointmentTerms } from './vehicle-appointment-capacity';
 import { assertVehicleAppointmentReplay, vehicleAppointmentCommand } from './appointment-command-identity';
 import { updateVehicleAppointment } from './vehicle-appointment-update';
-import { operationalContactWasErased } from '../operational-notices/operational-notice-outbox';
+import {
+    enqueueOperationalNotice,
+    operationalContactWasErased,
+} from '../operational-notices/operational-notice-outbox';
 import { CalendarSyncOutboxService } from './calendar-sync-outbox.service';
 import { TemporalCapacityContractService } from '../verticals/temporal-capacity-contract.service';
 import { assertActiveTenantUser, tenantActorDirectory } from './tenant-user-scope.util';
@@ -428,6 +431,12 @@ export class AppointmentsService {
                         status, amountDue, holdExpiresAt,
                     ],
                 );
+                if (!suppressEffects) {
+                    await enqueueOperationalNotice(query,schemaName,{
+                        kind:'appointment.operator_slack',entityId:id,contactId:contactIdUuid,
+                        conversationId:conversationIdUuid,
+                    });
+                }
                 // Una cita impaga no se sincroniza al calendario del profesional:
                 // taparía su agenda con algo que todavía está a la venta.
                 if (!policy.requiresPayment && !suppressEffects) {
@@ -721,6 +730,12 @@ export class AppointmentsService {
                             i === 0 ? JSON.stringify(rule) : null,
                         ],
                     );
+                    if (i === 0) {
+                        await enqueueOperationalNotice(query,schemaName,{
+                            kind:'appointment.operator_slack',entityId:id,contactId:contactIdUuid,
+                            conversationId:data.conversationId || null,
+                        });
+                    }
                     await this.calendarOutbox.enqueueWithQuery(query, id, 'upsert');
                 });
                 created.push(await this.getById(schemaName, id));

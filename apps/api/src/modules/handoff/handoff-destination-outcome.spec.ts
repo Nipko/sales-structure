@@ -25,7 +25,7 @@ describe('handoff destination listeners preserve provider outcomes',()=>{
 
     it('does not let Slack turn a rejected POST into an accepted handoff effect',async()=>{
         const failure=new Error('slack_unreachable');
-        const listener=new SlackListenerService({notifyStrict:jest.fn().mockRejectedValue(failure)} as any,{} as any);
+        const listener=new SlackListenerService({notifyStrict:jest.fn().mockRejectedValue(failure)} as any);
         await expect(listener.onHandoff(event)).rejects.toBe(failure);
     });
 

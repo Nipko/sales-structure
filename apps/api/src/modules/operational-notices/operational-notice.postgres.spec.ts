@@ -153,6 +153,27 @@ const connection=process.env.PARALLLY_ISOLATION_TEST_URL;
         await listener.onPaid({tenantId,kind:'appointment',entityId:appointment.id});expect(await noticeRows()).toHaveLength(1);
         expect(await deliver(rows[0].id)).toBe('notice:sent');
     });
+    it('delivers one appointment Slack notice from its committed row and never posts it twice',async()=>{
+        const appointment=(await q(`INSERT INTO appointments(contact_id,service_id,service_name,start_at,end_at,status,customer_name)
+            VALUES($1::uuid,$2::uuid,'Service',$3::timestamp,$4::timestamp,'pending','Ana') RETURNING *`,
+            [contacts[0],serviceId,`${date} 14:00`,`${date} 14:30`]))[0];
+        await prisma.transactionInTenantSchema(schema,(query:any)=>enqueueOperationalNotice(query,schema,{
+            kind:'appointment.operator_slack',entityId:appointment.id,contactId:contacts[0],
+        }));
+        const slack={
+            getConfig:jest.fn().mockResolvedValue({enabled:true,webhookUrl:'https://hooks.slack.com/services/synthetic',events:{appointment:true}}),
+            notifyStrict:jest.fn().mockResolvedValue('slack:accepted'),
+        };
+        const target=new OperationalNoticeService(prisma,{get:async()=>null} as any,{getPriority:async()=>2} as any,
+            {} as any,{} as any,{} as any,{} as any,queue,undefined,slack as any);
+        const [row]=await noticeRows();
+        expect(row).toMatchObject({kind:'appointment.operator_slack',entity_id:appointment.id,state:'pending'});
+        expect(await target.deliver({tenantId,noticeId:row.id},transport)).toBe('notice:sent');
+        expect(await target.deliver({tenantId,noticeId:row.id},transport)).toBe('notice:sent');
+        expect(slack.notifyStrict).toHaveBeenCalledTimes(1);
+        expect(slack.notifyStrict).toHaveBeenCalledWith(tenantId,'appointment','📅 *Nueva cita*: Ana — Service');
+        expect((await noticeRows())[0].provider_reference).toBe('slack:accepted');
+    });
     it('does not guess that historical confirmations were never delivered',async()=>{
         const appointment=await paidAppointment();await q("UPDATE appointments SET status='confirmed' WHERE id=$1::uuid",[appointment.id]);
         await new AppointmentPaymentListener(prisma,{emit:jest.fn()} as any,notices).onPaid({tenantId,kind:'appointment',entityId:appointment.id});

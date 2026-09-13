@@ -781,6 +781,8 @@ export class ConversationsService {
         // Heartbeat: keep the lock alive while we process so a turn that legitimately
         // exceeds the TTL doesn't expire its lock and let a concurrent turn in.
         let lockHeartbeat: ReturnType<typeof setInterval> | undefined;
+        let aiQuotaEffectId: string | null = null;
+        let aiQuotaCommitted = false;
         if (lockToken) {
             const token = lockToken;
             lockHeartbeat = setInterval(() => {
@@ -1212,8 +1214,18 @@ export class ConversationsService {
         // Over-quota: skip the LLM call and send a fallback that nudges the
         // tenant to upgrade. We never break the conversation thread for
         // customers — just stop calling the LLM.
-        const hasQuota = await this.throttle.hasAiMessageQuota(tenantId);
-        if (!hasQuota) {
+        // A durable answer recovered after a crash was already authorised when
+        // it was generated. Delivering that debt must not consume another slot
+        // or be blocked because another turn exhausted the quota meanwhile.
+        if (!recoveredEnvelope && !resumedReply) {
+            const usage = await this.throttle.getAiMessageUsage(tenantId);
+            aiQuotaEffectId = `${channelType}:${ledgerInboundId}`;
+            const reservation = await this.throttle.reserveAiMessageCount(
+                tenantId, aiQuotaEffectId, usage.limit,
+            );
+            if (!reservation.allowed) aiQuotaEffectId = null;
+        }
+        if (!recoveredEnvelope && !resumedReply && !aiQuotaEffectId) {
             this.logger.warn(`[Pipeline] Tenant ${tenantId} exhausted AI message quota for the month. Sending fallback.`);
             const fallback = await this.buildQuotaFallbackMessage(tenantId);
             if (fallback) {
@@ -1366,11 +1378,9 @@ export class ConversationsService {
         const autoProgressLang = (normalizedMsg as any).detectedLang || (conversation.metadata as any)?.detectedLanguage || config.language || 'es';
         this.logger.log(`[Pipeline] AI response generated: ${response ? response.substring(0, 80) + '...' : 'NULL/EMPTY'}`);
 
-        // Track AI response event + increment monthly quota counter — but NOT for
-        // the error fallback (it isn't a real AI answer; counting it inflates the
-        // monthly quota and emits a spurious message_sent event).
+        // Track the visible text event. Quota commitment happens below after
+        // considering form-only turns too.
         if (response && !isErrorFallback(response)) {
-            this.throttle.incrementAiMessageCount(tenantId).catch(() => {});
             this.analyticsService.trackEvent({
                 tenantId, eventType: 'message_sent',
                 conversationId: conversation.id, contactId: contact.id,
@@ -1399,6 +1409,14 @@ export class ConversationsService {
         // language or a request for a human cannot become a reason to stop
         // answering somebody.
         const failureNotice = isErrorFallback(response);
+        // The reservation represents one agent-produced turn, including a
+        // deterministic Flow with no text bubble. Commit only after a real
+        // customer-facing effect exists; an empty/error turn is released by the
+        // outer finally.
+        if (turnHasEffects && !failureNotice && aiQuotaEffectId) {
+            await this.throttle.commitAiMessageCount(tenantId, aiQuotaEffectId);
+            aiQuotaCommitted = true;
+        }
         // How many notices, how long an episode lasts, how often one datum may
         // be asked for and how many goodbyes a chain may hold are all the
         // tenant's decision, and all of them are read, counted and applied in
@@ -1557,6 +1575,10 @@ export class ConversationsService {
         }
 
         } finally {
+            if (aiQuotaEffectId && !aiQuotaCommitted) {
+                await this.throttle.releaseAiMessageCount(tenantId, aiQuotaEffectId)
+                    .catch(e => this.logger.warn(`AI message reservation release failed: ${e.message}`));
+            }
             // Stop the heartbeat and release the conversation lock — but only if we
             // still own it (compare-and-delete), so we never delete a lock another
             // turn re-acquired after a TTL expiry.
@@ -3342,7 +3364,6 @@ export class ConversationsService {
                             // turning a preview into a real provider effect.
                             return engineResult.flowMessage.body;
                         }
-                        this.throttle.incrementAiMessageCount(tenantId).catch(() => {});
                         this.logger.log(`[Pipeline] WhatsApp Flow produced (flow_id=${flowCfg.flowId}) — bypassing LLM`);
                         await observeMission({kind:'final',state:'flow_enqueued'});
                         return ''; // Flow carries the turn; caller sends no extra text.
@@ -5696,6 +5717,9 @@ export class ConversationsService {
             this.redis.renewLockToken(lockKey, token, 30).catch(() => {});
         }, 10_000);
         heartbeat.unref?.();
+        const widgetQuotaEffectId = `web_widget:${inboundMessageId}`;
+        let widgetQuotaHeld = false;
+        let widgetQuotaCommitted = false;
         try {
             const conversations = await this.prisma.executeInTenantSchema<any[]>(schemaName,
                 'SELECT * FROM conversations WHERE id = $1::uuid AND contact_id = $2::uuid AND channel_type = $3 LIMIT 1',
@@ -5759,25 +5783,24 @@ export class ConversationsService {
                     reply = config.hours?.afterHoursMessageOverride || businessHours?.afterHoursMessage || config.hours?.afterHoursMessage || null;
                 } else {
                     const usage = await this.throttle.getAiMessageUsage(tenantId);
-                    if (Number.isFinite(usage.limit) && usage.used >= (usage.limit as number)) {
+                    const reservation = await this.throttle.reserveAiMessageCount(
+                        tenantId, widgetQuotaEffectId, usage.limit,
+                    );
+                    if (!reservation.allowed) {
                         reply = await this.buildQuotaFallbackMessage(tenantId);
                     } else {
-                        const reserved = await this.throttle.incrementAiMessageCount(tenantId);
-                        if (Number.isFinite(usage.limit) && reserved > (usage.limit as number)) {
-                            await this.throttle.incrementAiMessageCount(tenantId, -1);
-                            reply = await this.buildQuotaFallbackMessage(tenantId);
-                        } else {
-                            await this.persistConversationPersonaResolution(schemaName, conversationId, personaResolution);
-                            reply = await this.generateResponse(
-                                tenantId, conversation, msg, config, contact, leads?.[0],
-                                conversation.updated_at || conversation.created_at, businessHours,
-                                inboundMessageId, personaResolution.agentId ?? undefined,
-                                undefined,personaResolution.version ?? undefined,
-                                operationalScope, replyProvenance,
-                            );
-                            if (!reply || isErrorFallback(reply)) {
-                                await this.throttle.incrementAiMessageCount(tenantId, -1).catch(() => {});
-                            }
+                        widgetQuotaHeld = true;
+                        await this.persistConversationPersonaResolution(schemaName, conversationId, personaResolution);
+                        reply = await this.generateResponse(
+                            tenantId, conversation, msg, config, contact, leads?.[0],
+                            conversation.updated_at || conversation.created_at, businessHours,
+                            inboundMessageId, personaResolution.agentId ?? undefined,
+                            undefined,personaResolution.version ?? undefined,
+                            operationalScope, replyProvenance,
+                        );
+                        if (reply && !isErrorFallback(reply)) {
+                            await this.throttle.commitAiMessageCount(tenantId, widgetQuotaEffectId);
+                            widgetQuotaCommitted = true;
                         }
                     }
                 }
@@ -5821,6 +5844,10 @@ export class ConversationsService {
             return await this.widgetAgentReplies.commit({ tenantId, schemaName, ...binding,
                 operationalScope, learningFootprints: [...replyProvenance.getFootprints()], text: reply });
         } finally {
+            if (widgetQuotaHeld && !widgetQuotaCommitted) {
+                await this.throttle.releaseAiMessageCount(tenantId, widgetQuotaEffectId)
+                    .catch(error => this.logger.warn(`Widget AI message reservation release failed: ${error.message}`));
+            }
             clearInterval(heartbeat);
             await this.redis.releaseLockToken(lockKey, token).catch(() => {});
         }

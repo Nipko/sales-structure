@@ -407,8 +407,10 @@ const ready = !!databaseUrl && !!redisUrl;
             getMaxPendingJobs: jest.fn(async () => Infinity),
             isOverLimit: jest.fn(async () => false),
             recordUsage: jest.fn(async () => undefined),
-            hasAiMessageQuota: jest.fn(async () => true),
-            incrementAiMessageCount: jest.fn(async () => undefined),
+            getAiMessageUsage: jest.fn(async () => ({ used: 0, limit: Infinity })),
+            reserveAiMessageCount: jest.fn(async () => ({ allowed: true, count: 1, adopted: false })),
+            commitAiMessageCount: jest.fn(async () => undefined),
+            releaseAiMessageCount: jest.fn(async () => undefined),
         };
         const channelToken: any = resolvingChannelToken({
             getChannelToken: jest.fn(async () => ({ accessToken: 'synthetic-token' })) });

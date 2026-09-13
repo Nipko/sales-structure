@@ -90,7 +90,9 @@ describe('ConversationsService widget containment', () => {
             }),
             getLlmSpendUsdCents: jest.fn().mockResolvedValue(100),
             getAiMessageUsage: jest.fn().mockResolvedValue({ used: 2, limit: 10 }),
-            incrementAiMessageCount: jest.fn().mockResolvedValue(3),
+            reserveAiMessageCount: jest.fn().mockResolvedValue({ allowed: true, count: 3, adopted: false }),
+            commitAiMessageCount: jest.fn().mockResolvedValue(undefined),
+            releaseAiMessageCount: jest.fn().mockResolvedValue(undefined),
             ...overrides.throttle,
         };
         const llmRouter = {
@@ -229,7 +231,14 @@ describe('ConversationsService widget containment', () => {
             expect.objectContaining({ addExamples: expect.any(Function), getFootprints: expect.any(Function) }),
         );
         expect(llmRouter.executeStream).not.toHaveBeenCalled();
-        expect(throttle.incrementAiMessageCount).toHaveBeenCalledWith('10000000-0000-4000-8000-000000000001');
+        expect(throttle.reserveAiMessageCount).toHaveBeenCalledWith(
+            '10000000-0000-4000-8000-000000000001',
+            'web_widget:40000000-0000-4000-8000-000000000004', 10,
+        );
+        expect(throttle.commitAiMessageCount).toHaveBeenCalledWith(
+            '10000000-0000-4000-8000-000000000001',
+            'web_widget:40000000-0000-4000-8000-000000000004',
+        );
         expect(redis.releaseLockToken).toHaveBeenCalledWith('lock:conv:20000000-0000-4000-8000-000000000002', 'lock-token');
         expect(prisma.executeInTenantSchema.mock.calls[0][1]).toContain('contact_id = $2::uuid AND channel_type = $3');
     });
@@ -248,11 +257,13 @@ describe('ConversationsService widget containment', () => {
         const { service, prisma, throttle, llmRouter } = makeService({
             throttle: {
                 getAiMessageUsage: jest.fn().mockResolvedValue({ used: 10, limit: 10 }),
+                reserveAiMessageCount: jest.fn().mockResolvedValue({ allowed: false, count: 10, adopted: false }),
             },
         });
 
         await expect(collect(service.processWidgetMessage('10000000-0000-4000-8000-000000000001', 'tenant_1', '20000000-0000-4000-8000-000000000002', '30000000-0000-4000-8000-000000000003', 'hello', { inboundMessageId: '40000000-0000-4000-8000-000000000004' }))).resolves.toBe('quota fallback');
-        expect(throttle.incrementAiMessageCount).not.toHaveBeenCalled();
+        expect(throttle.reserveAiMessageCount).toHaveBeenCalledTimes(1);
+        expect(throttle.commitAiMessageCount).not.toHaveBeenCalled();
         expect(llmRouter.executeStream).not.toHaveBeenCalled();
         expect(prisma.executeInTenantSchema.mock.calls.some(
             (call: any[]) => String(call[1]).includes('SET agent_persona_id'),
@@ -306,20 +317,21 @@ describe('ConversationsService widget containment', () => {
         expect(llmRouter.executeStream).not.toHaveBeenCalled();
     });
 
-    it('rolls back a concurrent over-limit reservation and never reaches the provider', async () => {
-        const incrementAiMessageCount = jest.fn()
-            .mockResolvedValueOnce(11)
-            .mockResolvedValueOnce(10);
+    it('honours an atomic concurrent quota refusal and never reaches the provider', async () => {
+        const reserveAiMessageCount = jest.fn()
+            .mockResolvedValue({ allowed: false, count: 10, adopted: false });
         const { service, llmRouter } = makeService({
             throttle: {
                 getAiMessageUsage: jest.fn().mockResolvedValue({ used: 9, limit: 10 }),
-                incrementAiMessageCount,
+                reserveAiMessageCount,
             },
         });
 
         await expect(collect(service.processWidgetMessage('10000000-0000-4000-8000-000000000001', 'tenant_1', '20000000-0000-4000-8000-000000000002', '30000000-0000-4000-8000-000000000003', 'hello', { inboundMessageId: '40000000-0000-4000-8000-000000000004' }))).resolves.toBe('quota fallback');
-        expect(incrementAiMessageCount).toHaveBeenNthCalledWith(1, '10000000-0000-4000-8000-000000000001');
-        expect(incrementAiMessageCount).toHaveBeenNthCalledWith(2, '10000000-0000-4000-8000-000000000001', -1);
+        expect(reserveAiMessageCount).toHaveBeenCalledWith(
+            '10000000-0000-4000-8000-000000000001',
+            'web_widget:40000000-0000-4000-8000-000000000004', 10,
+        );
         expect(llmRouter.executeStream).not.toHaveBeenCalled();
     });
 
@@ -330,7 +342,8 @@ describe('ConversationsService widget containment', () => {
         redis.get.mockResolvedValue(JSON.stringify({ conversationId: '20000000-0000-4000-8000-000000000002', contactId: '30000000-0000-4000-8000-000000000003', text: 'safe reply' }));
         expect(await run()).toBe('safe reply');
         expect((service as any).generateResponse).toHaveBeenCalledTimes(1);
-        expect(throttle.incrementAiMessageCount).toHaveBeenCalledTimes(1);
+        expect(throttle.reserveAiMessageCount).toHaveBeenCalledTimes(1);
+        expect(throttle.commitAiMessageCount).toHaveBeenCalledTimes(1);
     });
 
     it('rejects mismatched tenant scope before reading the conversation', async () => {

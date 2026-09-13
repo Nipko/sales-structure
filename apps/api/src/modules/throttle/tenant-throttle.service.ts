@@ -5,6 +5,7 @@ import { replaceTenantSettingsBranch } from '../../common/utils/tenant-settings-
 import { RedisService } from '../redis/redis.service';
 import { OVERRIDABLE_QUOTA_KEYS, isOverridableQuotaKey, CHANNEL_ACCOUNT_KEYS } from './plan-features.registry';
 import { applyPlanFeatureOverrides } from './plan-feature-overrides';
+import { createHash } from 'crypto';
 
 /**
  * Plan-based rate limiting and feature gating for multi-tenant fairness.
@@ -403,6 +404,72 @@ export class TenantThrottleService {
             await this.redis.expire(key, 35 * 24 * 60 * 60);
         }
         return newCount;
+    }
+
+    /**
+     * Reserve one monthly AI reply for a stable inbound effect.
+     *
+     * The old read-then-increment path was not a quota: concurrent turns could
+     * both observe the last free slot, and retries counted the same inbound
+     * message again. This Lua script decides the limit and records the effect
+     * identity in one Redis transaction. A retry adopts its existing marker.
+     */
+    async reserveAiMessageCount(
+        tenantId: string,
+        effectId: string,
+        limit: number,
+    ): Promise<{ allowed: boolean; count: number; adopted: boolean }> {
+        const monthKey = this.currentMonthKey();
+        const countKey = `ai_msg:${tenantId}:${monthKey}`;
+        const effectHash = createHash('sha256').update(effectId).digest('hex');
+        const reservationKey = `ai_msg:reservation:${tenantId}:${monthKey}:${effectHash}`;
+        const ttl = 35 * 24 * 60 * 60;
+        const finiteLimit = Number.isFinite(limit) ? Math.max(0, Math.floor(limit)) : -1;
+        const result = await this.redis.getClient().eval(
+            `local marker = redis.call('GET', KEYS[2])
+             local current = tonumber(redis.call('GET', KEYS[1]) or '0')
+             if marker then return {1, current, 1} end
+             local quota = tonumber(ARGV[1])
+             if quota >= 0 and current >= quota then return {0, current, 0} end
+             current = redis.call('INCR', KEYS[1])
+             redis.call('EXPIRE', KEYS[1], tonumber(ARGV[2]))
+             redis.call('SET', KEYS[2], 'held', 'EX', tonumber(ARGV[2]))
+             return {1, current, 0}`,
+            2, countKey, reservationKey, String(finiteLimit), String(ttl),
+        ) as [number, number, number];
+        return { allowed: result[0] === 1, count: Number(result[1]), adopted: result[2] === 1 };
+    }
+
+    /** The generated reply is now an accounted fact; retries keep adopting it. */
+    async commitAiMessageCount(tenantId: string, effectId: string): Promise<void> {
+        const monthKey = this.currentMonthKey();
+        const effectHash = createHash('sha256').update(effectId).digest('hex');
+        const reservationKey = `ai_msg:reservation:${tenantId}:${monthKey}:${effectHash}`;
+        const ttl = 35 * 24 * 60 * 60;
+        await this.redis.getClient().eval(
+            `if redis.call('EXISTS', KEYS[1]) == 1 then
+                 redis.call('SET', KEYS[1], 'committed', 'EX', tonumber(ARGV[1]))
+                 return 1
+             end
+             return 0`,
+            1, reservationKey, String(ttl),
+        );
+    }
+
+    /** Release only a still-held reservation; a committed retry is immutable. */
+    async releaseAiMessageCount(tenantId: string, effectId: string): Promise<void> {
+        const monthKey = this.currentMonthKey();
+        const effectHash = createHash('sha256').update(effectId).digest('hex');
+        const reservationKey = `ai_msg:reservation:${tenantId}:${monthKey}:${effectHash}`;
+        const countKey = `ai_msg:${tenantId}:${monthKey}`;
+        await this.redis.getClient().eval(
+            `if redis.call('GET', KEYS[1]) ~= 'held' then return 0 end
+             redis.call('DEL', KEYS[1])
+             local current = tonumber(redis.call('GET', KEYS[2]) or '0')
+             if current > 0 then redis.call('DECR', KEYS[2]) end
+             return 1`,
+            2, reservationKey, countKey,
+        );
     }
 
     async hasAiMessageQuota(tenantId: string): Promise<boolean> {

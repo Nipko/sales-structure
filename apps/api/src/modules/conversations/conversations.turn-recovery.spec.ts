@@ -66,7 +66,12 @@ describe('recovering a turn from its ledger', () => {
                 }),
             },
             llmRouter: { analyzeComplexity: () => 0, analyzeSentiment: () => 0 },
-            throttle: { hasAiMessageQuota: jest.fn().mockResolvedValue(true), incrementAiMessageCount: jest.fn().mockResolvedValue(undefined) },
+            throttle: {
+                getAiMessageUsage: jest.fn().mockResolvedValue({ used: 0, limit: Infinity }),
+                reserveAiMessageCount: jest.fn().mockResolvedValue({ allowed: true, count: 1, adopted: false }),
+                commitAiMessageCount: jest.fn().mockResolvedValue(undefined),
+                releaseAiMessageCount: jest.fn().mockResolvedValue(undefined),
+            },
             handoffService: { isInHandoff: jest.fn().mockResolvedValue(false),
                 shouldHandoff: jest.fn().mockReturnValue(null), executeHandoff: jest.fn().mockResolvedValue(undefined) },
             complianceService: { detectOptOut: jest.fn().mockReturnValue(false) },
@@ -113,6 +118,7 @@ describe('recovering a turn from its ledger', () => {
         await service.runTurn(message);
 
         expect(service.generateResponse).not.toHaveBeenCalled();
+        expect(service.throttle.reserveAiMessageCount).not.toHaveBeenCalled();
         expect(sends).toEqual([
             { kind: 'text', text: 'Te dejo el enlace y la foto' },
             { kind: 'payment_link', url: 'https://checkout.example/abc' },
@@ -163,6 +169,12 @@ describe('recovering a turn from its ledger', () => {
 
         expect(order[0]).toBe('record');
         expect(order).toContain('send');
+        expect(service.throttle.reserveAiMessageCount).toHaveBeenCalledWith(
+            tenantId, `whatsapp:${inboundMessageId}`, Infinity,
+        );
+        expect(service.throttle.commitAiMessageCount).toHaveBeenCalledWith(
+            tenantId, `whatsapp:${inboundMessageId}`,
+        );
         expect(ledger.recordResult).toHaveBeenCalledWith('tenant_recovery', expect.objectContaining({
             inboundMessageId,
             envelope: expect.objectContaining({
@@ -200,6 +212,9 @@ describe('recovering a turn from its ledger', () => {
         expect(service.dispatchReplyThroughOutbox).not.toHaveBeenCalled();
         expect(ledger.recordResult).not.toHaveBeenCalled();
         expect(service.recordAgentSignal).toHaveBeenCalledWith(tenantId, 'learning_provenance_refused');
+        expect(service.throttle.releaseAiMessageCount).toHaveBeenCalledWith(
+            tenantId, `whatsapp:${inboundMessageId}`,
+        );
     });
 
     // The interactive form used to leave through its own path straight from the

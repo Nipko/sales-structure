@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "revision": "3f8e4bcfc38fdf75cb577096aafc46b703a2a774",
-  "generatedAt": "2026-09-13T13:19:24.155Z",
+  "revision": "886b8d533d3e1946d97eaef2bf983d5f2ee5382c",
+  "generatedAt": "2026-09-13T13:31:19.712Z",
   "finished": false,
   "counts": {
     "aceptada": 25,
@@ -27,7 +27,7 @@
   },
   "authorities": {
     "profiles": 76,
-    "tasks": 268,
+    "tasks": 420,
     "certifiedProfiles": 0,
     "termsFamilies": 15,
     "unboundCommand": [],
@@ -263,7 +263,7 @@
       "status": "aceptada",
       "provenance": "derived",
       "artefact": null,
-      "evidence": "76 perfiles, 268 tareas, 146 que comprometen al negocio, y cero tareas sin caso positivo propio o sin verificador fuera de las 5 declaradas: `file_claim` en las cinco subtipos de seguros existe para probar que el escalón de identidad la rechaza, así que no hay efecto que verificar y un \"positivo\" sería el agente haciendo lo que no debe. Certificar estas tareas es H1.",
+      "evidence": "76 perfiles, 420 tareas, 146 que comprometen al negocio, y cero tareas sin caso positivo propio o sin verificador fuera de las 5 declaradas: `file_claim` en las cinco subtipos de seguros existe para probar que el escalón de identidad la rechaza, así que no hay efecto que verificar y un \"positivo\" sería el agente haciendo lo que no debe. Certificar estas tareas es H1.",
       "commits": [],
       "deferral": null
     },
@@ -683,7 +683,7 @@
     {
       "id": "T5",
       "open": 0,
-      "openLabel": "0 tareas sin verificador sobre 268 (5 son negativos de step-up `file_claim`, que no llevan positivo por diseño)",
+      "openLabel": "0 tareas sin verificador sobre 420 (5 son negativos de step-up `file_claim`, que no llevan positivo por diseño)",
       "gates": [
         1,
         4
@@ -691,7 +691,7 @@
       "status": "bloqueada",
       "provenance": "derived",
       "artefact": null,
-      "evidence": "Universo canónico conservado: 76 perfiles, 268 tareas, 146 que comprometen al negocio. La verificación determinista local es lo que esta fila mide; la certificación por canal y modelo real sigue en cero (0/76) y es gate externo, no trabajo local.",
+      "evidence": "Universo canónico conservado: 76 perfiles, 420 tareas, 146 que comprometen al negocio. La verificación determinista local es lo que esta fila mide; la certificación por canal y modelo real sigue en cero (0/76) y es gate externo, no trabajo local.",
       "commits": [],
       "deferral": null
     },

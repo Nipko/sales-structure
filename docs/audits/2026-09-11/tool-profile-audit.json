@@ -2,7 +2,7 @@
   "version": 1,
   "evidenceKind": "structural_only",
   "sourceHashEncoding": "utf8-lf",
-  "sourceRevision": "7cd0238605c87f8b0a5bf3bc0846ae02fbee7a34",
+  "sourceRevision": "886b8d533d3e1946d97eaef2bf983d5f2ee5382c",
   "summary": {
     "verticals": 20,
     "profiles": 76,
@@ -14,7 +14,7 @@
       "vertical": 81,
       "provider": 4
     },
-    "tasks": 268,
+    "tasks": 420,
     "committingTasks": 146,
     "toolsWithoutDefinition": [],
     "toolsWithoutExecutorBranch": [],
@@ -25,7 +25,7 @@
     "missingPages": [],
     "taskCoverage": {
       "profiles": 76,
-      "tasks": 268,
+      "tasks": 420,
       "committingTasks": 146,
       "tasksMissingPositiveCases": 5,
       "tasksMissingVerifiers": 5,
@@ -123,7 +123,7 @@
     "packages/shared/src/vertical-builder-contract.ts": "6b0cadc40de0060010e35001c0b2db674fe59b6d5ce4b7d489873a7661d62c55",
     "packages/shared/src/vertical-capability-manifest.ts": "2c2efb6b8434e1624668828d27e71616a065092e6b590875c5374d6c81b77deb",
     "packages/shared/src/vertical-certification-contract.ts": "3a062cf0e9d930e506975b3dbc5b7c4b56df6f3bba621b050db4d25d6f327c28",
-    "packages/shared/src/vertical-domain-contract.ts": "d5d78d29a04ffe3bf0603cf6f04b612e9996173d7136a66afb676337ad484e77",
+    "packages/shared/src/vertical-domain-contract.ts": "740ef5df309632e73535258c3076e327ab6c4d2f754f1c76031178e6c230dcaa",
     "packages/shared/src/vertical-operation-contract.ts": "17a76884978832eba5a226584fb7cd7cb962d0d71cacd08b1e20a66ae2253a4e",
     "packages/shared/src/vertical-product-policy.ts": "9c906d33eb6dad1af604dd6b9b5ac954630692dc34c170169ba8322de7e05a19",
     "packages/shared/src/vertical-prompt-localization.ts": "b5309f1dd6522d23c3ac99e9d40b209766190926c147150b26ed21ad6e4b62e1",
@@ -225,6 +225,31 @@
         }
       ],
       "tasks": [
+        {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
         {
           "key": "ask_question",
           "commits": false,
@@ -364,6 +389,31 @@
       ],
       "tasks": [
         {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
           "key": "ask_question",
           "commits": false,
           "tools": [
@@ -500,6 +550,31 @@
         }
       ],
       "tasks": [
+        {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
         {
           "key": "ask_question",
           "commits": false,
@@ -662,6 +737,31 @@
       ],
       "tasks": [
         {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
           "key": "ask_question",
           "commits": false,
           "tools": [
@@ -798,6 +898,31 @@
       ],
       "tasks": [
         {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
           "key": "ask_question",
           "commits": false,
           "tools": [
@@ -912,6 +1037,31 @@
         }
       ],
       "tasks": [
+        {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
         {
           "key": "ask_question",
           "commits": false,
@@ -1064,6 +1214,31 @@
       ],
       "tasks": [
         {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
           "key": "ask_question",
           "commits": false,
           "tools": [
@@ -1214,6 +1389,31 @@
         }
       ],
       "tasks": [
+        {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
         {
           "key": "ask_question",
           "commits": false,
@@ -1366,6 +1566,31 @@
       ],
       "tasks": [
         {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
           "key": "ask_question",
           "commits": false,
           "tools": [
@@ -1469,6 +1694,31 @@
       ],
       "tasks": [
         {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
           "key": "ask_question",
           "commits": false,
           "tools": [
@@ -1560,6 +1810,31 @@
         }
       ],
       "tasks": [
+        {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
         {
           "key": "ask_question",
           "commits": false,
@@ -1677,6 +1952,31 @@
       ],
       "tasks": [
         {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
           "key": "ask_question",
           "commits": false,
           "tools": [
@@ -1767,6 +2067,31 @@
         }
       ],
       "tasks": [
+        {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
         {
           "key": "ask_question",
           "commits": false,
@@ -1863,6 +2188,31 @@
         }
       ],
       "tasks": [
+        {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
         {
           "key": "ask_question",
           "commits": false,
@@ -1972,6 +2322,31 @@
       ],
       "tasks": [
         {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
           "key": "ask_question",
           "commits": false,
           "tools": [
@@ -2080,6 +2455,31 @@
       ],
       "tasks": [
         {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
           "key": "ask_question",
           "commits": false,
           "tools": [
@@ -2187,6 +2587,31 @@
         }
       ],
       "tasks": [
+        {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
         {
           "key": "ask_question",
           "commits": false,
@@ -2322,6 +2747,31 @@
         }
       ],
       "tasks": [
+        {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
         {
           "key": "ask_question",
           "commits": false,
@@ -2482,6 +2932,31 @@
       ],
       "tasks": [
         {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
           "key": "ask_question",
           "commits": false,
           "tools": [
@@ -2640,6 +3115,31 @@
         }
       ],
       "tasks": [
+        {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
         {
           "key": "ask_question",
           "commits": false,
@@ -2800,6 +3300,31 @@
       ],
       "tasks": [
         {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
           "key": "ask_question",
           "commits": false,
           "tools": [
@@ -2959,6 +3484,31 @@
       ],
       "tasks": [
         {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
           "key": "ask_question",
           "commits": false,
           "tools": [
@@ -3106,6 +3656,31 @@
         }
       ],
       "tasks": [
+        {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
         {
           "key": "ask_question",
           "commits": false,
@@ -3255,6 +3830,31 @@
       ],
       "tasks": [
         {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
           "key": "ask_question",
           "commits": false,
           "tools": [
@@ -3357,6 +3957,31 @@
         }
       ],
       "tasks": [
+        {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
         {
           "key": "ask_question",
           "commits": false,
@@ -3469,6 +4094,31 @@
         }
       ],
       "tasks": [
+        {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
         {
           "key": "ask_question",
           "commits": false,
@@ -3597,6 +4247,31 @@
         }
       ],
       "tasks": [
+        {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
         {
           "key": "ask_question",
           "commits": false,
@@ -3732,6 +4407,31 @@
       ],
       "tasks": [
         {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
           "key": "ask_question",
           "commits": false,
           "tools": [
@@ -3858,6 +4558,31 @@
         }
       ],
       "tasks": [
+        {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
         {
           "key": "ask_question",
           "commits": false,
@@ -3993,6 +4718,31 @@
       ],
       "tasks": [
         {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
           "key": "ask_question",
           "commits": false,
           "tools": [
@@ -4126,6 +4876,31 @@
         }
       ],
       "tasks": [
+        {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
         {
           "key": "ask_question",
           "commits": false,
@@ -4299,6 +5074,31 @@
         }
       ],
       "tasks": [
+        {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
         {
           "key": "ask_question",
           "commits": false,
@@ -4485,6 +5285,31 @@
       ],
       "tasks": [
         {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
           "key": "ask_question",
           "commits": false,
           "tools": [
@@ -4657,6 +5482,31 @@
       ],
       "tasks": [
         {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
           "key": "ask_question",
           "commits": false,
           "tools": [
@@ -4825,6 +5675,31 @@
         }
       ],
       "tasks": [
+        {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
         {
           "key": "ask_question",
           "commits": false,
@@ -5008,6 +5883,31 @@
       ],
       "tasks": [
         {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
           "key": "ask_question",
           "commits": false,
           "tools": [
@@ -5187,6 +6087,31 @@
       ],
       "tasks": [
         {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
           "key": "ask_question",
           "commits": false,
           "tools": [
@@ -5356,6 +6281,31 @@
       ],
       "tasks": [
         {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
           "key": "ask_question",
           "commits": false,
           "tools": [
@@ -5500,6 +6450,31 @@
       ],
       "tasks": [
         {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
           "key": "ask_question",
           "commits": false,
           "tools": [
@@ -5619,6 +6594,31 @@
         }
       ],
       "tasks": [
+        {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
         {
           "key": "ask_question",
           "commits": false,
@@ -5741,6 +6741,31 @@
         }
       ],
       "tasks": [
+        {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
         {
           "key": "ask_question",
           "commits": false,
@@ -5921,6 +6946,31 @@
       ],
       "tasks": [
         {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
           "key": "ask_question",
           "commits": false,
           "tools": [
@@ -6060,6 +7110,31 @@
       ],
       "tasks": [
         {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
           "key": "ask_question",
           "commits": false,
           "tools": [
@@ -6158,6 +7233,31 @@
         }
       ],
       "tasks": [
+        {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
         {
           "key": "ask_question",
           "commits": false,
@@ -6317,6 +7417,31 @@
       ],
       "tasks": [
         {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
           "key": "ask_question",
           "commits": false,
           "tools": [
@@ -6462,6 +7587,31 @@
       ],
       "tasks": [
         {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
           "key": "ask_question",
           "commits": false,
           "tools": [
@@ -6595,6 +7745,31 @@
         }
       ],
       "tasks": [
+        {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
         {
           "key": "ask_question",
           "commits": false,
@@ -6736,6 +7911,31 @@
       ],
       "tasks": [
         {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
           "key": "ask_question",
           "commits": false,
           "tools": [
@@ -6870,6 +8070,31 @@
       ],
       "tasks": [
         {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
           "key": "ask_question",
           "commits": false,
           "tools": [
@@ -6995,6 +8220,31 @@
       ],
       "tasks": [
         {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
           "key": "ask_question",
           "commits": false,
           "tools": [
@@ -7110,6 +8360,31 @@
         }
       ],
       "tasks": [
+        {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
         {
           "key": "ask_question",
           "commits": false,
@@ -7227,6 +8502,31 @@
       ],
       "tasks": [
         {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
           "key": "ask_question",
           "commits": false,
           "tools": [
@@ -7343,6 +8643,31 @@
       ],
       "tasks": [
         {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
           "key": "ask_question",
           "commits": false,
           "tools": [
@@ -7458,6 +8783,31 @@
         }
       ],
       "tasks": [
+        {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
         {
           "key": "ask_question",
           "commits": false,
@@ -7582,6 +8932,31 @@
       ],
       "tasks": [
         {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
           "key": "ask_question",
           "commits": false,
           "tools": [
@@ -7689,6 +9064,31 @@
         }
       ],
       "tasks": [
+        {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
         {
           "key": "ask_question",
           "commits": false,
@@ -7798,6 +9198,31 @@
       ],
       "tasks": [
         {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
           "key": "ask_question",
           "commits": false,
           "tools": [
@@ -7905,6 +9330,31 @@
         }
       ],
       "tasks": [
+        {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
         {
           "key": "ask_question",
           "commits": false,
@@ -8014,6 +9464,31 @@
       ],
       "tasks": [
         {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
           "key": "ask_question",
           "commits": false,
           "tools": [
@@ -8122,6 +9597,31 @@
       ],
       "tasks": [
         {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
           "key": "ask_question",
           "commits": false,
           "tools": [
@@ -8229,6 +9729,31 @@
         }
       ],
       "tasks": [
+        {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
         {
           "key": "ask_question",
           "commits": false,
@@ -8349,6 +9874,31 @@
         }
       ],
       "tasks": [
+        {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
         {
           "key": "ask_question",
           "commits": false,
@@ -8493,6 +10043,31 @@
       ],
       "tasks": [
         {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
           "key": "ask_question",
           "commits": false,
           "tools": [
@@ -8635,6 +10210,31 @@
         }
       ],
       "tasks": [
+        {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
         {
           "key": "ask_question",
           "commits": false,
@@ -8779,6 +10379,31 @@
       ],
       "tasks": [
         {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
           "key": "ask_question",
           "commits": false,
           "tools": [
@@ -8905,6 +10530,31 @@
       ],
       "tasks": [
         {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
           "key": "ask_question",
           "commits": false,
           "tools": [
@@ -9027,6 +10677,31 @@
         }
       ],
       "tasks": [
+        {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
         {
           "key": "ask_question",
           "commits": false,
@@ -9168,6 +10843,31 @@
       ],
       "tasks": [
         {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
           "key": "ask_question",
           "commits": false,
           "tools": [
@@ -9258,6 +10958,31 @@
         }
       ],
       "tasks": [
+        {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
         {
           "key": "ask_question",
           "commits": false,
@@ -9355,6 +11080,31 @@
         }
       ],
       "tasks": [
+        {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
         {
           "key": "ask_question",
           "commits": false,
@@ -9467,6 +11217,31 @@
         }
       ],
       "tasks": [
+        {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
         {
           "key": "ask_question",
           "commits": false,
@@ -9591,6 +11366,31 @@
       ],
       "tasks": [
         {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
           "key": "ask_question",
           "commits": false,
           "tools": [
@@ -9711,6 +11511,31 @@
         }
       ],
       "tasks": [
+        {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
         {
           "key": "ask_question",
           "commits": false,
@@ -9838,6 +11663,31 @@
         }
       ],
       "tasks": [
+        {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
         {
           "key": "ask_question",
           "commits": false,
@@ -9999,6 +11849,31 @@
       ],
       "tasks": [
         {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
           "key": "ask_question",
           "commits": false,
           "tools": [
@@ -10158,6 +12033,31 @@
         }
       ],
       "tasks": [
+        {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
         {
           "key": "ask_question",
           "commits": false,
@@ -11295,7 +13195,84 @@
         "crm"
       ],
       "asynchronous": false,
-      "declaredTasks": []
+      "declaredTasks": [
+        "automotriz/alquiler:capture_interest",
+        "automotriz/concesionario:capture_interest",
+        "automotriz/repuestos:capture_interest",
+        "automotriz/taller:capture_interest",
+        "construccion/contratista_general:capture_interest",
+        "education/capacitacion:capture_interest",
+        "education/idiomas:capture_interest",
+        "education/online:capture_interest",
+        "education/universitaria:capture_interest",
+        "event_planning/weddings:capture_interest",
+        "finanzas/asesoria:capture_interest",
+        "finanzas/creditos:capture_interest",
+        "finanzas/pagos_recaudos:capture_interest",
+        "fotografia/bodas:capture_interest",
+        "fotografia/estudio:capture_interest",
+        "fotografia/eventos:capture_interest",
+        "fotografia/producto:capture_interest",
+        "gimnasios/crossfit:capture_interest",
+        "gimnasios/cycling:capture_interest",
+        "gimnasios/gimnasio_general:capture_interest",
+        "gimnasios/martial_arts:capture_interest",
+        "gimnasios/yoga_pilates:capture_interest",
+        "inmobiliaria/arriendo:capture_interest",
+        "inmobiliaria/comercial:capture_interest",
+        "inmobiliaria/promotora:capture_interest",
+        "inmobiliaria/venta:capture_interest",
+        "moda_belleza/barberia:capture_interest",
+        "moda_belleza/estetica:capture_interest",
+        "moda_belleza/salon_belleza:capture_interest",
+        "moda_belleza/spa:capture_interest",
+        "otro/__none__:capture_interest",
+        "pet_services/adiestramiento:capture_interest",
+        "pet_services/guarderia:capture_interest",
+        "pet_services/hotel:capture_interest",
+        "pet_services/paseos:capture_interest",
+        "pet_services/peluqueria:capture_interest",
+        "restaurantes/cafeteria:capture_interest",
+        "restaurantes/casual_dining:capture_interest",
+        "restaurantes/comida_rapida:capture_interest",
+        "restaurantes/dark_kitchen:capture_interest",
+        "retail/electronica:capture_interest",
+        "retail/hogar:capture_interest",
+        "retail/marketplace:capture_interest",
+        "retail/moda:capture_interest",
+        "salud/dental:capture_interest",
+        "salud/dermatologia:capture_interest",
+        "salud/farmacia:capture_interest",
+        "salud/medica_general:capture_interest",
+        "salud/psicologia:capture_interest",
+        "seguros/aseguradora:capture_interest",
+        "seguros/auto:capture_interest",
+        "seguros/broker:capture_interest",
+        "seguros/salud:capture_interest",
+        "seguros/vida:capture_interest",
+        "servicios_hogar/cerrajeria:capture_interest",
+        "servicios_hogar/electricidad:capture_interest",
+        "servicios_hogar/fumigacion:capture_interest",
+        "servicios_hogar/jardineria:capture_interest",
+        "servicios_hogar/limpieza:capture_interest",
+        "servicios_hogar/pintura:capture_interest",
+        "servicios_hogar/plomeria:capture_interest",
+        "servicios_profesionales/abogados:capture_interest",
+        "servicios_profesionales/arquitectos:capture_interest",
+        "servicios_profesionales/consultores:capture_interest",
+        "servicios_profesionales/contadores:capture_interest",
+        "technology/desarrollo:capture_interest",
+        "technology/hardware:capture_interest",
+        "technology/saas:capture_interest",
+        "technology/soporte_ti_msp:capture_interest",
+        "turismo/agencia_viajes:capture_interest",
+        "turismo/alquiler_vacacional:capture_interest",
+        "turismo/hotel:capture_interest",
+        "turismo/tours:capture_interest",
+        "veterinaria/clinica_general:capture_interest",
+        "veterinaria/exoticos:capture_interest",
+        "veterinaria/hospital_24h:capture_interest"
+      ]
     },
     {
       "name": "create_follow_up_task",
@@ -11322,7 +13299,84 @@
         "crm"
       ],
       "asynchronous": false,
-      "declaredTasks": []
+      "declaredTasks": [
+        "automotriz/alquiler:request_follow_up",
+        "automotriz/concesionario:request_follow_up",
+        "automotriz/repuestos:request_follow_up",
+        "automotriz/taller:request_follow_up",
+        "construccion/contratista_general:request_follow_up",
+        "education/capacitacion:request_follow_up",
+        "education/idiomas:request_follow_up",
+        "education/online:request_follow_up",
+        "education/universitaria:request_follow_up",
+        "event_planning/weddings:request_follow_up",
+        "finanzas/asesoria:request_follow_up",
+        "finanzas/creditos:request_follow_up",
+        "finanzas/pagos_recaudos:request_follow_up",
+        "fotografia/bodas:request_follow_up",
+        "fotografia/estudio:request_follow_up",
+        "fotografia/eventos:request_follow_up",
+        "fotografia/producto:request_follow_up",
+        "gimnasios/crossfit:request_follow_up",
+        "gimnasios/cycling:request_follow_up",
+        "gimnasios/gimnasio_general:request_follow_up",
+        "gimnasios/martial_arts:request_follow_up",
+        "gimnasios/yoga_pilates:request_follow_up",
+        "inmobiliaria/arriendo:request_follow_up",
+        "inmobiliaria/comercial:request_follow_up",
+        "inmobiliaria/promotora:request_follow_up",
+        "inmobiliaria/venta:request_follow_up",
+        "moda_belleza/barberia:request_follow_up",
+        "moda_belleza/estetica:request_follow_up",
+        "moda_belleza/salon_belleza:request_follow_up",
+        "moda_belleza/spa:request_follow_up",
+        "otro/__none__:request_follow_up",
+        "pet_services/adiestramiento:request_follow_up",
+        "pet_services/guarderia:request_follow_up",
+        "pet_services/hotel:request_follow_up",
+        "pet_services/paseos:request_follow_up",
+        "pet_services/peluqueria:request_follow_up",
+        "restaurantes/cafeteria:request_follow_up",
+        "restaurantes/casual_dining:request_follow_up",
+        "restaurantes/comida_rapida:request_follow_up",
+        "restaurantes/dark_kitchen:request_follow_up",
+        "retail/electronica:request_follow_up",
+        "retail/hogar:request_follow_up",
+        "retail/marketplace:request_follow_up",
+        "retail/moda:request_follow_up",
+        "salud/dental:request_follow_up",
+        "salud/dermatologia:request_follow_up",
+        "salud/farmacia:request_follow_up",
+        "salud/medica_general:request_follow_up",
+        "salud/psicologia:request_follow_up",
+        "seguros/aseguradora:request_follow_up",
+        "seguros/auto:request_follow_up",
+        "seguros/broker:request_follow_up",
+        "seguros/salud:request_follow_up",
+        "seguros/vida:request_follow_up",
+        "servicios_hogar/cerrajeria:request_follow_up",
+        "servicios_hogar/electricidad:request_follow_up",
+        "servicios_hogar/fumigacion:request_follow_up",
+        "servicios_hogar/jardineria:request_follow_up",
+        "servicios_hogar/limpieza:request_follow_up",
+        "servicios_hogar/pintura:request_follow_up",
+        "servicios_hogar/plomeria:request_follow_up",
+        "servicios_profesionales/abogados:request_follow_up",
+        "servicios_profesionales/arquitectos:request_follow_up",
+        "servicios_profesionales/consultores:request_follow_up",
+        "servicios_profesionales/contadores:request_follow_up",
+        "technology/desarrollo:request_follow_up",
+        "technology/hardware:request_follow_up",
+        "technology/saas:request_follow_up",
+        "technology/soporte_ti_msp:request_follow_up",
+        "turismo/agencia_viajes:request_follow_up",
+        "turismo/alquiler_vacacional:request_follow_up",
+        "turismo/hotel:request_follow_up",
+        "turismo/tours:request_follow_up",
+        "veterinaria/clinica_general:request_follow_up",
+        "veterinaria/exoticos:request_follow_up",
+        "veterinaria/hospital_24h:request_follow_up"
+      ]
     },
     {
       "name": "create_payment_link",
@@ -11605,7 +13659,160 @@
         "crm"
       ],
       "asynchronous": false,
-      "declaredTasks": []
+      "declaredTasks": [
+        "automotriz/alquiler:capture_interest",
+        "automotriz/alquiler:request_follow_up",
+        "automotriz/concesionario:capture_interest",
+        "automotriz/concesionario:request_follow_up",
+        "automotriz/repuestos:capture_interest",
+        "automotriz/repuestos:request_follow_up",
+        "automotriz/taller:capture_interest",
+        "automotriz/taller:request_follow_up",
+        "construccion/contratista_general:capture_interest",
+        "construccion/contratista_general:request_follow_up",
+        "education/capacitacion:capture_interest",
+        "education/capacitacion:request_follow_up",
+        "education/idiomas:capture_interest",
+        "education/idiomas:request_follow_up",
+        "education/online:capture_interest",
+        "education/online:request_follow_up",
+        "education/universitaria:capture_interest",
+        "education/universitaria:request_follow_up",
+        "event_planning/weddings:capture_interest",
+        "event_planning/weddings:request_follow_up",
+        "finanzas/asesoria:capture_interest",
+        "finanzas/asesoria:request_follow_up",
+        "finanzas/creditos:capture_interest",
+        "finanzas/creditos:request_follow_up",
+        "finanzas/pagos_recaudos:capture_interest",
+        "finanzas/pagos_recaudos:request_follow_up",
+        "fotografia/bodas:capture_interest",
+        "fotografia/bodas:request_follow_up",
+        "fotografia/estudio:capture_interest",
+        "fotografia/estudio:request_follow_up",
+        "fotografia/eventos:capture_interest",
+        "fotografia/eventos:request_follow_up",
+        "fotografia/producto:capture_interest",
+        "fotografia/producto:request_follow_up",
+        "gimnasios/crossfit:capture_interest",
+        "gimnasios/crossfit:request_follow_up",
+        "gimnasios/cycling:capture_interest",
+        "gimnasios/cycling:request_follow_up",
+        "gimnasios/gimnasio_general:capture_interest",
+        "gimnasios/gimnasio_general:request_follow_up",
+        "gimnasios/martial_arts:capture_interest",
+        "gimnasios/martial_arts:request_follow_up",
+        "gimnasios/yoga_pilates:capture_interest",
+        "gimnasios/yoga_pilates:request_follow_up",
+        "inmobiliaria/arriendo:capture_interest",
+        "inmobiliaria/arriendo:request_follow_up",
+        "inmobiliaria/comercial:capture_interest",
+        "inmobiliaria/comercial:request_follow_up",
+        "inmobiliaria/promotora:capture_interest",
+        "inmobiliaria/promotora:request_follow_up",
+        "inmobiliaria/venta:capture_interest",
+        "inmobiliaria/venta:request_follow_up",
+        "moda_belleza/barberia:capture_interest",
+        "moda_belleza/barberia:request_follow_up",
+        "moda_belleza/estetica:capture_interest",
+        "moda_belleza/estetica:request_follow_up",
+        "moda_belleza/salon_belleza:capture_interest",
+        "moda_belleza/salon_belleza:request_follow_up",
+        "moda_belleza/spa:capture_interest",
+        "moda_belleza/spa:request_follow_up",
+        "otro/__none__:capture_interest",
+        "otro/__none__:request_follow_up",
+        "pet_services/adiestramiento:capture_interest",
+        "pet_services/adiestramiento:request_follow_up",
+        "pet_services/guarderia:capture_interest",
+        "pet_services/guarderia:request_follow_up",
+        "pet_services/hotel:capture_interest",
+        "pet_services/hotel:request_follow_up",
+        "pet_services/paseos:capture_interest",
+        "pet_services/paseos:request_follow_up",
+        "pet_services/peluqueria:capture_interest",
+        "pet_services/peluqueria:request_follow_up",
+        "restaurantes/cafeteria:capture_interest",
+        "restaurantes/cafeteria:request_follow_up",
+        "restaurantes/casual_dining:capture_interest",
+        "restaurantes/casual_dining:request_follow_up",
+        "restaurantes/comida_rapida:capture_interest",
+        "restaurantes/comida_rapida:request_follow_up",
+        "restaurantes/dark_kitchen:capture_interest",
+        "restaurantes/dark_kitchen:request_follow_up",
+        "retail/electronica:capture_interest",
+        "retail/electronica:request_follow_up",
+        "retail/hogar:capture_interest",
+        "retail/hogar:request_follow_up",
+        "retail/marketplace:capture_interest",
+        "retail/marketplace:request_follow_up",
+        "retail/moda:capture_interest",
+        "retail/moda:request_follow_up",
+        "salud/dental:capture_interest",
+        "salud/dental:request_follow_up",
+        "salud/dermatologia:capture_interest",
+        "salud/dermatologia:request_follow_up",
+        "salud/farmacia:capture_interest",
+        "salud/farmacia:request_follow_up",
+        "salud/medica_general:capture_interest",
+        "salud/medica_general:request_follow_up",
+        "salud/psicologia:capture_interest",
+        "salud/psicologia:request_follow_up",
+        "seguros/aseguradora:capture_interest",
+        "seguros/aseguradora:request_follow_up",
+        "seguros/auto:capture_interest",
+        "seguros/auto:request_follow_up",
+        "seguros/broker:capture_interest",
+        "seguros/broker:request_follow_up",
+        "seguros/salud:capture_interest",
+        "seguros/salud:request_follow_up",
+        "seguros/vida:capture_interest",
+        "seguros/vida:request_follow_up",
+        "servicios_hogar/cerrajeria:capture_interest",
+        "servicios_hogar/cerrajeria:request_follow_up",
+        "servicios_hogar/electricidad:capture_interest",
+        "servicios_hogar/electricidad:request_follow_up",
+        "servicios_hogar/fumigacion:capture_interest",
+        "servicios_hogar/fumigacion:request_follow_up",
+        "servicios_hogar/jardineria:capture_interest",
+        "servicios_hogar/jardineria:request_follow_up",
+        "servicios_hogar/limpieza:capture_interest",
+        "servicios_hogar/limpieza:request_follow_up",
+        "servicios_hogar/pintura:capture_interest",
+        "servicios_hogar/pintura:request_follow_up",
+        "servicios_hogar/plomeria:capture_interest",
+        "servicios_hogar/plomeria:request_follow_up",
+        "servicios_profesionales/abogados:capture_interest",
+        "servicios_profesionales/abogados:request_follow_up",
+        "servicios_profesionales/arquitectos:capture_interest",
+        "servicios_profesionales/arquitectos:request_follow_up",
+        "servicios_profesionales/consultores:capture_interest",
+        "servicios_profesionales/consultores:request_follow_up",
+        "servicios_profesionales/contadores:capture_interest",
+        "servicios_profesionales/contadores:request_follow_up",
+        "technology/desarrollo:capture_interest",
+        "technology/desarrollo:request_follow_up",
+        "technology/hardware:capture_interest",
+        "technology/hardware:request_follow_up",
+        "technology/saas:capture_interest",
+        "technology/saas:request_follow_up",
+        "technology/soporte_ti_msp:capture_interest",
+        "technology/soporte_ti_msp:request_follow_up",
+        "turismo/agencia_viajes:capture_interest",
+        "turismo/agencia_viajes:request_follow_up",
+        "turismo/alquiler_vacacional:capture_interest",
+        "turismo/alquiler_vacacional:request_follow_up",
+        "turismo/hotel:capture_interest",
+        "turismo/hotel:request_follow_up",
+        "turismo/tours:capture_interest",
+        "turismo/tours:request_follow_up",
+        "veterinaria/clinica_general:capture_interest",
+        "veterinaria/clinica_general:request_follow_up",
+        "veterinaria/exoticos:capture_interest",
+        "veterinaria/exoticos:request_follow_up",
+        "veterinaria/hospital_24h:capture_interest",
+        "veterinaria/hospital_24h:request_follow_up"
+      ]
     },
     {
       "name": "file_claim",
@@ -11963,7 +14170,160 @@
         "crm"
       ],
       "asynchronous": false,
-      "declaredTasks": []
+      "declaredTasks": [
+        "automotriz/alquiler:capture_interest",
+        "automotriz/alquiler:request_follow_up",
+        "automotriz/concesionario:capture_interest",
+        "automotriz/concesionario:request_follow_up",
+        "automotriz/repuestos:capture_interest",
+        "automotriz/repuestos:request_follow_up",
+        "automotriz/taller:capture_interest",
+        "automotriz/taller:request_follow_up",
+        "construccion/contratista_general:capture_interest",
+        "construccion/contratista_general:request_follow_up",
+        "education/capacitacion:capture_interest",
+        "education/capacitacion:request_follow_up",
+        "education/idiomas:capture_interest",
+        "education/idiomas:request_follow_up",
+        "education/online:capture_interest",
+        "education/online:request_follow_up",
+        "education/universitaria:capture_interest",
+        "education/universitaria:request_follow_up",
+        "event_planning/weddings:capture_interest",
+        "event_planning/weddings:request_follow_up",
+        "finanzas/asesoria:capture_interest",
+        "finanzas/asesoria:request_follow_up",
+        "finanzas/creditos:capture_interest",
+        "finanzas/creditos:request_follow_up",
+        "finanzas/pagos_recaudos:capture_interest",
+        "finanzas/pagos_recaudos:request_follow_up",
+        "fotografia/bodas:capture_interest",
+        "fotografia/bodas:request_follow_up",
+        "fotografia/estudio:capture_interest",
+        "fotografia/estudio:request_follow_up",
+        "fotografia/eventos:capture_interest",
+        "fotografia/eventos:request_follow_up",
+        "fotografia/producto:capture_interest",
+        "fotografia/producto:request_follow_up",
+        "gimnasios/crossfit:capture_interest",
+        "gimnasios/crossfit:request_follow_up",
+        "gimnasios/cycling:capture_interest",
+        "gimnasios/cycling:request_follow_up",
+        "gimnasios/gimnasio_general:capture_interest",
+        "gimnasios/gimnasio_general:request_follow_up",
+        "gimnasios/martial_arts:capture_interest",
+        "gimnasios/martial_arts:request_follow_up",
+        "gimnasios/yoga_pilates:capture_interest",
+        "gimnasios/yoga_pilates:request_follow_up",
+        "inmobiliaria/arriendo:capture_interest",
+        "inmobiliaria/arriendo:request_follow_up",
+        "inmobiliaria/comercial:capture_interest",
+        "inmobiliaria/comercial:request_follow_up",
+        "inmobiliaria/promotora:capture_interest",
+        "inmobiliaria/promotora:request_follow_up",
+        "inmobiliaria/venta:capture_interest",
+        "inmobiliaria/venta:request_follow_up",
+        "moda_belleza/barberia:capture_interest",
+        "moda_belleza/barberia:request_follow_up",
+        "moda_belleza/estetica:capture_interest",
+        "moda_belleza/estetica:request_follow_up",
+        "moda_belleza/salon_belleza:capture_interest",
+        "moda_belleza/salon_belleza:request_follow_up",
+        "moda_belleza/spa:capture_interest",
+        "moda_belleza/spa:request_follow_up",
+        "otro/__none__:capture_interest",
+        "otro/__none__:request_follow_up",
+        "pet_services/adiestramiento:capture_interest",
+        "pet_services/adiestramiento:request_follow_up",
+        "pet_services/guarderia:capture_interest",
+        "pet_services/guarderia:request_follow_up",
+        "pet_services/hotel:capture_interest",
+        "pet_services/hotel:request_follow_up",
+        "pet_services/paseos:capture_interest",
+        "pet_services/paseos:request_follow_up",
+        "pet_services/peluqueria:capture_interest",
+        "pet_services/peluqueria:request_follow_up",
+        "restaurantes/cafeteria:capture_interest",
+        "restaurantes/cafeteria:request_follow_up",
+        "restaurantes/casual_dining:capture_interest",
+        "restaurantes/casual_dining:request_follow_up",
+        "restaurantes/comida_rapida:capture_interest",
+        "restaurantes/comida_rapida:request_follow_up",
+        "restaurantes/dark_kitchen:capture_interest",
+        "restaurantes/dark_kitchen:request_follow_up",
+        "retail/electronica:capture_interest",
+        "retail/electronica:request_follow_up",
+        "retail/hogar:capture_interest",
+        "retail/hogar:request_follow_up",
+        "retail/marketplace:capture_interest",
+        "retail/marketplace:request_follow_up",
+        "retail/moda:capture_interest",
+        "retail/moda:request_follow_up",
+        "salud/dental:capture_interest",
+        "salud/dental:request_follow_up",
+        "salud/dermatologia:capture_interest",
+        "salud/dermatologia:request_follow_up",
+        "salud/farmacia:capture_interest",
+        "salud/farmacia:request_follow_up",
+        "salud/medica_general:capture_interest",
+        "salud/medica_general:request_follow_up",
+        "salud/psicologia:capture_interest",
+        "salud/psicologia:request_follow_up",
+        "seguros/aseguradora:capture_interest",
+        "seguros/aseguradora:request_follow_up",
+        "seguros/auto:capture_interest",
+        "seguros/auto:request_follow_up",
+        "seguros/broker:capture_interest",
+        "seguros/broker:request_follow_up",
+        "seguros/salud:capture_interest",
+        "seguros/salud:request_follow_up",
+        "seguros/vida:capture_interest",
+        "seguros/vida:request_follow_up",
+        "servicios_hogar/cerrajeria:capture_interest",
+        "servicios_hogar/cerrajeria:request_follow_up",
+        "servicios_hogar/electricidad:capture_interest",
+        "servicios_hogar/electricidad:request_follow_up",
+        "servicios_hogar/fumigacion:capture_interest",
+        "servicios_hogar/fumigacion:request_follow_up",
+        "servicios_hogar/jardineria:capture_interest",
+        "servicios_hogar/jardineria:request_follow_up",
+        "servicios_hogar/limpieza:capture_interest",
+        "servicios_hogar/limpieza:request_follow_up",
+        "servicios_hogar/pintura:capture_interest",
+        "servicios_hogar/pintura:request_follow_up",
+        "servicios_hogar/plomeria:capture_interest",
+        "servicios_hogar/plomeria:request_follow_up",
+        "servicios_profesionales/abogados:capture_interest",
+        "servicios_profesionales/abogados:request_follow_up",
+        "servicios_profesionales/arquitectos:capture_interest",
+        "servicios_profesionales/arquitectos:request_follow_up",
+        "servicios_profesionales/consultores:capture_interest",
+        "servicios_profesionales/consultores:request_follow_up",
+        "servicios_profesionales/contadores:capture_interest",
+        "servicios_profesionales/contadores:request_follow_up",
+        "technology/desarrollo:capture_interest",
+        "technology/desarrollo:request_follow_up",
+        "technology/hardware:capture_interest",
+        "technology/hardware:request_follow_up",
+        "technology/saas:capture_interest",
+        "technology/saas:request_follow_up",
+        "technology/soporte_ti_msp:capture_interest",
+        "technology/soporte_ti_msp:request_follow_up",
+        "turismo/agencia_viajes:capture_interest",
+        "turismo/agencia_viajes:request_follow_up",
+        "turismo/alquiler_vacacional:capture_interest",
+        "turismo/alquiler_vacacional:request_follow_up",
+        "turismo/hotel:capture_interest",
+        "turismo/hotel:request_follow_up",
+        "turismo/tours:capture_interest",
+        "turismo/tours:request_follow_up",
+        "veterinaria/clinica_general:capture_interest",
+        "veterinaria/clinica_general:request_follow_up",
+        "veterinaria/exoticos:capture_interest",
+        "veterinaria/exoticos:request_follow_up",
+        "veterinaria/hospital_24h:capture_interest",
+        "veterinaria/hospital_24h:request_follow_up"
+      ]
     },
     {
       "name": "get_fitness_schedule",
@@ -13496,7 +15856,84 @@
         "crm"
       ],
       "asynchronous": false,
-      "declaredTasks": []
+      "declaredTasks": [
+        "automotriz/alquiler:capture_interest",
+        "automotriz/concesionario:capture_interest",
+        "automotriz/repuestos:capture_interest",
+        "automotriz/taller:capture_interest",
+        "construccion/contratista_general:capture_interest",
+        "education/capacitacion:capture_interest",
+        "education/idiomas:capture_interest",
+        "education/online:capture_interest",
+        "education/universitaria:capture_interest",
+        "event_planning/weddings:capture_interest",
+        "finanzas/asesoria:capture_interest",
+        "finanzas/creditos:capture_interest",
+        "finanzas/pagos_recaudos:capture_interest",
+        "fotografia/bodas:capture_interest",
+        "fotografia/estudio:capture_interest",
+        "fotografia/eventos:capture_interest",
+        "fotografia/producto:capture_interest",
+        "gimnasios/crossfit:capture_interest",
+        "gimnasios/cycling:capture_interest",
+        "gimnasios/gimnasio_general:capture_interest",
+        "gimnasios/martial_arts:capture_interest",
+        "gimnasios/yoga_pilates:capture_interest",
+        "inmobiliaria/arriendo:capture_interest",
+        "inmobiliaria/comercial:capture_interest",
+        "inmobiliaria/promotora:capture_interest",
+        "inmobiliaria/venta:capture_interest",
+        "moda_belleza/barberia:capture_interest",
+        "moda_belleza/estetica:capture_interest",
+        "moda_belleza/salon_belleza:capture_interest",
+        "moda_belleza/spa:capture_interest",
+        "otro/__none__:capture_interest",
+        "pet_services/adiestramiento:capture_interest",
+        "pet_services/guarderia:capture_interest",
+        "pet_services/hotel:capture_interest",
+        "pet_services/paseos:capture_interest",
+        "pet_services/peluqueria:capture_interest",
+        "restaurantes/cafeteria:capture_interest",
+        "restaurantes/casual_dining:capture_interest",
+        "restaurantes/comida_rapida:capture_interest",
+        "restaurantes/dark_kitchen:capture_interest",
+        "retail/electronica:capture_interest",
+        "retail/hogar:capture_interest",
+        "retail/marketplace:capture_interest",
+        "retail/moda:capture_interest",
+        "salud/dental:capture_interest",
+        "salud/dermatologia:capture_interest",
+        "salud/farmacia:capture_interest",
+        "salud/medica_general:capture_interest",
+        "salud/psicologia:capture_interest",
+        "seguros/aseguradora:capture_interest",
+        "seguros/auto:capture_interest",
+        "seguros/broker:capture_interest",
+        "seguros/salud:capture_interest",
+        "seguros/vida:capture_interest",
+        "servicios_hogar/cerrajeria:capture_interest",
+        "servicios_hogar/electricidad:capture_interest",
+        "servicios_hogar/fumigacion:capture_interest",
+        "servicios_hogar/jardineria:capture_interest",
+        "servicios_hogar/limpieza:capture_interest",
+        "servicios_hogar/pintura:capture_interest",
+        "servicios_hogar/plomeria:capture_interest",
+        "servicios_profesionales/abogados:capture_interest",
+        "servicios_profesionales/arquitectos:capture_interest",
+        "servicios_profesionales/consultores:capture_interest",
+        "servicios_profesionales/contadores:capture_interest",
+        "technology/desarrollo:capture_interest",
+        "technology/hardware:capture_interest",
+        "technology/saas:capture_interest",
+        "technology/soporte_ti_msp:capture_interest",
+        "turismo/agencia_viajes:capture_interest",
+        "turismo/alquiler_vacacional:capture_interest",
+        "turismo/hotel:capture_interest",
+        "turismo/tours:capture_interest",
+        "veterinaria/clinica_general:capture_interest",
+        "veterinaria/exoticos:capture_interest",
+        "veterinaria/hospital_24h:capture_interest"
+      ]
     },
     {
       "name": "refund_payment",

@@ -81,11 +81,11 @@ const url = process.env.PARALLLY_ISOLATION_TEST_URL;
     it('checks the compatible services and active staff windows used by setup', async () => {
         const quality: any = new AgentQualityService(prisma);
         jest.spyOn(quality.logger, 'debug').mockImplementation(() => undefined);
-        let facts = await quality.loadReadinessFacts(schema);
+        let facts = await quality.loadReadinessFacts(tenantId, schema);
         expect(facts).toMatchObject({ vehicles: 1, testDriveServices: 2, testDriveSlots: 2 });
         expect(facts.unavailableSources).not.toContain('appointments');
         await q("UPDATE services SET location_type='online'");
-        facts = await quality.loadReadinessFacts(schema);
+        facts = await quality.loadReadinessFacts(tenantId, schema);
         expect(facts).toMatchObject({ services: 2, availabilitySlots: 2, testDriveServices: 0, testDriveSlots: 0 });
     });
     it('keeps payment terms on retry and does not sync an unpaid appointment', async () => {

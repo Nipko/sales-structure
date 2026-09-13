@@ -22,7 +22,7 @@ export class SlackListenerService {
         if (!event?.tenantId) return;
         const who = event.contactName || 'Un cliente';
         const reason = event.reason ? ` — ${event.reason}` : '';
-        await this.slack.notify(event.tenantId, 'handoff', `🙋 *Conversación escalada*: ${who}${reason}`);
+        return this.slack.notifyStrict(event.tenantId, 'handoff', `🙋 *Conversación escalada*: ${who}${reason}`);
     }
 
     @OnEvent('appointment.created')

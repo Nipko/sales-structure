@@ -1483,22 +1483,10 @@ export class ChannelManagementController {
     @Roles('tenant_admin')
     @ApiOperation({ summary: 'Send a test SMS' })
     async testSms(
-        @Body() body: { to: string },
-        @Req() req: any,
+        @Body() _body: { to: string },
+        @Req() _req: any,
     ) {
         this.rejectRetiredSms('test');
-        const tenantId = req.user?.tenantId;
-        if (!tenantId) throw new BadRequestException('Tenant ID required');
-
-        const creds = await this.channelToken.getChannelToken(tenantId, 'sms');
-        await this.smsAdapter.sendTextMessage(
-            body.to,
-            'Test message from Parallly - SMS channel connected successfully!',
-            creds.accountId,
-            creds.accessToken,
-        );
-
-        return { success: true, message: `Test SMS sent to ${body.to}` };
     }
 
     // ==========================================

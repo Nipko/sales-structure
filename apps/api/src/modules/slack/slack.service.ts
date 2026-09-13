@@ -133,13 +133,18 @@ export class SlackService {
     /** Post a message to the tenant's Slack webhook, gated by config + event flag. */
     async notify(tenantId: string, eventKey: keyof SlackConfig['events'], text: string): Promise<void> {
         try {
-            const cfg = await this.getConfig(tenantId);
-            if (!cfg.enabled || !cfg.webhookUrl) return;
-            if (!cfg.events?.[eventKey]) return;
-            await this.post(cfg.webhookUrl, text);
+            await this.notifyStrict(tenantId,eventKey,text);
         } catch (err: any) {
             this.logger.warn(`Slack notify failed for tenant ${tenantId}: ${err?.code || err?.name || 'error'}`);
         }
+    }
+
+    /** Handoff lane: never turn a refused or unknown POST into success. */
+    async notifyStrict(tenantId:string,eventKey:keyof SlackConfig['events'],text:string):Promise<string> {
+        const cfg=await this.getConfig(tenantId);
+        if(!cfg.enabled||!cfg.webhookUrl||!cfg.events?.[eventKey])return 'slack:disabled';
+        await this.post(cfg.webhookUrl,text);
+        return 'slack:accepted';
     }
 
     async sendTest(tenantId: string): Promise<{ ok: boolean }> {

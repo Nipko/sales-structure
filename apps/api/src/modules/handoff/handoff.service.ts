@@ -118,10 +118,11 @@ const HANDOFF_INBOX_URL = 'https://admin.parallly-chat.cloud/admin/inbox';
  */
 const HANDOFF_UNCERTAIN_FAILURES: ReadonlySet<string> = new Set([
     'smtp_deadline_outcome_unknown', 'smtp_acceptance_unverified', 'smtp_connection_closed',
+    'handoff_sms_partial_outcome_unknown',
 ]);
 function classifyHandoffEffectFailure(error: any): HandoffEffectOutcome {
     const code = String(error?.message || error || 'handoff_effect_failed').slice(0, 120);
-    return HANDOFF_UNCERTAIN_FAILURES.has(code)
+    return HANDOFF_UNCERTAIN_FAILURES.has(code) || /timed?\s*out|timeout|connection\s+(?:closed|reset)/i.test(code)
         ? { kind: 'unknown', errorCode: code }
         : { kind: 'rejected', errorCode: code };
 }
@@ -501,8 +502,9 @@ export class HandoffService {
         // cannot be settled, and a transfer is rare enough to pay for that.
         for (const destination of HANDOFF_ANNOUNCEMENT_DESTINATIONS) {
             await deliverEffect(destination, async () => {
-                await this.eventEmitter.emitAsync(`handoff.escalated.${destination}`, handoffEvent);
-                return null;
+                const results=await this.eventEmitter.emitAsync(`handoff.escalated.${destination}`, handoffEvent) || [];
+                const receipt=results.find(value=>typeof value==='string'&&value.length>0);
+                return typeof receipt==='string'?receipt:null;
             });
         }
 

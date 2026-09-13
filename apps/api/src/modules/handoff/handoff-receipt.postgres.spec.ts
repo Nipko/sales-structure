@@ -402,6 +402,22 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
             expect(await attemptsByDestination(first.id)).toMatchObject({ inbox: 1, slack: 2, sms: 1 });
         });
 
+        it('never retries a destination whose provider timed out after the request',async()=>{
+            const f=await fixture();const {service,events,announced}=serviceFor(prisma);
+            const message=inboundMessage(f.conversationId,f.externalId);
+            const request={contactId:f.contactId,inboundMessageId:f.inboundMessageId,
+                noticeKind:'queue_head' as const,noticeLanguage:'es' as const};
+            events.emitAsync.mockImplementation(async(name:string)=>name==='handoff.escalated.slack'
+                ?Promise.reject(new Error('timeout of 10000ms exceeded')):[]);
+            const first=await service.executeHandoffOnce(tenantId,f.conversationId,message,'explicit_request',request);
+            expect((await sql("SELECT state,error_code,attempts FROM agent_handoff_effects WHERE receipt_id=$1::uuid AND destination='slack'",[first.id]))[0])
+                .toMatchObject({state:'unknown',error_code:'timeout of 10000ms exceeded',attempts:1});
+            events.emitAsync.mockClear();events.emitAsync.mockResolvedValue([]);
+            await service.executeHandoffOnce(tenantId,f.conversationId,message,'explicit_request',request);
+            expect(announced()).not.toContain('handoff.escalated.slack');
+            expect(await attemptsByDestination(first.id)).toMatchObject({slack:1});
+        });
+
         it('records a notification nobody can vouch for as uncertain, and never sends a second', async () => {
             const f = await fixture();
             const { service, templates } = serviceFor(prisma);

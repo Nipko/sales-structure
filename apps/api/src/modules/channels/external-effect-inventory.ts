@@ -337,9 +337,10 @@ const HANDOFF_EFFECT_PROPERTIES: Record<EffectProperty, EffectCoverage> = {
         + 'commits before the destination is touched'),
     idempotency: durable('UNIQUE (receipt_id, destination); a resumed transfer cannot re-announce '
         + 'itself to the destinations that already accepted'),
-    receipt: partial('the row stores whatever the destination returned — an agent id, an SMTP id. '
-        + 'For the five announcement destinations that is the event emitter completing, not the '
-        + 'provider accepting: the listener\'s own POST has no receipt of its own'),
+    receipt: partial('the row stores whatever the destination returned: an agent id, an SMTP id, '
+        + 'the Slack HTTP acceptance, the Twilio SID list, or the push recipient count. Inbox, CRM '
+        + 'and webhooks can still prove only listener completion; push also hides individual '
+        + 'subscription failures behind its aggregate count'),
     uncertainOutcome: durable('a lapsed lease becomes `unknown` and waits for a person; it never '
         + 'becomes available again'),
     erasure: durable('the table stores a destination and a receipt, never contact data, so there is '
@@ -622,63 +623,57 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
     producer({
         id: 'handoff.agent_sms',
         effect: 'An SMS to the assigned agent, or to the tenant\'s admins, when a conversation escalates',
-        lane: 'inline',
+        lane: 'handoff_effects',
         // The platform SMS kill switch (`platform_settings` key `sms.platform_enabled`) defaults
         // to false and fails closed, so nothing here reaches a carrier as things stand.
         status: 'off',
         derivation: 'census',
         source: 'modules/sms-notifications/sms-notification-listener.service.ts',
         symbol: 'onHandoff',
-        egress: 'SmsSenderService.sendToNumber → SmsAdapter.sendTextMessage (the tenant\'s own Twilio)',
+        egress: 'the admitted `sms` handoff effect calls strict Twilio transport and stores every SID; '
+            + 'a partial fan-out becomes unknown and cannot retry',
         reach: {
             class: 'operator_notification', audience: 'tenant_operator', personalData: true,
             channels: ['sms'],
         },
-        properties: {
-            authority: partial('the handoff effect row for destination `sms` admits the ANNOUNCEMENT '
-                + 'once. It says the listener ran, not that a carrier accepted anything'),
-            idempotency: partial('same row: the transfer cannot re-announce, but the listener loops over '
-                + 'several phones and a partial failure inside that loop has no identity of its own'),
-            receipt: none('`SmsSenderService.sendToNumber` returns a boolean and never throws; the '
-                + 'Twilio sid is discarded'),
-            uncertainOutcome: none('the listener catches everything and warns, so the handoff effect row '
-                + 'settles `accepted` whether or not a message went out'),
-            erasure: none('nothing records the recipient or the text'),
-            recovery: none('a swallowed failure is settled as success, so there is nothing to recover'),
-        },
+        properties:{...HANDOFF_EFFECT_PROPERTIES,
+            receipt:durable('the handoff effect row stores the Twilio SID list returned by strict transport'),
+            uncertainOutcome:durable('timeouts and any partial recipient fan-out settle `unknown` and cannot retry')},
     }),
 
     producer({
         id: 'handoff.slack',
-        effect: 'A Slack post to the tenant\'s incoming webhook on escalation, and on a new appointment',
-        lane: 'inline',
+        effect: 'A Slack post to the tenant\'s incoming webhook when a conversation escalates',
+        lane: 'handoff_effects',
         status: 'live',
         derivation: 'declared',
         source: 'modules/slack/slack-listener.service.ts',
         symbol: 'SlackListenerService',
-        egress: 'SlackService.notify → axios POST to the pinned hooks.slack.com target',
+        egress: 'the admitted `slack` effect calls `notifyStrict`; HTTP refusal is rejected and a '
+            + 'timeout is unknown rather than accepted',
         reach: {
             class: 'operator_notification', audience: 'tenant_operator', personalData: true,
             channels: ['slack'],
         },
-        properties: {
-            authority: partial('the handoff effect row for destination `slack` admits the announcement '
-                + 'once. The `appointment.created` listener has no row at all'),
-            idempotency: partial('same row on the handoff path; nothing on the appointment path'),
-            receipt: none('Slack\'s response is discarded'),
-            uncertainOutcome: partial('the POST throws, so a handoff announcement settles `rejected` or '
-                + '`unknown` correctly. The appointment path has nowhere to record either'),
-            erasure: none('the message text is composed from the contact name and is not recorded here'),
-            recovery: none('no retry and no record: a Slack post lost to a network blip is simply not '
-                + 'made, and nobody is told'),
-        },
+        properties:HANDOFF_EFFECT_PROPERTIES,
+    }),
+
+    producer({
+        id:'appointments.slack',effect:'A Slack post when a new appointment is created',lane:'inline',status:'live',
+        derivation:'declared',source:'modules/slack/slack-listener.service.ts',symbol:'onAppointment',
+        egress:'SlackService.notify uses best-effort axios POST to the pinned hooks.slack.com target',
+        reach:{class:'operator_notification',audience:'tenant_operator',personalData:true,channels:['slack']},
+        properties:{authority:none('the appointment event has no external-effect row'),
+            idempotency:none('an event replay posts the same appointment again'),receipt:none('Slack returns no message id'),
+            uncertainOutcome:none('best-effort notify catches the provider error'),
+            erasure:none('the post names the customer and no retained effect row is reachable by erasure'),
+            recovery:none('there is no attempt row to recover')},
     }),
 
     producer({
         id: 'handoff.push',
-        effect: 'Web Push and Expo native push to agents — escalation, new inbound message, SLA '
-            + 'escalation, new appointment, new and cancelled food orders, photo session requests',
-        lane: 'inline',
+        effect: 'Web Push and Expo native push to agents when a conversation escalates',
+        lane: 'handoff_effects',
         status: 'live',
         derivation: 'declared',
         source: 'modules/push/push-listener.service.ts',
@@ -689,19 +684,20 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
             class: 'operator_notification', audience: 'tenant_operator', personalData: true,
             channels: ['push'],
         },
-        properties: {
-            authority: partial('the handoff effect row admits the `push` announcement once. The other '
-                + 'six events have no row'),
-            idempotency: partial('a notification `tag` collapses duplicates in the OS tray, which is a '
-                + 'display convenience, not a send guard'),
-            receipt: none('the Expo ticket ids are read only to delete dead tokens; nothing is stored'),
-            uncertainOutcome: none('every send is `.catch(() => {})`, so a failure and a success are '
-                + 'the same outcome to the caller'),
-            erasure: none('the payload names a contact and is not recorded, so there is nothing to erase '
-                + 'and no way to prove there was not'),
-            recovery: none('every failure is swallowed by the catch, so nothing is left to recover '
-                + 'from and nothing says a notification was missed'),
-        },
+        properties:HANDOFF_EFFECT_PROPERTIES,
+    }),
+
+    producer({
+        id:'push.operational_events',effect:'Push for assigned inbound messages, SLA, appointments, food orders and photo requests',
+        lane:'inline',status:'live',derivation:'declared',source:'modules/push/push-listener.service.ts',symbol:'PushListenerService',
+        egress:'event listeners call PushService directly; an OS tag only collapses display',
+        reach:{class:'operator_notification',audience:'tenant_operator',personalData:true,channels:['push']},
+        properties:{authority:none('these domain events have no external-effect admission row'),
+            idempotency:partial('OS tags collapse display but do not prevent remote sends'),
+            receipt:none('provider tickets are not retained per domain event'),
+            uncertainOutcome:none('best-effort listeners swallow per-subscription failures'),
+            erasure:none('the payload may name a contact and has no erasure-addressable effect row'),
+            recovery:none('there is no durable intent to recover')},
     }),
 
     producer({

@@ -74,10 +74,14 @@ export class PushListenerService {
         };
 
         if (event.assignedTo) {
-            await this.pushService.sendToUser(event.assignedTo, payload).catch(() => {});
+            const sent=await this.pushService.sendToUser(event.assignedTo,payload);
+            return `push:${sent}`;
         } else {
-            await this.pushService.sendToTenantRole(event.tenantId, 'tenant_admin', payload).catch(() => {});
-            await this.pushService.sendToTenantRole(event.tenantId, 'tenant_supervisor', payload).catch(() => {});
+            const [admins,supervisors]=await Promise.all([
+                this.pushService.sendToTenantRole(event.tenantId,'tenant_admin',payload),
+                this.pushService.sendToTenantRole(event.tenantId,'tenant_supervisor',payload),
+            ]);
+            return `push:${admins+supervisors}`;
         }
     }
 

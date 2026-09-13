@@ -2,6 +2,7 @@ import { Injectable, Logger, BadRequestException, NotFoundException } from '@nes
 import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 import { google } from 'googleapis';
+import { firstValueFrom } from 'rxjs';
 import * as crypto from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
@@ -167,6 +168,33 @@ export class ReviewsService {
                 [],
             );
             await this.prisma.executeInTenantSchema(schemaName, `CREATE INDEX IF NOT EXISTS idx_gbp_created ON gbp_reviews(create_time)`, []);
+            await this.prisma.executeInTenantSchema(
+                schemaName,
+                `CREATE TABLE IF NOT EXISTS gbp_reply_effects (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    event_key TEXT UNIQUE NOT NULL,
+                    review_id UUID NOT NULL REFERENCES gbp_reviews(id) ON DELETE CASCADE,
+                    desired_comment TEXT NOT NULL,
+                    request_fingerprint VARCHAR(64) NOT NULL,
+                    state VARCHAR(24) NOT NULL DEFAULT 'pending'
+                        CHECK (state IN ('pending','sending','accepted','rejected','unknown','failed')),
+                    attempts INTEGER NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+                    lease_token UUID,
+                    lease_expires_at TIMESTAMPTZ,
+                    provider_reference TEXT,
+                    error_code TEXT,
+                    started_at TIMESTAMPTZ,
+                    completed_at TIMESTAMPTZ,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    CHECK ((state='sending' AND lease_token IS NOT NULL AND lease_expires_at IS NOT NULL)
+                        OR (state<>'sending' AND lease_token IS NULL AND lease_expires_at IS NULL))
+                )`,
+                [],
+            );
+            await this.prisma.executeInTenantSchema(schemaName,
+                `CREATE INDEX IF NOT EXISTS idx_gbp_reply_effects_due
+                 ON gbp_reply_effects(state, created_at) WHERE state IN ('pending','unknown','failed')`, []);
         } catch (e: any) {
             if (!/already exists|42P07|23505/.test(e.message || '')) throw e;
         }
@@ -304,27 +332,104 @@ Return ONLY the reply text.`;
         return { suggestion };
     }
 
-    async postReply(tenantId: string, reviewId: string, comment: string): Promise<void> {
+    async postReply(tenantId: string, reviewId: string, comment: string, requestKey?: string): Promise<void> {
         const lang = await this.getTenantLanguage(tenantId);
-        if (!comment?.trim()) throw new BadRequestException(rmsg(lang, 'reply.empty'));
-        const cfg = await this.getConfigRaw(tenantId);
+        const desiredComment = comment?.trim();
+        if (!desiredComment) throw new BadRequestException(rmsg(lang, 'reply.empty'));
+        if (desiredComment.length > 4096) throw new BadRequestException('Reply exceeds 4096 characters');
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
-        const rows = await this.prisma.executeInTenantSchema<any[]>(
-            schemaName, `SELECT review_name FROM gbp_reviews WHERE id = $1::uuid`, [reviewId],
-        );
-        const reviewName = rows?.[0]?.review_name;
-        if (!reviewName) throw new NotFoundException(rmsg(lang, 'review.notFound'));
-
-        const token = await this.getAccessToken(tenantId, lang);
-        await this.http.axiosRef.put(`${GBP_BASE}/${reviewName}/reply`, { comment: comment.trim() }, {
-            headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, timeout: 20000,
+        await this.ensureTables(schemaName);
+        const fingerprint = crypto.createHash('sha256').update(JSON.stringify([reviewId, desiredComment])).digest('hex');
+        const key = String(requestKey || `content_${fingerprint}`).trim();
+        if (!/^[a-zA-Z0-9_-]{8,120}$/.test(key)) throw new BadRequestException('Invalid request key');
+        const eventKey = `gbp-reply:${reviewId}:${key}`;
+        const effect = await this.prisma.transactionInTenantSchema(schemaName, async query => {
+            const review = (await query<any[]>(`SELECT id FROM gbp_reviews WHERE id=$1::uuid`, [reviewId]))[0];
+            if (!review) throw new NotFoundException(rmsg(lang, 'review.notFound'));
+            await query(`INSERT INTO gbp_reply_effects(event_key,review_id,desired_comment,request_fingerprint)
+                VALUES($1,$2::uuid,$3,$4) ON CONFLICT(event_key) DO NOTHING`,
+            [eventKey, reviewId, desiredComment, fingerprint]);
+            const row = (await query<any[]>(`SELECT id,request_fingerprint FROM gbp_reply_effects
+                WHERE event_key=$1 FOR UPDATE`, [eventKey]))[0];
+            if (!row || row.request_fingerprint !== fingerprint) {
+                throw new BadRequestException('Reply request key already used for different content');
+            }
+            return row;
         });
-        await this.prisma.executeInTenantSchema(
-            schemaName,
-            `UPDATE gbp_reviews SET reply_comment = $2, reply_status = 'posted' WHERE id = $1::uuid`,
-            [reviewId, comment.trim()],
-        );
-        this.logger.log(`[Reviews] Posted reply to ${reviewName}`);
+        const outcome = await this.deliverReplyEffect(tenantId, schemaName, effect.id, lang);
+        if (outcome === 'rejected') throw new BadRequestException('Google rejected the review reply');
+    }
+
+    private async deliverReplyEffect(tenantId: string, schemaName: string, effectId: string, lang: string): Promise<string> {
+        const lease = crypto.randomUUID();
+        const claim = await this.prisma.transactionInTenantSchema(schemaName, async query => {
+            const row = (await query<any[]>(`SELECT e.*,r.review_name FROM gbp_reply_effects e
+                JOIN gbp_reviews r ON r.id=e.review_id WHERE e.id=$1::uuid FOR UPDATE OF e`, [effectId]))[0];
+            if (!row || ['accepted', 'rejected'].includes(row.state)) return row;
+            if (row.state === 'sending' && new Date(row.lease_expires_at).getTime() > Date.now()) return row;
+            if (Number(row.attempts) >= 5) return row;
+            const updated = (await query<any[]>(`UPDATE gbp_reply_effects SET state='sending',attempts=attempts+1,
+                    lease_token=$2::uuid,lease_expires_at=clock_timestamp()+INTERVAL '30 seconds',
+                    started_at=clock_timestamp(),error_code=NULL,updated_at=clock_timestamp()
+                WHERE id=$1::uuid RETURNING *`, [effectId, lease]))[0];
+            return { ...updated, review_name: row.review_name };
+        });
+        if (!claim || claim.state !== 'sending' || claim.lease_token !== lease) return claim?.state || 'missing';
+
+        let token: string;
+        try {
+            token = await this.getAccessToken(tenantId, lang);
+        } catch (error: any) {
+            await this.settleReplyEffect(schemaName, effectId, lease, 'failed', error?.message || 'gbp_token_unavailable');
+            throw error;
+        }
+        try {
+            await firstValueFrom(this.http.put(`${GBP_BASE}/${claim.review_name}/reply`,
+                { comment: claim.desired_comment }, {
+                    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, timeout: 20000,
+                }));
+            await this.prisma.transactionInTenantSchema(schemaName, async query => {
+                const settled = await query<any[]>(`UPDATE gbp_reply_effects SET state='accepted',
+                        provider_reference=$3,error_code=NULL,lease_token=NULL,lease_expires_at=NULL,
+                        completed_at=clock_timestamp(),updated_at=clock_timestamp()
+                    WHERE id=$1::uuid AND state='sending' AND lease_token=$2::uuid RETURNING review_id,desired_comment`,
+                [effectId, lease, claim.review_name]);
+                if (!settled.length) return;
+                await query(`UPDATE gbp_reviews SET reply_comment=$2,reply_status='posted'
+                    WHERE id=$1::uuid`, [settled[0].review_id, settled[0].desired_comment]);
+            });
+            this.logger.log(`[Reviews] Posted reply to ${claim.review_name}`);
+            return 'accepted';
+        } catch (error: any) {
+            const state = error?.response ? 'rejected' : 'unknown';
+            await this.settleReplyEffect(schemaName, effectId, lease, state,
+                error?.response?.data?.error?.message || error?.message || 'gbp_reply_failed');
+            if (state === 'unknown') throw error;
+            return state;
+        }
+    }
+
+    private async settleReplyEffect(schemaName: string, effectId: string, lease: string,
+        state: 'rejected' | 'unknown' | 'failed', error: string): Promise<void> {
+        await this.prisma.executeInTenantSchema(schemaName, `UPDATE gbp_reply_effects SET state=$3,
+            error_code=$4,lease_token=NULL,lease_expires_at=NULL,updated_at=clock_timestamp()
+            WHERE id=$1::uuid AND state='sending' AND lease_token=$2::uuid`,
+        [effectId, lease, state, String(error).slice(0, 500)]);
+    }
+
+    async recoverReplyEffects(tenantId: string): Promise<number> {
+        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
+        await this.ensureTables(schemaName);
+        const due = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+            `SELECT id FROM gbp_reply_effects WHERE attempts<5 AND (
+                state IN ('pending','unknown','failed') OR (state='sending' AND lease_expires_at<=clock_timestamp()))
+             ORDER BY created_at LIMIT 20`, []);
+        const lang = await this.getTenantLanguage(tenantId);
+        for (const row of due) {
+            try { await this.deliverReplyEffect(tenantId, schemaName, row.id, lang); }
+            catch (error: any) { this.logger.debug(`[Reviews] reply recovery ${row.id}: ${error.message}`); }
+        }
+        return due.length;
     }
 
     /** Used by the auto-reply cron: generate + post for unreplied reviews. */
@@ -334,7 +439,8 @@ Return ONLY the reply text.`;
         for (const r of reviews.slice(0, 20)) {
             try {
                 const { suggestion } = await this.generateReply(tenantId, r.id);
-                await this.postReply(tenantId, r.id, suggestion);
+                const key = `auto_${crypto.createHash('sha256').update(`${r.id}:${suggestion}`).digest('hex')}`;
+                await this.postReply(tenantId, r.id, suggestion, key);
                 count++;
             } catch (e: any) {
                 this.logger.debug(`[Reviews] auto-reply ${r.id} failed: ${e.message}`);

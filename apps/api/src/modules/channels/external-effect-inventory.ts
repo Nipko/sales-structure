@@ -557,7 +557,7 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
     producer({
         id: 'human.email_template.test_send',
         effect: 'The "send a test" button on a tenant\'s email templates',
-        lane: 'platform_notification_outbox',
+        lane: 'operational_notice',
         status: 'live',
         derivation: 'census',
         source: 'modules/email-templates/email-templates.service.ts',
@@ -1910,26 +1910,24 @@ producer({
         id: 'reviews.gbp_reply',
         effect: 'Publishing a reply under a Google Business Profile review, publicly and under the '
             + 'tenant\'s name',
-        lane: 'inline',
+        lane: 'domain_queue',
         status: 'live',
         derivation: 'declared',
         source: 'modules/reviews/reviews.service.ts',
         symbol: 'postReply',
-        egress: 'PUT https://mybusiness.googleapis.com/v4/{review}/reply',
+        egress: 'one gbp_reply_effects row followed by an idempotent PUT to the fixed review reply',
         reach: {
             class: 'public_content', audience: 'public', personalData: true,
             channels: ['provider_api'],
         },
         properties: {
-            authority: partial('a tenant opt-in flag. With `autoReply` on, a `30 */6 * * *` cron posts '
-                + 'model-written text publicly with no human between the model and the customer'),
-            idempotency: durable('a PUT on a fixed review name replaces the reply rather than adding '
-                + 'one, so a repeat is harmless'),
-            receipt: partial('`reply_status = posted` on our row; Google returns no id to keep'),
-            uncertainOutcome: partial('the idempotent PUT makes a retry safe, so the missing '
-                + 'distinction costs nothing here'),
-            erasure: none('a published reply is public and outside erasure'),
-            recovery: partial('the next cron pass finds it still unreplied'),
+            authority: durable('the exact public words, review and manual or auto request key are committed before the PUT'),
+            idempotency: durable('the event key is unique and Google PUT replaces the one fixed reply'),
+            receipt: durable('the review name, accepted state and local posted mirror commit under the same lease'),
+            uncertainOutcome: durable('a request without an answer becomes unknown, distinct from a conclusive rejection'),
+            erasure: notApplicable('the Google reviewer is not a Parallly contact identity; the effect contains tenant-authored public copy '
+                + 'and is destroyed with the tenant schema'),
+            recovery: durable('the six-hour cron reclaims pending, preflight-failed, unknown and expired safe PUT effects'),
         },
     }),
 

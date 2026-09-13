@@ -3880,6 +3880,30 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."gbp_reviews" (
 );
 CREATE INDEX IF NOT EXISTS idx_gbp_created ON "{{SCHEMA_NAME}}"."gbp_reviews"(create_time);
 
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."gbp_reply_effects" (
+    "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "event_key" TEXT UNIQUE NOT NULL,
+    "review_id" UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."gbp_reviews"("id") ON DELETE CASCADE,
+    "desired_comment" TEXT NOT NULL,
+    "request_fingerprint" VARCHAR(64) NOT NULL,
+    "state" VARCHAR(24) NOT NULL DEFAULT 'pending'
+        CHECK ("state" IN ('pending','sending','accepted','rejected','unknown','failed')),
+    "attempts" INTEGER NOT NULL DEFAULT 0 CHECK ("attempts" >= 0),
+    "lease_token" UUID,
+    "lease_expires_at" TIMESTAMPTZ,
+    "provider_reference" TEXT,
+    "error_code" TEXT,
+    "started_at" TIMESTAMPTZ,
+    "completed_at" TIMESTAMPTZ,
+    "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    "updated_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CHECK (("state"='sending' AND "lease_token" IS NOT NULL AND "lease_expires_at" IS NOT NULL)
+        OR ("state"<>'sending' AND "lease_token" IS NULL AND "lease_expires_at" IS NULL))
+);
+CREATE INDEX IF NOT EXISTS "idx_gbp_reply_effects_due"
+    ON "{{SCHEMA_NAME}}"."gbp_reply_effects"("state", "created_at")
+    WHERE "state" IN ('pending','unknown','failed');
+
 -- ---- Vertical integrations cache ----
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."vi_items" (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -1714,7 +1714,10 @@ export const api = {
     generateReviewReply: (tenantId: string, reviewId: string) =>
         apiPost(`/reviews/${tenantId}/reviews/${reviewId}/generate`, {}),
     postReviewReply: (tenantId: string, reviewId: string, comment: string) =>
-        apiPost(`/reviews/${tenantId}/reviews/${reviewId}/reply`, { comment }),
+        apiPost(`/reviews/${tenantId}/reviews/${reviewId}/reply`, {
+            comment,
+            requestKey: globalThis.crypto.randomUUID(),
+        }),
 
     // Managed / done-for-you tier (T3.24) — super admin
     listManaged: () => apiGet(`/managed`),

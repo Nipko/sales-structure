@@ -39,6 +39,7 @@ export class ReviewsCronService {
 
         for (const tenant of tenants) {
             try {
+                await this.reviews.recoverReplyEffects(tenant.id);
                 await this.reviews.syncReviews(tenant.id);
                 if (await this.reviews.isAutoReplyEnabled(tenant.id)) {
                     const n = await this.reviews.autoReplyUnreplied(tenant.id);

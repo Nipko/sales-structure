@@ -16,6 +16,7 @@ import { consumesFreeAllowance, freeAllowanceFromMetadata } from './free-allowan
 import { SpendMeterUnavailable } from './spend-unavailable';
 import { AccountPauseStore, PauseStateUnavailable } from '../../channels/account-pause-store';
 import { describePause } from '../../channels/account-send-pause';
+import { RedisService } from '../../redis/redis.service';
 
 /**
  * ═══ THE ONE GATE EVERY CHARGEABLE WHATSAPP MESSAGE PASSES ═══
@@ -200,15 +201,10 @@ export interface Admission {
 export class WhatsappSendAdmissionService {
     private readonly logger = new Logger(WhatsappSendAdmissionService.name);
 
-    /**
-     * Per-tenant enforcement, cached briefly.
-     *
-     * Sixty seconds: long enough that the busiest path is not a settings read,
-     * short enough that turning enforcement on takes effect while the person who
-     * turned it on is still watching.
-     */
-    private readonly modeCache = new Map<string, { mode: SpendEnforcement; until: number }>();
-    private readonly MODE_TTL_MS = 60_000;
+    /** Repetition is process-local; enforcement is shared across API and worker. */
+    private readonly REPETITION_TTL_MS = 60_000;
+    private readonly MODE_CACHE_KEY = 'whatsapp-spend:enforcement';
+    private readonly MODE_CACHE_SECONDS = 300;
 
     constructor(
         private readonly prisma: PrismaService,
@@ -217,6 +213,9 @@ export class WhatsappSendAdmissionService {
         // not wired it must still send. When it IS wired, a number Meta refuses
         // to bill stops trying.
         @Optional() private readonly pauses?: AccountPauseStore,
+        // Optional keeps isolated unit harnesses small. Production has the
+        // global RedisModule; without it PostgreSQL is read on every send.
+        @Optional() private readonly redis?: RedisService,
     ) {}
 
     /**
@@ -806,13 +805,21 @@ export class WhatsappSendAdmissionService {
             this.logger.warn(`[Spend] repetition policy unreadable for ${tenantId}: ${error?.message}`);
         }
         const policy = resolveRepetitionPolicy(configured);
-        this.repetitionCache.set(tenantId, { policy, until: Date.now() + this.MODE_TTL_MS });
+        this.repetitionCache.set(tenantId, { policy, until: Date.now() + this.REPETITION_TTL_MS });
         return policy;
     }
 
     private async enforcementFor(tenantId: string): Promise<SpendEnforcement> {
-        const cached = this.modeCache.get(tenantId);
-        if (cached && cached.until > Date.now()) return cached.mode;
+        if (this.redis) {
+            try {
+                const cached = await this.redis.getTenantData<string>(tenantId, this.MODE_CACHE_KEY);
+                if (cached === 'observe' || cached === 'enforce') return cached;
+            } catch (error: any) {
+                // PostgreSQL is the authority. A cache outage costs a read; it
+                // never lifts a protection the tenant enabled.
+                this.logger.warn(`[Spend] enforcement cache unreadable for ${tenantId}: ${error?.message}`);
+            }
+        }
         let mode: SpendEnforcement = 'observe';
         try {
             const tenant = await this.prisma.tenant.findUnique({
@@ -828,7 +835,14 @@ export class WhatsappSendAdmissionService {
             throw new SpendMeterUnavailable(
                 `enforcement mode unreadable for tenant ${tenantId}`, error);
         }
-        this.modeCache.set(tenantId, { mode, until: Date.now() + this.MODE_TTL_MS });
+        if (this.redis) {
+            try {
+                await this.redis.setTenantData(
+                    tenantId, this.MODE_CACHE_KEY, mode, this.MODE_CACHE_SECONDS);
+            } catch (error: any) {
+                this.logger.warn(`[Spend] enforcement cache write failed for ${tenantId}: ${error?.message}`);
+            }
+        }
         return mode;
     }
 
@@ -837,8 +851,30 @@ export class WhatsappSendAdmissionService {
         return this.enforcementFor(tenantId);
     }
 
-    /** A committed settings change must take effect before this process sends again. */
-    invalidateEnforcement(tenantId: string): void {
-        this.modeCache.delete(tenantId);
+    /**
+     * Remove the shared value before changing PostgreSQL. A worker that sends
+     * during the transaction reads the old DB row; after commit it reads the
+     * new one. If the transaction rolls back, it simply re-caches the old row.
+     */
+    async invalidateEnforcement(tenantId: string): Promise<void> {
+        if (!this.redis) return;
+        try {
+            await this.redis.del(this.redis.tenantKey(tenantId, this.MODE_CACHE_KEY));
+        } catch (error: any) {
+            // If Valkey is unavailable, readers also fail their cache read and
+            // fall back to PostgreSQL, which is the safe state.
+            this.logger.warn(`[Spend] enforcement cache invalidation failed for ${tenantId}: ${error?.message}`);
+        }
+    }
+
+    /** Warm every API/worker process through the shared cache after commit. */
+    async cacheEnforcement(tenantId: string, mode: SpendEnforcement): Promise<void> {
+        if (!this.redis) return;
+        try {
+            await this.redis.setTenantData(
+                tenantId, this.MODE_CACHE_KEY, mode, this.MODE_CACHE_SECONDS);
+        } catch (error: any) {
+            this.logger.warn(`[Spend] enforcement cache refresh failed for ${tenantId}: ${error?.message}`);
+        }
     }
 }

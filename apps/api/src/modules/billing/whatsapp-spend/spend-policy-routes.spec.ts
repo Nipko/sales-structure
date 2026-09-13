@@ -1,5 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import { WhatsappSpendController } from './whatsapp-spend.controller';
+import { WhatsappSendAdmissionService } from './whatsapp-send-admission.service';
 
 describe('WhatsApp spend policy control plane', () => {
     const tenantId = '11111111-1111-4111-8111-111111111111';
@@ -16,7 +17,8 @@ describe('WhatsApp spend policy control plane', () => {
         const prisma = { $transaction: jest.fn(async (work: any) => work(tx)) } as any;
         const admission = {
             enforcementMode: jest.fn(async () => current),
-            invalidateEnforcement: jest.fn(),
+            invalidateEnforcement: jest.fn(async () => undefined),
+            cacheEnforcement: jest.fn(async () => undefined),
         };
         const controller = new WhatsappSpendController(
             prisma, {} as any, {} as any, admission as any,
@@ -58,6 +60,7 @@ describe('WhatsApp spend policy control plane', () => {
             details: { before: 'observe', after: 'enforce' },
         }) });
         expect(h.admission.invalidateEnforcement).toHaveBeenCalledWith(tenantId);
+        expect(h.admission.cacheEnforcement).toHaveBeenCalledWith(tenantId, 'enforce');
     });
 
     it('rejects an invented mode before opening a transaction', async () => {
@@ -72,6 +75,51 @@ describe('WhatsApp spend policy control plane', () => {
         h.audit.mockRejectedValueOnce(new Error('audit unavailable'));
         await expect(h.controller.setPolicyEnforcement(h.req, { enforcement: 'enforce' }))
             .rejects.toThrow('audit unavailable');
-        expect(h.admission.invalidateEnforcement).not.toHaveBeenCalled();
+        expect(h.admission.invalidateEnforcement).toHaveBeenCalledWith(tenantId);
+        expect(h.admission.cacheEnforcement).not.toHaveBeenCalled();
+    });
+});
+
+describe('WhatsApp spend policy shared runtime cache', () => {
+    const tenantId = '22222222-2222-4222-8222-222222222222';
+
+    it('reads the shared value before PostgreSQL and invalidates the tenant key', async () => {
+        const redis = {
+            getTenantData: jest.fn(async () => 'enforce'),
+            setTenantData: jest.fn(async () => undefined),
+            tenantKey: jest.fn((tenant: string, key: string) => `tenant:${tenant}:${key}`),
+            del: jest.fn(async () => undefined),
+        };
+        const prisma = { tenant: { findUnique: jest.fn(async () => ({
+            settings: { whatsappSpend: { enforcement: 'observe' } },
+        })) } };
+        const service = new WhatsappSendAdmissionService(
+            prisma as any, {} as any, undefined, redis as any,
+        );
+
+        expect(await service.enforcementMode(tenantId)).toBe('enforce');
+        expect(prisma.tenant.findUnique).not.toHaveBeenCalled();
+        await service.invalidateEnforcement(tenantId);
+        expect(redis.del).toHaveBeenCalledWith(
+            `tenant:${tenantId}:whatsapp-spend:enforcement`,
+        );
+    });
+
+    it('falls back to PostgreSQL and warms the shared cache on a miss', async () => {
+        const redis = {
+            getTenantData: jest.fn(async () => null),
+            setTenantData: jest.fn(async () => undefined),
+        };
+        const prisma = { tenant: { findUnique: jest.fn(async () => ({
+            settings: { whatsappSpend: { enforcement: 'enforce' } },
+        })) } };
+        const service = new WhatsappSendAdmissionService(
+            prisma as any, {} as any, undefined, redis as any,
+        );
+
+        expect(await service.enforcementMode(tenantId)).toBe('enforce');
+        expect(redis.setTenantData).toHaveBeenCalledWith(
+            tenantId, 'whatsapp-spend:enforcement', 'enforce', 300,
+        );
     });
 });

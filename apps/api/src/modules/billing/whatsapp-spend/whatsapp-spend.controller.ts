@@ -98,6 +98,7 @@ export class WhatsappSpendController {
         if (mode !== 'observe' && mode !== 'enforce') {
             throw new BadRequestException('enforcement must be observe or enforce');
         }
+        await this.admission.invalidateEnforcement(tenantId);
         const transition = await this.prisma.$transaction(async (tx: any) => {
             const rows = await tx.$queryRawUnsafe(
                 `SELECT settings #> '{whatsappSpend}'::text[] AS value
@@ -132,7 +133,7 @@ export class WhatsappSpendController {
             } });
             return { before, after: mode };
         });
-        this.admission.invalidateEnforcement(tenantId);
+        await this.admission.cacheEnforcement(tenantId, mode);
         return { success: true, data: transition };
     }
 

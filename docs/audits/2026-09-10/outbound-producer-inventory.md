@@ -352,7 +352,7 @@ direcciones**: lo que el barrido encuentra y ella no nombra, y lo que ella
 nombra y el barrido no encuentra. Un desacuerdo no es un error de ninguno de
 los dos — es exactamente el sitio donde hay que ir a mirar.
 
-Entradas declaradas allí: **65**.
+Entradas declaradas allí: **67**.
 
 ### Encontrados por el barrido y no declarados como productores
 
@@ -371,8 +371,10 @@ esperada y su clasificación queda **fuera del alcance de este generador**.
 | `auth.transactional_email` | `delivery_outbox` | `live` | `modules/auth/auth.service.ts` |
 | `auth.two_factor_sms` | `delivery_outbox` | `off` | `modules/auth/platform-sms.service.ts` |
 | `automation.http_request` | `domain_queue` | `live` | `modules/automation/handlers/http-request.handler.ts` |
-| `billing.card_and_void` | `inline` | `live` | `modules/billing/adapters/wompi.adapter.ts` |
+| `billing.charge_void` | `inline` | `live` | `modules/billing/billing.service.ts` |
+| `billing.checkout_link_primitive` | `inline` | `off` | `modules/billing/adapters/wompi.adapter.ts` |
 | `billing.lifecycle_email` | `delivery_outbox` | `live` | `modules/billing/billing-email.service.ts` |
+| `billing.payment_source_management` | `inline` | `live` | `modules/billing/recurring/payment-source.service.ts` |
 | `billing.recurring_charge` | `domain_queue` | `live` | `modules/billing/recurring/processors/renewal-charge.processor.ts` |
 | `billing.stripe` | `inline` | `off` | `modules/billing/adapters/stripe.adapter.ts` |
 | `calendar.event_write` | `domain_queue` | `live` | `modules/appointments/calendar-sync-outbox.service.ts` |

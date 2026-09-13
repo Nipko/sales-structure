@@ -93,7 +93,9 @@ describe('un contrato no promete lo que el runtime no puede', () => {
             for (const intent of draft.intents) {
                 const group = intentToolGroup(intent.key);
                 expect({ intent: intent.key, group }).toEqual({ intent: intent.key, group });
-                expect({ intent: intent.key, granted: groups.has(group!) })
+                const granted = groups.has(group!)
+                    || (group === 'crm' && manifest.capabilities.includes('crm_pipeline'));
+                expect({ intent: intent.key, granted })
                     .toEqual({ intent: intent.key, granted: true });
             }
         },
@@ -124,6 +126,16 @@ describe('un contrato no promete lo que el runtime no puede', () => {
             for (const link of draft.navigation.deepLinks) {
                 expect(draft.navigation.surfaces).toContain(link.route);
             }
+        }
+    });
+
+    it('los 76 tipos publican las tareas del CRM que su capacidad base promete', () => {
+        for (const draft of listDomainContractDrafts()) {
+            expect(draft.intents.map(intent => intent.key)).toEqual(expect.arrayContaining([
+                'capture_interest', 'request_follow_up',
+            ]));
+            expect(draft.intents.find(intent => intent.key === 'capture_interest')?.toolPlan)
+                .toEqual(expect.arrayContaining(['ensure_crm_lead', 'record_contact_interest', 'create_crm_opportunity']));
         }
     });
 });
@@ -171,6 +183,16 @@ describe('el prompt del perfil dice hasta dónde llega', () => {
         for (const draft of blocked) {
             expect(draft.prompt.disclosure.join(' ')).toMatch(/no cierra operaciones por chat/);
         }
+    });
+
+    it.each([
+        ['coordinacion', /coordinar el siguiente paso/],
+        ['operacion_ligera', /operaciones nativas/],
+        ['operacion_integrada', /sistema conectado confirmó/],
+    ])('el alcance %s conserva su promesa efectiva', (scope, claim) => {
+        const draft = listDomainContractDrafts().find(entry => entry.prompt.scope === scope);
+        expect(draft).toBeDefined();
+        expect(draft!.prompt.claims.join(' ')).toMatch(claim);
     });
 
     it('todo contrato declara los cuatro idiomas', () => {

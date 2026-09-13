@@ -22,6 +22,7 @@ describe('vertical agent defaults', () => {
             subType: 'hotel',
             effectiveCapabilities: ['crm_pipeline', 'faq_search', 'nightly_booking'],
             toolDefaults: {
+                crm: { enabled: true },
                 faqs: { enabled: true },
                 properties: { enabled: true },
             },
@@ -64,6 +65,7 @@ describe('vertical agent defaults', () => {
         expect(result.capabilities).toEqual(['explicit_only']);
         expect(result.tools.appointments).toEqual({ enabled: false, canBook: false });
         expect(result.tools.pets).toBeNull();
+        expect(result.tools.crm).toEqual({ enabled: true });
         expect(result.tools.faqs).toEqual({ enabled: true });
         expect(result.tools.petServices).toEqual({ enabled: true });
     });

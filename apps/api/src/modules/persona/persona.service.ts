@@ -515,6 +515,14 @@ export class PersonaService {
                 schedule: {},
                 afterHoursMessage: '',
             },
+            // Horizontal capabilities every tenant receives. Vertical tools
+            // are composed later from the business profile; these two must
+            // also exist on the onboarding path, which is created before that
+            // profile is provisioned.
+            tools: {
+                faqs: { enabled: true },
+                crm: { enabled: true },
+            },
         };
     }
 

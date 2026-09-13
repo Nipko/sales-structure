@@ -25,8 +25,8 @@ const htmlEscape = (value: unknown): string => String(value ?? '')
  * duplicate email.
  */
 @Injectable()
-export class FeatureNotificationOutboxService {
-    private readonly logger = new Logger(FeatureNotificationOutboxService.name);
+export class PlatformNotificationOutboxService {
+    private readonly logger = new Logger(PlatformNotificationOutboxService.name);
 
     constructor(
         private readonly prisma: PrismaService,
@@ -57,7 +57,7 @@ export class FeatureNotificationOutboxService {
             ORDER BY created_at,id LIMIT ${bounded}`);
         for (const row of rows) {
             try { await this.deliver(row.id); }
-            catch (error: any) { this.logger.warn(`Feature notification ${row.id} failed: ${error?.message}`); }
+            catch (error: any) { this.logger.warn(`Platform notification ${row.id} failed: ${error?.message}`); }
         }
         return rows.length;
     }

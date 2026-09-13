@@ -5,12 +5,12 @@ import { Client } from 'pg';
 import { PrismaClient } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ensureSyntheticGlobalTables } from '../../common/__fixtures__/synthetic-global-tables';
-import { FeatureRequestsService } from './feature-requests.service';
-import { FeatureNotificationOutboxService } from './feature-notification-outbox.service';
+import { FeatureRequestsService } from '../feature-requests/feature-requests.service';
+import { PlatformNotificationOutboxService } from './platform-notification-outbox.service';
 
 const url = process.env.PARALLLY_ISOLATION_TEST_URL;
 
-(url ? describe : describe.skip)('feature request status notification outbox', () => {
+(url ? describe : describe.skip)('platform notification outbox — feature request status', () => {
     const requestId = randomUUID();
     const userA = randomUUID();
     const userB = randomUUID();
@@ -79,7 +79,7 @@ const url = process.env.PARALLLY_ISOLATION_TEST_URL;
 
     it('stores SMTP acceptance once and suppresses a user who unsubscribed before delivery', async () => {
         const send = jest.fn().mockResolvedValue('smtp-feature-accepted');
-        const delivery = new FeatureNotificationOutboxService(prisma,
+        const delivery = new PlatformNotificationOutboxService(prisma,
             { prepareBoundedSend: jest.fn().mockReturnValue(send) } as any,
             { get: (_key:string,fallback:string)=>fallback } as any,
             { runExclusive: jest.fn() } as any);
@@ -127,7 +127,7 @@ const url = process.env.PARALLLY_ISOLATION_TEST_URL;
         const [row]=await prisma.$queryRawUnsafe(`SELECT id FROM platform_notification_outbox
             WHERE entity_id=$1::uuid AND payload->>'status'='declined' AND recipient_user_id=$2::uuid`,requestId,userA);
         const send=jest.fn().mockRejectedValue(new Error('smtp_deadline_outcome_unknown'));
-        const delivery=new FeatureNotificationOutboxService(prisma,
+        const delivery=new PlatformNotificationOutboxService(prisma,
             {prepareBoundedSend:jest.fn().mockImplementation((payload:any)=>{
                 expect(payload.html).toContain('&lt;Mejor tablero&gt;');
                 expect(payload.html).toContain('&lt;no corresponde&gt;');

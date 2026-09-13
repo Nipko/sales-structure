@@ -3,12 +3,12 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { FeatureRequestsService } from './feature-requests.service';
 import { FeatureRequestsController } from './feature-requests.controller';
 import { SettingsModule } from '../settings/settings.module';
-import { FeatureNotificationOutboxService } from './feature-notification-outbox.service';
+import { PlatformNotificationModule } from '../platform-notifications/platform-notification.module';
 
 @Module({
-    imports: [PrismaModule, SettingsModule],
+    imports: [PrismaModule, SettingsModule, PlatformNotificationModule],
     controllers: [FeatureRequestsController],
-    providers: [FeatureRequestsService, FeatureNotificationOutboxService],
+    providers: [FeatureRequestsService],
     exports: [FeatureRequestsService],
 })
 export class FeatureRequestsModule {}

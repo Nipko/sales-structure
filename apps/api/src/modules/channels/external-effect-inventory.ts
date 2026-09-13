@@ -1505,8 +1505,8 @@ producer({
         lane: 'delivery_outbox',
         status: 'live',
         derivation: 'census',
-        source: 'modules/feature-requests/feature-notification-outbox.service.ts',
-        symbol: 'FeatureNotificationOutboxService',
+        source: 'modules/platform-notifications/platform-notification-outbox.service.ts',
+        symbol: 'PlatformNotificationOutboxService',
         egress: 'one platform_notification_outbox row per subscriber and status revision, delivered by bounded SMTP',
         reach: {
             class: 'operator_notification', audience: 'tenant_operator', personalData: true,

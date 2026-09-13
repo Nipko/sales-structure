@@ -77,6 +77,24 @@ export class ComplianceController {
         return this.complianceService.createConsent(await this.schemaFor(tenantId), { ...payload, tenant_id: tenantId });
     }
 
+    @Put('consents/:tenantId/:consentId/revoke')
+    @Roles('tenant_admin')
+    @ApiOperation({ summary: 'Revoke a contact consent grant' })
+    async revokeConsent(
+        @Param('tenantId') tenantId: string,
+        @Param('consentId') consentId: string,
+        @CurrentUser() user: any,
+    ) {
+        const result = await this.complianceService.revokeConsent(
+            await this.schemaFor(tenantId), consentId,
+        );
+        await this.complianceService.logComplianceAction(
+            tenantId, 'consent.revoked', 'consent_records',
+            { consentId, userId: user?.id || user?.sub },
+        );
+        return { success: !!result, data: result };
+    }
+
     // ─── Opt-Outs (with review workflow) ────────────────────────────────────
 
     @Get('opt-outs/:tenantId')

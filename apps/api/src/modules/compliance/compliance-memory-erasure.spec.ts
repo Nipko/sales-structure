@@ -214,4 +214,18 @@ describe('Contact erasure reaches memory derivatives', () => {
         await expect(service.eraseContactData('tenant_memory', profileId, contactId, 'admin')).resolves.toBeDefined();
         expect(query.mock.calls.some(([sql]) => sql.includes('DELETE FROM internal_notes'))).toBe(false);
     });
+
+    it('revokes a media-processing grant instead of deleting its legal proof', async () => {
+        const { service, prisma } = build();
+        prisma.executeInTenantSchema.mockResolvedValueOnce([{
+            id: '77777777-7777-4777-8777-777777777777',
+            consent_scope: 'media.ai', revoked_at: new Date().toISOString(),
+        }] as any);
+        const result = await service.revokeConsent(
+            'tenant_memory', '77777777-7777-4777-8777-777777777777',
+        );
+        expect(result).toMatchObject({ consent_scope: 'media.ai' });
+        expect(prisma.executeInTenantSchema.mock.calls[0][1]).toContain('SET revoked_at = COALESCE(revoked_at, NOW())');
+        expect(prisma.executeInTenantSchema.mock.calls[0][1]).not.toContain('DELETE');
+    });
 });

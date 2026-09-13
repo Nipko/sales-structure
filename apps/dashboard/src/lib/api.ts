@@ -1439,6 +1439,8 @@ export const api = {
         apiGet(`/compliance/audit-log/${tenantId}`),
     getConsents: (tenantId: string, leadId?: string) =>
         apiGet(`/compliance/consents/${tenantId}${leadId ? `?leadId=${leadId}` : ''}`),
+    revokeConsent: (tenantId: string, consentId: string) =>
+        apiPut(`/compliance/consents/${tenantId}/${consentId}/revoke`, {}),
     getDeletionRequests: (tenantId: string) =>
         apiGet(`/compliance/deletion-requests/${tenantId}`),
     createDeletionRequest: (tenantId: string, data: any) =>

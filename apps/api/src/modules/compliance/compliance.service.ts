@@ -132,6 +132,18 @@ export class ComplianceService {
         return rows[0];
     }
 
+    async revokeConsent(schemaName: string, consentId: string) {
+        const rows = await this.prisma.executeInTenantSchema<any[]>(
+            schemaName,
+            `UPDATE consent_records
+                SET revoked_at = COALESCE(revoked_at, NOW())
+              WHERE id = $1::uuid
+              RETURNING *`,
+            [consentId],
+        );
+        return rows[0] || null;
+    }
+
     // ─── Opt-Out Records ──────────────────────────────────────────────────────
 
     async getOptOuts(schemaName: string) {

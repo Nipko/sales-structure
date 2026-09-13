@@ -204,6 +204,16 @@ export default function CompliancePage() {
     } catch (err) { console.error(err); }
   };
 
+  const handleRevokeConsent = async (id: string) => {
+    if (!activeTenantId) return;
+    try {
+      const response = await api.revokeConsent(activeTenantId, id);
+      const revokedAt = response?.data?.revoked_at || new Date().toISOString();
+      setConsents(prev => prev.map(item => item.id === id ? { ...item, revoked_at: revokedAt } : item));
+      showToast(t("toast.consentRevoked"));
+    } catch (err) { console.error(err); }
+  };
+
   // ─── Helpers ───────────────────────────────────────────────────────────
 
   const getTypeColor = (type: string) => {
@@ -477,19 +487,36 @@ export default function CompliancePage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-border text-left">
-                      <th className="px-4 py-3 font-medium text-muted-foreground text-xs">Lead</th>
+                      <th className="px-4 py-3 font-medium text-muted-foreground text-xs">{t("subject")}</th>
                       <th className="px-4 py-3 font-medium text-muted-foreground text-xs">{t("channel")}</th>
+                      <th className="px-4 py-3 font-medium text-muted-foreground text-xs">{t("scope")}</th>
                       <th className="px-4 py-3 font-medium text-muted-foreground text-xs">{t("version")}</th>
                       <th className="px-4 py-3 font-medium text-muted-foreground text-xs">{t("consentDate")}</th>
+                      <th className="px-4 py-3 font-medium text-muted-foreground text-xs">{t("status")}</th>
+                      <th className="px-4 py-3 font-medium text-muted-foreground text-xs"></th>
                     </tr>
                   </thead>
                   <tbody>
                     {consents.map(c => (
                       <tr key={c.id} className="border-b border-border last:border-0 hover:bg-neutral-50 dark:hover:bg-neutral-800/50">
-                        <td className="px-4 py-3 text-foreground font-medium">{c.lead_id?.substring(0, 8)}...</td>
+                        <td className="px-4 py-3 text-foreground font-medium">{(c.contact_id || c.lead_id || "").substring(0, 8) || tc("noData")}</td>
                         <td className="px-4 py-3"><span className="text-[11px] px-2 py-0.5 rounded-md bg-blue-500/10 text-blue-500">{c.channel}</span></td>
+                        <td className="px-4 py-3 text-muted-foreground text-xs">{c.consent_scope || tc("noData")}</td>
                         <td className="px-4 py-3 text-muted-foreground">v{c.legal_text_version || c.legal_version}</td>
-                        <td className="px-4 py-3 text-muted-foreground text-xs">{new Date(c.granted_at).toLocaleString()}</td>
+                        <td className="px-4 py-3 text-muted-foreground text-xs">{new Date(c.created_at).toLocaleString()}</td>
+                        <td className="px-4 py-3">
+                          <span className={cn("text-[11px] px-2 py-0.5 rounded-md",
+                            c.revoked_at ? "bg-red-500/10 text-red-500" : "bg-emerald-500/10 text-emerald-600")}
+                          >{c.revoked_at ? t("revoked") : t("activeConsent")}</span>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          {!c.revoked_at && c.consent_scope?.startsWith("media.") && (
+                            <button onClick={() => void handleRevokeConsent(c.id)}
+                              className="px-2.5 py-1 rounded-md border border-red-500/30 bg-transparent text-red-500 text-xs cursor-pointer hover:bg-red-500/10">
+                              {t("revoke")}
+                            </button>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>

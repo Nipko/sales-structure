@@ -1058,7 +1058,9 @@ model PlatformNotificationOutbox {
   eventKey          String   @unique @map("event_key")
   kind              String   @db.VarChar(60)
   entityId          String   @map("entity_id") @db.Uuid
-  recipientUserId   String   @map("recipient_user_id") @db.Uuid
+  recipientUserId   String?  @map("recipient_user_id") @db.Uuid
+  tenantId          String?  @map("tenant_id") @db.Uuid
+  recipientEmail    String?  @map("recipient_email")
   payload           Json     @default("{}")
   state             String   @default("pending") @db.VarChar(32)
   attempts          Int      @default(0)
@@ -1072,10 +1074,29 @@ model PlatformNotificationOutbox {
   createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt         DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  recipient User @relation(fields: [recipientUserId], references: [id], onDelete: Cascade)
+  recipient User? @relation(fields: [recipientUserId], references: [id], onDelete: Cascade)
 
   @@index([recipientUserId, createdAt(sort: Desc)], map: "idx_platform_notification_recipient")
   @@map("platform_notification_outbox")
+  @@schema("public")
+}
+
+model MetaComplianceRequest {
+  code           String    @id @default(uuid()) @db.Uuid
+  requestKey     String    @unique @map("request_key") @db.VarChar(160)
+  source         String    @db.VarChar(24)
+  fbUserId       String?   @map("fb_user_id")
+  email          String?
+  requestedAt    DateTime  @default(now()) @map("requested_at") @db.Timestamptz(6)
+  processedAt    DateTime? @map("processed_at") @db.Timestamptz(6)
+  status         String    @default("received") @db.VarChar(16)
+  notes          String?
+  retentionUntil DateTime  @default(dbgenerated("NOW() + INTERVAL '90 days'")) @map("retention_until") @db.Timestamptz(6)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([retentionUntil], map: "meta_compliance_retention_idx")
+  @@map("meta_compliance_requests")
   @@schema("public")
 }
 

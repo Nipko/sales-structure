@@ -138,6 +138,11 @@ export class PlatformNotificationOutboxService {
                 available = (await tx.$queryRawUnsafe(`SELECT 1 FROM users
                     WHERE id=$1::uuid AND is_active=true AND LOWER(email)=LOWER($2) LIMIT 1`,
                 row.recipient_user_id, row.user_email))[0];
+            } else if (row.kind === 'meta_compliance.request_email') {
+                canonical = (await tx.$queryRawUnsafe(`SELECT code::text,source,fb_user_id,email,
+                        requested_at,notes FROM meta_compliance_requests
+                    WHERE code=$1::uuid AND retention_until>NOW() LIMIT 1`, row.entity_id))[0];
+                available = canonical && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(row.recipient_email || ''));
             }
             if (!available) {
                 await tx.$executeRawUnsafe(`UPDATE platform_notification_outbox
@@ -150,7 +155,8 @@ export class PlatformNotificationOutboxService {
                 SET state='claimed',attempts=attempts+1,lease_token=$2::uuid,
                     lease_expires_at=NOW()+INTERVAL '90 seconds',error_code=NULL,updated_at=NOW()
                 WHERE id=$1::uuid`, id, lease);
-            const email = canonical?.email ?? row.recipient_email ?? row.user_email;
+            const email = row.kind === 'meta_compliance.request_email'
+                ? row.recipient_email : canonical?.email ?? row.recipient_email ?? row.user_email;
             return { state: 'claimed', row: { ...row, canonical, email: String(email ?? '').trim().toLowerCase() } };
         });
         if (claim.state !== 'claimed') return `notification:${claim.state}`;
@@ -197,6 +203,34 @@ export class PlatformNotificationOutboxService {
 
     private render(row: any): { to: string; subject: string; html: string } {
         const payload = row.payload && typeof row.payload === 'object' ? row.payload : {};
+        if (row.kind === 'meta_compliance.request_email') {
+            const request = row.canonical;
+            if (!request || !UUID.test(String(request.code))
+                || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.email)) {
+                throw new Error('notification_payload_invalid');
+            }
+            const code = htmlEscape(request.code);
+            const base = this.config.get<string>('PUBLIC_LANDING_URL', 'https://parallly-chat.cloud');
+            const status = `${String(base).replace(/\/$/, '')}/data-deletion/status?code=${request.code}`;
+            if (request.source === 'meta_callback') {
+                return {
+                    to: row.email,
+                    subject: `[Parallly] Meta data deletion callback — ${request.code}`,
+                    html: `<p>Meta requested deletion of fb_user_id <strong>${htmlEscape(request.fb_user_id)}</strong>.</p>
+                        <p>Tracking code: <code>${code}</code></p><p>Status URL: ${htmlEscape(status)}</p>`,
+                };
+            }
+            if (request.source !== 'user_request') throw new Error('notification_payload_invalid');
+            return {
+                to: row.email,
+                subject: `[Parallly] Account and data deletion request — ${request.code}`,
+                html: `<p>A user requested deletion of a Parallly account and its associated data.</p>
+                    <ul><li>Email: <strong>${htmlEscape(request.email)}</strong></li>
+                    <li>Description: ${htmlEscape(request.notes || '—')}</li><li>Code: <code>${code}</code></li></ul>
+                    <p>Verify the requester's identity and authority before processing the deletion.</p>
+                    <p>Process without undue delay, normally within 30 days unless applicable law requires a different period.</p>`,
+            };
+        }
         if (row.kind === 'auth.access_code_email') {
             const challenge = row.canonical;
             if (!challenge || !/^\d{6}$/.test(challenge.code)

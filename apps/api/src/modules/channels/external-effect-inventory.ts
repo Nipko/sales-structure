@@ -1405,26 +1405,23 @@ producer({
     producer({
         id: 'meta_compliance.data_request',
         effect: 'The email answering a Meta data deletion or data access callback',
-        lane: 'inline',
+        lane: 'delivery_outbox',
         status: 'live',
-        derivation: 'census',
+        derivation: 'declared',
         source: 'modules/meta-compliance/meta-compliance.service.ts',
-        symbol: 'MetaComplianceService',
-        egress: 'EmailService.send, not awaited',
+        symbol: 'admit',
+        egress: 'meta_compliance_requests plus platform_notification_outbox, then bounded SMTP',
         reach: {
             class: 'provider_configuration', audience: 'provider', personalData: true,
             channels: ['provider_api'],
         },
         properties: {
-            authority: none('inline from the callback handler'),
-            idempotency: partial('the confirmation code Meta is given is persisted, so the STATUS page '
-                + 'is stable. The email is not deduped'),
-            receipt: none(INLINE_EMAIL),
-            uncertainOutcome: none('the boolean collapses the two cases'),
-            erasure: none('this producer exists to serve an erasure request; the email itself is not '
-                + 'recorded'),
-            recovery: none('no record of the attempt: an unsent compliance answer leaves the status '
-                + 'page saying the request was handled'),
+            authority: durable('the legal request and exact notification intent commit together before the callback is acknowledged'),
+            idempotency: durable('Meta subject plus issued time, or requester plus minute, adopts the same request and unique notice'),
+            receipt: durable('the bounded SMTP message id is required and stored on the compliance notice'),
+            uncertainOutcome: durable('an unanswered SMTP attempt freezes for reconciliation and is never retried as a refusal'),
+            erasure: durable('request PII and its notice are deleted together at the declared 90-day retention boundary'),
+            recovery: durable('the platform outbox recovers only requests that never crossed SMTP'),
         },
     }),
 

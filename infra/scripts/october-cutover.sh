@@ -725,15 +725,14 @@ step_health() {
 # when a person comes back and says what they checked.
 #
 # WHAT THIS STEP DOES NOT DO, because it said otherwise and was believed: it
-# does not OPEN anything. The pilot is opened by the `dispatch.normalOutbox` row
-# in `platform_settings`, written through `DispatchRolloutService`, and this
-# script never wrote it. `--pilot-tenants` was validated, echoed into a file and
-# read by nothing else.
+# does not OPEN the durable lane: that lane is mandatory before this script
+# starts. The legacy `dispatch.normalOutbox` row now names the cohort whose
+# evidence is being reviewed; `--pilot-tenants` must match that authority.
 #
 # Nor is the canary INTERVAL scoped to those tenants. Step 8 brings worker, api,
 # whatsapp, dashboard and landing back up with no queue pause anywhere in this
 # script, so from step 8 until step 11 outbound processing is live for EVERY
-# tenant. What the pilot list scopes is the durable dispatch lane, not the
+# tenant. What the pilot list scopes is validation evidence, not delivery. The
 # platform. The operator attesting "6 entregas, 0 duplicados" is reading a
 # platform-wide outbound surface, and on a programme whose whole subject is
 # per-message money that difference is the attestation.
@@ -760,34 +759,34 @@ step_canary() {
 
   # ── AND THE LIST HAS TO BE THE ONE THE PLATFORM IS ACTUALLY USING ─────────
   #
-  # `dispatch.normalOutbox` is what opens the durable lane. An empty tenant list
-  # in that row means EVERY tenant — `DispatchPilotScope` says so in as many
-  # words — so a "pilot" whose row names nobody is the full rollout, silently.
-  # Reading the row here is what stops this step from attesting to a scope that
-  # exists only in an argument.
+  # `dispatch.normalOutbox` retains its compatibility name, but now scopes the
+  # release-validation cohort only. An empty tenant list means EVERY tenant, so
+  # a canary whose row names nobody is platform-wide validation. Reading the row
+  # stops this step from attesting to a scope that exists only in an argument;
+  # it never decides whether a message gets a durable row.
   local rollout enabled row_tenants id_missing=""
   rollout="$(psql_admin -Atc \
     "SELECT value FROM public.platform_settings WHERE key = 'dispatch.normalOutbox'" \
     < /dev/null | tr -d '\r')" \
-    || fatal "could not read dispatch.normalOutbox; the pilot scope cannot be confirmed"
+    || fatal "could not read dispatch.normalOutbox; the validation cohort cannot be confirmed"
 
   if [ -z "${rollout}" ]; then
-    fatal "dispatch.normalOutbox is not set, so no pilot is open. This step attests to a scope that does not exist."
+    fatal "dispatch.normalOutbox is not set, so no validation cohort is recorded."
   fi
   enabled="$(printf '%s' "${rollout}" | grep -o '"enabled"[[:space:]]*:[[:space:]]*true' || true)"
   [ -n "${enabled}" ] \
-    || fatal "dispatch.normalOutbox is present but not enabled. Nothing is open for anyone, pilot or otherwise."
+    || fatal "dispatch.normalOutbox is present but its validation cohort is disabled."
 
   row_tenants="$(printf '%s' "${rollout}" \
     | grep -o '[0-9a-f]\{8\}-[0-9a-f]\{4\}-[0-9a-f]\{4\}-[0-9a-f]\{4\}-[0-9a-f]\{12\}' | sort -u || true)"
   if [ -z "${row_tenants}" ]; then
-    fatal "dispatch.normalOutbox names NO tenants, which that row reads as EVERY tenant. That is the full rollout, not a pilot."
+    fatal "dispatch.normalOutbox names NO tenants, which means platform-wide validation, not a pilot cohort."
   fi
   for id in $(printf '%s' "${PILOT_TENANTS}" | tr ',' ' '); do
     printf '%s\n' "${row_tenants}" | grep -qxF "${id}" || id_missing="${id_missing} ${id}"
   done
   [ -z "${id_missing}" ] \
-    || fatal "these ids are not in dispatch.normalOutbox, so the lane is not open for them:${id_missing}"
+    || fatal "these ids are not in the dispatch.normalOutbox validation cohort:${id_missing}"
 
   printf '%s\n' "${PILOT_TENANTS}" > "${EVIDENCE}/canary-tenants.txt"
   printf '%s\n' "${row_tenants}" > "${EVIDENCE}/canary-rollout-scope.txt"
@@ -796,8 +795,8 @@ step_canary() {
   # and funding errors are read by a person against the runbook's checklist; a
   # script that declared them fine would be the most expensive kind of green.
   if [ -z "${CANARY_VERIFIED}" ]; then
-    log "canary: the DURABLE LANE is open for ${PILOT_TENANTS} (confirmed against dispatch.normalOutbox) and the public ingress is STILL CLOSED"
-    log "canary: NOTE — outbound processing itself is live for every tenant from step 8; the pilot list scopes the durable lane, not the platform"
+    log "canary: mandatory durable delivery is active; evidence scope ${PILOT_TENANTS} matches dispatch.normalOutbox and public ingress is STILL CLOSED"
+    log "canary: NOTE — outbound processing itself is live for every tenant from step 8; the pilot list scopes validation evidence, not delivery"
     log "canary: verify delivery, duplicates, retainedExposure and funding errors against the runbook"
     log "canary: then record it, and only then does step 11 become reachable:"
     log "canary:   $0 --only canary --evidence ${EVIDENCE} --manifest ${MANIFEST:-<manifest>} \\"

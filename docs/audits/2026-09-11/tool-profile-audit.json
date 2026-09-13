@@ -2,7 +2,7 @@
   "version": 1,
   "evidenceKind": "structural_only",
   "sourceHashEncoding": "utf8-lf",
-  "sourceRevision": "824b4c8d2ff313fe7865456e359a49ea98bb68dc",
+  "sourceRevision": "61d7b86f0c100399f03ab5370fc30c67176e25a8",
   "summary": {
     "verticals": 20,
     "profiles": 76,
@@ -87,7 +87,7 @@
     "packages/shared/src/channel-policy.ts": "08217ee740ed4500edf75db816296a0906afeb1096541a4f0c49404f5480fcf1",
     "packages/shared/src/country-language-pack.ts": "fd22dd3077cfad6fc7ccb76172320a7a1f8bb7e758254d0dda1a6a0d542802b4",
     "packages/shared/src/dashboard-page-access.ts": "2dabaf76e5ad13138460915bd99185698698b3cdb5cb14cf925603b9a228fb20",
-    "packages/shared/src/dispatch-pilot-scope.ts": "5a95eb6591d744c7a78b9bf40a2c60400836b7f538eaad7823c913789e9cb73a",
+    "packages/shared/src/dispatch-pilot-scope.ts": "2e3be92cf35089c9cdbba54f7bdff5ebddf8efd2f66ced2406ce2fed746a1208",
     "packages/shared/src/effective-capability-contract.ts": "09c5b2e0b629d8ec9a90960e228bdd99e3e02df8cefd3d7a2793e27184b6122d",
     "packages/shared/src/email-verification-policy.ts": "65ec4e669d3e43fc3fbba597eb8a60ce3d0ffec8f30a1725ba298d34bd49c178",
     "packages/shared/src/eval-phrase.ts": "b8b346f5bf1d46a7d3769eafa43e67ec31e9033ea4bb6304c16e9cee3875c980",

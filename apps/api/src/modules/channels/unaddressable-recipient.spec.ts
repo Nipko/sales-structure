@@ -14,10 +14,9 @@ import {
  * every producer carries as the recipient. It is not a destination — Meta's
  * `/messages` takes a phone in `to` — and the outbound half does not exist.
  *
- * The refusal existed in exactly one place: `sendStrict`, on the durable lane,
- * which `DispatchRolloutService` leaves OFF by default. So the guard was on the
- * road nobody is driving, while the five legacy senders on the same adapter —
- * text, media, list, button, flow — POST whatever string they are handed.
+ * The refusal was originally reachable only through `sendStrict`. Durable
+ * delivery is now mandatory, and the gateway retains the same invariant so a
+ * new producer cannot bypass it by reaching a lower-level sender.
  *
  * These cases pin the three places that now answer, each of which is reached by
  * a different caller.
@@ -43,7 +42,7 @@ describe('the gateway refuses what no endpoint can address', () => {
 
     it('throws rather than returning null, and posts nothing', async () => {
         // The asymmetry is the whole point. This gateway turns every transport
-        // failure into `null`, and the legacy processor reads a `null` as "no
+        // failure into `null`, and the processor reads a `null` as "no
         // answer came back": it records the reservation as a TIMEOUT — which
         // RETAINS the money for a message provably never posted — and then
         // throws, burning the job's attempts. Nothing was sent here, and

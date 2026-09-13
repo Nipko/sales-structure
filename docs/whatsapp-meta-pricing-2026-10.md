@@ -130,10 +130,11 @@ contradice la tarjeta.
   `plan-features.registry.ts` y en el seed de planes, y **ningún consumidor lo
   lee para decidir nada**. No presentarlo como un saldo ni como una protección.
 
-## 5. Lo que NO está encendido
+## 5. Lo que está activo y lo que aún requiere activación
 
-- El carril durable de despacho (`dispatch.normalOutbox`) está **apagado por
-  defecto** y nunca se encendió: nada de ese camino vio un proveedor real.
+- El carril durable de despacho es obligatorio para toda salida externa. La
+  clave heredada `dispatch.normalOutbox` sólo delimita qué tenants y canales se
+  revisan en el canario; apagarla no devuelve mensajes al carril anterior.
 - El modo `enforce` del gasto **no está activado** en ningún tenant.
 - La coexistencia con Meta Business Agent está detrás de un interruptor apagado.
 - **0 de 5 canales y 0 de 76 perfiles certificados** (`closure-report.md`,

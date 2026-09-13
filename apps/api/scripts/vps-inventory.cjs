@@ -89,7 +89,7 @@ const SECTIONS = [
     },
     {
         name: 'dispatch_rollout',
-        // Whether the durable outbox is on, and for whom. Counts and ids only.
+        // Real-provider validation cohort. Durable delivery is mandatory.
         sql: `SELECT value FROM public.platform_settings WHERE key = 'dispatch.normalOutbox'`,
         shape: 'one',
     },

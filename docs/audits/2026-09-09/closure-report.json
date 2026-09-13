@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "revision": "824b4c8d2ff313fe7865456e359a49ea98bb68dc",
-  "generatedAt": "2026-09-13T00:25:36.181Z",
+  "revision": "61d7b86f0c100399f03ab5370fc30c67176e25a8",
+  "generatedAt": "2026-09-13T00:54:30.950Z",
   "finished": false,
   "counts": {
     "aceptada": 20,
@@ -280,7 +280,7 @@
       "status": "bloqueada",
       "provenance": "declared",
       "artefact": null,
-      "evidence": "Outbox durable, transporte estricto, recuperación, reconciliación con actor y evidencia, pantalla de operador y alerta real. El interruptor sigue apagado por defecto: encenderlo es una activación.",
+      "evidence": "Outbox durable obligatorio, transporte estricto, recuperación, reconciliación con actor y evidencia, pantalla de operador y alerta real. El ajuste heredado dispatch.normalOutbox sólo delimita la evidencia del canario; no puede devolver una respuesta al carril eliminado.",
       "commits": [],
       "deferral": null
     },
@@ -616,7 +616,7 @@
       "status": "bloqueada",
       "provenance": "derived",
       "artefact": null,
-      "evidence": "El criterio principal de R6, textual: **ningún productor de WhatsApp puede generar una entrega fuera de la autorización aplicable**. Esa autorización es la autoridad económica transaccional, y el censo derivado del árbol cuenta 0 productores cobrables que llegan a un POST sin pasarla — incluido el carril legado de BullMQ, que sí la pasa. Lo verifica una mutación que borra el gate del sink real, no esta frase. **Este contador sumó hasta este HEAD los 0 productores fuera del carril durable (), que es otra propiedad**: no hay fila antes del POST, así que nadie puede contestar \"¿esto salió?\" tras un reinicio. No desaparece: es exactamente lo que mantienen abiertas R0 y R4. Con la condición local cumplida esta fila queda bloqueada por el modo observación, el canario con techo explícito y la autorización de activar `enforce`.",
+      "evidence": "El criterio principal de R6, textual: **ningún productor de WhatsApp puede generar una entrega fuera de la autorización aplicable**. Esa autorización es la autoridad económica transaccional, y el censo derivado del árbol cuenta 0 productores cobrables que llegan a un POST sin pasarla. Lo verifica una mutación que borra el gate del sink real, no esta frase. **Este contador sumó hasta este HEAD los 0 productores fuera del carril durable (), que es otra propiedad**: no hay fila antes del POST, así que nadie puede contestar \"¿esto salió?\" tras un reinicio. Esa propiedad se mide en R0 y R4 y también está en cero. Con la condición local cumplida esta fila queda bloqueada por el modo observación, el canario con techo explícito y la autorización de activar `enforce`.",
       "commits": [],
       "deferral": null
     },

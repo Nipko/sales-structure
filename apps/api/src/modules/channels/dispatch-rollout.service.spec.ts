@@ -39,14 +39,13 @@ describe('DispatchRolloutService', () => {
         await expect(h.service.enabledFor(tenantId, 'whatsapp')).resolves.toBe(false);
     });
 
-    it('stays off when the switch is on but no channel was named', async () => {
-        // Turning the master switch on alone must change nothing: a channel has
-        // to be listed deliberately, and only migrated ones can work anyway.
+    it('selects nothing when the cohort has no named channel', async () => {
+        // A cohort without a named channel validates nothing.
         const h = harness({ enabled: true });
         await expect(h.service.enabledFor(tenantId, 'whatsapp')).resolves.toBe(false);
     });
 
-    it('limits the new path to the named channels and the pilot tenants', async () => {
+    it('limits validation to the named channels and pilot tenants', async () => {
         const h = harness({ enabled: true, channels: ['whatsapp'], tenantIds: [tenantId] });
         await expect(h.service.enabledFor(tenantId, 'whatsapp')).resolves.toBe(true);
         await expect(h.service.enabledFor(other, 'whatsapp')).resolves.toBe(false);
@@ -58,7 +57,7 @@ describe('DispatchRolloutService', () => {
         await expect(h.service.enabledFor(other, 'messenger')).resolves.toBe(true);
     });
 
-    it('refuses to choose a delivery lane for malformed authority', async () => {
+    it('refuses a malformed validation authority', async () => {
         for (const stored of ['not json', { enabled: 'yes' }, { enabled: true, channels: 'whatsapp' },
             { enabled: true, channels: [7, ' ', null] }]) {
             const h = harness(stored);
@@ -67,7 +66,7 @@ describe('DispatchRolloutService', () => {
         }
     });
 
-    it('fails the delivery decision when the SETTING cannot be read at all', async () => {
+    it('fails the cohort decision when the setting cannot be read at all', async () => {
         await expect(harness(undefined, { dbFails: true }).service.enabledFor(tenantId, 'whatsapp'))
             .rejects.toMatchObject({ code: 'dispatch_rollout_authority_unavailable' });
     });
@@ -78,13 +77,8 @@ describe('DispatchRolloutService', () => {
         // `try` as the database read, so a cache blip never reached the
         // authority at all and answered OFF for EVERY tenant at once.
         //
-        // The reason that is the wrong direction, and not merely a cautious
-        // one: OFF does not mean "do not send". It means send on the legacy
-        // queue, where Redis is the only record and no durable row is written.
-        // So failing off on a cache blip does not withhold delivery — it
-        // withholds the EVIDENCE of delivery, during the exact window a pilot
-        // exists to measure. Losing a cache may cost a query; it may not
-        // perform an unannounced rollback.
+        // Losing a cache may cost a query; it may not silently change the
+        // cohort whose evidence an operator is collecting.
         await expect(harness({ enabled: true, channels: ['whatsapp'] }, { redisFails: true })
             .service.enabledFor(tenantId, 'whatsapp')).resolves.toBe(true);
     });
@@ -100,6 +94,8 @@ describe('DispatchRolloutService', () => {
             const h = harness({ enabled: true, channels: ['whatsapp', 'telegram'] }, { migrated: ['whatsapp'] });
             await expect(h.service.state()).resolves.toMatchObject({
                 enabled: true,
+                deliveryMode: 'mandatory_durable',
+                scopePurpose: 'release_validation_only',
                 channels: ['whatsapp', 'telegram'],
                 migratedChannels: ['whatsapp'],
                 effectiveChannels: ['whatsapp'],

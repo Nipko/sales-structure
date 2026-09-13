@@ -10,14 +10,13 @@ import { PrismaService } from '../prisma/prisma.service';
 import { DISPATCH_RECONCILIATION_SLA_SECONDS, type DispatchResolution } from './agent-dispatch-outbox';
 
 /**
- * The operator's view of the durable dispatch switch.
+ * The operator's view of the real-provider validation cohort.
  *
- * A kill switch nobody can read is not one. These endpoints exist so the state
- * can be inspected, changed deliberately, and turned off in a single call — with
- * the change audited and effective at once rather than after a cache expires.
+ * The legacy route/key names remain compatible with existing release tooling.
+ * This scope does not turn durable delivery on or off; it records which tenants
+ * and channels the operator validates during a canary.
  *
- * super_admin only, and platform-wide by design: this decides how replies leave
- * the system, which is never a tenant's own setting.
+ * super_admin only, and platform-wide by design.
  */
 @ApiTags('Dispatch rollout')
 @Controller('dispatch-rollout')
@@ -33,13 +32,13 @@ export class DispatchRolloutController {
     private readonly logger = new Logger(DispatchRolloutController.name);
 
     @Get()
-    @ApiOperation({ summary: 'Effective durable dispatch rollout state (super_admin only)' })
+    @ApiOperation({ summary: 'Durable dispatch validation cohort (super_admin only)' })
     async state() {
         return { success: true, data: await this.rollout.state() };
     }
 
     @Put()
-    @ApiOperation({ summary: 'Update the durable dispatch rollout (super_admin only)' })
+    @ApiOperation({ summary: 'Update the dispatch validation cohort (super_admin only)' })
     async set(@Body() body: any, @Req() request: any) {
         try {
             return { success: true, data: await this.rollout.set(body, {
@@ -165,7 +164,7 @@ export class DispatchRolloutController {
     }
 
     @Post('disable')
-    @ApiOperation({ summary: 'Turn the durable dispatch off for everyone (super_admin only)' })
+    @ApiOperation({ summary: 'Close the dispatch validation cohort (super_admin only)' })
     async disable(@Req() request: any) {
         return { success: true, data: await this.rollout.disable({
             userId: request?.user?.id ?? null, email: request?.user?.email ?? null }) };

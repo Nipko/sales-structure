@@ -1,6 +1,6 @@
 # Runbook: despacho durable y reconciliación
 
-Operativo para el camino durable de salida normal (`agent_dispatch_outbox`). Cubre el interruptor de despliegue, la cola de reconciliación y el diagnóstico. Todo lo de aquí es **super_admin**.
+Operativo para el camino durable obligatorio de salida (`agent_dispatch_outbox`). Cubre el alcance de validación, la cola de reconciliación y el diagnóstico. Todo lo de aquí es **super_admin**.
 
 Los SLOs de este camino —pérdida, duplicado, backlog, edad de reconciliación y latencia—, los números medidos que los sostienen y qué alerta vigila cada uno están en **`dispatch-load-and-slo.md`**, junto con el harness de carga y caos que los produjo y los hallazgos abiertos que encontró.
 
@@ -18,33 +18,36 @@ Los SLOs de este camino —pérdida, duplicado, backlog, edad de reconciliación
 
 El estado del mensaje en la conversación es distinto y no se confunde con el anterior: `pending` → `sent` (aceptado) → `delivered` → `read`, o `failed`. Una aceptación HTTP **nunca** se escribe como `delivered`; eso solo llega por webhook del proveedor.
 
-## Interruptor de despliegue
+## Cohorte de validación
 
-Clave `dispatch.normalOutbox` en `platform_settings`. **Apagado por defecto.**
+La clave heredada `dispatch.normalOutbox` en `platform_settings` delimita el
+canario. Ya no enciende ni apaga el outbox: toda salida externa usa el carril
+durable. La respuesta del endpoint lo declara con
+`deliveryMode=mandatory_durable` y `scopePurpose=release_validation_only`.
 
 ```bash
-# Estado efectivo: lo pedido, lo migrado, lo que realmente aplica y lo ignorado
+# Estado efectivo de la cohorte: pedido, transportes disponibles e ignorados
 curl -s -H "Authorization: Bearer $TOKEN" https://api.parallly-chat.cloud/api/v1/dispatch-rollout
 ```
 
 ```bash
-# Piloto: un tenant, un canal
+# Canario: un tenant, un canal
 curl -s -X PUT -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
   -d '{"enabled":true,"channels":["whatsapp"],"tenantIds":["<tenant-uuid>"]}' \
   https://api.parallly-chat.cloud/api/v1/dispatch-rollout
 ```
 
 ```bash
-# Kill switch: todos apagados, efecto inmediato
+# Cerrar la cohorte de validación; la entrega durable continúa
 curl -s -X POST -H "Authorization: Bearer $TOKEN" \
   https://api.parallly-chat.cloud/api/v1/dispatch-rollout/disable
 ```
 
 Reglas que conviene tener presentes:
 
-- Un canal solo aplica si está **pedido y migrado**. `ignoredChannels` en la respuesta dice cuáles se pidieron sin transporte estricto.
-- `tenantIds` vacío con el interruptor encendido significa **todos** los tenants. Para un piloto, listar explícitamente.
-- Apagar el interruptor **no** revoca lotes ya creados: un lote existente sigue siendo dueño de su respuesta y se termina de entregar. Es deliberado — lo contrario entregaría la misma respuesta dos veces por el camino viejo.
+- Un canal sólo entra en la validación si está **pedido y tiene transporte estricto**. `ignoredChannels` muestra los pedidos no validables.
+- `tenantIds` vacío con la cohorte activa significa **todos** los tenants. Para un canario, listarlos explícitamente.
+- Cerrar la cohorte no revoca lotes ni cambia la entrega. El control que puede rechazar por presupuesto es `tenant.settings.whatsappSpend.enforcement`.
 - Cada escritura queda auditada (`dispatch.rollout.updated`) con el valor anterior y el actor real.
 
 ## Cola de reconciliación

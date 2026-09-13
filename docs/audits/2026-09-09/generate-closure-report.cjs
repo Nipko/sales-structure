@@ -296,7 +296,7 @@ const ROWS = [
             + '`commercial-authority.postgres.spec.ts` contra PostgreSQL real, con dos tenants y dos workers.',
         commits: ['33dd2487'],
     }),
-    row('E3', { provenance: 'declared',  gates: [5, 1], evidence: 'Outbox durable, transporte estricto, recuperación, reconciliación con actor y evidencia, pantalla de operador y alerta real. El interruptor sigue apagado por defecto: encenderlo es una activación.' }),
+    row('E3', { provenance: 'declared',  gates: [5, 1], evidence: 'Outbox durable obligatorio, transporte estricto, recuperación, reconciliación con actor y evidencia, pantalla de operador y alerta real. El ajuste heredado dispatch.normalOutbox sólo delimita la evidencia del canario; no puede devolver una respuesta al carril eliminado.' }),
     row('F1', { provenance: 'derived',
         open: executorOperable ? 0 : 1,
         openLabel: 'el ejecutor de certificación no está cableado a ningún entrypoint',

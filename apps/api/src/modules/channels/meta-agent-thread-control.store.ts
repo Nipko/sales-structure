@@ -8,7 +8,7 @@ import {
 
 const SETTINGS_KEY = 'channels.metaAgentCoexistence';
 const CACHE_KEY = 'channels:metaAgentCoexistence';
-/** Seconds. The same window `dispatch.normalOutbox` already accepts for its switch. */
+/** Seconds. The same window the dispatch validation cohort uses. */
 const CACHE_TTL = 60;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -52,7 +52,7 @@ export class MetaAgentThreadControlStore {
             if (!config || config.enabled !== true) return false;
             const tenants: unknown = (config as any).tenantIds;
             // An empty list with the switch on means every tenant, which is how
-            // `dispatch.normalOutbox` reads it too — one grammar, not two.
+            // The dispatch validation cohort reads it too — one grammar, not two.
             if (!Array.isArray(tenants) || tenants.length === 0) return true;
             return tenants.some(entry => String(entry).trim() === tenantId);
         } catch (error: any) {

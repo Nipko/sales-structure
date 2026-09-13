@@ -11,15 +11,17 @@ const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const CHANNEL = /^[a-z_]{2,40}$/;
 
 export interface DispatchRolloutConfig {
-    /** Master switch. Off means every producer keeps the path it has today. */
+    /** Whether this validation cohort is active. Delivery stays durable either way. */
     readonly enabled: boolean;
-    /** When non-empty, only these tenants take the new path. A pilot list. */
+    /** When non-empty, only these tenants belong to the canary. */
     readonly tenantIds: readonly string[];
     /** Channels the operator asked for, before intersecting with reality. */
     readonly channels: readonly string[];
 }
 
 export interface DispatchRolloutState extends DispatchRolloutConfig {
+    readonly deliveryMode: 'mandatory_durable';
+    readonly scopePurpose: 'release_validation_only';
     /** Channels whose adapter actually implements the strict transport. */
     readonly migratedChannels: readonly string[];
     /** What the switch really does right now: requested AND migrated. */
@@ -39,21 +41,19 @@ export class DispatchRolloutAuthorityUnavailableError extends Error {
 }
 
 /**
- * Off by default, and deliberately so.
+ * Release-validation cohort for the mandatory durable lane.
  *
- * The durable dispatch path is built and tested, but nothing about it has met a
- * real provider: every answer in its suites is synthetic. Switching the live
- * reply path for a customer-facing channel is a decision with a pilot attached.
- * So the producer asks here, this answers no, and the previous behaviour is what
- * runs until somebody deliberately writes the setting.
+ * The key keeps its historical name for deployment compatibility. It no longer
+ * selects a delivery implementation: every external reply has a durable owner
+ * before this service is consulted. The configured tenant/channel set names the
+ * cohort whose real-provider evidence an operator reviews during release.
  *
- * This is an operational kill switch, not a commercial feature. It stays in
- * `platform_settings` precisely so it can be flipped off for everyone in one
- * write, independently of any plan. Plan entitlement is a separate question and
- * is evaluated where capacity is enforced, not here.
+ * This is an operational evidence scope, not a commercial feature or a delivery
+ * kill switch. Cost enforcement remains the tenant's `whatsappSpend.enforcement`
+ * setting, and stopping delivery uses the channel/funding controls.
  *
- * Never throws: an unreadable or malformed setting means off, because failing
- * open would put untested delivery in front of customers.
+ * Administrative reads render an unreadable value inactive. Strict cohort
+ * checks distinguish unavailable authority from a deliberate inactive value.
  */
 @Injectable()
 export class DispatchRolloutService {
@@ -75,25 +75,22 @@ export class DispatchRolloutService {
     }
 
     /**
-     * Read the rollout authority. An administrative read may conservatively
-     * render OFF, but a message deciding between the durable and legacy lanes
-     * must distinguish "disabled" from "could not be read". Otherwise a
-     * database fault during the pilot silently sends on the very path whose
-     * missing evidence the pilot is measuring.
+     * Read the cohort authority. An administrative summary may conservatively
+     * render inactive, while a canary attestation must distinguish "disabled"
+     * from "could not be read".
      */
-    private async readConfig(requiredForDelivery: boolean): Promise<DispatchRolloutConfig> {
+    private async readConfig(strictRead: boolean): Promise<DispatchRolloutConfig> {
         // ── THE CACHE IS A CACHE ────────────────────────────────────────────
         //
         // This read used to sit inside the same `try` as the database read, so
         // a Redis blip did not fall through to the authority — it threw, and
-        // the catch below answered OFF. One unavailable cache turned the
-        // durable lane off for EVERY tenant at once: an unannounced rollback,
-        // logged at debug, during the one window the pilot exists to measure.
+        // the catch below answered OFF. One unavailable cache silently changed
+        // the cohort during the window the pilot exists to measure.
         //
         // Losing a cache may cost a query. It may not decide a rollout.
         const cached = await this.redis.getJson<DispatchRolloutConfig>(CACHE_KEY)
             .catch(error => {
-                this.logger.warn('[Dispatch] rollout cache unreadable, asking the database: '
+                this.logger.warn('[Dispatch] validation cohort cache unreadable, asking the database: '
                     + String((error as any)?.message ?? error));
                 return null;
             });
@@ -105,22 +102,20 @@ export class DispatchRolloutService {
             let stored: any = {};
             if (rows?.[0]?.value) {
                 try { stored = JSON.parse(rows[0].value); } catch (error) {
-                    if (requiredForDelivery) throw error;
+                    if (strictRead) throw error;
                     stored = {};
                 }
             }
-            const config = requiredForDelivery ? this.validate(stored) : this.normalize(stored);
+            const config = strictRead ? this.validate(stored) : this.normalize(stored);
             await this.redis.setJson(CACHE_KEY, config, CACHE_TTL).catch(() => {});
             return config;
         } catch (error: any) {
             // The AUTHORITY is unreadable, which is a different fact from the
-            // cache being unreadable, and the only one that may answer OFF.
-            // Warn rather than debug: this silently moves every reply onto the
-            // legacy queue, and a debug line is not where somebody looks when a
-            // pilot stops producing rows.
-            this.logger.warn('[Dispatch] rollout switch unreadable in platform_settings, '
-                + `staying OFF for every tenant: ${error?.message}`);
-            if (requiredForDelivery) throw new DispatchRolloutAuthorityUnavailableError(error);
+            // cache being unreadable. Warn rather than debug: a canary must not
+            // silently change the cohort it claims to be measuring.
+            this.logger.warn('[Dispatch] validation cohort unreadable in platform_settings, '
+                + `selecting no tenant: ${error?.message}`);
+            if (strictRead) throw new DispatchRolloutAuthorityUnavailableError(error);
             return DispatchRolloutService.OFF;
         }
     }
@@ -143,6 +138,8 @@ export class DispatchRolloutService {
         const effective = config.channels.filter(channel => migrated.includes(channel));
         return Object.freeze({
             ...config,
+            deliveryMode: 'mandatory_durable' as const,
+            scopePurpose: 'release_validation_only' as const,
             migratedChannels: Object.freeze(migrated),
             effectiveChannels: Object.freeze(effective),
             ignoredChannels: Object.freeze(config.channels.filter(channel => !migrated.includes(channel))),
@@ -150,26 +147,24 @@ export class DispatchRolloutService {
     }
 
     /**
-     * Whether this exact tenant and channel take the durable path right now.
+     * Whether this exact tenant and channel belongs to the validation cohort.
      *
-     * The channel must be BOTH requested and actually migrated. A configuration
-     * naming a channel with no strict transport used to let a batch be created
-     * that nothing could ever send — the reply owned by a path unable to deliver
-     * it. It fails closed instead.
+     * Kept under its old method name so release tooling compiled against the
+     * earlier API remains compatible. Runtime delivery must never call it.
      */
     async enabledFor(tenantId: string, channelType: string): Promise<boolean> {
         const config = await this.readConfig(true);
         if (!config.enabled || !config.channels.includes(channelType)) return false;
         if (!this.migratedChannels().includes(channelType)) {
-            this.logger.warn(`Dispatch rollout names ${channelType}, which has no strict transport — ignored`);
+            this.logger.warn(`Dispatch validation cohort names ${channelType}, which has no strict transport — ignored`);
             return false;
         }
         return config.tenantIds.length === 0 || config.tenantIds.includes(tenantId);
     }
 
     /**
-     * Write the switch. Validated, audited, and effective immediately: the cache
-     * is dropped rather than left to expire, so a rollback is not a minute long.
+     * Write the cohort. Validated, audited, and effective immediately: the cache
+     * is dropped rather than left to expire.
      */
     async set(input: unknown, actor: { userId?: string | null; email?: string | null }): Promise<DispatchRolloutState> {
         const requested = this.validate(input);
@@ -190,12 +185,12 @@ export class DispatchRolloutService {
                     { previous, requested, actorEmail: actor.email ?? null })),
             },
         }).catch((error: any) => this.logger.warn(`Dispatch rollout audit not written: ${error?.message}`));
-        this.logger.warn(`Dispatch rollout changed by ${actor.email || actor.userId || 'unknown'}: `
+        this.logger.warn(`Dispatch validation cohort changed by ${actor.email || actor.userId || 'unknown'}: `
             + JSON.stringify(requested));
         return this.state();
     }
 
-    /** The kill switch. One write, everyone off, cache dropped immediately. */
+    /** Close the validation cohort immediately. Delivery remains durable. */
     async disable(actor: { userId?: string | null; email?: string | null }): Promise<DispatchRolloutState> {
         return this.set({ enabled: false, tenantIds: [], channels: [] }, actor);
     }

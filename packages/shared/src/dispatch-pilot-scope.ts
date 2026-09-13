@@ -1,18 +1,17 @@
 /**
  * ═══ WHAT A PILOT IS ALLOWED TO MEAN ═══
  *
- * The durable dispatch outbox is switched on per tenant and per channel from a
- * single row in `platform_settings`. Two properties of that row decide whether
- * "we turned it on for one tenant" is true or is a sentence somebody wrote:
+ * Durable dispatch is mandatory. The compatibility row in `platform_settings`
+ * names the tenants and channels whose real-provider evidence is reviewed in a
+ * canary. Two properties decide whether "we validated one tenant" is true:
  *
  *   1. **An empty tenant list means EVERY tenant.** `DispatchRolloutService`
  *      reads it that way, deliberately, because that is what a full rollout
- *      looks like. So a pilot that forgets to name its tenant is not a pilot
- *      that does nothing — it is the full rollout, silently.
+ *      looks like. A pilot that forgets its tenant is platform-wide validation.
  *
  *   2. **A channel the transport cannot serve is ignored, not honoured.** The
  *      service drops it and logs, which is right; but a rehearsal that names one
- *      goes green while switching nothing on. The independent review reproduced
+ *      goes green while validating nothing. The independent review reproduced
  *      exactly that: a pilot configured for `web_widget` produced
  *      `effectiveChannels: []` and `enabledFor === false`, and the check that
  *      was supposed to prove the outbox live only re-read the row it had just
@@ -22,8 +21,8 @@
  * from the outside. The rule is checked BEFORE the write and read back AFTER,
  * so a value that did not land cannot be mistaken for one that did.
  *
- * This is not the switch and it does not read the database. It is the shape the
- * switch is allowed to hold, in the one place the writer, the reader and the
+ * This does not read the database or select a delivery lane. It is the shape the
+ * cohort is allowed to hold, in the one place the writer, the reader and the
  * dashboard can all see it.
  */
 
@@ -40,7 +39,7 @@ export type PilotScopeRefusal =
     | 'pilot_tenant_count_exceeded'
     /** A tenant id that is not one of the declared participants. */
     | 'pilot_tenant_not_declared'
-    /** No channel named: nothing would switch on and it would look switched on. */
+    /** No channel named: nothing would be validated. */
     | 'pilot_names_no_channel'
     /** A channel with no strict transport. It is dropped, so the pilot is a no-op. */
     | 'pilot_channel_has_no_transport';
@@ -48,7 +47,7 @@ export type PilotScopeRefusal =
 export interface PilotScopeVerdict {
     readonly ok: boolean;
     readonly refusals: readonly PilotScopeRefusal[];
-    /** The channels that would actually take effect. Empty means nothing happens. */
+    /** The channels whose transport can actually be validated. */
     readonly effectiveChannels: readonly string[];
 }
 

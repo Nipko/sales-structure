@@ -445,13 +445,13 @@ function octoberRows(row, A) {
             evidence: 'El criterio principal de R6, textual: **ningún productor de WhatsApp puede '
                 + 'generar una entrega fuera de la autorización aplicable**. Esa autorización es la '
                 + 'autoridad económica transaccional, y el censo derivado del árbol cuenta '
-                + `${A.bypasses.length} productores cobrables que llegan a un POST sin pasarla — `
-                + 'incluido el carril legado de BullMQ, que sí la pasa. Lo verifica una mutación '
+                + `${A.bypasses.length} productores cobrables que llegan a un POST sin pasarla. `
+                + 'Lo verifica una mutación '
                 + 'que borra el gate del sink real, no esta frase. **Este contador sumó hasta '
                 + `este HEAD los ${A.offDurable.length} productores fuera del carril durable `
                 + `(${laneBreakdown}), que es otra propiedad**: no hay fila antes del POST, así `
-                + 'que nadie puede contestar "¿esto salió?" tras un reinicio. No desaparece: es '
-                + 'exactamente lo que mantienen abiertas R0 y R4. Con la condición local cumplida '
+                + 'que nadie puede contestar "¿esto salió?" tras un reinicio. Esa propiedad se '
+                + 'mide en R0 y R4 y también está en cero. Con la condición local cumplida '
                 + 'esta fila queda bloqueada por el modo observación, el canario con techo '
                 + 'explícito y la autorización de activar `enforce`.' }),
     ];

@@ -1,5 +1,5 @@
 import { spawnSync } from 'child_process';
-import { readFileSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { resolve } from 'path';
 
 /**
@@ -32,6 +32,13 @@ import { resolve } from 'path';
 const ROOT = resolve(__dirname, '..', '..', '..', '..', '..');
 const SCRIPT_PATH = resolve(ROOT, 'infra', 'scripts', 'october-cutover.sh');
 const SCRIPT = readFileSync(SCRIPT_PATH, 'utf8').replace(/\r\n/g, '\n');
+const WINDOWS_GIT_BASH = 'C:/Program Files/Git/bin/bash.exe';
+// `C:\\Windows\\System32\\bash.exe` is the legacy WSL launcher. It does not
+// translate the Windows paths produced by `resolve()`, so the runnable half of
+// this suite fails before reaching the cutover program. Git Bash speaks both
+// path forms and is the shell that checks the shipped script on Windows.
+const BASH = process.platform === 'win32' && existsSync(WINDOWS_GIT_BASH)
+    ? WINDOWS_GIT_BASH : 'bash';
 
 /** The body of one `name() { … }` function, by brace matching at column 0. */
 const bodyOf = (name: string): string => {
@@ -507,7 +514,7 @@ const runCutover = (setup: string, args: string, tenantRows = '1',
         'echo "---EXIT---$rc"',
         'exit 0',
     ].join('\n');
-    const result = spawnSync('bash', ['-c', harness], { encoding: 'utf8', timeout: 120_000 });
+    const result = spawnSync(BASH, ['-c', harness], { encoding: 'utf8', timeout: 120_000 });
     if (result.error) throw result.error;
     const out = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
     const between = (from: string, to: string) => out.split(from)[1]?.split(to)[0] ?? '';
@@ -603,8 +610,8 @@ describe('the canary is a gate the program stops at', () => {
      * The step announced "the pilot window is OPEN for <ids>" and opened
      * nothing: `--pilot-tenants` was checked for shape, checked for
      * existence, written to a file and read by no other code. What actually
-     * opens the durable lane is the `dispatch.normalOutbox` row, and this
-     * script never looked at it.
+     * names the validation cohort is the legacy `dispatch.normalOutbox` row,
+     * and this script never looked at it.
      *
      * So the operator attested to a scope that lived only in their own
      * argument — on a programme whose whole subject is per-message money.
@@ -614,7 +621,7 @@ describe('the canary is a gate the program stops at', () => {
         const run = runCutover(recordThrough('health'),
             `--manifest "$EV/m.json" --pilot-tenants ${PILOT} --canary-verified "miré"`,
             '1', '');
-        expect(run.out).toContain('dispatch.normalOutbox is not set');
+        expect(run.out).toContain('no validation cohort is recorded');
         expect(run.canaryDone).not.toContain('step=canary');
         expect(run.exit).toBe(1);
     });
@@ -627,16 +634,16 @@ describe('the canary is a gate the program stops at', () => {
             `--manifest "$EV/m.json" --pilot-tenants ${PILOT} --canary-verified "miré"`,
             '1', '{"enabled":true,"tenantIds":[],"channels":["whatsapp"]}');
         expect(run.out).toContain('names NO tenants');
-        expect(run.out).toContain('full rollout');
+        expect(run.out).toContain('platform-wide validation');
         expect(run.exit).toBe(1);
     });
 
-    it('refuses a pilot id the lane is not actually open for', () => {
+    it('refuses a pilot id outside the recorded validation cohort', () => {
         const run = runCutover(recordThrough('health'),
             `--manifest "$EV/m.json" --pilot-tenants ${PILOT} --canary-verified "miré"`,
             '1', '{"enabled":true,"tenantIds":["99999999-9999-4999-8999-999999999999"],'
             + '"channels":["whatsapp"]}');
-        expect(run.out).toContain('not in dispatch.normalOutbox');
+        expect(run.out).toContain('not in the dispatch.normalOutbox validation cohort');
         expect(run.exit).toBe(1);
     });
 
@@ -644,7 +651,7 @@ describe('the canary is a gate the program stops at', () => {
         // The sentence an operator reads while attesting. Step 8 restarts the
         // five services with no queue pause anywhere in this script, so from
         // there until step 11 outbound processing is platform-wide; the pilot
-        // list scopes the durable LANE, not the platform. Saying otherwise is
+        // list scopes validation evidence, not delivery. Saying otherwise is
         // what makes "6 entregas, 0 duplicados" an attestation about a
         // surface the attester was not told they were looking at.
         const run = runCutover(recordThrough('health'),

@@ -284,9 +284,10 @@ const ready = !!databaseUrl && !!redisUrl;
         // other PostgreSQL suite on this disposable instance opens the same way.
         await client.$executeRawUnsafe('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"');
         await ensureSyntheticGlobalTables(statement => client.$executeRawUnsafe(statement));
-        // The rollout switch lives in a real row, so `enabledFor` is the shipped
-        // read and not a stub. Scoped to this tenant so a neighbouring suite on
-        // the same disposable database is never switched on by it.
+        // The legacy rollout row now records the real-provider validation
+        // cohort. It is scoped to this tenant so this fixture cannot alter a
+        // neighbouring suite's evidence scope; delivery remains durable even
+        // when the row is absent or inactive.
         await client.$executeRawUnsafe(
             `CREATE TABLE IF NOT EXISTS public.platform_settings(
                 key TEXT PRIMARY KEY, value TEXT, updated_at TIMESTAMPTZ DEFAULT NOW())`);
@@ -343,9 +344,9 @@ const ready = !!databaseUrl && !!redisUrl;
             if (key === 'redis.host') return '127.0.0.1';
             if (key === 'redis.port') return Number(valkeyUrl.port);
             // One logical Valkey database per Jest worker. `dispatch:rollout`
-            // is a PLATFORM key with no tenant in its name, so this suite and
-            // any other that writes it were turning each other's durable lane
-            // off — whichever read second saw zero outbox rows.
+            // is a PLATFORM key with no tenant in its name, so fixtures that
+            // write distinct validation cohorts must not share its cached
+            // evidence scope.
             if (key === 'redis.db') return workerValkeyDb();
             if (key === 'auth.jwtSecret') return jwtSecret;
             if (key === 'META_APP_SECRET') return appSecret;

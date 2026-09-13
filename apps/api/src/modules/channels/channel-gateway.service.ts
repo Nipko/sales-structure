@@ -18,12 +18,9 @@ import { classifyFlowFailure } from './flow-fallback';
  *
  * Every caller of `sendMessage` asks the spend authority first, and that
  * authority refuses this by name (`recipient_not_addressable`), so this
- * should never fire. It exists because the five legacy senders on the
- * WhatsApp adapter POST whatever string they are handed — only `sendStrict`
- * checked, and `sendStrict` is the lane the rollout switch leaves OFF by
- * default, so the guard was on the road nobody is driving. "Every caller
- * remembers to ask" is a list somebody maintains; this is a property of the
- * code.
+ * should never fire. It remains a transport-boundary invariant because a
+ * future caller must not turn a business-scoped identity into a provider
+ * destination merely by omitting admission.
  */
 export class UnaddressableRecipient extends Error {
     constructor(readonly channelType: string) {

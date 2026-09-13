@@ -108,16 +108,16 @@ cuenta por familia y aborta con `blocks=1`. Runbook:
 
 Todo lo demás del runtime es aditivo o está detrás de una palanca (§5).
 
-## 5. Lo que queda apagado detrás de una palanca
+## 5. Alcance de validación y palancas
 
 | Palanca | Dónde vive | Default | Qué enciende |
 |---|---|---|---|
-| `dispatch.normalOutbox` | `platform_settings` | **apagado** | la salida durable por outbox, por tenant y por canal |
+| `dispatch.normalOutbox` | `platform_settings` | **cohorte inactiva** | el alcance del canario por tenant y canal; la salida durable ya es obligatoria |
 
-`DispatchRolloutService` falla cerrado: una configuración ilegible, ausente o
-malformada significa apagado, y un canal nombrado sin transporte estricto se
-ignora en vez de crear un lote que nadie puede enviar. Encenderlo es una
-activación con piloto, no parte del deploy.
+`DispatchRolloutService` falla cerrado al seleccionar la cohorte: una
+configuración ilegible, ausente o malformada no valida ningún tenant, y un canal
+sin transporte estricto aparece como ignorado. Este ajuste no selecciona el
+carril de entrega.
 
 Los demás interruptores nuevos son **presupuestos y plazos** de evaluación
 (`EVAL_AUTORUN_DAILY_MODEL_UNITS`, `LEARNING_EVALUATION_ATTEMPT_MINUTES`,
@@ -168,7 +168,7 @@ Qué de este PR puede, en principio, salir de la máquina:
 
 | Efecto | Estado hoy |
 |---|---|
-| Mensaje saliente por outbox durable | **apagado** por `dispatch.normalOutbox` |
+| Mensaje saliente por outbox durable | **obligatorio**; `dispatch.normalOutbox` sólo delimita el canario |
 | Llamada a un proveedor LLM | sólo con credencial; los ejecutores de certificación y benchmark existen y no tienen ninguna |
 | Llamada a un canal (WhatsApp/IG/Messenger/Telegram) | sin cuentas de prueba; el código nuevo no agrega un llamador nuevo |
 | Cobro (Wompi) / factura (Factus) | sin cambios en este PR |

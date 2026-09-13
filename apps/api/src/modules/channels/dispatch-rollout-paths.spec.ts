@@ -1,18 +1,18 @@
 import { DispatchRolloutService } from './dispatch-rollout.service';
+import { readFileSync, readdirSync } from 'fs';
+import { join, resolve } from 'path';
 
 /**
- * ═══ THE FIVE WAYS THE SWITCH CAN ANSWER, AND WHAT EACH COSTS ═══
+ * ═══ THE FIVE WAYS THE VALIDATION COHORT CAN ANSWER ═══
  *
- * `dispatch.normalOutbox` decides whether a reply takes the durable lane or the
- * legacy queue, where Redis is the only record. The directive asks for the whole
- * path proven: the flag on, a read failure, a tenant not on the list, a tenant
- * on the pilot list, and a rollback.
+ * `dispatch.normalOutbox` is the compatibility name of the real-provider
+ * validation cohort. Durable delivery is mandatory regardless of its answer.
+ * These cases prove cohort scoping and immediate operational rollback.
  *
- * Four of those are ordinary. The fifth is the one worth a test of its own: a
- * READ FAILURE and a DELIBERATE "no" are different facts. The former must stop
- * the turn for retry; the latter may keep the configured legacy behaviour.
+ * A read failure and a deliberate "no" remain different operational facts;
+ * neither may change the delivery lane.
  */
-describe('every way the rollout switch can answer', () => {
+describe('every way the dispatch validation cohort can answer', () => {
     const TENANT = '11111111-1111-1111-1111-111111111111';
     const OTHER = '22222222-2222-2222-2222-222222222222';
 
@@ -47,6 +47,22 @@ describe('every way the rollout switch can answer', () => {
 
     const ON_FOR_ALL = { enabled: true, tenantIds: [], channels: ['whatsapp'] };
     const ON_FOR_PILOT = { enabled: true, tenantIds: [TENANT], channels: ['whatsapp'] };
+
+    it('is not consulted by any production delivery path', () => {
+        const root = resolve(__dirname, '..');
+        const files: string[] = [];
+        const walk = (directory: string) => {
+            for (const entry of readdirSync(directory, { withFileTypes: true })) {
+                const file = join(directory, entry.name);
+                if (entry.isDirectory()) walk(file);
+                else if (entry.name.endsWith('.ts') && !entry.name.endsWith('.spec.ts')
+                    && file !== resolve(__dirname, 'dispatch-rollout.service.ts')) files.push(file);
+            }
+        };
+        walk(root);
+        const callers = files.filter(file => /\.enabledFor\s*\(/.test(readFileSync(file, 'utf8')));
+        expect(callers).toEqual([]);
+    });
 
     it('says YES when the switch is on for everybody', async () => {
         expect(await service(ON_FOR_ALL).enabledFor(TENANT, 'whatsapp')).toBe(true);

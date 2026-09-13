@@ -15,6 +15,7 @@ import { ChannelGatewayService } from '../channels/channel-gateway.service';
 import { OutboundQueueService } from '../channels/outbound-queue.service';
 import { OutboundQueueProcessor, OUTBOUND_QUEUE } from '../channels/outbound-queue.processor';
 import { AgentDispatchOutboxStore } from '../channels/agent-dispatch-outbox.store';
+import { ProactiveDispatchService } from '../channels/proactive-dispatch.service';
 import { DISPATCH_OUTBOX_DDL } from '../channels/agent-dispatch-outbox';
 import { TURN_LEDGER_DDL } from './agent-turn-ledger';
 import { DispatchRolloutService } from '../channels/dispatch-rollout.service';
@@ -284,11 +285,9 @@ const ready = !!databaseUrl && !!redisUrl;
             if (key === 'redis.host') return '127.0.0.1';
             if (key === 'redis.port') return Number(valkeyUrl.port);
             // One logical Valkey database per Jest worker. `dispatch:rollout`
-            // is a PLATFORM key with no tenant in its name, so this suite and
-            // `normal-turn-e2e` were turning each other's durable lane off:
-            // each writes the pilot list with its OWN tenant, and whichever
-            // read the cache second found itself excluded and saw zero outbox
-            // rows. Symmetric, and it moved between suites on every run.
+            // is a PLATFORM key with no tenant in its name, so two fixtures
+            // writing distinct validation cohorts must not read one another's
+            // cached evidence scope.
             if (key === 'redis.db') return workerValkeyDb();
             return undefined;
         }, getOrThrow: (key: string) => config.get(key) };
@@ -338,6 +337,7 @@ const ready = !!databaseUrl && !!redisUrl;
         rollout = new DispatchRolloutService(prisma, redis, channelGateway);
         admission = new WhatsappSendAdmissionService(prisma, new WhatsappSpendService(prisma), openPauseStore());
         const outboundProducer = new OutboundQueueService(outboundQueue as any, throttle, redis);
+        const proactiveDispatch = new ProactiveDispatchService(prisma, outbox, outboundProducer);
         const outboundProcessor = new OutboundQueueProcessor(
             channelGateway, throttle, channelToken, redis,
             { send: jest.fn(async () => ({ sent: false, reason: 'monetization_disabled' })) } as any,
@@ -358,6 +358,7 @@ const ready = !!databaseUrl && !!redisUrl;
             eventEmitter: new EventEmitter2(),
             dispatchOutbox: outbox,
             dispatchRollout: rollout,
+            proactiveDispatch,
             turnLedger,
             procedureEngine,
             personaService: { resolvePersonaForChannel: jest.fn(async () => ({
@@ -641,16 +642,11 @@ const ready = !!databaseUrl && !!redisUrl;
             expect(resume).toBeLessThanOrEqual(Date.now() + 30 * 60 * 1000);
         });
 
-        it('offers the person on the legacy lane too, which had no route at all', async () => {
-            // THE LANE PRODUCTION RUNS ON TODAY. MEASURED here before the
-            // change: the ask, the rephrasing and then both remaining
-            // attempts straight through — four POSTs and no route, because
-            // nothing on this lane counted turns against a datum.
-            //
-            // The spend gate's digest guard was never the answer here: it
-            // refuses a VERBATIM repeat and offers nothing behind the
-            // refusal, which is silence rather than another way. A rephrased
-            // loop it cannot see at all.
+        it('keeps durable delivery when the validation cohort is inactive', async () => {
+            // `dispatch.normalOutbox` retains its old name for release-tooling
+            // compatibility, but no longer selects a delivery lane. Removing
+            // it must change only the cohort being validated: the same turn,
+            // outbox ownership and recovery guarantees remain in force.
             await client.$executeRawUnsafe('DELETE FROM public.platform_settings WHERE key=$1',
                 'dispatch.normalOutbox');
             await redis.del('dispatch:rollout');
@@ -661,19 +657,15 @@ const ready = !!databaseUrl && !!redisUrl;
                 await customerSays('no entiendo');
                 await customerSays('¿para qué?');
 
-                // Two attempts and then the route — the half this lane never
-                // had — with the same counter and the same catalog sentence
-                // as the durable lane.
+                // Two attempts and then the same deterministic human route.
                 expect(posts.map(post => post.body)).toEqual([ASK, REPHRASED, NOTICE]);
                 expect((await outcomes()).map(row => `${row.kind}:${row.reason ?? '-'}`)).toEqual([
                     CEDULA, CEDULA, 'escalate:stalled_ask_route',
                 ]);
                 expect(handoffs).toEqual([{ reason: 'stalled_ask_route' }]);
-                // What made that possible: the counter reads DECISIONS here, not
-                // arrivals. This lane writes no outbox row, so the ledger has no
-                // arrival evidence to offer, and a counter that demanded one
-                // would be permanently zero exactly where the traffic is.
-                expect((await sql('SELECT id FROM agent_dispatch_outbox')).length).toBe(0);
+                // Every provider effect still has durable ownership even while
+                // the release-validation cohort is inactive.
+                expect((await sql('SELECT id FROM agent_dispatch_outbox')).length).toBe(3);
             } finally {
                 await client.$executeRawUnsafe(
                     `INSERT INTO public.platform_settings(key,value,updated_at) VALUES($1,$2,NOW())
@@ -690,8 +682,7 @@ const ready = !!databaseUrl && !!redisUrl;
             // and costs nothing. What must NOT happen is the refusal
             // swallowing the escalation — a silent second turn that never
             // reaches the counter would leave the customer with one
-            // unanswered question and no way out, which is the outcome the
-            // legacy lane has today.
+            // unanswered question and no way out.
             //
             // This is also the case that used to be written into
             // `stalledScript`, where it measured the durable lane's ABSENT
@@ -709,7 +700,7 @@ const ready = !!databaseUrl && !!redisUrl;
             expect((await sql(`SELECT state, error_code FROM agent_dispatch_outbox
                                 ORDER BY created_at`))
                 .map(row => `${row.state}:${row.error_code ?? '-'}`))
-                .toEqual(['sent:-', 'suppressed:spend_duplicate_recent_send']);
+                .toEqual(['sent:-', 'suppressed:spend_duplicate_recent_send', 'sent:-']);
             // Both turns still DECIDED to ask, which is what the counter
             // reads, so the third one routes exactly as it does when the
             // second attempt is rephrased and delivered.

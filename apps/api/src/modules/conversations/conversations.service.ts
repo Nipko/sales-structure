@@ -494,6 +494,8 @@ export class ConversationsService {
         @Optional() private readonly learning?: LearningService,
         @Optional() private readonly widgetAgentReplies?: WidgetAgentReplyStore,
         @Optional() private readonly dispatchOutbox?: AgentDispatchOutboxStore,
+        // Compatibility injection for release tooling. Durable delivery is now
+        // mandatory and never branches on this validation cohort.
         @Optional() private readonly dispatchRollout?: DispatchRolloutService,
         @Optional() private readonly turnLedger?: AgentTurnLedgerStore,
         /**

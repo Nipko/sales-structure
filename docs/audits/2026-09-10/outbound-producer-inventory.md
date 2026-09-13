@@ -358,7 +358,7 @@ esperada y su clasificación queda **fuera del alcance de este generador**.
 | `tenant.outbound_webhooks` | `inline` | `live` | `modules/webhooks/webhooks.service.ts` |
 | `tours.booking_confirmation` | `inline` | `live` | `modules/tours/tours.service.ts` |
 | `vacation_rental.booking_confirmation` | `inline` | `live` | `modules/vacation-rental/properties.service.ts` |
-| `verticals.service_request` | `inline` | `live` | `modules/verticals/service-request.listener.ts` |
+| `verticals.service_request` | `operational_notice` | `live` | `modules/home-services/home-services.service.ts` |
 | `whatsapp.business_profile` | `inline` | `live` | `modules/whatsapp/services/whatsapp-connection.service.ts` |
 | `whatsapp.template_management` | `inline` | `live` | `modules/whatsapp/services/whatsapp-template.service.ts` |
 

@@ -2,7 +2,7 @@
   "version": 1,
   "evidenceKind": "structural_only",
   "sourceHashEncoding": "utf8-lf",
-  "sourceRevision": "12dfd746bd7cd2c2bff6a7c9ab29ff45ee605272",
+  "sourceRevision": "c8de7bcf133beeb671ff356f2659031b70ea6dd1",
   "summary": {
     "verticals": 20,
     "profiles": 76,
@@ -129,7 +129,7 @@
     "packages/shared/src/vertical-domain-contract.ts": "740ef5df309632e73535258c3076e327ab6c4d2f754f1c76031178e6c230dcaa",
     "packages/shared/src/vertical-operation-contract.ts": "17a76884978832eba5a226584fb7cd7cb962d0d71cacd08b1e20a66ae2253a4e",
     "packages/shared/src/vertical-product-policy.ts": "9c906d33eb6dad1af604dd6b9b5ac954630692dc34c170169ba8322de7e05a19",
-    "packages/shared/src/vertical-prompt-localization.ts": "b5309f1dd6522d23c3ac99e9d40b209766190926c147150b26ed21ad6e4b62e1",
+    "packages/shared/src/vertical-prompt-localization.ts": "e2c4a351e988f1d3eaaa36f549ba41d1aa23dd60b2f41b97d371eeb976ac429b",
     "packages/shared/src/whatsapp-channel-identity.ts": "0ec7f55eeb1a0e7b5bd537a94c063f1873be6d94406450a8a289fc3fed989643"
   },
   "profiles": [

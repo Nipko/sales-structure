@@ -1306,25 +1306,23 @@ producer({
         id: 'identity.verification_code',
         effect: 'The out-of-band code sent to a customer\'s email or phone to prove who they are before '
             + 'the agent will act on their account',
-        lane: 'inline',
+        lane: 'delivery_outbox',
         status: 'live',
-        derivation: 'census',
+        derivation: 'declared',
         source: 'modules/conversations/chat-identity.service.ts',
         symbol: 'startVerification',
-        egress: 'EmailService.send, or TenantNotificationSmsService.send for the SMS fallback',
+        egress: 'chat_identity_challenges followed by bounded SMTP or receipt-bearing tenant SMS',
         reach: {
             class: 'customer_message', audience: 'contact', personalData: true,
             channels: ['email', 'sms'],
         },
         properties: {
-            authority: partial('a Redis send lock is acquired before the attempt and FAILS CLOSED, which '
-                + 'is the closest thing to an admission on any inline path here'),
-            idempotency: partial('that same lock is what stops a second code going out; it is a lease in '
-                + 'Redis, not a durable row'),
-            receipt: none('the Twilio sid is returned and dropped; the email path returns a boolean'),
-            uncertainOutcome: none('a lost answer is a refusal as far as the caller can tell'),
-            erasure: none('nothing records the destination or the code'),
-            recovery: none('the customer asks for another code'),
+            authority: durable('the current contact destination and one leased challenge commit before provider egress'),
+            idempotency: durable('a conversation advisory lock adopts the live challenge and a sent or unknown attempt cannot resend'),
+            receipt: durable('the SMTP message id or Twilio sid is required and stored on the exact challenge'),
+            uncertainOutcome: durable('sending is distinct from claimed and an unanswered provider attempt freezes for reconciliation'),
+            erasure: durable('contact erasure and tenant purge delete the short-lived code, destination and receipt'),
+            recovery: durable('the database sweep retries only claims that never crossed the provider boundary'),
         },
     }),
 

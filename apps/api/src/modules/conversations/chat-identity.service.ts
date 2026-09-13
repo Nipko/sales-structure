@@ -1,18 +1,15 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Cron } from '@nestjs/schedule';
+import { createHash, randomInt, randomUUID, timingSafeEqual } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
-import { RedisService } from '../redis/redis.service';
 import { EmailService } from '../email/email.service';
 import { TenantNotificationSmsService } from '../sms-credits/tenant-notification-sms.service';
 import { normalizePhoneE164 } from '../../common/utils/phone.util';
 import { RegionalProfileService } from '../tenants/regional-profile.service';
-import { randomInt } from 'crypto';
+import { CronLockService } from '../redis/cron-lock.service';
 
-/** Cuánto dura la verificación una vez lograda, dentro de la misma conversación. */
-const VERIFIED_TTL_SEC = 30 * 60;
-/** Vida del código. */
-const CODE_TTL_SEC = 10 * 60;
 const MAX_ATTEMPTS = 5;
-const SEND_LOCK_TTL_SEC = 30;
+const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 
 export type StartResult =
     | { status: 'sent'; via: 'email' | 'sms'; hint: string }
@@ -20,64 +17,39 @@ export type StartResult =
     | { status: 'no_channel' }
     | { status: 'already_verified' };
 
-/**
- * Verificación de identidad en dos pasos, desde el chat.
- *
- * Por qué existe: las plantillas de seguros, finanzas y salud pedían cédula/DNI
- * mientras el contrato base del prompt lo prohibía. El LLM decidía turno a turno
- * a quién obedecer, y cuando ganaba la plantilla terminábamos acumulando
- * documentos de identidad de terceros en un JSONB sin cifrar. Se sacó la cédula
- * de las plantillas; esto es lo que ocupa su lugar y hace la identidad
- * verificable de verdad en vez de declarada.
- *
- * LA REGLA QUE DEFINE EL DISEÑO: el código NUNCA sale por el mismo canal desde
- * el que escribe la persona. Si alguien se apoderó de ese WhatsApp, mandarle el
- * código a ese mismo WhatsApp no prueba absolutamente nada — sería teatro de
- * seguridad. Va al correo del contacto, o por SMS si no hay correo y la
- * conversación no es por SMS.
- *
- * Si no hay ningún canal fuera de banda, se dice (`no_channel`) en vez de
- * inventar una verificación: la tool que lo pidió escala a un humano, que es la
- * respuesta honesta.
- */
+/** Durable out-of-band identity step-up for sensitive agent tools. */
 @Injectable()
 export class ChatIdentityService {
     private readonly logger = new Logger(ChatIdentityService.name);
 
     constructor(
         private readonly prisma: PrismaService,
-        private readonly redis: RedisService,
         private readonly email: EmailService,
         private readonly sms: TenantNotificationSmsService,
         @Optional() private readonly regionalProfile?: RegionalProfileService,
+        @Optional() private readonly cronLock?: CronLockService,
     ) {}
 
-    private verifiedKey(conversationId: string) { return `chat:verified:${conversationId}`; }
-    private codeKey(conversationId: string) { return `chat:idcode:${conversationId}`; }
-    private sendLockKey(conversationId: string) { return `lock:chat:idcode:${conversationId}`; }
-
-    /** ¿Esta conversación ya verificó identidad hace poco? */
-    async isVerified(conversationId: string, contactId?: string): Promise<boolean> {
-        if (!conversationId) return false;
-        // Falla CERRADO: si Redis no contesta, no se da por verificado a nadie.
-        // Es lo contrario del criterio de las alertas, y a propósito — acá lo que
-        // está del otro lado son datos de una póliza o una historia clínica.
-        try {
-            const verifiedContactId = await this.redis.get(this.verifiedKey(conversationId));
-            if (!verifiedContactId) return false;
-            // Verification belongs to the contact, not merely to a reusable
-            // conversation id. A contact merge/reassignment must step up again.
-            return contactId ? String(verifiedContactId) === contactId : true;
-        } catch {
-            return false;
-        }
+    @Cron('11 * * * * *')
+    async recoverCron(): Promise<void> {
+        const work = () => this.processDue();
+        if (this.cronLock) await this.cronLock.runExclusive('chat-identity.recover', 40, work, { prefer: 'worker' });
+        else await work();
     }
 
-    /**
-     * Manda el código por un canal DISTINTO al de la conversación.
-     * `hint` es lo que el agente puede repetirle al cliente sin filtrar el dato
-     * completo ("al correo que termina en @gmail.com").
-     */
+    async isVerified(conversationId: string, contactId?: string): Promise<boolean> {
+        if (!UUID.test(conversationId)) return false;
+        try {
+            const rows = await this.prisma.$queryRawUnsafe<any[]>(`SELECT contact_id
+                FROM chat_identity_challenges
+                WHERE conversation_id=$1::uuid AND verified_expires_at>NOW()
+                  AND superseded_at IS NULL
+                ORDER BY verified_at DESC LIMIT 1`, conversationId);
+            if (!rows[0]) return false;
+            return contactId ? String(rows[0].contact_id) === contactId : true;
+        } catch { return false; }
+    }
+
     async startVerification(
         tenantId: string,
         schemaName: string,
@@ -85,143 +57,237 @@ export class ChatIdentityService {
         conversationId: string,
         conversationChannel: string,
     ): Promise<StartResult> {
+        if (![tenantId, contactId, conversationId].every(value => UUID.test(value))) return { status: 'no_channel' };
         if (await this.isVerified(conversationId, contactId)) return { status: 'already_verified' };
+        const region = this.regionalProfile
+            ? await this.regionalProfile.phoneRegionFor(tenantId).catch(() => null)
+            : null;
+        const code = String(randomInt(100000, 1_000_000));
 
-        // One sender per conversation. Without this fence, a repeated tool call
-        // could deliver several different codes and invalidate the one the user
-        // is currently typing. Losing/being unable to acquire the lock fails
-        // closed and asks the caller to wait rather than sending again.
-        const lockToken = await this.redis
-            .acquireLockToken(this.sendLockKey(conversationId), SEND_LOCK_TTL_SEC)
-            .catch(() => null);
-        if (!lockToken) return { status: 'pending' };
+        const admitted = await this.prisma.transactionInTenantSchema(schemaName, async query => {
+            await query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))::text',
+                [`chat-identity:${tenantId}:${conversationId}`]);
+            const contacts: any[] = await query(`SELECT email,phone,phone_normalized,is_active
+                FROM contacts WHERE id=$1::uuid LIMIT 1`, [contactId]);
+            const contact = contacts[0];
+            if (!contact || contact.is_active === false) return { state: 'no_channel' };
 
-        try {
-            const existingRaw = await this.redis.get(this.codeKey(conversationId)).catch(() => null);
-            if (existingRaw) {
-                try {
-                    const existing = JSON.parse(String(existingRaw)) as {
-                        contactId?: string;
-                        via?: 'email' | 'sms';
-                        hint?: string;
-                    };
-                    if (existing.contactId === contactId && existing.via && existing.hint) {
-                        return { status: 'sent', via: existing.via, hint: existing.hint };
-                    }
-                } catch { /* Replace malformed/legacy pending payload below. */ }
-                await this.redis.del(this.codeKey(conversationId)).catch(() => {});
-            }
-
-            const rows = await this.prisma.executeInTenantSchema<any[]>(
-                schemaName,
-                `SELECT email, phone, phone_normalized FROM contacts WHERE id = $1::uuid LIMIT 1`,
-                [contactId],
-            ).catch(() => []);
-            const contact = rows?.[0];
-            if (!contact) return { status: 'no_channel' };
-
-            const code = String(randomInt(100000, 1_000_000));
-            const body = `Tu código de verificación es ${code}. Vence en 10 minutos. Si no lo pediste, ignorá este mensaje.`;
-
-            // El correo es el preferido: casi nunca es el mismo medio por el que
-            // llega la conversación, y no cuesta créditos.
-            if (contact.email) {
-                const hint = this.maskEmail(contact.email);
-                // Persist before sending: a delivered but unverifiable code is
-                // worse than a safe failure. If delivery fails, remove it before
-                // trying a different channel.
-                await this.storeCode(conversationId, contactId, code, 'email', hint);
-                const ok = await this.email
-                    .send({
-                        to: contact.email,
-                        subject: 'Código de verificación',
-                        html: `<p style="font-size:16px;font-family:sans-serif">${body}</p>`,
-                    })
-                    .then(() => true)
-                    .catch(() => false);
-                if (ok) {
-                    return { status: 'sent', via: 'email', hint };
-                }
-                await this.redis.del(this.codeKey(conversationId)).catch(() => {});
-            }
-
-            // Segundo canal: SMS. Hoy no sale nunca porque el SMS está apagado en
-            // toda la plataforma (SmsKillSwitchService, decisión de agosto 2026:
-            // el costo por mensaje estaba por encima del precio). Se deja el camino
-            // porque el interruptor es un ajuste, no una amputación: si mañana se
-            // enciende, la verificación gana un segundo canal sin tocar nada.
-            //
-            // Mientras tanto, un contacto sin correo cae en `no_channel` y la tool
-            // escala a un humano — que es lo correcto: sin canal fuera de banda no
-            // hay verificación posible, y fingir que sí la hay sería peor.
-            // El normalizado guardado gana; si no hay, se normaliza con el
-            // país del negocio y, sin país, se usa el número crudo. Mandar el
-            // código a un `+57` inventado es mandarlo a otra persona.
-            const identityRegion = await this.regionalProfile?.phoneRegionFor(tenantId) ?? null;
+            const email = String(contact.email || '').trim();
             const phone = contact.phone_normalized
-                || normalizePhoneE164(contact.phone || '', identityRegion)
-                || contact.phone;
-            if (phone && conversationChannel !== 'sms') {
-                const hint = this.maskPhone(phone);
-                await this.storeCode(conversationId, contactId, code, 'sms', hint);
-                const res = await this.sms.send(tenantId, phone, body, { reason: 'identity_verification' }).catch(() => null);
-                if (res?.sent) {
-                    return { status: 'sent', via: 'sms', hint };
-                }
-                await this.redis.del(this.codeKey(conversationId)).catch(() => {});
-            }
+                || normalizePhoneE164(contact.phone || '', region) || contact.phone;
+            const channel: 'email' | 'sms' | null = email ? 'email'
+                : phone && conversationChannel !== 'sms' ? 'sms' : null;
+            const recipient = channel === 'email' ? email : channel === 'sms' ? String(phone) : '';
+            if (!channel || !recipient) return { state: 'no_channel' };
 
-            return { status: 'no_channel' };
-        } finally {
-            await this.redis.releaseLockToken(this.sendLockKey(conversationId), lockToken).catch(() => {});
-        }
+            const recent: any[] = await query(`SELECT id,state,channel,hint
+                FROM public.chat_identity_challenges
+                WHERE tenant_id=$1::uuid AND conversation_id=$2::uuid AND contact_id=$3::uuid
+                  AND recipient_digest=$4 AND expires_at>NOW()
+                  AND consumed_at IS NULL AND superseded_at IS NULL
+                ORDER BY created_at DESC LIMIT 1 FOR UPDATE`,
+            [tenantId, conversationId, contactId, this.digest(channel, recipient)]);
+            if (recent[0]) return recent[0];
+
+            const inFlight: any[] = await query(`SELECT id,state,channel,hint
+                FROM public.chat_identity_challenges
+                WHERE tenant_id=$1::uuid AND conversation_id=$2::uuid
+                  AND state IN ('claimed','sending','reconciliation_required')
+                  AND consumed_at IS NULL AND superseded_at IS NULL
+                ORDER BY created_at DESC LIMIT 1 FOR UPDATE`, [tenantId, conversationId]);
+            if (inFlight[0]) return inFlight[0];
+
+            await query(`UPDATE public.chat_identity_challenges
+                SET superseded_at=NOW(),updated_at=NOW(),code=NULL,
+                    state=CASE WHEN state IN ('pending','failed','claimed') THEN 'suppressed' ELSE state END,
+                    lease_token=CASE WHEN state IN ('pending','failed','claimed') THEN NULL ELSE lease_token END,
+                    lease_expires_at=CASE WHEN state IN ('pending','failed','claimed') THEN NULL ELSE lease_expires_at END,
+                    error_code='identity_challenge_superseded'
+                WHERE tenant_id=$1::uuid AND conversation_id=$2::uuid
+                  AND consumed_at IS NULL AND superseded_at IS NULL`, [tenantId, conversationId]);
+            const hint = channel === 'email' ? this.maskEmail(recipient) : this.maskPhone(recipient);
+            const rows: any[] = await query(`INSERT INTO public.chat_identity_challenges
+                (tenant_id,contact_id,conversation_id,channel,recipient,recipient_digest,hint,code,expires_at)
+                VALUES($1::uuid,$2::uuid,$3::uuid,$4,$5,$6,$7,$8,NOW()+INTERVAL '10 minutes')
+                RETURNING id,state,channel,hint`,
+            [tenantId, contactId, conversationId, channel, recipient,
+                this.digest(channel, recipient), hint, code]);
+            return rows[0];
+        }).catch(error => {
+            this.logger.warn(`Identity challenge admission failed: ${error?.message}`);
+            return { state: 'pending' };
+        });
+
+        if (admitted.state === 'no_channel') return { status: 'no_channel' };
+        if (admitted.state === 'sent') return { status: 'sent', via: admitted.channel, hint: admitted.hint };
+        if (!['pending', 'failed'].includes(admitted.state)) return { status: 'pending' };
+        const outcome = await this.deliver(admitted.id).catch(() => 'identity:pending');
+        return outcome === 'identity:sent'
+            ? { status: 'sent', via: admitted.channel, hint: admitted.hint }
+            : { status: 'pending' };
     }
 
-    /** Valida el código y, si es correcto, marca la conversación como verificada. */
     async verifyCode(conversationId: string, code: string): Promise<{ ok: boolean; reason?: 'expired' | 'wrong' | 'too_many' }> {
-        const raw = await this.redis.get(this.codeKey(conversationId)).catch(() => null);
-        if (!raw) return { ok: false, reason: 'expired' };
-
-        let data: { code: string; contactId: string; attempts: number };
-        try { data = JSON.parse(raw as string); } catch { return { ok: false, reason: 'expired' }; }
-
-        if (data.attempts >= MAX_ATTEMPTS) return { ok: false, reason: 'too_many' };
-
-        if (String(code).trim() !== data.code) {
-            // El contador se sube ANTES de responder: si no, un atacante puede
-            // probar los 10^6 códigos cortando la conexión antes del write.
-            data.attempts += 1;
-            await this.redis.set(this.codeKey(conversationId), JSON.stringify(data), CODE_TTL_SEC).catch(() => {});
-            return { ok: false, reason: data.attempts >= MAX_ATTEMPTS ? 'too_many' : 'wrong' };
+        if (!UUID.test(conversationId)) return { ok: false, reason: 'expired' };
+        const result = await this.prisma.$transaction(async (tx: any) => {
+            const rows = await tx.$queryRawUnsafe(`SELECT * FROM chat_identity_challenges
+                WHERE conversation_id=$1::uuid AND consumed_at IS NULL AND superseded_at IS NULL
+                ORDER BY created_at DESC LIMIT 1 FOR UPDATE`, conversationId);
+            const row = rows[0];
+            if (!row || !row.code || new Date(row.expires_at).getTime() <= Date.now()) {
+                if (row) await tx.$executeRawUnsafe(`UPDATE chat_identity_challenges SET state=CASE
+                    WHEN state IN ('pending','failed','claimed') THEN 'suppressed' ELSE state END,
+                    lease_token=CASE WHEN state IN ('pending','failed','claimed') THEN NULL ELSE lease_token END,
+                    lease_expires_at=CASE WHEN state IN ('pending','failed','claimed') THEN NULL ELSE lease_expires_at END,
+                    superseded_at=NOW(),code=NULL,error_code='identity_challenge_expired',updated_at=NOW()
+                    WHERE id=$1::uuid`, row.id);
+                return { state: 'expired' };
+            }
+            if (Number(row.verify_attempts) >= MAX_ATTEMPTS) return { state: 'too_many' };
+            const expected = Buffer.from(String(row.code));
+            const supplied = Buffer.from(String(code).trim());
+            const matches = expected.length === supplied.length && timingSafeEqual(expected, supplied);
+            if (!matches) {
+                const attempts = Number(row.verify_attempts) + 1;
+                await tx.$executeRawUnsafe(`UPDATE chat_identity_challenges SET verify_attempts=$2,
+                    superseded_at=CASE WHEN $2>=${MAX_ATTEMPTS} THEN NOW() ELSE superseded_at END,
+                    code=CASE WHEN $2>=${MAX_ATTEMPTS} THEN NULL ELSE code END,
+                    error_code=CASE WHEN $2>=${MAX_ATTEMPTS} THEN 'identity_too_many_attempts' ELSE error_code END,
+                    updated_at=NOW() WHERE id=$1::uuid`, row.id, attempts);
+                return { state: attempts >= MAX_ATTEMPTS ? 'too_many' : 'wrong' };
+            }
+            await tx.$executeRawUnsafe(`UPDATE chat_identity_challenges
+                SET consumed_at=NOW(),verified_at=NOW(),verified_expires_at=NOW()+INTERVAL '30 minutes',
+                    code=NULL,updated_at=NOW() WHERE id=$1::uuid`, row.id);
+            return { state: 'accepted' };
+        }, { isolationLevel: 'Serializable' as any }).catch(() => ({ state: 'expired' }));
+        if (result.state === 'accepted') {
+            this.logger.log(`Identidad verificada en la conversación ${conversationId}`);
+            return { ok: true };
         }
-
-        await this.redis.set(this.verifiedKey(conversationId), data.contactId, VERIFIED_TTL_SEC).catch(() => {});
-        await this.redis.del(this.codeKey(conversationId)).catch(() => {});
-        this.logger.log(`Identidad verificada en la conversación ${conversationId}`);
-        return { ok: true };
+        return { ok: false, reason: result.state as 'expired' | 'wrong' | 'too_many' };
     }
 
-    private async storeCode(
-        conversationId: string,
-        contactId: string,
-        code: string,
-        via: 'email' | 'sms',
-        hint: string,
-    ): Promise<void> {
-        await this.redis
-            .set(this.codeKey(conversationId), JSON.stringify({ code, contactId, attempts: 0, via, hint }), CODE_TTL_SEC);
+    async processDue(limit = 100): Promise<number> {
+        const bounded = Math.min(Math.max(Number(limit) || 1, 1), 100);
+        await this.prisma.$executeRawUnsafe(`UPDATE chat_identity_challenges SET state='failed',
+            lease_token=NULL,lease_expires_at=NULL,error_code='identity_claim_expired',
+            next_attempt_at=NOW(),updated_at=NOW()
+            WHERE state='claimed' AND lease_expires_at<=NOW()`);
+        await this.prisma.$executeRawUnsafe(`UPDATE chat_identity_challenges SET state='reconciliation_required',
+            lease_token=NULL,lease_expires_at=NULL,error_code='identity_send_outcome_unknown',updated_at=NOW()
+            WHERE state='sending' AND lease_expires_at<=NOW()`);
+        await this.prisma.$executeRawUnsafe(`UPDATE chat_identity_challenges SET state='suppressed',
+            lease_token=NULL,lease_expires_at=NULL,superseded_at=NOW(),code=NULL,
+            error_code='identity_challenge_expired',updated_at=NOW()
+            WHERE expires_at<=NOW() AND consumed_at IS NULL AND superseded_at IS NULL
+              AND state IN ('pending','failed','claimed')`);
+        const rows = await this.prisma.$queryRawUnsafe<any[]>(`SELECT id FROM chat_identity_challenges
+            WHERE state IN ('pending','failed') AND delivery_attempts<${MAX_ATTEMPTS}
+              AND next_attempt_at<=NOW() AND expires_at>NOW()
+              AND consumed_at IS NULL AND superseded_at IS NULL
+            ORDER BY created_at,id LIMIT ${bounded}`);
+        for (const row of rows) await this.deliver(row.id).catch(() => undefined);
+        return rows.length;
     }
 
-    /** j***@gmail.com — suficiente para que lo reconozca, inútil para un tercero. */
-    private maskEmail(email: string): string {
-        const [user, domain] = String(email).split('@');
-        if (!domain) return '***';
-        return `${user.slice(0, 1)}***@${domain}`;
+    async deliver(id: string): Promise<string> {
+        if (!UUID.test(id)) return 'identity:missing';
+        const tenants = await this.prisma.$queryRawUnsafe<any[]>(`SELECT t.id,t.schema_name
+            FROM tenants t JOIN chat_identity_challenges c ON c.tenant_id=t.id
+            WHERE c.id=$1::uuid AND t.is_active=true LIMIT 1`, id);
+        if (!tenants[0]) return 'identity:missing';
+        const lease = randomUUID();
+        const claim = await this.prisma.transactionInTenantSchema(tenants[0].schema_name, async query => {
+            const rows: any[] = await query(`SELECT c.* FROM public.chat_identity_challenges c
+                JOIN public.tenants t ON t.id=c.tenant_id AND t.is_active=true
+                WHERE c.id=$1::uuid FOR UPDATE`, [id]);
+            const row = rows[0];
+            if (!row || !['pending','failed'].includes(row.state) || Number(row.delivery_attempts)>=MAX_ATTEMPTS)
+                return { state: row?.state || 'missing' };
+            if (!row.code || row.consumed_at || row.superseded_at || new Date(row.expires_at).getTime()<=Date.now()) {
+                await query(`UPDATE public.chat_identity_challenges SET state='suppressed',code=NULL,
+                    superseded_at=COALESCE(superseded_at,NOW()),error_code='identity_challenge_unavailable',updated_at=NOW()
+                    WHERE id=$1::uuid`, [id]);
+                return { state: 'suppressed' };
+            }
+            const contacts: any[] = row.channel === 'email'
+                ? await query(`SELECT 1 FROM contacts WHERE id=$1::uuid AND is_active=true
+                    AND LOWER(email)=LOWER($2) LIMIT 1`, [row.contact_id,row.recipient])
+                : await query(`SELECT 1 FROM contacts WHERE id=$1::uuid AND is_active=true
+                    AND (phone_normalized=$2 OR phone=$2) LIMIT 1`, [row.contact_id,row.recipient]);
+            if (!contacts[0]) {
+                await query(`UPDATE public.chat_identity_challenges SET state='suppressed',code=NULL,
+                    superseded_at=NOW(),error_code='identity_recipient_unavailable',updated_at=NOW()
+                    WHERE id=$1::uuid`, [id]);
+                return { state: 'suppressed' };
+            }
+            await query(`UPDATE public.chat_identity_challenges SET state='claimed',
+                delivery_attempts=delivery_attempts+1,lease_token=$2::uuid,
+                lease_expires_at=NOW()+INTERVAL '90 seconds',error_code=NULL,updated_at=NOW()
+                WHERE id=$1::uuid`, [id,lease]);
+            return { state: 'claimed',row };
+        });
+        if (claim.state!=='claimed') return `identity:${claim.state}`;
+
+        const body = `Tu código de verificación es ${claim.row.code}. Vence en 10 minutos. Si no lo pediste, ignorá este mensaje.`;
+        let emailSend: (()=>Promise<string>) | null = null;
+        if (claim.row.channel==='email') {
+            try {
+                emailSend=this.email.prepareBoundedSend({to:claim.row.recipient,subject:'Código de verificación',
+                    html:`<p style="font-size:16px;font-family:sans-serif">${body}</p>`});
+            } catch (error:any) {
+                await this.failBeforeSend(id,lease,error?.message||'identity_email_preflight_failed');
+                return 'identity:pending';
+            }
+        }
+        const began=await this.prisma.$executeRawUnsafe(`UPDATE chat_identity_challenges SET state='sending',
+            started_at=NOW(),updated_at=NOW() WHERE id=$1::uuid AND state='claimed'
+              AND lease_token=$2::uuid AND lease_expires_at>NOW()`,id,lease);
+        if(Number(began)!==1)return 'identity:lease_lost';
+        try {
+            let receipt:string|undefined;
+            if(emailSend) receipt=await emailSend();
+            else {
+                const res=await this.sms.send(claim.row.tenant_id,claim.row.recipient,body,
+                    {reason:'identity_verification',ref:`identity:${id}`});
+                if(!res.sent) {
+                    if(res.reason==='send_failed')throw new Error('identity_sms_outcome_unknown');
+                    const state=res.reason==='opted_out'?'suppressed':'failed';
+                    await this.prisma.$executeRawUnsafe(`UPDATE chat_identity_challenges SET state=$3,
+                        error_code=$4,lease_token=NULL,lease_expires_at=NULL,
+                        next_attempt_at=CASE WHEN $3='failed' THEN NOW()+INTERVAL '30 seconds' ELSE next_attempt_at END,
+                        superseded_at=CASE WHEN $3='suppressed' THEN NOW() ELSE superseded_at END,
+                        code=CASE WHEN $3='suppressed' THEN NULL ELSE code END,updated_at=NOW()
+                        WHERE id=$1::uuid AND state='sending' AND lease_token=$2::uuid`,id,lease,state,
+                    `identity_sms_${res.reason||'refused'}`);
+                    return 'identity:pending';
+                }
+                receipt=res.sid;
+            }
+            if(!receipt)throw new Error('identity_provider_no_receipt');
+            const settled=await this.prisma.$executeRawUnsafe(`UPDATE chat_identity_challenges SET state='sent',
+                provider_reference=$3,sent_at=NOW(),lease_token=NULL,lease_expires_at=NULL,error_code=NULL,updated_at=NOW()
+                WHERE id=$1::uuid AND state='sending' AND lease_token=$2::uuid`,id,lease,String(receipt).slice(0,512));
+            return Number(settled)===1?'identity:sent':'identity:lease_lost';
+        } catch {
+            await this.prisma.$executeRawUnsafe(`UPDATE chat_identity_challenges
+                SET state='reconciliation_required',error_code='identity_send_outcome_unknown',
+                    lease_token=NULL,lease_expires_at=NULL,updated_at=NOW()
+                WHERE id=$1::uuid AND state='sending' AND lease_token=$2::uuid`,id,lease);
+            return 'identity:pending';
+        }
     }
 
-    /** ****4321 */
-    private maskPhone(phone: string): string {
-        const s = String(phone);
-        return `****${s.slice(-4)}`;
+    private async failBeforeSend(id:string,lease:string,reason:string):Promise<void>{
+        await this.prisma.$executeRawUnsafe(`UPDATE chat_identity_challenges SET state='failed',
+            error_code=$3,lease_token=NULL,lease_expires_at=NULL,next_attempt_at=NOW()+INTERVAL '30 seconds',updated_at=NOW()
+            WHERE id=$1::uuid AND state='claimed' AND lease_token=$2::uuid`,id,lease,String(reason).slice(0,160));
     }
+
+    private digest(channel:'email'|'sms',recipient:string):string{
+        return createHash('sha256').update(`${channel}\0${channel==='email'?recipient.toLowerCase():recipient}`).digest('hex');
+    }
+    private maskEmail(email:string):string{const [user,domain]=String(email).split('@');return domain?`${user.slice(0,1)}***@${domain}`:'***';}
+    private maskPhone(phone:string):string{return `****${String(phone).slice(-4)}`;}
 }

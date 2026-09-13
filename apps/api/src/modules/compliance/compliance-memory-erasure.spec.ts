@@ -249,4 +249,15 @@ describe('Contact erasure reaches memory derivatives', () => {
         expect(deletion[0]).toContain('contact_id=ANY($2::uuid[])');
         expect(deletion[1]).toEqual([profileId, [contactId, siblingId]]);
     });
+
+    it('deletes every agent identity challenge for the unified contact family', async () => {
+        const { service, query } = build();
+        await service.eraseContactData('tenant_memory', profileId, contactId, 'admin');
+        const deletion = query.mock.calls.find(([sql]) =>
+            sql.includes('DELETE FROM public.chat_identity_challenges'))!;
+        expect(deletion).toBeDefined();
+        expect(deletion[0]).toContain('tenant_id=$1::uuid');
+        expect(deletion[0]).toContain('contact_id=ANY($2::uuid[])');
+        expect(deletion[1]).toEqual([profileId, [contactId, siblingId]]);
+    });
 });

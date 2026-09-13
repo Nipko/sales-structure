@@ -5,7 +5,7 @@ Generado por `docs/audits/2026-09-09/generate-closure-state.cjs`. **Ningún núm
 programa que sí se escribieron a mano envejecieron —el 32/10 de la matriz, el `complete` de canales,
 «otras salidas», «faltan términos en otras familias»—, y ése es exactamente el motivo.
 
-Revisión: `c8de7bcf133beeb671ff356f2659031b70ea6dd1`. Sin base de datos, sin modelo, sin proveedor, sin tenant.
+Revisión: `1ff0a3666f6dafab7b4396995bafdf775fe29935`. Sin base de datos, sin modelo, sin proveedor, sin tenant.
 
 ## Matriz de tareas
 
@@ -27,14 +27,14 @@ Un modelo (`gpt-4.1-mini`), 5 canales, 4 idiomas, k=1:
 
 | Autoservicio | Implementados | Operando | Certificados |
 |---:|---:|---:|---:|
-| 5 | 3 | 0 | 0 |
+| 5 | 5 | 0 | 0 |
 
 | Canal | Estado | Sin implementar | Declarado, nunca operado | Operando sin prueba |
 |---|---|---|---|---|
 | instagram | prepared | — | `outbound_media`, `payment_link`, `token_lifecycle`, `reconnect`, `rate_limits`, `handoff`, `multi_account`, `privacy_erasure`, `agent_per_connection` | `inbound`, `outbound_text`, `delivery_receipt`, `read_receipt`, `durable_dispatch` |
 | messenger | prepared | — | `outbound_media`, `payment_link`, `token_lifecycle`, `reconnect`, `rate_limits`, `handoff`, `multi_account`, `privacy_erasure`, `agent_per_connection` | `inbound`, `outbound_text`, `delivery_receipt`, `read_receipt`, `durable_dispatch` |
-| telegram | pending | `delivery_receipt`, `read_receipt` | `outbound_media`, `payment_link`, `token_lifecycle`, `reconnect`, `rate_limits`, `handoff`, `multi_account`, `privacy_erasure`, `agent_per_connection` | `inbound`, `outbound_text`, `durable_dispatch` |
-| web_widget | pending | `read_receipt` | `outbound_media`, `payment_link`, `reconnect`, `rate_limits`, `handoff`, `multi_account`, `privacy_erasure`, `agent_per_connection` | `inbound`, `outbound_text`, `delivery_receipt`, `durable_dispatch` |
+| telegram | prepared | — | `outbound_media`, `payment_link`, `token_lifecycle`, `reconnect`, `rate_limits`, `handoff`, `multi_account`, `privacy_erasure`, `agent_per_connection` | `inbound`, `outbound_text`, `durable_dispatch` |
+| web_widget | prepared | — | `outbound_media`, `payment_link`, `reconnect`, `rate_limits`, `handoff`, `multi_account`, `privacy_erasure`, `agent_per_connection` | `inbound`, `outbound_text`, `delivery_receipt`, `durable_dispatch` |
 | whatsapp | prepared | — | `outbound_media`, `payment_link`, `flow`, `token_lifecycle`, `reconnect`, `rate_limits`, `handoff`, `multi_account`, `privacy_erasure`, `agent_per_connection` | `inbound`, `outbound_text`, `delivery_receipt`, `read_receipt`, `durable_dispatch` |
 
 ## Dónde descansan las palabras del agente

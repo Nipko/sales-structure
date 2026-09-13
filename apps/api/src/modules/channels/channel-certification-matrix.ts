@@ -180,6 +180,11 @@ const DECLARED: Readonly<Record<string, Partial<Record<ChannelCapability, string
         outbound_media: 'telegram.adapter.ts sendStrict; the media call carries the caption',
         payment_link: 'sent as text through the strict transport',
         flow: null,
+        // Telegram Bot API acknowledges that it accepted a send, but it does
+        // not publish delivery or read receipts. Those states cannot be built
+        // by another local writer without inventing provider evidence.
+        delivery_receipt: null,
+        read_receipt: null,
         token_lifecycle: 'channel-credential-health telegram_token',
         reconnect: 'bot token re-entry in channel-management.controller.ts',
         rate_limits: 'outbound-queue.service.ts',
@@ -240,6 +245,11 @@ export function buildChannelCertificationMatrix(input: ChannelCertificationInput
         const declared = DECLARED[channelType] ?? {};
         const capabilities: ChannelCapabilityCell[] = [];
         const add = (capability: ChannelCapability, derived: boolean, evidence: string) => {
+            if (declared[capability] === null) {
+                capabilities.push(cell(capability, 'pending', 'out_of_scope',
+                    `${channelType} does not offer this`));
+                return;
+            }
             capabilities.push(cell(capability, derived ? 'operating' : 'pending', 'derived', evidence));
         };
 

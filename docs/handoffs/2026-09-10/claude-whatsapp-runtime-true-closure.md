@@ -198,8 +198,8 @@ fixtures y contratos locales. La primera ejecución real queda como gate externo
 4. Implementa la identidad por usuario que exija el contrato vigente de Meta
    cuando aplique (BSUID/BISU o equivalente), con fallback y diagnóstico
    documentados; no inventes el requisito desde prosa histórica.
-5. Corrige la cifra documental del canario: 204 casos, 612 llamadas y techo
-   US$1,08, salvo que el generador autoritativo produzca otra cifra.
+5. Corrige la cifra documental del canario: 244 casos, 724 llamadas y techo
+   US$1,24, salvo que el generador autoritativo produzca otra cifra.
 
 ## Pruebas de aceptación obligatorias
 

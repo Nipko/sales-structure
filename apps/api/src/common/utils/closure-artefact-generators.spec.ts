@@ -50,6 +50,7 @@ const CLOSURE_GENERATOR = read(AUDIT, 'generate-closure-report.cjs');
 const VERIFY_ARTIFACTS = read(AUDIT, 'verify-artifacts.cjs');
 const CLOSURE_MARKDOWN = read(AUDIT, 'closure-report.md');
 const CLOSURE_JSON = JSON.parse(read(AUDIT, 'closure-report.json'));
+const CLOSURE_STATE = JSON.parse(read(AUDIT, 'closure-state.json'));
 
 /**
  * The `.cjs` generators are loaded with Node's own `require`, not Jest's.
@@ -220,6 +221,15 @@ describe('las filas del artefacto se juzgan contra sus propias condiciones', () 
      */
     const GATES = Object.keys(CLOSURE_JSON.gates);
 
+    it('B1 cuenta cualquier capacidad local pendiente de los canales de autoservicio', () => {
+        const b1 = CLOSURE_JSON.rows.find((row: { id: string }) => row.id === 'B1');
+        const channels = CLOSURE_STATE.channelCertification;
+        expect(b1.open).toBe(channels.selfService - channels.implemented);
+        expect(b1.evidence).toContain(
+            `${channels.implemented} de ${channels.selfService} canales de autoservicio`,
+        );
+    });
+
     it('el estado guardado es el que sale de sus condiciones', () => {
         const disagreeing = CLOSURE_JSON.rows
             .map((row: { id: string; open: number; gates: number[]; status: string;
@@ -329,9 +339,9 @@ describe('las filas del artefacto se juzgan contra sus propias condiciones', () 
 describe('el chequeo de las cifras del canario', () => {
     const checker = nodeRequire(resolve(ROOT, 'apps', 'api', 'scripts', 'check-canary-figures.cjs'));
     /** What the planner says today, hard-coded so this spec spawns nothing. */
-    const TODAY = { cases: 204, calls: 612, subject: 408, judge: 204, cents: 108 };
+    const TODAY = { cases: 244, calls: 724, subject: 480, judge: 244, cents: 124 };
     /** The same run after somebody changes the planner. */
-    const MOVED = { cases: 210, calls: 630, subject: 420, judge: 210, cents: 111 };
+    const MOVED = { cases: 250, calls: 742, subject: 492, judge: 250, cents: 127 };
 
     /**
      * The three that were invisible. Each states today's figures in prose — with
@@ -530,7 +540,7 @@ describe('el chequeo de las cifras del canario', () => {
             // called it agreed.
             fs.mkdirSync(PROBE_DIR, { recursive: true });
             fs.writeFileSync(PROBE,
-                'Corrida canaria\n\n204 casos, 612 llamadas, techo US$1,08.\n\n'
+                'Corrida canaria\n\n244 casos, 724 llamadas, techo US$1,24.\n\n'
                 + 'Antes costaba US$0,76.\n');
             expect(check().status).toBe(1);
         });
@@ -549,7 +559,7 @@ describe('el chequeo de las cifras del canario', () => {
             // checker actually reads.
             fs.mkdirSync(PROBE_DIR, { recursive: true });
             fs.writeFileSync(PROBE,
-                'Corrida canaria\n\n204 casos, 612 llamadas.\n');
+                'Corrida canaria\n\n244 casos, 724 llamadas.\n');
             expect(check().status).toBe(0);
         });
 

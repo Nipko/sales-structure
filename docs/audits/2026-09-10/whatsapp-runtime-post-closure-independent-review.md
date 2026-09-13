@@ -228,8 +228,8 @@ un resultado desconocido entra a reconciliación y no dispara otro POST.
 - Once inputs de build y consumo del manifiesto contra los contenedores del VPS.
 - WABA/número, permisos, tarjeta/funding, plantilla aprobada, destinatario con
   consentimiento y presupuesto de canario.
-- Credencial y presupuesto de modelo. El canario actual declara 204 casos, 612
-  llamadas y techo US$1,08; 0/76 perfiles están certificados.
+- Credencial y presupuesto de modelo. El canario actual declara 244 casos, 724
+  llamadas y techo US$1,24; 0/76 perfiles están certificados.
 - Humo real de inbound, outbound, estados, categoría, pagador, costo, 131042,
   retry y recuperación.
 - Activación gradual de `enforce` por tenant piloto, con rollback operativo.

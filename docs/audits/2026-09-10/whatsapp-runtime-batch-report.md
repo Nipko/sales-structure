@@ -136,7 +136,7 @@ gate externo:
    Esta es la brecha que hace que este documento sea manual.
 5. **Identidad por usuario (BSUID/BISU)** y **control del agente externo de Meta**:
    no implementados.
-6. **Cifra del canario** (204 casos / 612 llamadas / US$1,08): no verificada
+6. **Cifra del canario** (244 casos / 724 llamadas / US$1,24): no verificada
    contra el generador autoritativo en esta tanda.
 
 ---

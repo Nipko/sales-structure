@@ -64,14 +64,20 @@ describe('what each channel may be said to do', () => {
             .toContain('local admission');
     });
 
-    it('reports a missing status producer as pending instead of assuming it', () => {
+    it('reports a missing status producer as pending when the channel offers that receipt', () => {
+        const withoutWhatsAppDelivery = buildChannelCertificationMatrix({
+            ...runtime,
+            deliveryStatusProducers: runtime.deliveryStatusProducers.filter(channel => channel !== 'whatsapp'),
+        });
+        const whatsapp = withoutWhatsAppDelivery.find(entry => entry.channelType === 'whatsapp')!;
+        expect(whatsapp.capabilities.find(cell => cell.capability === 'delivery_receipt'))
+            .toMatchObject({ basis: 'derived', state: 'pending' });
+        expect(whatsapp.pending).toContain('delivery_receipt');
+
         const telegram = row('telegram');
         expect(telegram.capabilities.find(cell => cell.capability === 'delivery_receipt'))
-            .toMatchObject({ basis: 'derived', state: 'pending' });
-        expect(telegram.pending).toContain('delivery_receipt');
-        // And a channel that does have one is not dragged down by its neighbour.
-        expect(row('whatsapp').capabilities.find(cell => cell.capability === 'delivery_receipt')?.state)
-            .toBe('operating');
+            .toMatchObject({ basis: 'out_of_scope', state: 'pending' });
+        expect(telegram.pending).not.toContain('delivery_receipt');
     });
 
     it('separates "this channel does not offer it" from "this channel is missing it"', () => {
@@ -97,10 +103,11 @@ describe('what each channel may be said to do', () => {
         const summary = summariseChannelCertification(matrix());
         expect(summary.selfService).toBe(5);
         expect(summary.retained).toBe(2);
-        // Telegram and the widget have no provider read receipt, so nothing is
-        // implemented yet — and the summary names the capability, not just a count.
-        expect(summary.pendingByCapability.read_receipt).toEqual(['telegram', 'web_widget']);
-        expect(summary.implemented).toBeLessThan(summary.selfService);
+        // Telegram has no provider receipt and Web Chat does not offer a read
+        // state. Those are explicit scope limits rather than imaginary local
+        // work, so every self-service channel is implemented.
+        expect(summary.pendingByCapability).toEqual({});
+        expect(summary.implemented).toBe(summary.selfService);
         // The one that used to be missing. A merely DECLARED capability is not
         // `pending`, it is `prepared`, so a row whose media, payment link, flow,
         // tokens, reconnect, rate limits, multi-account, handoff, erasure and
@@ -134,7 +141,7 @@ describe('what each channel may be said to do', () => {
     it('rolls a channel up to the least advanced thing in its scope', () => {
         // `prepared` beats nothing and loses to nothing: a declared capability
         // with evidence is not the same as one shown working end to end.
-        expect(row('telegram').state).toBe('pending');
+        expect(row('telegram').state).toBe('prepared');
         expect(row('whatsapp').state).toBe('prepared');
     });
 

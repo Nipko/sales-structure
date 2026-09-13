@@ -1,5 +1,5 @@
 {
-  "revision": "c8de7bcf133beeb671ff356f2659031b70ea6dd1",
+  "revision": "1ff0a3666f6dafab7b4396995bafdf775fe29935",
   "generatedFrom": [
     "modules/simulation/task-competence-matrix.ts",
     "modules/simulation/certification-plan.ts",
@@ -49,18 +49,10 @@
     "channels": 7,
     "selfService": 5,
     "retained": 2,
-    "implemented": 3,
+    "implemented": 5,
     "operating": 0,
     "certified": 0,
-    "pendingByCapability": {
-      "delivery_receipt": [
-        "telegram"
-      ],
-      "read_receipt": [
-        "telegram",
-        "web_widget"
-      ]
-    },
+    "pendingByCapability": {},
     "untestedByCapability": {
       "outbound_media": [
         "instagram",
@@ -234,12 +226,9 @@
       {
         "channel": "telegram",
         "selfService": true,
-        "state": "pending",
+        "state": "prepared",
         "certified": false,
-        "pending": [
-          "delivery_receipt",
-          "read_receipt"
-        ],
+        "pending": [],
         "untested": [
           "outbound_media",
           "payment_link",
@@ -260,11 +249,9 @@
       {
         "channel": "web_widget",
         "selfService": true,
-        "state": "pending",
+        "state": "prepared",
         "certified": false,
-        "pending": [
-          "read_receipt"
-        ],
+        "pending": [],
         "untested": [
           "outbound_media",
           "payment_link",

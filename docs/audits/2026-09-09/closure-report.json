@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "revision": "c8de7bcf133beeb671ff356f2659031b70ea6dd1",
-  "generatedAt": "2026-09-13T16:39:31.886Z",
+  "revision": "1ff0a3666f6dafab7b4396995bafdf775fe29935",
+  "generatedAt": "2026-09-13T16:43:30.701Z",
   "finished": false,
   "counts": {
     "aceptada": 25,
@@ -146,14 +146,14 @@
     {
       "id": "B1",
       "open": 0,
-      "openLabel": "",
+      "openLabel": "0 canales de autoservicio con capacidades locales pendientes",
       "gates": [
         1
       ],
       "status": "bloqueada",
       "provenance": "executed_evidence",
       "artefact": "docs/audits/2026-09-09/order-sensitivity-runs.md",
-      "evidence": "El turno completo corre de punta a punta sobre PostgreSQL, Valkey, BullMQ y Socket.IO reales, con crash en cada frontera, una erasure en vuelo y los primitivos a través de un PgBouncer real en modo transacción.",
+      "evidence": "El turno completo corre de punta a punta sobre PostgreSQL, Valkey, BullMQ y Socket.IO reales, con crash en cada frontera, una erasure en vuelo y los primitivos a través de un PgBouncer real en modo transacción. La matriz registra 5 de 5 canales de autoservicio sin capacidad local pendiente; los límites que el proveedor no ofrece quedan fuera de alcance en vez de convertirse en estados inventados.",
       "commits": [],
       "deferral": null
     },

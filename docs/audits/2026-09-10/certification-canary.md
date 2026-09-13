@@ -23,14 +23,14 @@ CERTIFICATION CANARY — planned, not executed
   model     gpt-4o-mini   k=1
   bound     8000 in / 1000 out per turn
 
-  cases         204
-  model calls   612  (408 subject + 204 judge @ gpt-4o-mini)
-  cost ceiling  US$1.08
+  cases         244
+  model calls   724  (480 subject + 244 judge @ gpt-4o-mini)
+  cost ceiling  US$1.24
   wall clock    61 min at 6s per turn
   plan hash     98a70ce88f1f2327665132aa66965460960aff11b9d9aa196ef945cd2a464530
 ```
 
-**US$1,08** contra US$375,80 de la matriz completa con el mismo modelo: el
+**US$1,24** contra US$375,80 de la matriz completa con el mismo modelo: el
 canario cuesta el 0,3% y contesta la única pregunta que hace falta contestar
 primero.
 

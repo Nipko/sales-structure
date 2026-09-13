@@ -726,16 +726,16 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         properties: {
             authority: partial('the handoff effect row admits the `webhooks` announcement once; the '
                 + 'fan-out itself is fire and forget'),
-            idempotency: none('no delivery id and no idempotency header, so all three retry attempts '
-                + 'look identical to the receiver'),
+            idempotency: partial('all three transport attempts reuse X-Webhook-Delivery, so a receiver '
+                + 'can deduplicate a timeout retry; a later domain-event replay has no durable key'),
             receipt: durable('every attempt is written to the deliveries log with status and a slice of '
                 + 'the response — the best receipt of any webhook path here'),
             uncertainOutcome: partial('a timeout is logged as a failed attempt and retried, which is the '
                 + 'right default for a webhook but is recorded as failure rather than as uncertainty'),
             erasure: partial('the deliveries log holds the payload that named the contact and is not in '
                 + 'the GDPR erasure fan-out'),
-            recovery: partial('three attempts with linear backoff inside one call. Nothing survives a '
-                + 'process restart mid-fan-out'),
+            recovery: partial('dispatch waits for all endpoints and each gets three attempts with '
+                + 'linear backoff. Nothing survives a process restart mid-fan-out'),
         },
     }),
 
@@ -755,8 +755,8 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         properties: {
             authority: none('the dispatch is an unawaited promise from the event path; no row records '
                 + 'that an attempt was permitted or made'),
-            idempotency: none('no delivery id and no event id header, so the subscriber has nothing to '
-                + 'deduplicate on if it ever receives the same event twice'),
+            idempotency: partial('each call carries X-Hook-Delivery and dispatch waits for its fan-out; '
+                + 'the public hook still has no durable domain-event key across process replay'),
             receipt: partial('only `last_triggered_at` on the subscription is updated; the response '
                 + 'status and body are discarded'),
             uncertainOutcome: none('a timeout and a refusal are the same to the caller, and neither is '

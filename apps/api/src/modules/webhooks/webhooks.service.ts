@@ -187,11 +187,12 @@ export class WebhooksService {
         const schema = await this.prisma.getTenantSchemaName(tenantId);
         const body = JSON.stringify({ event, timestamp: new Date().toISOString(), data: payload });
 
-        for (const ep of endpoints) {
-            this.deliverWithRetry(schema, ep, event, body).catch((err) =>
-                this.logger.error(`Webhook delivery failed: endpoint=${ep.id} event=${event} error=${err.message}`),
-            );
-        }
+        // Keep the fan-out inside this operation. Returning while promises are
+        // detached lets a process restart erase deliveries that the event path
+        // already considered handled.
+        await Promise.all(endpoints.map((ep) =>
+            this.deliverWithRetry(schema, ep, event, body, 3, crypto.randomUUID()),
+        ));
     }
 
     private async deliverWithRetry(
@@ -200,6 +201,7 @@ export class WebhooksService {
         event: string,
         body: string,
         maxAttempts = 3,
+        deliveryId = crypto.randomUUID(),
     ) {
         // Defense-in-depth: validate URL at delivery time for pre-existing endpoints
         let target: PinnedHttpsTarget;
@@ -223,6 +225,10 @@ export class WebhooksService {
                         'Content-Type': 'application/json',
                         'X-Webhook-Signature': signature,
                         'X-Webhook-Event': event,
+                        // Stable for every transport attempt in this logical
+                        // delivery. Receivers can safely deduplicate a timeout
+                        // retry even though HTTP gave us no answer.
+                        'X-Webhook-Delivery': deliveryId,
                     },
                     validateStatus: () => true,
                 });

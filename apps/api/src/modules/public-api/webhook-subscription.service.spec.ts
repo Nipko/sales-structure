@@ -46,6 +46,9 @@ describe('WebhookSubscriptionService outbound URL security', () => {
                 maxBodyLength: 1024 * 1024,
                 proxy: false,
                 httpsAgent: expect.any(Object),
+                headers: expect.objectContaining({
+                    'X-Hook-Delivery': expect.stringMatching(/^[0-9a-f-]{36}$/),
+                }),
             }),
         );
     });

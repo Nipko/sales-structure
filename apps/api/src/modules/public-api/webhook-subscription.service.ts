@@ -164,19 +164,16 @@ export class WebhookSubscriptionService {
 
         if (!subs || subs.length === 0) return;
 
-        for (const sub of subs) {
-            this.deliver(sub, event, payload).catch((err) =>
-                this.logger.error(
-                    `Zapier hook delivery failed: hook=${sub.id} event=${event} error=${err.message}`,
-                ),
-            );
-        }
+        await Promise.all(subs.map((sub) =>
+            this.deliver(sub, event, payload, crypto.randomUUID()),
+        ));
     }
 
     private async deliver(
         sub: Pick<WebhookSubscription, 'id' | 'target_url' | 'secret'>,
         event: string,
         payload: Record<string, any>,
+        deliveryId = crypto.randomUUID(),
     ): Promise<void> {
         // Defense-in-depth: validate URL at delivery time
         let target: PinnedHttpsTarget;
@@ -202,6 +199,7 @@ export class WebhookSubscriptionService {
                     'Content-Type': 'application/json',
                     'X-Hook-Signature': signature,
                     'X-Hook-Event': event,
+                    'X-Hook-Delivery': deliveryId,
                 },
                 validateStatus: () => true,
             });

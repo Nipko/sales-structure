@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "revision": "09c4bf3fb4898315c6edbd342a3e5282706bd3cf",
-  "generatedAt": "2026-09-13T08:08:28.525Z",
+  "revision": "3909a3554c8c27cfbc619f6e598c82972c6f9636",
+  "generatedAt": "2026-09-13T08:29:57.364Z",
   "finished": false,
   "counts": {
     "aceptada": 25,
@@ -39,8 +39,8 @@
     "channelsCertified": 0,
     "routedOperations": 8,
     "resolutionDefects": [],
-    "egressCallSites": 25,
-    "chargeableCallSites": 21,
+    "egressCallSites": 27,
+    "chargeableCallSites": 23,
     "chargeableOutsideGate": 0,
     "chargeableOffDurableLane": 0,
     "chargeableOffDurableByLane": {},
@@ -452,7 +452,7 @@
       "status": "aceptada",
       "provenance": "derived",
       "artefact": null,
-      "evidence": "Censo derivado del árbol: 25 call sites, 21 cobrables, 0 fuera de la autoridad económica. El inventario de efectos declara 63 productores y 39 con al menos una propiedad en `none`. La condición es que el artefacto versionado se regenere desde el mismo HEAD, no que alguien lo haya leído.",
+      "evidence": "Censo derivado del árbol: 27 call sites, 23 cobrables, 0 fuera de la autoridad económica. El inventario de efectos declara 63 productores y 37 con al menos una propiedad en `none`. La condición es que el artefacto versionado se regenere desde el mismo HEAD, no que alguien lo haya leído.",
       "commits": [],
       "deferral": null
     },
@@ -550,7 +550,7 @@
       "status": "aceptada",
       "provenance": "derived",
       "artefact": null,
-      "evidence": "De 21 call sites cobrables, 0 usan un carril que no escribe fila antes del POST — Redis es el registro, o no hay registro. Un productor ahí no puede contestar \"¿esto salió?\" después de un reinicio. **Este número no es el criterio de R6**, que pregunta por la autorización aplicable y la mide con los productores fuera del gate económico. Lo que esta fila mide es la fila durable antes del POST; desde este HEAD todo productor cobrable la crea y ningún interruptor puede devolverlo al carril anterior.",
+      "evidence": "De 23 call sites cobrables, 0 usan un carril que no escribe fila antes del POST — Redis es el registro, o no hay registro. Un productor ahí no puede contestar \"¿esto salió?\" después de un reinicio. **Este número no es el criterio de R6**, que pregunta por la autorización aplicable y la mide con los productores fuera del gate económico. Lo que esta fila mide es la fila durable antes del POST; desde este HEAD todo productor cobrable la crea y ningún interruptor puede devolverlo al carril anterior.",
       "commits": [],
       "deferral": null
     },

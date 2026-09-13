@@ -16,12 +16,12 @@ efectos puede llegar a producir **una sola respuesta lógica** en cada uno.
 
 | | |
 |---|---|
-| Sitios de llamada encontrados | **25** |
-| De ellos, que producen un mensaje cobrable | **24** |
+| Sitios de llamada encontrados | **27** |
+| De ellos, que producen un mensaje cobrable | **26** |
 | De ellos, presencia (no cobra Meta) | **1** |
-| Archivos productores distintos | **17** |
+| Archivos productores distintos | **19** |
 | Sitios que **no** pasan por un carril durable | **2** |
-| Sitios que pueden alcanzar WhatsApp (literal o dinámico) | **22** |
+| Sitios que pueden alcanzar WhatsApp (literal o dinámico) | **24** |
 | Sitios donde **una respuesta puede volverse varios cargos** | **8** |
 
 ### Los cinco números que importan
@@ -33,11 +33,11 @@ objetivo: **cero productores cobrables fuera del carril durable**.
 
 | | |
 |---|---|
-| Sitios de llamada, en total | **25** |
-| De ellos, capaces de alcanzar WhatsApp | **23** |
-| De ellos, **cobrables por Meta** | **22** |
-| De ellos, dentro de la frontera económica | **22** |
-| De ellos, dentro del **carril durable** | **22** |
+| Sitios de llamada, en total | **27** |
+| De ellos, capaces de alcanzar WhatsApp | **25** |
+| De ellos, **cobrables por Meta** | **24** |
+| De ellos, dentro de la frontera económica | **24** |
+| De ellos, dentro del **carril durable** | **24** |
 
 | | |
 |---|---|
@@ -51,7 +51,7 @@ Por carril:
 |---|---:|---|
 | `dispatch_outbox` | 14 | publishes an already-committed `agent_dispatch_outbox` row |
 | `approved_effect` | 1 | `tool_approval_effects` row a person approved |
-| `operational_notice` | 6 | `operational_notice_outbox`, written in the business transaction |
+| `operational_notice` | 8 | `operational_notice_outbox`, written in the business transaction |
 | `handoff_effects` | 1 | one row per destination of one transfer |
 | `inline` | 2 | straight to the adapter, on the caller's stack |
 
@@ -200,6 +200,18 @@ mensajes entregados, y un indicador de "escribiendo" no lo es.
 |---:|---|---|---|---|---|---|---|
 | 250 | `recallOne` | `proactive.send` | `dispatch_outbox` | called by another service | dynamic | n(recipients) | one effect per recipient — a campaign, not one answer (fan-out at line 153) |
 
+### `apps/api/src/modules/tours/tours.service.ts`
+
+| Línea | Método | Primitiva | Carril | Disparador | Canales | Efectos por respuesta | Base |
+|---:|---|---|---|---|---|---|---|
+| 441 | `createBooking` | `enqueueOperationalNotice` | `operational_notice` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
+
+### `apps/api/src/modules/vacation-rental/properties.service.ts`
+
+| Línea | Método | Primitiva | Carril | Disparador | Canales | Efectos por respuesta | Base |
+|---:|---|---|---|---|---|---|---|
+| 723 | `createBooking` | `enqueueOperationalNotice` | `operational_notice` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
+
 ### `apps/api/src/modules/whatsapp/whatsapp.controller.ts`
 
 | Línea | Método | Primitiva | Carril | Disparador | Canales | Efectos por respuesta | Base |
@@ -283,6 +295,8 @@ buscar una llamada a la autoridad economica en el codigo del archivo.
 | `modules/education/education-enrollment-commands.ts:171` | `promote` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/gyms/gyms.service.ts:655` | `promoteFromWaitlist` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/recall/recall.service.ts:250` | `recallOne` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
+| `modules/tours/tours.service.ts:441` | `createBooking` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
+| `modules/vacation-rental/properties.service.ts:723` | `createBooking` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/whatsapp/whatsapp.controller.ts:910` | `dispatchRest` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
 
 ### Lo que esta comprobacion no puede ver
@@ -356,8 +370,6 @@ esperada y su clasificación queda **fuera del alcance de este generador**.
 | `public_api.webhook_subscriptions` | `delivery_outbox` | `live` | `modules/public-api/webhook-subscription.service.ts` |
 | `reviews.gbp_reply` | `inline` | `live` | `modules/reviews/reviews.service.ts` |
 | `tenant.outbound_webhooks` | `inline` | `live` | `modules/webhooks/webhooks.service.ts` |
-| `tours.booking_confirmation` | `inline` | `live` | `modules/tours/tours.service.ts` |
-| `vacation_rental.booking_confirmation` | `inline` | `live` | `modules/vacation-rental/properties.service.ts` |
 | `verticals.service_request` | `operational_notice` | `live` | `modules/home-services/home-services.service.ts` |
 | `whatsapp.business_profile` | `inline` | `live` | `modules/whatsapp/services/whatsapp-connection.service.ts` |
 | `whatsapp.template_management` | `inline` | `live` | `modules/whatsapp/services/whatsapp-template.service.ts` |

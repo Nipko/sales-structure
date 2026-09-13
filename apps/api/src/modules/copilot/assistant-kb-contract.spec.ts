@@ -984,6 +984,12 @@ describe('Parallly Assist knowledge-base contract', () => {
       pt: /horário comercial pertence ao tenant e é compartilhado entre seus agentes/i,
       fr: /horaires d'ouverture appartiennent au tenant et sont partagés par ses agents/i,
     };
+    const reviewedActivation: Record<(typeof LOCALES)[number], RegExp> = {
+      es: /Reactivarlo requiere revisar y publicar una versión/i,
+      en: /Reactivation requires reviewing and publishing a version/i,
+      pt: /Reativar exige revisar e publicar uma versão/i,
+      fr: /réactiver exige d'examiner et de publier une version/i,
+    };
     const inventedControls = /\*\*(?:Modelo IA|AI Model|Modèle IA)\*\*|(?:siempre IA, siempre humano o híbrido|always AI, always human or hybrid|sempre IA, sempre humano ou híbrido|toujours IA, toujours humain ou hybride)/i;
 
     for (const locale of LOCALES) {
@@ -991,6 +997,7 @@ describe('Parallly Assist knowledge-base contract', () => {
       expect(article).toBeDefined();
       expect(article!.body).toMatch(assistMarkers[locale]);
       expect(article!.body).toMatch(accountHours[locale]);
+      expect(article!.body).toMatch(reviewedActivation[locale]);
       expect(article!.body).not.toMatch(inventedControls);
     }
   });

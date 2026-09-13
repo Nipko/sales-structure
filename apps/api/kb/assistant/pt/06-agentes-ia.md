@@ -78,7 +78,7 @@ Quando terminar, clique em **Salvar alterações** — o botão fica sempre vis�
 
 ## Ativo ou inativo
 
-No cabeçalho do editor há um interruptor **Ativo / Inativo**. Um agente **inativo** não responde em nenhuma das suas conexões, mesmo com o canal conectado e o horário dizendo que sim. Use para preparar um agente sem expô-lo aos clientes, ou para desligá-lo por um tempo sem apagar nada. A **Saúde dos agentes** marca como bloqueio crítico qualquer agente inativo, com ou sem conexões atribuídas.
+No cabeçalho do editor há um interruptor **Ativo / Inativo**. Um agente **inativo** não responde em nenhuma das suas conexões, mesmo com o canal conectado e o horário dizendo que sim. Você pode desativá-lo imediatamente após confirmar. Reativar exige revisar e publicar uma versão; o interruptor aponta para essa revisão e não o liga sozinho. A **Saúde dos agentes** marca como bloqueio crítico qualquer agente inativo, com ou sem conexões atribuídas.
 
 ## Como definir o horário do agente
 

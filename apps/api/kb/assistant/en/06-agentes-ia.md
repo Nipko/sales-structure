@@ -78,7 +78,7 @@ When you're done, click **Save changes** — the button is always visible in the
 
 ## Active or inactive
 
-The editor header has an **Active / Inactive** switch. An **inactive** agent replies on none of its connections, even when the channel is connected and the schedule says it should. Use it to prepare an agent without exposing it to customers, or to turn it off for a while without deleting anything. **Agent health** flags any inactive agent as a critical blocker, with or without assigned connections.
+The editor header has an **Active / Inactive** switch. An **inactive** agent replies on none of its connections, even when the channel is connected and the schedule says it should. You can deactivate it immediately after confirming. Reactivation requires reviewing and publishing a version; the switch points you to that review and does not turn it on by itself. **Agent health** flags any inactive agent as a critical blocker, with or without assigned connections.
 
 ## How to set the agent's schedule
 

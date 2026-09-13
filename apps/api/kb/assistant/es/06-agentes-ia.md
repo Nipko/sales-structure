@@ -78,7 +78,7 @@ Cuando termines, haz clic en **Guardar cambios** — el botón siempre está vis
 
 ## Activo o inactivo
 
-En la cabecera del editor hay un interruptor **Activo / Inactivo**. Un agente **inactivo** no responde en ninguna de sus conexiones, aunque el canal esté conectado y el horario diga que sí. Úsalo para preparar un agente sin exponerlo a clientes, o para apagarlo un rato sin borrar nada. **Salud de agentes** marca como bloqueo crítico todo agente inactivo, tenga o no conexiones asignadas.
+En la cabecera del editor hay un interruptor **Activo / Inactivo**. Un agente **inactivo** no responde en ninguna de sus conexiones, aunque el canal esté conectado y el horario diga que sí. Puedes desactivarlo de inmediato después de confirmar. Reactivarlo requiere revisar y publicar una versión; el interruptor te lleva a esa revisión y no lo enciende por sí solo. **Salud de agentes** marca como bloqueo crítico todo agente inactivo, tenga o no conexiones asignadas.
 
 ## Cómo definir el horario del agente
 

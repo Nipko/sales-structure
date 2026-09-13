@@ -78,7 +78,7 @@ Quand vous avez terminé, cliquez sur **Enregistrer les modifications** — le b
 
 ## Actif ou inactif
 
-L'en-tête de l'éditeur comporte un interrupteur **Actif / Inactif**. Un agent **inactif** ne répond sur aucune de ses connexions, même si le canal est connecté et que les horaires disent le contraire. Utilisez-le pour préparer un agent sans l'exposer aux clients, ou pour l'éteindre un moment sans rien supprimer. La **Santé des agents** signale comme blocage critique tout agent inactif, avec ou sans connexions assignées.
+L'en-tête de l'éditeur comporte un interrupteur **Actif / Inactif**. Un agent **inactif** ne répond sur aucune de ses connexions, même si le canal est connecté et que les horaires disent le contraire. Vous pouvez le désactiver immédiatement après confirmation. Le réactiver exige d'examiner et de publier une version ; l'interrupteur renvoie vers cette révision et ne l'active pas tout seul. La **Santé des agents** signale comme blocage critique tout agent inactif, avec ou sans connexions assignées.
 
 ## Comment définir les horaires de l'agent
 

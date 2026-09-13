@@ -379,7 +379,7 @@ esperada y su clasificación queda **fuera del alcance de este generador**.
 | `calendar.legacy_update` | `inline` | `legacy` | `modules/appointments/calendar-integration.service.ts` |
 | `channel.email.inbound_reply` | `outbound_queue` | `internal_only` | `modules/channels/email/email.adapter.ts` |
 | `channels.token_refresh` | `inline` | `live` | `modules/channels/instagram-token-refresh.service.ts` |
-| `customer_portal.access_code` | `inline` | `live` | `modules/customer-portal/customer-portal.service.ts` |
+| `customer_portal.access_code` | `delivery_outbox` | `live` | `modules/customer-portal/customer-portal-access.service.ts` |
 | `external_crm.sync` | `domain_queue` | `live` | `modules/external-crm/external-crm.service.ts` |
 | `feature_requests.status_email` | `delivery_outbox` | `live` | `modules/platform-notifications/platform-notification-outbox.service.ts` |
 | `fiscal.invoice_email` | `domain_queue` | `live` | `modules/fiscal/fiscal-email.service.ts` |

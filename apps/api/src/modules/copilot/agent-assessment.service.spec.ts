@@ -23,7 +23,12 @@ function harness(options: { missing?: boolean; drift?: boolean; unknown?: boolea
                     columns.map(column => ({ table_name: table, column_name: column }))))
             : sql.startsWith('SELECT version') ? [{ version: options.drift ? 3 : 2 }] : options.missing ? [] : [{
         id: AGENT, version: 2, template_id: 'restaurant', channels: ['whatsapp', 'telegram'], channel_bindings: [],
-        config_json: { persona: { role: 'Atender pedidos', name: 'Luna', secret: 'NEVER EXPOSE' },
+        config_json: { persona: { role: 'Atender pedidos', name: 'Luna', secret: 'NEVER EXPOSE',
+                personality: { tone: 'cálido', formality: 'casual', emojiUsage: 'minimal', humor: 'ligero' } },
+            behavior: { mainInstructions: 'Ayuda a elegir', requiredFields: { quote: [{ field: 'email', question: '¿Cuál es tu correo?', validation: 'email', secret: 'NEVER EXPOSE' }] } },
+            language: 'es-CO', skillset: 'both', upsell: { enabled: true, intensity: 'subtle', maxDiscountPercent: 5 },
+            llm: { temperature: 0.7, maxTokens: 800, providerKey: 'SECRET' }, rag: { enabled: true, topK: 5, similarityThreshold: 0.75, namespace: 'SECRET' },
+            hours: { aiOutsideHours: false, afterHoursMessageOverride: 'Volvemos mañana', secret: 'NEVER EXPOSE' },
             tools: { restaurants: { enabled: true, token: 'SECRET TOKEN' } }, mission: options.mission },
     }]);
     const evalRows = options.runs ?? [];
@@ -53,6 +58,13 @@ describe('shared agent assessment', () => {
         // answer to a question rather than a constant.
         expect(assessment.requiredTests.every(test => test.evidence === 'not_verified')).toBe(true);
         expect(assessment.requiredTests.every(test => test.state === 'pending')).toBe(true);
+        expect(assessment.configuration).toMatchObject({
+            persona: { personality: { emojiUsage: 'minimal', humor: 'ligero' } },
+            behavior: { mainInstructions: 'Ayuda a elegir', requiredFields: { quote: [{ field: 'email', question: '¿Cuál es tu correo?', validation: 'email' }] } },
+            language: 'es-CO', skillset: 'both', upsell: { enabled: true, maxDiscountPercent: 5 },
+            llm: { temperature: 0.7, maxTokens: 800 }, rag: { enabled: true, topK: 5, similarityThreshold: 0.75 },
+            hours: { aiOutsideHours: false, afterHoursMessageOverride: 'Volvemos mañana' },
+        });
         expect(JSON.stringify(assessment.configuration)).not.toMatch(/SECRET|NEVER EXPOSE/);
     });
     it('keeps unavailable knowledge unknown even when other preparation checks pass', async () => {

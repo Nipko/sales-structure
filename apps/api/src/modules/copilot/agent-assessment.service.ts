@@ -28,6 +28,21 @@ function strings(value: unknown, limit = 20): string[] {
     return Array.isArray(value) ? value.filter(item => typeof item === 'string' && item.trim()).slice(0, limit).map(item => item.slice(0, 2000)) : [];
 }
 function text(value: unknown, limit = 4000): string { return typeof value === 'string' ? value.trim().slice(0, limit) : ''; }
+function requiredInformation(value: unknown): Record<string, Array<{ field: string; question: string; validation?: string }>> {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+    return Object.fromEntries(Object.entries(value).slice(0, 10).flatMap(([context, fields]) => {
+        if (!/^[a-zA-Z0-9_-]{1,80}$/.test(context) || !Array.isArray(fields)) return [];
+        const safe = fields.slice(0, 10).flatMap(field => {
+            if (!field || typeof field !== 'object' || Array.isArray(field)) return [];
+            const name = text((field as any).field, 80);
+            const question = text((field as any).question, 500);
+            if (!/^[a-zA-Z0-9_-]{1,80}$/.test(name) || !question) return [];
+            const validation = text((field as any).validation, 200);
+            return [{ field: name, question, ...(validation ? { validation } : {}) }];
+        });
+        return [[context, safe]];
+    }));
+}
 export function setupTaskStatus(checks: AgentQualityCheck[]): AgentSetupTask['status'] {
     if (!checks.length || checks.some(check => check.status === 'unknown')) return 'unknown';
     if (checks.some(check => check.status === 'fail')) return 'fail';
@@ -372,12 +387,24 @@ export class AgentAssessmentService {
             // mutable ones.
             tools,
             configuration: { persona: { name: text(config.persona?.name), role: text(config.persona?.role), greeting: text(config.persona?.greeting), fallbackMessage: text(config.persona?.fallbackMessage),
-                personality: { tone: text(config.persona?.personality?.tone), formality: text(config.persona?.personality?.formality) } },
-                behavior: { rules: strings(config.behavior?.rules), forbiddenTopics: strings(config.behavior?.forbiddenTopics), handoffTriggers: strings(config.behavior?.handoffTriggers) },
+                personality: { tone: text(config.persona?.personality?.tone), formality: text(config.persona?.personality?.formality),
+                    emojiUsage: text(config.persona?.personality?.emojiUsage, 20), humor: text(config.persona?.personality?.humor) } },
+                behavior: { mainInstructions: text(config.behavior?.mainInstructions), rules: strings(config.behavior?.rules),
+                    requiredFields: requiredInformation(config.behavior?.requiredFields), forbiddenTopics: strings(config.behavior?.forbiddenTopics),
+                    handoffTriggers: strings(config.behavior?.handoffTriggers) },
                 editorMode: (config.editorMode ?? config._mode) === 'prompt' ? 'prompt' : 'guided',
                 customPrompt: text(config.customPrompt ?? config._customPrompt, 16000),
                 customPromptTruncated: typeof (config.customPrompt ?? config._customPrompt) === 'string' && (config.customPrompt ?? config._customPrompt).length > 16000,
-                language: text(config.language, 20), tools: Object.fromEntries(Object.entries(config.tools ?? {}).map(([key, value]) => [key,
+                language: text(config.language, 20), skillset: text(config.skillset, 20),
+                upsell: { enabled: config.upsell?.enabled === true, intensity: text(config.upsell?.intensity, 20),
+                    maxDiscountPercent: typeof config.upsell?.maxDiscountPercent === 'number' ? config.upsell.maxDiscountPercent : null },
+                llm: { temperature: typeof config.llm?.temperature === 'number' ? config.llm.temperature : null,
+                    maxTokens: typeof config.llm?.maxTokens === 'number' ? config.llm.maxTokens : null },
+                rag: { enabled: config.rag?.enabled === true, topK: typeof config.rag?.topK === 'number' ? config.rag.topK : null,
+                    similarityThreshold: typeof config.rag?.similarityThreshold === 'number' ? config.rag.similarityThreshold : null },
+                hours: { aiOutsideHours: config.hours?.aiOutsideHours !== false,
+                    afterHoursMessageOverride: text(config.hours?.afterHoursMessageOverride) },
+                tools: Object.fromEntries(Object.entries(config.tools ?? {}).map(([key, value]) => [key,
                     Object.fromEntries(Object.entries(value && typeof value === 'object' ? value : {}).filter(([flag, val]) => ['enabled', 'canBook', 'canCancel', 'canCheckStock', 'canRecommend', 'canApplyDiscount', 'canCreateLinks', 'emailConfirmations'].includes(flag) && typeof val === 'boolean'))])),
                 account: { businessHours: isAgentAccountBusinessHours(settings.businessHours) ? settings.businessHours : null,
                     businessHoursStatus: settings.businessHours === undefined ? 'absent' : isAgentAccountBusinessHours(settings.businessHours) ? 'valid' : 'invalid' } },

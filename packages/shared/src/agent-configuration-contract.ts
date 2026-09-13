@@ -42,7 +42,13 @@ export function isAgentAccountBusinessHours(value: unknown): value is AgentAccou
 export const AGENT_CONFIGURATION_PATHS = [
     'persona.name', 'persona.role', 'persona.greeting', 'persona.fallbackMessage',
     'persona.personality.tone', 'persona.personality.formality',
-    'behavior.rules', 'behavior.forbiddenTopics', 'behavior.handoffTriggers', 'mission',
+    'persona.personality.emojiUsage', 'persona.personality.humor',
+    'behavior.mainInstructions', 'behavior.rules', 'behavior.requiredFields',
+    'behavior.forbiddenTopics', 'behavior.handoffTriggers', 'mission',
+    'language', 'hours.aiOutsideHours', 'hours.afterHoursMessageOverride',
+    'skillset', 'upsell.enabled', 'upsell.intensity', 'upsell.maxDiscountPercent',
+    'llm.temperature', 'llm.maxTokens',
+    'rag.enabled', 'rag.topK', 'rag.similarityThreshold',
     'account.businessHours',
     ...AGENT_CONFIG_TOOL_FAMILIES.map(family => `tools.${family}.enabled` as const),
     ...AGENT_EMAIL_CONFIRMATION_FAMILIES.map(family => `tools.${family}.emailConfirmations` as const),
@@ -50,7 +56,9 @@ export const AGENT_CONFIGURATION_PATHS = [
     'tools.ecommerce.canRecommend', 'tools.ecommerce.canApplyDiscount', 'tools.payments.canCreateLinks',
 ] as const;
 export type AgentConfigurationPath = typeof AGENT_CONFIGURATION_PATHS[number];
-export interface AgentConfigurationChange { path: AgentConfigurationPath; value: string | string[] | boolean | AgentMissionV1 | AgentAccountBusinessHours }
+export interface AgentRequiredInformationField { field: string; question: string; validation?: string }
+export type AgentRequiredInformation = Record<string, AgentRequiredInformationField[]>;
+export interface AgentConfigurationChange { path: AgentConfigurationPath; value: string | string[] | number | boolean | AgentMissionV1 | AgentAccountBusinessHours | AgentRequiredInformation }
 export interface AgentConfigurationProposal {
     id: string;
     agentId: string;

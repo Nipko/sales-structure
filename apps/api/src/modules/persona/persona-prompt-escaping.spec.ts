@@ -60,6 +60,7 @@ describe('PersonaService prompt XML escaping', () => {
                 },
             },
             behavior: {
+                mainInstructions: textInjection,
                 rules: [textInjection],
                 forbiddenTopics: [textInjection],
                 handoffTriggers: [textInjection],

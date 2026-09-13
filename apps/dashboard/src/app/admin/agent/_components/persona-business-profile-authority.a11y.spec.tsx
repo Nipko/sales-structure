@@ -28,6 +28,8 @@ describe("the agent editor uses the tenant business profile", () => {
       expect(input.readOnly).toBe(true);
       expect(screen.container.textContent).not.toContain("inmobiliaria");
       expect(screen.container.textContent).toContain("se administra una sola vez");
+      expect(Array.from(screen.container.querySelectorAll("option")).map(option => option.value))
+        .toEqual(expect.arrayContaining(["es-CO", "es-MX", "en-US", "pt-BR", "fr-FR"]));
       await interact(() => input.focus());
       expect(input.value).toBe("event planning / event venue");
     } finally { screen.unmount(); }

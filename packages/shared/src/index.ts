@@ -292,6 +292,8 @@ export interface PersonaConfig {
 export interface BehaviorConfig {
     /** Suggest replies for human review; tools cannot commit effects in this mode. */
     draftMode?: boolean;
+    /** Primary owner-authored guidance used by the structured editor. */
+    mainInstructions?: string;
     rules: string[];
     requiredFields: Record<string, RequiredField[]>;
     forbiddenTopics: string[];

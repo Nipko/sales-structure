@@ -22,7 +22,8 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
 const hash = proposalHash;
 function readPath(value: any, path: string): unknown { return path.split('.').reduce((node, key) => node?.[key], value) ?? null; }
 function applyChanges(config: any, changes: AgentConfigurationChange[]): any {
-    if ((config.editorMode ?? config._mode) === 'prompt' && changes.some(change => change.path.startsWith('persona.') || change.path === 'behavior.rules')) {
+    if ((config.editorMode ?? config._mode) === 'prompt' && changes.some(change => change.path.startsWith('persona.')
+        || ['behavior.mainInstructions', 'behavior.rules', 'behavior.requiredFields'].includes(change.path))) {
         throw new BadRequestException({ error: 'configuration_prompt_mode' });
     }
     const result = JSON.parse(JSON.stringify(config));
@@ -38,6 +39,18 @@ function applyChanges(config: any, changes: AgentConfigurationChange[]): any {
 function boundedStrings(value: unknown, required: boolean): value is string[] {
     return Array.isArray(value) && value.length <= 20 && (!required || value.length > 0)
         && value.every(item => typeof item === 'string' && item.trim().length > 0 && item.length <= 1500);
+}
+function requiredInformation(value: unknown): boolean {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+    const contexts = Object.entries(value);
+    if (contexts.length > 10) return false;
+    return contexts.every(([context, fields]) => /^[a-zA-Z0-9_-]{1,80}$/.test(context)
+        && Array.isArray(fields) && fields.length <= 10
+        && fields.every(field => field && typeof field === 'object' && !Array.isArray(field)
+            && Object.keys(field).every(key => ['field', 'question', 'validation'].includes(key))
+            && typeof field.field === 'string' && /^[a-zA-Z0-9_-]{1,80}$/.test(field.field)
+            && typeof field.question === 'string' && field.question.trim().length > 0 && field.question.length <= 500
+            && (field.validation === undefined || (typeof field.validation === 'string' && field.validation.length <= 200))));
 }
 /**
  * A greeting is the least loaded probe there is: it exercises prompt assembly,
@@ -78,8 +91,8 @@ export class AgentConfigurationService {
             if (!change || typeof change !== 'object' || Object.keys(change).some(key => !['path', 'value'].includes(key))
                 || !AGENT_CONFIGURATION_PATHS.includes(change.path) || seen.has(change.path)) throw new BadRequestException('Unsupported configuration field');
             seen.add(change.path);
-            if (change.path.startsWith('tools.')) {
-                if (typeof change.value !== 'boolean') throw new BadRequestException('Tool permissions must be booleans');
+            if (change.path.startsWith('tools.') || ['hours.aiOutsideHours', 'upsell.enabled', 'rag.enabled'].includes(change.path)) {
+                if (typeof change.value !== 'boolean') throw new BadRequestException('Boolean configuration required');
             } else if (change.path === 'account.businessHours') {
                 if (!isAgentAccountBusinessHours(change.value)) throw new BadRequestException('Business hours require a valid timezone, seven day schedules and an after-hours response');
             } else if (change.path === 'mission') {
@@ -89,8 +102,30 @@ export class AgentConfigurationService {
                 }
                 const allowed = buildDomainContractDraft(profile.industry, profile.subType).intents.map(intent => intent.key);
                 if (mission.intentKeys.some((key: string) => !allowed.includes(key))) throw new BadRequestException('Mission exceeds the business profile');
-            } else if (change.path.startsWith('behavior.')) {
+            } else if (change.path === 'behavior.requiredFields') {
+                if (!requiredInformation(change.value)) throw new BadRequestException('Invalid required information');
+            } else if (['behavior.rules', 'behavior.forbiddenTopics', 'behavior.handoffTriggers'].includes(change.path)) {
                 if (!boundedStrings(change.value, change.path !== 'behavior.forbiddenTopics')) throw new BadRequestException('Invalid behavior rules');
+            } else if (change.path === 'language') {
+                if (!['es-CO', 'es-MX', 'en-US', 'pt-BR', 'fr-FR'].includes(change.value as string)) throw new BadRequestException('Unsupported agent language');
+            } else if (change.path === 'persona.personality.emojiUsage') {
+                if (!['none', 'minimal', 'moderate', 'heavy'].includes(change.value as string)) throw new BadRequestException('Invalid emoji usage');
+            } else if (change.path === 'skillset') {
+                if (!['sales', 'support', 'both'].includes(change.value as string)) throw new BadRequestException('Invalid agent skillset');
+            } else if (change.path === 'upsell.intensity') {
+                if (!['subtle', 'moderate', 'aggressive'].includes(change.value as string)) throw new BadRequestException('Invalid upsell intensity');
+            } else if (change.path === 'llm.temperature') {
+                if (typeof change.value !== 'number' || !Number.isFinite(change.value) || change.value < 0 || change.value > 2) throw new BadRequestException('Invalid model temperature');
+            } else if (change.path === 'llm.maxTokens') {
+                if (typeof change.value !== 'number' || !Number.isInteger(change.value) || change.value < 100 || change.value > 4000) throw new BadRequestException('Invalid answer length');
+            } else if (change.path === 'rag.topK') {
+                if (typeof change.value !== 'number' || !Number.isInteger(change.value) || change.value < 1 || change.value > 10) throw new BadRequestException('Invalid knowledge result count');
+            } else if (change.path === 'rag.similarityThreshold') {
+                if (typeof change.value !== 'number' || !Number.isFinite(change.value) || change.value < 0 || change.value > 1) throw new BadRequestException('Invalid knowledge threshold');
+            } else if (change.path === 'upsell.maxDiscountPercent') {
+                if (typeof change.value !== 'number' || !Number.isFinite(change.value) || change.value < 0 || change.value > 100) throw new BadRequestException('Invalid discount limit');
+            } else if (['persona.personality.humor', 'behavior.mainInstructions', 'hours.afterHoursMessageOverride'].includes(change.path)) {
+                if (typeof change.value !== 'string' || change.value.length > 4000) throw new BadRequestException('Invalid agent guidance');
             } else if (typeof change.value !== 'string' || !change.value.trim() || change.value.length > (change.path === 'persona.name' ? 100 : 2000)) {
                 throw new BadRequestException('Invalid persona value');
             }

@@ -230,6 +230,7 @@ export function PersonaTab({ config, onChange, errors = {}, focusField = null }:
               <option value="es-MX">{ti("langEsMX")}</option>
               <option value="en-US">{ti("langEnUS")}</option>
               <option value="pt-BR">{ti("langPtBR")}</option>
+              <option value="fr-FR">{ti("langFrFR")}</option>
             </select>
           </div>
           <div>

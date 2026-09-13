@@ -242,6 +242,10 @@ export class PersonaService {
             lines.push('  </personality>');
         }
 
+        if (typeof behavior?.mainInstructions === 'string' && behavior.mainInstructions.trim()) {
+            lines.push(`  <main_instructions>${escapeXmlText(behavior.mainInstructions.trim())}</main_instructions>`);
+        }
+
         // Rules (persona-defined, NOT global)
         if (behavior?.rules?.length > 0) {
             lines.push('  <rules>');

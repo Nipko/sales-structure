@@ -133,6 +133,8 @@ describe('CopilotService authenticated context', () => {
         expect(llmRouter.execute.mock.calls[0][0].systemPrompt).toContain('Current draft greeting');
         expect(llmRouter.execute.mock.calls[0][0].systemPrompt).toContain('"assessmentScope":"operational"');
         expect(llmRouter.execute.mock.calls[0][0].tools).toEqual([expect.objectContaining({ name: 'propose_agent_configuration' })]);
+        expect(llmRouter.execute.mock.calls[0][0].tools[0].description).toContain('fr-FR');
+        expect(llmRouter.execute.mock.calls[0][0].tools[0].description).toContain('behavior.requiredFields');
     });
 
     it.each(['tenant_supervisor', 'tenant_agent'])('does not offer configuration proposals to %s', async role => {

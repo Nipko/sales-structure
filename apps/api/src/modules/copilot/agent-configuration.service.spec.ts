@@ -93,8 +93,33 @@ describe('reviewed agent configuration', () => {
     it('rejects guided voice edits that would have no effect in custom-prompt mode', async () => {
         const h = harness(); h.agent().config_json.editorMode = 'prompt'; h.agent().config_json.customPrompt = 'Instrucciones activas';
         await expect(h.service.propose(TENANT, AGENT, changes, ACTOR)).rejects.toMatchObject({ response: { error: 'configuration_prompt_mode' } });
+        await expect(h.service.propose(TENANT, AGENT, [{ path: 'behavior.mainInstructions', value: 'Otra voz' }], ACTOR)).rejects.toMatchObject({ response: { error: 'configuration_prompt_mode' } });
+        await expect(h.service.propose(TENANT, AGENT, [{ path: 'behavior.requiredFields', value: { lead: [{ field: 'email', question: '¿Cuál es tu correo?' }] } }], ACTOR)).rejects.toMatchObject({ response: { error: 'configuration_prompt_mode' } });
         expect(h.ledger()).toHaveLength(0);
         await expect(h.service.propose(TENANT, AGENT, [{ path: 'behavior.handoffTriggers', value: ['Cliente pide persona'] }], ACTOR)).resolves.toMatchObject({ status: 'proposed' });
+    });
+    it('reviews and applies the safe guided settings that already drive the editor and runtime', async () => {
+        const h = harness();
+        const safe: AgentConfigurationChange[] = [
+            { path: 'language', value: 'fr-FR' },
+            { path: 'persona.personality.emojiUsage', value: 'moderate' },
+            { path: 'persona.personality.humor', value: 'léger' },
+            { path: 'behavior.mainInstructions', value: 'Aide le client à choisir.' },
+            { path: 'behavior.requiredFields', value: { quote: [{ field: 'email', question: 'Quel est votre e-mail ?', validation: 'email' }] } },
+            { path: 'hours.aiOutsideHours', value: false },
+            { path: 'skillset', value: 'support' },
+            { path: 'upsell.enabled', value: true },
+            { path: 'llm.maxTokens', value: 1200 },
+            { path: 'rag.similarityThreshold', value: 0.6 },
+        ];
+        const proposal = await h.service.propose(TENANT, AGENT, safe, ACTOR);
+        await h.service.apply(TENANT, proposal.id, proposal.digest, ACTOR);
+        expect(h.draft().body.configJson).toMatchObject({
+            language: 'fr-FR', skillset: 'support', hours: { aiOutsideHours: false }, upsell: { enabled: true },
+            llm: { maxTokens: 1200 }, rag: { similarityThreshold: 0.6 },
+            persona: { personality: { emojiUsage: 'moderate', humor: 'léger' } },
+            behavior: { mainInstructions: 'Aide le client à choisir.', requiredFields: { quote: [{ field: 'email', question: 'Quel est votre e-mail ?', validation: 'email' }] } },
+        });
     });
     it('checks enabled tools on every assigned channel both when proposing and when applying', async () => {
         const h = harness(); h.agent().channels = ['whatsapp', 'telegram'];
@@ -233,6 +258,12 @@ describe('reviewed agent configuration', () => {
         [{ path: 'tools.mcp.enabled', value: true }],
         [{ path: '__proto__.enabled', value: 'yes' }],
         [{ path: 'persona.name', value: '' }],
+        [{ path: 'language', value: 'de-DE' }],
+        [{ path: 'llm.maxTokens', value: 99 }],
+        [{ path: 'rag.topK', value: 11 }],
+        [{ path: 'rag.similarityThreshold', value: 1.1 }],
+        [{ path: 'upsell.maxDiscountPercent', value: 101 }],
+        [{ path: 'behavior.requiredFields', value: { lead: [{ field: 'email', question: '', secret: 'leak' }] } }],
         [{ ...changes[0], confirmed: true }],
         [changes[0], changes[0]],
         [{ path: 'mission', value: { version: 1, objective: 'Everything', intentKeys: ['pay'], successCriteria: [], handoffConditions: [] } }],

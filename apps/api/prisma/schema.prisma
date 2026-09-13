@@ -757,6 +757,15 @@ model FiscalInvoice {
   acquirerSnapshot Json?     @map("acquirer_snapshot") // immutable copy of acquirer fiscal data at issue time
   issuedAt         DateTime? @map("issued_at")
   createdAt        DateTime  @default(now()) @map("created_at")
+  emailDeliveryState     String    @default("pending") @map("email_delivery_state") @db.VarChar(32)
+  emailDeliveryAttempts  Int       @default(0) @map("email_delivery_attempts")
+  emailLeaseToken        String?   @map("email_lease_token") @db.Uuid
+  emailLeaseExpiresAt    DateTime? @map("email_lease_expires_at") @db.Timestamptz(6)
+  emailProviderReference String?   @map("email_provider_reference")
+  emailErrorCode         String?   @map("email_error_code")
+  emailNextAttemptAt     DateTime  @default(now()) @map("email_next_attempt_at") @db.Timestamptz(6)
+  emailStartedAt         DateTime? @map("email_started_at") @db.Timestamptz(6)
+  emailCompletedAt       DateTime? @map("email_completed_at") @db.Timestamptz(6)
 
   @@index([tenantId, createdAt])
   @@index([status])

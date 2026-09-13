@@ -99,6 +99,15 @@ const WHATSAPP_CREDENTIAL_COLUMNS: ReadonlyArray<[string, string]> = [
     ['updated_at', 'TIMESTAMPTZ DEFAULT NOW()'],
 ];
 
+/** Base columns from the fiscal-invoice migration that later additive migrations widen. */
+const FISCAL_INVOICE_COLUMNS: ReadonlyArray<[string, string]> = [
+    ['tenant_id', 'UUID'],
+    ['status', "VARCHAR(32) NOT NULL DEFAULT 'pending'"],
+    ['metadata', "JSONB NOT NULL DEFAULT '{}'::jsonb"],
+    ['issued_at', 'TIMESTAMPTZ'],
+    ['created_at', 'TIMESTAMPTZ NOT NULL DEFAULT NOW()'],
+];
+
 async function ensure(exec: Exec, table: string, columns: ReadonlyArray<[string, string]>): Promise<void> {
     await exec(`CREATE TABLE IF NOT EXISTS public.${table}(id UUID PRIMARY KEY)`);
     for (const [name, type] of columns) {
@@ -118,4 +127,5 @@ export async function ensureSyntheticGlobalTables(exec: Exec): Promise<void> {
     await ensure(exec, 'users', USER_COLUMNS);
     await ensure(exec, 'channel_accounts', CHANNEL_ACCOUNT_COLUMNS);
     await ensure(exec, 'whatsapp_credentials', WHATSAPP_CREDENTIAL_COLUMNS);
+    await ensure(exec, 'fiscal_invoices', FISCAL_INVOICE_COLUMNS);
 }

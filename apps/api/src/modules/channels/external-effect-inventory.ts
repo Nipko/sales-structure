@@ -1379,26 +1379,24 @@ producer({
 
     producer({
         id: 'fiscal.invoice_email',
-        effect: 'The DIAN electronic invoice and its signed XML, emailed to the tenant',
-        lane: 'domain_queue',
+        effect: 'The DIAN electronic invoice and its signed XML, emailed to the acquirer',
+        lane: 'delivery_outbox',
         status: 'live',
-        derivation: 'census',
+        derivation: 'declared',
         source: 'modules/fiscal/fiscal-email.service.ts',
         symbol: 'FiscalEmailService',
-        egress: 'EmailService.send from the `fiscal-invoice` queue',
+        egress: 'the fiscal invoice email ledger followed by bounded SMTP',
         reach: {
             class: 'operator_notification', audience: 'tenant_operator', personalData: true,
             channels: ['email'],
         },
         properties: {
-            authority: none('no admission; the queue job is the only trace'),
-            idempotency: partial('an `ok` flag on the invoice row records that the email was attempted, '
-                + 'so the processor does not resend. The queue add itself has no identity'),
-            receipt: partial('the boolean is written to the invoice row — enough to say "we tried", not '
-                + 'enough to say the server accepted it'),
-            uncertainOutcome: none('a lost answer is written as a failure'),
-            erasure: none('fiscal records are retained by law and are deliberately outside erasure'),
-            recovery: partial('the queue retries; the flag stops a duplicate'),
+            authority: durable('the issued invoice row grants one leased delivery before SMTP'),
+            idempotency: durable('the invoice id owns one delivery state and a sent or unknown attempt cannot be resent'),
+            receipt: durable('the bounded SMTP message id is required and stored on the fiscal invoice'),
+            uncertainOutcome: durable('claimed and sending are distinct; an unanswered SMTP attempt freezes for reconciliation'),
+            erasure: notApplicable('the invoice and its delivery evidence follow mandatory fiscal retention'),
+            recovery: durable('the database sweep recovers only claims that did not cross SMTP'),
         },
     }),
 

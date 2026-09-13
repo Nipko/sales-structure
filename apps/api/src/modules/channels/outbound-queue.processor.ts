@@ -265,11 +265,6 @@ export class OutboundQueueProcessor extends WorkerHost {
             return preflight(`subscription_${entitlement.error ?? 'restricted'}`,
                 { permanent: entitlement.restrictionLevel !== 'unavailable' });
         }
-        // A throttled tenant consumes no attempt: re-schedule instead.
-        if (await this.throttle.isOverLimit(tenantId, 'outbound')) {
-            await job.moveToDelayed(Date.now() + 60_000, token);
-            throw new DelayedError();
-        }
         const transport = this.channelGateway.getStrictTransport(existing.binding!.channelType as any);
         if (!transport) {
             // Explicit refusal, never a silent fall back to the loose gateway.
@@ -981,9 +976,6 @@ export class OutboundQueueProcessor extends WorkerHost {
         if (job.data.operationalNotice) {
             const reference=job.data.operationalNotice;
             if (!this.operationalNotices) throw new Error('operational_notice_delivery_unavailable');
-            if (await this.throttle.isOverLimit(reference.tenantId,'outbound')) {
-                await job.moveToDelayed(Date.now()+60000,token); throw new DelayedError();
-            }
             const rateEffectId = `notice:${reference.noticeId}`;
             const rateReservation = await this.throttle.reserveActionUsage(
                 reference.tenantId, 'outbound', rateEffectId,
@@ -1043,10 +1035,6 @@ export class OutboundQueueProcessor extends WorkerHost {
         if (job.data.approvalEffect) {
             const reference = job.data.approvalEffect;
             if (!this.approvalEffects) throw new Error('approval_effect_delivery_unavailable');
-            if (await this.throttle.isOverLimit(reference.tenantId, 'outbound')) {
-                await job.moveToDelayed(Date.now() + 60_000, token);
-                throw new DelayedError();
-            }
             const rateEffectId = `approval:${reference.ticketId}:${reference.effectId}`;
             const rateReservation = await this.throttle.reserveActionUsage(
                 reference.tenantId, 'outbound', rateEffectId,
@@ -1154,19 +1142,10 @@ export class OutboundQueueProcessor extends WorkerHost {
             return `skipped:${entitlement.error ?? 'subscription_restricted'}`;
         }
 
-        // Per-tenant rate limit — this early read avoids unnecessary provider
-        // preparation. The atomic reservation immediately before the remote
-        // boundary remains the authority under concurrent workers.
-        // A delayed job's
-        // repeated re-checks don't keep incrementing the counter and pin the tenant
-        // over-limit forever. Don't throw a normal error (that burns one of the 3
-        // attempts and a sustained throttle would DROP the message): re-schedule as
-        // delayed (no attempt consumed) so it sends in the next window.
-        if (await this.throttle.isOverLimit(outbound.tenantId, 'outbound')) {
-            this.logger.warn(`[Outbound] Tenant ${outbound.tenantId} rate limited — delaying job ${job.id} 60s (no attempt consumed)`);
-            await job.moveToDelayed(Date.now() + 60_000, token);
-            throw new DelayedError();
-        }
+        // The atomic reservation at the provider boundary is the authority. A
+        // read-only pre-check cannot distinguish a new effect from a retry that
+        // already owns one of the counted slots; using it here stranded those
+        // retries whenever the window was exactly full.
 
         // Reseller SMS: text SMS to a tenant's customer goes out via the PLATFORM
         // Twilio sender and is charged to the tenant's prepaid credit balance —

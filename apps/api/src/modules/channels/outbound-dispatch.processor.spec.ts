@@ -193,12 +193,14 @@ describe('OutboundQueueProcessor durable dispatch', () => {
         expect(notEntitled.sendStrict).not.toHaveBeenCalled();
     });
 
-    it('re-schedules a throttled tenant without spending an attempt', async () => {
-        const h = harness({ overLimit: true });
-        await expect(h.processor.process(h.job, 'worker-token')).rejects.toBeInstanceOf(DelayedError);
-        expect(h.job.moveToDelayed).toHaveBeenCalled();
-        expect(h.dispatchOutbox.failPreflight).not.toHaveBeenCalled();
-        expect(h.sendStrict).not.toHaveBeenCalled();
+    it('lets the atomic authority adopt a slot even when a stale read says the window is full', async () => {
+        const h = harness({ overLimit: true, outcome: { kind: 'accepted', receipt: 'wamid.ADOPTED' } });
+        await expect(h.processor.process(h.job, 'worker-token')).resolves.toBe('dispatch:sent:wamid.ADOPTED');
+        expect(h.throttle.isOverLimit).not.toHaveBeenCalled();
+        expect(h.throttle.reserveActionUsage).toHaveBeenCalledWith(
+            tenantId, 'outbound', `dispatch:${dispatchId}`,
+        );
+        expect(h.sendStrict).toHaveBeenCalledTimes(1);
     });
 
     it('suppresses a payload whose authority or sources no longer hold', async () => {

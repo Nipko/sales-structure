@@ -154,20 +154,12 @@ export class ComplianceService {
         );
     }
 
-    async createOptOut(schemaName: string, data: any) {
-        const rows = await this.prisma.executeInTenantSchema<any[]>(
-            schemaName,
-            `INSERT INTO opt_out_records (lead_id, phone, channel, trigger_msg, detected_from, status)
-             VALUES ($1::uuid, $2, $3, $4, $5, $6) RETURNING *`,
-            [data.lead_id, data.phone || '', data.channel, data.reason || data.trigger_msg || '', data.detected_from || 'manual', data.status || 'pending']
-        );
-        return rows[0];
-    }
-
     async isOptedOut(schemaName: string, leadId: string, channel: string): Promise<boolean> {
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
-            `SELECT id FROM opt_out_records WHERE lead_id = $1::uuid AND channel = $2 LIMIT 1`,
+            `SELECT id FROM opt_out_records
+              WHERE lead_id = $1::uuid AND channel = $2
+                AND status IN ('pending', 'confirmed') LIMIT 1`,
             [leadId, channel]
         );
         return rows.length > 0;

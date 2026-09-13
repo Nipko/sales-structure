@@ -4,7 +4,6 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { InboundQueueService } from '../../inbound/inbound-queue.service';
 import { InboundNotDurableError } from '../../inbound/inbound-queue.constants';
-import { ComplianceService } from '../../analytics/compliance.service';
 import { WhatsappConnectionService } from './whatsapp-connection.service';
 import { WhatsappTemplateService } from './whatsapp-template.service';
 import { WhatsAppAdapter } from '../../channels/whatsapp/whatsapp.adapter';
@@ -29,7 +28,6 @@ export class WhatsappWebhookService {
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
     private readonly inboundQueue: InboundQueueService,
-    private readonly complianceService: ComplianceService,
     private readonly whatsappConnection: WhatsappConnectionService,
     private readonly whatsappAdapter: WhatsAppAdapter,
     private readonly redis: RedisService,
@@ -376,21 +374,6 @@ export class WhatsappWebhookService {
              || msg?.button?.text
              || msg?.interactive?.button_reply?.title
              || '';
-
-         // === Compliance: Opt-out detection (registers for admin review, does NOT block message) ===
-         if (messageText && this.complianceService.detectOptOut(messageText)) {
-             this.logger.warn(`OptOut candidate from ${fromPhone}: "${messageText}" — pending admin review`);
-             try {
-                 await this.complianceService.processOptOut(tenantId, {
-                     phone: fromPhone,
-                     channel: 'whatsapp',
-                     triggerMessage: messageText,
-                     detectedFrom: 'keyword',
-                 });
-             } catch (e: any) {
-                 this.logger.error(`OptOut registration failed for ${fromPhone}: ${e.message}`, e.stack);
-             }
-         }
 
          const contentType = msg.type === 'button' || msg.type === 'interactive' ? 'text' : msg.type;
          const mediaObj = msg[msg.type];

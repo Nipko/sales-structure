@@ -3281,7 +3281,7 @@
     "infoBanner": "Gerencie seus textos legais, revise consentimentos e processe solicitações de opt-out ou exclusão de dados. Esta seção ajuda a cumprir GDPR, LGPD e regulamentações locais de proteção de dados.",
     "legalHelp": "Crie e gerencie seus textos legais por tipo, canal e agente. O agente IA pode exibir esses textos quando um contato solicitar informações sobre privacidade ou tratamento de dados.",
     "consentsHelp": "Registro automático de consentimentos concedidos pelos seus contatos. Cada registro inclui canal, versão do texto legal aceito e data.",
-    "optOutsHelp": "O sistema detecta automaticamente solicitações de opt-out em mensagens recebidas. Revise cada caso e confirme ou marque como falso positivo.",
+    "optOutsHelp": "O sistema interrompe os envios assim que detecta uma solicitação de opt-out. Revise cada caso: confirmar mantém o bloqueio e marcar como falso positivo retoma os envios.",
     "deletionsHelp": "Solicitações de exclusão de dados pessoais (LGPD/GDPR Art. 17). Ao processar, todos os dados do contato são anonimizados irreversivelmente.",
     "auditLog": "Histórico",
     "auditHelp": "Registro de todas as ações de compliance: criação, edição e exclusão de textos legais, confirmações de opt-out e processamento de solicitações de exclusão.",
@@ -8323,7 +8323,7 @@
       "tips": [
         "Na aba 'Textos legais', crie um texto do tipo 'Política de privacidade' ou 'Consentimento' e atribua-o aos canais e agentes corretos com os chips de seleção — o agente o exibirá automaticamente.",
         "Use o filtro de tipos (privacidade, termos, divulgação de IA, opt-in, etc.) para localizar rapidamente o texto que deseja editar ou versionar; o número da versão é incrementado automaticamente.",
-        "Na aba 'Opt-outs', revise os itens pendentes (badge vermelho na aba) e confirme ou rejeite cada um; confirmar bloqueia o contato para envios futuros, rejeitar o marca como falso positivo.",
+        "Na aba 'Opt-outs', revise os itens pendentes (badge vermelho na aba): eles já estão bloqueados preventivamente; confirmar mantém o bloqueio e rejeitar um falso positivo permite retomar os envios.",
         "Quando um cliente solicita a exclusão de seus dados, o pedido aparece em 'Solicitações de exclusão' com status pendente — clique em 'Processar' para executar a exclusão e registrá-la no sistema.",
         "A aba 'Auditoria' registra cada ação de conformidade com o responsável e o carimbo de data/hora; use-a em qualquer consulta jurídica ou revisão interna."
       ]

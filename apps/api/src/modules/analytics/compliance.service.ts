@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
+import { WsRelayService } from '../redis/ws-relay.service';
 // Opt-out detection patterns live in a single place (multi-language: es/en/pt/fr).
 // This service runs in the live pipeline (all channels, every inbound message);
 // the intake forms reuse the very same compiled list, so a customer can opt out
@@ -14,6 +15,7 @@ export class ComplianceService {
     constructor(
         private prisma: PrismaService,
         private redis: RedisService,
+        private wsRelay: WsRelayService,
     ) {}
 
     private async getTenantSchema(tenantId: string): Promise<string | null> {
@@ -42,8 +44,9 @@ export class ComplianceService {
     }
 
     /**
-     * Process an opt-out: register as PENDING for admin review.
-     * Does NOT block the lead immediately — admin must confirm.
+     * Register an opt-out for human review and suppress future sends at once.
+     * A reviewer can reverse a false positive, but waiting for that review is
+     * never permission to keep contacting somebody who asked us to stop.
      */
     async processOptOut(tenantId: string, params: {
         leadId?: string;
@@ -57,13 +60,44 @@ export class ComplianceService {
 
         const { leadId, phone, channel, triggerMessage, detectedFrom } = params;
 
-        // Save as pending — admin reviews before blocking
-        await this.prisma.executeInTenantSchema(schema, `
+        const rows = await this.prisma.transactionInTenantSchema<any>(schema, async (query) => {
+            const inserted = await query<any[]>(`
             INSERT INTO opt_out_records (lead_id, phone, channel, trigger_msg, detected_from, status, created_at)
             VALUES ($1, $2, $3, $4, $5, 'pending', NOW())
-        `, [leadId || null, phone || null, channel, triggerMessage, detectedFrom]);
+            ON CONFLICT DO NOTHING
+            RETURNING *
+            `, [leadId || null, phone || null, channel, triggerMessage, detectedFrom]);
+
+            const active = inserted[0] || (await query<any[]>(`
+                SELECT * FROM opt_out_records
+                 WHERE channel = $3
+                   AND status IN ('pending', 'confirmed')
+                   AND (($1::text IS NOT NULL AND phone = $1)
+                     OR ($2::uuid IS NOT NULL AND lead_id = $2::uuid))
+                 ORDER BY created_at DESC
+                 LIMIT 1
+            `, [phone || null, leadId || null, channel]))[0];
+
+            if (leadId) {
+                await query(`UPDATE leads
+                    SET opted_out = true, opted_out_at = COALESCE(opted_out_at, NOW()), updated_at = NOW()
+                    WHERE id = $1::uuid`, [leadId]);
+            }
+            return active ? [active] : [];
+        });
+
+        for (const identity of [phone, leadId].filter(Boolean) as string[]) {
+            await this.redis.set(`optout:${tenantId}:${identity}`, '1', 30 * 86400);
+        }
+
+        this.wsRelay.publish('inbox', {
+            room: tenantId,
+            event: 'optout.detected',
+            payload: { tenantId, phone: phone || null, leadId: leadId || null, channel, triggerMessage },
+        });
 
         this.logger.warn(`OptOut PENDING review: tenant=${tenantId} phone=${phone} from=${detectedFrom} msg="${triggerMessage}"`);
+        return rows[0] || null;
     }
 
     /**
@@ -73,26 +107,26 @@ export class ComplianceService {
         const schema = await this.getTenantSchema(tenantId);
         if (!schema) return;
 
-        const rows = await this.prisma.executeInTenantSchema<any[]>(schema,
-            `UPDATE opt_out_records SET status = 'confirmed', reviewed_by = $2::uuid, reviewed_at = NOW(), review_notes = $3
-             WHERE id = $1::uuid RETURNING lead_id, phone`,
-            [recordId, reviewedBy, notes || null],
-        );
+        const rows = await this.prisma.transactionInTenantSchema<any[]>(schema, async (query) => {
+            const updated = await query<any[]>(
+                `UPDATE opt_out_records SET status = 'confirmed', reviewed_by = $2::uuid, reviewed_at = NOW(), review_notes = $3
+                 WHERE id = $1::uuid RETURNING lead_id, phone`,
+                [recordId, reviewedBy, notes || null],
+            );
+            if (updated[0]?.lead_id) {
+                await query(`UPDATE leads SET opted_out = true,
+                    opted_out_at = COALESCE(opted_out_at, NOW()), updated_at = NOW()
+                    WHERE id = $1::uuid`, [updated[0].lead_id]);
+            }
+            return updated;
+        });
 
         const record = rows[0];
         if (!record) return;
 
-        // Now block the lead
-        if (record.lead_id) {
-            await this.prisma.executeInTenantSchema(schema, `
-                UPDATE leads SET opted_out = true, opted_out_at = NOW(), updated_at = NOW()
-                WHERE id = $1::uuid
-            `, [record.lead_id]);
+        for (const identity of [record.phone, record.lead_id].filter(Boolean)) {
+            await this.redis.set(`optout:${tenantId}:${identity}`, '1', 30 * 86400);
         }
-
-        // Cache block in Redis
-        const blockKey = `optout:${tenantId}:${record.phone || record.lead_id}`;
-        await this.redis.set(blockKey, '1', 30 * 86400);
 
         this.logger.log(`OptOut CONFIRMED: record=${recordId} by=${reviewedBy}`);
     }
@@ -104,17 +138,37 @@ export class ComplianceService {
         const schema = await this.getTenantSchema(tenantId);
         if (!schema) return;
 
-        await this.prisma.executeInTenantSchema(schema,
-            `UPDATE opt_out_records SET status = 'rejected', reviewed_by = $2::uuid, reviewed_at = NOW(), review_notes = $3
-             WHERE id = $1::uuid`,
-            [recordId, reviewedBy, notes || null],
-        );
+        const record = await this.prisma.transactionInTenantSchema<any>(schema, async (query) => {
+            const updated = await query<any[]>(
+                `UPDATE opt_out_records SET status = 'rejected', reviewed_by = $2::uuid, reviewed_at = NOW(), review_notes = $3
+                 WHERE id = $1::uuid RETURNING lead_id, phone`,
+                [recordId, reviewedBy, notes || null],
+            );
+            const row = updated[0];
+            if (row?.lead_id) {
+                const remaining = await query<any[]>(`
+                    SELECT 1 FROM opt_out_records
+                     WHERE id <> $1::uuid AND lead_id = $2::uuid
+                       AND status IN ('pending', 'confirmed')
+                     LIMIT 1`, [recordId, row.lead_id]);
+                if (!remaining.length) {
+                    await query(`UPDATE leads SET opted_out = false, opted_out_at = NULL, updated_at = NOW()
+                        WHERE id = $1::uuid`, [row.lead_id]);
+                }
+            }
+            return row || null;
+        });
+
+        for (const identity of [record?.phone, record?.lead_id].filter(Boolean)) {
+            await this.redis.del(`optout:${tenantId}:${identity}`);
+        }
 
         this.logger.log(`OptOut REJECTED (false positive): record=${recordId} by=${reviewedBy}`);
     }
 
     /**
-     * Check if a phone/lead is blocked (only confirmed opt-outs)
+     * Check if a phone/lead is suppressed. Pending requests remain suppressed
+     * until a reviewer explicitly rejects them as false positives.
      */
     async isBlocked(tenantId: string, phoneOrLeadId: string): Promise<boolean> {
         const blockKey = `optout:${tenantId}:${phoneOrLeadId}`;
@@ -125,7 +179,9 @@ export class ComplianceService {
         if (!schema) return false;
 
         const result = await this.prisma.executeInTenantSchema<any[]>(schema,
-            `SELECT 1 FROM opt_out_records WHERE (phone = $1 OR lead_id::text = $1) AND status = 'confirmed' LIMIT 1`,
+            `SELECT 1 FROM opt_out_records
+              WHERE (phone = $1 OR lead_id::text = $1)
+                AND status IN ('pending', 'confirmed') LIMIT 1`,
             [phoneOrLeadId],
         );
 

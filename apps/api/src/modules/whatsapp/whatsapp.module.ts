@@ -9,7 +9,6 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { HttpModule } from '@nestjs/axios';
 import { ConversationsModule } from '../conversations/conversations.module';
 import { InboundQueueModule } from '../inbound/inbound-queue.module';
-import { AnalyticsModule } from '../analytics/analytics.module';
 import { ChannelsModule } from '../channels/channels.module';
 import { TenantsModule } from '../tenants/tenants.module';
 import { WhatsappCryptoService } from './services/whatsapp-crypto.service';
@@ -22,7 +21,6 @@ import { WhatsappSpendModule } from '../billing/whatsapp-spend/whatsapp-spend.mo
     TenantsModule,
     forwardRef(() => ConversationsModule),
     InboundQueueModule,
-    AnalyticsModule,
     forwardRef(() => ChannelsModule),
     // `WhatsappMessagingService` posts to Meta itself, so the gate has to
     // reach it here too — the queue never sees those sends.

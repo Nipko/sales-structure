@@ -3281,7 +3281,7 @@
     "infoBanner": "Gestiona tus textos legales, revisa consentimientos y procesa solicitudes de baja o eliminación de datos. Esta sección te ayuda a cumplir con GDPR, LGPD y regulaciones locales de protección de datos.",
     "legalHelp": "Crea y gestiona tus textos legales por tipo, canal y agente. El agente IA puede mostrar estos textos cuando un contacto solicita información sobre privacidad o tratamiento de datos.",
     "consentsHelp": "Registro automático de consentimientos otorgados por tus contactos. Cada registro incluye canal, versión del texto legal aceptado y fecha.",
-    "optOutsHelp": "El sistema detecta automáticamente solicitudes de baja en mensajes entrantes. Revisa cada caso y confirma o marca como falso positivo.",
+    "optOutsHelp": "El sistema detiene los envíos en cuanto detecta una solicitud de baja. Revisa cada caso: confirmar mantiene el bloqueo y marcarlo como falso positivo reanuda los envíos.",
     "deletionsHelp": "Solicitudes de eliminación de datos personales (GDPR Art. 17). Al procesar, se anonimizan todos los datos del contacto de forma irreversible.",
     "auditLog": "Historial",
     "auditHelp": "Registro de todas las acciones de compliance realizadas: creación, edición y eliminación de textos legales, confirmaciones de opt-out y procesamiento de solicitudes de eliminación.",
@@ -8323,7 +8323,7 @@
       "tips": [
         "En la pestaña 'Textos legales', crea un texto de tipo 'Política de privacidad' o 'Consentimiento' y asígnalo a los canales y agentes correctos con los chips de selección; así el agente lo muestra automáticamente.",
         "Usa el filtro de tipos (privacidad, términos, divulgación IA, opt-in, etc.) para localizar rápidamente el texto que quieres editar o versionar; el número de versión se incrementa solo.",
-        "En la pestaña 'Opt-outs', revisa los pendientes (badge rojo en la pestaña) y confirma o rechaza cada uno; confirmar bloquea al contacto para futuros envíos, rechazar lo marca como falso positivo.",
+        "En la pestaña 'Opt-outs', revisa los pendientes (badge rojo en la pestaña): ya están bloqueados de forma preventiva; confirmar mantiene el bloqueo y rechazarlo como falso positivo permite reanudar los envíos.",
         "Cuando un cliente pide que borres sus datos, aparece en 'Solicitudes de eliminación' con estado pendiente — haz clic en 'Procesar' para ejecutar la eliminación y dejar constancia en el sistema.",
         "La pestaña 'Auditoría' registra cada acción de cumplimiento con su responsable y marca de tiempo; úsala ante cualquier consulta legal o revisión interna."
       ]

@@ -1573,6 +1573,8 @@ Si un cliente escribe "BAJA" o sinónimos → automáticamente:
 - Marca el contacto como `opted_out`
 - Detiene cualquier secuencia de nurturing
 - No se le pueden enviar más broadcasts
+- Detiene el turno actual antes de consultar al modelo o responder
+- Crea una revisión pendiente; si era un falso positivo, rechazarla vuelve a habilitar los envíos
 - Queda registrado en audit_log
 
 ---

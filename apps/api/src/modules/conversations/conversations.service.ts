@@ -1143,17 +1143,11 @@ export class ConversationsService {
             }
         }
 
-        // 4.5 Opt-out detection (all channels)
-        if (content?.text && this.complianceService.detectOptOut(content.text)) {
-            this.logger.warn(`Opt-out detected from ${contactId} on ${channelType}`);
-            await this.complianceService.processOptOut(tenantId, {
-                leadId: lead?.id,
-                phone: contactId,
-                channel: channelType,
-                triggerMessage: content.text,
-                detectedFrom: 'keyword',
-            }).catch(e => this.logger.warn(`Opt-out processing failed (non-fatal): ${e.message}`));
-        }
+        // 4.5 Opt-out detection (all channels). The request itself is enough to
+        // stop this turn; human review may reverse a false positive later.
+        if (await this.suppressDetectedOptOut({
+            tenantId, leadId: lead?.id, contactId, channelType, text: content?.text,
+        })) return;
 
         // 5. Check handoff triggers BEFORE generating AI response
         const handoffReason = this.handoffService.shouldHandoff(
@@ -1587,6 +1581,25 @@ export class ConversationsService {
                 await this.redis.releaseLockToken(lockKey, lockToken).catch(e => this.logger.warn(`Lock release failed for ${lockKey}: ${e.message}`));
             }
         }
+    }
+
+    private async suppressDetectedOptOut(input: {
+        tenantId: string;
+        leadId?: string;
+        contactId: string;
+        channelType: string;
+        text?: string;
+    }): Promise<boolean> {
+        if (!input.text || !this.complianceService.detectOptOut(input.text)) return false;
+        this.logger.warn(`Opt-out detected from ${input.contactId} on ${input.channelType}`);
+        await this.complianceService.processOptOut(input.tenantId, {
+            leadId: input.leadId,
+            phone: input.contactId,
+            channel: input.channelType,
+            triggerMessage: input.text,
+            detectedFrom: 'keyword',
+        }).catch(e => this.logger.error(`Opt-out suppression could not be persisted: ${e.message}`));
+        return true;
     }
 
     /**

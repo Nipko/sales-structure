@@ -853,14 +853,46 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."opt_out_records" (
     "review_notes" TEXT,
     "created_at"  TIMESTAMP DEFAULT NOW()
 );
-CREATE INDEX IF NOT EXISTS "idx_opt_out_records_phone" ON "{{SCHEMA_NAME}}"."opt_out_records" ("phone");
-CREATE INDEX IF NOT EXISTS "idx_opt_out_records_lead_id" ON "{{SCHEMA_NAME}}"."opt_out_records" ("lead_id");
-CREATE INDEX IF NOT EXISTS "idx_opt_out_records_status" ON "{{SCHEMA_NAME}}"."opt_out_records" ("status");
 ALTER TABLE "{{SCHEMA_NAME}}"."opt_out_records" ADD COLUMN IF NOT EXISTS "detected_from" VARCHAR(20) DEFAULT 'keyword';
 ALTER TABLE "{{SCHEMA_NAME}}"."opt_out_records" ADD COLUMN IF NOT EXISTS "status" VARCHAR(20) DEFAULT 'pending';
 ALTER TABLE "{{SCHEMA_NAME}}"."opt_out_records" ADD COLUMN IF NOT EXISTS "reviewed_by" UUID;
 ALTER TABLE "{{SCHEMA_NAME}}"."opt_out_records" ADD COLUMN IF NOT EXISTS "reviewed_at" TIMESTAMP;
 ALTER TABLE "{{SCHEMA_NAME}}"."opt_out_records" ADD COLUMN IF NOT EXISTS "review_notes" TEXT;
+CREATE INDEX IF NOT EXISTS "idx_opt_out_records_phone" ON "{{SCHEMA_NAME}}"."opt_out_records" ("phone");
+CREATE INDEX IF NOT EXISTS "idx_opt_out_records_lead_id" ON "{{SCHEMA_NAME}}"."opt_out_records" ("lead_id");
+CREATE INDEX IF NOT EXISTS "idx_opt_out_records_status" ON "{{SCHEMA_NAME}}"."opt_out_records" ("status");
+WITH ranked AS (
+    SELECT "id", ROW_NUMBER() OVER (
+        PARTITION BY "phone", "channel"
+        ORDER BY ("status" = 'confirmed') DESC, "created_at", "id"
+    ) AS position
+    FROM "{{SCHEMA_NAME}}"."opt_out_records"
+    WHERE "phone" IS NOT NULL AND "status" IN ('pending', 'confirmed')
+)
+UPDATE "{{SCHEMA_NAME}}"."opt_out_records" AS record
+SET "status" = 'superseded',
+    "review_notes" = COALESCE("review_notes", 'Duplicate request consolidated during migration')
+FROM ranked
+WHERE record."id" = ranked."id" AND ranked.position > 1;
+WITH ranked AS (
+    SELECT "id", ROW_NUMBER() OVER (
+        PARTITION BY "lead_id", "channel"
+        ORDER BY ("status" = 'confirmed') DESC, "created_at", "id"
+    ) AS position
+    FROM "{{SCHEMA_NAME}}"."opt_out_records"
+    WHERE "lead_id" IS NOT NULL AND "status" IN ('pending', 'confirmed')
+)
+UPDATE "{{SCHEMA_NAME}}"."opt_out_records" AS record
+SET "status" = 'superseded',
+    "review_notes" = COALESCE("review_notes", 'Duplicate request consolidated during migration')
+FROM ranked
+WHERE record."id" = ranked."id" AND ranked.position > 1;
+CREATE UNIQUE INDEX IF NOT EXISTS "uidx_opt_out_records_active_phone"
+    ON "{{SCHEMA_NAME}}"."opt_out_records" ("phone", "channel")
+    WHERE "phone" IS NOT NULL AND "status" IN ('pending', 'confirmed');
+CREATE UNIQUE INDEX IF NOT EXISTS "uidx_opt_out_records_active_lead"
+    ON "{{SCHEMA_NAME}}"."opt_out_records" ("lead_id", "channel")
+    WHERE "lead_id" IS NOT NULL AND "status" IN ('pending', 'confirmed');
 
 -- ---- Tags (controlled catalog per tenant) ----
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."tags" (

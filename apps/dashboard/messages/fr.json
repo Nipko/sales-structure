@@ -3281,7 +3281,7 @@
     "infoBanner": "Gérez vos textes juridiques, examinez les consentements et traitez les demandes de désinscription ou de suppression de données. Cette section vous aide à respecter le RGPD, la LGPD et les réglementations locales sur la protection des données.",
     "legalHelp": "Créez et gérez vos textes juridiques par type, canal et agent. L'agent IA peut afficher ces textes lorsqu'un contact demande des informations sur la confidentialité ou le traitement des données.",
     "consentsHelp": "Journal automatique des consentements accordés par vos contacts. Chaque enregistrement inclut le canal, la version du texte juridique accepté et la date.",
-    "optOutsHelp": "Le système détecte automatiquement les demandes de désinscription dans les messages entrants. Examinez chaque cas et confirmez ou marquez comme faux positif.",
+    "optOutsHelp": "Le système arrête les envois dès qu'il détecte une demande de désinscription. Examinez chaque cas : confirmer maintient le blocage et signaler un faux positif reprend les envois.",
     "deletionsHelp": "Demandes de suppression de données personnelles (RGPD Art. 17). Lors du traitement, toutes les données du contact sont anonymisées de manière irréversible.",
     "auditLog": "Historique",
     "auditHelp": "Registre de toutes les actions de conformité : création, modification et suppression de textes juridiques, confirmations de désinscription et traitement des demandes de suppression.",
@@ -8323,7 +8323,7 @@
       "tips": [
         "Dans l'onglet 'Textes légaux', créez un texte de type 'Politique de confidentialité' ou 'Consentement' et affectez-le aux bons canaux et agents via les puces de sélection — l'agent l'affichera automatiquement.",
         "Utilisez le filtre de types (confidentialité, conditions, divulgation IA, opt-in, etc.) pour localiser rapidement le texte à modifier ou versionner ; le numéro de version s'incrémente automatiquement.",
-        "Dans l'onglet 'Désinscriptions', examinez les éléments en attente (badge rouge sur l'onglet) et confirmez ou rejetez chacun ; confirmer bloque le contact pour les envois futurs, rejeter le marque comme faux positif.",
+        "Dans l'onglet 'Désinscriptions', examinez les éléments en attente (badge rouge sur l'onglet) : ils sont déjà bloqués par précaution ; confirmer maintient le blocage et rejeter un faux positif permet de reprendre les envois.",
         "Quand un client demande la suppression de ses données, la demande apparaît dans 'Demandes de suppression' avec le statut en attente — cliquez sur 'Traiter' pour exécuter la suppression et en garder une trace.",
         "L'onglet 'Audit' enregistre chaque action de conformité avec son responsable et son horodatage ; utilisez-le pour toute demande légale ou révision interne."
       ]

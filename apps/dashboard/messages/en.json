@@ -3281,7 +3281,7 @@
     "infoBanner": "Manage your legal texts, review consents and process opt-out or data deletion requests. This section helps you comply with GDPR, LGPD and local data protection regulations.",
     "legalHelp": "Create and manage your legal texts by type, channel and agent. The AI agent can display these texts when a contact requests privacy or data processing information.",
     "consentsHelp": "Automatic log of consents granted by your contacts. Each record includes channel, accepted legal text version and date.",
-    "optOutsHelp": "The system automatically detects opt-out requests in incoming messages. Review each case and confirm or mark as false positive.",
+    "optOutsHelp": "The system stops sends as soon as it detects an opt-out request. Review each case: confirming keeps the block and marking it as a false positive resumes sends.",
     "deletionsHelp": "Personal data deletion requests (GDPR Art. 17). When processed, all contact data is irreversibly anonymized.",
     "auditLog": "Audit Log",
     "auditHelp": "Record of all compliance actions: creation, editing and deletion of legal texts, opt-out confirmations and deletion request processing.",
@@ -8323,7 +8323,7 @@
       "tips": [
         "In the 'Legal texts' tab, create a text of type 'Privacy policy' or 'Consent' and assign it to the right channels and agents using the selection chips — the agent will display it automatically.",
         "Use the type filter (privacy, terms, AI disclosure, opt-in, etc.) to quickly find the text you want to edit or version; the version number increments automatically.",
-        "In the 'Opt-outs' tab, review pending items (red badge on the tab) and confirm or reject each one; confirming blocks the contact from future sends, rejecting marks it as a false positive.",
+        "In the 'Opt-outs' tab, review pending items (red badge on the tab): they are already blocked as a precaution; confirming keeps the block and rejecting a false positive allows sends to resume.",
         "When a customer requests data deletion, it appears in 'Deletion requests' with a pending status — click 'Process' to execute the deletion and leave a record in the system.",
         "The 'Audit' tab logs every compliance action with its responsible user and timestamp; use it for any legal inquiry or internal review."
       ]

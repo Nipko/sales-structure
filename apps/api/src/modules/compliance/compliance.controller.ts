@@ -148,7 +148,13 @@ export class ComplianceController {
     @Roles('tenant_admin')
     @ApiOperation({ summary: 'Register a manual opt-out' })
     async createOptOut(@Param('tenantId') tenantId: string, @Body() payload: any) {
-        return this.complianceService.createOptOut(await this.schemaFor(tenantId), { ...payload, tenant_id: tenantId });
+        return this.analyticsCompliance.processOptOut(tenantId, {
+            leadId: payload.lead_id,
+            phone: payload.phone,
+            channel: payload.channel || 'whatsapp',
+            triggerMessage: payload.reason || payload.trigger_msg || 'manual',
+            detectedFrom: 'manual',
+        });
     }
 
     // ─── Deletion Requests ────────────────────────────────────────────────────

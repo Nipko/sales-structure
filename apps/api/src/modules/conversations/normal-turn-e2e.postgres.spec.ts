@@ -503,7 +503,6 @@ const ready = !!databaseUrl && !!redisUrl;
         inboundProcessor = new InboundQueueProcessor(conversations);
         webhookService = new WhatsappWebhookService(
             config, prisma, inboundProducer,
-            { detectOptOut: jest.fn(() => false), processOptOut: jest.fn(async () => undefined) } as any,
             { getValidAccessToken: jest.fn(async () => ({ accessToken: 'synthetic-token' })) } as any,
             { markAsRead: jest.fn(async () => undefined) } as any,
             redis,

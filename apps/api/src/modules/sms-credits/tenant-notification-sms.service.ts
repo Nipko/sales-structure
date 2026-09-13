@@ -167,10 +167,8 @@ export class TenantNotificationSmsService {
      * CANAL del módulo de compliance. Alguien puede haber pedido la baja de SMS
      * sin haberla pedido de WhatsApp.
      *
-     * Falla ABIERTO a propósito: si la consulta se cae, se manda. Un SMS de más
-     * es un problema; un recordatorio de turno que no llega porque la base
-     * hipó es peor, y este servicio no es el lugar donde defender el opt-out en
-     * última instancia.
+     * Falla cerrado: una indisponibilidad de la consulta no convierte una baja
+     * desconocida en permiso para enviar.
      */
     private async isOptedOut(tenantId: string, phone: string): Promise<boolean> {
         try {
@@ -190,6 +188,7 @@ export class TenantNotificationSmsService {
                         OR EXISTS (
                             SELECT 1 FROM opt_out_records o
                              WHERE o.lead_id = l.id AND o.channel IN ('sms', 'all')
+                               AND o.status IN ('pending', 'confirmed')
                         )
                     )
                   LIMIT 1`,
@@ -197,8 +196,8 @@ export class TenantNotificationSmsService {
             );
             return (rows?.length || 0) > 0;
         } catch (e: any) {
-            this.logger.warn(`Chequeo de opt-out falló (se envía igual): ${e.message}`);
-            return false;
+            this.logger.error(`Chequeo de opt-out falló; envío suprimido: ${e.message}`);
+            return true;
         }
     }
 

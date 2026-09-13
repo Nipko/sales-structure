@@ -101,6 +101,24 @@ async function createLegacyPhotoSessions(tenantSchema) {
   `);
 }
 
+async function createLegacyOptOuts(tenantSchema) {
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE "${tenantSchema}"."opt_out_records" (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      lead_id UUID,
+      phone VARCHAR(50),
+      channel VARCHAR(50) NOT NULL DEFAULT 'whatsapp',
+      trigger_msg TEXT,
+      created_at TIMESTAMP DEFAULT NOW()
+    )
+  `);
+  await prisma.$executeRawUnsafe(`
+    INSERT INTO "${tenantSchema}"."opt_out_records" (phone, channel, trigger_msg)
+    VALUES ('+573001112233', 'whatsapp', 'STOP'),
+           ('+573001112233', 'whatsapp', 'no me escriban')
+  `);
+}
+
 async function assertPhotoHoldMigration(tenantSchema) {
   const [result] = await prisma.$queryRawUnsafe(
     `SELECT
@@ -153,6 +171,8 @@ async function main() {
   await prisma.$executeRawUnsafe(`CREATE SCHEMA "${retainedSchemaName}"`);
   await createLegacyPhotoSessions(schemaName);
   await createLegacyPhotoSessions(retainedSchemaName);
+  await createLegacyOptOuts(schemaName);
+  await createLegacyOptOuts(retainedSchemaName);
   await prisma.$executeRawUnsafe(`
     CREATE TABLE "${schemaName}"."agent_personas" (
       "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -198,6 +218,20 @@ async function main() {
   assert.equal(await schemaExists(missingActiveSchemaName), false, 'missing active schema must not be recreated');
   await assertPhotoHoldMigration(schemaName);
   await assertPhotoHoldMigration(retainedSchemaName);
+
+  for (const migratedSchema of [schemaName, retainedSchemaName]) {
+    const [optOutState] = await prisma.$queryRawUnsafe(`
+      SELECT
+        COUNT(*) FILTER (WHERE status = 'pending')::int AS active,
+        COUNT(*) FILTER (WHERE status = 'superseded')::int AS superseded,
+        EXISTS (
+          SELECT 1 FROM pg_indexes
+           WHERE schemaname = $1 AND indexname = 'uidx_opt_out_records_active_phone'
+        ) AS unique_index_exists
+      FROM "${migratedSchema}"."opt_out_records"`, migratedSchema);
+    assert.deepEqual(optOutState, { active: 1, superseded: 1, unique_index_exists: true },
+      'migration must preserve duplicate opt-out evidence while leaving one active request');
+  }
 
   const [column] = await prisma.$queryRawUnsafe(
     `SELECT EXISTS (

@@ -449,12 +449,18 @@ export default function SetupWizardPage() {
             const openCopilot = localStorage.getItem(SETUP_COPILOT_PENDING_KEY) === "1";
             localStorage.removeItem(SETUP_COPILOT_PENDING_KEY);
             if (openCopilot) localStorage.setItem("parallly:openCopilot", "1");
-            // El recorrido del panel se OFRECE, y sólo tiene sentido con un canal
-            // conectado: sin él, la primera pantalla que el tour explica está vacía.
-            else if (options.openTour && channelConnected) localStorage.setItem(PRODUCT_TOUR_PENDING_KEY, "true");
+            if (options.openTour && workspaceRef.current?.agentId) {
+                window.dispatchEvent(new CustomEvent<GuidedTourStartDetail>(GUIDED_TOUR_START_EVENT, {
+                    detail: { tourId: "publish_agent_revision", agentId: workspaceRef.current.agentId },
+                }));
+                return;
+            }
+            // The general dashboard tour remains available from Home. Finishing
+            // this wizard prioritizes the review that makes the saved draft live.
+            else if (options.openTour) localStorage.setItem(PRODUCT_TOUR_PENDING_KEY, "true");
         } catch { /* mejoras opcionales no bloquean el cierre */ }
         window.location.href = "/admin";
-    }, [channelConnected, draftKey, saveOrAdvance]);
+    }, [draftKey, saveOrAdvance]);
 
     const showConnectTour = () => {
         const detail: GuidedTourStartDetail = { tourId: "first_channel_whatsapp" };
@@ -734,7 +740,7 @@ export default function SetupWizardPage() {
                                 {saving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
                                 {t("doneStep.goToPanel")}
                             </button>
-                            {channelConnected && (
+                            {workspace && (
                                 <button
                                     type="button"
                                     onClick={() => void finish({ openTour: true })}

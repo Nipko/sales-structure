@@ -6350,12 +6350,12 @@
   },
   "setupWizard": {
     "title": "Configure seu agente IA",
-    "subtitle": "Em menos de 5 minutos seu agente estará pronto para atender clientes",
+  "subtitle": "Em poucos minutos você terá um rascunho pronto para testar, revisar e publicar",
     "testTitle": "Teste",
     "connectTitle": "Conecte",
     "discoverTitle": "Descubra",
     "connectBannerTitle": "Você ainda não conectou um canal",
-    "connectBannerDesc": "Seu agente está pronto, mas não recebe mensagens até você conectar o WhatsApp.",
+  "connectBannerDesc": "Ainda não há um canal recebendo mensagens. Conecte-o e depois publique a versão do agente que deve atendê-lo.",
     "connectBannerCta": "Conectar o WhatsApp",
     "resumeBannerTitle": "Retome a configuração",
     "resumeBannerDesc": "Você deixou o assistente pela metade. Tudo foi salvo: dá para continuar de onde parou.",
@@ -6373,7 +6373,7 @@
       "continue": "Continuar",
       "connectLater": "Conectar depois",
       "connected": "Conectado!",
-      "connectedDesc": "Seu agente já está ativo em {phone}.",
+    "connectedDesc": "O número {phone} foi conectado. Revise a atribuição e publique o agente antes de atender clientes.",
       "coexistenceHint": "Escaneie o QR code no seu app do WhatsApp Business para conectar seu número atual sem perder suas conversas.",
       "channel_instagram": "Instagram",
       "channel_messenger": "Messenger",
@@ -6655,7 +6655,7 @@
       "cap_offers_desc": "Compartilha ofertas ativas e códigos de desconto"
     },
     "completion": {
-      "title": "Seu agente {name} está pronto!",
+    "title": "O rascunho de {name} está preparado",
       "configured": "Configurado",
       "pending": "Falta conectar",
       "testAgent": "Testar meu agente",
@@ -6669,7 +6669,7 @@
       "stepOf": "Passo {current} de {total}"
     },
     "pageTitle": "Conheça o seu agente",
-    "pageSubtitle": "Três passos. Você pode sair quando quiser: nada se perde.",
+  "pageSubtitle": "Três passos para preparar e testar; você publicará a versão revisada no final.",
     "exit": "Sair",
     "exitHint": "Guardamos o que você fez e voltamos ao painel",
     "steps": {
@@ -6682,23 +6682,23 @@
       "subtitle": "Preparamos um agente com o que você nos contou. Confirme ou altere.",
       "prepared": "Preparamos {name} com o que você nos contou do seu negócio. Confirme o nome e a saudação, e teste aqui ao lado.",
       "saving": "Salvando…",
-      "saved": "Salvo",
-      "autosaveHint": "Salva sozinho quando você sai do campo.",
+    "saved": "Rascunho salvo",
+    "autosaveHint": "O rascunho é salvo quando você sai do campo; a versão operacional não muda.",
       "changeTemplate": "Trocar modelo"
     },
     "connectStep": {
       "title": "Conecte o WhatsApp",
-      "subtitle": "É o passo que faz o seu agente começar a responder de verdade. Leva uns 5 minutos.",
+    "subtitle": "Conecte o canal que receberá mensagens. O agente começa a responder depois que uma versão aprovada for atribuída e publicada.",
       "laterTitle": "Não é um bom momento?",
       "laterHint": "Você pode deixar para depois: lembramos no Início e você pode voltar aqui quando quiser.",
       "showMe": "Mostrar onde"
     },
     "doneStep": {
-      "title": "Pronto, o painel é seu",
-      "subtitle": "Estes são os três passos que mais mudam o que o seu agente consegue fazer.",
+    "title": "Configuração inicial salva",
+    "subtitle": "Revise e publique o rascunho para torná-lo a versão que atenderá seus clientes.",
       "subtitleDeferred": "Esperamos você no Início para conectar o WhatsApp. Enquanto isso, veja o que vem a seguir.",
       "goToPanel": "Ir ao painel",
-      "tourCta": "Ver o passeio pelo painel",
+    "tourCta": "Revisar e publicar meu agente",
       "essentials": {
         "channel": {
           "title": "Conectar o WhatsApp",

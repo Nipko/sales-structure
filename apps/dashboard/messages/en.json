@@ -6350,12 +6350,12 @@
   },
   "setupWizard": {
     "title": "Set up your AI agent",
-    "subtitle": "In less than 5 minutes your agent will be ready to serve customers",
+  "subtitle": "In a few minutes you will have a draft ready to test, review, and publish",
     "testTitle": "Try it",
     "connectTitle": "Connect it",
     "discoverTitle": "Discover",
     "connectBannerTitle": "You haven't connected a channel yet",
-    "connectBannerDesc": "Your agent is ready, but it cannot receive messages until you connect WhatsApp.",
+  "connectBannerDesc": "There is no channel receiving messages yet. Connect it, then publish the agent version that should handle it.",
     "connectBannerCta": "Connect WhatsApp",
     "resumeBannerTitle": "Pick up your setup",
     "resumeBannerDesc": "You left the assistant halfway. Everything was saved: you can carry on where you were.",
@@ -6373,7 +6373,7 @@
       "continue": "Continue",
       "connectLater": "Connect later",
       "connected": "Connected!",
-      "connectedDesc": "Your agent is now live on {phone}.",
+    "connectedDesc": "The number {phone} is connected. Review its assignment and publish the agent before serving customers.",
       "coexistenceHint": "Scan the QR code from your WhatsApp Business app to connect your current number without losing your chats.",
       "channel_instagram": "Instagram",
       "channel_messenger": "Messenger",
@@ -6655,7 +6655,7 @@
       "cap_offers_desc": "Share active deals and discount codes"
     },
     "completion": {
-      "title": "Your agent {name} is ready!",
+    "title": "The draft for {name} is prepared",
       "configured": "Configured",
       "pending": "Pending connection",
       "testAgent": "Test my agent",
@@ -6669,7 +6669,7 @@
       "stepOf": "Step {current} of {total}"
     },
     "pageTitle": "Meet your agent",
-    "pageSubtitle": "Three steps. You can leave whenever you want: nothing is lost.",
+  "pageSubtitle": "Three steps to prepare and test; you will publish the reviewed version at the end.",
     "exit": "Exit",
     "exitHint": "We save what you did and take you back to the panel",
     "steps": {
@@ -6682,23 +6682,23 @@
       "subtitle": "We prepared an agent from what you told us. Confirm it or change it.",
       "prepared": "We prepared {name} using what you told us about your business. Confirm the name and greeting, and try it right here.",
       "saving": "Saving…",
-      "saved": "Saved",
-      "autosaveHint": "It saves on its own when you leave the field.",
+    "saved": "Draft saved",
+    "autosaveHint": "The draft saves when you leave the field; the operational version does not change.",
       "changeTemplate": "Change template"
     },
     "connectStep": {
       "title": "Connect WhatsApp",
-      "subtitle": "This is the step that makes your agent actually start replying. It takes about 5 minutes.",
+    "subtitle": "Connect the channel that will receive messages. The agent starts replying after an approved version is assigned and published.",
       "laterTitle": "Not a good moment?",
       "laterHint": "You can leave it for later: we'll remind you on Home and you can come back here whenever you want.",
       "showMe": "Show me where"
     },
     "doneStep": {
-      "title": "You're set — the panel is yours",
-      "subtitle": "These are the three steps that change the most about what your agent can do.",
+    "title": "Initial setup saved",
+    "subtitle": "Review and publish the draft to make it the version that serves your customers.",
       "subtitleDeferred": "We'll be waiting on Home to connect WhatsApp. Meanwhile, here is what comes next.",
       "goToPanel": "Go to the panel",
-      "tourCta": "Take the panel tour",
+    "tourCta": "Review and publish my agent",
       "essentials": {
         "channel": {
           "title": "Connect WhatsApp",

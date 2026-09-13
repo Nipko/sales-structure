@@ -6350,12 +6350,12 @@
   },
   "setupWizard": {
     "title": "Configurez votre agent IA",
-    "subtitle": "En moins de 5 minutes votre agent sera prêt à servir vos clients",
+  "subtitle": "En quelques minutes, vous aurez un brouillon prêt à tester, examiner et publier",
     "testTitle": "Testez",
     "connectTitle": "Connectez",
     "discoverTitle": "Découvrez",
     "connectBannerTitle": "Vous n'avez pas encore connecté de canal",
-    "connectBannerDesc": "Votre agent est prêt, mais il ne peut recevoir aucun message tant que WhatsApp n'est pas connecté.",
+  "connectBannerDesc": "Aucun canal ne reçoit encore de messages. Connectez-le, puis publiez la version de l'agent qui doit le prendre en charge.",
     "connectBannerCta": "Connecter WhatsApp",
     "resumeBannerTitle": "Reprenez votre configuration",
     "resumeBannerDesc": "Vous avez laissé l'assistant à moitié. Tout a été enregistré : vous pouvez continuer là où vous en étiez.",
@@ -6373,7 +6373,7 @@
       "continue": "Continuer",
       "connectLater": "Connecter plus tard",
       "connected": "Connecté !",
-      "connectedDesc": "Votre agent est maintenant actif sur {phone}.",
+    "connectedDesc": "Le numéro {phone} est connecté. Vérifiez son assignation et publiez l'agent avant de servir les clients.",
       "coexistenceHint": "Scannez le QR code depuis votre app WhatsApp Business pour connecter votre numéro actuel sans perdre vos conversations.",
       "channel_instagram": "Instagram",
       "channel_messenger": "Messenger",
@@ -6655,7 +6655,7 @@
       "cap_offers_desc": "Partage les offres actives et codes promo"
     },
     "completion": {
-      "title": "Votre agent {name} est prêt !",
+    "title": "Le brouillon de {name} est préparé",
       "configured": "Configuré",
       "pending": "Connexion en attente",
       "testAgent": "Tester mon agent",
@@ -6669,7 +6669,7 @@
       "stepOf": "Étape {current} sur {total}"
     },
     "pageTitle": "Faites connaissance avec votre agent",
-    "pageSubtitle": "Trois étapes. Vous pouvez sortir quand vous voulez : rien n'est perdu.",
+  "pageSubtitle": "Trois étapes pour préparer et tester ; vous publierez la version examinée à la fin.",
     "exit": "Sortir",
     "exitHint": "Nous gardons ce que vous avez fait et vous ramenons au panneau",
     "steps": {
@@ -6682,23 +6682,23 @@
       "subtitle": "Nous avons préparé un agent à partir de ce que vous nous avez dit. Confirmez-le ou modifiez-le.",
       "prepared": "Nous avons préparé {name} à partir de ce que vous nous avez dit de votre activité. Confirmez le nom et le message d'accueil, puis testez-le juste à côté.",
       "saving": "Enregistrement…",
-      "saved": "Enregistré",
-      "autosaveHint": "Cela s'enregistre tout seul quand vous quittez le champ.",
+    "saved": "Brouillon enregistré",
+    "autosaveHint": "Le brouillon est enregistré lorsque vous quittez le champ ; la version opérationnelle ne change pas.",
       "changeTemplate": "Changer de modèle"
     },
     "connectStep": {
       "title": "Connectez WhatsApp",
-      "subtitle": "C'est l'étape qui fait que votre agent commence vraiment à répondre. Environ 5 minutes.",
+    "subtitle": "Connectez le canal qui recevra les messages. L'agent commence à répondre après assignation et publication d'une version approuvée.",
       "laterTitle": "Ce n'est pas le bon moment ?",
       "laterHint": "Vous pouvez le faire plus tard : nous vous le rappellerons sur l'Accueil et vous pourrez revenir ici quand vous voulez.",
       "showMe": "Montrez-moi où"
     },
     "doneStep": {
-      "title": "C'est bon, le panneau est à vous",
-      "subtitle": "Voici les trois étapes qui changent le plus ce que votre agent peut faire.",
+    "title": "Configuration initiale enregistrée",
+    "subtitle": "Examinez et publiez le brouillon pour en faire la version qui servira vos clients.",
       "subtitleDeferred": "Nous vous attendons sur l'Accueil pour connecter WhatsApp. En attendant, voici la suite.",
       "goToPanel": "Aller au panneau",
-      "tourCta": "Voir la visite du panneau",
+    "tourCta": "Examiner et publier mon agent",
       "essentials": {
         "channel": {
           "title": "Connecter WhatsApp",

@@ -1452,9 +1452,6 @@ export class AuthService {
         const rate = await this.redis.incrementRateLimit(`2fa:sms:rate:${userId}`, 3600);
         if (rate > 3) throw new BadRequestException('Too many SMS requests. Please wait a while or use email.');
 
-        const code = String(crypto.randomInt(100000, 1000000));
-        await this.redis.set(`2fa:sms:${userId}`, code, 300);
-
         // Éste es un usuario de la plataforma, no un cliente del tenant: el
         // número lo cargó él mismo en su perfil. Se usa el país del negocio al
         // que pertenece cuando está declarado y, si no, se manda tal como lo
@@ -1463,7 +1460,7 @@ export class AuthService {
             ? await this.regionalProfile.phoneRegionFor(user.tenantId)
             : null;
         const to = normalizePhoneE164(user.phone, userRegion) || user.phone;
-        const sent = await this.platformSms.sendTo(to, `Parallly: tu codigo de acceso es ${code}. Valido 5 minutos.`);
+        const sent = await this.issueAccessCodeSms(userId,user.phone,to,300);
         if (!sent) throw new BadRequestException('SMS delivery unavailable. Try email instead.');
 
         return { message: '2FA code sent via SMS' };
@@ -1505,10 +1502,13 @@ export class AuthService {
                 } });
             }
         } else if (method === 'sms') {
-            const storedCode = await this.redis.get(`2fa:sms:${userId}`);
-            if (storedCode && storedCode === code) {
+            const storedCode = user.twoFactorSmsExpires && user.twoFactorSmsExpires > new Date()
+                ? user.twoFactorSmsCode : null;
+            if (storedCode && this.timingSafeEqual(storedCode,code)) {
                 valid = true;
-                await this.redis.del(`2fa:sms:${userId}`);
+                await this.prisma.user.update({where:{id:userId},data:{
+                    twoFactorSmsCode:null,twoFactorSmsExpires:null,
+                }});
             }
         } else if (method === 'backup') {
             const normalized = code.toUpperCase().replace(/\s/g, '');
@@ -2779,6 +2779,36 @@ export class AuthService {
             return await this.platformNotifications.deliver(admitted) === 'notification:sent';
         } catch (error: any) {
             this.logger.warn(`[Auth] Durable ${purpose} email ${admitted} deferred: ${error?.message || error}`);
+            return false;
+        }
+    }
+
+    private async issueAccessCodeSms(
+        userId:string,sourcePhone:string,recipientPhone:string,ttlSeconds:number,
+    ):Promise<boolean>{
+        if(!this.platformNotifications)throw new Error('platform_notifications_unavailable');
+        const code=String(crypto.randomInt(100000,1000000));
+        const expires=new Date(Date.now()+ttlSeconds*1000);
+        const admitted=await this.prisma.$transaction(async(tx:any)=>{
+            const [user]=await tx.$queryRawUnsafe(`SELECT id,phone FROM users
+                WHERE id=$1::uuid AND is_active=true FOR UPDATE`,userId);
+            if(!user)throw new NotFoundException('User not found');
+            if(user.phone!==sourcePhone)throw new BadRequestException('Phone changed. Try again.');
+            const [updated]=await tx.$queryRawUnsafe(`UPDATE users SET two_factor_sms_code=$2,
+                two_factor_sms_expires=$3,two_factor_sms_revision=two_factor_sms_revision+1
+                WHERE id=$1::uuid RETURNING two_factor_sms_revision AS revision`,userId,code,expires);
+            const revision=Number(updated.revision),id=crypto.randomUUID();
+            const [notice]=await tx.$queryRawUnsafe(`INSERT INTO platform_notification_outbox(
+                id,event_key,kind,entity_id,recipient_user_id,recipient_phone,payload,state)
+                VALUES($1::uuid,$2,'auth.access_code_sms',$3::uuid,$3::uuid,$4,$5::jsonb,'pending')
+                ON CONFLICT(event_key) DO UPDATE SET updated_at=platform_notification_outbox.updated_at
+                RETURNING id`,id,`auth:${userId}:two_factor_sms:${revision}`,userId,recipientPhone,
+            JSON.stringify({revision,sourcePhone}));
+            return notice.id as string;
+        },{isolationLevel:'Serializable'});
+        try{return await this.platformNotifications.deliver(admitted)==='notification:sent';}
+        catch(error:any){
+            this.logger.warn(`[Auth] Durable two-factor SMS ${admitted} deferred: ${error?.message||error}`);
             return false;
         }
     }

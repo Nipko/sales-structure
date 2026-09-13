@@ -160,6 +160,9 @@ model User {
   twoFactorEmailCode String?    @map("two_factor_email_code")
   twoFactorEmailExpires DateTime? @map("two_factor_email_expires")
   twoFactorEmailRevision Int    @default(0) @map("two_factor_email_revision")
+  twoFactorSmsCode   String?    @map("two_factor_sms_code") @db.VarChar(6)
+  twoFactorSmsExpires DateTime? @map("two_factor_sms_expires") @db.Timestamptz(6)
+  twoFactorSmsRevision Int      @default(0) @map("two_factor_sms_revision")
   twoFactorEnabled    Boolean   @default(false) @map("two_factor_enabled")
   twoFactorSecret     String?   @map("two_factor_secret")
   twoFactorMethod     String?   @map("two_factor_method")
@@ -1070,6 +1073,7 @@ model PlatformNotificationOutbox {
   recipientUserId   String?  @map("recipient_user_id") @db.Uuid
   tenantId          String?  @map("tenant_id") @db.Uuid
   recipientEmail    String?  @map("recipient_email")
+  recipientPhone    String?  @map("recipient_phone")
   payload           Json     @default("{}")
   state             String   @default("pending") @db.VarChar(32)
   attempts          Int      @default(0)

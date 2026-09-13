@@ -31,32 +31,36 @@ export class PlatformSmsService {
 
     /** Send an SMS to an arbitrary number from the platform Twilio number. */
     async sendTo(to: string, body: string): Promise<boolean> {
-        if (!this.enabled || !to) return false;
-        // Interruptor maestro: SMS apagado en toda la plataforma por decision
-        // del dueño (costo por mensaje por encima del precio). Ver
-        // SmsKillSwitchService.
-        if (!(await this.killSwitch.isEnabled())) return false;
         try {
-            const url = `${TWILIO_API}/Accounts/${this.accountSid}/Messages.json`;
-            const params = new URLSearchParams({ To: to, From: this.from!, Body: body });
-            const res = await fetch(url, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                    Authorization: 'Basic ' + Buffer.from(`${this.accountSid}:${this.authToken}`).toString('base64'),
-                },
-                body: params.toString(),
-                signal: AbortSignal.timeout(10_000),
-            });
-            if (!res.ok) {
-                const errBody = await res.text().catch(() => '');
-                this.logger.warn(`Platform SMS to ${to} failed: ${res.status} ${errBody.slice(0, 200)}`);
-                return false;
-            }
-            return true;
+            return !!await this.sendToStrict(to,body);
         } catch (e: any) {
             this.logger.warn(`Platform SMS to ${to} error: ${e.message}`);
             return false;
         }
+    }
+
+    /** Durable callers prepare all local checks before recording that a POST may leave. */
+    async prepareBoundedSend(to:string,body:string):Promise<()=>Promise<string>>{
+        if(!this.enabled||!to||!body)throw new Error('platform_sms_unavailable');
+        if(!(await this.killSwitch.isEnabled()))throw new Error('platform_sms_kill_switch_disabled');
+        const url=`${TWILIO_API}/Accounts/${this.accountSid}/Messages.json`;
+        const params=new URLSearchParams({To:to,From:this.from!,Body:body});
+        const authorization='Basic '+Buffer.from(`${this.accountSid}:${this.authToken}`).toString('base64');
+        return async()=>{
+            const res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded',
+                Authorization:authorization},body:params.toString(),signal:AbortSignal.timeout(10_000)});
+            const text=await res.text();
+            let data:any={};
+            try{data=text?JSON.parse(text):{};}catch{throw new Error(`platform_sms_invalid_response_${res.status}`);}
+            if(!res.ok||data.error_code||data.status==='failed')
+                throw new Error(`platform_sms_refused_${res.status}_${String(data.message||'unknown').slice(0,80)}`);
+            if(!data.sid)throw new Error('platform_sms_missing_sid');
+            return String(data.sid);
+        };
+    }
+
+    async sendToStrict(to:string,body:string):Promise<string>{
+        const send=await this.prepareBoundedSend(to,body);
+        return send();
     }
 }

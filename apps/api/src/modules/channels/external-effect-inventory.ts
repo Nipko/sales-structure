@@ -1256,26 +1256,24 @@ producer({
     producer({
         id: 'auth.two_factor_sms',
         effect: 'The 2FA code by SMS through the platform Twilio account',
-        lane: 'inline',
+        lane: 'delivery_outbox',
         // The platform SMS kill switch defaults to false and fails closed.
         status: 'off',
         derivation: 'declared',
         source: 'modules/auth/platform-sms.service.ts',
         symbol: 'PlatformSmsService',
-        egress: 'a direct Twilio REST call',
+        egress: 'the user challenge revision plus platform_notification_outbox, followed by bounded Twilio',
         reach: {
             class: 'operator_notification', audience: 'tenant_operator', personalData: true,
             channels: ['sms'],
         },
         properties: {
-            authority: none('the Twilio call happens inline inside the login request; nothing records '
-                + 'that an attempt was permitted'),
-            idempotency: partial('the code itself is single-use; the SMS is not deduped'),
-            receipt: none('the Twilio sid is discarded'),
-            uncertainOutcome: none('no distinction between refusal and lost answer'),
-            erasure: none('nothing records the number or the body'),
-            recovery: none('nothing records the attempt; the user pressing "send again" is the whole '
-                + 'recovery mechanism'),
+            authority: durable('the code revision and exact phone delivery intent commit together before Twilio'),
+            idempotency: durable('one revision owns one event key and an attempted send cannot be repeated'),
+            receipt: durable('Twilio must return a SID and the outbox stores it on the exact code revision'),
+            uncertainOutcome: durable('claimed and sending are distinct; an unanswered POST freezes for reconciliation'),
+            erasure: durable('the outbox and challenge cascade with the platform user or tenant purge'),
+            recovery: durable('the global sweep retries only claims that never crossed Twilio'),
         },
     }),
 

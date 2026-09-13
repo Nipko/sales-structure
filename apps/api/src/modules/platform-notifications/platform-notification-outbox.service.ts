@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron } from '@nestjs/schedule';
 import { randomUUID } from 'crypto';
@@ -8,6 +8,7 @@ import { CronLockService } from '../redis/cron-lock.service';
 import { invitationEmail, passwordResetEmail, twoFactorEmail, verificationEmail,
     welcomeTeamMemberEmail } from '../email/email-layouts';
 import { emsg } from '../email/email-i18n';
+import { PlatformSmsService } from '../auth/platform-sms.service';
 
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const STATUS_LABELS: Readonly<Record<string, string>> = Object.freeze({
@@ -36,6 +37,7 @@ export class PlatformNotificationOutboxService {
         private readonly email: EmailService,
         private readonly config: ConfigService,
         private readonly cronLock: CronLockService,
+        @Optional() private readonly platformSms?: PlatformSmsService,
     ) {}
 
     @Cron('37 * * * * *')
@@ -69,7 +71,7 @@ export class PlatformNotificationOutboxService {
         if (!UUID.test(id)) throw new Error('platform_notification_invalid_id');
         const lease = randomUUID();
         const claim = await this.prisma.$transaction(async (tx: any) => {
-            const rows = await tx.$queryRawUnsafe(`SELECT o.*,u.email AS user_email,u.first_name
+            const rows = await tx.$queryRawUnsafe(`SELECT o.*,u.email AS user_email,u.phone AS user_phone,u.first_name
                 FROM platform_notification_outbox o
                 LEFT JOIN users u ON u.id=o.recipient_user_id
                 WHERE o.id=$1::uuid FOR UPDATE OF o`, id);
@@ -134,6 +136,19 @@ export class PlatformNotificationOutboxService {
                     && Number.isInteger(revision) && revision === currentRevision && code
                     && Number.isFinite(expires.getTime()) && expires.getTime() > Date.now();
                 if (available) canonical = { ...canonical, purpose, code };
+            } else if (row.kind === 'auth.access_code_sms') {
+                canonical = (await tx.$queryRawUnsafe(`SELECT u.phone,u.two_factor_sms_code,
+                        u.two_factor_sms_expires,u.two_factor_sms_revision
+                    FROM users u WHERE u.id=$1::uuid AND u.is_active=true AND u.phone=$2 LIMIT 1`,
+                row.entity_id,row.payload?.sourcePhone))[0];
+                const revision=Number(row.payload?.revision);
+                const expires=new Date(canonical?.two_factor_sms_expires);
+                available=canonical && Number.isInteger(revision)
+                    && revision===Number(canonical.two_factor_sms_revision)
+                    && /^\d{6}$/.test(String(canonical.two_factor_sms_code||''))
+                    && Number.isFinite(expires.getTime()) && expires.getTime()>Date.now()
+                    && /^\+[1-9]\d{7,14}$/.test(String(row.recipient_phone||''));
+                if(available)canonical={...canonical,code:canonical.two_factor_sms_code};
             } else if (row.kind === 'auth.security_notice_email') {
                 available = (await tx.$queryRawUnsafe(`SELECT 1 FROM users
                     WHERE id=$1::uuid AND is_active=true AND LOWER(email)=LOWER($2) LIMIT 1`,
@@ -163,7 +178,9 @@ export class PlatformNotificationOutboxService {
 
         let send: () => Promise<string>;
         try {
-            send = this.email.prepareBoundedSend(this.render(claim.row));
+            send = claim.row.kind==='auth.access_code_sms'
+                ? await this.requirePlatformSms().prepareBoundedSend(claim.row.recipient_phone,this.renderSms(claim.row))
+                : this.email.prepareBoundedSend(this.render(claim.row));
         } catch (error: any) {
             await this.failBeforeSend(id, lease, error?.message || 'notification_preflight_failed');
             throw error;
@@ -336,5 +353,17 @@ export class PlatformNotificationOutboxService {
             tenant_agent: { es: 'Agente', en: 'Agent', pt: 'Agente', fr: 'Agent' },
         };
         return labels[role]?.[language] || labels[role]?.es || role;
+    }
+
+    private renderSms(row:any):string{
+        const code=String(row.canonical?.code||'');
+        if(row.kind!=='auth.access_code_sms'||!/^\d{6}$/.test(code))
+            throw new Error('notification_payload_invalid');
+        return `Parallly: tu codigo de acceso es ${code}. Valido 5 minutos.`;
+    }
+
+    private requirePlatformSms():PlatformSmsService{
+        if(!this.platformSms)throw new Error('platform_sms_unavailable');
+        return this.platformSms;
     }
 }

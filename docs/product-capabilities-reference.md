@@ -44,6 +44,11 @@ indicados abajo.
 | Email | Adaptador e ingreso técnico interno para integraciones administradas; `/admin/channels/email` redirige al inventario certificado y **no es una configuración autoservicio** |
 | SMS | Producto retirado para altas, configuración, compras y campañas nuevas; solo conserva saldo/historial/callbacks/cierre y administración necesarios para obligaciones legacy |
 
+Conectar una superficie crea la conexión técnica, pero no publica un agente. La
+configuración del agente se guarda como borrador, se prueba, se prepara y aprueba como
+candidato, y sólo entonces se publica. Las asignaciones de conexión y la condición de
+agente predeterminado del borrador toman efecto en esa publicación.
+
 ## Costo de entrega de WhatsApp: quién le paga a Meta
 
 Desde el **1 de octubre de 2026**, Meta cobra cada **mensaje de servicio entregado** a la

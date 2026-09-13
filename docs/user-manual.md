@@ -171,6 +171,13 @@ El panel abre un segundo asistente de **3 pasos**, reabrible desde
    de Meta. **Conectar después** persiste el estado y se recuerda desde Inicio.
 3. **Listo** — los mismos esenciales de la tarjeta **Puesta en marcha**.
 
+El asistente prepara un **borrador**. Conectar WhatsApp no lo publica ni asigna por sí
+solo. Si existe el workspace del agente, el cierre ofrece **Revisar y publicar mi
+agente**: el recorrido abre el editor, la prueba del borrador, la preparación y
+revisión del candidato, y finalmente la confirmación de publicación. Los clientes
+reciben esa configuración y esas asignaciones únicamente después de publicar la
+versión aprobada.
+
 La tarjeta **Puesta en marcha** de Inicio es la única fuente de progreso: sus ítems se
 derivan de los checks críticos de preparación más el canal, y cada ítem ofrece
 **Continuar** y **Mostrarme dónde** (recorrido guiado de solo lectura, escritorio).
@@ -721,11 +728,15 @@ Si tienes canales conectados sin agente asignado, aparece banner rojo: "Tienes X
 
 ### Acciones
 
-- **Crear agente** — desde plantilla o blank
+- **Crear agente** — desde una plantilla recomendada, general, propia o en blanco; se
+  crea sin conexiones operativas y abre el editor para revisión
 - **Duplicar** — copia exacta para experimentar
 - **Editar** — abre el editor
-- **Eliminar** — con confirmación
-- **Guardar como plantilla** — para reusar
+- **Retirar de uso** — con confirmación; desactiva el agente, libera sus conexiones y
+  conserva el registro
+- **Guardar como plantilla** — copia la versión operativa para reusar
+- **Establecer como predeterminado** — se propone en el borrador y sólo toma efecto al
+  publicar la revisión
 
 ### Capacidad del plan
 
@@ -744,42 +755,54 @@ Hub con cards organizadas:
 - Avatar
 
 ### Personalidad
-- Tono (formal, amigable, técnico, empático)
 - Estilo de comunicación
+- Uso de emojis y humor
+- Extensión de respuesta: concisa, estándar o detallada
 - Saludo inicial
 
-### Modelo IA
-- Proveedor (OpenAI, Anthropic, Google, xAI, DeepSeek)
-- Modelo específico
-- Tier (basic, pro, premium)
-- Temperatura
-- **Monitoreo de salud**: indicador en tiempo real del estado de cada proveedor LLM. Si un proveedor falla repetidamente, un **circuit breaker** lo desactiva temporalmente y el sistema hace fallback automático al siguiente proveedor configurado en la cadena
-- **Ruteo por tarea**: las tareas de conversación (`conversation`) y las de uso de herramientas (`tool_calling`) pueden usar cadenas de modelos diferentes, optimizando costo y rendimiento según el tipo de operación
-
 ### Comportamiento
-- Reglas custom (free text)
+- Instrucción principal y reglas concretas
 - Temas prohibidos
-- Modo respuesta (siempre IA, siempre humano, híbrido)
-- Activación / horario
+- Datos que debe pedir en cada contexto
+- Mensaje cuando no puede responder
+- Motivos para pasar a una persona
+- Ventas, soporte o ambos; intensidad de recomendaciones y techo de descuento cuando
+  corresponda
+- Comportamiento fuera del horario comercial compartido por la cuenta
 
 ### Asignación de conexiones
 
-Selector de **conexiones** que este agente atiende. La regla es **un agente por conexión** (`agent_personas.channel_bindings`): cada agente se enlaza a cuentas concretas (por ejemplo, "WhatsApp — Ventas +57 300…" y "WhatsApp — Soporte +57 301…"), no a un canal genérico. Así podés tener un agente distinto por cada número o cuenta conectada. Cuántas conexiones del mismo tipo podés tener lo define tu plan (ver 9.8).
+Selector de **conexiones** que este agente debe atender. La regla es **un agente por
+conexión** (`agent_personas.channel_bindings`): cada agente se enlaza a cuentas
+concretas, no a un canal genérico. La selección se guarda en el borrador; la
+reasignación ocurre al publicar la revisión aprobada. Cuántas conexiones del mismo
+tipo podés tener lo define tu plan (ver 9.8).
 
 ### Herramientas
 
-Toggles para tools que el agente puede usar:
+Interruptores para las capacidades que el agente puede usar:
 - Buscar en la base de conocimiento (RAG)
 - Verificar disponibilidad de citas
 - Crear citas
 - Listar productos / servicios / propiedades
 - Crear órdenes / reservas
 - Solicitar handoff a humano
-- Tools verticales según industria
+- Herramientas especializadas según el **tipo de negocio** efectivo
 
-### Sticky save bar
+El editor sólo ofrece las familias compatibles con el perfil del tenant y explica si
+falta un dato, plan o proveedor. Guardar un interruptor prepara el permiso en el
+borrador; no cambia por sí solo la versión operativa.
 
-Barra inferior siempre visible con "Guardar cambios" — no perdés ediciones al hacer scroll.
+### Guardado y publicación
+
+La barra inferior **Guardar borrador** conserva la revisión sin cambiar el agente que
+atiende clientes. Después debes probar ese borrador, abrir **Revisar una versión**,
+preparar y aprobar el candidato, y usar **Publicar y ver historial**. La publicación
+vuelve operativos la configuración, las conexiones y la condición de predeterminado.
+
+Parallly Assist puede revisar los controles guiados y proponer cambios seguros. Al
+aceptarlos también guarda un borrador: nunca publica, activa ni cambia conexiones por
+su cuenta y no recibe credenciales o secretos.
 
 ## 8.3 Plantillas verticales
 
@@ -807,7 +830,8 @@ Al crear un agente nuevo, "Recomendados para tu negocio" aparece destacado segú
 
 ## 8.4 Test del agente
 
-Modo simulador: chateá con tu agente sin afectar contactos reales. Útil antes de activarlo en producción.
+Modo simulador: chateá con la versión operativa o con el borrador guardado sin afectar
+contactos reales. Úsalo antes de preparar, aprobar y publicar una revisión.
 
 Una conversación manual sirve para depurar, pero no demuestra calidad general. El
 Centro de calidad usa por separado pruebas repetibles y evidencia real atribuida a la
@@ -2564,8 +2588,11 @@ Ese contexto contiene solo códigos y agregados necesarios —estado, versión, 
 bloqueadores, vigencia de pruebas, tamaño de muestra, gravedad, pilar, dimensión y
 conteo—. No entrega al modelo transcripciones, texto de clientes, IDs de conversación,
 prompts, consultas de recuperación, texto libre del evaluador ni secretos. Parallly
-Assist no edita prompts, políticas o conocimiento, no confirma cambios que no hizo y
-no envía comunicaciones externas.
+Assist puede proponer cambios en los controles guiados autorizados del agente y, tras
+la confirmación del Admin, guardarlos como borrador. No cambia el prompt personalizado,
+el contenido de políticas o documentos, credenciales, conexiones, activación ni
+publicación; tampoco
+confirma cambios que no hizo ni envía comunicaciones externas.
 
 > La fuente runtime de Parallly Assist es
 > `apps/api/kb/assistant/{es,en,pt,fr}`. Este manual no se carga automáticamente en

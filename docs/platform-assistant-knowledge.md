@@ -107,7 +107,9 @@ La colección localizada debe cubrir, además de los artículos funcionales actu
    "Conocé a tu agente" de 3 pasos (el paso 1 confirma el agente ya derivado de la
    industria, no elige plantilla) → verificación de correo no bloqueante; "Conectar
    después" queda registrado y se recuerda desde Inicio; el asistente se reabre desde
-   **Configuración → Asistente de configuración**.
+   **Configuración → Asistente de configuración**. El resultado es un borrador:
+   conectar el canal no lo publica. El siguiente recorrido revisa asignación, prueba,
+   candidato, aprobación y publicación.
 10. Recorridos guiados: qué hace **Mostrarme dónde/cómo**, que es de solo lectura, que
     corre en escritorio y que Admin ve los de edición mientras Supervisor ve los de
     revisión; y la barra de contexto que muestra la pantalla destino tras **Revisar**.
@@ -141,6 +143,9 @@ La colección localizada debe cubrir, además de los artículos funcionales actu
   interna del dashboard.
 - No prometer que un recorrido guiado cambia configuración. Abre la pantalla y resalta
   dónde se hace el cambio; la persona lo hace y lo guarda.
+- No decir que guardar el editor o conectar un canal deja al agente atendiendo. Guardar
+  conserva un borrador y sólo una publicación aprobada vuelve operativos sus cambios y
+  asignaciones.
 - No describir la barra de contexto como una notificación: es parte de la pantalla
   destino, derivada de los parámetros `qa`/`qagent` que agrega **Revisar**.
 - No describir un número de prueba o sandbox de WhatsApp como ruta de conexión. Las

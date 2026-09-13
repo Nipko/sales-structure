@@ -316,7 +316,8 @@ Solo un **Tenant Admin** puede cambiar roles:
 # 4. Dashboard
 
 **Ruta:** Menú → Dashboard
-**Roles:** Admin/Supervisor. Agent inicia en Conversaciones; Viewer, en su Perfil.
+**Roles:** Admin/Supervisor. Agent inicia en Conversaciones. Una cuenta heredada
+`tenant_viewer` sólo puede abrir sus ajustes personales.
 
 El dashboard es tu vista general al iniciar sesión y se adapta a tu industria.
 
@@ -1583,7 +1584,7 @@ Si un cliente escribe "BAJA" o sinónimos → automáticamente:
 
 **Ruta:** Configuración
 
-## 18.1 Cuenta (Admin, Supervisor, Agent, Viewer y Super Admin)
+## 18.1 Cuenta (Admin, Supervisor, Agent y Super Admin)
 - Perfil personal
 - Seguridad y cambio de contraseña
 - Preferencias de notificaciones por usuario: siete categorías para campana y push,
@@ -1615,7 +1616,7 @@ consola de plataforma. Un Tenant Admin configura el comportamiento de sus agente
 desde **IA y crecimiento → Agente IA**, pero no administra credenciales ni cadenas
 globales de proveedores.
 
-## 18.5 Seguridad (Admin, Supervisor, Agent, Viewer y Super Admin)
+## 18.5 Seguridad (Admin, Supervisor, Agent y Super Admin)
 
 ### Autenticación de dos factores (2FA)
 
@@ -1651,8 +1652,9 @@ Cuando inicias sesión con 2FA, podés marcar **"Confiar en este dispositivo"**.
 
 - **Admin:** canales e integraciones, políticas, compliance, webhooks, MCP y API keys.
 - **Admin/Supervisor:** alertas y reportes.
-- **Admin/Supervisor/Agent/Viewer y Super Admin:** solo los ajustes personales
-  descritos en 18.1; este acceso no concede permisos de configuración del tenant.
+- **Admin/Supervisor/Agent y Super Admin:** solo los ajustes personales descritos
+  en 18.1; este acceso no concede permisos de configuración del tenant. Una cuenta
+  heredada `tenant_viewer` conserva exclusivamente este mismo acceso personal.
 
 ## 18.7 Claves de API pública
 

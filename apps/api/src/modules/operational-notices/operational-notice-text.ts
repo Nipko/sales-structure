@@ -9,6 +9,7 @@ const TEXT: Record<string, Record<OperationalNoticeKind, string>> = {
         'home_service.emergency': 'EMERGENCIA — nueva solicitud de servicio',
         'tour.booking_confirmed': 'Tu reserva de tour quedó confirmada.',
         'property.booking_confirmed': 'Tu reserva de alojamiento quedó confirmada.',
+        'order.confirmed': 'Tu pedido quedó confirmado.',
     },
     en: {
         'appointment.payment_confirmed': 'We received your payment and your appointment is confirmed.',
@@ -19,6 +20,7 @@ const TEXT: Record<string, Record<OperationalNoticeKind, string>> = {
         'home_service.emergency': 'EMERGENCY — new service request',
         'tour.booking_confirmed': 'Your tour booking is confirmed.',
         'property.booking_confirmed': 'Your accommodation booking is confirmed.',
+        'order.confirmed': 'Your order is confirmed.',
     },
     pt: {
         'appointment.payment_confirmed': 'Recebemos seu pagamento e seu agendamento está confirmado.',
@@ -29,6 +31,7 @@ const TEXT: Record<string, Record<OperationalNoticeKind, string>> = {
         'home_service.emergency': 'EMERGÊNCIA — nova solicitação de serviço',
         'tour.booking_confirmed': 'Sua reserva de passeio está confirmada.',
         'property.booking_confirmed': 'Sua reserva de hospedagem está confirmada.',
+        'order.confirmed': 'Seu pedido está confirmado.',
     },
     fr: {
         'appointment.payment_confirmed': 'Nous avons reçu votre paiement et votre rendez-vous est confirmé.',
@@ -39,6 +42,7 @@ const TEXT: Record<string, Record<OperationalNoticeKind, string>> = {
         'home_service.emergency': 'URGENCE — nouvelle demande de service',
         'tour.booking_confirmed': 'Votre réservation de circuit est confirmée.',
         'property.booking_confirmed': 'Votre réservation d’hébergement est confirmée.',
+        'order.confirmed': 'Votre commande est confirmée.',
     },
 };
 export function operationalNoticeText(kind: OperationalNoticeKind, lang: string | undefined, facts: {

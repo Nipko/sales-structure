@@ -19,6 +19,7 @@ import { ensureOperationalNoticeOutbox } from './operational-notice-outbox';
 import { operationalNoticeText } from './operational-notice-text';
 import { EmailTemplatesService } from '../email-templates/email-templates.service';
 import { emailConfirmationsForOperation } from '../../common/utils/served-confirmation-policy.util';
+import { escapeReceiptHtml, receiptMoney } from '../email-templates/receipt-format.util';
 
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 
@@ -228,6 +229,9 @@ export class OperationalNoticeService {
                 FROM property_bookings b JOIN properties p ON p.id=b.property_id
                 WHERE b.id=$1::uuid FOR SHARE OF b,p`,[notice.entity_id]))[0];
             if (!facts || facts.status!=='confirmed') throw new NoticeSuppressed('notice_domain_state_changed');
+        } else if (notice.kind === 'order.confirmed') {
+            facts=(await query<any[]>('SELECT * FROM orders WHERE id=$1::uuid FOR SHARE',[notice.entity_id]))[0];
+            if (!facts || !['confirmed','paid'].includes(facts.status)) throw new NoticeSuppressed('notice_domain_state_changed');
         } else {
             throw new NoticeSuppressed('notice_kind_unsupported');
         }
@@ -248,15 +252,27 @@ export class OperationalNoticeService {
                     address:[facts.address,facts.city].filter(Boolean).join(', '),problem:facts.issue_description,
                 })};
         }
-        if (notice.kind==='tour.booking_confirmed' || notice.kind==='property.booking_confirmed') {
-            const family=notice.kind.startsWith('tour.')?'tours':'properties';
+        if (notice.kind==='tour.booking_confirmed' || notice.kind==='property.booking_confirmed' || notice.kind==='order.confirmed') {
+            const family=notice.kind.startsWith('tour.')?'tours':notice.kind.startsWith('property.')?'properties':'orders';
             if (!await emailConfirmationsForOperation(query,[family],facts.conversation_id)) {
                 throw new NoticeSuppressed('notice_confirmation_switched_off');
             }
-            const email=String(facts.guest_email || '').trim();
+            let email=String(facts.guest_email || '').trim();
+            let customerName=String(facts.guest_name || '').trim();
+            if (notice.kind==='order.confirmed' && facts.contact_id) {
+                const [contact]=await query<any[]>('SELECT name,email FROM contacts WHERE id=$1::uuid FOR SHARE',[facts.contact_id]);
+                email=String(contact?.email || '').trim(); customerName=String(contact?.name || '').trim();
+            }
             if (!email) throw new NoticeSuppressed('notice_channel_unavailable');
             const language=facts.language || tenant?.language || 'es';
-            const emailTemplate=notice.kind.startsWith('tour.')?{
+            let emailTemplate:any;
+            if (notice.kind==='order.confirmed') {
+                const items=await query<any[]>('SELECT product_name,quantity,total_price FROM order_items WHERE order_id=$1::uuid ORDER BY product_id,id',[notice.entity_id]);
+                const currency=String(facts.currency || 'COP');
+                emailTemplate={slug:'order_confirmation',language,variables:{customer_name:customerName||'Cliente',order_id:String(facts.id),
+                    order_items_html:items.map(item=>`<p style="margin:4px 0;font-size:14px;">${escapeReceiptHtml(item.product_name)} &times; ${escapeReceiptHtml(item.quantity)} — ${escapeReceiptHtml(receiptMoney(Number(item.total_price),currency))}</p>`).join(''),
+                    order_total:receiptMoney(Number(facts.total_amount),currency),payment_method:String(facts.metadata?.payment_method || 'cash')}};
+            } else emailTemplate=notice.kind.startsWith('tour.')?{
                 slug:'tour_booking_confirmation',language,variables:{guest_name:facts.guest_name||'Huésped',
                     package_name:facts.name||'',departure_date:facts.departure_date_text||'',departure_time:facts.departure_time||'',
                     party_size:String(facts.party_size||0),adults:String(facts.adults||0),children:String(facts.children||0),

@@ -847,21 +847,13 @@ producer({
     producer({
         id: 'orders.catalog_confirmation',
         effect: 'The email to a customer when a catalog order they placed is confirmed by the business',
-        lane: 'inline',
+        lane: 'operational_notice',
         status: 'live',
-        // Declared, and the distinction is mechanical rather than editorial:
-        // a `census` entry is one the spec's own sweep pins, and this file no
-        // longer contains an egress primitive to pin — it hands the five-step
-        // decision and the send to `OperationConfirmationService`, the shared
-        // road. The two booking confirmations above still call the transport
-        // themselves, so they remain `census`. Claiming `census` here was
-        // refused by the check that asks whether the sweep earned it, which
-        // is the check doing its job: the row is real, its provenance was not.
-        derivation: 'declared',
-        source: 'modules/orders/catalog-order-confirmation.ts',
-        symbol: 'CatalogOrderConfirmations',
-        egress: 'EmailTemplatesService.renderAndSend renders `order_confirmation` and hands it to '
-            + 'SMTP on the caller\'s stack, after the booking transaction has committed',
+        derivation: 'census',
+        source: 'modules/orders/catalog-order-commands.ts',
+        symbol: 'enqueueOperationalNotice',
+        egress: 'the order transaction commits an `order.confirmed` operational notice; delivery '
+            + 're-reads the accepted order, serving agent switch, contact and tenant template',
         reach: {
             class: 'customer_message', audience: 'contact', personalData: true,
             // Email only. Nothing here reaches a messaging channel, so Meta
@@ -869,30 +861,7 @@ producer({
             // a customer message carrying personal data.
             channels: ['email'],
         },
-        properties: {
-            authority: partial('the owner\'s `orders.emailConfirmations` switch, resolved from '
-                + 'the THREAD the booking arrived on rather than from whichever active agent an '
-                + 'unordered `LIMIT 1` returned, and suppressed entirely inside an isolated '
-                + 'evaluation (`sandboxNamespace`) so a synthetic run cannot email a real guest. '
-                + 'It is `partial` and not `durable` because no economic admission exists on this '
-                + 'road: nothing bills us per delivered email, so there is no reservation to take '
-                + 'and no ceiling to refuse against'),
-            idempotency: partial('keyed to the `pending → confirmed` TRANSITION and not to the order: an order already confirmed produces nothing on a replay, and a later move to `paid` produces nothing either, so one order yields at most one receipt'),
-            receipt: none('`renderAndSend` answers with a boolean. No provider id is kept, so '
-                + 'nothing can later say which message this was or whether it arrived'),
-            uncertainOutcome: none('one boolean cannot separate "the provider refused" from "no '
-                + 'answer arrived". A timeout is recorded the same way as a rejection, which is '
-                + 'as failed'),
-            erasure: none('the body carries the guest\'s name, dates and price, and no erasure '
-                + 'reaches it: once SMTP has it, it is in a mailbox this platform cannot touch, '
-                + 'and this producer keeps no copy to clear either. NOT `not_applicable` — that '
-                + 'level is a statement about the CONTENT, and personal data left the building. '
-                + 'The booking row it derives from is erased by its own vertical\'s fan-out, '
-                + 'which is a different row from the message'),
-            recovery: none('fire-and-forget inside a `try` that warns. A crash between the '
-                + 'commit and the send loses the confirmation with no row anywhere saying it was '
-                + 'owed'),
-        },
+        properties: OPERATIONAL_NOTICE_PROPERTIES,
     }),
 
     // One file, two lanes, and splitting the entry is the honest way to say so:

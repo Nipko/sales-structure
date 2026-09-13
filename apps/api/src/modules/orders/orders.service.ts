@@ -8,8 +8,6 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { CatalogOrderCommands } from './catalog-order-commands';
-import { CatalogOrderConfirmations } from './catalog-order-confirmation';
-import { OperationConfirmationService } from '../email-templates/operation-confirmation.service';
 import { catalogOrderDocument } from './catalog-order-document';
 import { CatalogCreateInput } from './catalog-order-contract';
 import { catalogHash } from './catalog-order-contract';
@@ -80,21 +78,6 @@ export class OrdersService {
     constructor(
         private prisma: PrismaService,
         private redis: RedisService,
-        /**
-         * The order confirmation the owner's `tools.orders.emailConfirmations`
-         * switch governs. It is attached HERE, in the one place that builds the
-         * command port, so the agent path and the dashboard path cannot end up
-         * with different answers about whether a customer gets a receipt.
-         *
-         * Optional in the SIGNATURE only, so the fixtures that construct this
-         * service by hand — several of them outside this module — keep
-         * compiling and keep getting the writer with no mail attached, which is
-         * the shape they already had. Nest is not affected: `?` does not touch
-         * `design:paramtypes`, so without `@Optional()` a missing provider
-         * still fails at bootstrap rather than silently stopping every
-         * customer's receipt.
-         */
-        private readonly operationConfirmations?: OperationConfirmationService,
     ) { }
 
     /**
@@ -248,12 +231,7 @@ export class OrdersService {
 
     /** Server-only scoped command port used by production and the owned evaluation namespace. */
     catalogCommands(): CatalogOrderCommands {
-        return new CatalogOrderCommands(
-            this.prisma,
-            this.operationConfirmations
-                ? new CatalogOrderConfirmations(this.operationConfirmations)
-                : undefined,
-        );
+        return new CatalogOrderCommands(this.prisma);
     }
 
     async recordStockEvidence(tenantId:string,orderId:string,input:any,actor:{id:string;role:string}):Promise<any>{

@@ -6,12 +6,13 @@ import { ensureSyntheticGlobalTables } from '../../common/__fixtures__/synthetic
 
 const databaseUrl=process.env.PARALLLY_ISOLATION_TEST_URL;
 
-(databaseUrl?describe:describe.skip)('home-service emergency operational-notice migration',()=>{
+(databaseUrl?describe:describe.skip)('operational-notice kind migrations',()=>{
     jest.setTimeout(120_000);
     const tenantId=randomUUID(),schema=`tenant_onmigration_${randomUUID().replace(/-/g,'')}`;
     let client:PrismaClient;
     const migration=readFileSync(join(__dirname,'../../../prisma/migrations/20260913110000_add_home_service_emergency_notices/migration.sql'),'utf8');
     const bookingMigration=readFileSync(join(__dirname,'../../../prisma/migrations/20260913120000_add_booking_confirmation_notices/migration.sql'),'utf8');
+    const orderMigration=readFileSync(join(__dirname,'../../../prisma/migrations/20260913130000_add_catalog_order_confirmation_notices/migration.sql'),'utf8');
     beforeAll(async()=>{
         const parsed=new URL(databaseUrl!);
         if(!['localhost','127.0.0.1','[::1]'].includes(parsed.hostname)||!parsed.pathname.endsWith('_eval_isolation'))throw new Error('disposable_loopback_database_required');
@@ -40,6 +41,8 @@ const databaseUrl=process.env.PARALLLY_ISOLATION_TEST_URL;
         await client.$executeRawUnsafe(migration);
         await client.$executeRawUnsafe(bookingMigration);
         await client.$executeRawUnsafe(bookingMigration);
+        await client.$executeRawUnsafe(orderMigration);
+        await client.$executeRawUnsafe(orderMigration);
         const recipient=randomUUID();
         await client.$executeRawUnsafe(`INSERT INTO "${schema}".operational_notice_outbox(
             event_key,kind,entity_id,recipient_user_id) VALUES($1,'home_service.emergency',$2::uuid,$3::uuid)`,
@@ -49,8 +52,9 @@ const databaseUrl=process.env.PARALLLY_ISOLATION_TEST_URL;
         expect(rows).toEqual([{kind:'home_service.emergency',recipient_user_id:recipient}]);
         await client.$executeRawUnsafe(`INSERT INTO "${schema}".operational_notice_outbox(
             event_key,kind,entity_id) VALUES($1,'tour.booking_confirmed',$2::uuid),
-            ($3,'property.booking_confirmed',$4::uuid)`,
-            `tour:${recipient}`,randomUUID(),`property:${recipient}`,randomUUID());
+            ($3,'property.booking_confirmed',$4::uuid),
+            ($5,'order.confirmed',$6::uuid)`,
+            `tour:${recipient}`,randomUUID(),`property:${recipient}`,randomUUID(),`order:${recipient}`,randomUUID());
         const columns=await client.$queryRawUnsafe<any[]>(`SELECT column_name FROM information_schema.columns
             WHERE table_schema=$1 AND table_name='property_bookings' AND column_name='language'`,schema);
         expect(columns).toHaveLength(1);

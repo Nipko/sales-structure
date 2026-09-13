@@ -5,29 +5,18 @@ import { TenantQuery, requireTenantContact } from '../../common/utils/tenant-con
 import { resolveNativeEvidenceOpportunity } from '../../common/utils/native-evidence-opportunity.util';
 import { CatalogCancelTerms, CatalogCommandOptions, CatalogCreateInput, CatalogOrderTerms, CatalogTermsChangedError,
     CATALOG_UUID, catalogCents, catalogCurrency, catalogDecimal, catalogHash, catalogItems, catalogTerms, catalogText } from './catalog-order-contract';
-import type { CatalogOrderConfirmations, CatalogOrderNotice } from './catalog-order-confirmation';
+import { ensureOperationalNoticeOutbox, enqueueOperationalNotice } from '../operational-notices/operational-notice-outbox';
 
 /**
  * Tenant schema is a server-owned port, never a tool argument.
  *
  * ── THE ONE EXTERNAL EFFECT, AND WHY IT IS OPTIONAL ─────────────────────────
  *
- * This class used to have none, and the header said so. It has exactly one now:
- * the customer's order confirmation email, which `tools.orders.emailConfirmations`
- * promised and nothing sent. It is a POST-COMMIT effect on a collaborator that
- * may be absent — `OrdersService` supplies it, and a caller that constructs the
- * commands bare (a test, a fixture) gets the writer with no mail attached,
- * which is the shape every existing caller already had.
- *
- * It runs outside the transaction on purpose. An SMTP server that is down must
- * not roll back a placed order, and an order that rolled back must never have
- * produced a receipt.
+ * A confirmed order commits its durable confirmation intent in the same
+ * transaction. SMTP is performed later by the operational-notice worker.
  */
 export class CatalogOrderCommands {
-    constructor(
-        private readonly prisma: PrismaService,
-        private readonly confirmations?: CatalogOrderConfirmations,
-    ) {}
+    constructor(private readonly prisma: PrismaService) {}
 
     /**
      * The statuses a customer may be told about.
@@ -37,23 +26,6 @@ export class CatalogOrderCommands {
      * template says "Pedido Confirmado".
      */
     private static readonly CONFIRMED_STATES: readonly string[] = ['confirmed', 'paid'];
-
-    /** The notice facts, read from the row and the projection that just committed. */
-    private noticeFor(payload: any, row: any): CatalogOrderNotice {
-        return {
-            orderId: String(payload.id),
-            contactId: payload.contactId ?? null,
-            conversationId: payload.conversationId ?? null,
-            totalAmountCents: String(payload.totalAmountCents),
-            currency: String(payload.currency ?? 'COP'),
-            paymentMethod: String(row?.metadata?.payment_method ?? 'cash'),
-            items: (payload.items ?? []).map((item: any) => ({
-                productName: String(item.productName ?? ''),
-                quantity: Number(item.quantity ?? 0),
-                totalPrice: Number(item.totalPrice ?? 0),
-            })),
-        };
-    }
 
     private transaction<T>(schema: string, work: (query: TenantQuery) => Promise<T>): Promise<T> {
         return this.prisma.transactionInTenantSchema(schema, async query => {
@@ -90,6 +62,7 @@ export class CatalogOrderCommands {
         });
     }
     async create(schema: string, data: CatalogCreateInput, options: CatalogCommandOptions): Promise<any> {
+        await ensureOperationalNoticeOutbox(this.prisma,schema);
         if (!data || typeof data !== 'object') throw new BadRequestException('catalog_items_invalid');
         const items = catalogItems(data.items), contactId = this.contact(data.contactId, options.source === 'agent');
         const status = data.status || 'pending';
@@ -109,7 +82,7 @@ export class CatalogOrderCommands {
                     if (existing[0].request_hash !== requestHash) throw new ConflictException('catalog_request_changed');
                     // A replay is the SAME order answered again, not a second
                     // one. Its receipt already went out with the first.
-                    return { payload: { ...await this.result(query, existing[0]), idempotentReplay: true }, notice: null };
+                    return { ...await this.result(query, existing[0]), idempotentReplay: true };
                 }
             }
             const opportunityId = await resolveNativeEvidenceOpportunity(query, { contactId, conversationId: data.conversationId, trustedOpportunityId: data.opportunityId });
@@ -137,13 +110,12 @@ export class CatalogOrderCommands {
                     VALUES(gen_random_uuid(),$1::uuid,'out',$2,$3,$4,'catalog_order',$5::uuid,$6::uuid)`, [item.productId,item.quantity,previous,next,order.id,line[0].id]);
             }
             const payload = await this.result(query, order);
-            return { payload, notice: CatalogOrderCommands.CONFIRMED_STATES.includes(status)
-                ? this.noticeFor(payload, order) : null };
+            if (CatalogOrderCommands.CONFIRMED_STATES.includes(status)) await enqueueOperationalNotice(query,schema,{
+                kind:'order.confirmed',entityId:order.id,contactId:order.contact_id,conversationId:order.conversation_id,
+            });
+            return payload;
         });
-        // After the commit, and only for an order the customer can be told is
-        // confirmed. An agent-placed order is `pending` and produces none.
-        if (committed.notice) await this.confirmations?.send(schema, committed.notice);
-        return committed.payload;
+        return committed;
     }
     private async result(query: TenantQuery, row: any): Promise<any> {
         const lines = await query<any[]>('SELECT * FROM order_items WHERE order_id=$1::uuid ORDER BY product_id,id', [row.id]);
@@ -236,14 +208,15 @@ export class CatalogOrderCommands {
         });
     }
     async advance(schema: string,id: string,next: string,expectedVersion?: number): Promise<void> {
+        await ensureOperationalNoticeOutbox(this.prisma,schema);
         if(!['confirmed','paid'].includes(next)) throw new BadRequestException('catalog_status_invalid');
-        const notice=await this.transaction(schema,async query=>{
+        await this.transaction(schema,async query=>{
             const row=await this.ownedRow(query,id,null);
             if(row.contact_id) await this.identity(query,schema,row.contact_id);
             // Already there. The receipt went out with the transition that put
             // it there, so a repeated call must not produce a second one — this
             // early return is the whole once-only guarantee.
-            if(row.status===next) return null;
+            if(row.status===next) return;
             if(expectedVersion!==undefined && expectedVersion!==row.version) throw new ConflictException('catalog_version_changed');
             if(!({pending:['confirmed'],confirmed:['paid']} as Record<string,string[]>)[row.status]?.includes(next)) throw new ConflictException('catalog_status_invalid');
             // This is an operator's commercial status. Provider settlement remains payment_status.
@@ -251,10 +224,10 @@ export class CatalogOrderCommands {
             // `confirmed` is the moment the business accepts the order, and the
             // only one the customer is told about: `paid` is a settlement on an
             // order that was already confirmed and already receipted.
-            if(next!=='confirmed'||!updated[0]) return null;
-            return this.noticeFor(await this.result(query,updated[0]),updated[0]);
+            if(next==='confirmed'&&updated[0]) await enqueueOperationalNotice(query,schema,{
+                kind:'order.confirmed',entityId:updated[0].id,contactId:updated[0].contact_id,conversationId:updated[0].conversation_id,
+            });
         });
-        if(notice) await this.confirmations?.send(schema,notice);
     }
     /** Human-only repair of missing historical evidence; this does not adjust stock. */
     async recordStockEvidence(schema:string,id:string,input:{expectedVersion:number;source:string;reason:string;lines:{lineId:string;stockDeducted:number}[]},actorId:string):Promise<any>{

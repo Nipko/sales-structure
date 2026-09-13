@@ -334,6 +334,11 @@ const url = process.env.AGENT_RELEASE_TEST_DATABASE_URL;
                 status: { status: 'ok' },
                 contract: { version: 1, publishedTools: [], resolvedAt: new Date().toISOString(), excluded: [], writersBlocked: false } })) },
             toolExecutionControl: { findPendingConfirmation: jest.fn(async () => null) },
+            mediaProcessing: {
+                handlePendingConsentReply: jest.fn(async () => ({ handled: false })),
+                processMedia: jest.fn(),
+                getFallbackMessage: jest.fn(),
+            },
             toolExecutor: { logger: { log: jest.fn(), warn: jest.fn(), error: jest.fn() } },
             handoffService: { executeHandoff: jest.fn(), isInHandoff: jest.fn(async () => false) },
             promptAssembler, responseValidator: new ResponseValidatorService(),

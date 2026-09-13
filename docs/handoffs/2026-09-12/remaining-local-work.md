@@ -4,7 +4,7 @@
 > `88422e23` para explicar cómo se cerraron aquellas brechas; sus conteos y su
 > lista de trabajo no describen el HEAD actual. La autoridad vigente es
 > [`docs/audits/2026-09-09/closure-report.md`](../../audits/2026-09-09/closure-report.md):
-> 25 aceptadas, 27 bloqueadas por gates externos, 0 abiertas y 1 diferida.
+> 26 aceptadas, 27 bloqueadas por gates externos, 0 abiertas y 1 diferida.
 > El paquete operativo vigente es
 > [`docs/audits/2026-09-09/external-gates-package.md`](../../audits/2026-09-09/external-gates-package.md).
 

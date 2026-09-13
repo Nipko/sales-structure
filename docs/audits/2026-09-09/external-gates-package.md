@@ -3,7 +3,7 @@
 Fecha de revisión: 13 de septiembre de 2026.
 
 La autoridad de estado es
-[`closure-report.md`](./closure-report.md). Hoy registra **25 filas aceptadas,
+[`closure-report.md`](./closure-report.md). Hoy registra **26 filas aceptadas,
 27 bloqueadas por un gate externo concreto, 0 abiertas y 1 diferida**. Esto
 significa que el barrido no conoce trabajo local pendiente dentro de esos
 programas; no significa que el producto ya esté certificado o listo para abrir

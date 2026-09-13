@@ -184,16 +184,23 @@ describe('computing whether a profile has been shown to do its work', () => {
         // the point — a run on one proves nothing about the others.
         const report = certifyProfiles({ scope, evidence: [] });
         expect(report.summary.profiles).toBe(76);
-        // +336 over the previous 15_272: the twenty-one committing tasks of the
-        // six service, lodging and food operations gained four canonical cases
-        // in each of the four languages. Before, those tasks cost nothing to
-        // prove because nothing asserted they had left anything behind.
-        expect(report.summary.requiredCases).toBe(15_624);
-        // Pinned like the 76/268/146 of the declared matrix: adding or removing a
-        // case changes what certification costs, and that should be noticed.
+
+        // Independent oracle: walk the authored packs directly instead of
+        // asking requiredScenarios(), the helper used by certifyProfiles().
+        // That catches a counting bug while the explicit total below makes a
+        // catalogue expansion a reviewed cost decision.
+        const expectedPerChannel = listCanonicalSubtypeExperienceProfileIds()
+            .reduce((profileTotal, id) => {
+                const [industry, subtype] = id.split('/');
+                return profileTotal + EVAL_LANGUAGES.reduce((languageTotal, language) =>
+                    languageTotal + new Set(composeSubtypeEvalPack({ industry, subtype, language })
+                        .map(scenario => scenario.key)).size, 0);
+            }, 0);
+        expect(expectedPerChannel).toBe(18_664);
+        expect(report.summary.requiredCases).toBe(expectedPerChannel);
         expect(certifyProfiles({
             scope: { channels: ['web_widget', 'whatsapp'], models: scope.models }, evidence: [],
-        }).summary.requiredCases).toBe(15_624 * 2);
+        }).summary.requiredCases).toBe(expectedPerChannel * 2);
     });
 
     it('shares one definition of a passing run with the release gate', () => {

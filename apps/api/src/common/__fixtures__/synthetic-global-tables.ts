@@ -181,8 +181,20 @@ const CHAT_IDENTITY_CHALLENGE_COLUMNS: ReadonlyArray<[string, string]> = [
     ['updated_at', 'TIMESTAMPTZ DEFAULT NOW()'],
 ];
 
-async function ensure(exec: Exec, table: string, columns: ReadonlyArray<[string, string]>): Promise<void> {
+async function ensure(
+    exec: Exec,
+    table: string,
+    columns: ReadonlyArray<[string, string]>,
+    options: { generatedId?: boolean } = {},
+): Promise<void> {
     await exec(`CREATE TABLE IF NOT EXISTS public.${table}(id UUID PRIMARY KEY)`);
+    // CREATE TABLE IF NOT EXISTS does not merge column defaults.  The durable
+    // challenge migrations generate their identifiers in PostgreSQL; if a
+    // different suite created the additive fixture first, their owning
+    // migration would keep the earlier bare `id` and every insert would fail.
+    if (options.generatedId) {
+        await exec(`ALTER TABLE public.${table} ALTER COLUMN id SET DEFAULT gen_random_uuid()`);
+    }
     for (const [name, type] of columns) {
         await exec(`ALTER TABLE public.${table} ADD COLUMN IF NOT EXISTS ${name} ${type}`);
     }
@@ -201,6 +213,8 @@ export async function ensureSyntheticGlobalTables(exec: Exec): Promise<void> {
     await ensure(exec, 'channel_accounts', CHANNEL_ACCOUNT_COLUMNS);
     await ensure(exec, 'whatsapp_credentials', WHATSAPP_CREDENTIAL_COLUMNS);
     await ensure(exec, 'fiscal_invoices', FISCAL_INVOICE_COLUMNS);
-    await ensure(exec, 'customer_portal_access_challenges', CUSTOMER_PORTAL_ACCESS_CHALLENGE_COLUMNS);
-    await ensure(exec, 'chat_identity_challenges', CHAT_IDENTITY_CHALLENGE_COLUMNS);
+    await ensure(exec, 'customer_portal_access_challenges', CUSTOMER_PORTAL_ACCESS_CHALLENGE_COLUMNS,
+        { generatedId: true });
+    await ensure(exec, 'chat_identity_challenges', CHAT_IDENTITY_CHALLENGE_COLUMNS,
+        { generatedId: true });
 }

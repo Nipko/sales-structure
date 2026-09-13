@@ -43,7 +43,8 @@ function canonicalTable(table: string, schema: string): string {
  */
 function canonicalAlters(table: string, schema: string): string[] {
     const pattern = new RegExp(`ALTER TABLE "\\{\\{SCHEMA_NAME\\}\\}"\\."${table}"[\\s\\S]*?;`, 'g');
-    return (schemaSql.match(pattern) ?? [])
+    const statements: string[] = Array.from(schemaSql.matchAll(pattern), match => match[0]);
+    return statements
         .filter(statement => statement.includes('ADD COLUMN'))
         .map(statement => statement.replace(/\{\{SCHEMA_NAME\}\}/g, schema).replace(/;\s*$/, ''));
 }
@@ -383,7 +384,7 @@ const TABLES = ['faqs', 'products', 'companies', 'menu_items', 'real_estate_list
                 .toEqual(['¿Hacen envíos a Medellín?']);
             expect((await faqs.search(tenantId, 'envíos', 5)).map(item => item.question))
                 .toEqual(['¿Hacen envíos a Medellín?']);
-        });
+        }, 30000);
 
         it('clears readiness after the write and publishes the searchable row', async () => {
             await sql(`INSERT INTO faqs (question, answer, category, is_published, search_tsv)

@@ -30,6 +30,7 @@ const url = process.env.PARALLLY_ISOLATION_TEST_URL;
             '20260913190000_extend_platform_notifications_for_billing',
             '20260913200000_add_durable_invitation_notifications',
             '20260913210000_add_durable_auth_access_emails',
+            '20260913220000_add_durable_auth_security_notices',
         ]) {
             await admin.query(readFileSync(join(__dirname, `../../../prisma/migrations/${migration}/migration.sql`), 'utf8'));
         }
@@ -48,7 +49,7 @@ const url = process.env.PARALLLY_ISOLATION_TEST_URL;
         await admin.query('DELETE FROM platform_notification_outbox WHERE recipient_user_id=$1::uuid', [userId]);
         await admin.query(`UPDATE users SET email_verify_code=NULL,email_verify_expires=NULL,
             email_challenge_revision=0,two_factor_email_code=NULL,two_factor_email_expires=NULL,
-            two_factor_email_revision=0 WHERE id=$1::uuid`, [userId]);
+            two_factor_email_revision=0,password=NULL WHERE id=$1::uuid`, [userId]);
     });
 
     afterAll(async () => {
@@ -132,5 +133,47 @@ const url = process.env.PARALLLY_ISOLATION_TEST_URL;
         expect((await client.$queryRawUnsafe<any[]>(`SELECT state,provider_reference
             FROM platform_notification_outbox WHERE recipient_user_id=$1::uuid`, userId))[0])
             .toEqual({ state: 'sent', provider_reference: 'smtp-2fa-accepted' });
+    });
+
+    it('commits a password change with its notice and rolls both back if admission fails', async () => {
+        const send = jest.fn().mockResolvedValue('smtp-security-accepted');
+        const delivery = new PlatformNotificationOutboxService(prisma,
+            { prepareBoundedSend: jest.fn().mockReturnValue(send) } as any,
+            { get: (_key: string, fallback: string) => fallback } as any,
+            { runExclusive: jest.fn() } as any);
+        await authWith(delivery).setupPassword(userId, 'Secure!Pass123');
+        for (let attempt = 0; attempt < 20; attempt++) {
+            const [row] = await client.$queryRawUnsafe<any[]>(`SELECT state FROM platform_notification_outbox
+                WHERE recipient_user_id=$1::uuid AND kind='auth.security_notice_email'`, userId);
+            if (row?.state === 'sent') break;
+            await new Promise(resolve => setTimeout(resolve, 10));
+        }
+        expect(send).toHaveBeenCalledTimes(1);
+        expect((await client.$queryRawUnsafe<any[]>(`SELECT state,provider_reference
+            FROM platform_notification_outbox WHERE recipient_user_id=$1::uuid`, userId))[0])
+            .toEqual({ state: 'sent', provider_reference: 'smtp-security-accepted' });
+        const [{ password: committed }] = await client.$queryRawUnsafe<any[]>(
+            'SELECT password FROM users WHERE id=$1::uuid', userId);
+        expect(committed).not.toBeNull();
+
+        await client.$executeRawUnsafe("UPDATE users SET password='baseline' WHERE id=$1::uuid", userId);
+        await client.$executeRawUnsafe('DELETE FROM platform_notification_outbox WHERE recipient_user_id=$1::uuid', userId);
+        const broken = Object.create(prisma);
+        broken.$transaction = (callback: any) => client.$transaction((tx: any) => callback(new Proxy(tx, {
+            get(target, property) {
+                if (property === '$queryRawUnsafe') return (sql: string, ...params: any[]) => {
+                    if (sql.includes('INSERT INTO platform_notification_outbox')) throw new Error('outbox unavailable');
+                    return target.$queryRawUnsafe(sql, ...params);
+                };
+                const value = target[property];
+                return typeof value === 'function' ? value.bind(target) : value;
+            },
+        })));
+        await expect(authWith({ deliver: jest.fn() }, broken)
+            .setupPassword(userId, 'Another!Pass123')).rejects.toThrow('outbox unavailable');
+        expect((await client.$queryRawUnsafe<any[]>(
+            'SELECT password FROM users WHERE id=$1::uuid', userId))[0]).toEqual({ password: 'baseline' });
+        expect((await client.$queryRawUnsafe<any[]>(
+            'SELECT id FROM platform_notification_outbox WHERE recipient_user_id=$1::uuid', userId))).toHaveLength(0);
     });
 });

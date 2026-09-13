@@ -134,6 +134,10 @@ export class PlatformNotificationOutboxService {
                     && Number.isInteger(revision) && revision === currentRevision && code
                     && Number.isFinite(expires.getTime()) && expires.getTime() > Date.now();
                 if (available) canonical = { ...canonical, purpose, code };
+            } else if (row.kind === 'auth.security_notice_email') {
+                available = (await tx.$queryRawUnsafe(`SELECT 1 FROM users
+                    WHERE id=$1::uuid AND is_active=true AND LOWER(email)=LOWER($2) LIMIT 1`,
+                row.recipient_user_id, row.user_email))[0];
             }
             if (!available) {
                 await tx.$executeRawUnsafe(`UPDATE platform_notification_outbox
@@ -255,7 +259,7 @@ export class PlatformNotificationOutboxService {
                     this.roleLabel(invitation.role, lang), lang),
             };
         }
-        if (row.kind === 'billing.lifecycle_email') {
+        if (row.kind === 'billing.lifecycle_email' || row.kind === 'auth.security_notice_email') {
             const subject = String(payload.subject || '').replace(/[\r\n]/g, ' ').trim().slice(0, 240);
             const html = String(payload.html || '');
             if (!subject || !html || html.length > 250_000

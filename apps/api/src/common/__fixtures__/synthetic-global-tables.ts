@@ -31,6 +31,7 @@ const TENANT_COLUMNS: ReadonlyArray<[string, string]> = [
 const USER_COLUMNS: ReadonlyArray<[string, string]> = [
     ['tenant_id', 'UUID'],
     ['email', 'TEXT'],
+    ['password', 'TEXT'],
     ['is_active', 'BOOLEAN'],
     ['role', 'TEXT'],
     ['first_name', 'TEXT'],
@@ -41,6 +42,7 @@ const USER_COLUMNS: ReadonlyArray<[string, string]> = [
     ['two_factor_email_code', 'TEXT'],
     ['two_factor_email_expires', 'TIMESTAMPTZ'],
     ['two_factor_email_revision', 'INTEGER NOT NULL DEFAULT 0'],
+    ['updated_at', 'TIMESTAMPTZ DEFAULT NOW()'],
 ];
 
 /**

@@ -1136,17 +1136,16 @@ export class AuthService {
         this.validatePasswordStrength(password);
 
         const hashedPassword = await bcrypt.hash(password, 12);
-        const user = await this.prisma.user.update({
-            where: { id: userId },
-            data: { password: hashedPassword },
+        const noticeId = await this.prisma.$transaction(async (tx: any) => {
+            const user = await tx.user.update({
+                where: { id: userId }, data: { password: hashedPassword }, select: { id: true, firstName: true },
+            });
+            return this.enqueueSecurityNotice(tx, user.id, {
+                subject: 'Tu contrasena ha sido cambiada — Parallly',
+                html: passwordChangedEmail(user.firstName),
+            });
         });
-
-        // Notify password change
-        this.emailService.send({
-            to: user.email,
-            subject: 'Tu contrasena ha sido cambiada — Parallly',
-            html: passwordChangedEmail(user.firstName),
-        });
+        void this.deliverSecurityNotice(noticeId);
 
         return { message: 'Password set successfully' };
     }
@@ -1155,9 +1154,8 @@ export class AuthService {
 
     /**
      * Generates the 6-digit code and attempts delivery. `sent` reports whether the
-     * mail actually left: `emailService.send()` swallows SMTP failures and returns
-     * false, so ignoring it meant a dead SMTP locked every email signup out of the
-     * product with nothing but a warn line in the logs. Callers decide what to do —
+     * mail actually left. Durable admission keeps a dead SMTP from losing the
+     * code. Callers still decide what to show while recovery owns the retry —
      * signup degrades, the explicit resend fails loudly.
      */
     async sendVerificationEmail(userId: string): Promise<{ message: string; sent: boolean }> {
@@ -1238,7 +1236,10 @@ export class AuthService {
     // ── Password reset (public, no JWT) ──────────────────────────
 
     async requestPasswordReset(email: string) {
-        const user = await this.prisma.user.findUnique({ where: { email } });
+        const user = await this.prisma.user.findUnique({ where: { email }, select: {
+            id: true, email: true, firstName: true, isActive: true,
+            emailVerifyCode: true, emailVerifyExpires: true,
+        } });
         // Always return success to avoid email enumeration
         if (!user || !user.isActive) return { message: 'If the email exists, a code was sent' };
 
@@ -1248,7 +1249,9 @@ export class AuthService {
     }
 
     async confirmPasswordReset(email: string, code: string, newPassword: string) {
-        const user = await this.prisma.user.findUnique({ where: { email } });
+        const user = await this.prisma.user.findUnique({ where: { email }, select: {
+            id: true, emailVerifyCode: true, emailVerifyExpires: true,
+        } });
         if (!user) throw new BadRequestException('Invalid or expired code');
 
         if (!user.emailVerifyCode || !user.emailVerifyExpires ||
@@ -1260,25 +1263,30 @@ export class AuthService {
         this.validatePasswordStrength(newPassword);
 
         const hashedPassword = await bcrypt.hash(newPassword, 12);
-        await this.prisma.user.update({
-            where: { id: user.id },
-            data: {
-                password: hashedPassword,
-                emailVerifyCode: null,
-                emailVerifyExpires: null,
-            },
-        });
+        const noticeId = await this.prisma.$transaction(async (tx: any) => {
+            const current = await tx.user.findUnique({ where: { id: user.id }, select: {
+                id: true, firstName: true, emailVerifyCode: true, emailVerifyExpires: true,
+            } });
+            if (!current?.emailVerifyCode || !current.emailVerifyExpires
+                || current.emailVerifyExpires < new Date()
+                || !this.timingSafeEqual(current.emailVerifyCode, code)) {
+                throw new BadRequestException('Invalid or expired code');
+            }
+            const updated = await tx.user.update({ where: { id: user.id }, data: {
+                password: hashedPassword, emailVerifyCode: null, emailVerifyExpires: null,
+            }, select: { id: true, firstName: true } });
+            return this.enqueueSecurityNotice(tx, updated.id, {
+                subject: 'Tu contrasena ha sido cambiada — Parallly',
+                html: passwordChangedEmail(updated.firstName),
+            });
+        }, { isolationLevel: 'Serializable' });
 
         await this.revokeAllUserSessions(user.id);
         // Ambas plataformas: la sesión móvil (14d) también debe morir con la clave.
         await this.destroySession(user.id);
         await this.destroySession(user.id, 'mobile');
 
-        this.emailService.send({
-            to: user.email,
-            subject: 'Tu contrasena ha sido cambiada — Parallly',
-            html: passwordChangedEmail(user.firstName),
-        });
+        void this.deliverSecurityNotice(noticeId);
 
         return { message: 'Password reset successfully' };
     }
@@ -1628,8 +1636,8 @@ export class AuthService {
         const deviceName = this.parseDeviceName(deviceInfo.userAgent);
         const expiresAt = new Date(Date.now() + DEVICE_TRUST_TTL_DAYS * 24 * 60 * 60 * 1000);
 
-        await this.prisma.trustedDevice.create({
-            data: {
+        const noticeId = await this.prisma.$transaction(async (tx: any) => {
+            const device = await tx.trustedDevice.create({ data: {
                 userId,
                 tokenHash,
                 deviceName,
@@ -1637,21 +1645,21 @@ export class AuthService {
                 fingerprintHash,
                 ipAddress: deviceInfo.ip,
                 expiresAt,
-            },
+            } });
+            const user = await tx.user.findUnique({ where: { id: userId }, select: { id: true, firstName: true } });
+            if (!user) throw new NotFoundException('User not found');
+            const id = await this.enqueueSecurityNotice(tx, user.id, {
+                subject: 'Nuevo dispositivo de confianza — Parallly',
+                html: newTrustedDeviceEmail(user.firstName, deviceName, deviceInfo.ip || 'Unknown',
+                    new Date().toLocaleDateString('es-ES', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })),
+            });
+            return id;
         });
 
         // Cache in Redis for fast lookup
         await this.redis.setJson(`trust:${tokenHash}`, { userId, expiresAt: expiresAt.toISOString() }, DEVICE_TRUST_TTL_DAYS * 24 * 60 * 60);
 
-        // Send email notification
-        const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { email: true, firstName: true } });
-        if (user) {
-            this.emailService.send({
-                to: user.email,
-                subject: 'Nuevo dispositivo de confianza — Parallly',
-                html: newTrustedDeviceEmail(user.firstName, deviceName, deviceInfo.ip || 'Unknown', new Date().toLocaleDateString('es-ES', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })),
-            }).catch(() => { /* best effort */ });
-        }
+        void this.deliverSecurityNotice(noticeId);
 
         this.logger.log(`[TrustedDevice] Registered "${deviceName}" for user ${userId}`);
         return rawToken;
@@ -1747,7 +1755,9 @@ export class AuthService {
     // ── Change password (authenticated) ──────────────────────────
 
     async changePassword(userId: string, currentPassword: string, newPassword: string) {
-        const user = await this.prisma.user.findUnique({ where: { id: userId } });
+        const user = await this.prisma.user.findUnique({ where: { id: userId }, select: {
+            id: true, password: true, email: true, firstName: true,
+        } });
         if (!user) throw new NotFoundException('User not found');
 
         if (!user.password) {
@@ -1762,10 +1772,19 @@ export class AuthService {
         this.validatePasswordStrength(newPassword);
 
         const hashedPassword = await bcrypt.hash(newPassword, 12);
-        await this.prisma.user.update({
-            where: { id: userId },
-            data: { password: hashedPassword },
-        });
+        const noticeId = await this.prisma.$transaction(async (tx: any) => {
+            const current = await tx.user.findUnique({ where: { id: userId }, select: { password: true } });
+            if (!current?.password || !await bcrypt.compare(currentPassword, current.password)) {
+                throw new UnauthorizedException('Current password is incorrect');
+            }
+            const updated = await tx.user.update({
+                where: { id: userId }, data: { password: hashedPassword }, select: { id: true, firstName: true },
+            });
+            return this.enqueueSecurityNotice(tx, updated.id, {
+                subject: 'Tu contrasena ha sido cambiada — Parallly',
+                html: passwordChangedEmail(updated.firstName),
+            });
+        }, { isolationLevel: 'Serializable' });
 
         // Revoke all sessions + trusted devices — user must re-login with new password
         await this.revokeAllUserSessions(userId);
@@ -1773,11 +1792,7 @@ export class AuthService {
         await this.destroySession(userId, 'mobile');
         await this.revokeAllTrustedDevices(userId);
 
-        this.emailService.send({
-            to: user.email,
-            subject: 'Tu contrasena ha sido cambiada — Parallly',
-            html: passwordChangedEmail(user.firstName),
-        });
+        void this.deliverSecurityNotice(noticeId);
 
         return { message: 'Password changed successfully' };
     }
@@ -2766,6 +2781,29 @@ export class AuthService {
             this.logger.warn(`[Auth] Durable ${purpose} email ${admitted} deferred: ${error?.message || error}`);
             return false;
         }
+    }
+
+    private async enqueueSecurityNotice(
+        tx: any,
+        userId: string,
+        payload: { subject: string; html: string },
+    ): Promise<string> {
+        const id = crypto.randomUUID();
+        const [notice] = await tx.$queryRawUnsafe(`INSERT INTO platform_notification_outbox(
+                id,event_key,kind,entity_id,recipient_user_id,payload,state)
+            VALUES($1::uuid,$2,'auth.security_notice_email',$1::uuid,$3::uuid,$4::jsonb,'pending')
+            RETURNING id`, id, `auth:security:${id}`, userId, JSON.stringify(payload));
+        return notice.id;
+    }
+
+    private async deliverSecurityNotice(noticeId: string): Promise<void> {
+        if (!this.platformNotifications) {
+            this.logger.error(`[Auth] Security notice ${noticeId} cannot be delivered: platform notifications unavailable`);
+            return;
+        }
+        await this.platformNotifications.deliver(noticeId).catch((error: any) => {
+            this.logger.warn(`[Auth] Durable security notice ${noticeId} deferred: ${error?.message || error}`);
+        });
     }
 
     private encryptTotpSecret(plaintext: string): string {

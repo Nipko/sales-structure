@@ -63,6 +63,11 @@ describe('Shared runtime integrity', () => {
                 contract: { version: 1, publishedTools: authority.allowedTools, resolvedAt: authority.resolvedAt, excluded: [], writersBlocked: false },
             }) },
             toolExecutionControl: { findPendingConfirmation: jest.fn().mockResolvedValue(null) },
+            mediaProcessing: {
+                handlePendingConsentReply: jest.fn().mockResolvedValue({ handled: false }),
+                processMedia: jest.fn(),
+                getFallbackMessage: jest.fn(),
+            },
             toolExecutor: executor,
             handoffService: { executeHandoff: jest.fn(), isInHandoff: jest.fn().mockResolvedValue(false) },
             promptAssembler: new PromptAssemblerService({ buildSystemPrompt: () => '<persona>Assistant</persona>' } as any),

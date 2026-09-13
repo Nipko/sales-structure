@@ -1,157 +1,182 @@
-# Lo que hace falta de afuera, en una sola lista
+# Paquete actual de gates externos
 
-Todo lo que se podía hacer sin nadie más está hecho: la tabla A1–H3 no tiene
-ninguna fila `abierta`, y las 18 que siguen bloqueadas nombran cuál de estos
-cinco portones las bloquea. Este documento es el paquete de cada uno — variables
-por nombre y nunca con su valor, alcance, duración, costo máximo, datos usados,
-criterio de aborto, rollback, qué consultar y qué evidencia queda.
+Fecha de revisión: 13 de septiembre de 2026.
 
-Nada de esto se ejecuta todavía. Pedirlo es una decisión del dueño, y algunas de
-estas decisiones cuestan dinero o tocan a clientes reales.
+La autoridad de estado es
+[`closure-report.md`](./closure-report.md). Hoy registra **25 filas aceptadas,
+27 bloqueadas por un gate externo concreto, 0 abiertas y 1 diferida**. Esto
+significa que el barrido no conoce trabajo local pendiente dentro de esos
+programas; no significa que el producto ya esté certificado o listo para abrir
+tráfico. Siguen en cero los **76 perfiles certificados**, los **5 canales
+operados** y los **5 canales certificados**.
 
-Los números salen de artefactos generados, no de estimaciones: el costo de
-certificación lo calcula `generate-certification-manifest.cjs` desde el catálogo
-de modelos que usa el router, y el alcance sale del catálogo de perfiles.
+Los números de certificación salen de
+[`certification-manifest.md`](./certification-manifest.md) y los del canario
+pequeño de `plan-certification-canary.cjs`. No se copian cifras de informes
+anteriores.
 
----
+## Decisiones que faltan
 
-## Las decisiones, en una lista
+Hay ocho gates. Se pueden preparar en paralelo, pero cada ejecución necesita la
+autorización indicada y evidencia propia.
 
-Cinco, en el orden en que conviene tomarlas. Ninguna se puede tomar desde acá.
+1. Cuentas de canal para pilotos reales.
+2. Proveedor LLM, modelo, presupuesto y autorización de ejecución.
+3. Personas nuevas para sesiones moderadas.
+4. Cuentas de alternativas y revisores ciegos.
+5. Autorización para push, candidato, migración, cutover y activación gradual.
+6. WABA y número reales con moneda, financiación, permisos, plantillas y método
+   de pago configurados en Meta.
+7. Destinatario consentido, presupuesto y autorización para llamadas reales a
+   Meta.
+8. Aprobación legal y financiera de contratos y copy comercial.
 
-1. **Qué modelo y con qué techo** para certificar el catálogo. Es una sola
-   autorización con dos números, y la diferencia entre ellos es de veinte veces:
-   las mismas 139.940 llamadas cuestan **US$258,80** con `gpt-4o-mini` y
-   **US$5.466,20** con `claude-sonnet-4-6`. Desbloquea C3, D2, F1, H1 y H3, y es
-   lo único que separa el catálogo de 0 perfiles certificados.
-2. **Si se crea un entorno de staging**, y con qué datos. Hoy no existe: no es
-   una credencial que falte, es un entorno que no está.
-3. **Qué cuentas de canal de prueba** se usan para el piloto — una WABA, una
-   cuenta de Instagram, una página y un bot, del negocio y no de un cliente.
-4. **Contra qué alternativas** se compara el agente, y quiénes son los revisores
-   ciegos.
-5. **Si el PR se revisa y se aprueba** para merge, despliegue y activación
-   gradual — y en ese orden, mirando antes el contador de huérfanos de cobro de
-   cada tenant.
+## Gate 1 — cuentas de canal
 
-Las tres primeras son independientes entre sí. La quinta es la única que toca
-producción.
+Bloquea A2, A3, A4, B1, C1, E3, F3, G3 y parte de M1/M5/R6.
 
----
+- **Alcance:** una WABA y un número de prueba, una cuenta profesional de
+  Instagram, una página de Messenger y un bot de Telegram controlados por
+  Parallly; Web Chat usa un tenant piloto del mismo equipo.
+- **Credenciales:** las variables que corresponden a cada canal, entre ellas
+  `META_APP_ID`, `META_APP_SECRET`, `META_CONFIG_ID`, `META_VERIFY_TOKEN`,
+  `SYSTEM_USER_ID`, `WHATSAPP_VERIFY_TOKEN`, `INSTAGRAM_APP_SECRET` y el token
+  del bot de Telegram. Los valores se cargan como secretos, nunca en documentos,
+  commits o logs.
+- **Datos:** conversaciones sintéticas del equipo. No se usan clientes reales.
+- **Aborto:** cualquier destinatario fuera de la lista, efecto duplicado,
+  respuesta con una acción no respaldada por tools, o recibo que haga retroceder
+  el estado.
+- **Evidencia:** run id, revisión, cuenta/canal, casos ejecutados, recibos,
+  deduplicación y resultado por capacidad en `/admin/channels/certification`.
 
-## Gate 1 — cuentas de canal para pilotos reales
+## Gate 2 — certificación con modelo
 
-Bloquea: A2, A3, A4, C1, E3 (junto con el 5), F3, G3.
+Bloquea C3, D2, F1, H1, H2 y parte de H3.
 
-| | |
-|---|---|
-| **Variables** | `META_APP_ID`, `META_APP_SECRET`, `META_CONFIG_ID`, `META_VERIFY_TOKEN`, `SYSTEM_USER_ID`, `WHATSAPP_VERIFY_TOKEN`, `INSTAGRAM_APP_SECRET`, `NEXT_PUBLIC_INSTAGRAM_APP_ID`, `NEXT_PUBLIC_INSTAGRAM_REDIRECT_URI`, `MESSENGER_FB_LOGIN_CONFIG_ID`, y un token de bot de Telegram por cuenta de prueba |
-| **Alcance** | Una WABA de prueba, una cuenta de Instagram profesional, una página de Facebook y un bot de Telegram, todos del negocio, ninguno de un cliente. Números y cuentas **de prueba**: el piloto manda mensajes reales por infraestructura real |
-| **Duración** | 2 semanas de piloto por canal, con un agente y un tenant |
-| **Costo máximo** | El de Meta desde el 1-oct-2026: US$0,0008 por mensaje de servicio en Colombia, con 1.000 gratis por número por mes. Con un piloto de un número y menos de 1.000 mensajes/mes, cero. Telegram e Instagram/Messenger no cobran |
-| **Datos usados** | Conversaciones del propio equipo escribiéndole al agente. Ningún cliente real sin autorización aparte |
-| **Aborto** | Cualquier mensaje entregado a un número que no esté en la lista de prueba; cualquier `sent` sin webhook de estado que lo confirme; cualquier respuesta con una afirmación que no tenga `executedTools` detrás |
-| **Rollback** | Desconectar la cuenta desde `/admin/channels` (revoca el token por-cuenta) y apagar el agente. Las conversaciones quedan; nada que se haya enviado se puede recuperar, y por eso el aborto es por mensaje y no por día |
-| **Qué mirar** | `channel_accounts.health`, la cola `outbound-messages`, `outbound_payloads` (que no queden filas con `payload` no nulo y `sent_at`), y el Centro de calidad del agente |
-| **Evidencia esperada** | Una corrida de certificación por canal con `channel_type` real en vez de `web_widget`, y la matriz de `/admin/channels/certification` con capacidades **observadas** y no sólo declaradas |
+- **Decisión mínima:** elegir un modelo certificable y un techo de gasto.
+- **Alcance actual:** **93.320 casos y 260.620 llamadas por modelo**, 76 perfiles
+  × 4 idiomas × 5 canales. El tiempo máximo derivado es 434 horas de modelo.
+- **Techos calculados:** desde **US$449,80** con `gpt-4o-mini` hasta
+  **US$6.671,00** con `claude-sonnet-4-6`. La tabla completa y las variables
+  exactas están en [`certification-manifest.md`](./certification-manifest.md).
+- **Control:** el ejecutor reserva presupuesto antes de arrendar cada caso,
+  admite `pause`, `resume` y `cancel`, corta por deadline y conserva el modelo
+  realmente servido.
+- **Datos:** sólo corpus sintético. No publica configuración ni envía mensajes.
+- **Evidencia:** ledger completo por perfil, tarea, canal, idioma y modelo, gasto
+  liquidado y motivos de cada rechazo.
 
----
+Antes de la matriz completa se ejecuta el canario derivado actual: **244 casos,
+724 llamadas y techo US$1,24**. Si cambian catálogo, canales o verificadores,
+`check-canary-figures.cjs --check` obliga a actualizar esta cifra.
 
-## Gate 2 — proveedor de LLM, modelo, techo y autorización de ejecución
+## Gate 3 — sesiones con personas nuevas
 
-Bloquea: C3, D2, F1, H1, H3. Es el que mantiene el catálogo en **0 de 76
-perfiles certificados**.
+Bloquea D1, D3, F3, F4, G2, L6 y parte de H3.
 
-| | |
-|---|---|
-| **Variables** | Una de `OPENAI_API_KEY`, `XAI_API_KEY`, `DEEPSEEK_API_KEY`, `ANTHROPIC_API_KEY` — la que corresponda al modelo elegido |
-| **Alcance** | 76 perfiles × 4 idiomas × 5 canales × 1 modelo = 78.120 casos y **139.940 llamadas**. El ejecutor ya existe, se ensaya con gasto cero y reserva el presupuesto ANTES de llamar |
-| **Duración** | Hasta **233 horas** de reloj de modelo. Es paralelizable por lease; el ejecutor recupera los leases vencidos |
-| **Costo máximo** | Depende del modelo, y la diferencia no es marginal: `gpt-4o-mini` **US$258,80**; `grok-4-1-fast-non-reasoning` **US$301,00**; `deepseek-chat` **US$464,20**; `gpt-4.1-mini` **US$677,40**; `gpt-4o` **US$4.198,20**; `claude-sonnet-4-6` **US$5.466,20**. Gemini queda excluido por no soportar tools |
-| **Datos usados** | Escenarios sintéticos del catálogo. Ninguna conversación de cliente |
-| **Aborto** | El techo se comprueba antes de cada tarea y `spent >= budget` frena la corrida; hay `pause`, `resume` y `cancel`, y un `deadline` que la corta por reloj. Una corrida cancelada no se reabre |
-| **Rollback** | No hay nada que revertir: la certificación escribe evidencia, no configuración. Lo gastado, gastado — por eso el techo va delante y no detrás |
-| **Qué mirar** | `agent_certification_runs.spent_usd_cents` contra `budget_usd_cents`, `agent_certification_cases` por estado, y el informe por perfil (no un promedio: 76 perfiles promediados en un veredicto es la falla que el informe existe para evitar) |
-| **Evidencia esperada** | `certification-manifest.json` con perfiles certificados > 0 y, para D2, el `semanticEntailment` que hoy dice `not_evaluated` |
+- **Participantes:** entre 5 y 8 personas que no conozcan el producto, más una
+  persona que use lector de pantalla.
+- **Recorridos:** alta, conexión de canal, creación y publicación del primer
+  agente, explicación de tools, corrección guiada por Assist y recuperación de
+  un error.
+- **Datos:** tenants de prueba sin datos de clientes.
+- **Resultado:** tiempo, ayudas solicitadas, pasos abandonados, errores de
+  comprensión y revisión humana de una muestra de respuestas/aprendizaje.
 
-**La decisión que hace falta**: qué modelo, y con qué techo. Sin las dos cosas el
-ejecutor se niega a arrancar, que es el comportamiento correcto.
+## Gate 4 — benchmark externo
 
----
+Bloquea H3, F4 y parte de M1/R3.
 
-## Gate 3 — personas para sesiones moderadas
+- **Decisión:** alternativas concretas, cuentas autorizadas, duración de la
+  suscripción y revisores ciegos.
+- **Método:** mismo corpus y condiciones para cada sujeto; Parallly debe estar
+  incluido; las etiquetas no revelan el proveedor.
+- **Aborto:** corpus diferente, un solo sujeto, pérdida de ceguera o comparación
+  sin evidencia ejecutada.
+- **Evidencia:** `benchmark_runs`, `benchmark_attempts` y `benchmark_reviews`,
+  con fecha, versión y coste.
 
-Bloquea: D1, D3, G2.
+## Gate 5 — candidato y cutover en el VPS actual
 
-| | |
-|---|---|
-| **Variables** | Ninguna. Hacen falta personas, no credenciales |
-| **Alcance** | Onboarding, recorridos guiados, accesibilidad y revisión de muestra del aprendizaje. Entre 5 y 8 participantes que no conozcan el producto, más un revisor con lector de pantalla |
-| **Duración** | Sesiones de 45 minutos; una semana para todas |
-| **Costo máximo** | El del incentivo que decida el dueño |
-| **Datos usados** | Un tenant de prueba sembrado. Ningún dato de cliente |
-| **Aborto** | Un participante que no pueda completar el alta sin ayuda: eso es un hallazgo, no un fallo de la sesión, y la sesión sigue |
-| **Rollback** | Purgar el tenant de prueba |
-| **Qué mirar** | Los eventos de navegación (`navigation.access_denied` y el contador de costo), y dónde se detiene cada persona |
-| **Evidencia esperada** | La revisión de muestra de veracidad que D1 pide, que hoy el informe declara y no mide |
+Bloquea E3, M4, R6 y la publicación del release.
 
----
+La decisión del dueño es usar **el mismo VPS de producción**, con tenants piloto
+ya existentes. Por eso no se crea otro “staging”. Se construyen imágenes de
+candidato antes del merge, se ensayan migraciones sobre una base desechable y se
+abre sólo la lista de tenants piloto. El procedimiento completo y reanudable es
+[`docs/runbooks/october-cutover.md`](../../runbooks/october-cutover.md).
 
-## Gate 4 — cuentas de alternativas y revisores ciegos
+- **Antes de empujar:** revisión del diff, artefactos al día, suite completa,
+  build, Playwright, backup reciente y censo de huérfanos de términos en cero.
+- **Repositorio:** environment protegido `candidate-images`, revisores,
+  `CANDIDATE_AUTHORIZED_ACTORS`, `CANDIDATE_PUBLIC_API_URL`,
+  `CANDIDATE_PUBLIC_WA_URL` y los secretos públicos de build enumerados por
+  `candidate.yml`.
+- **Host:** acceso, capacidad, Node disponible para validar el manifiesto,
+  base desechable con nombre de rehearsal/eval, ids exactos de tenants piloto y
+  ventana acordada.
+- **Orden:** push de la rama → checks → candidato → backup → rehearsal de
+  migración/restore → contenedores candidato → canario con ingress controlado →
+  atestación humana → apertura → activación por tenant.
+- **Aborto:** error de backup, inventario cambiado sin aceptación, migración o
+  restore incompletos, healthcheck rojo, duplicado, gasto sin reserva o canario
+  sin atestación.
+- **Rollback:** imágenes y datos se restauran juntos antes de reabrir; los
+  efectos remotos ya aceptados se reconcilian y nunca se “desenvían”.
 
-Bloquea: F4 y el cierre del benchmark.
+El VPS no se toca desde una validación local. Push, publicación de imágenes,
+migración y cutover requieren autorización explícita.
 
-| | |
-|---|---|
-| **Variables** | Las credenciales de cada alternativa que se quiera comparar, más los correos de los revisores |
-| **Alcance** | El arnés ya compara por corpus de contenido y revisa a ciegas por etiqueta; lo que falta son las cuentas y las personas |
-| **Duración** | Una semana por alternativa |
-| **Costo máximo** | La suscripción de cada alternativa durante la comparación, más el techo del gate 2 para el sujeto propio |
-| **Datos usados** | El mismo corpus para todos los sujetos; el arnés rechaza un corpus derivado |
-| **Aborto** | Un revisor que pueda deducir qué sujeto es cuál rompe la ceguera y la comparación se descarta |
-| **Rollback** | Cancelar las suscripciones. La comparación queda como evidencia con su fecha |
-| **Qué mirar** | `benchmark_runs`, `benchmark_attempts` y `benchmark_reviews` |
-| **Evidencia esperada** | Un informe con sujetos etiquetados a ciegas y su declaración de método |
+## Gate 6 — financiación y método de pago de Meta
 
----
+Bloquea M1, M2, M5 y R6.
 
-## Gate 5 — autorización de merge, despliegue, migración y activación
+Cada negocio agrega su tarjeta o método de pago **en la superficie segura de
+Meta asociada a su propia WABA**. Parallly guía, abre el destino de Meta y relee
+el estado; no captura, tokeniza, almacena ni paga esa tarjeta.
 
-Bloquea: E3 (con el 1), H2, y el propio PR.
+Esto es independiente de:
 
-| | |
-|---|---|
-| **Variables** | Ninguna nueva. `SERVER_HOST`, `SERVER_SSH_KEY` y compañía ya existen y apuntan a **producción** |
-| **Alcance** | Hacer merge del PR, dejar que `deploy.yml` corra, aplicar migraciones y encender el outbox durable (`E3`), que hoy está apagado por defecto |
-| **Duración** | El deploy es de minutos; la activación gradual, del dueño |
-| **Costo máximo** | Ninguno directo. El riesgo es de disponibilidad, no de dinero |
-| **Datos usados** | Producción |
-| **Aborto** | Cualquier familia de cobro cuyo contador de huérfanos sea distinto de cero antes del deploy: esas filas dejan de ser cobrables en el momento en que el código nuevo corre, y hay que verlas primero. `GET /tenant-payments/:tenantId/agreed-terms/orphans` es la consulta |
-| **Rollback** | El deploy reinicia contenedores con la imagen anterior; las migraciones son **aditivas** y no hace falta revertirlas. Encender el outbox se apaga con el mismo interruptor |
-| **Qué mirar** | El heartbeat `backup:last_success`, las colas de BullMQ, `tenant_payment_intents` con `status='requires_review'`, y el Ops Center |
-| **Evidencia esperada** | Un despliegue con cero mensajes perdidos y cero filas de cobro en revisión que no lo estuvieran antes |
+- la suscripción que el negocio paga a Parallly;
+- las credenciales que el negocio conecta para cobrar a sus propios clientes;
+- y cualquier tarjeta guardada por el comercio en otro proveedor.
 
----
+Antes del piloto deben constar WABA, número, moneda real, financiación lista,
+permisos, plantillas y método de pago. Un error `131042` pausa sólo el número
+afectado, no reintenta el mismo envío y sólo se levanta después de que Meta
+acepta una nueva verificación. La guía operativa y el copy autorizado están en
+[`docs/whatsapp-meta-pricing-2026-10.md`](../../whatsapp-meta-pricing-2026-10.md).
 
-## Y antes que todos ellos: staging
+## Gate 7 — canario real de Meta
 
-No existe. Ni en los secrets del repositorio ni en el entorno local hay un host,
-una base ni una credencial de staging; `SERVER_HOST` y `SERVER_SSH_KEY` son la
-VPS de producción. La fase 11 no está bloqueada por una credencial que alguien
-tenga que pegar: está bloqueada por un entorno que hay que crear.
+Bloquea R6 y las afirmaciones de entrega/coste real.
 
-Lo mínimo para que la fase 11 signifique algo:
+- **Destinatario:** número controlado, con consentimiento documentado.
+- **Presupuesto:** techo explícito calculado desde la moneda/tarifa que la WABA
+  expone; si la tarifa no se puede resolver, no se presume cero.
+- **Modo inicial:** `observe`; `enforce` se activa por tenant sólo después de
+  comparar reservas, recibos y factura.
+- **Evidencia:** cantidad de POST, wamid, estados aceptado/entregado/leído o
+  rechazo conclusivo, liquidación del ledger, franquicia y ausencia de segundo
+  POST por reintento.
+- **Aborto:** destinatario incorrecto, dos POST para un efecto lógico, gasto sin
+  reserva, moneda mezclada o `131042` reintentado.
 
-- una VPS o un proyecto aparte, con su propio PostgreSQL, PgBouncer, Valkey y
-  Cloudflare Tunnel;
-- `SERVER_HOST`, `SERVER_USER`, `SERVER_SSH_KEY`, `DATABASE_URL`,
-  `DIRECT_DATABASE_URL`, `REDIS_HOST`, `ENCRYPTION_KEY`, `JWT_SECRET`,
-  `JWT_REFRESH_SECRET`, `INTERNAL_JWT_SECRET`, `INTERNAL_API_KEY` — **propios**,
-  nunca los de producción;
-- un workflow de deploy que apunte ahí, o un `workflow_dispatch` con el entorno
-  como entrada;
-- y la decisión de qué datos lleva: sembrado desde cero es lo seguro; una copia
-  de producción exigiría purgar antes de que nadie la mire.
+## Gate 8 — aprobación legal y financiera
 
-Mientras no exista, el PR se revisa por su contenido y por la evidencia local,
-que es lo que hay y está dicho como tal.
+Bloquea L5 y cualquier publicación contractual o comercial nueva.
+
+- **Legal:** términos, privacidad, tratamiento de datos, roles de Parallly/Meta,
+  retención, eliminación y textos de consentimiento en es/en/pt/fr.
+- **Finanzas:** separación de los tres cobros, impuestos, moneda, márgenes y
+  afirmaciones de precio.
+- **Evidencia:** versión aprobada, responsables, fecha y alcance. Una aprobación
+  verbal no cambia el artefacto ni el estado del gate.
+
+## Qué ya puede hacerse sin abrir gates
+
+Se puede revisar el PR, repetir pruebas locales, regenerar artefactos, inspeccionar
+el VPS de forma sólo lectura cuando se autorice el acceso y preparar la ventana.
+No se debe afirmar “listo para desplegar” hasta que el candidato, la migración,
+el canario y los controles externos correspondientes produzcan evidencia real.

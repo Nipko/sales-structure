@@ -1,5 +1,13 @@
 # Lo que queda, con lo necesario para retomarlo sin volver a investigar
 
+> **Documento histórico, reemplazado el 13-sep-2026.** Conserva el estado de
+> `88422e23` para explicar cómo se cerraron aquellas brechas; sus conteos y su
+> lista de trabajo no describen el HEAD actual. La autoridad vigente es
+> [`docs/audits/2026-09-09/closure-report.md`](../../audits/2026-09-09/closure-report.md):
+> 25 aceptadas, 27 bloqueadas por gates externos, 0 abiertas y 1 diferida.
+> El paquete operativo vigente es
+> [`docs/audits/2026-09-09/external-gates-package.md`](../../audits/2026-09-09/external-gates-package.md).
+
 Fecha: 12 de septiembre de 2026.
 HEAD al cerrar: `88422e23190d1e9733096e107aa3760c0276ca0e`.
 Rango de esta tanda: `c1b94437..88422e23` — 68 commits, 275 archivos, +30.775/−1.680.

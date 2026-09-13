@@ -1996,14 +1996,16 @@ producer({
             channels: ['provider_api'],
         },
         properties: {
-            authority: none('inline from the daily `0 6 * * *` cron'),
-            idempotency: partial('refreshing twice is harmless: each call returns a valid token and the '
-                + 'newest one is stored'),
-            receipt: durable('the new token is encrypted and persisted, which is the whole point'),
-            uncertainOutcome: partial('a lost answer leaves the old token in place and the next daily '
-                + 'pass tries again, while the window is still 30 days wide'),
+            authority: durable('the account row is claimed under a unique lease before the provider call'),
+            idempotency: durable('one live lease can call Meta for an account; retrying an unknown refresh '
+                + 'is safe because the old and newly minted tokens remain valid'),
+            receipt: durable('the encrypted fresh token and completion timestamp are committed under the '
+                + 'same lease that called Meta'),
+            uncertainOutcome: durable('a request that may have left is recorded as `unknown`, distinct from '
+                + 'a conclusive refusal; the previous valid token remains available'),
             erasure: notApplicable('a credential, not contact data'),
-            recovery: durable('the daily cron is the recovery'),
+            recovery: durable('the daily cron reclaims failed, unknown, and expired leases; refresh is a '
+                + 'safe credential-lifecycle operation rather than a customer-visible duplicate'),
         },
     }),
 

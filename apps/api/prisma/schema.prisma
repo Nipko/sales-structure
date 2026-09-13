@@ -236,8 +236,15 @@ model ChannelAccount {
   /// NULL means unknown, and the rate resolver refuses to price rather than
   /// defaulting. Never Meta's `timezone_id`, which is a numeric Facebook id;
   /// a CHECK constraint refuses one.
-  wabaTimezone  String?  @map("waba_timezone") @db.VarChar(64)
-  createdAt     DateTime @default(now()) @map("created_at")
+  wabaTimezone              String?   @map("waba_timezone") @db.VarChar(64)
+  tokenRefreshState         String    @default("idle") @map("token_refresh_state") @db.VarChar(16)
+  tokenRefreshAttempts      Int       @default(0) @map("token_refresh_attempts")
+  tokenRefreshLeaseToken    String?   @map("token_refresh_lease_token") @db.Uuid
+  tokenRefreshLeaseExpiresAt DateTime? @map("token_refresh_lease_expires_at") @db.Timestamptz(6)
+  tokenRefreshStartedAt     DateTime?  @map("token_refresh_started_at") @db.Timestamptz(6)
+  tokenRefreshCompletedAt   DateTime?  @map("token_refresh_completed_at") @db.Timestamptz(6)
+  tokenRefreshError         String?   @map("token_refresh_error")
+  createdAt                 DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime @default(now()) @map("updated_at")
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)

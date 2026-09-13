@@ -1,4 +1,5 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
@@ -52,6 +53,8 @@ export class InstagramTokenRefreshService {
 
         let refreshed = 0;
         for (const acc of accounts) {
+            const lease = randomUUID();
+            let started = false;
             try {
                 const meta = ((acc.metadata as Record<string, any>) || {});
 
@@ -79,6 +82,40 @@ export class InstagramTokenRefreshService {
                 // Refresh when expiry is unknown (never tracked) or within the window.
                 if (expMs !== null && (expMs - now) > thresholdMs) continue;
 
+                const claims = await this.prisma.$queryRawUnsafe<any[]>(
+                    `UPDATE channel_accounts
+                     SET token_refresh_state = 'claimed',
+                         token_refresh_attempts = token_refresh_attempts + 1,
+                         token_refresh_lease_token = $2::uuid,
+                         token_refresh_lease_expires_at = NOW() + INTERVAL '90 seconds',
+                         token_refresh_error = NULL
+                     WHERE id = $1::uuid
+                       AND is_active = true
+                       AND channel_type = 'instagram'
+                       AND ((token_refresh_state IN ('idle', 'failed', 'unknown')
+                              AND (token_refresh_started_at IS NULL
+                                OR token_refresh_started_at <= NOW() - INTERVAL '23 hours'))
+                         OR (token_refresh_state IN ('claimed', 'sending')
+                              AND token_refresh_lease_expires_at <= NOW()))
+                     RETURNING id`,
+                    acc.id,
+                    lease,
+                );
+                if (!claims[0]) continue;
+
+                const began = await this.prisma.$executeRawUnsafe(
+                    `UPDATE channel_accounts
+                     SET token_refresh_state = 'sending', token_refresh_started_at = NOW()
+                     WHERE id = $1::uuid
+                       AND token_refresh_state = 'claimed'
+                       AND token_refresh_lease_token = $2::uuid
+                       AND token_refresh_lease_expires_at > NOW()`,
+                    acc.id,
+                    lease,
+                );
+                if (Number(began) !== 1) continue;
+                started = true;
+
                 const res = await fetch(
                     `https://graph.instagram.com/refresh_access_token?` +
                     new URLSearchParams({ grant_type: 'ig_refresh_token', access_token: currentToken }),
@@ -87,6 +124,19 @@ export class InstagramTokenRefreshService {
 
                 if (!data.access_token) {
                     this.logger.warn(`IG token refresh failed for tenant ${acc.tenantId} account ${acc.accountId}: ${JSON.stringify(data.error || data)}`);
+                    await this.prisma.$executeRawUnsafe(
+                        `UPDATE channel_accounts
+                         SET token_refresh_state = 'failed',
+                             token_refresh_lease_token = NULL,
+                             token_refresh_lease_expires_at = NULL,
+                             token_refresh_completed_at = NOW(),
+                             token_refresh_error = 'instagram_refresh_refused'
+                         WHERE id = $1::uuid
+                           AND token_refresh_state = 'sending'
+                           AND token_refresh_lease_token = $2::uuid`,
+                        acc.id,
+                        lease,
+                    );
                     continue;
                 }
 
@@ -95,14 +145,35 @@ export class InstagramTokenRefreshService {
 
                 // Write the refreshed token to the per-account slot the runtime reads
                 // (also upgrades legacy placeholder rows to a real per-account token).
-                await this.prisma.channelAccount.update({
-                    where: { id: acc.id },
-                    data: { accessToken: encrypted, metadata: { ...meta, tokenExpiresAt: newExpiresAt.toISOString() } },
-                });
-                // Keep the legacy credential + its expiry in sync (fallback + status UI).
-                await this.prisma.whatsappCredential.updateMany({
-                    where: { tenantId: acc.tenantId, credentialType: 'instagram_token' },
-                    data: { encryptedValue: encrypted, expiresAt: newExpiresAt, rotationState: 'active', updatedAt: new Date() },
+                await this.prisma.$transaction(async (tx: any) => {
+                    const settled = await tx.$executeRawUnsafe(
+                        `UPDATE channel_accounts
+                         SET access_token = $3,
+                             metadata = $4::jsonb,
+                             token_refresh_state = 'idle',
+                             token_refresh_lease_token = NULL,
+                             token_refresh_lease_expires_at = NULL,
+                             token_refresh_completed_at = NOW(),
+                             token_refresh_error = NULL,
+                             updated_at = NOW()
+                         WHERE id = $1::uuid
+                           AND token_refresh_state = 'sending'
+                           AND token_refresh_lease_token = $2::uuid`,
+                        acc.id,
+                        lease,
+                        encrypted,
+                        JSON.stringify({ ...meta, tokenExpiresAt: newExpiresAt.toISOString() }),
+                    );
+                    if (Number(settled) !== 1) throw new Error('instagram_refresh_lease_lost');
+                    await tx.whatsappCredential.updateMany({
+                        where: { tenantId: acc.tenantId, credentialType: 'instagram_token' },
+                        data: {
+                            encryptedValue: encrypted,
+                            expiresAt: newExpiresAt,
+                            rotationState: 'active',
+                            updatedAt: new Date(),
+                        },
+                    });
                 });
                 await this.channelToken.invalidateCache('instagram', acc.tenantId, acc.accountId).catch(() => {});
                 this.events?.emit(AGENT_QUALITY_DEPENDENCIES_UPDATED, {
@@ -113,6 +184,19 @@ export class InstagramTokenRefreshService {
                 refreshed++;
                 this.logger.log(`IG token refreshed for tenant ${acc.tenantId} account ${acc.accountId}, new expiry: ${newExpiresAt.toISOString()}`);
             } catch (e: any) {
+                await this.prisma.$executeRawUnsafe(
+                    `UPDATE channel_accounts
+                     SET token_refresh_state = $3,
+                         token_refresh_lease_token = NULL,
+                         token_refresh_lease_expires_at = NULL,
+                         token_refresh_completed_at = NOW(),
+                         token_refresh_error = $4
+                     WHERE id = $1::uuid AND token_refresh_lease_token = $2::uuid`,
+                    acc.id,
+                    lease,
+                    started ? 'unknown' : 'failed',
+                    String(e?.message || 'instagram_refresh_failed').slice(0, 200),
+                ).catch(() => undefined);
                 this.logger.error(`IG token refresh error for tenant ${acc.tenantId} account ${acc.accountId}: ${e.message}`);
             }
         }

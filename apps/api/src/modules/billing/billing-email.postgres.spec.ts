@@ -7,6 +7,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { BillingEmailService } from './billing-email.service';
 import { PlatformNotificationOutboxService } from '../platform-notifications/platform-notification-outbox.service';
 import { BillingEventType } from './types/billing-event.enum';
+import { ensureSyntheticGlobalTables } from '../../common/__fixtures__/synthetic-global-tables';
 
 const url = process.env.PARALLLY_ISOLATION_TEST_URL;
 
@@ -25,24 +26,9 @@ const url = process.env.PARALLLY_ISOLATION_TEST_URL;
         admin = new Client({ connectionString: url });
         await admin.connect();
         await admin.query('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"');
-        await admin.query(`CREATE TABLE IF NOT EXISTS tenants(
-            id UUID PRIMARY KEY,billing_email TEXT,name TEXT,language TEXT)`);
-        await admin.query('ALTER TABLE tenants ADD COLUMN IF NOT EXISTS billing_email TEXT');
-        await admin.query('ALTER TABLE tenants ADD COLUMN IF NOT EXISTS name TEXT');
-        await admin.query('ALTER TABLE tenants ADD COLUMN IF NOT EXISTS language TEXT');
-        await admin.query(`CREATE TABLE IF NOT EXISTS users(
-            id UUID PRIMARY KEY,tenant_id UUID,email TEXT,first_name TEXT,role TEXT,is_active BOOLEAN)`);
-        await admin.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS tenant_id UUID');
-        await admin.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT');
-        await admin.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS first_name TEXT');
-        await admin.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT');
-        await admin.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN');
+        await ensureSyntheticGlobalTables(sql => admin.query(sql));
         await admin.query(`CREATE TABLE IF NOT EXISTS feature_requests(
             id UUID PRIMARY KEY,status_revision INTEGER NOT NULL DEFAULT 0)`);
-        await admin.query(`CREATE TABLE IF NOT EXISTS billing_plans(
-            id UUID PRIMARY KEY,name TEXT NOT NULL)`);
-        await admin.query(`CREATE TABLE IF NOT EXISTS billing_subscriptions(
-            id UUID PRIMARY KEY,tenant_id UUID NOT NULL,plan_id UUID NOT NULL)`);
         await admin.query(`CREATE TABLE IF NOT EXISTS billing_events(
             id UUID PRIMARY KEY,tenant_id UUID,subscription_id UUID,provider TEXT NOT NULL,
             provider_event_id TEXT NOT NULL,event_type TEXT NOT NULL,payload JSONB NOT NULL DEFAULT '{}'::jsonb,

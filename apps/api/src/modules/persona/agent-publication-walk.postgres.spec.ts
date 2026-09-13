@@ -372,18 +372,24 @@ const url = process.env.AGENT_RELEASE_TEST_DATABASE_URL;
             tenant_id UUID PRIMARY KEY,status TEXT,trial_ends_at TIMESTAMPTZ,
             cancel_at_period_end BOOLEAN,current_period_end TIMESTAMPTZ,
             cancellation_reason TEXT,dunning_started_at TIMESTAMPTZ)`);
-        await client.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS public.billing_plans(
-            slug TEXT PRIMARY KEY,max_agents INTEGER,max_ai_messages INTEGER,features JSONB)`);
-        await client.$executeRawUnsafe(`INSERT INTO public.billing_plans(slug,max_agents,max_ai_messages,features)
-            VALUES('publication_walk',20,10000,'{"customPrompt":true,"customerPayments":true}'::jsonb)
+        const planId = randomUUID();
+        const planRows = await client.$queryRawUnsafe<any[]>(`INSERT INTO public.billing_plans(
+            id,slug,name,price_usd_cents,trial_days,requires_card_for_trial,max_agents,max_ai_messages,
+            features,price_local_overrides,is_active,sort_order)
+            VALUES($1::uuid,'publication_walk','Publication walk',0,0,false,20,10000,
+                '{"customPrompt":true,"customerPayments":true}'::jsonb,'{}'::jsonb,true,0)
             ON CONFLICT(slug) DO UPDATE SET max_agents=EXCLUDED.max_agents,
-                max_ai_messages=EXCLUDED.max_ai_messages,features=EXCLUDED.features`);
+                max_ai_messages=EXCLUDED.max_ai_messages,features=EXCLUDED.features
+            RETURNING id`, planId);
+        const canonicalPlanId = planRows[0].id;
         for (const [id, name] of [[tenantId, schema], [otherTenantId, otherSchema]] as const) {
             await client.$executeRawUnsafe(
                 `INSERT INTO public.tenants(id,schema_name,is_active,is_internal,plan,industry,settings)
                  VALUES($1::uuid,$2,true,false,'publication_walk','education','{"verticalConfig":{"industry":"education","subType":"capacitacion"}}'::jsonb)`, id, name);
-            await client.$executeRawUnsafe(`INSERT INTO public.billing_subscriptions(tenant_id,status,cancel_at_period_end)
-                VALUES($1::uuid,'active',false) ON CONFLICT(tenant_id) DO UPDATE SET status='active',cancel_at_period_end=false`, id);
+            await client.$executeRawUnsafe(`INSERT INTO public.billing_subscriptions(
+                tenant_id,plan_id,status,provider,cancel_at_period_end)
+                VALUES($1::uuid,$2::uuid,'active','mock',false)
+                ON CONFLICT(tenant_id) DO UPDATE SET plan_id=EXCLUDED.plan_id,status='active',cancel_at_period_end=false`, id, canonicalPlanId);
             await client.$executeRawUnsafe(`CREATE SCHEMA "${name}"`);
         }
 

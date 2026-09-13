@@ -21,6 +21,10 @@ type Exec = (sql: string) => Promise<unknown>;
 const TENANT_COLUMNS: ReadonlyArray<[string, string]> = [
     ['schema_name', 'TEXT'],
     ['is_active', 'BOOLEAN DEFAULT true'],
+    ['is_internal', 'BOOLEAN DEFAULT false'],
+    ['plan', 'TEXT'],
+    ['name', 'TEXT'],
+    ['billing_email', 'TEXT'],
     ['language', 'TEXT'],
     ['industry', 'TEXT'],
     ['settings', "JSONB DEFAULT '{}'::jsonb"],
@@ -49,6 +53,35 @@ const USER_COLUMNS: ReadonlyArray<[string, string]> = [
     ['two_factor_sms_expires', 'TIMESTAMPTZ'],
     ['two_factor_sms_revision', 'INTEGER NOT NULL DEFAULT 0'],
     ['updated_at', 'TIMESTAMPTZ DEFAULT NOW()'],
+];
+
+/** Shared additive shape for the two billing tables used by cross-module specs. */
+const BILLING_PLAN_COLUMNS: ReadonlyArray<[string, string]> = [
+    ['slug', 'TEXT'], ['name', 'TEXT'], ['price_usd_cents', 'INTEGER'],
+    ['trial_days', 'INTEGER DEFAULT 0'], ['requires_card_for_trial', 'BOOLEAN DEFAULT false'],
+    ['max_agents', 'INTEGER'], ['max_ai_messages', 'INTEGER'],
+    ['features', "JSONB DEFAULT '{}'::jsonb"], ['mp_plan_id', 'TEXT'],
+    ['stripe_plan_id', 'TEXT'], ['price_local_overrides', "JSONB DEFAULT '{}'::jsonb"],
+    ['is_active', 'BOOLEAN DEFAULT true'], ['sort_order', 'INTEGER DEFAULT 0'],
+    ['created_at', 'TIMESTAMPTZ DEFAULT NOW()'], ['updated_at', 'TIMESTAMPTZ DEFAULT NOW()'],
+];
+
+const BILLING_SUBSCRIPTION_COLUMNS: ReadonlyArray<[string, string]> = [
+    ['tenant_id', 'UUID'], ['plan_id', 'UUID'], ['status', 'TEXT'], ['provider', 'TEXT'],
+    ['provider_subscription_id', 'TEXT'], ['provider_customer_id', 'TEXT'],
+    ['trial_started_at', 'TIMESTAMPTZ'], ['trial_ends_at', 'TIMESTAMPTZ'],
+    ['current_period_start', 'TIMESTAMPTZ'], ['current_period_end', 'TIMESTAMPTZ'],
+    ['cancel_at_period_end', 'BOOLEAN DEFAULT false'], ['cancelled_at', 'TIMESTAMPTZ'],
+    ['cancellation_reason', 'TEXT'], ['pending_plan_id', 'UUID'],
+    ['pending_plan_change_at', 'TIMESTAMPTZ'], ['metadata', "JSONB DEFAULT '{}'::jsonb"],
+    ['created_at', 'TIMESTAMPTZ DEFAULT NOW()'], ['updated_at', 'TIMESTAMPTZ DEFAULT NOW()'],
+    ['engine', "TEXT DEFAULT 'provider'"], ['next_charge_at', 'TIMESTAMPTZ'],
+    ['billing_anchor_day', 'INTEGER'], ['billing_timezone', 'TEXT'],
+    ['charge_amount_cents', 'INTEGER'], ['charge_currency', 'TEXT'],
+    ['default_payment_source_id', 'UUID'], ['unattended_capable', 'BOOLEAN DEFAULT true'],
+    ['dunning_state', "TEXT DEFAULT 'none'"], ['dunning_started_at', 'TIMESTAMPTZ'],
+    ['dunning_attempts', 'INTEGER DEFAULT 0'], ['credit_balance_cents', 'INTEGER DEFAULT 0'],
+    ['pending_upgrade_plan_id', 'UUID'],
 ];
 
 /**
@@ -219,4 +252,8 @@ export async function ensureSyntheticGlobalTables(exec: Exec): Promise<void> {
         { generatedId: true });
     await ensure(exec, 'chat_identity_challenges', CHAT_IDENTITY_CHALLENGE_COLUMNS,
         { generatedId: true });
+    await ensure(exec, 'billing_plans', BILLING_PLAN_COLUMNS, { generatedId: true });
+    await exec('CREATE UNIQUE INDEX IF NOT EXISTS synthetic_billing_plans_slug_key ON public.billing_plans(slug)');
+    await ensure(exec, 'billing_subscriptions', BILLING_SUBSCRIPTION_COLUMNS, { generatedId: true });
+    await exec('CREATE UNIQUE INDEX IF NOT EXISTS synthetic_billing_subscriptions_tenant_key ON public.billing_subscriptions(tenant_id)');
 }

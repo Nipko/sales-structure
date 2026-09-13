@@ -191,7 +191,10 @@ export class MetaComplianceService {
                     updated_at=NOW() WHERE code=$1::uuid RETURNING *`,
             code, status, notes?.trim().slice(0, 1000) || '', changed);
             return this.fromRow(updated[0]);
-        }, { isolationLevel: 'Serializable' as any });
+        // The row lock serializes transitions for this request. READ COMMITTED
+        // lets a concurrent operator wait for that lock and then evaluate the
+        // state that actually committed instead of surfacing PostgreSQL 40001.
+        }, { isolationLevel: 'ReadCommitted' as any });
         this.logger.log(`Deletion request ${code} marked ${status}`);
         return this.toPublicRecord(record);
     }
@@ -225,7 +228,11 @@ export class MetaComplianceService {
                 ON CONFLICT(event_key) DO UPDATE SET updated_at=platform_notification_outbox.updated_at
                 RETURNING id`, `meta-compliance:${canonical.code}`, canonical.code, this.notifyEmail);
             return { code: canonical.code, noticeId: notices[0].id };
-        }, { isolationLevel: 'Serializable' as any });
+        // Both writes are UPSERTs protected by unique keys and live in the same
+        // transaction. SERIALIZABLE makes simultaneous provider retries abort
+        // with 40001 after one insert commits; READ COMMITTED waits and adopts
+        // the canonical request and notice without weakening atomicity.
+        }, { isolationLevel: 'ReadCommitted' as any });
     }
 
     private generateCode(): string {

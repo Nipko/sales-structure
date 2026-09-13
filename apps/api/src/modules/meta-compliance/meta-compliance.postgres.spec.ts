@@ -106,11 +106,12 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
         const payload = Buffer.from(JSON.stringify({ user_id: 'fb-123', algorithm: 'HMAC-SHA256', issued_at: 12345 }))
             .toString('base64url');
         const sig = createHmac('sha256', 'test-secret').update(payload).digest('base64url');
-        const [a, b] = await Promise.all([
-            service.handleMetaCallback(`${sig}.${payload}`), service.handleMetaCallback(`${sig}.${payload}`),
-        ]);
-        expect(b.confirmation_code).toBe(a.confirmation_code);
+        const callbacks = await Promise.all(Array.from({ length: 12 }, () =>
+            service.handleMetaCallback(`${sig}.${payload}`)));
+        expect(new Set(callbacks.map(result => result.confirmation_code))).toHaveProperty('size', 1);
         expect((await admin.query('SELECT code FROM meta_compliance_requests')).rows).toHaveLength(1);
+        expect((await admin.query(`SELECT id FROM platform_notification_outbox
+            WHERE kind='meta_compliance.request_email'`)).rows).toHaveLength(1);
     });
 
     it('removes expired PII and its delivery record together', async () => {

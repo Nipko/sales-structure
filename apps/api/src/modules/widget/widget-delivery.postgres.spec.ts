@@ -455,7 +455,11 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
         let changed=false;
         const intercepted={...prisma,executeInTenantSchema:async(s:string,sql:string,params:any[])=>{
             const result=await prisma.executeInTenantSchema(s,sql,params);
-            if(!changed&&sql.includes('SELECT e.kind,e.state,l.channel_type')){
+            // Match the semantic classification read, not an exact projection.
+            // Adding the attempts column once made this adversarial race stop
+            // running while the assertion still appeared to cover it.
+            if(!changed&&sql.includes('e.kind')&&sql.includes('e.state')
+                &&sql.includes('l.channel_type')&&sql.includes('tool_execution_ledger l')){
                 changed=true;
                 await scoped('UPDATE tool_execution_ledger SET channel_type=$2 WHERE id=$1::uuid',[ledger,initial==='web_widget'?'whatsapp':'web_widget']);
             }

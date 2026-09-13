@@ -135,7 +135,12 @@ export class AgentTestService {
 
     async test(tenantId: string, agentId: string, req: TestAgentRequest, options?: AgentTestExecutionOptions): Promise<TestAgentResponse> {
         const startedAt = Date.now();
-        if (!await this.throttle.hasAiMessageQuota(tenantId)) throw new HttpException('ai_message_quota_exceeded', HttpStatus.TOO_MANY_REQUESTS);
+        const quota = await this.throttle.getAiMessageUsage(tenantId);
+        if (Number.isFinite(quota.limit) && quota.used >= quota.limit) {
+            throw new HttpException('ai_message_quota_exceeded', HttpStatus.TOO_MANY_REQUESTS);
+        }
+        const invocationId = options?.sandboxInboundMessageId || randomUUID();
+        const quotaEffects: string[] = [];
         const channelType = req.channelType && CONVERSATIONAL_CHANNELS.includes(req.channelType) ? req.channelType : 'web_widget';
         const snapshot = structuredClone(options?.agentSnapshot || (req.runtimeSessionId
             ? this.sessions.getSnapshot(req.runtimeSessionId, tenantId, agentId)
@@ -188,14 +193,30 @@ export class AgentTestService {
             evaluationDataSourceAuthority:sourceAuthority,
             history: (req.conversationHistory || []).map(row => ({ ...row })),
             beforeToolExecution: async () => { await assertNamespace(); await options?.beforeToolExecution?.(); },
-            beforeModelExecution: async () => { await assertNamespace(); await options?.beforeModelExecution?.(); },
+            beforeModelExecution: async () => {
+                await assertNamespace();
+                const effectId = `agent-test:${agentId}:${invocationId}:model:${quotaEffects.length}`;
+                const reservation = await this.throttle.reserveAiMessageCount(tenantId, effectId, quota.limit);
+                if (!reservation.allowed) {
+                    throw new HttpException('ai_message_quota_exceeded', HttpStatus.TOO_MANY_REQUESTS);
+                }
+                quotaEffects.push(effectId);
+                try {
+                    await options?.beforeModelExecution?.();
+                } catch (error) {
+                    quotaEffects.pop();
+                    await this.throttle.releaseAiMessageCount(tenantId, effectId).catch(() => undefined);
+                    throw error;
+                }
+            },
             afterDependencyRead: assertNamespace,
             disableTools: options?.disableTools ?? req.options?.disableTools,
         });
+        const providerCallsBefore = session.trace.providerCalls;
         sessionRetained = true;
         session.busy = true;
         try {
-            const message = { id: options?.sandboxInboundMessageId || randomUUID(), channelAccountId: 'agent-test', conversationId: session.conversationId, direction: 'inbound', status: 'pending', tenantId, channelType, contactId, content: { type: 'text', text: req.message },
+            const message = { id: invocationId, channelAccountId: 'agent-test', conversationId: session.conversationId, direction: 'inbound', status: 'pending', tenantId, channelType, contactId, content: { type: 'text', text: req.message },
                 timestamp: new Date(), metadata: { allowHumanHandoff: false } } as NormalizedMessage;
             const reply = await this.runtime.executeAgentTurn(message, session);
             await assertNamespace();
@@ -221,8 +242,18 @@ export class AgentTestService {
             } };
         } finally {
             session.busy = false;
-            // Same provider accounting as live, with no customer analytics or deliveries.
-            for (let call = 0; call < session.trace.providerCalls; call++) await this.throttle.incrementAiMessageCount(tenantId);
+            // The session adapter increments providerCalls immediately before
+            // crossing the provider boundary. Commit exactly those effects;
+            // release a reservation whose later budget/source fence stopped the
+            // call before it crossed that boundary.
+            const crossedProviderBoundary = Math.max(0, session.trace.providerCalls - providerCallsBefore);
+            for (let call = 0; call < quotaEffects.length; call++) {
+                if (call < crossedProviderBoundary) {
+                    await this.throttle.commitAiMessageCount(tenantId, quotaEffects[call]);
+                } else {
+                    await this.throttle.releaseAiMessageCount(tenantId, quotaEffects[call]);
+                }
+            }
         }
         } catch (error) {
             if (ownsSnapshot && !sessionRetained) await this.releaseSnapshot(snapshot);

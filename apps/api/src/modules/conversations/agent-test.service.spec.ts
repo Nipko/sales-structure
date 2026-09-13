@@ -88,11 +88,29 @@ describe('AgentTestService delegates to the operational core', () => {
         expect(f.llmRouter.execute).not.toHaveBeenCalled();
     });
     it('checks quota before loading config, resolving schema or calling the core', async () => {
-        const f = agentTurnFixture(); f.throttle.hasAiMessageQuota.mockResolvedValue(false);
+        const f = agentTurnFixture(); f.throttle.getAiMessageUsage.mockResolvedValue({ used: 1, limit: 1 });
         await expect(f.service.test('tenant', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', { message: 'hola' })).rejects.toThrow('ai_message_quota_exceeded');
         expect(f.personaService.getAgent).not.toHaveBeenCalled();
         expect(f.tenantsService.getSchemaName).not.toHaveBeenCalled();
         expect(f.llmRouter.execute).not.toHaveBeenCalled();
+    });
+    it('admits only one provider call when concurrent previews contend for the final monthly slot', async () => {
+        const f = agentTurnFixture();
+        let held = false;
+        f.throttle.getAiMessageUsage.mockResolvedValue({ used: 0, limit: 1 });
+        f.throttle.reserveAiMessageCount.mockImplementation(async () => {
+            if (held) return { allowed: false, count: 1, adopted: false };
+            held = true;
+            return { allowed: true, count: 1, adopted: false };
+        });
+        const results = await Promise.all([
+            f.service.test('tenant', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', { message: 'primera' }),
+            f.service.test('tenant', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', { message: 'segunda' }),
+        ]);
+        expect(f.throttle.reserveAiMessageCount).toHaveBeenCalledTimes(2);
+        expect(f.llmRouter.execute).toHaveBeenCalledTimes(1);
+        expect(f.throttle.commitAiMessageCount).toHaveBeenCalledTimes(1);
+        expect(results.filter(result => result.debug.runtimeError === 'ai_message_quota_exceeded')).toHaveLength(1);
     });
     it('uses a frozen revision and actual channel while accounting every provider invocation', async () => {
         const f = agentTurnFixture(); const snapshot = await f.service.captureSnapshot('tenant', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
@@ -105,7 +123,8 @@ describe('AgentTestService delegates to the operational core', () => {
         expect(result.debug.turnContext).toMatchObject({ channelType: 'telegram', executionMode: 'agent_test' });
         expect(result.debug.tokens).toEqual({ input: 20, output: 5 });
         expect(result.debug.runtimeError).toBeUndefined();
-        expect(f.throttle.incrementAiMessageCount).toHaveBeenCalledTimes(1);
+        expect(f.throttle.reserveAiMessageCount).toHaveBeenCalledTimes(1);
+        expect(f.throttle.commitAiMessageCount).toHaveBeenCalledTimes(1);
         expect(f.throttle.getPlanFeatures).toHaveBeenCalledWith('tenant', AGENT_TEST_EXECUTION_CONTEXT);
         expect(f.tenantsService.getSchemaName).toHaveBeenCalledWith('tenant', AGENT_TEST_EXECUTION_CONTEXT);
     });
@@ -151,7 +170,8 @@ describe('AgentTestService delegates to the operational core', () => {
         const result = await f.service.test('tenant', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', { message: 'hola' }, { beforeModelExecution: async () => { throw new Error('eval_daily_budget_exhausted'); } });
         expect(result.debug.runtimeError).toBe('eval_daily_budget_exhausted');
         expect(f.llmRouter.execute).not.toHaveBeenCalled();
-        expect(f.throttle.incrementAiMessageCount).not.toHaveBeenCalled();
+        expect(f.throttle.commitAiMessageCount).not.toHaveBeenCalled();
+        expect(f.throttle.releaseAiMessageCount).toHaveBeenCalledTimes(1);
         expect(f.prisma.executeInTenantSchema.mock.calls.every((call: any[]) => /^\s*(SELECT|WITH)/i.test(call[1]))).toBe(true);
     });
     it('freezes the published learning revision or an explicit empty baseline', async () => {
@@ -195,7 +215,7 @@ describe('AgentTestService delegates to the operational core', () => {
             return {content:'This stale answer must not be released',model:'test'};
         });
         await expect(f.service.test('tenant','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',{message:'hola'},{agentSnapshot:snapshot})).rejects.toThrow('tenant.policies');
-        expect(f.throttle.incrementAiMessageCount).toHaveBeenCalledTimes(1);
+        expect(f.throttle.commitAiMessageCount).toHaveBeenCalledTimes(1);
     });
     it('does not feed a tool result from changed dependencies into another model invocation',async()=>{
         const f=agentTurnFixture();publishTools(f,['search_products']);

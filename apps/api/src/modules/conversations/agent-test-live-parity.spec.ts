@@ -49,7 +49,8 @@ describe('Agent Test uses operational engines, context and output guards', () =>
         expect(result.reply).toBe('La cita sigue pendiente de confirmación.');
         expect(budget).toHaveBeenCalledTimes(2);
         expect(f.eventEmitter.emit).not.toHaveBeenCalled();
-        expect(f.throttle.incrementAiMessageCount).toHaveBeenCalledTimes(2);
+        expect(f.throttle.reserveAiMessageCount).toHaveBeenCalledTimes(2);
+        expect(f.throttle.commitAiMessageCount).toHaveBeenCalledTimes(2);
     });
     it('runs the actual booking engine and resumes its ephemeral state next turn', async () => {
         const f = agentTurnFixture();

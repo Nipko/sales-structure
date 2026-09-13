@@ -32,6 +32,10 @@ export function agentTurnFixture(overrides: Record<string, any> = {}) {
         execute: jest.fn().mockResolvedValue({ content: 'Puedo ayudarte.', model: 'test', usage: { promptTokens: 20, completionTokens: 5 }, cost: 0.001 }),
     });
     const throttle = { hasAiMessageQuota: jest.fn().mockResolvedValue(true),
+        getAiMessageUsage: jest.fn().mockResolvedValue({ used: 0, limit: 100, remaining: 100, percent: 0, monthKey: '2026-09', plan: 'test' }),
+        reserveAiMessageCount: jest.fn().mockResolvedValue({ allowed: true, count: 1, adopted: false }),
+        commitAiMessageCount: jest.fn().mockResolvedValue(undefined),
+        releaseAiMessageCount: jest.fn().mockResolvedValue(undefined),
         getPlanFeatures: jest.fn().mockResolvedValue({ llmTier: 'tier_2', llmCostBudgetUsdCents: -1 }),
         getLlmSpendUsdCents: jest.fn().mockResolvedValue(0), incrementAiMessageCount: jest.fn().mockResolvedValue(1) };
     const toolExecutor = { execute: jest.fn(async (_s: any, _t: any, _c: any, name: any, _a: any, _cid: any, opts: any) =>

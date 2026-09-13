@@ -224,6 +224,10 @@ describe('Agent Test no-business-write execution', () => {
         const traceWriter = jest.spyOn(router as any, 'emitTurnTrace');
         const throttle = {
             hasAiMessageQuota: jest.fn().mockResolvedValue(true),
+            getAiMessageUsage: jest.fn().mockResolvedValue({ used: 0, limit: 100 }),
+            reserveAiMessageCount: jest.fn().mockResolvedValue({ allowed: true, count: 1, adopted: false }),
+            commitAiMessageCount: jest.fn().mockResolvedValue(undefined),
+            releaseAiMessageCount: jest.fn().mockResolvedValue(undefined),
             getPlanFeatures: jest.fn().mockResolvedValue({ llmTier: 'tier_2' }),
             getLlmSpendUsdCents: jest.fn().mockResolvedValue(0),
             incrementAiMessageCount: jest.fn().mockResolvedValue(1),
@@ -249,7 +253,7 @@ describe('Agent Test no-business-write execution', () => {
         expect(ensureKnowledge).not.toHaveBeenCalled();
         expect(retrievalWriter).not.toHaveBeenCalled();
         expect(statsWriter).toHaveBeenCalledTimes(1);
-        expect(throttle.incrementAiMessageCount).toHaveBeenCalledWith(TENANT_ID);
+        expect(throttle.commitAiMessageCount).toHaveBeenCalledWith(TENANT_ID, expect.stringContaining('agent-test:'));
         expect(affinityWriter).not.toHaveBeenCalled();
         expect(breakerWriter).not.toHaveBeenCalled();
         expect(traceWriter).not.toHaveBeenCalled();

@@ -36,7 +36,7 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
                 channel TEXT NOT NULL, legal_version TEXT NOT NULL, legal_text_hash TEXT,
                 policy_id UUID, policy_type TEXT, policy_version INTEGER, consent_scope TEXT,
                 conversation_id UUID, capture_mode TEXT, expires_at TIMESTAMPTZ,
-                revoked_at TIMESTAMPTZ, consent_request_id UUID,
+                revoked_at TIMESTAMPTZ, consent_request_id UUID, confirmation_message_id TEXT,
                 created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
             CREATE UNIQUE INDEX uidx_consent_request ON "${schema}".consent_records(consent_request_id)
                 WHERE consent_request_id IS NOT NULL;
@@ -46,7 +46,7 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
                 channel TEXT NOT NULL, purposes TEXT[] NOT NULL, policy_id UUID NOT NULL,
                 policy_title TEXT NOT NULL, policy_version INTEGER NOT NULL, legal_text_hash TEXT NOT NULL,
                 issued_at TIMESTAMPTZ NOT NULL, expires_at TIMESTAMPTZ NOT NULL,
-                resolved_at TIMESTAMPTZ, resolution TEXT);
+                resolved_at TIMESTAMPTZ, resolution TEXT, confirmation_message_id TEXT);
             CREATE UNIQUE INDEX uidx_media_ai_consent_challenge_pending
                 ON "${schema}".media_ai_consent_challenges(conversation_id) WHERE resolved_at IS NULL;
         `);
@@ -104,7 +104,7 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
         expect(asked.message).toContain('yes, I confirm');
 
         const confirmed = await service().handlePendingReply(
-            tenantId, contactId, conversationId, 'Yes, I confirm', 'en',
+            tenantId, contactId, conversationId, 'wamid.confirm-postgres', 'Yes, I confirm', 'en',
         );
         expect(confirmed.message).toContain('Authorization recorded');
 
@@ -113,8 +113,12 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
             subjectId: contactId, purposes: ['image_analysis'], source: 'verified_consent_registry',
         });
         const { rows } = await client.query(
-            `SELECT resolution FROM "${schema}".media_ai_consent_challenges`,
+            `SELECT resolution, confirmation_message_id FROM "${schema}".media_ai_consent_challenges`,
         );
-        expect(rows).toEqual([{ resolution: 'granted' }]);
+        expect(rows).toEqual([{ resolution: 'granted', confirmation_message_id: 'wamid.confirm-postgres' }]);
+        const consent = await client.query(
+            `SELECT confirmation_message_id FROM "${schema}".consent_records`,
+        );
+        expect(consent.rows).toEqual([{ confirmation_message_id: 'wamid.confirm-postgres' }]);
     });
 });

@@ -254,13 +254,15 @@ export class MediaConsentService {
         tenantId: string,
         contactId: string,
         conversationId: string,
+        confirmationMessageId: string,
         messageText: string,
         language?: string,
     ): Promise<MediaConsentReply> {
         const intent = normalizeCustomerIntent(messageText, { answeringExplicitQuestion: true });
         const copy = languageCopy(language);
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
-        if (!schemaName || !contactId) return { handled: false };
+        const messageId = String(confirmationMessageId || '').trim().slice(0, 512);
+        if (!schemaName || !contactId || !messageId) return { handled: false };
         const disposition = ['reject', 'cancel', 'opt_out'].includes(intent.intent)
             ? 'declined'
             : authorizesEffect(intent, 'high_impact', { answeringExplicitQuestion: true })
@@ -305,9 +307,9 @@ export class MediaConsentService {
                         `INSERT INTO consent_records
                     (contact_id, channel, legal_version, legal_text_hash, policy_id, policy_type,
                      policy_version, consent_scope, conversation_id, capture_mode, expires_at,
-                     consent_request_id)
+                     consent_request_id, confirmation_message_id)
                  VALUES ($1::uuid, $2, $3, $4, $5::uuid, 'privacy', $6, $7, $8::uuid,
-                         'signed_media_ai_confirmation', $9::timestamptz, $10::uuid)
+                         'signed_media_ai_confirmation', $9::timestamptz, $10::uuid, $11)
                  ON CONFLICT (consent_request_id) WHERE consent_request_id IS NOT NULL
                  DO UPDATE SET consent_request_id = EXCLUDED.consent_request_id
                  RETURNING id`,
@@ -318,13 +320,15 @@ export class MediaConsentService {
                     conversationId,
                     expiresAt,
                     pending.request_id,
+                    messageId,
                 ],
                     );
                     await query(
                         `UPDATE media_ai_consent_challenges
-                            SET resolved_at = NOW(), resolution = 'granted'
+                            SET resolved_at = NOW(), resolution = 'granted',
+                                confirmation_message_id = $2
                           WHERE request_id = $1::uuid`,
-                        [pending.request_id],
+                        [pending.request_id, messageId],
                     );
                     return 'granted';
                 },

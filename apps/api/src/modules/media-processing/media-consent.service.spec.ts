@@ -79,7 +79,7 @@ describe('MediaConsentService', () => {
         expect(request.message).toContain('sí, autorizo');
 
         const result = await h.service.handlePendingReply(
-            tenantId, contactId, conversationId, 'Sí, autorizo', 'es',
+            tenantId, contactId, conversationId, 'wamid.confirm-1', 'Sí, autorizo', 'es',
         );
         expect(result).toMatchObject({ handled: true });
         expect(result.message).toContain('Autorización registrada');
@@ -88,6 +88,7 @@ describe('MediaConsentService', () => {
             contactId, policyId, 'media.ai', conversationId,
         ]));
         expect(h.query.mock.calls[2][0]).toContain("resolution = 'granted'");
+        expect(h.query.mock.calls[2][1]).toEqual([expect.any(String), 'wamid.confirm-1']);
     });
 
     it('does not turn an acknowledgement or qualified yes into sensitive-data consent', async () => {
@@ -101,7 +102,7 @@ describe('MediaConsentService', () => {
                 tenantId, contactId, conversationId, 'telegram', ['image_analysis'], 'es',
             );
             const result = await h.service.handlePendingReply(
-                tenantId, contactId, conversationId, reply, 'es',
+                tenantId, contactId, conversationId, `inbound-${reply}`, reply, 'es',
             );
             expect(result.message).toContain('respuesta clara');
             expect(h.query).toHaveBeenCalledTimes(1);
@@ -118,7 +119,7 @@ describe('MediaConsentService', () => {
             tenantId, contactId, conversationId, 'messenger', ['image_analysis'], 'en',
         );
         const result = await h.service.handlePendingReply(
-            tenantId, contactId, conversationId, 'No, do not do that', 'en',
+            tenantId, contactId, conversationId, 'mid.decline-1', 'No, do not do that', 'en',
         );
         expect(result.message).toContain('will not analyze');
         expect(h.query.mock.calls[1][0]).toContain("resolution = 'declined'");

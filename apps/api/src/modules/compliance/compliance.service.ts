@@ -330,10 +330,25 @@ export class ComplianceService {
         await run('consent_records',
             `UPDATE consent_records
                 SET ip_address = NULL, user_agent = NULL,
+                    confirmation_message_id = NULL,
                     revoked_at = COALESCE(revoked_at, NOW())
               WHERE contact_id = $1::uuid
                  OR lead_id IN (SELECT id FROM leads WHERE contact_id = $1::uuid)
              RETURNING id`,
+            [contactId],
+        );
+
+        // A pending challenge is operational state, not consent. Retire it so
+        // an erased contact can never authorize processing with a later reply;
+        // remove the provider message id from resolved evidence as part of the
+        // same network-identifier erasure.
+        await run('media_ai_consent_challenges',
+            `UPDATE media_ai_consent_challenges
+                SET resolved_at = COALESCE(resolved_at, NOW()),
+                    resolution = COALESCE(resolution, 'superseded'),
+                    confirmation_message_id = NULL
+              WHERE contact_id = $1::uuid
+             RETURNING request_id AS id`,
             [contactId],
         );
 

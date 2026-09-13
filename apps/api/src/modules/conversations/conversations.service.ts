@@ -2501,6 +2501,7 @@ export class ConversationsService {
                 tenantId,
                 conversation.contact_id || contact?.id || '',
                 conversation.id,
+                msg.id,
                 userText,
                 config.language || 'es',
             );

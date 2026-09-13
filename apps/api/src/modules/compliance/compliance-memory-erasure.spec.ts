@@ -228,4 +228,14 @@ describe('Contact erasure reaches memory derivatives', () => {
         expect(prisma.executeInTenantSchema.mock.calls[0][1]).toContain('SET revoked_at = COALESCE(revoked_at, NOW())');
         expect(prisma.executeInTenantSchema.mock.calls[0][1]).not.toContain('DELETE');
     });
+
+    it('retires pending media challenges and removes provider message identifiers on erasure', async () => {
+        const { service, query } = build();
+        await service.eraseContactData('tenant_memory', profileId, contactId, 'admin');
+        const consent = query.mock.calls.find(([sql]) => sql.includes('UPDATE consent_records'))![0];
+        expect(consent).toContain('confirmation_message_id = NULL');
+        const challenge = query.mock.calls.find(([sql]) => sql.includes('UPDATE media_ai_consent_challenges'))![0];
+        expect(challenge).toContain("resolution = COALESCE(resolution, 'superseded')");
+        expect(challenge).toContain('confirmation_message_id = NULL');
+    });
 });

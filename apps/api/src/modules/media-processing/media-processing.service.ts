@@ -307,10 +307,13 @@ export class MediaProcessingService {
         tenantId: string,
         contactId: string,
         conversationId: string,
+        confirmationMessageId: string,
         text: string,
         language?: string,
     ) {
-        return this.consent.handlePendingReply(tenantId, contactId, conversationId, text, language);
+        return this.consent.handlePendingReply(
+            tenantId, contactId, conversationId, confirmationMessageId, text, language,
+        );
     }
 
     private async processAudio(

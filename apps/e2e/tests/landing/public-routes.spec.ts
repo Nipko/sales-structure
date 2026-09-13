@@ -84,8 +84,8 @@ test.describe("landing public routes", () => {
       expect(forwarded.origin + forwarded.pathname).toBe(
         "https://admin.parallly-chat.cloud/signup",
       );
-      expect(forwarded.searchParams.get("plan")).toBe("Pro");
-      expect(forwarded.searchParams.get("country")).toBe("co");
+      expect(forwarded.searchParams.get("plan")).toBe("pro");
+      expect(forwarded.searchParams.get("country")).toBe("CO");
       expect(forwarded.searchParams.get("cycle")).toBe("annual");
       expect(forwarded.searchParams.get("source")).toBe("marketing_site");
       expect(forwarded.searchParams.get("source_path")).toBe("/precios");

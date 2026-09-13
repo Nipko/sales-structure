@@ -463,8 +463,10 @@ export default function SetupWizardPage() {
 
     if (loading) {
         return (
-            <div className="flex min-h-[60vh] items-center justify-center">
-                <Loader2 size={24} className="animate-spin text-indigo-500" />
+            <div role="status" aria-label={tCommon("loading")}
+                className="flex min-h-[60vh] items-center justify-center">
+                <h1 className="sr-only">{t("title")}</h1>
+                <Loader2 size={24} aria-hidden="true" className="animate-spin text-indigo-500" />
             </div>
         );
     }

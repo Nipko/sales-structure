@@ -50,7 +50,14 @@ const VERTICAL_SLUGS = new Set(VERTICALS.map((vertical) => vertical.slug));
 
 /** Returns the value to forward, or `null` to drop the parameter entirely. */
 const ALLOWLIST: Record<string, (raw: string) => string | null> = {
-  plan: (raw) => (SLUG.test(raw) ? raw : null),
+  // Public links and old campaigns used display names (`Pro`) while current
+  // CTAs use catalogue slugs (`pro`).  The dashboard already consumes the
+  // canonical lower-case slug, so normalize before validating instead of
+  // silently dropping a valid selection at the cross-origin hop.
+  plan: (raw) => {
+    const normalized = raw.toLowerCase();
+    return SLUG.test(normalized) ? normalized : null;
+  },
   country: (raw) => (/^[A-Za-z]{2}$/.test(raw) ? raw.toUpperCase() : null),
   cycle: (raw) => (raw === "monthly" || raw === "annual" ? raw : null),
   lang: (raw) => ((locales as readonly string[]).includes(raw) ? raw : null),

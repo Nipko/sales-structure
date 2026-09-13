@@ -27,7 +27,7 @@ Seu agente de IA é o "vendedor virtual" que responde aos seus clientes no Whats
 4. Clique em **Usar este** no modelo escolhido.
 5. Escreva o **Nome do agente** se quiser um próprio (por exemplo, Sofia ou Max); se deixar vazio, é usado o nome do modelo.
 
-O agente fica criado e o editor dele abre para você personalizar.
+O agente é criado para revisão e o editor abre. Ao criá-lo por esta tela, ele ainda não é o padrão nem atende conexões: personalize, salve o rascunho, teste e publique primeiro.
 
 ## O que o editor exige para salvar
 
@@ -74,7 +74,7 @@ As duas vêm com valores razoáveis; mude só se souber o que está ajustando.
 
 Você pode pedir ao Assist que revise o agente e prepare mudanças de identidade, idioma, instruções, regras, dados obrigatórios, comportamento fora do horário, vendas/suporte, recomendações, tamanho da resposta, conhecimento e permissões. O Assist mostra uma proposta para revisão; ao aceitar, salva um **rascunho**, sem publicar nem ativar o agente. No modo prompt personalizado, o Assist não oferece mudanças de personalidade, orientação principal, regras ou campos obrigatórios porque o prompt os substitui. Nunca envie credenciais ou conexões pelo chat.
 
-Quando terminar, clique em **Salvar alterações** — o botão fica sempre visível na barra inferior, então você não perde as edições ao rolar a página.
+Quando terminar, clique em **Salvar rascunho**. Salvar preserva as edições para revisão, mas não altera a versão que atende clientes. Use **Testar agente** com o rascunho; depois abra **Revisar uma versão**, prepare e aprove o candidato e entre em **Publicar e ver histórico** para publicá-lo. Somente a publicação torna operacionais a configuração, as conexões e a condição de agente padrão do rascunho.
 
 ## Ativo ou inativo
 
@@ -95,13 +95,13 @@ A regra é simples: **um agente de IA por conexão**. Uma conexão é cada conta
 1. No editor do agente, vá em **Atribuição de canais**.
 2. Marque as conexões que este agente vai atender. Você verá cada conta com seu nome e número, não o canal genérico.
 3. Se a conexão já estava atribuída a outro agente, o editor avisa que ela **será reatribuída** do agente anterior.
-4. Clique em **Salvar alterações**.
+4. Clique em **Salvar rascunho**, teste essa revisão e publique. A reatribuição ocorre ao publicar, não ao salvar.
 
 A quantidade e os tipos de conexão disponíveis aparecem em **Canais** e **Plano e faturamento**.
 
 ## O que significa o aviso "canais sem agente atribuído"
 
-Se **Agente IA** mostrar **Canais sem agente atribuído**, você tem conexões ativas que nenhum agente atende de forma específica. Enquanto isso, essas mensagens são respondidas pelo seu **agente padrão**, com uma configuração genérica.
+Se **Agente IA** mostrar **Canais sem agente atribuído**, você tem conexões ativas que nenhum agente atende de forma específica. Enquanto houver um agente padrão ativo, essas mensagens serão respondidas pela versão operacional dele.
 
 Clique em **Atribuir agente agora** para escolher qual agente atende cada conexão e oferecer uma experiência personalizada.
 
@@ -110,13 +110,13 @@ Clique em **Atribuir agente agora** para escolher qual agente atende cada conex�
 Na lista de **Agente IA**, cada agente tem um menu de ações:
 
 - **Duplicar** — cria uma cópia exata, ideal para experimentar sem mexer no agente que já está funcionando.
-- **Salvar como modelo** — transforma a configuração em um modelo reutilizável quando o recurso está habilitado (aparece em **Meus modelos**).
-- **Definir como padrão** — define qual agente responde nas conexões que não têm um atribuído.
-- **Excluir** — apaga o agente (pede confirmação). O agente padrão não pode ser excluído.
+- **Salvar como modelo** — copia a versão operacional para um modelo reutilizável quando o recurso está habilitado. Se houver rascunho, publique-o primeiro se quiser incluí-lo.
+- **Definir como padrão** — propõe essa condição no rascunho; ele só atende conexões sem atribuição depois que a revisão for publicada.
+- **Excluir** — retira o agente de uso, desativando-o e liberando suas conexões, mas preserva o registro. O agente padrão não pode ser retirado até que outro padrão seja publicado.
 
 ## Teste seu agente antes de ativá-lo
 
-Pelo menu **Agente IA → Testar agente** você pode conversar com o seu agente em modo simulação, sem afetar clientes reais. Use sempre que mudar a personalidade ou as regras, antes de ele falar com seus clientes.
+Em **Agente IA → Testar agente**, você pode conversar com a versão operacional ou com o rascunho salvo, sem afetar clientes reais. Teste o rascunho sempre que mudar personalidade, regras, ferramentas ou conexões; depois prepare, aprove e publique essa revisão.
 
 ## Perguntas frequentes
 
@@ -130,7 +130,7 @@ Responde o seu agente padrão. Você verá o aviso de canais sem atribuição em
 Não. O SMS no Parallly não é um canal de conversa: é usado apenas para notificações de saída com créditos (1 crédito = 1 segmento). As superfícies de conversa em autosserviço são WhatsApp, Instagram, Messenger, Telegram e chat web. Email mantém um adaptador inbound interno, mas não uma configuração de autosserviço certificada.
 
 **Mudei as instruções e o agente continua igual, o que eu verifico?**
-Confirme que você clicou em **Salvar alterações** na barra inferior do editor e que editou o agente atribuído àquela conexão (não outro). Depois verifique em **Testar agente**.
+Confirme que salvou e testou o rascunho e publicou o candidato aprovado. Depois verifique se a versão operacional atribui essa conexão ao mesmo agente; salvar o rascunho sozinho não altera as respostas aos clientes.
 
 **Como adiciono mais agentes ou mais números?**
 A tela mostra a capacidade disponível para agentes e conexões. Confira as opções atuais em **Administração → Plano e faturamento**, ou escreva para a gente em https://parallly-chat.cloud/support se precisar de outra capacidade.

@@ -27,7 +27,7 @@ Tu agente de IA es el "vendedor virtual" que responde a tus clientes en WhatsApp
 4. Haz clic en **Usar esta** sobre la plantilla elegida.
 5. Escribe el **Nombre del agente** si quieres uno propio (por ejemplo, Sofía o Max); si lo dejas vacío, se usa el de la plantilla.
 
-El agente queda creado y se abre su editor para que lo personalices.
+El agente queda creado para revisión y se abre su editor. Al crearlo desde esta pantalla todavía no es predeterminado ni atiende conexiones: primero personalízalo, guarda el borrador, pruébalo y publícalo.
 
 ## Lo que el editor exige para guardar
 
@@ -74,7 +74,7 @@ Ambas vienen con valores razonables; cámbialas solo si sabes qué estás ajusta
 
 Puedes pedirle a Assist que revise el agente y prepare cambios de identidad, idioma, instrucciones, reglas, campos requeridos, horario fuera de atención, ventas/soporte, recomendaciones, longitud de respuesta, conocimiento y permisos. Assist muestra una propuesta para revisar; al aceptarla guarda un **borrador**, no publica ni activa el agente. Con prompt personalizado, Assist no ofrece cambios de personalidad, guía principal, reglas ni campos requeridos porque ese prompt los reemplaza. Nunca uses el chat para enviar credenciales o conexiones.
 
-Cuando termines, haz clic en **Guardar cambios** — el botón siempre está visible en la barra inferior, así no pierdes ediciones al desplazarte.
+Cuando termines, haz clic en **Guardar borrador**. Guardar conserva lo que editaste para revisión, pero no cambia la versión que atiende a clientes. Usa **Probar agente** sobre el borrador; luego abre **Revisar una versión**, prepara y aprueba el candidato, y entra en **Publicar y ver historial** para publicarlo. Sólo esa publicación vuelve operativos la configuración, las conexiones y la condición de agente predeterminado del borrador.
 
 ## Activo o inactivo
 
@@ -95,13 +95,13 @@ La regla es simple: **un agente de IA por conexión**. Una conexión es cada cue
 1. En el editor del agente, ve a **Asignación de canales**.
 2. Marca las conexiones que este agente va a atender. Verás cada cuenta con su nombre y número, no el canal genérico.
 3. Si la conexión ya estaba asignada a otro agente, el editor te avisa que **se reasignará** desde el agente anterior.
-4. Haz clic en **Guardar cambios**.
+4. Haz clic en **Guardar borrador**, prueba esa revisión y publícala. La reasignación ocurre al publicar, no al guardar.
 
 La cantidad y el tipo de conexiones disponibles se muestran en **Canales** y **Plan y facturación**.
 
 ## Qué significa el aviso "canales sin agente asignado"
 
-Si en **Agente IA** ves el aviso **Canales sin agente asignado**, tienes conexiones activas que ningún agente atiende de forma específica. Mientras tanto, esos mensajes los responde tu **agente predeterminado**, con una configuración genérica.
+Si en **Agente IA** ves el aviso **Canales sin agente asignado**, tienes conexiones activas que ningún agente atiende de forma específica. Mientras exista un agente predeterminado activo, esos mensajes los responde su versión operativa.
 
 Haz clic en **Asignar agente ahora** para elegir qué agente atiende cada conexión y dar una experiencia personalizada.
 
@@ -110,13 +110,13 @@ Haz clic en **Asignar agente ahora** para elegir qué agente atiende cada conexi
 En la lista de **Agente IA**, cada agente tiene un menú de acciones:
 
 - **Duplicar** — crea una copia exacta, ideal para experimentar sin tocar el agente que ya funciona.
-- **Guardar como plantilla** — convierte la configuración en una plantilla reutilizable cuando la función está habilitada (aparece en **Mis plantillas**).
-- **Establecer como predeterminado** — define qué agente responde en las conexiones que no tienen uno asignado.
-- **Eliminar** — borra el agente (te pide confirmación). El agente predeterminado no se puede eliminar.
+- **Guardar como plantilla** — copia la versión operativa en una plantilla reutilizable cuando la función está habilitada. Si hay un borrador, publícalo primero si quieres que forme parte de la plantilla.
+- **Establecer como predeterminado** — propone esa condición en el borrador; empieza a responder conexiones sin asignación sólo después de publicar la revisión.
+- **Eliminar** — retira el agente de uso: lo desactiva y libera sus conexiones, pero conserva su registro. El agente predeterminado no se puede retirar hasta publicar otro como predeterminado.
 
 ## Prueba tu agente antes de activarlo
 
-Desde el menú **Agente IA → Probar agente** puedes chatear con tu agente en modo simulación, sin afectar clientes reales. Úsalo cada vez que cambies la personalidad o las reglas, antes de que hable con tus clientes.
+Desde el menú **Agente IA → Probar agente** puedes chatear con la versión operativa o con el borrador guardado, sin afectar clientes reales. Prueba el borrador cada vez que cambies personalidad, reglas, herramientas o conexiones; después prepara, aprueba y publica esa revisión.
 
 ## Preguntas frecuentes
 
@@ -130,7 +130,7 @@ Responde tu agente predeterminado. Verás el aviso de canales sin asignar en **A
 No. El SMS en Parallly no es un canal de conversación: se usa solo para notificaciones salientes con créditos (1 crédito = 1 segmento). Las superficies conversacionales autoservicio son WhatsApp, Instagram, Messenger, Telegram y el chat web. Email conserva un adaptador inbound interno, pero no una configuración autoservicio certificada.
 
 **Cambié las instrucciones y el agente sigue igual, ¿qué reviso?**
-Confirma que hiciste clic en **Guardar cambios** en la barra inferior del editor y que editaste el agente asignado a esa conexión (no otro). Luego verifícalo en **Probar agente**.
+Confirma que guardaste el borrador, que lo probaste y que publicaste el candidato aprobado. Después verifica que esa conexión quedó asignada al mismo agente en la versión operativa; un borrador guardado por sí solo no cambia las respuestas a clientes.
 
 **¿Cómo agrego más agentes o más números?**
 La pantalla muestra la capacidad disponible para agentes y conexiones. Consulta las opciones vigentes en **Administración → Plan y facturación**, o escríbenos en https://parallly-chat.cloud/support si necesitas otra capacidad.

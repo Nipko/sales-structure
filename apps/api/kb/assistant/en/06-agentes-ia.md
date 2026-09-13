@@ -27,7 +27,7 @@ Your AI agent is the "virtual salesperson" that replies to your customers on Wha
 4. Click **Use this** on the template you chose.
 5. Type an **Agent name** if you want a custom one (for example, Sofia or Max); if you leave it blank, the template's name is used.
 
-The agent is created and its editor opens so you can customize it.
+The agent is created for review and its editor opens. A self-service creation is not yet the default and handles no connections: customize it, save the draft, test it, and publish it first.
 
 ## What the editor requires before saving
 
@@ -74,7 +74,7 @@ Both ship with sensible values; change them only if you know what you are tuning
 
 You can ask Assist to review the agent and prepare changes to identity, language, instructions, rules, required information, after-hours behavior, sales/support mode, recommendations, response length, knowledge, and permissions. Assist presents a proposal for review; accepting it saves a **draft** and does not publish or activate the agent. In custom-prompt mode, Assist withholds personality, main-guide, rules, and required-field edits because the custom prompt replaces them. Never send credentials or connection details through chat.
 
-When you're done, click **Save changes** — the button is always visible in the bottom bar, so you won't lose edits while scrolling.
+When you're done, click **Save draft**. Saving preserves your edits for review but does not change the version serving customers. Use **Test agent** on the draft, then open **Review a release**, prepare and approve the candidate, and use **Publish and view history** to publish it. Only publication makes the draft configuration, connections, and default-agent status operational.
 
 ## Active or inactive
 
@@ -95,13 +95,13 @@ The rule is simple: **one AI agent per connection**. A connection is each accoun
 1. In the agent editor, go to **Channel Assignment**.
 2. Select the connections this agent will handle. You'll see each account with its name and number, not the generic channel.
 3. If the connection was already assigned to another agent, the editor warns you that it **will be reassigned** from the previous agent.
-4. Click **Save changes**.
+4. Click **Save draft**, test that revision, and publish it. Reassignment happens on publication, not on save.
 
 The available connection types and capacity appear under **Channels** and **Plan & Billing**.
 
 ## What the "channels without an assigned agent" notice means
 
-If **AI Agent** shows **Channels without an assigned agent**, you have active connections that no agent handles specifically. In the meantime, those messages are answered by your **default agent** with a generic configuration.
+If **AI Agent** shows **Channels without an assigned agent**, you have active connections that no agent handles specifically. While an active default agent exists, those messages are answered by its operational version.
 
 Click **Assign agent now** to choose which agent handles each connection and deliver a personalized experience.
 
@@ -110,13 +110,13 @@ Click **Assign agent now** to choose which agent handles each connection and del
 In the **AI Agent** list, each agent has an actions menu:
 
 - **Duplicate** — creates an exact copy, ideal for experimenting without touching the agent that's already working.
-- **Save as template** — turns the configuration into a reusable template when the feature is enabled (it appears under **My templates**).
-- **Set as default** — defines which agent replies on connections that don't have one assigned.
-- **Delete** — removes the agent (you'll be asked to confirm). The default agent can't be deleted.
+- **Save as template** — copies the operational version into a reusable template when the feature is enabled. If a draft exists, publish it first if you want it included.
+- **Set as default** — proposes that status in the draft; it handles unassigned connections only after the reviewed revision is published.
+- **Delete** — retires the agent from use by deactivating it and releasing its connections while retaining its record. The default agent cannot be retired until another default is published.
 
 ## Test your agent before going live
 
-From the **AI Agent → Test agent** menu you can chat with your agent in simulation mode, without affecting real customers. Use it every time you change the personality or the rules, before it talks to your customers.
+From **AI Agent → Test agent** you can chat with either the operational version or the saved draft without affecting real customers. Test the draft whenever you change personality, rules, tools, or connections, then prepare, approve, and publish that revision.
 
 ## Frequently asked questions
 
@@ -130,7 +130,7 @@ Your default agent replies. You'll see the unassigned-channels notice in **AI Ag
 No. SMS in Parallly is not a conversation channel: it's used only for outbound notifications with credits (1 credit = 1 segment). The self-service conversational surfaces are WhatsApp, Instagram, Messenger, Telegram and web chat. Email retains an internal inbound adapter, but not certified self-service configuration.
 
 **I changed the instructions and the agent behaves the same — what should I check?**
-Make sure you clicked **Save changes** in the editor's bottom bar and that you edited the agent assigned to that connection (not a different one). Then verify it in **Test agent**.
+Make sure you saved and tested the draft and published its approved candidate. Then verify that the operational version assigns that connection to the same agent; saving a draft alone does not change customer replies.
 
 **How do I add more agents or more numbers?**
 The screen shows the available capacity for agents and connections. Review current options under **Administration → Plan & Billing**, or write to us at https://parallly-chat.cloud/support if you need different capacity.

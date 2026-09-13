@@ -990,6 +990,18 @@ describe('Parallly Assist knowledge-base contract', () => {
       pt: /Reativar exige revisar e publicar uma versão/i,
       fr: /réactiver exige d'examiner et de publier une version/i,
     };
+    const publicationWorkflow: Record<(typeof LOCALES)[number], RegExp> = {
+      es: /Guardar borrador.{0,500}Probar agente.{0,500}Publicar y ver historial/is,
+      en: /Save draft.{0,500}Test agent.{0,500}Publish and view history/is,
+      pt: /Salvar rascunho.{0,500}Testar agente.{0,500}Publicar e ver histórico/is,
+      fr: /Enregistrer le brouillon.{0,500}Tester l'agent.{0,500}Publier et voir l'historique/is,
+    };
+    const retainedRemoval: Record<(typeof LOCALES)[number], RegExp> = {
+      es: /Eliminar.{0,180}desactiva.{0,100}libera sus conexiones.{0,100}conserva su registro/is,
+      en: /Delete.{0,180}deactivating.{0,100}releasing its connections.{0,100}retaining its record/is,
+      pt: /Excluir.{0,180}desativando.{0,100}liberando suas conexões.{0,100}preserva o registro/is,
+      fr: /Supprimer.{0,180}désactivant.{0,100}libérant ses connexions.{0,120}conservant son enregistrement/is,
+    };
     const inventedControls = /\*\*(?:Modelo IA|AI Model|Modèle IA)\*\*|(?:siempre IA, siempre humano o híbrido|always AI, always human or hybrid|sempre IA, sempre humano ou híbrido|toujours IA, toujours humain ou hybride)/i;
 
     for (const locale of LOCALES) {
@@ -998,6 +1010,8 @@ describe('Parallly Assist knowledge-base contract', () => {
       expect(article!.body).toMatch(assistMarkers[locale]);
       expect(article!.body).toMatch(accountHours[locale]);
       expect(article!.body).toMatch(reviewedActivation[locale]);
+      expect(article!.body).toMatch(publicationWorkflow[locale]);
+      expect(article!.body).toMatch(retainedRemoval[locale]);
       expect(article!.body).not.toMatch(inventedControls);
     }
   });

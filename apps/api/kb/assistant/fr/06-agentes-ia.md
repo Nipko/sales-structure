@@ -27,7 +27,7 @@ Votre agent IA est le « vendeur virtuel » qui répond à vos clients sur Whats
 4. Cliquez sur **Utiliser** sur le modèle choisi.
 5. Saisissez le **Nom de l'agent** si vous en souhaitez un personnalisé (par exemple, Sofia ou Max) ; si vous le laissez vide, le nom du modèle est utilisé.
 
-L'agent est créé et son éditeur s'ouvre pour que vous puissiez le personnaliser.
+L'agent est créé pour examen et son éditeur s'ouvre. Lorsqu'il est créé depuis cet écran, il n'est pas encore l'agent par défaut et ne prend en charge aucune connexion : personnalisez-le, enregistrez le brouillon, testez-le puis publiez-le.
 
 ## Ce que l'éditeur exige avant d'enregistrer
 
@@ -74,7 +74,7 @@ Les deux arrivent avec des valeurs raisonnables ; ne les changez que si vous sav
 
 Vous pouvez demander à Assist d'examiner l'agent et de préparer des changements d'identité, de langue, d'instructions, de règles, d'informations requises, de comportement hors horaires, de vente/assistance, de recommandations, de longueur de réponse, de connaissances et d'autorisations. Assist présente une proposition à vérifier ; l'accepter enregistre un **brouillon**, sans publier ni activer l'agent. En mode prompt personnalisé, Assist ne propose pas de modifier la personnalité, la consigne principale, les règles ni les champs requis, car le prompt les remplace. N'envoyez jamais d'identifiants ou de connexions dans le chat.
 
-Quand vous avez terminé, cliquez sur **Enregistrer les modifications** — le bouton reste toujours visible dans la barre inférieure, vous ne perdez donc pas vos modifications en faisant défiler la page.
+Quand vous avez terminé, cliquez sur **Enregistrer le brouillon**. L'enregistrement conserve les modifications pour examen, sans changer la version qui répond aux clients. Utilisez **Tester l'agent** sur le brouillon, ouvrez **Examiner une version**, préparez et approuvez le candidat, puis utilisez **Publier et voir l'historique**. Seule la publication rend opérationnels la configuration, les connexions et le statut d'agent par défaut du brouillon.
 
 ## Actif ou inactif
 
@@ -95,13 +95,13 @@ La règle est simple : **un agent IA par connexion**. Une connexion correspond �
 1. Dans l'éditeur de l'agent, allez dans **Attribution des canaux**.
 2. Cochez les connexions que cet agent va prendre en charge. Vous verrez chaque compte avec son nom et son numéro, et non le canal générique.
 3. Si la connexion était déjà assignée à un autre agent, l'éditeur vous prévient qu'elle **sera réattribuée** depuis l'agent précédent.
-4. Cliquez sur **Enregistrer les modifications**.
+4. Cliquez sur **Enregistrer le brouillon**, testez cette révision et publiez-la. La réattribution a lieu lors de la publication, pas lors de l'enregistrement.
 
 Les types de connexion disponibles et leur capacité figurent dans **Canaux** et **Forfait et facturation**.
 
 ## Que signifie l'avis « canaux sans agent assigné »
 
-Si **Agent IA** affiche **Canaux sans agent assigné**, vous avez des connexions actives qu'aucun agent ne prend en charge de façon spécifique. En attendant, ces messages sont traités par votre **agent par défaut**, avec une configuration générique.
+Si **Agent IA** affiche **Canaux sans agent assigné**, vous avez des connexions actives qu'aucun agent ne prend en charge de façon spécifique. Tant qu'un agent par défaut actif existe, sa version opérationnelle traite ces messages.
 
 Cliquez sur **Assigner un agent maintenant** pour choisir quel agent prend en charge chaque connexion et offrir une expérience personnalisée.
 
@@ -110,13 +110,13 @@ Cliquez sur **Assigner un agent maintenant** pour choisir quel agent prend en ch
 Dans la liste **Agent IA**, chaque agent dispose d'un menu d'actions :
 
 - **Dupliquer** — crée une copie exacte, idéale pour expérimenter sans toucher à l'agent qui fonctionne déjà.
-- **Enregistrer comme modèle** — transforme la configuration en modèle réutilisable lorsque la fonction est activée (il apparaît dans **Mes modèles**).
-- **Définir par défaut** — détermine quel agent répond sur les connexions qui n'en ont pas d'assigné.
-- **Supprimer** — efface l'agent (une confirmation vous est demandée). L'agent par défaut ne peut pas être supprimé.
+- **Enregistrer comme modèle** — copie la version opérationnelle dans un modèle réutilisable lorsque la fonction est activée. Si un brouillon existe, publiez-le d'abord si vous voulez l'inclure.
+- **Définir par défaut** — propose ce statut dans le brouillon ; il ne répond aux connexions non assignées qu'après publication de la révision.
+- **Supprimer** — retire l'agent de l'usage en le désactivant et en libérant ses connexions, tout en conservant son enregistrement. L'agent par défaut ne peut pas être retiré avant la publication d'un autre agent par défaut.
 
 ## Testez votre agent avant de l'activer
 
-Depuis le menu **Agent IA → Tester l'agent**, vous pouvez discuter avec votre agent en mode simulation, sans affecter de vrais clients. Utilisez-le chaque fois que vous modifiez la personnalité ou les règles, avant qu'il ne parle à vos clients.
+Dans **Agent IA → Tester l'agent**, vous pouvez discuter avec la version opérationnelle ou le brouillon enregistré, sans affecter de vrais clients. Testez le brouillon après tout changement de personnalité, règles, outils ou connexions, puis préparez, approuvez et publiez cette révision.
 
 ## Questions fréquentes
 
@@ -130,7 +130,7 @@ C'est votre agent par défaut qui répond. Vous verrez l'avis de canaux non assi
 Non. Dans Parallly, le SMS n'est pas un canal de conversation : il sert uniquement aux notifications sortantes avec des crédits (1 crédit = 1 segment). Les surfaces conversationnelles en libre-service sont WhatsApp, Instagram, Messenger, Telegram et le chat web. Email conserve un adaptateur inbound interne, mais pas de configuration libre-service certifiée.
 
 **J'ai modifié les instructions et l'agent réagit toujours pareil, que dois-je vérifier ?**
-Vérifiez que vous avez bien cliqué sur **Enregistrer les modifications** dans la barre inférieure de l'éditeur et que vous avez modifié l'agent assigné à cette connexion (et non un autre). Vérifiez ensuite le résultat dans **Tester l'agent**.
+Vérifiez que vous avez enregistré et testé le brouillon, puis publié le candidat approuvé. Confirmez ensuite que la version opérationnelle assigne cette connexion au même agent ; l'enregistrement d'un brouillon ne change pas à lui seul les réponses aux clients.
 
 **Comment ajouter plus d'agents ou plus de numéros ?**
 L'écran affiche la capacité disponible pour les agents et les connexions. Consultez les options actuelles dans **Administration → Forfait et facturation**, ou écrivez-nous à https://parallly-chat.cloud/support si vous avez besoin d'une autre capacité.

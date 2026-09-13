@@ -14521,6 +14521,9 @@
   "whatsappSpend": {
     "title": "WhatsApp charges (Meta)",
     "whoCharges": "From 1 October 2026 Meta charges YOUR WhatsApp Business account for every delivered service message. That charge is Meta’s, not Parallly’s, and it is paid with the payment method on your Meta account. Your Parallly subscription is a separate payment and does not change because of this.",
+    "paymentDeadlineTitle": "Add a payment method at Meta before 30 September",
+    "paymentDeadlineBody": "You add it in Meta's official WhatsApp management. Parallly does not receive, store or see that card's details. Without a valid method, Meta may stop delivering messages from 1 October.",
+    "defaultProtection": "Parallly starts by measuring alerts at 2,000 deliveries per number and 60 per contact each month. These thresholds do not stop messages while protection is in observation mode.",
     "freeAllowance": "Free this month",
     "freeAllowanceHint": "{used} of {total} free service messages per number per month. The count resets in your WhatsApp account’s own time zone.",
     "settled": "Charged",

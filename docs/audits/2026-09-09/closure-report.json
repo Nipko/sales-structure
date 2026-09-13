@@ -1,12 +1,12 @@
 {
   "version": 1,
-  "revision": "61d7b86f0c100399f03ab5370fc30c67176e25a8",
-  "generatedAt": "2026-09-13T00:54:30.950Z",
+  "revision": "5b97b5ab12b6a53240e3e92be64db1c964ddc7ab",
+  "generatedAt": "2026-09-13T01:40:50.361Z",
   "finished": false,
   "counts": {
     "aceptada": 20,
-    "bloqueada": 24,
-    "abierta": 1,
+    "bloqueada": 25,
+    "abierta": 0,
     "diferida": 1
   },
   "provenance": {
@@ -487,15 +487,15 @@
     },
     {
       "id": "M4",
-      "open": 1,
-      "openLabel": "la propuesta de precios y la transición de planes son una decisión comercial que nadie ha tomado",
+      "open": 0,
+      "openLabel": "faltan campos de la decisión comercial ejecutable de octubre",
       "gates": [
         5
       ],
-      "status": "abierta",
+      "status": "bloqueada",
       "provenance": "declared",
       "artefact": null,
-      "evidence": "La propuesta concreta está escrita y sin aplicar en `docs/audits/2026-09-12/m4-pricing-proposal.md`: tarifas de servicio y marketing de seis mercados derivadas de la tarjeta de octubre, los cinco planes vigentes, el gasto real del cliente en dos extremos geográficos, un escenario recomendado y cuatro alternativas con lo que cuesta cada una. La fila sigue abierta a propósito: cambiar el código de esta área no la mueve, y sólo la cierra una decisión registrada sobre precio, techo por número y los dos textos de comunicación.",
+      "evidence": "La decisión de producto está aplicada por la autoridad `WHATSAPP_OCTOBER_COMMERCIAL_POLICY`: precios y capacidad de los cinco planes sin cambio; techo observable por número de 2000 entregas/mes y por contacto de 60; aviso desde 2026-09-15 y fecha límite 2026-09-30. El ledger importa esa misma autoridad al crear contadores, por lo que el reporte no puede separarse del runtime. El análisis que sustenta la decisión queda en `docs/audits/2026-09-12/m4-pricing-proposal.md`: tarifas de servicio y marketing de seis mercados derivadas de la tarjeta de octubre, los cinco planes vigentes, el gasto real del cliente en dos extremos geográficos, un escenario elegido y cuatro alternativas descartadas. Falta publicar la versión desplegada, que pertenece al gate de release.",
       "commits": [],
       "deferral": null
     },

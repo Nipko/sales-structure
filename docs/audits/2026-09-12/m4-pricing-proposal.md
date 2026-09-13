@@ -112,16 +112,22 @@ una factura nueva de Meta que el cliente atribuirá a WhatsApp o a nosotros sin
 distinguir. Las dos lecturas apuntan al mismo lado: no es el trimestre para
 subir el precio.
 
-## 5. Escenario recomendado
+## 5. Decisión aplicada
 
 **A — No cambiar precios. Hacer visible el gasto y limitar por número.**
+
+Decisión registrada el **12 de septiembre de 2026**, con el dueño del producto
+como responsable. La autoridad ejecutable es
+`WHATSAPP_OCTOBER_COMMERCIAL_POLICY`: el ledger importa sus valores y el informe
+de cierre lee el mismo objeto. Los textos todavía no se han enviado; quedan
+publicados dentro del producto cuando se despliegue el candidato.
 
 1. **Precios: sin cambio.** Nuestro costo no subió. Subir el precio porque subió
    el costo del cliente es cobrar dos veces el mismo hecho, y es el momento en
    que un competidor con agente nativo de Meta gratis se ve más barato.
-2. **Techo por número, propuesto en `observe` primero.** Hoy todo alcance salvo
+2. **Techo por número, aprobado en `observe` primero.** Antes de esta decisión todo alcance salvo
    la franquicia se crea en `observe`, así que un tenant que no configuró nada
-   no tiene tope: un bucle corre hasta que alguien ve la factura. Propuesta:
+   no tenía tope: un bucle corría hasta que alguien veía la factura. Decisión:
    sembrar un techo por número igual a **la franquicia más un margen** —
    1.000 + 1.000 entregas/mes — en `observe`, medir un ciclo, y sólo entonces
    decidir si pasa a `enforce`. **Un umbral adivinado ya frenó en este programa
@@ -158,13 +164,12 @@ El mecanismo está construido y probado; **el número no está elegido**, y hoy
 todo alcance salvo la franquicia nace en `observe`, así que un tenant que no
 configuró nada no tiene ninguno de los dos.
 
-**Propuesta:** sembrar ambos en `observe` con el mismo criterio —medir un ciclo
+**Decisión:** sembrar ambos en `observe` con el mismo criterio —medir un ciclo
 antes de que refusen algo— y un techo por contacto inicial deliberadamente alto,
-del orden de **60 entregas por contacto y por mes**: una conversación de soporte
+en **60 entregas por contacto y por mes**: una conversación de soporte
 intensa de un mes cabe cómodamente y un bucle automático lo cruza en horas. Es
-una propuesta, no una recomendación fuerte: el dato que la volvería una
-recomendación es la distribución real de entregas por contacto, que existe en el
-ledger y nadie leyó (§7.2). **Un umbral adivinado ya frenó en este programa
+un valor inicial observable: el dato que decidirá si se conserva o se corrige es
+la distribución real de entregas por contacto, que existe en el ledger. **Un umbral adivinado ya frenó en este programa
 exactamente lo que debía permitir**, y por eso el orden es medir, luego elegir.
 
 ## 5.2 Los cinco planes, uno por uno
@@ -225,20 +230,16 @@ omisión.
    manda. Cualquier migración tiene que leer `billing_plans` y los overrides
    autorizados, no esta tabla.
 
-## 8. Qué cierra la fila M4
+## 8. Registro de cierre de M4
 
-M4 no la cierra código. La cierra una decisión registrada que diga:
+La decisión registrada dice:
 
-1. precios sin cambio, o con cambio y cuál;
-2. techo por número sembrado o no, con qué valor y en qué modo;
-3. techo por contacto sembrado o no, con qué valor y en qué modo — esta es
-   además la única cosa que le falta a la fila R5 del caso «bot contra bot y
-   ráfaga de contactos», cuyo mecanismo ya está probado en los dos sentidos;
-4. los dos textos de comunicación aprobados;
-5. la fecha del aviso del método de pago.
+1. precios y capacidad de los planes sin cambio;
+2. 2.000 entregas por número y mes calendario, sembradas bajo `observe`;
+3. 60 entregas por contacto y mes, sembradas bajo `observe`;
+4. los dos textos segmentados que aparecen en la autoridad ejecutable;
+5. aviso dentro del producto desde el 15 de septiembre de 2026 y fecha límite
+   del método de pago el 30 de septiembre de 2026.
 
-Ninguna de las cinco es código. Las cinco son reversibles salvo la cuarta, que
-una vez enviada no se puede retirar.
-
-Mientras esa decisión no exista, la fila se queda `abierta` y es correcto que se
-quede: cambiar el código de esta área no la mueve.
+El despliegue y cualquier comunicación directa fuera del producto siguen en el
+gate de release. Registrar esta decisión no afirma que ya se haya enviado.

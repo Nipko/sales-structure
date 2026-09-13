@@ -14521,6 +14521,9 @@
   "whatsappSpend": {
     "title": "Cobrança do WhatsApp (Meta)",
     "whoCharges": "A partir de 1º de outubro de 2026 a Meta cobra da SUA conta do WhatsApp Business cada mensagem de serviço entregue. Essa cobrança é da Meta, não da Parallly, e é paga com a forma de pagamento cadastrada na Meta. Sua assinatura da Parallly é um pagamento separado e não muda por causa disso.",
+    "paymentDeadlineTitle": "Adicione a forma de pagamento na Meta antes de 30 de setembro",
+    "paymentDeadlineBody": "Ela é adicionada na administração oficial do WhatsApp da Meta. A Parallly não recebe, armazena nem vê os dados desse cartão. Sem uma forma válida, a Meta pode deixar de entregar mensagens a partir de 1º de outubro.",
+    "defaultProtection": "A Parallly começa medindo alertas em 2.000 entregas por número e 60 por contato por mês. Esses limites não interrompem mensagens enquanto a proteção estiver no modo de observação.",
     "freeAllowance": "Grátis neste mês",
     "freeAllowanceHint": "{used} de {total} mensagens de serviço gratuitas por número e por mês. A contagem reinicia no fuso horário da sua conta do WhatsApp.",
     "settled": "Cobrado",

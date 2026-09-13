@@ -14521,6 +14521,9 @@
   "whatsappSpend": {
     "title": "Facturation WhatsApp (Meta)",
     "whoCharges": "À partir du 1er octobre 2026, Meta facture VOTRE compte WhatsApp Business pour chaque message de service livré. Cette facturation est celle de Meta, pas de Parallly, et elle est réglée avec le moyen de paiement enregistré chez Meta. Votre abonnement Parallly est un paiement séparé et ne change pas pour autant.",
+    "paymentDeadlineTitle": "Ajoutez le moyen de paiement chez Meta avant le 30 septembre",
+    "paymentDeadlineBody": "Il s'ajoute dans l'administration WhatsApp officielle de Meta. Parallly ne reçoit, ne stocke et ne voit pas les données de cette carte. Sans moyen valide, Meta peut cesser de livrer les messages à partir du 1er octobre.",
+    "defaultProtection": "Parallly commence par mesurer des alertes à 2 000 livraisons par numéro et 60 par contact chaque mois. Ces seuils n'interrompent pas les messages tant que la protection reste en mode observation.",
     "freeAllowance": "Gratuit ce mois-ci",
     "freeAllowanceHint": "{used} sur {total} messages de service gratuits par numéro et par mois. Le compteur repart dans le fuseau horaire de votre compte WhatsApp.",
     "settled": "Facturé",

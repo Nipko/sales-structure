@@ -158,6 +158,8 @@ function octoberAuthorities({ root, api, shared }) {
     const { SENDING_ROLES } = api('modules/persona/human-operator-authority.ts');
     const { DISPATCH_ITEM_KINDS } = api('modules/channels/agent-dispatch-outbox.ts');
     const { SPEND_SCOPE_KINDS } = api('modules/billing/whatsapp-spend/spend-scopes.ts');
+    const { WHATSAPP_OCTOBER_COMMERCIAL_POLICY } =
+        api('modules/billing/whatsapp-spend/whatsapp-commercial-policy.ts');
     const { ACCEPTANCE_MATRIX, uncoveredScenarios } =
         api('modules/billing/whatsapp-spend/acceptance-matrix.ts');
     const { DEFAULT_REPETITION_POLICY } = api('modules/billing/whatsapp-spend/spend-repetition.ts');
@@ -223,6 +225,7 @@ function octoberAuthorities({ root, api, shared }) {
         },
         categories: WHATSAPP_MESSAGE_CATEGORIES,
         freeAllowance,
+        commercialPolicy: WHATSAPP_OCTOBER_COMMERCIAL_POLICY,
         rateCards: WHATSAPP_RATE_CARDS, rateTableVersion: WHATSAPP_RATE_TABLE_VERSION,
         unrepresentable,
     };
@@ -293,18 +296,35 @@ function octoberRows(row, A) {
                 + 'recibo. Cero productores cobrables fuera del gate en este HEAD: lo verifica el '
                 + 'censo, no esta frase.' }),
 
-        row('M4', { provenance: 'declared', open: 1,
-            openLabel: 'la propuesta de precios y la transición de planes son una decisión comercial '
-                + 'que nadie ha tomado',
+        row('M4', { provenance: 'declared',
+            open: [
+                A.commercialPolicy?.decisionId,
+                A.commercialPolicy?.owner,
+                A.commercialPolicy?.decidedAt,
+                A.commercialPolicy?.pricing?.planPricesChange === false,
+                A.commercialPolicy?.defaults?.enforcement === 'observe',
+                Number(A.commercialPolicy?.defaults?.numberDeliveriesPerCalendarMonth) > 0,
+                Number(A.commercialPolicy?.defaults?.contactDeliveriesPerCalendarMonth) > 0,
+                A.commercialPolicy?.communication?.lowRateMessage,
+                A.commercialPolicy?.communication?.highRateMessage,
+                A.commercialPolicy?.communication?.startsOn,
+            ].filter(value => !value).length,
+            openLabel: 'faltan campos de la decisión comercial ejecutable de octubre',
             gates: [5],
-            evidence: 'La propuesta concreta está escrita y sin aplicar en '
+            evidence: 'La decisión de producto está aplicada por la autoridad '
+                + '`WHATSAPP_OCTOBER_COMMERCIAL_POLICY`: precios y capacidad de los cinco planes '
+                + 'sin cambio; techo observable por número de '
+                + `${A.commercialPolicy.defaults.numberDeliveriesPerCalendarMonth} entregas/mes y por contacto de `
+                + `${A.commercialPolicy.defaults.contactDeliveriesPerCalendarMonth}; aviso desde `
+                + `${A.commercialPolicy.communication.startsOn} y fecha límite `
+                + `${A.commercialPolicy.communication.paymentMethodDeadline}. El ledger importa esa misma `
+                + 'autoridad al crear contadores, por lo que el reporte no puede separarse del runtime. '
+                + 'El análisis que sustenta la decisión queda en '
                 + '`docs/audits/2026-09-12/m4-pricing-proposal.md`: tarifas de servicio y '
                 + 'marketing de seis mercados derivadas de la tarjeta de octubre, los cinco '
                 + 'planes vigentes, el gasto real del cliente en dos extremos geográficos, un '
-                + 'escenario recomendado y cuatro alternativas con lo que cuesta cada una. La '
-                + 'fila sigue abierta a propósito: cambiar el código de esta área no la mueve, y '
-                + 'sólo la cierra una decisión registrada sobre precio, techo por número y los '
-                + 'dos textos de comunicación.' }),
+                + 'escenario elegido y cuatro alternativas descartadas. Falta publicar la versión '
+                + 'desplegada, que pertenece al gate de release.' }),
 
         row('M5', { provenance: 'derived',
             open: A.messagingGaps('erasure').length,

@@ -121,6 +121,16 @@ export function WhatsappSpendPanel({ summary, consumption, pauses, readiness, aw
                 </div>
             </header>
 
+            <div role="status"
+                className="rounded-lg border border-[var(--warning)]/40 bg-[var(--warning)]/10 p-4 space-y-1">
+                <p className="flex items-center gap-2 text-sm text-[var(--text-primary)]">
+                    <AlertTriangle className="h-4 w-4 text-[var(--warning)]" aria-hidden />
+                    {t("paymentDeadlineTitle")}
+                </p>
+                <p className="text-sm text-[var(--text-secondary)]">{t("paymentDeadlineBody")}</p>
+                <p className="text-xs text-[var(--text-secondary)]">{t("defaultProtection")}</p>
+            </div>
+
             {/* ── Anything stopping a send comes first ─────────────────────── */}
             {stopped.length > 0 && (
                 <div role="alert"

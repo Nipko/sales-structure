@@ -362,6 +362,38 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
     });
 
     describe('reading them back', () => {
+        it('seeds observable per-number and per-contact defaults without overwriting an operator', async () => {
+            const period = `2029-${String(Math.floor(Math.random() * 9) + 1).padStart(2, '0')}`;
+            const account = { kind: 'account' as const, key: `a-${randomUUID()}`, period };
+            const contact = { kind: 'contact' as const, key: `c-${randomUUID()}`, period };
+            const business = { kind: 'business' as const, key: `b-${randomUUID()}`, period };
+
+            await ensureCounters(query, schema, [account, contact, business], 'USD', 1_000);
+            const seeded = await readSpendCeilings(query, schema, { periodKey: period });
+            expect(seeded.find(row => row.scopeKey === account.key)).toMatchObject({
+                capKind: 'deliveries', capDeliveries: 2_000,
+                warnPermille: 800, softPermille: 950,
+            });
+            expect(seeded.find(row => row.scopeKey === contact.key)).toMatchObject({
+                capKind: 'deliveries', capDeliveries: 60,
+                warnPermille: 800, softPermille: 950,
+            });
+            expect(seeded.find(row => row.scopeKey === business.key)).toMatchObject({
+                capKind: 'observe', capDeliveries: null,
+            });
+
+            await declareSpendCeiling(query, schema, {
+                scope: contact, capDeliveries: 120, warnPermille: 700, softPermille: 900,
+            });
+            await ensureCounters(query, schema, [contact], 'USD', 1_000);
+            const preserved = (await readSpendCeilings(query, schema, {
+                periodKey: period, scopeKind: 'contact',
+            }))[0];
+            expect(preserved).toMatchObject({
+                capDeliveries: 120, warnPermille: 700, softPermille: 900,
+            });
+        });
+
         it('lists every scope in a period with what is committed against it', async () => {
             const period = `2026-${String(Math.floor(Math.random() * 9) + 1).padStart(2, '0')}`;
             const account = { kind: 'account' as const, key: `a-${randomUUID()}`, period };

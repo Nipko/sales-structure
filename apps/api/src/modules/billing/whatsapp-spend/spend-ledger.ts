@@ -1,5 +1,6 @@
 import { inLockOrder, isTenantDeclarableScope, scopeId, type SpendScope, type SpendScopeKind }
     from './spend-scopes';
+import { defaultSpendCeilingFor } from './whatsapp-commercial-policy';
 
 /**
  * The money engine's SQL, as pure functions over a caller's transaction.
@@ -285,9 +286,11 @@ export async function findReservation(query: SpendQuery, schema: string, effectK
  * multi-statement string, and because the insert must not hold a lock it does
  * not need.
  *
- * A counter that did not exist is created as `observe`: counting from the first
- * message, refusing nobody, until somebody configures a ceiling. Creating it as
- * a zero-money cap would silence a tenant who never asked for a limit.
+ * A counter that did not exist is created from the commercial policy. Account
+ * and contact rows receive observable delivery ceilings; business and task rows
+ * count without a ceiling until somebody configures one. Whether pressure may
+ * refuse a send remains the tenant enforcement mode, which defaults to
+ * `observe` outside this function.
  */
 export async function ensureCounters(query: SpendQuery, schema: string, scopes: readonly SpendScope[],
     currency: string, freeAllowance?: number): Promise<void> {
@@ -306,14 +309,20 @@ export async function ensureCounters(query: SpendQuery, schema: string, scopes: 
         // started with: changing a ceiling mid-period retroactively rewrites
         // what a business was told it had.
         const isAllowance = scope.kind === 'number_month' && freeAllowance !== undefined;
+        const defaultCeiling = defaultSpendCeilingFor(scope.kind);
+        const capKind = isAllowance || defaultCeiling ? 'deliveries' : 'observe';
+        const capDeliveries = isAllowance
+            ? Math.max(0, Math.trunc(freeAllowance!))
+            : defaultCeiling?.capDeliveries ?? null;
         await query(
             `INSERT INTO "${schema}".whatsapp_spend_counters
-                (scope_kind, scope_key, period_key, cap_kind, currency, cap_deliveries)
-             VALUES ($1,$2,$3,$5,$4,$6)
+                (scope_kind, scope_key, period_key, cap_kind, currency, cap_deliveries,
+                 warn_permille, soft_permille)
+             VALUES ($1,$2,$3,$5,$4,$6,$7,$8)
              ON CONFLICT (scope_kind, scope_key, period_key) DO NOTHING`,
-            [scope.kind, scope.key, scope.period, currency,
-                isAllowance ? 'deliveries' : 'observe',
-                isAllowance ? Math.max(0, Math.trunc(freeAllowance!)) : null]);
+            [scope.kind, scope.key, scope.period, currency, capKind, capDeliveries,
+                defaultCeiling?.warnPermille ?? 800,
+                defaultCeiling?.softPermille ?? 950]);
     }
 }
 

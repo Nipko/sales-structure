@@ -605,27 +605,18 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
     producer({
         id: 'handoff.sla_escalation.email',
         effect: 'The email telling a supervisor that a handed-off conversation has waited past its SLA',
-        lane: 'inline',
+        lane: 'operational_notice',
         status: 'live',
         derivation: 'census',
         source: 'modules/agent-console/agent-availability.service.ts',
         symbol: 'AgentAvailabilityService',
-        egress: 'EmailService.send, from the `*/2 * * * *` escalation cron, not awaited',
+        egress: 'the escalation transaction snapshots one `handoff.sla_escalated` notice per active '
+            + 'supervisor; delivery re-reads the still-unanswered handoff and operator',
         reach: {
             class: 'operator_notification', audience: 'tenant_operator', personalData: true,
             channels: ['email'],
         },
-        properties: {
-            authority: none('fire and forget from a cron; nothing records that an attempt was made'),
-            idempotency: partial('an `escalated` flag on `conversations.metadata.handoff` is set before '
-                + 'the send, so the cron does not re-escalate. It says the escalation happened, not '
-                + 'that the email did'),
-            receipt: none(INLINE_EMAIL),
-            uncertainOutcome: none('the boolean cannot distinguish a refusal from an accepted message '
-                + 'whose acknowledgement was lost'),
-            erasure: none('nothing records what was sent'),
-            recovery: none('the flag suppresses a second attempt, so a failed escalation is never retried'),
-        },
+        properties: OPERATIONAL_NOTICE_PROPERTIES,
     }),
 
     producer({

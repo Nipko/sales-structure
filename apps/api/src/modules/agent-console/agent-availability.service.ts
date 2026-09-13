@@ -2,9 +2,8 @@ import { BadRequestException, Injectable, Logger, NotFoundException } from '@nes
 import { Cron } from '@nestjs/schedule';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
-import { EmailService } from '../email/email.service';
-import { agentAvailI18n } from './agent-availability-i18n';
 import { CronLockService } from '../redis/cron-lock.service';
+import { ensureOperationalNoticeOutbox, enqueueOperationalNoticesForTenantRoles } from '../operational-notices/operational-notice-outbox';
 
 type AvailabilityStatus = 'online' | 'busy' | 'offline';
 
@@ -15,7 +14,6 @@ export class AgentAvailabilityService {
     constructor(
         private prisma: PrismaService,
         private eventEmitter: EventEmitter2,
-        private emailService: EmailService,
         private readonly cronLock: CronLockService,
     ) {}
 
@@ -145,6 +143,7 @@ export class AgentAvailabilityService {
 
     private async processEscalations(tenantId: string, schemaName: string, tenantLanguage?: string): Promise<void> {
         try {
+            await ensureOperationalNoticeOutbox(this.prisma,schemaName);
             // Find conversations waiting >5 min with no agent response
             const stale = await this.prisma.executeInTenantSchema<any[]>(schemaName,
                 `SELECT c.id, c.metadata, c.assigned_to,
@@ -169,27 +168,30 @@ export class AgentAvailabilityService {
 
             this.logger.warn(`[Escalation] ${stale.length} conversation(s) waiting >5min in tenant ${tenantId}`);
 
-            // Find supervisors/admins to notify
-            const supervisors = await this.prisma.user.findMany({
-                where: {
-                    tenantId,
-                    isActive: true,
-                    role: { in: ['tenant_admin', 'tenant_supervisor'] },
-                },
-                select: { id: true, email: true, firstName: true },
-            });
-
             for (const conv of stale) {
                 const handoff = conv.metadata?.handoff || {};
                 const reason = handoff.reason || 'unknown';
                 const contactName = conv.contact_name || 'Unknown';
                 const waitMinutes = Math.round((Date.now() - new Date(handoff.startedAt).getTime()) / 60000);
 
-                // Mark as escalated to avoid re-processing
-                await this.prisma.executeInTenantSchema(schemaName,
-                    `UPDATE conversations SET metadata = jsonb_set(metadata, '{handoff,escalated}', '"true"') WHERE id = $1::uuid`,
-                    [conv.id],
-                );
+                // The flag and one delivery intent per current supervisor are a
+                // single fact. A crash cannot leave the flag without the email.
+                const committed=await this.prisma.transactionInTenantSchema(schemaName,async query=>{
+                    const updated=await query<any[]>(`UPDATE conversations SET metadata=jsonb_set(metadata,'{handoff,escalated}','true'::jsonb)
+                        WHERE id=$1::uuid AND status IN ('waiting_human','with_human')
+                          AND COALESCE(metadata->'handoff'->>'escalated','false')!='true'
+                          AND (metadata->'handoff'->>'startedAt')::timestamptz<NOW()-INTERVAL '5 minutes'
+                          AND NOT EXISTS(SELECT 1 FROM messages m WHERE m.conversation_id=conversations.id
+                            AND m.direction='outbound' AND m.metadata->>'source'='agent'
+                            AND m.created_at>(conversations.metadata->'handoff'->>'startedAt')::timestamptz)
+                        RETURNING id,contact_id`,[conv.id]);
+                    if(!updated[0])return false;
+                    await enqueueOperationalNoticesForTenantRoles(query,schemaName,{kind:'handoff.sla_escalated',
+                        entityId:conv.id,contactId:updated[0].contact_id,conversationId:conv.id,
+                        roles:['tenant_admin','tenant_supervisor']});
+                    return true;
+                });
+                if(!committed)continue;
 
                 // Emit WebSocket event for dashboard alert
                 this.eventEmitter.emit('handoff.escalated_supervisor', {
@@ -199,25 +201,9 @@ export class AgentAvailabilityService {
                     reason,
                     waitMinutes,
                 });
-
-                // Email all supervisors
-                const i18n = agentAvailI18n(tenantLanguage);
-                for (const sup of supervisors) {
-                    this.emailService.send({
-                        to: sup.email,
-                        subject: i18n.escalationSubject(contactName, waitMinutes),
-                        html: i18n.escalationHtml({
-                            contactName,
-                            contactPhone: conv.contact_phone || null,
-                            reason,
-                            waitMinutes,
-                            assignedTo: conv.assigned_to || null,
-                        }),
-                    }).catch(e => this.logger.warn(`Escalation email failed: ${e.message}`));
-                }
             }
         } catch (e: any) {
-            // Non-critical — tables might not exist yet
+            this.logger.warn(`Escalation processing failed for ${tenantId}: ${e.message}`);
         }
     }
 }

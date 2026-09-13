@@ -3,7 +3,7 @@ import type { OutboundMessage } from '@parallext/shared';
 export type OperationalNoticeKind = 'appointment.payment_confirmed' | 'appointment.payment_review'
     | 'gym.waitlist_promoted' | 'education.waitlist_promoted' | 'education.waitlist_review'
     | 'home_service.emergency' | 'tour.booking_confirmed' | 'property.booking_confirmed'
-    | 'order.confirmed';
+    | 'order.confirmed' | 'handoff.sla_escalated';
 export type OperationalNoticeState = 'pending' | 'queued' | 'processing' | 'sent' | 'stored'
     | 'failed' | 'suppressed' | 'reconciliation_required';
 export interface OperationalNoticeReference { tenantId: string; noticeId: string; }
@@ -18,7 +18,7 @@ export type NoticeQuery = <T = any[]>(sql: string, params?: any[]) => Promise<T>
 export const OPERATIONAL_NOTICE_DDL = `CREATE TABLE IF NOT EXISTS operational_notice_outbox (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     event_key VARCHAR(200) NOT NULL UNIQUE,
-    kind VARCHAR(60) NOT NULL CHECK(kind IN ('appointment.payment_confirmed','appointment.payment_review','gym.waitlist_promoted','education.waitlist_promoted','education.waitlist_review','home_service.emergency','tour.booking_confirmed','property.booking_confirmed','order.confirmed')),
+    kind VARCHAR(60) NOT NULL CHECK(kind IN ('appointment.payment_confirmed','appointment.payment_review','gym.waitlist_promoted','education.waitlist_promoted','education.waitlist_review','home_service.emergency','tour.booking_confirmed','property.booking_confirmed','order.confirmed','handoff.sla_escalated')),
     entity_id UUID NOT NULL,
     contact_id UUID,
     conversation_id UUID,

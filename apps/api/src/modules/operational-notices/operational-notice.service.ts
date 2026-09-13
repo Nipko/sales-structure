@@ -20,6 +20,7 @@ import { operationalNoticeText } from './operational-notice-text';
 import { EmailTemplatesService } from '../email-templates/email-templates.service';
 import { emailConfirmationsForOperation } from '../../common/utils/served-confirmation-policy.util';
 import { escapeReceiptHtml, receiptMoney } from '../email-templates/receipt-format.util';
+import { agentAvailI18n } from '../agent-console/agent-availability-i18n';
 
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 
@@ -144,7 +145,8 @@ export class OperationalNoticeService {
                         if (!prepared) throw new NoticeSuppressed('notice_template_missing');
                         send=prepared;
                     } else {
-                        send=this.email.prepareBoundedSend({to:hydrated.email,subject:hydrated.text.split('\n')[0],text:hydrated.text});
+                        send=this.email.prepareBoundedSend({to:hydrated.email,subject:hydrated.subject || hydrated.text.split('\n')[0],
+                            text:hydrated.text,html:hydrated.html});
                     }
                 } else if (hydrated.route === 'operator') {
                     send=()=>this.push.sendToTenantRole(reference.tenantId,hydrated.role || 'tenant_admin', {
@@ -232,6 +234,16 @@ export class OperationalNoticeService {
         } else if (notice.kind === 'order.confirmed') {
             facts=(await query<any[]>('SELECT * FROM orders WHERE id=$1::uuid FOR SHARE',[notice.entity_id]))[0];
             if (!facts || !['confirmed','paid'].includes(facts.status)) throw new NoticeSuppressed('notice_domain_state_changed');
+        } else if (notice.kind === 'handoff.sla_escalated') {
+            facts=(await query<any[]>(`SELECT c.*,ct.name AS contact_name,ct.phone AS contact_phone
+                FROM conversations c LEFT JOIN contacts ct ON ct.id=c.contact_id
+                WHERE c.id=$1::uuid FOR SHARE OF c`,[notice.entity_id]))[0];
+            const startedAt=facts?.metadata?.handoff?.startedAt;
+            if (!facts || !['waiting_human','with_human'].includes(facts.status)
+                || String(facts.metadata?.handoff?.escalated)!=='true' || !startedAt) throw new NoticeSuppressed('notice_domain_state_changed');
+            const answered=await query<any[]>(`SELECT id FROM messages WHERE conversation_id=$1::uuid AND direction='outbound'
+                AND metadata->>'source'='agent' AND created_at>$2::timestamptz LIMIT 1`,[facts.id,startedAt]);
+            if (answered.length) throw new NoticeSuppressed('notice_domain_state_changed');
         } else {
             throw new NoticeSuppressed('notice_kind_unsupported');
         }
@@ -240,12 +252,22 @@ export class OperationalNoticeService {
         if (notice.contact_id && erased[0]?.name && (await query<any[]>('SELECT contact_id FROM customer_memory_erasure WHERE contact_id=$1::uuid',[notice.contact_id])).length) throw new NoticeSuppressed('notice_contact_erased');
         const tenant=await this.prisma.tenant.findUnique({where:{id:tenantId},select:{language:true}});
         if (notice.kind==='appointment.payment_review') return {route:'operator',conversationId:notice.conversation_id||null,text:operationalNoticeText(notice.kind,tenant?.language,{})};
-        if (notice.kind==='home_service.emergency') {
+        if (notice.kind==='home_service.emergency' || notice.kind==='handoff.sla_escalated') {
             if (!notice.recipient_user_id) throw new NoticeSuppressed('notice_operator_missing');
             const [operator]=await query<any[]>(`SELECT id,email FROM public.users
                 WHERE id=$1::uuid AND tenant_id=$2::uuid AND is_active=true
                   AND role IN ('tenant_admin','tenant_supervisor') FOR SHARE`,[notice.recipient_user_id,tenantId]);
             if (!operator?.email) throw new NoticeSuppressed('notice_operator_unavailable');
+            if (notice.kind==='handoff.sla_escalated') {
+                const handoff=facts.metadata?.handoff || {},startedAt=new Date(handoff.startedAt);
+                const waitMinutes=Math.max(5,Math.round((Date.now()-startedAt.getTime())/60000));
+                const i18n=agentAvailI18n(tenant?.language);
+                return {route:'email',email:operator.email,conversationId:facts.id,
+                    subject:i18n.escalationSubject(facts.contact_name || 'Unknown',waitMinutes),
+                    html:i18n.escalationHtml({contactName:facts.contact_name || 'Unknown',contactPhone:facts.contact_phone || null,
+                        reason:handoff.reason || 'unknown',waitMinutes,assignedTo:facts.assigned_to || null}),
+                    text:operationalNoticeText(notice.kind,tenant?.language,{name:facts.contact_name,when:`${waitMinutes} min`})};
+            }
             return {route:'email',email:operator.email,conversationId:notice.conversation_id||null,
                 text:operationalNoticeText(notice.kind,tenant?.language,{
                     service:facts.service_type,customer:facts.customer_name,phone:facts.customer_phone,

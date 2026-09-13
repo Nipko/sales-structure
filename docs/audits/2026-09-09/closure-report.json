@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "revision": "787787126cdaabfbbbf2423c16fc2921594e0b27",
-  "generatedAt": "2026-09-13T12:56:04.884Z",
+  "revision": "bd7dbb7d13d9f65e316d10f7927ee6f048c21576",
+  "generatedAt": "2026-09-13T13:05:58.652Z",
   "finished": false,
   "counts": {
     "aceptada": 25,
@@ -452,7 +452,7 @@
       "status": "aceptada",
       "provenance": "derived",
       "artefact": null,
-      "evidence": "Censo derivado del árbol: 32 call sites, 29 cobrables, 0 fuera de la autoridad económica. El inventario de efectos declara 68 productores y 18 con al menos una propiedad en `none`. La condición es que el artefacto versionado se regenere desde el mismo HEAD, no que alguien lo haya leído.",
+      "evidence": "Censo derivado del árbol: 32 call sites, 29 cobrables, 0 fuera de la autoridad económica. El inventario de efectos declara 68 productores y 17 con al menos una propiedad en `none`. La condición es que el artefacto versionado se regenere desde el mismo HEAD, no que alguien lo haya leído.",
       "commits": [],
       "deferral": null
     },

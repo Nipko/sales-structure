@@ -384,8 +384,13 @@ function readServiceChargeStart(cards) {
 
 const ratecardsPath = path.join(researchDir, 'meta-ratecards-2026.json');
 const ratecardsRaw = fs.readFileSync(ratecardsPath);
-const ratecards = JSON.parse(ratecardsRaw.toString('utf8'));
-const tableVersion = crypto.createHash('sha256').update(ratecardsRaw).digest('hex').slice(0, 16);
+// Git stores this text with LF while a Windows checkout may present CRLF. The
+// extraction is the same JSON in both cases, so its content identity must be
+// independent of the workstation that renders the derived TypeScript table.
+const ratecardsContent = ratecardsRaw.toString('utf8').replace(/\r\n/g, '\n');
+const ratecards = JSON.parse(ratecardsContent);
+const tableVersion = crypto.createHash('sha256').update(ratecardsContent, 'utf8')
+    .digest('hex').slice(0, 16);
 
 const rateCards = ratecards.cards.filter(card => card.kind === 'rates');
 if (!rateCards.length) fail(`${path.basename(ratecardsPath)}: no cards of kind "rates"`);

@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "revision": "c09068a7c2ec000d2427f3755642d14c20369354",
-  "generatedAt": "2026-09-13T20:18:00.752Z",
+  "revision": "b06784792548fbdfc7117ad39bb78f957187460f",
+  "generatedAt": "2026-09-13T21:22:59.991Z",
   "finished": false,
   "counts": {
     "aceptada": 26,
@@ -481,7 +481,7 @@
       "status": "bloqueada",
       "provenance": "derived",
       "artefact": null,
-      "evidence": "Tarifas versionadas `meta-ratecards-2026@cdc5b132567ab1e7` con 4 tarjetas, 5 categorías que Meta cobra por separado y 1000 entregas de servicio gratuitas por número y mes calendario. La categoría aprobada y la ventana de servicio se leen de la base del tenant antes de admitir. Lo que falta es una cuenta real: tarifa aplicada por Meta al entregar y conciliación contra factura.",
+      "evidence": "Tarifas versionadas `meta-ratecards-2026@ddb62cc8458b94a3` con 4 tarjetas, 5 categorías que Meta cobra por separado y 1000 entregas de servicio gratuitas por número y mes calendario. La categoría aprobada y la ventana de servicio se leen de la base del tenant antes de admitir. Lo que falta es una cuenta real: tarifa aplicada por Meta al entregar y conciliación contra factura.",
       "commits": [],
       "deferral": null
     },

@@ -77,7 +77,7 @@ De la evidencia preservada (§“Reglas temporales confirmadas”, fuentes P1 y 
 **Dos tarjetas, no una.** La de julio no tiene tarifa de servicio en ningún
 mercado: antes de octubre el servicio era gratis. La regla es versionada y el
 código la aplica así, con cuatro tarjetas cargadas
-(`meta-ratecards-2026@cdc5b132567ab1e7`; USD y COP, `2026-07-01` y `2026-10-01`).
+(`meta-ratecards-2026@ddb62cc8458b94a3`; USD y COP, `2026-07-01` y `2026-10-01`).
 Cualquier comunicación tiene que distinguir antes y después de la fecha efectiva
 en vez de presentar una sola cifra.
 

@@ -60,7 +60,7 @@ export interface WhatsAppRateCard {
 }
 
 /** Identifies the sources this table was derived from, content-addressed. */
-export const WHATSAPP_RATE_TABLE_VERSION = 'meta-ratecards-2026@cdc5b132567ab1e7' as const;
+export const WHATSAPP_RATE_TABLE_VERSION = 'meta-ratecards-2026@ddb62cc8458b94a3' as const;
 
 export const WHATSAPP_RATE_CARDS: readonly WhatsAppRateCard[] = Object.freeze([
     {

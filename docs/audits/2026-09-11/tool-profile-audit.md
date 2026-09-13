@@ -1,12 +1,12 @@
 # Matriz estructural de herramientas por tipo de negocio
 
-Origen: `41795e96c3a895671623f732a1256b983c63121a`. Fuentes y hashes completos en [JSON](./tool-profile-audit.json).
+Origen: `447696f484c91ba3374f3d63b32a953e223bae02`. Fuentes y hashes completos en [JSON](./tool-profile-audit.json).
 
 20 verticales; 76 tipos de negocio; 123 herramientas estáticas; 26 familias nativas; 420 tareas (146 transaccionales).
 
 Este censo comprueba correspondencias de código. No ejecuta herramientas ni modelos, no consulta tenants y no certifica resultados comerciales. MCP dinámico no pertenece al censo estático. La ausencia de evidencia cargada no prueba que una cuenta nunca se haya probado.
 
-Rutas declaradas ocultas: 0. Páginas inexistentes: 0. Herramientas sin definición/handler/política: 0/0/0.
+Rutas declaradas ocultas: 0. Páginas inexistentes: 0. Herramientas sin definición/handler/política: 0/0/0. Controles del runtime fuera de Assist/sin respaldo: 0/0.
 
 | Vertical / tipo de negocio | Objeto principal | Familias | Tareas | Estrategia |
 |---|---|---|---:|---|

@@ -62,7 +62,7 @@ describe('la estadía nace pendiente cuando el dueño exige pago', () => {
             contactId: null, guestName: 'Nir', checkIn: '2026-11-13', checkOut: '2026-11-16',
         } as any);
 
-        expect(inserted[0].params[15]).toBe('confirmed');
+        expect(inserted[0].params[16]).toBe('confirmed');
     });
 
     it.each([
@@ -78,7 +78,7 @@ describe('la estadía nace pendiente cuando el dueño exige pago', () => {
             contactId: null, guestName: 'Nir', checkIn: '2026-11-13', checkOut: '2026-11-16',
         } as any);
 
-        expect(inserted[0].params[15]).toBe(PENDING_PAYMENT_STATUS);
+        expect(inserted[0].params[16]).toBe(PENDING_PAYMENT_STATUS);
     });
 
     it('una estadía pendiente OCUPA la fecha mientras la retención sigue viva', async () => {
@@ -109,7 +109,7 @@ describe('la estadía nace pendiente cuando el dueño exige pago', () => {
             contactId: null, guestName: 'Nir', checkIn: '2026-11-13', checkOut: '2026-11-16',
         } as any);
 
-        const hold = inserted[0].params[17] as Date;
+        const hold = inserted[0].params[18] as Date;
         expect(hold).toBeInstanceOf(Date);
         // 20 minutos hacia adelante, con margen para la latencia del test.
         // Son 20 y no 15 por PSE: la transferencia bancaria saca al cliente al

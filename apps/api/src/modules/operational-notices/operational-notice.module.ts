@@ -6,9 +6,10 @@ import { OperationalNoticeService } from './operational-notice.service';
 import { OPERATIONAL_NOTICE_DELIVERY } from './operational-notice.contracts';
 import { OperationalNoticeController } from './operational-notice.controller';
 import { OperationalNoticeReviewService } from './operational-notice-review.service';
+import { EmailTemplatesModule } from '../email-templates/email-templates.module';
 
 @Module({
-    imports: [BullModule.registerQueue({name:'outbound-messages'}),WidgetDeliveryModule,PushModule],
+    imports: [BullModule.registerQueue({name:'outbound-messages'}),WidgetDeliveryModule,PushModule,EmailTemplatesModule],
     providers: [OperationalNoticeService,OperationalNoticeReviewService,{provide:OPERATIONAL_NOTICE_DELIVERY,useExisting:OperationalNoticeService}],
     controllers:[OperationalNoticeController],
     exports: [OperationalNoticeService,OPERATIONAL_NOTICE_DELIVERY],

@@ -11,6 +11,7 @@ const databaseUrl=process.env.PARALLLY_ISOLATION_TEST_URL;
     const tenantId=randomUUID(),schema=`tenant_onmigration_${randomUUID().replace(/-/g,'')}`;
     let client:PrismaClient;
     const migration=readFileSync(join(__dirname,'../../../prisma/migrations/20260913110000_add_home_service_emergency_notices/migration.sql'),'utf8');
+    const bookingMigration=readFileSync(join(__dirname,'../../../prisma/migrations/20260913120000_add_booking_confirmation_notices/migration.sql'),'utf8');
     beforeAll(async()=>{
         const parsed=new URL(databaseUrl!);
         if(!['localhost','127.0.0.1','[::1]'].includes(parsed.hostname)||!parsed.pathname.endsWith('_eval_isolation'))throw new Error('disposable_loopback_database_required');
@@ -22,7 +23,9 @@ const databaseUrl=process.env.PARALLLY_ISOLATION_TEST_URL;
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),event_key TEXT NOT NULL UNIQUE,
             kind VARCHAR(60) NOT NULL CONSTRAINT operational_notice_outbox_kind_check
                 CHECK(kind IN ('appointment.payment_confirmed','appointment.payment_review','gym.waitlist_promoted','education.waitlist_promoted','education.waitlist_review')),
-            entity_id UUID NOT NULL,contact_id UUID,conversation_id UUID,state TEXT NOT NULL DEFAULT 'pending')`);
+            entity_id UUID NOT NULL,contact_id UUID,conversation_id UUID,state TEXT NOT NULL DEFAULT 'pending',
+            next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
+        await client.$executeRawUnsafe(`CREATE TABLE "${schema}".property_bookings(id UUID PRIMARY KEY)`);
     });
     afterAll(async()=>{
         if(!client)return;
@@ -35,6 +38,8 @@ const databaseUrl=process.env.PARALLLY_ISOLATION_TEST_URL;
     it('widens an existing table idempotently and accepts the new kind',async()=>{
         await client.$executeRawUnsafe(migration);
         await client.$executeRawUnsafe(migration);
+        await client.$executeRawUnsafe(bookingMigration);
+        await client.$executeRawUnsafe(bookingMigration);
         const recipient=randomUUID();
         await client.$executeRawUnsafe(`INSERT INTO "${schema}".operational_notice_outbox(
             event_key,kind,entity_id,recipient_user_id) VALUES($1,'home_service.emergency',$2::uuid,$3::uuid)`,
@@ -42,5 +47,12 @@ const databaseUrl=process.env.PARALLLY_ISOLATION_TEST_URL;
         const rows=await client.$queryRawUnsafe<any[]>(`SELECT kind,recipient_user_id
             FROM "${schema}".operational_notice_outbox`);
         expect(rows).toEqual([{kind:'home_service.emergency',recipient_user_id:recipient}]);
+        await client.$executeRawUnsafe(`INSERT INTO "${schema}".operational_notice_outbox(
+            event_key,kind,entity_id) VALUES($1,'tour.booking_confirmed',$2::uuid),
+            ($3,'property.booking_confirmed',$4::uuid)`,
+            `tour:${recipient}`,randomUUID(),`property:${recipient}`,randomUUID());
+        const columns=await client.$queryRawUnsafe<any[]>(`SELECT column_name FROM information_schema.columns
+            WHERE table_schema=$1 AND table_name='property_bookings' AND column_name='language'`,schema);
+        expect(columns).toHaveLength(1);
     });
 });

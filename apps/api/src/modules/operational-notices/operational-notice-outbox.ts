@@ -22,11 +22,12 @@ export async function ensureOperationalNoticeOutbox(prisma: PrismaService, schem
         const [kindConstraint] = await query<any[]>(`SELECT pg_get_constraintdef(oid) AS definition
             FROM pg_constraint WHERE conrelid='operational_notice_outbox'::regclass
               AND conname='operational_notice_outbox_kind_check'`);
-        if (!String(kindConstraint?.definition || '').includes('home_service.emergency')) {
+        if (!String(kindConstraint?.definition || '').includes('property.booking_confirmed')) {
             await query('ALTER TABLE operational_notice_outbox DROP CONSTRAINT IF EXISTS operational_notice_outbox_kind_check');
             await query(`ALTER TABLE operational_notice_outbox ADD CONSTRAINT operational_notice_outbox_kind_check
                 CHECK(kind IN ('appointment.payment_confirmed','appointment.payment_review','gym.waitlist_promoted',
-                    'education.waitlist_promoted','education.waitlist_review','home_service.emergency'))`);
+                    'education.waitlist_promoted','education.waitlist_review','home_service.emergency',
+                    'tour.booking_confirmed','property.booking_confirmed'))`);
         }
         await query("CREATE INDEX IF NOT EXISTS idx_operational_notice_due ON operational_notice_outbox(state,next_attempt_at) WHERE state IN ('pending','queued','failed')");
     });
@@ -57,13 +58,14 @@ export async function enqueueOperationalNoticesForTenantRoles(query: NoticeQuery
 /** Called inside the same transaction that confirms a payment or promotes a waitlist entry. */
 export async function enqueueOperationalNotice(query: NoticeQuery, schema: string, input: {
     kind: OperationalNoticeKind; entityId: string; contactId?: string | null; conversationId?: string | null;
-    revision?: string; historical?: boolean;
+    revision?: string; historical?: boolean; notBefore?: Date | string | null;
 }): Promise<string | null> {
     if (!operationalNoticesAllowed(schema)) return null;
     const eventKey = `${input.kind}:${input.entityId}:${input.revision || '1'}`;
-    const rows = await query<any[]>(`INSERT INTO operational_notice_outbox(event_key,kind,entity_id,contact_id,conversation_id,state,error_code)
-        VALUES($1,$2,$3::uuid,$4::uuid,$5::uuid,$6,$7)
+    const rows = await query<any[]>(`INSERT INTO operational_notice_outbox(event_key,kind,entity_id,contact_id,conversation_id,state,error_code,next_attempt_at)
+        VALUES($1,$2,$3::uuid,$4::uuid,$5::uuid,$6,$7,COALESCE($8::timestamptz,NOW()))
         ON CONFLICT(event_key) DO NOTHING RETURNING id`, [eventKey, input.kind, input.entityId, input.contactId || null,
-        input.conversationId || null, input.historical ? 'reconciliation_required' : 'pending', input.historical ? 'historical_delivery_unverified' : null]);
+        input.conversationId || null, input.historical ? 'reconciliation_required' : 'pending', input.historical ? 'historical_delivery_unverified' : null,
+        input.notBefore || null]);
     return rows[0]?.id || null;
 }

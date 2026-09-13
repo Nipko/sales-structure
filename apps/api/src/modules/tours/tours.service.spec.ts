@@ -19,11 +19,14 @@ describe('ToursService booking contact integrity', () => {
         executeInTenantSchema: jest.Mock,
         transactionImplementation?: (schema: string, callback: (query: any) => Promise<any>) => Promise<any>,
     ) {
+        const noticeWrites=jest.fn().mockResolvedValue([{id:'notice-id'}]);
         const transactionInTenantSchema = jest.fn(
             transactionImplementation || (async (
                 schema: string,
                 callback: (query: (sql: string, params?: any[]) => Promise<any>) => Promise<any>,
-            ) => callback((sql, params) => executeInTenantSchema(schema, sql, params))),
+            ) => callback((sql, params) => sql.includes('INSERT INTO operational_notice_outbox')
+                ? noticeWrites(sql,params)
+                : executeInTenantSchema(schema, sql, params))),
         );
         const prisma = { executeInTenantSchema, transactionInTenantSchema };
         const service = new ToursService(
@@ -31,7 +34,7 @@ describe('ToursService booking contact integrity', () => {
             { enforcePlanLimit: jest.fn() } as any,
             { renderAndSend: jest.fn() } as any,
         );
-        return { service, prisma, transactionInTenantSchema };
+        return { service, prisma, transactionInTenantSchema, noticeWrites };
     }
 
     it('rejects malformed and foreign contacts before touching inventory', async () => {
@@ -73,7 +76,7 @@ describe('ToursService booking contact integrity', () => {
             }
             throw new Error(`Unexpected SQL: ${sql}`);
         });
-        const { service, transactionInTenantSchema } = buildService(execute);
+        const { service, transactionInTenantSchema, noticeWrites } = buildService(execute);
 
         await expect(service.createBooking(schemaName, input)).resolves.toBe(stored);
         expect(transactionInTenantSchema).toHaveBeenCalledTimes(1);
@@ -87,6 +90,10 @@ describe('ToursService booking contact integrity', () => {
             expect.stringContaining('FROM tour_inventory'),
             expect.stringContaining('INSERT INTO tour_bookings'),
         ]);
+        expect(noticeWrites).toHaveBeenCalledTimes(1);
+        expect(noticeWrites.mock.calls[0][1]).toEqual(expect.arrayContaining([
+            'tour.booking_confirmed',bookingId,contactId,
+        ]));
     });
 
     it.each([

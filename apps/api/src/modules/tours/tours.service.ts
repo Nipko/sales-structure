@@ -2,7 +2,6 @@ import { Injectable, Logger, BadRequestException, NotFoundException } from '@nes
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { EmailTemplatesService } from '../email-templates/email-templates.service';
-import { normalizeEmailTemplateLanguage } from '../email-templates/email-template-language';
 import {
     normalizeCurrencyCode,
     requirePositiveIntegerUnit,
@@ -12,13 +11,13 @@ import {
     requireTenantContact,
 } from '../../common/utils/tenant-contact.util';
 import { resolveNativeEvidenceOpportunity } from '../../common/utils/native-evidence-opportunity.util';
-import { emailConfirmationsForOperation } from '../../common/utils/served-confirmation-policy.util';
 import type { EvalNamespaceLease } from '../simulation/isolated-eval-namespace';
 import {
     PAYMENT_HOLD_MS,
     PENDING_PAYMENT_STATUS,
     resolvePaymentPolicy,
 } from '../../common/utils/payment-policy.util';
+import { enqueueOperationalNotice } from '../operational-notices/operational-notice-outbox';
 
 /**
  * Tours / travel packages module — supports both same-day experiences
@@ -36,7 +35,7 @@ export class ToursService {
     constructor(
         private readonly prisma: PrismaService,
         private readonly throttle: TenantThrottleService,
-        private readonly emailTemplates: EmailTemplatesService,
+        private readonly _emailTemplates: EmailTemplatesService,
     ) {}
 
     // ── Packages CRUD ──────────────────────────────────────────────
@@ -439,43 +438,13 @@ export class ToursService {
                 ],
             );
             if (!rows?.[0]) throw new Error('Tour booking was not created');
+            if (!execution.sandboxNamespace) await enqueueOperationalNotice(query,schemaName,{
+                kind:'tour.booking_confirmed',entityId:rows[0].id,
+                contactId:rows[0].contact_id,conversationId:rows[0].conversation_id,
+                notBefore:status===PENDING_PAYMENT_STATUS?holdExpiresAt:null});
             return { booking: rows[0], pkg, totalPrice, policy };
         });
-        const { booking, pkg, totalPrice, policy } = created;
-
-        // Try to send confirmation email (fire-and-forget)
-        try {
-            const guestEmail = execution.sandboxNamespace ? null : data.guestEmail;
-            if (guestEmail) {
-                // Asked of the agent that served the connection this booking
-                // arrived on, not of `is_active = true LIMIT 1` — an unordered
-                // pick among the tenant's agents, so on a tenant with two the
-                // owner's switch on the agent that took the booking was ignored
-                // half the time. See `served-confirmation-policy.util.ts`.
-                const emailConfirmationsEnabled = await emailConfirmationsForOperation(
-                    <T>(sql: string, params: any[] = []) =>
-                        this.prisma.executeInTenantSchema<T>(schemaName, sql, params),
-                    ['tours'], booking.conversation_id,
-                );
-
-                if (emailConfirmationsEnabled) {
-                    await this.emailTemplates.renderAndSend(schemaName, 'tour_booking_confirmation', guestEmail, {
-                        guest_name: data.guestName || 'Huésped',
-                        package_name: pkg.name,
-                        departure_date: data.departureDate,
-                        departure_time: data.departureTime || '',
-                        party_size: String(partySize),
-                        adults: String(adults),
-                        children: String(children),
-                        total_price: String(totalPrice),
-                        currency: pkg.currency || 'COP',
-                        departure_location: pkg.departure_location || '',
-                    }, normalizeEmailTemplateLanguage(data.language));
-                }
-            }
-        } catch (e: any) {
-            this.logger.warn(`Tour confirmation email failed: ${e.message}`);
-        }
+        const { booking } = created;
 
         return booking;
     }

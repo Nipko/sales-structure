@@ -9,13 +9,11 @@ import { PrismaService } from '../prisma/prisma.service';
 import type { ServiceExecutionContext } from '../../common/types/execution-context';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { EmailTemplatesService } from '../email-templates/email-templates.service';
-import { normalizeEmailTemplateLanguage } from '../email-templates/email-template-language';
 import {
     assertOptionalContactId,
     requireTenantContact,
 } from '../../common/utils/tenant-contact.util';
 import { resolveNativeEvidenceOpportunity } from '../../common/utils/native-evidence-opportunity.util';
-import { emailConfirmationsForOperation } from '../../common/utils/served-confirmation-policy.util';
 import type { EvalNamespaceLease } from '../simulation/isolated-eval-namespace';
 import {
     LodgingSorResolution,
@@ -30,6 +28,7 @@ import {
     PENDING_PAYMENT_STATUS,
     resolvePaymentPolicy,
 } from '../../common/utils/payment-policy.util';
+import { enqueueOperationalNotice } from '../operational-notices/operational-notice-outbox';
 
 const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -60,7 +59,7 @@ export class PropertiesService {
     constructor(
         private readonly prisma: PrismaService,
         private readonly throttle: TenantThrottleService,
-        private readonly emailTemplates: EmailTemplatesService,
+        private readonly _emailTemplates: EmailTemplatesService,
         // Optional so the many specs that build this service by hand keep
         // working. When absent the tenant behaves as Channel-Manager-free,
         // which is what a tenant without the integration is.
@@ -707,58 +706,29 @@ export class PropertiesService {
             const rows = await query<any[]>(
                 `INSERT INTO property_bookings
                  (property_id, contact_id, opportunity_id, conversation_id, guest_name, guest_email, guest_phone,
-                  guests_count, check_in, check_out, nights, night_price, cleaning_fee, total_price, currency, status,
+                  guests_count, check_in, check_out, nights, night_price, cleaning_fee, total_price, currency, language, status,
                   amount_due, hold_expires_at)
-                 VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, $6, $7, $8, $9::date, $10::date, $11, $12, $13, $14, $15, $16, $17, $18)
+                 VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, $6, $7, $8, $9::date, $10::date, $11, $12, $13, $14, $15, $16, $17, $18, $19)
                  RETURNING *`,
                 [
                     propertyId,
                     canonicalContactId, opportunityId, data.conversationId || null,
                     data.guestName, data.guestEmail || null, data.guestPhone || null,
                     guestsCount, stay.checkIn, stay.checkOut,
-                    stay.nights, nightPrice, cleaningFee, totalPrice, property.currency, status,
+                    stay.nights, nightPrice, cleaningFee, totalPrice, property.currency, data.language || 'es', status,
                     amountDue, holdExpiresAt,
                 ],
             );
             if (!rows?.[0]) throw new Error('Property booking was not created');
+            if (!execution.sandboxNamespace) await enqueueOperationalNotice(query,schemaName,{
+                kind:'property.booking_confirmed',entityId:rows[0].id,
+                contactId:rows[0].contact_id,conversationId:rows[0].conversation_id,
+                notBefore:status===PENDING_PAYMENT_STATUS?holdExpiresAt:null});
             return { booking: rows[0], property, policy };
         });
 
         const booking = created.booking;
-        const property = created.property;
-        const totalPrice = Number(booking.total_price ?? 0);
         this.logger.log(`Direct booking created for property ${propertyId}: ${stay.checkIn} to ${stay.checkOut}`);
-
-        // After successful booking insert, try to send confirmation email (fire-and-forget)
-        try {
-            if (data.guestEmail && !execution.sandboxNamespace) {
-                // Asked of the agent that served the connection this booking
-                // arrived on, not of `is_active = true LIMIT 1` — an unordered
-                // pick among the tenant's agents, so on a tenant with two the
-                // owner's switch on the agent that took the booking was ignored
-                // half the time. See `served-confirmation-policy.util.ts`.
-                const emailConfirmationsEnabled = await emailConfirmationsForOperation(
-                    <T>(sql: string, params: any[] = []) =>
-                        this.prisma.executeInTenantSchema<T>(schemaName, sql, params),
-                    ['properties'], booking.conversation_id,
-                );
-
-                if (emailConfirmationsEnabled) {
-                    await this.emailTemplates.renderAndSend(schemaName, 'property_booking_confirmation', data.guestEmail, {
-                        guest_name: data.guestName || 'Huésped',
-                        property_name: property?.name || '',
-                        check_in: stay.checkIn,
-                        check_out: stay.checkOut,
-                        nights: String(stay.nights),
-                        total_price: String(totalPrice),
-                        currency: booking.currency,
-                        check_in_instructions: property?.check_in_instructions || '',
-                    }, normalizeEmailTemplateLanguage(data.language));
-                }
-            }
-        } catch (e: any) {
-            this.logger.warn(`Booking confirmation email failed: ${e.message}`);
-        }
 
         // La política viaja con la reserva porque quien la lee —la herramienta,
         // y a través de ella el agente— tiene que saber que esto NO está

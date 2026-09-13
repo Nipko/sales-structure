@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Cron } from '@nestjs/schedule';
 import { Queue } from 'bullmq';
@@ -17,6 +17,8 @@ import { NoticeSuppressed, type NoticeQuery, type OperationalNoticeReference, ty
 import { deliveryOutcome } from '../channels/delivery-outcome';
 import { ensureOperationalNoticeOutbox } from './operational-notice-outbox';
 import { operationalNoticeText } from './operational-notice-text';
+import { EmailTemplatesService } from '../email-templates/email-templates.service';
+import { emailConfirmationsForOperation } from '../../common/utils/served-confirmation-policy.util';
 
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 
@@ -27,7 +29,8 @@ export class OperationalNoticeService {
     constructor(private readonly prisma: PrismaService, private readonly redis: RedisService,
         private readonly throttle: TenantThrottleService, private readonly widget: WidgetMessageStore,
         private readonly email: EmailService, private readonly push: PushService, private readonly cronLock: CronLockService,
-        @InjectQueue('outbound-messages') private readonly queue: Queue<any>) {}
+        @InjectQueue('outbound-messages') private readonly queue: Queue<any>,
+        @Optional() private readonly emailTemplates?: EmailTemplatesService) {}
 
     @Cron('21 * * * * *')
     async recoverCron(): Promise<void> {
@@ -133,7 +136,15 @@ export class OperationalNoticeService {
                 }
                 let send: () => Promise<any>;
                 if (hydrated.route === 'email') {
-                    send=this.email.prepareBoundedSend({to:hydrated.email,subject:hydrated.text.split('\n')[0],text:hydrated.text});
+                    if (hydrated.emailTemplate) {
+                        if (!this.emailTemplates) throw new Error('notice_email_templates_unavailable');
+                        const prepared=await this.emailTemplates.renderAndPrepare(schema,hydrated.emailTemplate.slug,
+                            hydrated.email,hydrated.emailTemplate.variables,hydrated.emailTemplate.language);
+                        if (!prepared) throw new NoticeSuppressed('notice_template_missing');
+                        send=prepared;
+                    } else {
+                        send=this.email.prepareBoundedSend({to:hydrated.email,subject:hydrated.text.split('\n')[0],text:hydrated.text});
+                    }
                 } else if (hydrated.route === 'operator') {
                     send=()=>this.push.sendToTenantRole(reference.tenantId,hydrated.role || 'tenant_admin', {
                         title:hydrated.text.split('\n')[0],body:hydrated.text,tag:`operational-${row.id}`,
@@ -205,6 +216,18 @@ export class OperationalNoticeService {
             if (!facts || facts.urgency!=='emergencia' || ['completed','cancelled'].includes(facts.status)) {
                 throw new NoticeSuppressed('notice_domain_state_changed');
             }
+        } else if (notice.kind === 'tour.booking_confirmed') {
+            facts=(await query<any[]>(`SELECT b.*,p.name,p.departure_location,
+                    to_char(b.departure_date,'YYYY-MM-DD') AS departure_date_text
+                FROM tour_bookings b JOIN tour_packages p ON p.id=b.package_id
+                WHERE b.id=$1::uuid FOR SHARE OF b,p`,[notice.entity_id]))[0];
+            if (!facts || !['reserved','confirmed','paid'].includes(facts.status)) throw new NoticeSuppressed('notice_domain_state_changed');
+        } else if (notice.kind === 'property.booking_confirmed') {
+            facts=(await query<any[]>(`SELECT b.*,p.name,p.check_in_instructions,
+                    b.check_in::text AS check_in_text,b.check_out::text AS check_out_text
+                FROM property_bookings b JOIN properties p ON p.id=b.property_id
+                WHERE b.id=$1::uuid FOR SHARE OF b,p`,[notice.entity_id]))[0];
+            if (!facts || facts.status!=='confirmed') throw new NoticeSuppressed('notice_domain_state_changed');
         } else {
             throw new NoticeSuppressed('notice_kind_unsupported');
         }
@@ -224,6 +247,27 @@ export class OperationalNoticeService {
                     service:facts.service_type,customer:facts.customer_name,phone:facts.customer_phone,
                     address:[facts.address,facts.city].filter(Boolean).join(', '),problem:facts.issue_description,
                 })};
+        }
+        if (notice.kind==='tour.booking_confirmed' || notice.kind==='property.booking_confirmed') {
+            const family=notice.kind.startsWith('tour.')?'tours':'properties';
+            if (!await emailConfirmationsForOperation(query,[family],facts.conversation_id)) {
+                throw new NoticeSuppressed('notice_confirmation_switched_off');
+            }
+            const email=String(facts.guest_email || '').trim();
+            if (!email) throw new NoticeSuppressed('notice_channel_unavailable');
+            const language=facts.language || tenant?.language || 'es';
+            const emailTemplate=notice.kind.startsWith('tour.')?{
+                slug:'tour_booking_confirmation',language,variables:{guest_name:facts.guest_name||'Huésped',
+                    package_name:facts.name||'',departure_date:facts.departure_date_text||'',departure_time:facts.departure_time||'',
+                    party_size:String(facts.party_size||0),adults:String(facts.adults||0),children:String(facts.children||0),
+                    total_price:String(facts.total_price||0),currency:facts.currency||'COP',departure_location:facts.departure_location||''},
+            }:{
+                slug:'property_booking_confirmation',language,variables:{guest_name:facts.guest_name||'Huésped',
+                    property_name:facts.name||'',check_in:facts.check_in_text||'',check_out:facts.check_out_text||'',
+                    nights:String(facts.nights||0),total_price:String(facts.total_price||0),currency:facts.currency||'COP',
+                    check_in_instructions:facts.check_in_instructions||''},
+            };
+            return {route:'email',email,conversationId:facts.conversation_id||null,emailTemplate,text:''};
         }
         if (!notice.contact_id) throw new NoticeSuppressed('notice_contact_missing');
         const contacts=await query<any[]>('SELECT * FROM contacts WHERE id=$1::uuid FOR SHARE',[notice.contact_id]);

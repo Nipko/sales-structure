@@ -798,13 +798,13 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
 producer({
         id: 'tours.booking_confirmation',
         effect: 'The email to a guest confirming a tour booking: package, departure date and time, party size and total price',
-        lane: 'inline',
+        lane: 'operational_notice',
         status: 'live',
         derivation: 'census',
         source: 'modules/tours/tours.service.ts',
-        symbol: 'createBooking',
-        egress: 'EmailTemplatesService.renderAndSend renders `tour_booking_confirmation` and hands it to '
-            + 'SMTP on the caller\'s stack, after the booking transaction has committed',
+        symbol: 'enqueueOperationalNotice',
+        egress: 'the booking transaction commits a `tour.booking_confirmed` operational notice; '
+            + 'delivery re-reads the booking, serving agent switch, guest language and tenant template',
         reach: {
             class: 'customer_message', audience: 'contact', personalData: true,
             // Email only. Nothing here reaches a messaging channel, so Meta
@@ -812,42 +812,19 @@ producer({
             // a customer message carrying personal data.
             channels: ['email'],
         },
-        properties: {
-            authority: partial('the owner\'s `tours.emailConfirmations` switch, resolved from '
-                + 'the THREAD the booking arrived on rather than from whichever active agent an '
-                + 'unordered `LIMIT 1` returned, and suppressed entirely inside an isolated '
-                + 'evaluation (`sandboxNamespace`) so a synthetic run cannot email a real guest. '
-                + 'It is `partial` and not `durable` because no economic admission exists on this '
-                + 'road: nothing bills us per delivered email, so there is no reservation to take '
-                + 'and no ceiling to refuse against'),
-            idempotency: partial('the booking INSERT is the only guard: one committed booking sends one email. A caller that retries after a lost acknowledgement commits a second booking and sends a second email, because nothing keys the send to anything a retry would recompute'),
-            receipt: none('`renderAndSend` answers with a boolean. No provider id is kept, so '
-                + 'nothing can later say which message this was or whether it arrived'),
-            uncertainOutcome: none('one boolean cannot separate "the provider refused" from "no '
-                + 'answer arrived". A timeout is recorded the same way as a rejection, which is '
-                + 'as failed'),
-            erasure: none('the body carries the guest\'s name, dates and price, and no erasure '
-                + 'reaches it: once SMTP has it, it is in a mailbox this platform cannot touch, '
-                + 'and this producer keeps no copy to clear either. NOT `not_applicable` — that '
-                + 'level is a statement about the CONTENT, and personal data left the building. '
-                + 'The booking row it derives from is erased by its own vertical\'s fan-out, '
-                + 'which is a different row from the message'),
-            recovery: none('fire-and-forget inside a `try` that warns. A crash between the '
-                + 'commit and the send loses the confirmation with no row anywhere saying it was '
-                + 'owed'),
-        },
+        properties: OPERATIONAL_NOTICE_PROPERTIES,
     }),
 
     producer({
         id: 'vacation_rental.booking_confirmation',
         effect: 'The email to a guest confirming a stay: property, check-in and check-out, nights, total price and the check-in instructions',
-        lane: 'inline',
+        lane: 'operational_notice',
         status: 'live',
         derivation: 'census',
         source: 'modules/vacation-rental/properties.service.ts',
-        symbol: 'createBooking',
-        egress: 'EmailTemplatesService.renderAndSend renders `property_booking_confirmation` and hands it to '
-            + 'SMTP on the caller\'s stack, after the booking transaction has committed',
+        symbol: 'enqueueOperationalNotice',
+        egress: 'the booking transaction commits a `property.booking_confirmed` operational notice; '
+            + 'delivery re-reads the stay, serving agent switch, guest language and tenant template',
         reach: {
             class: 'customer_message', audience: 'contact', personalData: true,
             // Email only. Nothing here reaches a messaging channel, so Meta
@@ -855,30 +832,7 @@ producer({
             // a customer message carrying personal data.
             channels: ['email'],
         },
-        properties: {
-            authority: partial('the owner\'s `properties.emailConfirmations` switch, resolved from '
-                + 'the THREAD the booking arrived on rather than from whichever active agent an '
-                + 'unordered `LIMIT 1` returned, and suppressed entirely inside an isolated '
-                + 'evaluation (`sandboxNamespace`) so a synthetic run cannot email a real guest. '
-                + 'It is `partial` and not `durable` because no economic admission exists on this '
-                + 'road: nothing bills us per delivered email, so there is no reservation to take '
-                + 'and no ceiling to refuse against'),
-            idempotency: partial('the booking INSERT is the only guard: one committed booking sends one email. A caller that retries after a lost acknowledgement commits a second booking and sends a second email, because nothing keys the send to anything a retry would recompute'),
-            receipt: none('`renderAndSend` answers with a boolean. No provider id is kept, so '
-                + 'nothing can later say which message this was or whether it arrived'),
-            uncertainOutcome: none('one boolean cannot separate "the provider refused" from "no '
-                + 'answer arrived". A timeout is recorded the same way as a rejection, which is '
-                + 'as failed'),
-            erasure: none('the body carries the guest\'s name, dates and price, and no erasure '
-                + 'reaches it: once SMTP has it, it is in a mailbox this platform cannot touch, '
-                + 'and this producer keeps no copy to clear either. NOT `not_applicable` — that '
-                + 'level is a statement about the CONTENT, and personal data left the building. '
-                + 'The booking row it derives from is erased by its own vertical\'s fan-out, '
-                + 'which is a different row from the message'),
-            recovery: none('fire-and-forget inside a `try` that warns. A crash between the '
-                + 'commit and the send loses the confirmation with no row anywhere saying it was '
-                + 'owed'),
-        },
+        properties: OPERATIONAL_NOTICE_PROPERTIES,
     }),
 
     // ── A CUSTOMER EMAIL THE SWEEP COULD NOT SEE ──────────────────────

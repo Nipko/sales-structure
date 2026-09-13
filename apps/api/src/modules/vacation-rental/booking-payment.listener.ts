@@ -117,6 +117,11 @@ export class BookingPaymentListener {
             );
             if (!updated?.[0]) return;
 
+            await this.prisma.executeInTenantSchema(schemaName,
+                `UPDATE operational_notice_outbox SET next_attempt_at=NOW(),updated_at=NOW()
+                  WHERE kind='property.booking_confirmed' AND entity_id=$1::uuid AND state='pending'`,
+                [booking.id]).catch(() => undefined);
+
             this.logger.log(`[Pago] reserva ${booking.id} confirmada tras acreditarse el pago`);
             // Confirmar en la base no es confirmarle al huésped. Sin este aviso
             // pagaba, Wompi le decía "listo" y de nosotros no recibía nada.

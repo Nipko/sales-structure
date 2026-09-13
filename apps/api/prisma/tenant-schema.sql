@@ -2204,6 +2204,7 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."property_bookings" (
     "cleaning_fee" DECIMAL(15,2) DEFAULT 0,
     "total_price" DECIMAL(15,2),
     "currency" VARCHAR(10) DEFAULT 'COP',
+    "language" VARCHAR(10) DEFAULT 'es',
     "status" VARCHAR(50) DEFAULT 'pending',
     "notes" TEXT,
     "metadata" JSONB DEFAULT '{}',
@@ -4923,7 +4924,7 @@ CREATE INDEX IF NOT EXISTS idx_quality_sampling_pending ON "{{SCHEMA_NAME}}"."qu
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."operational_notice_outbox" (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     event_key VARCHAR(200) NOT NULL UNIQUE,
-    kind VARCHAR(60) NOT NULL CHECK(kind IN ('appointment.payment_confirmed','appointment.payment_review','gym.waitlist_promoted','education.waitlist_promoted','education.waitlist_review','home_service.emergency')),
+    kind VARCHAR(60) NOT NULL CHECK(kind IN ('appointment.payment_confirmed','appointment.payment_review','gym.waitlist_promoted','education.waitlist_promoted','education.waitlist_review','home_service.emergency','tour.booking_confirmed','property.booking_confirmed')),
     entity_id UUID NOT NULL,
     contact_id UUID,
     conversation_id UUID,
@@ -5118,7 +5119,7 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_publication_heads" (
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."operational_notice_outbox" (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     event_key VARCHAR(200) NOT NULL UNIQUE,
-    kind VARCHAR(60) NOT NULL CHECK(kind IN ('appointment.payment_confirmed','appointment.payment_review','gym.waitlist_promoted','education.waitlist_promoted','education.waitlist_review','home_service.emergency')),
+    kind VARCHAR(60) NOT NULL CHECK(kind IN ('appointment.payment_confirmed','appointment.payment_review','gym.waitlist_promoted','education.waitlist_promoted','education.waitlist_review','home_service.emergency','tour.booking_confirmed','property.booking_confirmed')),
     entity_id UUID NOT NULL,
     contact_id UUID,
     conversation_id UUID,

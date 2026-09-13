@@ -90,6 +90,13 @@ export class TourPaymentListener {
             );
             if (!updated?.[0]) return;
 
+            // New bookings already own this durable notice. Wake it now; if
+            // this nudge is lost, its hold deadline remains a bounded fallback.
+            await this.prisma.executeInTenantSchema(schemaName,
+                `UPDATE operational_notice_outbox SET next_attempt_at=NOW(),updated_at=NOW()
+                  WHERE kind='tour.booking_confirmed' AND entity_id=$1::uuid AND state='pending'`,
+                [booking.id]).catch(() => undefined);
+
             this.logger.log(`[Pago] reserva de tour ${booking.id} confirmada tras acreditarse el pago`);
             await this.notifier?.notifyCustomer({
                 tenantId: event.tenantId,

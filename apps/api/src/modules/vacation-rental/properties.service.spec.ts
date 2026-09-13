@@ -23,18 +23,26 @@ describe('PropertiesService reservations', () => {
     };
 
     function buildService(prismaOverrides: Record<string, any> = {}) {
+        const suppliedTransaction = prismaOverrides.transactionInTenantSchema || jest.fn();
+        const noticeWrites=jest.fn().mockResolvedValue([{id:'notice-id'}]);
         const prisma = {
             tenant: { findUnique: jest.fn() },
             executeInTenantSchema: jest.fn(),
             transactionInTenantSchema: jest.fn(),
             ...prismaOverrides,
         };
+        prisma.transactionInTenantSchema = jest.fn((schema: string, callback: any) =>
+            suppliedTransaction(schema, (query: any) => callback((sql: string, params: any[] = []) =>
+                sql.includes('INSERT INTO operational_notice_outbox')
+                    ? noticeWrites(sql,params)
+                    : query(sql, params))));
         const throttle = { enforcePlanLimit: jest.fn() };
         const emailTemplates = { renderAndSend: jest.fn() };
         return {
             service: new PropertiesService(prisma as any, throttle as any, emailTemplates as any),
             prisma,
             emailTemplates,
+            noticeWrites,
         };
     }
 
@@ -247,7 +255,7 @@ describe('PropertiesService reservations', () => {
         const transactionInTenantSchema = jest.fn(
             async (_schema: string, callback: any) => callback(query),
         );
-        const { service, prisma } = buildService({ transactionInTenantSchema });
+        const { service, prisma, noticeWrites } = buildService({ transactionInTenantSchema });
 
         await expect(service.createBooking(schemaName, propertyId, {
             guestName: 'Ana',
@@ -274,6 +282,10 @@ describe('PropertiesService reservations', () => {
             '2026-08-10',
             '2026-08-12',
             220,
+        ]));
+        expect(noticeWrites).toHaveBeenCalledTimes(1);
+        expect(noticeWrites.mock.calls[0][1]).toEqual(expect.arrayContaining([
+            'property.booking_confirmed',booking.id,
         ]));
     });
 

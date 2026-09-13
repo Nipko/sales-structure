@@ -349,7 +349,22 @@ export class DunningService {
                 where: { id: sub.tenantId },
                 data: { subscriptionStatus: SubscriptionStatus.PAST_DUE },
             });
-            return true;
+            const billingEvent = await tx.billingEvent.create({
+                data: {
+                    tenantId: sub.tenantId,
+                    subscriptionId: sub.id,
+                    provider: 'system',
+                    providerEventId: `dunning_soft_lock_${sub.id}_${startedAt.toISOString()}`,
+                    eventType: 'billing.subscription.soft_locked',
+                    payload: {
+                        daysRemaining: DUNNING_EXPIRY_DAY
+                            - Math.floor((Date.now() - startedAt.getTime()) / 86_400_000),
+                        source: 'dunning_clock',
+                    },
+                },
+                select: { id: true },
+            });
+            return { billingEventId: billingEvent.id };
         });
         if (!transitioned) return false;
         await this.invalidateEntitlementCaches(sub.tenantId);
@@ -357,6 +372,7 @@ export class DunningService {
         this.eventEmitter.emit('billing.subscription.soft_locked', {
             tenantId: sub.tenantId,
             subscriptionId: sub.id,
+            billingEventId: transitioned.billingEventId,
             daysRemaining: DUNNING_EXPIRY_DAY
                 - Math.floor((Date.now() - startedAt.getTime()) / 86_400_000),
         });
@@ -384,7 +400,21 @@ export class DunningService {
                 where: { id: sub.tenantId },
                 data: { subscriptionStatus: SubscriptionStatus.EXPIRED },
             });
-            return true;
+            const boundary = sub.dunningStartedAt?.toISOString()
+                ?? sub.currentPeriodEnd?.toISOString()
+                ?? 'unknown';
+            const billingEvent = await tx.billingEvent.create({
+                data: {
+                    tenantId: sub.tenantId,
+                    subscriptionId: sub.id,
+                    provider: 'system',
+                    providerEventId: `dunning_expired_${sub.id}_${boundary}`,
+                    eventType: BillingEventType.SUBSCRIPTION_EXPIRED,
+                    payload: { source: 'dunning_clock', boundary },
+                },
+                select: { id: true },
+            });
+            return { billingEventId: billingEvent.id };
         });
         if (!transitioned) return false;
         await this.invalidateEntitlementCaches(sub.tenantId);
@@ -392,6 +422,7 @@ export class DunningService {
         this.eventEmitter.emit(BillingEventType.SUBSCRIPTION_EXPIRED, {
             tenantId: sub.tenantId,
             subscriptionId: sub.id,
+            billingEventId: transitioned.billingEventId,
         });
         this.logger.warn(`[Dunning] Subscription ${sub.id} expired — recovery window exhausted`);
         return true;

@@ -28,6 +28,14 @@ const url = process.env.PARALLLY_ISOLATION_TEST_URL;
             id UUID PRIMARY KEY,title TEXT NOT NULL,description TEXT NOT NULL DEFAULT '',
             status TEXT NOT NULL DEFAULT 'open',declined_reason TEXT,status_revision INTEGER NOT NULL DEFAULT 0,
             author_user_id UUID,shipped_at TIMESTAMP,created_at TIMESTAMP DEFAULT NOW(),updated_at TIMESTAMP DEFAULT NOW())`);
+        await admin.query('ALTER TABLE feature_requests ADD COLUMN IF NOT EXISTS title TEXT');
+        await admin.query("ALTER TABLE feature_requests ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT ''");
+        await admin.query("ALTER TABLE feature_requests ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'open'");
+        await admin.query('ALTER TABLE feature_requests ADD COLUMN IF NOT EXISTS declined_reason TEXT');
+        await admin.query('ALTER TABLE feature_requests ADD COLUMN IF NOT EXISTS author_user_id UUID');
+        await admin.query('ALTER TABLE feature_requests ADD COLUMN IF NOT EXISTS shipped_at TIMESTAMP');
+        await admin.query('ALTER TABLE feature_requests ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW()');
+        await admin.query('ALTER TABLE feature_requests ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()');
         await admin.query('ALTER TABLE feature_requests ADD COLUMN IF NOT EXISTS status_revision INTEGER NOT NULL DEFAULT 0');
         await admin.query(`CREATE TABLE IF NOT EXISTS feature_request_subscribers(
             id UUID PRIMARY KEY,request_id UUID NOT NULL,user_id UUID NOT NULL,

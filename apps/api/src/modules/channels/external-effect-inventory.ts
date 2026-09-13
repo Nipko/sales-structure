@@ -1331,27 +1331,23 @@ producer({
         id: 'billing.lifecycle_email',
         effect: 'Trial ending, trial ended, payment failed, soft lock, expiry and payment succeeded '
             + 'emails to the tenant',
-        lane: 'inline',
+        lane: 'delivery_outbox',
         status: 'live',
-        derivation: 'census',
+        derivation: 'declared',
         source: 'modules/billing/billing-email.service.ts',
         symbol: 'BillingEmailService',
-        egress: 'EmailService.send from billing event listeners',
+        egress: 'billing_events admission into platform_notification_outbox, then bounded SMTP',
         reach: {
             class: 'operator_notification', audience: 'tenant_operator', personalData: true,
             channels: ['email'],
         },
         properties: {
-            authority: none('inline from an event listener'),
-            idempotency: partial('the EVENT is deduped upstream — `billing_events` is unique on '
-                + '(provider, providerEventId), and the day-three soft lock has a Redis dedupe flag. '
-                + 'Nothing dedupes the email itself'),
-            receipt: none(INLINE_EMAIL),
-            uncertainOutcome: none('the boolean collapses the two cases'),
-            erasure: none('a tenant billing email is not personal data under the contact erasure path, '
-                + 'and nothing records it either way'),
-            recovery: none('no record of the attempt, so a lifecycle email lost to an SMTP outage is '
-                + 'never sent and the tenant learns about the lock from the product instead'),
+            authority: durable('the canonical billing event owns admission; dunning transitions create that event in the same transaction as the subscription state'),
+            idempotency: durable('billing_events has provider identity and each email has UNIQUE event_key=billing:{eventId}; admitted events carry a durable marker'),
+            receipt: durable('the bounded SMTP message id is required and stored in provider_reference'),
+            uncertainOutcome: durable('claimed and sending are separate; a send without an answer becomes reconciliation_required and is never retried'),
+            erasure: durable('direct billing recipients are owned by tenant_id and cascade when the tenant is erased; user recipients retain their user cascade'),
+            recovery: durable('a periodic pass finds new billing_events without an admission marker; migration marks historical events before recovery is enabled'),
         },
     }),
 

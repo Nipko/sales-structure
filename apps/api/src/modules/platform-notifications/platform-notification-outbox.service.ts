@@ -66,22 +66,26 @@ export class PlatformNotificationOutboxService {
         if (!UUID.test(id)) throw new Error('platform_notification_invalid_id');
         const lease = randomUUID();
         const claim = await this.prisma.$transaction(async (tx: any) => {
-            const rows = await tx.$queryRawUnsafe(`SELECT o.*,u.email,u.first_name
+            const rows = await tx.$queryRawUnsafe(`SELECT o.*,u.email AS user_email,u.first_name
                 FROM platform_notification_outbox o
-                JOIN users u ON u.id=o.recipient_user_id
-                WHERE o.id=$1::uuid FOR UPDATE OF o,u`, id);
+                LEFT JOIN users u ON u.id=o.recipient_user_id
+                WHERE o.id=$1::uuid FOR UPDATE OF o`, id);
             const row = rows[0];
             if (!row) return { state: 'missing' };
             if (!['pending', 'failed'].includes(row.state) || Number(row.attempts) >= 5) {
                 return { state: row.state };
             }
-            const active = await tx.$queryRawUnsafe(`SELECT 1
-                FROM feature_requests fr
-                JOIN feature_request_subscribers s ON s.request_id=fr.id
-                WHERE fr.id=$1::uuid AND s.user_id=$2::uuid
-                  AND EXISTS(SELECT 1 FROM users u WHERE u.id=s.user_id AND u.is_active=true AND u.email IS NOT NULL)
-                LIMIT 1`, row.entity_id, row.recipient_user_id);
-            if (!active[0]) {
+            const available = row.kind === 'feature_request.status_changed'
+                ? (await tx.$queryRawUnsafe(`SELECT 1
+                    FROM feature_requests fr
+                    JOIN feature_request_subscribers s ON s.request_id=fr.id
+                    WHERE fr.id=$1::uuid AND s.user_id=$2::uuid
+                      AND EXISTS(SELECT 1 FROM users u WHERE u.id=s.user_id AND u.is_active=true AND u.email IS NOT NULL)
+                    LIMIT 1`, row.entity_id, row.recipient_user_id))[0]
+                : row.kind === 'billing.lifecycle_email'
+                    ? (await tx.$queryRawUnsafe(`SELECT 1 FROM tenants WHERE id=$1::uuid LIMIT 1`, row.tenant_id))[0]
+                    : null;
+            if (!available) {
                 await tx.$executeRawUnsafe(`UPDATE platform_notification_outbox
                     SET state='suppressed',error_code='notification_recipient_unavailable',
                         completed_at=NOW(),updated_at=NOW()
@@ -92,7 +96,8 @@ export class PlatformNotificationOutboxService {
                 SET state='claimed',attempts=attempts+1,lease_token=$2::uuid,
                     lease_expires_at=NOW()+INTERVAL '90 seconds',error_code=NULL,updated_at=NOW()
                 WHERE id=$1::uuid`, id, lease);
-            return { state: 'claimed', row: { ...row, email: String(row.email).trim().toLowerCase() } };
+            const email = row.recipient_email ?? row.user_email;
+            return { state: 'claimed', row: { ...row, email: String(email ?? '').trim().toLowerCase() } };
         });
         if (claim.state !== 'claimed') return `notification:${claim.state}`;
 
@@ -138,6 +143,18 @@ export class PlatformNotificationOutboxService {
 
     private render(row: any): { to: string; subject: string; html: string } {
         const payload = row.payload && typeof row.payload === 'object' ? row.payload : {};
+        if (row.kind === 'billing.lifecycle_email') {
+            const subject = String(payload.subject || '').replace(/[\r\n]/g, ' ').trim().slice(0, 240);
+            const html = String(payload.html || '');
+            if (!subject || !html || html.length > 250_000
+                || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.email)) {
+                throw new Error('notification_payload_invalid');
+            }
+            return { to: row.email, subject, html };
+        }
+        if (row.kind !== 'feature_request.status_changed') {
+            throw new Error('notification_kind_unsupported');
+        }
         const title = String(payload.title || '').replace(/[\r\n]/g, ' ').trim().slice(0, 240);
         const status = String(payload.status || '').trim();
         if (!title || !STATUS_LABELS[status] || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.email)) {

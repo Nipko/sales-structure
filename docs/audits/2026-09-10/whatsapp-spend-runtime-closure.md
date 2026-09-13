@@ -168,10 +168,12 @@ Ninguno se puede cerrar desde acá. Los cinco son de afuera.
 1. **Ventana, acceso y responsable del VPS.** Sin eso el cutover se prepara y no
    se ejecuta. Abre con: la ventana acordada y el inventario del paso 0 del
    runbook.
-2. **Los once `NEXT_PUBLIC_*` del candidato.** `CANDIDATE_PUBLIC_API_URL` y
+2. **Los `NEXT_PUBLIC_*` del candidato.** `CANDIDATE_PUBLIC_API_URL` y
    `CANDIDATE_PUBLIC_WA_URL` como variables de repositorio; `META_APP_ID`,
-   `META_CONFIG_ID`, `META_SOLUTION_ID`, `GOOGLE_OAUTH_CLIENT_ID`,
-   `MESSENGER_FB_LOGIN_CONFIG_ID` y `VAPID_PUBLIC_KEY` como secretos. Abre con:
+   `META_CONFIG_ID`, `GOOGLE_OAUTH_CLIENT_ID`,
+   `MESSENGER_FB_LOGIN_CONFIG_ID` y `VAPID_PUBLIC_KEY` como secretos.
+   `META_SOLUTION_ID` queda vacío para el camino directo de Tech Provider y
+   sólo se configura si existe una solución multi-socio aceptada. Abre con:
    configurarlos y poner la etiqueta `build-candidate` en el PR del candidato.
 3. **Método de pago en la WABA del negocio.** Lo gestiona el dueño en la
    superficie de Meta; la plataforma nunca recibe ni guarda datos de tarjeta.

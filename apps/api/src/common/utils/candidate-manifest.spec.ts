@@ -445,6 +445,23 @@ describe('the candidate workflow that produces it', () => {
         }
     });
 
+    it('does not require a partner solution for the direct Tech Provider path', () => {
+        const text = workflow();
+        const requiredLoop = text.match(
+            /for name in NEXT_PUBLIC_API_URL[\s\S]*?; do/,
+        )?.[0] || '';
+
+        expect(requiredLoop).toContain('NEXT_PUBLIC_META_CONFIG_ID');
+        expect(requiredLoop).not.toContain('NEXT_PUBLIC_META_SOLUTION_ID');
+        // It remains a build input and a manifest digest: an accepted future
+        // multi-partner solution can be enabled without changing this contract,
+        // and an empty value is still bound to the reviewed candidate.
+        expect(text).toContain('NEXT_PUBLIC_META_SOLUTION_ID=${{ secrets.META_SOLUTION_ID }}');
+        expect(text).toMatch(
+            /for name in NEXT_PUBLIC_META_APP_ID NEXT_PUBLIC_META_CONFIG_ID \\\r?\n\s+NEXT_PUBLIC_META_SOLUTION_ID/,
+        );
+    });
+
     it('consumes its own manifest before publishing it', () => {
         // "Pinned by digest" stays a claim until something reads the file and
         // turns it into what a host runs.

@@ -405,10 +405,13 @@ ningún host, que es todo lo que estas guardas necesitan para demostrarse—:
 2. Los ids de los tenants del piloto y de los que no participan.
 3. Cuenta/número de prueba elegible, método de pago del negocio, destinatario
    con consentimiento y presupuesto autorizado.
-4. Los **once** `NEXT_PUBLIC_*` del build del candidato: `CANDIDATE_PUBLIC_API_URL`
+4. Los `NEXT_PUBLIC_*` del build del candidato: `CANDIDATE_PUBLIC_API_URL`
    y `CANDIDATE_PUBLIC_WA_URL` como variables de repositorio, y los secretos
-   `META_APP_ID`, `META_CONFIG_ID`, `META_SOLUTION_ID`, `GOOGLE_OAUTH_CLIENT_ID`,
-   `MESSENGER_FB_LOGIN_CONFIG_ID` y `VAPID_PUBLIC_KEY`.
+   `META_APP_ID`, `META_CONFIG_ID`, `GOOGLE_OAUTH_CLIENT_ID`,
+   `MESSENGER_FB_LOGIN_CONFIG_ID` y `VAPID_PUBLIC_KEY`. `META_SOLUTION_ID` es
+   opcional: se deja vacío cuando Parallext opera directamente como proveedor
+   tecnológico de Meta y sólo se configura para una solución multi-socio ya
+   aceptada por la otra app asociada.
 5. El **environment protegido** `candidate-images` creado en la configuración del
    repositorio, con sus revisores. Sin él, `publish` no arranca.
 6. La variable de repositorio **`CANDIDATE_AUTHORIZED_ACTORS`** con los logins

@@ -586,7 +586,9 @@ jobs:
       # in, push that cannot subscribe and a version field that says nothing.
       # The candidate would then be validated as a product nobody is shipping.
       #
-      # Production bakes eleven of these. This used to bake two.
+      # Production bakes eleven of these. Ten are required for our direct Tech
+      # Provider path; META_SOLUTION_ID is deliberately optional and stays
+      # empty unless an accepted multi-partner solution exists in Meta.
       - name: Every public build input is present
         id: publicenv
         env:
@@ -609,7 +611,7 @@ jobs:
           missing=""
           for name in NEXT_PUBLIC_API_URL NEXT_PUBLIC_WA_SERVICE_URL \
                       NEXT_PUBLIC_META_APP_ID NEXT_PUBLIC_META_CONFIG_ID \
-                      NEXT_PUBLIC_META_SOLUTION_ID NEXT_PUBLIC_GOOGLE_CLIENT_ID \
+                      NEXT_PUBLIC_GOOGLE_CLIENT_ID \
                       NEXT_PUBLIC_MESSENGER_FB_LOGIN_CONFIG_ID NEXT_PUBLIC_VAPID_PUBLIC_KEY \
                       NEXT_PUBLIC_INSTAGRAM_APP_ID NEXT_PUBLIC_INSTAGRAM_REDIRECT_URI; do
             eval "value=\${${name}:-}"
@@ -628,7 +630,9 @@ jobs:
           # The two URLs are not secret and go into the manifest verbatim: the
           # single most useful question about a candidate dashboard is which API
           # it reads from, and a digest cannot answer it. Everything else is an
-          # app id or a key, so the manifest carries a SHA-256 of each — enough
+          # app id or a key. The optional solution id is also hashed when empty,
+          # so the manifest proves the direct-provider build did not silently
+          # acquire a partner. The manifest carries a SHA-256 of each — enough
           # to prove that what was verified and what is approved were built from
           # the same values, and not enough to be one of them.
           {

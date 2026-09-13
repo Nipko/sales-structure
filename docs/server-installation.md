@@ -21,7 +21,7 @@ GitHub y ≥1 LLM son obligatorias para arrancar; el resto habilita features con
 | Servicio | Requerido | Que necesitas | Donde obtenerlo |
 |----------|-----------|--------------|-----------------|
 | **Cloudflare** | Si | Cuenta + dominio + Tunnel token | dash.cloudflare.com |
-| **Meta Developer** | Si | App ID, App Secret, Config ID, Business ID, Solution ID, Verify Token, System User ID | developers.facebook.com |
+| **Meta Developer** | Si | App ID, App Secret, Config ID, Business ID, Verify Token, System User ID. Solution ID sólo para una solución multi-socio aceptada | developers.facebook.com |
 | **GitHub** | Si | PAT para GHCR (o el GITHUB_TOKEN de Actions) | github.com/settings/tokens |
 | **LLM (OpenAI/Anthropic/Gemini/xAI/DeepSeek)** | Si (≥1) | Al menos 1 API key | platform.openai.com / console.anthropic.com / … |
 | **Instagram / Messenger** | Opcional | App ID + App Secret + Config ID (misma app Meta) | developers.facebook.com |

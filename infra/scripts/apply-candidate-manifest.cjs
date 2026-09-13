@@ -127,9 +127,10 @@ const MANIFEST_VERSION = 3;
  *   3. the BUNDLE INPUTS    — the two dashboard URLs verbatim (the most useful
  *                             question about a candidate dashboard is which API
  *                             it reads from, and a digest cannot answer it) plus
- *                             a SHA-256 of every id and key, which proves what
- *                             was verified and what was approved were built from
- *                             the same values without being any of them;
+ *                             a SHA-256 of every id and key, including the empty
+ *                             optional partner-solution id used by the direct
+ *                             Tech Provider path. This proves what was verified
+ *                             and approved were built from the same values;
  *   4. the FIVE DIGESTS     — complete. Four out of five is not a pinned system.
  */
 const REQUIRED_BUILD_INPUT_URLS = Object.freeze(['NEXT_PUBLIC_API_URL', 'NEXT_PUBLIC_WA_SERVICE_URL']);

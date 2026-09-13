@@ -74,8 +74,8 @@ interface ConnectFailure {
 const WA_SERVICE_URL = process.env.NEXT_PUBLIC_WA_SERVICE_URL || "https://wa.parallly-chat.cloud/api/v1";
 const META_APP_ID = process.env.NEXT_PUBLIC_META_APP_ID || "";
 const META_CONFIG_ID = process.env.NEXT_PUBLIC_META_CONFIG_ID || "";
-// Solution ID from Meta Business Manager → Partner Center → Solutions
-// Required for Tech Provider Embedded Signup
+// Optional multi-partner Solution ID from Meta's "Partner solutions" area.
+// Direct Tech Providers leave it empty; the builder then omits solutionID.
 const META_SOLUTION_ID = process.env.NEXT_PUBLIC_META_SOLUTION_ID || "";
 
 /**

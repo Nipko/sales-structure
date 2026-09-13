@@ -314,13 +314,13 @@ Los siguientes campos de webhook deben estar habilitados:
 ```typescript
 // Estándar (número nuevo o migración)
 extras: {
-  setup: { solutionID },
+  setup: { ...(solutionID ? { solutionID } : {}) }, // sólo multi-socio
   version: "v4",
 }
 
 // Coexistencia (Business App)
 extras: {
-  setup: { solutionID },
+  setup: { ...(solutionID ? { solutionID } : {}) }, // sólo multi-socio
   featureType: "whatsapp_business_app_onboarding",  // ← Activa coexistencia
   sessionInfoVersion: "3",                          // ← Requerido para coex
   version: "v4",

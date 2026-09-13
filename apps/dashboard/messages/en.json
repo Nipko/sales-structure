@@ -3987,7 +3987,7 @@
       "profileCardDesc": "Manage your business information visible to WhatsApp customers",
       "manageProfile": "Manage profile",
       "testAgentTitle": "Test your agent",
-      "testAgentDesc": "Your agent is now live on this number. Send a WhatsApp to {number} and watch it reply.",
+      "testAgentDesc": "If this number has an active agent with a published version, send a WhatsApp to {number} to test it. If it does not reply, review the agent assignment and publication.",
       "testAgentCta": "Open WhatsApp",
       "esuProgress": {
         "auth": "Authorization",
@@ -9231,14 +9231,14 @@
     "showMeHint": "We open the screen and point out each step. It never changes anything on its own.",
     "agentEditor": {
       "title": "How do I set up my agent?",
-      "description": "This is where you define who your agent is and how it behaves: its name and role, how it greets, what it says when it does not know, its rules, and when it hands the chat to a person. What you save here is what your customer reads on WhatsApp.",
+      "description": "This is where you define who your agent is and how it behaves: its name, role, greeting, fallback, rules, and when it hands the chat to a person. Saving keeps a draft; customers receive those changes only after you test, approve, and publish the revision.",
       "tips": [
         "1. On the Identity tab, set the agent's name and role. Both are required: the agent introduces itself with that name in every chat.",
         "2. Write the welcome message: it is the first thing your customer reads when they write for the first time.",
         "3. Fill in \"Message when it cannot answer\". It is required and keeps the agent from inventing: use it to promise that a person will follow up.",
         "4. Under Instructions, add at least one strict rule (for example: \"always confirm availability before quoting\").",
         "5. Under \"When to pass to a human\", write at least one reason (for example: \"the customer asks to talk to a person\"). Without it the agent never escalates.",
-        "6. At the top, tick the channels this agent handles and leave it Active. Only channels you already connected are listed; if you see none, connect one first."
+        "6. At the top, prepare the channel assignments and status you want to publish. Save the draft, test it, prepare the review, approve it, and publish it; only then do those assignments serve customers."
       ]
     },
     "agentQuality": {
@@ -9254,7 +9254,7 @@
     },
     "setupWizard": {
       "title": "How does this assistant work?",
-      "description": "Three steps to get your agent answering: confirm it, connect WhatsApp, done. You can leave at any time: what you filled in is saved and you can come back from Settings, under Setup assistant.",
+      "description": "Three steps prepare the draft and connect WhatsApp. When you finish, review the assignment, test the draft, and publish the approved version before serving customers. You can leave at any time: what you filled in is saved and you can come back from Settings, under Setup assistant.",
       "tips": [
         "Your agent already exists, built for your industry. In the first step you just confirm its name and greeting, or adjust them.",
         "Test it in the chat before connecting anything: that is how you see it answer like a real customer would.",

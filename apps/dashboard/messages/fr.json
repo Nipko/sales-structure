@@ -3987,7 +3987,7 @@
       "profileCardDesc": "Gérez les informations de votre entreprise visibles par les clients WhatsApp",
       "manageProfile": "Gérer le profil",
       "testAgentTitle": "Testez votre agent",
-      "testAgentDesc": "Votre agent est actif sur ce numéro. Envoyez un WhatsApp à {number} et voyez sa réponse.",
+      "testAgentDesc": "Si ce numéro a un agent actif avec une version publiée, envoyez un WhatsApp à {number} pour la tester. S'il ne répond pas, vérifiez l'affectation et la publication de l'agent.",
       "testAgentCta": "Ouvrir WhatsApp",
       "esuProgress": {
         "auth": "Autorisation",
@@ -9231,14 +9231,14 @@
     "showMeHint": "Nous ouvrons l'écran et indiquons chaque étape. Rien n'est modifié automatiquement.",
     "agentEditor": {
       "title": "Comment configurer mon agent ?",
-      "description": "Vous définissez ici qui est votre agent et comment il se comporte : son nom et son rôle, son message d'accueil, sa réponse quand il ne sait pas, ses règles et les cas où il passe la main à une personne. Ce que vous enregistrez ici est ce que votre client lit sur WhatsApp.",
+      "description": "Vous définissez ici qui est votre agent et comment il se comporte : nom, rôle, accueil, réponse lorsqu'il ne sait pas, règles et transfert vers une personne. L'enregistrement conserve un brouillon ; les clients ne reçoivent ces changements qu'après le test, l'approbation et la publication de la révision.",
       "tips": [
         "1. Dans l'onglet Identité, renseignez le nom et le rôle de l'agent. Les deux sont obligatoires : l'agent se présente avec ce nom dans chaque conversation.",
         "2. Rédigez le message de bienvenue : c'est la première chose que lit votre client lorsqu'il écrit pour la première fois.",
         "3. Remplissez « Message quand il ne peut pas répondre ». Il est obligatoire et empêche l'agent d'inventer : utilisez-le pour promettre qu'une personne prendra le relais.",
         "4. Dans Instructions, ajoutez au moins une règle stricte (par exemple : « toujours confirmer la disponibilité avant de chiffrer »).",
         "5. Dans « Quand passer à une personne », écrivez au moins un motif (par exemple : « le client demande à parler à quelqu'un »). Sans cela l'agent n'escalade jamais.",
-        "6. En haut, cochez les canaux que cet agent gère et laissez-le Actif. Seuls les canaux déjà connectés apparaissent ; si vous n'en voyez aucun, connectez-en un d'abord."
+        "6. En haut, préparez les affectations de canal et l'état à publier. Enregistrez le brouillon, testez-le, préparez la révision, approuvez-la et publiez-la ; ce n'est qu'alors que ces affectations servent les clients."
       ]
     },
     "agentQuality": {
@@ -9254,7 +9254,7 @@
     },
     "setupWizard": {
       "title": "Comment fonctionne cet assistant ?",
-      "description": "Trois étapes pour que votre agent réponde : le confirmer, connecter WhatsApp, et c'est tout. Vous pouvez sortir quand vous voulez : ce que vous avez rempli est enregistré et vous revenez depuis Configuration, dans Assistant de configuration.",
+      "description": "Trois étapes préparent le brouillon et connectent WhatsApp. Ensuite, vérifiez l'affectation, testez le brouillon et publiez la version approuvée avant de servir les clients. Vous pouvez sortir quand vous voulez : ce que vous avez rempli est enregistré et vous revenez depuis Configuration, dans Assistant de configuration.",
       "tips": [
         "Votre agent existe déjà, construit pour votre secteur. À la première étape vous confirmez seulement son nom et son message d'accueil, ou vous les ajustez.",
         "Testez-le dans le chat avant de connecter quoi que ce soit : c'est ainsi que vous voyez comment il répond à un vrai client.",

@@ -121,6 +121,24 @@ describe("i18n key parity across es/en/pt/fr", () => {
         expect({ locale, blank: report(blank) }).toEqual({ locale, blank: [] });
     });
 
+    it.each([REFERENCE, ...TRANSLATIONS] as const)("does not call a connected WhatsApp agent live before publication in %s", (locale) => {
+        const source = JSON.parse(fs.readFileSync(path.join(MESSAGES, `${locale}.json`), "utf8"));
+        const copy = [
+            source.channels.whatsapp.testAgentDesc,
+            source.help.agentEditor.description,
+            source.help.agentEditor.tips.join(" "),
+            source.help.setupWizard.description,
+        ].join("\n");
+        const publicationWord: Record<string, RegExp> = {
+            es: /publica(?:r|ción|da)/i,
+            en: /publish(?:ed|ing)?|publication/i,
+            pt: /publica(?:r|ção|da)/i,
+            fr: /publi(?:er|ée|cation)/i,
+        };
+        expect(copy).toMatch(publicationWord[locale]);
+        expect(copy).not.toMatch(/ya está activo en este número|now live on this number|já está ativo neste número|est actif sur ce numéro/i);
+    });
+
     it("keeps the allow-list documented and empty unless deliberately grown", () => {
         // Not a style rule: an allow-list is how a parity check quietly stops
         // checking. If this number changes, the diff has to explain each entry.

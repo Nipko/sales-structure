@@ -3987,7 +3987,7 @@
       "profileCardDesc": "Gerencie as informações do seu negócio visíveis para os clientes do WhatsApp",
       "manageProfile": "Gerenciar perfil",
       "testAgentTitle": "Teste seu agente",
-      "testAgentDesc": "Seu agente já está ativo neste número. Envie um WhatsApp para {number} e veja a resposta.",
+      "testAgentDesc": "Se este número tiver um agente ativo com uma versão publicada, envie um WhatsApp para {number} para testá-la. Se não responder, revise a atribuição e a publicação do agente.",
       "testAgentCta": "Abrir WhatsApp",
       "esuProgress": {
         "auth": "Autorização",
@@ -9231,14 +9231,14 @@
     "showMeHint": "Abrimos a tela e mostramos passo a passo onde se faz. Não altera nada sozinho.",
     "agentEditor": {
       "title": "Como configuro meu agente?",
-      "description": "Aqui você define quem é o seu agente e como ele se comporta: nome e função, como cumprimenta, o que responde quando não sabe, suas regras e quando passa a conversa para uma pessoa. O que você salvar aqui é o que o cliente vai ler no WhatsApp.",
+      "description": "Aqui você define quem é o seu agente e como ele se comporta: nome, função, saudação, resposta quando não sabe, regras e quando transfere a conversa para uma pessoa. Salvar conserva um rascunho; os clientes recebem as mudanças somente depois que você testar, aprovar e publicar a revisão.",
       "tips": [
         "1. Na aba Identidade, defina o nome e a função do agente. São obrigatórios: o agente se apresenta com esse nome em toda conversa.",
         "2. Escreva a mensagem de boas-vindas: é a primeira coisa que seu cliente lê ao escrever pela primeira vez.",
         "3. Preencha \"Mensagem quando não souber responder\". É obrigatória e evita que o agente invente: use-a para prometer que uma pessoa vai responder.",
         "4. Em Instruções, adicione pelo menos uma regra estrita (por exemplo: \"sempre confirmar disponibilidade antes de orçar\").",
         "5. Em \"Quando passar para uma pessoa\", escreva pelo menos um motivo (por exemplo: \"o cliente pede para falar com uma pessoa\"). Sem isso o agente nunca escala.",
-        "6. No topo, marque os canais que este agente atende e deixe-o Ativo. Só aparecem os canais que você já conectou; se não vir nenhum, conecte um primeiro."
+        "6. No topo, prepare as atribuições de canal e o estado que deseja publicar. Salve o rascunho, teste, prepare a revisão, aprove e publique; só então essas atribuições atendem clientes."
       ]
     },
     "agentQuality": {
@@ -9254,7 +9254,7 @@
     },
     "setupWizard": {
       "title": "Como funciona este assistente?",
-      "description": "São três passos para deixar seu agente respondendo: confirmá-lo, conectar o WhatsApp e pronto. Você pode sair quando quiser: o que preencheu fica salvo e você volta em Configurações, no Assistente de configuração.",
+      "description": "São três passos para preparar o rascunho e conectar o WhatsApp. Ao terminar, revise a atribuição, teste o rascunho e publique a versão aprovada antes de atender clientes. Você pode sair quando quiser: o que preencheu fica salvo e você volta em Configurações, no Assistente de configuração.",
       "tips": [
         "Seu agente já foi criado conforme a sua indústria. No primeiro passo você só confirma o nome e a saudação, ou ajusta.",
         "Teste no chat antes de conectar qualquer coisa: assim você vê como ele responde a um cliente real.",

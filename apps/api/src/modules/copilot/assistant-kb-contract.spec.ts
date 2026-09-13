@@ -1016,6 +1016,28 @@ describe('Parallly Assist knowledge-base contract', () => {
     }
   });
 
+  it('keeps channel connection separate from reviewed agent publication', () => {
+    const connectionMarkers: Record<(typeof LOCALES)[number], RegExp> = {
+      es: /Conectar el canal no publica el borrador del agente/i,
+      en: /Connecting it does not publish the agent draft/i,
+      pt: /Conectar o canal não publica o rascunho do agente/i,
+      fr: /La connexion ne publie pas le brouillon de l'agent/i,
+    };
+    const publicationMarkers: Record<(typeof LOCALES)[number], RegExp> = {
+      es: /Prepara, revisa y publica.{0,220}La publicación es la que vuelve operativos/is,
+      en: /Prepare, review, and publish.{0,220}Publication makes/is,
+      pt: /Prepare, revise e publique.{0,220}A publicação torna operacionais/is,
+      fr: /Préparez, révisez et publiez.{0,220}La publication rend opérationnels/is,
+    };
+
+    for (const locale of LOCALES) {
+      const article = byLocale[locale].find((candidate) => candidate.id === 'primeros-pasos');
+      expect(article).toBeDefined();
+      expect(article!.body).toMatch(connectionMarkers[locale]);
+      expect(article!.body).toMatch(publicationMarkers[locale]);
+    }
+  });
+
   it('keeps volatile prices, trial durations, and plan matrices out of runtime help', () => {
     for (const locale of LOCALES) {
       for (const article of byLocale[locale]) {

@@ -16,13 +16,13 @@ efectos puede llegar a producir **una sola respuesta lógica** en cada uno.
 
 | | |
 |---|---|
-| Sitios de llamada encontrados | **27** |
-| De ellos, que producen un mensaje cobrable | **26** |
+| Sitios de llamada encontrados | **29** |
+| De ellos, que producen un mensaje cobrable | **28** |
 | De ellos, presencia (no cobra Meta) | **1** |
-| Archivos productores distintos | **19** |
+| Archivos productores distintos | **20** |
 | Sitios que **no** pasan por un carril durable | **2** |
-| Sitios que pueden alcanzar WhatsApp (literal o dinámico) | **24** |
-| Sitios donde **una respuesta puede volverse varios cargos** | **8** |
+| Sitios que pueden alcanzar WhatsApp (literal o dinámico) | **26** |
+| Sitios donde **una respuesta puede volverse varios cargos** | **9** |
 
 ### Los cinco números que importan
 
@@ -33,11 +33,11 @@ objetivo: **cero productores cobrables fuera del carril durable**.
 
 | | |
 |---|---|
-| Sitios de llamada, en total | **27** |
-| De ellos, capaces de alcanzar WhatsApp | **25** |
-| De ellos, **cobrables por Meta** | **24** |
-| De ellos, dentro de la frontera económica | **24** |
-| De ellos, dentro del **carril durable** | **24** |
+| Sitios de llamada, en total | **29** |
+| De ellos, capaces de alcanzar WhatsApp | **27** |
+| De ellos, **cobrables por Meta** | **26** |
+| De ellos, dentro de la frontera económica | **26** |
+| De ellos, dentro del **carril durable** | **26** |
 
 | | |
 |---|---|
@@ -51,7 +51,7 @@ Por carril:
 |---|---:|---|
 | `dispatch_outbox` | 14 | publishes an already-committed `agent_dispatch_outbox` row |
 | `approved_effect` | 1 | `tool_approval_effects` row a person approved |
-| `operational_notice` | 8 | `operational_notice_outbox`, written in the business transaction |
+| `operational_notice` | 10 | `operational_notice_outbox`, written in the business transaction |
 | `handoff_effects` | 1 | one row per destination of one transfer |
 | `inline` | 2 | straight to the adapter, on the caller's stack |
 
@@ -83,6 +83,7 @@ reparto**, que es donde una sola respuesta lógica se multiplica.
 | `modules/conversations/tool-approval-effects.service.ts:37` | `schedule` | `approved_effect` | **n** | one effect per entry of `rows` (loop at the send) |
 | `modules/education/education-enrollment-commands.ts:166` | `promote` | `operational_notice` | **n** | one effect per entry of `candidates` (loop at the send) |
 | `modules/education/education-enrollment-commands.ts:171` | `promote` | `operational_notice` | **n** | one effect per entry of `candidates` (loop at the send) |
+| `modules/orders/catalog-order-commands.ts:113` | `create` | `operational_notice` | **n** | one effect per entry of `terms.items` (loop at the send) |
 | `modules/recall/recall.service.ts:250` | `recallOne` | `dispatch_outbox` | **n(recipients)** | one effect per recipient — a campaign, not one answer (fan-out at line 153) |
 
 ## Presencia, no mensajes
@@ -194,6 +195,13 @@ mensajes entregados, y un indicador de "escribiendo" no lo es.
 |---:|---|---|---|---|---|---|---|
 | 396 | `executeHandoff` | `admitHandoffEffect` | `handoff_effects` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
 
+### `apps/api/src/modules/orders/catalog-order-commands.ts`
+
+| Línea | Método | Primitiva | Carril | Disparador | Canales | Efectos por respuesta | Base |
+|---:|---|---|---|---|---|---|---|
+| 113 | `create` | `enqueueOperationalNotice` | `operational_notice` | called by another service | dynamic | n | one effect per entry of `terms.items` (loop at the send) |
+| 227 | `advance` | `enqueueOperationalNotice` | `operational_notice` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
+
 ### `apps/api/src/modules/recall/recall.service.ts`
 
 | Línea | Método | Primitiva | Carril | Disparador | Canales | Efectos por respuesta | Base |
@@ -294,6 +302,8 @@ buscar una llamada a la autoridad economica en el codigo del archivo.
 | `modules/education/education-enrollment-commands.ts:166` | `promote` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/education/education-enrollment-commands.ts:171` | `promote` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/gyms/gyms.service.ts:655` | `promoteFromWaitlist` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
+| `modules/orders/catalog-order-commands.ts:113` | `create` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
+| `modules/orders/catalog-order-commands.ts:227` | `advance` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/recall/recall.service.ts:250` | `recallOne` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/tours/tours.service.ts:441` | `createBooking` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/vacation-rental/properties.service.ts:723` | `createBooking` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
@@ -319,7 +329,7 @@ direcciones**: lo que el barrido encuentra y ella no nombra, y lo que ella
 nombra y el barrido no encuentra. Un desacuerdo no es un error de ninguno de
 los dos — es exactamente el sitio donde hay que ir a mirar.
 
-Entradas declaradas allí: **61**.
+Entradas declaradas allí: **62**.
 
 ### Encontrados por el barrido y no declarados como productores
 

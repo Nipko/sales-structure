@@ -542,10 +542,41 @@ export class OutboundQueueProcessor extends WorkerHost {
                 { kind: 'suppressed', errorCode: `spend_${code}` });
             return `dispatch:suppressed:spend_${code}`;
         }
-        const outcome = await transport.sendStrict({
-            itemKind: admitted.row.itemKind, to: admitted.row.binding!.recipient,
-            channelAccountId: admitted.row.binding!.channelAccountId, payload: admitted.row.payload!,
-        }, accessToken);
+        const rateEffectId = `dispatch:${dispatchId}`;
+        const rateReservation = await this.throttle.reserveActionUsage(
+            tenantId, 'outbound', rateEffectId,
+        );
+        if (!rateReservation.allowed) {
+            if (admission) {
+                await this.spendGate!.record(await this.prisma.getTenantSchemaName(tenantId),
+                    admission, { kind: 'rejected_retryable', errorCode: 'plan_outbound_rate_limited' })
+                    .catch(() => undefined);
+            }
+            const settled = await this.dispatchOutbox.settle(tenantId, dispatchId,
+                admitted.leaseToken,
+                { kind: 'failed', errorCode: 'plan_outbound_rate_limited', retryInSeconds: 60 });
+            if (settled.state === 'failed') await waitUntil(settled.availableAt, 'plan_outbound_rate_limited');
+            return 'dispatch:failed:plan_outbound_rate_limited';
+        }
+
+        let outcome: Awaited<ReturnType<typeof transport.sendStrict>>;
+        try {
+            outcome = await transport.sendStrict({
+                itemKind: admitted.row.itemKind, to: admitted.row.binding!.recipient,
+                channelAccountId: admitted.row.binding!.channelAccountId, payload: admitted.row.payload!,
+            }, accessToken);
+        } catch (error) {
+            // Once the transport boundary was entered, an exception may mean the
+            // provider acted without returning a usable answer. Keep the slot;
+            // releasing it would let the same hour exceed the configured plan.
+            await this.throttle.commitActionUsage(tenantId, 'outbound', rateEffectId).catch(() => undefined);
+            throw error;
+        }
+        if (outcome.kind === 'accepted' || outcome.kind === 'unknown') {
+            await this.throttle.commitActionUsage(tenantId, 'outbound', rateEffectId).catch(() => undefined);
+        } else {
+            await this.throttle.releaseActionUsage(tenantId, 'outbound', rateEffectId).catch(() => undefined);
+        }
 
         // ── THE ONE REFUSAL THAT MUST STOP THE LANE ────────────────────
         //
@@ -570,7 +601,6 @@ export class OutboundQueueProcessor extends WorkerHost {
                     .catch(() => undefined);
                 await this.dispatchOutbox.settle(tenantId, dispatchId, admitted.leaseToken,
                     { kind: 'sent', receipt: outcome.receipt });
-                await this.throttle.recordUsage(tenantId, 'outbound').catch(() => {});
                 // Chain the next effect only now that this one actually arrived.
                 // Order is enforced here, not by a delay somebody guessed.
                 await this.chainNext(tenantId, dispatchId);
@@ -624,7 +654,6 @@ export class OutboundQueueProcessor extends WorkerHost {
                 const late = await this.dispatchOutbox!.recordLateAcceptance(
                     tenantId, dispatchId, admitted.leaseToken, outcome.receipt).catch(() => null);
                 if (late?.state === 'sent') {
-                    await this.throttle.recordUsage(tenantId, 'outbound').catch(() => {});
                     await this.chainNext(tenantId, dispatchId);
                     return `dispatch:sent:${outcome.receipt}`;
                 }
@@ -955,9 +984,18 @@ export class OutboundQueueProcessor extends WorkerHost {
             if (await this.throttle.isOverLimit(reference.tenantId,'outbound')) {
                 await job.moveToDelayed(Date.now()+60000,token); throw new DelayedError();
             }
-            return this.operationalNotices.deliver(reference,{prepare:async outbound=>{
-                const creds=await this.channelToken.getChannelToken(outbound.tenantId,outbound.channelType,outbound.channelAccountId);
-                return async()=>{
+            const rateEffectId = `notice:${reference.noticeId}`;
+            const rateReservation = await this.throttle.reserveActionUsage(
+                reference.tenantId, 'outbound', rateEffectId,
+            );
+            if (!rateReservation.allowed) {
+                await job.moveToDelayed(Date.now() + 60_000, token); throw new DelayedError();
+            }
+            let providerStarted = false;
+            try {
+                const result = await this.operationalNotices.deliver(reference,{prepare:async outbound=>{
+                    const creds=await this.channelToken.getChannelToken(outbound.tenantId,outbound.channelType,outbound.channelAccountId);
+                    return async()=>{
                     // The notice row is the durable identity: one row, one
                     // notice, and a retry of this job reads the same id.
                     const admission = await this.gateOrSuppress(outbound, 'operational_notice',
@@ -978,15 +1016,29 @@ export class OutboundQueueProcessor extends WorkerHost {
                     if (!(await this.beginOrStandDown(outbound, admission))) {
                         throw new NoticeSuppressed('transmission_not_owned');
                     }
+                    providerStarted = true;
                     const result=await this.channelGateway.sendMessage(outbound,creds.accessToken,
                         this.flowHooks(outbound, 'operational_notice', 'proactive',
                             { messageId: `notice:${reference.noticeId}` }));
                     await this.recordSpend(outbound, admission, result);
                     if (result) await this.resumeIfPaused(outbound);
-                    if(result)await this.throttle.recordUsage(reference.tenantId,'outbound').catch(()=>{});
                     return result;
                 };
-            }});
+                }});
+                if (providerStarted) {
+                    await this.throttle.commitActionUsage(reference.tenantId, 'outbound', rateEffectId).catch(() => undefined);
+                } else {
+                    await this.throttle.releaseActionUsage(reference.tenantId, 'outbound', rateEffectId).catch(() => undefined);
+                }
+                return result;
+            } catch (error) {
+                if (providerStarted) {
+                    await this.throttle.commitActionUsage(reference.tenantId, 'outbound', rateEffectId).catch(() => undefined);
+                } else {
+                    await this.throttle.releaseActionUsage(reference.tenantId, 'outbound', rateEffectId).catch(() => undefined);
+                }
+                throw error;
+            }
         }
         if (job.data.approvalEffect) {
             const reference = job.data.approvalEffect;
@@ -995,7 +1047,16 @@ export class OutboundQueueProcessor extends WorkerHost {
                 await job.moveToDelayed(Date.now() + 60_000, token);
                 throw new DelayedError();
             }
-            return this.approvalEffects.deliver(reference, { prepare: async outbound => {
+            const rateEffectId = `approval:${reference.ticketId}:${reference.effectId}`;
+            const rateReservation = await this.throttle.reserveActionUsage(
+                reference.tenantId, 'outbound', rateEffectId,
+            );
+            if (!rateReservation.allowed) {
+                await job.moveToDelayed(Date.now() + 60_000, token); throw new DelayedError();
+            }
+            let providerStarted = false;
+            try {
+                const result = await this.approvalEffects.deliver(reference, { prepare: async outbound => {
                 const entitlement = await resolveTenantSubscriptionAccess(this.prisma, reference.tenantId, 'write');
                 if (!entitlement.allowed) {
                     if (entitlement.restrictionLevel === 'unavailable') throw new Error('subscription_entitlement_unavailable');
@@ -1012,15 +1073,29 @@ export class OutboundQueueProcessor extends WorkerHost {
                     if (!(await this.beginOrStandDown(outbound, admission))) {
                         throw new ApprovalEffectSuppressed('transmission_not_owned');
                     }
+                    providerStarted = true;
                     const result = await this.channelGateway.sendMessage(outbound, creds.accessToken,
                         this.flowHooks(outbound, 'approved_effect', 'reactive',
                             { messageId: `effect:${reference.ticketId}:${reference.effectId}` }));
                     await this.recordSpend(outbound, admission, result);
                     if (result) await this.resumeIfPaused(outbound);
-                    if (result) await this.throttle.recordUsage(reference.tenantId, 'outbound').catch(() => {});
                     return result;
                 };
-            } });
+                } });
+                if (providerStarted) {
+                    await this.throttle.commitActionUsage(reference.tenantId, 'outbound', rateEffectId).catch(() => undefined);
+                } else {
+                    await this.throttle.releaseActionUsage(reference.tenantId, 'outbound', rateEffectId).catch(() => undefined);
+                }
+                return result;
+            } catch (error) {
+                if (providerStarted) {
+                    await this.throttle.commitActionUsage(reference.tenantId, 'outbound', rateEffectId).catch(() => undefined);
+                } else {
+                    await this.throttle.releaseActionUsage(reference.tenantId, 'outbound', rateEffectId).catch(() => undefined);
+                }
+                throw error;
+            }
         }
         // Hydrate a referenced reply from the row that owns it.
         //
@@ -1079,7 +1154,10 @@ export class OutboundQueueProcessor extends WorkerHost {
             return `skipped:${entitlement.error ?? 'subscription_restricted'}`;
         }
 
-        // Per-tenant rate limit — read-only check (isOverLimit) so a delayed job's
+        // Per-tenant rate limit — this early read avoids unnecessary provider
+        // preparation. The atomic reservation immediately before the remote
+        // boundary remains the authority under concurrent workers.
+        // A delayed job's
         // repeated re-checks don't keep incrementing the counter and pin the tenant
         // over-limit forever. Don't throw a normal error (that burns one of the 3
         // attempts and a sustained throttle would DROP the message): re-schedule as
@@ -1096,18 +1174,34 @@ export class OutboundQueueProcessor extends WorkerHost {
         // SMS is a permanent condition for this message: log + drop (don't burn the
         // 3 retries or fire a Sentry alert). MMS falls through to the legacy path.
         if (outbound.channelType === 'sms' && outbound.content?.type === 'text' && outbound.content?.text) {
-            const res = await this.tenantSms.send(outbound.tenantId, outbound.to, outbound.content.text, {
-                reason: (outbound.metadata as any)?.notificationReason || 'outbound',
-                ref: (outbound.metadata as any)?.messageId,
-            });
+            const rateEffectId = `outbound:${job.data.outboundRef?.payloadId ?? job.id ?? ''}`;
+            if (rateEffectId === 'outbound:') throw new Error('outbound_rate_effect_identity_missing');
+            const rateReservation = await this.throttle.reserveActionUsage(
+                outbound.tenantId, 'outbound', rateEffectId,
+            );
+            if (!rateReservation.allowed) {
+                await job.moveToDelayed(Date.now() + 60_000, token);
+                throw new DelayedError();
+            }
+            let res: Awaited<ReturnType<TenantNotificationSmsService['send']>>;
+            try {
+                res = await this.tenantSms.send(outbound.tenantId, outbound.to, outbound.content.text, {
+                    reason: (outbound.metadata as any)?.notificationReason || 'outbound',
+                    ref: (outbound.metadata as any)?.messageId,
+                });
+            } catch (error) {
+                await this.throttle.commitActionUsage(outbound.tenantId, 'outbound', rateEffectId).catch(() => undefined);
+                throw error;
+            }
             if (!res.sent) {
+                await this.throttle.releaseActionUsage(outbound.tenantId, 'outbound', rateEffectId).catch(() => undefined);
                 if (res.reason === 'insufficient_credits' || res.reason === 'platform_sms_unconfigured' || res.reason === 'monetization_disabled') {
                     this.logger.warn(`[Outbound][SMS] ${res.reason} tenant=${outbound.tenantId} to=${outbound.to} — dropped`);
                     return `skipped:${res.reason}`;
                 }
                 throw new Error(`SMS send failed to ${outbound.to}: ${res.error || res.reason}`);
             }
-            await this.throttle.recordUsage(outbound.tenantId, 'outbound').catch(() => {});
+            await this.throttle.commitActionUsage(outbound.tenantId, 'outbound', rateEffectId).catch(() => undefined);
             if (job.id) await this.redis.set(sentKey, res.sid || 'sms-sent', 86400).catch(() => {});
             this.logger.log(`[Outbound][SMS] sent to ${outbound.to} tenant=${outbound.tenantId} segments=${res.segments}`);
             return res.sid || 'sms-sent';
@@ -1145,6 +1239,16 @@ export class OutboundQueueProcessor extends WorkerHost {
         // and never persisted in Redis as a plaintext credential.
         const creds = await this.channelToken.getChannelToken(outbound.tenantId, outbound.channelType, outbound.channelAccountId);
 
+        const rateEffectId = `outbound:${job.data.outboundRef?.payloadId ?? job.id ?? ''}`;
+        if (rateEffectId === 'outbound:') throw new Error('outbound_rate_effect_identity_missing');
+        const rateReservation = await this.throttle.reserveActionUsage(
+            outbound.tenantId, 'outbound', rateEffectId,
+        );
+        if (!rateReservation.allowed) {
+            await job.moveToDelayed(Date.now() + 60_000, token);
+            throw new DelayedError();
+        }
+
         this.logger.log(
             `[Outbound] Sending to ${outbound.to} via ${outbound.channelType} tenant=${outbound.tenantId}`,
         );
@@ -1153,26 +1257,45 @@ export class OutboundQueueProcessor extends WorkerHost {
         // proactive message that is not on the durable outbox. Gated here so
         // that "every chargeable send is authorised" is a property of the
         // code and not of a list somebody keeps up to date.
-        const admission = await this.gateOrSuppress(outbound, 'outbound_queue',
-            // A job carrying a conversation is a reply inside one; a job
-            // without one is a campaign, a reminder or a drip step. Read from
-            // the job, not from the words.
-            (outbound.metadata as any)?.conversationId ? 'reactive' : 'proactive',
-            { jobId: job.id ?? null });
+        let admission: Awaited<ReturnType<OutboundQueueProcessor['gateOrSuppress']>>;
+        try {
+            admission = await this.gateOrSuppress(outbound, 'outbound_queue',
+                // A job carrying a conversation is a reply inside one; a job
+                // without one is a campaign, a reminder or a drip step. Read from
+                // the job, not from the words.
+                (outbound.metadata as any)?.conversationId ? 'reactive' : 'proactive',
+                { jobId: job.id ?? null });
+        } catch (error) {
+            // The economic authority failed before any provider boundary. This
+            // hourly slot remains available to another real delivery.
+            await this.throttle.releaseActionUsage(outbound.tenantId, 'outbound', rateEffectId).catch(() => undefined);
+            throw error;
+        }
         if (admission === 'refused') {
+            await this.throttle.releaseActionUsage(outbound.tenantId, 'outbound', rateEffectId).catch(() => undefined);
             this.logger.warn(`[Outbound] refused on spend for tenant=${outbound.tenantId}`);
             return 'skipped:spend_refused';
         }
         if (!(await this.beginOrStandDown(outbound, admission))) {
+            await this.throttle.releaseActionUsage(outbound.tenantId, 'outbound', rateEffectId).catch(() => undefined);
             // Somebody else holds the right, or the intent could not be
             // recorded. Either way this attempt sends nothing.
             return 'skipped:transmission_not_owned';
         }
-        const result = await this.channelGateway.sendMessage(outbound, creds.accessToken, {
-            ...this.flowHooks(outbound, 'outbound_queue',
-                (outbound.metadata as any)?.conversationId ? 'reactive' : 'proactive',
-                { jobId: job.id ?? null }),
-        });
+        let result: string | null;
+        try {
+            result = await this.channelGateway.sendMessage(outbound, creds.accessToken, {
+                ...this.flowHooks(outbound, 'outbound_queue',
+                    (outbound.metadata as any)?.conversationId ? 'reactive' : 'proactive',
+                    { jobId: job.id ?? null }),
+            });
+        } catch (error) {
+            await this.throttle.commitActionUsage(outbound.tenantId, 'outbound', rateEffectId).catch(() => undefined);
+            throw error;
+        }
+        // A missing receipt is already treated as an unknown provider outcome by
+        // the spend ledger. It must also retain the hourly slot.
+        await this.throttle.commitActionUsage(outbound.tenantId, 'outbound', rateEffectId).catch(() => undefined);
         await this.recordSpend(outbound, admission, result);
         if (result) await this.resumeIfPaused(outbound);
 
@@ -1189,9 +1312,6 @@ export class OutboundQueueProcessor extends WorkerHost {
         if (job.data.outboundRef) {
             await this.clearOutboundPayload(job.data.outboundRef.tenantId, job.data.outboundRef.payloadId);
         }
-
-        // Count the quota only on a SUCCESSFUL send (not on every check/retry).
-        await this.throttle.recordUsage(outbound.tenantId, 'outbound').catch(() => {});
 
         // Customer→reply latency (server-receipt of the inbound → our reply sent). Both
         // ends use the server clock (receivedAt stamped at pipeline entry), so there's no

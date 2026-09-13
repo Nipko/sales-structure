@@ -29,6 +29,7 @@ describe('OutboundQueueProcessor durable dispatch', () => {
         settleFails?: boolean;
         strict?: boolean;
         overLimit?: boolean;
+        rateAllowed?: boolean;
         entitled?: boolean;
         credentials?: boolean;
     } = {}) {
@@ -40,6 +41,9 @@ describe('OutboundQueueProcessor durable dispatch', () => {
         const throttle = {
             isOverLimit: jest.fn(async () => options.overLimit === true),
             recordUsage: jest.fn(async () => undefined),
+            reserveActionUsage: jest.fn(async () => ({ allowed: options.rateAllowed !== false, count: 1, adopted: false })),
+            commitActionUsage: jest.fn(async () => undefined),
+            releaseActionUsage: jest.fn(async () => undefined),
         };
         const channelToken = resolvingChannelToken({
             getChannelToken: jest.fn(async () => {
@@ -86,7 +90,20 @@ describe('OutboundQueueProcessor durable dispatch', () => {
             channelAccountId: 'phone-1', payload: { text: 'La respuesta' } }, 'token');
         expect(h.dispatchOutbox.settle).toHaveBeenCalledWith(tenantId, dispatchId, 'lease-1',
             { kind: 'sent', receipt: 'wamid.OK' });
-        expect(h.throttle.recordUsage).toHaveBeenCalled();
+        expect(h.throttle.commitActionUsage).toHaveBeenCalledWith(
+            tenantId, 'outbound', `dispatch:${dispatchId}`,
+        );
+    });
+
+    it('loses the final concurrent slot before crossing the provider boundary', async () => {
+        const h = harness({ rateAllowed: false });
+
+        await expect(h.processor.process(h.job, 'worker-token')).rejects.toBeInstanceOf(DelayedError);
+        expect(h.sendStrict).not.toHaveBeenCalled();
+        expect(h.dispatchOutbox.settle).toHaveBeenCalledWith(
+            tenantId, dispatchId, 'lease-1',
+            { kind: 'failed', errorCode: 'plan_outbound_rate_limited', retryInSeconds: 60 },
+        );
     });
 
     it('never produces a second effect for a row that already reached a terminal state', async () => {
@@ -116,6 +133,9 @@ describe('OutboundQueueProcessor durable dispatch', () => {
         expect(retryable.dispatchOutbox.settle).toHaveBeenCalledWith(tenantId, dispatchId, 'lease-1',
             { kind: 'failed', errorCode: 'http_503' });
         expect(retryable.job.moveToDelayed).toHaveBeenCalledWith(expect.any(Number), 'worker-token');
+        expect(retryable.throttle.releaseActionUsage).toHaveBeenCalledWith(
+            tenantId, 'outbound', `dispatch:${dispatchId}`,
+        );
 
         const permanent = harness({ outcome: { kind: 'rejected', errorCode: 'wa_131047', retryable: false } });
         await expect(permanent.processor.process(permanent.job)).resolves.toBe('dispatch:suppressed:wa_131047');
@@ -146,7 +166,7 @@ describe('OutboundQueueProcessor durable dispatch', () => {
         expect(h.sendStrict).toHaveBeenCalledTimes(1);
         expect(h.dispatchOutbox.recordLateAcceptance).toHaveBeenCalledWith(
             tenantId, dispatchId, 'lease-1', 'wamid.OK');
-        expect(h.throttle.recordUsage).toHaveBeenCalledTimes(1);
+        expect(h.throttle.commitActionUsage).toHaveBeenCalledTimes(1);
     });
 
     it('refuses a channel whose adapter is not migrated instead of using the loose gateway', async () => {

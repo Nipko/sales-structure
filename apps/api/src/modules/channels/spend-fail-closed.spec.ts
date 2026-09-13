@@ -28,6 +28,9 @@ describe('the spend meter fails closed on outbound and never gates inbound', () 
         const throttle = {
             isOverLimit: jest.fn(async () => false),
             recordUsage: jest.fn(async () => undefined),
+            reserveActionUsage: jest.fn(async () => ({ allowed: true, count: 1, adopted: false })),
+            commitActionUsage: jest.fn(async () => undefined),
+            releaseActionUsage: jest.fn(async () => undefined),
         };
         const channelToken = {
             getChannelToken: jest.fn(async () => ({ accessToken: 'token' })),
@@ -62,7 +65,7 @@ describe('the spend meter fails closed on outbound and never gates inbound', () 
             to: '+573001112233', content: { type: 'text', text: 'hola' },
             metadata: { conversationId: 'conv-1' },
         } } };
-        return { processor, job, channelGateway, prisma, spendGate };
+        return { processor, job, channelGateway, prisma, spendGate, throttle };
     }
 
     it('sends nothing and defers when the meter cannot answer', async () => {
@@ -74,6 +77,9 @@ describe('the spend meter fails closed on outbound and never gates inbound', () 
         // left the process, so a retry in thirty seconds costs the customer a
         // short wait and the business nothing at all.
         expect(h.channelGateway.sendMessage).not.toHaveBeenCalled();
+        expect(h.throttle.releaseActionUsage).toHaveBeenCalledWith(
+            tenantId, 'outbound', 'outbound:job-1',
+        );
     });
 
     it('sends nothing and defers when the tenant schema cannot be resolved', async () => {

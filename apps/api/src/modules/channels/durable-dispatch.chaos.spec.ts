@@ -188,6 +188,8 @@ const ready = !!databaseUrl && !!redisUrl;
         processor = new OutboundQueueProcessor(
             { getStrictTransport: () => ({ channelType: 'whatsapp', sendStrict }), sendMessage: jest.fn() } as any,
             { isOverLimit: jest.fn(async () => false), recordUsage: jest.fn(async () => undefined),
+                reserveActionUsage: jest.fn(async () => ({ allowed: true, count: 1, adopted: false })),
+                commitActionUsage: jest.fn(async () => undefined), releaseActionUsage: jest.fn(async () => undefined),
                 getPriority: jest.fn(async () => 1), getMaxPendingJobs: jest.fn(async () => Infinity) } as any,
             resolvingChannelToken({
                 getChannelToken: jest.fn(async () => ({ accessToken: 'token' })) }),

@@ -6,7 +6,8 @@ describe('operational notice transport boundary',()=>{
         const outbound:any={tenantId:reference.tenantId,channelType:'telegram',channelAccountId:'current',to:'current-contact',content:{type:'text',text:'canonical'}};
         const gateway={sendMessage:jest.fn().mockResolvedValue('provider-message')},tokens=resolvingChannelToken({getChannelToken:jest.fn().mockResolvedValue({accessToken:'fresh'})});
         const deliver=jest.fn(async(ref,transport)=>{expect(ref).toEqual(reference);return (await transport.prepare(outbound))();});
-        const processor=new OutboundQueueProcessor(gateway as any,{isOverLimit:async()=>false,recordUsage:async()=>{}} as any,tokens as any,{} as any,{} as any,schemaNamingPrisma(),permissiveSpendGate(),openPauseStore(),undefined,{deliver});
+        const processor=new OutboundQueueProcessor(gateway as any,{isOverLimit:async()=>false,recordUsage:async()=>{},
+            reserveActionUsage:async()=>({allowed:true,count:1,adopted:false}),commitActionUsage:async()=>{},releaseActionUsage:async()=>{}} as any,tokens as any,{} as any,{} as any,schemaNamingPrisma(),permissiveSpendGate(),openPauseStore(),undefined,{deliver});
         expect(await processor.process({data:{operationalNotice:reference}} as any)).toBe('provider-message');
         expect(tokens.getChannelToken).toHaveBeenCalledWith(reference.tenantId,'telegram','current');
         // The third argument is the hook that authorises a text fallback as its own

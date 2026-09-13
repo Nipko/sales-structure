@@ -152,7 +152,9 @@ describe('the legacy lane also lets WhatsApp address a BSUID', () => {
         const channelToken = resolvingChannelToken();
         const processor = new OutboundQueueProcessor(
             channelGateway as any,
-            { isOverLimit: jest.fn(async () => false), recordUsage: jest.fn(async () => undefined) } as any,
+            { isOverLimit: jest.fn(async () => false), recordUsage: jest.fn(async () => undefined),
+                reserveActionUsage: jest.fn(async () => ({ allowed: true, count: 1, adopted: false })),
+                commitActionUsage: jest.fn(async () => undefined), releaseActionUsage: jest.fn(async () => undefined) } as any,
             channelToken as any,
             { get: jest.fn(async () => null), set: jest.fn(async () => undefined) } as any,
             { send: jest.fn() } as any,

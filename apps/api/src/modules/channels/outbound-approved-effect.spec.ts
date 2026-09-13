@@ -24,7 +24,8 @@ describe('approved delivery queue boundary',()=>{
         const outbound:any={tenantId:reference.tenantId,to:'private',channelType:'whatsapp',channelAccountId:'bound',content:{type:'image',mediaUrl:'https://example.test'}};
         const gateway={sendMessage:jest.fn(async()=> 'ack')},token=resolvingChannelToken({getChannelToken:jest.fn(async()=>({accessToken:'fresh'}))});
         const deliver=jest.fn(async(ref,transport)=>{expect(ref).toEqual(reference);return (await transport.prepare(outbound))();});
-        const processor=new OutboundQueueProcessor(gateway as any,{isOverLimit:async()=>false,recordUsage:async()=>{}} as any,token as any,{} as any,{} as any,schemaNamingPrisma(),permissiveSpendGate(),openPauseStore(),{deliver});
+        const processor=new OutboundQueueProcessor(gateway as any,{isOverLimit:async()=>false,recordUsage:async()=>{},
+            reserveActionUsage:async()=>({allowed:true,count:1,adopted:false}),commitActionUsage:async()=>{},releaseActionUsage:async()=>{}} as any,token as any,{} as any,{} as any,schemaNamingPrisma(),permissiveSpendGate(),openPauseStore(),{deliver});
         expect(await processor.process({data:{approvalEffect:reference}} as any)).toBe('ack');
         expect(token.getChannelToken).toHaveBeenCalledWith(reference.tenantId,'whatsapp','bound');
         // The third argument is the hook that authorises a text fallback as its own

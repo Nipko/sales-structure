@@ -1692,8 +1692,8 @@ producer({
             receipt: durable('`providerTxnId` on the charge attempt row'),
             uncertainOutcome: durable('`markIndeterminate` freezes an ambiguous charge instead of '
                 + 'retrying it; a 4xx is never retried'),
-            erasure: none('billing records are retained for accounting and are outside contact erasure '
-                + 'by design'),
+            erasure: notApplicable('subscription charge records follow mandatory accounting retention; '
+                + 'contact erasure is not allowed to delete the tenant payer ledger'),
             recovery: durable('the scheduler and the polling pass re-evaluate frozen attempts against '
                 + 'the provider'),
         },
@@ -1770,8 +1770,8 @@ producer({
             receipt: durable('`providerRef`, `invoiceNumber` and the CUFE are all persisted'),
             uncertainOutcome: durable('a collision is resolved by asking DIAN what exists; an '
                 + 'unvalidated bill is deleted and re-posted, and a validated one is adopted'),
-            erasure: none('a DIAN invoice is a legal record and is deliberately retained; the tenant '
-                + 'purge keeps fiscal rows on purpose'),
+            erasure: notApplicable('a DIAN invoice is a mandatory legal record; the classified tenant '
+                + 'purge deliberately retains fiscal rows instead of claiming contact erasure'),
             recovery: durable('`fiscal-invoice` queue retries plus a `17,47 * * * *` poller'),
         },
     }),

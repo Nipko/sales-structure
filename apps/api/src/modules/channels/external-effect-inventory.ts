@@ -1311,18 +1311,24 @@ producer({
     producer({
         id: 'invitations.user_invite',
         effect: 'The invitation email to a new team member, and the welcome email when they accept',
-        lane: 'inline',
+        lane: 'delivery_outbox',
         status: 'live',
-        derivation: 'census',
+        derivation: 'declared',
         source: 'modules/invitations/invitations.service.ts',
-        symbol: 'sendInvitationEmail',
-        egress: 'EmailService.send',
+        symbol: 'enqueueNotification',
+        egress: 'platform_notification_outbox followed by bounded SMTP',
         reach: {
             class: 'operator_notification', audience: 'tenant_operator', personalData: true,
             channels: ['email'],
         },
-        properties: uncovered('inline `EmailService.send`; the invitation token in the database is what '
-            + 'the recipient needs, and re-sending is a deliberate button'),
+        properties: {
+            authority: durable('invitation creation, resend or acceptance and the exact outbound intent commit in one serializable transaction'),
+            idempotency: durable('invite revisions and the one welcome event form UNIQUE event keys; retries adopt the existing effect'),
+            receipt: durable('the bounded SMTP message id is required and stored on the exact recipient row'),
+            uncertainOutcome: durable('claimed and sending are distinct; an unanswered SMTP attempt is frozen for reconciliation'),
+            erasure: durable('the direct recipient and effect carry tenant_id and cascade when the tenant is erased'),
+            recovery: durable('the global outbox cron recovers attempts that never crossed the SMTP boundary'),
+        },
     }),
 
     // -- Money and compliance --------------------------------------------------

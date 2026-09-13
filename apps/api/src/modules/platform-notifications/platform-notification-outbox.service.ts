@@ -5,6 +5,8 @@ import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 import { CronLockService } from '../redis/cron-lock.service';
+import { invitationEmail, welcomeTeamMemberEmail } from '../email/email-layouts';
+import { emsg } from '../email/email-i18n';
 
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const STATUS_LABELS: Readonly<Record<string, string>> = Object.freeze({
@@ -75,6 +77,7 @@ export class PlatformNotificationOutboxService {
             if (!['pending', 'failed'].includes(row.state) || Number(row.attempts) >= 5) {
                 return { state: row.state };
             }
+            let canonical: any = null;
             const available = row.kind === 'feature_request.status_changed'
                 ? (await tx.$queryRawUnsafe(`SELECT 1
                     FROM feature_requests fr
@@ -84,7 +87,34 @@ export class PlatformNotificationOutboxService {
                     LIMIT 1`, row.entity_id, row.recipient_user_id))[0]
                 : row.kind === 'billing.lifecycle_email'
                     ? (await tx.$queryRawUnsafe(`SELECT 1 FROM tenants WHERE id=$1::uuid LIMIT 1`, row.tenant_id))[0]
-                    : null;
+                    : row.kind === 'invitation.invite_email'
+                        ? Number.isInteger(Number(row.payload?.revision))
+                            ? (canonical = (await tx.$queryRawUnsafe(`SELECT i.email,i.token,i.role,i.expires_at,
+                                    t.name AS tenant_name,t.settings,t.language,
+                                    NULLIF(TRIM(CONCAT(COALESCE(inviter.first_name,''),' ',COALESCE(inviter.last_name,''))), '') AS inviter_name,
+                                    inviter.email AS inviter_email
+                                FROM tenant_invitations i
+                                JOIN tenants t ON t.id=i.tenant_id AND t.is_active=true
+                                LEFT JOIN users inviter ON inviter.id::text=i.invited_by_user_id
+                                WHERE i.id=$1::uuid AND i.tenant_id=$2::uuid
+                                  AND i.accepted_at IS NULL AND i.revoked_at IS NULL AND i.expires_at>NOW()
+                                  AND i.notification_revision=$3 AND LOWER(i.email)=LOWER($4)
+                                LIMIT 1`, row.entity_id, row.tenant_id, Number(row.payload.revision), row.recipient_email))[0])
+                            : null
+                        : row.kind === 'invitation.welcome_email'
+                            ? typeof row.payload?.acceptedUserId === 'string'
+                                ? (canonical = (await tx.$queryRawUnsafe(`SELECT u.email,u.first_name,i.role,
+                                    t.name AS tenant_name,t.language
+                                FROM tenant_invitations i
+                                JOIN tenants t ON t.id=i.tenant_id AND t.is_active=true
+                                JOIN users u ON u.id::text=i.accepted_user_id AND u.is_active=true
+                                WHERE i.id=$1::uuid AND i.tenant_id=$2::uuid
+                                  AND i.accepted_at IS NOT NULL AND i.revoked_at IS NULL
+                                  AND LOWER(u.email)=LOWER($3) AND u.id::text=$4
+                                LIMIT 1`, row.entity_id, row.tenant_id, row.recipient_email,
+                                row.payload.acceptedUserId))[0])
+                                : null
+                            : null;
             if (!available) {
                 await tx.$executeRawUnsafe(`UPDATE platform_notification_outbox
                     SET state='suppressed',error_code='notification_recipient_unavailable',
@@ -96,8 +126,8 @@ export class PlatformNotificationOutboxService {
                 SET state='claimed',attempts=attempts+1,lease_token=$2::uuid,
                     lease_expires_at=NOW()+INTERVAL '90 seconds',error_code=NULL,updated_at=NOW()
                 WHERE id=$1::uuid`, id, lease);
-            const email = row.recipient_email ?? row.user_email;
-            return { state: 'claimed', row: { ...row, email: String(email ?? '').trim().toLowerCase() } };
+            const email = canonical?.email ?? row.recipient_email ?? row.user_email;
+            return { state: 'claimed', row: { ...row, canonical, email: String(email ?? '').trim().toLowerCase() } };
         });
         if (claim.state !== 'claimed') return `notification:${claim.state}`;
 
@@ -143,6 +173,43 @@ export class PlatformNotificationOutboxService {
 
     private render(row: any): { to: string; subject: string; html: string } {
         const payload = row.payload && typeof row.payload === 'object' ? row.payload : {};
+        if (row.kind === 'invitation.invite_email') {
+            const invitation = row.canonical;
+            if (!invitation || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.email)) {
+                throw new Error('notification_payload_invalid');
+            }
+            const lang = String(invitation.language || 'es');
+            const dashboardUrl = this.config.get<string>('DASHBOARD_URL', 'https://admin.parallly-chat.cloud');
+            const localeTag = lang.length >= 5 ? lang : `${lang.substring(0, 2)}-CO`;
+            const expiresAt = new Date(invitation.expires_at);
+            if (!Number.isFinite(expiresAt.getTime())) throw new Error('notification_payload_invalid');
+            const settings = invitation.settings && typeof invitation.settings === 'object' ? invitation.settings : {};
+            return {
+                to: row.email,
+                subject: emsg(lang, 'invitation.subject', { tenant: invitation.tenant_name || 'Parallly' }),
+                html: invitationEmail({
+                    inviterName: invitation.inviter_name || invitation.inviter_email || null,
+                    tenantName: invitation.tenant_name || 'Parallly',
+                    tenantLogoUrl: settings.logoUrl ?? null,
+                    roleLabel: this.roleLabel(invitation.role, lang),
+                    acceptUrl: `${dashboardUrl}/accept-invite/${invitation.token}`,
+                    expiresText: expiresAt.toLocaleDateString(localeTag, { day: 'numeric', month: 'long', year: 'numeric' }),
+                }, lang),
+            };
+        }
+        if (row.kind === 'invitation.welcome_email') {
+            const invitation = row.canonical;
+            if (!invitation || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.email)) {
+                throw new Error('notification_payload_invalid');
+            }
+            const lang = String(invitation.language || 'es');
+            return {
+                to: row.email,
+                subject: emsg(lang, 'teamWelcome.subject', { tenant: invitation.tenant_name || 'Parallly' }),
+                html: welcomeTeamMemberEmail(invitation.first_name || '', invitation.tenant_name || 'Parallly',
+                    this.roleLabel(invitation.role, lang), lang),
+            };
+        }
         if (row.kind === 'billing.lifecycle_email') {
             const subject = String(payload.subject || '').replace(/[\r\n]/g, ' ').trim().slice(0, 240);
             const html = String(payload.html || '');
@@ -176,5 +243,15 @@ export class PlatformNotificationOutboxService {
                 <p style="font-size:12px;color:#999;margin-top:24px">Recibes este email porque votaste o comentaste esta sugerencia.</p>
             </div>`,
         };
+    }
+
+    private roleLabel(role: string, lang: string): string {
+        const language = lang.substring(0, 2);
+        const labels: Record<string, Record<string, string>> = {
+            tenant_admin: { es: 'Administrador', en: 'Administrator', pt: 'Administrador', fr: 'Administrateur' },
+            tenant_supervisor: { es: 'Supervisor', en: 'Supervisor', pt: 'Supervisor', fr: 'Superviseur' },
+            tenant_agent: { es: 'Agente', en: 'Agent', pt: 'Agente', fr: 'Agent' },
+        };
+        return labels[role]?.[language] || labels[role]?.es || role;
     }
 }

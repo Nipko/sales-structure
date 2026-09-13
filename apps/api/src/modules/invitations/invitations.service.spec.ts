@@ -25,6 +25,7 @@ describe('InvitationsService provisioned owner claims', () => {
             expiresAt: new Date(Date.now() + 86_400_000),
             acceptedAt: null,
             revokedAt: null,
+            notificationRevision: 0,
         };
         const prisma: any = {
             user: {
@@ -50,13 +51,16 @@ describe('InvitationsService provisioned owner claims', () => {
                 })),
             },
             auditLog: { create: jest.fn(async () => ({ id: 'audit-1' })) },
+            $queryRawUnsafe: jest.fn(async (sql: string) => sql.includes('INSERT INTO platform_notification_outbox')
+                ? [{ id: 'notice-1' }] : []),
         };
-        const email: any = { send: jest.fn(async () => undefined) };
+        prisma.$transaction = jest.fn(async (callback: any) => callback(prisma));
+        const notifications: any = { deliver: jest.fn(async () => 'notification:sent') };
         const throttle: any = { enforcePlanLimit: jest.fn(async () => undefined) };
         return {
-            service: new InvitationsService(prisma, email, throttle),
+            service: new InvitationsService(prisma, notifications, throttle),
             prisma,
-            email,
+            notifications,
             throttle,
         };
     }
@@ -73,6 +77,12 @@ describe('InvitationsService provisioned owner claims', () => {
         expect(ctx.throttle.enforcePlanLimit)
             .toHaveBeenCalledWith(tenantId, 'seats', 0, 'usuarios');
         expect(ctx.prisma.tenantInvitation.create).toHaveBeenCalled();
+        expect(ctx.prisma.$queryRawUnsafe).toHaveBeenCalledWith(
+            expect.stringContaining('INSERT INTO platform_notification_outbox'),
+            expect.any(String), expect.stringContaining(':invite:1'), 'invitation.invite_email',
+            expect.any(String), tenantId, placeholder.email, JSON.stringify({ revision: 1 }),
+        );
+        expect(ctx.notifications.deliver).toHaveBeenCalledWith('notice-1');
     });
 
     it('claims only the inert owner placeholder when the invitation is accepted', async () => {
@@ -99,6 +109,11 @@ describe('InvitationsService provisioned owner claims', () => {
             where: { id: 'invite-1' },
             data: expect.objectContaining({ acceptedUserId: placeholder.id }),
         });
+        expect(ctx.prisma.$queryRawUnsafe).toHaveBeenCalledWith(
+            expect.stringContaining('INSERT INTO platform_notification_outbox'),
+            expect.any(String), 'invitation:invite-1:welcome', 'invitation.welcome_email',
+            'invite-1', tenantId, placeholder.email, JSON.stringify({ acceptedUserId: placeholder.id }),
+        );
         expect(result).toEqual({ userId: placeholder.id, tenantId, role: 'tenant_admin' });
     });
 

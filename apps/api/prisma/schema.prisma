@@ -305,6 +305,7 @@ model TenantInvitation {
   acceptedUserId  String?   @map("accepted_user_id")
   revokedAt       DateTime? @map("revoked_at")
   resentAt        DateTime? @map("resent_at")
+  notificationRevision Int  @default(0) @map("notification_revision")
   createdAt       DateTime  @default(now()) @map("created_at")
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)

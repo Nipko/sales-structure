@@ -76,6 +76,9 @@ describe('Canonical persona validation for editable revisions', () => {
         }
         expect(() => service.assertAgentConfigValid({ tools: {
             appointments: { enabled: false, pendingPrerequisites: true },
+            vehicleRentals: { enabled: true, emailConfirmations: true },
+            petBoarding: { enabled: true, emailConfirmations: false },
+            repairOrders: { enabled: true, emailConfirmations: true },
         } }, { partial: true })).not.toThrow();
     });
 });

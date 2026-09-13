@@ -11,7 +11,7 @@ export const AGENT_CONFIG_TOOL_FAMILIES = [...VERTICAL_TOOL_GROUPS, 'knowledge',
 export const AGENT_EMAIL_CONFIRMATION_FAMILIES = [
     'appointments', 'properties', 'tours', 'treatments', 'realEstate', 'pets',
     'restaurants', 'gyms', 'education', 'insurance', 'homeServices',
-    'photography', 'vehicles', 'orders',
+    'photography', 'vehicles', 'vehicleRentals', 'petBoarding', 'repairOrders', 'orders',
 ] as const;
 export const AGENT_ACCOUNT_DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
 export interface AgentAccountBusinessHours {

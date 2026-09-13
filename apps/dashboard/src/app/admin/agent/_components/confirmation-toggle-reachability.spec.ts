@@ -41,6 +41,17 @@ function appointmentConfirmationSlug(): string {
     return match[1];
 }
 
+/** Family-specific receipts, read from the API authority that seeds them. */
+function operationReceiptSlugs(): Record<string, string> {
+    const source = readFileSync(
+        resolve(API_SRC, 'modules', 'email-templates', 'operation-receipt-layout.ts'), 'utf8');
+    const block = source.split('export const OPERATION_RECEIPT_SLUGS')[1]?.split('};')[0] ?? '';
+    const slugs: Record<string, string> = {};
+    for (const match of block.matchAll(/([a-z_]+):\s*'([a-z_]+)'/g)) slugs[match[1]] = match[2];
+    if (Object.keys(slugs).length !== 4) throw new Error('OPERATION_RECEIPT_SLUGS could not be read');
+    return slugs;
+}
+
 /** The editor's family → template-slug map, read from the component. */
 function slugMap(): Record<string, string> {
     const source = readFileSync(EDITOR, 'utf8');
@@ -82,6 +93,15 @@ describe('a confirmation switch the runtime reads is one the owner can reach', (
         // Read from the API, not repeated here.
         expect({ family, slug: slugMap()[family] })
             .toEqual({ family, slug: appointmentConfirmationSlug() });
+    });
+
+    it.each([
+        ['vehicleRentals', 'vehicle_rental'],
+        ['petBoarding', 'pet_boarding'],
+        ['repairOrders', 'repair_order'],
+    ])('names the operation receipt %s really sends', (family, kind) => {
+        expect({ family, slug: slugMap()[family] })
+            .toEqual({ family, slug: operationReceiptSlugs()[kind] });
     });
 
     it('does not offer a toggle for a family with nothing to confirm', () => {

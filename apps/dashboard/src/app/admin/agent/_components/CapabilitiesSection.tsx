@@ -452,13 +452,9 @@ export function CapabilitiesSection({ config, onChange, apptReadiness }: Capabil
             // with no consumer — and it is the worse one to leave: the code
             // honours a setting the screen never offers.
             vehicles: "appointment_confirmation_email",
-            // Los alquileres y las estadías confirman por chat, con ruta humana
-            // a /admin/resource-rentals; todavía no hay plantilla de correo
-            // propia, y ofrecer el toggle sin consumidor es el control muerto
-            // que la auditoría marcó en 7.9.
-            vehicleRentals: "",
-            petBoarding: "",
-            repairOrders: "",
+            vehicleRentals: "vehicle_rental_confirmation",
+            petBoarding: "pet_boarding_confirmation",
+            repairOrders: "repair_order_confirmation",
             orders: "order_confirmation"
           };
           const templateSlug = slugMap[key];

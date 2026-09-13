@@ -123,7 +123,7 @@ export class AgentConfigurationService {
             } else if (change.path === 'rag.similarityThreshold') {
                 if (typeof change.value !== 'number' || !Number.isFinite(change.value) || change.value < 0 || change.value > 1) throw new BadRequestException('Invalid knowledge threshold');
             } else if (change.path === 'upsell.maxDiscountPercent') {
-                if (typeof change.value !== 'number' || !Number.isFinite(change.value) || change.value < 0 || change.value > 100) throw new BadRequestException('Invalid discount limit');
+                if (typeof change.value !== 'number' || !Number.isFinite(change.value) || change.value < 0 || change.value > 30) throw new BadRequestException('Invalid discount limit');
             } else if (['persona.personality.humor', 'behavior.mainInstructions', 'hours.afterHoursMessageOverride'].includes(change.path)) {
                 if (typeof change.value !== 'string' || change.value.length > 4000) throw new BadRequestException('Invalid agent guidance');
             } else if (typeof change.value !== 'string' || !change.value.trim() || change.value.length > (change.path === 'persona.name' ? 100 : 2000)) {

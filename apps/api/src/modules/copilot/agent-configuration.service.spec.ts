@@ -262,7 +262,7 @@ describe('reviewed agent configuration', () => {
         [{ path: 'llm.maxTokens', value: 99 }],
         [{ path: 'rag.topK', value: 11 }],
         [{ path: 'rag.similarityThreshold', value: 1.1 }],
-        [{ path: 'upsell.maxDiscountPercent', value: 101 }],
+        [{ path: 'upsell.maxDiscountPercent', value: 31 }],
         [{ path: 'behavior.requiredFields', value: { lead: [{ field: 'email', question: '', secret: 'leak' }] } }],
         [{ ...changes[0], confirmed: true }],
         [changes[0], changes[0]],

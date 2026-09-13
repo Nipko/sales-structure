@@ -191,6 +191,12 @@ const STEP_DEFINITIONS: Record<GuidedTourId, StepFactory> = {
     { selector: guidedTourSelector("faq-fields"), key: "fields", icon: "❓", side: "top", prepareSelector: guidedTourSelector("faq-new") },
     { selector: guidedTourSelector("faq-published"), key: "published", icon: "📣", side: "top" },
   ],
+  privacy_policy: () => [
+    { selector: guidedTourSelector("privacy-policy-type"), route: "/admin/settings/policies", key: "type", icon: "🔒", side: "right",
+      prepareSelector: guidedTourSelector("privacy-policy-type") },
+    { selector: guidedTourSelector("privacy-policy-fields"), key: "content", icon: "📝", side: "top", completedWhen: { kind: "filled", all: true } },
+    { selector: guidedTourSelector("privacy-policy-save"), key: "save", icon: "✅", side: "top" },
+  ],
   appointments_setup: () => [
     { selector: guidedTourSelector("appointments-tabs"), route: "/admin/appointments", key: "tabs", icon: "🗓️", side: "bottom" },
     { selector: guidedTourSelector("appointments-new-service"), key: "service", icon: "✂️", side: "top", prepareSelector: '[data-tab-id="services"]' },

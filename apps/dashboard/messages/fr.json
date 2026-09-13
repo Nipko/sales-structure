@@ -12239,6 +12239,7 @@
       "tool_knowledge": "Outil de connaissance",
       "tool_faqs": "Questions fréquentes",
       "tool_policies": "Politiques de l'entreprise",
+      "media_privacy_policy": "Confidentialité des images et audios",
       "tool_catalog": "Catalogue disponible",
       "tool_appointments": "Agenda et disponibilité",
       "tool_orders": "Gestion des commandes",
@@ -12353,7 +12354,10 @@
       "appointmentsEnabled": "Rendez-vous activés",
       "canBook": "Peut réserver",
       "compatibleServices": "Services compatibles",
-      "compatibleAvailability": "Plages de disponibilité compatibles"
+      "compatibleAvailability": "Plages de disponibilité compatibles",
+      "mediaProcessingEnabled": "Traitement des médias inclus",
+      "activePrivacyPolicies": "Politiques de confidentialité actives",
+      "consentRequiredBeforeProcessing": "Consentement préalable requis"
     },
     "common": {
       "yes": "Oui",
@@ -13673,6 +13677,13 @@
           "title": "Documents et sites",
           "content": "Ici vous téléversez des fichiers ou importez des pages de votre site pour que l'agent les consulte."
         }
+      }
+    },
+    "privacy_policy": {
+      "steps": {
+        "type": { "title": "Politique de confidentialité", "content": "Ouvrez Confidentialité. L'agent a besoin d'une version active pour expliquer le traitement des images et des audios avant de demander le consentement." },
+        "content": { "title": "Expliquez le traitement des médias", "content": "Précisez ce qui est traité, pourquoi, pendant combien de temps et comment retirer le consentement. Faites vérifier le texte par la personne responsable de la confidentialité." },
+        "save": { "title": "Publiez une version active", "content": "Enregistrez la politique. L'agent peut alors la présenter, demander un consentement explicite et traiter le média seulement après l'avoir obtenu." }
       }
     },
     "appointments_setup": {

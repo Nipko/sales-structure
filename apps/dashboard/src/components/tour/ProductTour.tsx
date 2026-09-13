@@ -111,6 +111,7 @@ const GUIDED_TOUR_CAPABILITY: Record<GuidedTourId, GuidedTourCapability | null> 
     human_handoff_route: "canManageUsers",
     business_identity: "canManageSettings",
     knowledge_base: "canEditKnowledge",
+    privacy_policy: "canManageSettings",
     appointments_setup: "canManageSettings",
     business_hours: "canManageSettings",
     run_agent_tests: "canEditAgent",

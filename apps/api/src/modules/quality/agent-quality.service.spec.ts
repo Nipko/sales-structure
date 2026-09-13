@@ -47,6 +47,9 @@ type HarnessOptions = {
     knowledgeUpdatedAt?: string | null;
     faqs?: number;
     policies?: number;
+    privacyPolicies?: number;
+    mediaProcessing?: { audioPerMonth: number; imagePerMonth: number };
+    planLookupFails?: boolean;
     services?: number;
     slots?: number;
     testDriveServices?: number;
@@ -129,7 +132,7 @@ function createHarness(options: HarnessOptions = {}) {
         }
         if (query.includes('FROM knowledge_embeddings')) return [{ count: options.knowledgeChunks ?? 1, updated_at: options.knowledgeUpdatedAt ?? '2026-08-01T00:00:00.000Z' }];
         if (query.includes('FROM faqs')) return [{ count: options.faqs ?? 0, updated_at: null }];
-        if (query.includes('FROM policies')) return [{ count: options.policies ?? 0, updated_at: null }];
+        if (query.includes('FROM policies')) return [{ count: options.policies ?? 0, privacy_count: options.privacyPolicies ?? 0, updated_at: null }];
         if (query.includes('FROM properties') && query.includes('tour_packages')) return [options.verticalCatalogs ?? {}];
         if (query.includes('FROM services') && query.includes('availability_slots')) return [{ services: options.services ?? 0, slots: options.slots ?? 0, test_drive_services: options.testDriveServices ?? 0, test_drive_slots: options.testDriveSlots ?? 0 }];
         if (query.includes('FROM vehicles')) return [{ count: options.vehicles ?? 0 }];
@@ -196,7 +199,12 @@ function createHarness(options: HarnessOptions = {}) {
             throw new Error(`Unhandled global test SQL: ${query}`);
         }),
     };
-    return { service: new AgentQualityService(prisma), prisma, calls };
+    const throttle: any = {
+        getPlanFeatures: jest.fn(() => options.planLookupFails
+            ? Promise.reject(new Error('plan lookup failed'))
+            : Promise.resolve({ mediaProcessing: options.mediaProcessing ?? { audioPerMonth: 0, imagePerMonth: 0 } })),
+    };
+    return { service: new AgentQualityService(prisma, throttle), prisma, calls };
 }
 
 function check(overview: AgentQualityOverview, code: string) {
@@ -204,6 +212,35 @@ function check(overview: AgentQualityOverview, code: string) {
 }
 
 describe('AgentQualityService', () => {
+    it('blocks media processing when the plan includes it but no active privacy policy exists', async () => {
+        const result = await createHarness({
+            mediaProcessing: { audioPerMonth: 100, imagePerMonth: 50 },
+            policies: 2,
+            privacyPolicies: 0,
+        }).service.getOverview(TENANT_ID, AGENT_ID);
+        expect(check(result, 'media_privacy_policy')).toMatchObject({
+            status: 'fail',
+            critical: true,
+            href: '/admin/settings/policies?type=privacy',
+            evidence: { activePrivacyPolicies: 0, consentRequiredBeforeProcessing: true },
+        });
+        expect(result.preparation.criticalBlockers).toContain('media_privacy_policy');
+    });
+
+    it('passes media privacy readiness only with an active privacy policy', async () => {
+        const result = await createHarness({
+            mediaProcessing: { audioPerMonth: -1, imagePerMonth: 0 },
+            policies: 1,
+            privacyPolicies: 1,
+        }).service.getOverview(TENANT_ID, AGENT_ID);
+        expect(check(result, 'media_privacy_policy')).toMatchObject({ status: 'pass', critical: true });
+    });
+
+    it('reports plan lookup failure as unknown instead of claiming media is disabled', async () => {
+        const result = await createHarness({ planLookupFails: true }).service.getOverview(TENANT_ID, AGENT_ID);
+        expect(check(result, 'media_privacy_policy')).toMatchObject({ status: 'unknown', critical: true });
+    });
+
     it('identifies test-drive prerequisites even when the general agenda has rows', async () => {
         const config = { ...completeConfig, tools: { vehicles: { enabled: true }, appointments: { enabled: true } } };
         const result = await createHarness({ config, services: 1, slots: 1, vehicles: 1 }).service.getOverview(TENANT_ID, AGENT_ID);

@@ -36,6 +36,7 @@ const EXPECTED_IDS = [
   'app-movil',
   'centro-calidad-agente',
   'herramientas-tipo-negocio',
+  'privacidad-medios',
 ].sort();
 const VERTICAL_LABELS: Record<(typeof LOCALES)[number], Record<string, string>> = {
   es: {

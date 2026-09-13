@@ -540,6 +540,7 @@ REGLA VERTICAL: orienta los ejemplos hacia esta industria y subtipo. Esto NO es 
         human_handoff_route: 'dónde invitar personas que reciban las conversaciones escaladas',
         business_identity: 'dónde completar los datos del negocio que usa el agente',
         knowledge_base: 'dónde cargar documentos y preguntas frecuentes de la base de conocimiento',
+        privacy_policy: 'dónde publicar la política que permite explicar el tratamiento de imágenes y audios y pedir consentimiento',
         appointments_setup: 'dónde definir servicios y disponibilidad para agendar citas',
         business_hours: 'dónde configurar el horario de atención',
         run_agent_tests: 'dónde probar el agente antes de publicarlo',

@@ -25,6 +25,7 @@ export const GUIDED_TOUR_IDS = [
     'human_handoff_route',
     'business_identity',
     'knowledge_base',
+    'privacy_policy',
     'appointments_setup',
     'business_hours',
     'run_agent_tests',
@@ -105,6 +106,13 @@ export const GUIDED_TOURS: readonly GuidedTourDefinition[] = [
         minRole: 'tenant_admin',
         qualityCodes: ['knowledge_coverage', 'rag_knowledge', 'tool_faqs', 'resolve_knowledge_gaps'],
         kbArticleIds: ['base-conocimiento'],
+    },
+    {
+        id: 'privacy_policy',
+        route: '/admin/settings/policies',
+        minRole: 'tenant_admin',
+        qualityCodes: ['media_privacy_policy'],
+        kbArticleIds: ['privacidad-medios'],
     },
     {
         id: 'appointments_setup',

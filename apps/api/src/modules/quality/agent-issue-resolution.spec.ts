@@ -60,6 +60,7 @@ const TENANT = {
     channelCredentialHealth: new Map<string, string>([['whatsapp', 'ok']]),
     channelTypeSummary: [],
     activeAccountCount: 1,
+    mediaProcessing: { available: true, enabled: true, audioPerMonth: 10, imagePerMonth: 10 },
 };
 
 const FACTS = {
@@ -68,7 +69,7 @@ const FACTS = {
     companyUpdatedAt: null,
     knowledgeChunks: 1, knowledgeUpdatedAt: null,
     faqs: 1, faqsUpdatedAt: null,
-    policies: 1, policiesUpdatedAt: null,
+    policies: 1, privacyPolicies: 1, policiesUpdatedAt: null,
     services: 1, availabilitySlots: 1, testDriveServices: 1, testDriveSlots: 1,
     vehicles: 1, products: 1, orders: 1, offers: 1,
     verticalCatalogs: {},
@@ -220,7 +221,8 @@ describe('the writes that look like they would fix a check, and do not', () => {
 
     it('tool_policies counts a different table from the one the legal-text operation writes', () => {
         expect(getAgentOperation('policies.legal_text.create')!.target.table).toBe('legal_text_versions');
-        expect(source).toMatch(/'policies',\s*`SELECT COUNT\(\*\)::int AS count[\s\S]{0,120}FROM policies/);
+        expect(source).toMatch(/'policies',\s*`SELECT COUNT\(\*\)::int AS count[\s\S]{0,240}FROM policies/);
+        expect(source).toMatch(/COUNT\(\*\) FILTER \(WHERE type = 'privacy'\)::int AS privacy_count/);
         expect(source).toMatch(/FROM policies\s*\n\s*WHERE is_active = true/);
     });
 

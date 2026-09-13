@@ -12239,6 +12239,7 @@
       "tool_knowledge": "Herramienta de conocimiento",
       "tool_faqs": "Preguntas frecuentes",
       "tool_policies": "Políticas del negocio",
+      "media_privacy_policy": "Privacidad para imágenes y audios",
       "tool_catalog": "Catálogo disponible",
       "tool_appointments": "Agenda y disponibilidad",
       "tool_orders": "Gestión de pedidos",
@@ -12353,7 +12354,10 @@
       "appointmentsEnabled": "Agenda habilitada",
       "canBook": "Puede agendar",
       "compatibleServices": "Servicios compatibles",
-      "compatibleAvailability": "Bloques compatibles de disponibilidad"
+      "compatibleAvailability": "Bloques compatibles de disponibilidad",
+      "mediaProcessingEnabled": "Procesamiento de medios incluido",
+      "activePrivacyPolicies": "Políticas de privacidad activas",
+      "consentRequiredBeforeProcessing": "Requiere consentimiento previo"
     },
     "common": {
       "yes": "Sí",
@@ -13673,6 +13677,13 @@
           "title": "Documentos y sitios",
           "content": "Acá subes archivos o importas páginas de tu sitio para que el agente las consulte."
         }
+      }
+    },
+    "privacy_policy": {
+      "steps": {
+        "type": { "title": "Política de privacidad", "content": "Abre Privacidad. El agente necesita una versión activa para explicar el tratamiento de imágenes y audios antes de pedir autorización." },
+        "content": { "title": "Explica el tratamiento de medios", "content": "Indica qué se procesa, para qué, cuánto tiempo se conserva y cómo retirar el consentimiento. Revisa el texto con la persona responsable de privacidad." },
+        "save": { "title": "Publica una versión activa", "content": "Guarda la política. Desde ese momento el agente puede mostrarla, pedir consentimiento explícito y procesar el medio solo después de recibirlo." }
       }
     },
     "appointments_setup": {

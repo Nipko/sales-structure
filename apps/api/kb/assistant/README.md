@@ -2,7 +2,7 @@
 
 These Markdown files are the product-help source loaded by `CopilotService`. They are separate from tenant knowledge, FAQs, and policies, which answer each tenant's customers.
 
-The collection currently has 27 equivalent articles in each locale (`es`, `en`,
+The collection currently has 28 equivalent articles in each locale (`es`, `en`,
 `pt`, `fr`). `centro-calidad-agente` covers Agent health on Home and Insights, the
 read-only Quality center, proactive signals, and the privacy-bounded Parallly Assist
 coach for Tenant Admin and Tenant Supervisor; agent editing remains Admin-only. It also
@@ -14,6 +14,8 @@ plan-aware essential Getting started card that replaced the retired floating `8/
 progress pill.
 `herramientas-tipo-negocio` distinguishes verticals from business types, explains
 tool configuration and requirements, and separates activation from task evidence.
+`privacidad-medios` explains the active-policy and explicit-consent boundary for
+image/audio processing, revocation, retention, and the separation from Meta billing.
 
 ## Contract
 

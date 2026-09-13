@@ -137,6 +137,11 @@ export const AGENT_ISSUE_RESOLUTIONS: readonly AgentIssueResolution[] = Object.f
                 + 'and deliberately inactive: publishing terms to the tenant\'s customers is a person\'s decision.',
         },
     }),
+    entry({
+        code: 'media_privacy_policy', kind: 'guided_tour', tourId: 'privacy_policy', clears: 'closes',
+        note: 'Media analysis is included by the plan, but processing remains blocked until an active privacy policy '
+            + 'can be shown to the customer and their explicit consent is recorded. The owner must review and publish the text.',
+    }),
 
     // ── Acciones y resultados ────────────────────────────────────────────────
     entry({

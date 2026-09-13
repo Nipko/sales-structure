@@ -1,5 +1,5 @@
 import { QUALITY_RUBRIC_HASH } from './quality-rubric';
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import type {
     AgentQualityCheck,
     AgentQualityDimension,
@@ -17,6 +17,7 @@ import type {
 } from '@parallext/shared';
 import { AGENT_QUALITY_DIMENSIONS } from '@parallext/shared';
 import { PrismaService } from '../prisma/prisma.service';
+import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import {
     CREDENTIAL_TYPE_BY_CHANNEL,
     isCredentialFailure,
@@ -69,6 +70,12 @@ type TenantContext = {
     /** Aggregate by channel type — no ids, names or phone numbers. */
     channelTypeSummary: Array<{ type: string; accounts: number; health: CredentialHealth }>;
     activeAccountCount: number;
+    mediaProcessing: {
+        available: boolean;
+        enabled: boolean;
+        audioPerMonth: number;
+        imagePerMonth: number;
+    };
 };
 
 type CredentialHealth = ChannelCredentialHealth;
@@ -100,6 +107,7 @@ type ReadinessFacts = {
     faqs: number;
     faqsUpdatedAt: Date | string | null;
     policies: number;
+    privacyPolicies: number;
     policiesUpdatedAt: Date | string | null;
     services: number;
     availabilitySlots: number;
@@ -147,7 +155,10 @@ type CheckInput = Omit<AgentQualityCheck, 'evidence'> & {
 export class AgentQualityService {
     private readonly logger = new Logger(AgentQualityService.name);
 
-    constructor(private readonly prisma: PrismaService) {}
+    constructor(
+        private readonly prisma: PrismaService,
+        @Optional() private readonly throttle?: TenantThrottleService,
+    ) {}
 
     async listAgents(tenantId: string): Promise<Array<{ id: string; name: string; is_default: boolean; is_active: boolean }>> {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
@@ -235,7 +246,7 @@ export class AgentQualityService {
     }
 
     private async loadTenantContext(tenantId: string, schemaName: string): Promise<TenantContext> {
-        const [tenant, channels, widgets, humans, credentialLookup, legacyWhatsAppRows, boundBindingRows] = await Promise.all([
+        const [tenant, channels, widgets, humans, credentialLookup, legacyWhatsAppRows, boundBindingRows, mediaProcessing] = await Promise.all([
             this.prisma.tenant.findUnique({
                 where: { id: tenantId },
                 select: { settings: true, industry: true, updatedAt: true },
@@ -296,6 +307,24 @@ export class AgentQualityService {
                   WHERE is_active = true`,
                 [],
             ).catch(() => []),
+            this.throttle
+                ? this.throttle.getPlanFeatures(tenantId)
+                    .then((features) => {
+                        const media = features.mediaProcessing as Record<string, unknown> | undefined;
+                        const audioPerMonth = Number(media?.audioPerMonth) || 0;
+                        const imagePerMonth = Number(media?.imagePerMonth) || 0;
+                        return {
+                            available: true,
+                            enabled: audioPerMonth !== 0 || imagePerMonth !== 0,
+                            audioPerMonth,
+                            imagePerMonth,
+                        };
+                    })
+                    .catch(() => ({ available: false, enabled: false, audioPerMonth: 0, imagePerMonth: 0 }))
+                // Direct unit harnesses that predate plan-aware quality do not
+                // silently invent an entitlement. Nest always supplies this
+                // global service in the running application.
+                : Promise.resolve({ available: true, enabled: false, audioPerMonth: 0, imagePerMonth: 0 }),
         ]);
         const channelLookup = channels as { available: boolean; rows: any[] };
         const channelRows = [
@@ -367,6 +396,7 @@ export class AgentQualityService {
                 .map(([type, values]) => ({ type, accounts: values.length, health: worstCredentialHealth(values) }))
                 .sort((left, right) => left.type.localeCompare(right.type)),
             activeAccountCount: channelRows.length,
+            mediaProcessing,
         };
     }
 
@@ -427,7 +457,9 @@ export class AgentQualityService {
             ),
             safe<any[]>(
                 'policies',
-                `SELECT COUNT(*)::int AS count, MAX(updated_at) AS updated_at
+                `SELECT COUNT(*)::int AS count,
+                        COUNT(*) FILTER (WHERE type = 'privacy')::int AS privacy_count,
+                        MAX(updated_at) AS updated_at
                    FROM policies
                   WHERE is_active = true
                     AND (effective_from IS NULL OR effective_from <= NOW())
@@ -486,6 +518,7 @@ export class AgentQualityService {
             faqs: Number(faqRows[0]?.count) || 0,
             faqsUpdatedAt: faqRows[0]?.updated_at || null,
             policies: Number(policyRows[0]?.count) || 0,
+            privacyPolicies: Number(policyRows[0]?.privacy_count) || 0,
             policiesUpdatedAt: policyRows[0]?.updated_at || null,
             services: Number(appointmentRows[0]?.services) || 0,
             availabilitySlots: Number(appointmentRows[0]?.slots) || 0,
@@ -780,6 +813,7 @@ export class AgentQualityService {
         const dependencies: Record<string, string[]> = {
             business_identity: ['company'], business_contact: ['company'],
             rag_knowledge: ['knowledge'], tool_faqs: ['faqs'], tool_policies: ['policies'],
+            media_privacy_policy: ['policies'],
             tool_appointments: ['appointments'], tool_catalog: ['products'], tool_ecommerce: ['products'],
             tool_orders: ['orders'], tool_offers: ['offers'],
             tool_vehicles: ['vehicles'], test_drive_service: ['appointments'], test_drive_staff: ['appointments'],
@@ -834,6 +868,26 @@ export class AgentQualityService {
         add({ code: 'rag_configuration', dimension: 'knowledge_grounding', status: knowledgeRequired ? status(ragValid) : 'not_applicable', critical: knowledgeRequired, weight: 3, href: `/admin/agent/${agent.id}`, evidence: { enabled: knowledgeRequired, valid: ragValid } });
         add({ code: 'tool_faqs', dimension: 'knowledge_grounding', status: this.optionalToolStatus(tools.faqs, facts.faqs > 0), critical: tools.faqs?.enabled === true, weight: 3, href: '/admin/knowledge/faqs', evidence: { enabled: tools.faqs?.enabled === true, published: facts.faqs } });
         add({ code: 'tool_policies', dimension: 'knowledge_grounding', status: this.optionalToolStatus(tools.policies, facts.policies > 0), critical: tools.policies?.enabled === true, weight: 3, href: '/admin/settings/policies', evidence: { enabled: tools.policies?.enabled === true, active: facts.policies } });
+        add({
+            code: 'media_privacy_policy',
+            dimension: 'safety_handoff',
+            status: !tenant.mediaProcessing.available
+                ? 'unknown'
+                : !tenant.mediaProcessing.enabled
+                    ? 'not_applicable'
+                    : status(facts.privacyPolicies > 0),
+            critical: tenant.mediaProcessing.enabled || !tenant.mediaProcessing.available,
+            weight: 6,
+            href: '/admin/settings/policies?type=privacy',
+            evidence: {
+                planLookupAvailable: tenant.mediaProcessing.available,
+                mediaProcessingEnabled: tenant.mediaProcessing.enabled,
+                audioPerMonth: tenant.mediaProcessing.audioPerMonth,
+                imagePerMonth: tenant.mediaProcessing.imagePerMonth,
+                activePrivacyPolicies: facts.privacyPolicies,
+                consentRequiredBeforeProcessing: true,
+            },
+        });
 
         add({ code: 'channel_assignment', dimension: 'actions_outcomes', status: status(assignedCount > 0), critical: true, weight: 5, href: `/admin/agent/${agent.id}?tab=persona&focus=channels`, evidence: { assigned: assignedCount } });
         add({ code: 'operational_channel_scope', dimension: 'actions_outcomes', status: unsupportedCount > 0 ? 'fail' : 'pass', critical: true, weight: 3, href: `/admin/agent/${agent.id}`, evidence: { unsupportedAssignments: unsupportedCount } });

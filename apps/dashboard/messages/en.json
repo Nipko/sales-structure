@@ -12239,6 +12239,7 @@
       "tool_knowledge": "Knowledge tool",
       "tool_faqs": "Frequently asked questions",
       "tool_policies": "Business policies",
+      "media_privacy_policy": "Privacy for images and audio",
       "tool_catalog": "Available catalog",
       "tool_appointments": "Scheduling and availability",
       "tool_orders": "Order management",
@@ -12353,7 +12354,10 @@
       "appointmentsEnabled": "Appointments enabled",
       "canBook": "Can book",
       "compatibleServices": "Compatible services",
-      "compatibleAvailability": "Compatible availability windows"
+      "compatibleAvailability": "Compatible availability windows",
+      "mediaProcessingEnabled": "Media processing included",
+      "activePrivacyPolicies": "Active privacy policies",
+      "consentRequiredBeforeProcessing": "Prior consent required"
     },
     "common": {
       "yes": "Yes",
@@ -13673,6 +13677,13 @@
           "title": "Documents and websites",
           "content": "Here you upload files or import pages from your site for the agent to consult."
         }
+      }
+    },
+    "privacy_policy": {
+      "steps": {
+        "type": { "title": "Privacy policy", "content": "Open Privacy. The agent needs an active version to explain how images and audio are handled before requesting consent." },
+        "content": { "title": "Explain media processing", "content": "State what is processed, why, how long it is retained, and how consent can be withdrawn. Have the text reviewed by the person responsible for privacy." },
+        "save": { "title": "Publish an active version", "content": "Save the policy. The agent can then show it, request explicit consent, and process media only after consent is received." }
       }
     },
     "appointments_setup": {

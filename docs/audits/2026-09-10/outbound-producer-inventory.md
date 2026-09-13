@@ -16,12 +16,12 @@ efectos puede llegar a producir **una sola respuesta lógica** en cada uno.
 
 | | |
 |---|---|
-| Sitios de llamada encontrados | **28** |
-| De ellos, que producen un mensaje cobrable | **27** |
+| Sitios de llamada encontrados | **30** |
+| De ellos, que producen un mensaje cobrable | **29** |
 | De ellos, presencia (no cobra Meta) | **1** |
-| Archivos productores distintos | **20** |
+| Archivos productores distintos | **21** |
 | Sitios que **no** pasan por un carril durable | **1** |
-| Sitios que pueden alcanzar WhatsApp (literal o dinámico) | **26** |
+| Sitios que pueden alcanzar WhatsApp (literal o dinámico) | **28** |
 | Sitios donde **una respuesta puede volverse varios cargos** | **9** |
 
 ### Los cinco números que importan
@@ -33,11 +33,11 @@ objetivo: **cero productores cobrables fuera del carril durable**.
 
 | | |
 |---|---|
-| Sitios de llamada, en total | **28** |
-| De ellos, capaces de alcanzar WhatsApp | **27** |
-| De ellos, **cobrables por Meta** | **26** |
-| De ellos, dentro de la frontera económica | **26** |
-| De ellos, dentro del **carril durable** | **26** |
+| Sitios de llamada, en total | **30** |
+| De ellos, capaces de alcanzar WhatsApp | **29** |
+| De ellos, **cobrables por Meta** | **28** |
+| De ellos, dentro de la frontera económica | **28** |
+| De ellos, dentro del **carril durable** | **28** |
 
 | | |
 |---|---|
@@ -51,7 +51,7 @@ Por carril:
 |---|---:|---|
 | `dispatch_outbox` | 14 | publishes an already-committed `agent_dispatch_outbox` row |
 | `approved_effect` | 1 | `tool_approval_effects` row a person approved |
-| `operational_notice` | 10 | `operational_notice_outbox`, written in the business transaction |
+| `operational_notice` | 12 | `operational_notice_outbox`, written in the business transaction |
 | `handoff_effects` | 1 | one row per destination of one transfer |
 | `inline` | 1 | straight to the adapter, on the caller's stack |
 
@@ -121,6 +121,13 @@ mensajes entregados, y un indicador de "escribiendo" no lo es.
 | Línea | Método | Primitiva | Carril | Disparador | Canales | Efectos por respuesta | Base |
 |---:|---|---|---|---|---|---|---|
 | 166 | `dispatchTemplate` | `proactive.send` | `dispatch_outbox` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
+
+### `apps/api/src/modules/appointments/appointments.service.ts`
+
+| Línea | Método | Primitiva | Carril | Disparador | Canales | Efectos por respuesta | Base |
+|---:|---|---|---|---|---|---|---|
+| 435 | `create` | `enqueueOperationalNotice` | `operational_notice` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
+| 734 | `createRecurring` | `enqueueOperationalNotice` | `operational_notice` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
 
 ### `apps/api/src/modules/automation/automation-jobs.processor.ts`
 
@@ -287,6 +294,8 @@ buscar una llamada a la autoridad economica en el codigo del archivo.
 | `modules/appointments/appointment-payment.listener.ts:107` | `onPaid` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/appointments/appointment-payment.listener.ts:115` | `onPaid` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/appointments/appointment-reminders.service.ts:166` | `dispatchTemplate` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
+| `modules/appointments/appointments.service.ts:435` | `create` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
+| `modules/appointments/appointments.service.ts:734` | `createRecurring` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/automation/automation-jobs.processor.ts:432` | `handleSendTemplate` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/automation/drip-sequence.service.ts:799` | `executeStepAction` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/automation/nurturing.service.ts:965` | `dispatch` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
@@ -344,7 +353,6 @@ esperada y su clasificación queda **fuera del alcance de este generador**.
 |---|---|---|---|
 | `analytics.scheduled_reports` | `inline` | `live` | `modules/analytics/scheduled-reports.service.ts` |
 | `analytics.threshold_alerts` | `inline` | `live` | `modules/analytics/alerts.service.ts` |
-| `appointments.slack` | `inline` | `live` | `modules/slack/slack-listener.service.ts` |
 | `auth.transactional_email` | `inline` | `live` | `modules/auth/auth.service.ts` |
 | `auth.two_factor_sms` | `inline` | `off` | `modules/auth/platform-sms.service.ts` |
 | `automation.http_request` | `domain_queue` | `live` | `modules/automation/handlers/http-request.handler.ts` |

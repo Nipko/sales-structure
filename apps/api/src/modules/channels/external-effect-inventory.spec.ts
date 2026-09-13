@@ -306,6 +306,15 @@ describe('no entry claims a property the code does not support', () => {
             file: 'modules/handoff/handoff-effects.ts',
             symbols: ['admitHandoffEffect', 'settleHandoffEffect', 'expireHandoffEffectLeases'],
         },
+        delivery_outbox: {
+            file: 'modules/public-api/webhook-subscription.service.ts',
+            symbols: ['webhook_delivery_outbox', 'lease_token', 'recoverPendingDeliveries'],
+        },
+        tool_ledger: {
+            file: 'modules/conversations/tool-execution-control.service.ts',
+            symbols: ['tool_execution_ledger', 'execution_lease_token',
+                'reconciliation_required', 'reconcileExpiredExecutionLeases'],
+        },
     };
 
     it.each(Object.entries(durableLaneEvidence))(

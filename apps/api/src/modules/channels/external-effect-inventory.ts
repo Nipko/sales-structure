@@ -91,6 +91,8 @@ export const EGRESS_LANES = [
     'handoff_effects',
     /** A producer-owned PostgreSQL outbox with a fenced lease and terminal receipt. */
     'delivery_outbox',
+    /** The central tool_execution_ledger row leased before an external tool can run. */
+    'tool_ledger',
     /** `OutboundQueueService.enqueue` → `outbound-messages` job `send`. Redis is the record. */
     'outbound_queue',
     /** A module's own BullMQ queue, with its own retry policy and no shared record. */
@@ -1893,7 +1895,7 @@ producer({
         id: 'mcp.remote_tool_call',
         effect: 'Calling a tool on a tenant\'s remote MCP server during an AI turn, which may write at '
             + 'whatever that server fronts',
-        lane: 'inline',
+        lane: 'tool_ledger',
         status: 'live',
         derivation: 'declared',
         source: 'modules/mcp/mcp-client.service.ts',
@@ -1904,16 +1906,18 @@ producer({
             channels: ['provider_api'],
         },
         properties: {
-            authority: partial('a stored, definition-hash-pinned human approval is required for any '
-                + 'tool declared `write`, `payment` or `irreversible`. That authorises the KIND of '
-                + 'call, not one concrete attempt'),
-            idempotency: none('no request id the remote server could dedupe on'),
-            receipt: none('the tool result feeds the turn and is not kept as a reference'),
-            uncertainOutcome: none('a timeout inside a turn is indistinguishable from a refusal, and '
-                + 'the model is told the tool failed'),
-            erasure: none('arguments may carry contact data and are not recorded here'),
-            recovery: none('none, deliberately: a remote write nobody can describe must not be repeated '
-                + 'blindly'),
+            authority: durable('the reviewed definition hash, concrete arguments, contact confirmation '
+                + 'and exact execution lease are committed in tool_execution_ledger before tools/call'),
+            idempotency: partial('the ledger prevents a second local invocation for the same intent; the '
+                + 'remote MCP protocol call exposes no provider-side idempotency key'),
+            receipt: partial('the complete tool result and terminal status are stored in the ledger, but '
+                + 'an arbitrary MCP server need not return a durable provider reference'),
+            uncertainOutcome: durable('a mutating timeout settles the leased ledger as '
+                + 'reconciliation_required and later turns replay that state instead of calling again'),
+            erasure: durable('contact erasure redacts ledger arguments and results and retires any live '
+                + 'execution lease under the shared privacy fence'),
+            recovery: partial('expired leases become reconciliation_required and trigger human handoff; '
+                + 'the platform deliberately cannot infer or repeat an opaque remote write'),
         },
     }),
 

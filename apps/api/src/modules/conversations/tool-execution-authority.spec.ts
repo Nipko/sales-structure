@@ -216,6 +216,43 @@ describe('el ejecutor deniega por defecto y no toca la base', () => {
         expect((executor as any).mcpClient.callRemoteTool).not.toHaveBeenCalled();
     });
 
+    it('un resultado MCP mutante incierto queda en reconciliación y no se presenta como reintento', async () => {
+        const { executor, control } = buildExecutor();
+        control.fail.mockResolvedValueOnce(undefined);
+        const ledgerId = '44444444-4444-4444-8444-444444444444';
+        control.preflight.mockResolvedValueOnce({
+            allowed: true,
+            ledgerId,
+            executionLeaseToken: '55555555-5555-4555-8555-555555555555',
+            idempotencyKey: 'mcp-intent-1',
+            policy: { externalEffect: 'provider_write', commitsBusiness: true },
+        });
+        (executor as any).mcpClient = {
+            getApproval: jest.fn().mockResolvedValue({
+                serverId: 'crm', toolName: 'create', effect: 'write',
+                definitionHash: 'a'.repeat(64), dataClassification: 'contact',
+                requiresConfirmation: true, requiresHumanApproval: false,
+                approvedBy: 'admin', approvedAt: '2026-09-13T00:00:00Z',
+            }),
+            callRemoteTool: jest.fn().mockRejectedValue(new Error('mcp_execution_outcome_unknown')),
+        };
+
+        const result: any = await executor.execute(
+            schemaName, tenantId, contactId, 'mcp__crm__create', {}, conversationId,
+            { authority: authorityFor('mcp__crm__create') },
+        );
+
+        expect((executor as any).mcpClient.callRemoteTool).toHaveBeenCalledTimes(1);
+        expect(control.fail).toHaveBeenCalledWith(
+            schemaName, expect.objectContaining({ ledgerId }), 'tool_execution_failed',
+        );
+        expect(result).toMatchObject({
+            error: 'reconciliation_required', shouldHandoff: true,
+        });
+        expect(result).not.toHaveProperty('retryable', true);
+        expect(control.complete).not.toHaveBeenCalled();
+    });
+
     it('la tool publicada sí corre: la puerta no cierra el paso legítimo', async () => {
         // Denegar por defecto sólo sirve si lo autorizado pasa. Sin este caso,
         // un gate que denegara TODO se vería idéntico a uno correcto.

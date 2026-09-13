@@ -1,18 +1,18 @@
-# Estado de los programas A1–H3 y M0–M6/R0–R6, decidido por el código
+# Estado de los programas A1–H3, M0–M6/R0–R6, T1–T7 y L0–L6, decidido por el código
 
 Generado por `docs/audits/2026-09-09/generate-closure-report.cjs`. Cada fila declara una **condición**, y
 el estado sale de ella: con una condición local sin cumplir la fila está `abierta`; con la condición
 cumplida y un gate externo nombrado está `bloqueada`; sólo sin condición y sin gate está `aceptada`.
 Cerrar un hueco cambia esta tabla cambiando el código, y reabrirlo la cambia de vuelta.
 
-Revisión: `863de91941712d29bdc4b277d7a7a5eefe2cf01a`.
+Revisión: `dbabb7e1d66064da130a5ac776c66a7dd8b10bad`.
 
-**El programa no está terminado.** 20 filas aceptadas, 25 bloqueadas por un
-gate externo concreto, 0 abiertas y 1 diferidas por decisión
+**El programa no está terminado.** 24 filas aceptadas, 27 bloqueadas por un
+gate externo concreto, 1 abiertas y 1 diferidas por decisión
 explícita de alcance; 0 perfiles certificados
 de 76.
 
-Sin contradicciones en las 46 filas: a cada una se le recalculó el estado a partir de sus propias condiciones, ninguna fila abierta deja de decir qué falta, ningún gate nombrado falta de la lista, ninguna cifra quedó sin resolver y todo artefacto citado existe.
+Sin contradicciones en las 53 filas: a cada una se le recalculó el estado a partir de sus propias condiciones, ninguna fila abierta deja de decir qué falta, ningún gate nombrado falta de la lista, ninguna cifra quedó sin resolver y todo artefacto citado existe.
 
 Ese barrido corre dos veces: sobre las filas recién construidas y otra vez sobre las filas releídas del artefacto versionado, donde el estado es una cadena guardada que nadie recalculó. La primera pasada, sola, no podría fallar — el constructor deriva el estado de las mismas condiciones con las que se lo compara — y por eso no se presenta sola.
 
@@ -25,6 +25,7 @@ Ese barrido corre dos veces: sobre las filas recién construidas y otra vez sobr
 5. autorización posterior para push, despliegue, migración y activación.
 6. cuenta WABA, número, moneda, tarjeta, financiación, permisos y plantillas reales.
 7. destinatario consentido, presupuesto y autorización de llamadas a Meta.
+8. aprobación de responsables legal y financiero sobre contratos y copy comercial.
 
 ## Las filas
 
@@ -76,10 +77,17 @@ Ese barrido corre dos veces: sobre las filas recién construidas y otra vez sobr
 | T5 | **bloqueada** por gate 1 y 4 | contador | — | Universo canónico conservado: 76 perfiles, 268 tareas, 146 que comprometen al negocio. La verificación determinista local es lo que esta fila mide; la certificación por canal y modelo real sigue en cero (0/76) y es gate externo, no trabajo local. | — |
 | T6 | **aceptada** | contador | — | Derivado del AST de `copilot.service.ts`: Assist inyecta `AgentContentProposalService`, consulta `listOperations`, deriva de sus veredictos la lista ejecutable y no vuelve a leer `effectiveCapabilities` como una autoridad paralela. | — |
 | T7 | **aceptada** | contador | — | El programa de herramientas entra al gate oficial por UNA autoridad compartida: `verify-artifacts.cjs` ejecuta `generate-tool-profile-audit --check` junto con los otros generadores, y `candidate`, `deploy` y `vertical-quality` llaman a ese verificador en vez de llevar cada uno su propia lista. El artefacto de herramientas quedó stale sin impedir un cierre precisamente porque no estaba ahí. Que el gate se pone rojo ante una fuente modificada lo demuestra una prueba que cambia una fuente auditada y captura la transición, no la afirmación de que el árbol está al día. Las seis filas T1–T6 se derivan de lecturas del código, nunca de prosa ni de la existencia de un test. | — |
+| L0 | **aceptada** | contador | — | La autoridad comercial está en registros versionados y seis verificadores independientes; el build público ejecuta el conjunto completo. | — |
+| L1 | **aceptada** | contador | — | Planes, capacidades, tarifas de WhatsApp y decisiones pendientes salen de fuentes versionadas; no se completan con cifras de diseño. | — |
+| L2 | **aceptada** | contador | — | La web distingue suscripción a Parallly, entregas que Meta cobra a la WABA y pagos que el cliente final hace directamente al negocio. | — |
+| L3 | **aceptada** | contador | — | Cuatro demos ilustrativas declaran su naturaleza y evidencia; la comparación con Meta tiene superficie, fecha, fuente y límites. | — |
+| L4 | **abierta** | contador | 5 brechas de rutas localizadas, metadata o sitemap | La paridad cubre 4 idiomas. Las URLs indexables, el HTML inicial, canonical, hreflang y sitemap se miden por estructura, no por una cookie de navegador. | — |
+| L5 | **bloqueada** por gate 8 | contador | — | Términos, privacidad y tratamiento tienen contenido en cuatro idiomas y un borrador coordinado. La aprobación de responsables legal y financiero sigue siendo externa. | — |
+| L6 | **bloqueada** por gate 3 y 5 | contador | — | El build ejecuta paridad, claims, regresiones adversarias, costos y evidencia competitiva. La comprensión con usuarios nuevos y el ensayo del candidato pertenecen a sus gates externos. | — |
 
 ## De dónde sale cada fila
 
-29 filas salen de un contador leído del código: cerrar el hueco las cambia solo.
+36 filas salen de un contador leído del código: cerrar el hueco las cambia solo.
 3 descansan sobre un artefacto de una corrida real, nombrado en la tabla.
 **14 son declaraciones humanas pendientes de revisión**: A2, A3, A4, C1, D1, D3, E3, F3, F4, G2, G3, H2, M4, M6. Cambiar el código de esas áreas no cambia su estado, y por eso se dicen aparte en vez de presentarse como calculadas.
 
@@ -111,5 +119,6 @@ Ese barrido corre dos veces: sobre las filas recién construidas y otra vez sobr
 | Tipos de item que el carril durable transporta | 7 |
 | Alcances de gasto | 5 |
 | Entregas de servicio gratuitas por número y mes | 1000 |
+| Brechas SEO/localización de la landing | 5 |
 
 Para actualizar: `node docs/audits/2026-09-09/generate-closure-report.cjs` desde la raíz.

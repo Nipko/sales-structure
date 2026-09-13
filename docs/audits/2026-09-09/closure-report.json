@@ -1,16 +1,16 @@
 {
   "version": 1,
-  "revision": "863de91941712d29bdc4b277d7a7a5eefe2cf01a",
-  "generatedAt": "2026-09-13T03:18:51.230Z",
+  "revision": "dbabb7e1d66064da130a5ac776c66a7dd8b10bad",
+  "generatedAt": "2026-09-13T03:55:38.049Z",
   "finished": false,
   "counts": {
-    "aceptada": 20,
-    "bloqueada": 25,
-    "abierta": 0,
+    "aceptada": 24,
+    "bloqueada": 27,
+    "abierta": 1,
     "diferida": 1
   },
   "provenance": {
-    "derived": 29,
+    "derived": 36,
     "executed_evidence": 3,
     "declared": 14
   },
@@ -22,7 +22,8 @@
     "4": "cuentas autorizadas de alternativas y revisores ciegos",
     "5": "autorización posterior para push, despliegue, migración y activación",
     "6": "cuenta WABA, número, moneda, tarjeta, financiación, permisos y plantillas reales",
-    "7": "destinatario consentido, presupuesto y autorización de llamadas a Meta"
+    "7": "destinatario consentido, presupuesto y autorización de llamadas a Meta",
+    "8": "aprobación de responsables legal y financiero sobre contratos y copy comercial"
   },
   "authorities": {
     "profiles": 76,
@@ -71,7 +72,24 @@
       "contact",
       "task"
     ],
-    "restShapesWithoutDurableItem": []
+    "restShapesWithoutDurableItem": [],
+    "landing": {
+      "claimGaps": [],
+      "offerGaps": [],
+      "paymentGaps": [],
+      "demonstrationGaps": [],
+      "seoGaps": [
+        "rutas estáticas por idioma",
+        "alternativas hreflang en metadata",
+        "alternativas hreflang en sitemap",
+        "idioma de ruta fijado antes de hidratar",
+        "selector que navega a la URL del idioma"
+      ],
+      "legalGaps": [],
+      "validationGaps": [],
+      "locales": 4,
+      "comparisonTasks": 13
+    }
   },
   "rows": [
     {
@@ -704,6 +722,95 @@
       "provenance": "derived",
       "artefact": null,
       "evidence": "El programa de herramientas entra al gate oficial por UNA autoridad compartida: `verify-artifacts.cjs` ejecuta `generate-tool-profile-audit --check` junto con los otros generadores, y `candidate`, `deploy` y `vertical-quality` llaman a ese verificador en vez de llevar cada uno su propia lista. El artefacto de herramientas quedó stale sin impedir un cierre precisamente porque no estaba ahí. Que el gate se pone rojo ante una fuente modificada lo demuestra una prueba que cambia una fuente auditada y captura la transición, no la afirmación de que el árbol está al día. Las seis filas T1–T6 se derivan de lecturas del código, nunca de prosa ni de la existencia de un test.",
+      "commits": [],
+      "deferral": null
+    },
+    {
+      "id": "L0",
+      "open": 0,
+      "openLabel": "0 verificadores comerciales ausentes del build",
+      "gates": [],
+      "status": "aceptada",
+      "provenance": "derived",
+      "artefact": null,
+      "evidence": "La autoridad comercial está en registros versionados y seis verificadores independientes; el build público ejecuta el conjunto completo.",
+      "commits": [],
+      "deferral": null
+    },
+    {
+      "id": "L1",
+      "open": 0,
+      "openLabel": "0 proyecciones de oferta sin autoridad",
+      "gates": [],
+      "status": "aceptada",
+      "provenance": "derived",
+      "artefact": null,
+      "evidence": "Planes, capacidades, tarifas de WhatsApp y decisiones pendientes salen de fuentes versionadas; no se completan con cifras de diseño.",
+      "commits": [],
+      "deferral": null
+    },
+    {
+      "id": "L2",
+      "open": 0,
+      "openLabel": "0 relaciones de pago sin separar",
+      "gates": [],
+      "status": "aceptada",
+      "provenance": "derived",
+      "artefact": null,
+      "evidence": "La web distingue suscripción a Parallly, entregas que Meta cobra a la WABA y pagos que el cliente final hace directamente al negocio.",
+      "commits": [],
+      "deferral": null
+    },
+    {
+      "id": "L3",
+      "open": 0,
+      "openLabel": "0 demostraciones o comparaciones sin contrato",
+      "gates": [],
+      "status": "aceptada",
+      "provenance": "derived",
+      "artefact": null,
+      "evidence": "Cuatro demos ilustrativas declaran su naturaleza y evidencia; la comparación con Meta tiene superficie, fecha, fuente y límites.",
+      "commits": [],
+      "deferral": null
+    },
+    {
+      "id": "L4",
+      "open": 5,
+      "openLabel": "5 brechas de rutas localizadas, metadata o sitemap",
+      "gates": [],
+      "status": "abierta",
+      "provenance": "derived",
+      "artefact": null,
+      "evidence": "La paridad cubre 4 idiomas. Las URLs indexables, el HTML inicial, canonical, hreflang y sitemap se miden por estructura, no por una cookie de navegador.",
+      "commits": [],
+      "deferral": null
+    },
+    {
+      "id": "L5",
+      "open": 0,
+      "openLabel": "0 variantes legales ausentes",
+      "gates": [
+        8
+      ],
+      "status": "bloqueada",
+      "provenance": "derived",
+      "artefact": null,
+      "evidence": "Términos, privacidad y tratamiento tienen contenido en cuatro idiomas y un borrador coordinado. La aprobación de responsables legal y financiero sigue siendo externa.",
+      "commits": [],
+      "deferral": null
+    },
+    {
+      "id": "L6",
+      "open": 0,
+      "openLabel": "0 gates locales de validación ausentes",
+      "gates": [
+        3,
+        5
+      ],
+      "status": "bloqueada",
+      "provenance": "derived",
+      "artefact": null,
+      "evidence": "El build ejecuta paridad, claims, regresiones adversarias, costos y evidencia competitiva. La comprensión con usuarios nuevos y el ensayo del candidato pertenecen a sus gates externos.",
       "commits": [],
       "deferral": null
     }

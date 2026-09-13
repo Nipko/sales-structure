@@ -55,6 +55,7 @@ const { BENCHMARK_LEDGER_DDL } = api('modules/simulation/benchmark-harness.ts');
 const { agentIssueResolutionDefects, routedAgentOperations } = shared;
 const { octoberAuthorities, octoberRows } = require('./meta-october-rows.cjs');
 const { toolsRows } = require('../2026-09-11/tools-programme-rows.cjs');
+const { landingAuthorities, landingRows } = require('./landing-programme-rows.cjs');
 
 /**
  * A list that is empty says so, in a word.
@@ -147,6 +148,7 @@ const retrievalGaps = [
  * get a different answer than the row beside it.
  */
 const october = octoberAuthorities({ root, api, shared });
+const landing = landingAuthorities({ root });
 
 const coverage = commercialCoverage();
 const unexplainedUnfrozen = commercialReadersWithoutFrozenAuthority()
@@ -160,6 +162,7 @@ const GATES = {
     5: 'autorización posterior para push, despliegue, migración y activación',
     6: 'cuenta WABA, número, moneda, tarjeta, financiación, permisos y plantillas reales',
     7: 'destinatario consentido, presupuesto y autorización de llamadas a Meta',
+    8: 'aprobación de responsables legal y financiero sobre contratos y copy comercial',
 };
 
 /**
@@ -360,6 +363,9 @@ const toolAudit = JSON.parse(fs.readFileSync(
     path.join(root, 'docs/audits/2026-09-11/tool-profile-audit.json'), 'utf8'));
 ROWS.push(...toolsRows(row, toolAudit));
 
+/** L0-L6: la oferta pública, sus rutas localizadas y su evidencia comercial. */
+ROWS.push(...landingRows(row, landing));
+
 // ─── Consistency, checked rather than promised ──────────────────────────────
 /**
  * ═══ THE SWEEP THAT COULD NOT FAIL, AND WHAT REPLACED IT ═══
@@ -455,6 +461,7 @@ function contradictionsIn(rows) {
         { name: 'A1–H3', test: id => /^[A-H]\d/.test(id), expected: 25 },
         { name: 'M0–M6/R0–R6', test: id => /^[MR]\d/.test(id), expected: 14 },
         { name: 'T1–T7', test: id => /^T\d/.test(id), expected: 7 },
+        { name: 'L0–L6', test: id => /^L\d/.test(id), expected: 7 },
     ];
     let accounted = 0;
     for (const group of GROUPS) {
@@ -530,6 +537,7 @@ const state = {
         dispatchItemKinds: october.itemKinds,
         spendScopes: october.spendScopes,
         restShapesWithoutDurableItem: october.unrepresentable,
+        landing,
     },
     rows: ROWS,
 };
@@ -556,7 +564,7 @@ const label = entry => {
     throw new Error(`row ${entry.id}: el estado \`${entry.status}\` no se sabe imprimir`);
 };
 const lines = [
-    '# Estado de los programas A1–H3 y M0–M6/R0–R6, decidido por el código',
+    '# Estado de los programas A1–H3, M0–M6/R0–R6, T1–T7 y L0–L6, decidido por el código',
     '',
     'Generado por `docs/audits/2026-09-09/generate-closure-report.cjs`. Cada fila declara una **condición**, y',
     'el estado sale de ella: con una condición local sin cumplir la fila está `abierta`; con la condición',
@@ -652,6 +660,7 @@ const lines = [
     `| Tipos de item que el carril durable transporta | ${october.itemKinds.length} |`,
     `| Alcances de gasto | ${october.spendScopes.length} |`,
     `| Entregas de servicio gratuitas por número y mes | ${october.freeAllowance} |`,
+    `| Brechas SEO/localización de la landing | ${landing.seoGaps.length} |`,
     '',
     'Para actualizar: `node docs/audits/2026-09-09/generate-closure-report.cjs` desde la raíz.',
     '',

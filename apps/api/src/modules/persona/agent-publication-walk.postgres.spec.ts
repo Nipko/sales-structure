@@ -365,10 +365,25 @@ const url = process.env.AGENT_RELEASE_TEST_DATABASE_URL;
         client = new PrismaClient({ datasourceUrl: url });
         await client.$executeRawUnsafe('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"');
         await ensureSyntheticGlobalTables(statement => client.$executeRawUnsafe(statement));
+        await client.$executeRawUnsafe(`ALTER TABLE public.tenants
+            ADD COLUMN IF NOT EXISTS plan TEXT,
+            ADD COLUMN IF NOT EXISTS is_internal BOOLEAN DEFAULT false`);
+        await client.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS public.billing_subscriptions(
+            tenant_id UUID PRIMARY KEY,status TEXT,trial_ends_at TIMESTAMPTZ,
+            cancel_at_period_end BOOLEAN,current_period_end TIMESTAMPTZ,
+            cancellation_reason TEXT,dunning_started_at TIMESTAMPTZ)`);
+        await client.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS public.billing_plans(
+            slug TEXT PRIMARY KEY,max_agents INTEGER,max_ai_messages INTEGER,features JSONB)`);
+        await client.$executeRawUnsafe(`INSERT INTO public.billing_plans(slug,max_agents,max_ai_messages,features)
+            VALUES('publication_walk',20,10000,'{"customPrompt":true,"customerPayments":true}'::jsonb)
+            ON CONFLICT(slug) DO UPDATE SET max_agents=EXCLUDED.max_agents,
+                max_ai_messages=EXCLUDED.max_ai_messages,features=EXCLUDED.features`);
         for (const [id, name] of [[tenantId, schema], [otherTenantId, otherSchema]] as const) {
             await client.$executeRawUnsafe(
-                `INSERT INTO public.tenants(id,schema_name,is_active,industry,settings)
-                 VALUES($1::uuid,$2,true,'education','{"verticalConfig":{"industry":"education","subType":"capacitacion"}}'::jsonb)`, id, name);
+                `INSERT INTO public.tenants(id,schema_name,is_active,is_internal,plan,industry,settings)
+                 VALUES($1::uuid,$2,true,false,'publication_walk','education','{"verticalConfig":{"industry":"education","subType":"capacitacion"}}'::jsonb)`, id, name);
+            await client.$executeRawUnsafe(`INSERT INTO public.billing_subscriptions(tenant_id,status,cancel_at_period_end)
+                VALUES($1::uuid,'active',false) ON CONFLICT(tenant_id) DO UPDATE SET status='active',cancel_at_period_end=false`, id);
             await client.$executeRawUnsafe(`CREATE SCHEMA "${name}"`);
         }
 
@@ -401,7 +416,7 @@ const url = process.env.AGENT_RELEASE_TEST_DATABASE_URL;
         const revisions = new EvaluationRevisionService(prisma, null as any);
         jest.spyOn(revisions, 'capture').mockImplementation(async () => liveManifest);
         publicationController = new AgentPublicationController(
-            new AgentPublicationService(prisma, personaService, drafts, revisions, events));
+            new AgentPublicationService(prisma, personaService, revisions, events));
 
         // Only `review` and `read` are driven here; `request` and `process` need
         // a model. A collaborator this suite never reaches stays absent on
@@ -433,6 +448,8 @@ const url = process.env.AGENT_RELEASE_TEST_DATABASE_URL;
     beforeEach(async () => {
         emitted.length = 0; audited.length = 0; snapshotStale = false;
         prisma.tenant.impl = findTenant;
+        await client.$executeRawUnsafe(`INSERT INTO public.billing_subscriptions(tenant_id,status,cancel_at_period_end)
+            VALUES($1::uuid,'active',false) ON CONFLICT(tenant_id) DO UPDATE SET status='active',cancel_at_period_end=false`, tenantId);
         await query(`TRUNCATE agent_publication_heads,agent_publication_events,agent_release_candidates,
             agent_configuration_commands,agent_configuration_drafts,agent_configuration_revisions,agent_personas CASCADE`);
         await query(`INSERT INTO agent_personas(id,name,config_json,channels,channel_bindings,schedule_mode,is_active,is_default,version)
@@ -450,6 +467,7 @@ const url = process.env.AGENT_RELEASE_TEST_DATABASE_URL;
                 if (!/^tenant_pubwalkb?_[a-f0-9]{32}$/.test(name)) throw new Error('invalid_cleanup_scope');
                 await client.$executeRawUnsafe(`DROP SCHEMA IF EXISTS "${name}" CASCADE`);
             }
+            await client.$executeRawUnsafe('DELETE FROM public.billing_subscriptions WHERE tenant_id=ANY($1::uuid[])', [tenantId, otherTenantId]);
             await client.$executeRawUnsafe('DELETE FROM public.tenants WHERE id=ANY($1::uuid[])', [tenantId, otherTenantId]);
         } finally { await client.$disconnect(); }
     });
@@ -622,12 +640,9 @@ const url = process.env.AGENT_RELEASE_TEST_DATABASE_URL;
     it('refuses to publish while the tenant subscription cannot be read', async () => {
         const prepared = await approvedCandidate();
         const before = await agentRow();
-        prisma.tenant.impl = jest.fn(async (args: any) => {
-            const row = await findTenant(args);
-            return row && args.where.id === tenantId ? { ...row, subscriptionStatus: null, subscription: null } : row;
-        });
+        await client.$executeRawUnsafe('DELETE FROM public.billing_subscriptions WHERE tenant_id=$1::uuid', tenantId);
         await expect(publish(prepared.candidateId, prepared.publishBody()))
-            .rejects.toMatchObject({ response: { error: 'agent_publication_subscription_restricted' } });
+            .rejects.toMatchObject({ response: { error: 'subscription_status_unavailable' } });
         expect(await agentRow()).toEqual(before);
         expect(await query('SELECT id FROM agent_publication_events')).toHaveLength(0);
     }, 300_000);

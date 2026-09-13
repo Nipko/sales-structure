@@ -1,7 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
-import { AgentDraftService } from './agent-draft.service';
 import { PersonaService } from './persona.service';
 import {
     AGENT_PUBLICATION_TABLES, AgentPublicationStore,
@@ -11,8 +10,8 @@ import {
 import type { RevisionQuery } from './agent-configuration-revision';
 import { resolveEvaluationSnapshot, type AgentEvaluationSnapshot } from '../conversations/agent-evaluation-snapshot';
 import { EvaluationRevisionService } from '../evaluation-revision/evaluation-revision.service';
-import { resolveTenantSubscriptionAccess } from '../../common/utils/subscription-entitlement.util';
 import { auditActor } from '../../common/utils/audit-actor.util';
+import { assertPublicationPrerequisites } from './agent-publication-prerequisites';
 
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 
@@ -48,7 +47,6 @@ export class AgentPublicationService {
     constructor(
         private readonly prisma: PrismaService,
         private readonly persona: PersonaService,
-        private readonly drafts: AgentDraftService,
         // The revision manifest directly, not through `AgentTestService`: that
         // lives in ConversationsModule, which already imports this one, and the
         // cycle is not worth it for one call.
@@ -76,7 +74,7 @@ export class AgentPublicationService {
     }
 
     /** Live checks, built per call so nothing is captured from an earlier request. */
-    private checks(tenantId: string, agentId: string, schema: string): PublicationChecks {
+    private checks(tenantId: string, agentId: string): PublicationChecks {
         return {
             assertCandidateCurrent: async (snapshot: AgentEvaluationSnapshot) => {
                 if (!snapshot) throw new BadRequestException({ error: 'evaluation_revision_manifest_required' });
@@ -94,19 +92,13 @@ export class AgentPublicationService {
                 if (input.tenantId !== tenantId || input.agentId !== agentId) {
                     throw new ForbiddenException({ error: 'agent_publication_scope_mismatch' });
                 }
-                // Read the tenant on the SAME query: the store already holds it
-                // FOR UPDATE, so this cannot race a plan change committing beside it.
-                const [tenant] = await query<any[]>(
-                    `SELECT to_jsonb(t)->>'industry' AS industry, to_jsonb(t)->'settings' AS settings
-                     FROM public.tenants t WHERE t.id=$1::uuid`, [tenantId]);
-                if (!tenant) throw new NotFoundException({ error: 'tenant_not_found' });
-                const access = await resolveTenantSubscriptionAccess(this.prisma, tenantId, 'write');
-                if (!access.allowed) {
-                    throw new ForbiddenException({ error: 'agent_publication_subscription_restricted',
-                        reason: access.error ?? 'restricted' });
-                }
-                await this.drafts.assertConfigurationEntitlement(
-                    tenantId, schema, input.operational, tenant, input.body);
+                // The store already owns this transaction. Every fact that can
+                // revoke publication is read through this query and held until
+                // COMMIT: tenant, subscription, plan, overrides, capacity and
+                // appointment rows. A cached feature answer or a second Prisma
+                // connection would leave a race beside the publication lock.
+                await assertPublicationPrerequisites(query, input,
+                    config => this.persona.assertAgentConfigValid(config, { partial: true }));
             },
         };
     }
@@ -164,7 +156,7 @@ export class AgentPublicationService {
         await this.store.ensure(schema);
         const receipt = await this.prisma.transactionInTenantSchema(schema, query =>
             this.store.publish(query, schema, { tenantId, agentId, candidateId,
-                actor: { id: actor.id, role: actor.role }, body }, this.checks(tenantId, agentId, schema)));
+                actor: { id: actor.id, role: actor.role }, body }, this.checks(tenantId, agentId)));
         await this.settle(tenantId, agentId, actor, receipt, { candidateId });
         return receipt;
     }
@@ -176,7 +168,7 @@ export class AgentPublicationService {
         await this.store.ensure(schema);
         const receipt = await this.prisma.transactionInTenantSchema(schema, query =>
             this.store.rollback(query, schema, { tenantId, agentId,
-                actor: { id: actor.id, role: actor.role }, body }, this.checks(tenantId, agentId, schema)));
+                actor: { id: actor.id, role: actor.role }, body }, this.checks(tenantId, agentId)));
         await this.settle(tenantId, agentId, actor, receipt, { rollbackOf: body.expectedPublicationId });
         return receipt;
     }

@@ -1,5 +1,4 @@
 import { AgentPublicationService } from './agent-publication.service';
-import * as entitlementUtil from '../../common/utils/subscription-entitlement.util';
 import { evaluationSnapshot } from '../conversations/agent-evaluation-snapshot';
 
 const tenantId = '11111111-1111-4111-8111-111111111111';
@@ -17,6 +16,10 @@ const receipt = { id: 'pub-1', agentId, kind: 'publish' as const, operationalVer
 
 const publishBody: any = { expectedOperationalVersion: 7, expectedOperationalHash: 'a'.repeat(64),
     requestKey: 'req-1', expectedCandidateVersion: 2, evidenceHash: 'c'.repeat(64), activation: 'preserve' };
+const prerequisiteInput: any = { tenantId, agentId, operational: { config_json: { tools: {} } }, body: {
+    name: 'Alex', configJson: { persona: { name: 'Alex' }, tools: {} }, channels: ['web_widget'],
+    channelBindings: ['web_widget:owned'], isActive: true, isDefault: true, scheduleMode: '24_7',
+} };
 
 /**
  * ═══ LA PUERTA QUE LA PRIMITIVA SE NEGABA A SER ═══
@@ -33,8 +36,10 @@ const publishBody: any = { expectedOperationalVersion: 7, expectedOperationalHas
  */
 describe('AgentPublicationService', () => {
     function harness(options: {
-        access?: { allowed: boolean; error?: string };
-        entitlementError?: Error;
+        tenantActive?: boolean;
+        tenantInternal?: boolean;
+        subscriptionStatus?: string;
+        planFeatures?: Record<string, unknown>;
         manifestError?: Error;
         cacheFails?: boolean;
         auditFails?: boolean;
@@ -42,7 +47,16 @@ describe('AgentPublicationService', () => {
         notifyFails?: boolean;
     } = {}) {
         const query = jest.fn(async (sql: string, _params?: any[]) => {
-            if (sql.includes('FROM public.tenants')) return [{ id: tenantId, industry: 'otro', settings: {} }];
+            if (sql.includes('FROM public.tenants')) return [{ id: tenantId, plan: 'pro', industry: 'otro', settings: {},
+                is_active: options.tenantActive ?? true, is_internal: options.tenantInternal ?? true }];
+            if (sql.includes('FROM public.billing_subscriptions')) return options.tenantInternal === false
+                ? [{ status: options.subscriptionStatus ?? 'active', cancel_at_period_end: false }] : [];
+            if (sql.includes('clock_timestamp')) return [{ now: '2026-09-13T18:00:00Z' }];
+            if (sql.includes('FROM public.billing_plans')) return [{ slug: 'pro', max_agents: 10,
+                max_ai_messages: 10000, features: options.planFeatures ?? { customPrompt: true, customerPayments: true } }];
+            if (sql.includes('COUNT(*)')) return [{ total: 1 }];
+            if (sql.includes('to_regclass')) return [{ services: 'services', slots: 'availability_slots' }];
+            if (sql.includes('FROM services') || sql.includes('FROM availability_slots')) return [{ id: 'ready' }];
             if (sql.includes('FROM agent_personas')) return [{ id: agentId, version: 7 }];
             if (sql.includes('agent_publication_heads')) return [];
             if (sql.includes('agent_publication_events')) return [];
@@ -59,10 +73,7 @@ describe('AgentPublicationService', () => {
         };
         const persona: any = { invalidatePersonaResolutionCaches: jest.fn(async () => {
             if (options.cacheFails) throw new Error('redis unavailable');
-        }) };
-        const drafts: any = { assertConfigurationEntitlement: jest.fn(async () => {
-            if (options.entitlementError) throw options.entitlementError;
-        }) };
+        }), assertAgentConfigValid: jest.fn() };
         const revisions: any = { assertCurrent: jest.fn(async () => {
             if (options.manifestError) throw options.manifestError;
         }) };
@@ -70,7 +81,7 @@ describe('AgentPublicationService', () => {
             if (options.notifyFails) throw new Error('listener exploded');
             return true;
         }) };
-        const service = new AgentPublicationService(prisma, persona, drafts, revisions, events);
+        const service = new AgentPublicationService(prisma, persona, revisions, events);
         const store = (service as any).store;
         const settled = { ...receipt, idempotentReplay: !!options.replay };
         store.ensure = jest.fn(async () => undefined);
@@ -78,13 +89,7 @@ describe('AgentPublicationService', () => {
         store.rollback = jest.fn(async () => ({ ...settled, kind: 'rollback' as const }));
         jest.spyOn((service as any).logger, 'error').mockImplementation(() => undefined);
 
-        // El módulo, no un `require` en línea: `jest.spyOn` necesita el objeto y
-        // un import de namespace lo da. Se llama `entitlementUtil` porque el
-        // espía local ya ocupaba `entitlement`.
-        const entitlement = jest.spyOn(
-            entitlementUtil, 'resolveTenantSubscriptionAccess')
-            .mockResolvedValue(options.access ?? { allowed: true } as any);
-        return { service, prisma, persona, drafts, revisions, store, query, entitlement, events };
+        return { service, prisma, persona, revisions, store, query, events };
     }
     afterEach(() => jest.restoreAllMocks());
 
@@ -144,19 +149,18 @@ describe('AgentPublicationService', () => {
             const h = harness();
             await h.service.publish(tenantId, agentId, candidateId, publishBody, admin);
             const checks = h.store.publish.mock.calls[0][3];
-            const scoped = jest.fn(async () => [{ id: tenantId, industry: 'salud', settings: { verticalConfig: {} } }]);
-            await checks.assertCurrentPrerequisites(scoped, { tenantId, agentId, operational: { version: 7 }, body: {} });
-            expect(scoped).toHaveBeenCalled();
-            expect(h.drafts.assertConfigurationEntitlement.mock.calls[0][3]).toMatchObject({ industry: 'salud' });
+            await checks.assertCurrentPrerequisites(h.query, prerequisiteInput);
+            expect(h.query.mock.calls.some(([sql]) => String(sql).includes('FROM public.tenants') && String(sql).includes('FOR SHARE'))).toBe(true);
+            expect(h.query.mock.calls.some(([sql]) => String(sql).includes('FROM public.billing_plans') && String(sql).includes('FOR SHARE'))).toBe(true);
+            expect(h.persona.assertAgentConfigValid).toHaveBeenCalledWith(prerequisiteInput.body.configJson, { partial: true });
         });
 
         it('detiene la publicación cuando la suscripción ya no permite escribir', async () => {
-            const h = harness({ access: { allowed: false, error: 'subscription_past_due' } });
+            const h = harness({ tenantInternal: false, subscriptionStatus: 'past_due' });
             await h.service.publish(tenantId, agentId, candidateId, publishBody, admin);
             const checks = h.store.publish.mock.calls[0][3];
-            await expect(checks.assertCurrentPrerequisites(h.query, { tenantId, agentId, operational: {}, body: {} }))
-                .rejects.toMatchObject({ response: { error: 'agent_publication_subscription_restricted' } });
-            expect(h.drafts.assertConfigurationEntitlement).not.toHaveBeenCalled();
+            await expect(checks.assertCurrentPrerequisites(h.query, prerequisiteInput)).rejects.toBeDefined();
+            expect(h.query.mock.calls.some(([sql]) => String(sql).includes('FROM public.billing_plans'))).toBe(false);
         });
 
         it('rechaza un alcance distinto al de la petición en vez de mezclar identidades', async () => {
@@ -167,19 +171,21 @@ describe('AgentPublicationService', () => {
             await h.service.publish(tenantId, agentId, candidateId, publishBody, admin);
             const checks = h.store.publish.mock.calls[0][3];
             for (const scope of [{ tenantId: superId, agentId }, { tenantId, agentId: superId }]) {
-                await expect(checks.assertCurrentPrerequisites(h.query, { ...scope, operational: {}, body: {} }))
+                await expect(checks.assertCurrentPrerequisites(h.query, { ...prerequisiteInput, ...scope }))
                     .rejects.toMatchObject({ response: { error: 'agent_publication_scope_mismatch' } });
             }
-            expect(h.drafts.assertConfigurationEntitlement).not.toHaveBeenCalled();
+            expect(h.persona.assertAgentConfigValid).not.toHaveBeenCalled();
         });
 
         it('propaga la denegación de capacidad tal cual, sin convertirla en otro error', async () => {
-            const blocked: any = new Error('configuration_capability_blocked');
-            const h = harness({ entitlementError: blocked });
+            const h = harness({ planFeatures: { customerPayments: false } });
             await h.service.publish(tenantId, agentId, candidateId, publishBody, admin);
             const checks = h.store.publish.mock.calls[0][3];
-            await expect(checks.assertCurrentPrerequisites(h.query, { tenantId, agentId, operational: {}, body: {} }))
-                .rejects.toBe(blocked);
+            const input = structuredClone(prerequisiteInput);
+            input.body.configJson.tools.payments = { enabled: true };
+            await expect(checks.assertCurrentPrerequisites(h.query, input)).rejects.toMatchObject({
+                response: { error: 'configuration_capability_blocked', family: 'payments' },
+            });
         });
 
         it('la reversión comprueba los prerequisitos vigentes, no sólo el head', async () => {

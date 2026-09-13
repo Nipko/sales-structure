@@ -46,7 +46,7 @@ export interface ProjectedRateCard {
 }
 
 export const WHATSAPP_RATE_PROJECTION = Object.freeze({
-    rateTableVersion: 'meta-ratecards-2026@cdc5b132567ab1e7',
+    rateTableVersion: 'meta-ratecards-2026@ddb62cc8458b94a3',
     microsPerUnit: 1000000,
     categories: Object.freeze(['marketing', 'utility', 'authentication', 'authentication_international', 'service'] as const),
     allowance: Object.freeze({

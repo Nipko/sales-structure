@@ -3,6 +3,16 @@ import type { SavedAgentDraft } from './agent-draft-contract';
 import { VERTICAL_TOOL_GROUPS } from './vertical-capability-manifest';
 
 export const AGENT_CONFIG_TOOL_FAMILIES = [...VERTICAL_TOOL_GROUPS, 'knowledge', 'policies', 'orders', 'crm', 'offers', 'ecommerce', 'payments'] as const;
+/**
+ * Agent-level receipt switches that have both a visible editor control and a
+ * production consumer. Keeping this narrower than every historical
+ * `emailConfirmations` property prevents Assist from offering dead controls.
+ */
+export const AGENT_EMAIL_CONFIRMATION_FAMILIES = [
+    'appointments', 'properties', 'tours', 'treatments', 'realEstate', 'pets',
+    'restaurants', 'gyms', 'education', 'insurance', 'homeServices',
+    'photography', 'vehicles', 'orders',
+] as const;
 export const AGENT_ACCOUNT_DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
 export interface AgentAccountBusinessHours {
     is247: boolean;
@@ -35,6 +45,7 @@ export const AGENT_CONFIGURATION_PATHS = [
     'behavior.rules', 'behavior.forbiddenTopics', 'behavior.handoffTriggers', 'mission',
     'account.businessHours',
     ...AGENT_CONFIG_TOOL_FAMILIES.map(family => `tools.${family}.enabled` as const),
+    ...AGENT_EMAIL_CONFIRMATION_FAMILIES.map(family => `tools.${family}.emailConfirmations` as const),
     'tools.appointments.canBook', 'tools.appointments.canCancel', 'tools.catalog.canCheckStock',
     'tools.ecommerce.canRecommend', 'tools.ecommerce.canApplyDiscount', 'tools.payments.canCreateLinks',
 ] as const;

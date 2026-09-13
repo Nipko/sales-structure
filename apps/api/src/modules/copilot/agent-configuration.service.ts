@@ -115,7 +115,9 @@ export class AgentConfigurationService {
             for (const change of enabled) {
                 const [, family, flag] = change.path.split('.');
                 if (config.tools?.[family]?.enabled !== true) throw new BadRequestException({ error: 'configuration_capability_blocked', reasons: ['agent_disabled'] });
-                const names = family === 'payments'
+                const names = flag === 'emailConfirmations'
+                    ? staticToolsForAgentConfig({ [family]: config.tools[family] }).map(tool => tool.name)
+                    : family === 'payments'
                     ? (flag === 'canCreateLinks' ? PAYMENT_CREATE_TOOLS : [...PAYMENT_STATUS_TOOLS, ...(config.tools.payments.canCreateLinks === false ? [] : PAYMENT_CREATE_TOOLS)]).map(tool => tool.name)
                     : family === 'ecommerce' && flag === 'canApplyDiscount'
                         ? [String(APPLY_DISCOUNT_TOOL.name)]

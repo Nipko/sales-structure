@@ -378,7 +378,7 @@ export class AgentAssessmentService {
                 customPrompt: text(config.customPrompt ?? config._customPrompt, 16000),
                 customPromptTruncated: typeof (config.customPrompt ?? config._customPrompt) === 'string' && (config.customPrompt ?? config._customPrompt).length > 16000,
                 language: text(config.language, 20), tools: Object.fromEntries(Object.entries(config.tools ?? {}).map(([key, value]) => [key,
-                    Object.fromEntries(Object.entries(value && typeof value === 'object' ? value : {}).filter(([flag, val]) => ['enabled', 'canBook', 'canCancel', 'canCheckStock', 'canRecommend', 'canApplyDiscount', 'canCreateLinks'].includes(flag) && typeof val === 'boolean'))])),
+                    Object.fromEntries(Object.entries(value && typeof value === 'object' ? value : {}).filter(([flag, val]) => ['enabled', 'canBook', 'canCancel', 'canCheckStock', 'canRecommend', 'canApplyDiscount', 'canCreateLinks', 'emailConfirmations'].includes(flag) && typeof val === 'boolean'))])),
                 account: { businessHours: isAgentAccountBusinessHours(settings.businessHours) ? settings.businessHours : null,
                     businessHoursStatus: settings.businessHours === undefined ? 'absent' : isAgentAccountBusinessHours(settings.businessHours) ? 'valid' : 'invalid' } },
         };

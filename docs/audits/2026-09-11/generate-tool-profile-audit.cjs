@@ -43,6 +43,14 @@ function visit(node) {
 }
 visit(executor);
 const matrix = buildTaskCompetenceMatrix();
+const runtimeConfigurationControls = new Set([
+  ...shared.AGENT_CONFIG_TOOL_FAMILIES.map(family => `tools.${family}.enabled`),
+  ...registry.TOOL_SUBPERMISSION_RULES.map(rule => `tools.${String(rule.family)}.${rule.flag}`),
+  'tools.ecommerce.canApplyDiscount', 'tools.payments.canCreateLinks',
+  ...shared.AGENT_EMAIL_CONFIRMATION_FAMILIES.map(family => `tools.${family}.emailConfirmations`),
+]);
+const assistConfigurationControls = new Set(shared.AGENT_CONFIGURATION_PATHS
+  .filter(item => item.startsWith('tools.')));
 const byProfile = new Map(matrix.profiles.map(profile => [profile.profileId, profile]));
 const tools = [...new Set([...policy.STATIC_TOOL_NAMES, ...definitions.keys(), ...branches])].sort().map(name => ({
   name, definitionSources: [...(definitions.get(name) || [])], executorBranch: branches.has(name),
@@ -90,6 +98,10 @@ const result = { version: 1, evidenceKind: 'structural_only', sourceHashEncoding
     toolsWithoutExecutorBranch: tools.filter(tool => !tool.executorBranch).map(tool => tool.name),
     toolsWithoutPolicy: tools.filter(tool => !tool.policy).map(tool => tool.name),
     missingDeclaredControls: policy.getMissingToolControls(),
+    assistantUnreachableControls: [...runtimeConfigurationControls]
+      .filter(control => !assistConfigurationControls.has(control)).sort(),
+    assistantUnbackedControls: [...assistConfigurationControls]
+      .filter(control => !runtimeConfigurationControls.has(control)).sort(),
     hiddenDeclaredRoutes: profiles.flatMap(profile => profile.routes.filter(route => route.visible === false).map(route => `${profile.id}:${route.route}`)),
     unmappedDeclaredRoutes: profiles.flatMap(profile => profile.routes.filter(route => route.navigationId === null).map(route => `${profile.id}:${route.route}`)),
     missingPages: profiles.flatMap(profile => profile.routes.filter(route => !route.pageExists).map(route => `${profile.id}:${route.route}`)),
@@ -115,7 +127,7 @@ const render = data => [
   `Origen: \`${data.sourceRevision}\`. Fuentes y hashes completos en [JSON](./tool-profile-audit.json).`, '',
   `${data.summary.verticals} verticales; ${data.summary.profiles} tipos de negocio; ${data.summary.staticTools} herramientas estáticas; ${data.summary.nativeFamilies} familias nativas; ${data.summary.tasks} tareas (${data.summary.committingTasks} transaccionales).`, '',
   'Este censo comprueba correspondencias de código. No ejecuta herramientas ni modelos, no consulta tenants y no certifica resultados comerciales. MCP dinámico no pertenece al censo estático. La ausencia de evidencia cargada no prueba que una cuenta nunca se haya probado.', '',
-  `Rutas declaradas ocultas: ${data.summary.hiddenDeclaredRoutes.length}. Páginas inexistentes: ${data.summary.missingPages.length}. Herramientas sin definición/handler/política: ${data.summary.toolsWithoutDefinition.length}/${data.summary.toolsWithoutExecutorBranch.length}/${data.summary.toolsWithoutPolicy.length}.`, '',
+  `Rutas declaradas ocultas: ${data.summary.hiddenDeclaredRoutes.length}. Páginas inexistentes: ${data.summary.missingPages.length}. Herramientas sin definición/handler/política: ${data.summary.toolsWithoutDefinition.length}/${data.summary.toolsWithoutExecutorBranch.length}/${data.summary.toolsWithoutPolicy.length}. Controles del runtime fuera de Assist/sin respaldo: ${data.summary.assistantUnreachableControls.length}/${data.summary.assistantUnbackedControls.length}.`, '',
   '| Vertical / tipo de negocio | Objeto principal | Familias | Tareas | Estrategia |',
   '|---|---|---|---:|---|',
   ...data.profiles.map(profile => `| ${profile.id} | ${profile.primaryObject} | ${profile.toolGroups.join(', ')} | ${profile.tasks.length} | ${profile.strategy} |`), '',
@@ -132,7 +144,8 @@ if (process.argv.includes('--write')) {
     throw new Error('tool_profile_audit_stale: run with --write');
   }
   const failures = ['toolsWithoutDefinition', 'toolsWithoutExecutorBranch', 'toolsWithoutPolicy',
-    'missingDeclaredControls', 'hiddenDeclaredRoutes', 'unmappedDeclaredRoutes', 'missingPages']
+    'missingDeclaredControls', 'assistantUnreachableControls', 'assistantUnbackedControls',
+    'hiddenDeclaredRoutes', 'unmappedDeclaredRoutes', 'missingPages']
     .filter(key => result.summary[key].length > 0);
   if (failures.length) throw new Error(`tool_profile_contract_failed: ${failures.join(', ')}`);
 }

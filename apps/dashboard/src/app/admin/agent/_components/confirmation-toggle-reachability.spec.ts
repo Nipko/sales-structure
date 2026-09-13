@@ -1,5 +1,6 @@
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
+import { AGENT_CONFIGURATION_PATHS, AGENT_EMAIL_CONFIRMATION_FAMILIES } from '@parallext/shared';
 
 /**
  * ═══ THE SWITCH THE CODE HONOURS AND THE SCREEN NEVER OFFERED ═══
@@ -90,5 +91,12 @@ describe('a confirmation switch the runtime reads is one the owner can reach', (
         for (const family of ['professionalServices', 'faqs', 'policies', 'knowledge', 'crm']) {
             expect({ family, slug: slugMap()[family] }).toEqual({ family, slug: '' });
         }
+    });
+
+    it('offers Assist exactly the confirmation controls the editor exposes', () => {
+        const visible = Object.entries(slugMap()).filter(([, slug]) => !!slug).map(([family]) => family).sort();
+        expect(visible).toEqual([...AGENT_EMAIL_CONFIRMATION_FAMILIES].sort());
+        expect(visible.map(family => `tools.${family}.emailConfirmations`).sort())
+            .toEqual(AGENT_CONFIGURATION_PATHS.filter(path => path.endsWith('.emailConfirmations')).sort());
     });
 });

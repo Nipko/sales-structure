@@ -1,7 +1,8 @@
 import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { AgentConfigurationService } from './agent-configuration.service';
-import { AGENT_ACCOUNT_DAYS, type AgentAccountBusinessHours, type AgentConfigurationChange } from '@parallext/shared';
+import { AGENT_ACCOUNT_DAYS, AGENT_EMAIL_CONFIRMATION_FAMILIES, type AgentAccountBusinessHours, type AgentConfigurationChange } from '@parallext/shared';
 import { operationalConfigurationBody, operationalConfigurationHash } from '../persona/agent-configuration-revision';
+import { staticToolsForAgentConfig } from '../conversations/agent-tool-registry';
 import { randomUUID } from 'crypto';
 
 const TENANT = '11111111-1111-4111-8111-111111111111';
@@ -115,6 +116,23 @@ describe('reviewed agent configuration', () => {
             { path: 'tools.ecommerce.canRecommend', value: true },
             { path: 'tools.ecommerce.canApplyDiscount', value: true },
         ], ACTOR)).resolves.toMatchObject({ status: 'proposed' });
+    });
+    it('reviews and applies every live email-confirmation switch through Assist', async () => {
+        const h = harness();
+        const restaurantTools = staticToolsForAgentConfig({ restaurants: { enabled: true } })
+            .map(tool => tool.name);
+        h.capabilities.resolve.mockResolvedValue({ contract: {
+            publishedTools: restaurantTools, degraded: false, excluded: [],
+        } } as any);
+        expect(AGENT_EMAIL_CONFIRMATION_FAMILIES).toContain('restaurants');
+        const p = await h.service.propose(TENANT, AGENT, [
+            { path: 'tools.restaurants.emailConfirmations', value: true },
+        ], ACTOR);
+        expect(p.changes[0]).toMatchObject({
+            path: 'tools.restaurants.emailConfirmations', before: null, value: true,
+        });
+        await h.service.apply(TENANT, p.id, p.digest, ACTOR);
+        expect(h.draft().body.configJson.tools.restaurants.emailConfirmations).toBe(true);
     });
     it.each(['not_in_subtype', 'plan_missing_feature', 'readiness_unmet', 'external_system_of_record', 'provider_unavailable'])('refuses capability activation excluded by %s', async reason => {
         const h = harness();

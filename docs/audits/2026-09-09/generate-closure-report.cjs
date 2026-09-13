@@ -50,6 +50,7 @@ const { EVAL_WRITER_SANDBOX_FAMILIES } = api('modules/conversations/agent-test-t
 const { buildChannelCertificationMatrix, summariseChannelCertification } =
     api('modules/channels/channel-certification-matrix.ts');
 const { channelCertificationRuntime } = api('modules/channels/channel-certification-runtime.ts');
+const { summariseNativeBacklogDetailed } = api('modules/verticals/native-backlog.ts');
 const { CERTIFICATION_LEDGER_DDL } = api('modules/simulation/certification-ledger.ts');
 const { BENCHMARK_LEDGER_DDL } = api('modules/simulation/benchmark-harness.ts');
 const { agentIssueResolutionDefects, routedAgentOperations } = shared;
@@ -87,6 +88,7 @@ const routedWithoutHandoff = routed
         || typeof operation.resultCheck !== 'string' || !operation.resultCheck)
     .map(operation => operation.key);
 const resolutionDefects = agentIssueResolutionDefects();
+const nativeBacklog = summariseNativeBacklogDetailed();
 /**
  * The five `file_claim` tasks have no effect verifier and no positive case ON
  * PURPOSE: in an evaluation the task exists to prove the identity step-up
@@ -364,7 +366,7 @@ ROWS.push(...octoberRows(row, october));
  */
 const toolAudit = JSON.parse(fs.readFileSync(
     path.join(root, 'docs/audits/2026-09-11/tool-profile-audit.json'), 'utf8'));
-ROWS.push(...toolsRows(row, toolAudit));
+ROWS.push(...toolsRows(row, toolAudit, nativeBacklog));
 
 /** L0-L6: la oferta pública, sus rutas localizadas y su evidencia comercial. */
 ROWS.push(...landingRows(row, landing));
@@ -463,7 +465,7 @@ function contradictionsIn(rows) {
     const GROUPS = [
         { name: 'A1–H3', test: id => /^[A-H]\d/.test(id), expected: 25 },
         { name: 'M0–M6/R0–R6', test: id => /^[MR]\d/.test(id), expected: 14 },
-        { name: 'T1–T7', test: id => /^T\d/.test(id), expected: 7 },
+        { name: 'T1–T8', test: id => /^T\d/.test(id), expected: 8 },
         { name: 'L0–L6', test: id => /^L\d/.test(id), expected: 7 },
     ];
     let accounted = 0;
@@ -567,7 +569,7 @@ const label = entry => {
     throw new Error(`row ${entry.id}: el estado \`${entry.status}\` no se sabe imprimir`);
 };
 const lines = [
-    '# Estado de los programas A1–H3, M0–M6/R0–R6, T1–T7 y L0–L6, decidido por el código',
+    '# Estado de los programas A1–H3, M0–M6/R0–R6, T1–T8 y L0–L6, decidido por el código',
     '',
     'Generado por `docs/audits/2026-09-09/generate-closure-report.cjs`. Cada fila declara una **condición**, y',
     'el estado sale de ella: con una condición local sin cumplir la fila está `abierta`; con la condición',

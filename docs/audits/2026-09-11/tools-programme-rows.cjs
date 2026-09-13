@@ -312,14 +312,14 @@ function closureWiring(rowIds, io = { read, exists }) {
             missing.push(`${workflow} no llama al verificador compartido`);
         }
     }
-    const expected = ['T1', 'T2', 'T3', 'T4', 'T5', 'T6'];
+    const expected = ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T8'];
     for (const id of expected) {
         if (!rowIds.includes(id)) missing.push(`la tabla de cierre no reporta ${id}`);
     }
     return missing;
 }
 
-function toolsRows(row, audit) {
+function toolsRows(row, audit, nativeBacklog) {
     const summary = audit?.summary ?? {};
     const coverage = summary.taskCoverage ?? {};
 
@@ -333,6 +333,16 @@ function toolsRows(row, audit) {
     const tours = tourCoverageGaps();
     const readinessGaps = readinessDivergenceGaps();
     const assistGaps = assistOperationAuthorityGaps();
+    const nativeProfiles = mustFind(nativeBacklog?.generatedFrom?.profiles,
+        'los perfiles del backlog nativo');
+    const nativeAlerts = mustFind(nativeBacklog?.generatedFrom?.alerts,
+        'las alertas del backlog nativo');
+    const nativeOpenProfiles = nativeBacklog.profilesWithOpenCode ?? [];
+    const nativeOpenGates = Number(nativeBacklog?.internalGates?.open ?? 0);
+    const nativeOpen = new Set([
+        ...nativeOpenProfiles.map(entry => String(entry.profileId)),
+        ...Array.from({ length: nativeOpenGates }, (_, index) => `internal-gate-${index + 1}`),
+    ]);
 
     /**
      * The five `file_claim` tasks are step-up NEGATIVES on purpose: the product
@@ -405,6 +415,19 @@ function toolsRows(row, audit) {
                 + '`AgentContentProposalService`, consulta `listOperations`, deriva de sus '
                 + 'veredictos la lista ejecutable y no vuelve a leer `effectiveCapabilities` '
                 + 'como una autoridad paralela.' }),
+
+        row('T8', { provenance: 'derived',
+            open: nativeOpen.size,
+            openLabel: `${nativeOpen.size} perfiles o gates internos del backlog nativo abiertos`
+                + (nativeOpenProfiles.length
+                    ? `: ${nativeOpenProfiles.slice(0, 6).map(entry => entry.profileId).join(', ')}`
+                    + (nativeOpenProfiles.length > 6 ? ` y ${nativeOpenProfiles.length - 6} más` : '')
+                    : ''),
+            gates: [],
+            evidence: `Derivado de \`native-backlog.ts\`: ${nativeProfiles} perfiles build/hybrid `
+                + `comercializables y ${nativeAlerts} alertas comprueban writers, capacidad atómica, `
+                + 'lecturas vivas, superficies y CTA, seguridad, SOR, pagos y evaluaciones. '
+                + 'Una alerta interna reabre esta fila aunque el inventario estático de tools siga completo.' }),
     ];
 
     /**
@@ -425,7 +448,7 @@ function toolsRows(row, audit) {
             + 'precisamente porque no estaba ahí. Que el gate se pone rojo ante una fuente '
             + 'modificada lo demuestra una prueba que cambia una fuente auditada y captura '
             + 'la transición, no la afirmación de que el árbol está al día. Las seis filas '
-            + 'T1–T6 se derivan de lecturas del código, nunca de prosa ni de la existencia '
+            + 'T1–T6 y T8 se derivan de lecturas del código, nunca de prosa ni de la existencia '
             + 'de un test.' }));
     return rows;
 }

@@ -1,16 +1,16 @@
 {
   "version": 1,
-  "revision": "1ff0a3666f6dafab7b4396995bafdf775fe29935",
-  "generatedAt": "2026-09-13T16:43:30.701Z",
+  "revision": "7f27db914783c0d5adde2f80233c52c54037857b",
+  "generatedAt": "2026-09-13T17:00:03.472Z",
   "finished": false,
   "counts": {
-    "aceptada": 25,
+    "aceptada": 26,
     "bloqueada": 27,
     "abierta": 0,
     "diferida": 1
   },
   "provenance": {
-    "derived": 36,
+    "derived": 37,
     "executed_evidence": 3,
     "declared": 14
   },
@@ -708,6 +708,18 @@
       "deferral": null
     },
     {
+      "id": "T8",
+      "open": 0,
+      "openLabel": "0 perfiles o gates internos del backlog nativo abiertos",
+      "gates": [],
+      "status": "aceptada",
+      "provenance": "derived",
+      "artefact": null,
+      "evidence": "Derivado de `native-backlog.ts`: 54 perfiles build/hybrid comercializables y 260 alertas comprueban writers, capacidad atómica, lecturas vivas, superficies y CTA, seguridad, SOR, pagos y evaluaciones. Una alerta interna reabre esta fila aunque el inventario estático de tools siga completo.",
+      "commits": [],
+      "deferral": null
+    },
+    {
       "id": "T7",
       "open": 0,
       "openLabel": "",
@@ -715,7 +727,7 @@
       "status": "aceptada",
       "provenance": "derived",
       "artefact": null,
-      "evidence": "El programa de herramientas entra al gate oficial por UNA autoridad compartida: `verify-artifacts.cjs` ejecuta `generate-tool-profile-audit --check` junto con los otros generadores, y `candidate`, `deploy` y `vertical-quality` llaman a ese verificador en vez de llevar cada uno su propia lista. El artefacto de herramientas quedó stale sin impedir un cierre precisamente porque no estaba ahí. Que el gate se pone rojo ante una fuente modificada lo demuestra una prueba que cambia una fuente auditada y captura la transición, no la afirmación de que el árbol está al día. Las seis filas T1–T6 se derivan de lecturas del código, nunca de prosa ni de la existencia de un test.",
+      "evidence": "El programa de herramientas entra al gate oficial por UNA autoridad compartida: `verify-artifacts.cjs` ejecuta `generate-tool-profile-audit --check` junto con los otros generadores, y `candidate`, `deploy` y `vertical-quality` llaman a ese verificador en vez de llevar cada uno su propia lista. El artefacto de herramientas quedó stale sin impedir un cierre precisamente porque no estaba ahí. Que el gate se pone rojo ante una fuente modificada lo demuestra una prueba que cambia una fuente auditada y captura la transición, no la afirmación de que el árbol está al día. Las seis filas T1–T6 y T8 se derivan de lecturas del código, nunca de prosa ni de la existencia de un test.",
       "commits": [],
       "deferral": null
     },

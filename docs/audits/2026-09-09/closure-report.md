@@ -1,18 +1,18 @@
-# Estado de los programas A1–H3, M0–M6/R0–R6, T1–T7 y L0–L6, decidido por el código
+# Estado de los programas A1–H3, M0–M6/R0–R6, T1–T8 y L0–L6, decidido por el código
 
 Generado por `docs/audits/2026-09-09/generate-closure-report.cjs`. Cada fila declara una **condición**, y
 el estado sale de ella: con una condición local sin cumplir la fila está `abierta`; con la condición
 cumplida y un gate externo nombrado está `bloqueada`; sólo sin condición y sin gate está `aceptada`.
 Cerrar un hueco cambia esta tabla cambiando el código, y reabrirlo la cambia de vuelta.
 
-Revisión: `1ff0a3666f6dafab7b4396995bafdf775fe29935`.
+Revisión: `7f27db914783c0d5adde2f80233c52c54037857b`.
 
-**El programa no está terminado.** 25 filas aceptadas, 27 bloqueadas por un
+**El programa no está terminado.** 26 filas aceptadas, 27 bloqueadas por un
 gate externo concreto, 0 abiertas y 1 diferidas por decisión
 explícita de alcance; 0 perfiles certificados
 de 76.
 
-Sin contradicciones en las 53 filas: a cada una se le recalculó el estado a partir de sus propias condiciones, ninguna fila abierta deja de decir qué falta, ningún gate nombrado falta de la lista, ninguna cifra quedó sin resolver y todo artefacto citado existe.
+Sin contradicciones en las 54 filas: a cada una se le recalculó el estado a partir de sus propias condiciones, ninguna fila abierta deja de decir qué falta, ningún gate nombrado falta de la lista, ninguna cifra quedó sin resolver y todo artefacto citado existe.
 
 Ese barrido corre dos veces: sobre las filas recién construidas y otra vez sobre las filas releídas del artefacto versionado, donde el estado es una cadena guardada que nadie recalculó. La primera pasada, sola, no podría fallar — el constructor deriva el estado de las mismas condiciones con las que se lo compara — y por eso no se presenta sola.
 
@@ -76,7 +76,8 @@ Ese barrido corre dos veces: sobre las filas recién construidas y otra vez sobr
 | T4 | **aceptada** | contador | — | Derivado de `DISCOVERY_ORDER` contra la tabla por elemento del tour. Un elemento que aparece en el panel y no en el recorrido es una pantalla a la que se manda al dueño sin decirle para qué sirve, qué datos necesita, qué puede confirmar ni qué cuesta. | — |
 | T5 | **bloqueada** por gate 1 y 4 | contador | — | Universo canónico conservado: 76 perfiles, 420 tareas, 146 que comprometen al negocio. La verificación determinista local es lo que esta fila mide; la certificación por canal y modelo real sigue en cero (0/76) y es gate externo, no trabajo local. | — |
 | T6 | **aceptada** | contador | — | Derivado del AST de `copilot.service.ts`: Assist inyecta `AgentContentProposalService`, consulta `listOperations`, deriva de sus veredictos la lista ejecutable y no vuelve a leer `effectiveCapabilities` como una autoridad paralela. | — |
-| T7 | **aceptada** | contador | — | El programa de herramientas entra al gate oficial por UNA autoridad compartida: `verify-artifacts.cjs` ejecuta `generate-tool-profile-audit --check` junto con los otros generadores, y `candidate`, `deploy` y `vertical-quality` llaman a ese verificador en vez de llevar cada uno su propia lista. El artefacto de herramientas quedó stale sin impedir un cierre precisamente porque no estaba ahí. Que el gate se pone rojo ante una fuente modificada lo demuestra una prueba que cambia una fuente auditada y captura la transición, no la afirmación de que el árbol está al día. Las seis filas T1–T6 se derivan de lecturas del código, nunca de prosa ni de la existencia de un test. | — |
+| T8 | **aceptada** | contador | — | Derivado de `native-backlog.ts`: 54 perfiles build/hybrid comercializables y 260 alertas comprueban writers, capacidad atómica, lecturas vivas, superficies y CTA, seguridad, SOR, pagos y evaluaciones. Una alerta interna reabre esta fila aunque el inventario estático de tools siga completo. | — |
+| T7 | **aceptada** | contador | — | El programa de herramientas entra al gate oficial por UNA autoridad compartida: `verify-artifacts.cjs` ejecuta `generate-tool-profile-audit --check` junto con los otros generadores, y `candidate`, `deploy` y `vertical-quality` llaman a ese verificador en vez de llevar cada uno su propia lista. El artefacto de herramientas quedó stale sin impedir un cierre precisamente porque no estaba ahí. Que el gate se pone rojo ante una fuente modificada lo demuestra una prueba que cambia una fuente auditada y captura la transición, no la afirmación de que el árbol está al día. Las seis filas T1–T6 y T8 se derivan de lecturas del código, nunca de prosa ni de la existencia de un test. | — |
 | L0 | **aceptada** | contador | — | La autoridad comercial está en registros versionados y seis verificadores independientes; el build público ejecuta el conjunto completo. | — |
 | L1 | **aceptada** | contador | — | Planes, capacidades, tarifas de WhatsApp y decisiones pendientes salen de fuentes versionadas; no se completan con cifras de diseño. | — |
 | L2 | **aceptada** | contador | — | La web distingue suscripción a Parallly, entregas que Meta cobra a la WABA y pagos que el cliente final hace directamente al negocio. | — |
@@ -87,7 +88,7 @@ Ese barrido corre dos veces: sobre las filas recién construidas y otra vez sobr
 
 ## De dónde sale cada fila
 
-36 filas salen de un contador leído del código: cerrar el hueco las cambia solo.
+37 filas salen de un contador leído del código: cerrar el hueco las cambia solo.
 3 descansan sobre un artefacto de una corrida real, nombrado en la tabla.
 **14 son declaraciones humanas pendientes de revisión**: A2, A3, A4, C1, D1, D3, E3, F3, F4, G2, G3, H2, M4, M6. Cambiar el código de esas áreas no cambia su estado, y por eso se dicen aparte en vez de presentarse como calculadas.
 

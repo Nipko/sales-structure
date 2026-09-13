@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import { resolve } from 'path';
+import { summariseNativeBacklogDetailed } from '../../modules/verticals/native-backlog';
 
 const ROOT = resolve(__dirname, '..', '..', '..', '..', '..');
 
@@ -32,13 +33,13 @@ const audit = require(resolve(__dirname, '..', '..', '..', '..', '..',
     'docs', 'audits', '2026-09-11', 'tool-profile-audit.json'));
 
 const row = (id: string, entry: Record<string, unknown>) => ({ id, ...entry });
-const rows = () => rowsModule.toolsRows(row, audit) as Array<Record<string, any>>;
+const rows = () => rowsModule.toolsRows(row, audit, summariseNativeBacklogDetailed()) as Array<Record<string, any>>;
 const find = (id: string) => rows().find(entry => entry.id === id)!;
 
 describe('the tools programme rows read something real', () => {
-    it('produces exactly T1 through T7, once each', () => {
+    it('produces the seven tool rows plus the native-profile row, once each', () => {
         const ids = rows().map(entry => entry.id);
-        expect(ids).toEqual(['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7']);
+        expect(ids).toEqual(['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T8', 'T7']);
     });
 
     describe('T7 — the row about this table being enforced at all', () => {
@@ -52,7 +53,7 @@ describe('the tools programme rows read something real', () => {
          * broken workflow to disk in this repository is how a concurrent
          * stage commits one.
          */
-        const ALL_T = ['T1', 'T2', 'T3', 'T4', 'T5', 'T6'];
+        const ALL_T = ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T8'];
         const realIo = {
             read: (rel: string) => fs.readFileSync(resolve(ROOT, rel), 'utf8'),
             exists: (rel: string) => fs.existsSync(resolve(ROOT, rel)),
@@ -100,6 +101,7 @@ describe('the tools programme rows read something real', () => {
                 'la tabla de cierre no reporta T4',
                 'la tabla de cierre no reporta T5',
                 'la tabla de cierre no reporta T6',
+                'la tabla de cierre no reporta T8',
             ]);
         });
 
@@ -188,6 +190,15 @@ describe('the tools programme rows read something real', () => {
         const broken = source.replace('.listOperations(tenantId', '.listOperationsRemoved(tenantId');
         expect(rowsModule.assistOperationAuthorityGaps(broken))
             .toContain('Assist no consulta listOperations');
+    });
+
+    it('derives T8 from the executable native backlog, not from prose', () => {
+        const summary = summariseNativeBacklogDetailed();
+        expect(summary.generatedFrom.profiles).toBeGreaterThan(0);
+        expect(summary.generatedFrom.alerts).toBeGreaterThan(0);
+        expect(summary.internalGates.open).toBe(0);
+        expect(summary.profilesWithOpenCode).toEqual([]);
+        expect(find('T8')).toMatchObject({ provenance: 'derived', open: 0 });
     });
 
     it('does not count the five step-up negatives as missing positives', () => {

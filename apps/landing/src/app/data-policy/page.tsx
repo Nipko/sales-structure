@@ -20,7 +20,7 @@ export default function DataPolicyPage() {
       : DataPolicyEs;
 
   return (
-    <div className="min-h-screen bg-bg text-text-primary">
+    <div className="legal-site min-h-screen bg-bg text-text-primary">
       <div className="mx-auto max-w-4xl px-6 py-16">
         <LegalLangSwitcher />
         <Content />

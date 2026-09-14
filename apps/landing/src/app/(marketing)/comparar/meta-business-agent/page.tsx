@@ -2,6 +2,7 @@
 
 import Link from "@/components/LocalizedLink";
 import { useTranslations } from "next-intl";
+import { PageContents } from "../../../../components/sections/CommercialGuide";
 import { Section } from "../../../../components/ui/Section";
 import { Icon } from "../../../../components/ui/Icon";
 import { JsonLd } from "../../../../components/ui/JsonLd";
@@ -89,7 +90,7 @@ export default function CompareMetaBusinessAgentPage() {
   );
 
   return (
-    <>
+    <div className="reference-page">
       <JsonLd
         data={breadcrumbJsonLd([
           { name: "Inicio", url: routes.home },
@@ -110,9 +111,10 @@ export default function CompareMetaBusinessAgentPage() {
           </p>
         </div>
       </section>
+      <PageContents kind="compare" />
 
       {/* Methodology */}
-      <Section className="border-y border-border/50 bg-surface/20">
+      <Section id="criterios" className="border-y border-border/50 bg-surface/20">
         <div className="mx-auto grid max-w-5xl gap-8 lg:grid-cols-2">
           <div>
             <h2 className="text-2xl font-bold tracking-tight">{t("methodTitle")}</h2>
@@ -144,7 +146,7 @@ export default function CompareMetaBusinessAgentPage() {
       </Section>
 
       {/* The three Meta surfaces */}
-      <Section>
+      <Section id="alcance">
         <div className="mx-auto max-w-3xl text-center">
           <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">{t("surfacesTitle")}</h2>
           <p className="mt-4 leading-relaxed text-text-secondary">{t("surfacesIntro")}</p>
@@ -179,7 +181,7 @@ export default function CompareMetaBusinessAgentPage() {
       </Section>
 
       {/* Task by task */}
-      <Section className="border-y border-border/50 bg-surface/20">
+      <Section id="tareas" className="border-y border-border/50 bg-surface/20">
         <div className="mx-auto max-w-3xl text-center">
           <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">{t("tableTitle")}</h2>
           <p className="mt-4 leading-relaxed text-text-secondary">{t("tableIntro")}</p>
@@ -192,7 +194,7 @@ export default function CompareMetaBusinessAgentPage() {
           the page body never moves sideways.
         */}
         <div
-          className="-mx-6 mt-10 overflow-x-auto px-6 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
+          className="relative -mx-6 mt-10 overflow-x-auto px-6 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
           role="region"
           aria-label={t("tableCaption")}
           tabIndex={0}
@@ -274,7 +276,7 @@ export default function CompareMetaBusinessAgentPage() {
       </Section>
 
       {/* Where the native option is enough */}
-      <Section>
+      <Section id="elegir">
         <div className="mx-auto max-w-3xl">
           <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">{t("nativeEnoughTitle")}</h2>
           <p className="mt-4 leading-relaxed text-text-secondary">{t("nativeEnoughIntro")}</p>
@@ -320,7 +322,7 @@ export default function CompareMetaBusinessAgentPage() {
       </Section>
 
       {/* Every source, once */}
-      <Section>
+      <Section id="fuentes">
         <div className="mx-auto max-w-3xl">
           <h2 className="text-2xl font-bold tracking-tight">{t("sourcesTitle")}</h2>
           <p className="mt-3 text-sm leading-relaxed text-text-secondary">{t("sourcesIntro")}</p>
@@ -365,6 +367,6 @@ export default function CompareMetaBusinessAgentPage() {
           </div>
         </div>
       </Section>
-    </>
+    </div>
   );
 }

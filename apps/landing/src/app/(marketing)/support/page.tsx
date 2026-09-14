@@ -1,107 +1,56 @@
 "use client";
 
+import { useState } from "react";
 import Link from "@/components/LocalizedLink";
 import { useTranslations } from "next-intl";
 import { Icon } from "../../../components/ui/Icon";
 import { CONTACT_EMAIL } from "../../../lib/constants";
 
-const CHECKLIST_KEYS = ["account", "issue", "context"] as const;
-
 export default function SupportPage() {
   const t = useTranslations("supportPage");
-  const emailHref = `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(t("emailSubject"))}`;
-
-  return (
-    <section className="relative overflow-hidden px-6 py-16 sm:py-24">
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-x-0 top-0 mx-auto h-72 max-w-4xl rounded-full bg-accent/10 blur-3xl"
-      />
-
-      <div className="relative mx-auto max-w-5xl">
-        <div className="mx-auto max-w-3xl text-center">
-          <span className="inline-flex rounded-full border border-accent/30 bg-accent/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-accent">
-            {t("eyebrow")}
-          </span>
-          <h1
-            data-testid="support-page-title"
-            className="mt-6 text-4xl font-bold tracking-tight sm:text-5xl"
-          >
-            {t("title")}
-          </h1>
-          <p className="mx-auto mt-5 max-w-2xl text-lg leading-relaxed text-text-secondary">
-            {t("subtitle")}
-          </p>
-        </div>
-
-        <div className="mt-12 grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-          <article className="rounded-2xl border border-border bg-surface p-7 sm:p-9">
-            <div className="flex items-start gap-4">
-              <span
-                aria-hidden="true"
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent/10 text-accent"
-              >
-                {Icon.mail("h-5 w-5")}
-              </span>
-              <div>
-                <h2 className="text-2xl font-bold">{t("contactTitle")}</h2>
-                <p className="mt-2 leading-relaxed text-text-secondary">{t("contactBody")}</p>
-              </div>
-            </div>
-
-            <a
-              href={emailHref}
-              className="mt-7 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-accent px-5 py-3 font-semibold text-white transition-colors hover:bg-accent-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg sm:w-auto"
-            >
-              {t("emailCta")}
-              {Icon.arrow("h-4 w-4")}
-            </a>
-            <p className="mt-4 text-sm text-text-muted">
-              {t("emailLabel")}{" "}
-              <a className="font-medium text-text-secondary hover:text-accent" href={`mailto:${CONTACT_EMAIL}`}>
-                {CONTACT_EMAIL}
-              </a>
-            </p>
-          </article>
-
-          <article className="rounded-2xl border border-border bg-surface/70 p-7 sm:p-9">
-            <h2 className="text-xl font-bold">{t("prepareTitle")}</h2>
-            <p className="mt-2 text-sm leading-relaxed text-text-secondary">{t("prepareBody")}</p>
-            <ul className="mt-6 space-y-4">
-              {CHECKLIST_KEYS.map((key) => (
-                <li key={key} className="flex items-start gap-3 text-sm leading-relaxed text-text-secondary">
-                  <span
-                    aria-hidden="true"
-                    className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-400/10 text-emerald-400"
-                  >
-                    {Icon.check("h-3 w-3")}
-                  </span>
-                  {t(`checklist.${key}`)}
-                </li>
-              ))}
-            </ul>
-          </article>
-        </div>
-
-        <aside className="mt-6 flex flex-col gap-4 rounded-2xl border border-amber-400/20 bg-amber-400/5 p-6 sm:flex-row sm:items-start">
-          <span aria-hidden="true" className="shrink-0 text-amber-300">
-            {Icon.shield("h-6 w-6")}
-          </span>
-          <div>
-            <h2 className="font-semibold text-amber-100">{t("securityTitle")}</h2>
-            <p className="mt-1 text-sm leading-relaxed text-text-secondary">{t("securityBody")}</p>
+  const c = useTranslations("contactPaths");
+  const [business, setBusiness] = useState("");
+  const [goal, setGoal] = useState("");
+  const body = `${c("businessLabel")}: ${business}\n${c("goalLabel")}: ${goal}\n\n${c("emailIntro")}`;
+  const salesHref = `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(c("emailSubject"))}&body=${encodeURIComponent(body)}`;
+  return <div className="reference-page">
+    <section className="px-6 text-center"><div className="mx-auto">
+      <p className="text-xs font-semibold uppercase tracking-[.15em] text-accent">{t("eyebrow")}</p>
+      <h1 data-testid="support-page-title" className="mt-5 text-4xl sm:text-5xl font-semibold">{t("title")}</h1>
+      <p className="mt-5 text-lg leading-relaxed text-text-secondary max-w-2xl mx-auto">{t("subtitle")}</p>
+    </div></section>
+    <section className="px-6"><div className="max-w-[1200px] mx-auto">
+      <div className="grid gap-6 lg:grid-cols-2">
+        <article id="evaluar-negocio" className="rounded-2xl border border-border bg-white p-7 sm:p-9">
+          <span className="text-accent" aria-hidden="true">{Icon.layers("h-6 w-6")}</span>
+          <h2 className="text-2xl font-semibold mt-5">{c("salesTitle")}</h2>
+          <p className="mt-3 text-text-secondary leading-relaxed">{c("salesBody")}</p>
+          <div className="grid gap-5 mt-7">
+            <label className="text-sm font-semibold">{c("businessLabel")}<input value={business} onChange={e => setBusiness(e.target.value)} maxLength={160} placeholder={c("businessPlaceholder")} className="block w-full mt-2 border border-border rounded-lg px-4 py-3 font-normal bg-bg" /></label>
+            <label className="text-sm font-semibold">{c("goalLabel")}<input value={goal} onChange={e => setGoal(e.target.value)} maxLength={300} placeholder={c("goalPlaceholder")} className="block w-full mt-2 border border-border rounded-lg px-4 py-3 font-normal bg-bg" /></label>
           </div>
-        </aside>
-
-        <div className="mt-10 text-center">
-          <Link
-            href="/"
-            className="text-sm font-medium text-text-secondary transition-colors hover:text-accent"
-          >
-            {t("backHome")}
-          </Link>
+          <a href={salesHref} className="inline-flex items-center gap-3 mt-6 bg-accent text-white px-5 py-3 rounded-lg font-semibold">{c("salesCta")} {Icon.arrow("h-4 w-4")}</a>
+          <p className="text-xs text-text-muted mt-3 leading-relaxed">{c("emailNote")}</p>
+        </article>
+        <div className="grid gap-6">
+          <article className="rounded-2xl border border-accent/20 bg-accent/5 p-7 sm:p-9">
+            <span className="text-accent" aria-hidden="true">{Icon.sparkles("h-6 w-6")}</span>
+            <h2 className="text-2xl font-semibold mt-5">{c("assistTitle")}</h2>
+            <p className="text-text-secondary mt-3 leading-relaxed">{c("assistBody")}</p>
+            <Link href="/producto/parallly-assist" className="inline-flex mt-5 text-accent font-semibold">{c("assistCta")} →</Link>
+          </article>
+          <article className="rounded-2xl border border-border bg-white p-7 sm:p-9">
+            <h2 className="text-xl font-semibold">{t("contactTitle")}</h2>
+            <p className="mt-3 text-text-secondary leading-relaxed">{t("contactBody")}</p>
+            <a href={`mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(t("emailSubject"))}`} className="inline-flex mt-5 text-accent font-semibold">{t("emailCta")} →</a>
+            <p className="mt-3 text-sm text-text-muted break-all">{CONTACT_EMAIL}</p>
+          </article>
         </div>
       </div>
-    </section>
-  );
+      <div className="grid lg:grid-cols-2 gap-9 mt-12 border-t border-border pt-9">
+        <div><h2 className="text-lg font-semibold">{t("prepareTitle")}</h2><ul className="mt-4 space-y-3 text-sm text-text-secondary">{["account", "issue", "context"].map(key => <li key={key} className="flex gap-3"><span className="text-accent" aria-hidden="true">{Icon.check("h-4 w-4")}</span>{t(`checklist.${key}`)}</li>)}</ul></div>
+        <div><h2 className="text-lg font-semibold">{t("securityTitle")}</h2><p className="mt-4 text-sm text-text-secondary leading-relaxed">{t("securityBody")}</p><Link href="/soluciones#adaptabilidad" className="inline-flex mt-5 text-accent text-sm font-semibold">{c("fitCta")} →</Link></div>
+      </div>
+    </div></section>
+  </div>;
 }

@@ -9,10 +9,10 @@ type Copy = Record<SupportedLocale, { title: string; description: string }>;
 
 const PAGE_COPY: Record<string, Copy> = {
   "/": {
-    es: { title: "Parallly — Convierte conversaciones en ventas, citas y tareas", description: "Conecta conversaciones, IA, CRM, agenda, automatizaciones y equipo en una sola plataforma." },
-    en: { title: "Parallly — Turn conversations into sales, bookings and tasks", description: "Connect conversations, AI, CRM, scheduling, automations and your team in one platform." },
-    pt: { title: "Parallly — Transforme conversas em vendas, reservas e tarefas", description: "Conecte conversas, IA, CRM, agenda, automações e sua equipe em uma única plataforma." },
-    fr: { title: "Parallly — Transformez les conversations en ventes, rendez-vous et tâches", description: "Connectez conversations, IA, CRM, planning, automatisations et équipe sur une seule plateforme." },
+    es: esMessages.meta,
+    en: enMessages.meta,
+    pt: ptMessages.meta,
+    fr: frMessages.meta,
   },
   "/precios": {
     es: { title: "Planes y precios", description: "Consulta precios, moneda, prueba, límites y funciones desde el catálogo activo de Parallly." },
@@ -33,16 +33,34 @@ const PAGE_COPY: Record<string, Copy> = {
     fr: { title: "Parallly et l'agent professionnel de Meta", description: "Comparaison tâche par tâche avec sources, date de révision et limites vérifiables." },
   },
   "/producto": {
-    es: { title: "Producto", description: "Conoce cómo Parallly conecta canales, agentes de IA, CRM, agenda y equipo." },
-    en: { title: "Product", description: "See how Parallly connects channels, AI agents, CRM, scheduling and your team." },
-    pt: { title: "Produto", description: "Veja como a Parallly conecta canais, agentes de IA, CRM, agenda e equipe." },
-    fr: { title: "Produit", description: "Découvrez comment Parallly relie canaux, agents IA, CRM, planning et équipe." },
+    es: { title: "Plataforma para atención, ventas y seguimiento", description: "Configura canales, agentes IA, conocimiento, CRM y agenda con Parallly Assist como guía. Tu equipo coordina y revisa la calidad." },
+    en: { title: "Platform for service, sales and follow-up", description: "Set up channels, AI agents, knowledge, CRM and scheduling with guidance from Parallly Assist. Your team coordinates and reviews quality." },
+    pt: { title: "Plataforma para atendimento, vendas e acompanhamento", description: "Configure canais, agentes de IA, conhecimento, CRM e agenda com orientação do Parallly Assist. Sua equipe coordena e revisa a qualidade." },
+    fr: { title: "Plateforme pour le service, les ventes et le suivi", description: "Configurez canaux, agents IA, connaissances, CRM et agenda avec Parallly Assist. Votre équipe coordonne et contrôle la qualité." },
   },
   "/producto/agente-ia": {
     es: { title: "Agentes de IA", description: "Configura agentes con conocimiento, catálogo, políticas, reservas y transferencia humana." },
     en: { title: "AI agents", description: "Configure agents with knowledge, catalog, policies, bookings and human handoff." },
     pt: { title: "Agentes de IA", description: "Configure agentes com conhecimento, catálogo, políticas, reservas e transferência humana." },
     fr: { title: "Agents IA", description: "Configurez des agents avec connaissances, catalogue, règles, rendez-vous et transfert humain." },
+  },
+  "/producto/conocimiento": {
+    es: { title: "Base de conocimiento para tus agentes", description: "Organiza identidad del negocio, catálogo, preguntas frecuentes, políticas y artículos para dar contexto a tus agentes IA." },
+    en: { title: "Knowledge base for your agents", description: "Organize business identity, catalog, FAQs, policies and articles to give your AI agents context." },
+    pt: { title: "Base de conhecimento para seus agentes", description: "Organize identidade do negócio, catálogo, perguntas frequentes, políticas e artigos para contextualizar seus agentes de IA." },
+    fr: { title: "Base de connaissances pour vos agents", description: "Organisez identité de l’entreprise, catalogue, FAQ, règles et articles pour contextualiser vos agents IA." },
+  },
+  "/producto/parallly-assist": {
+    es: { title: "Parallly Assist: tu guía en la plataforma", description: "Recibe orientación para configurar agentes, usar herramientas y entender la calidad según tu rol en Parallly." },
+    en: { title: "Parallly Assist: your platform guide", description: "Get guidance on agent setup, tools and understanding quality based on your role in Parallly." },
+    pt: { title: "Parallly Assist: seu guia na plataforma", description: "Receba orientação para configurar agentes, usar ferramentas e entender a qualidade conforme seu perfil na Parallly." },
+    fr: { title: "Parallly Assist : votre guide dans la plateforme", description: "Obtenez des conseils pour configurer les agents, utiliser les outils et comprendre la qualité selon votre rôle dans Parallly." },
+  },
+  "/producto/calidad": {
+    es: { title: "Centro de calidad y control de agentes", description: "Revisa la preparación de tu agente, prueba respuestas y observa señales de producción para orientar mejoras con tu equipo." },
+    en: { title: "Agent quality and control center", description: "Review agent readiness, test replies and observe production signals to guide improvements with your team." },
+    pt: { title: "Central de qualidade e controle dos agentes", description: "Revise a preparação do agente, teste respostas e observe sinais de produção para orientar melhorias com sua equipe." },
+    fr: { title: "Centre de qualité et contrôle des agents", description: "Vérifiez la préparation de l’agent, testez ses réponses et observez les signaux de production pour guider les améliorations avec votre équipe." },
   },
   "/producto/canales": {
     es: { title: "Canales conectados", description: "Centraliza WhatsApp, Instagram, Messenger, Telegram y Web Chat según tu plan." },
@@ -63,10 +81,10 @@ const PAGE_COPY: Record<string, Copy> = {
     fr: { title: "CRM conversationnel", description: "Transformez les conversations en contacts, opportunités, tâches et suivi commercial." },
   },
   "/producto/app-android": {
-    es: { title: "App Android para agentes", description: "Opera conversaciones, copiloto y CRM desde Android en acceso anticipado." },
-    en: { title: "Android app for agents", description: "Handle conversations, copilot and CRM from Android in early access." },
-    pt: { title: "App Android para agentes", description: "Opere conversas, copiloto e CRM no Android em acesso antecipado." },
-    fr: { title: "Application Android pour agents", description: "Gérez conversations, copilote et CRM sur Android en accès anticipé." },
+    es: { title: "Parallly para Android — Disponible en Google Play", description: "Descarga Parallly en Google Play. Atiende conversaciones y sigue contactos, oportunidades y tareas desde Android con los permisos de tu equipo." },
+    en: { title: "Parallly for Android — Available on Google Play", description: "Download Parallly on Google Play. Handle conversations and follow contacts, opportunities and tasks from Android with your team's permissions." },
+    pt: { title: "Parallly para Android — Disponível no Google Play", description: "Baixe a Parallly no Google Play. Atenda conversas e acompanhe contatos, oportunidades e tarefas pelo Android com as permissões da sua equipe." },
+    fr: { title: "Parallly pour Android — Disponible sur Google Play", description: "Téléchargez Parallly sur Google Play. Traitez les conversations et suivez contacts, opportunités et tâches sur Android selon les autorisations de votre équipe." },
   },
   "/soluciones": {
     es: { title: "Soluciones por industria", description: "Explora configuraciones para ventas, atención, CRM y reservas por tipo de negocio." },
@@ -75,10 +93,10 @@ const PAGE_COPY: Record<string, Copy> = {
     fr: { title: "Solutions par secteur", description: "Explorez les configurations de vente, service, CRM et réservation par activité." },
   },
   "/support": {
-    es: { title: "Centro de soporte", description: "Contacta a soporte y consulta qué información incluir para recibir ayuda." },
-    en: { title: "Support center", description: "Contact support and see what information to include when requesting help." },
-    pt: { title: "Central de suporte", description: "Entre em contato com o suporte e veja quais informações incluir ao pedir ajuda." },
-    fr: { title: "Centre d'assistance", description: "Contactez l'assistance et consultez les informations à fournir pour obtenir de l'aide." },
+    es: { title: "Orientación y soporte para tu empresa", description: "Evalúa cómo adaptar Parallly a tu negocio, conoce Parallly Assist o prepara una consulta para soporte." },
+    en: { title: "Guidance and support for your business", description: "Explore how Parallly fits your business, discover Parallly Assist or prepare a support inquiry." },
+    pt: { title: "Orientação e suporte para sua empresa", description: "Avalie como adaptar a Parallly ao seu negócio, conheça o Parallly Assist ou prepare uma consulta ao suporte." },
+    fr: { title: "Conseils et assistance pour votre entreprise", description: "Étudiez l’adaptation de Parallly à votre activité, découvrez Parallly Assist ou préparez une demande d’assistance." },
   },
   "/privacy": {
     es: { title: "Política de privacidad", description: "Cómo Parallly trata, protege y elimina datos personales." },

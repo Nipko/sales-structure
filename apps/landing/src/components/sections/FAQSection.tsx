@@ -5,7 +5,7 @@ import { Section } from "../ui/Section";
 import { FAQItem } from "../ui/FAQItem";
 import { WHATSAPP_URL } from "../../lib/constants";
 
-const FAQ_COUNT = 8;
+const FAQ_COUNT = 10;
 
 export function FAQSection() {
   const t = useTranslations("faq");

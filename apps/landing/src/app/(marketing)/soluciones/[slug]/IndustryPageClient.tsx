@@ -1,287 +1,141 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { motion } from "motion/react";
 import { useTranslations } from "next-intl";
 import Link from "@/components/LocalizedLink";
 import { getVerticalBySlug, getVerticalsByCluster } from "../../../../data/verticals";
-import { Section } from "../../../../components/ui/Section";
 import { Icon, getVerticalIcon } from "../../../../components/ui/Icon";
-import { CTABanner } from "../../../../components/layout/CTABanner";
+import { VerticalChatDemo } from "../../../../components/demos/VerticalChatDemo";
 import { JsonLd } from "../../../../components/ui/JsonLd";
 import { industryPageJsonLd } from "../../../../lib/seo";
-import { SIGNUP_URL } from "../../../../lib/constants";
+import { CONTACT_EMAIL } from "../../../../lib/constants";
+import styles from "../solutions.module.css";
+
+const CONFIGURATION = ["offering", "knowledge", "pipeline", "rules", "calendar", "team"] as const;
 
 export default function IndustryPageClient() {
   const params = useParams();
   const slug = params.slug as string;
   const vertical = getVerticalBySlug(slug);
   const t = useTranslations();
-
+  const d = useTranslations("industryDiscovery");
+  const a = useTranslations("businessAdaptability");
   if (!vertical) return null;
 
-  const related = getVerticalsByCluster(vertical.cluster)
-    .filter((v) => v.slug !== slug)
-    .slice(0, 3);
-
+  const related = getVerticalsByCluster(vertical.cluster).filter((v) => v.slug !== slug).slice(0, 3);
   const industryName = t(`verticals.${slug}.name`);
   const publicDescription = vertical.deepMarketingAllowed
     ? t(`verticals.${slug}.tagline`)
     : t(`solutions.productModeDescription.${vertical.productMode}`);
+  const contactHref = `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(d("contactSubject", { industry: industryName }))}&body=${encodeURIComponent(d("contactBody", { industry: industryName }))}`;
 
   return (
-    <>
-      <JsonLd
-        data={industryPageJsonLd({
-          name: industryName,
-          description: publicDescription,
-          slug,
-        })}
-      />
-
-      {/* Hero */}
-      <section
-        className="pt-12 pb-20 px-6 relative overflow-hidden"
-        style={{
-          background: `linear-gradient(135deg, ${vertical.color}08, transparent 60%)`,
-        }}
-      >
-        <div className="absolute top-0 right-0 w-[600px] h-[600px] rounded-full blur-3xl pointer-events-none" style={{ background: `${vertical.color}08` }} />
-        <div className="mx-auto max-w-6xl relative">
-          <div className="flex flex-col lg:flex-row items-center gap-12">
-            <motion.div
-              className="flex-1 text-center lg:text-left"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-            >
-              <Link
-                href="/soluciones"
-                className="inline-flex items-center gap-1 text-sm text-text-muted hover:text-text-primary mb-6 transition-colors"
-              >
-                {"←"} {t("industryPage.breadcrumb")}
-              </Link>
-
-              <span
-                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold mb-4"
-                style={{ backgroundColor: `${vertical.color}15`, color: vertical.color }}
-              >
-                {getVerticalIcon(slug, "w-4 h-4")}
-                {t(`verticals.${slug}.subtitle`)}
-              </span>
-
-              <p
-                className="mb-4 text-xs font-medium text-text-muted"
+    <div className={styles.page}>
+      <JsonLd data={industryPageJsonLd({ name: industryName, description: publicDescription, slug })} />
+      <section className={styles.industryHero}>
+        <div className={styles.container}>
+          <Link href="/soluciones" className={styles.breadcrumb}><span aria-hidden="true">←</span>{t("industryPage.breadcrumb")}</Link>
+          <div className={styles.industryHeroGrid}>
+            <div>
+              <p className={styles.industryEyebrow}><span aria-hidden="true">{getVerticalIcon(slug, styles.icon)}</span>{t(`verticals.${slug}.subtitle`)}</p>
+              <h1>{d("titlePrefix")} <span>{industryName}</span></h1>
+              <p className={styles.lead}>{d("heroDescription", { industry: industryName })}</p>
+              <div className={styles.actions}>
+                <a href={contactHref} className={styles.primaryLink}>{d("primaryCta")}<span aria-hidden="true">{Icon.arrow(styles.smallIcon)}</span></a>
+                <a href="#ejemplo" className={styles.lightLink}>{d("demoCta")}</a>
+              </div>
+              <p className={styles.heroNote}>{d("heroNote")}</p>
+            </div>
+            <aside className={styles.scopePanel} aria-labelledby="industry-scope-title">
+              <p className={styles.panelEyebrow}>{d("scopeEyebrow")}</p>
+              <h2 id="industry-scope-title">{d("scopeTitle")}</h2>
+              <p className={styles.scopeMode}
                 data-product-mode={vertical.productMode}
                 data-certification-state={vertical.certificationState}
                 data-certification-reasons={vertical.certificationReasons.join(",")}
-              >
-                {t(`solutions.productMode.${vertical.productMode}`)}
-              </p>
-
-              <h1 className="text-4xl sm:text-5xl font-bold tracking-tight mb-4">
-                {t("industryPage.heroTitlePrefix")}{" "}
-                <span style={{ color: vertical.color }}>{industryName}</span>
-              </h1>
-
-              <p className="text-lg text-text-secondary max-w-xl mb-8">
-                {publicDescription}
-              </p>
-
-              <div className="flex flex-col sm:flex-row gap-3 justify-center lg:justify-start">
-                <a
-                  href={SIGNUP_URL}
-                  className="inline-flex items-center justify-center gap-2 px-7 py-3.5 text-white font-semibold rounded-xl transition-all cursor-pointer"
-                  style={{
-                    backgroundColor: vertical.color,
-                    boxShadow: `0 0 40px ${vertical.color}35`,
-                  }}
-                >
-                  {t("industryPage.heroCtaPrimary", { industry: industryName })} {Icon.arrow()}
-                </a>
-                <Link
-                  href="/precios"
-                  className="inline-flex items-center justify-center gap-2 px-7 py-3.5 border border-border hover:border-border-light text-text-primary rounded-xl font-medium transition-colors"
-                >
-                  {t("industryPage.heroCtaSecondary")}
-                </Link>
-              </div>
-            </motion.div>
-
-            {/* Agent card */}
-            <motion.div
-              className="flex-1 w-full max-w-sm"
-              initial={{ opacity: 0, x: 40 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.2 }}
-            >
-              <div className="glass-card rounded-2xl p-6 shadow-xl">
-                <div className="flex items-center gap-3 mb-5">
-                  <div
-                    className="w-14 h-14 rounded-xl flex items-center justify-center"
-                    style={{ backgroundColor: `${vertical.color}15`, color: vertical.color }}
-                  >
-                    {getVerticalIcon(slug, "w-7 h-7")}
-                  </div>
-                  <div>
-                    <p className="font-bold text-lg">{t(`verticals.${slug}.agentName`)}</p>
-                    <p className="text-xs text-text-muted">
-                      {vertical.deepMarketingAllowed
-                        ? t("industryPage.agentSpotlightDesc", { industry: industryName })
-                        : t(`solutions.productModeDescription.${vertical.productMode}`)}
-                    </p>
-                  </div>
-                </div>
-                {vertical.deepMarketingAllowed ? (
-                  <>
-                    <div className="space-y-2.5">
-                      {[1, 2, 3, 4].map((n) => (
-                        <div key={n} className="flex items-start gap-2.5">
-                          <span
-                            className="flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center mt-0.5"
-                            style={{ backgroundColor: `${vertical.color}20`, color: vertical.color }}
-                          >
-                            {Icon.check("w-3 h-3")}
-                          </span>
-                          <span className="text-sm text-text-secondary">
-                            {t(`verticals.${slug}.feature${n}`)}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="mt-5 flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full animate-pulse" style={{ backgroundColor: vertical.color }} />
-                      <span className="text-xs font-semibold" style={{ color: vertical.color }}>
-                        {t("industryPage.agentActive")}
-                      </span>
-                    </div>
-                  </>
-                ) : (
-                  <p
-                    className="rounded-xl border border-border bg-surface/50 p-4 text-sm text-text-secondary"
-                    data-deep-marketing="withheld"
-                  >
-                    {t("solutions.validationRequired")}
-                  </p>
-                )}
-              </div>
-            </motion.div>
+              >{t(`solutions.productMode.${vertical.productMode}`)}</p>
+              <p className={styles.scopeDescription}>{publicDescription}</p>
+              {vertical.deepMarketingAllowed ? (
+                <ul className={styles.scopeFeatures}>
+                  {[1, 2, 3, 4].map((n) => (
+                    <li key={n}><span aria-hidden="true">{Icon.check(styles.smallIcon)}</span>{t(`verticals.${slug}.feature${n}`)}</li>
+                  ))}
+                </ul>
+              ) : (
+                <p className={styles.validationNote} data-deep-marketing="withheld">{t("solutions.validationRequired")}</p>
+              )}
+              <Link href="/producto" className={styles.textLink}>{d("scopeLink")}<span aria-hidden="true">{Icon.arrow(styles.smallIcon)}</span></Link>
+            </aside>
           </div>
         </div>
       </section>
-
-      {/* Pain Points — per-industry copy with fallback to the generic set */}
-      {(
-        <Section>
-          <h2 className="text-3xl font-bold text-center mb-10">
-            {t("industryPage.painTitle", { industry: industryName })}
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+      <section className={styles.painSection} aria-labelledby="industry-pain-title">
+        <div className={styles.container}>
+          <div className={styles.sectionHeading}><p className={styles.eyebrow}>{d("painEyebrow")}</p><h2 id="industry-pain-title">{d("painTitle")}</h2></div>
+          <div className={styles.painGrid}>
             {[1, 2, 3].map((n) => (
-              <motion.div
-                key={n}
-                className="glass-card rounded-2xl p-6"
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: n * 0.08 }}
-              >
-                <div className="w-10 h-10 rounded-xl bg-danger/10 text-danger flex items-center justify-center mb-4">
-                  {Icon.zap("w-5 h-5")}
-                </div>
-                <p className="text-text-secondary leading-relaxed">{t.has(`verticals.${slug}.pain${n}`) ? t(`verticals.${slug}.pain${n}`) : t(`industryPage.pain${n}`)}</p>
-              </motion.div>
+              <article key={n}>
+                <span className={styles.index} aria-hidden="true">0{n}</span>
+                <h3>{d(`pain${n}Title`)}</h3>
+                <p>{t.has(`verticals.${slug}.pain${n}`) ? t(`verticals.${slug}.pain${n}`) : t(`industryPage.pain${n}`)}</p>
+                <p className={styles.painResponse}>{d(`pain${n}Response`)}</p>
+              </article>
             ))}
           </div>
-        </Section>
-      )}
-
-      {/* Solution Steps */}
-      <Section className="bg-surface/30">
-        <h2 className="text-3xl font-bold text-center mb-12">
-          {t("industryPage.solutionTitle", { industry: industryName })}
-        </h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {[1, 2, 3].map((n) => (
-            <motion.div
-              key={n}
-              className="glass-card rounded-2xl p-7"
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ delay: n * 0.1 }}
-            >
-              <div
-                className="w-10 h-10 rounded-xl flex items-center justify-center mb-4 text-white font-bold"
-                style={{ backgroundColor: vertical.color }}
-              >
-                {n}
-              </div>
-              <h3 className="font-bold mb-2">{t(`industryPage.solutionStep${n}`, { industry: industryName })}</h3>
-              <p className="text-sm text-text-secondary">{t(`industryPage.solutionStep${n}Desc`)}</p>
-            </motion.div>
-          ))}
         </div>
-      </Section>
-
-      {/* ROI Stats */}
-      <Section>
-        <h2 className="text-3xl font-bold text-center mb-12">{t("industryPage.roiTitle")}</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {[1, 2, 3].map((n) => (
-            <motion.div
-              key={n}
-              className="text-center p-8 glass-card rounded-2xl"
-              initial={{ opacity: 0, scale: 0.95 }}
-              whileInView={{ opacity: 1, scale: 1 }}
-              viewport={{ once: true }}
-              transition={{ delay: n * 0.08 }}
-            >
-              <p className="text-4xl font-bold mb-2" style={{ color: vertical.color }}>
-                {t(`industryPage.roiStat${n}`)}
-              </p>
-              <p className="text-text-secondary">{t(`industryPage.roiStat${n}Label`)}</p>
-            </motion.div>
-          ))}
+      </section>
+      <section id="ejemplo" className={styles.demoSection} aria-labelledby="industry-demo-title">
+        <div className={`${styles.container} ${styles.demoGrid}`}>
+          <div>
+            <p className={styles.eyebrow}>{d("demoEyebrow")}</p>
+            <h2 id="industry-demo-title">{d("demoTitle")}</h2>
+            <p className={styles.bodyCopy}>{d("demoDescription")}</p>
+            <ol className={styles.flowList}>
+              {[1, 2, 3].map((n) => (
+                <li key={n}><span aria-hidden="true">0{n}</span><div><h3>{d(`flow${n}Title`)}</h3><p>{d(`flow${n}Description`)}</p></div></li>
+              ))}
+            </ol>
+            <p className={styles.demoScope}>{d("demoScope")}</p>
+          </div>
+          <div className={styles.demoFrame} data-demo-kind="illustrative">
+            <p className={styles.demoLabel}>{d("demoLabel")}</p>
+            <VerticalChatDemo vertical={{ ...vertical, color: "#245ec7", glow: "none", emoji: "P" }} />
+          </div>
         </div>
-      </Section>
-
-      {/* Related Industries */}
+      </section>
+      <section className={styles.configurationSection} aria-labelledby="industry-config-title">
+        <div className={styles.container}>
+          <div className={styles.discoveryHeading}>
+            <div><p className={styles.eyebrow}>{d("configurationEyebrow")}</p><h2 id="industry-config-title">{d("configurationTitle")}</h2></div>
+            <p>{d("configurationDescription")}</p>
+          </div>
+          <div className={styles.configurationGrid}>
+            {CONFIGURATION.map((key, index) => (
+              <article key={key}><span className={styles.index} aria-hidden="true">0{index + 1}</span><h3>{a(`configuration.${key}`)}</h3><p>{d(`configuration.${key}`)}</p></article>
+            ))}
+          </div>
+          <div className={styles.reviewBand}>
+            <div><h3>{d("reviewTitle")}</h3><p>{d("reviewDescription")}</p></div>
+            <Link href="/producto/parallly-assist" className={styles.primaryLink}>{d("assistLink")}<span aria-hidden="true">{Icon.arrow(styles.smallIcon)}</span></Link>
+          </div>
+        </div>
+      </section>
       {related.length > 0 && (
-        <Section className="bg-surface/30">
-          <h2 className="text-2xl font-bold text-center mb-8">{t("industryPage.relatedTitle")}</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-            {related.map((v) => (
-              <Link
-                key={v.slug}
-                href={`/soluciones/${v.slug}`}
-                className="glass-card rounded-2xl p-5 hover:border-accent/40 transition-all group"
-              >
-                <div className="flex items-center gap-3 mb-3">
-                  <span
-                    className="w-10 h-10 rounded-xl flex items-center justify-center"
-                    style={{ backgroundColor: `${v.color}15`, color: v.color }}
-                  >
-                    {getVerticalIcon(v.slug, "w-5 h-5")}
-                  </span>
-                  <div>
-                    <p className="font-bold group-hover:text-accent transition-colors">
-                      {t(`verticals.${v.slug}.name`)}
-                    </p>
-                    <p className="text-xs text-text-muted">{t(`verticals.${v.slug}.subtitle`)}</p>
-                  </div>
-                </div>
-                <p className="text-sm text-text-secondary">
-                  {v.deepMarketingAllowed
-                    ? t(`verticals.${v.slug}.tagline`)
-                    : t(`solutions.productModeDescription.${v.productMode}`)}
-                </p>
-              </Link>
-            ))}
+        <section className={styles.relatedSection} aria-labelledby="related-title">
+          <div className={styles.container}>
+            <div className={styles.relatedHeading}><h2 id="related-title">{d("relatedTitle")}</h2><Link href="/soluciones" className={styles.textLink}>{d("allSectorsLink")}<span aria-hidden="true">{Icon.arrow(styles.smallIcon)}</span></Link></div>
+            <div className={styles.relatedGrid}>
+              {related.map((v) => (
+                <Link key={v.slug} href={`/soluciones/${v.slug}`} className={styles.relatedCard}>
+                  <div><span aria-hidden="true">{getVerticalIcon(v.slug, styles.icon)}</span><h3>{t(`verticals.${v.slug}.name`)}</h3></div>
+                  <p>{v.deepMarketingAllowed ? t(`verticals.${v.slug}.tagline`) : t(`solutions.productModeDescription.${v.productMode}`)}</p>
+                  <span className={styles.sectorLink}>{d("relatedLink")}<span aria-hidden="true">{Icon.arrow(styles.smallIcon)}</span></span>
+                </Link>
+              ))}
+            </div>
           </div>
-        </Section>
+        </section>
       )}
-
-      <CTABanner />
-    </>
+    </div>
   );
 }

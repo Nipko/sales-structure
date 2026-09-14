@@ -8,8 +8,8 @@ export function Footer() {
   const t = useTranslations("nav");
 
   return (
-    <footer className="border-t border-border bg-surface/30">
-      <div className="mx-auto max-w-6xl px-6 py-14">
+    <footer className="site-footer border-t border-border">
+      <div className="mx-auto max-w-[1248px] px-6 py-16">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-10">
           <div className="col-span-2 md:col-span-1">
             <img src="/parallly-logo.svg" alt="Parallly" className="h-9 w-auto mb-4" />

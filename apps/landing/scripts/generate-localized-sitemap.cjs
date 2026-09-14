@@ -9,7 +9,7 @@ const STATIC = [
   '/', '/precios', '/costos-whatsapp', '/comparar/meta-business-agent', '/soluciones',
   '/producto', '/producto/agente-ia', '/producto/canales', '/producto/reservas',
   '/producto/crm', '/producto/app-android', '/support', '/privacy', '/terms',
-  '/data-policy', '/data-deletion',
+  '/data-policy', '/data-deletion', '/producto/conocimiento', '/producto/parallly-assist', '/producto/calidad',
 ];
 
 const verticalSource = fs.readFileSync(path.join(ROOT, 'src', 'data', 'verticals.ts'), 'utf8');

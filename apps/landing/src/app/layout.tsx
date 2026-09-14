@@ -1,15 +1,15 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import LangProvider from "@/components/LangProvider";
+import esMessages from "../../messages/es.json";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://parallly-chat.cloud"),
   title: {
-    default: "Parallly — Convierte conversaciones en ventas, citas y tareas",
+    default: esMessages.meta.title,
     template: "%s | Parallly",
   },
-  description:
-    "Conecta conversaciones, IA, CRM, agenda, automatizaciones y equipo en una sola plataforma. Opera desde la web y la app Android para agentes en acceso anticipado.",
+  description: esMessages.meta.description,
   keywords: [
     "WhatsApp automation",
     "automatización WhatsApp",
@@ -30,9 +30,8 @@ export const metadata: Metadata = {
     "app Android para agentes",
   ],
   openGraph: {
-    title: "Parallly — Convierte conversaciones en ventas, citas y tareas",
-    description:
-      "IA con el contexto de tu negocio, CRM, agenda y equipo conectados en una sola operación.",
+    title: esMessages.meta.title,
+    description: esMessages.meta.description,
     type: "website",
     locale: "es_CO",
     siteName: "Parallly",
@@ -48,9 +47,8 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Parallly — Convierte conversaciones en ventas, citas y tareas",
-    description:
-      "IA con el contexto de tu negocio, CRM, agenda y equipo conectados en una sola operación.",
+    title: esMessages.meta.title,
+    description: esMessages.meta.description,
     images: ["/og/parallly-social.png"],
   },
   robots: {
@@ -77,7 +75,7 @@ export default function RootLayout({
         <link rel="icon" href="/favicon.ico" />
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
         <link rel="dns-prefetch" href="https://admin.parallly-chat.cloud" />
-        <meta name="theme-color" content="#09090b" />
+        <meta name="theme-color" content="#102337" />
       </head>
       <body className="antialiased">
         <LangProvider>{children}</LangProvider>

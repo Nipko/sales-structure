@@ -6,7 +6,7 @@ import { useLocale, useTranslations } from "next-intl";
 import Link from "../LocalizedLink";
 import { Section } from "../ui/Section";
 import { Icon } from "../ui/Icon";
-import { planContactUrl, planSignupUrl } from "../../lib/constants";
+import { CONTACT_EMAIL, planContactUrl, planSignupUrl } from "../../lib/constants";
 import { useSpotlight } from "../../hooks/useSpotlight";
 import {
   formatMoney,
@@ -259,6 +259,9 @@ export function PricingSection() {
           <button type="button" onClick={retry} className="text-accent hover:text-accent-hover font-semibold">
             {t("retry")}
           </button>
+          <a href={`mailto:${CONTACT_EMAIL}`} className="mx-auto mt-5 block w-fit text-sm font-medium text-accent underline underline-offset-4">
+            {t("plansContact")}
+          </a>
         </div>
       )}
       {status === "ready" && (

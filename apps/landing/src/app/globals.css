@@ -68,6 +68,88 @@ body {
   color: #fafafa;
 }
 
+.site-header, .site-footer, .site-cta {
+  --color-bg: #102337;
+  --color-surface-light: #1f3952;
+  --color-border: #3c526a;
+  --color-border-light: #698199;
+  --color-text-secondary: #c4d1df;
+  --color-text-muted: #b3c4d7;
+  --color-text-primary: #f7faff;
+  --color-accent: #9bc6ff;
+  --color-accent-hover: #c4ddff;
+  --color-accent-solid: #245ec7;
+  --color-accent-solid-hover: #1d4eaa;
+  color: #f7faff;
+  color-scheme: dark;
+  background: #102337f5;
+}
+.site-cta { padding-block: 70px; }
+.site-cta h2 { font-weight: 600; max-width: 850px; margin-inline: auto; }
+.site-header button { cursor: pointer; }
+
+.marketing-site, .legal-site, .site-mega, .site-mobile {
+  --color-bg: #f7f9fc;
+  --color-surface: #ffffff;
+  --color-surface-light: #edf2f8;
+  --color-surface-elevated: #e4ecf5;
+  --color-border: #d8e2ed;
+  --color-border-light: #b9c9db;
+  --color-text-primary: #102337;
+  --color-text-secondary: #4b6076;
+  --color-text-muted: #5c7085;
+  --color-accent: #245ec7;
+  --color-accent-hover: #1d4eaa;
+  --color-accent-solid: #245ec7;
+  --color-accent-solid-hover: #1d4eaa;
+  --color-success: #177153;
+  color: var(--color-text-primary);
+  background: var(--color-bg);
+  color-scheme: light;
+}
+.site-mega { background: #fff; }
+.marketing-site main { overflow: clip; }
+.marketing-site :is(section, [id]), .legal-site [id] { scroll-margin-top: 88px; }
+.marketing-site :is(a, button, select, input):focus-visible, .legal-site a:focus-visible { outline: 3px solid #6a9ef0; outline-offset: 4px; }
+.marketing-site .glass, .marketing-site .glass-card { background: #fff; border-color: #d8e2ed; backdrop-filter: none; box-shadow: 0 8px 25px #10233706; }
+.marketing-site .text-emerald-400, .marketing-site .text-emerald-300 { color: #197354; }
+.marketing-site .text-amber-300, .marketing-site .text-amber-200, .marketing-site .text-amber-100, .marketing-site .text-amber-300\/90 { color: #88560c; }
+.marketing-site .text-zinc-600 { color: #627286; }
+.legal-site { min-height: 100vh; }
+.legal-site > div { background: #fff; border-inline: 1px solid #d8e2ed; }
+.legal-site h1 { letter-spacing: -.035em; }
+.legal-site p, .legal-site li { line-height: 1.85; }
+.reference-page > section:first-of-type { background: #edf3fa; border-bottom: 1px solid #d8e2ed; padding-block: 72px 42px; }
+.reference-page > section:first-of-type > div { max-width: 900px; }
+.reference-page > section:first-of-type h1 { letter-spacing: -.045em; line-height: 1.12; }
+.reference-page > section:not(:first-of-type) { padding-block: 60px; }
+.reference-page table { background: #fff; }
+.page-contents { padding: 20px 24px; background: #fff; border-bottom: 1px solid #d8e2ed; }
+.page-contents > div { max-width: 1200px; margin: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 12px 28px; }
+.page-contents span { color: #52677d; font-size: 12px; }
+.page-contents a { color: #245ec7; font-size: 13px; font-weight: 600; padding: 8px 0; }
+.pricing-intro { max-width: 980px; margin: auto; display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; padding: 32px 24px 0; }
+.pricing-intro strong { display: block; font-size: 14px; margin: 12px 0 8px; }
+.pricing-intro p { color: #53697f; font-size: 13px; line-height: 1.7; }
+.pricing-intro svg { color: #245ec7; }
+.pricing-guide { padding: 35px; border: 1px solid #d8e2ed; border-radius: 16px; background: #fff; }
+.pricing-guide h2 { font-size: clamp(26px, 3vw, 36px); font-weight: 650; letter-spacing: -.03em; }
+.pricing-guide > p { color: #4b6076; max-width: 700px; margin-top: 12px; line-height: 1.7; }
+.pricing-guide fieldset { display: flex; flex-wrap: wrap; gap: 10px; margin: 26px 0; }
+.pricing-guide legend { font-size: 13px; font-weight: 600; margin-bottom: 12px; }
+.pricing-guide button { cursor: pointer; border: 1px solid #bacbde; padding: 12px 16px; border-radius: 7px; color: #38556f; font-size: 13px; }
+.pricing-guide button[aria-pressed=true] { background: #eaf1ff; border-color: #245ec7; color: #1b4eaa; }
+.pricing-guide aside { border-left: 3px solid #245ec7; padding: 6px 18px; color: #4b6076; font-size: 14px; line-height: 1.8; }
+.pricing-guide a { display: inline-flex; margin-top: 24px; color: #fff; background: #245ec7; border-radius: 7px; padding: 13px 19px; font-size: 14px; font-weight: 600; }
+@media (max-width: 640px) {
+  .pricing-intro { grid-template-columns: 1fr; gap: 20px; }
+  .pricing-intro article { display: grid; grid-template-columns: 28px 1fr; gap: 4px 12px; }
+  .pricing-intro strong { margin: 0; }
+  .pricing-intro p { grid-column: 2; }
+  .pricing-guide { padding: 25px 20px; }
+  .reference-page > section:first-of-type { padding-block: 48px 30px; }
+}
+
 /* Keep the bright brand blue for links and focus states. Filled blue controls
    use a darker shade so white text remains AA-compliant at every text size. */
 .bg-accent.text-white {

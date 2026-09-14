@@ -6,9 +6,7 @@ export const DASHBOARD_SIGNUP_URL = "https://admin.parallly-chat.cloud/signup";
 export const SIGNUP_URL = `${SITE_URL}/signup`;
 export const LOGIN_URL = "https://admin.parallly-chat.cloud/login";
 export const CONTACT_EMAIL = "it.executive@parallext.com";
-export const ANDROID_EARLY_ACCESS_URL = `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(
-  "Parallly Android — early access",
-)}`;
+export const ANDROID_PLAY_STORE_URL = "https://play.google.com/store/apps/details?id=cloud.parallly.mobile";
 // "Talk to our AI now" — Parallly's own WhatsApp agent (dogfooding). Pre-filled greeting.
 export const WHATSAPP_URL = `https://wa.me/573134328491?text=${encodeURIComponent(
   "Hola, quiero ver cómo funciona la IA de Parallly",

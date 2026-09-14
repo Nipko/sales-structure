@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page, type Route } from "@playwright/test";
+import { disabledAgentTools } from "../../fixtures/dashboard-routes";
 
 const TENANT_ID = "11111111-1111-4111-8111-111111111111";
 const QUALITY_AGENT_ID = "44444444-4444-4444-8444-444444444444";
@@ -411,6 +412,11 @@ async function bootstrapTenantAdmin(
 
     if (method === "GET" && path === `/persona/${TENANT_ID}/plan-features`) {
       await fulfillSuccess(route, {});
+      return;
+    }
+
+    if (method === "GET" && path === `/persona/${TENANT_ID}/tool-configuration-summary`) {
+      await fulfillSuccess(route, disabledAgentTools(1));
       return;
     }
 
@@ -889,8 +895,10 @@ test("vehicle rental opens on requests and never presents pending eligibility as
   const navigation = mainNavigation(page);
   await expectSingleCurrentPage(navigation, /^\/admin\/resource-rentals$/);
   await expect(navigation.getByRole("link", { name: "Reservas", exact: true })).toBeVisible();
+  await expect(navigation.getByRole("link", { name: "Reservas", exact: true })).toHaveAccessibleDescription("IA desactivada");
   await navigation.getByRole("button", { name: "Catálogo y recursos", exact: true }).click();
   await expect(navigation.getByRole("link", { name: "Flota", exact: true })).toBeVisible();
+  await expect(navigation.getByRole("link", { name: "Flota", exact: true })).toHaveAccessibleDescription("IA desactivada");
 
   await page.getByRole("button", { name: "Datos", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Datos del alquiler", exact: true })).toBeVisible();

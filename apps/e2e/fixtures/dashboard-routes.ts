@@ -1,4 +1,4 @@
-import { VERTICAL_CAPABILITY_MANIFEST } from "@parallext/shared";
+import { AGENT_CONFIG_TOOL_FAMILIES, VERTICAL_CAPABILITY_MANIFEST, type AgentToolConfigurationSummary } from "@parallext/shared";
 import { ok, type ApiRoutes } from "./dashboard-session";
 
 /**
@@ -16,6 +16,14 @@ import { ok, type ApiRoutes } from "./dashboard-session";
  */
 
 const TENANT = "33333333-3333-4333-8333-333333333333";
+
+/** Published agents with every AI tool disabled; manual modules stay usable. */
+export const disabledAgentTools = (totalAgents = 0): AgentToolConfigurationSummary => ({
+  source: "operational", totalAgents,
+  families: Object.fromEntries(AGENT_CONFIG_TOOL_FAMILIES.map(family => [family, {
+    activeEnabledAgents: 0, pausedEnabledAgents: 0, unknownAgents: 0,
+  }])) as AgentToolConfigurationSummary['families'],
+});
 
 export const dashboardShell = (tenantId = TENANT): ApiRoutes => ({
   // The session heartbeat every authenticated page sends.
@@ -49,6 +57,7 @@ export const dashboardShell = (tenantId = TENANT): ApiRoutes => ({
   }),
   [`persona/${tenantId}/setup-status`]: ok({ complete: true, steps: [] }),
   [`persona/${tenantId}/agents`]: ok([]),
+  [`persona/${tenantId}/tool-configuration-summary`]: ok(disabledAgentTools()),
   [`verticals/${tenantId}`]: ok({ industry: "servicios", subType: "generico", config: {} }),
   "verticals/definitions/all": ok([]),
   [`business-info/${tenantId}`]: ok({ name: "Negocio de prueba", timezone: "America/Bogota" }),

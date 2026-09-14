@@ -24,7 +24,7 @@ function Harness() {
   const [version, setVersion] = useState(0);
   return <AgentToolConfigurationProvider>
     <button type="button" onClick={() => { mockTenant = 'tenant-b'; setVersion(version + 1); }}>Cambiar cuenta</button>
-    <nav aria-label="Módulos"><a href="/admin/appointments">Citas<AgentToolNavigationStatus href="/admin/appointments" /></a></nav>
+    <nav aria-label="Módulos"><a href="/admin/appointments" aria-describedby="appointments-tool-status">Citas<AgentToolNavigationStatus href="/admin/appointments" descriptionId="appointments-tool-status" /></a></nav>
     <AgentToolModuleNotice />
     <button type="button">Crear cita manual</button>
   </AgentToolConfigurationProvider>;
@@ -55,6 +55,10 @@ describe('manual module tool status', () => {
       expect(api.getAgentToolConfigurationSummary).toHaveBeenCalledTimes(1);
       expect(screen.container.querySelector('nav')?.textContent).toContain('IA desactivada');
       expect(screen.container.querySelector('a[href="/admin/appointments"]')).not.toBeNull();
+      const link = screen.container.querySelector('a[href="/admin/appointments"]')!;
+      const description = screen.container.querySelector(`#${link.getAttribute('aria-describedby')}`)!;
+      expect(description.getAttribute('aria-hidden')).toBe('true');
+      expect(description.textContent).toBe('IA desactivada');
       expect(screen.container.textContent).toContain('Puedes seguir utilizándolo manualmente');
       expect(screen.container.textContent).toContain('no el borrador');
       const manual = Array.from(screen.container.querySelectorAll('button')).find(button => button.textContent === 'Crear cita manual')!;

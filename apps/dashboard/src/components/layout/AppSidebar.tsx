@@ -6,6 +6,7 @@ import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { AgentToolNavigationStatus } from '@/components/AgentToolModuleNotice';
+import { agentToolFamiliesForRoute } from '@/lib/agent-tool-navigation';
 import { useRole } from "@/hooks/useRole";
 import { useNavigationPreferences } from "@/hooks/useNavigationPreferences";
 import { useCurrentNavigationLocation } from "@/hooks/useCurrentNavigationLocation";
@@ -947,6 +948,10 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
     const Icon = item.icon;
     const accordionExpanded = Boolean(expandedAccordions[item.labelKey]);
     const submenuId = `sidebar-${mode}-submenu-${item.labelKey}`;
+    const toolDescriptionId = (href?: string) => expanded && useTenantTree && href
+      && agentToolFamiliesForRoute(href).length > 0
+      ? `sidebar-${mode}-${item.labelKey}-tools-${encodeURIComponent(href)}` : undefined;
+    const primaryToolDescriptionId = item.planLocked ? undefined : toolDescriptionId(item.href);
     const tourId = mode === "desktop" ? `tour-${item.labelKey}` : `tour-mobile-${item.labelKey}`;
     const accordionLabel = `${accordionExpanded ? tNav("collapseSidebar") : tNav("expandSidebar")}: ${item.label}`;
     const qualityBadgeCount = getQualityAttentionCount(qualityHealthSummary);
@@ -986,7 +991,7 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
           )}
         </span>
         {expanded && <span className="min-w-0 flex-1 truncate text-left">{item.label}
-          {useTenantTree && item.href && !item.planLocked && <AgentToolNavigationStatus href={item.href} />}
+          {primaryToolDescriptionId && item.href && <AgentToolNavigationStatus href={item.href} descriptionId={primaryToolDescriptionId} />}
         </span>}
         {/* El candado dice por qué el destino no es el que el nombre promete:
             el plan no la incluye, así que el enlace lleva a Facturación en vez
@@ -1018,6 +1023,7 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
         onClick={handleNavClick}
         className={primaryClassName}
         aria-current={item.linkActive ? "page" : undefined}
+        aria-describedby={primaryToolDescriptionId}
         aria-label={!expanded ? item.label : undefined}
       >
         {primaryContents}
@@ -1085,6 +1091,7 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
                         href={child.href}
                         onClick={handleNavClick}
                         aria-current={child.active ? "page" : undefined}
+                        aria-describedby={toolDescriptionId(child.href)}
                         className={cn(
                           "flex min-h-9 items-center rounded-md py-1.5 pl-9 pr-2.5 text-[13px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1",
                           mode === "mobile" && "min-h-11",
@@ -1093,7 +1100,7 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
                             : "text-neutral-500 hover:bg-neutral-50 hover:text-foreground dark:text-neutral-400 dark:hover:bg-neutral-800/50",
                         )}
                       >
-                        <span className="truncate">{child.label}{useTenantTree && <AgentToolNavigationStatus href={child.href} />}</span>
+                        <span className="truncate">{child.label}{toolDescriptionId(child.href) && <AgentToolNavigationStatus href={child.href} descriptionId={toolDescriptionId(child.href)} />}</span>
                       </Link>
                     </li>
                   ))}

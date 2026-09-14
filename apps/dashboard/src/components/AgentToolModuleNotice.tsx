@@ -8,13 +8,15 @@ import { useTenant } from '@/contexts/TenantContext';
 import { useRole } from '@/hooks/useRole';
 import { agentToolFamiliesForRoute, agentToolModuleState } from '@/lib/agent-tool-navigation';
 
-export function AgentToolNavigationStatus({ href }: { href: string }) {
+export function AgentToolNavigationStatus({ href, descriptionId }: { href: string; descriptionId?: string }) {
   const t = useTranslations('agentToolNavigation');
   const { summary, loading } = useAgentToolConfiguration();
   const families = agentToolFamiliesForRoute(href);
   if (!families.length) return null;
   const state = loading ? 'loading' : agentToolModuleState(summary, families);
-  return <span className="block truncate text-[10px] font-normal text-neutral-500 dark:text-neutral-400">{t(`status.${state}`)}</span>;
+  // When nested in a link, announce this through aria-describedby instead of
+  // changing the link's accessible name whenever configuration is refreshed.
+  return <span id={descriptionId} aria-hidden={descriptionId ? true : undefined} className="block truncate text-[10px] font-normal text-neutral-500 dark:text-neutral-400">{t(`status.${state}`)}</span>;
 }
 
 export function AgentToolModuleNotice() {

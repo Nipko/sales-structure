@@ -26,7 +26,7 @@ test.describe("landing locale", () => {
     await expect(page).toHaveURL(/\/en\/?$/);
     await expect(page.locator("html")).toHaveAttribute("lang", "en");
     await expect(page.locator("#hero-title")).toContainText(
-      "Turn every conversation into a sale, an appointment or a resolved task",
+      "Your customer service, with AI. Easy to set up. Built around you.",
     );
     await expect(page.getByLabel("Site language")).toHaveValue("en");
 
@@ -37,7 +37,7 @@ test.describe("landing locale", () => {
     await expect(page).toHaveURL(/\/en\/?$/);
     await expect(page.getByLabel("Site language")).toHaveValue("en");
     await expect(page.locator("#hero-title")).toContainText(
-      "Turn every conversation into a sale, an appointment or a resolved task",
+      "Your customer service, with AI. Easy to set up. Built around you.",
     );
   });
 
@@ -56,7 +56,16 @@ test.describe("landing locale", () => {
         `https://parallly-chat.cloud/${locale}/precios`,
       );
     }
-    await expect(page.locator('header a[href="/en/soluciones"]')).toHaveCount(1);
+    const solutionsTrigger = page.locator("header").getByRole("button", {
+      name: "For your business",
+      exact: true,
+    });
+    await solutionsTrigger.click();
+    await expect(solutionsTrigger).toHaveAttribute("aria-expanded", "true");
+    const solutionsLink = page.getByRole("region", { name: "For your business", exact: true })
+      .getByRole("link", { name: "Find a setup for your business", exact: true });
+    await expect(solutionsLink).toBeVisible();
+    await expect(solutionsLink).toHaveAttribute("href", "/en/soluciones");
 
     await page.getByLabel("Site language").selectOption("pt");
     await expect(page).toHaveURL(/\/pt\/precios\/?$/);

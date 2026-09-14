@@ -64,7 +64,12 @@ const TENANTS_SQL = `
 const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 async function main() {
-    const { preflightAgreedTerms, preflightSummaryLine, preflightFindings } = loadPreflight();
+    const {
+        preflightAgreedTerms,
+        preflightSummaryLine,
+        preflightFindings,
+        preflightReviewLines,
+    } = loadPreflight();
     const jsonFlag = process.argv.indexOf('--json');
     const jsonPath = jsonFlag > -1 ? process.argv[jsonFlag + 1] : null;
 
@@ -111,6 +116,11 @@ async function main() {
         const summary = await preflightAgreedTerms(query, tenants);
 
         for (const line of preflightFindings(summary)) console.log(`  ${line}`);
+        // This command runs before the first release that exposes the guarded
+        // HTTP detail route. Without these non-personal references the gate can
+        // block correctly but the operator has no way to identify what to fix.
+        // Keep the stable count lines above, then print only id/status/date.
+        for (const line of preflightReviewLines(summary)) console.log(`  ${line}`);
         console.log(preflightSummaryLine(summary));
 
         if (jsonPath) {

@@ -118,6 +118,11 @@ integration('the agreed-terms gate against a real database', () => {
         const byFamily = Object.fromEntries(report.families.map(f => [f.family, f]));
         expect(byFamily.appointments).toMatchObject({ outcome: 'counted', orphans: 2 });
         expect(byFamily.catalog_orders).toMatchObject({ outcome: 'counted', orphans: 1 });
+        expect(byFamily.appointments.sample).toHaveLength(2);
+        expect(byFamily.appointments.sample.map((row: any) => row.status).sort())
+            .toEqual(['confirmed', 'pending']);
+        expect(byFamily.appointments.sample.every((row: any) =>
+            /^[0-9a-f-]{36}$/.test(row.id) && !Number.isNaN(Date.parse(row.createdAt)))).toBe(true);
         expect(report.orphans).toBe(3);
         expect(report.failures).toBe(0);
     }, 60000);
